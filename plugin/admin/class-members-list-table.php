@@ -77,9 +77,10 @@ class SocietyPress_Members_List_Table extends WP_List_Table {
      */
     public function get_bulk_actions(): array {
         return array(
-            'delete'     => __( 'Delete', 'societypress' ),
+            'delete'     => __( 'Delete Selected', 'societypress' ),
             'activate'   => __( 'Set Active', 'societypress' ),
             'deactivate' => __( 'Set Expired', 'societypress' ),
+            'delete_all' => __( 'Clear Database', 'societypress' ),
         );
     }
 

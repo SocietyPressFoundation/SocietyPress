@@ -307,6 +307,16 @@ class SocietyPress_Admin {
             array( $this, 'render_tiers_page' )
         );
 
+        // Add/Edit tier (hidden from menu, accessible via URL)
+        add_submenu_page(
+            null, // Hidden
+            __( 'Edit Tier', 'societypress' ),
+            __( 'Edit Tier', 'societypress' ),
+            'manage_society_members',
+            'societypress-tier-edit',
+            array( $this, 'render_tier_edit' )
+        );
+
         // Settings
         add_submenu_page(
             'societypress',
@@ -386,13 +396,23 @@ class SocietyPress_Admin {
         }
 
         // Check for tier form submission
-        if ( isset( $_POST['societypress_save_tier'] ) ) {
+        if ( isset( $_POST['societypress_action'] ) && 'save_tier' === $_POST['societypress_action'] ) {
             $this->save_tier();
+        }
+
+        // Check for tier delete
+        if ( isset( $_GET['action'] ) && 'delete_tier' === $_GET['action'] && isset( $_GET['tier'] ) ) {
+            $this->delete_tier();
         }
 
         // Check for single member delete
         if ( isset( $_GET['action'] ) && 'delete' === $_GET['action'] && isset( $_GET['member'] ) ) {
             $this->delete_member();
+        }
+
+        // Check for export action
+        if ( isset( $_GET['action'] ) && 'export' === $_GET['action'] && isset( $_GET['page'] ) && 'societypress-members' === $_GET['page'] ) {
+            $this->export_members();
         }
 
         // Check for bulk actions
@@ -401,6 +421,102 @@ class SocietyPress_Admin {
         } elseif ( isset( $_POST['action2'] ) && -1 !== (int) $_POST['action2'] ) {
             $this->handle_bulk_action( sanitize_text_field( $_POST['action2'] ) );
         }
+    }
+
+    /**
+     * Export members to CSV.
+     *
+     * Respects current filters (status, tier, search).
+     */
+    private function export_members(): void {
+        // Verify nonce
+        if ( ! wp_verify_nonce( $_GET['_wpnonce'] ?? '', 'export_members' ) ) {
+            wp_die( __( 'Security check failed.', 'societypress' ) );
+        }
+
+        // Check permissions
+        if ( ! current_user_can( 'manage_society_members' ) ) {
+            wp_die( __( 'You do not have permission to export members.', 'societypress' ) );
+        }
+
+        // Build filter args
+        $args = array( 'limit' => 0 );
+
+        if ( ! empty( $_GET['status'] ) ) {
+            $args['status'] = sanitize_text_field( $_GET['status'] );
+        }
+        if ( ! empty( $_GET['tier'] ) ) {
+            $args['tier_id'] = absint( $_GET['tier'] );
+        }
+        if ( ! empty( $_GET['s'] ) ) {
+            $args['search'] = sanitize_text_field( $_GET['s'] );
+        }
+
+        $members_handler = societypress()->members;
+        $tiers_handler = societypress()->tiers;
+        $members = $members_handler->get_members( $args );
+
+        // Set headers for CSV download
+        $filename = 'societypress-members-' . gmdate( 'Y-m-d' ) . '.csv';
+        header( 'Content-Type: text/csv; charset=utf-8' );
+        header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+        header( 'Pragma: no-cache' );
+        header( 'Expires: 0' );
+
+        $output = fopen( 'php://output', 'w' );
+
+        // Write UTF-8 BOM for Excel compatibility
+        fwrite( $output, "\xEF\xBB\xBF" );
+
+        // Write header row
+        $headers = array(
+            'First Name',
+            'Last Name',
+            'Email',
+            'Membership Tier',
+            'Status',
+            'Join Date',
+            'Expiration Date',
+            'Cell Phone',
+            'Home Phone',
+            'Street Address',
+            'City',
+            'State/Province',
+            'Postal Code',
+            'Country',
+            'Directory Visible',
+            'Auto Renew',
+        );
+        fputcsv( $output, $headers );
+
+        // Write data rows
+        foreach ( $members as $member ) {
+            $contact = $members_handler->get_contact( $member->id );
+            $tier = $tiers_handler->get( $member->membership_tier_id );
+
+            $row = array(
+                $member->first_name,
+                $member->last_name,
+                $contact->primary_email ?? '',
+                $tier->name ?? '',
+                ucfirst( $member->status ),
+                $member->join_date,
+                $member->expiration_date ?? '',
+                $contact->cell_phone ?? '',
+                $contact->home_phone ?? '',
+                $contact->street_address ?? '',
+                $contact->city ?? '',
+                $contact->state_province ?? '',
+                $contact->postal_code ?? '',
+                $contact->country ?? '',
+                $member->directory_visible ? 'Yes' : 'No',
+                $member->auto_renew ? 'Yes' : 'No',
+            );
+            fputcsv( $output, $row );
+        }
+
+        fclose( $output );
+        exit;
     }
 
     /**
@@ -648,11 +764,29 @@ class SocietyPress_Admin {
         $total_members = count( societypress()->members->get_members( $filter_args ) );
         $items_on_page = count( $this->members_table->items );
 
+        // Build export URL with current filters
+        $export_url = wp_nonce_url(
+            add_query_arg(
+                array(
+                    'page'   => 'societypress-members',
+                    'action' => 'export',
+                    'status' => $current_status,
+                    'tier'   => $current_tier,
+                    's'      => $current_search,
+                ),
+                admin_url( 'admin.php' )
+            ),
+            'export_members'
+        );
+
         ?>
         <div class="wrap societypress-admin">
             <h1 class="wp-heading-inline"><?php esc_html_e( 'Members', 'societypress' ); ?></h1>
             <a href="<?php echo esc_url( admin_url( 'admin.php?page=societypress-member-edit' ) ); ?>" class="page-title-action">
                 <?php esc_html_e( 'Add New', 'societypress' ); ?>
+            </a>
+            <a href="<?php echo esc_url( $export_url ); ?>" class="page-title-action">
+                <?php esc_html_e( 'Export CSV', 'societypress' ); ?>
             </a>
             <hr class="wp-header-end">
 
@@ -926,10 +1060,15 @@ class SocietyPress_Admin {
      */
     public function render_tiers_page(): void {
         $tiers = societypress()->tiers->get_all();
+        $counts = societypress()->tiers->get_member_counts();
 
         ?>
         <div class="wrap societypress-admin">
-            <h1><?php esc_html_e( 'Membership Tiers', 'societypress' ); ?></h1>
+            <h1 class="wp-heading-inline"><?php esc_html_e( 'Membership Tiers', 'societypress' ); ?></h1>
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=societypress-tier-edit' ) ); ?>" class="page-title-action">
+                <?php esc_html_e( 'Add New', 'societypress' ); ?>
+            </a>
+            <hr class="wp-header-end">
 
             <?php $this->render_admin_notices(); ?>
 
@@ -937,7 +1076,6 @@ class SocietyPress_Admin {
                 <thead>
                     <tr>
                         <th><?php esc_html_e( 'Name', 'societypress' ); ?></th>
-                        <th><?php esc_html_e( 'Slug', 'societypress' ); ?></th>
                         <th><?php esc_html_e( 'Price', 'societypress' ); ?></th>
                         <th><?php esc_html_e( 'Duration', 'societypress' ); ?></th>
                         <th><?php esc_html_e( 'Max Members', 'societypress' ); ?></th>
@@ -946,13 +1084,35 @@ class SocietyPress_Admin {
                     </tr>
                 </thead>
                 <tbody>
-                    <?php
-                    $counts = societypress()->tiers->get_member_counts();
-                    foreach ( $tiers as $tier ) :
+                    <?php foreach ( $tiers as $tier ) :
+                        $edit_url = admin_url( 'admin.php?page=societypress-tier-edit&tier_id=' . $tier->id );
+                        $delete_url = wp_nonce_url(
+                            admin_url( 'admin.php?page=societypress-tiers&action=delete_tier&tier=' . $tier->id ),
+                            'delete_tier_' . $tier->id
+                        );
+                        $member_count = $counts[ $tier->id ] ?? 0;
                         ?>
                         <tr>
-                            <td><strong><?php echo esc_html( $tier->name ); ?></strong></td>
-                            <td><code><?php echo esc_html( $tier->slug ); ?></code></td>
+                            <td>
+                                <strong><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $tier->name ); ?></a></strong>
+                                <br><code><?php echo esc_html( $tier->slug ); ?></code>
+                                <div class="row-actions">
+                                    <span class="edit">
+                                        <a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> |
+                                    </span>
+                                    <?php if ( 0 === $member_count ) : ?>
+                                        <span class="delete">
+                                            <a href="<?php echo esc_url( $delete_url ); ?>" class="submitdelete" onclick="return confirm('<?php echo esc_js( __( 'Are you sure you want to delete this tier?', 'societypress' ) ); ?>');">
+                                                <?php esc_html_e( 'Delete', 'societypress' ); ?>
+                                            </a>
+                                        </span>
+                                    <?php else : ?>
+                                        <span class="delete" title="<?php esc_attr_e( 'Cannot delete tier with members', 'societypress' ); ?>">
+                                            <?php esc_html_e( 'Delete', 'societypress' ); ?>
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
+                            </td>
                             <td>$<?php echo esc_html( number_format( $tier->price, 2 ) ); ?></td>
                             <td>
                                 <?php
@@ -975,17 +1135,208 @@ class SocietyPress_Admin {
                                     <span class="societypress-status-inactive"><?php esc_html_e( 'Inactive', 'societypress' ); ?></span>
                                 <?php endif; ?>
                             </td>
-                            <td><?php echo esc_html( $counts[ $tier->id ] ?? 0 ); ?></td>
+                            <td>
+                                <?php if ( $member_count > 0 ) : ?>
+                                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=societypress-members&tier=' . $tier->id ) ); ?>">
+                                        <?php echo esc_html( $member_count ); ?>
+                                    </a>
+                                <?php else : ?>
+                                    0
+                                <?php endif; ?>
+                            </td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>
-
-            <p class="description">
-                <?php esc_html_e( 'Tier editing coming in a future update. For now, tiers can be modified directly in the database.', 'societypress' ); ?>
-            </p>
         </div>
         <?php
+    }
+
+    /**
+     * Render the tier edit/add page.
+     */
+    public function render_tier_edit(): void {
+        $tier_id = isset( $_GET['tier_id'] ) ? absint( $_GET['tier_id'] ) : 0;
+        $tier = null;
+
+        if ( $tier_id ) {
+            $tier = societypress()->tiers->get( $tier_id );
+        }
+
+        ?>
+        <div class="wrap societypress-admin">
+            <h1>
+                <?php
+                echo $tier_id
+                    ? esc_html__( 'Edit Tier', 'societypress' )
+                    : esc_html__( 'Add New Tier', 'societypress' );
+                ?>
+            </h1>
+
+            <?php $this->render_admin_notices(); ?>
+
+            <form method="post" action="" class="societypress-tier-form">
+                <?php wp_nonce_field( 'societypress_tier', 'societypress_tier_nonce' ); ?>
+                <input type="hidden" name="societypress_action" value="save_tier">
+                <input type="hidden" name="tier_id" value="<?php echo esc_attr( $tier_id ); ?>">
+
+                <table class="form-table">
+                    <tr>
+                        <th><label for="name"><?php esc_html_e( 'Name', 'societypress' ); ?> *</label></th>
+                        <td>
+                            <input type="text" name="name" id="name" class="regular-text"
+                                   value="<?php echo esc_attr( $tier->name ?? '' ); ?>" required>
+                            <p class="description"><?php esc_html_e( 'Display name for this tier (e.g., "Individual", "Family").', 'societypress' ); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="slug"><?php esc_html_e( 'Slug', 'societypress' ); ?></label></th>
+                        <td>
+                            <input type="text" name="slug" id="slug" class="regular-text"
+                                   value="<?php echo esc_attr( $tier->slug ?? '' ); ?>">
+                            <p class="description"><?php esc_html_e( 'URL-friendly identifier. Leave blank to auto-generate from name.', 'societypress' ); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
+                        <td>
+                            <textarea name="description" id="description" class="large-text" rows="3"><?php echo esc_textarea( $tier->description ?? '' ); ?></textarea>
+                            <p class="description"><?php esc_html_e( 'Shown to members during signup.', 'societypress' ); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="price"><?php esc_html_e( 'Price', 'societypress' ); ?> *</label></th>
+                        <td>
+                            <input type="number" name="price" id="price" step="0.01" min="0"
+                                   value="<?php echo esc_attr( $tier->price ?? '0.00' ); ?>" required>
+                            <p class="description"><?php esc_html_e( 'Annual membership fee in dollars.', 'societypress' ); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="duration_months"><?php esc_html_e( 'Duration (months)', 'societypress' ); ?></label></th>
+                        <td>
+                            <input type="number" name="duration_months" id="duration_months" min="0"
+                                   value="<?php echo esc_attr( $tier->duration_months ?? 12 ); ?>">
+                            <p class="description"><?php esc_html_e( 'Membership length in months. Enter 0 for lifetime memberships.', 'societypress' ); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="max_members"><?php esc_html_e( 'Max Members', 'societypress' ); ?></label></th>
+                        <td>
+                            <input type="number" name="max_members" id="max_members" min="1"
+                                   value="<?php echo esc_attr( $tier->max_members ?? 1 ); ?>">
+                            <p class="description"><?php esc_html_e( 'How many people this membership covers (e.g., 2 for family).', 'societypress' ); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="sort_order"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label></th>
+                        <td>
+                            <input type="number" name="sort_order" id="sort_order" min="0"
+                                   value="<?php echo esc_attr( $tier->sort_order ?? 0 ); ?>">
+                            <p class="description"><?php esc_html_e( 'Display order in lists. Lower numbers appear first.', 'societypress' ); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                        <td>
+                            <label>
+                                <input type="checkbox" name="is_active" value="1"
+                                    <?php checked( $tier->is_active ?? 1, 1 ); ?>>
+                                <?php esc_html_e( 'Active (available for new memberships)', 'societypress' ); ?>
+                            </label>
+                        </td>
+                    </tr>
+                </table>
+
+                <p class="submit">
+                    <input type="submit" name="societypress_save_tier" class="button button-primary button-large"
+                           value="<?php esc_attr_e( 'Save Tier', 'societypress' ); ?>">
+                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=societypress-tiers' ) ); ?>" class="button button-large">
+                        <?php esc_html_e( 'Cancel', 'societypress' ); ?>
+                    </a>
+                </p>
+            </form>
+        </div>
+        <?php
+    }
+
+    /**
+     * Save tier from form submission.
+     */
+    private function save_tier(): void {
+        // Verify nonce
+        if ( ! isset( $_POST['societypress_tier_nonce'] ) ||
+             ! wp_verify_nonce( $_POST['societypress_tier_nonce'], 'societypress_tier' ) ) {
+            return;
+        }
+
+        // Check permissions
+        if ( ! current_user_can( 'manage_society_members' ) ) {
+            return;
+        }
+
+        $tier_id = isset( $_POST['tier_id'] ) ? absint( $_POST['tier_id'] ) : 0;
+        $tiers = societypress()->tiers;
+
+        // Prepare tier data
+        $tier_data = array(
+            'name'            => sanitize_text_field( $_POST['name'] ?? '' ),
+            'slug'            => sanitize_title( $_POST['slug'] ?? $_POST['name'] ?? '' ),
+            'description'     => sanitize_textarea_field( $_POST['description'] ?? '' ),
+            'price'           => floatval( $_POST['price'] ?? 0 ),
+            'duration_months' => absint( $_POST['duration_months'] ?? 12 ),
+            'max_members'     => absint( $_POST['max_members'] ?? 1 ),
+            'sort_order'      => absint( $_POST['sort_order'] ?? 0 ),
+            'is_active'       => isset( $_POST['is_active'] ) ? 1 : 0,
+        );
+
+        if ( $tier_id ) {
+            // Update existing tier
+            $result = $tiers->update( $tier_id, $tier_data );
+            if ( $result ) {
+                $this->add_admin_notice( __( 'Tier updated successfully.', 'societypress' ), 'success' );
+            } else {
+                $this->add_admin_notice( __( 'Error updating tier. Slug may already exist.', 'societypress' ), 'error' );
+            }
+        } else {
+            // Create new tier
+            $new_id = $tiers->create( $tier_data );
+            if ( $new_id ) {
+                $this->add_admin_notice( __( 'Tier created successfully.', 'societypress' ), 'success' );
+                // Redirect to edit page for the new tier
+                wp_safe_redirect( admin_url( 'admin.php?page=societypress-tier-edit&tier_id=' . $new_id . '&message=created' ) );
+                exit;
+            } else {
+                $this->add_admin_notice( __( 'Error creating tier. Slug may already exist.', 'societypress' ), 'error' );
+            }
+        }
+    }
+
+    /**
+     * Delete a tier.
+     */
+    private function delete_tier(): void {
+        $tier_id = absint( $_GET['tier'] ?? 0 );
+
+        // Verify nonce
+        if ( ! wp_verify_nonce( $_GET['_wpnonce'] ?? '', 'delete_tier_' . $tier_id ) ) {
+            wp_die( __( 'Security check failed.', 'societypress' ) );
+        }
+
+        // Check permissions
+        if ( ! current_user_can( 'manage_society_members' ) ) {
+            wp_die( __( 'You do not have permission to delete tiers.', 'societypress' ) );
+        }
+
+        $tiers = societypress()->tiers;
+        $result = $tiers->delete( $tier_id );
+
+        if ( $result ) {
+            wp_safe_redirect( admin_url( 'admin.php?page=societypress-tiers&message=tier_deleted' ) );
+        } else {
+            wp_safe_redirect( admin_url( 'admin.php?page=societypress-tiers&message=tier_delete_error' ) );
+        }
+        exit;
     }
 
     /**
@@ -1095,13 +1446,6 @@ class SocietyPress_Admin {
     }
 
     /**
-     * Save tier from form submission.
-     */
-    private function save_tier(): void {
-        // Placeholder for future implementation
-    }
-
-    /**
      * Add an admin notice to be displayed.
      *
      * @param string $message Notice message.
@@ -1199,6 +1543,18 @@ class SocietyPress_Admin {
                              esc_html__( 'All %d members have been deleted.', 'societypress' ),
                              $count
                          ) .
+                         '</p></div>';
+                    break;
+
+                case 'tier_deleted':
+                    echo '<div class="notice notice-success is-dismissible"><p>' .
+                         esc_html__( 'Tier deleted successfully.', 'societypress' ) .
+                         '</p></div>';
+                    break;
+
+                case 'tier_delete_error':
+                    echo '<div class="notice notice-error is-dismissible"><p>' .
+                         esc_html__( 'Cannot delete tier. It may have members assigned.', 'societypress' ) .
                          '</p></div>';
                     break;
             }

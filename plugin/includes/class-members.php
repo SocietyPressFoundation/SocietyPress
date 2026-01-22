@@ -266,8 +266,8 @@ class SocietyPress_Members {
         if ( ! empty( $args['search'] ) ) {
             $term    = '%' . $this->wpdb->esc_like( $args['search'] ) . '%';
             $join   .= " LEFT JOIN {$contact} c ON m.id = c.member_id";
-            $where[] = '(m.first_name LIKE %s OR m.last_name LIKE %s OR c.primary_email LIKE %s)';
-            $values  = array_merge( $values, array( $term, $term, $term ) );
+            $where[] = '(m.first_name LIKE %s OR m.last_name LIKE %s OR c.primary_email LIKE %s OR c.city LIKE %s OR c.state_province LIKE %s OR c.street_address LIKE %s OR c.postal_code LIKE %s)';
+            $values  = array_merge( $values, array( $term, $term, $term, $term, $term, $term, $term ) );
         }
 
         $allowed_orderby = array( 'id', 'first_name', 'last_name', 'status', 'join_date', 'expiration_date' );

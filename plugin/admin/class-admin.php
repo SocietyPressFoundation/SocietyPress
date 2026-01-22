@@ -308,8 +308,9 @@ class SocietyPress_Admin {
         );
 
         // Add/Edit tier (hidden from menu, accessible via URL)
+        // Using empty string instead of null for PHP 8 compatibility
         add_submenu_page(
-            null, // Hidden
+            '',
             __( 'Edit Tier', 'societypress' ),
             __( 'Edit Tier', 'societypress' ),
             'manage_society_members',
@@ -333,9 +334,9 @@ class SocietyPress_Admin {
      *
      * @param string $hook Current admin page hook.
      */
-    public function enqueue_assets( string $hook ): void {
+    public function enqueue_assets( ?string $hook ): void {
         // Only load on our pages
-        if ( strpos( $hook, 'societypress' ) === false ) {
+        if ( null === $hook || strpos( $hook, 'societypress' ) === false ) {
             return;
         }
 

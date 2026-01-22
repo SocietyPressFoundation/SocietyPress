@@ -165,10 +165,12 @@ class SocietyPress_Admin {
                 'ajaxUrl' => admin_url( 'admin-ajax.php' ),
                 'nonce'   => wp_create_nonce( 'societypress_admin' ),
                 'strings' => array(
-                    'confirmDelete' => __( 'Are you sure you want to delete this member? This cannot be undone.', 'societypress' ),
-                    'saving'        => __( 'Saving...', 'societypress' ),
-                    'saved'         => __( 'Saved!', 'societypress' ),
-                    'error'         => __( 'An error occurred. Please try again.', 'societypress' ),
+                    'confirmDelete'            => __( 'Are you sure you want to delete this member? This cannot be undone.', 'societypress' ),
+                    'confirmDeleteAll'         => __( 'WARNING: This will PERMANENTLY DELETE ALL MEMBERS from the database. This action CANNOT be undone. Are you absolutely sure?', 'societypress' ),
+                    'confirmDeleteAllSelected' => __( 'You are about to delete ALL members across all pages. Are you sure?', 'societypress' ),
+                    'saving'                   => __( 'Saving...', 'societypress' ),
+                    'saved'                    => __( 'Saved!', 'societypress' ),
+                    'error'                    => __( 'An error occurred. Please try again.', 'societypress' ),
                 ),
             )
         );
@@ -190,7 +192,7 @@ class SocietyPress_Admin {
      */
     public function handle_actions(): void {
         // Check for member form submission
-        if ( isset( $_POST['societypress_save_member'] ) ) {
+        if ( isset( $_POST['societypress_action'] ) && 'save_member' === $_POST['societypress_action'] ) {
             $this->save_member();
         }
 
@@ -198,6 +200,140 @@ class SocietyPress_Admin {
         if ( isset( $_POST['societypress_save_tier'] ) ) {
             $this->save_tier();
         }
+
+        // Check for single member delete
+        if ( isset( $_GET['action'] ) && 'delete' === $_GET['action'] && isset( $_GET['member'] ) ) {
+            $this->delete_member();
+        }
+
+        // Check for bulk actions
+        if ( isset( $_POST['action'] ) && -1 !== (int) $_POST['action'] ) {
+            $this->handle_bulk_action( sanitize_text_field( $_POST['action'] ) );
+        } elseif ( isset( $_POST['action2'] ) && -1 !== (int) $_POST['action2'] ) {
+            $this->handle_bulk_action( sanitize_text_field( $_POST['action2'] ) );
+        }
+    }
+
+    /**
+     * Delete a single member.
+     */
+    private function delete_member(): void {
+        $member_id = absint( $_GET['member'] ?? 0 );
+
+        // Verify nonce
+        if ( ! wp_verify_nonce( $_GET['_wpnonce'] ?? '', 'delete_member_' . $member_id ) ) {
+            wp_die( __( 'Security check failed.', 'societypress' ) );
+        }
+
+        // Check permissions
+        if ( ! current_user_can( 'manage_society_members' ) ) {
+            wp_die( __( 'You do not have permission to delete members.', 'societypress' ) );
+        }
+
+        $members = societypress()->members;
+        $member = $members->get( $member_id );
+
+        if ( ! $member ) {
+            wp_safe_redirect( admin_url( 'admin.php?page=societypress-members&message=not_found' ) );
+            exit;
+        }
+
+        $result = $members->delete( $member_id );
+
+        if ( $result ) {
+            wp_safe_redirect( admin_url( 'admin.php?page=societypress-members&message=deleted' ) );
+        } else {
+            wp_safe_redirect( admin_url( 'admin.php?page=societypress-members&message=delete_error' ) );
+        }
+        exit;
+    }
+
+    /**
+     * Handle bulk actions on members.
+     *
+     * @param string $action The bulk action to perform.
+     */
+    private function handle_bulk_action( string $action ): void {
+        // Only process on members page
+        if ( ! isset( $_GET['page'] ) || 'societypress-members' !== $_GET['page'] ) {
+            return;
+        }
+
+        // Check permissions
+        if ( ! current_user_can( 'manage_society_members' ) ) {
+            return;
+        }
+
+        // Verify bulk action nonce
+        check_admin_referer( 'bulk-members' );
+
+        $members = societypress()->members;
+        $count = 0;
+
+        // Handle "Delete ALL Members" action - this doesn't require selected members
+        if ( 'delete_all' === $action ) {
+            // Get all member IDs
+            $all_members = $members->get_members( array( 'limit' => 0 ) );
+
+            foreach ( $all_members as $member ) {
+                if ( $members->delete( $member->id ) ) {
+                    $count++;
+                }
+            }
+
+            wp_safe_redirect( admin_url( 'admin.php?page=societypress-members&message=all_deleted&count=' . $count ) );
+            exit;
+        }
+
+        // For other bulk actions, we need selected member IDs
+        // Check if "select all" was triggered (hidden field set by JavaScript)
+        if ( isset( $_POST['societypress_select_all'] ) && '1' === $_POST['societypress_select_all'] ) {
+            // Get all member IDs from the database
+            $all_members = $members->get_members( array( 'limit' => 0 ) );
+            $member_ids = array_map( function( $m ) { return $m->id; }, $all_members );
+        } else {
+            // Use the selected checkboxes
+            $member_ids = array_map( 'absint', $_POST['member'] ?? array() );
+        }
+
+        if ( empty( $member_ids ) ) {
+            return;
+        }
+
+        switch ( $action ) {
+            case 'delete':
+                foreach ( $member_ids as $id ) {
+                    if ( $members->delete( $id ) ) {
+                        $count++;
+                    }
+                }
+                $message = 'bulk_deleted';
+                break;
+
+            case 'activate':
+                foreach ( $member_ids as $id ) {
+                    if ( $members->update_status( $id, 'active' ) ) {
+                        $count++;
+                    }
+                }
+                $message = 'bulk_activated';
+                break;
+
+            case 'deactivate':
+                foreach ( $member_ids as $id ) {
+                    if ( $members->update_status( $id, 'expired' ) ) {
+                        $count++;
+                    }
+                }
+                $message = 'bulk_deactivated';
+                break;
+
+            default:
+                return;
+        }
+
+        wp_safe_redirect( admin_url( 'admin.php?page=societypress-members&message=' . $message . '&count=' . $count ) );
+        exit;
     }
 
     /**
@@ -287,6 +423,11 @@ class SocietyPress_Admin {
         $this->members_table = new SocietyPress_Members_List_Table();
         $this->members_table->prepare_items();
 
+        // Get total member count for "select all" functionality
+        $total_members = count( societypress()->members->get_members( array( 'limit' => 0 ) ) );
+        $pagination_args = $this->members_table->get_pagination_arg( 'per_page' );
+        $items_on_page = count( $this->members_table->items );
+
         ?>
         <div class="wrap societypress-admin">
             <h1 class="wp-heading-inline"><?php esc_html_e( 'Members', 'societypress' ); ?></h1>
@@ -297,12 +438,53 @@ class SocietyPress_Admin {
 
             <?php $this->render_admin_notices(); ?>
 
-            <form method="get">
+            <form method="post" id="societypress-members-form">
                 <input type="hidden" name="page" value="societypress-members">
+                <input type="hidden" name="societypress_select_all" id="societypress_select_all" value="0">
                 <?php
+                wp_nonce_field( 'bulk-members' );
                 $this->members_table->search_box( __( 'Search Members', 'societypress' ), 'member' );
-                $this->members_table->display();
                 ?>
+
+                <!-- Select All Banner (hidden by default, shown via JS) -->
+                <?php if ( $total_members > $items_on_page ) : ?>
+                <div id="societypress-select-all-banner" class="notice notice-info inline" style="display: none; margin: 10px 0;">
+                    <p>
+                        <span id="societypress-select-all-page-msg">
+                            <?php
+                            printf(
+                                /* translators: %d: number of items on current page */
+                                esc_html__( 'All %d items on this page are selected.', 'societypress' ),
+                                $items_on_page
+                            );
+                            ?>
+                            <a href="#" id="societypress-select-all-link">
+                                <?php
+                                printf(
+                                    /* translators: %d: total number of members */
+                                    esc_html__( 'Select all %d members', 'societypress' ),
+                                    $total_members
+                                );
+                                ?>
+                            </a>
+                        </span>
+                        <span id="societypress-all-selected-msg" style="display: none;">
+                            <?php
+                            printf(
+                                /* translators: %d: total number of members */
+                                esc_html__( 'All %d members are selected.', 'societypress' ),
+                                $total_members
+                            );
+                            ?>
+                            <a href="#" id="societypress-clear-selection-link">
+                                <?php esc_html_e( 'Clear selection', 'societypress' ); ?>
+                            </a>
+                        </span>
+                    </p>
+                </div>
+                <?php endif; ?>
+
+                <?php $this->members_table->display(); ?>
             </form>
         </div>
         <?php
@@ -337,6 +519,7 @@ class SocietyPress_Admin {
 
             <form method="post" action="" class="societypress-member-form">
                 <?php wp_nonce_field( 'societypress_member', 'societypress_member_nonce' ); ?>
+                <input type="hidden" name="societypress_action" value="save_member">
                 <input type="hidden" name="member_id" value="<?php echo esc_attr( $member_id ); ?>">
 
                 <div class="societypress-form-sections">
@@ -709,10 +892,74 @@ class SocietyPress_Admin {
         }
 
         // Check for URL message parameter
-        if ( isset( $_GET['message'] ) && 'created' === $_GET['message'] ) {
-            echo '<div class="notice notice-success is-dismissible"><p>' .
-                 esc_html__( 'Member created successfully.', 'societypress' ) .
-                 '</p></div>';
+        if ( isset( $_GET['message'] ) ) {
+            $count = absint( $_GET['count'] ?? 0 );
+
+            switch ( $_GET['message'] ) {
+                case 'created':
+                    echo '<div class="notice notice-success is-dismissible"><p>' .
+                         esc_html__( 'Member created successfully.', 'societypress' ) .
+                         '</p></div>';
+                    break;
+
+                case 'deleted':
+                    echo '<div class="notice notice-success is-dismissible"><p>' .
+                         esc_html__( 'Member deleted successfully.', 'societypress' ) .
+                         '</p></div>';
+                    break;
+
+                case 'delete_error':
+                    echo '<div class="notice notice-error is-dismissible"><p>' .
+                         esc_html__( 'Error deleting member.', 'societypress' ) .
+                         '</p></div>';
+                    break;
+
+                case 'not_found':
+                    echo '<div class="notice notice-warning is-dismissible"><p>' .
+                         esc_html__( 'Member not found.', 'societypress' ) .
+                         '</p></div>';
+                    break;
+
+                case 'bulk_deleted':
+                    echo '<div class="notice notice-success is-dismissible"><p>' .
+                         sprintf(
+                             /* translators: %d: number of members deleted */
+                             esc_html( _n( '%d member deleted.', '%d members deleted.', $count, 'societypress' ) ),
+                             $count
+                         ) .
+                         '</p></div>';
+                    break;
+
+                case 'bulk_activated':
+                    echo '<div class="notice notice-success is-dismissible"><p>' .
+                         sprintf(
+                             /* translators: %d: number of members activated */
+                             esc_html( _n( '%d member set to active.', '%d members set to active.', $count, 'societypress' ) ),
+                             $count
+                         ) .
+                         '</p></div>';
+                    break;
+
+                case 'bulk_deactivated':
+                    echo '<div class="notice notice-success is-dismissible"><p>' .
+                         sprintf(
+                             /* translators: %d: number of members deactivated */
+                             esc_html( _n( '%d member set to expired.', '%d members set to expired.', $count, 'societypress' ) ),
+                             $count
+                         ) .
+                         '</p></div>';
+                    break;
+
+                case 'all_deleted':
+                    echo '<div class="notice notice-success is-dismissible"><p>' .
+                         sprintf(
+                             /* translators: %d: number of members deleted */
+                             esc_html__( 'All %d members have been deleted.', 'societypress' ),
+                             $count
+                         ) .
+                         '</p></div>';
+                    break;
+            }
         }
     }
 }

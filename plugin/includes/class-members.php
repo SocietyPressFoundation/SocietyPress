@@ -380,6 +380,17 @@ class SocietyPress_Members {
     }
 
     /**
+     * Update contact info (alias for save_contact).
+     *
+     * @param int   $id   Member ID.
+     * @param array $data Contact data.
+     * @return bool
+     */
+    public function update_contact( int $id, array $data ): bool {
+        return $this->save_contact( $id, $data );
+    }
+
+    /**
      * Delete contact.
      *
      * @param int $id Member ID.
@@ -485,6 +496,19 @@ class SocietyPress_Members {
             'meta_value'   => $value,
             'is_encrypted' => $encrypt ? 1 : 0,
         ) );
+    }
+
+    /**
+     * Update meta (alias for save_meta).
+     *
+     * @param int    $id      Member ID.
+     * @param string $key     Meta key.
+     * @param mixed  $value   Value.
+     * @param bool   $encrypt Encrypt value.
+     * @return bool
+     */
+    public function update_meta( int $id, string $key, $value, bool $encrypt = false ): bool {
+        return $this->save_meta( $id, $key, $value, $encrypt );
     }
 
     /**

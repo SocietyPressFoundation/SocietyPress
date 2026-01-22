@@ -1,0 +1,499 @@
+/**
+ * SocietyPress Admin Styles
+ *
+ * Styles for the WordPress admin interface.
+ * Senior-friendly: high contrast, clear typography, generous spacing.
+ *
+ * @package SocietyPress
+ * @since 1.0.0
+ */
+
+/* ==========================================================================
+   Dashboard
+   ========================================================================== */
+
+.societypress-dashboard-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin: 20px 0;
+}
+
+.societypress-dashboard-stats .stat-card {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 20px 30px;
+    min-width: 150px;
+    text-align: center;
+}
+
+.societypress-dashboard-stats .stat-number {
+    display: block;
+    font-size: 36px;
+    font-weight: 600;
+    line-height: 1.2;
+    color: #1d2327;
+}
+
+.societypress-dashboard-stats .stat-label {
+    display: block;
+    font-size: 14px;
+    color: #50575e;
+    margin-top: 5px;
+}
+
+.societypress-dashboard-stats .stat-active .stat-number {
+    color: #00a32a;
+}
+
+.societypress-dashboard-stats .stat-expired .stat-number {
+    color: #d63638;
+}
+
+.societypress-dashboard-stats .stat-pending .stat-number {
+    color: #dba617;
+}
+
+.societypress-dashboard-sections {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.societypress-dashboard-sections .dashboard-section {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 20px;
+    flex: 1;
+    min-width: 300px;
+}
+
+.societypress-dashboard-sections .dashboard-section h2 {
+    margin-top: 0;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #c3c4c7;
+}
+
+/* ==========================================================================
+   Status Badges
+   ========================================================================== */
+
+.societypress-status-active,
+.societypress-status-expired,
+.societypress-status-pending,
+.societypress-status-cancelled,
+.societypress-status-deceased,
+.societypress-status-inactive {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.societypress-status-active {
+    background: #d6f4d6;
+    color: #006600;
+}
+
+.societypress-status-expired {
+    background: #ffd6d6;
+    color: #8b0000;
+}
+
+.societypress-status-pending {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.societypress-status-cancelled {
+    background: #e2e3e5;
+    color: #495057;
+}
+
+.societypress-status-deceased {
+    background: #d3d3d3;
+    color: #333;
+}
+
+.societypress-status-inactive {
+    background: #e2e3e5;
+    color: #495057;
+}
+
+/* ==========================================================================
+   Expiration Indicators
+   ========================================================================== */
+
+.societypress-expired {
+    color: #d63638;
+    font-weight: 600;
+}
+
+.societypress-expiring-soon {
+    color: #dba617;
+    font-weight: 600;
+}
+
+/* ==========================================================================
+   Member Form
+   ========================================================================== */
+
+.societypress-member-form {
+    max-width: 900px;
+}
+
+.societypress-form-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.societypress-form-section {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 20px;
+}
+
+.societypress-form-section h2 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #c3c4c7;
+    font-size: 16px;
+}
+
+.societypress-form-section .form-table th {
+    width: 200px;
+    padding: 15px 10px 15px 0;
+    font-weight: 600;
+}
+
+.societypress-form-section .form-table td {
+    padding: 15px 10px;
+}
+
+.societypress-form-section .form-table input[type="text"],
+.societypress-form-section .form-table input[type="email"],
+.societypress-form-section .form-table input[type="tel"],
+.societypress-form-section .form-table input[type="date"],
+.societypress-form-section .form-table select {
+    font-size: 14px;
+    padding: 8px 12px;
+    min-height: 40px;
+}
+
+.societypress-form-section .form-table input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    margin-right: 8px;
+}
+
+/* ==========================================================================
+   Tiers Table
+   ========================================================================== */
+
+.societypress-tiers-table th,
+.societypress-tiers-table td {
+    padding: 12px 15px;
+}
+
+.societypress-tiers-table code {
+    background: #f0f0f1;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+/* ==========================================================================
+   List Table Enhancements
+   ========================================================================== */
+
+.societypress-admin .wp-list-table th,
+.societypress-admin .wp-list-table td {
+    padding: 12px 10px;
+}
+
+.societypress-admin .wp-list-table .column-cb {
+    width: 30px;
+}
+
+.societypress-admin .wp-list-table .column-name {
+    width: 20%;
+}
+
+.societypress-admin .wp-list-table .column-email {
+    width: 20%;
+}
+
+.societypress-admin .wp-list-table .column-tier {
+    width: 15%;
+}
+
+.societypress-admin .wp-list-table .column-status {
+    width: 10%;
+}
+
+.societypress-admin .wp-list-table .column-join_date,
+.societypress-admin .wp-list-table .column-expiration {
+    width: 12%;
+}
+
+/* ==========================================================================
+   Buttons
+   ========================================================================== */
+
+.societypress-admin .button-large {
+    min-height: 40px;
+    padding: 0 20px;
+    font-size: 14px;
+}
+
+.societypress-admin .button-primary.button-large {
+    min-width: 150px;
+}
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+
+@media screen and (max-width: 782px) {
+    .societypress-dashboard-stats {
+        flex-direction: column;
+    }
+
+    .societypress-dashboard-stats .stat-card {
+        min-width: auto;
+    }
+
+    .societypress-dashboard-sections {
+        flex-direction: column;
+    }
+
+    .societypress-form-section .form-table th {
+        width: auto;
+        display: block;
+        padding-bottom: 5px;
+    }
+
+    .societypress-form-section .form-table td {
+        display: block;
+        padding-top: 0;
+    }
+}
+
+/* ==========================================================================
+   Import Page
+   ========================================================================== */
+
+.societypress-import .import-step {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 30px;
+    max-width: 900px;
+}
+
+.societypress-import .import-step h2 {
+    margin-top: 0;
+    margin-bottom: 10px;
+}
+
+.societypress-import .import-step > .description {
+    margin-bottom: 20px;
+    font-size: 14px;
+}
+
+/* Upload Area */
+.societypress-import .upload-area {
+    border: 2px dashed #c3c4c7;
+    border-radius: 8px;
+    padding: 40px;
+    text-align: center;
+    background: #f6f7f7;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.societypress-import .upload-area:hover,
+.societypress-import .upload-area.drag-over {
+    border-color: #2271b1;
+    background: #f0f6fc;
+}
+
+.societypress-import .upload-area input[type="file"] {
+    position: absolute;
+    left: -9999px;
+}
+
+.societypress-import .upload-area label {
+    cursor: pointer;
+    display: block;
+}
+
+.societypress-import .upload-area .dashicons {
+    font-size: 48px;
+    width: 48px;
+    height: 48px;
+    color: #c3c4c7;
+    display: block;
+    margin: 0 auto 15px;
+}
+
+.societypress-import .upload-area:hover .dashicons,
+.societypress-import .upload-area.drag-over .dashicons {
+    color: #2271b1;
+}
+
+.societypress-import .upload-area .upload-text {
+    font-size: 16px;
+    color: #50575e;
+}
+
+/* Mapping Table */
+.societypress-import #mapping-table {
+    margin: 20px 0;
+}
+
+.societypress-import #mapping-table th,
+.societypress-import #mapping-table td {
+    padding: 12px 15px;
+    vertical-align: middle;
+}
+
+.societypress-import #mapping-table .sample-data {
+    color: #646970;
+    font-size: 13px;
+    max-width: 250px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.societypress-import #mapping-table select {
+    width: 100%;
+    max-width: 250px;
+    min-height: 36px;
+}
+
+.societypress-import .mapping-info {
+    background: #f0f6fc;
+    border-left: 4px solid #2271b1;
+    padding: 12px 15px;
+    margin-bottom: 20px;
+}
+
+.societypress-import .mapping-actions {
+    margin: 20px 0;
+}
+
+.societypress-import .mapping-actions .button {
+    margin-right: 10px;
+}
+
+/* Import Options */
+.societypress-import .import-options {
+    background: #f6f7f7;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.societypress-import .import-options h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+}
+
+.societypress-import .import-options .form-table th {
+    width: 150px;
+    padding: 10px 10px 10px 0;
+}
+
+.societypress-import .import-options .form-table td {
+    padding: 10px;
+}
+
+.societypress-import .import-options label {
+    display: block;
+    margin-bottom: 5px;
+}
+
+/* Import Results */
+.societypress-import-results {
+    display: flex;
+    gap: 20px;
+    margin: 20px 0;
+}
+
+.societypress-import-results .result-stat {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 20px 30px;
+    text-align: center;
+    min-width: 120px;
+}
+
+.societypress-import-results .result-number {
+    display: block;
+    font-size: 36px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.societypress-import-results .result-label {
+    display: block;
+    font-size: 14px;
+    color: #50575e;
+    margin-top: 5px;
+}
+
+.societypress-import-results .result-imported .result-number {
+    color: #00a32a;
+}
+
+.societypress-import-results .result-updated .result-number {
+    color: #2271b1;
+}
+
+.societypress-import-results .result-skipped .result-number {
+    color: #dba617;
+}
+
+.societypress-import-errors {
+    background: #fcf0f1;
+    border: 1px solid #d63638;
+    border-radius: 4px;
+    padding: 15px 20px;
+    margin: 20px 0;
+}
+
+.societypress-import-errors h3 {
+    margin-top: 0;
+    color: #d63638;
+}
+
+.societypress-import-errors ul {
+    margin: 10px 0 0 20px;
+}
+
+.societypress-import-errors li {
+    margin-bottom: 5px;
+}
+
+/* Preview Table */
+#preview-container .widefat {
+    margin: 20px 0;
+}
+
+#preview-container .widefat th,
+#preview-container .widefat td {
+    padding: 10px 12px;
+    font-size: 13px;
+}

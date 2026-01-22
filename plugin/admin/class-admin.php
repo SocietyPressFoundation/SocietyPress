@@ -49,6 +49,195 @@ class SocietyPress_Admin {
         add_action( 'admin_menu', array( $this, 'add_menus' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
         add_action( 'admin_init', array( $this, 'handle_actions' ) );
+        add_action( 'admin_init', array( $this, 'register_settings' ) );
+    }
+
+    /**
+     * Register plugin settings using the WordPress Settings API.
+     *
+     * All SocietyPress settings are stored in a single option: 'societypress_settings'
+     */
+    public function register_settings(): void {
+        // Register the main settings option
+        register_setting(
+            'societypress_settings_group',
+            'societypress_settings',
+            array(
+                'type'              => 'array',
+                'sanitize_callback' => array( $this, 'sanitize_settings' ),
+                'default'           => $this->get_default_settings(),
+            )
+        );
+
+        // Display Settings Section
+        add_settings_section(
+            'societypress_display_section',
+            __( 'Display Settings', 'societypress' ),
+            array( $this, 'render_display_section' ),
+            'societypress-settings'
+        );
+
+        add_settings_field(
+            'members_per_page',
+            __( 'Members per page', 'societypress' ),
+            array( $this, 'render_members_per_page_field' ),
+            'societypress-settings',
+            'societypress_display_section'
+        );
+
+        // Organization Settings Section
+        add_settings_section(
+            'societypress_organization_section',
+            __( 'Organization', 'societypress' ),
+            array( $this, 'render_organization_section' ),
+            'societypress-settings'
+        );
+
+        add_settings_field(
+            'organization_name',
+            __( 'Organization Name', 'societypress' ),
+            array( $this, 'render_organization_name_field' ),
+            'societypress-settings',
+            'societypress_organization_section'
+        );
+
+        // Email Settings Section
+        add_settings_section(
+            'societypress_email_section',
+            __( 'Email Settings', 'societypress' ),
+            array( $this, 'render_email_section' ),
+            'societypress-settings'
+        );
+
+        add_settings_field(
+            'admin_email',
+            __( 'Admin Email', 'societypress' ),
+            array( $this, 'render_admin_email_field' ),
+            'societypress-settings',
+            'societypress_email_section'
+        );
+    }
+
+    /**
+     * Get default settings values.
+     *
+     * @return array Default settings.
+     */
+    public function get_default_settings(): array {
+        return array(
+            'members_per_page'  => 20,
+            'organization_name' => get_bloginfo( 'name' ),
+            'admin_email'       => get_option( 'admin_email' ),
+        );
+    }
+
+    /**
+     * Sanitize settings before saving.
+     *
+     * @param array $input Raw input from form.
+     * @return array Sanitized settings.
+     */
+    public function sanitize_settings( array $input ): array {
+        $sanitized = array();
+
+        $sanitized['members_per_page'] = isset( $input['members_per_page'] )
+            ? max( 1, absint( $input['members_per_page'] ) )
+            : 20;
+
+        $sanitized['organization_name'] = isset( $input['organization_name'] )
+            ? sanitize_text_field( $input['organization_name'] )
+            : '';
+
+        $sanitized['admin_email'] = isset( $input['admin_email'] )
+            ? sanitize_email( $input['admin_email'] )
+            : get_option( 'admin_email' );
+
+        return $sanitized;
+    }
+
+    /**
+     * Get a single setting value.
+     *
+     * @param string $key     Setting key.
+     * @param mixed  $default Default value if not set.
+     * @return mixed Setting value.
+     */
+    public static function get_setting( string $key, $default = null ) {
+        $settings = get_option( 'societypress_settings', array() );
+        $defaults = array(
+            'members_per_page'  => 20,
+            'organization_name' => get_bloginfo( 'name' ),
+            'admin_email'       => get_option( 'admin_email' ),
+        );
+
+        if ( null === $default && isset( $defaults[ $key ] ) ) {
+            $default = $defaults[ $key ];
+        }
+
+        return $settings[ $key ] ?? $default;
+    }
+
+    /**
+     * Render Display section description.
+     */
+    public function render_display_section(): void {
+        echo '<p>' . esc_html__( 'Configure how data is displayed in the admin area.', 'societypress' ) . '</p>';
+    }
+
+    /**
+     * Render Organization section description.
+     */
+    public function render_organization_section(): void {
+        echo '<p>' . esc_html__( 'Basic information about your organization.', 'societypress' ) . '</p>';
+    }
+
+    /**
+     * Render Email section description.
+     */
+    public function render_email_section(): void {
+        echo '<p>' . esc_html__( 'Email notification settings.', 'societypress' ) . '</p>';
+    }
+
+    /**
+     * Render members_per_page field.
+     */
+    public function render_members_per_page_field(): void {
+        $value = self::get_setting( 'members_per_page', 20 );
+        ?>
+        <input type="number" name="societypress_settings[members_per_page]"
+               value="<?php echo esc_attr( $value ); ?>" min="1" max="9999" class="small-text">
+        <p class="description">
+            <?php esc_html_e( 'Number of members to show per page in the admin list.', 'societypress' ); ?>
+        </p>
+        <?php
+    }
+
+    /**
+     * Render organization_name field.
+     */
+    public function render_organization_name_field(): void {
+        $value = self::get_setting( 'organization_name', get_bloginfo( 'name' ) );
+        ?>
+        <input type="text" name="societypress_settings[organization_name]"
+               value="<?php echo esc_attr( $value ); ?>" class="regular-text">
+        <p class="description">
+            <?php esc_html_e( 'Used in emails and member-facing pages.', 'societypress' ); ?>
+        </p>
+        <?php
+    }
+
+    /**
+     * Render admin_email field.
+     */
+    public function render_admin_email_field(): void {
+        $value = self::get_setting( 'admin_email', get_option( 'admin_email' ) );
+        ?>
+        <input type="email" name="societypress_settings[admin_email]"
+               value="<?php echo esc_attr( $value ); ?>" class="regular-text">
+        <p class="description">
+            <?php esc_html_e( 'Receives membership notifications and admin alerts.', 'societypress' ); ?>
+        </p>
+        <?php
     }
 
     /**
@@ -288,8 +477,21 @@ class SocietyPress_Admin {
         // For other bulk actions, we need selected member IDs
         // Check if "select all" was triggered (hidden field set by JavaScript)
         if ( isset( $_POST['societypress_select_all'] ) && '1' === $_POST['societypress_select_all'] ) {
-            // Get all member IDs from the database
-            $all_members = $members->get_members( array( 'limit' => 0 ) );
+            // Build filter args to match what was displayed (respects current filters)
+            $filter_args = array( 'limit' => 0 );
+
+            if ( ! empty( $_POST['societypress_filter_status'] ) ) {
+                $filter_args['status'] = sanitize_text_field( $_POST['societypress_filter_status'] );
+            }
+            if ( ! empty( $_POST['societypress_filter_tier'] ) ) {
+                $filter_args['tier_id'] = absint( $_POST['societypress_filter_tier'] );
+            }
+            if ( ! empty( $_POST['societypress_filter_search'] ) ) {
+                $filter_args['search'] = sanitize_text_field( $_POST['societypress_filter_search'] );
+            }
+
+            // Get filtered member IDs from the database
+            $all_members = $members->get_members( $filter_args );
             $member_ids = array_map( function( $m ) { return $m->id; }, $all_members );
         } else {
             // Use the selected checkboxes
@@ -423,9 +625,27 @@ class SocietyPress_Admin {
         $this->members_table = new SocietyPress_Members_List_Table();
         $this->members_table->prepare_items();
 
-        // Get total member count for "select all" functionality
-        $total_members = count( societypress()->members->get_members( array( 'limit' => 0 ) ) );
-        $pagination_args = $this->members_table->get_pagination_arg( 'per_page' );
+        // Build filter args to match what's currently being displayed
+        $filter_args = array( 'limit' => 0 );
+        $current_status = '';
+        $current_tier = '';
+        $current_search = '';
+
+        if ( ! empty( $_REQUEST['status'] ) ) {
+            $current_status = sanitize_text_field( $_REQUEST['status'] );
+            $filter_args['status'] = $current_status;
+        }
+        if ( ! empty( $_REQUEST['tier'] ) ) {
+            $current_tier = absint( $_REQUEST['tier'] );
+            $filter_args['tier_id'] = $current_tier;
+        }
+        if ( ! empty( $_REQUEST['s'] ) ) {
+            $current_search = sanitize_text_field( $_REQUEST['s'] );
+            $filter_args['search'] = $current_search;
+        }
+
+        // Get filtered total for "select all" functionality
+        $total_members = count( societypress()->members->get_members( $filter_args ) );
         $items_on_page = count( $this->members_table->items );
 
         ?>
@@ -441,6 +661,10 @@ class SocietyPress_Admin {
             <form method="post" id="societypress-members-form">
                 <input type="hidden" name="page" value="societypress-members">
                 <input type="hidden" name="societypress_select_all" id="societypress_select_all" value="0">
+                <!-- Pass current filters so bulk actions respect them -->
+                <input type="hidden" name="societypress_filter_status" value="<?php echo esc_attr( $current_status ); ?>">
+                <input type="hidden" name="societypress_filter_tier" value="<?php echo esc_attr( $current_tier ); ?>">
+                <input type="hidden" name="societypress_filter_search" value="<?php echo esc_attr( $current_search ); ?>">
                 <?php
                 wp_nonce_field( 'bulk-members' );
                 $this->members_table->search_box( __( 'Search Members', 'societypress' ), 'member' );
@@ -461,7 +685,7 @@ class SocietyPress_Admin {
                             <a href="#" id="societypress-select-all-link">
                                 <?php
                                 printf(
-                                    /* translators: %d: total number of members */
+                                    /* translators: %d: total number of members matching current filters */
                                     esc_html__( 'Select all %d members', 'societypress' ),
                                     $total_members
                                 );
@@ -471,7 +695,7 @@ class SocietyPress_Admin {
                         <span id="societypress-all-selected-msg" style="display: none;">
                             <?php
                             printf(
-                                /* translators: %d: total number of members */
+                                /* translators: %d: total number of members matching current filters */
                                 esc_html__( 'All %d members are selected.', 'societypress' ),
                                 $total_members
                             );
@@ -768,11 +992,29 @@ class SocietyPress_Admin {
      * Render the settings page.
      */
     public function render_settings_page(): void {
+        // Check if settings were just saved
+        if ( isset( $_GET['settings-updated'] ) && 'true' === $_GET['settings-updated'] ) {
+            add_settings_error(
+                'societypress_settings',
+                'settings_saved',
+                __( 'Settings saved.', 'societypress' ),
+                'success'
+            );
+        }
+
         ?>
         <div class="wrap societypress-admin">
             <h1><?php esc_html_e( 'SocietyPress Settings', 'societypress' ); ?></h1>
 
-            <p><?php esc_html_e( 'Settings page coming in a future update.', 'societypress' ); ?></p>
+            <?php settings_errors( 'societypress_settings' ); ?>
+
+            <form method="post" action="options.php">
+                <?php
+                settings_fields( 'societypress_settings_group' );
+                do_settings_sections( 'societypress-settings' );
+                submit_button();
+                ?>
+            </form>
         </div>
         <?php
     }

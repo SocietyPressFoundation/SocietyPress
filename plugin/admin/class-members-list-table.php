@@ -88,7 +88,8 @@ class SocietyPress_Members_List_Table extends WP_List_Table {
      * Prepare items for display.
      */
     public function prepare_items(): void {
-        $per_page = 20;
+        // Get members per page from plugin settings
+        $per_page = SocietyPress_Admin::get_setting( 'members_per_page', 20 );
         $current_page = $this->get_pagenum();
 
         // Build query args

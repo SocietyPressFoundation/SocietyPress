@@ -224,7 +224,7 @@ class SocietyPress_Import {
                 'membership level', 'level', 'tier', 'membership tier', 'membership type', 'type',
             ),
             'status' => array(
-                'status', 'member status', 'membership status', 'state',
+                'status', 'member status', 'membership status',
             ),
             'join_date' => array(
                 'member since', 'join date', 'joined', 'start date', 'membership start',

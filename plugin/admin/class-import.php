@@ -28,16 +28,19 @@ class SocietyPress_Import {
     private const MAPPING_OPTION = 'societypress_import_mapping';
 
     /**
-     * SocietyPress fields available for mapping.
+     * SocietyPress fields available for mapping (static fields only).
      *
+     * Genealogy fields are added dynamically based on enabled services.
      * Organized by category for easier UI presentation.
      *
      * @var array
      */
-    private array $destination_fields = array(
+    private array $base_destination_fields = array(
         'basic' => array(
+            'full_name'          => 'Full Name (Last, First)',
             'first_name'         => 'First Name',
             'last_name'          => 'Last Name',
+            'organization'       => 'Organization/Company',
             'membership_tier'    => 'Membership Tier',
             'status'             => 'Status',
             'join_date'          => 'Join Date',
@@ -72,6 +75,38 @@ class SocietyPress_Import {
     );
 
     /**
+     * Build complete destination fields including enabled genealogy services.
+     *
+     * @return array Complete field definitions with dynamic genealogy section.
+     */
+    private function get_complete_destination_fields(): array {
+        $fields = $this->base_destination_fields;
+
+        // Build genealogy section from enabled services in settings
+        $enabled_services = SocietyPress_Admin::get_enabled_genealogy_services();
+        $genealogy_fields = array();
+
+        foreach ( $enabled_services as $key => $service ) {
+            $genealogy_fields[ 'genealogy_' . $key ] = $service['label'];
+        }
+
+        // Insert genealogy section before 'other' if there are enabled services
+        if ( ! empty( $genealogy_fields ) ) {
+            // Rebuild array to insert genealogy before 'other'
+            $result = array();
+            foreach ( $fields as $group => $group_fields ) {
+                if ( 'other' === $group ) {
+                    $result['genealogy'] = $genealogy_fields;
+                }
+                $result[ $group ] = $group_fields;
+            }
+            $fields = $result;
+        }
+
+        return $fields;
+    }
+
+    /**
      * Constructor.
      */
     public function __construct() {
@@ -79,6 +114,7 @@ class SocietyPress_Import {
         add_action( 'wp_ajax_societypress_preview_import', array( $this, 'ajax_preview_import' ) );
         add_action( 'wp_ajax_societypress_run_import', array( $this, 'ajax_run_import' ) );
         add_action( 'wp_ajax_societypress_save_mapping', array( $this, 'ajax_save_mapping' ) );
+        add_action( 'wp_ajax_societypress_commit_problem_rows', array( $this, 'ajax_commit_problem_rows' ) );
     }
 
     /**
@@ -89,7 +125,7 @@ class SocietyPress_Import {
     public function get_destination_fields(): array {
         $flat = array( '' => '— Do not import —' );
 
-        foreach ( $this->destination_fields as $group => $fields ) {
+        foreach ( $this->get_complete_destination_fields() as $group => $fields ) {
             foreach ( $fields as $key => $label ) {
                 $flat[ $key ] = $label;
             }
@@ -104,7 +140,7 @@ class SocietyPress_Import {
      * @return array Grouped fields for optgroup display.
      */
     public function get_grouped_destination_fields(): array {
-        return $this->destination_fields;
+        return $this->get_complete_destination_fields();
     }
 
     /**
@@ -208,11 +244,17 @@ class SocietyPress_Import {
 
         // Common variations of field names
         $patterns = array(
+            'full_name' => array(
+                'name', 'full name', 'fullname', 'member name', 'member',
+            ),
             'first_name' => array(
                 'first name', 'firstname', 'first', 'given name', 'givenname',
             ),
             'last_name' => array(
                 'last name', 'lastname', 'last', 'surname', 'family name',
+            ),
+            'organization' => array(
+                'organization', 'company', 'org', 'business', 'institution', 'employer',
             ),
             'primary_email' => array(
                 'email', 'e-mail', 'email address', 'primary email', 'member email',
@@ -221,16 +263,16 @@ class SocietyPress_Import {
                 'secondary email', 'alternate email', 'other email', 'email 2',
             ),
             'membership_tier' => array(
-                'membership level', 'level', 'tier', 'membership tier', 'membership type', 'type',
+                'membership level', 'level', 'tier', 'membership tier', 'membership type', 'type', 'member level',
             ),
             'status' => array(
-                'status', 'member status', 'membership status',
+                'status', 'member status', 'membership status', 'active', 'membership enabled',
             ),
             'join_date' => array(
-                'member since', 'join date', 'joined', 'start date', 'membership start',
+                'member since', 'join date', 'joined', 'start date', 'membership start', 'join', 'since', 'created on',
             ),
             'expiration_date' => array(
-                'renewal due', 'expiration', 'expires', 'expiry', 'renewal date', 'end date',
+                'renewal due', 'expiration', 'expires', 'expiry', 'renewal date', 'end date', 'renewal', 'due date',
             ),
             'birth_date' => array(
                 'birthday', 'birth date', 'date of birth', 'dob', 'birthdate',
@@ -239,7 +281,7 @@ class SocietyPress_Import {
                 'home phone', 'phone (home)', 'home tel', 'landline',
             ),
             'cell_phone' => array(
-                'cell phone', 'mobile', 'mobile phone', 'cell', 'phone (cell)', 'phone (mobile)',
+                'cell phone', 'mobile', 'mobile phone', 'cell', 'phone (cell)', 'phone (mobile)', 'phone', 'telephone', 'tel',
             ),
             'work_phone' => array(
                 'work phone', 'phone (work)', 'business phone', 'office phone',
@@ -278,6 +320,43 @@ class SocietyPress_Import {
                 'directory', 'show in directory', 'public', 'visible',
             ),
         );
+
+        // Add auto-detection patterns for enabled genealogy services only
+        // Each service has common column name variations that might appear in imports
+        $genealogy_patterns = array(
+            'wikitree' => array(
+                'wikitree', 'wiki tree', 'wikitree id', 'wikitree profile',
+            ),
+            'ancestry' => array(
+                'ancestry', 'ancestry.com', 'ancestry profile', 'ancestry username',
+            ),
+            'familysearch' => array(
+                'familysearch', 'family search', 'familysearch id', 'fs id', 'fspid',
+            ),
+            'geni' => array(
+                'geni', 'geni.com', 'geni profile',
+            ),
+            'werelate' => array(
+                'werelate', 'we relate', 'werelate profile',
+            ),
+            'findagrave' => array(
+                'find a grave', 'findagrave', 'find-a-grave', 'memorial id', 'grave',
+            ),
+            'myheritage' => array(
+                'myheritage', 'my heritage', 'myheritage profile',
+            ),
+            '23andme' => array(
+                '23andme', '23 and me', '23&me', 'dna profile',
+            ),
+        );
+
+        // Only add patterns for services that are currently enabled
+        $enabled_services = SocietyPress_Admin::get_enabled_genealogy_services();
+        foreach ( array_keys( $enabled_services ) as $service_key ) {
+            if ( isset( $genealogy_patterns[ $service_key ] ) ) {
+                $patterns[ 'genealogy_' . $service_key ] = $genealogy_patterns[ $service_key ];
+            }
+        }
 
         foreach ( $headers as $index => $header ) {
             $header_lower = strtolower( trim( $header ) );
@@ -465,6 +544,147 @@ class SocietyPress_Import {
     }
 
     /**
+     * Commit fixed problem rows via AJAX.
+     *
+     * Takes user-edited problem row data and attempts to import each one.
+     * Rows can be fixed (edited) or discarded by the user.
+     */
+    public function ajax_commit_problem_rows(): void {
+        check_ajax_referer( 'societypress_import', 'nonce' );
+
+        if ( ! current_user_can( 'manage_society_members' ) ) {
+            wp_send_json_error( array( 'message' => __( 'Permission denied.', 'societypress' ) ) );
+        }
+
+        $rows = $_POST['rows'] ?? array();
+        $options = $_POST['options'] ?? array();
+
+        if ( empty( $rows ) ) {
+            wp_send_json_success( array(
+                'imported' => 0,
+                'skipped'  => 0,
+                'errors'   => array(),
+            ) );
+        }
+
+        $results = array(
+            'imported' => 0,
+            'skipped'  => 0,
+            'errors'   => array(),
+        );
+
+        $members = societypress()->members;
+        $tiers   = societypress()->tiers;
+        $default_tier = absint( $options['default_tier'] ?? 0 );
+
+        foreach ( $rows as $row ) {
+            // Skip rows marked as discarded
+            if ( ! empty( $row['discard'] ) ) {
+                $results['skipped']++;
+                continue;
+            }
+
+            $data = $row['data'] ?? array();
+            $row_num = $row['row_num'] ?? 0;
+
+            // Validate required fields
+            if ( empty( $data['first_name'] ) || empty( $data['last_name'] ) ) {
+                $results['errors'][] = sprintf(
+                    __( 'Row %d: Still missing name.', 'societypress' ),
+                    $row_num
+                );
+                $results['skipped']++;
+                continue;
+            }
+
+            // Resolve membership tier
+            $tier_id = $default_tier;
+            if ( ! empty( $data['membership_tier'] ) ) {
+                $tier = $tiers->get_by_slug( sanitize_title( $data['membership_tier'] ) );
+                if ( ! $tier ) {
+                    $all_tiers = $tiers->get_all();
+                    foreach ( $all_tiers as $t ) {
+                        if ( strtolower( $t->name ) === strtolower( $data['membership_tier'] ) ) {
+                            $tier = $t;
+                            break;
+                        }
+                    }
+                }
+                if ( $tier ) {
+                    $tier_id = $tier->id;
+                }
+            }
+
+            if ( ! $tier_id ) {
+                $active_tiers = $tiers->get_active();
+                $tier_id = $active_tiers[0]->id ?? 0;
+            }
+
+            if ( ! $tier_id ) {
+                $results['errors'][] = sprintf(
+                    __( 'Row %d: Still no valid membership tier.', 'societypress' ),
+                    $row_num
+                );
+                $results['skipped']++;
+                continue;
+            }
+
+            // Create member
+            $member_data = array(
+                'first_name'               => sanitize_text_field( $data['first_name'] ?? '' ),
+                'last_name'                => sanitize_text_field( $data['last_name'] ?? '' ),
+                'membership_tier_id'       => $tier_id,
+                'status'                   => ! empty( $data['status'] ) ? $data['status'] : 'active',
+                'join_date'                => ! empty( $data['join_date'] ) ? $data['join_date'] : gmdate( 'Y-m-d' ),
+                'expiration_date'          => ! empty( $data['expiration_date'] ) ? $data['expiration_date'] : null,
+                'birth_date'               => ! empty( $data['birth_date'] ) ? $data['birth_date'] : null,
+                'directory_visible'        => $data['directory_visible'] ?? 1,
+                'auto_renew'               => $data['auto_renew'] ?? 0,
+                'communication_preference' => $data['communication_pref'] ?? 'email',
+                'how_heard_about_us'       => ! empty( $data['how_heard'] ) ? $data['how_heard'] : null,
+            );
+
+            $member_id = $members->create( $member_data );
+
+            if ( ! $member_id ) {
+                $results['errors'][] = sprintf(
+                    __( 'Row %d: Could not create member.', 'societypress' ),
+                    $row_num
+                );
+                $results['skipped']++;
+                continue;
+            }
+
+            // Add contact info
+            $contact_data = array(
+                'member_id'      => $member_id,
+                'primary_email'  => sanitize_email( $data['primary_email'] ?? '' ),
+                'secondary_email'=> sanitize_email( $data['secondary_email'] ?? '' ),
+                'home_phone'     => sanitize_text_field( $data['home_phone'] ?? '' ),
+                'cell_phone'     => sanitize_text_field( $data['cell_phone'] ?? '' ),
+                'work_phone'     => sanitize_text_field( $data['work_phone'] ?? '' ),
+                'street_address' => sanitize_text_field( $data['street_address'] ?? '' ),
+                'address_line_2' => sanitize_text_field( $data['address_line_2'] ?? '' ),
+                'city'           => sanitize_text_field( $data['city'] ?? '' ),
+                'state_province' => sanitize_text_field( $data['state_province'] ?? '' ),
+                'postal_code'    => sanitize_text_field( $data['postal_code'] ?? '' ),
+                'country'        => sanitize_text_field( $data['country'] ?? 'USA' ),
+            );
+
+            $members->update_contact( $member_id, $contact_data );
+
+            // Save organization if provided
+            if ( ! empty( $data['organization'] ) ) {
+                $members->update_meta( $member_id, 'organization', sanitize_text_field( $data['organization'] ) );
+            }
+
+            $results['imported']++;
+        }
+
+        wp_send_json_success( $results );
+    }
+
+    /**
      * Map a CSV row to SocietyPress fields.
      *
      * @param array $row      CSV row data.
@@ -535,43 +755,134 @@ class SocietyPress_Import {
             case 'research_areas':
                 return $value; // Keep as-is, will be split during import
 
+            // Full name - keep as-is, will be parsed during import
+            case 'full_name':
+                return sanitize_text_field( $value );
+
             default:
                 return sanitize_text_field( $value );
         }
     }
 
     /**
+     * Parse a full name in "Last, First [Nickname] Middle" format.
+     *
+     * Handles various formats commonly found in membership exports:
+     * - "Smith, John" → first: John, last: Smith
+     * - "Smith, John William" → first: John, last: Smith (middle ignored for now)
+     * - "Smith, John [Johnny]" → first: John, last: Smith, nickname: Johnny
+     * - "Smith, John [Johnny] William" → first: John, last: Smith, nickname: Johnny
+     * - "Acme Library" (no comma) → first: Acme Library, last: (empty) - organization
+     *
+     * @param string $full_name The full name string to parse.
+     * @return array Associative array with 'first_name', 'last_name', and optionally 'nickname'.
+     */
+    private function parse_full_name( string $full_name ): array {
+        $result = array(
+            'first_name' => '',
+            'last_name'  => '',
+            'nickname'   => '',
+        );
+
+        $full_name = trim( $full_name );
+        if ( empty( $full_name ) ) {
+            return $result;
+        }
+
+        // Check if there's a comma (Last, First format)
+        if ( strpos( $full_name, ',' ) !== false ) {
+            // Split on first comma only
+            $parts = explode( ',', $full_name, 2 );
+            $result['last_name'] = trim( $parts[0] );
+            $remainder = isset( $parts[1] ) ? trim( $parts[1] ) : '';
+
+            // Extract nickname if present [in brackets]
+            if ( preg_match( '/\[([^\]]+)\]/', $remainder, $matches ) ) {
+                $result['nickname'] = trim( $matches[1] );
+                // Remove the bracketed nickname from remainder
+                $remainder = preg_replace( '/\s*\[[^\]]+\]\s*/', ' ', $remainder );
+                $remainder = trim( $remainder );
+            }
+
+            // What's left is first name (and possibly middle, which we'll include)
+            // Just take the first word as first name if there are multiple
+            $name_parts = preg_split( '/\s+/', $remainder );
+            if ( ! empty( $name_parts ) ) {
+                $result['first_name'] = $name_parts[0];
+                // If there's more, append it (could be middle name or suffix)
+                // For simplicity, we'll just use the first part as first name
+            }
+        } else {
+            // No comma - likely an organization name or "First Last" format
+            // Check for "First Last" by seeing if there are exactly 2 words
+            $parts = preg_split( '/\s+/', $full_name );
+            if ( count( $parts ) === 2 ) {
+                // Assume "First Last" format
+                $result['first_name'] = $parts[0];
+                $result['last_name'] = $parts[1];
+            } else {
+                // Treat as organization or single name - put in first_name
+                $result['first_name'] = $full_name;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
      * Parse various date formats.
+     *
+     * Handles common date formats from membership systems including:
+     * - ISO 8601 with and without time (Wild Apricot: 2024-01-15T00:00:00)
+     * - US format (01/15/2024)
+     * - European format (15/01/2024)
+     * - Human readable (Jan 15, 2024 or January 15, 2024)
      *
      * @param string $value Date string.
      * @return string Date in Y-m-d format or empty.
      */
     private function parse_date( string $value ): string {
+        $value = trim( $value );
         if ( empty( $value ) ) {
             return '';
         }
 
-        // Try common formats
+        // Strip time component from ISO 8601 format (2024-01-15T00:00:00 -> 2024-01-15)
+        // This handles Wild Apricot's datetime format
+        if ( preg_match( '/^(\d{4}-\d{2}-\d{2})T/', $value, $matches ) ) {
+            $value = $matches[1];
+        }
+
+        // Try common formats (order matters - more specific first)
         $formats = array(
-            'Y-m-d',
-            'm/d/Y',
-            'd/m/Y',
-            'M d, Y',
-            'F d, Y',
-            'd-m-Y',
-            'Y/m/d',
+            'Y-m-d',          // ISO standard: 2024-01-15
+            'Y/m/d',          // Alternate ISO: 2024/01/15
+            'm/d/Y',          // US format: 01/15/2024
+            'm-d-Y',          // US with dashes: 01-15-2024
+            'd/m/Y',          // European: 15/01/2024
+            'd-m-Y',          // European with dashes: 15-01-2024
+            'M d, Y',         // Short month: Jan 15, 2024
+            'M d Y',          // Short month no comma: Jan 15 2024
+            'F d, Y',         // Full month: January 15, 2024
+            'F d Y',          // Full month no comma: January 15 2024
+            'd M Y',          // European text: 15 Jan 2024
+            'd F Y',          // European full text: 15 January 2024
+            'n/j/Y',          // US no leading zeros: 1/5/2024
+            'j/n/Y',          // European no leading zeros: 5/1/2024
         );
 
         foreach ( $formats as $format ) {
             $date = DateTime::createFromFormat( $format, $value );
-            if ( $date ) {
+            // Check for valid date (DateTime can create invalid dates like Feb 30)
+            if ( $date && $date->format( $format ) === $value ) {
                 return $date->format( 'Y-m-d' );
             }
         }
 
-        // Try strtotime as fallback
+        // Fallback: let PHP try to parse it
+        // strtotime is very flexible with formats
         $timestamp = strtotime( $value );
-        if ( $timestamp ) {
+        if ( $timestamp && $timestamp > 0 ) {
             return gmdate( 'Y-m-d', $timestamp );
         }
 
@@ -592,23 +903,49 @@ class SocietyPress_Import {
     /**
      * Normalize status values.
      *
+     * Handles status values from various membership systems including Wild Apricot,
+     * which uses statuses like "Active", "Lapsed", "PendingNew", "PendingRenewal".
+     *
      * @param string $value Status string.
-     * @return string Valid status.
+     * @return string Valid status (one of: active, expired, pending, cancelled, deceased).
      */
     private function normalize_status( string $value ): string {
         $value = strtolower( trim( $value ) );
 
+        // All keys must be lowercase since we lowercase the input
         $status_map = array(
-            'active'      => 'active',
-            'current'     => 'active',
-            'lapsed'      => 'expired',
-            'expired'     => 'expired',
-            'pending'     => 'pending',
-            'pendingNew'  => 'pending',
-            'cancelled'   => 'cancelled',
-            'canceled'    => 'cancelled',
-            'deceased'    => 'deceased',
-            'dead'        => 'deceased',
+            // Active variations
+            'active'          => 'active',
+            'current'         => 'active',
+            'enabled'         => 'active',
+            'yes'             => 'active',
+            'true'            => 'active',
+            '1'               => 'active',
+            // Expired/lapsed variations
+            'lapsed'          => 'expired',
+            'expired'         => 'expired',
+            'overdue'         => 'expired',
+            'past due'        => 'expired',
+            // Pending variations (Wild Apricot uses PendingNew, PendingRenewal)
+            'pending'         => 'pending',
+            'pendingnew'      => 'pending',
+            'pending new'     => 'pending',
+            'pendingrenewal'  => 'pending',
+            'pending renewal' => 'pending',
+            'pendinglevel'    => 'pending',
+            'pending level'   => 'pending',
+            'awaiting'        => 'pending',
+            // Cancelled variations
+            'cancelled'       => 'cancelled',
+            'canceled'        => 'cancelled',
+            'suspended'       => 'cancelled',
+            'inactive'        => 'cancelled',
+            'no'              => 'cancelled',
+            'false'           => 'cancelled',
+            '0'               => 'cancelled',
+            // Deceased variations
+            'deceased'        => 'deceased',
+            'dead'            => 'deceased',
         );
 
         return $status_map[ $value ] ?? 'pending';
@@ -667,10 +1004,11 @@ class SocietyPress_Import {
         $headers = array_map( 'trim', $headers );
 
         $results = array(
-            'imported' => 0,
-            'updated'  => 0,
-            'skipped'  => 0,
-            'errors'   => array(),
+            'imported'     => 0,
+            'updated'      => 0,
+            'skipped'      => 0,
+            'errors'       => array(),
+            'problem_rows' => array(),  // Rows that need user review/fixing
         );
 
         $skip_duplicates = ! empty( $options['skip_duplicates'] );
@@ -692,14 +1030,48 @@ class SocietyPress_Import {
             // Map the row
             $data = $this->map_row( $row, $headers, $mapping );
 
-            // Validate required fields
-            if ( empty( $data['first_name'] ) && empty( $data['last_name'] ) ) {
-                $results['errors'][] = sprintf(
-                    __( 'Row %d: Missing name.', 'societypress' ),
-                    $row_num
-                );
-                $results['skipped']++;
-                continue;
+            // If full_name is provided, parse it into first_name and last_name
+            // This handles "Last, First [Nickname] Middle" format common in exports
+            if ( ! empty( $data['full_name'] ) ) {
+                $parsed = $this->parse_full_name( $data['full_name'] );
+
+                // Only use parsed values if we don't already have explicit first/last names
+                if ( empty( $data['first_name'] ) ) {
+                    $data['first_name'] = $parsed['first_name'];
+                }
+                if ( empty( $data['last_name'] ) ) {
+                    $data['last_name'] = $parsed['last_name'];
+                }
+
+                // Store nickname as meta if parsed
+                if ( ! empty( $parsed['nickname'] ) ) {
+                    $data['_nickname'] = $parsed['nickname'];
+                }
+            }
+
+            // Validate required fields - members->create() requires BOTH first AND last name
+            // For organizations or single names, we need to handle specially
+            if ( empty( $data['first_name'] ) || empty( $data['last_name'] ) ) {
+                // If we have one but not the other, try to handle gracefully
+                if ( ! empty( $data['first_name'] ) && empty( $data['last_name'] ) ) {
+                    // Could be an organization name or single name - use as last name
+                    // This handles "Acme Library" type entries where no comma in name
+                    $data['last_name'] = $data['first_name'];
+                    $data['first_name'] = '(Organization)';
+                } elseif ( empty( $data['first_name'] ) && ! empty( $data['last_name'] ) ) {
+                    // Has last name only - set placeholder first name
+                    $data['first_name'] = '(Unknown)';
+                } else {
+                    // Both empty - add to problem rows for user review
+                    $results['problem_rows'][] = array(
+                        'row_num' => $row_num,
+                        'issue'   => __( 'Missing name', 'societypress' ),
+                        'data'    => $data,
+                        'raw_row' => $row,
+                    );
+                    $results['skipped']++;
+                    continue;
+                }
             }
 
             // Check for duplicate by email
@@ -748,35 +1120,41 @@ class SocietyPress_Import {
             }
 
             if ( ! $tier_id ) {
-                $results['errors'][] = sprintf(
-                    __( 'Row %d: No valid membership tier.', 'societypress' ),
-                    $row_num
+                $results['problem_rows'][] = array(
+                    'row_num' => $row_num,
+                    'issue'   => __( 'No valid membership tier', 'societypress' ),
+                    'data'    => $data,
+                    'raw_row' => $row,
                 );
                 $results['skipped']++;
                 continue;
             }
 
             // Create member
+            // Note: Use empty() checks because parse_date() returns '' on failure,
+            // and ?? only triggers on null, not empty strings
             $member_data = array(
                 'first_name'               => $data['first_name'] ?? '',
                 'last_name'                => $data['last_name'] ?? '',
                 'membership_tier_id'       => $tier_id,
-                'status'                   => $data['status'] ?? 'active',
-                'join_date'                => $data['join_date'] ?? gmdate( 'Y-m-d' ),
-                'expiration_date'          => $data['expiration_date'] ?? null,
-                'birth_date'               => $data['birth_date'] ?? null,
+                'status'                   => ! empty( $data['status'] ) ? $data['status'] : 'active',
+                'join_date'                => ! empty( $data['join_date'] ) ? $data['join_date'] : gmdate( 'Y-m-d' ),
+                'expiration_date'          => ! empty( $data['expiration_date'] ) ? $data['expiration_date'] : null,
+                'birth_date'               => ! empty( $data['birth_date'] ) ? $data['birth_date'] : null,
                 'directory_visible'        => $data['directory_visible'] ?? 1,
                 'auto_renew'               => $data['auto_renew'] ?? 0,
                 'communication_preference' => $data['communication_pref'] ?? 'email',
-                'how_heard_about_us'       => $data['how_heard'] ?? null,
+                'how_heard_about_us'       => ! empty( $data['how_heard'] ) ? $data['how_heard'] : null,
             );
 
             $member_id = $members->create( $member_data );
 
             if ( ! $member_id ) {
-                $results['errors'][] = sprintf(
-                    __( 'Row %d: Could not create member.', 'societypress' ),
-                    $row_num
+                $results['problem_rows'][] = array(
+                    'row_num' => $row_num,
+                    'issue'   => __( 'Could not create member', 'societypress' ),
+                    'data'    => $data,
+                    'raw_row' => $row,
                 );
                 $results['skipped']++;
                 continue;
@@ -816,6 +1194,27 @@ class SocietyPress_Import {
                 $members->update_meta( $member_id, 'import_notes', $data['notes'] );
             }
 
+            // Save nickname if parsed from full_name
+            if ( ! empty( $data['_nickname'] ) ) {
+                $members->update_meta( $member_id, 'nickname', sanitize_text_field( $data['_nickname'] ) );
+            }
+
+            // Save organization/company name if provided
+            if ( ! empty( $data['organization'] ) ) {
+                $members->update_meta( $member_id, 'organization', sanitize_text_field( $data['organization'] ) );
+            }
+
+            // Save genealogy service links/handles for enabled services
+            // These are stored in the member_meta table for flexible storage
+            $enabled_services = SocietyPress_Admin::get_enabled_genealogy_services();
+
+            foreach ( array_keys( $enabled_services ) as $service_key ) {
+                $field = 'genealogy_' . $service_key;
+                if ( ! empty( $data[ $field ] ) ) {
+                    $members->update_meta( $member_id, $field, sanitize_text_field( $data[ $field ] ) );
+                }
+            }
+
             $results['imported']++;
         }
 
@@ -832,6 +1231,20 @@ class SocietyPress_Import {
      */
     private function update_member_from_import( int $member_id, array $data ): void {
         $members = societypress()->members;
+
+        // Parse full_name if provided (same logic as in process_import)
+        if ( ! empty( $data['full_name'] ) ) {
+            $parsed = $this->parse_full_name( $data['full_name'] );
+            if ( empty( $data['first_name'] ) ) {
+                $data['first_name'] = $parsed['first_name'];
+            }
+            if ( empty( $data['last_name'] ) ) {
+                $data['last_name'] = $parsed['last_name'];
+            }
+            if ( ! empty( $parsed['nickname'] ) ) {
+                $data['_nickname'] = $parsed['nickname'];
+            }
+        }
 
         // Update basic info
         $update_data = array();
@@ -864,6 +1277,26 @@ class SocietyPress_Import {
 
         if ( ! empty( $contact_data ) ) {
             $members->update_contact( $member_id, $contact_data );
+        }
+
+        // Update nickname if parsed from full_name
+        if ( ! empty( $data['_nickname'] ) ) {
+            $members->update_meta( $member_id, 'nickname', sanitize_text_field( $data['_nickname'] ) );
+        }
+
+        // Update organization/company name if provided
+        if ( ! empty( $data['organization'] ) ) {
+            $members->update_meta( $member_id, 'organization', sanitize_text_field( $data['organization'] ) );
+        }
+
+        // Update genealogy service links/handles for enabled services
+        $enabled_services = SocietyPress_Admin::get_enabled_genealogy_services();
+
+        foreach ( array_keys( $enabled_services ) as $service_key ) {
+            $field = 'genealogy_' . $service_key;
+            if ( isset( $data[ $field ] ) && '' !== $data[ $field ] ) {
+                $members->update_meta( $member_id, $field, sanitize_text_field( $data[ $field ] ) );
+            }
         }
     }
 
@@ -1003,7 +1436,32 @@ class SocietyPress_Import {
                     </p>
                 </div>
 
-                <!-- Step 4: Results -->
+                <!-- Step 4: Review Problem Rows -->
+                <div class="import-step" id="step-review" style="display: none;">
+                    <h2><?php esc_html_e( 'Step 4: Review Problem Rows', 'societypress' ); ?></h2>
+                    <p class="description">
+                        <?php esc_html_e( 'The following rows could not be imported. Fix the issues below or discard rows you don\'t need.', 'societypress' ); ?>
+                    </p>
+
+                    <div id="review-summary" class="societypress-review-summary">
+                        <!-- Populated by JavaScript: X imported successfully, Y need review -->
+                    </div>
+
+                    <div id="problem-rows-container">
+                        <!-- Populated by JavaScript -->
+                    </div>
+
+                    <p class="submit">
+                        <button type="button" class="button" id="skip-problem-rows-btn">
+                            <?php esc_html_e( 'Skip All & Finish', 'societypress' ); ?>
+                        </button>
+                        <button type="button" class="button button-primary button-large" id="commit-fixes-btn">
+                            <?php esc_html_e( 'Import Fixed Rows', 'societypress' ); ?>
+                        </button>
+                    </p>
+                </div>
+
+                <!-- Step 5: Results -->
                 <div class="import-step" id="step-results" style="display: none;">
                     <h2><?php esc_html_e( 'Import Complete', 'societypress' ); ?></h2>
 
@@ -1032,11 +1490,19 @@ class SocietyPress_Import {
                         uploading: '<?php echo esc_js( __( 'Uploading...', 'societypress' ) ); ?>',
                         processing: '<?php echo esc_js( __( 'Processing...', 'societypress' ) ); ?>',
                         importing: '<?php echo esc_js( __( 'Importing...', 'societypress' ) ); ?>',
+                        committing: '<?php echo esc_js( __( 'Importing fixed rows...', 'societypress' ) ); ?>',
                         error: '<?php echo esc_js( __( 'An error occurred.', 'societypress' ) ); ?>',
                         mappingSaved: '<?php echo esc_js( __( 'Mapping saved!', 'societypress' ) ); ?>',
                         noFieldsSelected: '<?php echo esc_js( __( 'Please map at least one field.', 'societypress' ) ); ?>',
                         confirmImport: '<?php echo esc_js( __( 'Are you sure you want to import these members?', 'societypress' ) ); ?>',
-                    }
+                        confirmSkipAll: '<?php echo esc_js( __( 'Skip all problem rows and finish?', 'societypress' ) ); ?>',
+                        importedSuccess: '<?php echo esc_js( __( 'imported successfully', 'societypress' ) ); ?>',
+                        needReview: '<?php echo esc_js( __( 'need review', 'societypress' ) ); ?>',
+                        issue: '<?php echo esc_js( __( 'Issue', 'societypress' ) ); ?>',
+                        discard: '<?php echo esc_js( __( 'Discard', 'societypress' ) ); ?>',
+                        restore: '<?php echo esc_js( __( 'Restore', 'societypress' ) ); ?>',
+                    },
+                    tiers: <?php echo wp_json_encode( array_map( function( $t ) { return array( 'id' => $t->id, 'name' => $t->name ); }, $tiers ) ); ?>
                 };
             </script>
         </div>

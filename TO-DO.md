@@ -38,6 +38,11 @@
 - [ ] Committee management UI
 - [ ] Position/officer tracking UI
 
+### Genealogy Features
+- [ ] Surname/research area connection engine ("Members also researching...")
+- [ ] GEDCOM import (auto-populate surnames, locations)
+- [ ] Basic tree visualization (read-only pedigree chart)
+
 ## Long-Term (Roadmap)
 
 - [ ] REST API for external integrations

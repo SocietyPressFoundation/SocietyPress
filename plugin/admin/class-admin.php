@@ -35,6 +35,63 @@ class SocietyPress_Admin {
     private ?SocietyPress_Import $import = null;
 
     /**
+     * Available genealogy services that can be enabled for member profiles.
+     *
+     * Each service has a unique key used for storage, a display label,
+     * and a placeholder hint showing the expected format for the field.
+     *
+     * @var array
+     */
+    public const GENEALOGY_SERVICES = array(
+        'wikitree' => array(
+            'label'       => 'WikiTree',
+            'placeholder' => 'WikiTree ID (e.g., Smith-12345)',
+        ),
+        'familysearch' => array(
+            'label'       => 'FamilySearch',
+            'placeholder' => 'Person ID (e.g., XXXX-XXX)',
+        ),
+        'geni' => array(
+            'label'       => 'Geni.com',
+            'placeholder' => 'Profile URL or ID',
+        ),
+        'werelate' => array(
+            'label'       => 'WeRelate',
+            'placeholder' => 'Person page name',
+        ),
+        'ancestry' => array(
+            'label'       => 'Ancestry',
+            'placeholder' => 'Profile URL (public trees only)',
+        ),
+        'myheritage' => array(
+            'label'       => 'MyHeritage',
+            'placeholder' => 'Profile URL (public trees only)',
+        ),
+        'findagrave' => array(
+            'label'       => 'Find A Grave',
+            'placeholder' => 'Memorial ID or URL',
+        ),
+        '23andme' => array(
+            'label'       => '23andMe',
+            'placeholder' => 'Display name or profile identifier',
+        ),
+    );
+
+    /**
+     * Default genealogy services to enable for new installations.
+     *
+     * @var array
+     */
+    public const DEFAULT_GENEALOGY_SERVICES = array(
+        'wikitree',
+        'familysearch',
+        'geni',
+        'werelate',
+        'ancestry',
+        'myheritage',
+    );
+
+    /**
      * Constructor.
      */
     public function __construct() {
@@ -116,6 +173,22 @@ class SocietyPress_Admin {
             'societypress-settings',
             'societypress_email_section'
         );
+
+        // Genealogy Services Section
+        add_settings_section(
+            'societypress_genealogy_section',
+            __( 'Genealogy Services', 'societypress' ),
+            array( $this, 'render_genealogy_section' ),
+            'societypress-settings'
+        );
+
+        add_settings_field(
+            'genealogy_services',
+            __( 'Enabled Services', 'societypress' ),
+            array( $this, 'render_genealogy_services_field' ),
+            'societypress-settings',
+            'societypress_genealogy_section'
+        );
     }
 
     /**
@@ -125,9 +198,10 @@ class SocietyPress_Admin {
      */
     public function get_default_settings(): array {
         return array(
-            'members_per_page'  => 20,
-            'organization_name' => get_bloginfo( 'name' ),
-            'admin_email'       => get_option( 'admin_email' ),
+            'members_per_page'    => 20,
+            'organization_name'   => get_bloginfo( 'name' ),
+            'admin_email'         => get_option( 'admin_email' ),
+            'genealogy_services'  => self::DEFAULT_GENEALOGY_SERVICES,
         );
     }
 
@@ -152,6 +226,18 @@ class SocietyPress_Admin {
             ? sanitize_email( $input['admin_email'] )
             : get_option( 'admin_email' );
 
+        // Sanitize genealogy services - only allow valid service keys
+        $valid_services = array_keys( self::GENEALOGY_SERVICES );
+        $sanitized['genealogy_services'] = array();
+
+        if ( isset( $input['genealogy_services'] ) && is_array( $input['genealogy_services'] ) ) {
+            foreach ( $input['genealogy_services'] as $service ) {
+                if ( in_array( $service, $valid_services, true ) ) {
+                    $sanitized['genealogy_services'][] = $service;
+                }
+            }
+        }
+
         return $sanitized;
     }
 
@@ -165,9 +251,10 @@ class SocietyPress_Admin {
     public static function get_setting( string $key, $default = null ) {
         $settings = get_option( 'societypress_settings', array() );
         $defaults = array(
-            'members_per_page'  => 20,
-            'organization_name' => get_bloginfo( 'name' ),
-            'admin_email'       => get_option( 'admin_email' ),
+            'members_per_page'   => 20,
+            'organization_name'  => get_bloginfo( 'name' ),
+            'admin_email'        => get_option( 'admin_email' ),
+            'genealogy_services' => self::DEFAULT_GENEALOGY_SERVICES,
         );
 
         if ( null === $default && isset( $defaults[ $key ] ) ) {
@@ -175,6 +262,27 @@ class SocietyPress_Admin {
         }
 
         return $settings[ $key ] ?? $default;
+    }
+
+    /**
+     * Get enabled genealogy services with their full configuration.
+     *
+     * Returns only the services that are enabled in settings, with their
+     * label and placeholder text for display in forms.
+     *
+     * @return array Enabled services with their configuration.
+     */
+    public static function get_enabled_genealogy_services(): array {
+        $enabled_keys = self::get_setting( 'genealogy_services', self::DEFAULT_GENEALOGY_SERVICES );
+        $enabled = array();
+
+        foreach ( $enabled_keys as $key ) {
+            if ( isset( self::GENEALOGY_SERVICES[ $key ] ) ) {
+                $enabled[ $key ] = self::GENEALOGY_SERVICES[ $key ];
+            }
+        }
+
+        return $enabled;
     }
 
     /**
@@ -238,6 +346,45 @@ class SocietyPress_Admin {
             <?php esc_html_e( 'Receives membership notifications and admin alerts.', 'societypress' ); ?>
         </p>
         <?php
+    }
+
+    /**
+     * Render Genealogy section description.
+     */
+    public function render_genealogy_section(): void {
+        echo '<p>' . esc_html__( 'Select which genealogy research platforms to show on member profiles. Members can enter their profile links or IDs for enabled services.', 'societypress' ) . '</p>';
+    }
+
+    /**
+     * Render genealogy_services field.
+     *
+     * Displays checkboxes for each available genealogy service,
+     * allowing admins to choose which services appear in member profiles.
+     */
+    public function render_genealogy_services_field(): void {
+        $enabled = self::get_setting( 'genealogy_services', self::DEFAULT_GENEALOGY_SERVICES );
+
+        echo '<fieldset>';
+
+        foreach ( self::GENEALOGY_SERVICES as $key => $service ) {
+            $checked = in_array( $key, $enabled, true ) ? 'checked' : '';
+            printf(
+                '<label style="display: block; margin-bottom: 8px;">
+                    <input type="checkbox" name="societypress_settings[genealogy_services][]" value="%s" %s>
+                    <strong>%s</strong>
+                    <span class="description" style="margin-left: 5px; color: #666;">— %s</span>
+                </label>',
+                esc_attr( $key ),
+                esc_attr( $checked ),
+                esc_html( $service['label'] ),
+                esc_html( $service['placeholder'] )
+            );
+        }
+
+        echo '</fieldset>';
+        echo '<p class="description" style="margin-top: 10px;">';
+        esc_html_e( 'Only checked services will appear in member edit forms and CSV exports.', 'societypress' );
+        echo '</p>';
     }
 
     /**
@@ -469,7 +616,10 @@ class SocietyPress_Admin {
         // Write UTF-8 BOM for Excel compatibility
         fwrite( $output, "\xEF\xBB\xBF" );
 
-        // Write header row
+        // Get enabled genealogy services for export
+        $enabled_services = self::get_enabled_genealogy_services();
+
+        // Build header row - base columns plus enabled genealogy services
         $headers = array(
             'First Name',
             'Last Name',
@@ -488,6 +638,12 @@ class SocietyPress_Admin {
             'Directory Visible',
             'Auto Renew',
         );
+
+        // Add header for each enabled genealogy service
+        foreach ( $enabled_services as $service ) {
+            $headers[] = $service['label'];
+        }
+
         fputcsv( $output, $headers );
 
         // Write data rows
@@ -495,6 +651,7 @@ class SocietyPress_Admin {
             $contact = $members_handler->get_contact( $member->id );
             $tier = $tiers_handler->get( $member->membership_tier_id );
 
+            // Build base row data
             $row = array(
                 $member->first_name,
                 $member->last_name,
@@ -513,6 +670,12 @@ class SocietyPress_Admin {
                 $member->directory_visible ? 'Yes' : 'No',
                 $member->auto_renew ? 'Yes' : 'No',
             );
+
+            // Add genealogy service values for each enabled service
+            foreach ( array_keys( $enabled_services ) as $service_key ) {
+                $row[] = $members_handler->get_meta( $member->id, 'genealogy_' . $service_key ) ?? '';
+            }
+
             fputcsv( $output, $row );
         }
 
@@ -1042,6 +1205,42 @@ class SocietyPress_Admin {
                             </tr>
                         </table>
                     </div>
+
+                    <!-- Genealogy Services -->
+                    <?php
+                    // Get enabled genealogy services from settings
+                    $enabled_services = self::get_enabled_genealogy_services();
+
+                    // Only show section if at least one service is enabled
+                    if ( ! empty( $enabled_services ) ) :
+                        // Load genealogy service meta values for existing members
+                        $genealogy_meta = array();
+                        if ( $member_id ) {
+                            foreach ( array_keys( $enabled_services ) as $service_key ) {
+                                $genealogy_meta[ $service_key ] = societypress()->members->get_meta( $member_id, 'genealogy_' . $service_key ) ?? '';
+                            }
+                        }
+                    ?>
+                    <div class="societypress-form-section">
+                        <h2><?php esc_html_e( 'Genealogy Services', 'societypress' ); ?></h2>
+                        <p class="description" style="margin-bottom: 15px;">
+                            <?php esc_html_e( 'Links to this member\'s profiles on genealogy research platforms. Enter profile IDs, usernames, or full URLs.', 'societypress' ); ?>
+                        </p>
+                        <table class="form-table">
+                            <?php foreach ( $enabled_services as $service_key => $service ) : ?>
+                            <tr>
+                                <th><label for="genealogy_<?php echo esc_attr( $service_key ); ?>"><?php echo esc_html( $service['label'] ); ?></label></th>
+                                <td>
+                                    <input type="text" name="genealogy_<?php echo esc_attr( $service_key ); ?>"
+                                           id="genealogy_<?php echo esc_attr( $service_key ); ?>" class="regular-text"
+                                           value="<?php echo esc_attr( $genealogy_meta[ $service_key ] ?? '' ); ?>"
+                                           placeholder="<?php echo esc_attr( $service['placeholder'] ); ?>">
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </table>
+                    </div>
+                    <?php endif; ?>
                 </div>
 
                 <p class="submit">
@@ -1425,6 +1624,7 @@ class SocietyPress_Admin {
             $result = $members->update( $member_id, $member_data );
             if ( $result ) {
                 $members->update_contact( $member_id, $contact_data );
+                $this->save_genealogy_meta( $members, $member_id );
                 $this->add_admin_notice( __( 'Member updated successfully.', 'societypress' ), 'success' );
             } else {
                 $this->add_admin_notice( __( 'Error updating member.', 'societypress' ), 'error' );
@@ -1435,6 +1635,7 @@ class SocietyPress_Admin {
             if ( $new_id ) {
                 $contact_data['member_id'] = $new_id;
                 $members->update_contact( $new_id, $contact_data );
+                $this->save_genealogy_meta( $members, $new_id );
                 $this->add_admin_notice( __( 'Member created successfully.', 'societypress' ), 'success' );
 
                 // Redirect to edit page for the new member
@@ -1443,6 +1644,33 @@ class SocietyPress_Admin {
             } else {
                 $this->add_admin_notice( __( 'Error creating member.', 'societypress' ), 'error' );
             }
+        }
+    }
+
+    /**
+     * Save genealogy service meta fields for a member.
+     *
+     * Stores links/handles to external genealogy platforms (WikiTree, Ancestry, etc.)
+     * in the member_meta table. Empty values are still saved to allow clearing fields.
+     *
+     * @param SocietyPress_Members $members   The members handler instance.
+     * @param int                  $member_id The member ID to save meta for.
+     */
+    private function save_genealogy_meta( SocietyPress_Members $members, int $member_id ): void {
+        // Get the list of enabled genealogy services from settings
+        // We only save values for services that are currently enabled
+        $enabled_services = self::get_enabled_genealogy_services();
+
+        foreach ( array_keys( $enabled_services ) as $service_key ) {
+            $post_key = 'genealogy_' . $service_key;
+            $meta_key = 'genealogy_' . $service_key;
+
+            // Get the submitted value, defaulting to empty string if not set
+            // We sanitize as text field since these are URLs, usernames, or IDs
+            $value = isset( $_POST[ $post_key ] ) ? sanitize_text_field( $_POST[ $post_key ] ) : '';
+
+            // Save the meta value (including empty strings to allow clearing)
+            $members->save_meta( $member_id, $meta_key, $value );
         }
     }
 

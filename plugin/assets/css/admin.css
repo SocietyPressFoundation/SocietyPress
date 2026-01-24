@@ -497,3 +497,128 @@
     padding: 10px 12px;
     font-size: 13px;
 }
+
+/* ==========================================================================
+   Import Review Step - Problem Rows
+   ========================================================================== */
+
+.societypress-review-summary {
+    background: #fcf9e8;
+    border: 1px solid #dba617;
+    border-left-width: 4px;
+    border-radius: 4px;
+    padding: 15px 20px;
+    margin-bottom: 20px;
+}
+
+.societypress-review-summary p {
+    margin: 0;
+    font-size: 14px;
+}
+
+/* Individual problem row card */
+.problem-row {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    margin-bottom: 15px;
+    transition: opacity 0.2s ease, background 0.2s ease;
+}
+
+.problem-row.discarded {
+    opacity: 0.5;
+    background: #f6f7f7;
+}
+
+.problem-row.discarded .problem-row-fields {
+    display: none;
+}
+
+.problem-row-header {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 12px 15px;
+    background: #f6f7f7;
+    border-bottom: 1px solid #c3c4c7;
+    border-radius: 4px 4px 0 0;
+}
+
+.problem-row.discarded .problem-row-header {
+    border-bottom: none;
+    border-radius: 4px;
+}
+
+.problem-row-header .row-number {
+    font-weight: 600;
+    color: #1d2327;
+}
+
+.problem-row-header .row-issue {
+    flex: 1;
+    color: #d63638;
+    font-size: 13px;
+}
+
+.problem-row-header .discard-row-btn {
+    margin-left: auto;
+}
+
+.problem-row-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    padding: 15px;
+}
+
+.problem-row-fields .field-group {
+    flex: 1;
+    min-width: 150px;
+    max-width: 200px;
+}
+
+.problem-row-fields .field-group label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #50575e;
+    margin-bottom: 5px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.problem-row-fields .field-group input,
+.problem-row-fields .field-group select {
+    width: 100%;
+    min-height: 36px;
+    padding: 6px 10px;
+}
+
+.problem-row-fields .field-group input.required-field {
+    border-width: 2px;
+}
+
+.problem-row-fields .field-group input:focus,
+.problem-row-fields .field-group select:focus {
+    border-color: #2271b1;
+    box-shadow: 0 0 0 1px #2271b1;
+    outline: none;
+}
+
+/* Responsive adjustments for review step */
+@media screen and (max-width: 782px) {
+    .problem-row-header {
+        flex-wrap: wrap;
+    }
+
+    .problem-row-header .row-issue {
+        flex-basis: 100%;
+        order: 3;
+        margin-top: 10px;
+    }
+
+    .problem-row-fields .field-group {
+        min-width: 100%;
+        max-width: none;
+    }
+}

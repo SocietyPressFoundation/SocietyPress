@@ -25,6 +25,8 @@
         sampleRows: [],
         mapping: {},
         totalRows: 0,
+        problemRows: [],      // Rows that need user review
+        importOptions: {},    // Options used during import (for committing fixes)
 
         /**
          * Initialize the import module.
@@ -89,6 +91,18 @@
             // New import button
             $('#new-import-btn').on('click', function() {
                 self.reset();
+            });
+
+            // Skip all problem rows button
+            $('#skip-problem-rows-btn').on('click', function() {
+                if (confirm(societypressImport.strings.confirmSkipAll)) {
+                    self.showStep('results');
+                }
+            });
+
+            // Commit fixed rows button
+            $('#commit-fixes-btn').on('click', function() {
+                self.commitFixedRows();
             });
         },
 
@@ -345,6 +359,9 @@
                 default_tier: $('#default-tier').val()
             };
 
+            // Save options for potential commit of fixed rows later
+            self.importOptions = options;
+
             $btn.prop('disabled', true).text(societypressImport.strings.importing);
 
             $.ajax({
@@ -359,8 +376,15 @@
                 },
                 success: function(response) {
                     if (response.success) {
-                        self.displayResults(response.data);
-                        self.showStep('results');
+                        // Check if there are problem rows that need review
+                        if (response.data.problem_rows && response.data.problem_rows.length > 0) {
+                            self.problemRows = response.data.problem_rows;
+                            self.displayReviewStep(response.data);
+                            self.showStep('review');
+                        } else {
+                            self.displayResults(response.data);
+                            self.showStep('results');
+                        }
                     } else {
                         alert(response.data.message || societypressImport.strings.error);
                         $btn.prop('disabled', false).text('Run Import');
@@ -416,6 +440,156 @@
         },
 
         /**
+         * Display the review step for problem rows.
+         */
+        displayReviewStep: function(results) {
+            var self = this;
+            var $summary = $('#review-summary');
+            var $container = $('#problem-rows-container');
+
+            // Show summary
+            var summaryHtml = '<p>';
+            summaryHtml += '<strong>' + results.imported + '</strong> ' + societypressImport.strings.importedSuccess;
+            if (results.updated > 0) {
+                summaryHtml += ', <strong>' + results.updated + '</strong> updated';
+            }
+            summaryHtml += '. <strong>' + results.problem_rows.length + '</strong> ' + societypressImport.strings.needReview + '.';
+            summaryHtml += '</p>';
+            $summary.html(summaryHtml);
+
+            // Build problem rows UI
+            var html = '';
+
+            $.each(results.problem_rows, function(index, row) {
+                html += '<div class="problem-row" data-index="' + index + '">';
+                html += '<div class="problem-row-header">';
+                html += '<span class="row-number">Row ' + row.row_num + '</span>';
+                html += '<span class="row-issue"><strong>' + societypressImport.strings.issue + ':</strong> ' + self.escapeHtml(row.issue) + '</span>';
+                html += '<button type="button" class="button button-small discard-row-btn">' + societypressImport.strings.discard + '</button>';
+                html += '</div>';
+                html += '<div class="problem-row-fields">';
+
+                // Show editable fields for key data
+                html += self.buildEditableField(index, 'first_name', 'First Name', row.data.first_name || '');
+                html += self.buildEditableField(index, 'last_name', 'Last Name', row.data.last_name || '');
+                html += self.buildEditableField(index, 'primary_email', 'Email', row.data.primary_email || '');
+                html += self.buildEditableField(index, 'organization', 'Organization', row.data.organization || '');
+                html += self.buildTierSelect(index, row.data.membership_tier || '');
+
+                html += '</div>';
+                html += '</div>';
+            });
+
+            $container.html(html);
+
+            // Bind discard button events
+            $container.find('.discard-row-btn').on('click', function() {
+                var $row = $(this).closest('.problem-row');
+                var idx = $row.data('index');
+
+                if ($row.hasClass('discarded')) {
+                    // Restore
+                    $row.removeClass('discarded');
+                    $(this).text(societypressImport.strings.discard);
+                    self.problemRows[idx].discard = false;
+                } else {
+                    // Discard
+                    $row.addClass('discarded');
+                    $(this).text(societypressImport.strings.restore);
+                    self.problemRows[idx].discard = true;
+                }
+            });
+
+            // Bind input change events to update problemRows data
+            $container.find('input, select').on('change', function() {
+                var $input = $(this);
+                var idx = $input.closest('.problem-row').data('index');
+                var field = $input.data('field');
+                self.problemRows[idx].data[field] = $input.val();
+            });
+        },
+
+        /**
+         * Build an editable field for problem row review.
+         */
+        buildEditableField: function(rowIndex, fieldKey, label, value) {
+            var html = '<div class="field-group">';
+            html += '<label>' + this.escapeHtml(label) + '</label>';
+            html += '<input type="text" data-field="' + fieldKey + '" value="' + this.escapeHtml(value) + '"';
+            if (fieldKey === 'first_name' || fieldKey === 'last_name') {
+                html += ' class="required-field"';
+                if (!value) {
+                    html += ' style="border-color: #d63638;"';
+                }
+            }
+            html += '>';
+            html += '</div>';
+            return html;
+        },
+
+        /**
+         * Build a tier select dropdown for problem row review.
+         */
+        buildTierSelect: function(rowIndex, currentTier) {
+            var html = '<div class="field-group">';
+            html += '<label>Membership Tier</label>';
+            html += '<select data-field="membership_tier">';
+            html += '<option value="">— Select Tier —</option>';
+
+            if (societypressImport.tiers) {
+                $.each(societypressImport.tiers, function(i, tier) {
+                    var selected = (tier.name.toLowerCase() === currentTier.toLowerCase()) ? ' selected' : '';
+                    html += '<option value="' + tier.name + '"' + selected + '>' + tier.name + '</option>';
+                });
+            }
+
+            html += '</select>';
+            html += '</div>';
+            return html;
+        },
+
+        /**
+         * Commit the fixed problem rows.
+         */
+        commitFixedRows: function() {
+            var self = this;
+            var $btn = $('#commit-fixes-btn');
+
+            $btn.prop('disabled', true).text(societypressImport.strings.committing);
+
+            $.ajax({
+                url: societypressImport.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'societypress_commit_problem_rows',
+                    nonce: societypressImport.nonce,
+                    rows: self.problemRows,
+                    options: self.importOptions
+                },
+                success: function(response) {
+                    if (response.success) {
+                        // Merge results with original import results
+                        var finalResults = {
+                            imported: response.data.imported,
+                            updated: 0,
+                            skipped: response.data.skipped,
+                            errors: response.data.errors || []
+                        };
+                        self.displayResults(finalResults);
+                        self.showStep('results');
+                    } else {
+                        alert(response.data.message || societypressImport.strings.error);
+                        $btn.prop('disabled', false).text('Import Fixed Rows');
+                    }
+                },
+                error: function() {
+                    alert(societypressImport.strings.error);
+                    $btn.prop('disabled', false).text('Import Fixed Rows');
+                }
+            });
+        },
+
+        /**
          * Save the current field mapping.
          */
         saveMapping: function() {
@@ -468,12 +642,16 @@
             this.sampleRows = [];
             this.mapping = {};
             this.totalRows = 0;
+            this.problemRows = [];
+            this.importOptions = {};
 
             $('#csv-file').val('');
             $('.upload-text').text('Click to select CSV file or drag and drop');
             $('#upload-btn').prop('disabled', true);
             $('#mapping-body').empty();
             $('#preview-container').empty();
+            $('#problem-rows-container').empty();
+            $('#review-summary').empty();
             $('#results-container').empty();
 
             this.showStep('upload');

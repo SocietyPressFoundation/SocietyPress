@@ -1,0 +1,7 @@
+/*
+Theme Name: SocietyPress Child
+Description: Custom theme for SocietyPress plugin demo
+Template: twentytwentyfour
+*/
+@import url("../twentytwentyfour/style.css");
+.site-title a { color: #2c5fb1; }

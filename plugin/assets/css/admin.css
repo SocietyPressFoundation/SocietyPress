@@ -622,3 +622,138 @@
         max-width: none;
     }
 }
+
+/* ==========================================================================
+   Dashboard Widgets
+   ========================================================================== */
+
+/* Widget Tables */
+.sp-widget-table {
+    margin-top: 10px;
+}
+
+.sp-widget-table th {
+    font-weight: 600;
+    padding: 8px 10px;
+}
+
+.sp-widget-table td {
+    padding: 10px;
+    font-size: 14px;
+}
+
+/* Expiring Members Widget - Color-coded rows */
+.sp-widget-table tr.sp-urgent td {
+    background-color: #ffebee;
+    border-left: 3px solid #d32f2f;
+}
+
+.sp-widget-table tr.sp-warning td {
+    background-color: #fff3e0;
+    border-left: 3px solid #f57c00;
+}
+
+.sp-widget-table .sp-days {
+    color: #666;
+    font-size: 12px;
+}
+
+/* Recent Signups Widget */
+.sp-widget-table.sp-recent-table tr td {
+    border-left: 3px solid #2e7d32;
+}
+
+/* Widget Footer Links */
+.sp-widget-footer {
+    margin-top: 15px;
+    text-align: center;
+    border-top: 1px solid #e0e0e0;
+    padding-top: 12px;
+}
+
+.sp-widget-footer a {
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.sp-widget-footer a:hover {
+    text-decoration: underline;
+}
+
+/* Quick Stats Widget */
+.sp-quick-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin: 15px 0;
+}
+
+.sp-stat {
+    text-align: center;
+    padding: 15px;
+    background: #f5f5f5;
+    border-radius: 4px;
+}
+
+.sp-stat-number {
+    display: block;
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 5px;
+    color: #1d2327;
+}
+
+.sp-stat-label {
+    display: block;
+    font-size: 12px;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Color-coded stats */
+.sp-stat-active .sp-stat-number {
+    color: #2e7d32;
+}
+
+.sp-stat-expired .sp-stat-number {
+    color: #d32f2f;
+}
+
+.sp-stat-pending .sp-stat-number {
+    color: #f57c00;
+}
+
+/* Senior-friendly: Ensure touch targets on dashboard */
+.sp-widget-table a {
+    display: block;
+    padding: 10px;
+    margin: -10px;
+    min-height: 44px;
+    line-height: 24px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .sp-widget-table tr.sp-urgent td {
+        background-color: #ffe0e0;
+        border-left-width: 4px;
+    }
+
+    .sp-widget-table tr.sp-warning td {
+        background-color: #ffeb99;
+        border-left-width: 4px;
+    }
+
+    .sp-stat {
+        border: 2px solid #333;
+    }
+}
+
+/* Responsive: Stack stats on mobile */
+@media screen and (max-width: 782px) {
+    .sp-quick-stats {
+        grid-template-columns: 1fr;
+    }
+}

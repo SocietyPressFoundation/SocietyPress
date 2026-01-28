@@ -22,6 +22,9 @@
             this.bindEvents();
             this.initDateFields();
             this.initSelectAll();
+            this.initPhoneFormatting();
+            this.initEmailValidation();
+            this.initExpirationCalculator();
         },
 
         /**
@@ -31,8 +34,9 @@
             // Confirm delete actions
             $(document).on('click', '.societypress-delete-member', this.confirmDelete);
 
-            // Tier selection auto-updates expiration
+            // Tier selection and join date changes auto-update expiration
             $(document).on('change', '#membership_tier_id', this.updateExpiration);
+            $(document).on('change', '#join_date', this.updateExpiration);
 
             // Form submission feedback
             $(document).on('submit', '.societypress-member-form', this.handleFormSubmit);
@@ -143,6 +147,163 @@
         },
 
         /**
+         * Initialize phone number formatting.
+         *
+         * Formats phone numbers as (XXX) XXX-XXXX as the user types.
+         */
+        initPhoneFormatting: function() {
+            var self = this;
+
+            // Target all phone input fields
+            var phoneFields = [
+                '#cell_phone',
+                '#home_phone',
+                '#work_phone'
+            ];
+
+            phoneFields.forEach(function(fieldId) {
+                var $field = $(fieldId);
+                if ($field.length) {
+                    // Format on page load if field has a value
+                    if ($field.val()) {
+                        $field.val(self.formatPhoneNumber($field.val()));
+                    }
+
+                    // Format as user types
+                    $field.on('input', function() {
+                        var cursorPos = this.selectionStart;
+                        var oldValue = $(this).val();
+                        var oldLength = oldValue.length;
+                        var formatted = self.formatPhoneNumber(oldValue);
+                        var newLength = formatted.length;
+
+                        $(this).val(formatted);
+
+                        // Adjust cursor position after formatting
+                        // If characters were added (formatting), move cursor forward
+                        if (newLength > oldLength) {
+                            cursorPos += (newLength - oldLength);
+                        }
+
+                        // Set cursor position
+                        this.setSelectionRange(cursorPos, cursorPos);
+                    });
+
+                    // Strip formatting on form submit (store only digits)
+                    $field.closest('form').on('submit', function() {
+                        var value = $field.val();
+                        if (value) {
+                            $field.val(value.replace(/\D/g, ''));
+                        }
+                    });
+                }
+            });
+        },
+
+        /**
+         * Format a phone number as (XXX) XXX-XXXX.
+         *
+         * Takes a string with any characters and returns formatted phone number.
+         * Only formats if 10 digits are present.
+         *
+         * @param {string} value Raw input value.
+         * @return {string} Formatted phone number.
+         */
+        formatPhoneNumber: function(value) {
+            if (!value) {
+                return '';
+            }
+
+            // Strip all non-digits
+            var digits = value.replace(/\D/g, '');
+
+            // Don't format if less than 4 digits
+            if (digits.length < 4) {
+                return digits;
+            }
+
+            // Format based on number of digits
+            if (digits.length <= 6) {
+                // (XXX) XXX
+                return '(' + digits.substring(0, 3) + ') ' + digits.substring(3);
+            } else if (digits.length <= 10) {
+                // (XXX) XXX-XXXX
+                return '(' + digits.substring(0, 3) + ') ' + digits.substring(3, 6) + '-' + digits.substring(6);
+            } else {
+                // Truncate to 10 digits and format
+                digits = digits.substring(0, 10);
+                return '(' + digits.substring(0, 3) + ') ' + digits.substring(3, 6) + '-' + digits.substring(6);
+            }
+        },
+
+        /**
+         * Initialize email validation.
+         *
+         * Validates email addresses on blur and provides feedback.
+         */
+        initEmailValidation: function() {
+            var self = this;
+            var $emailField = $('#primary_email');
+
+            if ($emailField.length) {
+                // Validate on blur (when user leaves the field)
+                $emailField.on('blur', function() {
+                    var email = $(this).val().trim();
+                    var $feedback = $(this).siblings('.email-validation-feedback');
+
+                    // Remove existing feedback
+                    $feedback.remove();
+
+                    // Skip validation if field is empty (HTML5 required will handle it)
+                    if (email === '') {
+                        $(this).removeClass('invalid-email valid-email');
+                        return;
+                    }
+
+                    // Validate email format
+                    if (self.isValidEmail(email)) {
+                        $(this).removeClass('invalid-email').addClass('valid-email');
+                        $(this).after('<span class="email-validation-feedback valid" style="color: #46b450; margin-left: 5px;">✓ Valid email</span>');
+                    } else {
+                        $(this).removeClass('valid-email').addClass('invalid-email');
+                        $(this).after('<span class="email-validation-feedback invalid" style="color: #dc3232; margin-left: 5px;">✗ Invalid email format</span>');
+                    }
+                });
+
+                // Clear feedback on input
+                $emailField.on('input', function() {
+                    $(this).removeClass('invalid-email valid-email');
+                    $(this).siblings('.email-validation-feedback').remove();
+                });
+
+                // Prevent form submission if email is invalid
+                $emailField.closest('form').on('submit', function(e) {
+                    var email = $emailField.val().trim();
+                    if (email !== '' && !self.isValidEmail(email)) {
+                        e.preventDefault();
+                        $emailField.focus();
+                        alert('Please enter a valid email address.');
+                        return false;
+                    }
+                });
+            }
+        },
+
+        /**
+         * Validate email format.
+         *
+         * Uses comprehensive regex pattern for email validation.
+         *
+         * @param {string} email Email address to validate.
+         * @return {boolean} True if valid email format.
+         */
+        isValidEmail: function(email) {
+            // RFC 5322 compliant email validation pattern
+            var pattern = /^[a-zA-Z0-9.!#$%&'*+\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+            return pattern.test(email);
+        },
+
+        /**
          * Confirm delete action.
          *
          * @param {Event} e Click event.
@@ -195,11 +356,88 @@
         },
 
         /**
-         * Update expiration date based on tier selection.
+         * Initialize expiration date calculator.
+         *
+         * Adds helper text to the expiration field explaining auto-calculation.
+         */
+        initExpirationCalculator: function() {
+            var $expirationField = $('#expiration_date');
+            if (!$expirationField.length) {
+                return;
+            }
+
+            var model = societypressAdmin.expirationModel || 'calendar_year';
+            var helpText = '';
+
+            if (model === 'calendar_year') {
+                helpText = 'Auto-calculated: December 31 of join year. Can be edited if needed.';
+            } else {
+                helpText = 'Auto-calculated: Join date + tier duration. Can be edited if needed.';
+            }
+
+            // Add help text if it doesn't exist
+            if (!$expirationField.next('.description').length) {
+                $expirationField.after('<p class="description">' + helpText + '</p>');
+            }
+        },
+
+        /**
+         * Update expiration date based on tier selection and join date.
+         *
+         * Calculates expiration based on the configured model:
+         * - Calendar Year: December 31 of the join year
+         * - Anniversary: Join date + tier duration in months
          */
         updateExpiration: function() {
-            // This could be enhanced to calculate expiration based on tier duration
-            // For now, it's a placeholder for future AJAX functionality
+            var $expirationField = $('#expiration_date');
+            var $joinDateField = $('#join_date');
+            var $tierField = $('#membership_tier_id');
+
+            // Exit if fields don't exist or join date is empty
+            if (!$expirationField.length || !$joinDateField.length || !$tierField.length) {
+                return;
+            }
+
+            var joinDate = $joinDateField.val();
+            if (!joinDate) {
+                return;
+            }
+
+            var tierId = $tierField.val();
+            var model = societypressAdmin.expirationModel || 'calendar_year';
+            var expirationDate = '';
+
+            if (model === 'calendar_year') {
+                // Calendar Year: December 31 of join year
+                var joinYear = new Date(joinDate).getFullYear();
+                expirationDate = joinYear + '-12-31';
+            } else if (model === 'anniversary') {
+                // Anniversary: Join date + tier duration
+                if (tierId && societypressAdmin.tiers && societypressAdmin.tiers[tierId]) {
+                    var tier = societypressAdmin.tiers[tierId];
+                    var durationMonths = parseInt(tier.duration_months) || 12;
+
+                    var date = new Date(joinDate);
+                    date.setMonth(date.getMonth() + durationMonths);
+
+                    // Format as YYYY-MM-DD
+                    var year = date.getFullYear();
+                    var month = String(date.getMonth() + 1).padStart(2, '0');
+                    var day = String(date.getDate()).padStart(2, '0');
+                    expirationDate = year + '-' + month + '-' + day;
+                }
+            }
+
+            // Update the expiration field if we calculated a date
+            if (expirationDate) {
+                $expirationField.val(expirationDate);
+
+                // Add visual feedback
+                $expirationField.css('background-color', '#ffffcc');
+                setTimeout(function() {
+                    $expirationField.css('background-color', '');
+                }, 1000);
+            }
         },
 
         /**

@@ -74,6 +74,7 @@ class SocietyPress_Database {
         $this->create_committees_table();
         $this->create_committee_members_table();
         $this->create_audit_log_table();
+        $this->create_licenses_table();
     }
 
     /**
@@ -102,6 +103,7 @@ class SocietyPress_Database {
             death_reported_by VARCHAR(255) DEFAULT NULL,
             how_heard_about_us VARCHAR(255) DEFAULT NULL,
             communication_preference ENUM('email','mail','both') NOT NULL DEFAULT 'email',
+            portal_last_login DATETIME DEFAULT NULL,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
@@ -110,7 +112,8 @@ class SocietyPress_Database {
             KEY status (status),
             KEY expiration_date (expiration_date),
             KEY last_name (last_name),
-            KEY directory_visible (directory_visible)
+            KEY directory_visible (directory_visible),
+            KEY portal_last_login (portal_last_login)
         ) {$this->charset_collate};";
 
         dbDelta( $sql );
@@ -314,6 +317,9 @@ class SocietyPress_Database {
             id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
             member_id BIGINT(20) UNSIGNED NOT NULL,
             reminder_type VARCHAR(50) NOT NULL,
+            email_sent_to VARCHAR(255) DEFAULT NULL,
+            email_opened TINYINT(1) NOT NULL DEFAULT 0,
+            email_opened_at DATETIME DEFAULT NULL,
             sent_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
             KEY member_id (member_id),
@@ -453,12 +459,46 @@ class SocietyPress_Database {
     }
 
     /**
+     * Licenses table.
+     *
+     * Commercial license validation and tracking.
+     */
+    private function create_licenses_table(): void {
+        $table = $this->table( 'licenses' );
+
+        $sql = "CREATE TABLE {$table} (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            license_key VARCHAR(255) NOT NULL,
+            license_email VARCHAR(255) NOT NULL,
+            license_type ENUM('site','multisite','developer') NOT NULL DEFAULT 'site',
+            status ENUM('active','expired','invalid','suspended') NOT NULL DEFAULT 'active',
+            site_url VARCHAR(255) DEFAULT NULL,
+            activation_date DATETIME DEFAULT NULL,
+            expiration_date DATE DEFAULT NULL,
+            last_check DATETIME DEFAULT NULL,
+            check_failures INT NOT NULL DEFAULT 0,
+            grace_period_ends DATETIME DEFAULT NULL,
+            remote_data TEXT,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY license_key (license_key),
+            KEY status (status),
+            KEY expiration_date (expiration_date),
+            KEY last_check (last_check)
+        ) {$this->charset_collate};";
+
+        dbDelta( $sql );
+    }
+
+    /**
      * Drop all plugin tables.
      *
      * Called from uninstall.php only.
      */
     public function uninstall(): void {
         $tables = array(
+            'licenses',
             'audit_log',
             'committee_members',
             'committees',

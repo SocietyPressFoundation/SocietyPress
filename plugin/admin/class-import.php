@@ -655,11 +655,31 @@ class SocietyPress_Import {
                 continue;
             }
 
+            // Validate email addresses
+            $primary_email = sanitize_email( $data['primary_email'] ?? '' );
+            $secondary_email = sanitize_email( $data['secondary_email'] ?? '' );
+
+            // Primary email is required and must be valid
+            if ( empty( $primary_email ) || ! is_email( $primary_email ) ) {
+                $this->errors[] = sprintf(
+                    /* translators: %d: row number, %s: email value */
+                    __( 'Row %d: Invalid or missing primary email address (%s). Member skipped.', 'societypress' ),
+                    $row_num,
+                    $primary_email
+                );
+                continue;
+            }
+
+            // Secondary email is optional but must be valid if provided
+            if ( ! empty( $secondary_email ) && ! is_email( $secondary_email ) ) {
+                $secondary_email = ''; // Clear invalid secondary email but continue import
+            }
+
             // Add contact info
             $contact_data = array(
                 'member_id'      => $member_id,
-                'primary_email'  => sanitize_email( $data['primary_email'] ?? '' ),
-                'secondary_email'=> sanitize_email( $data['secondary_email'] ?? '' ),
+                'primary_email'  => $primary_email,
+                'secondary_email'=> $secondary_email,
                 'home_phone'     => sanitize_text_field( $data['home_phone'] ?? '' ),
                 'cell_phone'     => sanitize_text_field( $data['cell_phone'] ?? '' ),
                 'work_phone'     => sanitize_text_field( $data['work_phone'] ?? '' ),
@@ -672,6 +692,25 @@ class SocietyPress_Import {
             );
 
             $members->update_contact( $member_id, $contact_data );
+
+            // Create or link WordPress user account
+            $user_manager = societypress()->user_manager;
+            $user_result  = $user_manager->create_or_link_user(
+                $member_id,
+                $primary_email,
+                $member_data['first_name'],
+                $member_data['last_name']
+            );
+
+            if ( is_wp_error( $user_result ) ) {
+                // Log error but don't stop import
+                $results['errors'][] = sprintf(
+                    /* translators: %1$d: row number, %2$s: error message */
+                    __( 'Row %1$d: Member imported but user account creation failed: %2$s', 'societypress' ),
+                    $row_num,
+                    $user_result->get_error_message()
+                );
+            }
 
             // Save organization if provided
             if ( ! empty( $data['organization'] ) ) {

@@ -50,7 +50,7 @@ class SocietyPress_Members {
      * @return object|null
      */
     public function get( int $id ): ?object {
-        $table = SocietyPress_Core::table( 'members' );
+        $table = SocietyPress::table( 'members' );
         return $this->wpdb->get_row( $this->wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", $id ) ) ?: null;
     }
 
@@ -61,8 +61,8 @@ class SocietyPress_Members {
      * @return object|null
      */
     public function get_by_email( string $email ): ?object {
-        $members = SocietyPress_Core::table( 'members' );
-        $contact = SocietyPress_Core::table( 'member_contact' );
+        $members = SocietyPress::table( 'members' );
+        $contact = SocietyPress::table( 'member_contact' );
 
         return $this->wpdb->get_row( $this->wpdb->prepare(
             "SELECT m.* FROM {$members} m
@@ -100,7 +100,7 @@ class SocietyPress_Members {
      * @return int|false New ID or false.
      */
     public function create( array $data ) {
-        $table = SocietyPress_Core::table( 'members' );
+        $table = SocietyPress::table( 'members' );
 
         // Validate required
         if ( empty( $data['first_name'] ) || empty( $data['last_name'] ) || empty( $data['membership_tier_id'] ) || empty( $data['join_date'] ) ) {
@@ -146,7 +146,7 @@ class SocietyPress_Members {
      * @return bool
      */
     public function update( int $id, array $data ): bool {
-        $table    = SocietyPress_Core::table( 'members' );
+        $table    = SocietyPress::table( 'members' );
         $existing = $this->get( $id );
 
         if ( ! $existing ) {
@@ -200,15 +200,15 @@ class SocietyPress_Members {
         $this->delete_all_meta( $id );
         $this->delete_contact( $id );
 
-        $this->wpdb->delete( SocietyPress_Core::table( 'member_surnames' ), array( 'member_id' => $id ) );
-        $this->wpdb->delete( SocietyPress_Core::table( 'member_research_areas' ), array( 'member_id' => $id ) );
-        $this->wpdb->delete( SocietyPress_Core::table( 'member_relationships' ), array( 'member_id' => $id ) );
-        $this->wpdb->delete( SocietyPress_Core::table( 'member_relationships' ), array( 'related_member_id' => $id ) );
-        $this->wpdb->delete( SocietyPress_Core::table( 'renewal_reminders' ), array( 'member_id' => $id ) );
-        $this->wpdb->delete( SocietyPress_Core::table( 'committee_members' ), array( 'member_id' => $id ) );
-        $this->wpdb->delete( SocietyPress_Core::table( 'position_holders' ), array( 'member_id' => $id ) );
+        $this->wpdb->delete( SocietyPress::table( 'member_surnames' ), array( 'member_id' => $id ) );
+        $this->wpdb->delete( SocietyPress::table( 'member_research_areas' ), array( 'member_id' => $id ) );
+        $this->wpdb->delete( SocietyPress::table( 'member_relationships' ), array( 'member_id' => $id ) );
+        $this->wpdb->delete( SocietyPress::table( 'member_relationships' ), array( 'related_member_id' => $id ) );
+        $this->wpdb->delete( SocietyPress::table( 'renewal_reminders' ), array( 'member_id' => $id ) );
+        $this->wpdb->delete( SocietyPress::table( 'committee_members' ), array( 'member_id' => $id ) );
+        $this->wpdb->delete( SocietyPress::table( 'position_holders' ), array( 'member_id' => $id ) );
 
-        $result = $this->wpdb->delete( SocietyPress_Core::table( 'members' ), array( 'id' => $id ) );
+        $result = $this->wpdb->delete( SocietyPress::table( 'members' ), array( 'id' => $id ) );
 
         if ( false === $result ) {
             return false;
@@ -240,8 +240,8 @@ class SocietyPress_Members {
 
         $args = wp_parse_args( $args, $defaults );
 
-        $table   = SocietyPress_Core::table( 'members' );
-        $contact = SocietyPress_Core::table( 'member_contact' );
+        $table   = SocietyPress::table( 'members' );
+        $contact = SocietyPress::table( 'member_contact' );
 
         $where  = array( '1=1' );
         $join   = '';
@@ -296,7 +296,7 @@ class SocietyPress_Members {
      * @return int
      */
     public function count( array $args = array() ): int {
-        $table  = SocietyPress_Core::table( 'members' );
+        $table  = SocietyPress::table( 'members' );
         $where  = array( '1=1' );
         $values = array();
 
@@ -330,7 +330,7 @@ class SocietyPress_Members {
      * @return object|null
      */
     public function get_contact( int $id ): ?object {
-        $table = SocietyPress_Core::table( 'member_contact' );
+        $table = SocietyPress::table( 'member_contact' );
         return $this->wpdb->get_row( $this->wpdb->prepare( "SELECT * FROM {$table} WHERE member_id = %d", $id ) ) ?: null;
     }
 
@@ -342,7 +342,7 @@ class SocietyPress_Members {
      * @return bool
      */
     public function save_contact( int $id, array $data ): bool {
-        $table    = SocietyPress_Core::table( 'member_contact' );
+        $table    = SocietyPress::table( 'member_contact' );
         $existing = $this->get_contact( $id );
 
         if ( empty( $data['primary_email'] ) || ! is_email( $data['primary_email'] ) ) {
@@ -397,7 +397,7 @@ class SocietyPress_Members {
      * @return bool
      */
     public function delete_contact( int $id ): bool {
-        return false !== $this->wpdb->delete( SocietyPress_Core::table( 'member_contact' ), array( 'member_id' => $id ) );
+        return false !== $this->wpdb->delete( SocietyPress::table( 'member_contact' ), array( 'member_id' => $id ) );
     }
 
     // =========================================================================
@@ -412,7 +412,7 @@ class SocietyPress_Members {
      * @return mixed
      */
     public function get_meta( int $id, string $key ) {
-        $table = SocietyPress_Core::table( 'member_meta' );
+        $table = SocietyPress::table( 'member_meta' );
 
         $row = $this->wpdb->get_row( $this->wpdb->prepare(
             "SELECT meta_value, is_encrypted FROM {$table} WHERE member_id = %d AND meta_key = %s",
@@ -438,7 +438,7 @@ class SocietyPress_Members {
      * @return array
      */
     public function get_all_meta( int $id ): array {
-        $table = SocietyPress_Core::table( 'member_meta' );
+        $table = SocietyPress::table( 'member_meta' );
         $rows  = $this->wpdb->get_results( $this->wpdb->prepare(
             "SELECT meta_key, meta_value, is_encrypted FROM {$table} WHERE member_id = %d",
             $id
@@ -466,7 +466,7 @@ class SocietyPress_Members {
      * @return bool
      */
     public function save_meta( int $id, string $key, $value, bool $encrypt = false ): bool {
-        $table = SocietyPress_Core::table( 'member_meta' );
+        $table = SocietyPress::table( 'member_meta' );
 
         if ( ! is_scalar( $value ) ) {
             $value = maybe_serialize( $value );
@@ -518,7 +518,7 @@ class SocietyPress_Members {
      * @return bool
      */
     public function delete_all_meta( int $id ): bool {
-        return false !== $this->wpdb->delete( SocietyPress_Core::table( 'member_meta' ), array( 'member_id' => $id ) );
+        return false !== $this->wpdb->delete( SocietyPress::table( 'member_meta' ), array( 'member_id' => $id ) );
     }
 
     // =========================================================================
@@ -532,7 +532,7 @@ class SocietyPress_Members {
      * @return array
      */
     public function get_surnames( int $id ): array {
-        $table = SocietyPress_Core::table( 'member_surnames' );
+        $table = SocietyPress::table( 'member_surnames' );
         return $this->wpdb->get_results( $this->wpdb->prepare(
             "SELECT * FROM {$table} WHERE member_id = %d ORDER BY surname_normalized",
             $id
@@ -549,7 +549,7 @@ class SocietyPress_Members {
      * @return int|false
      */
     public function add_surname( int $id, string $surname, string $variants = '', string $notes = '' ) {
-        $result = $this->wpdb->insert( SocietyPress_Core::table( 'member_surnames' ), array(
+        $result = $this->wpdb->insert( SocietyPress::table( 'member_surnames' ), array(
             'member_id'          => $id,
             'surname'            => sanitize_text_field( $surname ),
             'surname_normalized' => strtoupper( trim( $surname ) ),
@@ -576,7 +576,7 @@ class SocietyPress_Members {
             return null;
         }
 
-        $table = SocietyPress_Core::table( 'membership_tiers' );
+        $table = SocietyPress::table( 'membership_tiers' );
         return $this->wpdb->get_row( $this->wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", $member->membership_tier_id ) ) ?: null;
     }
 
@@ -641,7 +641,7 @@ class SocietyPress_Members {
      * @param array  $details     Details.
      */
     private function log_action( string $action, string $object_type, int $object_id, array $details = array() ): void {
-        $this->wpdb->insert( SocietyPress_Core::table( 'audit_log' ), array(
+        $this->wpdb->insert( SocietyPress::table( 'audit_log' ), array(
             'user_id'     => get_current_user_id(),
             'action'      => $action,
             'object_type' => $object_type,

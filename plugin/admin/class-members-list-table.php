@@ -77,10 +77,11 @@ class SocietyPress_Members_List_Table extends WP_List_Table {
      */
     public function get_bulk_actions(): array {
         return array(
-            'delete'     => __( 'Delete Selected', 'societypress' ),
-            'activate'   => __( 'Set Active', 'societypress' ),
-            'deactivate' => __( 'Set Expired', 'societypress' ),
-            'delete_all' => __( 'Clear Database', 'societypress' ),
+            'delete'       => __( 'Delete Selected', 'societypress' ),
+            'activate'     => __( 'Set Active', 'societypress' ),
+            'deactivate'   => __( 'Set Expired', 'societypress' ),
+            'create_users' => __( 'Create User Accounts', 'societypress' ),
+            'delete_all'   => __( 'Clear Database', 'societypress' ),
         );
     }
 
@@ -185,11 +186,19 @@ class SocietyPress_Members_List_Table extends WP_List_Table {
             ),
         );
 
+        // Build name with middle initial if present
+        $full_name = $item->first_name;
+        if ( ! empty( $item->middle_name ) ) {
+            // If middle name is more than one character, show first letter as initial
+            $middle_initial = mb_substr( $item->middle_name, 0, 1 );
+            $full_name .= ' ' . $middle_initial . '.';
+        }
+        $full_name .= ' ' . $item->last_name;
+
         $name = sprintf(
-            '<strong><a href="%s">%s %s</a></strong>',
+            '<strong><a href="%s">%s</a></strong>',
             esc_url( $edit_url ),
-            esc_html( $item->first_name ),
-            esc_html( $item->last_name )
+            esc_html( $full_name )
         );
 
         return $name . $this->row_actions( $actions );
@@ -254,15 +263,25 @@ class SocietyPress_Members_List_Table extends WP_List_Table {
     /**
      * Render join date column.
      *
+     * Shows year only with "Member since YYYY" format.
+     * Full date available on hover tooltip.
+     *
      * @param object $item Current member.
-     * @return string Formatted date.
+     * @return string Formatted year with tooltip.
      */
     public function column_join_date( $item ): string {
         if ( empty( $item->join_date ) ) {
             return '—';
         }
 
-        return esc_html( date_i18n( get_option( 'date_format' ), strtotime( $item->join_date ) ) );
+        $year = date( 'Y', strtotime( $item->join_date ) );
+        $full_date = date_i18n( get_option( 'date_format' ), strtotime( $item->join_date ) );
+
+        return sprintf(
+            '<span title="%s">%s</span>',
+            esc_attr( $full_date ),
+            esc_html( $year )
+        );
     }
 
     /**

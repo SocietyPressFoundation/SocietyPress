@@ -104,7 +104,7 @@ class SocietyPress_Tiers {
     public function __construct() {
         global $wpdb;
         $this->wpdb  = $wpdb;
-        $this->table = SocietyPress_Core::table( 'membership_tiers' );
+        $this->table = SocietyPress::table( 'membership_tiers' );
     }
 
     /**
@@ -360,7 +360,7 @@ class SocietyPress_Tiers {
      */
     public function delete( int $id ): bool {
         // Check if any members use this tier
-        $members_table = SocietyPress_Core::table( 'members' );
+        $members_table = SocietyPress::table( 'members' );
         $count         = (int) $this->wpdb->get_var(
             $this->wpdb->prepare(
                 "SELECT COUNT(*) FROM {$members_table} WHERE membership_tier_id = %d",
@@ -472,7 +472,7 @@ class SocietyPress_Tiers {
      * @return array Associative array of tier_id => count.
      */
     public function get_member_counts(): array {
-        $members_table = SocietyPress_Core::table( 'members' );
+        $members_table = SocietyPress::table( 'members' );
 
         $results = $this->wpdb->get_results(
             "SELECT membership_tier_id, COUNT(*) as count
@@ -502,7 +502,7 @@ class SocietyPress_Tiers {
             return null;
         }
 
-        $members_table = SocietyPress_Core::table( 'members' );
+        $members_table = SocietyPress::table( 'members' );
         $tier->member_count = (int) $this->wpdb->get_var(
             $this->wpdb->prepare(
                 "SELECT COUNT(*) FROM {$members_table}

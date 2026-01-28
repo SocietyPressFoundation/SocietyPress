@@ -1,0 +1,345 @@
+/**
+ * SocietyPress Member Portal Styles
+ *
+ * Senior-friendly design: large fonts, high contrast, generous touch targets.
+ *
+ * @package SocietyPress
+ * @since 1.0.0
+ */
+
+/* ==========================================================================
+   Portal Container
+   ========================================================================== */
+
+.sp-portal-dashboard,
+.sp-portal-login,
+.sp-portal-error,
+.sp-portal-disabled {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* ==========================================================================
+   Login Form
+   ========================================================================== */
+
+.sp-portal-login {
+    background: white;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 40px;
+}
+
+.sp-portal-login h2 {
+    margin-top: 0;
+    color: #1d2327;
+}
+
+.sp-portal-login form {
+    margin-top: 20px;
+}
+
+.sp-portal-login label {
+    display: block;
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.sp-portal-login input[type="text"],
+.sp-portal-login input[type="password"] {
+    width: 100%;
+    font-size: 18px;
+    padding: 12px 15px;
+    min-height: 60px;
+    border: 2px solid #ddd;
+    border-radius: 4px;
+    margin-bottom: 15px;
+}
+
+.sp-portal-login input[type="submit"] {
+    width: 100%;
+    font-size: 18px;
+    padding: 15px;
+    min-height: 60px;
+    background: #0073aa;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.sp-portal-login input[type="submit"]:hover {
+    background: #005a87;
+}
+
+.sp-login-links {
+    text-align: center;
+    margin-top: 20px;
+}
+
+.sp-login-links a {
+    color: #0073aa;
+    font-size: 16px;
+}
+
+/* ==========================================================================
+   Dashboard Header
+   ========================================================================== */
+
+.sp-portal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+    padding-bottom: 20px;
+    border-bottom: 3px solid #0073aa;
+}
+
+.sp-portal-header h2 {
+    margin: 0;
+    color: #1d2327;
+}
+
+.sp-logout-link {
+    font-size: 16px;
+    padding: 10px 20px;
+    min-height: 44px;
+    background: #f0f0f0;
+    color: #333;
+    text-decoration: none;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+}
+
+.sp-logout-link:hover {
+    background: #e0e0e0;
+}
+
+/* ==========================================================================
+   Dashboard Content
+   ========================================================================== */
+
+.sp-portal-content {
+    display: grid;
+    gap: 30px;
+}
+
+.sp-dashboard-widget {
+    background: white;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 30px;
+}
+
+.sp-dashboard-widget h3 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #f0f0f0;
+    color: #1d2327;
+}
+
+/* ==========================================================================
+   Membership Status
+   ========================================================================== */
+
+.sp-status-table {
+    width: 100%;
+    font-size: 16px;
+}
+
+.sp-status-table th {
+    text-align: left;
+    padding: 12px 15px 12px 0;
+    font-weight: 600;
+    width: 150px;
+}
+
+.sp-status-table td {
+    padding: 12px 0;
+}
+
+.sp-status-badge {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.sp-status-badge.sp-status-active {
+    background: #d6f4d6;
+    color: #006600;
+}
+
+.sp-status-badge.sp-status-expired {
+    background: #ffd6d6;
+    color: #8b0000;
+}
+
+.sp-status-badge.sp-status-pending {
+    background: #fff3cd;
+    color: #856404;
+}
+
+/* ==========================================================================
+   Profile Form
+   ========================================================================== */
+
+.sp-form-section {
+    margin-bottom: 30px;
+}
+
+.sp-form-section h4 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #1d2327;
+}
+
+.sp-form-field {
+    margin-bottom: 20px;
+}
+
+.sp-form-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+}
+
+.sp-form-field label {
+    display: block;
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.sp-form-field input[type="text"],
+.sp-form-field input[type="email"],
+.sp-form-field input[type="tel"] {
+    width: 100%;
+    font-size: 18px;
+    padding: 12px 15px;
+    min-height: 60px;
+    border: 2px solid #ddd;
+    border-radius: 4px;
+}
+
+.sp-form-field input:focus {
+    border-color: #0073aa;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(0, 115, 170, 0.1);
+}
+
+.sp-form-field input[type="checkbox"] {
+    width: 24px;
+    height: 24px;
+    margin-right: 10px;
+    vertical-align: middle;
+}
+
+/* ==========================================================================
+   Form Actions
+   ========================================================================== */
+
+.sp-form-actions {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 2px solid #f0f0f0;
+}
+
+.sp-save-profile-btn {
+    font-size: 18px;
+    padding: 15px 40px;
+    min-height: 60px;
+    background: #0073aa;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.sp-save-profile-btn:hover {
+    background: #005a87;
+}
+
+.sp-save-status {
+    font-size: 16px;
+    color: #666;
+}
+
+.sp-save-status.success {
+    color: #00a32a;
+}
+
+.sp-save-status.error {
+    color: #d63638;
+}
+
+/* ==========================================================================
+   Error/Disabled States
+   ========================================================================== */
+
+.sp-portal-error,
+.sp-portal-disabled {
+    background: #fcf0f1;
+    border: 2px solid #d63638;
+    border-radius: 8px;
+    padding: 30px;
+    text-align: center;
+}
+
+.sp-portal-error p,
+.sp-portal-disabled p {
+    font-size: 18px;
+    margin: 0;
+    color: #1d2327;
+}
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+
+@media screen and (max-width: 782px) {
+    .sp-portal-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 15px;
+    }
+
+    .sp-form-row {
+        grid-template-columns: 1fr;
+    }
+
+    .sp-form-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .sp-save-profile-btn {
+        width: 100%;
+    }
+}
+
+/* ==========================================================================
+   High Contrast Mode
+   ========================================================================== */
+
+@media (prefers-contrast: high) {
+    .sp-dashboard-widget,
+    .sp-portal-login {
+        border-width: 3px;
+    }
+
+    .sp-form-field input {
+        border-width: 3px;
+    }
+}

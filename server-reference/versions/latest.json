@@ -1,0 +1,10 @@
+{
+  "version": "0.01d",
+  "released_at": "2026-01-25 10:00:00",
+  "changelog": "Development build: Plugin rename, auto-updates, theme updater, developer license bypass",
+  "file": "societypress-0.01d.zip",
+  "filesize": 0,
+  "requires": "6.0",
+  "requires_php": "8.0",
+  "tested": "6.4"
+}

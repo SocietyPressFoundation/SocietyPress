@@ -1,0 +1,50 @@
+# SocietyPress Update Server - Apache Configuration
+# Place this file in the root of your update server directory
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    # Security: Block direct access to includes directory
+    RewriteRule ^includes/ - [F,L]
+
+    # Security: Block direct access to versions directory (except through download.php)
+    RewriteRule ^versions/.*\.zip$ - [F,L]
+
+    # Security: Block access to JSON files
+    RewriteRule \.json$ - [F,L]
+
+    # API routing (if using clean URLs without .php extension)
+    # Uncomment these if you want /api/v1/plugins/societypress/update-check instead of update-check.php
+    # RewriteCond %{REQUEST_FILENAME} !-f
+    # RewriteCond %{REQUEST_FILENAME} !-d
+    # RewriteRule ^api/v1/plugins/societypress/update-check$ api/v1/plugins/societypress/update-check.php [L]
+    # RewriteRule ^api/v1/plugins/societypress/info$ api/v1/plugins/societypress/info.php [L]
+    # RewriteRule ^api/v1/plugins/societypress/download$ api/v1/plugins/societypress/download.php [L]
+</IfModule>
+
+# Security headers
+<IfModule mod_headers.c>
+    # HTTPS only
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+    # Prevent clickjacking
+    Header always set X-Frame-Options "DENY"
+
+    # Prevent MIME sniffing
+    Header always set X-Content-Type-Options "nosniff"
+
+    # Enable XSS protection
+    Header always set X-XSS-Protection "1; mode=block"
+</IfModule>
+
+# Disable directory browsing
+Options -Indexes
+
+# PHP settings
+<IfModule mod_php.c>
+    php_value upload_max_filesize 100M
+    php_value post_max_size 100M
+    php_value memory_limit 256M
+    php_value max_execution_time 300
+</IfModule>

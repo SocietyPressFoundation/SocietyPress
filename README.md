@@ -2,7 +2,7 @@
 
 **Commercial WordPress plugin for genealogical societies, historical societies, and heritage organizations.**
 
-A valid license key is required. [Purchase at charlesstricklin.com/societypress](https://charlesstricklin.com/societypress)
+A valid license key is required. [Purchase at stricklindevelopment.com/studiopress/societypress](https://stricklindevelopment.com/studiopress/societypress)
 
 ---
 
@@ -51,9 +51,9 @@ Senior-friendly by default. No subscriptions required to use your own data. Your
 
 ## Installation
 
-1. Purchase a license at [charlesstricklin.com/societypress](https://charlesstricklin.com/societypress)
+1. Purchase a license at [stricklindevelopment.com/studiopress/societypress](https://stricklindevelopment.com/studiopress/societypress)
 2. Download the plugin from your account
-3. Upload to `/wp-content/plugins/societypress-core/`
+3. Upload to `/wp-content/plugins/societypress/`
 4. Activate in WordPress admin
 5. Enter your license key in Settings > SocietyPress
 
@@ -61,7 +61,7 @@ Senior-friendly by default. No subscriptions required to use your own data. Your
 
 ```
 plugin/
-├── societypress-core.php         # Main plugin file
+├── societypress.php              # Main plugin file
 ├── admin/
 │   ├── class-admin.php           # Admin controller
 │   ├── class-import.php          # CSV import handler
@@ -84,9 +84,9 @@ This is **commercial software**. The source code is licensed under GPL v2+, but 
 
 ## Support
 
-Licensed users receive support at [charlesstricklin.com/support](https://charlesstricklin.com/support)
+Licensed users receive support at [stricklindevelopment.com/studiopress/support](https://stricklindevelopment.com/studiopress/support)
 
 ## Author
 
 Charles Stricklin
-[charlesstricklin.com](https://charlesstricklin.com)
+[stricklindevelopment.com/studiopress](https://stricklindevelopment.com/studiopress/)

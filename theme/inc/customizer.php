@@ -393,6 +393,38 @@ function societypress_customize_register( $wp_customize ) {
 	);
 
 	/* ==========================================================================
+	   BREADCRUMBS
+	   ========================================================================== */
+
+	$wp_customize->add_section(
+		'societypress_breadcrumbs',
+		array(
+			'title'       => __( 'Breadcrumbs', 'societypress' ),
+			'description' => __( 'Breadcrumbs show visitors their location in the site (e.g., Home > Events > Workshop). You can enable them here or use the Breadcrumbs widget in Appearance > Widgets.', 'societypress' ),
+			'priority'    => 55,
+		)
+	);
+
+	// Enable Breadcrumbs
+	$wp_customize->add_setting(
+		'societypress_show_breadcrumbs',
+		array(
+			'default'           => false,
+			'sanitize_callback' => 'wp_validate_boolean',
+			'transport'         => 'refresh',
+		)
+	);
+	$wp_customize->add_control(
+		'societypress_show_breadcrumbs',
+		array(
+			'label'       => __( 'Show Breadcrumbs', 'societypress' ),
+			'description' => __( 'Automatically display breadcrumbs below the header. This is ignored if you place the Breadcrumbs widget in the "Below Header" widget area.', 'societypress' ),
+			'section'     => 'societypress_breadcrumbs',
+			'type'        => 'checkbox',
+		)
+	);
+
+	/* ==========================================================================
 	   LAYOUT
 	   ========================================================================== */
 

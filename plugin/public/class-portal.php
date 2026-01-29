@@ -47,13 +47,423 @@ class SocietyPress_Portal {
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_portal_assets' ) );
 		add_action( 'wp_ajax_societypress_portal_save_field', array( $this, 'handle_ajax_save_field' ) );
 		add_action( 'wp_ajax_societypress_portal_update_profile', array( $this, 'handle_profile_update' ) );
+
+		// Add Search to nav menu (priority 50 = before My Account at 99)
+		add_filter( 'wp_nav_menu_items', array( $this, 'add_search_to_menu' ), 50, 2 );
+
+		// Add dynamic menu items for logged-in members
+		// Priority 99 ensures this runs after most other menu filters
+		add_filter( 'wp_nav_menu_items', array( $this, 'add_member_menu_items' ), 99, 2 );
 	}
 
 	/**
-	 * Register shortcode.
+	 * Add Search to nav menu before My Account.
+	 *
+	 * WHY: Keeps utility items (Search, Account) grouped on the right side
+	 *      while main navigation stays together on the left.
+	 *      Runs at priority 50, after nav items but before My Account (priority 99).
+	 *
+	 * @param string   $items Menu HTML.
+	 * @param stdClass $args  Menu arguments.
+	 * @return string Modified menu HTML.
+	 */
+	public function add_search_to_menu( string $items, $args ): string {
+		// Only add to primary/main menu
+		$target_menus = apply_filters( 'societypress_portal_menu_locations', array( 'primary', 'main', 'menu-1', 'primary-menu' ) );
+
+		if ( ! isset( $args->theme_location ) || ! in_array( $args->theme_location, $target_menus, true ) ) {
+			return $items;
+		}
+
+		// Build the search menu item with dropdown
+		$search_item = '<li class="menu-item menu-item-has-children menu-item-sp-search">
+			<a href="#" class="search-toggle" aria-label="' . esc_attr__( 'Toggle search', 'societypress' ) . '">' . esc_html__( 'Search', 'societypress' ) . '</a>
+			<ul class="sub-menu search-dropdown">
+				<li class="menu-item">' . get_search_form( array( 'echo' => false ) ) . '</li>
+			</ul>
+		</li>';
+
+		// Append to end (will appear before My Account since that's added later at priority 99)
+		return $items . $search_item;
+	}
+
+	/**
+	 * Add dynamic menu items for logged-in members.
+	 *
+	 * WHY: Shows member-related links grouped together only when member is logged in.
+	 *      Creates a dropdown containing: My Profile, Directory of Members, Log Out.
+	 *      Keeps menu clean for visitors while providing easy access for members.
+	 *
+	 * @param string   $items Menu HTML.
+	 * @param stdClass $args  Menu arguments.
+	 * @return string Modified menu HTML.
+	 */
+	public function add_member_menu_items( string $items, $args ): string {
+		// Only add to primary/main menu
+		$target_menus = apply_filters( 'societypress_portal_menu_locations', array( 'primary', 'main', 'menu-1', 'primary-menu' ) );
+
+		if ( ! isset( $args->theme_location ) || ! in_array( $args->theme_location, $target_menus, true ) ) {
+			return $items;
+		}
+
+		// Only for logged-in users who are members
+		if ( ! is_user_logged_in() ) {
+			return $items;
+		}
+
+		$user_id = get_current_user_id();
+		$member = societypress()->members->get_by_user_id( $user_id );
+
+		if ( ! $member ) {
+			return $items;
+		}
+
+		// Menu parent text - simple and clear for all audiences
+		$parent_text = apply_filters( 'societypress_member_menu_parent_text', __( 'My Account', 'societypress' ), $member );
+
+		// Build submenu items
+		$submenu_items = '';
+
+		// My Profile - only if portal page exists
+		$portal_url = $this->get_portal_url();
+		if ( $portal_url ) {
+			$profile_text = apply_filters( 'societypress_portal_menu_text', __( 'My Profile', 'societypress' ) );
+			$current_class = $this->is_portal_page() ? ' current-menu-item' : '';
+
+			$submenu_items .= sprintf(
+				'<li class="menu-item menu-item-sp-profile%s"><a href="%s">%s</a></li>',
+				esc_attr( $current_class ),
+				esc_url( $portal_url ),
+				esc_html( $profile_text )
+			);
+		}
+
+		// Log Out - always shown
+		$logout_text = apply_filters( 'societypress_logout_menu_text', __( 'Log Out', 'societypress' ) );
+		$logout_url = wp_logout_url( home_url() );
+
+		$submenu_items .= sprintf(
+			'<li class="menu-item menu-item-sp-logout"><a href="%s">%s</a></li>',
+			esc_url( $logout_url ),
+			esc_html( $logout_text )
+		);
+
+		// Build the parent menu item with submenu
+		// Uses WordPress standard classes for dropdown styling
+		$member_menu = sprintf(
+			'<li class="menu-item menu-item-has-children menu-item-sp-member-area">
+				<a href="#">%s</a>
+				<ul class="sub-menu">%s</ul>
+			</li>',
+			esc_html( $parent_text ),
+			$submenu_items
+		);
+
+		return $items . $member_menu;
+	}
+
+	/**
+	 * Get directory page URL.
+	 *
+	 * WHY: Finds the member directory page for menu linking.
+	 *
+	 * @return string|null Directory URL or null if not found.
+	 */
+	private function get_directory_url(): ?string {
+		// First check settings for configured directory page
+		$directory_page_id = societypress_get_setting( 'directory_page_id', 0 );
+		if ( $directory_page_id ) {
+			$url = get_permalink( $directory_page_id );
+			if ( $url ) {
+				return $url;
+			}
+		}
+
+		// Fall back to finding a page with the shortcode
+		$page_id = $this->wpdb->get_var(
+			"SELECT ID FROM {$this->wpdb->posts}
+			 WHERE post_type = 'page'
+			 AND post_status = 'publish'
+			 AND post_content LIKE '%[societypress_directory%'
+			 LIMIT 1"
+		);
+
+		if ( $page_id ) {
+			return get_permalink( $page_id );
+		}
+
+		return null;
+	}
+
+	/**
+	 * Check if current page is the directory page.
+	 *
+	 * @return bool
+	 */
+	private function is_directory_page(): bool {
+		global $post;
+		return is_a( $post, 'WP_Post' ) && has_shortcode( $post->post_content, 'societypress_directory' );
+	}
+
+	/**
+	 * Check if current page is the portal page.
+	 *
+	 * @return bool
+	 */
+	private function is_portal_page(): bool {
+		global $post;
+		return is_a( $post, 'WP_Post' ) && has_shortcode( $post->post_content, 'societypress_portal' );
+	}
+
+	/**
+	 * Get portal page URL.
+	 *
+	 * @return string|null Portal URL or null if not found.
+	 */
+	private function get_portal_url(): ?string {
+		// First check settings for configured portal page
+		$portal_page_id = societypress_get_setting( 'portal_page_id', 0 );
+		if ( $portal_page_id ) {
+			$url = get_permalink( $portal_page_id );
+			if ( $url ) {
+				return $url;
+			}
+		}
+
+		// Fall back to finding a page with the shortcode
+		$page_id = $this->wpdb->get_var(
+			"SELECT ID FROM {$this->wpdb->posts}
+			 WHERE post_type = 'page'
+			 AND post_status = 'publish'
+			 AND post_content LIKE '%[societypress_portal%'
+			 LIMIT 1"
+		);
+
+		if ( $page_id ) {
+			return get_permalink( $page_id );
+		}
+
+		return null;
+	}
+
+	/**
+	 * Register shortcodes.
 	 */
 	public function register_shortcode(): void {
 		add_shortcode( 'societypress_portal', array( $this, 'render_portal' ) );
+		add_shortcode( 'societypress_contact', array( $this, 'render_contact' ) );
+	}
+
+	/**
+	 * Render contact information shortcode.
+	 *
+	 * WHY: Displays organization contact info from settings.
+	 *      Keeps contact info in one place, used everywhere.
+	 *
+	 * @param array $atts Shortcode attributes.
+	 * @return string HTML output.
+	 */
+	public function render_contact( $atts ): string {
+		$atts = shortcode_atts(
+			array(
+				'show_name'       => 'yes',
+				'show_address'    => 'yes',
+				'show_phone'      => 'yes',
+				'show_email'      => 'yes',
+				'show_hours'      => 'yes',
+				'show_holidays'   => 'yes',
+				'show_directions' => 'yes',
+				'show_parking'    => 'yes',
+				'show_facilities' => 'yes',
+				'show_social'     => 'yes',
+				'show_form'       => 'yes',
+			),
+			$atts,
+			'societypress_contact'
+		);
+
+		$settings = get_option( 'societypress_settings', array() );
+
+		ob_start();
+		?>
+		<div class="sp-contact-info">
+			<?php if ( 'yes' === $atts['show_name'] && ! empty( $settings['organization_name'] ) ) : ?>
+				<h2 class="sp-contact-name"><?php echo esc_html( $settings['organization_name'] ); ?></h2>
+			<?php endif; ?>
+
+			<div class="sp-contact-details">
+				<?php if ( 'yes' === $atts['show_address'] && ! empty( $settings['organization_address'] ) ) : ?>
+					<div class="sp-contact-address">
+						<h3><?php esc_html_e( 'Location', 'societypress' ); ?></h3>
+						<address>
+							<?php echo nl2br( esc_html( $settings['organization_address'] ) ); ?>
+						</address>
+					</div>
+				<?php endif; ?>
+
+				<?php if ( 'yes' === $atts['show_phone'] && ! empty( $settings['organization_phone'] ) ) : ?>
+					<div class="sp-contact-phone">
+						<h3><?php esc_html_e( 'Phone', 'societypress' ); ?></h3>
+						<p>
+							<a href="tel:<?php echo esc_attr( preg_replace( '/[^0-9+]/', '', $settings['organization_phone'] ) ); ?>">
+								<?php echo esc_html( $settings['organization_phone'] ); ?>
+							</a>
+						</p>
+					</div>
+				<?php endif; ?>
+
+				<?php if ( 'yes' === $atts['show_email'] && ! empty( $settings['organization_email'] ) ) : ?>
+					<div class="sp-contact-email">
+						<h3><?php esc_html_e( 'Email', 'societypress' ); ?></h3>
+						<p>
+							<a href="mailto:<?php echo esc_attr( $settings['organization_email'] ); ?>">
+								<?php echo esc_html( $settings['organization_email'] ); ?>
+							</a>
+						</p>
+					</div>
+				<?php endif; ?>
+
+				<?php if ( 'yes' === $atts['show_hours'] && ! empty( $settings['organization_hours'] ) ) : ?>
+					<div class="sp-contact-hours">
+						<h3><?php esc_html_e( 'Hours', 'societypress' ); ?></h3>
+						<p><?php echo nl2br( esc_html( $settings['organization_hours'] ) ); ?></p>
+					</div>
+				<?php endif; ?>
+
+				<?php if ( 'yes' === $atts['show_holidays'] && ! empty( $settings['organization_holidays'] ) ) : ?>
+					<div class="sp-contact-holidays">
+						<h3><?php esc_html_e( 'Holiday Closures', 'societypress' ); ?></h3>
+						<p><?php echo nl2br( esc_html( $settings['organization_holidays'] ) ); ?></p>
+					</div>
+				<?php endif; ?>
+
+				<?php if ( 'yes' === $atts['show_facilities'] && ! empty( $settings['organization_facilities'] ) ) : ?>
+					<div class="sp-contact-facilities">
+						<h3><?php esc_html_e( 'Our Facilities', 'societypress' ); ?></h3>
+						<p><?php echo nl2br( esc_html( $settings['organization_facilities'] ) ); ?></p>
+					</div>
+				<?php endif; ?>
+
+				<?php if ( 'yes' === $atts['show_directions'] && ! empty( $settings['organization_directions'] ) ) : ?>
+					<div class="sp-contact-directions">
+						<h3><?php esc_html_e( 'Directions', 'societypress' ); ?></h3>
+						<p><?php echo nl2br( esc_html( $settings['organization_directions'] ) ); ?></p>
+					</div>
+				<?php endif; ?>
+
+				<?php if ( 'yes' === $atts['show_parking'] && ! empty( $settings['organization_parking'] ) ) : ?>
+					<div class="sp-contact-parking">
+						<h3><?php esc_html_e( 'Parking', 'societypress' ); ?></h3>
+						<p><?php echo nl2br( esc_html( $settings['organization_parking'] ) ); ?></p>
+					</div>
+				<?php endif; ?>
+
+				<?php
+				if ( 'yes' === $atts['show_social'] && ! empty( $settings['organization_social'] ) ) :
+					$social = $settings['organization_social'];
+					$social_labels = array(
+						'facebook'  => 'Facebook',
+						'twitter'   => 'X (Twitter)',
+						'instagram' => 'Instagram',
+						'youtube'   => 'YouTube',
+						'linkedin'  => 'LinkedIn',
+					);
+					$has_social = false;
+					foreach ( $social as $url ) {
+						if ( ! empty( $url ) ) {
+							$has_social = true;
+							break;
+						}
+					}
+					if ( $has_social ) :
+					?>
+					<div class="sp-contact-social">
+						<h3><?php esc_html_e( 'Follow Us', 'societypress' ); ?></h3>
+						<ul class="sp-social-links">
+							<?php foreach ( $social as $platform => $url ) : ?>
+								<?php if ( ! empty( $url ) ) : ?>
+									<li>
+										<a href="<?php echo esc_url( $url ); ?>" target="_blank" rel="noopener noreferrer">
+											<?php echo esc_html( $social_labels[ $platform ] ?? ucfirst( $platform ) ); ?>
+										</a>
+									</li>
+								<?php endif; ?>
+							<?php endforeach; ?>
+						</ul>
+					</div>
+					<?php
+					endif;
+				endif;
+				?>
+			</div>
+
+			<?php if ( 'yes' === $atts['show_form'] ) : ?>
+				<div class="sp-contact-form">
+					<h3><?php esc_html_e( 'Send Us a Message', 'societypress' ); ?></h3>
+					<?php
+					// Check for popular contact form plugins and display their shortcode
+					if ( shortcode_exists( 'wpforms' ) ) {
+						// WPForms - user needs to specify form ID in the shortcode or we show a message
+						echo '<p class="sp-contact-form-notice">' . esc_html__( 'Add a WPForms contact form here by editing this page.', 'societypress' ) . '</p>';
+					} elseif ( shortcode_exists( 'contact-form-7' ) ) {
+						echo '<p class="sp-contact-form-notice">' . esc_html__( 'Add a Contact Form 7 form here by editing this page.', 'societypress' ) . '</p>';
+					} else {
+						// Simple built-in contact form
+						echo $this->render_simple_contact_form( $settings );
+					}
+					?>
+				</div>
+			<?php endif; ?>
+		</div>
+		<?php
+		return ob_get_clean();
+	}
+
+	/**
+	 * Render simple contact form.
+	 *
+	 * WHY: Provides a basic contact form when no form plugin is installed.
+	 *
+	 * @param array $settings Plugin settings.
+	 * @return string HTML output.
+	 */
+	private function render_simple_contact_form( array $settings ): string {
+		$to_email = $settings['organization_email'] ?? get_option( 'admin_email' );
+
+		ob_start();
+		?>
+		<form class="sp-simple-contact-form" method="post" action="">
+			<?php wp_nonce_field( 'sp_contact_form', 'sp_contact_nonce' ); ?>
+			<input type="hidden" name="sp_contact_action" value="send">
+
+			<p>
+				<label for="sp-contact-name"><?php esc_html_e( 'Your Name', 'societypress' ); ?> <span class="required">*</span></label>
+				<input type="text" id="sp-contact-name" name="sp_contact_name" required>
+			</p>
+
+			<p>
+				<label for="sp-contact-email"><?php esc_html_e( 'Your Email', 'societypress' ); ?> <span class="required">*</span></label>
+				<input type="email" id="sp-contact-email" name="sp_contact_email" required>
+			</p>
+
+			<p>
+				<label for="sp-contact-subject"><?php esc_html_e( 'Subject', 'societypress' ); ?></label>
+				<input type="text" id="sp-contact-subject" name="sp_contact_subject">
+			</p>
+
+			<p>
+				<label for="sp-contact-message"><?php esc_html_e( 'Message', 'societypress' ); ?> <span class="required">*</span></label>
+				<textarea id="sp-contact-message" name="sp_contact_message" rows="6" required></textarea>
+			</p>
+
+			<p>
+				<button type="submit" class="sp-contact-submit">
+					<?php esc_html_e( 'Send Message', 'societypress' ); ?>
+				</button>
+			</p>
+		</form>
+		<?php
+		return ob_get_clean();
 	}
 
 	/**
@@ -292,7 +702,7 @@ class SocietyPress_Portal {
 								>
 							</div>
 							<div class="sp-form-field">
-								<label for="sp-phone-cell"><?php esc_html_e( 'Cell Phone', 'societypress' ); ?></label>
+								<label for="sp-phone-cell"><?php esc_html_e( 'Phone', 'societypress' ); ?></label>
 								<input
 									type="tel"
 									id="sp-phone-cell"

@@ -25,6 +25,7 @@
             this.initPhoneFormatting();
             this.initEmailValidation();
             this.initExpirationCalculator();
+            this.initPhotoUploader();
         },
 
         /**
@@ -452,6 +453,84 @@
             // Disable submit button to prevent double submission
             $submit.prop('disabled', true);
             $submit.val(societypressAdmin.strings.saving || 'Saving...');
+        },
+
+        /**
+         * Initialize member photo uploader.
+         *
+         * Uses WordPress media uploader for selecting/uploading member photos.
+         * Enforces 1MB max file size. Photos display as circles via CSS.
+         */
+        initPhotoUploader: function() {
+            var $uploadBtn = $('#sp-member-photo-upload');
+            var $removeBtn = $('#sp-member-photo-remove');
+            var $preview = $('#sp-member-photo-preview');
+            var $previewImg = $('#sp-member-photo-img');
+            var $photoIdField = $('#photo_id');
+
+            // Exit if upload button doesn't exist (not on member edit page)
+            if (!$uploadBtn.length) {
+                return;
+            }
+
+            var mediaFrame;
+
+            // Handle upload button click
+            $uploadBtn.on('click', function(e) {
+                e.preventDefault();
+
+                // If the media frame already exists, reopen it
+                if (mediaFrame) {
+                    mediaFrame.open();
+                    return;
+                }
+
+                // Create the media frame
+                mediaFrame = wp.media({
+                    title: societypressAdmin.strings.photoUploadTitle || 'Select Member Photo',
+                    button: {
+                        text: societypressAdmin.strings.photoUploadButton || 'Use this photo'
+                    },
+                    library: {
+                        type: 'image'
+                    },
+                    multiple: false
+                });
+
+                // When an image is selected, run a callback
+                mediaFrame.on('select', function() {
+                    var attachment = mediaFrame.state().get('selection').first().toJSON();
+
+                    // Check file size (1MB = 1048576 bytes)
+                    if (attachment.filesizeInBytes && attachment.filesizeInBytes > 1048576) {
+                        alert(societypressAdmin.strings.photoTooLarge || 'Photo must be less than 1MB.');
+                        return;
+                    }
+
+                    // Get the thumbnail URL if available, otherwise use full
+                    var imageUrl = attachment.sizes && attachment.sizes.thumbnail
+                        ? attachment.sizes.thumbnail.url
+                        : attachment.url;
+
+                    // Update the preview
+                    $previewImg.attr('src', imageUrl);
+                    $preview.show();
+                    $photoIdField.val(attachment.id);
+                    $uploadBtn.text(societypressAdmin.strings.photoChangeButton || 'Change Photo');
+                });
+
+                // Open the media frame
+                mediaFrame.open();
+            });
+
+            // Handle remove button click
+            $removeBtn.on('click', function(e) {
+                e.preventDefault();
+                $preview.hide();
+                $previewImg.attr('src', '');
+                $photoIdField.val('');
+                $uploadBtn.text(societypressAdmin.strings.photoUploadButtonText || 'Upload Photo');
+            });
         }
     };
 

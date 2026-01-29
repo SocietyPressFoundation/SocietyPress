@@ -44,15 +44,23 @@ class SocietyPress_Members_List_Table extends WP_List_Table {
      * @return array Column definitions.
      */
     public function get_columns(): array {
-        return array(
+        $columns = array(
             'cb'          => '<input type="checkbox">',
-            'name'        => __( 'Name', 'societypress' ),
-            'email'       => __( 'Email', 'societypress' ),
-            'tier'        => __( 'Tier', 'societypress' ),
-            'status'      => __( 'Status', 'societypress' ),
-            'join_date'   => __( 'Joined', 'societypress' ),
-            'expiration'  => __( 'Expires', 'societypress' ),
         );
+
+        // Only include photo column if photos are enabled
+        if ( SocietyPress_Admin::get_setting( 'member_photos_enabled', true ) ) {
+            $columns['photo'] = '';
+        }
+
+        $columns['name']       = __( 'Name', 'societypress' );
+        $columns['email']      = __( 'Email', 'societypress' );
+        $columns['tier']       = __( 'Tier', 'societypress' );
+        $columns['status']     = __( 'Status', 'societypress' );
+        $columns['join_date']  = __( 'Joined', 'societypress' );
+        $columns['expiration'] = __( 'Expires', 'societypress' );
+
+        return $columns;
     }
 
     /**
@@ -202,6 +210,35 @@ class SocietyPress_Members_List_Table extends WP_List_Table {
         );
 
         return $name . $this->row_actions( $actions );
+    }
+
+    /**
+     * Render photo column.
+     *
+     * Shows member photo as a small circle, or a placeholder with initials.
+     *
+     * @param object $item Current member.
+     * @return string Photo HTML.
+     */
+    public function column_photo( $item ): string {
+        if ( ! empty( $item->photo_id ) ) {
+            $photo_url = wp_get_attachment_image_url( $item->photo_id, 'thumbnail' );
+            if ( $photo_url ) {
+                return sprintf(
+                    '<img src="%s" alt="%s" class="sp-member-photo-small">',
+                    esc_url( $photo_url ),
+                    esc_attr( $item->first_name . ' ' . $item->last_name )
+                );
+            }
+        }
+
+        // Show placeholder with initials
+        $initials = mb_strtoupper( mb_substr( $item->first_name, 0, 1 ) . mb_substr( $item->last_name, 0, 1 ) );
+        return sprintf(
+            '<span class="sp-member-photo-placeholder" title="%s">%s</span>',
+            esc_attr( $item->first_name . ' ' . $item->last_name ),
+            esc_html( $initials )
+        );
     }
 
     /**

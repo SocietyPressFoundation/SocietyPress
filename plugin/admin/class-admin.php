@@ -35,6 +35,13 @@ class SocietyPress_Admin {
 	private ?SocietyPress_Import $import = null;
 
 	/**
+	 * Event import handler instance.
+	 *
+	 * @var SocietyPress_Import_Events|null
+	 */
+	private ?SocietyPress_Import_Events $import_events = null;
+
+	/**
 	 * Dashboard widgets instance.
 	 *
 	 * @var SocietyPress_Dashboard_Widgets|null
@@ -103,6 +110,7 @@ class SocietyPress_Admin {
 	 */
 	public function __construct() {
 		$this->import = new SocietyPress_Import();
+		$this->import_events = new SocietyPress_Import_Events();
 		$this->widgets = new SocietyPress_Dashboard_Widgets();
 		$this->init_hooks();
 	}
@@ -151,6 +159,14 @@ class SocietyPress_Admin {
 		);
 
 		add_settings_field(
+			'member_photos_enabled',
+			__( 'Member Photos', 'societypress' ),
+			array( $this, 'render_member_photos_enabled_field' ),
+			'societypress-settings',
+			'societypress_display_section'
+		);
+
+		add_settings_field(
 			'dashboard_widgets_enabled',
 			__( 'Dashboard Widgets', 'societypress' ),
 			array( $this, 'render_dashboard_widgets_enabled_field' ),
@@ -190,6 +206,110 @@ class SocietyPress_Admin {
 			'societypress_organization_section'
 		);
 
+		add_settings_field(
+			'organization_address',
+			__( 'Address', 'societypress' ),
+			array( $this, 'render_organization_address_field' ),
+			'societypress-settings',
+			'societypress_organization_section'
+		);
+
+		add_settings_field(
+			'organization_phone',
+			__( 'Phone', 'societypress' ),
+			array( $this, 'render_organization_phone_field' ),
+			'societypress-settings',
+			'societypress_organization_section'
+		);
+
+		add_settings_field(
+			'organization_email',
+			__( 'Email', 'societypress' ),
+			array( $this, 'render_organization_email_field' ),
+			'societypress-settings',
+			'societypress_organization_section'
+		);
+
+		add_settings_field(
+			'organization_hours',
+			__( 'Hours', 'societypress' ),
+			array( $this, 'render_organization_hours_field' ),
+			'societypress-settings',
+			'societypress_organization_section'
+		);
+
+		add_settings_field(
+			'organization_social',
+			__( 'Social Media', 'societypress' ),
+			array( $this, 'render_organization_social_field' ),
+			'societypress-settings',
+			'societypress_organization_section'
+		);
+
+		add_settings_field(
+			'organization_holidays',
+			__( 'Holiday Closures', 'societypress' ),
+			array( $this, 'render_organization_holidays_field' ),
+			'societypress-settings',
+			'societypress_organization_section'
+		);
+
+		add_settings_field(
+			'organization_directions',
+			__( 'Directions', 'societypress' ),
+			array( $this, 'render_organization_directions_field' ),
+			'societypress-settings',
+			'societypress_organization_section'
+		);
+
+		add_settings_field(
+			'organization_parking',
+			__( 'Parking', 'societypress' ),
+			array( $this, 'render_organization_parking_field' ),
+			'societypress-settings',
+			'societypress_organization_section'
+		);
+
+		add_settings_field(
+			'organization_facilities',
+			__( 'Facilities', 'societypress' ),
+			array( $this, 'render_organization_facilities_field' ),
+			'societypress-settings',
+			'societypress_organization_section'
+		);
+
+		// Breadcrumb Settings Section
+		add_settings_section(
+			'societypress_breadcrumbs_section',
+			__( 'Breadcrumbs', 'societypress' ),
+			array( $this, 'render_breadcrumbs_section' ),
+			'societypress-settings'
+		);
+
+		add_settings_field(
+			'breadcrumb_separator',
+			__( 'Separator', 'societypress' ),
+			array( $this, 'render_breadcrumb_separator_field' ),
+			'societypress-settings',
+			'societypress_breadcrumbs_section'
+		);
+
+		add_settings_field(
+			'breadcrumb_home_icon',
+			__( 'Home Icon', 'societypress' ),
+			array( $this, 'render_breadcrumb_home_icon_field' ),
+			'societypress-settings',
+			'societypress_breadcrumbs_section'
+		);
+
+		add_settings_field(
+			'breadcrumb_home_text',
+			__( 'Home Text', 'societypress' ),
+			array( $this, 'render_breadcrumb_home_text_field' ),
+			'societypress-settings',
+			'societypress_breadcrumbs_section'
+		);
+
 		// Membership Settings Section
 		add_settings_section(
 			'societypress_membership_section',
@@ -204,6 +324,54 @@ class SocietyPress_Admin {
 			array( $this, 'render_expiration_model_field' ),
 			'societypress-settings',
 			'societypress_membership_section'
+		);
+
+		// Payment Settings Section
+		add_settings_section(
+			'societypress_payment_section',
+			__( 'Payment Settings', 'societypress' ),
+			array( $this, 'render_payment_section' ),
+			'societypress-settings'
+		);
+
+		add_settings_field(
+			'payment_mode',
+			__( 'Payment Mode', 'societypress' ),
+			array( $this, 'render_payment_mode_field' ),
+			'societypress-settings',
+			'societypress_payment_section'
+		);
+
+		add_settings_field(
+			'paypal_mode',
+			__( 'PayPal Environment', 'societypress' ),
+			array( $this, 'render_paypal_mode_field' ),
+			'societypress-settings',
+			'societypress_payment_section'
+		);
+
+		add_settings_field(
+			'paypal_client_id',
+			__( 'PayPal Client ID', 'societypress' ),
+			array( $this, 'render_paypal_client_id_field' ),
+			'societypress-settings',
+			'societypress_payment_section'
+		);
+
+		add_settings_field(
+			'paypal_secret',
+			__( 'PayPal Secret', 'societypress' ),
+			array( $this, 'render_paypal_secret_field' ),
+			'societypress-settings',
+			'societypress_payment_section'
+		);
+
+		add_settings_field(
+			'payment_methods',
+			__( 'Accepted Payment Methods', 'societypress' ),
+			array( $this, 'render_payment_methods_field' ),
+			'societypress-settings',
+			'societypress_payment_section'
 		);
 
 		// Email Settings Section
@@ -382,20 +550,44 @@ class SocietyPress_Admin {
 			'societypress-settings'
 		);
 
-		// License Section
+		// Support Section (shareware model - no license enforcement)
 		add_settings_section(
 			'societypress_license_section',
-			__( 'License', 'societypress' ),
+			__( 'Support', 'societypress' ),
 			array( $this, 'render_license_section' ),
 			'societypress-settings'
 		);
 
 		add_settings_field(
 			'license_key',
-			__( 'License Key', 'societypress' ),
+			__( 'Support This Project', 'societypress' ),
 			array( $this, 'render_license_field' ),
 			'societypress-settings',
 			'societypress_license_section'
+		);
+
+		// Community Directory Section
+		add_settings_section(
+			'societypress_community_section',
+			__( 'Community Directory', 'societypress' ),
+			array( $this, 'render_community_section' ),
+			'societypress-settings'
+		);
+
+		add_settings_field(
+			'directory_listing_enabled',
+			__( 'List My Society', 'societypress' ),
+			array( $this, 'render_directory_listing_enabled_field' ),
+			'societypress-settings',
+			'societypress_community_section'
+		);
+
+		add_settings_field(
+			'directory_listing_info',
+			__( 'Society Information', 'societypress' ),
+			array( $this, 'render_directory_listing_info_field' ),
+			'societypress-settings',
+			'societypress_community_section'
 		);
 	}
 
@@ -408,6 +600,7 @@ class SocietyPress_Admin {
 		return array(
 			// Display
 			'members_per_page'            => 20,
+			'member_photos_enabled'       => true,
 			'dashboard_widgets_enabled'   => true,
 			'dashboard_expiring_days'     => 30,
 			'dashboard_recent_days'       => 30,
@@ -437,6 +630,13 @@ class SocietyPress_Admin {
 			// Membership
 			'expiration_model'            => 'calendar_year', // 'calendar_year' or 'anniversary'
 
+			// Payments
+			'payment_mode'                => 'disabled', // 'disabled', 'required', 'optional'
+			'paypal_mode'                 => 'sandbox',  // 'sandbox' or 'live'
+			'paypal_client_id'            => '',
+			'paypal_secret'               => '',
+			'payment_methods'             => array( 'paypal', 'venmo', 'card' ), // Enabled by default
+
 			// Directory
 			'directory_fields'            => array( 'name', 'location', 'tier', 'surnames' ),
 			'directory_default_view'      => 'grid',
@@ -457,6 +657,17 @@ class SocietyPress_Admin {
 
 			// Genealogy
 			'genealogy_services'          => self::DEFAULT_GENEALOGY_SERVICES,
+
+			// Community Directory (public listing on societypress.com)
+			'directory_listing_enabled'   => false,
+			'directory_listing'           => array(
+				'society_name'     => '',
+				'website_url'      => '',
+				'location'         => '', // City, State/Country
+				'description'      => '', // Brief tagline
+				'established'      => '', // Year founded
+				'logo_url'         => '',
+			),
 		);
 	}
 
@@ -474,10 +685,44 @@ class SocietyPress_Admin {
 			? $input['expiration_model']
 			: 'calendar_year';
 
+		// Payment settings
+		$sanitized['payment_mode'] = isset( $input['payment_mode'] ) && in_array( $input['payment_mode'], array( 'disabled', 'required', 'optional' ), true )
+			? $input['payment_mode']
+			: 'disabled';
+
+		$sanitized['paypal_mode'] = isset( $input['paypal_mode'] ) && in_array( $input['paypal_mode'], array( 'sandbox', 'live' ), true )
+			? $input['paypal_mode']
+			: 'sandbox';
+
+		$sanitized['paypal_client_id'] = isset( $input['paypal_client_id'] )
+			? sanitize_text_field( $input['paypal_client_id'] )
+			: '';
+
+		$sanitized['paypal_secret'] = isset( $input['paypal_secret'] )
+			? sanitize_text_field( $input['paypal_secret'] )
+			: '';
+
+		// Payment methods - validate against allowed methods
+		$allowed_methods = array( 'paypal', 'venmo', 'card', 'paylater' );
+		$sanitized['payment_methods'] = array();
+		if ( isset( $input['payment_methods'] ) && is_array( $input['payment_methods'] ) ) {
+			foreach ( $input['payment_methods'] as $method ) {
+				if ( in_array( $method, $allowed_methods, true ) ) {
+					$sanitized['payment_methods'][] = $method;
+				}
+			}
+		}
+		// PayPal is always required if any payment method is selected
+		if ( ! empty( $sanitized['payment_methods'] ) && ! in_array( 'paypal', $sanitized['payment_methods'], true ) ) {
+			array_unshift( $sanitized['payment_methods'], 'paypal' );
+		}
+
 		// Display settings
 		$sanitized['members_per_page'] = isset( $input['members_per_page'] )
 			? max( 1, absint( $input['members_per_page'] ) )
 			: 20;
+
+		$sanitized['member_photos_enabled'] = ! empty( $input['member_photos_enabled'] );
 
 		$sanitized['dashboard_widgets_enabled'] = ! empty( $input['dashboard_widgets_enabled'] );
 
@@ -493,6 +738,62 @@ class SocietyPress_Admin {
 		$sanitized['organization_name'] = isset( $input['organization_name'] )
 			? sanitize_text_field( $input['organization_name'] )
 			: '';
+
+		$sanitized['organization_address'] = isset( $input['organization_address'] )
+			? sanitize_textarea_field( $input['organization_address'] )
+			: '';
+
+		$sanitized['organization_phone'] = isset( $input['organization_phone'] )
+			? sanitize_text_field( $input['organization_phone'] )
+			: '';
+
+		$sanitized['organization_email'] = isset( $input['organization_email'] )
+			? sanitize_email( $input['organization_email'] )
+			: '';
+
+		$sanitized['organization_hours'] = isset( $input['organization_hours'] )
+			? sanitize_textarea_field( $input['organization_hours'] )
+			: '';
+
+		// Social media links - sanitize each URL
+		$sanitized['organization_social'] = array();
+		if ( isset( $input['organization_social'] ) && is_array( $input['organization_social'] ) ) {
+			$valid_platforms = array( 'facebook', 'twitter', 'instagram', 'youtube', 'linkedin' );
+			foreach ( $valid_platforms as $platform ) {
+				if ( ! empty( $input['organization_social'][ $platform ] ) ) {
+					$sanitized['organization_social'][ $platform ] = esc_url_raw( $input['organization_social'][ $platform ] );
+				}
+			}
+		}
+
+		// Additional organization info
+		$sanitized['organization_holidays'] = isset( $input['organization_holidays'] )
+			? sanitize_textarea_field( $input['organization_holidays'] )
+			: '';
+
+		$sanitized['organization_directions'] = isset( $input['organization_directions'] )
+			? sanitize_textarea_field( $input['organization_directions'] )
+			: '';
+
+		$sanitized['organization_parking'] = isset( $input['organization_parking'] )
+			? sanitize_textarea_field( $input['organization_parking'] )
+			: '';
+
+		$sanitized['organization_facilities'] = isset( $input['organization_facilities'] )
+			? sanitize_textarea_field( $input['organization_facilities'] )
+			: '';
+
+		// Breadcrumb settings
+		$valid_separators = array( '>', '/', '›', '»', '|', '-' );
+		$sanitized['breadcrumb_separator'] = isset( $input['breadcrumb_separator'] ) && in_array( $input['breadcrumb_separator'], $valid_separators, true )
+			? $input['breadcrumb_separator']
+			: '>';
+
+		$sanitized['breadcrumb_home_icon'] = ! empty( $input['breadcrumb_home_icon'] );
+
+		$sanitized['breadcrumb_home_text'] = isset( $input['breadcrumb_home_text'] )
+			? sanitize_text_field( $input['breadcrumb_home_text'] )
+			: 'Home';
 
 		// Email settings
 		$sanitized['admin_email'] = isset( $input['admin_email'] )
@@ -578,7 +879,29 @@ class SocietyPress_Admin {
 			}
 		}
 
-		// System settings
+		// Community Directory listing
+		$sanitized['directory_listing_enabled'] = ! empty( $input['directory_listing_enabled'] );
+		$sanitized['directory_listing'] = array(
+			'society_name' => isset( $input['directory_listing']['society_name'] )
+				? sanitize_text_field( $input['directory_listing']['society_name'] )
+				: '',
+			'website_url' => isset( $input['directory_listing']['website_url'] )
+				? esc_url_raw( $input['directory_listing']['website_url'] )
+				: '',
+			'location' => isset( $input['directory_listing']['location'] )
+				? sanitize_text_field( $input['directory_listing']['location'] )
+				: '',
+			'description' => isset( $input['directory_listing']['description'] )
+				? sanitize_text_field( $input['directory_listing']['description'] )
+				: '',
+			'established' => isset( $input['directory_listing']['established'] )
+				? sanitize_text_field( $input['directory_listing']['established'] )
+				: '',
+			'logo_url' => isset( $input['directory_listing']['logo_url'] )
+				? esc_url_raw( $input['directory_listing']['logo_url'] )
+				: '',
+		);
+
 		return $sanitized;
 	}
 
@@ -632,7 +955,8 @@ class SocietyPress_Admin {
 	 * Render Organization section description.
 	 */
 	public function render_organization_section(): void {
-		echo '<p>' . esc_html__( 'Basic information about your organization.', 'societypress' ) . '</p>';
+		echo '<p>' . esc_html__( 'Your organization\'s contact information. Used on the Contact page, in emails, and throughout the site.', 'societypress' ) . '</p>';
+		echo '<p><code>[societypress_contact]</code> ' . esc_html__( 'displays this information on any page.', 'societypress' ) . '</p>';
 	}
 
 	/**
@@ -687,6 +1011,23 @@ class SocietyPress_Admin {
 		       value="<?php echo esc_attr( $value ); ?>" min="1" max="9999" class="small-text">
 		<p class="description">
 			<?php esc_html_e( 'Number of members to show per page in the admin list.', 'societypress' ); ?>
+		</p>
+		<?php
+	}
+
+	/**
+	 * Render member_photos_enabled field.
+	 */
+	public function render_member_photos_enabled_field(): void {
+		$value = self::get_setting( 'member_photos_enabled', true );
+		?>
+		<label>
+			<input type="checkbox" name="societypress_settings[member_photos_enabled]" value="1"
+				<?php checked( $value, true ); ?>>
+			<?php esc_html_e( 'Allow uploading photos for member profiles', 'societypress' ); ?>
+		</label>
+		<p class="description">
+			<?php esc_html_e( 'Disable to save storage space. Photos are stored in the WordPress Media Library.', 'societypress' ); ?>
 		</p>
 		<?php
 	}
@@ -748,6 +1089,244 @@ class SocietyPress_Admin {
 	}
 
 	/**
+	 * Render organization_address field.
+	 *
+	 * WHY: Stores physical address for Contact page, footer, emails, etc.
+	 */
+	public function render_organization_address_field(): void {
+		$value = self::get_setting( 'organization_address', '' );
+		?>
+		<textarea name="societypress_settings[organization_address]"
+		          rows="3" class="large-text"><?php echo esc_textarea( $value ); ?></textarea>
+		<p class="description">
+			<?php esc_html_e( 'Physical address (library, office, or meeting location). Each line will be displayed separately.', 'societypress' ); ?>
+		</p>
+		<?php
+	}
+
+	/**
+	 * Render organization_phone field.
+	 */
+	public function render_organization_phone_field(): void {
+		$value = self::get_setting( 'organization_phone', '' );
+		?>
+		<input type="tel" name="societypress_settings[organization_phone]"
+		       value="<?php echo esc_attr( $value ); ?>" class="regular-text"
+		       placeholder="(210) 555-1234">
+		<p class="description">
+			<?php esc_html_e( 'Main contact phone number.', 'societypress' ); ?>
+		</p>
+		<?php
+	}
+
+	/**
+	 * Render organization_email field.
+	 */
+	public function render_organization_email_field(): void {
+		$value = self::get_setting( 'organization_email', get_option( 'admin_email' ) );
+		?>
+		<input type="email" name="societypress_settings[organization_email]"
+		       value="<?php echo esc_attr( $value ); ?>" class="regular-text"
+		       placeholder="info@example.org">
+		<p class="description">
+			<?php esc_html_e( 'Public contact email address.', 'societypress' ); ?>
+		</p>
+		<?php
+	}
+
+	/**
+	 * Render organization_hours field.
+	 *
+	 * WHY: Stores hours of operation for library/office in a flexible text format.
+	 */
+	public function render_organization_hours_field(): void {
+		$value = self::get_setting( 'organization_hours', '' );
+		?>
+		<textarea name="societypress_settings[organization_hours]"
+		          rows="4" class="large-text"
+		          placeholder="Monday - Friday: 10am - 4pm&#10;Saturday: 10am - 2pm&#10;Sunday: Closed"><?php echo esc_textarea( $value ); ?></textarea>
+		<p class="description">
+			<?php esc_html_e( 'Hours of operation. Enter each day or time range on a new line.', 'societypress' ); ?>
+		</p>
+		<?php
+	}
+
+	/**
+	 * Render organization_social field.
+	 *
+	 * WHY: Stores social media links in a structured format for easy display.
+	 */
+	public function render_organization_social_field(): void {
+		$social = self::get_setting( 'organization_social', array() );
+		$platforms = array(
+			'facebook'  => __( 'Facebook', 'societypress' ),
+			'twitter'   => __( 'X (Twitter)', 'societypress' ),
+			'instagram' => __( 'Instagram', 'societypress' ),
+			'youtube'   => __( 'YouTube', 'societypress' ),
+			'linkedin'  => __( 'LinkedIn', 'societypress' ),
+		);
+		?>
+		<div class="sp-social-fields">
+			<?php foreach ( $platforms as $key => $label ) : ?>
+				<p>
+					<label>
+						<strong><?php echo esc_html( $label ); ?>:</strong><br>
+						<input type="url" name="societypress_settings[organization_social][<?php echo esc_attr( $key ); ?>]"
+						       value="<?php echo esc_url( $social[ $key ] ?? '' ); ?>" class="regular-text"
+						       placeholder="https://">
+					</label>
+				</p>
+			<?php endforeach; ?>
+		</div>
+		<p class="description">
+			<?php esc_html_e( 'Enter the full URL for each social media profile.', 'societypress' ); ?>
+		</p>
+		<?php
+	}
+
+	/**
+	 * Render organization_holidays field.
+	 *
+	 * WHY: Lists days the organization is closed so visitors know when not to come.
+	 *      Displayed on Contact page and can be shown in footer or elsewhere.
+	 */
+	public function render_organization_holidays_field(): void {
+		$value = self::get_setting( 'organization_holidays', '' );
+		?>
+		<textarea name="societypress_settings[organization_holidays]"
+		          rows="3" class="large-text"
+		          placeholder="New Year's Day, Easter Sunday, Memorial Day, Independence Day, Labor Day, Thanksgiving, Christmas Eve and Day"><?php echo esc_textarea( $value ); ?></textarea>
+		<p class="description">
+			<?php esc_html_e( 'Days your organization is closed. Comma-separated or one per line.', 'societypress' ); ?>
+		</p>
+		<?php
+	}
+
+	/**
+	 * Render organization_directions field.
+	 *
+	 * WHY: Driving directions help visitors find the location, especially
+	 *      for societies in less obvious locations or business parks.
+	 */
+	public function render_organization_directions_field(): void {
+		$value = self::get_setting( 'organization_directions', '' );
+		?>
+		<textarea name="societypress_settings[organization_directions]"
+		          rows="3" class="large-text"
+		          placeholder="From I-410, exit onto Blanco Rd north. Go 3/4 mile and turn left onto Melissa Dr."><?php echo esc_textarea( $value ); ?></textarea>
+		<p class="description">
+			<?php esc_html_e( 'Driving directions to your location.', 'societypress' ); ?>
+		</p>
+		<?php
+	}
+
+	/**
+	 * Render organization_parking field.
+	 *
+	 * WHY: Parking info reduces visitor confusion, especially for societies
+	 *      in shared buildings or with limited/specific parking areas.
+	 */
+	public function render_organization_parking_field(): void {
+		$value = self::get_setting( 'organization_parking', '' );
+		?>
+		<textarea name="societypress_settings[organization_parking]"
+		          rows="2" class="large-text"
+		          placeholder="Free parking available in front lot. Use the first driveway."><?php echo esc_textarea( $value ); ?></textarea>
+		<p class="description">
+			<?php esc_html_e( 'Parking availability and instructions.', 'societypress' ); ?>
+		</p>
+		<?php
+	}
+
+	/**
+	 * Render organization_facilities field.
+	 *
+	 * WHY: Many societies have multiple buildings or rooms (library vs meeting room).
+	 *      This field explains what each space is for, reducing visitor confusion.
+	 */
+	public function render_organization_facilities_field(): void {
+		$value = self::get_setting( 'organization_facilities', '' );
+		?>
+		<textarea name="societypress_settings[organization_facilities]"
+		          rows="4" class="large-text"
+		          placeholder="Our campus has two buildings: The Dwyer Center (first building) hosts classes and meetings. The Library (second building) is open during regular hours for research."><?php echo esc_textarea( $value ); ?></textarea>
+		<p class="description">
+			<?php esc_html_e( 'Describe your facilities, buildings, or spaces. Helpful if you have multiple areas visitors might confuse.', 'societypress' ); ?>
+		</p>
+		<?php
+	}
+
+	/**
+	 * Render breadcrumbs section description.
+	 *
+	 * WHY: Explains what breadcrumbs are and how they help navigation.
+	 */
+	public function render_breadcrumbs_section(): void {
+		echo '<p>' . esc_html__( 'Breadcrumbs show visitors where they are in the site hierarchy (e.g., Home > Events > Workshop Name). Enable them in Appearance > Customize or use the Breadcrumbs widget.', 'societypress' ) . '</p>';
+	}
+
+	/**
+	 * Render breadcrumb_separator field.
+	 *
+	 * WHY: Lets organizations choose their preferred visual separator style.
+	 */
+	public function render_breadcrumb_separator_field(): void {
+		$value = self::get_setting( 'breadcrumb_separator', '>' );
+		$options = array(
+			'>'  => '> (greater than)',
+			'/'  => '/ (slash)',
+			'›'  => '› (single arrow)',
+			'»'  => '» (double arrow)',
+			'|'  => '| (pipe)',
+			'-'  => '- (dash)',
+		);
+		?>
+		<select name="societypress_settings[breadcrumb_separator]">
+			<?php foreach ( $options as $key => $label ) : ?>
+				<option value="<?php echo esc_attr( $key ); ?>" <?php selected( $value, $key ); ?>>
+					<?php echo esc_html( $label ); ?>
+				</option>
+			<?php endforeach; ?>
+		</select>
+		<p class="description">
+			<?php esc_html_e( 'Character displayed between breadcrumb items.', 'societypress' ); ?>
+		</p>
+		<?php
+	}
+
+	/**
+	 * Render breadcrumb_home_icon field.
+	 *
+	 * WHY: Some sites prefer a home icon instead of or alongside the word "Home".
+	 */
+	public function render_breadcrumb_home_icon_field(): void {
+		$value = self::get_setting( 'breadcrumb_home_icon', false );
+		?>
+		<label>
+			<input type="checkbox" name="societypress_settings[breadcrumb_home_icon]" value="1" <?php checked( $value ); ?>>
+			<?php esc_html_e( 'Show home icon (🏠) before home link', 'societypress' ); ?>
+		</label>
+		<?php
+	}
+
+	/**
+	 * Render breadcrumb_home_text field.
+	 *
+	 * WHY: Lets organizations customize the home link text (e.g., "Home", "Start", or their org name).
+	 */
+	public function render_breadcrumb_home_text_field(): void {
+		$value = self::get_setting( 'breadcrumb_home_text', 'Home' );
+		?>
+		<input type="text" name="societypress_settings[breadcrumb_home_text]"
+		       value="<?php echo esc_attr( $value ); ?>" class="regular-text"
+		       placeholder="Home">
+		<p class="description">
+			<?php esc_html_e( 'Text for the home link. Leave empty to use "Home".', 'societypress' ); ?>
+		</p>
+		<?php
+	}
+
+	/**
 	 * Render expiration_model field.
 	 */
 	public function render_expiration_model_field(): void {
@@ -763,6 +1342,144 @@ class SocietyPress_Admin {
 		</select>
 		<p class="description">
 			<?php esc_html_e( 'Determines how membership expiration dates are calculated. Calendar Year: all memberships expire December 31 of the year they joined. Anniversary: expiration is based on join date plus tier duration.', 'societypress' ); ?>
+		</p>
+		<?php
+	}
+
+	/**
+	 * Render payment section description.
+	 */
+	public function render_payment_section(): void {
+		?>
+		<p><?php esc_html_e( 'Configure PayPal payment integration for membership dues.', 'societypress' ); ?></p>
+		<?php
+	}
+
+	/**
+	 * Render payment_mode field.
+	 */
+	public function render_payment_mode_field(): void {
+		$value = self::get_setting( 'payment_mode', 'disabled' );
+		?>
+		<select name="societypress_settings[payment_mode]">
+			<option value="disabled" <?php selected( $value, 'disabled' ); ?>>
+				<?php esc_html_e( 'Disabled — No online payments', 'societypress' ); ?>
+			</option>
+			<option value="required" <?php selected( $value, 'required' ); ?>>
+				<?php esc_html_e( 'Required — Must pay during signup', 'societypress' ); ?>
+			</option>
+			<option value="optional" <?php selected( $value, 'optional' ); ?>>
+				<?php esc_html_e( 'Optional — Can pay now or later', 'societypress' ); ?>
+			</option>
+		</select>
+		<p class="description">
+			<?php esc_html_e( 'Required: Payment must be completed to submit membership form. Optional: Members can pay during signup or be invoiced later.', 'societypress' ); ?>
+		</p>
+		<?php
+	}
+
+	/**
+	 * Render paypal_mode field.
+	 */
+	public function render_paypal_mode_field(): void {
+		$value = self::get_setting( 'paypal_mode', 'sandbox' );
+		?>
+		<select name="societypress_settings[paypal_mode]">
+			<option value="sandbox" <?php selected( $value, 'sandbox' ); ?>>
+				<?php esc_html_e( 'Sandbox — Test mode (no real charges)', 'societypress' ); ?>
+			</option>
+			<option value="live" <?php selected( $value, 'live' ); ?>>
+				<?php esc_html_e( 'Live — Production mode (real payments)', 'societypress' ); ?>
+			</option>
+		</select>
+		<p class="description">
+			<?php esc_html_e( 'Use Sandbox for testing. Switch to Live when ready to accept real payments.', 'societypress' ); ?>
+		</p>
+		<?php
+	}
+
+	/**
+	 * Render paypal_client_id field.
+	 */
+	public function render_paypal_client_id_field(): void {
+		$value = self::get_setting( 'paypal_client_id', '' );
+		?>
+		<input type="text" name="societypress_settings[paypal_client_id]"
+		       value="<?php echo esc_attr( $value ); ?>" class="large-text">
+		<p class="description">
+			<?php esc_html_e( 'From PayPal Developer Dashboard → Apps & Credentials.', 'societypress' ); ?>
+		</p>
+		<?php
+	}
+
+	/**
+	 * Render paypal_secret field.
+	 */
+	public function render_paypal_secret_field(): void {
+		$value = self::get_setting( 'paypal_secret', '' );
+		?>
+		<input type="password" name="societypress_settings[paypal_secret]"
+		       value="<?php echo esc_attr( $value ); ?>" class="large-text">
+		<p class="description">
+			<?php esc_html_e( 'Keep this secret. Never share it publicly.', 'societypress' ); ?>
+		</p>
+		<?php
+	}
+
+	/**
+	 * Render payment_methods field.
+	 *
+	 * WHY: Allows admin to choose which payment methods to accept.
+	 *      PayPal SDK supports multiple funding sources beyond just PayPal.
+	 */
+	public function render_payment_methods_field(): void {
+		$value = self::get_setting( 'payment_methods', array( 'paypal', 'venmo', 'card' ) );
+		if ( ! is_array( $value ) ) {
+			$value = array();
+		}
+
+		// Available payment methods with labels and descriptions
+		$methods = array(
+			'paypal' => array(
+				'label' => __( 'PayPal', 'societypress' ),
+				'desc'  => __( 'Pay with PayPal account', 'societypress' ),
+				'icon'  => 'paypal',
+			),
+			'venmo' => array(
+				'label' => __( 'Venmo', 'societypress' ),
+				'desc'  => __( 'US only — popular with younger members', 'societypress' ),
+				'icon'  => 'venmo',
+			),
+			'card' => array(
+				'label' => __( 'Credit / Debit Card', 'societypress' ),
+				'desc'  => __( 'Guest checkout without PayPal account', 'societypress' ),
+				'icon'  => 'card',
+			),
+			'paylater' => array(
+				'label' => __( 'Pay Later', 'societypress' ),
+				'desc'  => __( 'PayPal financing options for buyers', 'societypress' ),
+				'icon'  => 'paylater',
+			),
+		);
+		?>
+		<fieldset>
+			<?php foreach ( $methods as $key => $method ) : ?>
+				<label style="display: block; margin-bottom: 8px;">
+					<input type="checkbox"
+					       name="societypress_settings[payment_methods][]"
+					       value="<?php echo esc_attr( $key ); ?>"
+					       <?php checked( in_array( $key, $value, true ) ); ?>
+					       <?php echo 'paypal' === $key ? 'onclick="return false;" checked' : ''; ?>>
+					<strong><?php echo esc_html( $method['label'] ); ?></strong>
+					<span style="color: #666; margin-left: 5px;">— <?php echo esc_html( $method['desc'] ); ?></span>
+				</label>
+			<?php endforeach; ?>
+		</fieldset>
+		<p class="description" style="margin-top: 10px;">
+			<?php esc_html_e( 'PayPal is always required. Other methods appear based on buyer eligibility.', 'societypress' ); ?>
+		</p>
+		<p class="description">
+			<?php esc_html_e( 'Note: Apple Pay and Google Pay require additional setup in PayPal Dashboard.', 'societypress' ); ?>
 		</p>
 		<?php
 	}
@@ -1099,11 +1816,13 @@ class SocietyPress_Admin {
 	}
 
 	/**
-	 * Render License Settings section description.
+	 * Render Support section description.
+	 *
+	 * WHY: Shareware model - encourage donations without enforcement.
 	 */
 	public function render_license_section(): void {
 		echo '<p>';
-		esc_html_e( 'Enter your license key to receive automatic updates and support.', 'societypress' );
+		esc_html_e( 'SocietyPress is shareware. All features work without payment.', 'societypress' );
 		echo '</p>';
 	}
 
@@ -1119,6 +1838,127 @@ class SocietyPress_Admin {
 			esc_html_e( 'License manager not available.', 'societypress' );
 			echo '</p>';
 		}
+	}
+
+	/**
+	 * Render Community Directory section description.
+	 */
+	public function render_community_section(): void {
+		?>
+		<p>
+			<?php esc_html_e( 'Get a free listing on the SocietyPress community directory! Showcase your society and connect with others.', 'societypress' ); ?>
+		</p>
+		<p>
+			<a href="https://societypress.com/community/" target="_blank"><?php esc_html_e( 'View the Community Directory →', 'societypress' ); ?></a>
+		</p>
+		<?php
+	}
+
+	/**
+	 * Render directory listing enabled field.
+	 */
+	public function render_directory_listing_enabled_field(): void {
+		$enabled = self::get_setting( 'directory_listing_enabled', false );
+		?>
+		<label>
+			<input type="checkbox" name="societypress_settings[directory_listing_enabled]" value="1"
+			       <?php checked( $enabled ); ?> id="directory-listing-toggle">
+			<?php esc_html_e( 'Yes, list our society in the SocietyPress Community Directory', 'societypress' ); ?>
+		</label>
+		<p class="description">
+			<?php esc_html_e( 'Your listing will appear on societypress.com after review.', 'societypress' ); ?>
+		</p>
+		<?php
+	}
+
+	/**
+	 * Render directory listing info fields.
+	 */
+	public function render_directory_listing_info_field(): void {
+		$listing = self::get_setting( 'directory_listing', array() );
+		$org_name = self::get_setting( 'organization_name', get_bloginfo( 'name' ) );
+
+		// Default to organization name if not set
+		$listing = wp_parse_args( $listing, array(
+			'society_name' => $org_name,
+			'website_url'  => home_url(),
+			'location'     => '',
+			'description'  => '',
+			'established'  => '',
+			'logo_url'     => '',
+		) );
+		?>
+		<div id="directory-listing-fields">
+			<table class="form-table" style="margin-top: 0;">
+				<tr>
+					<th scope="row"><label for="listing-society-name"><?php esc_html_e( 'Society Name', 'societypress' ); ?></label></th>
+					<td>
+						<input type="text" name="societypress_settings[directory_listing][society_name]"
+						       id="listing-society-name" class="regular-text"
+						       value="<?php echo esc_attr( $listing['society_name'] ); ?>">
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="listing-website-url"><?php esc_html_e( 'Website URL', 'societypress' ); ?></label></th>
+					<td>
+						<input type="url" name="societypress_settings[directory_listing][website_url]"
+						       id="listing-website-url" class="regular-text"
+						       value="<?php echo esc_attr( $listing['website_url'] ); ?>"
+						       placeholder="https://yoursite.org">
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="listing-location"><?php esc_html_e( 'Location', 'societypress' ); ?></label></th>
+					<td>
+						<input type="text" name="societypress_settings[directory_listing][location]"
+						       id="listing-location" class="regular-text"
+						       value="<?php echo esc_attr( $listing['location'] ); ?>"
+						       placeholder="<?php esc_attr_e( 'San Antonio, Texas', 'societypress' ); ?>">
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="listing-description"><?php esc_html_e( 'Tagline', 'societypress' ); ?></label></th>
+					<td>
+						<input type="text" name="societypress_settings[directory_listing][description]"
+						       id="listing-description" class="large-text"
+						       value="<?php echo esc_attr( $listing['description'] ); ?>"
+						       placeholder="<?php esc_attr_e( 'Preserving our heritage since 1965', 'societypress' ); ?>"
+						       maxlength="100">
+						<p class="description"><?php esc_html_e( 'Brief tagline (100 characters max).', 'societypress' ); ?></p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="listing-established"><?php esc_html_e( 'Year Established', 'societypress' ); ?></label></th>
+					<td>
+						<input type="text" name="societypress_settings[directory_listing][established]"
+						       id="listing-established" class="small-text"
+						       value="<?php echo esc_attr( $listing['established'] ); ?>"
+						       placeholder="1965" maxlength="4">
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="listing-logo-url"><?php esc_html_e( 'Logo URL', 'societypress' ); ?></label></th>
+					<td>
+						<input type="url" name="societypress_settings[directory_listing][logo_url]"
+						       id="listing-logo-url" class="large-text"
+						       value="<?php echo esc_attr( $listing['logo_url'] ); ?>"
+						       placeholder="https://yoursite.org/wp-content/uploads/logo.png">
+						<p class="description"><?php esc_html_e( 'Square logo recommended (200x200px or larger).', 'societypress' ); ?></p>
+					</td>
+				</tr>
+			</table>
+		</div>
+		<script>
+		jQuery(document).ready(function($) {
+			function toggleListingFields() {
+				var enabled = $('#directory-listing-toggle').is(':checked');
+				$('#directory-listing-fields').toggle(enabled);
+			}
+			toggleListingFields();
+			$('#directory-listing-toggle').on('change', toggleListingFields);
+		});
+		</script>
+		<?php
 	}
 
 	/**
@@ -1216,6 +2056,16 @@ class SocietyPress_Admin {
 			array( $this, 'render_import_page' )
 		);
 
+		// Import Events
+		add_submenu_page(
+			'societypress',
+			__( 'Import Events', 'societypress' ),
+			__( 'Import Events', 'societypress' ),
+			'manage_society_members',
+			'societypress-import-events',
+			array( $this, 'render_import_events_page' )
+		);
+
 		// Member Levels
 		add_submenu_page(
 			'societypress',
@@ -1286,6 +2136,12 @@ class SocietyPress_Admin {
 			true
 		);
 
+		// Enqueue media uploader for member edit pages
+		if ( strpos( $hook, 'societypress-add-member' ) !== false ||
+		     ( strpos( $hook, 'societypress-members' ) !== false && isset( $_GET['action'] ) && 'edit' === $_GET['action'] ) ) {
+			wp_enqueue_media();
+		}
+
 		// Get membership tiers for expiration calculation
 		$tiers_handler = societypress()->tiers;
 		$tiers = $tiers_handler->get_all();
@@ -1314,9 +2170,44 @@ class SocietyPress_Admin {
 					'saving'                   => __( 'Saving...', 'societypress' ),
 					'saved'                    => __( 'Saved!', 'societypress' ),
 					'error'                    => __( 'An error occurred. Please try again.', 'societypress' ),
+					'photoUploadTitle'         => __( 'Select Member Photo', 'societypress' ),
+					'photoUploadButton'        => __( 'Use this photo', 'societypress' ),
+					'photoChangeButton'        => __( 'Change Photo', 'societypress' ),
+					'photoUploadButtonText'    => __( 'Upload Photo', 'societypress' ),
+					'photoTooLarge'            => __( 'Photo must be less than 1MB.', 'societypress' ),
 				),
 			)
 		);
+
+		// Add inline script for member edit form functionality
+		if ( strpos( $hook, 'societypress-add-member' ) !== false ||
+		     strpos( $hook, 'societypress-member-edit' ) !== false ||
+		     ( strpos( $hook, 'societypress-members' ) !== false && isset( $_GET['action'] ) && 'edit' === $_GET['action'] ) ) {
+			wp_add_inline_script(
+				'societypress-admin',
+				"
+				jQuery(document).ready(function($) {
+					// Toggle email required based on 'no online access' checkbox
+					$('#no_online_access').on('change', function() {
+						var noAccess = $(this).is(':checked');
+						var \$email = $('#primary_email');
+						var \$indicator = $('#email-required-indicator');
+						var \$note = $('#email-optional-note');
+
+						if (noAccess) {
+							\$email.prop('required', false);
+							\$indicator.text('');
+							\$note.show();
+						} else {
+							\$email.prop('required', true);
+							\$indicator.text(' *');
+							\$note.hide();
+						}
+					});
+				});
+				"
+			);
+		}
 
 		// Load import script on import page
 		if ( strpos( $hook, 'societypress-import' ) !== false ) {
@@ -1426,7 +2317,7 @@ class SocietyPress_Admin {
 			'Status',
 			'Join Date',
 			'Expiration Date',
-			'Cell Phone',
+			'Phone',
 			'Home Phone',
 			'Street Address',
 			'Address Line 2',
@@ -2005,6 +2896,28 @@ class SocietyPress_Admin {
 									       value="<?php echo esc_attr( $member->last_name ?? '' ); ?>" required>
 								</td>
 							</tr>
+							<?php if ( self::get_setting( 'member_photos_enabled', true ) ) : ?>
+							<tr>
+								<th><label for="member_photo"><?php esc_html_e( 'Photo', 'societypress' ); ?></label></th>
+								<td>
+									<?php
+									$photo_id  = $member->photo_id ?? 0;
+									$photo_url = $photo_id ? wp_get_attachment_image_url( $photo_id, 'thumbnail' ) : '';
+									?>
+									<div class="sp-member-photo-wrapper">
+										<div class="sp-member-photo-preview" id="sp-member-photo-preview" style="<?php echo $photo_url ? '' : 'display:none;'; ?>">
+											<img src="<?php echo esc_url( $photo_url ); ?>" alt="" id="sp-member-photo-img">
+											<button type="button" class="sp-member-photo-remove" id="sp-member-photo-remove" title="<?php esc_attr_e( 'Remove photo', 'societypress' ); ?>">&times;</button>
+										</div>
+										<input type="hidden" name="photo_id" id="photo_id" value="<?php echo esc_attr( $photo_id ); ?>">
+										<button type="button" class="button" id="sp-member-photo-upload">
+											<?php echo $photo_id ? esc_html__( 'Change Photo', 'societypress' ) : esc_html__( 'Upload Photo', 'societypress' ); ?>
+										</button>
+									</div>
+									<p class="description"><?php esc_html_e( 'Square image recommended, max 1MB. Will display as circle.', 'societypress' ); ?></p>
+								</td>
+							</tr>
+							<?php endif; ?>
 							<tr>
 								<th><label for="birth_date"><?php esc_html_e( 'Birth Date', 'societypress' ); ?></label></th>
 								<td>
@@ -2050,7 +2963,7 @@ class SocietyPress_Admin {
 								<th><label for="expiration_date"><?php esc_html_e( 'Expiration Date', 'societypress' ); ?></label></th>
 								<td>
 									<input type="date" name="expiration_date" id="expiration_date"
-									       value="<?php echo esc_attr( $member->expiration_date ?? '' ); ?>">
+									       value="<?php echo esc_attr( $member->expiration_date ?? ( gmdate( 'Y' ) . '-12-31' ) ); ?>">
 									<p class="description"><?php esc_html_e( 'Leave blank for lifetime memberships.', 'societypress' ); ?></p>
 								</td>
 							</tr>
@@ -2061,15 +2974,78 @@ class SocietyPress_Admin {
 					<div class="societypress-form-section">
 						<h2><?php esc_html_e( 'Contact Information', 'societypress' ); ?></h2>
 						<table class="form-table">
+							<?php
+							// Check if member has a linked WordPress user
+							$has_wp_user = false;
+							$no_online_access = false;
+							if ( ! empty( $member->id ) ) {
+								$has_wp_user = (bool) societypress()->members->get_meta( $member->id, 'wp_user_id' );
+								$no_online_access = (bool) societypress()->members->get_meta( $member->id, 'no_online_access' );
+							}
+							?>
 							<tr>
-								<th><label for="primary_email"><?php esc_html_e( 'Email', 'societypress' ); ?> *</label></th>
+								<th>
+									<label for="primary_email">
+										<?php esc_html_e( 'Email', 'societypress' ); ?>
+										<span id="email-required-indicator"><?php echo $no_online_access ? '' : ' *'; ?></span>
+									</label>
+								</th>
 								<td>
 									<input type="email" name="primary_email" id="primary_email" class="regular-text"
-									       value="<?php echo esc_attr( $contact->primary_email ?? '' ); ?>" required>
+									       value="<?php echo esc_attr( $contact->primary_email ?? '' ); ?>"
+									       <?php echo $no_online_access ? '' : 'required'; ?>>
+									<p class="description" id="email-optional-note" style="<?php echo $no_online_access ? '' : 'display:none;'; ?>">
+										<?php esc_html_e( 'Email is optional for members without online access.', 'societypress' ); ?>
+									</p>
 								</td>
 							</tr>
 							<tr>
-								<th><label for="cell_phone"><?php esc_html_e( 'Cell Phone', 'societypress' ); ?></label></th>
+								<th><?php esc_html_e( 'Online Access', 'societypress' ); ?></th>
+								<td>
+									<label>
+										<input type="checkbox" name="no_online_access" id="no_online_access" value="1"
+										       <?php checked( $no_online_access ); ?>
+										       <?php echo $has_wp_user ? 'disabled' : ''; ?>>
+										<?php esc_html_e( 'No online access needed (skip WordPress account)', 'societypress' ); ?>
+									</label>
+									<?php if ( $has_wp_user ) : ?>
+										<p class="description"><?php esc_html_e( 'This member already has a WordPress account.', 'societypress' ); ?></p>
+									<?php else : ?>
+										<p class="description"><?php esc_html_e( 'Check this for members who won\'t use the member portal (e.g., paper-only members).', 'societypress' ); ?></p>
+									<?php endif; ?>
+								</td>
+							</tr>
+							<?php if ( $member_id ) : ?>
+							<tr>
+								<th><label for="link_wp_user"><?php esc_html_e( 'WordPress Account', 'societypress' ); ?></label></th>
+								<td>
+									<?php
+									// Get currently linked user ID from member record
+									$linked_user_id = $member->user_id ?? 0;
+
+									// Get all WordPress users for the dropdown
+									$wp_users = get_users( array(
+										'orderby' => 'display_name',
+										'order'   => 'ASC',
+										'fields'  => array( 'ID', 'display_name', 'user_email' ),
+									) );
+									?>
+									<select name="link_wp_user" id="link_wp_user">
+										<option value=""><?php esc_html_e( '— No WordPress account linked —', 'societypress' ); ?></option>
+										<?php foreach ( $wp_users as $wp_user ) : ?>
+											<option value="<?php echo esc_attr( $wp_user->ID ); ?>" <?php selected( $linked_user_id, $wp_user->ID ); ?>>
+												<?php echo esc_html( $wp_user->display_name . ' (' . $wp_user->user_email . ')' ); ?>
+											</option>
+										<?php endforeach; ?>
+									</select>
+									<p class="description">
+										<?php esc_html_e( 'Link this member to an existing WordPress user account for portal access.', 'societypress' ); ?>
+									</p>
+								</td>
+							</tr>
+							<?php endif; ?>
+							<tr>
+								<th><label for="cell_phone"><?php esc_html_e( 'Phone', 'societypress' ); ?></label></th>
 								<td>
 									<input type="tel" name="cell_phone" id="cell_phone" class="regular-text"
 									       value="<?php echo esc_attr( $contact->cell_phone ?? '' ); ?>">
@@ -2588,6 +3564,13 @@ class SocietyPress_Admin {
 	}
 
 	/**
+	 * Render the event import page.
+	 */
+	public function render_import_events_page(): void {
+		$this->import_events->render_import_page();
+	}
+
+	/**
 	 * Save member from form submission.
 	 */
 	private function save_member(): void {
@@ -2610,6 +3593,7 @@ class SocietyPress_Admin {
 			'first_name'               => sanitize_text_field( $_POST['first_name'] ?? '' ),
 			'middle_name'              => sanitize_text_field( $_POST['middle_name'] ?? '' ) ?: null,
 			'last_name'                => sanitize_text_field( $_POST['last_name'] ?? '' ),
+			'photo_id'                 => ! empty( $_POST['photo_id'] ) ? absint( $_POST['photo_id'] ) : null,
 			'birth_date'               => sanitize_text_field( $_POST['birth_date'] ?? '' ) ?: null,
 			'membership_tier_id'       => absint( $_POST['membership_tier_id'] ?? 0 ),
 			'status'                   => sanitize_text_field( $_POST['status'] ?? 'pending' ),
@@ -2621,10 +3605,22 @@ class SocietyPress_Admin {
 		);
 
 		// Validate and prepare contact data
+		// Email is optional if "no online access" is checked
+		$no_online_access = ! empty( $_POST['no_online_access'] );
 		$email = sanitize_email( $_POST['primary_email'] ?? '' );
-		if ( empty( $email ) || ! is_email( $email ) ) {
+
+		if ( ! $no_online_access && ( empty( $email ) || ! is_email( $email ) ) ) {
 			wp_die(
 				esc_html__( 'Please enter a valid email address.', 'societypress' ),
+				esc_html__( 'Invalid Email', 'societypress' ),
+				array( 'back_link' => true )
+			);
+		}
+
+		// If email is provided, validate it's properly formatted
+		if ( ! empty( $_POST['primary_email'] ) && ! is_email( $email ) ) {
+			wp_die(
+				esc_html__( 'The email address format is invalid.', 'societypress' ),
 				esc_html__( 'Invalid Email', 'societypress' ),
 				array( 'back_link' => true )
 			);
@@ -2648,9 +3644,34 @@ class SocietyPress_Admin {
 				$members->update_contact( $member_id, $contact_data );
 				$this->save_genealogy_meta( $members, $member_id );
 
-				// Create/link WordPress user if not already linked
+				// Save no_online_access preference
+				$members->save_meta( $member_id, 'no_online_access', $no_online_access ? 1 : 0 );
+
+				// Handle manual WordPress user linking from dropdown
 				$user_manager = societypress()->user_manager;
-				if ( ! $user_manager->member_has_user( $member_id ) ) {
+				if ( isset( $_POST['link_wp_user'] ) ) {
+					$selected_user_id = absint( $_POST['link_wp_user'] );
+					$current_member   = $members->get( $member_id );
+					$current_user_id  = $current_member->user_id ?? 0;
+
+					// Only update if the selection changed
+					if ( $selected_user_id !== $current_user_id ) {
+						// Remove old user's member link if there was one
+						if ( $current_user_id ) {
+							delete_user_meta( $current_user_id, 'sp_member_id' );
+						}
+
+						if ( $selected_user_id ) {
+							// Link to new user
+							$user_manager->link_member_to_user( $member_id, $selected_user_id );
+							update_user_meta( $selected_user_id, 'sp_member_id', $member_id );
+						} else {
+							// Unlink (set user_id to null)
+							$user_manager->link_member_to_user( $member_id, 0 );
+						}
+					}
+				} elseif ( ! $no_online_access && ! empty( $email ) && ! $user_manager->member_has_user( $member_id ) ) {
+					// Auto-create/link WordPress user if not already linked and online access is needed
 					$user_result = $user_manager->create_or_link_user(
 						$member_id,
 						$email,
@@ -2682,24 +3703,31 @@ class SocietyPress_Admin {
 				$members->update_contact( $new_id, $contact_data );
 				$this->save_genealogy_meta( $members, $new_id );
 
-				// Create or link WordPress user
-				$user_manager = societypress()->user_manager;
-				$user_result  = $user_manager->create_or_link_user(
-					$new_id,
-					$email,
-					$member_data['first_name'],
-					$member_data['last_name']
-				);
+				// Save no_online_access preference if set
+				if ( $no_online_access ) {
+					$members->save_meta( $new_id, 'no_online_access', 1 );
+				}
 
-				if ( is_wp_error( $user_result ) ) {
-					$this->add_admin_notice(
-						sprintf(
-							/* translators: %s: error message */
-							__( 'Member created but user account creation failed: %s', 'societypress' ),
-							$user_result->get_error_message()
-						),
-						'warning'
+				// Create or link WordPress user (unless online access is disabled or no email)
+				if ( ! $no_online_access && ! empty( $email ) ) {
+					$user_manager = societypress()->user_manager;
+					$user_result  = $user_manager->create_or_link_user(
+						$new_id,
+						$email,
+						$member_data['first_name'],
+						$member_data['last_name']
 					);
+
+					if ( is_wp_error( $user_result ) ) {
+						$this->add_admin_notice(
+							sprintf(
+								/* translators: %s: error message */
+								__( 'Member created but user account creation failed: %s', 'societypress' ),
+								$user_result->get_error_message()
+							),
+							'warning'
+						);
+					}
 				}
 
 				$this->add_admin_notice( __( 'Member created successfully.', 'societypress' ), 'success' );

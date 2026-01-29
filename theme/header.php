@@ -92,28 +92,15 @@
 							}
 							?>
 
-							<!-- Menu Search -->
-							<div class="menu-search">
-								<button class="search-toggle" aria-label="<?php esc_attr_e( 'Toggle search', 'societypress' ); ?>" aria-expanded="false">
-									<?php esc_html_e( 'Search', 'societypress' ); ?>
-								</button>
-								<div class="search-dropdown">
-									<?php get_search_form(); ?>
-								</div>
-							</div>
-
-							<!-- Login/Logout -->
+							<!-- Login link for visitors (Log Out handled by SocietyPress plugin menu) -->
+							<!-- Search is now injected into nav menu via SocietyPress plugin -->
+							<?php if ( ! is_user_logged_in() ) : ?>
 							<div class="menu-account">
-								<?php if ( is_user_logged_in() ) : ?>
-									<a href="<?php echo esc_url( wp_logout_url( home_url( '/' ) ) ); ?>" class="account-link">
-										<?php esc_html_e( 'Log Out', 'societypress' ); ?>
-									</a>
-								<?php else : ?>
-									<a href="<?php echo esc_url( wp_login_url( home_url( '/' ) ) ); ?>" class="account-link">
-										<?php esc_html_e( 'Log In', 'societypress' ); ?>
-									</a>
-								<?php endif; ?>
+								<a href="<?php echo esc_url( wp_login_url( home_url( '/' ) ) ); ?>" class="account-link">
+									<?php esc_html_e( 'Log In', 'societypress' ); ?>
+								</a>
 							</div>
+							<?php endif; ?>
 						</div>
 					</nav>
 
@@ -132,3 +119,29 @@
 		</div><!-- .site-branding-navigation -->
 
 	</header><!-- #masthead -->
+
+	<?php
+	/**
+	 * Below Header Widget Area
+	 *
+	 * WHY: Provides a spot for breadcrumbs, announcements, or other site-wide content
+	 *      that should appear below the header but above main content.
+	 */
+	if ( is_active_sidebar( 'below-header' ) ) :
+	?>
+		<div class="below-header-area">
+			<?php dynamic_sidebar( 'below-header' ); ?>
+		</div>
+	<?php endif; ?>
+
+	<?php
+	/**
+	 * Automatic Breadcrumbs (Customizer setting)
+	 *
+	 * WHY: If enabled in Customizer and no widget is being used, show breadcrumbs automatically.
+	 *      Simpler option for users who don't want to fuss with widgets.
+	 */
+	if ( get_theme_mod( 'societypress_show_breadcrumbs', false ) && ! is_active_sidebar( 'below-header' ) ) :
+		societypress_breadcrumbs();
+	endif;
+	?>

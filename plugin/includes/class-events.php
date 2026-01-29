@@ -191,12 +191,14 @@ class SocietyPress_Events {
 		$recurring_day     = get_post_meta( $post->ID, self::META_PREFIX . 'recurring_day', true );
 		$recurring_week    = get_post_meta( $post->ID, self::META_PREFIX . 'recurring_week', true );
 
-		// Set defaults for new events
+		// Set defaults for new events from Organization settings.
+		// WHY: Each organization should see their own address as the default,
+		//      not a hardcoded example. Pull from SocietyPress > Settings > Organization.
 		if ( 'auto-draft' === $post->post_status || empty( $location ) ) {
-			$location = 'Dwyer Center Classroom';
+			$location = SocietyPress_Admin::get_setting( 'organization_name', '' );
 		}
 		if ( 'auto-draft' === $post->post_status || empty( $address ) ) {
-			$address = "San Antonio Genealogical and Historical Society\n911 Melissa Dr\nSan Antonio, TX 78213-2024";
+			$address = SocietyPress_Admin::get_setting( 'organization_address', '' );
 		}
 
 		?>

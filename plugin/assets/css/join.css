@@ -1,0 +1,561 @@
+/**
+ * SocietyPress Join Form Styles
+ *
+ * Public-facing membership signup form.
+ * Designed for clarity and accessibility.
+ *
+ * @package SocietyPress
+ * @since 0.27d
+ */
+
+/* ==========================================================================
+   Container
+   ========================================================================== */
+
+.sp-join-form-wrapper {
+    max-width: 700px;
+    margin: 0 auto;
+    padding: 0;
+}
+
+.sp-join-title {
+    text-align: center;
+    margin-top: 0;
+    margin-bottom: 25px;
+    font-size: 28px;
+    font-weight: 600;
+}
+
+/* ==========================================================================
+   Messages
+   ========================================================================== */
+
+.sp-join-message {
+    padding: 15px 20px;
+    border-radius: 6px;
+    margin-bottom: 25px;
+    font-size: 16px;
+}
+
+.sp-join-message.sp-success {
+    background: #d4edda;
+    border: 1px solid #28a745;
+    color: #155724;
+}
+
+.sp-join-message.sp-error {
+    background: #f8d7da;
+    border: 1px solid #dc3545;
+    color: #721c24;
+}
+
+/* ==========================================================================
+   Fieldsets
+   ========================================================================== */
+
+.sp-fieldset {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 25px;
+    margin-bottom: 25px;
+    background: #fafafa;
+}
+
+.sp-fieldset legend {
+    font-size: 18px;
+    font-weight: 600;
+    padding: 0 10px;
+    color: #333;
+}
+
+/* ==========================================================================
+   Tier Selection
+   ========================================================================== */
+
+.sp-tier-options {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.sp-tier-option {
+    display: block;
+    cursor: pointer;
+}
+
+.sp-tier-option input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.sp-tier-card {
+    display: block;
+    padding: 20px;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    background: #fff;
+    transition: all 0.2s ease;
+}
+
+.sp-tier-option input:checked + .sp-tier-card {
+    border-color: #0073aa;
+    background: #f0f7fc;
+    box-shadow: 0 2px 8px rgba(0, 115, 170, 0.15);
+}
+
+.sp-tier-option:hover .sp-tier-card {
+    border-color: #0073aa;
+}
+
+.sp-tier-option input:focus + .sp-tier-card {
+    outline: 2px solid #0073aa;
+    outline-offset: 2px;
+}
+
+.sp-tier-name {
+    display: block;
+    font-size: 20px;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 5px;
+}
+
+.sp-tier-price {
+    display: block;
+    font-size: 24px;
+    font-weight: 700;
+    color: #0073aa;
+}
+
+.sp-tier-duration {
+    font-size: 14px;
+    font-weight: 400;
+    color: #666;
+}
+
+.sp-tier-description {
+    display: block;
+    font-size: 14px;
+    color: #666;
+    margin-top: 8px;
+    line-height: 1.5;
+}
+
+.sp-tier-note {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #856404;
+    background: #fff3cd;
+    padding: 3px 8px;
+    border-radius: 4px;
+    margin-top: 8px;
+}
+
+/* ==========================================================================
+   Student Fields (Conditional)
+   ========================================================================== */
+
+.sp-student-fields {
+    background: #fff9e6;
+    border-color: #f0c36d;
+}
+
+.sp-student-fields legend {
+    color: #856404;
+}
+
+.sp-field-note {
+    font-size: 13px;
+    color: #666;
+    margin-top: 8px;
+    font-style: italic;
+}
+
+/* ==========================================================================
+   Form Rows & Fields
+   ========================================================================== */
+
+.sp-form-row {
+    margin-bottom: 20px;
+}
+
+.sp-form-row:last-child {
+    margin-bottom: 0;
+}
+
+.sp-form-row label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: #333;
+    font-size: 14px;
+}
+
+.sp-form-row input[type="text"],
+.sp-form-row input[type="email"],
+.sp-form-row input[type="tel"],
+.sp-form-row select {
+    width: 100%;
+    padding: 12px 15px;
+    font-size: 16px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    background: #fff;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sp-form-row input:focus,
+.sp-form-row select:focus {
+    outline: none;
+    border-color: #0073aa;
+    box-shadow: 0 0 0 3px rgba(0, 115, 170, 0.15);
+}
+
+.sp-form-row input::placeholder {
+    color: #999;
+}
+
+/* Multi-column layouts */
+.sp-form-row-halves,
+.sp-form-row-thirds,
+.sp-form-row-city-state {
+    display: flex;
+    gap: 15px;
+}
+
+.sp-form-row-halves .sp-form-field {
+    flex: 1;
+}
+
+.sp-form-row-thirds .sp-form-field {
+    flex: 1;
+}
+
+.sp-form-row-city-state .sp-field-city {
+    flex: 2;
+}
+
+.sp-form-row-city-state .sp-field-state {
+    flex: 1.5;
+}
+
+.sp-form-row-city-state .sp-field-postal {
+    flex: 1;
+}
+
+/* ==========================================================================
+   Submit Button
+   ========================================================================== */
+
+.sp-form-submit {
+    text-align: center;
+    padding-top: 10px;
+}
+
+.sp-submit-button {
+    display: inline-block;
+    padding: 15px 40px;
+    font-size: 18px;
+    font-weight: 600;
+    color: #fff;
+    background: #0073aa;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.sp-submit-button:hover {
+    background: #005a87;
+}
+
+.sp-submit-button:active {
+    transform: scale(0.98);
+}
+
+.sp-submit-button:focus {
+    outline: 2px solid #0073aa;
+    outline-offset: 2px;
+}
+
+.sp-submit-note {
+    font-size: 13px;
+    color: #666;
+    margin-top: 15px;
+}
+
+/* ==========================================================================
+   Payment Section
+   ========================================================================== */
+
+.sp-payment-section {
+    background: #f8f9fa;
+    border-color: #0073aa;
+    border-width: 2px;
+}
+
+.sp-payment-section legend {
+    color: #0073aa;
+}
+
+.sp-payment-methods-accepted {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+    padding: 12px 15px;
+    background: #fff;
+    border-radius: 6px;
+    border: 1px solid #e0e0e0;
+}
+
+.sp-payment-methods-label {
+    font-size: 14px;
+    color: #666;
+    white-space: nowrap;
+}
+
+.sp-payment-icons {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.sp-payment-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 6px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.sp-payment-icon svg {
+    display: block;
+}
+
+.sp-payment-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    background: #fff;
+    border-radius: 6px;
+    margin-bottom: 20px;
+    border: 1px solid #ddd;
+}
+
+.sp-payment-tier-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+}
+
+.sp-payment-amount {
+    font-size: 24px;
+    font-weight: 700;
+    color: #0073aa;
+}
+
+.sp-payment-free-notice {
+    padding: 20px;
+    background: #d4edda;
+    border: 1px solid #28a745;
+    border-radius: 6px;
+    color: #155724;
+    text-align: center;
+}
+
+.sp-payment-free-notice p {
+    margin: 0;
+    font-size: 16px;
+}
+
+.sp-paypal-container {
+    position: relative;
+    min-height: 55px;
+    margin-bottom: 15px;
+}
+
+.sp-paypal-container.sp-paypal-dimmed {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+.sp-paypal-container.sp-paypal-processing {
+    pointer-events: none;
+}
+
+.sp-payment-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    font-size: 16px;
+    font-weight: 600;
+    color: #0073aa;
+}
+
+.sp-payment-success {
+    padding: 20px;
+    background: #d4edda;
+    border: 1px solid #28a745;
+    border-radius: 6px;
+    color: #155724;
+    text-align: center;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.sp-payment-success-icon {
+    font-size: 24px;
+    color: #28a745;
+    margin-right: 8px;
+}
+
+.sp-pay-later-option {
+    text-align: center;
+    padding-top: 10px;
+}
+
+.sp-pay-later-or {
+    font-size: 14px;
+    color: #666;
+    margin: 10px 0;
+}
+
+.sp-pay-later-label {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 14px;
+    color: #333;
+    cursor: pointer;
+}
+
+.sp-pay-later-label input[type="checkbox"] {
+    margin-top: 3px;
+    width: 16px;
+    height: 16px;
+}
+
+.sp-payment-message-inline {
+    padding: 12px 15px;
+    border-radius: 6px;
+    margin-bottom: 15px;
+    font-size: 14px;
+    text-align: center;
+}
+
+.sp-payment-message-inline.sp-error {
+    background: #f8d7da;
+    border: 1px solid #dc3545;
+    color: #721c24;
+}
+
+.sp-payment-message-inline.sp-warning {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    color: #856404;
+}
+
+.sp-payment-message-inline.sp-info {
+    background: #d1ecf1;
+    border: 1px solid #17a2b8;
+    color: #0c5460;
+}
+
+/* Submit button ready state after payment */
+.sp-submit-button.sp-submit-ready {
+    background: #28a745;
+    animation: sp-pulse 1s ease-in-out;
+}
+
+.sp-submit-button.sp-submit-ready:hover {
+    background: #218838;
+}
+
+@keyframes sp-pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+    100% { transform: scale(1); }
+}
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+
+@media screen and (max-width: 600px) {
+    .sp-join-form-wrapper {
+        padding: 15px;
+    }
+
+    .sp-fieldset {
+        padding: 20px 15px;
+    }
+
+    .sp-form-row-halves,
+    .sp-form-row-thirds,
+    .sp-form-row-city-state {
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .sp-tier-card {
+        padding: 15px;
+    }
+
+    .sp-tier-name {
+        font-size: 18px;
+    }
+
+    .sp-tier-price {
+        font-size: 20px;
+    }
+
+    .sp-submit-button {
+        width: 100%;
+        padding: 15px 20px;
+    }
+}
+
+/* ==========================================================================
+   Accessibility
+   ========================================================================== */
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+    .sp-tier-card {
+        border-width: 3px;
+    }
+
+    .sp-tier-option input:checked + .sp-tier-card {
+        border-width: 3px;
+    }
+
+    .sp-form-row input,
+    .sp-form-row select {
+        border-width: 2px;
+    }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    .sp-tier-card,
+    .sp-form-row input,
+    .sp-form-row select,
+    .sp-submit-button {
+        transition: none;
+    }
+}

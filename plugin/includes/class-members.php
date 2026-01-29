@@ -73,6 +73,24 @@ class SocietyPress_Members {
     }
 
     /**
+     * Get member by WordPress user ID.
+     *
+     * WHY: Allows looking up member record from logged-in WP user.
+     *      Uses the user_id column in sp_members table (set by User Manager).
+     *
+     * @param int $user_id WordPress user ID.
+     * @return object|null Member object or null.
+     */
+    public function get_by_user_id( int $user_id ): ?object {
+        $table = SocietyPress::table( 'members' );
+
+        return $this->wpdb->get_row( $this->wpdb->prepare(
+            "SELECT * FROM {$table} WHERE user_id = %d",
+            $user_id
+        ) ) ?: null;
+    }
+
+    /**
      * Get member with all related data.
      *
      * @param int $id Member ID.
@@ -112,7 +130,9 @@ class SocietyPress_Members {
             'membership_tier_id'         => absint( $data['membership_tier_id'] ),
             'status'                     => $data['status'] ?? 'pending',
             'first_name'                 => sanitize_text_field( $data['first_name'] ),
+            'middle_name'                => ! empty( $data['middle_name'] ) ? sanitize_text_field( $data['middle_name'] ) : null,
             'last_name'                  => sanitize_text_field( $data['last_name'] ),
+            'photo_id'                   => ! empty( $data['photo_id'] ) ? absint( $data['photo_id'] ) : null,
             'birth_date'                 => $data['birth_date'] ?? null,
             'birth_year_only'            => ! empty( $data['birth_year_only'] ) ? 1 : 0,
             'join_date'                  => $data['join_date'],
@@ -154,8 +174,8 @@ class SocietyPress_Members {
         }
 
         $allowed = array(
-            'user_id', 'membership_tier_id', 'status', 'first_name', 'last_name',
-            'birth_date', 'birth_year_only', 'join_date', 'expiration_date',
+            'user_id', 'membership_tier_id', 'status', 'first_name', 'middle_name', 'last_name',
+            'photo_id', 'birth_date', 'birth_year_only', 'join_date', 'expiration_date',
             'auto_renew', 'directory_visible', 'show_birthday_in_directory',
             'date_of_death', 'death_reported_by', 'how_heard_about_us', 'communication_preference',
         );

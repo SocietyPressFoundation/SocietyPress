@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * WHY: Used for cache busting assets and tracking theme updates.
  */
-define( 'SOCIETYPRESS_THEME_VERSION', '1.22d' );
+define( 'SOCIETYPRESS_THEME_VERSION', '1.27d' );
 
 /**
  * Theme setup.
@@ -156,6 +156,19 @@ add_action( 'wp_enqueue_scripts', 'societypress_scripts' );
  * WHY: Provides widget-ready areas for sidebars and footer.
  */
 function societypress_widgets_init() {
+	// Below Header widget area (for breadcrumbs, announcements, etc.)
+	register_sidebar(
+		array(
+			'name'          => __( 'Below Header', 'societypress' ),
+			'id'            => 'below-header',
+			'description'   => __( 'Appears below the header on all pages. Ideal for breadcrumbs or site-wide notices.', 'societypress' ),
+			'before_widget' => '<div id="%1$s" class="below-header-widget %2$s">',
+			'after_widget'  => '</div>',
+			'before_title'  => '<span class="screen-reader-text">',
+			'after_title'   => '</span>',
+		)
+	);
+
 	// Primary sidebar
 	register_sidebar(
 		array(
@@ -187,11 +200,65 @@ function societypress_widgets_init() {
 add_action( 'widgets_init', 'societypress_widgets_init' );
 
 /**
+ * Filter menu items based on login state.
+ *
+ * WHY: Some menu items should only appear to certain users:
+ *      - "Join" links hidden from logged-in users (they've already joined)
+ *      - "Directory" links hidden from logged-out users (members only)
+ *
+ * @param array $items Menu items.
+ * @return array Filtered menu items.
+ */
+function societypress_filter_menu_items_by_login_state( $items ) {
+	$is_logged_in = is_user_logged_in();
+
+	// Items to hide from logged-in users (they don't need these).
+	$hide_when_logged_in = array( 'join', 'become a member', 'sign up', 'register' );
+
+	// Items to hide from logged-out users (members only).
+	$hide_when_logged_out = array( 'directory', 'member directory', 'members directory', 'directory of members' );
+
+	foreach ( $items as $key => $item ) {
+		$title_lower = strtolower( $item->title );
+
+		// Hide "Join" type items from logged-in users.
+		if ( $is_logged_in ) {
+			foreach ( $hide_when_logged_in as $keyword ) {
+				if ( strpos( $title_lower, $keyword ) !== false ) {
+					unset( $items[ $key ] );
+					break;
+				}
+			}
+		}
+
+		// Hide "Directory" type items from logged-out users.
+		if ( ! $is_logged_in ) {
+			foreach ( $hide_when_logged_out as $keyword ) {
+				if ( strpos( $title_lower, $keyword ) !== false ) {
+					unset( $items[ $key ] );
+					break;
+				}
+			}
+		}
+	}
+
+	return $items;
+}
+add_filter( 'wp_nav_menu_objects', 'societypress_filter_menu_items_by_login_state' );
+
+/**
  * Load Customizer functionality.
  *
  * WHY: Provides comprehensive theme customization options through WordPress Customizer.
  */
 require_once get_template_directory() . '/inc/customizer.php';
+
+/**
+ * Load Breadcrumbs functionality.
+ *
+ * WHY: Provides breadcrumb navigation and widget for site hierarchy display.
+ */
+require_once get_template_directory() . '/inc/breadcrumbs.php';
 
 /**
  * Check if SocietyPress plugin is active.

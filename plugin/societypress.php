@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI: https://github.com/charles-stricklin/SocietyPress
  * Description: Membership management for genealogical and historical societies. Handles member registration, dues, renewals, directories, committees, and governance.
- * Version: 0.23d
+ * Version: 0.33d
  * Author: Charles Stricklin
  * Author URI: https://stricklindevelopment.com/studiopress/
  * License: Proprietary
@@ -23,7 +23,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Plugin version.
  */
-define( 'SOCIETYPRESS_VERSION', '0.23d' );
+define( 'SOCIETYPRESS_VERSION', '0.35d' );
 
 /**
  * Plugin directory path.
@@ -135,6 +135,13 @@ final class SocietyPress {
     public ?SocietyPress_Portal $portal = null;
 
     /**
+     * Public join form.
+     *
+     * @var SocietyPress_Join_Form|null
+     */
+    public ?SocietyPress_Join_Form $join_form = null;
+
+    /**
      * Auto-updater.
      *
      * @var SocietyPress_Updater|null
@@ -199,12 +206,14 @@ final class SocietyPress {
             require_once SOCIETYPRESS_PATH . 'admin/class-admin.php';
             require_once SOCIETYPRESS_PATH . 'admin/class-members-list-table.php';
             require_once SOCIETYPRESS_PATH . 'admin/class-import.php';
+            require_once SOCIETYPRESS_PATH . 'admin/class-import-events.php';
             require_once SOCIETYPRESS_PATH . 'admin/class-dashboard-widgets.php';
         }
 
         if ( ! is_admin() ) {
             require_once SOCIETYPRESS_PATH . 'public/class-directory.php';
             require_once SOCIETYPRESS_PATH . 'public/class-portal.php';
+            require_once SOCIETYPRESS_PATH . 'public/class-join-form.php';
         }
     }
 
@@ -217,6 +226,65 @@ final class SocietyPress {
 
         add_action( 'plugins_loaded', array( $this, 'init_components' ) );
         add_action( 'init', array( $this, 'load_textdomain' ) );
+        add_action( 'init', array( $this, 'register_image_sizes' ) );
+
+        // Replace {{organization_name}} in nav menu items
+        add_filter( 'nav_menu_item_title', array( $this, 'replace_menu_placeholders' ), 10, 2 );
+
+        // Simple utility shortcodes
+        add_shortcode( 'sp_year', array( $this, 'shortcode_year' ) );
+        add_shortcode( 'sp_organization', array( $this, 'shortcode_organization' ) );
+    }
+
+    /**
+     * Shortcode: Current year.
+     *
+     * Usage: [sp_year]
+     * Output: 2026
+     *
+     * @return string Current year.
+     */
+    public function shortcode_year(): string {
+        return date_i18n( 'Y' );
+    }
+
+    /**
+     * Shortcode: Organization name.
+     *
+     * Usage: [sp_organization]
+     * Output: Organization name from settings (or site name as fallback)
+     *
+     * @return string Organization name.
+     */
+    public function shortcode_organization(): string {
+        return esc_html( societypress_get_setting( 'organization_name', get_bloginfo( 'name' ) ) );
+    }
+
+    /**
+     * Replace placeholders in navigation menu item titles.
+     *
+     * WHY: Allows admins to use {{organization_name}} in menu labels
+     *      so they don't have to update menus if the org name changes.
+     *
+     * @param string   $title Menu item title.
+     * @param WP_Post  $item  Menu item object.
+     * @return string Modified title.
+     */
+    public function replace_menu_placeholders( string $title, $item ): string {
+        if ( strpos( $title, '{{organization_name}}' ) !== false ) {
+            $org_name = societypress_get_setting( 'organization_name', get_bloginfo( 'name' ) );
+            $title = str_replace( '{{organization_name}}', $org_name, $title );
+        }
+        return $title;
+    }
+
+    /**
+     * Register custom image sizes for member photos.
+     */
+    public function register_image_sizes(): void {
+        // Square crop for member photos (displays as circle via CSS)
+        add_image_size( 'sp-member-photo', 200, 200, true );
+        add_image_size( 'sp-member-photo-small', 80, 80, true );
     }
 
     /**
@@ -248,10 +316,6 @@ final class SocietyPress {
             wp_schedule_event( strtotime( 'tomorrow 9:00am' ), 'daily', 'societypress_send_reminders' );
         }
 
-        if ( ! wp_next_scheduled( 'societypress_check_license' ) ) {
-            wp_schedule_event( time(), 'daily', 'societypress_check_license' );
-        }
-
         flush_rewrite_rules();
     }
 
@@ -261,7 +325,6 @@ final class SocietyPress {
     public function deactivate(): void {
         wp_clear_scheduled_hook( 'societypress_check_expirations' );
         wp_clear_scheduled_hook( 'societypress_send_reminders' );
-        wp_clear_scheduled_hook( 'societypress_check_license' );
         flush_rewrite_rules();
     }
 
@@ -276,12 +339,12 @@ final class SocietyPress {
         $this->user_manager  = new SocietyPress_User_Manager();
         $this->notifications = new SocietyPress_Notifications();
         $this->license       = new SocietyPress_License();
-        $this->updater       = new SocietyPress_Updater( SOCIETYPRESS_BASENAME, SOCIETYPRESS_VERSION, $this->license );
+        $this->updater       = new SocietyPress_Updater( SOCIETYPRESS_BASENAME, SOCIETYPRESS_VERSION );
 
         // Initialize theme updater if theme is active
         $theme = wp_get_theme( 'societypress' );
         if ( $theme->exists() ) {
-            $this->theme_updater = new SocietyPress_Theme_Updater( 'societypress', $theme->get( 'Version' ), $this->license );
+            $this->theme_updater = new SocietyPress_Theme_Updater( 'societypress', $theme->get( 'Version' ) );
         }
 
         if ( is_admin() ) {
@@ -291,6 +354,7 @@ final class SocietyPress {
         if ( ! is_admin() ) {
             $this->directory = new SocietyPress_Directory();
             $this->portal    = new SocietyPress_Portal();
+            $this->join_form = new SocietyPress_Join_Form();
         }
     }
 
@@ -341,6 +405,45 @@ final class SocietyPress {
  */
 function societypress(): SocietyPress {
     return SocietyPress::instance();
+}
+
+/**
+ * Get a plugin setting.
+ *
+ * Helper function that works on both frontend and admin.
+ *
+ * @param string $key     Setting key.
+ * @param mixed  $default Default value if not set.
+ * @return mixed Setting value.
+ */
+function societypress_get_setting( string $key, $default = null ) {
+    static $defaults = null;
+
+    // Cache defaults to avoid repeated array creation
+    if ( null === $defaults ) {
+        $defaults = array(
+            'members_per_page'          => 20,
+            'member_photos_enabled'     => true,
+            'dashboard_widgets_enabled' => true,
+            'dashboard_expiring_days'   => 30,
+            'dashboard_recent_days'     => 30,
+            'organization_name'         => get_bloginfo( 'name' ),
+            'admin_email'               => get_option( 'admin_email' ),
+            'email_from_name'           => get_bloginfo( 'name' ),
+            'email_from_email'          => get_option( 'admin_email' ),
+            'expiration_model'          => 'calendar_year',
+            'directory_per_page'        => 24,
+            'portal_enabled'            => true,
+        );
+    }
+
+    $settings = get_option( 'societypress_settings', array() );
+
+    if ( null === $default && isset( $defaults[ $key ] ) ) {
+        $default = $defaults[ $key ];
+    }
+
+    return $settings[ $key ] ?? $default;
 }
 
 // Initialize

@@ -174,7 +174,7 @@ class SocietyPress_User_Manager {
 	 * @since 0.23d
 	 *
 	 * @param int $member_id Member ID.
-	 * @param int $user_id   WordPress user ID.
+	 * @param int $user_id   WordPress user ID. Pass 0 or null to unlink.
 	 * @return bool True on success, false on failure.
 	 */
 	public function link_member_to_user( int $member_id, int $user_id ): bool {
@@ -182,11 +182,15 @@ class SocietyPress_User_Manager {
 
 		$table = $wpdb->prefix . 'sp_members';
 
+		// Use NULL for unlinking (user_id = 0 means unlink)
+		$user_id_value  = $user_id > 0 ? $user_id : null;
+		$user_id_format = $user_id > 0 ? '%d' : null;
+
 		$result = $wpdb->update(
 			$table,
-			array( 'user_id' => $user_id ),
+			array( 'user_id' => $user_id_value ),
 			array( 'id' => $member_id ),
-			array( '%d' ),
+			array( $user_id_format ),
 			array( '%d' )
 		);
 

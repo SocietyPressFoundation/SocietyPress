@@ -2,8 +2,11 @@
 /**
  * Member Import Handler
  *
- * Handles CSV import with field mapping for migrating members
+ * Handles CSV, TSV, and XLSX import with field mapping for migrating members
  * from other systems (Wild Apricot, spreadsheets, etc.).
+ *
+ * WHY: Supports multiple formats so organizations can import directly from
+ *      Excel without having to "Save As CSV" first.
  *
  * @package SocietyPress
  * @since 1.0.0
@@ -13,6 +16,9 @@
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
+
+// Load SimpleXLSX for Excel file parsing
+require_once SOCIETYPRESS_PATH . 'vendor/SimpleXLSX.php';
 
 /**
  * Class SocietyPress_Import
@@ -54,7 +60,7 @@ class SocietyPress_Import {
             'primary_email'      => 'Primary Email',
             'secondary_email'    => 'Secondary Email',
             'home_phone'         => 'Home Phone',
-            'cell_phone'         => 'Cell Phone',
+            'cell_phone'         => 'Phone',
             'work_phone'         => 'Work Phone',
             'street_address'     => 'Street Address',
             'address_line_2'     => 'Address Line 2',
@@ -232,6 +238,86 @@ class SocietyPress_Import {
     }
 
     /**
+     * Parse an XLSX (Excel) file.
+     *
+     * WHY: Many organizations maintain member lists in Excel. Direct import
+     *      saves them the "Save As CSV" step.
+     *
+     * @param string $file_path   Path to XLSX file.
+     * @param int    $sample_rows Number of sample rows to return.
+     * @return array|WP_Error Parsed data or error.
+     */
+    public function parse_xlsx( string $file_path, int $sample_rows = 5 ) {
+        if ( ! file_exists( $file_path ) ) {
+            return new WP_Error( 'file_not_found', __( 'XLSX file not found.', 'societypress' ) );
+        }
+
+        $xlsx = \Shuchkin\SimpleXLSX::parse( $file_path );
+
+        if ( ! $xlsx ) {
+            return new WP_Error( 'parse_error', __( 'Could not parse XLSX file: ', 'societypress' ) . \Shuchkin\SimpleXLSX::parseError() );
+        }
+
+        $all_rows = $xlsx->rows();
+
+        if ( empty( $all_rows ) ) {
+            return new WP_Error( 'empty_file', __( 'XLSX file is empty.', 'societypress' ) );
+        }
+
+        // First row is headers
+        $headers = array_shift( $all_rows );
+
+        // Clean headers
+        $headers = array_map( function( $header ) {
+            return trim( (string) $header );
+        }, $headers );
+
+        // Get sample rows
+        $rows = array();
+        $total_rows = count( $all_rows );
+
+        for ( $i = 0; $i < min( $sample_rows, $total_rows ); $i++ ) {
+            $row = $all_rows[ $i ];
+            // Pad row to match header count
+            while ( count( $row ) < count( $headers ) ) {
+                $row[] = '';
+            }
+            // Convert all values to strings and trim
+            $row = array_map( function( $cell ) {
+                return trim( (string) $cell );
+            }, $row );
+            $rows[] = array_slice( $row, 0, count( $headers ) );
+        }
+
+        return array(
+            'headers'    => $headers,
+            'rows'       => $rows,
+            'total_rows' => $total_rows,
+            'delimiter'  => null, // Not applicable for XLSX
+        );
+    }
+
+    /**
+     * Parse a file based on its extension.
+     *
+     * WHY: Unified entry point that auto-detects format and calls the right parser.
+     *
+     * @param string $file_path   Path to the import file.
+     * @param int    $sample_rows Number of sample rows to return.
+     * @return array|WP_Error Parsed data or error.
+     */
+    public function parse_file( string $file_path, int $sample_rows = 5 ) {
+        $ext = strtolower( pathinfo( $file_path, PATHINFO_EXTENSION ) );
+
+        if ( 'xlsx' === $ext ) {
+            return $this->parse_xlsx( $file_path, $sample_rows );
+        }
+
+        // CSV and TSV are both handled by parse_csv (auto-detects delimiter)
+        return $this->parse_csv( $file_path, $sample_rows );
+    }
+
+    /**
      * Auto-detect field mappings based on column headers.
      *
      * Attempts to match common column names to SocietyPress fields.
@@ -388,17 +474,25 @@ class SocietyPress_Import {
 
         $file = $_FILES['csv_file'];
 
-        // Validate file type
-        $allowed_types = array( 'text/csv', 'text/plain', 'application/csv', 'application/vnd.ms-excel' );
+        // Validate file type - support CSV, TSV, and XLSX
+        $allowed_types = array(
+            'text/csv',
+            'text/plain',
+            'text/tab-separated-values',
+            'application/csv',
+            'application/vnd.ms-excel',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        );
+        $allowed_extensions = array( 'csv', 'tsv', 'txt', 'xlsx' );
+
         $finfo = finfo_open( FILEINFO_MIME_TYPE );
         $mime_type = finfo_file( $finfo, $file['tmp_name'] );
         finfo_close( $finfo );
 
-        // Also check extension
         $ext = strtolower( pathinfo( $file['name'], PATHINFO_EXTENSION ) );
 
-        if ( ! in_array( $mime_type, $allowed_types, true ) && 'csv' !== $ext ) {
-            wp_send_json_error( array( 'message' => __( 'Invalid file type. Please upload a CSV file.', 'societypress' ) ) );
+        if ( ! in_array( $mime_type, $allowed_types, true ) && ! in_array( $ext, $allowed_extensions, true ) ) {
+            wp_send_json_error( array( 'message' => __( 'Invalid file type. Please upload a CSV, TSV, or XLSX file.', 'societypress' ) ) );
         }
 
         // Move to uploads directory
@@ -412,15 +506,15 @@ class SocietyPress_Import {
             file_put_contents( $import_dir . '/index.php', '<?php // Silence is golden' );
         }
 
-        $filename = 'import-' . wp_generate_uuid4() . '.csv';
+        $filename = 'import-' . wp_generate_uuid4() . '.' . $ext;
         $filepath = $import_dir . '/' . $filename;
 
         if ( ! move_uploaded_file( $file['tmp_name'], $filepath ) ) {
             wp_send_json_error( array( 'message' => __( 'Could not save uploaded file.', 'societypress' ) ) );
         }
 
-        // Parse the CSV
-        $parsed = $this->parse_csv( $filepath, 10 );
+        // Parse the file (CSV, TSV, or XLSX)
+        $parsed = $this->parse_file( $filepath, 10 );
 
         if ( is_wp_error( $parsed ) ) {
             unlink( $filepath );
@@ -467,7 +561,7 @@ class SocietyPress_Import {
             wp_send_json_error( array( 'message' => __( 'Import file not found.', 'societypress' ) ) );
         }
 
-        $parsed = $this->parse_csv( $filepath, 5 );
+        $parsed = $this->parse_file( $filepath, 5 );
 
         if ( is_wp_error( $parsed ) ) {
             wp_send_json_error( array( 'message' => $parsed->get_error_message() ) );
@@ -1022,25 +1116,47 @@ class SocietyPress_Import {
      * @return array|WP_Error Results or error.
      */
     private function process_import( string $filepath, array $mapping, array $options = array() ) {
-        $handle = fopen( $filepath, 'r' );
-        if ( false === $handle ) {
-            return new WP_Error( 'file_error', __( 'Could not open file.', 'societypress' ) );
-        }
-
-        // Detect delimiter
-        $first_line = fgets( $handle );
-        rewind( $handle );
-
+        $ext = strtolower( pathinfo( $filepath, PATHINFO_EXTENSION ) );
+        $is_xlsx = ( 'xlsx' === $ext );
+        $handle = null;
+        $xlsx_rows = null;
+        $xlsx_index = 0;
+        $headers = array();
         $delimiter = ',';
-        if ( substr_count( $first_line, ';' ) > substr_count( $first_line, ',' ) ) {
-            $delimiter = ';';
-        } elseif ( substr_count( $first_line, "\t" ) > substr_count( $first_line, ',' ) ) {
-            $delimiter = "\t";
-        }
 
-        // Read headers
-        $headers = fgetcsv( $handle, 0, $delimiter );
-        $headers = array_map( 'trim', $headers );
+        if ( $is_xlsx ) {
+            // Parse XLSX file using SimpleXLSX
+            $xlsx = \Shuchkin\SimpleXLSX::parse( $filepath );
+            if ( ! $xlsx ) {
+                return new WP_Error( 'file_error', __( 'Could not parse XLSX file: ', 'societypress' ) . \Shuchkin\SimpleXLSX::parseError() );
+            }
+            $xlsx_rows = $xlsx->rows();
+            if ( empty( $xlsx_rows ) ) {
+                return new WP_Error( 'empty_file', __( 'XLSX file is empty.', 'societypress' ) );
+            }
+            // First row is headers
+            $headers = array_map( function( $h ) { return trim( (string) $h ); }, array_shift( $xlsx_rows ) );
+        } else {
+            // CSV/TSV file
+            $handle = fopen( $filepath, 'r' );
+            if ( false === $handle ) {
+                return new WP_Error( 'file_error', __( 'Could not open file.', 'societypress' ) );
+            }
+
+            // Detect delimiter
+            $first_line = fgets( $handle );
+            rewind( $handle );
+
+            if ( substr_count( $first_line, ';' ) > substr_count( $first_line, ',' ) ) {
+                $delimiter = ';';
+            } elseif ( substr_count( $first_line, "\t" ) > substr_count( $first_line, ',' ) ) {
+                $delimiter = "\t";
+            }
+
+            // Read headers
+            $headers = fgetcsv( $handle, 0, $delimiter );
+            $headers = array_map( 'trim', $headers );
+        }
 
         $results = array(
             'imported'     => 0,
@@ -1058,7 +1174,23 @@ class SocietyPress_Import {
         $tiers   = societypress()->tiers;
         $row_num = 1;
 
-        while ( ( $row = fgetcsv( $handle, 0, $delimiter ) ) !== false ) {
+        // Process rows - either from XLSX array or CSV file handle
+        while ( true ) {
+            // Get next row based on file type
+            if ( $is_xlsx ) {
+                if ( $xlsx_index >= count( $xlsx_rows ) ) {
+                    break; // No more rows
+                }
+                $row = $xlsx_rows[ $xlsx_index++ ];
+                // Convert all cells to strings
+                $row = array_map( function( $cell ) { return trim( (string) $cell ); }, $row );
+            } else {
+                $row = fgetcsv( $handle, 0, $delimiter );
+                if ( false === $row ) {
+                    break; // No more rows
+                }
+            }
+
             $row_num++;
 
             // Pad row to match headers
@@ -1257,7 +1389,10 @@ class SocietyPress_Import {
             $results['imported']++;
         }
 
-        fclose( $handle );
+        // Close file handle if CSV/TSV
+        if ( ! $is_xlsx && $handle ) {
+            fclose( $handle );
+        }
 
         return $results;
     }
@@ -1353,19 +1488,20 @@ class SocietyPress_Import {
             <div class="societypress-import-steps">
                 <!-- Step 1: Upload -->
                 <div class="import-step" id="step-upload">
-                    <h2><?php esc_html_e( 'Step 1: Upload CSV File', 'societypress' ); ?></h2>
+                    <h2><?php esc_html_e( 'Step 1: Upload Member List', 'societypress' ); ?></h2>
                     <p class="description">
-                        <?php esc_html_e( 'Upload a CSV file exported from Wild Apricot, Excel, or another membership system.', 'societypress' ); ?>
+                        <?php esc_html_e( 'Upload a spreadsheet exported from Wild Apricot, Excel, or another membership system.', 'societypress' ); ?>
+                        <br><strong><?php esc_html_e( 'Supported formats:', 'societypress' ); ?></strong> CSV, TSV, XLSX (Excel)
                     </p>
 
                     <form id="csv-upload-form" enctype="multipart/form-data">
                         <?php wp_nonce_field( 'societypress_import', 'import_nonce' ); ?>
 
                         <div class="upload-area" id="upload-area">
-                            <input type="file" name="csv_file" id="csv-file" accept=".csv,.txt">
+                            <input type="file" name="csv_file" id="csv-file" accept=".csv,.tsv,.txt,.xlsx">
                             <label for="csv-file">
                                 <span class="dashicons dashicons-upload"></span>
-                                <span class="upload-text"><?php esc_html_e( 'Click to select CSV file or drag and drop', 'societypress' ); ?></span>
+                                <span class="upload-text"><?php esc_html_e( 'Click to select file or drag and drop', 'societypress' ); ?></span>
                             </label>
                         </div>
 

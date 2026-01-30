@@ -3,40 +3,78 @@
 Membership management plugin and theme for WordPress, targeting genealogical and historical societies.
 
 **Current Versions:**
-- **Plugin:** 0.23d
-- **Theme:** 1.22d
+- **Plugin:** 0.42d
+- **Theme:** 1.30d
 
 (Development versioning: increment by 0.01 with each change)
 
-## Claude Code Configuration
-
-A `.claude-settings.json` file is configured to auto-approve common operations for this project:
-- Read/write/edit operations in project paths
-- Rsync operations between XAMPP and source
-- Git operations
-- File search operations (glob, grep)
-
-This reduces permission prompts while maintaining safety for destructive operations.
-
 ## Project Locations
 
-- **Source:** `~/Documents/Development/Web/WordPress/SocietyPress/`
-- **XAMPP:** `/Applications/XAMPP/xamppfiles/htdocs/cms/wp-content/plugins/societypress/`
-- **XAMPP Theme:** `/Applications/XAMPP/xamppfiles/htdocs/cms/wp-content/themes/societypress/`
+- **Source/Git:** `~/Documents/Development/Web/WordPress/SocietyPress/`
 - **GitHub:** `https://github.com/charles-stricklin/SocietyPress`
+
+### getsocietypress.org Local Development
+- **WordPress Root:** `~/Documents/Development/Web/My Sites/getsocietypress.org/public_html/cms/`
+- **Plugin:** `~/Documents/Development/Web/My Sites/getsocietypress.org/public_html/cms/wp-content/plugins/societypress/`
+- **Theme:** `~/Documents/Development/Web/My Sites/getsocietypress.org/public_html/cms/wp-content/themes/societypress/`
+- **Released Plugin ZIPs:** `~/Documents/Development/Web/My Sites/getsocietypress.org/public_html/api/v1/plugins/societypress/`
+- **Released Theme ZIPs:** `~/Documents/Development/Web/My Sites/getsocietypress.org/public_html/api/v1/themes/societypress/`
+- **Other SocietyPress Files:** `~/Documents/Development/Web/My Sites/getsocietypress.org/SocietyPress/`
+
+## Production Server (getsocietypress.org)
+
+**Hosting:** Skystra (cPanel)
+- **cPanel URL:** `https://cp.axm97k5-compute.skystra.com:2222`
+- **cPanel Username:** `charle24`
+- **Server:** `axm97k5-compute.skystra.com`
+
+**Access Method:** Use cPanel web Terminal (direct SSH from Mac is blocked by firewall)
+- In cPanel: System Info & Files → Terminal
+
+**Server Paths:**
+| Location | Path |
+|----------|------|
+| Home directory | `/home/charle24/` |
+| getsocietypress.org root | `~/domains/getsocietypress.org/public_html/` |
+| WordPress | `~/domains/getsocietypress.org/public_html/cms/` |
+| SocietyPress plugin | `~/domains/getsocietypress.org/public_html/cms/wp-content/plugins/societypress/` |
+| SocietyPress theme | `~/domains/getsocietypress.org/public_html/cms/wp-content/themes/societypress/` |
+
+**Other Domains on Same Account:**
+- stricklindevelopment.com (update server API)
+- charlesstricklin.com
+- alamocitycatcafe.com
+- appcrafting.dev
+- everydaytechguide.com
+- wellnesscheck.dev
+- wellnesswatch.dev
+
+**Database Access:** phpMyAdmin via cPanel → Tools → phpMyAdmin
+
+**File Management Options:**
+1. cPanel Terminal (command line)
+2. cPanel File Manager (GUI)
+3. Copy/paste file contents through chat
 
 ## Deployment Workflow
 
-**IMPORTANT:** XAMPP is the master version. Make all code changes in:
-- `/Applications/XAMPP/xamppfiles/htdocs/cms/wp-content/plugins/societypress/`
-- `/Applications/XAMPP/xamppfiles/htdocs/cms/wp-content/themes/societypress/`
+**Local development** is done in:
+- `~/Documents/Development/Web/My Sites/getsocietypress.org/cms/wp-content/plugins/societypress/`
+- `~/Documents/Development/Web/My Sites/getsocietypress.org/cms/wp-content/themes/societypress/`
 
-To sync back to source (for git commits):
+**To create releases:**
 ```bash
-cd ~/Documents/Development/Web/WordPress/SocietyPress
-rsync -av --delete /Applications/XAMPP/xamppfiles/htdocs/cms/wp-content/plugins/societypress/ plugin/ --exclude='.git'
-rsync -av --delete /Applications/XAMPP/xamppfiles/htdocs/cms/wp-content/themes/societypress/ theme/ --exclude='.git'
+# Plugin
+cd ~/Documents/Development/Web/My\ Sites/getsocietypress.org/cms/wp-content/plugins
+zip -r "~/Documents/Development/Web/My Sites/getsocietypress.org/SocietyPress/societypress-{version}.zip" societypress -x "*.git*" -x "*.DS_Store"
+
+# Theme
+cd ~/Documents/Development/Web/My\ Sites/getsocietypress.org/cms/wp-content/themes
+zip -r "~/Documents/Development/Web/My Sites/getsocietypress.org/SocietyPress/societypress-theme-{version}.zip" societypress -x "*.git*" -x "*.DS_Store"
 ```
+
+**To deploy to production:**
+Upload ZIP via cPanel File Manager, extract, set permissions.
 
 ## Tech Stack
 
@@ -198,6 +236,7 @@ None specifically target genealogical/historical societies with specialized fiel
 - ✅ Theme with event display
 - ✅ Fixed header positioning
 - ✅ Custom 404 page
+- ✅ State code validation with autocomplete
 
 ### In Progress
 - 🔄 Leadership management (placeholder)
@@ -245,22 +284,20 @@ On localhost or when `WP_DEBUG` is true, license checks are automatically bypass
 
 ## Testing Notes
 
-**Test Site:**
-- URL: http://localhost/cms/
-- WordPress at: /Applications/XAMPP/xamppfiles/htdocs/cms/
-- Site runs at root via index.php redirect
-- .htaccess at root level required for permalink rewriting
-
 **Default Event Data:**
 - Location: "Dwyer Center Classroom"
 - Address: "San Antonio Genealogical and Historical Society\n911 Melissa Dr\nSan Antonio, TX 78213-2024"
 
+**Default Join Form Data:**
+- City: "San Antonio"
+- State: "TX"
+- Phone prefix: "(210) "
+
 ## Git Workflow
 
-1. Make changes in XAMPP installation
+1. Make changes in local development installation
 2. Test thoroughly
-3. Run rsync commands to copy to source repo
-4. Review changes with `git status` and `git diff`
-5. Stage changes: `git add .`
-6. Commit: `git commit -m "Description"`
-7. Push: `git push origin main`
+3. Review changes with `git status` and `git diff`
+4. Stage changes: `git add .`
+5. Commit: `git commit -m "Description"`
+6. Push: `git push origin main`

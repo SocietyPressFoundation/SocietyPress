@@ -1,11 +1,11 @@
 <?php
 /**
  * Plugin Name: SocietyPress
- * Plugin URI: https://github.com/charles-stricklin/SocietyPress
+ * Plugin URI: https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies. Handles member registration, dues, renewals, directories, committees, and governance.
- * Version: 0.33d
- * Author: Charles Stricklin
- * Author URI: https://stricklindevelopment.com/studiopress/
+ * Version: 0.39d
+ * Author: Stricklin Development
+ * Author URI: https://getsocietypress.org/
  * License: Proprietary
  * Text Domain: societypress
  * Domain Path: /languages
@@ -23,7 +23,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Plugin version.
  */
-define( 'SOCIETYPRESS_VERSION', '0.35d' );
+define( 'SOCIETYPRESS_VERSION', '0.39d' );
 
 /**
  * Plugin directory path.
@@ -444,6 +444,115 @@ function societypress_get_setting( string $key, $default = null ) {
     }
 
     return $settings[ $key ] ?? $default;
+}
+
+/**
+ * Get valid US state and territory codes.
+ *
+ * WHY: Provides consistent list for validation and autocomplete.
+ *      Includes US states, DC, and territories.
+ *
+ * @return array Associative array of code => name.
+ */
+function societypress_get_us_states(): array {
+    return array(
+        'AL' => 'Alabama',
+        'AK' => 'Alaska',
+        'AZ' => 'Arizona',
+        'AR' => 'Arkansas',
+        'CA' => 'California',
+        'CO' => 'Colorado',
+        'CT' => 'Connecticut',
+        'DE' => 'Delaware',
+        'DC' => 'District of Columbia',
+        'FL' => 'Florida',
+        'GA' => 'Georgia',
+        'HI' => 'Hawaii',
+        'ID' => 'Idaho',
+        'IL' => 'Illinois',
+        'IN' => 'Indiana',
+        'IA' => 'Iowa',
+        'KS' => 'Kansas',
+        'KY' => 'Kentucky',
+        'LA' => 'Louisiana',
+        'ME' => 'Maine',
+        'MD' => 'Maryland',
+        'MA' => 'Massachusetts',
+        'MI' => 'Michigan',
+        'MN' => 'Minnesota',
+        'MS' => 'Mississippi',
+        'MO' => 'Missouri',
+        'MT' => 'Montana',
+        'NE' => 'Nebraska',
+        'NV' => 'Nevada',
+        'NH' => 'New Hampshire',
+        'NJ' => 'New Jersey',
+        'NM' => 'New Mexico',
+        'NY' => 'New York',
+        'NC' => 'North Carolina',
+        'ND' => 'North Dakota',
+        'OH' => 'Ohio',
+        'OK' => 'Oklahoma',
+        'OR' => 'Oregon',
+        'PA' => 'Pennsylvania',
+        'RI' => 'Rhode Island',
+        'SC' => 'South Carolina',
+        'SD' => 'South Dakota',
+        'TN' => 'Tennessee',
+        'TX' => 'Texas',
+        'UT' => 'Utah',
+        'VT' => 'Vermont',
+        'VA' => 'Virginia',
+        'WA' => 'Washington',
+        'WV' => 'West Virginia',
+        'WI' => 'Wisconsin',
+        'WY' => 'Wyoming',
+        // Territories
+        'AS' => 'American Samoa',
+        'GU' => 'Guam',
+        'MP' => 'Northern Mariana Islands',
+        'PR' => 'Puerto Rico',
+        'VI' => 'U.S. Virgin Islands',
+        // Military
+        'AA' => 'Armed Forces Americas',
+        'AE' => 'Armed Forces Europe',
+        'AP' => 'Armed Forces Pacific',
+    );
+}
+
+/**
+ * Validate a state/province code.
+ *
+ * WHY: Ensures state codes are valid before saving.
+ *      Accepts 2-letter US codes or allows empty/international.
+ *
+ * @param string $code The state code to validate.
+ * @return bool True if valid US code or empty, false otherwise.
+ */
+function societypress_is_valid_state( string $code ): bool {
+    // Empty is allowed (international members)
+    if ( empty( $code ) ) {
+        return true;
+    }
+
+    // Normalize to uppercase
+    $code = strtoupper( trim( $code ) );
+
+    // Check against valid US states
+    $valid_states = societypress_get_us_states();
+    return isset( $valid_states[ $code ] );
+}
+
+/**
+ * Normalize a state code.
+ *
+ * WHY: Converts input to proper 2-letter uppercase format.
+ *
+ * @param string $code The state code to normalize.
+ * @return string Normalized code (uppercase, trimmed).
+ */
+function societypress_normalize_state( string $code ): string {
+    return strtoupper( trim( $code ) );
 }
 
 // Initialize

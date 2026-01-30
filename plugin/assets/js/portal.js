@@ -14,9 +14,13 @@
      * Portal form handler.
      */
     const PortalForm = {
+        usStates: {},
+
         init: function() {
+            this.usStates = societypressPortal.usStates || {};
             this.cacheDom();
             this.bindEvents();
+            this.initStateAutocomplete();
         },
 
         cacheDom: function() {
@@ -113,6 +117,65 @@
                 default:
                     this.$status.text('');
             }
+        },
+
+        /**
+         * Initialize state autocomplete.
+         *
+         * WHY: Provides predictive text input for state codes with validation.
+         */
+        initStateAutocomplete: function() {
+            const self = this;
+            const $state = $('#sp-state');
+
+            if (!$state.length || !Object.keys(this.usStates).length) {
+                return;
+            }
+
+            // Create datalist for native autocomplete
+            const $datalist = $('<datalist id="sp-state-list"></datalist>');
+            $.each(this.usStates, function(code, name) {
+                $datalist.append($('<option></option>').val(code).text(name + ' (' + code + ')'));
+            });
+            $('body').append($datalist);
+            $state.attr('list', 'sp-state-list');
+
+            // Force uppercase on input
+            $state.on('input', function() {
+                const val = $(this).val().toUpperCase();
+                $(this).val(val);
+
+                // Clear any previous error
+                $(this).removeClass('sp-field-error');
+                $(this).siblings('.sp-field-error-msg').remove();
+            });
+
+            // Validate on blur (before auto-save triggers)
+            $state.on('blur', function() {
+                const val = $(this).val().trim().toUpperCase();
+                $(this).val(val);
+
+                // If empty, that's okay
+                if (!val) {
+                    return;
+                }
+
+                // Check if valid state code
+                if (!self.usStates[val]) {
+                    $(this).addClass('sp-field-error');
+                    if (!$(this).siblings('.sp-field-error-msg').length) {
+                        $('<span class="sp-field-error-msg">' + societypressPortal.strings.invalidState + '</span>')
+                            .insertAfter($(this));
+                    }
+                }
+            });
+
+            // Set attributes for better UX
+            $state.attr({
+                'maxlength': 2,
+                'autocomplete': 'address-level1',
+                'placeholder': 'TX'
+            });
         }
     };
 

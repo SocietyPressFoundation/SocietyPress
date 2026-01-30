@@ -343,3 +343,29 @@
         border-width: 3px;
     }
 }
+
+/* ==========================================================================
+   Field Validation Errors
+   ========================================================================== */
+
+.sp-field-error {
+    border-color: #dc3545 !important;
+    background-color: #fff5f5;
+}
+
+.sp-field-error:focus {
+    border-color: #dc3545 !important;
+    box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.2);
+}
+
+.sp-field-error-msg {
+    display: block;
+    color: #dc3545;
+    font-size: 13px;
+    margin-top: 5px;
+}
+
+/* State field specific */
+#sp-state {
+    text-transform: uppercase;
+}

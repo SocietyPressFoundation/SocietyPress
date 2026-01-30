@@ -50,7 +50,7 @@ class SocietyPress_Updater {
 	 *
 	 * @var string
 	 */
-	private string $update_url = 'https://stricklindevelopment.com/api/v1/plugins/societypress';
+	private string $update_url = 'https://getsocietypress.org/api/v1/plugins/societypress';
 
 	/**
 	 * Cache key for update data.
@@ -87,6 +87,94 @@ class SocietyPress_Updater {
 
 		// After update cleanup
 		add_action( 'upgrader_process_complete', array( $this, 'after_update' ), 10, 2 );
+
+		// Enable auto-updates UI for this plugin (WordPress 5.5+)
+		// WHY: WordPress only shows "Enable auto-updates" for plugins it knows about.
+		//      We inject our plugin into the system so the link appears.
+		add_filter( 'plugins_api_result', array( $this, 'inject_plugin_info' ), 10, 3 );
+		add_filter( 'site_transient_update_plugins', array( $this, 'ensure_plugin_in_transient' ) );
+	}
+
+	/**
+	 * Ensure plugin appears in update transient so auto-update UI shows.
+	 *
+	 * WHY: WordPress only shows "Enable auto-updates" link for plugins that
+	 *      exist in the update_plugins transient (either response or no_update).
+	 *      This ensures our plugin is always present.
+	 *
+	 * @param object $transient Update transient.
+	 * @return object Modified transient.
+	 */
+	public function ensure_plugin_in_transient( $transient ) {
+		if ( empty( $transient ) || ! is_object( $transient ) ) {
+			return $transient;
+		}
+
+		// If plugin is already in response or no_update, we're good
+		if ( isset( $transient->response[ $this->plugin_basename ] ) ) {
+			return $transient;
+		}
+		if ( isset( $transient->no_update[ $this->plugin_basename ] ) ) {
+			return $transient;
+		}
+
+		// Add to no_update so WordPress shows the auto-update toggle
+		if ( ! isset( $transient->no_update ) ) {
+			$transient->no_update = array();
+		}
+
+		$transient->no_update[ $this->plugin_basename ] = (object) array(
+			'slug'         => $this->plugin_slug,
+			'plugin'       => $this->plugin_basename,
+			'new_version'  => $this->version,
+			'url'          => 'https://getsocietypress.org',
+			'package'      => '',
+			'icons'        => array(),
+			'banners'      => array(),
+			'tested'       => '',
+			'requires_php' => '8.0',
+			'requires'     => '6.0',
+		);
+
+		return $transient;
+	}
+
+	/**
+	 * Inject plugin info for plugins_api requests.
+	 *
+	 * WHY: Provides plugin details when WordPress requests info about our plugin.
+	 *
+	 * @param object|WP_Error $result Result from plugins_api.
+	 * @param string          $action The API action.
+	 * @param object          $args   API arguments.
+	 * @return object|WP_Error Modified result.
+	 */
+	public function inject_plugin_info( $result, $action, $args ) {
+		if ( 'plugin_information' !== $action ) {
+			return $result;
+		}
+
+		if ( ! isset( $args->slug ) || $this->plugin_slug !== $args->slug ) {
+			return $result;
+		}
+
+		// If we got an error or empty result, provide basic info
+		if ( is_wp_error( $result ) || empty( $result ) ) {
+			return (object) array(
+				'name'          => 'SocietyPress',
+				'slug'          => $this->plugin_slug,
+				'version'       => $this->version,
+				'author'        => '<a href="https://getsocietypress.org">Stricklin Development</a>',
+				'homepage'      => 'https://getsocietypress.org',
+				'requires'      => '6.0',
+				'requires_php'  => '8.0',
+				'sections'      => array(
+					'description' => 'Membership management for genealogical and historical societies.',
+				),
+			);
+		}
+
+		return $result;
 	}
 
 	/**

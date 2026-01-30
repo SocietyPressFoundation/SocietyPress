@@ -4,7 +4,7 @@ Theme URI: https://github.com/charles-stricklin/SocietyPress
 Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
 Description: Premium WordPress theme for genealogical and historical societies. Features member directories, event calendars, research resources, and document archives. Designed to work seamlessly with the SocietyPress membership management plugin.
-Version: 1.27d
+Version: 1.30d
 Requires at least: 6.0
 Tested up to: 6.4
 Requires PHP: 8.0
@@ -2428,4 +2428,189 @@ article .entry-footer span {
 		width: 44px;
 		height: 44px;
 	}
+}
+
+/* ==========================================================================
+   Contact Page Template
+   ========================================================================== */
+
+.sp-contact-wrapper {
+	display: grid;
+	grid-template-columns: 1fr 2fr;
+	gap: var(--sp-space-10);
+	margin-top: var(--sp-space-8);
+}
+
+@media (max-width: 768px) {
+	.sp-contact-wrapper {
+		grid-template-columns: 1fr;
+		gap: var(--sp-space-8);
+	}
+}
+
+/* Contact Information */
+.sp-contact-info {
+	background: var(--sp-neutral-50);
+	padding: var(--sp-space-8);
+	border-radius: var(--sp-radius-lg);
+	border: 1px solid var(--sp-neutral-200);
+}
+
+.sp-contact-info h2 {
+	font-size: var(--sp-text-xl);
+	margin: 0 0 var(--sp-space-6);
+	padding-bottom: var(--sp-space-4);
+	border-bottom: 2px solid var(--sp-primary-500);
+}
+
+.sp-contact-item {
+	display: flex;
+	gap: var(--sp-space-4);
+	margin-bottom: var(--sp-space-6);
+}
+
+.sp-contact-item:last-child {
+	margin-bottom: 0;
+}
+
+.sp-contact-item svg {
+	flex-shrink: 0;
+	color: var(--sp-primary-600);
+	margin-top: 2px;
+}
+
+.sp-contact-item strong {
+	display: block;
+	color: var(--sp-neutral-600);
+	font-size: var(--sp-text-sm);
+	margin-bottom: var(--sp-space-1);
+}
+
+.sp-contact-item address {
+	font-style: normal;
+	line-height: var(--sp-leading-relaxed);
+}
+
+.sp-contact-item a {
+	color: var(--sp-primary-600);
+	text-decoration: none;
+}
+
+.sp-contact-item a:hover {
+	text-decoration: underline;
+}
+
+/* Contact Form */
+.sp-contact-form-container h2 {
+	font-size: var(--sp-text-xl);
+	margin: 0 0 var(--sp-space-6);
+	padding-bottom: var(--sp-space-4);
+	border-bottom: 2px solid var(--sp-primary-500);
+}
+
+.sp-contact-form .sp-form-row {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: var(--sp-space-6);
+}
+
+@media (max-width: 600px) {
+	.sp-contact-form .sp-form-row {
+		grid-template-columns: 1fr;
+	}
+}
+
+.sp-contact-form .sp-form-field {
+	margin-bottom: var(--sp-space-6);
+}
+
+.sp-contact-form label {
+	display: block;
+	font-weight: 600;
+	margin-bottom: var(--sp-space-2);
+	color: var(--sp-neutral-700);
+}
+
+.sp-contact-form .required {
+	color: var(--sp-error);
+}
+
+.sp-contact-form input[type="text"],
+.sp-contact-form input[type="email"],
+.sp-contact-form textarea {
+	width: 100%;
+	padding: var(--sp-space-3) var(--sp-space-4);
+	border: 1px solid var(--sp-neutral-300);
+	border-radius: var(--sp-radius-base);
+	font-size: var(--sp-text-base);
+	font-family: inherit;
+	transition: border-color var(--sp-transition-fast), box-shadow var(--sp-transition-fast);
+}
+
+.sp-contact-form input:focus,
+.sp-contact-form textarea:focus {
+	outline: none;
+	border-color: var(--sp-primary-500);
+	box-shadow: 0 0 0 3px var(--sp-primary-100);
+}
+
+.sp-contact-form textarea {
+	resize: vertical;
+	min-height: 150px;
+}
+
+/* Honeypot - hidden from humans */
+.sp-hp {
+	position: absolute;
+	left: -9999px;
+	opacity: 0;
+	height: 0;
+	overflow: hidden;
+}
+
+/* Submit Button */
+.sp-form-submit {
+	margin-top: var(--sp-space-6);
+}
+
+.sp-button--primary {
+	display: inline-block;
+	background: var(--sp-primary-600);
+	color: white;
+	border: none;
+	padding: var(--sp-space-4) var(--sp-space-8);
+	font-size: var(--sp-text-base);
+	font-weight: 600;
+	border-radius: var(--sp-radius-base);
+	cursor: pointer;
+	transition: background-color var(--sp-transition-fast), transform var(--sp-transition-fast);
+}
+
+.sp-button--primary:hover {
+	background: var(--sp-primary-700);
+	transform: translateY(-1px);
+}
+
+.sp-button--primary:active {
+	transform: translateY(0);
+}
+
+/* Alert Messages */
+.sp-alert {
+	padding: var(--sp-space-4) var(--sp-space-6);
+	border-radius: var(--sp-radius-base);
+	margin-bottom: var(--sp-space-6);
+	font-weight: 500;
+}
+
+.sp-alert--success {
+	background: var(--sp-success-bg, #d4edda);
+	color: var(--sp-success-text, #155724);
+	border: 1px solid var(--sp-success-border, #c3e6cb);
+}
+
+.sp-alert--error {
+	background: var(--sp-error-bg, #f8d7da);
+	color: var(--sp-error-text, #721c24);
+	border: 1px solid var(--sp-error-border, #f5c6cb);
 }

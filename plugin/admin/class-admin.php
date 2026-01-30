@@ -256,6 +256,14 @@ class SocietyPress_Admin {
 		);
 
 		add_settings_field(
+			'contact_departments',
+			__( 'Contact Form Routing', 'societypress' ),
+			array( $this, 'render_contact_departments_field' ),
+			'societypress-settings',
+			'societypress_organization_section'
+		);
+
+		add_settings_field(
 			'organization_hours',
 			__( 'Hours', 'societypress' ),
 			array( $this, 'render_organization_hours_field' ),
@@ -1156,6 +1164,61 @@ class SocietyPress_Admin {
 		<p class="description">
 			<?php esc_html_e( 'Public contact email address.', 'societypress' ); ?>
 		</p>
+		<?php
+	}
+
+	/**
+	 * Render contact_departments field.
+	 *
+	 * WHY: Allows routing contact form submissions to different email addresses
+	 *      based on inquiry type (e.g., General vs Research). Email addresses
+	 *      are never shown publicly on the website for anti-spam.
+	 */
+	public function render_contact_departments_field(): void {
+		$departments = self::get_setting( 'contact_departments', array() );
+		// Ensure we have at least 4 slots
+		for ( $i = 0; $i < 4; $i++ ) {
+			if ( ! isset( $departments[ $i ] ) ) {
+				$departments[ $i ] = array( 'label' => '', 'email' => '' );
+			}
+		}
+		?>
+		<div class="sp-contact-departments">
+			<p class="description" style="margin-bottom: 10px;">
+				<?php esc_html_e( 'Define up to 4 inquiry types for the contact form. Each routes to a different email. Visitors see only the labels, not email addresses.', 'societypress' ); ?>
+			</p>
+			<table class="widefat" style="max-width: 600px;">
+				<thead>
+					<tr>
+						<th style="width: 50%;"><?php esc_html_e( 'Label (shown to visitors)', 'societypress' ); ?></th>
+						<th style="width: 50%;"><?php esc_html_e( 'Email (hidden)', 'societypress' ); ?></th>
+					</tr>
+				</thead>
+				<tbody>
+					<?php for ( $i = 0; $i < 4; $i++ ) : ?>
+					<tr>
+						<td>
+							<input type="text"
+							       name="societypress_settings[contact_departments][<?php echo $i; ?>][label]"
+							       value="<?php echo esc_attr( $departments[ $i ]['label'] ?? '' ); ?>"
+							       class="regular-text"
+							       placeholder="<?php echo $i === 0 ? esc_attr__( 'General Inquiry', 'societypress' ) : ''; ?>">
+						</td>
+						<td>
+							<input type="email"
+							       name="societypress_settings[contact_departments][<?php echo $i; ?>][email]"
+							       value="<?php echo esc_attr( $departments[ $i ]['email'] ?? '' ); ?>"
+							       class="regular-text"
+							       placeholder="<?php echo $i === 0 ? esc_attr__( 'info@example.org', 'societypress' ) : ''; ?>">
+						</td>
+					</tr>
+					<?php endfor; ?>
+				</tbody>
+			</table>
+			<p class="description" style="margin-top: 10px;">
+				<?php esc_html_e( 'Leave rows blank to hide them. If no departments are configured, the form uses the main Organization Email above.', 'societypress' ); ?>
+			</p>
+		</div>
 		<?php
 	}
 

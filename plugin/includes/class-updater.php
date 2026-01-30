@@ -219,7 +219,7 @@ class SocietyPress_Updater {
 		}
 
 		$response = wp_remote_post(
-			$this->update_url . '/update-check',
+			$this->update_url . '/update-check.php',
 			array(
 				'timeout' => 10,
 				'headers' => array(
@@ -303,7 +303,7 @@ class SocietyPress_Updater {
 	 */
 	private function get_remote_info() {
 		$response = wp_remote_post(
-			$this->update_url . '/info',
+			$this->update_url . '/info.php',
 			array(
 				'timeout' => 10,
 				'headers' => array(

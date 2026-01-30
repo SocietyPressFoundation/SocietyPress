@@ -42,15 +42,22 @@
         /**
          * Initialize the module.
          */
+        /**
+         * US States from localized data.
+         */
+        usStates: {},
+
         init: function() {
             this.studentTierId = societypressJoin.studentTierId || 0;
             this.paymentMode = societypressJoin.paymentMode || 'disabled';
             this.paypalEnabled = societypressJoin.paypalEnabled || false;
             this.tierPrices = societypressJoin.tierPrices || {};
             this.organizationName = societypressJoin.organizationName || '';
+            this.usStates = societypressJoin.usStates || {};
 
             this.bindEvents();
             this.initPhoneFormatting();
+            this.initStateAutocomplete();
             this.checkInitialTierSelection();
 
             // Initialize PayPal if enabled
@@ -454,6 +461,66 @@
                 digits = digits.substring(0, 10);
                 return '(' + digits.substring(0, 3) + ') ' + digits.substring(3, 6) + '-' + digits.substring(6);
             }
+        },
+
+        /**
+         * Initialize state autocomplete.
+         *
+         * WHY: Provides predictive text input for state codes with validation.
+         *      Shows suggestions as user types, validates on blur.
+         */
+        initStateAutocomplete: function() {
+            var self = this;
+            var $state = $('#sp-state');
+
+            if (!$state.length || !Object.keys(this.usStates).length) {
+                return;
+            }
+
+            // Create datalist for native autocomplete
+            var $datalist = $('<datalist id="sp-state-list"></datalist>');
+            $.each(this.usStates, function(code, name) {
+                $datalist.append($('<option></option>').val(code).text(name + ' (' + code + ')'));
+            });
+            $('body').append($datalist);
+            $state.attr('list', 'sp-state-list');
+
+            // Force uppercase and validate on input
+            $state.on('input', function() {
+                var val = $(this).val().toUpperCase();
+                $(this).val(val);
+
+                // Clear any previous error
+                $(this).removeClass('sp-field-error');
+                $(this).siblings('.sp-field-error-msg').remove();
+            });
+
+            // Validate on blur
+            $state.on('blur', function() {
+                var val = $(this).val().trim().toUpperCase();
+                $(this).val(val);
+
+                // If empty, that's okay (not required)
+                if (!val) {
+                    return;
+                }
+
+                // Check if valid state code
+                if (!self.usStates[val]) {
+                    $(this).addClass('sp-field-error');
+                    if (!$(this).siblings('.sp-field-error-msg').length) {
+                        $('<span class="sp-field-error-msg">' + societypressJoin.strings.invalidState + '</span>')
+                            .insertAfter($(this));
+                    }
+                }
+            });
+
+            // Set attributes for better UX
+            $state.attr({
+                'maxlength': 2,
+                'autocomplete': 'address-level1',
+                'placeholder': 'TX'
+            });
         }
     };
 

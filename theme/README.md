@@ -184,8 +184,8 @@ For licensing information, visit: https://stricklindevelopment.com/license/
 
 ## Author
 
-**Charles Stricklin**
-- Website: https://stricklindevelopment.com/
+**Stricklin Development**
+- Website: https://getsocietypress.org/
 - GitHub: https://github.com/charles-stricklin/
 
 ## Changelog

@@ -123,6 +123,31 @@ class SocietyPress_Admin {
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 		add_action( 'admin_init', array( $this, 'handle_actions' ) );
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
+		add_filter( 'plugin_row_meta', array( $this, 'modify_plugin_row_meta' ), 10, 2 );
+	}
+
+	/**
+	 * Modify plugin row meta links on the plugins page.
+	 *
+	 * WHY: Changes "Visit plugin site" to "View details" for clearer UX.
+	 *
+	 * @param array  $links Plugin meta links.
+	 * @param string $file  Plugin file path.
+	 * @return array Modified links.
+	 */
+	public function modify_plugin_row_meta( array $links, string $file ): array {
+		if ( SOCIETYPRESS_BASENAME !== $file ) {
+			return $links;
+		}
+
+		// Replace "Visit plugin site" with "View details"
+		foreach ( $links as $key => $link ) {
+			if ( strpos( $link, 'getsocietypress.org' ) !== false ) {
+				$links[ $key ] = '<a href="https://getsocietypress.org" target="_blank">' . __( 'View details', 'societypress' ) . '</a>';
+			}
+		}
+
+		return $links;
 	}
 
 	/**

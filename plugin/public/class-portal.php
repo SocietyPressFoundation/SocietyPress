@@ -494,13 +494,15 @@ class SocietyPress_Portal {
 			'societypress-portal',
 			'societypressPortal',
 			array(
-				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-				'nonce'   => wp_create_nonce( 'societypress_portal' ),
-				'strings' => array(
-					'saved'       => __( 'Saved!', 'societypress' ),
-					'saving'      => __( 'Saving...', 'societypress' ),
-					'error'       => __( 'Error saving. Please try again.', 'societypress' ),
-					'rateLimit'   => __( 'Too many updates. Please wait a moment.', 'societypress' ),
+				'ajaxUrl'  => admin_url( 'admin-ajax.php' ),
+				'nonce'    => wp_create_nonce( 'societypress_portal' ),
+				'usStates' => societypress_get_us_states(),
+				'strings'  => array(
+					'saved'        => __( 'Saved!', 'societypress' ),
+					'saving'       => __( 'Saving...', 'societypress' ),
+					'error'        => __( 'Error saving. Please try again.', 'societypress' ),
+					'rateLimit'    => __( 'Too many updates. Please wait a moment.', 'societypress' ),
+					'invalidState' => __( 'Please enter a valid 2-letter state code (e.g., TX, CA).', 'societypress' ),
 				),
 			)
 		);
@@ -846,7 +848,12 @@ class SocietyPress_Portal {
 				$contact_data['city'] = sanitize_text_field( $_POST['city'] );
 			}
 			if ( isset( $_POST['state_province'] ) ) {
-				$contact_data['state_province'] = sanitize_text_field( $_POST['state_province'] );
+				$state = sanitize_text_field( $_POST['state_province'] );
+				// Validate state code if provided
+				if ( ! empty( $state ) && ! societypress_is_valid_state( $state ) ) {
+					wp_send_json_error( array( 'message' => __( 'Please enter a valid 2-letter state code (e.g., TX, CA).', 'societypress' ) ) );
+				}
+				$contact_data['state_province'] = societypress_normalize_state( $state );
 			}
 			if ( isset( $_POST['postal_code'] ) ) {
 				$contact_data['postal_code'] = sanitize_text_field( $_POST['postal_code'] );

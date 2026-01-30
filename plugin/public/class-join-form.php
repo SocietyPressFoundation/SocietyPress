@@ -171,12 +171,14 @@ class SocietyPress_Join_Form {
 				'organizationName' => $org_name,
 				'ajaxUrl'          => admin_url( 'admin-ajax.php' ),
 				'nonce'            => wp_create_nonce( 'societypress_payment' ),
+				'usStates'         => societypress_get_us_states(),
 				'strings'          => array(
 					'paymentRequired'  => __( 'Please complete payment to submit your application.', 'societypress' ),
 					'paymentSuccess'   => __( 'Payment successful! Submitting your application...', 'societypress' ),
 					'paymentError'     => __( 'Payment could not be processed. Please try again.', 'societypress' ),
 					'paymentCancelled' => __( 'Payment was cancelled. You can try again or choose to pay later.', 'societypress' ),
 					'processing'       => __( 'Processing...', 'societypress' ),
+					'invalidState'     => __( 'Please enter a valid 2-letter state code (e.g., TX, CA).', 'societypress' ),
 				),
 			)
 		);
@@ -230,6 +232,16 @@ class SocietyPress_Join_Form {
 			$this->result = array(
 				'success' => false,
 				'message' => __( 'A member with this email address already exists. Please contact us if you need assistance.', 'societypress' ),
+			);
+			return;
+		}
+
+		// Validate state code if provided
+		$state_province = sanitize_text_field( $_POST['state_province'] ?? '' );
+		if ( ! empty( $state_province ) && ! societypress_is_valid_state( $state_province ) ) {
+			$this->result = array(
+				'success' => false,
+				'message' => __( 'Please enter a valid 2-letter state code (e.g., TX, CA).', 'societypress' ),
 			);
 			return;
 		}
@@ -331,14 +343,14 @@ class SocietyPress_Join_Form {
 			return;
 		}
 
-		// Save contact information
+		// Save contact information (state_province already validated and sanitized above)
 		$contact_data = array(
 			'primary_email'   => $email,
 			'cell_phone'      => $this->sanitize_phone( $_POST['phone'] ?? '' ),
 			'street_address'  => sanitize_text_field( $_POST['street_address'] ?? '' ),
 			'address_line_2'  => sanitize_text_field( $_POST['address_line_2'] ?? '' ),
 			'city'            => sanitize_text_field( $_POST['city'] ?? '' ),
-			'state_province'  => sanitize_text_field( $_POST['state_province'] ?? '' ),
+			'state_province'  => societypress_normalize_state( $state_province ),
 			'postal_code'     => sanitize_text_field( $_POST['postal_code'] ?? '' ),
 			'country'         => sanitize_text_field( $_POST['country'] ?? 'USA' ),
 		);
@@ -605,8 +617,8 @@ class SocietyPress_Join_Form {
 						<div class="sp-form-field">
 							<label for="sp-phone"><?php esc_html_e( 'Phone', 'societypress' ); ?></label>
 							<input type="tel" id="sp-phone" name="phone"
-								value="<?php echo esc_attr( $_POST['phone'] ?? '' ); ?>"
-								placeholder="(555) 555-5555">
+								value="<?php echo esc_attr( $_POST['phone'] ?? '(210) ' ); ?>"
+								placeholder="(210) 555-5555">
 						</div>
 					</div>
 				</fieldset>
@@ -632,12 +644,12 @@ class SocietyPress_Join_Form {
 						<div class="sp-form-field sp-field-city">
 							<label for="sp-city"><?php esc_html_e( 'City', 'societypress' ); ?></label>
 							<input type="text" id="sp-city" name="city"
-								value="<?php echo esc_attr( $_POST['city'] ?? '' ); ?>">
+								value="<?php echo esc_attr( $_POST['city'] ?? 'Springfield' ); ?>">
 						</div>
 						<div class="sp-form-field sp-field-state">
 							<label for="sp-state"><?php esc_html_e( 'State / Province', 'societypress' ); ?></label>
 							<input type="text" id="sp-state" name="state_province"
-								value="<?php echo esc_attr( $_POST['state_province'] ?? '' ); ?>">
+								value="<?php echo esc_attr( $_POST['state_province'] ?? 'TX' ); ?>" maxlength="2">
 						</div>
 						<div class="sp-form-field sp-field-postal">
 							<label for="sp-postal"><?php esc_html_e( 'ZIP / Postal Code', 'societypress' ); ?></label>

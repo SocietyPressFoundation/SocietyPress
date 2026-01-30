@@ -43,7 +43,7 @@ class SocietyPress_Theme_Updater {
 	 *
 	 * @var string
 	 */
-	private string $update_url = 'https://stricklindevelopment.com/api/v1/themes/societypress';
+	private string $update_url = 'https://getsocietypress.org/api/v1/themes/societypress';
 
 	/**
 	 * Cache key for update data.
@@ -73,6 +73,9 @@ class SocietyPress_Theme_Updater {
 	private function init_hooks(): void {
 		// Check for updates
 		add_filter( 'pre_set_site_transient_update_themes', array( $this, 'check_for_update' ) );
+
+		// Ensure theme appears in transient so "Enable auto-updates" link shows
+		add_filter( 'site_transient_update_themes', array( $this, 'ensure_theme_in_transient' ) );
 
 		// Theme information popup (for "View details" link)
 		add_filter( 'themes_api', array( $this, 'theme_info' ), 10, 3 );
@@ -105,6 +108,41 @@ class SocietyPress_Theme_Updater {
 		} else {
 			$transient->no_update[ $this->theme_slug ] = $remote;
 		}
+
+		return $transient;
+	}
+
+	/**
+	 * Ensure theme appears in transient so "Enable auto-updates" shows.
+	 *
+	 * WHY: WordPress only shows "Enable auto-updates" for themes it knows about.
+	 * By ensuring our theme is in the transient (even with no update), the link appears.
+	 *
+	 * @param object $transient Update transient.
+	 * @return object Modified transient.
+	 */
+	public function ensure_theme_in_transient( $transient ) {
+		if ( ! is_object( $transient ) ) {
+			return $transient;
+		}
+
+		// If theme is already in response (has update) or no_update, we're good
+		if ( isset( $transient->response[ $this->theme_slug ] ) ) {
+			return $transient;
+		}
+		if ( isset( $transient->no_update[ $this->theme_slug ] ) ) {
+			return $transient;
+		}
+
+		// Add to no_update so WordPress knows about this theme
+		$transient->no_update[ $this->theme_slug ] = array(
+			'theme'        => $this->theme_slug,
+			'new_version'  => $this->version,
+			'url'          => 'https://getsocietypress.org',
+			'package'      => '',
+			'requires'     => '6.0',
+			'requires_php' => '8.0',
+		);
 
 		return $transient;
 	}

@@ -4,6 +4,135 @@ Breadcrumbs for picking up where we left off after conversation clears.
 
 ---
 
+## 2026-01-30 (Session 2)
+
+### Plugin 0.45d: Organization Info Shortcodes
+
+**Added:** Five new shortcodes for embedding organization info anywhere.
+
+| Shortcode | Output | Attributes |
+|-----------|--------|------------|
+| `[sp_address]` | Organization address | `link="yes"` for Google Maps link |
+| `[sp_email]` | Organization email | `link="yes"` for mailto: link (default) |
+| `[sp_phone]` | Organization phone | `link="yes"` for tel: link (default) |
+| `[sp_website]` | Organization website | `link="yes"` (default), `text="Click here"` |
+| `[sp_modified]` | Page last modified date | `format="F j, Y"` (PHP date format) |
+
+**WHY:** Privacy Policy and other pages need dynamic org info that updates automatically when settings change.
+
+**File:** `societypress.php` — added shortcode registrations and handler methods
+
+---
+
+### Privacy Policy Created
+
+Created Privacy Policy page at https://getsocietypress.org/privacy-policy/ using the new shortcodes:
+- `[sp_address link="yes"]` for contact address
+- `[sp_email]` for contact email
+- `[sp_modified]` for "Last Updated" date
+
+**WHY:** Legal requirement, plus demonstrates shortcode usage for other societies.
+
+---
+
+### SSH Access Established
+
+Finally got SSH access to production server working from local Mac.
+
+**Setup:**
+1. Created SSH key in cPanel → Security → SSH Access → Manage Keys
+2. Downloaded private key to `~/.ssh/claude_code_rsa`
+3. Set permissions: `chmod 600 ~/.ssh/claude_code_rsa`
+
+**Commands:**
+```bash
+# SSH into server
+ssh -i ~/.ssh/claude_code_rsa charle24@axm97k5-compute.skystra.com
+
+# Upload files
+scp -i ~/.ssh/claude_code_rsa /local/file charle24@axm97k5-compute.skystra.com:~/domains/getsocietypress.org/path/
+```
+
+**WHY:** Can now deploy directly without copy-paste or cPanel File Manager.
+
+---
+
+### GitHub Issue #3: Default Location Fields
+
+Created issue for auto-populating 210 area code, Springfield, and TX when adding new members.
+
+**URL:** https://github.com/charles-stricklin/SocietyPress/issues/3
+
+---
+
+### Welcome Email: NOT Implementing
+
+User decided to set passwords manually for new member accounts rather than send automated welcome emails. Makes sense for small societies where personal touch matters.
+
+Current flow works fine:
+1. Create member → link/create WordPress user (random password generated)
+2. Admin goes to Users → finds them → sets password or sends reset link
+3. Tells member in person or by phone
+
+---
+
+## 2026-01-30 (Session 1)
+
+### Theme 1.33d: Newsletter Sidebar Toggle
+
+**Added:** Configurable sidebar toggle for newsletter pages.
+
+**Features:**
+- **Customizer setting:** Appearance → Customize → Layout Settings → "Show Sidebar on Newsletter Pages" (default: on)
+- **Page-level override:** When editing a newsletter page, sidebar → "Newsletter Page Options" meta box with dropdown:
+  - "Use default" (follows Customizer setting)
+  - "Show sidebar"
+  - "Hide sidebar (full width)"
+
+**WHY:** Different societies may prefer different layouts. Customizer sets site-wide default, page override allows exceptions.
+
+**Files changed:**
+- `inc/customizer.php` - Added `societypress_newsletter_sidebar` setting
+- `functions.php` - Added meta box and `societypress_show_newsletter_sidebar()` helper
+- `templates/template-newsletters.php` - Uses toggle to conditionally show sidebar
+
+---
+
+### Theme 1.32d: Newsletter Template Sidebar
+
+**Changed:** Added sidebar to `templates/template-newsletters.php`
+
+**WHY:** Consistent layout with other pages, sidebar provides navigation and additional content.
+
+---
+
+### Theme 1.31d: Newsletter Archive Template
+
+**Added:** `templates/template-newsletters.php`
+
+**WHY:** Members-only newsletter archive that displays PDF covers automatically without manual image uploads.
+
+**Features:**
+- Scans `wp-content/newsletters/` directory for PDFs
+- Parses filenames for year/month (e.g., `2025_02_February_Newsletter.pdf`)
+- Handles combined issues (e.g., `2025_07-08_Newsletter_Final.pdf` → "July–August 2025")
+- Uses PDF.js to render first page as cover thumbnail — no manual cover uploads needed
+- **Members:** Click cover to download PDF
+- **Non-members:** See covers and titles but no download links; CTA to log in or join
+
+**Design considerations:**
+- Large click targets (entire card is clickable)
+- Clear visual feedback on hover
+- Responsive grid layout
+- Octogenarian-friendly: minimal UI, obvious actions
+
+**Usage:**
+1. Upload PDFs to `wp-content/newsletters/` with naming convention `YYYY_MM_Month_Newsletter.pdf`
+2. Create/edit a page, select "Newsletters" template
+3. Done — newsletters appear automatically
+
+---
+
 ## 2026-01-29
 
 ### Session Start
@@ -94,39 +223,28 @@ Breadcrumbs for picking up where we left off after conversation clears.
 
 ## Task Queue
 
+### Completed
 1. ~~Organization settings fields~~ ✓
 2. ~~Breadcrumb navigation system~~ ✓
 3. ~~Hide "Join" menu for logged-in users~~ ✓
 4. ~~Use org address as default for new events~~ ✓ (Plugin 0.30d)
-5. Add "Link to existing WordPress user" dropdown in member edit screen
+5. ~~Link to existing WordPress user dropdown~~ ✓ (Plugin 0.35d)
 6. ~~Remove license system → replace with "Support this project"~~ ✓ (Plugin 0.31d)
-   - License class simplified to always return valid
-   - "License" section renamed to "Support" with donation messaging
-   - Updaters simplified - no license auth, freely available downloads
-   - License cron job removed
 7. ~~Membership Directory under About Us (members-only)~~ ✓ (Theme 1.27d)
-   - Menu filter extended to hide "directory" items from logged-out users
-   - Removed from My Account dropdown (Plugin 0.32d)
 8. ~~Member import: CSV, TSV, XLSX support~~ ✓ (Plugin 0.33d)
-   - Added SimpleXLSX library to vendor/
-   - Updated import to detect file type and parse accordingly
-   - UI updated to show supported formats
 9. ~~Event import: CSV, TSV, XLSX support~~ ✓ (Plugin 0.34d)
-   - New class `admin/class-import-events.php` with AJAX upload/preview/import
-   - Menu item: SocietyPress > Import Events
-   - 4-step wizard UI matching member import
-   - Auto-detects field mappings from column headers
-10. ~~Link to existing WordPress user dropdown~~ ✓ (Plugin 0.35d)
-    - Added "WordPress Account" dropdown in member edit form (Contact section)
-    - Shows all WP users with display name and email
-    - Can link, unlink, or change linked user
-    - Updates both member record and user meta
-11. Payment integration
-12. Automated renewal reminders
-13. Calendar view for events
-14. Member portal improvements
-15. Public member directory enhancements
-16. Update URLs to getsocietypress.org when domain is ready (updaters + support link)
-17. Build theme style preset system (Parchment, Slate, Ledger, Hearth, Archive, Chronicle) — **ON HOLD until the society launch**
+10. ~~Newsletter archive template~~ ✓ (Theme 1.31d–1.33d)
+11. ~~Organization info shortcodes~~ ✓ (Plugin 0.45d)
+12. ~~Privacy Policy page~~ ✓
+13. ~~SSH access to production~~ ✓
+
+### Pending
+14. Auto-populate default location fields (210, Springfield, TX) — GitHub Issue #3
+15. Payment integration
+16. Automated renewal reminders
+17. Calendar view for events
+18. Member portal improvements
+19. Public member directory enhancements
+20. Build theme style preset system (Parchment, Slate, Ledger, Hearth, Archive, Chronicle) — **ON HOLD until the society launch**
 
 ---

@@ -3,8 +3,8 @@
 Membership management plugin and theme for WordPress, targeting genealogical and historical societies.
 
 **Current Versions:**
-- **Plugin:** 0.43d
-- **Theme:** 1.30d
+- **Plugin:** 0.45d
+- **Theme:** 1.33d
 
 (Development versioning: increment by 0.01 with each change)
 
@@ -28,8 +28,19 @@ Membership management plugin and theme for WordPress, targeting genealogical and
 - **cPanel Username:** `charle24`
 - **Server:** `axm97k5-compute.skystra.com`
 
-**Access Method:** Use cPanel web Terminal (direct SSH from Mac is blocked by firewall)
-- In cPanel: System Info & Files → Terminal
+**SSH Access (from Mac):**
+```bash
+ssh -i ~/.ssh/claude_code_rsa charle24@axm97k5-compute.skystra.com
+```
+
+**SCP uploads:**
+```bash
+scp -i ~/.ssh/claude_code_rsa /local/file charle24@axm97k5-compute.skystra.com:~/domains/getsocietypress.org/path/
+```
+
+**Key location:** `~/.ssh/claude_code_rsa`
+
+**Alternative:** cPanel web Terminal (System Info & Files → Terminal)
 
 **Server Paths:**
 | Location | Path |
@@ -59,17 +70,23 @@ Membership management plugin and theme for WordPress, targeting genealogical and
 ## Deployment Workflow
 
 **Local development** is done in:
-- `~/Documents/Development/Web/My Sites/getsocietypress.org/cms/wp-content/plugins/societypress/`
-- `~/Documents/Development/Web/My Sites/getsocietypress.org/cms/wp-content/themes/societypress/`
+- `~/Documents/Development/Web/My Sites/getsocietypress.org/public_html/cms/wp-content/plugins/societypress/`
+- `~/Documents/Development/Web/My Sites/getsocietypress.org/public_html/cms/wp-content/themes/societypress/`
+
+**Newsletters directory:**
+- Local: `~/Documents/Development/Web/My Sites/getsocietypress.org/public_html/cms/wp-content/newsletters/`
+- Production: `~/domains/getsocietypress.org/public_html/cms/wp-content/newsletters/`
+- Naming: `YYYY_MM_Month_Newsletter.pdf` (e.g., `2025_02_February_Newsletter.pdf`)
+- Combined issues: `YYYY_MM-MM_Newsletter.pdf` (e.g., `2025_07-08_Newsletter.pdf`)
 
 **To create releases:**
 ```bash
 # Plugin
-cd ~/Documents/Development/Web/My\ Sites/getsocietypress.org/cms/wp-content/plugins
+cd ~/Documents/Development/Web/My\ Sites/getsocietypress.org/public_html/cms/wp-content/plugins
 zip -r "~/Documents/Development/Web/My Sites/getsocietypress.org/SocietyPress/societypress-{version}.zip" societypress -x "*.git*" -x "*.DS_Store"
 
 # Theme
-cd ~/Documents/Development/Web/My\ Sites/getsocietypress.org/cms/wp-content/themes
+cd ~/Documents/Development/Web/My\ Sites/getsocietypress.org/public_html/cms/wp-content/themes
 zip -r "~/Documents/Development/Web/My Sites/getsocietypress.org/SocietyPress/societypress-theme-{version}.zip" societypress -x "*.git*" -x "*.DS_Store"
 ```
 
@@ -178,10 +195,12 @@ Flat structure under SocietyPress main menu:
 - Hero slider on homepage (Swiper.js)
 - Custom 404 page (genealogy-themed)
 - Event display templates with metadata
+- Newsletter archive template (PDF.js auto-thumbnails, members-only downloads)
 - Three navigation menus (Primary, Footer, Utility)
 - Three footer widget areas
 - Custom image sizes for events and members
 - Responsive embeds support
+- Smart menu filtering (hides Join/Register for logged-in, Directory for logged-out)
 
 **Theme Helper Functions:**
 - `sp_get_event_date()` - Get event date
@@ -192,6 +211,17 @@ Flat structure under SocietyPress main menu:
 - `sp_is_registration_required()` - Check if registration required
 - `sp_is_recurring()` - Check if event is recurring
 - `sp_get_recurring_description()` - Get recurrence description
+
+**Plugin Shortcodes:**
+
+| Shortcode | Output | Attributes |
+|-----------|--------|------------|
+| `[societypress_contact]` | Full contact block | `show_form`, `show_hours`, etc. |
+| `[sp_address]` | Organization address | `link="yes"` for Maps link |
+| `[sp_email]` | Organization email | `link="yes"` (default) |
+| `[sp_phone]` | Organization phone | `link="yes"` (default) |
+| `[sp_website]` | Organization website | `link="yes"`, `text="..."` |
+| `[sp_modified]` | Page last modified | `format="F j, Y"` |
 
 ## Target Market
 
@@ -224,19 +254,22 @@ None specifically target genealogical/historical societies with specialized fiel
 ### Completed Features
 - ✅ Core member CRUD
 - ✅ Tier management
-- ✅ CSV Import with auto-mapping
+- ✅ CSV/TSV/XLSX Import with auto-mapping (members and events)
 - ✅ CSV Export with filter support
 - ✅ Admin UI
-- ✅ License validation with developer mode
-- ✅ Auto-updates (plugin and theme)
+- ✅ Auto-updates (plugin and theme) — shareware model, no license enforcement
 - ✅ Events custom post type
 - ✅ Recurring events (weekly and monthly)
-- ✅ Event categories
-- ✅ Event duplicate functionality
+- ✅ Event categories and duplicate functionality
 - ✅ Theme with event display
 - ✅ Fixed header positioning
 - ✅ Custom 404 page
 - ✅ State code validation with autocomplete
+- ✅ Organization settings with shortcodes
+- ✅ Breadcrumb navigation system
+- ✅ Newsletter archive template (PDF.js thumbnails)
+- ✅ Smart menu item filtering
+- ✅ Link WordPress user to member
 
 ### In Progress
 - 🔄 Leadership management (placeholder)
@@ -244,11 +277,11 @@ None specifically target genealogical/historical societies with specialized fiel
 - 🔄 Library features (placeholder)
 
 ### Not Yet Implemented
-- ⏸️ Public member directory
-- ⏸️ Member portal
+- ⏸️ Default location field auto-populate (GitHub Issue #3)
 - ⏸️ Payment integration
 - ⏸️ Automated renewal reminders
 - ⏸️ Calendar view for events
+- ⏸️ Theme style presets (ON HOLD until the society launch)
 
 ## Auto-Update System
 

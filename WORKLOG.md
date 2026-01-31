@@ -4,6 +4,104 @@ Breadcrumbs for picking up where we left off after conversation clears.
 
 ---
 
+## 2026-01-30 (Session 4)
+
+### Plugin 0.47d + Theme 1.34d: Event Slots & Registration System
+
+**Added:** Complete event registration system with time slots, capacity tracking, and waitlist management.
+
+**What It Does:**
+- Events can have multiple time slots (e.g., 10-11 AM, 11-12 PM, 12-1 PM)
+- Each slot has optional capacity limit (NULL = unlimited)
+- Members register for specific slots from the single event page
+- Full slots show "Join Waitlist" button instead
+- Auto-promotes waitlisted members when spots open (cancellations)
+- Portal "My Events" widget shows upcoming registrations with cancel buttons
+
+**Database Tables Added:**
+- `sp_event_slots` — id, event_id, start_time, end_time, capacity, description, sort_order, is_active
+- `sp_event_registrations` — id, slot_id, member_id, status (confirmed/cancelled/waitlist), registered_at, registered_by, cancelled_at, notes
+
+**New Files:**
+| File | Purpose |
+|------|---------|
+| `includes/class-event-slots.php` | Slot CRUD, capacity checks, time formatting |
+| `includes/class-event-registrations.php` | Registration logic, waitlist promotion |
+| `public/class-event-registration-frontend.php` | Frontend UI + AJAX handlers |
+| `assets/js/event-registration.js` | Frontend registration/cancel JavaScript |
+| `assets/css/event-registration.css` | Registration interface styling |
+
+**Modified Files:**
+| File | Changes |
+|------|---------|
+| `includes/class-database.php` | Added 2 new table creation methods |
+| `includes/class-events.php` | Added slots meta box with repeatable rows |
+| `societypress.php` | Loads new classes, init, version bump |
+| `assets/js/admin.js` | Added slot row add/remove JavaScript |
+| `public/class-portal.php` | Added "My Events" widget + cancel AJAX |
+| `assets/js/portal.js` | Added event cancellation handler |
+| `assets/css/portal.css` | Added My Events widget styles |
+| `theme/template-parts/content-sp_event.php` | Added `sp_event_after_content` hook |
+
+**Tomorrow's Verification:**
+1. Deactivate/reactivate plugin to create new tables
+2. Create test event with 3 slots, capacity 1 each
+3. Register member for slot 1 → verify "Registered" shows
+4. Portal shows registration in "My Events"
+5. Second member registers → slot 1 full → "Join Waitlist"
+6. Cancel first registration → verify waitlist auto-promotes
+7. Cancel from portal → verify removed
+
+**Action Hook Added:**
+```php
+do_action( 'sp_event_after_content', $event_id );
+```
+Fires in theme's `content-sp_event.php` after content on single events.
+
+**Future Hook:**
+```php
+do_action( 'societypress_waitlist_promoted', $registration_id, $member_id, $slot_id );
+```
+Fires when someone is promoted from waitlist — for email notifications later.
+
+---
+
+## 2026-01-30 (Session 3)
+
+### Plugin 0.46d: Leadership & Committees System
+
+**Added:** Full leadership and committees management.
+
+**Leadership Features:**
+- CRUD for positions (Board of Directors and other roles)
+- Assign members to positions with term dates
+- Track position history
+- "Load Default Positions" button seeds:
+  - Board: President, 1st/2nd/3rd VP, Secretary, Treasurer, Director-At-Large, Chaplain
+  - Other: Historian, IT, Landscaping, Head Librarian, Duty Librarian, Head Cataloger, Library Volunteer, Newsletter Editor, Yearbook Editor, Graphic Designer, Photographer, Purchasing Agent
+
+**Committees Features:**
+- CRUD for committees
+- Add/remove members with roles (Chair, Vice-Chair, Member)
+- Role dropdown in member list for quick changes
+- "Load Default Committees" button seeds: Education, First Families, Grants, IT, Library, Membership, Memorials, Publications, Publicity, Research Registrar, Website Manager
+
+**Files added:**
+- `includes/class-leadership.php` — Positions and position holders data class
+- `includes/class-committees.php` — Committees and committee members data class
+
+**Files changed:**
+- `societypress.php` — Added leadership/committees properties and loading
+- `admin/class-admin.php` — Replaced placeholder pages with full UI
+
+**Database tables used (already existed):**
+- `sp_positions` — Position definitions
+- `sp_position_holders` — Who holds each position with term dates
+- `sp_committees` — Committee definitions
+- `sp_committee_members` — Who's on each committee with roles
+
+---
+
 ## 2026-01-30 (Session 2)
 
 ### Plugin 0.45d: Organization Info Shortcodes

@@ -46,8 +46,29 @@
 - [x] Placeholder pages (Leadership, Committees, Library)
 - [x] Dashboard widgets skeleton
 
+## Tomorrow's Priority 📋
+
+### Verify Event Registration System (0.47d)
+1. Deactivate and reactivate plugin to create new database tables
+2. Create test event with 3 time slots (10-11, 11-12, 12-1), capacity 1 each
+3. Log in as member, register for first slot
+4. Verify "Registered" badge shows, other slots still available
+5. Check portal "My Events" widget shows the registration
+6. Register second member, verify first slot shows "Full"
+7. Third member sees "Join Waitlist" for first slot
+8. Cancel first registration → verify waitlist auto-promotes
+9. Cancel from portal → verify removed from list
+
+### If Time Permits
+- Test registration URL field still works (external registration)
+- Test with capacity NULL (unlimited)
+- Test recurring event with slots
+
+---
+
 ## In Progress 🔄
 
+- [x] Event slots and registration system (0.47d - needs verification)
 - [ ] Leadership management (placeholder page created)
 - [ ] Committees management (placeholder page created)
 - [ ] Library features (placeholder page created)
@@ -68,9 +89,13 @@
 
 ### Events
 - [ ] Calendar view for events (month/week/day)
-- [ ] Event registration form
-- [ ] Event capacity and waitlist
+- [x] Event time slots with capacity
+- [x] Event registration form (frontend)
+- [x] Event waitlist with auto-promotion
+- [x] Admin slots meta box with repeatable rows
+- [x] Portal "My Events" widget
 - [ ] Email notifications for event updates
+- [ ] Email notification when promoted from waitlist
 - [ ] iCal export
 
 ### Communication
@@ -198,6 +223,24 @@
 - Events CPT set to `show_in_menu => false` to prevent duplicate menu items
 
 ## Version History
+
+### 0.47d + Theme 1.34d (2026-01-30)
+- **Event Slots & Registration System:**
+  - Multiple time slots per event with capacity limits
+  - Frontend registration on single event pages
+  - Waitlist with auto-promotion when spots open
+  - Admin meta box with repeatable slot rows
+  - Portal "My Events" widget showing registrations
+  - Cancel from event page or portal
+- **New database tables:** `sp_event_slots`, `sp_event_registrations`
+- **New classes:** `SocietyPress_Event_Slots`, `SocietyPress_Event_Registrations`, `SocietyPress_Event_Registration_Frontend`
+- **New hook:** `sp_event_after_content` in theme for frontend registration display
+
+### 0.46d (2026-01-30)
+- Leadership and Committees management system
+
+### 0.45d (2026-01-30)
+- Organization info shortcodes ([sp_address], [sp_email], etc.)
 
 ### 0.23d (2026-01-27)
 - **WordPress User Integration:** Automatic user account creation for members

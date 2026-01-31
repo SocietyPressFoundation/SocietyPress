@@ -75,6 +75,8 @@ class SocietyPress_Database {
         $this->create_committee_members_table();
         $this->create_audit_log_table();
         $this->create_licenses_table();
+        $this->create_event_slots_table();
+        $this->create_event_registrations_table();
     }
 
     /**
@@ -494,12 +496,72 @@ class SocietyPress_Database {
     }
 
     /**
+     * Event slots table.
+     *
+     * WHY: Allows events to have multiple time slots (e.g., 10-11 AM, 11-12 PM)
+     *      for members to register for specific times with capacity tracking.
+     */
+    private function create_event_slots_table(): void {
+        $table = $this->table( 'event_slots' );
+
+        $sql = "CREATE TABLE {$table} (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            event_id BIGINT(20) UNSIGNED NOT NULL,
+            start_time TIME NOT NULL,
+            end_time TIME NOT NULL,
+            capacity INT UNSIGNED DEFAULT NULL,
+            description VARCHAR(255) DEFAULT NULL,
+            sort_order INT NOT NULL DEFAULT 0,
+            is_active TINYINT(1) NOT NULL DEFAULT 1,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY event_id (event_id),
+            KEY is_active (is_active),
+            KEY sort_order (sort_order)
+        ) {$this->charset_collate};";
+
+        dbDelta( $sql );
+    }
+
+    /**
+     * Event registrations table.
+     *
+     * WHY: Tracks which members have registered for which event time slots,
+     *      including status (confirmed, cancelled, waitlist) and admin notes.
+     */
+    private function create_event_registrations_table(): void {
+        $table = $this->table( 'event_registrations' );
+
+        $sql = "CREATE TABLE {$table} (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            slot_id BIGINT(20) UNSIGNED NOT NULL,
+            member_id BIGINT(20) UNSIGNED NOT NULL,
+            status ENUM('confirmed','cancelled','waitlist') NOT NULL DEFAULT 'confirmed',
+            registered_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            registered_by BIGINT(20) UNSIGNED DEFAULT NULL,
+            cancelled_at DATETIME DEFAULT NULL,
+            notes TEXT,
+            PRIMARY KEY (id),
+            KEY slot_id (slot_id),
+            KEY member_id (member_id),
+            KEY status (status),
+            KEY registered_at (registered_at),
+            UNIQUE KEY unique_registration (slot_id, member_id)
+        ) {$this->charset_collate};";
+
+        dbDelta( $sql );
+    }
+
+    /**
      * Drop all plugin tables.
      *
      * Called from uninstall.php only.
      */
     public function uninstall(): void {
         $tables = array(
+            'event_registrations',
+            'event_slots',
             'licenses',
             'audit_log',
             'committee_members',

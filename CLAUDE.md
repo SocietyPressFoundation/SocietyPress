@@ -3,8 +3,8 @@
 Membership management plugin and theme for WordPress, targeting genealogical and historical societies.
 
 **Current Versions:**
-- **Plugin:** 0.45d
-- **Theme:** 1.33d
+- **Plugin:** 0.47d
+- **Theme:** 1.34d
 
 (Development versioning: increment by 0.01 with each change)
 
@@ -97,7 +97,7 @@ Upload ZIP via cPanel File Manager, extract, set permissions.
 
 ### Plugin
 - WordPress plugin (PHP 8.0+)
-- Custom database tables (14 tables with `{prefix}sp_` prefix)
+- Custom database tables (16 tables with `{prefix}sp_` prefix)
 - WordPress Settings API for configuration
 - WP_List_Table for admin lists
 - AES-256-GCM encryption for sensitive data
@@ -127,6 +127,11 @@ Upload ZIP via cPanel File Manager, extract, set permissions.
 | `SocietyPress_License` | includes/class-license.php | License validation |
 | `SocietyPress_Updater` | includes/class-updater.php | Plugin auto-updates |
 | `SocietyPress_Theme_Updater` | includes/class-theme-updater.php | Theme auto-updates |
+| `SocietyPress_Leadership` | includes/class-leadership.php | Positions and holders |
+| `SocietyPress_Committees` | includes/class-committees.php | Committees and members |
+| `SocietyPress_Event_Slots` | includes/class-event-slots.php | Event time slots CRUD |
+| `SocietyPress_Event_Registrations` | includes/class-event-registrations.php | Registration and waitlist |
+| `SocietyPress_Event_Registration_Frontend` | public/class-event-registration-frontend.php | Frontend registration UI |
 
 ## Database Tables
 
@@ -148,6 +153,10 @@ Upload ZIP via cPanel File Manager, extract, set permissions.
 - `sp_committee_members` - Committee membership
 - `sp_audit_log` - Change tracking
 
+**Events:**
+- `sp_event_slots` - Event time slots with capacity
+- `sp_event_registrations` - Member registrations for slots
+
 ## Events System
 
 The plugin provides a custom post type (`sp_event`) for managing society events.
@@ -168,6 +177,16 @@ The plugin provides a custom post type (`sp_event`) for managing society events.
 - Featured images
 - Event categories taxonomy
 - Duplicate event functionality
+- **Time slots with capacity** — multiple sessions per event (e.g., 10-11 AM, 11-12 PM)
+- **Member registration** — members register for specific slots from event page
+- **Waitlist** — auto-promotes when spots open from cancellations
+
+**Registration System:**
+- Slots admin meta box with repeatable rows (start/end time, capacity, description)
+- Frontend registration table on single event pages
+- Portal "My Events" widget showing upcoming registrations
+- Cancel from event page or portal
+- `do_action('sp_event_after_content', $event_id)` hook for registration display
 
 **Recurring Events:**
 - Weekly: Repeats every week on the same day
@@ -178,8 +197,8 @@ The plugin provides a custom post type (`sp_event`) for managing society events.
 
 Flat structure under SocietyPress main menu:
 1. Dashboard
-2. Leadership (placeholder)
-3. Committees (placeholder)
+2. Leadership (positions and holders management)
+3. Committees (committees and members management)
 4. Calendar (events list)
 5. Add New Event
 6. Members
@@ -270,10 +289,10 @@ None specifically target genealogical/historical societies with specialized fiel
 - ✅ Newsletter archive template (PDF.js thumbnails)
 - ✅ Smart menu item filtering
 - ✅ Link WordPress user to member
+- ✅ Leadership management (positions, board of directors, term tracking)
+- ✅ Committees management (roles: Chair, Vice-Chair, Member)
 
 ### In Progress
-- 🔄 Leadership management (placeholder)
-- 🔄 Committees management (placeholder)
 - 🔄 Library features (placeholder)
 
 ### Not Yet Implemented

@@ -1,0 +1,451 @@
+/**
+ * SocietyPress Event Registration Styles
+ *
+ * Senior-friendly design: large fonts, high contrast, generous touch targets.
+ * Matches the portal styling for consistency.
+ *
+ * @package SocietyPress
+ * @since 1.0.0
+ */
+
+/* ==========================================================================
+   Registration Container
+   ========================================================================== */
+
+.sp-event-registration {
+    margin: 40px 0;
+    padding: 30px;
+    background: #f9f9f9;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+}
+
+.sp-event-registration h3 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #e0e0e0;
+    font-size: 1.4em;
+    color: #1d2327;
+}
+
+/* ==========================================================================
+   Feedback Messages
+   ========================================================================== */
+
+.sp-registration-feedback {
+    padding: 15px 20px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    font-size: 16px;
+}
+
+.sp-registration-feedback p {
+    margin: 0;
+}
+
+.sp-feedback-success {
+    background: #d6f4d6;
+    border: 2px solid #00a32a;
+    color: #006600;
+}
+
+.sp-feedback-error {
+    background: #ffd6d6;
+    border: 2px solid #d63638;
+    color: #8b0000;
+}
+
+.sp-feedback-info {
+    background: #e7f3ff;
+    border: 2px solid #0073aa;
+    color: #004a73;
+}
+
+/* ==========================================================================
+   Login/Membership Messages
+   ========================================================================== */
+
+.sp-registration-message {
+    padding: 20px;
+    text-align: center;
+    background: white;
+    border-radius: 4px;
+}
+
+.sp-registration-message p {
+    margin: 0;
+    font-size: 18px;
+    color: #555;
+}
+
+.sp-registration-message a {
+    color: #0073aa;
+    font-weight: 600;
+}
+
+.sp-registration-message a:hover {
+    text-decoration: underline;
+}
+
+.sp-login-required {
+    border-left: 4px solid #0073aa;
+}
+
+.sp-membership-required {
+    border-left: 4px solid #dba617;
+}
+
+/* ==========================================================================
+   Slots Table
+   ========================================================================== */
+
+.sp-slots-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border-radius: 4px;
+    overflow: hidden;
+    font-size: 16px;
+}
+
+.sp-slots-table thead th {
+    background: #f0f0f0;
+    padding: 15px;
+    text-align: left;
+    font-weight: 600;
+    color: #1d2327;
+    border-bottom: 2px solid #ddd;
+}
+
+.sp-slots-table tbody td {
+    padding: 18px 15px;
+    border-bottom: 1px solid #eee;
+    vertical-align: middle;
+}
+
+.sp-slots-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Slot row states */
+.sp-slot-row.sp-slot-registered {
+    background: #f0fff0;
+}
+
+.sp-slot-row.sp-slot-waitlisted {
+    background: #fffbf0;
+}
+
+.sp-slot-row.sp-slot-full {
+    background: #fafafa;
+}
+
+/* ==========================================================================
+   Slot Table Columns
+   ========================================================================== */
+
+.sp-slot-time {
+    font-weight: 600;
+    white-space: nowrap;
+    color: #1d2327;
+}
+
+.sp-slot-description {
+    color: #555;
+}
+
+.sp-slot-availability {
+    white-space: nowrap;
+}
+
+.sp-slot-action {
+    white-space: nowrap;
+    text-align: right;
+}
+
+/* ==========================================================================
+   Availability Badges
+   ========================================================================== */
+
+.sp-availability-open {
+    color: #00a32a;
+    font-weight: 600;
+}
+
+.sp-availability-spots {
+    color: #dba617;
+    font-weight: 600;
+}
+
+.sp-availability-full {
+    color: #d63638;
+    font-weight: 600;
+}
+
+.sp-waitlist-count {
+    color: #666;
+    font-size: 14px;
+}
+
+/* ==========================================================================
+   Action Buttons
+   ========================================================================== */
+
+.sp-register-btn,
+.sp-cancel-btn {
+    padding: 12px 24px;
+    min-height: 48px;
+    font-size: 16px;
+    font-weight: 600;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.sp-register-btn {
+    background: #0073aa;
+    color: white;
+}
+
+.sp-register-btn:hover {
+    background: #005a87;
+}
+
+.sp-register-btn:focus {
+    outline: 3px solid rgba(0, 115, 170, 0.5);
+    outline-offset: 2px;
+}
+
+.sp-waitlist-btn {
+    background: #dba617;
+    color: white;
+}
+
+.sp-waitlist-btn:hover {
+    background: #b8860b;
+}
+
+.sp-cancel-btn {
+    background: #f0f0f0;
+    color: #d63638;
+    margin-left: 10px;
+}
+
+.sp-cancel-btn:hover {
+    background: #e0e0e0;
+}
+
+.sp-cancel-btn:focus {
+    outline: 3px solid rgba(214, 54, 56, 0.3);
+    outline-offset: 2px;
+}
+
+/* Loading state */
+.sp-register-btn.sp-loading,
+.sp-cancel-btn.sp-loading {
+    opacity: 0.7;
+    cursor: wait;
+}
+
+.sp-register-btn:disabled,
+.sp-cancel-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ==========================================================================
+   Registration Status Badges
+   ========================================================================== */
+
+.sp-registered-badge,
+.sp-waitlist-badge {
+    display: inline-block;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.sp-registered-badge {
+    background: #d6f4d6;
+    color: #006600;
+}
+
+.sp-waitlist-badge {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.sp-other-slot-note {
+    display: block;
+    font-size: 14px;
+    color: #666;
+    font-style: italic;
+}
+
+/* ==========================================================================
+   Admin Slots Table (Meta Box)
+   ========================================================================== */
+
+.sp-event-slots-table {
+    margin-top: 10px;
+}
+
+.sp-event-slots-table input[type="time"],
+.sp-event-slots-table input[type="number"],
+.sp-event-slots-table input[type="text"] {
+    width: 100%;
+    max-width: none;
+}
+
+.sp-event-slots-table .sp-slot-capacity {
+    width: 90px;
+}
+
+.sp-event-slots-table .sp-slot-registrations {
+    text-align: center;
+}
+
+.sp-event-slots-table .sp-registration-count {
+    font-weight: 600;
+    color: #0073aa;
+}
+
+.sp-event-slots-table .sp-view-registrations {
+    display: block;
+    font-size: 12px;
+    margin-top: 3px;
+}
+
+.sp-event-slots-table .sp-remove-slot-row {
+    background: #dc3545;
+    color: white;
+    border: none;
+    width: 30px;
+    height: 30px;
+    font-size: 18px;
+    line-height: 1;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.sp-event-slots-table .sp-remove-slot-row:hover {
+    background: #c82333;
+}
+
+.sp-slot-inactive {
+    opacity: 0.5;
+    background: #f5f5f5;
+}
+
+#sp-add-slot-row {
+    margin-top: 10px;
+}
+
+/* ==========================================================================
+   Responsive Design
+   ========================================================================== */
+
+@media screen and (max-width: 782px) {
+    .sp-event-registration {
+        padding: 20px;
+    }
+
+    .sp-slots-table {
+        display: block;
+        overflow-x: auto;
+    }
+
+    .sp-slots-table thead {
+        display: none;
+    }
+
+    .sp-slots-table tbody,
+    .sp-slots-table tr,
+    .sp-slots-table td {
+        display: block;
+    }
+
+    .sp-slots-table tbody tr {
+        margin-bottom: 20px;
+        padding: 15px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+
+    .sp-slots-table tbody td {
+        padding: 8px 0;
+        border-bottom: none;
+        text-align: left;
+    }
+
+    .sp-slots-table tbody td:before {
+        content: attr(data-label);
+        display: block;
+        font-weight: 600;
+        font-size: 12px;
+        color: #666;
+        margin-bottom: 4px;
+        text-transform: uppercase;
+    }
+
+    .sp-slot-action {
+        text-align: left;
+        padding-top: 15px;
+        border-top: 1px solid #eee;
+        margin-top: 10px;
+    }
+
+    .sp-register-btn,
+    .sp-cancel-btn {
+        display: block;
+        width: 100%;
+        margin: 5px 0;
+    }
+
+    .sp-cancel-btn {
+        margin-left: 0;
+    }
+}
+
+/* ==========================================================================
+   High Contrast Mode
+   ========================================================================== */
+
+@media (prefers-contrast: high) {
+    .sp-event-registration {
+        border-width: 3px;
+    }
+
+    .sp-slots-table thead th {
+        border-bottom-width: 3px;
+    }
+
+    .sp-register-btn,
+    .sp-cancel-btn {
+        border: 2px solid currentColor;
+    }
+
+    .sp-registered-badge,
+    .sp-waitlist-badge {
+        border: 2px solid currentColor;
+    }
+}
+
+/* ==========================================================================
+   Reduced Motion
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+    .sp-register-btn,
+    .sp-cancel-btn {
+        transition: none;
+    }
+
+    .sp-registration-feedback {
+        animation: none;
+    }
+}

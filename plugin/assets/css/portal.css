@@ -369,3 +369,177 @@
 #sp-state {
     text-transform: uppercase;
 }
+
+/* ==========================================================================
+   My Events Widget
+   ========================================================================== */
+
+.sp-my-events h4 {
+    margin-top: 20px;
+    margin-bottom: 10px;
+    font-size: 16px;
+    color: #1d2327;
+}
+
+.sp-my-events h4:first-of-type {
+    margin-top: 0;
+}
+
+.sp-no-events {
+    color: #666;
+    font-style: italic;
+    padding: 15px 0;
+}
+
+.sp-events-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.sp-event-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    margin-bottom: 10px;
+    background: #fafafa;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    gap: 15px;
+}
+
+.sp-event-item:last-child {
+    margin-bottom: 0;
+}
+
+.sp-event-status-confirmed {
+    border-left: 4px solid #00a32a;
+}
+
+.sp-event-status-waitlist {
+    border-left: 4px solid #dba617;
+}
+
+.sp-event-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.sp-event-title {
+    display: block;
+    font-weight: 600;
+    font-size: 16px;
+    color: #0073aa;
+    text-decoration: none;
+    margin-bottom: 5px;
+}
+
+.sp-event-title:hover {
+    text-decoration: underline;
+}
+
+.sp-event-datetime {
+    display: block;
+    font-size: 14px;
+    color: #555;
+}
+
+.sp-event-time {
+    margin-left: 10px;
+    color: #777;
+}
+
+.sp-event-slot-desc {
+    display: block;
+    font-size: 13px;
+    color: #666;
+    font-style: italic;
+    margin-top: 3px;
+}
+
+.sp-event-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.sp-status-confirmed {
+    background: #d6f4d6;
+    color: #006600;
+}
+
+.sp-status-waitlist {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.sp-cancel-registration-btn {
+    padding: 8px 16px;
+    font-size: 14px;
+    background: #f0f0f0;
+    color: #d63638;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.sp-cancel-registration-btn:hover {
+    background: #e0e0e0;
+}
+
+.sp-cancel-registration-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Past Events Collapsible */
+.sp-past-events {
+    margin-top: 20px;
+    border-top: 1px solid #e0e0e0;
+    padding-top: 15px;
+}
+
+.sp-past-events summary {
+    font-size: 14px;
+    font-weight: 600;
+    color: #666;
+    cursor: pointer;
+    padding: 10px 0;
+    user-select: none;
+}
+
+.sp-past-events summary:hover {
+    color: #0073aa;
+}
+
+.sp-past-events[open] summary {
+    margin-bottom: 10px;
+}
+
+.sp-past-events .sp-event-item {
+    background: #f5f5f5;
+    opacity: 0.8;
+}
+
+.sp-past-events .sp-status-badge {
+    display: none;
+}
+
+/* Responsive */
+@media screen and (max-width: 600px) {
+    .sp-event-item {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .sp-event-status {
+        width: 100%;
+        justify-content: space-between;
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid #e0e0e0;
+    }
+}

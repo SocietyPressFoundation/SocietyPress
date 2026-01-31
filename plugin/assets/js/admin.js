@@ -26,6 +26,7 @@
             this.initEmailValidation();
             this.initExpirationCalculator();
             this.initPhotoUploader();
+            this.initEventSlots();
         },
 
         /**
@@ -530,6 +531,118 @@
                 $previewImg.attr('src', '');
                 $photoIdField.val('');
                 $uploadBtn.text(societypressAdmin.strings.photoUploadButtonText || 'Upload Photo');
+            });
+        },
+
+        /**
+         * Initialize event time slots repeater.
+         *
+         * Handles adding and removing time slot rows in the event edit screen.
+         * Each slot has: start time, end time, capacity, and description.
+         */
+        initEventSlots: function() {
+            var $container = $('#sp-event-slots-container');
+            var $tbody = $('#sp-event-slots-body');
+            var $template = $('#sp-slot-row-template');
+            var $addBtn = $('#sp-add-slot-row');
+
+            // Exit if not on event edit screen
+            if (!$container.length) {
+                return;
+            }
+
+            /**
+             * Get the next available row index.
+             * Finds the highest existing index and adds 1.
+             */
+            function getNextIndex() {
+                var maxIndex = -1;
+                $tbody.find('.sp-slot-row').each(function() {
+                    var idx = parseInt($(this).data('index'), 10);
+                    if (!isNaN(idx) && idx > maxIndex) {
+                        maxIndex = idx;
+                    }
+                });
+                return maxIndex + 1;
+            }
+
+            /**
+             * Add a new slot row.
+             */
+            $addBtn.on('click', function(e) {
+                e.preventDefault();
+
+                var newIndex = getNextIndex();
+                var templateHtml = $template.html();
+
+                // Replace the template placeholder with actual index
+                var newRowHtml = templateHtml.replace(/\{\{INDEX\}\}/g, newIndex);
+
+                // Append the new row
+                $tbody.append(newRowHtml);
+
+                // Focus the start time field of the new row
+                $tbody.find('.sp-slot-row').last().find('.sp-slot-start-time').focus();
+            });
+
+            /**
+             * Remove a slot row.
+             * Shows confirmation if the slot has registrations.
+             */
+            $tbody.on('click', '.sp-remove-slot-row', function(e) {
+                e.preventDefault();
+
+                var $row = $(this).closest('.sp-slot-row');
+                var $regCount = $row.find('.sp-registration-count');
+                var registrations = $regCount.length ? parseInt($regCount.text(), 10) : 0;
+
+                // Warn if slot has registrations
+                if (registrations > 0) {
+                    var confirmMsg = societypressAdmin.strings.confirmRemoveSlot ||
+                        'This slot has ' + registrations + ' registration(s). Removing it will cancel those registrations. Continue?';
+                    if (!confirm(confirmMsg)) {
+                        return;
+                    }
+                }
+
+                // If only one row, just clear it instead of removing
+                if ($tbody.find('.sp-slot-row').length === 1) {
+                    $row.find('input').val('');
+                    $row.find('input[type="hidden"]').val('');
+                    return;
+                }
+
+                // Remove the row
+                $row.remove();
+            });
+
+            /**
+             * Auto-set end time when start time is set.
+             * Defaults to 1 hour after start time for convenience.
+             */
+            $tbody.on('change', '.sp-slot-start-time', function() {
+                var $row = $(this).closest('.sp-slot-row');
+                var $endTime = $row.find('.sp-slot-end-time');
+
+                // Only auto-fill if end time is empty
+                if ($endTime.val()) {
+                    return;
+                }
+
+                var startTime = $(this).val();
+                if (!startTime) {
+                    return;
+                }
+
+                // Add 1 hour to start time
+                var parts = startTime.split(':');
+                var hours = parseInt(parts[0], 10);
+                var minutes = parts[1];
+
+                hours = (hours + 1) % 24;
+                var endTime = String(hours).padStart(2, '0') + ':' + minutes;
+
+                $endTime.val(endTime);
             });
         }
     };

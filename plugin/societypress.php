@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI: https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies. Handles member registration, dues, renewals, directories, committees, and governance.
- * Version: 0.43d
+ * Version: 0.47d
  * Author: Stricklin Development
  * Author URI: https://stricklindevelopment.com/
  * License: Proprietary
@@ -23,7 +23,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Plugin version.
  */
-define( 'SOCIETYPRESS_VERSION', '0.43d' );
+define( 'SOCIETYPRESS_VERSION', '0.47d' );
 
 /**
  * Plugin directory path.
@@ -93,6 +93,20 @@ final class SocietyPress {
     public ?SocietyPress_Events $events = null;
 
     /**
+     * Event slots manager.
+     *
+     * @var SocietyPress_Event_Slots|null
+     */
+    public ?SocietyPress_Event_Slots $event_slots = null;
+
+    /**
+     * Event registrations manager.
+     *
+     * @var SocietyPress_Event_Registrations|null
+     */
+    public ?SocietyPress_Event_Registrations $event_registrations = null;
+
+    /**
      * User manager.
      *
      * @var SocietyPress_User_Manager|null
@@ -140,6 +154,13 @@ final class SocietyPress {
      * @var SocietyPress_Join_Form|null
      */
     public ?SocietyPress_Join_Form $join_form = null;
+
+    /**
+     * Event registration frontend.
+     *
+     * @var SocietyPress_Event_Registration_Frontend|null
+     */
+    public ?SocietyPress_Event_Registration_Frontend $event_registration_frontend = null;
 
     /**
      * Auto-updater.
@@ -196,6 +217,8 @@ final class SocietyPress {
         require_once SOCIETYPRESS_PATH . 'includes/class-members.php';
         require_once SOCIETYPRESS_PATH . 'includes/class-tiers.php';
         require_once SOCIETYPRESS_PATH . 'includes/class-events.php';
+        require_once SOCIETYPRESS_PATH . 'includes/class-event-slots.php';
+        require_once SOCIETYPRESS_PATH . 'includes/class-event-registrations.php';
         require_once SOCIETYPRESS_PATH . 'includes/class-user-manager.php';
         require_once SOCIETYPRESS_PATH . 'includes/class-notifications.php';
         require_once SOCIETYPRESS_PATH . 'includes/class-license.php';
@@ -214,6 +237,7 @@ final class SocietyPress {
             require_once SOCIETYPRESS_PATH . 'public/class-directory.php';
             require_once SOCIETYPRESS_PATH . 'public/class-portal.php';
             require_once SOCIETYPRESS_PATH . 'public/class-join-form.php';
+            require_once SOCIETYPRESS_PATH . 'public/class-event-registration-frontend.php';
         }
     }
 
@@ -332,11 +356,13 @@ final class SocietyPress {
      * Initialize components.
      */
     public function init_components(): void {
-        $this->database      = new SocietyPress_Database();
-        $this->members       = new SocietyPress_Members();
-        $this->tiers         = new SocietyPress_Tiers();
-        $this->events        = new SocietyPress_Events();
-        $this->user_manager  = new SocietyPress_User_Manager();
+        $this->database            = new SocietyPress_Database();
+        $this->members             = new SocietyPress_Members();
+        $this->tiers               = new SocietyPress_Tiers();
+        $this->events              = new SocietyPress_Events();
+        $this->event_slots         = new SocietyPress_Event_Slots();
+        $this->event_registrations = new SocietyPress_Event_Registrations();
+        $this->user_manager        = new SocietyPress_User_Manager();
         $this->notifications = new SocietyPress_Notifications();
         $this->license       = new SocietyPress_License();
         $this->updater       = new SocietyPress_Updater( SOCIETYPRESS_BASENAME, SOCIETYPRESS_VERSION );
@@ -352,9 +378,10 @@ final class SocietyPress {
         }
 
         if ( ! is_admin() ) {
-            $this->directory = new SocietyPress_Directory();
-            $this->portal    = new SocietyPress_Portal();
-            $this->join_form = new SocietyPress_Join_Form();
+            $this->directory                   = new SocietyPress_Directory();
+            $this->portal                      = new SocietyPress_Portal();
+            $this->join_form                   = new SocietyPress_Join_Form();
+            $this->event_registration_frontend = new SocietyPress_Event_Registration_Frontend();
         }
     }
 

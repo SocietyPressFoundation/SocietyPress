@@ -164,6 +164,16 @@ class SocietyPress_Events {
 			'normal',
 			'high'
 		);
+
+		// Add time slots meta box for registration-enabled events
+		add_meta_box(
+			'sp_event_slots',
+			__( 'Registration Time Slots', 'societypress' ),
+			array( $this, 'render_event_slots_meta_box' ),
+			'sp_event',
+			'normal',
+			'default'
+		);
 	}
 
 	/**
@@ -378,6 +388,171 @@ class SocietyPress_Events {
 				}
 			}
 		}
+
+		// Save event time slots
+		$this->save_event_slots( $post_id );
+	}
+
+	/**
+	 * Save event time slots from the meta box.
+	 *
+	 * WHY: Handles the repeatable slot rows, creating/updating/removing slots
+	 *      based on what the admin submits in the form.
+	 *
+	 * @param int $post_id The event post ID.
+	 */
+	private function save_event_slots( int $post_id ): void {
+		// Check if slots data was submitted
+		if ( ! isset( $_POST['sp_event_slots'] ) || ! is_array( $_POST['sp_event_slots'] ) ) {
+			return;
+		}
+
+		// Ensure event_slots class exists
+		if ( ! isset( societypress()->event_slots ) ) {
+			return;
+		}
+
+		$slots_data = array();
+
+		foreach ( $_POST['sp_event_slots'] as $slot ) {
+			// Skip completely empty rows
+			if ( empty( $slot['start_time'] ) && empty( $slot['end_time'] ) ) {
+				continue;
+			}
+
+			$slots_data[] = array(
+				'id'          => isset( $slot['id'] ) ? absint( $slot['id'] ) : 0,
+				'start_time'  => sanitize_text_field( $slot['start_time'] ?? '' ),
+				'end_time'    => sanitize_text_field( $slot['end_time'] ?? '' ),
+				'capacity'    => isset( $slot['capacity'] ) && $slot['capacity'] !== '' ? absint( $slot['capacity'] ) : null,
+				'description' => sanitize_text_field( $slot['description'] ?? '' ),
+			);
+		}
+
+		societypress()->event_slots->save_event_slots( $post_id, $slots_data );
+	}
+
+	/**
+	 * Render the event time slots meta box.
+	 *
+	 * WHY: Provides a repeatable row interface for adding multiple time slots
+	 *      to an event, each with start time, end time, capacity, and description.
+	 *      Members can then register for specific slots.
+	 *
+	 * @param WP_Post $post Current post object.
+	 */
+	public function render_event_slots_meta_box( $post ): void {
+		// Get existing slots if any
+		$slots = array();
+		if ( isset( societypress()->event_slots ) && $post->post_status !== 'auto-draft' ) {
+			$slots = societypress()->event_slots->get_by_event( $post->ID, false );
+		}
+
+		// Ensure at least one empty row for new events
+		if ( empty( $slots ) ) {
+			$slots = array(
+				array(
+					'id'          => '',
+					'start_time'  => '',
+					'end_time'    => '',
+					'capacity'    => '',
+					'description' => '',
+					'is_active'   => 1,
+				),
+			);
+		}
+		?>
+		<div id="sp-event-slots-container">
+			<p class="description" style="margin-bottom: 15px;">
+				<?php esc_html_e( 'Add time slots if you want members to register for specific times. Leave empty if no registration is needed or if the event has a single time.', 'societypress' ); ?>
+			</p>
+
+			<table class="widefat sp-event-slots-table" id="sp-event-slots-table">
+				<thead>
+					<tr>
+						<th style="width: 130px;"><?php esc_html_e( 'Start Time', 'societypress' ); ?></th>
+						<th style="width: 130px;"><?php esc_html_e( 'End Time', 'societypress' ); ?></th>
+						<th style="width: 100px;"><?php esc_html_e( 'Capacity', 'societypress' ); ?></th>
+						<th><?php esc_html_e( 'Description', 'societypress' ); ?></th>
+						<th style="width: 120px;"><?php esc_html_e( 'Registrations', 'societypress' ); ?></th>
+						<th style="width: 50px;"></th>
+					</tr>
+				</thead>
+				<tbody id="sp-event-slots-body">
+					<?php foreach ( $slots as $index => $slot ) : ?>
+						<?php $this->render_slot_row( $index, $slot ); ?>
+					<?php endforeach; ?>
+				</tbody>
+				<tfoot>
+					<tr>
+						<td colspan="6">
+							<button type="button" class="button" id="sp-add-slot-row">
+								<?php esc_html_e( '+ Add Time Slot', 'societypress' ); ?>
+							</button>
+						</td>
+					</tr>
+				</tfoot>
+			</table>
+		</div>
+
+		<!-- Template for new rows (used by JavaScript) -->
+		<script type="text/template" id="sp-slot-row-template">
+			<?php $this->render_slot_row( '{{INDEX}}', array( 'id' => '', 'start_time' => '', 'end_time' => '', 'capacity' => '', 'description' => '', 'is_active' => 1 ) ); ?>
+		</script>
+		<?php
+	}
+
+	/**
+	 * Render a single slot row for the meta box.
+	 *
+	 * WHY: Reusable row template used both for existing slots and as a
+	 *      JavaScript template for adding new rows.
+	 *
+	 * @param int|string $index Row index (or '{{INDEX}}' for template).
+	 * @param array      $slot  Slot data.
+	 */
+	private function render_slot_row( $index, array $slot ): void {
+		$is_active = isset( $slot['is_active'] ) ? (bool) $slot['is_active'] : true;
+		$row_class = $is_active ? '' : 'sp-slot-inactive';
+
+		// Get registration count for existing slots
+		$registration_count = 0;
+		$slot_id = isset( $slot['id'] ) ? (int) $slot['id'] : 0;
+		if ( $slot_id && isset( societypress()->event_slots ) ) {
+			$registration_count = societypress()->event_slots->get_registration_count( $slot_id );
+		}
+		?>
+		<tr class="sp-slot-row <?php echo esc_attr( $row_class ); ?>" data-index="<?php echo esc_attr( $index ); ?>">
+			<td>
+				<input type="hidden" name="sp_event_slots[<?php echo esc_attr( $index ); ?>][id]" value="<?php echo esc_attr( $slot['id'] ?? '' ); ?>">
+				<input type="time" name="sp_event_slots[<?php echo esc_attr( $index ); ?>][start_time]" value="<?php echo esc_attr( isset( $slot['start_time'] ) ? substr( $slot['start_time'], 0, 5 ) : '' ); ?>" class="sp-slot-start-time">
+			</td>
+			<td>
+				<input type="time" name="sp_event_slots[<?php echo esc_attr( $index ); ?>][end_time]" value="<?php echo esc_attr( isset( $slot['end_time'] ) ? substr( $slot['end_time'], 0, 5 ) : '' ); ?>" class="sp-slot-end-time">
+			</td>
+			<td>
+				<input type="number" name="sp_event_slots[<?php echo esc_attr( $index ); ?>][capacity]" value="<?php echo esc_attr( $slot['capacity'] ?? '' ); ?>" min="0" placeholder="<?php esc_attr_e( 'Unlimited', 'societypress' ); ?>" class="sp-slot-capacity" style="width: 90px;">
+			</td>
+			<td>
+				<input type="text" name="sp_event_slots[<?php echo esc_attr( $index ); ?>][description]" value="<?php echo esc_attr( $slot['description'] ?? '' ); ?>" placeholder="<?php esc_attr_e( 'e.g., Morning Session', 'societypress' ); ?>" class="sp-slot-description" style="width: 100%;">
+			</td>
+			<td class="sp-slot-registrations">
+				<?php if ( $slot_id ) : ?>
+					<span class="sp-registration-count"><?php echo esc_html( $registration_count ); ?></span>
+					<?php if ( $registration_count > 0 ) : ?>
+						<a href="<?php echo esc_url( admin_url( 'admin.php?page=societypress-event-registrations&slot_id=' . $slot_id ) ); ?>" class="sp-view-registrations" title="<?php esc_attr_e( 'View registrations', 'societypress' ); ?>">
+							<?php esc_html_e( 'View', 'societypress' ); ?>
+						</a>
+					<?php endif; ?>
+				<?php else : ?>
+					<span class="description"><?php esc_html_e( 'Save to view', 'societypress' ); ?></span>
+				<?php endif; ?>
+			</td>
+			<td>
+				<button type="button" class="button sp-remove-slot-row" title="<?php esc_attr_e( 'Remove slot', 'societypress' ); ?>">&times;</button>
+			</td>
+		</tr>
+		<?php
 	}
 
 	/**

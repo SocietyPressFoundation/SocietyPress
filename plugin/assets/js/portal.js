@@ -179,10 +179,101 @@
         }
     };
 
+    /**
+     * Event registration cancellation handler.
+     */
+    const EventCancellation = {
+        init: function() {
+            this.bindEvents();
+        },
+
+        bindEvents: function() {
+            // Cancel registration button in My Events widget
+            $(document).on('click', '.sp-cancel-registration-btn', function(e) {
+                e.preventDefault();
+                EventCancellation.cancelRegistration($(this));
+            });
+        },
+
+        cancelRegistration: function($btn) {
+            const registrationId = $btn.data('registration-id');
+            const eventTitle = $btn.data('event-title');
+            const originalText = $btn.text();
+
+            // Confirm cancellation
+            const confirmMsg = societypressPortal.strings.confirmCancelEvent ||
+                'Are you sure you want to cancel your registration for "' + eventTitle + '"?';
+
+            if (!confirm(confirmMsg)) {
+                return;
+            }
+
+            // Disable button
+            $btn.prop('disabled', true).text(societypressPortal.strings.cancelling || 'Cancelling...');
+
+            $.post({
+                url: societypressPortal.ajaxUrl,
+                data: {
+                    action: 'societypress_portal_cancel_registration',
+                    nonce: societypressPortal.nonce,
+                    registration_id: registrationId
+                },
+                success: function(response) {
+                    if (response.success) {
+                        // Remove the event item from the list
+                        const $item = $btn.closest('.sp-event-item');
+                        $item.fadeOut(300, function() {
+                            $(this).remove();
+
+                            // Check if there are no more upcoming events
+                            const $upcomingList = $('.sp-upcoming-events .sp-events-list');
+                            if ($upcomingList.length && $upcomingList.children().length === 0) {
+                                $upcomingList.closest('.sp-upcoming-events')
+                                    .html('<p class="sp-no-events">' +
+                                          (societypressPortal.strings.noUpcoming || 'No upcoming event registrations.') +
+                                          '</p>');
+                            }
+                        });
+
+                        // Show success message
+                        EventCancellation.showMessage(response.data.message, 'success');
+                    } else {
+                        $btn.prop('disabled', false).text(originalText);
+                        EventCancellation.showMessage(response.data.message, 'error');
+                    }
+                },
+                error: function() {
+                    $btn.prop('disabled', false).text(originalText);
+                    EventCancellation.showMessage(societypressPortal.strings.error, 'error');
+                }
+            });
+        },
+
+        showMessage: function(message, type) {
+            const $widget = $('.sp-my-events');
+            const $existing = $widget.find('.sp-portal-feedback');
+            $existing.remove();
+
+            const $msg = $('<div class="sp-portal-feedback sp-feedback-' + type + '">' +
+                          '<p>' + message + '</p></div>');
+            $widget.find('h3').after($msg);
+
+            if (type === 'success') {
+                setTimeout(function() {
+                    $msg.fadeOut(300, function() { $(this).remove(); });
+                }, 4000);
+            }
+        }
+    };
+
     // Initialize on document ready
     $(function() {
         if ($('#sp-portal-profile-form').length) {
             PortalForm.init();
+        }
+
+        if ($('.sp-my-events').length) {
+            EventCancellation.init();
         }
     });
 

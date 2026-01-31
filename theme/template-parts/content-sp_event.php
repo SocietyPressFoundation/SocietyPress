@@ -107,6 +107,17 @@ $data_categories = ! empty( $category_slugs ) ? implode( ' ', $category_slugs ) 
 			<?php
 			if ( is_singular() ) :
 				the_content();
+
+				/**
+				 * Fires after single event content.
+				 *
+				 * WHY: Allows the plugin to inject the registration form and time slots
+				 *      without requiring theme edits. The event registration frontend
+				 *      hooks here to display available time slots for member registration.
+				 *
+				 * @param int $event_id The current event post ID.
+				 */
+				do_action( 'sp_event_after_content', get_the_ID() );
 			else :
 				the_excerpt();
 				?>

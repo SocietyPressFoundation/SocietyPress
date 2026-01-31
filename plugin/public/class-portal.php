@@ -47,6 +47,7 @@ class SocietyPress_Portal {
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_portal_assets' ) );
 		add_action( 'wp_ajax_societypress_portal_save_field', array( $this, 'handle_ajax_save_field' ) );
 		add_action( 'wp_ajax_societypress_portal_update_profile', array( $this, 'handle_profile_update' ) );
+		add_action( 'wp_ajax_societypress_portal_cancel_registration', array( $this, 'handle_portal_cancel_registration' ) );
 
 		// Add Search to nav menu (priority 50 = before My Account at 99)
 		add_filter( 'wp_nav_menu_items', array( $this, 'add_search_to_menu' ), 50, 2 );
@@ -498,11 +499,14 @@ class SocietyPress_Portal {
 				'nonce'    => wp_create_nonce( 'societypress_portal' ),
 				'usStates' => societypress_get_us_states(),
 				'strings'  => array(
-					'saved'        => __( 'Saved!', 'societypress' ),
-					'saving'       => __( 'Saving...', 'societypress' ),
-					'error'        => __( 'Error saving. Please try again.', 'societypress' ),
-					'rateLimit'    => __( 'Too many updates. Please wait a moment.', 'societypress' ),
-					'invalidState' => __( 'Please enter a valid 2-letter state code (e.g., TX, CA).', 'societypress' ),
+					'saved'              => __( 'Saved!', 'societypress' ),
+					'saving'             => __( 'Saving...', 'societypress' ),
+					'error'              => __( 'Error saving. Please try again.', 'societypress' ),
+					'rateLimit'          => __( 'Too many updates. Please wait a moment.', 'societypress' ),
+					'invalidState'       => __( 'Please enter a valid 2-letter state code (e.g., TX, CA).', 'societypress' ),
+					'cancelling'         => __( 'Cancelling...', 'societypress' ),
+					'confirmCancelEvent' => __( 'Are you sure you want to cancel your registration?', 'societypress' ),
+					'noUpcoming'         => __( 'No upcoming event registrations.', 'societypress' ),
 				),
 			)
 		);
@@ -642,6 +646,9 @@ class SocietyPress_Portal {
 					</table>
 				</div>
 
+				<!-- My Events Widget -->
+				<?php echo $this->render_my_events_widget( $member_id ); ?>
+
 				<!-- Editable Profile -->
 				<div class="sp-dashboard-widget sp-profile-form">
 					<h3><?php esc_html_e( 'Your Profile', 'societypress' ); ?></h3>
@@ -651,6 +658,124 @@ class SocietyPress_Portal {
 		</div>
 		<?php
 		return ob_get_clean();
+	}
+
+	/**
+	 * Render the My Events widget.
+	 *
+	 * WHY: Shows members their upcoming and past event registrations in one place.
+	 *      Makes it easy to see what they've signed up for and cancel if needed.
+	 *
+	 * @param int $member_id The member ID.
+	 * @return string HTML output.
+	 */
+	private function render_my_events_widget( int $member_id ): string {
+		// Check if event registrations class exists
+		if ( ! isset( societypress()->event_registrations ) ) {
+			return '';
+		}
+
+		$upcoming = societypress()->event_registrations->get_member_upcoming( $member_id );
+		$past = societypress()->event_registrations->get_member_past( $member_id, 10 );
+
+		// Don't show widget if member has no event history
+		if ( empty( $upcoming ) && empty( $past ) ) {
+			return '';
+		}
+
+		ob_start();
+		?>
+		<div class="sp-dashboard-widget sp-my-events">
+			<h3><?php esc_html_e( 'My Events', 'societypress' ); ?></h3>
+
+			<?php if ( ! empty( $upcoming ) ) : ?>
+				<div class="sp-events-section sp-upcoming-events">
+					<h4><?php esc_html_e( 'Upcoming', 'societypress' ); ?></h4>
+					<ul class="sp-events-list">
+						<?php foreach ( $upcoming as $registration ) : ?>
+							<?php $this->render_event_registration_item( $registration, true ); ?>
+						<?php endforeach; ?>
+					</ul>
+				</div>
+			<?php else : ?>
+				<p class="sp-no-events"><?php esc_html_e( 'No upcoming event registrations.', 'societypress' ); ?></p>
+			<?php endif; ?>
+
+			<?php if ( ! empty( $past ) ) : ?>
+				<details class="sp-events-section sp-past-events">
+					<summary><?php esc_html_e( 'Past Events', 'societypress' ); ?> (<?php echo count( $past ); ?>)</summary>
+					<ul class="sp-events-list">
+						<?php foreach ( $past as $registration ) : ?>
+							<?php $this->render_event_registration_item( $registration, false ); ?>
+						<?php endforeach; ?>
+					</ul>
+				</details>
+			<?php endif; ?>
+		</div>
+		<?php
+		return ob_get_clean();
+	}
+
+	/**
+	 * Render a single event registration item.
+	 *
+	 * @param array $registration Registration data with event info.
+	 * @param bool  $show_cancel  Whether to show cancel button.
+	 */
+	private function render_event_registration_item( array $registration, bool $show_cancel ): void {
+		$event_date = ! empty( $registration['event_date'] )
+			? date_i18n( 'F j, Y', strtotime( $registration['event_date'] ) )
+			: '';
+
+		$time_range = '';
+		if ( ! empty( $registration['start_time'] ) && ! empty( $registration['end_time'] ) ) {
+			$start = date( 'g:i A', strtotime( $registration['start_time'] ) );
+			$end = date( 'g:i A', strtotime( $registration['end_time'] ) );
+			$time_range = $start . ' – ' . $end;
+		}
+
+		$event_url = get_permalink( $registration['event_id'] );
+		$status = $registration['status'];
+		?>
+		<li class="sp-event-item sp-event-status-<?php echo esc_attr( $status ); ?>">
+			<div class="sp-event-info">
+				<a href="<?php echo esc_url( $event_url ); ?>" class="sp-event-title">
+					<?php echo esc_html( $registration['event_title'] ); ?>
+				</a>
+				<span class="sp-event-datetime">
+					<?php echo esc_html( $event_date ); ?>
+					<?php if ( $time_range ) : ?>
+						<span class="sp-event-time"><?php echo esc_html( $time_range ); ?></span>
+					<?php endif; ?>
+				</span>
+				<?php if ( ! empty( $registration['slot_description'] ) ) : ?>
+					<span class="sp-event-slot-desc"><?php echo esc_html( $registration['slot_description'] ); ?></span>
+				<?php endif; ?>
+			</div>
+
+			<div class="sp-event-status">
+				<?php if ( $status === 'confirmed' ) : ?>
+					<span class="sp-status-badge sp-status-confirmed"><?php esc_html_e( 'Confirmed', 'societypress' ); ?></span>
+				<?php elseif ( $status === 'waitlist' ) : ?>
+					<?php
+					$position = societypress()->event_registrations->get_waitlist_position( $registration['id'] );
+					?>
+					<span class="sp-status-badge sp-status-waitlist">
+						<?php printf( esc_html__( 'Waitlist #%d', 'societypress' ), $position ); ?>
+					</span>
+				<?php endif; ?>
+
+				<?php if ( $show_cancel ) : ?>
+					<button type="button"
+					        class="sp-cancel-registration-btn"
+					        data-registration-id="<?php echo esc_attr( $registration['id'] ); ?>"
+					        data-event-title="<?php echo esc_attr( $registration['event_title'] ); ?>">
+						<?php esc_html_e( 'Cancel', 'societypress' ); ?>
+					</button>
+				<?php endif; ?>
+			</div>
+		</li>
+		<?php
 	}
 
 	/**
@@ -925,6 +1050,50 @@ class SocietyPress_Portal {
 		$this->increment_rate_limit( $user_id );
 
 		wp_send_json_success( array( 'message' => __( 'Saved!', 'societypress' ) ) );
+	}
+
+	/**
+	 * Handle event registration cancellation from the portal.
+	 *
+	 * WHY: Allows members to cancel registrations directly from their dashboard
+	 *      without having to navigate to the event page.
+	 */
+	public function handle_portal_cancel_registration(): void {
+		check_ajax_referer( 'societypress_portal', 'nonce' );
+
+		$registration_id = isset( $_POST['registration_id'] ) ? absint( $_POST['registration_id'] ) : 0;
+
+		if ( ! $registration_id ) {
+			wp_send_json_error( array( 'message' => __( 'Invalid registration.', 'societypress' ) ) );
+		}
+
+		// Verify event_registrations class exists
+		if ( ! isset( societypress()->event_registrations ) ) {
+			wp_send_json_error( array( 'message' => __( 'Registration system unavailable.', 'societypress' ) ) );
+		}
+
+		// Verify the registration belongs to the current member
+		$user_id = get_current_user_id();
+		$member_id = $this->get_member_from_user( $user_id );
+
+		if ( ! $member_id ) {
+			wp_send_json_error( array( 'message' => __( 'Member not found.', 'societypress' ) ) );
+		}
+
+		$registration = societypress()->event_registrations->get( $registration_id );
+
+		if ( ! $registration || (int) $registration['member_id'] !== $member_id ) {
+			wp_send_json_error( array( 'message' => __( 'You cannot cancel this registration.', 'societypress' ) ) );
+		}
+
+		// Cancel the registration
+		$result = societypress()->event_registrations->cancel( $registration_id, __( 'Cancelled from member portal', 'societypress' ) );
+
+		if ( $result['success'] ) {
+			wp_send_json_success( array( 'message' => $result['message'] ) );
+		} else {
+			wp_send_json_error( array( 'message' => $result['message'] ) );
+		}
 	}
 
 	/**

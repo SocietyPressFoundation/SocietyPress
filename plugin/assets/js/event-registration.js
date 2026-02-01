@@ -35,10 +35,16 @@
         bindEvents: function() {
             var self = this;
 
-            // Register button click
-            this.$container.on('click', '.sp-register-btn', function(e) {
+            // Register button click (for specific slot)
+            this.$container.on('click', '.sp-register-btn:not(.sp-join-waitlist-btn)', function(e) {
                 e.preventDefault();
                 self.handleRegister($(this));
+            });
+
+            // Join waitlist button click (event-wide waitlist)
+            this.$container.on('click', '.sp-join-waitlist-btn', function(e) {
+                e.preventDefault();
+                self.handleJoinWaitlist($(this));
             });
 
             // Cancel button click
@@ -100,7 +106,51 @@
         },
 
         /**
+         * Handle join waitlist button click (event-wide waitlist).
+         *
+         * @param {jQuery} $button The clicked button.
+         */
+        handleJoinWaitlist: function($button) {
+            var self = this;
+            var eventId = $button.data('event-id');
+            var originalText = $button.text();
+
+            // Disable button and show loading state
+            $button.prop('disabled', true)
+                   .text(spEventReg.strings.registering)
+                   .addClass('sp-loading');
+
+            // Send AJAX request
+            $.ajax({
+                url: spEventReg.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'societypress_join_waitlist',
+                    nonce: spEventReg.nonce,
+                    event_id: eventId
+                },
+                success: function(response) {
+                    if (response.success) {
+                        // Show success message
+                        self.showMessage(response.data.message, 'success');
+
+                        // Reload page to show updated waitlist status
+                        if (response.data.reload) {
+                            self.refreshPage();
+                        }
+                    } else {
+                        self.handleError($button, originalText, response.data.message);
+                    }
+                },
+                error: function() {
+                    self.handleError($button, originalText, spEventReg.strings.error);
+                }
+            });
+        },
+
+        /**
          * Handle cancel button click.
+         * Works for both slot-specific cancellation and event-wide waitlist cancellation.
          *
          * @param {jQuery} $button The clicked button.
          */
@@ -108,6 +158,7 @@
             var self = this;
             var registrationId = $button.data('registration-id');
             var $row = $button.closest('.sp-slot-row');
+            var $waitlistStatus = $button.closest('.sp-waitlist-status');
             var originalText = $button.text();
 
             // Confirm cancellation
@@ -131,14 +182,16 @@
                 },
                 success: function(response) {
                     if (response.success) {
-                        // Replace the row with updated HTML
-                        var $newRow = $(response.data.rowHtml);
-                        $row.replaceWith($newRow);
-
                         // Show success message
                         self.showMessage(response.data.message, 'success');
 
-                        // Refresh other rows to remove "Registered for X" notes
+                        // If cancelling from slot row, update the row
+                        if ($row.length && response.data.rowHtml) {
+                            var $newRow = $(response.data.rowHtml);
+                            $row.replaceWith($newRow);
+                        }
+
+                        // Refresh page to get updated state
                         self.refreshPage();
                     } else {
                         self.handleError($button, originalText, response.data.message);

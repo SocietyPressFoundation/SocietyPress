@@ -107,8 +107,9 @@ class SocietyPress_Event_Registrations {
 		$has_capacity = $slots->has_capacity( $slot_id );
 		$status = $has_capacity ? 'confirmed' : 'waitlist';
 
-		// Insert registration
+		// Insert registration (event_id from slot for the unique constraint)
 		$insert_data = array(
+			'event_id'      => (int) $slot['event_id'],
 			'slot_id'       => $slot_id,
 			'member_id'     => $member_id,
 			'status'        => $status,
@@ -120,7 +121,7 @@ class SocietyPress_Event_Registrations {
 		$result = $this->wpdb->insert(
 			$this->table,
 			$insert_data,
-			array( '%d', '%d', '%s', '%s', '%d', '%s' )
+			array( '%d', '%d', '%d', '%s', '%s', '%d', '%s' )
 		);
 
 		if ( $result === false ) {
@@ -260,13 +261,78 @@ class SocietyPress_Event_Registrations {
 	}
 
 	/**
-	 * Process the waitlist for a slot.
+	 * Join the event-wide waitlist.
+	 *
+	 * WHY: When ALL slots for an event are full, members can join a single
+	 *      event-wide waitlist. When ANY slot opens up, the first person
+	 *      on the waitlist gets that slot automatically.
+	 *
+	 * @param int      $event_id      The event post ID.
+	 * @param int      $member_id     The member ID.
+	 * @param int|null $registered_by Admin user ID if manual, null if self.
+	 * @return array Result with 'success', 'status', and 'message'.
+	 */
+	public function join_event_waitlist( int $event_id, int $member_id, ?int $registered_by = null ): array {
+		// Check if already registered for a slot or on waitlist
+		$existing = $this->get_member_event_registration( $event_id, $member_id );
+		if ( $existing ) {
+			return array(
+				'success' => false,
+				'status'  => $existing['status'],
+				'message' => __( 'You are already registered or on the waitlist for this event.', 'societypress' ),
+			);
+		}
+
+		// Check if there are any open slots - if so, they should register for one
+		$slots = societypress()->event_slots->get_by_event( $event_id );
+		foreach ( $slots as $slot ) {
+			if ( societypress()->event_slots->has_capacity( $slot['id'] ) ) {
+				return array(
+					'success' => false,
+					'status'  => null,
+					'message' => __( 'There are still open slots available. Please register for one.', 'societypress' ),
+				);
+			}
+		}
+
+		// Insert waitlist entry with slot_id = NULL (event-wide waitlist)
+		$result = $this->wpdb->insert(
+			$this->table,
+			array(
+				'event_id'      => $event_id,
+				'slot_id'       => null,
+				'member_id'     => $member_id,
+				'status'        => 'waitlist',
+				'registered_at' => current_time( 'mysql' ),
+				'registered_by' => $registered_by,
+			),
+			array( '%d', null, '%d', '%s', '%s', '%d' )
+		);
+
+		if ( $result === false ) {
+			return array(
+				'success' => false,
+				'status'  => null,
+				'message' => __( 'Failed to join waitlist. Please try again.', 'societypress' ),
+			);
+		}
+
+		return array(
+			'success'         => true,
+			'status'          => 'waitlist',
+			'registration_id' => (int) $this->wpdb->insert_id,
+			'message'         => __( 'You have been added to the waitlist. We\'ll notify you when a spot opens up.', 'societypress' ),
+		);
+	}
+
+	/**
+	 * Process the waitlist when a slot opens.
 	 *
 	 * WHY: When a spot opens up (cancellation), automatically promote the
-	 *      first person on the waitlist to confirmed status. This keeps
+	 *      first person on the EVENT-WIDE waitlist to that slot. This keeps
 	 *      things fair (first-come, first-served) and reduces admin work.
 	 *
-	 * @param int $slot_id The slot ID.
+	 * @param int $slot_id The slot ID that opened up.
 	 * @return int|false The promoted registration ID, or false if no waitlist.
 	 */
 	public function process_waitlist( int $slot_id ) {
@@ -276,14 +342,21 @@ class SocietyPress_Event_Registrations {
 			return false;
 		}
 
-		// Get the first waitlisted registration (oldest first)
+		// Get the event_id for this slot
+		$slot = $slots->get( $slot_id );
+		if ( ! $slot ) {
+			return false;
+		}
+		$event_id = (int) $slot['event_id'];
+
+		// Get the first waitlisted registration for this EVENT (slot_id IS NULL = event-wide waitlist)
 		$waitlisted = $this->wpdb->get_row(
 			$this->wpdb->prepare(
 				"SELECT * FROM {$this->table}
-				 WHERE slot_id = %d AND status = 'waitlist'
+				 WHERE event_id = %d AND slot_id IS NULL AND status = 'waitlist'
 				 ORDER BY registered_at ASC
 				 LIMIT 1",
-				$slot_id
+				$event_id
 			),
 			ARRAY_A
 		);
@@ -292,17 +365,19 @@ class SocietyPress_Event_Registrations {
 			return false;
 		}
 
-		// Promote to confirmed
+		// Promote to confirmed and assign the slot
 		$this->wpdb->update(
 			$this->table,
-			array( 'status' => 'confirmed' ),
+			array(
+				'status'  => 'confirmed',
+				'slot_id' => $slot_id,
+			),
 			array( 'id' => $waitlisted['id'] ),
-			array( '%s' ),
+			array( '%s', '%d' ),
 			array( '%d' )
 		);
 
-		// TODO: Send notification email to member about promotion
-		// This could trigger a hook for the notifications system
+		// Fire hook for email notification
 		do_action( 'societypress_waitlist_promoted', $waitlisted['id'], $waitlisted['member_id'], $slot_id );
 
 		return (int) $waitlisted['id'];
@@ -468,15 +543,17 @@ class SocietyPress_Event_Registrations {
 	}
 
 	/**
-	 * Get a member's registration for an event (any slot).
+	 * Get a member's registration for an event (any slot or waitlist).
 	 *
-	 * WHY: Quick check if member is registered for any slot of an event.
+	 * WHY: Quick check if member is registered for any slot of an event,
+	 *      OR if they're on the event-wide waitlist (slot_id = NULL).
 	 *
 	 * @param int $event_id  The event post ID.
 	 * @param int $member_id The member ID.
 	 * @return array|null Registration data or null.
 	 */
 	public function get_member_event_registration( int $event_id, int $member_id ): ?array {
+		// First check for slot-based registration
 		$row = $this->wpdb->get_row(
 			$this->wpdb->prepare(
 				"SELECT r.*, s.start_time, s.end_time, s.description as slot_description
@@ -493,13 +570,32 @@ class SocietyPress_Event_Registrations {
 			ARRAY_A
 		);
 
-		return $row ?: null;
+		if ( $row ) {
+			return $row;
+		}
+
+		// Check for event-wide waitlist entry (slot_id IS NULL)
+		$waitlist_row = $this->wpdb->get_row(
+			$this->wpdb->prepare(
+				"SELECT * FROM {$this->table}
+				 WHERE event_id = %d
+				   AND member_id = %d
+				   AND slot_id IS NULL
+				   AND status = 'waitlist'
+				 LIMIT 1",
+				$event_id,
+				$member_id
+			),
+			ARRAY_A
+		);
+
+		return $waitlist_row ?: null;
 	}
 
 	/**
 	 * Get waitlist position for a registration.
 	 *
-	 * WHY: Shows members where they are in the waitlist queue.
+	 * WHY: Shows members where they are in the event-wide waitlist queue.
 	 *
 	 * @param int $registration_id The registration ID.
 	 * @return int|false Position (1-based) or false if not waitlisted.
@@ -511,14 +607,16 @@ class SocietyPress_Event_Registrations {
 			return false;
 		}
 
+		// Count how many are ahead in the EVENT-WIDE waitlist
 		$position = $this->wpdb->get_var(
 			$this->wpdb->prepare(
 				"SELECT COUNT(*) + 1
 				 FROM {$this->table}
-				 WHERE slot_id = %d
+				 WHERE event_id = %d
+				   AND slot_id IS NULL
 				   AND status = 'waitlist'
 				   AND registered_at < %s",
-				$registration['slot_id'],
+				$registration['event_id'],
 				$registration['registered_at']
 			)
 		);
@@ -527,8 +625,29 @@ class SocietyPress_Event_Registrations {
 	}
 
 	/**
+	 * Get the count of waitlisted members for an event.
+	 *
+	 * WHY: Shows how many people are waiting for any slot to open.
+	 *
+	 * @param int $event_id The event post ID.
+	 * @return int Waitlist count.
+	 */
+	public function get_event_waitlist_count( int $event_id ): int {
+		$count = $this->wpdb->get_var(
+			$this->wpdb->prepare(
+				"SELECT COUNT(*) FROM {$this->table}
+				 WHERE event_id = %d AND slot_id IS NULL AND status = 'waitlist'",
+				$event_id
+			)
+		);
+
+		return (int) $count;
+	}
+
+	/**
 	 * Get the count of waitlisted members for a slot.
 	 *
+	 * @deprecated Use get_event_waitlist_count() instead for event-wide waitlist.
 	 * @param int $slot_id The slot ID.
 	 * @return int Waitlist count.
 	 */

@@ -109,6 +109,24 @@
 - [ ] Quick stats overview
 - [ ] Activity feed
 
+### Frontend Widgets & Homepage Content
+- [ ] Welcome new members widget (with consent setting)
+- [ ] Member milestones widget (25-year members, research breakthroughs)
+- [ ] In memoriam section
+- [ ] Upcoming events widget (next 3-5 events)
+- [ ] Next general meeting countdown
+- [ ] "Registration open" callouts for classes
+- [ ] Latest newsletter teaser widget
+- [ ] Research tip of the month
+- [ ] Featured library resource widget
+- [ ] "This day in local history" widget
+- [ ] Volunteer spotlight
+- [ ] DNA success stories
+- [ ] "Members researching [surname]" connection engine
+- [ ] Hours & location widget
+- [ ] Quick links widget (renew, directory, contact)
+- [ ] Holiday closures / announcements banner
+
 ## Medium-Term
 
 ### Payment Integration

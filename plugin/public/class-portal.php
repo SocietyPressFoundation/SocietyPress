@@ -796,6 +796,48 @@ class SocietyPress_Portal {
 		<form id="sp-portal-profile-form" method="post">
 			<?php wp_nonce_field( 'sp_update_profile', 'sp_profile_nonce' ); ?>
 
+			<!-- Name -->
+			<div class="sp-form-section">
+				<h4><?php esc_html_e( 'Name', 'societypress' ); ?></h4>
+				<div class="sp-form-row sp-form-row-thirds">
+					<div class="sp-form-field">
+						<label for="sp-first-name"><?php esc_html_e( 'First Name', 'societypress' ); ?></label>
+						<input
+							type="text"
+							id="sp-first-name"
+							name="first_name"
+							class="sp-portal-field"
+							data-field="first_name"
+							value="<?php echo esc_attr( $member['first_name'] ?? '' ); ?>"
+							required
+						>
+					</div>
+					<div class="sp-form-field">
+						<label for="sp-middle-name"><?php esc_html_e( 'Middle', 'societypress' ); ?></label>
+						<input
+							type="text"
+							id="sp-middle-name"
+							name="middle_name"
+							class="sp-portal-field"
+							data-field="middle_name"
+							value="<?php echo esc_attr( $member['middle_name'] ?? '' ); ?>"
+						>
+					</div>
+					<div class="sp-form-field">
+						<label for="sp-last-name"><?php esc_html_e( 'Last Name', 'societypress' ); ?></label>
+						<input
+							type="text"
+							id="sp-last-name"
+							name="last_name"
+							class="sp-portal-field"
+							data-field="last_name"
+							value="<?php echo esc_attr( $member['last_name'] ?? '' ); ?>"
+							required
+						>
+					</div>
+				</div>
+			</div>
+
 			<!-- Contact Information -->
 			<?php if ( in_array( 'email', $editable_fields, true ) || in_array( 'phone', $editable_fields, true ) || in_array( 'address', $editable_fields, true ) ) : ?>
 				<div class="sp-form-section">
@@ -990,8 +1032,19 @@ class SocietyPress_Portal {
 			societypress()->members->save_contact( $member_id, $contact_data );
 		}
 
-		// Update member preferences
+		// Update member data (name fields and preferences)
 		$member_data = array();
+
+		// Name fields - always allowed
+		if ( isset( $_POST['first_name'] ) && ! empty( $_POST['first_name'] ) ) {
+			$member_data['first_name'] = sanitize_text_field( $_POST['first_name'] );
+		}
+		if ( isset( $_POST['middle_name'] ) ) {
+			$member_data['middle_name'] = sanitize_text_field( $_POST['middle_name'] );
+		}
+		if ( isset( $_POST['last_name'] ) && ! empty( $_POST['last_name'] ) ) {
+			$member_data['last_name'] = sanitize_text_field( $_POST['last_name'] );
+		}
 
 		if ( isset( $_POST['directory_visible'] ) ) {
 			$member_data['directory_visible'] = ! empty( $_POST['directory_visible'] ) ? 1 : 0;

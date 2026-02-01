@@ -736,7 +736,7 @@ class SocietyPress_Admin {
 			: '';
 
 		// Payment methods - validate against allowed methods
-		$allowed_methods = array( 'paypal', 'venmo', 'card', 'paylater' );
+		$allowed_methods = array( 'paypal', 'venmo', 'card', 'paylater', 'applepay', 'googlepay' );
 		$sanitized['payment_methods'] = array();
 		if ( isset( $input['payment_methods'] ) && is_array( $input['payment_methods'] ) ) {
 			foreach ( $input['payment_methods'] as $method ) {
@@ -795,6 +795,23 @@ class SocietyPress_Admin {
 			foreach ( $valid_platforms as $platform ) {
 				if ( ! empty( $input['organization_social'][ $platform ] ) ) {
 					$sanitized['organization_social'][ $platform ] = esc_url_raw( $input['organization_social'][ $platform ] );
+				}
+			}
+		}
+
+		// Contact form routing departments
+		$sanitized['contact_departments'] = array();
+		if ( isset( $input['contact_departments'] ) && is_array( $input['contact_departments'] ) ) {
+			foreach ( $input['contact_departments'] as $i => $dept ) {
+				$label = isset( $dept['label'] ) ? sanitize_text_field( $dept['label'] ) : '';
+				$email = isset( $dept['email'] ) ? sanitize_email( $dept['email'] ) : '';
+
+				// Only save if at least the label is provided
+				if ( ! empty( $label ) || ! empty( $email ) ) {
+					$sanitized['contact_departments'][ $i ] = array(
+						'label' => $label,
+						'email' => $email,
+					);
 				}
 			}
 		}
@@ -1543,6 +1560,16 @@ class SocietyPress_Admin {
 				'desc'  => __( 'Guest checkout without PayPal account', 'societypress' ),
 				'icon'  => 'card',
 			),
+			'applepay' => array(
+				'label' => __( 'Apple Pay', 'societypress' ),
+				'desc'  => __( 'One-tap checkout on Apple devices', 'societypress' ),
+				'icon'  => 'applepay',
+			),
+			'googlepay' => array(
+				'label' => __( 'Google Pay', 'societypress' ),
+				'desc'  => __( 'One-tap checkout on Android/Chrome', 'societypress' ),
+				'icon'  => 'googlepay',
+			),
 			'paylater' => array(
 				'label' => __( 'Pay Later', 'societypress' ),
 				'desc'  => __( 'PayPal financing options for buyers', 'societypress' ),
@@ -1567,7 +1594,7 @@ class SocietyPress_Admin {
 			<?php esc_html_e( 'PayPal is always required. Other methods appear based on buyer eligibility.', 'societypress' ); ?>
 		</p>
 		<p class="description">
-			<?php esc_html_e( 'Note: Apple Pay and Google Pay require additional setup in PayPal Dashboard.', 'societypress' ); ?>
+			<?php esc_html_e( 'Apple Pay and Google Pay require domain verification in your PayPal Business account.', 'societypress' ); ?>
 		</p>
 		<?php
 	}
@@ -2174,6 +2201,16 @@ class SocietyPress_Admin {
 			array( $this, 'render_placeholder_page' )
 		);
 
+		// Email Log
+		add_submenu_page(
+			'societypress',
+			__( 'Email Log', 'societypress' ),
+			__( 'Email Log', 'societypress' ),
+			'manage_society_members',
+			'societypress-email-log',
+			array( $this, 'render_email_log_page' )
+		);
+
 		// Settings
 		add_submenu_page(
 			'societypress',
@@ -2202,8 +2239,12 @@ class SocietyPress_Admin {
 	 * @param string $hook Current admin page hook.
 	 */
 	public function enqueue_assets( ?string $hook ): void {
-		// Only load on our pages
-		if ( null === $hook || strpos( $hook, 'societypress' ) === false ) {
+		// Determine if we're on a SocietyPress page or editing an sp_event
+		$is_sp_page = ( null !== $hook && strpos( $hook, 'societypress' ) !== false );
+		$is_event_edit = in_array( $hook, array( 'post.php', 'post-new.php' ), true ) && $this->is_sp_event_screen();
+
+		// Only load on our pages or event edit screens
+		if ( ! $is_sp_page && ! $is_event_edit ) {
 			return;
 		}
 
@@ -2307,6 +2348,38 @@ class SocietyPress_Admin {
 				true
 			);
 		}
+	}
+
+	/**
+	 * Check if we're on an sp_event edit screen.
+	 *
+	 * WHY: Need to load our admin JS on event edit screens for the slots meta box,
+	 *      but those screens don't have "societypress" in the hook name.
+	 *
+	 * @return bool True if editing or creating an sp_event.
+	 */
+	private function is_sp_event_screen(): bool {
+		global $post_type, $pagenow;
+
+		// Check via global post_type
+		if ( isset( $post_type ) && 'sp_event' === $post_type ) {
+			return true;
+		}
+
+		// Check via GET parameter (for post-new.php)
+		if ( isset( $_GET['post_type'] ) && 'sp_event' === $_GET['post_type'] ) {
+			return true;
+		}
+
+		// Check via post ID (for post.php editing existing post)
+		if ( isset( $_GET['post'] ) ) {
+			$post_id = absint( $_GET['post'] );
+			if ( $post_id && 'sp_event' === get_post_type( $post_id ) ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**
@@ -4020,5 +4093,186 @@ class SocietyPress_Admin {
 	 */
 	private function sanitize_phone( string $phone ): string {
 		return preg_replace( '/\D/', '', $phone );
+	}
+
+	/**
+	 * Render the Email Log admin page.
+	 *
+	 * WHY: Shows admins all outgoing emails (sent and blocked) so they can
+	 *      verify communications are correct and troubleshoot issues.
+	 */
+	public function render_email_log_page(): void {
+		$email_log = societypress()->email_log;
+
+		// Handle pagination
+		$per_page = 20;
+		$current_page = isset( $_GET['paged'] ) ? max( 1, absint( $_GET['paged'] ) ) : 1;
+
+		// Handle filters
+		$status_filter = isset( $_GET['status'] ) ? sanitize_text_field( $_GET['status'] ) : '';
+		$search = isset( $_GET['s'] ) ? sanitize_text_field( $_GET['s'] ) : '';
+
+		// Get the emails
+		$result = $email_log->get_list( array(
+			'status'   => $status_filter,
+			'search'   => $search,
+			'per_page' => $per_page,
+			'page'     => $current_page,
+		) );
+
+		$emails = $result['items'];
+		$total = $result['total'];
+		$total_pages = ceil( $total / $per_page );
+
+		// Get stats for the summary
+		$stats = $email_log->get_stats( 30 );
+		?>
+		<div class="wrap">
+			<h1><?php esc_html_e( 'Email Log', 'societypress' ); ?></h1>
+
+			<div class="sp-email-stats" style="background: #fff; padding: 15px; margin: 15px 0; border: 1px solid #ccd0d4; display: flex; gap: 30px;">
+				<div>
+					<strong><?php esc_html_e( 'Last 30 Days:', 'societypress' ); ?></strong>
+				</div>
+				<div>
+					<span style="color: #00a32a;">●</span>
+					<?php printf( esc_html__( 'Sent: %d', 'societypress' ), $stats['sent'] ); ?>
+				</div>
+				<div>
+					<span style="color: #dba617;">●</span>
+					<?php printf( esc_html__( 'Blocked: %d', 'societypress' ), $stats['blocked'] ); ?>
+				</div>
+				<div>
+					<span style="color: #d63638;">●</span>
+					<?php printf( esc_html__( 'Failed: %d', 'societypress' ), $stats['failed'] ); ?>
+				</div>
+			</div>
+
+			<?php if ( defined( 'WP_DEBUG' ) && WP_DEBUG && ( ! defined( 'SOCIETYPRESS_ALLOW_EMAILS' ) || ! SOCIETYPRESS_ALLOW_EMAILS ) ) : ?>
+				<div class="notice notice-warning">
+					<p>
+						<strong><?php esc_html_e( 'Development Mode:', 'societypress' ); ?></strong>
+						<?php esc_html_e( 'Emails are being blocked and logged but not sent. Set SOCIETYPRESS_ALLOW_EMAILS to true in wp-config.php to send emails.', 'societypress' ); ?>
+					</p>
+				</div>
+			<?php endif; ?>
+
+			<form method="get">
+				<input type="hidden" name="page" value="societypress-email-log">
+				<div class="tablenav top">
+					<div class="alignleft actions">
+						<select name="status">
+							<option value=""><?php esc_html_e( 'All Statuses', 'societypress' ); ?></option>
+							<option value="sent" <?php selected( $status_filter, 'sent' ); ?>><?php esc_html_e( 'Sent', 'societypress' ); ?></option>
+							<option value="blocked" <?php selected( $status_filter, 'blocked' ); ?>><?php esc_html_e( 'Blocked', 'societypress' ); ?></option>
+							<option value="failed" <?php selected( $status_filter, 'failed' ); ?>><?php esc_html_e( 'Failed', 'societypress' ); ?></option>
+						</select>
+						<?php submit_button( __( 'Filter', 'societypress' ), '', 'filter_action', false ); ?>
+					</div>
+					<div class="alignright">
+						<label class="screen-reader-text" for="email-search-input"><?php esc_html_e( 'Search emails', 'societypress' ); ?></label>
+						<input type="search" id="email-search-input" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php esc_attr_e( 'Search recipient or subject...', 'societypress' ); ?>">
+						<?php submit_button( __( 'Search', 'societypress' ), '', '', false ); ?>
+					</div>
+				</div>
+			</form>
+
+			<table class="wp-list-table widefat fixed striped">
+				<thead>
+					<tr>
+						<th style="width: 150px;"><?php esc_html_e( 'Date', 'societypress' ); ?></th>
+						<th style="width: 100px;"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+						<th style="width: 200px;"><?php esc_html_e( 'Recipient', 'societypress' ); ?></th>
+						<th><?php esc_html_e( 'Subject', 'societypress' ); ?></th>
+						<th style="width: 80px;"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+					</tr>
+				</thead>
+				<tbody>
+					<?php if ( empty( $emails ) ) : ?>
+						<tr>
+							<td colspan="5"><?php esc_html_e( 'No emails found.', 'societypress' ); ?></td>
+						</tr>
+					<?php else : ?>
+						<?php foreach ( $emails as $email ) : ?>
+							<tr>
+								<td>
+									<?php echo esc_html( date_i18n( 'M j, Y g:i a', strtotime( $email['created_at'] ) ) ); ?>
+								</td>
+								<td>
+									<?php
+									$status_colors = array(
+										'sent'    => '#00a32a',
+										'blocked' => '#dba617',
+										'failed'  => '#d63638',
+										'pending' => '#72aee6',
+									);
+									$color = $status_colors[ $email['status'] ] ?? '#666';
+									?>
+									<span style="color: <?php echo esc_attr( $color ); ?>; font-weight: 600;">
+										<?php echo esc_html( ucfirst( $email['status'] ) ); ?>
+									</span>
+								</td>
+								<td><?php echo esc_html( $email['recipient'] ); ?></td>
+								<td><?php echo esc_html( $email['subject'] ); ?></td>
+								<td>
+									<a href="#" class="sp-view-email" data-id="<?php echo esc_attr( $email['id'] ); ?>">
+										<?php esc_html_e( 'View', 'societypress' ); ?>
+									</a>
+								</td>
+							</tr>
+							<tr class="sp-email-body-row" id="email-body-<?php echo esc_attr( $email['id'] ); ?>" style="display: none;">
+								<td colspan="5" style="background: #f9f9f9; padding: 20px;">
+									<div style="margin-bottom: 10px;">
+										<strong><?php esc_html_e( 'Headers:', 'societypress' ); ?></strong>
+										<pre style="background: #fff; padding: 10px; margin: 5px 0; overflow-x: auto; font-size: 12px;"><?php echo esc_html( $email['headers'] ?: '(none)' ); ?></pre>
+									</div>
+									<div>
+										<strong><?php esc_html_e( 'Body:', 'societypress' ); ?></strong>
+										<div style="background: #fff; padding: 15px; margin: 5px 0; border: 1px solid #ddd; max-height: 400px; overflow-y: auto;">
+											<?php echo wp_kses_post( nl2br( $email['body'] ) ); ?>
+										</div>
+									</div>
+									<?php if ( ! empty( $email['error_message'] ) ) : ?>
+										<div style="margin-top: 10px; color: #d63638;">
+											<strong><?php esc_html_e( 'Error:', 'societypress' ); ?></strong>
+											<?php echo esc_html( $email['error_message'] ); ?>
+										</div>
+									<?php endif; ?>
+								</td>
+							</tr>
+						<?php endforeach; ?>
+					<?php endif; ?>
+				</tbody>
+			</table>
+
+			<?php if ( $total_pages > 1 ) : ?>
+				<div class="tablenav bottom">
+					<div class="tablenav-pages">
+						<?php
+						echo paginate_links( array(
+							'base'      => add_query_arg( 'paged', '%#%' ),
+							'format'    => '',
+							'prev_text' => '&laquo;',
+							'next_text' => '&raquo;',
+							'total'     => $total_pages,
+							'current'   => $current_page,
+						) );
+						?>
+					</div>
+				</div>
+			<?php endif; ?>
+		</div>
+
+		<script>
+		jQuery(document).ready(function($) {
+			$('.sp-view-email').on('click', function(e) {
+				e.preventDefault();
+				var id = $(this).data('id');
+				$('#email-body-' + id).toggle();
+				$(this).text($(this).text() === 'View' ? 'Hide' : 'View');
+			});
+		});
+		</script>
+		<?php
 	}
 }

@@ -16,91 +16,146 @@ get_header();
 
 	<?php
 	/**
-	 * Hero Slider Section
+	 * Hero Area Widget Zone
 	 *
-	 * WHY: Eye-catching hero area for featured announcements, events, or highlights.
-	 * Slides are managed in Appearance → Customize → Hero Slider
-	 * Supports both images and MP4 videos as backgrounds.
+	 * WHY: The Hero Slider widget system is the preferred way to display sliders.
+	 * It allows different slide groups on different pages and is more flexible.
+	 * If the Hero Area widget zone has widgets, display those.
+	 * Otherwise, fall back to the legacy Customizer-based slider for backward compatibility.
 	 */
-
-	// Collect slides with images or videos (only show slides that have media)
-	$slides = array();
-	for ( $i = 1; $i <= 6; $i++ ) {
-		$image = get_theme_mod( "societypress_slide_{$i}_image", '' );
-		$video = get_theme_mod( "societypress_slide_{$i}_video", '' );
-
-		// Only add slide if it has an image or video
-		if ( $image || $video ) {
-			$slides[] = array(
-				'image'      => $image,
-				'video'      => $video,
-				'text'       => get_theme_mod( "societypress_slide_{$i}_text", '' ),
-				'url'        => get_theme_mod( "societypress_slide_{$i}_url", '' ),
-				'text_color' => get_theme_mod( "societypress_slide_{$i}_text_color", '#ffffff' ),
-			);
-		}
-	}
-
-	// Only display slider if there are slides
-	if ( ! empty( $slides ) ) :
+	if ( is_active_sidebar( 'hero-area' ) ) :
 		?>
-		<section class="hero-slider">
-			<div class="swiper hero-swiper">
-				<div class="swiper-wrapper">
+		<div class="hero-area-wrapper">
+			<?php dynamic_sidebar( 'hero-area' ); ?>
+		</div>
+		<?php
+	else :
+		/**
+		 * Legacy Customizer Slider (Fallback)
+		 *
+		 * WHY: Maintains backward compatibility for existing sites using the
+		 * Customizer-based slider. New sites should use the Hero Slider widget instead.
+		 * Slides are managed in Appearance → Customize → Hero Slider
+		 * Supports both images and MP4 videos as backgrounds.
+		 */
 
-					<?php foreach ( $slides as $slide ) : ?>
-						<?php
-						// Wrap entire slide in link if URL provided
-						$has_link = ! empty( $slide['url'] );
-						?>
-						<div class="swiper-slide">
-							<?php if ( $has_link ) : ?>
-								<a href="<?php echo esc_url( $slide['url'] ); ?>" class="slide-link">
-							<?php endif; ?>
+		// Collect slides with images or videos (only show slides that have media)
+		$slides = array();
+		for ( $i = 1; $i <= 6; $i++ ) {
+			$image = get_theme_mod( "societypress_slide_{$i}_image", '' );
+			$video = get_theme_mod( "societypress_slide_{$i}_video", '' );
 
-							<div class="hero-image">
-								<?php if ( $slide['video'] ) : ?>
-									<?php
-									// Video takes priority over image
-									$video_url = wp_get_attachment_url( $slide['video'] );
-									?>
-									<video autoplay muted loop playsinline class="hero-video">
-										<source src="<?php echo esc_url( $video_url ); ?>" type="video/mp4">
-									</video>
-								<?php elseif ( $slide['image'] ) : ?>
-									<?php echo wp_get_attachment_image( $slide['image'], 'sp-hero' ); ?>
+			// Only add slide if it has an image or video
+			if ( $image || $video ) {
+				$slides[] = array(
+					'image'      => $image,
+					'video'      => $video,
+					'text'       => get_theme_mod( "societypress_slide_{$i}_text", '' ),
+					'url'        => get_theme_mod( "societypress_slide_{$i}_url", '' ),
+					'text_color' => get_theme_mod( "societypress_slide_{$i}_text_color", '#ffffff' ),
+				);
+			}
+		}
+
+		// Only display slider if there are slides
+		if ( ! empty( $slides ) ) :
+			// Enqueue Swiper for legacy slider
+			wp_enqueue_style(
+				'swiper',
+				'https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css',
+				array(),
+				'11.0.0'
+			);
+			wp_enqueue_script(
+				'swiper',
+				'https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js',
+				array(),
+				'11.0.0',
+				true
+			);
+			?>
+			<section class="hero-slider hero-slider-legacy">
+				<div class="swiper hero-swiper">
+					<div class="swiper-wrapper">
+
+						<?php foreach ( $slides as $slide ) : ?>
+							<?php
+							// Wrap entire slide in link if URL provided
+							$has_link = ! empty( $slide['url'] );
+							?>
+							<div class="swiper-slide">
+								<?php if ( $has_link ) : ?>
+									<a href="<?php echo esc_url( $slide['url'] ); ?>" class="slide-link">
 								<?php endif; ?>
-							</div>
 
-							<?php if ( $slide['text'] ) : ?>
-								<div class="hero-content">
-									<div class="sp-container">
-										<div class="hero-text" style="color: <?php echo esc_attr( $slide['text_color'] ); ?>;">
-											<div class="hero-excerpt">
-												<?php echo wp_kses_post( $slide['text'] ); ?>
+								<div class="hero-image">
+									<?php if ( $slide['video'] ) : ?>
+										<?php
+										// Video takes priority over image
+										$video_url = wp_get_attachment_url( $slide['video'] );
+										?>
+										<video autoplay muted loop playsinline class="hero-video">
+											<source src="<?php echo esc_url( $video_url ); ?>" type="video/mp4">
+										</video>
+									<?php elseif ( $slide['image'] ) : ?>
+										<?php echo wp_get_attachment_image( $slide['image'], 'sp-hero' ); ?>
+									<?php endif; ?>
+								</div>
+
+								<?php if ( $slide['text'] ) : ?>
+									<div class="hero-content">
+										<div class="sp-container">
+											<div class="hero-text" style="color: <?php echo esc_attr( $slide['text_color'] ); ?>;">
+												<div class="hero-excerpt">
+													<?php echo wp_kses_post( $slide['text'] ); ?>
+												</div>
 											</div>
 										</div>
 									</div>
-								</div>
-							<?php endif; ?>
+								<?php endif; ?>
 
-							<?php if ( $has_link ) : ?>
-								</a>
-							<?php endif; ?>
-						</div>
-					<?php endforeach; ?>
+								<?php if ( $has_link ) : ?>
+									</a>
+								<?php endif; ?>
+							</div>
+						<?php endforeach; ?>
 
-				</div><!-- .swiper-wrapper -->
+					</div><!-- .swiper-wrapper -->
 
-				<!-- Navigation -->
-				<div class="swiper-button-prev"></div>
-				<div class="swiper-button-next"></div>
+					<!-- Navigation -->
+					<div class="swiper-button-prev"></div>
+					<div class="swiper-button-next"></div>
 
-				<!-- Pagination -->
-				<div class="swiper-pagination"></div>
-			</div><!-- .swiper -->
-		</section><!-- .hero-slider -->
-	<?php endif; ?>
+					<!-- Pagination -->
+					<div class="swiper-pagination"></div>
+				</div><!-- .swiper -->
+			</section><!-- .hero-slider -->
+
+			<script>
+			document.addEventListener('DOMContentLoaded', function() {
+				if (typeof Swiper !== 'undefined') {
+					new Swiper('.hero-slider-legacy .hero-swiper', {
+						loop: true,
+						effect: 'fade',
+						fadeEffect: { crossFade: true },
+						autoplay: {
+							delay: 5000,
+							disableOnInteraction: false
+						},
+						navigation: {
+							nextEl: '.hero-slider-legacy .swiper-button-next',
+							prevEl: '.hero-slider-legacy .swiper-button-prev'
+						},
+						pagination: {
+							el: '.hero-slider-legacy .swiper-pagination',
+							clickable: true
+						}
+					});
+				}
+			});
+			</script>
+		<?php endif;
+	endif; ?>
 
 	<?php
 	/**

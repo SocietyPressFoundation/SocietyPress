@@ -4,7 +4,7 @@ Theme URI: https://github.com/charles-stricklin/SocietyPress
 Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
 Description: Premium WordPress theme for genealogical and historical societies. Features member directories, event calendars, research resources, and document archives. Designed to work seamlessly with the SocietyPress membership management plugin.
-Version: 1.36d
+Version: 1.37d
 Requires at least: 6.0
 Tested up to: 6.4
 Requires PHP: 8.0
@@ -2617,4 +2617,38 @@ article .entry-footer span {
 	background: var(--sp-error-bg, #f8d7da);
 	color: var(--sp-error-text, #721c24);
 	border: 1px solid var(--sp-error-border, #f5c6cb);
+}
+
+/* ==========================================================================
+   Hero Area Widget Zone
+   ========================================================================== */
+
+/*
+ * WHY: The Hero Area is a full-width widget zone at the top of the front page,
+ * designed to hold the Hero Slider widget. It needs to break out of the
+ * container to span edge-to-edge while keeping child content properly contained.
+ */
+
+.hero-area-wrapper {
+	/* Full width breakout */
+	width: 100vw;
+	margin-left: calc(-50vw + 50%);
+	position: relative;
+}
+
+.hero-area-widget {
+	/* Each widget in the hero area should also be full-width */
+	width: 100%;
+}
+
+/* Ensure hero slider widget displays properly in the hero area */
+.hero-area-widget .hero-slider-widget {
+	margin-left: 0;
+	width: 100%;
+}
+
+/* Override the full-width breakout for sliders inside hero area since it's already full-width */
+.hero-area-wrapper .hero-slider {
+	width: 100%;
+	margin-left: 0;
 }

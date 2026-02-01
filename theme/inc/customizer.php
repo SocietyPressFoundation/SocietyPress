@@ -618,14 +618,19 @@ function societypress_customize_register( $wp_customize ) {
 	);
 
 	/* ==========================================================================
-	   HERO SLIDER
+	   HERO SLIDER (Legacy)
 	   ========================================================================== */
 
 	$wp_customize->add_section(
 		'societypress_slider',
 		array(
-			'title'       => __( 'Hero Slider', 'societypress' ),
-			'description' => __( 'Configure up to 6 hero slides for your homepage. Each slide needs an image, optional text, and optional link.', 'societypress' ),
+			'title'       => __( 'Hero Slider (Legacy)', 'societypress' ),
+			'description' => sprintf(
+				/* translators: %1$s: opening strong tag, %2$s: closing strong tag */
+				__( '%1$sNew: Widget-Based Slider Available!%2$s For more flexibility, try the new Hero Slider widget system. Go to Hero Slider → Add New to create slides, assign them to groups, then add the Hero Slider widget to the Hero Area in Appearance → Widgets. This lets you show different slides on different pages! The settings below still work as a fallback if no widget is configured.', 'societypress' ),
+				'<strong>',
+				'</strong>'
+			) . '<hr style="margin: 15px 0;">' . __( 'Configure up to 6 hero slides for your homepage. Each slide needs an image, optional text, and optional link.', 'societypress' ),
 			'priority'    => 35,
 		)
 	);

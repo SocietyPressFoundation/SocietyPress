@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * WHY: Used for cache busting assets and tracking theme updates.
  */
-define( 'SOCIETYPRESS_THEME_VERSION', '1.36d' );
+define( 'SOCIETYPRESS_THEME_VERSION', '1.37d' );
 
 /**
  * Require login to view the site.
@@ -163,24 +163,9 @@ function societypress_scripts() {
 		wp_enqueue_script( 'comment-reply' );
 	}
 
-	// Swiper.js for hero carousel (only load on pages that need it)
-	// WHY: Conditional loading improves performance on pages without sliders
-	if ( is_front_page() || is_page_template( 'templates/template-homepage.php' ) ) {
-		wp_enqueue_style(
-			'swiper',
-			'https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css',
-			array(),
-			'11.0.0'
-		);
-
-		wp_enqueue_script(
-			'swiper',
-			'https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js',
-			array(),
-			'11.0.0',
-			true
-		);
-	}
+	// WHY: Swiper.js is now loaded by the Hero Slider widget when needed,
+	// or by front-page.php when using the legacy Customizer-based slider.
+	// This removes the front-page-only restriction so Swiper can be used anywhere.
 }
 add_action( 'wp_enqueue_scripts', 'societypress_scripts' );
 
@@ -216,6 +201,21 @@ add_filter( 'block_categories_all', 'societypress_register_block_category', 10, 
  * WHY: Provides widget-ready areas for sidebars and footer.
  */
 function societypress_widgets_init() {
+	// Hero Area widget area (for hero sliders)
+	// WHY: Full-width area at top of page, ideal for hero sliders with the
+	// Hero Slider widget. Allows different sliders on different pages.
+	register_sidebar(
+		array(
+			'name'          => __( 'Hero Area', 'societypress' ),
+			'id'            => 'hero-area',
+			'description'   => __( 'Full-width area above main content. Add the Hero Slider widget here to display slides.', 'societypress' ),
+			'before_widget' => '<div id="%1$s" class="hero-area-widget %2$s">',
+			'after_widget'  => '</div>',
+			'before_title'  => '<span class="screen-reader-text">',
+			'after_title'   => '</span>',
+		)
+	);
+
 	// Below Header widget area (for breadcrumbs, announcements, etc.)
 	register_sidebar(
 		array(
@@ -319,6 +319,22 @@ require_once get_template_directory() . '/inc/customizer.php';
  * WHY: Provides breadcrumb navigation and widget for site hierarchy display.
  */
 require_once get_template_directory() . '/inc/breadcrumbs.php';
+
+/**
+ * Load Hero Slider Post Type.
+ *
+ * WHY: Provides the sp_slide custom post type, Slide Groups taxonomy,
+ * and admin UI for managing hero slides.
+ */
+require_once get_template_directory() . '/inc/slider-post-type.php';
+
+/**
+ * Load Hero Slider Widget.
+ *
+ * WHY: Provides the block-based Hero Slider widget for displaying
+ * slide groups anywhere on the site via the widget system.
+ */
+require_once get_template_directory() . '/inc/slider-widget.php';
 
 /**
  * Check if SocietyPress plugin is active.
@@ -579,3 +595,27 @@ function societypress_entry_footer() {
 		'</span>'
 	);
 }
+
+/**
+ * Clean up the WordPress admin dashboard.
+ *
+ * WHY: The Welcome panel and WordPress Events widget are distracting clutter
+ * for society admins who just want to manage their content. Removing these
+ * provides a cleaner, more focused admin experience.
+ */
+function societypress_clean_dashboard() {
+	// Remove WordPress Events and News widget
+	remove_meta_box( 'dashboard_primary', 'dashboard', 'side' );
+
+	// Remove Quick Draft widget (most users don't need this)
+	remove_meta_box( 'dashboard_quick_press', 'dashboard', 'side' );
+}
+add_action( 'wp_dashboard_setup', 'societypress_clean_dashboard' );
+
+/**
+ * Remove the Welcome panel for all users.
+ *
+ * WHY: The Welcome panel takes up significant space and is not useful for
+ * society administrators who are already familiar with WordPress.
+ */
+remove_action( 'welcome_panel', 'wp_welcome_panel' );

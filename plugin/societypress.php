@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI: https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies. Handles member registration, dues, renewals, directories, committees, and governance.
- * Version: 0.47d
+ * Version: 0.52d
  * Author: Stricklin Development
  * Author URI: https://stricklindevelopment.com/
  * License: Proprietary
@@ -23,7 +23,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Plugin version.
  */
-define( 'SOCIETYPRESS_VERSION', '0.47d' );
+define( 'SOCIETYPRESS_VERSION', '0.52d' );
 
 /**
  * Plugin directory path.
@@ -49,6 +49,70 @@ define( 'SOCIETYPRESS_TABLE_PREFIX', 'sp_' );
  * Encryption key option name.
  */
 define( 'SOCIETYPRESS_ENCRYPTION_KEY_OPTION', 'societypress_encryption_key' );
+
+/**
+ * Email logging and blocking for development.
+ *
+ * WHY: Logs all outgoing emails to the database for admin review.
+ *      In development mode (WP_DEBUG or localhost), emails are blocked
+ *      but still logged so admins can see what would be sent.
+ *      Set SOCIETYPRESS_ALLOW_EMAILS to true to send emails in dev mode.
+ */
+add_filter( 'pre_wp_mail', 'societypress_log_email', 10, 2 );
+
+/**
+ * Log and optionally block outgoing emails.
+ *
+ * @param null|bool $return Short-circuit return value.
+ * @param array     $atts   Email attributes (to, subject, message, headers, attachments).
+ * @return null|bool Null to continue sending, true to block.
+ */
+function societypress_log_email( $return, $atts ) {
+    // Determine if we're in development mode
+    $allow_emails = defined( 'SOCIETYPRESS_ALLOW_EMAILS' ) && SOCIETYPRESS_ALLOW_EMAILS;
+    $is_development = defined( 'WP_DEBUG' ) && WP_DEBUG;
+    $is_localhost = isset( $_SERVER['HTTP_HOST'] ) && (
+        strpos( $_SERVER['HTTP_HOST'], 'localhost' ) !== false ||
+        strpos( $_SERVER['HTTP_HOST'], '.local' ) !== false ||
+        $_SERVER['HTTP_HOST'] === '127.0.0.1'
+    );
+
+    $should_block = ! $allow_emails && ( $is_development || $is_localhost );
+
+    // Format the recipient
+    $recipient = is_array( $atts['to'] ) ? implode( ', ', $atts['to'] ) : $atts['to'];
+
+    // Format headers
+    $headers = '';
+    if ( ! empty( $atts['headers'] ) ) {
+        $headers = is_array( $atts['headers'] ) ? implode( "\n", $atts['headers'] ) : $atts['headers'];
+    }
+
+    // Log to database if email_log is available
+    if ( function_exists( 'societypress' ) && societypress()->email_log ) {
+        societypress()->email_log->log(
+            $recipient,
+            $atts['subject'] ?? '(no subject)',
+            $atts['message'] ?? '',
+            $headers,
+            $should_block ? 'blocked' : 'sent',
+            $should_block ? 'Blocked in development mode' : null
+        );
+    }
+
+    // Also log to debug.log
+    if ( defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG ) {
+        error_log( sprintf(
+            '[SocietyPress] Email %s: To: %s, Subject: %s',
+            $should_block ? 'BLOCKED' : 'sent',
+            $recipient,
+            $atts['subject'] ?? '(no subject)'
+        ) );
+    }
+
+    // Return true to block, null to allow sending
+    return $should_block ? true : $return;
+}
 
 /**
  * Main plugin class.
@@ -107,6 +171,13 @@ final class SocietyPress {
     public ?SocietyPress_Event_Registrations $event_registrations = null;
 
     /**
+     * Email log manager.
+     *
+     * @var SocietyPress_Email_Log|null
+     */
+    public ?SocietyPress_Email_Log $email_log = null;
+
+    /**
      * User manager.
      *
      * @var SocietyPress_User_Manager|null
@@ -161,6 +232,13 @@ final class SocietyPress {
      * @var SocietyPress_Event_Registration_Frontend|null
      */
     public ?SocietyPress_Event_Registration_Frontend $event_registration_frontend = null;
+
+    /**
+     * Public widgets.
+     *
+     * @var SocietyPress_Widgets|null
+     */
+    public ?SocietyPress_Widgets $widgets = null;
 
     /**
      * Auto-updater.
@@ -219,6 +297,7 @@ final class SocietyPress {
         require_once SOCIETYPRESS_PATH . 'includes/class-events.php';
         require_once SOCIETYPRESS_PATH . 'includes/class-event-slots.php';
         require_once SOCIETYPRESS_PATH . 'includes/class-event-registrations.php';
+        require_once SOCIETYPRESS_PATH . 'includes/class-email-log.php';
         require_once SOCIETYPRESS_PATH . 'includes/class-user-manager.php';
         require_once SOCIETYPRESS_PATH . 'includes/class-notifications.php';
         require_once SOCIETYPRESS_PATH . 'includes/class-license.php';
@@ -237,8 +316,15 @@ final class SocietyPress {
             require_once SOCIETYPRESS_PATH . 'public/class-directory.php';
             require_once SOCIETYPRESS_PATH . 'public/class-portal.php';
             require_once SOCIETYPRESS_PATH . 'public/class-join-form.php';
+        }
+
+        // Event registration frontend needs to load for both frontend AND AJAX
+        if ( ! is_admin() || wp_doing_ajax() ) {
             require_once SOCIETYPRESS_PATH . 'public/class-event-registration-frontend.php';
         }
+
+        // Public widgets (block-based) load on both frontend and admin for block editor
+        require_once SOCIETYPRESS_PATH . 'public/class-widgets.php';
     }
 
     /**
@@ -362,6 +448,7 @@ final class SocietyPress {
         $this->events              = new SocietyPress_Events();
         $this->event_slots         = new SocietyPress_Event_Slots();
         $this->event_registrations = new SocietyPress_Event_Registrations();
+        $this->email_log           = new SocietyPress_Email_Log();
         $this->user_manager        = new SocietyPress_User_Manager();
         $this->notifications = new SocietyPress_Notifications();
         $this->license       = new SocietyPress_License();
@@ -381,8 +468,16 @@ final class SocietyPress {
             $this->directory                   = new SocietyPress_Directory();
             $this->portal                      = new SocietyPress_Portal();
             $this->join_form                   = new SocietyPress_Join_Form();
+        }
+
+        // Event registration frontend needs to load for both frontend AND AJAX
+        // (AJAX requests to admin-ajax.php have is_admin() === true)
+        if ( ! is_admin() || wp_doing_ajax() ) {
             $this->event_registration_frontend = new SocietyPress_Event_Registration_Frontend();
         }
+
+        // Public widgets load on both frontend and admin (for block editor)
+        $this->widgets = new SocietyPress_Widgets();
     }
 
     /**

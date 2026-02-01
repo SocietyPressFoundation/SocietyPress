@@ -103,8 +103,10 @@ class SocietyPress_Members {
         }
 
         $data              = (array) $member;
-        $data['tier']      = $this->get_tier( $id );
-        $data['contact']   = $this->get_contact( $id );
+        $tier              = $this->get_tier( $id );
+        $data['tier']      = $tier ? (array) $tier : null;
+        $contact           = $this->get_contact( $id );
+        $data['contact']   = $contact ? (array) $contact : null;
         $data['surnames']  = $this->get_surnames( $id );
         $data['meta']      = $this->get_all_meta( $id );
 

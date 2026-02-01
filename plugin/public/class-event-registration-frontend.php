@@ -45,10 +45,12 @@ class SocietyPress_Event_Registration_Frontend {
 		// AJAX handlers (logged-in users only)
 		add_action( 'wp_ajax_societypress_register_event', array( $this, 'ajax_register' ) );
 		add_action( 'wp_ajax_societypress_cancel_registration', array( $this, 'ajax_cancel' ) );
+		add_action( 'wp_ajax_societypress_join_waitlist', array( $this, 'ajax_join_waitlist' ) );
 
 		// Also allow non-logged-in users to see the "please log in" message via AJAX
 		add_action( 'wp_ajax_nopriv_societypress_register_event', array( $this, 'ajax_not_logged_in' ) );
 		add_action( 'wp_ajax_nopriv_societypress_cancel_registration', array( $this, 'ajax_not_logged_in' ) );
+		add_action( 'wp_ajax_nopriv_societypress_join_waitlist', array( $this, 'ajax_not_logged_in' ) );
 	}
 
 	/**
@@ -191,6 +193,8 @@ class SocietyPress_Event_Registration_Frontend {
 	 *
 	 * WHY: Shows all available slots with their times, capacity, and the
 	 *      appropriate action button based on the member's registration status.
+	 *      If ALL slots are full and member isn't registered, shows a single
+	 *      "Join Waitlist" button at the bottom.
 	 *
 	 * @param int $event_id  The event post ID.
 	 * @param int $member_id The member ID.
@@ -202,8 +206,46 @@ class SocietyPress_Event_Registration_Frontend {
 			return;
 		}
 
-		// Check if member is already registered for any slot
+		// Check if member is already registered for any slot OR on event waitlist
 		$existing_registration = societypress()->event_registrations->get_member_event_registration( $event_id, $member_id );
+
+		// Check if member is on the event-wide waitlist (slot_id IS NULL)
+		$is_on_event_waitlist = $existing_registration && empty( $existing_registration['slot_id'] ) && $existing_registration['status'] === 'waitlist';
+
+		// If on event-wide waitlist, show that status
+		if ( $is_on_event_waitlist ) {
+			$position = societypress()->event_registrations->get_waitlist_position( $existing_registration['id'] );
+			$waitlist_count = societypress()->event_registrations->get_event_waitlist_count( $event_id );
+			?>
+			<div class="sp-waitlist-status">
+				<span class="sp-waitlist-badge">
+					<?php
+					printf(
+						/* translators: %d: position in waitlist */
+						esc_html__( 'You are #%d on the waitlist', 'societypress' ),
+						$position
+					);
+					?>
+				</span>
+				<p class="sp-waitlist-info">
+					<?php esc_html_e( 'When a spot opens up, you\'ll be automatically registered and notified.', 'societypress' ); ?>
+				</p>
+				<button type="button" class="sp-cancel-btn sp-cancel-waitlist" data-registration-id="<?php echo esc_attr( $existing_registration['id'] ); ?>">
+					<?php esc_html_e( 'Leave Waitlist', 'societypress' ); ?>
+				</button>
+			</div>
+			<?php
+			return;
+		}
+
+		// Check if ALL slots are full
+		$all_slots_full = true;
+		foreach ( $slots as $slot ) {
+			if ( societypress()->event_slots->has_capacity( (int) $slot['id'] ) ) {
+				$all_slots_full = false;
+				break;
+			}
+		}
 		?>
 		<table class="sp-slots-table">
 			<thead>
@@ -221,6 +263,32 @@ class SocietyPress_Event_Registration_Frontend {
 			</tbody>
 		</table>
 		<?php
+
+		// Show "Join Waitlist" button if ALL slots are full and member isn't registered
+		if ( $all_slots_full && ! $existing_registration ) {
+			$waitlist_count = societypress()->event_registrations->get_event_waitlist_count( $event_id );
+			?>
+			<div class="sp-waitlist-section">
+				<p class="sp-all-full-message">
+					<?php esc_html_e( 'All time slots are currently full.', 'societypress' ); ?>
+					<?php if ( $waitlist_count > 0 ) : ?>
+						<span class="sp-waitlist-count">
+							<?php
+							printf(
+								/* translators: %d: number of people on waitlist */
+								esc_html( _n( '(%d person on waitlist)', '(%d people on waitlist)', $waitlist_count, 'societypress' ) ),
+								$waitlist_count
+							);
+							?>
+						</span>
+					<?php endif; ?>
+				</p>
+				<button type="button" class="sp-register-btn sp-join-waitlist-btn" data-event-id="<?php echo esc_attr( $event_id ); ?>">
+					<?php esc_html_e( 'Join Waitlist', 'societypress' ); ?>
+				</button>
+			</div>
+			<?php
+		}
 	}
 
 	/**
@@ -348,28 +416,36 @@ class SocietyPress_Event_Registration_Frontend {
 
 		// Member is registered for a DIFFERENT slot of this event
 		if ( $existing_registration && (int) $existing_registration['slot_id'] !== $slot_id ) {
-			$other_time = societypress()->event_slots->format_time_range( (int) $existing_registration['slot_id'] );
 			?>
 			<span class="sp-other-slot-note">
-				<?php
-				printf(
-					/* translators: %s: time range of other slot */
-					esc_html__( 'Registered for %s', 'societypress' ),
-					$other_time
-				);
-				?>
+				<?php esc_html_e( 'One registration per event', 'societypress' ); ?>
 			</span>
 			<?php
 			return;
 		}
 
-		// Slot is full - show waitlist button
+		// Slot is full - show "Pick another time" if other slots available,
+		// otherwise show nothing (the "Join Waitlist" button is shown below the table)
 		if ( $is_full ) {
-			?>
-			<button type="button" class="sp-register-btn sp-waitlist-btn" data-slot-id="<?php echo esc_attr( $slot_id ); ?>">
-				<?php esc_html_e( 'Join Waitlist', 'societypress' ); ?>
-			</button>
-			<?php
+			// Check if any other slots have capacity
+			$slot = societypress()->event_slots->get( $slot_id );
+			$all_slots = societypress()->event_slots->get_by_event( (int) $slot['event_id'] );
+			$any_available = false;
+
+			foreach ( $all_slots as $other_slot ) {
+				if ( (int) $other_slot['id'] !== $slot_id && societypress()->event_slots->has_capacity( (int) $other_slot['id'] ) ) {
+					$any_available = true;
+					break;
+				}
+			}
+
+			if ( $any_available ) {
+				// Other slots available - prompt user to pick one
+				?>
+				<span class="sp-slot-full-note"><?php esc_html_e( 'Pick another time', 'societypress' ); ?></span>
+				<?php
+			}
+			// If ALL full, don't show anything here - waitlist button is below the table
 			return;
 		}
 
@@ -401,8 +477,10 @@ class SocietyPress_Event_Registration_Frontend {
 	 * AJAX handler for event registration.
 	 */
 	public function ajax_register(): void {
-		check_ajax_referer( 'sp_event_registration', 'nonce' );
-
+		// Verify nonce with JSON error response instead of die()
+		if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( $_POST['nonce'], 'sp_event_registration' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Security check failed. Please refresh the page and try again.', 'societypress' ) ) );
+		}
 		$slot_id = isset( $_POST['slot_id'] ) ? absint( $_POST['slot_id'] ) : 0;
 
 		if ( ! $slot_id ) {
@@ -442,7 +520,10 @@ class SocietyPress_Event_Registration_Frontend {
 	 * AJAX handler for cancelling registration.
 	 */
 	public function ajax_cancel(): void {
-		check_ajax_referer( 'sp_event_registration', 'nonce' );
+		// Verify nonce with JSON error response instead of die()
+		if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( $_POST['nonce'], 'sp_event_registration' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Security check failed. Please refresh the page and try again.', 'societypress' ) ) );
+		}
 
 		$registration_id = isset( $_POST['registration_id'] ) ? absint( $_POST['registration_id'] ) : 0;
 
@@ -474,6 +555,41 @@ class SocietyPress_Event_Registration_Frontend {
 			wp_send_json_success( array(
 				'message' => $result['message'],
 				'rowHtml' => $row_html,
+			) );
+		} else {
+			wp_send_json_error( array( 'message' => $result['message'] ) );
+		}
+	}
+
+	/**
+	 * AJAX handler for joining the event-wide waitlist.
+	 */
+	public function ajax_join_waitlist(): void {
+		// Verify nonce
+		if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( $_POST['nonce'], 'sp_event_registration' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Security check failed. Please refresh the page and try again.', 'societypress' ) ) );
+		}
+
+		$event_id = isset( $_POST['event_id'] ) ? absint( $_POST['event_id'] ) : 0;
+
+		if ( ! $event_id ) {
+			wp_send_json_error( array( 'message' => __( 'Invalid event.', 'societypress' ) ) );
+		}
+
+		$member_id = $this->get_current_member_id();
+
+		if ( ! $member_id ) {
+			wp_send_json_error( array( 'message' => __( 'You must be a member to join the waitlist.', 'societypress' ) ) );
+		}
+
+		// Attempt to join waitlist
+		$result = societypress()->event_registrations->join_event_waitlist( $event_id, $member_id );
+
+		if ( $result['success'] ) {
+			wp_send_json_success( array(
+				'message' => $result['message'],
+				'status'  => 'waitlist',
+				'reload'  => true, // Tell JS to reload to show updated UI
 			) );
 		} else {
 			wp_send_json_error( array( 'message' => $result['message'] ) );

@@ -77,6 +77,7 @@ class SocietyPress_Database {
         $this->create_licenses_table();
         $this->create_event_slots_table();
         $this->create_event_registrations_table();
+        $this->create_email_log_table();
     }
 
     /**
@@ -529,25 +530,69 @@ class SocietyPress_Database {
      *
      * WHY: Tracks which members have registered for which event time slots,
      *      including status (confirmed, cancelled, waitlist) and admin notes.
+     *      Event-wide waitlist entries have slot_id = NULL.
      */
     private function create_event_registrations_table(): void {
         $table = $this->table( 'event_registrations' );
 
         $sql = "CREATE TABLE {$table} (
             id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-            slot_id BIGINT(20) UNSIGNED NOT NULL,
-            member_id BIGINT(20) UNSIGNED NOT NULL,
-            status ENUM('confirmed','cancelled','waitlist') NOT NULL DEFAULT 'confirmed',
+            event_id BIGINT(20) UNSIGNED NOT NULL,
+            slot_id BIGINT(20) UNSIGNED DEFAULT NULL,
+            member_id BIGINT(20) UNSIGNED DEFAULT NULL,
+            guest_name VARCHAR(200) DEFAULT NULL,
+            guest_email VARCHAR(255) DEFAULT NULL,
+            guest_phone VARCHAR(50) DEFAULT NULL,
+            fee_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+            payment_status ENUM('pending','paid','waived','refunded') NOT NULL DEFAULT 'pending',
+            payment_method VARCHAR(50) DEFAULT NULL,
+            payment_date DATE DEFAULT NULL,
+            notes TEXT,
             registered_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            status ENUM('confirmed','cancelled','waitlist') NOT NULL DEFAULT 'confirmed',
             registered_by BIGINT(20) UNSIGNED DEFAULT NULL,
             cancelled_at DATETIME DEFAULT NULL,
-            notes TEXT,
             PRIMARY KEY (id),
+            KEY event_id (event_id),
             KEY slot_id (slot_id),
             KEY member_id (member_id),
             KEY status (status),
             KEY registered_at (registered_at),
-            UNIQUE KEY unique_registration (slot_id, member_id)
+            KEY payment_status (payment_status),
+            UNIQUE KEY unique_member_event (event_id, member_id)
+        ) {$this->charset_collate};";
+
+        dbDelta( $sql );
+    }
+
+    /**
+     * Email log table.
+     *
+     * WHY: Tracks all outgoing emails for admin review and debugging.
+     *      Shows what emails were sent (or would be sent in dev mode),
+     *      helping admins verify communications and troubleshoot issues.
+     */
+    private function create_email_log_table(): void {
+        $table = $this->table( 'email_log' );
+
+        $sql = "CREATE TABLE {$table} (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            recipient VARCHAR(255) NOT NULL,
+            subject VARCHAR(255) NOT NULL,
+            body LONGTEXT NOT NULL,
+            headers TEXT,
+            status ENUM('sent','blocked','failed','pending') NOT NULL DEFAULT 'pending',
+            error_message TEXT,
+            member_id BIGINT(20) UNSIGNED DEFAULT NULL,
+            email_type VARCHAR(50) DEFAULT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            sent_at DATETIME DEFAULT NULL,
+            PRIMARY KEY (id),
+            KEY recipient (recipient),
+            KEY status (status),
+            KEY email_type (email_type),
+            KEY created_at (created_at),
+            KEY member_id (member_id)
         ) {$this->charset_collate};";
 
         dbDelta( $sql );
@@ -560,6 +605,7 @@ class SocietyPress_Database {
      */
     public function uninstall(): void {
         $tables = array(
+            'email_log',
             'event_registrations',
             'event_slots',
             'licenses',

@@ -4,7 +4,7 @@ Theme URI: https://github.com/charles-stricklin/SocietyPress
 Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
 Description: Premium WordPress theme for genealogical and historical societies. Features member directories, event calendars, research resources, and document archives. Designed to work seamlessly with the SocietyPress membership management plugin.
-Version: 1.34d
+Version: 1.36d
 Requires at least: 6.0
 Tested up to: 6.4
 Requires PHP: 8.0
@@ -287,6 +287,8 @@ a:focus {
 .content-area {
 	flex: 1;
 	max-width: 800px;
+	/* WHY: Prevent flex children from overflowing when content (like tables) is wide */
+	min-width: 0;
 }
 
 .sp-container {
@@ -1580,6 +1582,8 @@ label {
 	flex-direction: column;
 	padding: var(--sp-space-6);
 	flex: 1;
+	/* WHY: Prevent flex children from overflowing when content is wide */
+	min-width: 0;
 }
 
 .event-meta {

@@ -18,6 +18,19 @@
     background: #f9f9f9;
     border: 2px solid #e0e0e0;
     border-radius: 8px;
+    /* Force container to stay within parent bounds */
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    /* Allow table to scroll horizontally if needed */
+    overflow-x: auto;
+}
+
+/* Wrapper for the slots table to enable horizontal scrolling */
+.sp-slots-table-wrapper {
+    overflow-x: auto;
+    margin: 0 -10px;
+    padding: 0 10px;
 }
 
 .sp-event-registration h3 {
@@ -107,6 +120,9 @@
     border-radius: 4px;
     overflow: hidden;
     font-size: 16px;
+    /* Force table to respect container width */
+    table-layout: fixed;
+    max-width: 100%;
 }
 
 .sp-slots-table thead th {
@@ -147,20 +163,25 @@
 
 .sp-slot-time {
     font-weight: 600;
-    white-space: nowrap;
     color: #1d2327;
+    width: 35%;
+    /* Allow time to wrap on narrow screens rather than overflow */
 }
 
 .sp-slot-description {
     color: #555;
+    width: 15%;
 }
 
 .sp-slot-availability {
     white-space: nowrap;
+    width: 12%;
 }
 
 .sp-slot-action {
-    white-space: nowrap;
+    /* Allow content to wrap in action column */
+    white-space: normal;
+    width: 38%;
     text-align: right;
 }
 
@@ -279,11 +300,76 @@
     color: #856404;
 }
 
-.sp-other-slot-note {
+.sp-other-slot-note,
+.sp-slot-full-note {
     display: block;
     font-size: 14px;
     color: #666;
     font-style: italic;
+}
+
+/* ==========================================================================
+   Event-Wide Waitlist Section
+   ========================================================================== */
+
+.sp-waitlist-section {
+    margin-top: 25px;
+    padding: 20px;
+    background: #fff9e6;
+    border: 2px solid #dba617;
+    border-radius: 4px;
+    text-align: center;
+}
+
+.sp-all-full-message {
+    margin: 0 0 15px 0;
+    font-size: 16px;
+    color: #666;
+}
+
+.sp-all-full-message .sp-waitlist-count {
+    display: block;
+    margin-top: 5px;
+    font-size: 14px;
+    color: #856404;
+}
+
+.sp-join-waitlist-btn {
+    background: #dba617;
+    color: white;
+    padding: 14px 28px;
+    font-size: 18px;
+}
+
+.sp-join-waitlist-btn:hover {
+    background: #b8860b;
+}
+
+/* Event-wide waitlist status (when member is on waitlist) */
+.sp-waitlist-status {
+    padding: 25px;
+    background: #fff9e6;
+    border: 2px solid #dba617;
+    border-radius: 4px;
+    text-align: center;
+}
+
+.sp-waitlist-status .sp-waitlist-badge {
+    display: inline-block;
+    font-size: 18px;
+    padding: 12px 24px;
+    margin-bottom: 15px;
+}
+
+.sp-waitlist-status .sp-waitlist-info {
+    margin: 0 0 20px 0;
+    font-size: 16px;
+    color: #666;
+}
+
+.sp-waitlist-status .sp-cancel-btn {
+    background: #f0f0f0;
+    color: #d63638;
 }
 
 /* ==========================================================================

@@ -19,7 +19,41 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * WHY: Used for cache busting assets and tracking theme updates.
  */
-define( 'SOCIETYPRESS_THEME_VERSION', '1.27d' );
+define( 'SOCIETYPRESS_THEME_VERSION', '1.36d' );
+
+/**
+ * Require login to view the site.
+ *
+ * WHY: During development/testing, restrict site access to logged-in users only.
+ *      Non-logged-in visitors are redirected to the WordPress login page.
+ *      Set SOCIETYPRESS_REQUIRE_LOGIN to false (or remove it) to disable.
+ */
+if ( ! defined( 'SOCIETYPRESS_REQUIRE_LOGIN' ) ) {
+	define( 'SOCIETYPRESS_REQUIRE_LOGIN', true ); // Change to false to open the site
+}
+
+if ( SOCIETYPRESS_REQUIRE_LOGIN ) {
+	add_action( 'template_redirect', 'societypress_require_login' );
+}
+
+/**
+ * Redirect non-logged-in users to login page.
+ */
+function societypress_require_login() {
+	// Skip if user is logged in
+	if ( is_user_logged_in() ) {
+		return;
+	}
+
+	// Skip login page itself to avoid redirect loop
+	if ( $GLOBALS['pagenow'] === 'wp-login.php' ) {
+		return;
+	}
+
+	// Redirect to login, then back to the requested page
+	wp_safe_redirect( wp_login_url( home_url( $_SERVER['REQUEST_URI'] ) ) );
+	exit;
+}
 
 /**
  * Theme setup.
@@ -149,6 +183,32 @@ function societypress_scripts() {
 	}
 }
 add_action( 'wp_enqueue_scripts', 'societypress_scripts' );
+
+/**
+ * Register SocietyPress block category.
+ *
+ * WHY: Groups all SocietyPress widgets/blocks together at the TOP of the
+ *      block inserter, making them easy to find for admins. Senior users
+ *      appreciate having our tools prominently displayed.
+ *
+ * @param array                   $categories Block categories.
+ * @param WP_Block_Editor_Context $context    Block editor context.
+ * @return array Modified categories with SocietyPress at the top.
+ */
+function societypress_register_block_category( $categories, $context ) {
+	// Add SocietyPress category at the beginning (top of list).
+	return array_merge(
+		array(
+			array(
+				'slug'  => 'societypress',
+				'title' => __( 'SocietyPress', 'societypress' ),
+				'icon'  => 'groups', // Dashicon name (people/community icon).
+			),
+		),
+		$categories
+	);
+}
+add_filter( 'block_categories_all', 'societypress_register_block_category', 10, 2 );
 
 /**
  * Register widget areas.

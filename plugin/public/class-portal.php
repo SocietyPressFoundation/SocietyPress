@@ -510,6 +510,40 @@ class SocietyPress_Portal {
 				),
 			)
 		);
+
+		// Load volunteer assets for the My Volunteer Commitments widget
+		// WHY: The portal widget uses volunteer.js AJAX handlers for cancel functionality
+		if ( isset( societypress()->volunteer_signups ) ) {
+			wp_enqueue_style(
+				'societypress-volunteer',
+				SOCIETYPRESS_URL . 'assets/css/volunteer.css',
+				array(),
+				SOCIETYPRESS_VERSION
+			);
+
+			wp_enqueue_script(
+				'societypress-volunteer',
+				SOCIETYPRESS_URL . 'assets/js/volunteer.js',
+				array( 'jquery' ),
+				SOCIETYPRESS_VERSION,
+				true
+			);
+
+			wp_localize_script(
+				'societypress-volunteer',
+				'societypressVolunteer',
+				array(
+					'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+					'nonce'   => wp_create_nonce( 'societypress_volunteer' ),
+					'strings' => array(
+						'signing_up'     => __( 'Signing up...', 'societypress' ),
+						'cancelling'     => __( 'Cancelling...', 'societypress' ),
+						'error'          => __( 'An error occurred. Please try again.', 'societypress' ),
+						'confirm_cancel' => __( 'Are you sure you want to cancel?', 'societypress' ),
+					),
+				)
+			);
+		}
 	}
 
 	/**
@@ -649,6 +683,9 @@ class SocietyPress_Portal {
 				<!-- My Events Widget -->
 				<?php echo $this->render_my_events_widget( $member_id ); ?>
 
+				<!-- My Volunteer Commitments Widget -->
+				<?php echo $this->render_my_volunteer_widget( $member_id ); ?>
+
 				<!-- Editable Profile -->
 				<div class="sp-dashboard-widget sp-profile-form">
 					<h3><?php esc_html_e( 'Your Profile', 'societypress' ); ?></h3>
@@ -770,6 +807,144 @@ class SocietyPress_Portal {
 					        class="sp-cancel-registration-btn"
 					        data-registration-id="<?php echo esc_attr( $registration['id'] ); ?>"
 					        data-event-title="<?php echo esc_attr( $registration['event_title'] ); ?>">
+						<?php esc_html_e( 'Cancel', 'societypress' ); ?>
+					</button>
+				<?php endif; ?>
+			</div>
+		</li>
+		<?php
+	}
+
+	/**
+	 * Render the My Volunteer Commitments widget.
+	 *
+	 * WHY: Shows members their upcoming volunteer commitments, waitlisted positions,
+	 *      and tracks their volunteer hours for the year. Encourages engagement
+	 *      and makes it easy to manage their volunteer schedule.
+	 *
+	 * @param int $member_id The member ID.
+	 * @return string HTML output.
+	 */
+	private function render_my_volunteer_widget( int $member_id ): string {
+		// Check if volunteer classes exist
+		if ( ! isset( societypress()->volunteer_signups ) ) {
+			return '';
+		}
+
+		$signups = societypress()->volunteer_signups;
+		$opportunities = societypress()->volunteer_opportunities;
+
+		$active = $signups->get_member_active( $member_id );
+		$history = $signups->get_member_history( $member_id, 10 );
+		$total_hours = $signups->get_member_hours( $member_id );
+
+		// Don't show widget if member has no volunteer history
+		if ( empty( $active ) && empty( $history ) ) {
+			return '';
+		}
+
+		ob_start();
+		?>
+		<div class="sp-dashboard-widget sp-my-volunteer">
+			<h3><?php esc_html_e( 'My Volunteer Commitments', 'societypress' ); ?></h3>
+
+			<?php if ( ! empty( $active ) ) : ?>
+				<div class="sp-volunteer-section sp-active-commitments">
+					<h4><?php esc_html_e( 'Upcoming', 'societypress' ); ?></h4>
+					<ul class="sp-volunteer-commitments-list">
+						<?php foreach ( $active as $signup ) : ?>
+							<?php $this->render_volunteer_commitment_item( $signup, true ); ?>
+						<?php endforeach; ?>
+					</ul>
+				</div>
+			<?php else : ?>
+				<p class="sp-no-commitments"><?php esc_html_e( 'No upcoming volunteer commitments.', 'societypress' ); ?></p>
+			<?php endif; ?>
+
+			<?php if ( $total_hours > 0 ) : ?>
+				<div class="sp-volunteer-hours-summary">
+					<span class="sp-hours-number"><?php echo esc_html( number_format( $total_hours, 1 ) ); ?></span>
+					<span class="sp-hours-label">
+						<?php
+						printf(
+							/* translators: %s: year */
+							esc_html__( 'hours volunteered in %s', 'societypress' ),
+							date( 'Y' )
+						);
+						?>
+					</span>
+				</div>
+			<?php endif; ?>
+
+			<?php if ( ! empty( $history ) ) : ?>
+				<details class="sp-volunteer-history-toggle">
+					<summary><?php esc_html_e( 'Completed Volunteer Work', 'societypress' ); ?> (<?php echo count( $history ); ?>)</summary>
+					<ul class="sp-volunteer-history-list">
+						<?php foreach ( $history as $item ) : ?>
+							<li class="sp-history-item">
+								<span class="sp-history-title"><?php echo esc_html( $item['title'] ); ?></span>
+								<?php if ( ! empty( $item['hours_logged'] ) ) : ?>
+									<span class="sp-history-hours"><?php echo esc_html( $item['hours_logged'] ); ?>h</span>
+								<?php endif; ?>
+								<?php if ( ! empty( $item['completed_at'] ) ) : ?>
+									<span class="sp-history-date">
+										<?php echo esc_html( date_i18n( 'M j, Y', strtotime( $item['completed_at'] ) ) ); ?>
+									</span>
+								<?php endif; ?>
+							</li>
+						<?php endforeach; ?>
+					</ul>
+				</details>
+			<?php endif; ?>
+		</div>
+		<?php
+		return ob_get_clean();
+	}
+
+	/**
+	 * Render a single volunteer commitment item.
+	 *
+	 * @param array $signup      Signup data with opportunity info.
+	 * @param bool  $show_cancel Whether to show cancel button.
+	 */
+	private function render_volunteer_commitment_item( array $signup, bool $show_cancel ): void {
+		$opportunities = societypress()->volunteer_opportunities;
+		$signups = societypress()->volunteer_signups;
+
+		// Format schedule
+		$schedule = $opportunities->format_schedule( $signup );
+		$status = $signup['status'];
+		?>
+		<li class="sp-commitment-item sp-status-<?php echo esc_attr( $status ); ?>">
+			<div class="sp-commitment-info">
+				<span class="sp-commitment-title"><?php echo esc_html( $signup['title'] ); ?></span>
+				<?php if ( $schedule ) : ?>
+					<span class="sp-commitment-schedule"><?php echo esc_html( $schedule ); ?></span>
+				<?php endif; ?>
+				<?php if ( ! empty( $signup['location'] ) ) : ?>
+					<span class="sp-commitment-location"><?php echo esc_html( $signup['location'] ); ?></span>
+				<?php endif; ?>
+				<?php if ( ! empty( $signup['committee_name'] ) ) : ?>
+					<span class="sp-commitment-committee"><?php echo esc_html( $signup['committee_name'] ); ?></span>
+				<?php endif; ?>
+			</div>
+
+			<div class="sp-commitment-actions">
+				<?php if ( $status === 'confirmed' ) : ?>
+					<span class="sp-commitment-status sp-confirmed"><?php esc_html_e( 'Confirmed', 'societypress' ); ?></span>
+				<?php elseif ( $status === 'waitlist' ) : ?>
+					<?php
+					$position = $signups->get_waitlist_position( $signup['id'] );
+					?>
+					<span class="sp-commitment-status sp-waitlist">
+						<?php printf( esc_html__( 'Waitlist #%d', 'societypress' ), $position ); ?>
+					</span>
+				<?php endif; ?>
+
+				<?php if ( $show_cancel ) : ?>
+					<button type="button"
+					        class="sp-volunteer-btn sp-btn-cancel"
+					        data-signup-id="<?php echo esc_attr( $signup['id'] ); ?>">
 						<?php esc_html_e( 'Cancel', 'societypress' ); ?>
 					</button>
 				<?php endif; ?>

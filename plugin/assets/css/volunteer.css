@@ -1,0 +1,539 @@
+/**
+ * Volunteer Opportunities Frontend Styles
+ *
+ * WHY: Clean, accessible styling for volunteer opportunity browsing.
+ *      Card-based layout makes scanning easy for older members.
+ *      High contrast and clear typography throughout.
+ *
+ * @package SocietyPress
+ * @since 0.54d
+ */
+
+/* ==========================================================================
+   Container & Filters
+   ========================================================================== */
+
+.sp-volunteer-opportunities {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1rem 0;
+}
+
+.sp-volunteer-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.sp-volunteer-filters label {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #333;
+}
+
+.sp-volunteer-filters select {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1rem;
+    min-width: 150px;
+}
+
+/* ==========================================================================
+   Opportunity Cards
+   ========================================================================== */
+
+.sp-volunteer-list {
+    display: grid;
+    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+}
+
+.sp-volunteer-card {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.sp-volunteer-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+}
+
+/* Status variants */
+.sp-volunteer-card.sp-volunteer-status-filled {
+    border-color: #ffc107;
+    background: #fffdf0;
+}
+
+.sp-volunteer-card.sp-volunteer-status-closed,
+.sp-volunteer-card.sp-volunteer-status-cancelled {
+    opacity: 0.7;
+}
+
+/* Card header */
+.sp-volunteer-card-header {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    background: #fafafa;
+}
+
+.sp-volunteer-title {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: #1a1a1a;
+    line-height: 1.3;
+}
+
+.sp-volunteer-type-badge {
+    flex-shrink: 0;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+.sp-volunteer-type-badge.sp-type-one_time {
+    background: #e3f2fd;
+    color: #1565c0;
+}
+
+.sp-volunteer-type-badge.sp-type-recurring {
+    background: #f3e5f5;
+    color: #7b1fa2;
+}
+
+.sp-volunteer-type-badge.sp-type-ongoing {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+/* Card body */
+.sp-volunteer-card-body {
+    padding: 1.25rem;
+    flex: 1;
+}
+
+.sp-volunteer-card-body p {
+    margin: 0 0 0.75rem;
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+.sp-volunteer-card-body p:last-child {
+    margin-bottom: 0;
+}
+
+.sp-volunteer-card-body strong {
+    color: #555;
+}
+
+.sp-volunteer-description {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #eee;
+    color: #444;
+}
+
+.sp-volunteer-description p {
+    margin: 0 0 0.5rem;
+}
+
+.sp-volunteer-capacity {
+    font-size: 0.9rem;
+    color: #666;
+    padding: 0.5rem;
+    background: #f8f9fa;
+    border-radius: 4px;
+    text-align: center;
+}
+
+.sp-volunteer-capacity.sp-capacity-full {
+    background: #fff3cd;
+    color: #856404;
+    font-weight: 600;
+}
+
+/* Card footer */
+.sp-volunteer-card-footer {
+    padding: 1rem 1.25rem;
+    border-top: 1px solid #eee;
+    background: #fafafa;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.sp-volunteer-contact {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #666;
+}
+
+/* ==========================================================================
+   Buttons & Actions
+   ========================================================================== */
+
+.sp-volunteer-btn {
+    display: inline-block;
+    padding: 0.6rem 1.25rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-decoration: none;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.sp-volunteer-btn:focus {
+    outline: 2px solid #0073aa;
+    outline-offset: 2px;
+}
+
+.sp-volunteer-btn:active {
+    transform: scale(0.98);
+}
+
+/* Primary signup button */
+.sp-volunteer-btn.sp-btn-signup {
+    background: #0073aa;
+    color: #fff;
+}
+
+.sp-volunteer-btn.sp-btn-signup:hover {
+    background: #005a87;
+}
+
+/* Waitlist button */
+.sp-volunteer-btn.sp-btn-waitlist {
+    background: #ffc107;
+    color: #333;
+}
+
+.sp-volunteer-btn.sp-btn-waitlist:hover {
+    background: #e0a800;
+}
+
+/* Cancel button */
+.sp-volunteer-btn.sp-btn-cancel {
+    background: #dc3545;
+    color: #fff;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+}
+
+.sp-volunteer-btn.sp-btn-cancel:hover {
+    background: #c82333;
+}
+
+/* Login link styled as button */
+.sp-volunteer-btn.sp-btn-login {
+    background: #6c757d;
+    color: #fff;
+}
+
+.sp-volunteer-btn.sp-btn-login:hover {
+    background: #545b62;
+    color: #fff;
+}
+
+/* Disabled state */
+.sp-volunteer-btn:disabled,
+.sp-volunteer-btn.sp-btn-loading {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+/* ==========================================================================
+   Signup Status
+   ========================================================================== */
+
+.sp-volunteer-signed-up {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.sp-signup-status {
+    padding: 0.35rem 0.75rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    border-radius: 4px;
+}
+
+.sp-signup-status.sp-status-confirmed {
+    background: #d4edda;
+    color: #155724;
+}
+
+.sp-signup-status.sp-status-waitlist {
+    background: #fff3cd;
+    color: #856404;
+}
+
+/* ==========================================================================
+   Notices
+   ========================================================================== */
+
+.sp-volunteer-notice {
+    display: inline-block;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9rem;
+    color: #666;
+    background: #f8f9fa;
+    border-radius: 4px;
+}
+
+.sp-volunteer-notice.sp-notice-closed {
+    color: #856404;
+    background: #fff3cd;
+}
+
+/* Empty state */
+.sp-volunteer-empty {
+    text-align: center;
+    padding: 3rem 2rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.sp-volunteer-empty p {
+    margin: 0 0 0.5rem;
+    color: #666;
+}
+
+.sp-volunteer-empty p:first-child {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #333;
+}
+
+/* ==========================================================================
+   Portal Widget - My Volunteer Commitments
+   ========================================================================== */
+
+.sp-my-volunteer {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 1.25rem;
+}
+
+.sp-my-volunteer h3 {
+    margin: 0 0 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 2px solid #0073aa;
+    font-size: 1.1rem;
+    color: #1a1a1a;
+}
+
+.sp-volunteer-commitments-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.sp-commitment-item {
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border-left: 4px solid #0073aa;
+}
+
+.sp-commitment-item:last-child {
+    margin-bottom: 0;
+}
+
+.sp-commitment-item.sp-status-waitlist {
+    border-left-color: #ffc107;
+}
+
+.sp-commitment-title {
+    display: block;
+    font-weight: 600;
+    color: #1a1a1a;
+    margin-bottom: 0.25rem;
+}
+
+.sp-commitment-schedule {
+    display: block;
+    font-size: 0.9rem;
+    color: #555;
+    margin-bottom: 0.25rem;
+}
+
+.sp-commitment-location {
+    display: block;
+    font-size: 0.85rem;
+    color: #666;
+}
+
+.sp-commitment-actions {
+    margin-top: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.sp-commitment-status {
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.2rem 0.5rem;
+    border-radius: 3px;
+}
+
+.sp-commitment-status.sp-confirmed {
+    background: #d4edda;
+    color: #155724;
+}
+
+.sp-commitment-status.sp-waitlist {
+    background: #fff3cd;
+    color: #856404;
+}
+
+/* Hours summary */
+.sp-volunteer-hours-summary {
+    margin-top: 1.25rem;
+    padding: 1rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 8px;
+    color: #fff;
+    text-align: center;
+}
+
+.sp-hours-number {
+    display: block;
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.sp-hours-label {
+    display: block;
+    font-size: 0.9rem;
+    opacity: 0.9;
+}
+
+/* History toggle */
+.sp-volunteer-history-toggle {
+    margin-top: 1rem;
+}
+
+.sp-volunteer-history-toggle summary {
+    cursor: pointer;
+    padding: 0.5rem;
+    background: #f8f9fa;
+    border-radius: 4px;
+    font-weight: 600;
+    color: #555;
+}
+
+.sp-volunteer-history-toggle summary:hover {
+    background: #e9ecef;
+}
+
+.sp-volunteer-history-list {
+    margin-top: 0.75rem;
+    padding-left: 0;
+    list-style: none;
+}
+
+.sp-history-item {
+    padding: 0.5rem;
+    margin-bottom: 0.5rem;
+    border-bottom: 1px solid #eee;
+    font-size: 0.9rem;
+}
+
+.sp-history-item:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.sp-history-hours {
+    float: right;
+    font-weight: 600;
+    color: #0073aa;
+}
+
+/* ==========================================================================
+   Responsive Adjustments
+   ========================================================================== */
+
+@media (max-width: 768px) {
+    .sp-volunteer-list {
+        grid-template-columns: 1fr;
+    }
+
+    .sp-volunteer-filters {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .sp-volunteer-filters select {
+        width: 100%;
+    }
+
+    .sp-volunteer-card-header {
+        flex-direction: column;
+    }
+
+    .sp-volunteer-type-badge {
+        align-self: flex-start;
+    }
+
+    .sp-volunteer-card-footer {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .sp-volunteer-card {
+        border-width: 2px;
+    }
+
+    .sp-volunteer-btn {
+        border: 2px solid currentColor;
+    }
+
+    .sp-volunteer-type-badge {
+        border: 1px solid currentColor;
+    }
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+    .sp-volunteer-card,
+    .sp-volunteer-btn {
+        transition: none;
+    }
+
+    .sp-volunteer-card:hover {
+        transform: none;
+    }
+}

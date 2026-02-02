@@ -124,6 +124,101 @@ class SocietyPress_Admin {
 		add_action( 'admin_init', array( $this, 'handle_actions' ) );
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
 		add_filter( 'plugin_row_meta', array( $this, 'modify_plugin_row_meta' ), 10, 2 );
+		add_action( 'current_screen', array( $this, 'fix_page_title' ) );
+
+		// AJAX handlers
+		add_action( 'wp_ajax_societypress_search_members', array( $this, 'ajax_search_members' ) );
+	}
+
+	/**
+	 * Fix admin page title for hidden pages.
+	 *
+	 * WHY: Hidden admin pages (with empty parent) don't get a title set
+	 *      automatically by WordPress, causing PHP 8.1+ deprecation warnings
+	 *      when strip_tags() is called on a null value. We set the global
+	 *      $title before admin-header.php processes it.
+	 */
+	public function fix_page_title(): void {
+		global $title;
+
+		// Only act if title is empty and we're on a SocietyPress page
+		$page = $_GET['page'] ?? '';
+		if ( empty( $title ) && strpos( $page, 'societypress' ) !== false ) {
+			$title = __( 'SocietyPress', 'societypress' );
+		}
+	}
+
+	/**
+	 * AJAX handler for member search.
+	 *
+	 * WHY: Leadership and Committees admin pages need to select members,
+	 *      but loading all members into a dropdown is unwieldy for large
+	 *      organizations. This provides an AJAX-powered search so admins
+	 *      can find members by typing a few characters of their name.
+	 *
+	 * Searches first_name and last_name fields in the members table.
+	 * Returns up to 10 results, sorted by last name then first name.
+	 *
+	 * @return void Outputs JSON response and exits.
+	 */
+	public function ajax_search_members(): void {
+		// Verify nonce for security
+		if ( ! check_ajax_referer( 'societypress_admin', 'nonce', false ) ) {
+			wp_send_json_error( array( 'message' => __( 'Security check failed.', 'societypress' ) ) );
+		}
+
+		// Check permissions
+		if ( ! current_user_can( 'manage_society_members' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Permission denied.', 'societypress' ) ) );
+		}
+
+		$search  = sanitize_text_field( $_POST['search'] ?? '' );
+		$exclude = isset( $_POST['exclude'] ) ? array_map( 'absint', (array) $_POST['exclude'] ) : array();
+
+		if ( strlen( $search ) < 2 ) {
+			wp_send_json_success( array() );
+		}
+
+		global $wpdb;
+		$table = SocietyPress::table( 'members' );
+
+		// Build the WHERE clause
+		// Search both first and last name, allow partial matches
+		$like = '%' . $wpdb->esc_like( $search ) . '%';
+
+		$where = $wpdb->prepare(
+			"WHERE (first_name LIKE %s OR last_name LIKE %s OR CONCAT(first_name, ' ', last_name) LIKE %s)",
+			$like,
+			$like,
+			$like
+		);
+
+		// Exclude specific member IDs if provided
+		// WHY: When adding to a committee, we exclude members already on that committee
+		if ( ! empty( $exclude ) ) {
+			$exclude_placeholders = implode( ',', array_fill( 0, count( $exclude ), '%d' ) );
+			$where .= $wpdb->prepare( " AND id NOT IN ({$exclude_placeholders})", $exclude );
+		}
+
+		// Only show active members by default
+		$where .= " AND status = 'active'";
+
+		// Query members, limited to 10 results for performance
+		$sql = "SELECT id, first_name, last_name, status FROM {$table} {$where} ORDER BY last_name, first_name LIMIT 10";
+
+		$members = $wpdb->get_results( $sql );
+
+		// Format results for the frontend
+		$results = array();
+		foreach ( $members as $member ) {
+			$results[] = array(
+				'id'     => (int) $member->id,
+				'name'   => $member->first_name . ' ' . $member->last_name,
+				'status' => $member->status,
+			);
+		}
+
+		wp_send_json_success( $results );
 	}
 
 	/**
@@ -2110,7 +2205,7 @@ class SocietyPress_Admin {
 			__( 'Leadership', 'societypress' ),
 			'manage_society_members',
 			'societypress-leadership',
-			array( $this, 'render_placeholder_page' )
+			array( societypress()->leadership_admin, 'render_leadership_page' )
 		);
 
 		// Committees
@@ -2120,7 +2215,7 @@ class SocietyPress_Admin {
 			__( 'Committees', 'societypress' ),
 			'manage_society_members',
 			'societypress-committees',
-			array( $this, 'render_placeholder_page' )
+			array( societypress()->committees_admin, 'render_committees_page' )
 		);
 
 		// Calendar (events list)
@@ -2304,9 +2399,30 @@ class SocietyPress_Admin {
 					'photoChangeButton'        => __( 'Change Photo', 'societypress' ),
 					'photoUploadButtonText'    => __( 'Upload Photo', 'societypress' ),
 					'photoTooLarge'            => __( 'Photo must be less than 1MB.', 'societypress' ),
+					// Member search strings
+					'searching'                => __( 'Searching...', 'societypress' ),
+					'noMembersFound'           => __( 'No members found', 'societypress' ),
+					'searchError'              => __( 'Search error. Please try again.', 'societypress' ),
+					'typeToSearch'             => __( 'Type to search for a member...', 'societypress' ),
 				),
 			)
 		);
+
+		// Load member search script on leadership and committees pages
+		// WHY: These pages need to search for members by name rather than using
+		//      a dropdown that could contain hundreds of entries.
+		$page = $_GET['page'] ?? '';
+		if ( strpos( $page, 'societypress-position' ) !== false ||
+		     strpos( $page, 'societypress-leadership' ) !== false ||
+		     strpos( $page, 'societypress-committee' ) !== false ) {
+			wp_enqueue_script(
+				'societypress-member-search',
+				SOCIETYPRESS_URL . 'assets/js/member-search.js',
+				array( 'jquery', 'societypress-admin' ),
+				SOCIETYPRESS_VERSION,
+				true
+			);
+		}
 
 		// Add inline script for member edit form functionality
 		if ( strpos( $hook, 'societypress-add-member' ) !== false ||

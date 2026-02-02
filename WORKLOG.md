@@ -4,6 +4,67 @@ Breadcrumbs for picking up where we left off after conversation clears.
 
 ---
 
+## 2026-02-01
+
+### Plugin 0.55d: Leadership & Committees Admin + Member Search
+
+**Completed:** Full admin interfaces for Leadership and Committees management.
+
+**Leadership Admin (`admin/class-leadership-admin.php`):**
+- List all positions with current holder, term start, type (Board/Officer)
+- Add/edit positions (title, slug, description, board member flag, officer flag, sort order)
+- Assign members to positions with term dates
+- View position holder history
+- End current terms, remove holder records
+- Delete positions (only if no holders)
+
+**Committees Admin (`admin/class-committees-admin.php`):**
+- List all committees with chairs, member count, type (Standing/Ad Hoc), status
+- Add/edit committees (name, slug, description, type, sort order, active status)
+- Manage committee members with roles (Chair, Co-Chair, Member)
+- Inline role dropdown for quick role changes
+- Remove members (sets left_date, keeps history)
+- Delete committees (only if no members)
+
+**AJAX Member Search:**
+- Replaced long dropdown selects with AJAX-powered search fields
+- Type 2+ characters of first or last name to search
+- Returns up to 10 matching active members
+- Keyboard navigation: arrow keys to navigate, Enter to select, Escape to close
+- Committees search auto-excludes members already on that committee
+- New files:
+  - `assets/js/member-search.js` — Search autocomplete JavaScript
+  - AJAX handler in `admin/class-admin.php` → `ajax_search_members()`
+  - CSS in `assets/css/admin.css` for search dropdown styling
+
+**Bug Fixes:**
+- Fixed `strip_tags()` deprecation warning on hidden admin pages (PHP 8.1+)
+  - Added `fix_page_title()` method to set global `$title` for SocietyPress pages
+- Fixed `SOCIETYPRESS_PLUGIN_URL` → `SOCIETYPRESS_URL` in `public/class-widgets.php`
+
+**Files Created:**
+| File | Purpose |
+|------|---------|
+| `admin/class-leadership-admin.php` | Leadership admin UI |
+| `admin/class-committees-admin.php` | Committees admin UI |
+| `includes/class-leadership.php` | Leadership data class (positions, holders) |
+| `includes/class-committees.php` | Committees data class |
+| `assets/js/member-search.js` | AJAX member search autocomplete |
+
+**Files Modified:**
+| File | Changes |
+|------|---------|
+| `societypress.php` | Added leadership/committees properties, class loading |
+| `admin/class-admin.php` | AJAX handler, menu callbacks, fix_page_title(), member search script enqueue |
+| `assets/css/admin.css` | Leadership, Committees, and Member Search styles |
+| `public/class-widgets.php` | Fixed undefined constant |
+
+**Next Up:**
+- Volunteer opportunities system (plan exists at `~/.claude/plans/compiled-whistling-squirrel.md`)
+- Donations system (to discuss)
+
+---
+
 ## 2026-01-30 (Session 4)
 
 ### Plugin 0.47d + Theme 1.34d: Event Slots & Registration System

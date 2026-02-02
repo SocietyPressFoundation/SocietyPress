@@ -60,6 +60,7 @@ Breadcrumbs for picking up where we left off after conversation clears.
 | `public/class-widgets.php` | Fixed undefined constant |
 
 **Next Up:**
+- **Payment for class registration** — need a way for members to pay when registering for classes/events
 - Volunteer opportunities system (plan exists at `~/.claude/plans/compiled-whistling-squirrel.md`)
 - Donations system (to discuss)
 

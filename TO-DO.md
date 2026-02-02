@@ -68,9 +68,10 @@
 
 ## In Progress 🔄
 
-- [x] Event slots and registration system (0.47d - needs verification)
-- [ ] Leadership management (placeholder page created)
-- [ ] Committees management (placeholder page created)
+- [x] Event slots and registration system (0.47d - verified working)
+- [x] Leadership management (full admin UI with member search)
+- [x] Committees management (full admin UI with member search)
+- [ ] Volunteer opportunities system (plan created, not yet implemented)
 - [ ] Library features (placeholder page created)
 - [ ] Documentation updates
 
@@ -144,11 +145,12 @@
 - [ ] Auto-expire memberships
 
 ### Leadership & Committees
-- [ ] Leadership positions management UI
-- [ ] Officer term tracking
-- [ ] Historical leadership records
-- [ ] Committee management interface
-- [ ] Committee chair and member assignment
+- [x] Leadership positions management UI
+- [x] Officer term tracking
+- [x] Historical leadership records
+- [x] Committee management interface
+- [x] Committee chair and member assignment
+- [x] AJAX member search for assigning positions/committee members
 - [ ] Committee meeting scheduling
 
 ### Library
@@ -241,6 +243,26 @@
 - Events CPT set to `show_in_menu => false` to prevent duplicate menu items
 
 ## Version History
+
+### 0.55d (2026-02-01)
+- **Leadership Admin UI:**
+  - Full admin interface for managing positions
+  - Assign members to positions with term dates
+  - View position history, end terms
+  - Delete unused positions
+- **Committees Admin UI:**
+  - Full admin interface for managing committees
+  - Add/remove members with roles (Chair, Co-Chair, Member)
+  - Inline role dropdown for quick changes
+  - Track join/leave dates
+- **AJAX Member Search:**
+  - Replaced dropdown selects with searchable fields
+  - Type 2+ characters to search by first or last name
+  - Keyboard navigation (arrow keys, Enter, Escape)
+  - Committees search excludes existing members
+- **Bug fixes:**
+  - Fixed strip_tags() PHP 8.1 deprecation warning on hidden admin pages
+  - Fixed SOCIETYPRESS_PLUGIN_URL → SOCIETYPRESS_URL in class-widgets.php
 
 ### 0.47d + Theme 1.34d (2026-01-30)
 - **Event Slots & Registration System:**

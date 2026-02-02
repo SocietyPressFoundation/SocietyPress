@@ -841,3 +841,276 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* ==========================================================================
+   Leadership Admin
+   ========================================================================== */
+
+.societypress-leadership-admin .required {
+    color: #d63638;
+}
+
+.societypress-leadership-admin .sp-vacant {
+    color: #787c82;
+}
+
+.societypress-leadership-admin .sp-status-current {
+    display: inline-block;
+    padding: 3px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    background: #d4edda;
+    color: #155724;
+    border-radius: 3px;
+}
+
+.societypress-leadership-admin .sp-status-past {
+    display: inline-block;
+    padding: 3px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    background: #e2e3e5;
+    color: #383d41;
+    border-radius: 3px;
+}
+
+.societypress-leadership-admin .sp-current-holder {
+    background-color: #f0f6fc;
+}
+
+.societypress-positions-table,
+.societypress-holders-table {
+    margin-top: 1rem;
+}
+
+.societypress-positions-table th,
+.societypress-positions-table td,
+.societypress-holders-table th,
+.societypress-holders-table td {
+    padding: 12px 10px;
+}
+
+.societypress-positions-table .row-actions {
+    padding: 2px 0 0;
+}
+
+.societypress-positions-table .row-actions span {
+    color: #787c82;
+}
+
+.societypress-positions-table .row-actions span.delete {
+    color: #b32d2e;
+}
+
+.societypress-holders-table .button {
+    margin-right: 5px;
+}
+
+/* ==========================================================================
+   Committees Admin
+   ========================================================================== */
+
+.societypress-committees-admin .required {
+    color: #d63638;
+}
+
+.societypress-committees-admin .sp-inactive {
+    opacity: 0.6;
+}
+
+.societypress-committees-admin .sp-status-active {
+    display: inline-block;
+    padding: 3px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    background: #d4edda;
+    color: #155724;
+    border-radius: 3px;
+}
+
+.societypress-committees-admin .sp-status-inactive {
+    display: inline-block;
+    padding: 3px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    background: #e2e3e5;
+    color: #383d41;
+    border-radius: 3px;
+}
+
+.societypress-committees-admin .sp-current-member {
+    background-color: #f0f6fc;
+}
+
+.societypress-committees-admin .sp-past-member {
+    opacity: 0.6;
+}
+
+.societypress-committees-table,
+.societypress-committee-members-table {
+    margin-top: 1rem;
+}
+
+.societypress-committees-table th,
+.societypress-committees-table td,
+.societypress-committee-members-table th,
+.societypress-committee-members-table td {
+    padding: 12px 10px;
+}
+
+.societypress-committees-table .row-actions {
+    padding: 2px 0 0;
+}
+
+.societypress-committees-table .row-actions span {
+    color: #787c82;
+}
+
+.societypress-committees-table .row-actions span.delete {
+    color: #b32d2e;
+}
+
+.societypress-committee-members-table .button {
+    margin-right: 5px;
+}
+
+.societypress-committees-admin .sp-inline-form {
+    display: inline;
+}
+
+.societypress-committees-admin .sp-inline-form select {
+    min-width: 100px;
+}
+
+/* ==========================================================================
+   Member Search Autocomplete
+
+   WHY: Provides an AJAX-powered search for selecting members instead of
+        loading hundreds of members into a dropdown. The dropdown appears
+        below the search input and shows matching results as the user types.
+   ========================================================================== */
+
+.sp-member-search-wrapper {
+    position: relative;
+    display: inline-block;
+    width: 100%;
+    max-width: 400px;
+}
+
+.sp-member-search {
+    width: 100%;
+    padding: 8px 12px;
+    font-size: 14px;
+    min-height: 40px;
+    border: 1px solid #8c8f94;
+    border-radius: 4px;
+}
+
+.sp-member-search:focus {
+    border-color: #2271b1;
+    box-shadow: 0 0 0 1px #2271b1;
+    outline: none;
+}
+
+.sp-member-search-results {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid #8c8f94;
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    max-height: 300px;
+    overflow-y: auto;
+    z-index: 100;
+    display: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.sp-search-results-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.sp-search-result {
+    padding: 10px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #f0f0f1;
+    transition: background-color 0.1s ease;
+}
+
+.sp-search-result:last-child {
+    border-bottom: none;
+}
+
+.sp-search-result:hover,
+.sp-search-result.sp-highlighted {
+    background-color: #f0f6fc;
+}
+
+.sp-result-name {
+    font-weight: 500;
+    color: #1d2327;
+}
+
+.sp-result-status {
+    font-size: 12px;
+    color: #787c82;
+    margin-left: 8px;
+}
+
+.sp-result-status-expired {
+    color: #d63638;
+}
+
+.sp-result-status-pending {
+    color: #dba617;
+}
+
+.sp-search-loading,
+.sp-search-no-results,
+.sp-search-error {
+    padding: 12px;
+    text-align: center;
+    color: #787c82;
+    font-size: 13px;
+}
+
+.sp-search-error {
+    color: #d63638;
+}
+
+/* Senior-friendly: Ensure touch targets are large enough */
+.sp-search-result {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+}
+
+/* Helper text below search field */
+.sp-search-hint {
+    display: block;
+    margin-top: 5px;
+    font-size: 13px;
+    color: #646970;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .sp-member-search-results {
+        border-width: 2px;
+    }
+
+    .sp-search-result:hover,
+    .sp-search-result.sp-highlighted {
+        background-color: #2271b1;
+        color: #fff;
+    }
+
+    .sp-search-result:hover .sp-result-name,
+    .sp-search-result.sp-highlighted .sp-result-name {
+        color: #fff;
+    }
+}

@@ -3,7 +3,7 @@
 Membership management plugin and theme for WordPress, targeting genealogical and historical societies.
 
 **Current Versions:**
-- **Plugin:** 0.52d
+- **Plugin:** 0.55d
 - **Theme:** 1.36d
 
 (Development versioning: increment by 0.01 with each change)
@@ -128,7 +128,9 @@ Upload ZIP via cPanel File Manager, extract, set permissions.
 | `SocietyPress_Updater` | includes/class-updater.php | Plugin auto-updates |
 | `SocietyPress_Theme_Updater` | includes/class-theme-updater.php | Theme auto-updates |
 | `SocietyPress_Leadership` | includes/class-leadership.php | Positions and holders |
+| `SocietyPress_Leadership_Admin` | admin/class-leadership-admin.php | Leadership admin UI |
 | `SocietyPress_Committees` | includes/class-committees.php | Committees and members |
+| `SocietyPress_Committees_Admin` | admin/class-committees-admin.php | Committees admin UI |
 | `SocietyPress_Event_Slots` | includes/class-event-slots.php | Event time slots CRUD |
 | `SocietyPress_Event_Registrations` | includes/class-event-registrations.php | Registration and waitlist |
 | `SocietyPress_Event_Registration_Frontend` | public/class-event-registration-frontend.php | Frontend registration UI |

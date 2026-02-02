@@ -59,15 +59,58 @@ class SocietyPress_Directory {
 	/**
 	 * Enqueue public assets.
 	 *
-	 * WHY: Only load directory CSS/JS on pages that use the shortcode.
+	 * WHY: Only load directory CSS/JS on pages that use the shortcode or directory template.
 	 */
 	public function enqueue_public_assets(): void {
-		// Check if shortcode is present
 		global $post;
-		if ( ! is_a( $post, 'WP_Post' ) || ! has_shortcode( $post->post_content, 'societypress_directory' ) ) {
+
+		if ( ! is_a( $post, 'WP_Post' ) ) {
 			return;
 		}
 
+		// Check if shortcode is in the content OR if page uses the directory template
+		// WHY: The directory template calls do_shortcode() directly, so has_shortcode() on
+		// post_content returns false. We need to check the template too.
+		$has_shortcode      = has_shortcode( $post->post_content, 'societypress_directory' );
+		$uses_template      = get_page_template_slug( $post->ID ) === 'templates/template-directory.php';
+
+		if ( ! $has_shortcode && ! $uses_template ) {
+			return;
+		}
+
+		wp_enqueue_style(
+			'societypress-directory',
+			SOCIETYPRESS_URL . 'assets/css/directory.css',
+			array(),
+			SOCIETYPRESS_VERSION
+		);
+
+		wp_enqueue_script(
+			'societypress-directory',
+			SOCIETYPRESS_URL . 'assets/js/directory.js',
+			array( 'jquery' ),
+			SOCIETYPRESS_VERSION,
+			true
+		);
+
+		wp_localize_script(
+			'societypress-directory',
+			'societypressDirectory',
+			array(
+				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+				'nonce'   => wp_create_nonce( 'societypress_directory' ),
+			)
+		);
+	}
+
+	/**
+	 * Enqueue directory assets.
+	 *
+	 * WHY: Called directly by the shortcode to ensure assets load even when
+	 * the shortcode is rendered via do_shortcode() in a template (where
+	 * wp_enqueue_scripts has already fired).
+	 */
+	private function enqueue_directory_assets(): void {
 		wp_enqueue_style(
 			'societypress-directory',
 			SOCIETYPRESS_URL . 'assets/css/directory.css',
@@ -102,6 +145,10 @@ class SocietyPress_Directory {
 	 * @return string HTML output.
 	 */
 	public function render_directory( $atts ): string {
+		// WHY: Enqueue assets here to guarantee they load when shortcode runs,
+		// regardless of whether it's in post_content or called via do_shortcode() in a template.
+		$this->enqueue_directory_assets();
+
 		$atts = shortcode_atts(
 			array(
 				'view'         => 'grid',

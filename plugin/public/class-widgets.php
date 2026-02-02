@@ -399,7 +399,7 @@ class SocietyPress_Widgets {
 	public function enqueue_styles(): void {
 		wp_enqueue_style(
 			'societypress-widgets',
-			SOCIETYPRESS_PLUGIN_URL . 'assets/css/widgets.css',
+			SOCIETYPRESS_URL . 'assets/css/widgets.css',
 			array(),
 			SOCIETYPRESS_VERSION
 		);

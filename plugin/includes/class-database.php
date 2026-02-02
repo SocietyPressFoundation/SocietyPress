@@ -78,6 +78,8 @@ class SocietyPress_Database {
         $this->create_event_slots_table();
         $this->create_event_registrations_table();
         $this->create_email_log_table();
+        $this->create_volunteer_opportunities_table();
+        $this->create_volunteer_signups_table();
     }
 
     /**
@@ -599,12 +601,93 @@ class SocietyPress_Database {
     }
 
     /**
+     * Volunteer opportunities table.
+     *
+     * WHY: Stores volunteer opportunities posted by committee chairs and admins.
+     *      Committee-based opportunities help organize volunteer work, while
+     *      society-wide opportunities (committee_id = NULL) allow general needs.
+     *      Supports one-time events, recurring shifts, and ongoing positions.
+     */
+    private function create_volunteer_opportunities_table(): void {
+        $table = $this->table( 'volunteer_opportunities' );
+
+        $sql = "CREATE TABLE {$table} (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            committee_id BIGINT(20) UNSIGNED DEFAULT NULL,
+            title VARCHAR(200) NOT NULL,
+            description TEXT,
+            location VARCHAR(255) DEFAULT NULL,
+            opportunity_type ENUM('one_time','recurring','ongoing') NOT NULL DEFAULT 'one_time',
+            date DATE DEFAULT NULL,
+            day_of_week TINYINT UNSIGNED DEFAULT NULL,
+            start_time TIME DEFAULT NULL,
+            end_time TIME DEFAULT NULL,
+            capacity INT UNSIGNED DEFAULT NULL,
+            skills_needed TEXT,
+            contact_member_id BIGINT(20) UNSIGNED DEFAULT NULL,
+            posted_by BIGINT(20) UNSIGNED NOT NULL,
+            status ENUM('open','filled','closed','cancelled') NOT NULL DEFAULT 'open',
+            is_active TINYINT(1) NOT NULL DEFAULT 1,
+            sort_order INT NOT NULL DEFAULT 0,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY committee_id (committee_id),
+            KEY status (status),
+            KEY is_active (is_active),
+            KEY opportunity_type (opportunity_type),
+            KEY date (date),
+            KEY day_of_week (day_of_week),
+            KEY posted_by (posted_by),
+            KEY sort_order (sort_order)
+        ) {$this->charset_collate};";
+
+        dbDelta( $sql );
+    }
+
+    /**
+     * Volunteer signups table.
+     *
+     * WHY: Tracks which members have signed up for volunteer opportunities.
+     *      Follows the event_registrations pattern with status tracking,
+     *      waitlist support, and hours logging for recognition programs.
+     *      The unique constraint prevents duplicate signups.
+     */
+    private function create_volunteer_signups_table(): void {
+        $table = $this->table( 'volunteer_signups' );
+
+        $sql = "CREATE TABLE {$table} (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            opportunity_id BIGINT(20) UNSIGNED NOT NULL,
+            member_id BIGINT(20) UNSIGNED NOT NULL,
+            status ENUM('confirmed','waitlist','completed','cancelled','no_show') NOT NULL DEFAULT 'confirmed',
+            signed_up_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            confirmed_at DATETIME DEFAULT NULL,
+            cancelled_at DATETIME DEFAULT NULL,
+            completed_at DATETIME DEFAULT NULL,
+            hours_logged DECIMAL(5,2) DEFAULT NULL,
+            notes TEXT,
+            registered_by BIGINT(20) UNSIGNED DEFAULT NULL,
+            PRIMARY KEY (id),
+            KEY opportunity_id (opportunity_id),
+            KEY member_id (member_id),
+            KEY status (status),
+            KEY signed_up_at (signed_up_at),
+            UNIQUE KEY unique_member_opportunity (opportunity_id, member_id)
+        ) {$this->charset_collate};";
+
+        dbDelta( $sql );
+    }
+
+    /**
      * Drop all plugin tables.
      *
      * Called from uninstall.php only.
      */
     public function uninstall(): void {
         $tables = array(
+            'volunteer_signups',
+            'volunteer_opportunities',
             'email_log',
             'event_registrations',
             'event_slots',

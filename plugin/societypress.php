@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI: https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies. Handles member registration, dues, renewals, directories, committees, and governance.
- * Version: 0.52d
+ * Version: 0.55d
  * Author: Stricklin Development
  * Author URI: https://stricklindevelopment.com/
  * License: Proprietary
@@ -23,7 +23,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Plugin version.
  */
-define( 'SOCIETYPRESS_VERSION', '0.52d' );
+define( 'SOCIETYPRESS_VERSION', '0.55d' );
 
 /**
  * Plugin directory path.
@@ -192,6 +192,34 @@ final class SocietyPress {
     public ?SocietyPress_Admin $admin = null;
 
     /**
+     * Volunteer admin interface.
+     *
+     * @var SocietyPress_Volunteer_Admin|null
+     */
+    public ?SocietyPress_Volunteer_Admin $volunteer_admin = null;
+
+    /**
+     * Leadership management.
+     *
+     * @var SocietyPress_Leadership|null
+     */
+    public ?SocietyPress_Leadership $leadership = null;
+
+    /**
+     * Leadership admin interface.
+     *
+     * @var SocietyPress_Leadership_Admin|null
+     */
+    public ?SocietyPress_Leadership_Admin $leadership_admin = null;
+
+    /**
+     * Committees admin interface.
+     *
+     * @var SocietyPress_Committees_Admin|null
+     */
+    public ?SocietyPress_Committees_Admin $committees_admin = null;
+
+    /**
      * Email notifications.
      *
      * @var SocietyPress_Notifications|null
@@ -255,6 +283,34 @@ final class SocietyPress {
     public ?SocietyPress_Theme_Updater $theme_updater = null;
 
     /**
+     * Committees manager.
+     *
+     * @var SocietyPress_Committees|null
+     */
+    public ?SocietyPress_Committees $committees = null;
+
+    /**
+     * Volunteer opportunities manager.
+     *
+     * @var SocietyPress_Volunteer_Opportunities|null
+     */
+    public ?SocietyPress_Volunteer_Opportunities $volunteer_opportunities = null;
+
+    /**
+     * Volunteer signups manager.
+     *
+     * @var SocietyPress_Volunteer_Signups|null
+     */
+    public ?SocietyPress_Volunteer_Signups $volunteer_signups = null;
+
+    /**
+     * Volunteer frontend.
+     *
+     * @var SocietyPress_Volunteer_Frontend|null
+     */
+    public ?SocietyPress_Volunteer_Frontend $volunteer_frontend = null;
+
+    /**
      * Get the single instance.
      *
      * @return SocietyPress
@@ -303,6 +359,10 @@ final class SocietyPress {
         require_once SOCIETYPRESS_PATH . 'includes/class-license.php';
         require_once SOCIETYPRESS_PATH . 'includes/class-updater.php';
         require_once SOCIETYPRESS_PATH . 'includes/class-theme-updater.php';
+        require_once SOCIETYPRESS_PATH . 'includes/class-committees.php';
+        require_once SOCIETYPRESS_PATH . 'includes/class-volunteer-opportunities.php';
+        require_once SOCIETYPRESS_PATH . 'includes/class-volunteer-signups.php';
+        require_once SOCIETYPRESS_PATH . 'includes/class-leadership.php';
 
         if ( is_admin() ) {
             require_once SOCIETYPRESS_PATH . 'admin/class-admin.php';
@@ -310,6 +370,9 @@ final class SocietyPress {
             require_once SOCIETYPRESS_PATH . 'admin/class-import.php';
             require_once SOCIETYPRESS_PATH . 'admin/class-import-events.php';
             require_once SOCIETYPRESS_PATH . 'admin/class-dashboard-widgets.php';
+            require_once SOCIETYPRESS_PATH . 'admin/class-volunteer-admin.php';
+            require_once SOCIETYPRESS_PATH . 'admin/class-leadership-admin.php';
+            require_once SOCIETYPRESS_PATH . 'admin/class-committees-admin.php';
         }
 
         if ( ! is_admin() ) {
@@ -321,6 +384,7 @@ final class SocietyPress {
         // Event registration frontend needs to load for both frontend AND AJAX
         if ( ! is_admin() || wp_doing_ajax() ) {
             require_once SOCIETYPRESS_PATH . 'public/class-event-registration-frontend.php';
+            require_once SOCIETYPRESS_PATH . 'public/class-volunteer-frontend.php';
         }
 
         // Public widgets (block-based) load on both frontend and admin for block editor
@@ -448,9 +512,13 @@ final class SocietyPress {
         $this->events              = new SocietyPress_Events();
         $this->event_slots         = new SocietyPress_Event_Slots();
         $this->event_registrations = new SocietyPress_Event_Registrations();
-        $this->email_log           = new SocietyPress_Email_Log();
-        $this->user_manager        = new SocietyPress_User_Manager();
-        $this->notifications = new SocietyPress_Notifications();
+        $this->email_log               = new SocietyPress_Email_Log();
+        $this->user_manager            = new SocietyPress_User_Manager();
+        $this->committees              = new SocietyPress_Committees();
+        $this->volunteer_opportunities = new SocietyPress_Volunteer_Opportunities();
+        $this->volunteer_signups       = new SocietyPress_Volunteer_Signups();
+        $this->leadership              = new SocietyPress_Leadership();
+        $this->notifications           = new SocietyPress_Notifications();
         $this->license       = new SocietyPress_License();
         $this->updater       = new SocietyPress_Updater( SOCIETYPRESS_BASENAME, SOCIETYPRESS_VERSION );
 
@@ -462,6 +530,9 @@ final class SocietyPress {
 
         if ( is_admin() ) {
             $this->admin = new SocietyPress_Admin();
+            $this->volunteer_admin = new SocietyPress_Volunteer_Admin();
+            $this->leadership_admin = new SocietyPress_Leadership_Admin();
+            $this->committees_admin = new SocietyPress_Committees_Admin();
         }
 
         if ( ! is_admin() ) {
@@ -470,10 +541,11 @@ final class SocietyPress {
             $this->join_form                   = new SocietyPress_Join_Form();
         }
 
-        // Event registration frontend needs to load for both frontend AND AJAX
+        // Event registration and volunteer frontend needs to load for both frontend AND AJAX
         // (AJAX requests to admin-ajax.php have is_admin() === true)
         if ( ! is_admin() || wp_doing_ajax() ) {
             $this->event_registration_frontend = new SocietyPress_Event_Registration_Frontend();
+            $this->volunteer_frontend          = new SocietyPress_Volunteer_Frontend();
         }
 
         // Public widgets load on both frontend and admin (for block editor)

@@ -4,6 +4,98 @@ Breadcrumbs for picking up where we left off after conversation clears.
 
 ---
 
+## 2026-02-03
+
+### Plugin 0.56d: Email Now Optional + Installer & Documentation
+
+**Installer Created:** Single-file WordPress + SocietyPress installer for non-technical users.
+
+**Location:** `installer/sp-installer.php`
+
+**Features:**
+- 8-step wizard-style installation
+- Requirements check (PHP 8.0+, extensions, write permissions, disk space)
+- Manual database configuration (user creates database in cPanel first)
+- Downloads and extracts WordPress from wordpress.org
+- Generates wp-config.php with secure salts
+- Runs WordPress programmatic installation
+- Downloads and installs SocietyPress plugin and theme from getsocietypress.org
+- Activates plugin and theme via direct database updates (bypasses WordPress bootstrap issues)
+- Optional organization info setup
+- Self-destruct reminder for security
+
+**Technical Notes:**
+- Plugin/theme activation uses direct MySQL UPDATE on `wp_options` table instead of `activate_plugin()` and `switch_theme()` — these WordPress functions require full bootstrap which causes issues in installer context
+- Session handling includes stale session detection — if WordPress isn't installed but session thinks we're past step 3, it auto-resets
+- Manual `?reset=1` parameter available to force fresh start
+- Admin URL constructed from `$_SERVER['HTTP_HOST']` without dirname() to avoid double-slash issues
+
+**Documentation Created:** Comprehensive HTML documentation for end users.
+
+**Location:** `docs/`
+
+**Files:**
+| File | Content |
+|------|---------|
+| `index.html` | Documentation home, navigation, what is SocietyPress |
+| `installation.html` | System requirements, installer guide, manual installation |
+| `getting-started.html` | First steps, logging in, basic setup |
+| `members.html` | Member management, import, genealogy fields |
+| `events.html` | Events system, slots, registration, recurring |
+| `settings.html` | All settings reference |
+| `troubleshooting.html` | Common problems and solutions |
+| `assets/style.css` | Clean, readable styling with print support |
+
+**Design:**
+- Large readable fonts (18px body)
+- High contrast colors
+- Collapsible FAQ sections
+- Print-friendly CSS
+- No jargon — written for octogenarians
+
+**Email Field Now Optional:**
+
+Changed member email from required to optional field.
+
+**Why:** Only 2 SAGHS members lack email addresses. Rather than block the entire record, allow saving without email and show a warning.
+
+**Changes:**
+- Removed "required" indicator and HTML attribute from email input
+- Added help text: "Optional. For members without email, use firstname.lastname as a placeholder."
+- Removed validation that blocked saving without email
+- Added warning notice when saving member without email: "Note: This member has no email address. They will not receive email notifications."
+- Removed JavaScript toggle for email required state based on "create WordPress user" checkbox
+
+**Files Created:**
+| File | Purpose |
+|------|---------|
+| `installer/sp-installer.php` | Single-file installer wizard |
+| `installer/README.txt` | Brief installer instructions |
+| `docs/index.html` | Documentation home |
+| `docs/installation.html` | Installation guide |
+| `docs/getting-started.html` | First steps guide |
+| `docs/members.html` | Member management guide |
+| `docs/events.html` | Events system guide |
+| `docs/settings.html` | Settings reference |
+| `docs/troubleshooting.html` | Troubleshooting guide |
+| `docs/assets/style.css` | Documentation styles |
+
+**Files Modified:**
+| File | Changes |
+|------|---------|
+| `plugin/societypress.php` | Version bump 0.55d → 0.56d |
+| `plugin/admin/class-admin.php` | Email field optional, warning notice |
+
+**Testing:**
+- Tested installer on kndgs.org (production domain)
+- Discovered and fixed: cPanel API unreliable (removed auto-detect), plugin/theme activation issues (switched to direct DB), session persistence (added reset detection), double-slash in URLs (fixed URL construction)
+
+**Current Test Status:**
+- kndgs.org wiped and ready for fresh installer test
+- User needs to create database in cPanel first, then run installer
+
+---
+
 ## 2026-02-01
 
 ### Plugin 0.55d: Leadership & Committees Admin + Member Search

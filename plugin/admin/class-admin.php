@@ -2428,30 +2428,7 @@ class SocietyPress_Admin {
 		if ( strpos( $hook, 'societypress-add-member' ) !== false ||
 		     strpos( $hook, 'societypress-member-edit' ) !== false ||
 		     ( strpos( $hook, 'societypress-members' ) !== false && isset( $_GET['action'] ) && 'edit' === $_GET['action'] ) ) {
-			wp_add_inline_script(
-				'societypress-admin',
-				"
-				jQuery(document).ready(function($) {
-					// Toggle email required based on 'no online access' checkbox
-					$('#no_online_access').on('change', function() {
-						var noAccess = $(this).is(':checked');
-						var \$email = $('#primary_email');
-						var \$indicator = $('#email-required-indicator');
-						var \$note = $('#email-optional-note');
-
-						if (noAccess) {
-							\$email.prop('required', false);
-							\$indicator.text('');
-							\$note.show();
-						} else {
-							\$email.prop('required', true);
-							\$indicator.text(' *');
-							\$note.hide();
-						}
-					});
-				});
-				"
-			);
+			// Email is now always optional - no JavaScript toggle needed
 		}
 
 		// Load import script on import page
@@ -3264,15 +3241,13 @@ class SocietyPress_Admin {
 								<th>
 									<label for="primary_email">
 										<?php esc_html_e( 'Email', 'societypress' ); ?>
-										<span id="email-required-indicator"><?php echo $no_online_access ? '' : ' *'; ?></span>
 									</label>
 								</th>
 								<td>
 									<input type="email" name="primary_email" id="primary_email" class="regular-text"
-									       value="<?php echo esc_attr( $contact->primary_email ?? '' ); ?>"
-									       <?php echo $no_online_access ? '' : 'required'; ?>>
-									<p class="description" id="email-optional-note" style="<?php echo $no_online_access ? '' : 'display:none;'; ?>">
-										<?php esc_html_e( 'Email is optional for members without online access.', 'societypress' ); ?>
+									       value="<?php echo esc_attr( $contact->primary_email ?? '' ); ?>">
+									<p class="description">
+										<?php esc_html_e( 'Optional. For members without email, use firstname.lastname as a placeholder.', 'societypress' ); ?>
 									</p>
 								</td>
 							</tr>
@@ -3882,20 +3857,13 @@ class SocietyPress_Admin {
 		);
 
 		// Validate and prepare contact data
-		// Email is optional if "no online access" is checked
+		// Email is now optional - we'll show a warning if missing
 		$no_online_access = ! empty( $_POST['no_online_access'] );
 		$email = sanitize_email( $_POST['primary_email'] ?? '' );
-
-		if ( ! $no_online_access && ( empty( $email ) || ! is_email( $email ) ) ) {
-			wp_die(
-				esc_html__( 'Please enter a valid email address.', 'societypress' ),
-				esc_html__( 'Invalid Email', 'societypress' ),
-				array( 'back_link' => true )
-			);
-		}
+		$email_missing = empty( $email );
 
 		// If email is provided, validate it's properly formatted
-		if ( ! empty( $_POST['primary_email'] ) && ! is_email( $email ) ) {
+		if ( ! empty( $_POST['primary_email'] ) && ! is_email( $_POST['primary_email'] ) ) {
 			wp_die(
 				esc_html__( 'The email address format is invalid.', 'societypress' ),
 				esc_html__( 'Invalid Email', 'societypress' ),
@@ -3969,6 +3937,14 @@ class SocietyPress_Admin {
 				}
 
 				$this->add_admin_notice( __( 'Member updated successfully.', 'societypress' ), 'success' );
+
+				// Warn if no email address was provided
+				if ( $email_missing ) {
+					$this->add_admin_notice(
+						__( 'Note: This member has no email address. They will not receive email notifications.', 'societypress' ),
+						'warning'
+					);
+				}
 			} else {
 				$this->add_admin_notice( __( 'Error updating member.', 'societypress' ), 'error' );
 			}
@@ -4008,6 +3984,14 @@ class SocietyPress_Admin {
 				}
 
 				$this->add_admin_notice( __( 'Member created successfully.', 'societypress' ), 'success' );
+
+				// Warn if no email address was provided
+				if ( $email_missing ) {
+					$this->add_admin_notice(
+						__( 'Note: This member has no email address. They will not receive email notifications.', 'societypress' ),
+						'warning'
+					);
+				}
 
 				// Redirect to edit page for the new member
 				wp_safe_redirect( admin_url( 'admin.php?page=societypress-member-edit&member_id=' . $new_id . '&message=created' ) );

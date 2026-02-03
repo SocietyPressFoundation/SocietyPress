@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Managing Members - SocietyPress Documentation</title>
+    <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+    <div class="docs-container">
+        <aside class="docs-sidebar">
+            <a href="index.html" class="sidebar-logo">Society<span>Press</span></a>
+
+            <nav>
+                <ul class="sidebar-nav">
+                    <li><a href="index.html">Home</a></li>
+                    <li><a href="installation.html">Installation</a></li>
+                    <li><a href="getting-started.html">Getting Started</a></li>
+                </ul>
+
+                <div class="sidebar-section">Features</div>
+                <ul class="sidebar-nav">
+                    <li><a href="members.html" class="active">Members</a></li>
+                    <li><a href="events.html">Events</a></li>
+                    <li><a href="settings.html">Settings</a></li>
+                </ul>
+
+                <div class="sidebar-section">Help</div>
+                <ul class="sidebar-nav">
+                    <li><a href="troubleshooting.html">Troubleshooting</a></li>
+                </ul>
+            </nav>
+        </aside>
+
+        <main class="docs-main">
+            <div class="docs-content">
+                <div class="breadcrumbs">
+                    <a href="index.html">Home</a>
+                    <span>/</span>
+                    Managing Members
+                </div>
+
+                <h1>Managing Members</h1>
+
+                <p>
+                    The Members section is where you manage your society's membership roster.
+                    This guide covers everything from adding individual members to bulk importing
+                    from a spreadsheet.
+                </p>
+
+                <h2>The Members List</h2>
+
+                <p>
+                    Go to <strong>SocietyPress → Members</strong> to see your full member list.
+                    From here you can:
+                </p>
+
+                <ul>
+                    <li><strong>Search</strong> &mdash; Find members by name, email, or member number</li>
+                    <li><strong>Filter</strong> &mdash; Show only certain statuses (Active, Expired, etc.) or tiers</li>
+                    <li><strong>Sort</strong> &mdash; Click column headers to sort by name, join date, expiration, etc.</li>
+                    <li><strong>Bulk actions</strong> &mdash; Select multiple members to delete or change status</li>
+                </ul>
+
+                <h3>Member Statuses</h3>
+
+                <p>Each member has a status that indicates their current standing:</p>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Status</th>
+                            <th>Meaning</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Active</strong></td>
+                            <td>Current, paid member in good standing</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Pending</strong></td>
+                            <td>Applied but not yet approved or paid</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Expired</strong></td>
+                            <td>Membership has lapsed and needs renewal</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Cancelled</strong></td>
+                            <td>Member chose to cancel their membership</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Deceased</strong></td>
+                            <td>Member has passed away (keeps historical record)</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <hr>
+
+                <h2>Adding Members Manually</h2>
+
+                <p>To add a single member:</p>
+
+                <ol class="steps-list">
+                    <li>
+                        <strong>Go to SocietyPress → Add New Member</strong>
+                    </li>
+
+                    <li>
+                        <strong>Enter basic information</strong><br>
+                        Required fields are marked with an asterisk (*):
+                        <ul>
+                            <li>First name *</li>
+                            <li>Last name *</li>
+                            <li>Email address *</li>
+                            <li>Membership tier *</li>
+                            <li>Status *</li>
+                        </ul>
+                    </li>
+
+                    <li>
+                        <strong>Add contact information</strong><br>
+                        Phone numbers, mailing address, secondary email, etc.
+                    </li>
+
+                    <li>
+                        <strong>Add genealogy information</strong><br>
+                        This is what makes SocietyPress special:
+                        <ul>
+                            <li><strong>Surnames</strong> &mdash; Family names they're researching</li>
+                            <li><strong>Research areas</strong> &mdash; Geographic locations (county, state, country)</li>
+                        </ul>
+                    </li>
+
+                    <li>
+                        <strong>Set dates</strong><br>
+                        <ul>
+                            <li>Join date (when they became a member)</li>
+                            <li>Expiration date (when membership expires)</li>
+                        </ul>
+                    </li>
+
+                    <li>
+                        <strong>Click "Add Member"</strong>
+                    </li>
+                </ol>
+
+                <hr>
+
+                <h2 id="importing">Importing Members from a Spreadsheet</h2>
+
+                <p>
+                    If you have an existing member list in a spreadsheet, you can import it
+                    into SocietyPress. The importer handles CSV, TSV, and Excel files.
+                </p>
+
+                <h3>Preparing Your Spreadsheet</h3>
+
+                <p>Before importing, make sure your spreadsheet:</p>
+
+                <ul>
+                    <li>Has a header row with column names</li>
+                    <li>Uses consistent formatting (especially for dates)</li>
+                    <li>Doesn't have merged cells</li>
+                    <li>Is saved as CSV, TSV, or XLSX format</li>
+                </ul>
+
+                <div class="callout callout-tip">
+                    <div class="callout-title">Column Names</div>
+                    <p>
+                        The importer tries to automatically match your column names to SocietyPress fields.
+                        Using standard names like "First Name," "Last Name," "Email," "Phone," etc.
+                        helps the matching work better.
+                    </p>
+                </div>
+
+                <h3>Import Steps</h3>
+
+                <ol class="steps-list">
+                    <li>
+                        <strong>Go to SocietyPress → Import Members</strong>
+                    </li>
+
+                    <li>
+                        <strong>Upload your file</strong><br>
+                        Click "Choose File" and select your spreadsheet.
+                        Click "Upload and Preview" to continue.
+                    </li>
+
+                    <li>
+                        <strong>Map columns to fields</strong><br>
+                        The importer shows your columns and tries to match them to SocietyPress fields.
+                        Review each mapping and adjust if needed using the dropdowns.
+                        <ul>
+                            <li>Green = matched automatically</li>
+                            <li>Yellow = needs your attention</li>
+                            <li>Skip = this column won't be imported</li>
+                        </ul>
+                    </li>
+
+                    <li>
+                        <strong>Set import options</strong><br>
+                        Choose what to do with duplicates (skip, update, or create new).
+                        Select a default membership tier for records without one.
+                    </li>
+
+                    <li>
+                        <strong>Start the import</strong><br>
+                        Click "Import Members" to begin. You'll see progress as records are processed.
+                    </li>
+
+                    <li>
+                        <strong>Review results</strong><br>
+                        After import, you'll see a summary of how many records were
+                        imported, updated, or skipped (and why).
+                    </li>
+                </ol>
+
+                <div class="callout callout-warning">
+                    <div class="callout-title">Test First!</div>
+                    <p>
+                        Before importing your entire member list, test with a small sample (5-10 records)
+                        to make sure the mapping is correct and data looks right.
+                    </p>
+                </div>
+
+                <hr>
+
+                <h2>Editing Member Information</h2>
+
+                <p>To edit an existing member:</p>
+
+                <ol>
+                    <li>Go to <strong>SocietyPress → Members</strong></li>
+                    <li>Find the member (use search if needed)</li>
+                    <li>Click on their name or the "Edit" link</li>
+                    <li>Make your changes</li>
+                    <li>Click "Update Member"</li>
+                </ol>
+
+                <h3>What You Can Edit</h3>
+
+                <ul>
+                    <li>All contact information</li>
+                    <li>Membership tier and status</li>
+                    <li>Join and expiration dates</li>
+                    <li>Surnames and research areas</li>
+                    <li>Notes and custom fields</li>
+                </ul>
+
+                <hr>
+
+                <h2>Member Photos</h2>
+
+                <p>
+                    Members can have profile photos that appear in the directory and admin screens.
+                </p>
+
+                <ol>
+                    <li>Edit the member's record</li>
+                    <li>Find the "Member Photo" section</li>
+                    <li>Click "Set Photo" to upload an image</li>
+                    <li>Save the member</li>
+                </ol>
+
+                <p>
+                    Photos are automatically cropped to a square and optimized for web display.
+                    Recommended size: at least 200×200 pixels.
+                </p>
+
+                <hr>
+
+                <h2>Genealogy Fields</h2>
+
+                <p>
+                    SocietyPress includes specialized fields for genealogical research that you
+                    won't find in generic membership plugins.
+                </p>
+
+                <h3>Surnames Researched</h3>
+
+                <p>
+                    Track what family names each member is researching. This helps members
+                    connect with others who might be researching the same families.
+                </p>
+
+                <p>For each surname, you can record:</p>
+                <ul>
+                    <li>The surname itself</li>
+                    <li>Spelling variants (e.g., Smith, Smyth, Smithe)</li>
+                    <li>Notes about the line</li>
+                </ul>
+
+                <h3>Research Areas</h3>
+
+                <p>
+                    Geographic areas where a member is conducting research. This helps
+                    members find others researching in the same locations.
+                </p>
+
+                <p>For each research area, you can record:</p>
+                <ul>
+                    <li>County</li>
+                    <li>State/Province</li>
+                    <li>Country</li>
+                    <li>Region or other notes</li>
+                </ul>
+
+                <hr>
+
+                <h2>Exporting Members</h2>
+
+                <p>
+                    You can export your member list to a CSV file for use in spreadsheets,
+                    mailing lists, or other systems.
+                </p>
+
+                <ol class="steps-list">
+                    <li>
+                        <strong>Go to SocietyPress → Members</strong>
+                    </li>
+
+                    <li>
+                        <strong>Apply filters (optional)</strong><br>
+                        If you only want to export certain members (e.g., only Active members),
+                        use the filter dropdowns first.
+                    </li>
+
+                    <li>
+                        <strong>Click "Export"</strong><br>
+                        Find the Export button above the member list.
+                    </li>
+
+                    <li>
+                        <strong>Choose what to export</strong><br>
+                        Select which fields to include in the export.
+                    </li>
+
+                    <li>
+                        <strong>Download the file</strong><br>
+                        Your browser will download a CSV file you can open in Excel,
+                        Google Sheets, or any spreadsheet program.
+                    </li>
+                </ol>
+
+                <div class="callout callout-info">
+                    <div class="callout-title">Export Respects Filters</div>
+                    <p>
+                        The export only includes members that match your current filter settings.
+                        To export everyone, make sure no filters are applied.
+                    </p>
+                </div>
+
+                <hr>
+
+                <h2>Linking WordPress User Accounts</h2>
+
+                <p>
+                    Members can optionally have a WordPress user account, allowing them to:
+                </p>
+
+                <ul>
+                    <li>Log into the member portal</li>
+                    <li>Update their own profile information</li>
+                    <li>Register for events</li>
+                    <li>Access members-only content</li>
+                </ul>
+
+                <h3>Creating a User Account for a Member</h3>
+
+                <ol>
+                    <li>Edit the member's record</li>
+                    <li>Find the "WordPress Account" section</li>
+                    <li>Click "Create User Account"</li>
+                    <li>The member will receive an email with login instructions</li>
+                </ol>
+
+                <h3>Linking an Existing User Account</h3>
+
+                <p>
+                    If a member already has a WordPress account (perhaps they registered on your site),
+                    you can link it to their member record:
+                </p>
+
+                <ol>
+                    <li>Edit the member's record</li>
+                    <li>Find the "WordPress Account" section</li>
+                    <li>Search for and select the existing user</li>
+                    <li>Save the member</li>
+                </ol>
+
+                <hr>
+
+                <h2>Bulk Actions</h2>
+
+                <p>
+                    To perform actions on multiple members at once:
+                </p>
+
+                <ol>
+                    <li>Go to the Members list</li>
+                    <li>Check the boxes next to the members you want to affect</li>
+                    <li>Use the "Bulk Actions" dropdown to select an action</li>
+                    <li>Click "Apply"</li>
+                </ol>
+
+                <p>Available bulk actions include:</p>
+                <ul>
+                    <li>Delete members</li>
+                    <li>Change status (Active, Expired, etc.)</li>
+                    <li>Change membership tier</li>
+                </ul>
+
+                <div class="callout callout-warning">
+                    <div class="callout-title">Select All Across Pages</div>
+                    <p>
+                        If you have many members, they're shown across multiple pages.
+                        Use the "Select all X members" link that appears to select
+                        members on all pages, not just the current page.
+                    </p>
+                </div>
+
+                <div class="page-nav">
+                    <a href="getting-started.html">
+                        <span class="page-nav-label">Previous</span>
+                        <span class="page-nav-title">← Getting Started</span>
+                    </a>
+                    <a href="events.html" class="page-nav-next">
+                        <span class="page-nav-label">Next</span>
+                        <span class="page-nav-title">Events System →</span>
+                    </a>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

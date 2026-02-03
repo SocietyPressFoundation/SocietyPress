@@ -31,8 +31,8 @@ Path: https://github.com/charles-stricklin/SocietyPress
 ---
 Current Versions
 
-- Plugin: 0.53d
-- Theme: 1.36d
+- Plugin: 0.56d
+- Theme: 1.37d
 
 ---
 Environment

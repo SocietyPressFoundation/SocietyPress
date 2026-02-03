@@ -1,0 +1,874 @@
+/**
+ * SocietyPress Documentation Styles
+ *
+ * WHY: Designed for maximum readability by non-technical users.
+ * Features large fonts, high contrast, clear visual hierarchy,
+ * and print-friendly output for those who prefer paper copies.
+ *
+ * @package SocietyPress
+ * @subpackage Documentation
+ * @version 1.0.0
+ */
+
+/* ==========================================================================
+   CSS Custom Properties
+   ========================================================================== */
+
+:root {
+    /* Brand Colors */
+    --sp-primary: #1e3a5f;
+    --sp-primary-light: #2c5282;
+    --sp-primary-dark: #152a42;
+    --sp-accent: #667eea;
+    --sp-accent-light: #7c91ee;
+
+    /* Semantic Colors */
+    --sp-success: #28a745;
+    --sp-warning: #ffc107;
+    --sp-danger: #dc3545;
+    --sp-info: #17a2b8;
+
+    /* Neutral Colors */
+    --sp-white: #ffffff;
+    --sp-gray-50: #f8f9fa;
+    --sp-gray-100: #f1f3f5;
+    --sp-gray-200: #e9ecef;
+    --sp-gray-300: #dee2e6;
+    --sp-gray-400: #ced4da;
+    --sp-gray-500: #adb5bd;
+    --sp-gray-600: #6c757d;
+    --sp-gray-700: #495057;
+    --sp-gray-800: #343a40;
+    --sp-gray-900: #212529;
+
+    /* Typography */
+    --sp-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    --sp-font-mono: 'SF Mono', Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+    --sp-font-size-base: 18px;
+    --sp-line-height: 1.7;
+
+    /* Spacing */
+    --sp-spacing-xs: 0.25rem;
+    --sp-spacing-sm: 0.5rem;
+    --sp-spacing-md: 1rem;
+    --sp-spacing-lg: 1.5rem;
+    --sp-spacing-xl: 2rem;
+    --sp-spacing-xxl: 3rem;
+
+    /* Layout */
+    --sp-max-width: 900px;
+    --sp-sidebar-width: 280px;
+    --sp-border-radius: 8px;
+}
+
+/* ==========================================================================
+   Reset & Base Styles
+   ========================================================================== */
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html {
+    font-size: var(--sp-font-size-base);
+    scroll-behavior: smooth;
+}
+
+body {
+    font-family: var(--sp-font-family);
+    font-size: 1rem;
+    line-height: var(--sp-line-height);
+    color: var(--sp-gray-800);
+    background-color: var(--sp-white);
+    margin: 0;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* ==========================================================================
+   Typography
+   ========================================================================== */
+
+h1, h2, h3, h4, h5, h6 {
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--sp-primary);
+    margin-top: var(--sp-spacing-xxl);
+    margin-bottom: var(--sp-spacing-md);
+}
+
+h1 {
+    font-size: 2.5rem;
+    margin-top: 0;
+    padding-bottom: var(--sp-spacing-md);
+    border-bottom: 3px solid var(--sp-primary);
+}
+
+h2 {
+    font-size: 1.875rem;
+    padding-bottom: var(--sp-spacing-sm);
+    border-bottom: 2px solid var(--sp-gray-200);
+}
+
+h3 {
+    font-size: 1.5rem;
+}
+
+h4 {
+    font-size: 1.25rem;
+}
+
+h5 {
+    font-size: 1.125rem;
+}
+
+h6 {
+    font-size: 1rem;
+}
+
+p {
+    margin-top: 0;
+    margin-bottom: var(--sp-spacing-lg);
+}
+
+a {
+    color: var(--sp-accent);
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+a:hover {
+    color: var(--sp-primary);
+    text-decoration: underline;
+}
+
+strong, b {
+    font-weight: 600;
+}
+
+small {
+    font-size: 0.875rem;
+}
+
+/* ==========================================================================
+   Layout
+   ========================================================================== */
+
+.docs-container {
+    display: flex;
+    min-height: 100vh;
+}
+
+.docs-sidebar {
+    width: var(--sp-sidebar-width);
+    background: var(--sp-gray-50);
+    border-right: 1px solid var(--sp-gray-200);
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    overflow-y: auto;
+    padding: var(--sp-spacing-lg);
+}
+
+.docs-main {
+    flex: 1;
+    margin-left: var(--sp-sidebar-width);
+    padding: var(--sp-spacing-xxl);
+    max-width: calc(var(--sp-max-width) + var(--sp-spacing-xxl) * 2);
+}
+
+.docs-content {
+    max-width: var(--sp-max-width);
+}
+
+/* ==========================================================================
+   Sidebar Navigation
+   ========================================================================== */
+
+.sidebar-logo {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--sp-primary);
+    margin-bottom: var(--sp-spacing-xl);
+    display: block;
+}
+
+.sidebar-logo span {
+    color: var(--sp-accent);
+}
+
+.sidebar-nav {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.sidebar-nav li {
+    margin-bottom: var(--sp-spacing-xs);
+}
+
+.sidebar-nav a {
+    display: block;
+    padding: var(--sp-spacing-sm) var(--sp-spacing-md);
+    color: var(--sp-gray-700);
+    border-radius: var(--sp-border-radius);
+    transition: all 0.2s ease;
+}
+
+.sidebar-nav a:hover {
+    background: var(--sp-gray-200);
+    color: var(--sp-primary);
+    text-decoration: none;
+}
+
+.sidebar-nav a.active {
+    background: var(--sp-primary);
+    color: var(--sp-white);
+}
+
+.sidebar-section {
+    margin-top: var(--sp-spacing-lg);
+    margin-bottom: var(--sp-spacing-sm);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--sp-gray-500);
+    padding-left: var(--sp-spacing-md);
+}
+
+/* ==========================================================================
+   Lists
+   ========================================================================== */
+
+ul, ol {
+    margin-top: 0;
+    margin-bottom: var(--sp-spacing-lg);
+    padding-left: var(--sp-spacing-xl);
+}
+
+li {
+    margin-bottom: var(--sp-spacing-sm);
+}
+
+li > ul,
+li > ol {
+    margin-top: var(--sp-spacing-sm);
+    margin-bottom: 0;
+}
+
+/* Styled list for step-by-step instructions */
+.steps-list {
+    list-style: none;
+    padding: 0;
+    counter-reset: step-counter;
+}
+
+.steps-list li {
+    position: relative;
+    padding-left: 3.5rem;
+    margin-bottom: var(--sp-spacing-lg);
+    counter-increment: step-counter;
+}
+
+.steps-list li::before {
+    content: counter(step-counter);
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 2.5rem;
+    height: 2.5rem;
+    background: var(--sp-primary);
+    color: var(--sp-white);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 1.125rem;
+}
+
+/* ==========================================================================
+   Code & Pre
+   ========================================================================== */
+
+code {
+    font-family: var(--sp-font-mono);
+    font-size: 0.9em;
+    background: var(--sp-gray-100);
+    padding: 0.2em 0.4em;
+    border-radius: 4px;
+    color: var(--sp-primary-dark);
+}
+
+pre {
+    font-family: var(--sp-font-mono);
+    font-size: 0.875rem;
+    background: var(--sp-gray-900);
+    color: var(--sp-gray-100);
+    padding: var(--sp-spacing-lg);
+    border-radius: var(--sp-border-radius);
+    overflow-x: auto;
+    margin: var(--sp-spacing-lg) 0;
+    line-height: 1.5;
+}
+
+pre code {
+    background: none;
+    padding: 0;
+    color: inherit;
+    font-size: inherit;
+}
+
+/* ==========================================================================
+   Callout Boxes
+   ========================================================================== */
+
+.callout {
+    padding: var(--sp-spacing-lg);
+    border-radius: var(--sp-border-radius);
+    margin: var(--sp-spacing-lg) 0;
+    border-left: 4px solid;
+}
+
+.callout-title {
+    font-weight: 600;
+    margin-bottom: var(--sp-spacing-sm);
+    display: flex;
+    align-items: center;
+    gap: var(--sp-spacing-sm);
+}
+
+.callout-title::before {
+    font-size: 1.25rem;
+}
+
+.callout p:last-child {
+    margin-bottom: 0;
+}
+
+/* Info callout */
+.callout-info {
+    background: #e7f3ff;
+    border-color: var(--sp-info);
+}
+
+.callout-info .callout-title {
+    color: #004085;
+}
+
+.callout-info .callout-title::before {
+    content: "💡";
+}
+
+/* Tip callout */
+.callout-tip {
+    background: #d4edda;
+    border-color: var(--sp-success);
+}
+
+.callout-tip .callout-title {
+    color: #155724;
+}
+
+.callout-tip .callout-title::before {
+    content: "✓";
+}
+
+/* Warning callout */
+.callout-warning {
+    background: #fff3cd;
+    border-color: var(--sp-warning);
+}
+
+.callout-warning .callout-title {
+    color: #856404;
+}
+
+.callout-warning .callout-title::before {
+    content: "⚠";
+}
+
+/* Danger callout */
+.callout-danger {
+    background: #f8d7da;
+    border-color: var(--sp-danger);
+}
+
+.callout-danger .callout-title {
+    color: #721c24;
+}
+
+.callout-danger .callout-title::before {
+    content: "⛔";
+}
+
+/* ==========================================================================
+   Tables
+   ========================================================================== */
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: var(--sp-spacing-lg) 0;
+    font-size: 0.95rem;
+}
+
+th, td {
+    padding: var(--sp-spacing-md);
+    text-align: left;
+    border-bottom: 1px solid var(--sp-gray-200);
+}
+
+th {
+    background: var(--sp-gray-50);
+    font-weight: 600;
+    color: var(--sp-primary);
+}
+
+tr:hover {
+    background: var(--sp-gray-50);
+}
+
+/* ==========================================================================
+   Images & Figures
+   ========================================================================== */
+
+img {
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--sp-border-radius);
+}
+
+figure {
+    margin: var(--sp-spacing-xl) 0;
+}
+
+figure img {
+    border: 1px solid var(--sp-gray-200);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+figcaption {
+    font-size: 0.875rem;
+    color: var(--sp-gray-600);
+    margin-top: var(--sp-spacing-sm);
+    text-align: center;
+    font-style: italic;
+}
+
+/* Screenshot styling */
+.screenshot {
+    margin: var(--sp-spacing-xl) 0;
+    text-align: center;
+}
+
+.screenshot img {
+    border: 1px solid var(--sp-gray-300);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.screenshot-caption {
+    font-size: 0.875rem;
+    color: var(--sp-gray-600);
+    margin-top: var(--sp-spacing-sm);
+}
+
+/* ==========================================================================
+   Buttons
+   ========================================================================== */
+
+.btn {
+    display: inline-block;
+    padding: var(--sp-spacing-md) var(--sp-spacing-lg);
+    font-size: 1rem;
+    font-weight: 600;
+    text-decoration: none;
+    border: none;
+    border-radius: var(--sp-border-radius);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-primary {
+    background: var(--sp-primary);
+    color: var(--sp-white);
+}
+
+.btn-primary:hover {
+    background: var(--sp-primary-light);
+    color: var(--sp-white);
+    text-decoration: none;
+}
+
+.btn-secondary {
+    background: var(--sp-gray-200);
+    color: var(--sp-gray-800);
+}
+
+.btn-secondary:hover {
+    background: var(--sp-gray-300);
+    text-decoration: none;
+}
+
+/* ==========================================================================
+   Cards
+   ========================================================================== */
+
+.card {
+    background: var(--sp-white);
+    border: 1px solid var(--sp-gray-200);
+    border-radius: var(--sp-border-radius);
+    padding: var(--sp-spacing-lg);
+    margin-bottom: var(--sp-spacing-lg);
+    transition: box-shadow 0.2s ease;
+}
+
+.card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.card-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--sp-primary);
+    margin-top: 0;
+    margin-bottom: var(--sp-spacing-sm);
+}
+
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--sp-spacing-lg);
+    margin: var(--sp-spacing-xl) 0;
+}
+
+/* ==========================================================================
+   Navigation Cards (for index page)
+   ========================================================================== */
+
+.nav-card {
+    display: block;
+    background: var(--sp-white);
+    border: 2px solid var(--sp-gray-200);
+    border-radius: var(--sp-border-radius);
+    padding: var(--sp-spacing-xl);
+    text-decoration: none;
+    transition: all 0.2s ease;
+}
+
+.nav-card:hover {
+    border-color: var(--sp-accent);
+    box-shadow: 0 8px 24px rgba(102, 126, 234, 0.15);
+    text-decoration: none;
+    transform: translateY(-2px);
+}
+
+.nav-card-icon {
+    font-size: 2.5rem;
+    margin-bottom: var(--sp-spacing-md);
+}
+
+.nav-card-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--sp-primary);
+    margin-bottom: var(--sp-spacing-sm);
+}
+
+.nav-card-desc {
+    color: var(--sp-gray-600);
+    font-size: 0.95rem;
+    margin: 0;
+}
+
+/* ==========================================================================
+   Breadcrumbs
+   ========================================================================== */
+
+.breadcrumbs {
+    font-size: 0.875rem;
+    color: var(--sp-gray-600);
+    margin-bottom: var(--sp-spacing-lg);
+}
+
+.breadcrumbs a {
+    color: var(--sp-gray-600);
+}
+
+.breadcrumbs a:hover {
+    color: var(--sp-accent);
+}
+
+.breadcrumbs span {
+    margin: 0 var(--sp-spacing-sm);
+}
+
+/* ==========================================================================
+   Page Navigation (prev/next)
+   ========================================================================== */
+
+.page-nav {
+    display: flex;
+    justify-content: space-between;
+    margin-top: var(--sp-spacing-xxl);
+    padding-top: var(--sp-spacing-xl);
+    border-top: 1px solid var(--sp-gray-200);
+}
+
+.page-nav a {
+    display: flex;
+    flex-direction: column;
+    padding: var(--sp-spacing-md);
+    border: 1px solid var(--sp-gray-200);
+    border-radius: var(--sp-border-radius);
+    max-width: 45%;
+    transition: all 0.2s ease;
+}
+
+.page-nav a:hover {
+    border-color: var(--sp-accent);
+    text-decoration: none;
+}
+
+.page-nav-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--sp-gray-500);
+    margin-bottom: var(--sp-spacing-xs);
+}
+
+.page-nav-title {
+    font-weight: 600;
+    color: var(--sp-primary);
+}
+
+.page-nav-next {
+    text-align: right;
+}
+
+/* ==========================================================================
+   FAQ Accordion
+   ========================================================================== */
+
+.faq-item {
+    border: 1px solid var(--sp-gray-200);
+    border-radius: var(--sp-border-radius);
+    margin-bottom: var(--sp-spacing-md);
+}
+
+.faq-question {
+    padding: var(--sp-spacing-lg);
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--sp-gray-50);
+    border-radius: var(--sp-border-radius);
+}
+
+.faq-question:hover {
+    background: var(--sp-gray-100);
+}
+
+.faq-question::after {
+    content: "+";
+    font-size: 1.5rem;
+    color: var(--sp-gray-500);
+    transition: transform 0.2s ease;
+}
+
+.faq-item.open .faq-question::after {
+    transform: rotate(45deg);
+}
+
+.faq-answer {
+    padding: 0 var(--sp-spacing-lg);
+    max-height: 0;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.faq-item.open .faq-answer {
+    padding: var(--sp-spacing-lg);
+    max-height: 1000px;
+}
+
+/* ==========================================================================
+   Responsive Design
+   ========================================================================== */
+
+@media (max-width: 900px) {
+    .docs-container {
+        flex-direction: column;
+    }
+
+    .docs-sidebar {
+        position: static;
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid var(--sp-gray-200);
+    }
+
+    .docs-main {
+        margin-left: 0;
+        padding: var(--sp-spacing-lg);
+    }
+
+    h1 {
+        font-size: 2rem;
+    }
+
+    h2 {
+        font-size: 1.5rem;
+    }
+
+    .page-nav {
+        flex-direction: column;
+        gap: var(--sp-spacing-md);
+    }
+
+    .page-nav a {
+        max-width: 100%;
+    }
+}
+
+@media (max-width: 600px) {
+    html {
+        font-size: 16px;
+    }
+
+    .docs-main {
+        padding: var(--sp-spacing-md);
+    }
+
+    .card-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .steps-list li {
+        padding-left: 3rem;
+    }
+
+    .steps-list li::before {
+        width: 2rem;
+        height: 2rem;
+        font-size: 1rem;
+    }
+}
+
+/* ==========================================================================
+   Print Styles
+   ========================================================================== */
+
+@media print {
+    .docs-sidebar {
+        display: none;
+    }
+
+    .docs-main {
+        margin-left: 0;
+        padding: 0;
+    }
+
+    body {
+        font-size: 12pt;
+        line-height: 1.5;
+        color: #000;
+    }
+
+    h1, h2, h3, h4, h5, h6 {
+        color: #000;
+        page-break-after: avoid;
+    }
+
+    h1 {
+        font-size: 24pt;
+    }
+
+    h2 {
+        font-size: 18pt;
+    }
+
+    h3 {
+        font-size: 14pt;
+    }
+
+    a {
+        color: #000;
+        text-decoration: underline;
+    }
+
+    a[href^="http"]::after {
+        content: " (" attr(href) ")";
+        font-size: 0.8em;
+        color: #666;
+    }
+
+    .callout {
+        border: 1px solid #ccc;
+        background: #f5f5f5 !important;
+    }
+
+    pre {
+        background: #f5f5f5;
+        color: #000;
+        border: 1px solid #ccc;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+
+    .btn,
+    .page-nav {
+        display: none;
+    }
+
+    img {
+        max-width: 100%;
+        page-break-inside: avoid;
+    }
+
+    table {
+        page-break-inside: avoid;
+    }
+
+    tr {
+        page-break-inside: avoid;
+    }
+}
+
+/* ==========================================================================
+   Utility Classes
+   ========================================================================== */
+
+.text-center {
+    text-align: center;
+}
+
+.text-muted {
+    color: var(--sp-gray-600);
+}
+
+.mt-0 { margin-top: 0; }
+.mb-0 { margin-bottom: 0; }
+.mt-lg { margin-top: var(--sp-spacing-lg); }
+.mb-lg { margin-bottom: var(--sp-spacing-lg); }
+.mt-xl { margin-top: var(--sp-spacing-xl); }
+.mb-xl { margin-bottom: var(--sp-spacing-xl); }
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+}

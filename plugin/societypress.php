@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI: https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies. Handles member registration, dues, renewals, directories, committees, and governance.
- * Version: 0.55d
+ * Version: 0.56d
  * Author: Stricklin Development
  * Author URI: https://stricklindevelopment.com/
  * License: Proprietary
@@ -23,7 +23,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Plugin version.
  */
-define( 'SOCIETYPRESS_VERSION', '0.55d' );
+define( 'SOCIETYPRESS_VERSION', '0.56d' );
 
 /**
  * Plugin directory path.

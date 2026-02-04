@@ -196,6 +196,7 @@ class SocietyPress_Events {
 		$instructors       = get_post_meta( $post->ID, self::META_PREFIX . 'instructors', true );
 		$registration_url  = get_post_meta( $post->ID, self::META_PREFIX . 'registration_url', true );
 		$registration_req  = get_post_meta( $post->ID, self::META_PREFIX . 'registration_required', true );
+		$notice_only       = get_post_meta( $post->ID, self::META_PREFIX . 'notice_only', true );
 		$recurring         = get_post_meta( $post->ID, self::META_PREFIX . 'recurring', true );
 		$recurring_end     = get_post_meta( $post->ID, self::META_PREFIX . 'recurring_end', true );
 		$recurring_day     = get_post_meta( $post->ID, self::META_PREFIX . 'recurring_day', true );
@@ -311,6 +312,16 @@ class SocietyPress_Events {
 					</label>
 				</td>
 			</tr>
+			<tr>
+				<th><label for="sp_event_notice_only"><?php esc_html_e( 'Notice Only', 'societypress' ); ?></label></th>
+				<td>
+					<label>
+						<input type="checkbox" id="sp_event_notice_only" name="sp_event_notice_only" value="1" <?php checked( $notice_only, '1' ); ?>>
+						<?php esc_html_e( 'Calendar notice only — no detail page', 'societypress' ); ?>
+					</label>
+					<p class="description"><?php esc_html_e( 'Use for closures, reminders, and other simple notices that don\'t need their own page.', 'societypress' ); ?></p>
+				</td>
+			</tr>
 		</table>
 		<script>
 		(function($) {
@@ -368,6 +379,7 @@ class SocietyPress_Events {
 			'instructors'           => 'sanitize_text_field',
 			'registration_url'      => 'esc_url_raw',
 			'registration_required' => 'absint',
+			'notice_only'           => 'absint',
 			'recurring'             => 'sanitize_text_field',
 			'recurring_end'         => 'sanitize_text_field',
 			'recurring_day'         => 'sanitize_text_field',
@@ -383,7 +395,7 @@ class SocietyPress_Events {
 				update_post_meta( $post_id, $meta_key, $value );
 			} else {
 				// Checkbox fields need special handling (unchecked = not in $_POST)
-				if ( 'registration_required' === $field ) {
+				if ( in_array( $field, array( 'registration_required', 'notice_only' ), true ) ) {
 					update_post_meta( $post_id, $meta_key, 0 );
 				}
 			}
@@ -649,6 +661,20 @@ class SocietyPress_Events {
 	 */
 	public static function is_registration_required( int $post_id ): bool {
 		return (bool) get_post_meta( $post_id, self::META_PREFIX . 'registration_required', true );
+	}
+
+	/**
+	 * Check if event is notice-only (no detail page).
+	 *
+	 * WHY: Notice-only events (closures, reminders) appear on calendars
+	 *      and listings but shouldn't link to their own detail page.
+	 *      The theme uses this to decide whether to link the event title.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return bool True if notice-only.
+	 */
+	public static function is_notice_only( int $post_id ): bool {
+		return (bool) get_post_meta( $post_id, self::META_PREFIX . 'notice_only', true );
 	}
 
 	/**
@@ -920,10 +946,13 @@ class SocietyPress_Events {
 		$meta_keys = array(
 			self::META_PREFIX . 'date',
 			self::META_PREFIX . 'time',
+			self::META_PREFIX . 'end_time',
 			self::META_PREFIX . 'location',
 			self::META_PREFIX . 'address',
 			self::META_PREFIX . 'instructors',
+			self::META_PREFIX . 'registration_url',
 			self::META_PREFIX . 'registration_required',
+			self::META_PREFIX . 'notice_only',
 			self::META_PREFIX . 'recurring',
 			self::META_PREFIX . 'recurring_end',
 			self::META_PREFIX . 'recurring_day',

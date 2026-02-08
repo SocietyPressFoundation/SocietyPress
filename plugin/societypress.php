@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI: https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies. Handles member registration, dues, renewals, directories, committees, and governance.
- * Version: 0.58d
+ * Version: 0.59d
  * Author: Stricklin Development
  * Author URI: https://stricklindevelopment.com/
  * License: Proprietary
@@ -23,7 +23,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Plugin version.
  */
-define( 'SOCIETYPRESS_VERSION', '0.58d' );
+define( 'SOCIETYPRESS_VERSION', '0.59d' );
 
 /**
  * Plugin directory path.
@@ -185,11 +185,21 @@ final class SocietyPress {
     public ?SocietyPress_User_Manager $user_manager = null;
 
     /**
-     * Admin interface.
+     * Admin interface (wp-admin).
      *
      * @var SocietyPress_Admin|null
      */
     public ?SocietyPress_Admin $admin = null;
+
+    /**
+     * Custom admin router (/sp-admin/).
+     *
+     * WHY: Provides a separate, simplified admin interface for volunteer
+     * webmasters who should never see wp-admin.
+     *
+     * @var SP_Admin_Router|null
+     */
+    public ?SP_Admin_Router $sp_admin_router = null;
 
     /**
      * Volunteer admin interface.
@@ -364,6 +374,9 @@ final class SocietyPress {
         require_once SOCIETYPRESS_PATH . 'includes/class-volunteer-signups.php';
         require_once SOCIETYPRESS_PATH . 'includes/class-leadership.php';
 
+        // Custom admin router - loads on all requests to handle /sp-admin/ URLs
+        require_once SOCIETYPRESS_PATH . 'sp-admin/class-sp-admin-router.php';
+
         if ( is_admin() ) {
             require_once SOCIETYPRESS_PATH . 'admin/class-admin.php';
             require_once SOCIETYPRESS_PATH . 'admin/class-members-list-table.php';
@@ -469,6 +482,9 @@ final class SocietyPress {
         $this->database = new SocietyPress_Database();
         $this->database->install();
 
+        // Create the sp_permissions table for per-module access control
+        $this->create_permissions_table();
+
         // Generate encryption key if needed
         if ( ! get_option( SOCIETYPRESS_ENCRYPTION_KEY_OPTION ) ) {
             $key = SocietyPress_Encryption::generate_key();
@@ -479,8 +495,9 @@ final class SocietyPress {
         $tiers = new SocietyPress_Tiers();
         $tiers->maybe_create_defaults();
 
-        // Add capabilities
+        // Add capabilities and roles
         $this->add_capabilities();
+        $this->add_custom_roles();
 
         // Store version
         update_option( 'societypress_version', SOCIETYPRESS_VERSION );
@@ -490,7 +507,63 @@ final class SocietyPress {
             wp_schedule_event( strtotime( 'tomorrow 9:00am' ), 'daily', 'societypress_send_reminders' );
         }
 
+        // Clear rewrite rules flag so they get flushed
+        delete_option( 'sp_admin_rewrite_rules_flushed' );
+
         flush_rewrite_rules();
+    }
+
+    /**
+     * Create the permissions table for per-module access control.
+     *
+     * WHY: Different volunteers need access to different modules.
+     * The treasurer manages transactions, membership chair manages members, etc.
+     */
+    private function create_permissions_table(): void {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'sp_permissions';
+        $charset_collate = $wpdb->get_charset_collate();
+
+        $sql = "CREATE TABLE {$table} (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            user_id BIGINT(20) UNSIGNED NOT NULL,
+            module VARCHAR(50) NOT NULL,
+            granted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            granted_by BIGINT(20) UNSIGNED NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY user_module (user_id, module),
+            KEY user_id (user_id),
+            KEY module (module)
+        ) {$charset_collate};";
+
+        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+        dbDelta( $sql );
+    }
+
+    /**
+     * Add custom roles for SocietyPress.
+     *
+     * WHY: We need distinct roles:
+     * - sp_volunteer: Can access /sp-admin/ but NOT wp-admin
+     * - sp_member: Can access member portal only
+     */
+    private function add_custom_roles(): void {
+        // Remove existing roles first (in case capabilities changed)
+        remove_role( 'sp_volunteer' );
+        remove_role( 'sp_member' );
+
+        // Volunteer webmaster - full SocietyPress admin access, no WP admin
+        add_role( 'sp_volunteer', 'Society Volunteer', array(
+            'read'            => true,
+            'sp_access_admin' => true,
+        ) );
+
+        // Regular member - member portal only
+        add_role( 'sp_member', 'Society Member', array(
+            'read'             => true,
+            'sp_access_portal' => true,
+        ) );
     }
 
     /**
@@ -521,6 +594,10 @@ final class SocietyPress {
         $this->notifications           = new SocietyPress_Notifications();
         $this->license       = new SocietyPress_License();
         $this->updater       = new SocietyPress_Updater( SOCIETYPRESS_BASENAME, SOCIETYPRESS_VERSION );
+
+        // Initialize the custom /sp-admin/ router
+        // WHY: This provides a separate admin interface for volunteers
+        $this->sp_admin_router = sp_admin_router();
 
         // Initialize theme updater if theme is active
         $theme = wp_get_theme( 'societypress' );
@@ -561,6 +638,9 @@ final class SocietyPress {
             $admin->add_cap( 'manage_society_members', true );
             $admin->add_cap( 'view_society_reports', true );
             $admin->add_cap( 'export_society_members', true );
+            // Admins can also access /sp-admin/
+            $admin->add_cap( 'sp_access_admin', true );
+            $admin->add_cap( 'sp_access_portal', true );
         }
 
         $subscriber = get_role( 'subscriber' );

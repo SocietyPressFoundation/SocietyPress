@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * WHY: Used for cache busting assets and tracking theme updates.
  */
-define( 'SOCIETYPRESS_THEME_VERSION', '1.37d' );
+define( 'SOCIETYPRESS_THEME_VERSION', '1.38d' );
 
 /**
  * Require login to view the site.
@@ -335,6 +335,15 @@ require_once get_template_directory() . '/inc/slider-post-type.php';
  * slide groups anywhere on the site via the widget system.
  */
 require_once get_template_directory() . '/inc/slider-widget.php';
+
+/**
+ * Load Starter Content.
+ *
+ * WHY: Creates essential pages, menus, and reading settings on fresh installs
+ * so the site looks polished from the moment the theme is activated. Only
+ * runs once and only on genuinely new sites (not existing ones).
+ */
+require_once get_template_directory() . '/inc/starter-content.php';
 
 /**
  * Check if SocietyPress plugin is active.

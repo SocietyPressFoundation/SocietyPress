@@ -155,7 +155,33 @@ get_header();
 			});
 			</script>
 		<?php endif;
-	endif; ?>
+	endif;
+
+	/**
+	 * Welcome Hero Fallback
+	 *
+	 * WHY: On a fresh install with no hero widget and no legacy slider configured,
+	 * the homepage would show an empty gap — a terrible first impression for
+	 * non-technical users. This displays a styled welcome banner using the site
+	 * name and tagline. It disappears automatically the moment someone sets up
+	 * a real slider (either via widget or Customizer).
+	 */
+	if ( ! is_active_sidebar( 'hero-area' ) && empty( $slides ) ) :
+		?>
+		<section class="hero-welcome">
+			<div class="hero-welcome-inner">
+				<h1 class="hero-welcome-title"><?php echo esc_html( get_bloginfo( 'name' ) ); ?></h1>
+				<?php
+				$tagline = get_bloginfo( 'description' );
+				if ( $tagline && 'Just another WordPress site' !== $tagline ) :
+					?>
+					<p class="hero-welcome-tagline"><?php echo esc_html( $tagline ); ?></p>
+				<?php endif; ?>
+			</div>
+		</section>
+		<?php
+	endif;
+	?>
 
 	<?php
 	/**

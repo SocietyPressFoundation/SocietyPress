@@ -388,6 +388,84 @@ class SocietyPress_Widgets {
 			),
 			'render_callback' => array( $this, 'render_member_count' ),
 		) );
+
+		// Meeting Countdown Widget
+		// WHY: Many society members want to know "when is the next meeting?"
+		//      A countdown makes this instantly visible without searching the calendar.
+		register_block_type( 'societypress/meeting-countdown', array(
+			'api_version'     => 3,
+			'title'           => __( 'Next Meeting Countdown', 'societypress' ),
+			'description'     => __( 'Countdown to the next general meeting or event.', 'societypress' ),
+			'category'        => 'societypress',
+			'icon'            => 'clock',
+			'keywords'        => array( 'meeting', 'countdown', 'next', 'timer', 'event' ),
+			'supports'        => array(
+				'html'   => false,
+				'anchor' => true,
+			),
+			'attributes'      => array(
+				'title'    => array(
+					'type'    => 'string',
+					'default' => __( 'Next Meeting', 'societypress' ),
+				),
+				'category' => array(
+					'type'    => 'string',
+					'default' => '', // Empty = any event; or slug like "meetings"
+				),
+			),
+			'render_callback' => array( $this, 'render_meeting_countdown' ),
+		) );
+
+		// Registration Open Callout Widget
+		// WHY: Highlights events that still have spots available, encouraging
+		//      members to sign up before slots fill. Particularly useful for classes.
+		register_block_type( 'societypress/registration-open', array(
+			'api_version'     => 3,
+			'title'           => __( 'Registration Open', 'societypress' ),
+			'description'     => __( 'Highlights upcoming events with available registration spots.', 'societypress' ),
+			'category'        => 'societypress',
+			'icon'            => 'edit',
+			'keywords'        => array( 'registration', 'open', 'signup', 'classes', 'available' ),
+			'supports'        => array(
+				'html'   => false,
+				'anchor' => true,
+			),
+			'attributes'      => array(
+				'title' => array(
+					'type'    => 'string',
+					'default' => __( 'Registration Open', 'societypress' ),
+				),
+				'count' => array(
+					'type'    => 'number',
+					'default' => 3,
+				),
+			),
+			'render_callback' => array( $this, 'render_registration_open' ),
+		) );
+
+		// Member Milestones Widget
+		// WHY: Celebrating long-term members builds community and shows appreciation.
+		//      Recognizing 5, 10, 15, 20, 25+ year anniversaries is a tradition
+		//      in genealogical and historical societies.
+		register_block_type( 'societypress/member-milestones', array(
+			'api_version'     => 3,
+			'title'           => __( 'Member Milestones', 'societypress' ),
+			'description'     => __( 'Celebrates members with notable membership anniversaries.', 'societypress' ),
+			'category'        => 'societypress',
+			'icon'            => 'awards',
+			'keywords'        => array( 'milestones', 'anniversary', 'years', 'celebration', 'members' ),
+			'supports'        => array(
+				'html'   => false,
+				'anchor' => true,
+			),
+			'attributes'      => array(
+				'title' => array(
+					'type'    => 'string',
+					'default' => __( 'Member Milestones', 'societypress' ),
+				),
+			),
+			'render_callback' => array( $this, 'render_member_milestones' ),
+		) );
 	}
 
 	/**
@@ -1279,6 +1357,325 @@ class SocietyPress_Widgets {
 		$output .= '</div>';
 
 		return $this->render_widget_wrapper( $title, $output, 'member-count' );
+	}
+
+	/**
+	 * Render the Registration Open callout widget.
+	 *
+	 * WHY: Shows upcoming events that require registration and still have open spots.
+	 *      This encourages members to sign up for classes and workshops before they
+	 *      fill up. Particularly important for societies with popular genealogy classes.
+	 *
+	 * @param array $attributes Block attributes.
+	 * @return string Widget HTML.
+	 */
+	public function render_registration_open( array $attributes ): string {
+		$title = $attributes['title'] ?? __( 'Registration Open', 'societypress' );
+		$count = $attributes['count'] ?? 3;
+
+		$today = current_time( 'Y-m-d' );
+
+		// Get upcoming events that require registration
+		$query = new WP_Query( array(
+			'post_type'      => 'sp_event',
+			'posts_per_page' => 20, // Fetch more than we need, then filter by capacity
+			'post_status'    => 'publish',
+			'meta_key'       => '_sp_event_date',
+			'orderby'        => 'meta_value',
+			'order'          => 'ASC',
+			'meta_query'     => array(
+				'relation' => 'AND',
+				array(
+					'key'     => '_sp_event_date',
+					'value'   => $today,
+					'compare' => '>=',
+					'type'    => 'DATE',
+				),
+				array(
+					'key'     => '_sp_event_registration_required',
+					'value'   => '1',
+					'compare' => '=',
+				),
+			),
+		) );
+
+		if ( ! $query->have_posts() ) {
+			$content = '<p class="sp-reg-none">'
+			         . esc_html__( 'No events with open registration right now.', 'societypress' )
+			         . '</p>';
+			return $this->render_widget_wrapper( $title, $content, 'registration-open' );
+		}
+
+		// Filter to only events that still have available slots
+		$events_with_spots = array();
+		while ( $query->have_posts() && count( $events_with_spots ) < $count ) {
+			$query->the_post();
+			$event_id = get_the_ID();
+
+			// Check if this event has slots with remaining capacity
+			if ( ! function_exists( 'societypress' ) ) {
+				continue;
+			}
+			$slots = societypress()->event_slots->get_by_event( $event_id );
+			$total_remaining = 0;
+
+			foreach ( $slots as $slot ) {
+				$remaining = societypress()->event_slots->get_remaining_capacity( $slot['id'] );
+				if ( null === $remaining ) {
+					// Unlimited capacity — count as open
+					$total_remaining = -1;
+					break;
+				}
+				$total_remaining += $remaining;
+			}
+
+			// Include if there's at least one open spot (or unlimited capacity)
+			if ( $total_remaining !== 0 ) {
+				$events_with_spots[] = array(
+					'id'        => $event_id,
+					'title'     => get_the_title(),
+					'permalink' => get_permalink(),
+					'date'      => SocietyPress_Events::get_event_date( $event_id ),
+					'time'      => SocietyPress_Events::get_event_time( $event_id ),
+					'remaining' => $total_remaining,
+				);
+			}
+		}
+		wp_reset_postdata();
+
+		if ( empty( $events_with_spots ) ) {
+			$content = '<p class="sp-reg-none">'
+			         . esc_html__( 'All upcoming events are full. Check back soon!', 'societypress' )
+			         . '</p>';
+			return $this->render_widget_wrapper( $title, $content, 'registration-open' );
+		}
+
+		$content = '<div class="sp-reg-open-list">';
+		foreach ( $events_with_spots as $event ) {
+			$content .= '<div class="sp-reg-open-item">';
+			$content .= '<a href="' . esc_url( $event['permalink'] ) . '" class="sp-reg-open-title">'
+			          . esc_html( $event['title'] ) . '</a>';
+
+			// Date and time
+			$date_str = $event['date'] ? date_i18n( 'M j', strtotime( $event['date'] ) ) : '';
+			$time_str = $event['time'] ? date_i18n( 'g:i A', strtotime( $event['time'] ) ) : '';
+			$datetime = trim( $date_str . ( $time_str ? ' &middot; ' . $time_str : '' ) );
+			if ( $datetime ) {
+				$content .= '<span class="sp-reg-open-date">' . $datetime . '</span>';
+			}
+
+			// Spots remaining
+			if ( $event['remaining'] === -1 ) {
+				$content .= '<span class="sp-reg-open-spots sp-reg-open-available">'
+				          . esc_html__( 'Open', 'societypress' )
+				          . '</span>';
+			} elseif ( $event['remaining'] <= 3 ) {
+				$content .= '<span class="sp-reg-open-spots sp-reg-open-few">'
+				          . sprintf(
+				              /* translators: %d: number of spots remaining */
+				              esc_html( _n( '%d spot left!', '%d spots left!', $event['remaining'], 'societypress' ) ),
+				              $event['remaining']
+				          )
+				          . '</span>';
+			} else {
+				$content .= '<span class="sp-reg-open-spots sp-reg-open-available">'
+				          . sprintf(
+				              /* translators: %d: number of spots remaining */
+				              esc_html__( '%d spots available', 'societypress' ),
+				              $event['remaining']
+				          )
+				          . '</span>';
+			}
+
+			$content .= '</div>';
+		}
+		$content .= '</div>';
+
+		return $this->render_widget_wrapper( $title, $content, 'registration-open' );
+	}
+
+	/**
+	 * Render the Member Milestones widget.
+	 *
+	 * WHY: Celebrating long-term members builds community pride. Genealogical
+	 *      societies especially value tradition and longevity, so recognizing
+	 *      5, 10, 15, 20, 25+ year members matters to this audience.
+	 *
+	 * @param array $attributes Block attributes.
+	 * @return string Widget HTML.
+	 */
+	public function render_member_milestones( array $attributes ): string {
+		$title = $attributes['title'] ?? __( 'Member Milestones', 'societypress' );
+
+		$members_table = SocietyPress::table( 'members' );
+		$current_year  = (int) current_time( 'Y' );
+
+		// Milestone years we celebrate (in descending order for display priority)
+		$milestones = array( 50, 40, 30, 25, 20, 15, 10, 5 );
+
+		$content = '';
+		$found_any = false;
+
+		foreach ( $milestones as $years ) {
+			$target_year = $current_year - $years;
+
+			// Find active members who joined in the target year
+			$members = $this->wpdb->get_results(
+				$this->wpdb->prepare(
+					"SELECT first_name, last_name
+					 FROM {$members_table}
+					 WHERE status = 'active'
+					   AND YEAR(join_date) = %d
+					 ORDER BY last_name ASC
+					 LIMIT 10",
+					$target_year
+				)
+			);
+
+			if ( empty( $members ) ) {
+				continue;
+			}
+
+			$found_any = true;
+
+			$content .= '<div class="sp-milestone-group">';
+			$content .= '<div class="sp-milestone-badge">'
+			          . '<span class="sp-milestone-years">' . esc_html( $years ) . '</span>'
+			          . '<span class="sp-milestone-label">' . esc_html__( 'Years', 'societypress' ) . '</span>'
+			          . '</div>';
+			$content .= '<div class="sp-milestone-names">';
+
+			$names = array();
+			foreach ( $members as $member ) {
+				$names[] = esc_html( $member->first_name . ' ' . $member->last_name );
+			}
+			$content .= implode( ', ', $names );
+
+			$content .= '</div>';
+			$content .= '</div>';
+		}
+
+		if ( ! $found_any ) {
+			$content = '<p class="sp-milestones-none">'
+			         . esc_html__( 'No milestone anniversaries this year.', 'societypress' )
+			         . '</p>';
+		}
+
+		return $this->render_widget_wrapper( $title, $content, 'member-milestones' );
+	}
+
+	/**
+	 * Render the Meeting Countdown widget.
+	 *
+	 * WHY: Society members frequently ask "when is the next meeting?"
+	 *      This widget answers that question at a glance with a friendly
+	 *      countdown showing days remaining, plus the event name and date.
+	 *
+	 * @param array $attributes Block attributes.
+	 * @return string Widget HTML.
+	 */
+	public function render_meeting_countdown( array $attributes ): string {
+		$title    = $attributes['title'] ?? __( 'Next Meeting', 'societypress' );
+		$category = $attributes['category'] ?? '';
+
+		$today = current_time( 'Y-m-d' );
+
+		// Build the query for the next upcoming event
+		$query_args = array(
+			'post_type'      => 'sp_event',
+			'posts_per_page' => 1,
+			'post_status'    => 'publish',
+			'meta_key'       => '_sp_event_date',
+			'orderby'        => 'meta_value',
+			'order'          => 'ASC',
+			'meta_query'     => array(
+				array(
+					'key'     => '_sp_event_date',
+					'value'   => $today,
+					'compare' => '>=',
+					'type'    => 'DATE',
+				),
+			),
+		);
+
+		// If a specific event category is selected, filter by it
+		// WHY: Admins might want "Next General Meeting" specifically rather than any event
+		if ( $category ) {
+			$query_args['tax_query'] = array(
+				array(
+					'taxonomy' => 'sp_event_category',
+					'field'    => 'slug',
+					'terms'    => $category,
+				),
+			);
+		}
+
+		$query = new WP_Query( $query_args );
+
+		if ( ! $query->have_posts() ) {
+			$content = '<p class="sp-countdown-none">'
+			         . esc_html__( 'No upcoming events scheduled.', 'societypress' )
+			         . '</p>';
+			return $this->render_widget_wrapper( $title, $content, 'meeting-countdown' );
+		}
+
+		$query->the_post();
+		$event_id    = get_the_ID();
+		$event_title = get_the_title();
+		$event_date  = SocietyPress_Events::get_event_date( $event_id );
+		$event_time  = SocietyPress_Events::get_event_time( $event_id );
+		$event_loc   = SocietyPress_Events::get_event_location( $event_id );
+		$permalink   = get_permalink( $event_id );
+		wp_reset_postdata();
+
+		// Calculate days until the event
+		$event_timestamp = strtotime( $event_date );
+		$today_timestamp = strtotime( $today );
+		$days_until      = (int) ceil( ( $event_timestamp - $today_timestamp ) / DAY_IN_SECONDS );
+
+		// Build the countdown display
+		$content = '<div class="sp-countdown">';
+
+		// The big number — designed to draw the eye immediately
+		if ( $days_until === 0 ) {
+			$content .= '<div class="sp-countdown-number sp-countdown-today">'
+			          . esc_html__( 'Today!', 'societypress' )
+			          . '</div>';
+		} elseif ( $days_until === 1 ) {
+			$content .= '<div class="sp-countdown-number sp-countdown-tomorrow">'
+			          . esc_html__( 'Tomorrow!', 'societypress' )
+			          . '</div>';
+		} else {
+			$content .= '<div class="sp-countdown-number">'
+			          . '<span class="sp-countdown-days">' . esc_html( $days_until ) . '</span> '
+			          . '<span class="sp-countdown-label">'
+			          . esc_html( _n( 'day away', 'days away', $days_until, 'societypress' ) )
+			          . '</span>'
+			          . '</div>';
+		}
+
+		// Event details below the countdown
+		$content .= '<div class="sp-countdown-details">';
+		$content .= '<a href="' . esc_url( $permalink ) . '" class="sp-countdown-title">'
+		          . esc_html( $event_title ) . '</a>';
+
+		$formatted_date = date_i18n( 'l, F j', $event_timestamp );
+		$content .= '<div class="sp-countdown-date">' . esc_html( $formatted_date ) . '</div>';
+
+		if ( $event_time ) {
+			$content .= '<div class="sp-countdown-time">'
+			          . esc_html( date_i18n( 'g:i A', strtotime( $event_time ) ) )
+			          . '</div>';
+		}
+
+		if ( $event_loc ) {
+			$content .= '<div class="sp-countdown-location">' . esc_html( $event_loc ) . '</div>';
+		}
+
+		$content .= '</div>'; // .sp-countdown-details
+		$content .= '</div>'; // .sp-countdown
+
+		return $this->render_widget_wrapper( $title, $content, 'meeting-countdown' );
 	}
 
 	/**

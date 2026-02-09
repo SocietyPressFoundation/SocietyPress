@@ -44,6 +44,9 @@ class SocietyPress_Events {
 		add_action( 'save_post_sp_event', array( $this, 'save_event_meta' ), 10, 2 );
 		add_filter( 'post_row_actions', array( $this, 'add_duplicate_link' ), 10, 2 );
 		add_action( 'admin_action_duplicate_event', array( $this, 'duplicate_event' ) );
+
+		// iCal export: serves .ics download when ?sp_ical={event_id} is in the URL
+		add_action( 'template_redirect', array( $this, 'handle_ical_download' ) );
 	}
 
 	/**
@@ -984,5 +987,134 @@ class SocietyPress_Events {
 		// Redirect to edit new post
 		wp_safe_redirect( admin_url( 'post.php?action=edit&post=' . $new_post_id ) );
 		exit;
+	}
+
+	/**
+	 * Handle iCal (.ics) download request.
+	 *
+	 * WHY: Members often want to add society events directly to their personal
+	 *      calendars (Google Calendar, Apple Calendar, Outlook). An iCal download
+	 *      link makes this a one-click operation instead of manual entry.
+	 *
+	 * Triggered by: ?sp_ical={event_id}
+	 */
+	public function handle_ical_download(): void {
+		if ( empty( $_GET['sp_ical'] ) ) {
+			return;
+		}
+
+		$event_id = absint( $_GET['sp_ical'] );
+		$event    = get_post( $event_id );
+
+		// Validate this is a real, published event
+		if ( ! $event || 'sp_event' !== $event->post_type || 'publish' !== $event->post_status ) {
+			wp_die( esc_html__( 'Event not found.', 'societypress' ), 404 );
+		}
+
+		$event_date = self::get_event_date( $event_id );
+		$event_time = self::get_event_time( $event_id );
+		$end_time   = self::get_event_end_time( $event_id );
+		$location   = self::get_event_location( $event_id );
+		$address    = self::get_event_address( $event_id );
+
+		// Build the full location string (venue + address)
+		$full_location = $location;
+		if ( $address ) {
+			$full_location .= $location ? ', ' : '';
+			// Flatten multi-line address into a single line for iCal
+			$full_location .= str_replace( array( "\r\n", "\r", "\n" ), ', ', $address );
+		}
+
+		// Build DTSTART and DTEND in iCal format
+		// If we have a date and time, use date-time format. Otherwise, use all-day format.
+		if ( $event_date && $event_time ) {
+			$dt_start = gmdate( 'Ymd\THis', strtotime( $event_date . ' ' . $event_time ) );
+			if ( $end_time ) {
+				$dt_end = gmdate( 'Ymd\THis', strtotime( $event_date . ' ' . $end_time ) );
+			} else {
+				// Default to 1 hour duration if no end time
+				$dt_end = gmdate( 'Ymd\THis', strtotime( $event_date . ' ' . $event_time . ' +1 hour' ) );
+			}
+			$dtstart_line = 'DTSTART:' . $dt_start;
+			$dtend_line   = 'DTEND:' . $dt_end;
+		} elseif ( $event_date ) {
+			// All-day event (VALUE=DATE means no time component)
+			$dtstart_line = 'DTSTART;VALUE=DATE:' . gmdate( 'Ymd', strtotime( $event_date ) );
+			$dtend_line   = 'DTEND;VALUE=DATE:' . gmdate( 'Ymd', strtotime( $event_date . ' +1 day' ) );
+		} else {
+			wp_die( esc_html__( 'This event does not have a date set.', 'societypress' ), 400 );
+		}
+
+		// Build a plain-text description from the event content
+		$description = wp_strip_all_tags( $event->post_content );
+		$description = str_replace( array( "\r\n", "\r" ), "\n", $description );
+
+		// Generate a unique ID for the event (required by RFC 5545)
+		$uid = $event_id . '-' . strtotime( $event->post_date ) . '@' . wp_parse_url( home_url(), PHP_URL_HOST );
+
+		// Build the .ics content (RFC 5545 format)
+		$ics  = "BEGIN:VCALENDAR\r\n";
+		$ics .= "VERSION:2.0\r\n";
+		$ics .= "PRODID:-//SocietyPress//Events//EN\r\n";
+		$ics .= "CALSCALE:GREGORIAN\r\n";
+		$ics .= "METHOD:PUBLISH\r\n";
+		$ics .= "BEGIN:VEVENT\r\n";
+		$ics .= 'UID:' . $uid . "\r\n";
+		$ics .= 'DTSTAMP:' . gmdate( 'Ymd\THis\Z' ) . "\r\n";
+		$ics .= $dtstart_line . "\r\n";
+		$ics .= $dtend_line . "\r\n";
+		$ics .= 'SUMMARY:' . self::ical_escape( $event->post_title ) . "\r\n";
+
+		if ( $full_location ) {
+			$ics .= 'LOCATION:' . self::ical_escape( $full_location ) . "\r\n";
+		}
+
+		if ( $description ) {
+			$ics .= 'DESCRIPTION:' . self::ical_escape( $description ) . "\r\n";
+		}
+
+		$ics .= 'URL:' . get_permalink( $event_id ) . "\r\n";
+		$ics .= "END:VEVENT\r\n";
+		$ics .= "END:VCALENDAR\r\n";
+
+		// Generate a clean filename from the event title
+		$filename = sanitize_file_name( $event->post_title ) . '.ics';
+
+		// Send headers and output the file
+		header( 'Content-Type: text/calendar; charset=utf-8' );
+		header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+		header( 'Cache-Control: no-cache, no-store, must-revalidate' );
+		echo $ics; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Raw iCal format, not HTML
+		exit;
+	}
+
+	/**
+	 * Escape a string for iCal format (RFC 5545).
+	 *
+	 * WHY: iCal has specific escaping rules — commas, semicolons, backslashes,
+	 *      and newlines all need to be escaped or they'll break the parser
+	 *      in calendar apps.
+	 *
+	 * @param string $text Text to escape.
+	 * @return string Escaped text.
+	 */
+	private static function ical_escape( string $text ): string {
+		$text = str_replace( '\\', '\\\\', $text );
+		$text = str_replace( ',', '\\,', $text );
+		$text = str_replace( ';', '\\;', $text );
+		$text = str_replace( "\n", '\\n', $text );
+		return $text;
+	}
+
+	/**
+	 * Get the iCal download URL for an event.
+	 *
+	 * WHY: Provides a clean helper for templates and widgets to generate the download link.
+	 *
+	 * @param int $event_id The event post ID.
+	 * @return string The iCal download URL.
+	 */
+	public static function get_ical_url( int $event_id ): string {
+		return add_query_arg( 'sp_ical', $event_id, home_url( '/' ) );
 	}
 }

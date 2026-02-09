@@ -88,7 +88,7 @@ class SocietyPress_Notifications {
 
 		// Get email settings
 		$subject = $settings['email_notifications']['welcome_subject'] ?? 'Welcome to {{organization_name}}';
-		$message = $settings['email_notifications']['welcome_message'] ?? $this->get_default_welcome_template();
+		$message = $settings['email_notifications']['welcome_message'] ?? self::get_default_welcome_template();
 
 		// Replace merge tags
 		$subject = $this->replace_merge_tags( $subject, $member );
@@ -184,7 +184,7 @@ class SocietyPress_Notifications {
 
 		$settings = get_option( 'societypress_settings', array() );
 		$subject = $settings['email_notifications']['reminder_subject'] ?? 'Your membership expires in {{days_until_expiration}} days';
-		$message = $settings['email_notifications']['reminder_message'] ?? $this->get_default_reminder_template();
+		$message = $settings['email_notifications']['reminder_message'] ?? self::get_default_reminder_template();
 
 		$sent_count = 0;
 
@@ -262,7 +262,7 @@ class SocietyPress_Notifications {
 		}
 
 		$subject = $settings['email_notifications']['expired_subject'] ?? 'Your {{organization_name}} membership has expired';
-		$message = $settings['email_notifications']['expired_message'] ?? $this->get_default_expired_template();
+		$message = $settings['email_notifications']['expired_message'] ?? self::get_default_expired_template();
 
 		$sent_count = 0;
 
@@ -550,9 +550,13 @@ class SocietyPress_Notifications {
 	/**
 	 * Get default welcome email template.
 	 *
+	 * WHY: Public and static so the Settings page can display these same
+	 *      defaults in the textarea fields, giving admins a starting point
+	 *      to customize rather than staring at an empty box.
+	 *
 	 * @return string HTML template.
 	 */
-	private function get_default_welcome_template(): string {
+	public static function get_default_welcome_template(): string {
 		return '<h2>Welcome to {{organization_name}}, {{first_name}}!</h2>
 
 <p>We\'re excited to have you as a member. Your <strong>{{tier}}</strong> membership is now active.</p>
@@ -580,7 +584,7 @@ class SocietyPress_Notifications {
 	 *
 	 * @return string HTML template.
 	 */
-	private function get_default_reminder_template(): string {
+	public static function get_default_reminder_template(): string {
 		return '<h2>Time to Renew Your Membership</h2>
 
 <p>Hi {{first_name}},</p>
@@ -607,7 +611,7 @@ class SocietyPress_Notifications {
 	 *
 	 * @return string HTML template.
 	 */
-	private function get_default_expired_template(): string {
+	public static function get_default_expired_template(): string {
 		return '<h2>Your Membership Has Expired</h2>
 
 <p>Hi {{first_name}},</p>

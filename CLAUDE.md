@@ -3,8 +3,8 @@
 Membership management plugin and theme for WordPress, targeting genealogical and historical societies.
 
 **Current Versions:**
-- **Plugin:** 0.59d
-- **Theme:** 1.37d
+- **Plugin:** 0.60d
+- **Theme:** 1.38d
 
 (Development versioning: increment by 0.01 with each change)
 
@@ -199,18 +199,29 @@ The plugin provides a custom post type (`sp_event`) for managing society events.
 
 ## Admin Menu Structure
 
-Flat structure under SocietyPress main menu:
+Four top-level menus, grouped by function:
+
+**SocietyPress** (dashicons-groups, position 30)
 1. Dashboard
-2. Leadership (positions and holders management)
-3. Committees (committees and members management)
-4. Calendar (events list)
-5. Add New Event
-6. Members
-7. Add New Member
-8. Import Members
-9. Member Levels
-10. Library (placeholder)
-11. Settings (includes license management)
+2. Library (placeholder)
+3. Email Log
+4. Settings (includes license management)
+
+**Members** (dashicons-id, position 31)
+1. All Members
+2. Add New
+3. Import
+4. Member Levels
+
+**Events** (dashicons-calendar-alt, position 32 — auto-created by sp_event CPT)
+1. All Events (auto)
+2. Add New (auto)
+3. Event Categories (auto from taxonomy)
+4. Import Events
+
+**Organization** (dashicons-building, position 33)
+1. Leadership (positions and holders management)
+2. Committees (committees and members management)
 
 ## Theme Features
 
@@ -335,7 +346,6 @@ On localhost or when `WP_DEBUG` is true, license checks are automatically bypass
 ## Known Issues
 
 - WordPress admin menu system does not support nested flyout submenus on submenu items (platform limitation)
-- Events CPT set to `show_in_menu => false` to prevent duplicate menu items
 - 404 page image uses hardcoded upload path (2026/01/404.jpg)
 
 ## Testing Notes

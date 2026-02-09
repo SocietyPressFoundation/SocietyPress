@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI: https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies. Handles member registration, dues, renewals, directories, committees, and governance.
- * Version: 0.60d
+ * Version: 0.63d
  * Author: Stricklin Development
  * Author URI: https://stricklindevelopment.com/
  * License: Proprietary
@@ -23,7 +23,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Plugin version.
  */
-define( 'SOCIETYPRESS_VERSION', '0.60d' );
+define( 'SOCIETYPRESS_VERSION', '0.63d' );
 
 /**
  * Plugin directory path.
@@ -393,12 +393,17 @@ final class SocietyPress {
             require_once SOCIETYPRESS_PATH . 'public/class-directory.php';
             require_once SOCIETYPRESS_PATH . 'public/class-portal.php';
             require_once SOCIETYPRESS_PATH . 'public/class-join-form.php';
+            require_once SOCIETYPRESS_PATH . 'public/class-calendar.php';
         }
 
-        // Event registration frontend needs to load for both frontend AND AJAX
+        // Event registration, volunteer, and calendar frontends need to load for both frontend AND AJAX
+        // (AJAX requests to admin-ajax.php have is_admin() === true)
         if ( ! is_admin() || wp_doing_ajax() ) {
             require_once SOCIETYPRESS_PATH . 'public/class-event-registration-frontend.php';
             require_once SOCIETYPRESS_PATH . 'public/class-volunteer-frontend.php';
+            if ( ! class_exists( 'SocietyPress_Calendar' ) ) {
+                require_once SOCIETYPRESS_PATH . 'public/class-calendar.php';
+            }
         }
 
         // Public widgets (block-based) load on both frontend and admin for block editor
@@ -620,13 +625,17 @@ final class SocietyPress {
             $this->directory                   = new SocietyPress_Directory();
             $this->portal                      = new SocietyPress_Portal();
             $this->join_form                   = new SocietyPress_Join_Form();
+            $this->calendar                    = new SocietyPress_Calendar();
         }
 
-        // Event registration and volunteer frontend needs to load for both frontend AND AJAX
+        // Event registration, volunteer, and calendar frontends need to load for both frontend AND AJAX
         // (AJAX requests to admin-ajax.php have is_admin() === true)
         if ( ! is_admin() || wp_doing_ajax() ) {
             $this->event_registration_frontend = new SocietyPress_Event_Registration_Frontend();
             $this->volunteer_frontend          = new SocietyPress_Volunteer_Frontend();
+            if ( ! isset( $this->calendar ) ) {
+                $this->calendar = new SocietyPress_Calendar();
+            }
         }
 
         // Public widgets load on both frontend and admin (for block editor)

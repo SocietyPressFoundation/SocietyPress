@@ -3,8 +3,8 @@
 Membership management plugin and theme for WordPress, targeting genealogical and historical societies.
 
 **Current Versions:**
-- **Plugin:** 0.60d
-- **Theme:** 1.38d
+- **Plugin:** 0.63d
+- **Theme:** 1.39d
 
 (Development versioning: increment by 0.01 with each change)
 

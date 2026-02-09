@@ -4,7 +4,7 @@ Theme URI: https://github.com/charles-stricklin/SocietyPress
 Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
 Description: Premium WordPress theme for genealogical and historical societies. Features member directories, event calendars, research resources, and document archives. Designed to work seamlessly with the SocietyPress membership management plugin.
-Version: 1.37d
+Version: 1.39d
 Requires at least: 6.0
 Tested up to: 6.4
 Requires PHP: 8.0
@@ -2651,4 +2651,92 @@ article .entry-footer span {
 .hero-area-wrapper .hero-slider {
 	width: 100%;
 	margin-left: 0;
+}
+
+/* ==========================================================================
+   Welcome Hero Fallback
+   ========================================================================== */
+
+/*
+ * WHY: On a fresh install with no hero slider configured, the homepage shows
+ * nothing in the hero area — just a blank gap. This provides an attractive
+ * welcome banner using the site name and tagline so the site looks polished
+ * from minute one. It disappears automatically once a real slider is set up.
+ */
+
+.hero-welcome {
+	/* Full-width breakout to match the real hero slider behavior */
+	width: 100vw;
+	margin-left: calc(-50vw + 50%);
+	background: linear-gradient(135deg, var(--sp-primary-700) 0%, var(--sp-primary-500) 100%);
+	color: white;
+	text-align: center;
+	padding: var(--sp-space-24) var(--sp-space-6);
+	position: relative;
+	overflow: hidden;
+}
+
+/* WHY: Subtle decorative element adds visual depth without requiring an image */
+.hero-welcome::before {
+	content: '';
+	position: absolute;
+	top: -50%;
+	right: -20%;
+	width: 500px;
+	height: 500px;
+	background: rgba(255, 255, 255, 0.05);
+	border-radius: 50%;
+	pointer-events: none;
+}
+
+.hero-welcome-inner {
+	max-width: var(--sp-content-width);
+	margin: 0 auto;
+	position: relative;
+	z-index: 1;
+}
+
+.hero-welcome-title {
+	font-size: var(--sp-text-5xl);
+	font-weight: 800;
+	margin: 0 0 var(--sp-space-4);
+	color: white;
+	line-height: var(--sp-leading-tight);
+	text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.hero-welcome-tagline {
+	font-size: var(--sp-text-2xl);
+	font-weight: 400;
+	margin: 0;
+	opacity: 0.9;
+	line-height: var(--sp-leading-relaxed);
+}
+
+@media (max-width: 1280px) {
+	.hero-welcome {
+		padding: var(--sp-space-20) var(--sp-space-6);
+	}
+
+	.hero-welcome-title {
+		font-size: var(--sp-text-4xl);
+	}
+
+	.hero-welcome-tagline {
+		font-size: var(--sp-text-xl);
+	}
+}
+
+@media (max-width: 768px) {
+	.hero-welcome {
+		padding: var(--sp-space-16) var(--sp-space-4);
+	}
+
+	.hero-welcome-title {
+		font-size: var(--sp-text-3xl);
+	}
+
+	.hero-welcome-tagline {
+		font-size: var(--sp-text-lg);
+	}
 }

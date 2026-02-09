@@ -686,3 +686,228 @@
         transition: none;
     }
 }
+
+/* ==========================================================================
+   Meeting Countdown Widget
+   WHY: Big, bold countdown number draws the eye immediately so members
+        can see at a glance when the next meeting is. The warm orange accent
+        conveys urgency without alarm.
+   ========================================================================== */
+
+.sp-widget-meeting-countdown {
+    border-left: 4px solid #e67e22;
+    text-align: center;
+}
+
+.sp-widget-meeting-countdown .sp-widget-title {
+    border-bottom-color: #e67e22;
+}
+
+.sp-countdown {
+    padding: 15px 0;
+}
+
+.sp-countdown-number {
+    font-size: 20px;
+    font-weight: 700;
+    color: #1d2327;
+    margin-bottom: 15px;
+}
+
+.sp-countdown-days {
+    font-size: 48px;
+    color: #e67e22;
+    line-height: 1;
+    display: block;
+}
+
+.sp-countdown-label {
+    font-size: 16px;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.sp-countdown-today {
+    font-size: 36px;
+    color: #00a32a;
+}
+
+.sp-countdown-tomorrow {
+    font-size: 32px;
+    color: #e67e22;
+}
+
+.sp-countdown-details {
+    padding-top: 10px;
+    border-top: 1px solid #eee;
+}
+
+.sp-countdown-title {
+    display: block;
+    font-size: 18px;
+    font-weight: 600;
+    color: #1d2327;
+    text-decoration: none;
+    margin-bottom: 8px;
+}
+
+.sp-countdown-title:hover {
+    color: #0073aa;
+    text-decoration: underline;
+}
+
+.sp-countdown-date {
+    font-size: 15px;
+    color: #333;
+    font-weight: 500;
+}
+
+.sp-countdown-time,
+.sp-countdown-location {
+    font-size: 14px;
+    color: #666;
+    margin-top: 4px;
+}
+
+.sp-countdown-none {
+    color: #666;
+    font-style: italic;
+}
+
+/* ==========================================================================
+   Registration Open Callout Widget
+   WHY: Draws attention to events that still have spots, encouraging signups.
+        The green accent conveys "go ahead, register!" and the urgency
+        coloring on low spots drives action.
+   ========================================================================== */
+
+.sp-widget-registration-open {
+    border-left: 4px solid #00a32a;
+}
+
+.sp-widget-registration-open .sp-widget-title {
+    border-bottom-color: #00a32a;
+}
+
+.sp-reg-open-item {
+    padding: 12px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.sp-reg-open-item:last-child {
+    border-bottom: none;
+}
+
+.sp-reg-open-title {
+    display: block;
+    font-weight: 600;
+    font-size: 16px;
+    color: #1d2327;
+    text-decoration: none;
+    margin-bottom: 4px;
+}
+
+.sp-reg-open-title:hover {
+    color: #0073aa;
+    text-decoration: underline;
+}
+
+.sp-reg-open-date {
+    display: block;
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 4px;
+}
+
+.sp-reg-open-spots {
+    display: inline-block;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 3px;
+}
+
+.sp-reg-open-available {
+    background: #d6f4d6;
+    color: #006600;
+}
+
+.sp-reg-open-few {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.sp-reg-none {
+    color: #666;
+    font-style: italic;
+}
+
+/* ==========================================================================
+   Member Milestones Widget
+   WHY: Celebrating long-term members is a core tradition in genealogical
+        societies. The gold accent and badge design give it an "award"
+        feeling that honors the member's commitment.
+   ========================================================================== */
+
+.sp-widget-member-milestones {
+    border-left: 4px solid #d4a017;
+}
+
+.sp-widget-member-milestones .sp-widget-title {
+    border-bottom-color: #d4a017;
+}
+
+.sp-milestone-group {
+    display: flex;
+    align-items: flex-start;
+    gap: 15px;
+    padding: 12px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.sp-milestone-group:last-child {
+    border-bottom: none;
+}
+
+.sp-milestone-badge {
+    flex-shrink: 0;
+    width: 56px;
+    height: 56px;
+    background: linear-gradient(135deg, #f5d76e, #d4a017);
+    border-radius: 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: #fff;
+}
+
+.sp-milestone-years {
+    display: block;
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.sp-milestone-label {
+    display: block;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    line-height: 1;
+    margin-top: 2px;
+}
+
+.sp-milestone-names {
+    font-size: 15px;
+    color: #1d2327;
+    line-height: 1.5;
+    padding-top: 4px;
+}
+
+.sp-milestones-none {
+    color: #666;
+    font-style: italic;
+}

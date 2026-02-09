@@ -42,7 +42,11 @@ debug.log
 coverage/
 .phpunit.result.cache
 
-# Local development notes
+# Claude Code
+.claude/
+
+# Local development files
 TODO.md
 NOTES.md
 scratch/
+Misc/

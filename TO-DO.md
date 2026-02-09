@@ -56,10 +56,10 @@
 ## Short-Term Priority (MVP)
 
 ### Member Features
-- [ ] Public member directory (shortcode)
-- [ ] Member self-service portal
-- [ ] Member profile editing
-- [ ] Privacy controls (show/hide fields publicly)
+- [x] Public member directory (shortcode + AJAX search/filter)
+- [x] Member self-service portal (profile, events, volunteer commitments)
+- [x] Member profile editing (auto-save fields, rate-limited)
+- [x] Privacy controls (directory_visible opt-in, field-level visibility)
 - [x] Format phone numbers on input
 - [x] Email address validation
 - [x] Middle name/initial field
@@ -67,45 +67,45 @@
 - [x] Address line 2 field
 
 ### Events
-- [ ] Calendar view for events (month/week/day)
+- [x] Calendar view for events (month view with AJAX navigation)
 - [x] Event time slots with capacity
 - [x] Event registration form (frontend)
 - [x] Event waitlist with auto-promotion
 - [x] Admin slots meta box with repeatable rows
 - [x] Portal "My Events" widget
-- [ ] Email notifications for event updates
-- [ ] Email notification when promoted from waitlist
-- [ ] iCal export
+- [x] Email notifications for event updates
+- [x] Email notification when promoted from waitlist
+- [x] iCal export (download .ics from single event pages)
 
 ### Communication
 - [x] Email notifications (welcome, renewal reminders, expired notices)
 - [x] Membership renewal reminders (daily cron, configurable intervals)
 - [x] Customizable email templates (pre-filled defaults, HTML support, merge tags)
-- [ ] Event registration confirmation
-- [ ] Email notification when promoted from waitlist
+- [x] Event registration confirmation
+- [x] Email notification when promoted from waitlist
 
 ### Admin Dashboard
-- [ ] Dashboard widgets (expiring members, recent signups, upcoming events)
-- [ ] Quick stats overview
-- [ ] Activity feed
+- [x] Dashboard widgets (expiring members, recent signups, upcoming events)
+- [x] Quick stats overview (stat cards + efficient GROUP BY query)
+- [x] Activity feed (audit log + email log combined)
 
 ### Frontend Widgets & Homepage Content
-- [ ] Welcome new members widget (with consent setting)
+- [x] Welcome new members widget (with consent setting)
 - [ ] Member milestones widget (25-year members, research breakthroughs)
-- [ ] In memoriam section
-- [ ] Upcoming events widget (next 3-5 events)
-- [ ] Next general meeting countdown
+- [x] In memoriam section
+- [x] Upcoming events widget (next 3-5 events)
+- [x] Next general meeting countdown (block widget with category filter)
 - [ ] "Registration open" callouts for classes
-- [ ] Latest newsletter teaser widget
-- [ ] Research tip of the month
+- [x] Latest newsletter teaser widget
+- [x] Research tip of the month
 - [ ] Featured library resource widget
 - [ ] "This day in local history" widget
-- [ ] Volunteer spotlight
+- [x] Volunteer spotlight
 - [ ] DNA success stories
 - [ ] "Members researching [surname]" connection engine
-- [ ] Hours & location widget
-- [ ] Quick links widget (renew, directory, contact)
-- [ ] Holiday closures / announcements banner
+- [x] Hours & location widget
+- [x] Quick links widget (renew, directory, contact)
+- [x] Announcements banner/widget
 
 ## Medium-Term
 
@@ -220,6 +220,62 @@
 - 404 page image uses hardcoded upload path (2026/01/404.jpg)
 
 ## Version History
+
+### 0.63d (2026-02-08)
+- **"Registration Open" Callout Widget:**
+  - New `societypress/registration-open` block widget
+  - Shows events with open registration and remaining spots
+  - Urgency coloring (green/orange/red) based on capacity
+  - Links directly to event pages for easy registration
+- **Member Milestones Widget:**
+  - New `societypress/member-milestones` block widget
+  - Celebrates 5/10/15/20/25/30/40/50-year member anniversaries
+  - Gold badge design with milestone year counts
+- **Event Update Email Notifications:**
+  - Automatic email to all registered members when event date, time, or location changes
+  - Captures old meta values before save, compares after save
+  - Detailed change list in email (exactly what changed, old → new)
+  - Only fires for published events with confirmed registrations
+  - Respects member communication preferences
+
+### 0.62d (2026-02-08)
+- **Event Calendar View:**
+  - New `[societypress_calendar]` shortcode with month-view grid
+  - AJAX month navigation (no page reload)
+  - Events shown as clickable links on their dates
+  - Today highlighted with blue circle
+  - Responsive: collapses to dot indicators on mobile
+  - New files: `class-calendar.php`, `calendar.css`, `calendar.js`
+- **Next Meeting Countdown Widget:**
+  - New `societypress/meeting-countdown` block widget
+  - Shows days until next event with big countdown number
+  - Supports event category filtering (e.g., "meetings" only)
+  - Shows event title, date, time, and location
+  - Special "Today!" and "Tomorrow!" states
+
+### 0.61d (2026-02-08)
+- **Enriched SocietyPress Dashboard:**
+  - Replaced 4 separate get_members() calls with efficient GROUP BY query via dashboard widgets
+  - Added Memberships Expiring Soon section (color-coded: red ≤7 days, orange >7)
+  - Added Recent New Members section with linked names
+  - Added Upcoming Events section (next 5 events, linked to edit)
+  - Added Recent Activity feed (combined audit log + email log)
+  - Expanded Quick Actions (Add Member, Import, Add Event, Settings)
+  - Two-column responsive layout with .dashboard-row CSS
+- **Event Registration Confirmation Email:**
+  - Automatic email on successful event registration
+  - Includes event title, date, time, location, and event page link
+  - Fires via new `societypress_event_registered` action hook
+- **Waitlist Promotion Email:**
+  - Automatic email when member is promoted from waitlist to confirmed
+  - Hooks into existing `societypress_waitlist_promoted` action
+  - Includes full event details and link to event page
+- **iCal Export:**
+  - Download .ics files for any published event via `?sp_ical={id}`
+  - "Add to Calendar" link on single event pages
+  - RFC 5545 compliant, works with Google Calendar, Apple Calendar, Outlook
+  - Static helper: `SocietyPress_Events::get_ical_url()`
+- Made dashboard widget data methods public (get_expiring_members, get_recent_signups, get_member_stats)
 
 ### 0.60d (2026-02-08)
 - **Admin Menu Restructure:**

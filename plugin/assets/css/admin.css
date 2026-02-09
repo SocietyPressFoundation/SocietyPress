@@ -55,6 +55,30 @@
     color: #dba617;
 }
 
+/* Two-column rows used on the SocietyPress Dashboard page */
+.dashboard-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin-top: 20px;
+}
+
+/* Each section within a dashboard-row fills equal space */
+.dashboard-row .dashboard-section {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 20px;
+    flex: 1;
+    min-width: 300px;
+}
+
+.dashboard-row .dashboard-section h2 {
+    margin-top: 0;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #c3c4c7;
+}
+
 .societypress-dashboard-sections {
     display: flex;
     flex-wrap: wrap;
@@ -356,6 +380,10 @@
     }
 
     .societypress-dashboard-sections {
+        flex-direction: column;
+    }
+
+    .dashboard-row {
         flex-direction: column;
     }
 

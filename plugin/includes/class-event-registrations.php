@@ -132,14 +132,19 @@ class SocietyPress_Event_Registrations {
 			);
 		}
 
+		$registration_id = (int) $this->wpdb->insert_id;
+
 		$message = $status === 'confirmed'
 			? __( 'You have been registered for this time slot.', 'societypress' )
 			: __( 'This slot is full. You have been added to the waitlist.', 'societypress' );
 
+		// Fire hook so email notifications can be sent
+		do_action( 'societypress_event_registered', $registration_id, $member_id, $slot_id, $status );
+
 		return array(
 			'success'         => true,
 			'status'          => $status,
-			'registration_id' => (int) $this->wpdb->insert_id,
+			'registration_id' => $registration_id,
 			'message'         => $message,
 		);
 	}

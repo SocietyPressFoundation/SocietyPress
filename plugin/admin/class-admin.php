@@ -2819,44 +2819,201 @@ class SocietyPress_Admin {
 	 * Render the dashboard page.
 	 */
 	public function render_dashboard(): void {
-		// Get some basic stats
-		$members = societypress()->members;
-		$tiers   = societypress()->tiers;
+		// Use the efficient GROUP BY query from the widgets class instead of 4 separate get_members() calls
+		$stats = $this->widgets->get_member_stats();
 
-		$stats = array(
-			'total'   => count( $members->get_members( array( 'limit' => 0 ) ) ),
-			'active'  => count( $members->get_members( array( 'status' => 'active', 'limit' => 0 ) ) ),
-			'expired' => count( $members->get_members( array( 'status' => 'expired', 'limit' => 0 ) ) ),
-			'pending' => count( $members->get_members( array( 'status' => 'pending', 'limit' => 0 ) ) ),
-		);
-
+		// Get tier breakdown data
+		$tiers       = societypress()->tiers;
 		$tier_counts = $tiers->get_member_counts();
 		$all_tiers   = $tiers->get_all();
+
+		// Get expiring members and recent signups (reuses cached widget data)
+		$settings         = get_option( 'societypress_settings', array() );
+		$expiring_days    = $settings['dashboard_expiring_days'] ?? 30;
+		$recent_days      = $settings['dashboard_recent_days'] ?? 30;
+		$expiring_members = $this->widgets->get_expiring_members( $expiring_days );
+		$recent_signups   = $this->widgets->get_recent_signups( $recent_days );
+
+		// Get recent activity from the audit log and email log
+		$audit_table = SocietyPress::table( 'audit_log' );
+		$email_table = SocietyPress::table( 'email_log' );
+		$members_table = SocietyPress::table( 'members' );
+		global $wpdb;
+
+		// Combine audit log and email log into one unified activity feed
+		// WHY: Gives admins a quick snapshot of what's been happening without
+		//      needing to dig into separate logs.
+		$recent_activity = $wpdb->get_results(
+			"(SELECT 'audit' AS source, a.created_at, a.action, a.object_type, a.object_id,
+			         CONCAT(m.first_name, ' ', m.last_name) AS member_name, a.details,
+			         NULL AS email_subject, NULL AS email_status
+			  FROM {$audit_table} a
+			  LEFT JOIN {$members_table} m ON a.object_type = 'member' AND a.object_id = m.id
+			  ORDER BY a.created_at DESC
+			  LIMIT 10)
+			 UNION ALL
+			 (SELECT 'email' AS source, e.created_at, e.email_type AS action, 'email' AS object_type, e.member_id AS object_id,
+			         NULL AS member_name, NULL AS details,
+			         e.subject AS email_subject, e.status AS email_status
+			  FROM {$email_table} e
+			  ORDER BY e.created_at DESC
+			  LIMIT 10)
+			 ORDER BY created_at DESC
+			 LIMIT 15"
+		);
+
+		// Get upcoming events (next 5 events from today onward)
+		$today = current_time( 'Y-m-d' );
+		$upcoming_events = new WP_Query( array(
+			'post_type'      => 'sp_event',
+			'posts_per_page' => 5,
+			'post_status'    => 'publish',
+			'meta_key'       => '_sp_event_date',
+			'orderby'        => 'meta_value',
+			'order'          => 'ASC',
+			'meta_query'     => array(
+				array(
+					'key'     => '_sp_event_date',
+					'value'   => $today,
+					'compare' => '>=',
+					'type'    => 'DATE',
+				),
+			),
+		) );
 
 		?>
 		<div class="wrap societypress-admin">
 			<h1><?php esc_html_e( 'SocietyPress Dashboard', 'societypress' ); ?></h1>
 
+			<!-- Row 1: Stat Cards -->
 			<div class="societypress-dashboard-stats">
 				<div class="stat-card">
-					<span class="stat-number"><?php echo esc_html( $stats['total'] ); ?></span>
+					<span class="stat-number"><?php echo absint( $stats['total'] ); ?></span>
 					<span class="stat-label"><?php esc_html_e( 'Total Members', 'societypress' ); ?></span>
 				</div>
 				<div class="stat-card stat-active">
-					<span class="stat-number"><?php echo esc_html( $stats['active'] ); ?></span>
+					<span class="stat-number"><?php echo absint( $stats['active'] ); ?></span>
 					<span class="stat-label"><?php esc_html_e( 'Active', 'societypress' ); ?></span>
 				</div>
 				<div class="stat-card stat-expired">
-					<span class="stat-number"><?php echo esc_html( $stats['expired'] ); ?></span>
+					<span class="stat-number"><?php echo absint( $stats['expired'] ); ?></span>
 					<span class="stat-label"><?php esc_html_e( 'Expired', 'societypress' ); ?></span>
 				</div>
 				<div class="stat-card stat-pending">
-					<span class="stat-number"><?php echo esc_html( $stats['pending'] ); ?></span>
+					<span class="stat-number"><?php echo absint( $stats['pending'] ); ?></span>
 					<span class="stat-label"><?php esc_html_e( 'Pending', 'societypress' ); ?></span>
 				</div>
 			</div>
 
-			<div class="societypress-dashboard-sections">
+			<!-- Row 2: Expiring Members + Recent Signups -->
+			<div class="dashboard-row">
+				<div class="dashboard-section">
+					<h2><?php esc_html_e( 'Memberships Expiring Soon', 'societypress' ); ?></h2>
+					<?php if ( empty( $expiring_members ) ) : ?>
+						<p><?php esc_html_e( 'No memberships expiring soon. Everything looks good!', 'societypress' ); ?></p>
+					<?php else : ?>
+						<table class="widefat sp-widget-table">
+							<thead>
+								<tr>
+									<th><?php esc_html_e( 'Member', 'societypress' ); ?></th>
+									<th><?php esc_html_e( 'Tier', 'societypress' ); ?></th>
+									<th><?php esc_html_e( 'Expires', 'societypress' ); ?></th>
+								</tr>
+							</thead>
+							<tbody>
+								<?php foreach ( $expiring_members as $member ) :
+									$edit_url   = admin_url( 'admin.php?page=societypress-member-edit&member_id=' . $member->id );
+									$days_until = ( strtotime( $member->expiration_date ) - time() ) / DAY_IN_SECONDS;
+									$row_class  = $days_until <= 7 ? 'sp-urgent' : 'sp-warning';
+								?>
+									<tr class="<?php echo esc_attr( $row_class ); ?>">
+										<td><a href="<?php echo esc_url( $edit_url ); ?>"><strong><?php echo esc_html( $member->first_name . ' ' . $member->last_name ); ?></strong></a></td>
+										<td><?php echo esc_html( $member->tier_name ); ?></td>
+										<td><?php echo esc_html( date_i18n( 'M j', strtotime( $member->expiration_date ) ) ); ?> <span class="sp-days">(<?php echo absint( ceil( $days_until ) ); ?>d)</span></td>
+									</tr>
+								<?php endforeach; ?>
+							</tbody>
+						</table>
+					<?php endif; ?>
+					<p class="sp-widget-footer">
+						<a href="<?php echo esc_url( admin_url( 'admin.php?page=societypress-members&status=active' ) ); ?>">
+							<?php esc_html_e( 'View All Members', 'societypress' ); ?> &rarr;
+						</a>
+					</p>
+				</div>
+
+				<div class="dashboard-section">
+					<h2><?php esc_html_e( 'Recent New Members', 'societypress' ); ?></h2>
+					<?php if ( empty( $recent_signups ) ) : ?>
+						<p><?php esc_html_e( 'No new members recently.', 'societypress' ); ?></p>
+					<?php else : ?>
+						<table class="widefat sp-widget-table sp-recent-table">
+							<thead>
+								<tr>
+									<th><?php esc_html_e( 'Member', 'societypress' ); ?></th>
+									<th><?php esc_html_e( 'Tier', 'societypress' ); ?></th>
+									<th><?php esc_html_e( 'Joined', 'societypress' ); ?></th>
+								</tr>
+							</thead>
+							<tbody>
+								<?php foreach ( $recent_signups as $member ) :
+									$edit_url = admin_url( 'admin.php?page=societypress-member-edit&member_id=' . $member->id );
+								?>
+									<tr>
+										<td><a href="<?php echo esc_url( $edit_url ); ?>"><strong><?php echo esc_html( $member->first_name . ' ' . $member->last_name ); ?></strong></a></td>
+										<td><?php echo esc_html( $member->tier_name ); ?></td>
+										<td><?php echo esc_html( date_i18n( 'M j', strtotime( $member->join_date ) ) ); ?></td>
+									</tr>
+								<?php endforeach; ?>
+							</tbody>
+						</table>
+					<?php endif; ?>
+					<p class="sp-widget-footer">
+						<a href="<?php echo esc_url( admin_url( 'admin.php?page=societypress-members' ) ); ?>">
+							<?php esc_html_e( 'View All Members', 'societypress' ); ?> &rarr;
+						</a>
+					</p>
+				</div>
+			</div>
+
+			<!-- Row 3: Upcoming Events + Members by Tier / Quick Actions -->
+			<div class="dashboard-row">
+				<div class="dashboard-section">
+					<h2><?php esc_html_e( 'Upcoming Events', 'societypress' ); ?></h2>
+					<?php if ( ! $upcoming_events->have_posts() ) : ?>
+						<p><?php esc_html_e( 'No upcoming events scheduled.', 'societypress' ); ?></p>
+					<?php else : ?>
+						<table class="widefat striped">
+							<thead>
+								<tr>
+									<th><?php esc_html_e( 'Event', 'societypress' ); ?></th>
+									<th><?php esc_html_e( 'Date', 'societypress' ); ?></th>
+									<th><?php esc_html_e( 'Location', 'societypress' ); ?></th>
+								</tr>
+							</thead>
+							<tbody>
+								<?php while ( $upcoming_events->have_posts() ) : $upcoming_events->the_post();
+									$event_id   = get_the_ID();
+									$event_date = SocietyPress_Events::get_event_date( $event_id );
+									$event_loc  = SocietyPress_Events::get_event_location( $event_id );
+									$edit_url   = get_edit_post_link( $event_id );
+								?>
+									<tr>
+										<td><a href="<?php echo esc_url( $edit_url ); ?>"><strong><?php the_title(); ?></strong></a></td>
+										<td><?php echo $event_date ? esc_html( date_i18n( 'M j, Y', strtotime( $event_date ) ) ) : '&mdash;'; ?></td>
+										<td><?php echo $event_loc ? esc_html( $event_loc ) : '&mdash;'; ?></td>
+									</tr>
+								<?php endwhile; wp_reset_postdata(); ?>
+							</tbody>
+						</table>
+					<?php endif; ?>
+					<p class="sp-widget-footer">
+						<a href="<?php echo esc_url( admin_url( 'edit.php?post_type=sp_event' ) ); ?>">
+							<?php esc_html_e( 'View All Events', 'societypress' ); ?> &rarr;
+						</a>
+					</p>
+				</div>
+
 				<div class="dashboard-section">
 					<h2><?php esc_html_e( 'Members by Tier', 'societypress' ); ?></h2>
 					<table class="widefat striped">
@@ -2877,16 +3034,106 @@ class SocietyPress_Admin {
 							<?php endforeach; ?>
 						</tbody>
 					</table>
-				</div>
 
-				<div class="dashboard-section">
-					<h2><?php esc_html_e( 'Quick Actions', 'societypress' ); ?></h2>
+					<h2 style="margin-top: 20px;"><?php esc_html_e( 'Quick Actions', 'societypress' ); ?></h2>
 					<p>
 						<a href="<?php echo esc_url( admin_url( 'admin.php?page=societypress-member-edit' ) ); ?>" class="button button-primary">
 							<?php esc_html_e( 'Add New Member', 'societypress' ); ?>
 						</a>
-						<a href="<?php echo esc_url( admin_url( 'admin.php?page=societypress-members' ) ); ?>" class="button">
-							<?php esc_html_e( 'View All Members', 'societypress' ); ?>
+						<a href="<?php echo esc_url( admin_url( 'admin.php?page=societypress-import' ) ); ?>" class="button">
+							<?php esc_html_e( 'Import Members', 'societypress' ); ?>
+						</a>
+					</p>
+					<p>
+						<a href="<?php echo esc_url( admin_url( 'post-new.php?post_type=sp_event' ) ); ?>" class="button">
+							<?php esc_html_e( 'Add New Event', 'societypress' ); ?>
+						</a>
+						<a href="<?php echo esc_url( admin_url( 'admin.php?page=societypress-settings' ) ); ?>" class="button">
+							<?php esc_html_e( 'View Settings', 'societypress' ); ?>
+						</a>
+					</p>
+				</div>
+			</div>
+
+			<!-- Row 4: Recent Activity (full width) -->
+			<div class="dashboard-row">
+				<div class="dashboard-section" style="flex: 1; min-width: 100%;">
+					<h2><?php esc_html_e( 'Recent Activity', 'societypress' ); ?></h2>
+					<?php if ( empty( $recent_activity ) ) : ?>
+						<p><?php esc_html_e( 'No recent activity to show.', 'societypress' ); ?></p>
+					<?php else : ?>
+						<table class="widefat striped">
+							<thead>
+								<tr>
+									<th><?php esc_html_e( 'When', 'societypress' ); ?></th>
+									<th><?php esc_html_e( 'Activity', 'societypress' ); ?></th>
+								</tr>
+							</thead>
+							<tbody>
+								<?php foreach ( $recent_activity as $activity ) :
+									// Build a human-readable description of this activity entry
+									$description = '';
+
+									if ( 'audit' === $activity->source ) {
+										// Audit log entries: member created, updated, deleted
+										$name = $activity->member_name ?: __( 'Unknown', 'societypress' );
+										switch ( $activity->action ) {
+											case 'create':
+												$description = sprintf(
+													/* translators: %s: member name */
+													__( 'New member added: %s', 'societypress' ),
+													'<strong>' . esc_html( $name ) . '</strong>'
+												);
+												break;
+											case 'update':
+												$description = sprintf(
+													/* translators: %s: member name */
+													__( 'Member updated: %s', 'societypress' ),
+													'<strong>' . esc_html( $name ) . '</strong>'
+												);
+												break;
+											case 'delete':
+												$description = sprintf(
+													/* translators: %s: member name */
+													__( 'Member deleted: %s', 'societypress' ),
+													'<strong>' . esc_html( $name ) . '</strong>'
+												);
+												break;
+											default:
+												$description = esc_html( ucfirst( $activity->action ) . ' ' . $activity->object_type );
+												break;
+										}
+									} else {
+										// Email log entries
+										$type_label = str_replace( '_', ' ', $activity->action ?? 'email' );
+										$status_badge = '';
+										if ( 'sent' === $activity->email_status ) {
+											$status_badge = '<span class="societypress-status-active">' . esc_html__( 'Sent', 'societypress' ) . '</span>';
+										} elseif ( 'blocked' === $activity->email_status ) {
+											$status_badge = '<span class="societypress-status-pending">' . esc_html__( 'Blocked', 'societypress' ) . '</span>';
+										} elseif ( 'failed' === $activity->email_status ) {
+											$status_badge = '<span class="societypress-status-expired">' . esc_html__( 'Failed', 'societypress' ) . '</span>';
+										}
+										$description = sprintf(
+											/* translators: 1: email type, 2: email subject, 3: status badge */
+											__( 'Email (%1$s): %2$s %3$s', 'societypress' ),
+											esc_html( ucfirst( $type_label ) ),
+											'<em>' . esc_html( $activity->email_subject ) . '</em>',
+											$status_badge
+										);
+									}
+								?>
+									<tr>
+										<td><?php echo esc_html( date_i18n( 'M j, g:i a', strtotime( $activity->created_at ) ) ); ?></td>
+										<td><?php echo wp_kses_post( $description ); ?></td>
+									</tr>
+								<?php endforeach; ?>
+							</tbody>
+						</table>
+					<?php endif; ?>
+					<p class="sp-widget-footer">
+						<a href="<?php echo esc_url( admin_url( 'admin.php?page=societypress-email-log' ) ); ?>">
+							<?php esc_html_e( 'View Email Log', 'societypress' ); ?> &rarr;
 						</a>
 					</p>
 				</div>

@@ -219,7 +219,7 @@ class SocietyPress_Dashboard_Widgets {
 	 * @param int $days Number of days ahead to check.
 	 * @return array
 	 */
-	private function get_expiring_members( int $days = 30 ): array {
+	public function get_expiring_members( int $days = 30 ): array {
 		$cache_key = 'sp_widget_expiring_' . $days;
 		$members   = get_transient( $cache_key );
 
@@ -256,7 +256,7 @@ class SocietyPress_Dashboard_Widgets {
 	 * @param int $days Number of days back to check.
 	 * @return array
 	 */
-	private function get_recent_signups( int $days = 30 ): array {
+	public function get_recent_signups( int $days = 30 ): array {
 		$cache_key = 'sp_widget_recent_' . $days;
 		$members   = get_transient( $cache_key );
 
@@ -290,7 +290,7 @@ class SocietyPress_Dashboard_Widgets {
 	 *
 	 * @return array
 	 */
-	private function get_member_stats(): array {
+	public function get_member_stats(): array {
 		$cache_key = 'sp_widget_stats';
 		$stats     = get_transient( $cache_key );
 

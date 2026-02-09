@@ -100,6 +100,22 @@ $data_categories = ! empty( $category_slugs ) ? implode( ' ', $category_slugs ) 
 						<span class="badge"><?php esc_html_e( 'Registration Required', 'societypress' ); ?></span>
 					</div>
 				<?php endif; ?>
+
+				<?php
+				// Show "Add to Calendar" download link on single event pages only
+				// WHY: Lets members add this event to Google Calendar, Apple Calendar, Outlook,
+				//      etc. with a single click instead of re-typing all the details manually.
+				if ( is_singular() && class_exists( 'SocietyPress_Events' ) && sp_get_event_date( get_the_ID() ) ) : ?>
+					<div class="event-ical">
+						<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+							<path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5zM2 2a1 1 0 0 0-1 1v1h14V3a1 1 0 0 0-1-1H2zm13 3H1v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V5z"/>
+							<path d="M11 7.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5v-1z"/>
+						</svg>
+						<a href="<?php echo esc_url( SocietyPress_Events::get_ical_url( get_the_ID() ) ); ?>">
+							<?php esc_html_e( 'Add to Calendar', 'societypress' ); ?>
+						</a>
+					</div>
+				<?php endif; ?>
 			</div>
 		</header>
 

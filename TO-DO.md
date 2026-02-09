@@ -41,36 +41,14 @@
 - [x] Responsive design
 
 ### Admin Interface
-- [x] Flat menu structure (Dashboard → Leadership → Committees → Calendar → Add New Event → Members → Add New Member → Import Members → Member Levels → Library → Settings)
-- [x] Calendar menu item (events list)
+- [x] Grouped menu structure: SocietyPress (hub), Members, Events (CPT), Organization
 - [x] Placeholder pages (Leadership, Committees, Library)
 - [x] Dashboard widgets skeleton
-
-## Tomorrow's Priority 📋
-
-### Verify Event Registration System (0.47d)
-1. Deactivate and reactivate plugin to create new database tables
-2. Create test event with 3 time slots (10-11, 11-12, 12-1), capacity 1 each
-3. Log in as member, register for first slot
-4. Verify "Registered" badge shows, other slots still available
-5. Check portal "My Events" widget shows the registration
-6. Register second member, verify first slot shows "Full"
-7. Third member sees "Join Waitlist" for first slot
-8. Cancel first registration → verify waitlist auto-promotes
-9. Cancel from portal → verify removed from list
-
-### If Time Permits
-- Test registration URL field still works (external registration)
-- Test with capacity NULL (unlimited)
-- Test recurring event with slots
-
----
+- [x] Default starter pages on activation (Home, About, Membership, Events, Contact, Portal, Newsletter, Resources, Leadership)
+- [x] WordPress defaults cleanup on activation (Hello World, Sample Page, default comment)
 
 ## In Progress 🔄
 
-- [x] Event slots and registration system (0.47d - verified working)
-- [x] Leadership management (full admin UI with member search)
-- [x] Committees management (full admin UI with member search)
 - [ ] Volunteer opportunities system (plan created, not yet implemented)
 - [ ] Library features (placeholder page created)
 - [ ] Documentation updates
@@ -100,10 +78,11 @@
 - [ ] iCal export
 
 ### Communication
-- [ ] Email notifications (welcome, renewal reminders)
+- [x] Email notifications (welcome, renewal reminders, expired notices)
+- [x] Membership renewal reminders (daily cron, configurable intervals)
+- [x] Customizable email templates (pre-filled defaults, HTML support, merge tags)
 - [ ] Event registration confirmation
-- [ ] Membership renewal reminders
-- [ ] Customizable email templates
+- [ ] Email notification when promoted from waitlist
 
 ### Admin Dashboard
 - [ ] Dashboard widgets (expiring members, recent signups, upcoming events)
@@ -238,11 +217,31 @@
 
 ## Known Issues
 
-- WordPress admin menu system does not support nested flyout submenus on submenu items (platform limitation - resolved with flat menu structure)
 - 404 page image uses hardcoded upload path (2026/01/404.jpg)
-- Events CPT set to `show_in_menu => false` to prevent duplicate menu items
 
 ## Version History
+
+### 0.60d (2026-02-08)
+- **Admin Menu Restructure:**
+  - Split flat SocietyPress menu into 4 grouped top-level menus
+  - SocietyPress (Dashboard, Library, Email Log, Settings)
+  - Members (All Members, Add New, Import, Member Levels)
+  - Events (auto-created by CPT — All Events, Add New, Event Categories, Import Events)
+  - Organization (Leadership, Committees)
+  - Events CPT now has `show_in_menu => true` with `menu_position => 32`
+  - Hero Slider nesting fix (explicit admin_menu registration at priority 20)
+- **Default Content on Activation:**
+  - New `SocietyPress_Default_Content` class
+  - Deletes WordPress defaults (Hello World, Sample Page, default comment)
+  - Creates 9 starter pages with guided placeholder content
+  - Sets Home as static front page
+  - Only runs once (option flag prevents re-runs)
+- **Email Template Improvements:**
+  - Settings textareas now pre-populated with default templates
+  - Template methods changed to public static for Settings page access
+  - Sanitization switched from `sanitize_textarea_field` to `wp_kses_post`
+  - Textarea rows increased from 6 to 14 for readability
+- Removed dead submenu fixup code from `class-leadership-admin.php`
 
 ### 0.55d (2026-02-01)
 - **Leadership Admin UI:**

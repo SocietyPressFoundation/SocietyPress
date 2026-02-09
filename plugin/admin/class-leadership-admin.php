@@ -41,25 +41,12 @@ class SocietyPress_Leadership_Admin {
 	}
 
 	/**
-	 * Register admin pages.
+	 * Register hidden admin pages for leadership editing.
 	 *
-	 * WHY: Replaces the placeholder page with actual functionality.
-	 *      Uses the existing menu slug so we don't create duplicates.
+	 * WHY: Edit/detail pages for positions and assignments don't need sidebar
+	 *      links — users reach them by clicking actions on the Leadership list.
 	 */
 	public function register_pages(): void {
-		// Override the placeholder with our real page
-		global $submenu;
-
-		// Find and update the Leadership menu item callback
-		if ( isset( $submenu['societypress'] ) ) {
-			foreach ( $submenu['societypress'] as $key => $item ) {
-				if ( $item[2] === 'societypress-leadership' ) {
-					$submenu['societypress'][ $key ][2] = 'societypress-leadership';
-					break;
-				}
-			}
-		}
-
 		// Add hidden pages for editing
 		add_submenu_page(
 			'',

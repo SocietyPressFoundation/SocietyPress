@@ -954,19 +954,22 @@ class SocietyPress_Admin {
 			: get_option( 'admin_email' );
 
 		// Email notifications
+		// WHY: Messages use wp_kses_post instead of sanitize_textarea_field because
+		//      these are HTML email templates — they need <h2>, <ul>, <li>, <a>, etc.
+		//      wp_kses_post strips dangerous tags (script, iframe) while keeping safe ones.
 		$sanitized['email_notifications'] = array(
 			'welcome_enabled'      => ! empty( $input['email_notifications']['welcome_enabled'] ),
 			'welcome_subject'      => sanitize_text_field( $input['email_notifications']['welcome_subject'] ?? '' ),
-			'welcome_message'      => sanitize_textarea_field( $input['email_notifications']['welcome_message'] ?? '' ),
+			'welcome_message'      => wp_kses_post( $input['email_notifications']['welcome_message'] ?? '' ),
 			'reminder_enabled'     => ! empty( $input['email_notifications']['reminder_enabled'] ),
 			'reminder_days_before' => isset( $input['email_notifications']['reminder_days_before'] )
 				? array_map( 'absint', (array) $input['email_notifications']['reminder_days_before'] )
 				: array( 30, 14, 7, 1 ),
 			'reminder_subject'     => sanitize_text_field( $input['email_notifications']['reminder_subject'] ?? '' ),
-			'reminder_message'     => sanitize_textarea_field( $input['email_notifications']['reminder_message'] ?? '' ),
+			'reminder_message'     => wp_kses_post( $input['email_notifications']['reminder_message'] ?? '' ),
 			'expired_enabled'      => ! empty( $input['email_notifications']['expired_enabled'] ),
 			'expired_subject'      => sanitize_text_field( $input['email_notifications']['expired_subject'] ?? '' ),
-			'expired_message'      => sanitize_textarea_field( $input['email_notifications']['expired_message'] ?? '' ),
+			'expired_message'      => wp_kses_post( $input['email_notifications']['expired_message'] ?? '' ),
 		);
 
 		// Directory settings
@@ -1743,7 +1746,7 @@ class SocietyPress_Admin {
 		$notifications = self::get_setting( 'email_notifications', array() );
 		$enabled = $notifications['welcome_enabled'] ?? true;
 		$subject = $notifications['welcome_subject'] ?? 'Welcome to {{organization_name}}!';
-		$message = $notifications['welcome_message'] ?? '';
+		$message = $notifications['welcome_message'] ?? SocietyPress_Notifications::get_default_welcome_template();
 		?>
 		<label>
 			<input type="checkbox" name="societypress_settings[email_notifications][welcome_enabled]" value="1"
@@ -1760,7 +1763,7 @@ class SocietyPress_Admin {
 		<label>
 			<?php esc_html_e( 'Message:', 'societypress' ); ?><br>
 			<textarea name="societypress_settings[email_notifications][welcome_message]"
-			          rows="6" class="large-text"><?php echo esc_textarea( $message ); ?></textarea>
+			          rows="14" class="large-text"><?php echo esc_textarea( $message ); ?></textarea>
 		</label>
 		<?php
 	}
@@ -1772,7 +1775,7 @@ class SocietyPress_Admin {
 		$notifications = self::get_setting( 'email_notifications', array() );
 		$enabled = $notifications['reminder_enabled'] ?? true;
 		$subject = $notifications['reminder_subject'] ?? 'Your membership expires in {{days_until_expiration}} days';
-		$message = $notifications['reminder_message'] ?? '';
+		$message = $notifications['reminder_message'] ?? SocietyPress_Notifications::get_default_reminder_template();
 		$days = $notifications['reminder_days_before'] ?? array( 30, 14, 7, 1 );
 		?>
 		<label>
@@ -1797,7 +1800,7 @@ class SocietyPress_Admin {
 		<label>
 			<?php esc_html_e( 'Message:', 'societypress' ); ?><br>
 			<textarea name="societypress_settings[email_notifications][reminder_message]"
-			          rows="6" class="large-text"><?php echo esc_textarea( $message ); ?></textarea>
+			          rows="14" class="large-text"><?php echo esc_textarea( $message ); ?></textarea>
 		</label>
 		<?php
 	}
@@ -1809,7 +1812,7 @@ class SocietyPress_Admin {
 		$notifications = self::get_setting( 'email_notifications', array() );
 		$enabled = $notifications['expired_enabled'] ?? true;
 		$subject = $notifications['expired_subject'] ?? 'Your membership has expired';
-		$message = $notifications['expired_message'] ?? '';
+		$message = $notifications['expired_message'] ?? SocietyPress_Notifications::get_default_expired_template();
 		?>
 		<label>
 			<input type="checkbox" name="societypress_settings[email_notifications][expired_enabled]" value="1"
@@ -1826,7 +1829,7 @@ class SocietyPress_Admin {
 		<label>
 			<?php esc_html_e( 'Message:', 'societypress' ); ?><br>
 			<textarea name="societypress_settings[email_notifications][expired_message]"
-			          rows="6" class="large-text"><?php echo esc_textarea( $message ); ?></textarea>
+			          rows="14" class="large-text"><?php echo esc_textarea( $message ); ?></textarea>
 		</label>
 		<?php
 	}
@@ -2177,7 +2180,14 @@ class SocietyPress_Admin {
 	 * Creates the main SocietyPress menu and submenus.
 	 */
 	public function add_menus(): void {
-		// Main menu
+
+		// =====================================================================
+		// SOCIETYPRESS — Main hub menu (position 30)
+		// WHY: This is the home base. Dashboard, Library, Email Log, and Settings
+		//      live here because they're general plugin-wide features, not tied
+		//      to a specific content area like Members or Events.
+		// =====================================================================
+
 		add_menu_page(
 			__( 'SocietyPress', 'societypress' ),
 			__( 'SocietyPress', 'societypress' ),
@@ -2188,7 +2198,8 @@ class SocietyPress_Admin {
 			30
 		);
 
-		// Dashboard
+		// Dashboard — first submenu re-uses the parent slug so WordPress
+		// replaces the auto-generated duplicate with a friendly label.
 		add_submenu_page(
 			'societypress',
 			__( 'Dashboard', 'societypress' ),
@@ -2198,95 +2209,6 @@ class SocietyPress_Admin {
 			array( $this, 'render_dashboard' )
 		);
 
-		// Leadership
-		add_submenu_page(
-			'societypress',
-			__( 'Leadership', 'societypress' ),
-			__( 'Leadership', 'societypress' ),
-			'manage_society_members',
-			'societypress-leadership',
-			array( societypress()->leadership_admin, 'render_leadership_page' )
-		);
-
-		// Committees
-		add_submenu_page(
-			'societypress',
-			__( 'Committees', 'societypress' ),
-			__( 'Committees', 'societypress' ),
-			'manage_society_members',
-			'societypress-committees',
-			array( societypress()->committees_admin, 'render_committees_page' )
-		);
-
-		// Calendar (events list)
-		add_submenu_page(
-			'societypress',
-			__( 'Calendar', 'societypress' ),
-			__( 'Calendar', 'societypress' ),
-			'manage_society_members',
-			'edit.php?post_type=sp_event'
-		);
-
-		// Add New Event
-		add_submenu_page(
-			'societypress',
-			__( 'Add New Event', 'societypress' ),
-			__( 'Add New Event', 'societypress' ),
-			'manage_society_members',
-			'post-new.php?post_type=sp_event'
-		);
-
-		// Members
-		add_submenu_page(
-			'societypress',
-			__( 'Members', 'societypress' ),
-			__( 'Members', 'societypress' ),
-			'manage_society_members',
-			'societypress-members',
-			array( $this, 'render_members_page' )
-		);
-
-		// Add New Member
-		add_submenu_page(
-			'societypress',
-			__( 'Add New Member', 'societypress' ),
-			__( 'Add New Member', 'societypress' ),
-			'manage_society_members',
-			'societypress-member-edit',
-			array( $this, 'render_member_edit' )
-		);
-
-		// Import Members
-		add_submenu_page(
-			'societypress',
-			__( 'Import Members', 'societypress' ),
-			__( 'Import Members', 'societypress' ),
-			'manage_society_members',
-			'societypress-import',
-			array( $this, 'render_import_page' )
-		);
-
-		// Import Events
-		add_submenu_page(
-			'societypress',
-			__( 'Import Events', 'societypress' ),
-			__( 'Import Events', 'societypress' ),
-			'manage_society_members',
-			'societypress-import-events',
-			array( $this, 'render_import_events_page' )
-		);
-
-		// Member Levels
-		add_submenu_page(
-			'societypress',
-			__( 'Member Levels', 'societypress' ),
-			__( 'Member Levels', 'societypress' ),
-			'manage_society_members',
-			'societypress-tiers',
-			array( $this, 'render_tiers_page' )
-		);
-
-		// Library
 		add_submenu_page(
 			'societypress',
 			__( 'Library', 'societypress' ),
@@ -2296,7 +2218,6 @@ class SocietyPress_Admin {
 			array( $this, 'render_placeholder_page' )
 		);
 
-		// Email Log
 		add_submenu_page(
 			'societypress',
 			__( 'Email Log', 'societypress' ),
@@ -2306,7 +2227,6 @@ class SocietyPress_Admin {
 			array( $this, 'render_email_log_page' )
 		);
 
-		// Settings
 		add_submenu_page(
 			'societypress',
 			__( 'Settings', 'societypress' ),
@@ -2316,8 +2236,122 @@ class SocietyPress_Admin {
 			array( $this, 'render_settings_page' )
 		);
 
-		// Hidden pages (accessible via URL only)
-		// Add/Edit tier
+		// =====================================================================
+		// MEMBERS — Everything related to membership (position 31)
+		// WHY: Members, tiers, and import are tightly related. Grouping them
+		//      under one menu makes the membership workflow obvious:
+		//      view → add → import → configure levels.
+		// =====================================================================
+
+		add_menu_page(
+			__( 'Members', 'societypress' ),
+			__( 'Members', 'societypress' ),
+			'manage_society_members',
+			'societypress-members',
+			array( $this, 'render_members_page' ),
+			'dashicons-id',
+			31
+		);
+
+		// "All Members" — re-uses the parent slug to replace the auto-generated
+		// duplicate, same pattern as Dashboard above.
+		add_submenu_page(
+			'societypress-members',
+			__( 'All Members', 'societypress' ),
+			__( 'All Members', 'societypress' ),
+			'manage_society_members',
+			'societypress-members',
+			array( $this, 'render_members_page' )
+		);
+
+		add_submenu_page(
+			'societypress-members',
+			__( 'Add New', 'societypress' ),
+			__( 'Add New', 'societypress' ),
+			'manage_society_members',
+			'societypress-member-edit',
+			array( $this, 'render_member_edit' )
+		);
+
+		add_submenu_page(
+			'societypress-members',
+			__( 'Import', 'societypress' ),
+			__( 'Import', 'societypress' ),
+			'manage_society_members',
+			'societypress-import',
+			array( $this, 'render_import_page' )
+		);
+
+		add_submenu_page(
+			'societypress-members',
+			__( 'Member Levels', 'societypress' ),
+			__( 'Member Levels', 'societypress' ),
+			'manage_society_members',
+			'societypress-tiers',
+			array( $this, 'render_tiers_page' )
+		);
+
+		// =====================================================================
+		// EVENTS — position 32
+		// WHY: The sp_event CPT now has show_in_menu => true, so WordPress
+		//      auto-creates this top-level menu with "All Events", "Add New",
+		//      and "Event Categories" submenus. We only need to add "Import
+		//      Events" as an extra submenu item under the CPT's menu.
+		//      The CPT menu slug is 'edit.php?post_type=sp_event'.
+		// =====================================================================
+
+		add_submenu_page(
+			'edit.php?post_type=sp_event',
+			__( 'Import Events', 'societypress' ),
+			__( 'Import Events', 'societypress' ),
+			'manage_society_members',
+			'societypress-import-events',
+			array( $this, 'render_import_events_page' )
+		);
+
+		// =====================================================================
+		// ORGANIZATION — Leadership and Committees (position 33)
+		// WHY: These are governance-related features. Keeping them together
+		//      under "Organization" makes it clear where to manage the society's
+		//      structure (officers, boards, committees).
+		// =====================================================================
+
+		add_menu_page(
+			__( 'Organization', 'societypress' ),
+			__( 'Organization', 'societypress' ),
+			'manage_society_members',
+			'societypress-leadership',
+			array( societypress()->leadership_admin, 'render_leadership_page' ),
+			'dashicons-building',
+			33
+		);
+
+		// "Leadership" — re-uses the parent slug to replace the auto-generated
+		// duplicate with a friendlier label.
+		add_submenu_page(
+			'societypress-leadership',
+			__( 'Leadership', 'societypress' ),
+			__( 'Leadership', 'societypress' ),
+			'manage_society_members',
+			'societypress-leadership',
+			array( societypress()->leadership_admin, 'render_leadership_page' )
+		);
+
+		add_submenu_page(
+			'societypress-leadership',
+			__( 'Committees', 'societypress' ),
+			__( 'Committees', 'societypress' ),
+			'manage_society_members',
+			'societypress-committees',
+			array( societypress()->committees_admin, 'render_committees_page' )
+		);
+
+		// =====================================================================
+		// HIDDEN PAGES — accessible via direct URL only (no menu entry)
+		// WHY: Edit/detail pages for tiers don't need their own sidebar links.
+		//      Users reach them by clicking "Edit" on the list pages above.
+		// =====================================================================
+
 		add_submenu_page(
 			'',
 			__( 'Edit Tier', 'societypress' ),

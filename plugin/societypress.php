@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI: https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies. Handles member registration, dues, renewals, directories, committees, and governance.
- * Version: 0.59d
+ * Version: 0.60d
  * Author: Stricklin Development
  * Author URI: https://stricklindevelopment.com/
  * License: Proprietary
@@ -23,7 +23,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Plugin version.
  */
-define( 'SOCIETYPRESS_VERSION', '0.59d' );
+define( 'SOCIETYPRESS_VERSION', '0.60d' );
 
 /**
  * Plugin directory path.
@@ -373,6 +373,7 @@ final class SocietyPress {
         require_once SOCIETYPRESS_PATH . 'includes/class-volunteer-opportunities.php';
         require_once SOCIETYPRESS_PATH . 'includes/class-volunteer-signups.php';
         require_once SOCIETYPRESS_PATH . 'includes/class-leadership.php';
+        require_once SOCIETYPRESS_PATH . 'includes/class-default-content.php';
 
         // Custom admin router - loads on all requests to handle /sp-admin/ URLs
         require_once SOCIETYPRESS_PATH . 'sp-admin/class-sp-admin-router.php';
@@ -498,6 +499,9 @@ final class SocietyPress {
         // Add capabilities and roles
         $this->add_capabilities();
         $this->add_custom_roles();
+
+        // Create default pages and clean up WordPress starter content
+        SocietyPress_Default_Content::maybe_create();
 
         // Store version
         update_option( 'societypress_version', SOCIETYPRESS_VERSION );

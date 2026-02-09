@@ -43,14 +43,19 @@ function societypress_register_slide_post_type() {
 		'public'             => false,
 		'publicly_queryable' => false,
 		'show_ui'            => true,
-		'show_in_menu'       => true,
+		// WHY: Always hidden from the auto-generated menu. We add it manually via
+		// admin_menu hook below so we can control *when* it registers — after the
+		// SocietyPress plugin has created its parent menu. The old approach
+		// (show_in_menu => 'societypress') ran before the parent existed and
+		// WordPress silently fell back to a top-level menu.
+		'show_in_menu'       => false,
 		'menu_icon'          => 'dashicons-images-alt2',
 		'query_var'          => false,
 		'rewrite'            => false,
 		'capability_type'    => 'post',
 		'has_archive'        => false,
 		'hierarchical'       => false,
-		'menu_position'      => 20,
+		'menu_position'      => null,
 		// WHY: page-attributes adds menu_order support for drag-and-drop ordering
 		'supports'           => array( 'title', 'editor', 'thumbnail', 'page-attributes' ),
 		'show_in_rest'       => true,
@@ -59,6 +64,39 @@ function societypress_register_slide_post_type() {
 	register_post_type( 'sp_slide', $args );
 }
 add_action( 'init', 'societypress_register_slide_post_type' );
+
+/**
+ * Add Hero Slider to the admin sidebar menu.
+ *
+ * WHY: We register this on admin_menu at priority 20 (after the SocietyPress
+ *      plugin's add_menus runs at priority 10) so the parent menu exists when
+ *      we add our submenu. If the plugin isn't active, falls back to a
+ *      standalone top-level menu so slides remain accessible.
+ */
+function societypress_add_slide_admin_menu() {
+	if ( class_exists( 'SocietyPress' ) ) {
+		// Nest under the SocietyPress hub menu
+		add_submenu_page(
+			'societypress',
+			__( 'Hero Slider', 'societypress' ),
+			__( 'Hero Slider', 'societypress' ),
+			'edit_posts',
+			'edit.php?post_type=sp_slide'
+		);
+	} else {
+		// Plugin not active — give it its own top-level menu
+		add_menu_page(
+			__( 'Hero Slider', 'societypress' ),
+			__( 'Hero Slider', 'societypress' ),
+			'edit_posts',
+			'edit.php?post_type=sp_slide',
+			'',
+			'dashicons-images-alt2',
+			20
+		);
+	}
+}
+add_action( 'admin_menu', 'societypress_add_slide_admin_menu', 20 );
 
 /**
  * Register Slide Group taxonomy.

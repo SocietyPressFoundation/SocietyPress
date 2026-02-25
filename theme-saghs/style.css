@@ -1,0 +1,858 @@
+/*
+Theme Name: the society
+Theme URI: https://example.org
+Author: Stricklin Development
+Author URI: https://stricklindevelopment.com/
+Description: Child theme for the the society.
+             Applies the society branding — burgundy/cream palette, hero slider,
+             3-level nav, and custom front-page layout — on top of the
+             SocietyPress parent theme.
+Version: 0.01d
+Template: societypress
+Requires at least: 6.0
+Tested up to: 6.7
+Requires PHP: 8.0
+License: Proprietary
+Text Domain: society
+*/
+
+/* ============================================================================
+   the society COLOR PALETTE
+   WHY: Define the the society brand colors as CSS custom properties so every element
+   references these tokens instead of hardcoded hex values. Override the parent
+   theme's --sp-color-* vars so plugin-rendered widgets (events, library, etc.)
+   also pick up the the society palette automatically.
+   ============================================================================ */
+
+:root {
+    /* the society brand colors */
+    --society-burgundy:    #632220;
+    --society-cream:       #fbebd2;
+    --society-taupe:       #7f7166;
+    --society-terracotta:  #ba5f36;
+    --society-dark:        #1a1a1a;
+    --society-white:       #ffffff;
+
+    /* Override plugin design vars so page-builder widgets inherit the society colors.
+       These are normally set by the Design tab in SocietyPress Settings, but
+       the child theme CSS loads AFTER the inline <style> block, so these win. */
+    --sp-color-primary:       #632220;
+    --sp-color-primary-hover: #ba5f36;
+    --sp-color-accent:        #ba5f36;
+    --sp-color-header-bg:     #ffffff;
+    --sp-color-header-text:   #1a1a1a;
+    --sp-color-footer-bg:     #fbebd2;
+    --sp-color-footer-text:   #1a1a1a;
+}
+
+
+/* ============================================================================
+   GLOBAL OVERRIDES
+   WHY: The parent theme assumes a dark header. the society uses a white header with
+   dark text, so we need to flip several color assumptions.
+   ============================================================================ */
+
+body {
+    color: var(--society-dark);
+}
+
+h1, h2, h3, h4, h5, h6 {
+    color: var(--society-burgundy);
+}
+
+a {
+    color: var(--society-burgundy);
+}
+
+a:hover {
+    color: var(--society-terracotta);
+}
+
+
+/* ============================================================================
+   HEADER
+   WHY: the society uses a white header with the logo prominent on the left and
+   horizontal nav links on the right. The parent's dark header is overridden
+   to a clean white background with a subtle bottom border.
+   ============================================================================ */
+
+.site-header {
+    background: var(--society-white);
+    color: var(--society-dark);
+    border-bottom: 3px solid var(--society-burgundy);
+    padding: 0 20px;
+}
+
+.site-branding a,
+.site-title a {
+    color: var(--society-burgundy);
+}
+
+.site-description {
+    color: var(--society-taupe);
+    opacity: 1;
+}
+
+/* Make the logo larger for the society — they have a prominent seal */
+.custom-logo {
+    max-height: 90px;
+}
+
+
+/* ============================================================================
+   NAVIGATION — 3-LEVEL DROPDOWN (DESKTOP)
+   WHY: the society has a deep content hierarchy (Resources > Library, Research, etc.)
+   so we need multi-level dropdown support. The parent theme uses depth:1,
+   but the child header.php overrides that to depth:3.
+   ============================================================================ */
+
+/* Top-level nav links */
+.main-navigation a {
+    color: var(--society-dark);
+    font-weight: 600;
+    font-size: 0.9rem;
+    padding: 12px 16px;
+    transition: color 0.2s ease, background 0.2s ease;
+}
+
+.main-navigation a:hover,
+.main-navigation .current-menu-item > a {
+    color: var(--society-terracotta);
+    background: transparent;
+}
+
+/* Dropdown containers (level 2 and 3) */
+.main-navigation .sub-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background: var(--society-white);
+    min-width: 220px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    border-top: 3px solid var(--society-burgundy);
+    z-index: 1000;
+    list-style: none;
+    padding: 8px 0;
+    margin: 0;
+}
+
+/* Show dropdown on hover */
+.main-navigation li:hover > .sub-menu {
+    display: block;
+}
+
+/* Parent items need relative positioning for dropdown anchoring */
+.main-navigation li {
+    position: relative;
+}
+
+/* Dropdown links — full width, stacked vertically */
+.main-navigation .sub-menu a {
+    padding: 10px 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    border-bottom: 1px solid #f0ebe3;
+    white-space: nowrap;
+}
+
+.main-navigation .sub-menu li:last-child a {
+    border-bottom: none;
+}
+
+.main-navigation .sub-menu a:hover {
+    background: var(--society-cream);
+    color: var(--society-burgundy);
+}
+
+/* Level 3 — opens to the right of level 2 */
+.main-navigation .sub-menu .sub-menu {
+    top: 0;
+    left: 100%;
+    border-top: none;
+    border-left: 3px solid var(--society-burgundy);
+}
+
+/* Indicator arrow for items with children */
+.main-navigation .menu-item-has-children > a::after {
+    content: " \25BE"; /* small down triangle */
+    font-size: 0.7em;
+    opacity: 0.6;
+}
+
+.main-navigation .sub-menu .menu-item-has-children > a::after {
+    content: " \25B8"; /* small right triangle for nested */
+}
+
+
+/* ============================================================================
+   SUBMENU TOGGLE BUTTON (MOBILE ONLY)
+   WHY: On mobile, hover doesn't work for opening submenus. The nav walker
+   injects a small toggle button next to items that have children. On desktop
+   this is hidden (CSS :hover handles dropdowns). On mobile, tapping the
+   toggle opens/closes the submenu.
+   ============================================================================ */
+
+.society-submenu-toggle {
+    display: none; /* Hidden on desktop — dropdowns use :hover */
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 10px 14px;
+    color: var(--society-taupe);
+    font-size: 0.8rem;
+    position: absolute;
+    right: 0;
+    top: 0;
+    height: 100%;
+}
+
+.society-submenu-toggle:hover {
+    color: var(--society-burgundy);
+}
+
+.society-toggle-icon {
+    display: inline-block;
+    transition: transform 0.2s ease;
+}
+
+.is-open > .society-submenu-toggle .society-toggle-icon {
+    transform: rotate(180deg);
+}
+
+
+/* ============================================================================
+   HAMBURGER MENU (MOBILE)
+   WHY: On screens below 768px the full nav won't fit. We collapse it behind
+   a hamburger icon that toggles a full-width dropdown panel.
+   ============================================================================ */
+
+.society-hamburger {
+    display: none; /* Hidden on desktop */
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 8px;
+    z-index: 1001;
+}
+
+.society-hamburger-bar {
+    display: block;
+    width: 26px;
+    height: 3px;
+    background: var(--society-burgundy);
+    margin: 5px 0;
+    border-radius: 2px;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+/* X animation when menu is open */
+.society-hamburger.is-active .society-hamburger-bar:nth-child(1) {
+    transform: translateY(8px) rotate(45deg);
+}
+
+.society-hamburger.is-active .society-hamburger-bar:nth-child(2) {
+    opacity: 0;
+}
+
+.society-hamburger.is-active .society-hamburger-bar:nth-child(3) {
+    transform: translateY(-8px) rotate(-45deg);
+}
+
+
+/* ============================================================================
+   HERO SLIDER
+   WHY: The the society homepage leads with a large photo slider showing the
+   Riverwalk / Springfield scenery. Overlay text sits on a semi-transparent
+   band so it's readable over any image.
+   ============================================================================ */
+
+.society-hero {
+    position: relative;
+    width: 100%;
+    min-height: 420px;
+    overflow: hidden;
+    background: var(--society-dark);
+}
+
+.society-hero-slide {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+    background-position: center;
+    opacity: 0;
+    transition: opacity 1s ease;
+}
+
+.society-hero-slide.is-active {
+    opacity: 1;
+    position: relative;
+}
+
+.society-hero-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(99, 34, 32, 0.75);
+    padding: 30px 40px;
+}
+
+.society-hero-overlay h2 {
+    color: var(--society-white);
+    font-size: 2rem;
+    margin: 0 0 8px;
+}
+
+.society-hero-overlay p {
+    color: var(--society-cream);
+    font-size: 1.1rem;
+    margin: 0;
+}
+
+/* Slider navigation dots */
+.society-hero-dots {
+    position: absolute;
+    bottom: 16px;
+    right: 20px;
+    display: flex;
+    gap: 8px;
+    z-index: 10;
+}
+
+.society-hero-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.5);
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.3s ease;
+}
+
+.society-hero-dot.is-active {
+    background: var(--society-white);
+}
+
+
+/* ============================================================================
+   FRONT PAGE — CLASSES / EVENTS SECTION
+   WHY: Showcases the next few upcoming events as cards. Uses a heading with
+   a decorative divider line in the the society style, then a card grid.
+   ============================================================================ */
+
+.society-section {
+    max-width: var(--sp-content-width, 1100px);
+    margin: 0 auto;
+    padding: 50px 20px;
+}
+
+.society-section-heading {
+    text-align: center;
+    font-size: calc(1.8rem * var(--sp-font-scale, 1));
+    color: var(--society-burgundy);
+    margin-bottom: 8px;
+}
+
+/* Decorative divider under section headings */
+.society-divider {
+    width: 80px;
+    height: 3px;
+    background: var(--society-terracotta);
+    margin: 0 auto 40px;
+    border: none;
+}
+
+/* "More Future Events" link below the events grid */
+.society-more-link {
+    display: block;
+    text-align: center;
+    margin-top: 30px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--society-burgundy);
+    text-decoration: none;
+}
+
+.society-more-link:hover {
+    color: var(--society-terracotta);
+    text-decoration: underline;
+}
+
+
+/* ============================================================================
+   FRONT PAGE — LIBRARY CALLOUT
+   WHY: Side-by-side layout (image left, text right) highlights the the society
+   library collection. Links to the library catalog page.
+   ============================================================================ */
+
+.society-library-callout {
+    display: flex;
+    gap: 40px;
+    align-items: center;
+    background: #f9f5ef;
+    border-radius: 8px;
+    padding: 40px;
+}
+
+.society-library-image {
+    flex: 0 0 45%;
+}
+
+.society-library-image img {
+    width: 100%;
+    border-radius: 8px;
+}
+
+.society-library-text {
+    flex: 1;
+}
+
+.society-library-text h3 {
+    font-size: calc(1.4rem * var(--sp-font-scale, 1));
+    color: var(--society-burgundy);
+    margin-bottom: 16px;
+}
+
+.society-library-text p {
+    color: var(--society-taupe);
+    line-height: 1.7;
+    margin-bottom: 20px;
+}
+
+
+/* ============================================================================
+   FRONT PAGE — FEATURE CARDS (Volunteer, Learn, Benefits)
+   WHY: Three-column grid showcasing key value props. Each card has an image,
+   burgundy heading, description, and a dark call-to-action button.
+   ============================================================================ */
+
+.society-features-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 30px;
+}
+
+.society-feature-card {
+    text-align: center;
+    padding: 30px 20px;
+}
+
+.society-feature-card img {
+    width: 100%;
+    max-height: 200px;
+    object-fit: cover;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.society-feature-card h3 {
+    font-size: calc(1.2rem * var(--sp-font-scale, 1));
+    color: var(--society-burgundy);
+    margin-bottom: 12px;
+}
+
+.society-feature-card p {
+    color: var(--society-taupe);
+    font-size: 0.95rem;
+    line-height: 1.6;
+    margin-bottom: 20px;
+}
+
+
+/* ============================================================================
+   BUTTONS — the society VARIANTS
+   WHY: Two button styles — a filled burgundy primary and a dark outlined
+   secondary. Both use the brand palette.
+   ============================================================================ */
+
+.society-btn {
+    display: inline-block;
+    padding: 12px 28px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-decoration: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.society-btn-primary {
+    background: var(--society-burgundy);
+    color: var(--society-white);
+    border: 2px solid var(--society-burgundy);
+}
+
+.society-btn-primary:hover {
+    background: var(--society-terracotta);
+    border-color: var(--society-terracotta);
+    color: var(--society-white);
+}
+
+.society-btn-dark {
+    background: var(--society-dark);
+    color: var(--society-white);
+    border: 2px solid var(--society-dark);
+}
+
+.society-btn-dark:hover {
+    background: var(--society-burgundy);
+    border-color: var(--society-burgundy);
+    color: var(--society-white);
+}
+
+
+/* ============================================================================
+   FOOTER — the society
+   WHY: Cream-colored footer with 2-column layout. Left column has org info,
+   right column has nav links. Bottom bar has copyright and branding.
+   ============================================================================ */
+
+.site-footer {
+    background: var(--society-cream);
+    color: var(--society-dark);
+    padding: 0;
+    text-align: left;
+}
+
+.society-footer-accent {
+    height: 4px;
+    background: var(--society-burgundy);
+}
+
+.society-footer-inner {
+    max-width: var(--sp-content-width, 1100px);
+    margin: 0 auto;
+    padding: 40px 20px;
+    display: flex;
+    gap: 60px;
+}
+
+/* Left column — org info, mission, contact */
+.society-footer-info {
+    flex: 1;
+}
+
+.society-footer-info h3 {
+    color: var(--society-burgundy);
+    font-size: 1.2rem;
+    margin-bottom: 12px;
+}
+
+.society-footer-info p {
+    color: var(--society-taupe);
+    line-height: 1.7;
+    font-size: 0.9rem;
+    margin-bottom: 8px;
+}
+
+.society-footer-info a {
+    color: var(--society-burgundy);
+    text-decoration: none;
+}
+
+.society-footer-info a:hover {
+    color: var(--society-terracotta);
+    text-decoration: underline;
+}
+
+/* Right column — quick links */
+.society-footer-links {
+    flex: 0 0 250px;
+}
+
+.society-footer-links h3 {
+    color: var(--society-burgundy);
+    font-size: 1.2rem;
+    margin-bottom: 12px;
+}
+
+.society-footer-links ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.society-footer-links li {
+    margin-bottom: 10px;
+}
+
+.society-footer-links a {
+    color: var(--society-dark);
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.society-footer-links a:hover {
+    color: var(--society-terracotta);
+}
+
+/* Bottom bar — copyright + "Powered by SocietyPress" */
+.society-footer-bottom {
+    border-top: 1px solid rgba(99, 34, 32, 0.2);
+    max-width: var(--sp-content-width, 1100px);
+    margin: 0 auto;
+    padding: 16px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.8rem;
+    color: var(--society-taupe);
+}
+
+.society-footer-bottom a {
+    color: var(--society-burgundy);
+    text-decoration: none;
+}
+
+.society-footer-bottom a:hover {
+    color: var(--society-terracotta);
+}
+
+
+/* ============================================================================
+   PLUGIN WIDGET OVERRIDES
+   WHY: Page builder widgets (events, library, etc.) are rendered by the
+   plugin with their own inline styles. These overrides ensure they pick up
+   the the society color palette where the inline styles reference --sp-color-* vars.
+   We also adjust some widget layouts to fit the the society front page grid.
+   ============================================================================ */
+
+/* Event cards rendered by sp_render_builder_widget_upcoming_events */
+.sp-ue-date-block {
+    background: var(--society-cream);
+}
+
+.sp-ue-date-block .sp-ue-month {
+    color: var(--society-burgundy);
+}
+
+.sp-ue-title a {
+    color: var(--society-burgundy);
+}
+
+.sp-ue-title a:hover {
+    color: var(--society-terracotta);
+}
+
+/* Hero slider rendered by sp_render_builder_widget_hero_slider */
+.sp-hero-slider .sp-slide-btn {
+    background: var(--society-burgundy);
+}
+
+.sp-hero-slider .sp-slide-btn:hover {
+    background: var(--society-terracotta);
+}
+
+.sp-slider-dot.active {
+    background: var(--society-burgundy);
+}
+
+
+/* ============================================================================
+   USER MENU OVERRIDES
+   WHY: Parent theme's user menu assumes dark header background. the society has
+   a white header, so we flip the trigger colors to dark text.
+   ============================================================================ */
+
+.sp-user-login-link {
+    color: var(--society-dark);
+}
+
+.sp-user-login-link:hover {
+    background: var(--society-cream);
+    color: var(--society-burgundy);
+}
+
+.sp-user-trigger {
+    color: var(--society-dark);
+    background: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.1);
+}
+
+.sp-user-trigger:hover {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+.sp-user-menu:hover .sp-user-trigger,
+.sp-user-menu:focus-within .sp-user-trigger {
+    background: rgba(0, 0, 0, 0.1);
+}
+
+
+/* ============================================================================
+   RESPONSIVE — TABLET (768–1024px)
+   ============================================================================ */
+
+@media (max-width: 1024px) {
+    .society-features-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .society-library-callout {
+        padding: 30px;
+    }
+
+    .society-footer-inner {
+        gap: 40px;
+    }
+}
+
+
+/* ============================================================================
+   RESPONSIVE — MOBILE (<768px)
+   ============================================================================ */
+
+@media (max-width: 768px) {
+
+    /* Show hamburger, hide desktop nav */
+    .society-hamburger {
+        display: block;
+    }
+
+    .main-navigation {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: var(--society-white);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+        z-index: 999;
+        border-top: 3px solid var(--society-burgundy);
+    }
+
+    .main-navigation.is-open {
+        display: block;
+    }
+
+    .main-navigation ul {
+        flex-direction: column;
+        gap: 0;
+    }
+
+    .main-navigation li {
+        border-bottom: 1px solid #f0ebe3;
+    }
+
+    .main-navigation a {
+        padding: 14px 20px;
+    }
+
+    /* Show submenu toggle buttons on mobile */
+    .society-submenu-toggle {
+        display: block;
+    }
+
+    /* Mobile dropdowns — toggle open/close, not hover */
+    .main-navigation .sub-menu {
+        position: static;
+        box-shadow: none;
+        border-top: none;
+        border-left: none;
+        background: #faf7f2;
+        display: none;
+    }
+
+    .main-navigation li.is-open > .sub-menu {
+        display: block;
+    }
+
+    .main-navigation .sub-menu a {
+        padding-left: 40px;
+    }
+
+    .main-navigation .sub-menu .sub-menu a {
+        padding-left: 60px;
+    }
+
+    /* Hero adjustments */
+    .society-hero {
+        min-height: 300px;
+    }
+
+    .society-hero-overlay {
+        padding: 20px;
+    }
+
+    .society-hero-overlay h2 {
+        font-size: 1.4rem;
+    }
+
+    .society-hero-overlay p {
+        font-size: 0.95rem;
+    }
+
+    /* Library callout stacks vertically */
+    .society-library-callout {
+        flex-direction: column;
+        padding: 24px;
+    }
+
+    .society-library-image {
+        flex: none;
+        width: 100%;
+    }
+
+    /* Feature cards go single column */
+    .society-features-grid {
+        grid-template-columns: 1fr;
+    }
+
+    /* Footer stacks */
+    .society-footer-inner {
+        flex-direction: column;
+        gap: 30px;
+    }
+
+    .society-footer-links {
+        flex: none;
+    }
+
+    .society-footer-bottom {
+        flex-direction: column;
+        gap: 8px;
+        text-align: center;
+    }
+
+    /* Header layout for mobile */
+    .header-inner {
+        position: relative;
+    }
+
+    .header-nav-area {
+        position: static;
+    }
+}
+
+
+/* ============================================================================
+   RESPONSIVE — SMALL MOBILE (<480px)
+   ============================================================================ */
+
+@media (max-width: 480px) {
+    .society-hero {
+        min-height: 240px;
+    }
+
+    .society-hero-overlay h2 {
+        font-size: 1.2rem;
+    }
+
+    .society-section {
+        padding: 30px 16px;
+    }
+
+    .society-feature-card {
+        padding: 20px 12px;
+    }
+
+    .custom-logo {
+        max-height: 60px;
+    }
+}

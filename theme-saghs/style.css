@@ -1,0 +1,858 @@
+/*
+Theme Name: SAGHS
+Theme URI: https://kndgs.org
+Author: Stricklin Development
+Author URI: https://stricklindevelopment.com/
+Description: Child theme for the San Antonio Genealogical & Historical Society.
+             Applies SAGHS branding — burgundy/cream palette, hero slider,
+             3-level nav, and custom front-page layout — on top of the
+             SocietyPress parent theme.
+Version: 0.01d
+Template: societypress
+Requires at least: 6.0
+Tested up to: 6.7
+Requires PHP: 8.0
+License: Proprietary
+Text Domain: saghs
+*/
+
+/* ============================================================================
+   SAGHS COLOR PALETTE
+   WHY: Define the SAGHS brand colors as CSS custom properties so every element
+   references these tokens instead of hardcoded hex values. Override the parent
+   theme's --sp-color-* vars so plugin-rendered widgets (events, library, etc.)
+   also pick up the SAGHS palette automatically.
+   ============================================================================ */
+
+:root {
+    /* SAGHS brand colors */
+    --saghs-burgundy:    #632220;
+    --saghs-cream:       #fbebd2;
+    --saghs-taupe:       #7f7166;
+    --saghs-terracotta:  #ba5f36;
+    --saghs-dark:        #1a1a1a;
+    --saghs-white:       #ffffff;
+
+    /* Override plugin design vars so page-builder widgets inherit SAGHS colors.
+       These are normally set by the Design tab in SocietyPress Settings, but
+       the child theme CSS loads AFTER the inline <style> block, so these win. */
+    --sp-color-primary:       #632220;
+    --sp-color-primary-hover: #ba5f36;
+    --sp-color-accent:        #ba5f36;
+    --sp-color-header-bg:     #ffffff;
+    --sp-color-header-text:   #1a1a1a;
+    --sp-color-footer-bg:     #fbebd2;
+    --sp-color-footer-text:   #1a1a1a;
+}
+
+
+/* ============================================================================
+   GLOBAL OVERRIDES
+   WHY: The parent theme assumes a dark header. SAGHS uses a white header with
+   dark text, so we need to flip several color assumptions.
+   ============================================================================ */
+
+body {
+    color: var(--saghs-dark);
+}
+
+h1, h2, h3, h4, h5, h6 {
+    color: var(--saghs-burgundy);
+}
+
+a {
+    color: var(--saghs-burgundy);
+}
+
+a:hover {
+    color: var(--saghs-terracotta);
+}
+
+
+/* ============================================================================
+   HEADER
+   WHY: SAGHS uses a white header with the logo prominent on the left and
+   horizontal nav links on the right. The parent's dark header is overridden
+   to a clean white background with a subtle bottom border.
+   ============================================================================ */
+
+.site-header {
+    background: var(--saghs-white);
+    color: var(--saghs-dark);
+    border-bottom: 3px solid var(--saghs-burgundy);
+    padding: 0 20px;
+}
+
+.site-branding a,
+.site-title a {
+    color: var(--saghs-burgundy);
+}
+
+.site-description {
+    color: var(--saghs-taupe);
+    opacity: 1;
+}
+
+/* Make the logo larger for SAGHS — they have a prominent seal */
+.custom-logo {
+    max-height: 90px;
+}
+
+
+/* ============================================================================
+   NAVIGATION — 3-LEVEL DROPDOWN (DESKTOP)
+   WHY: SAGHS has a deep content hierarchy (Resources > Library, Research, etc.)
+   so we need multi-level dropdown support. The parent theme uses depth:1,
+   but the child header.php overrides that to depth:3.
+   ============================================================================ */
+
+/* Top-level nav links */
+.main-navigation a {
+    color: var(--saghs-dark);
+    font-weight: 600;
+    font-size: 0.9rem;
+    padding: 12px 16px;
+    transition: color 0.2s ease, background 0.2s ease;
+}
+
+.main-navigation a:hover,
+.main-navigation .current-menu-item > a {
+    color: var(--saghs-terracotta);
+    background: transparent;
+}
+
+/* Dropdown containers (level 2 and 3) */
+.main-navigation .sub-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background: var(--saghs-white);
+    min-width: 220px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    border-top: 3px solid var(--saghs-burgundy);
+    z-index: 1000;
+    list-style: none;
+    padding: 8px 0;
+    margin: 0;
+}
+
+/* Show dropdown on hover */
+.main-navigation li:hover > .sub-menu {
+    display: block;
+}
+
+/* Parent items need relative positioning for dropdown anchoring */
+.main-navigation li {
+    position: relative;
+}
+
+/* Dropdown links — full width, stacked vertically */
+.main-navigation .sub-menu a {
+    padding: 10px 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    border-bottom: 1px solid #f0ebe3;
+    white-space: nowrap;
+}
+
+.main-navigation .sub-menu li:last-child a {
+    border-bottom: none;
+}
+
+.main-navigation .sub-menu a:hover {
+    background: var(--saghs-cream);
+    color: var(--saghs-burgundy);
+}
+
+/* Level 3 — opens to the right of level 2 */
+.main-navigation .sub-menu .sub-menu {
+    top: 0;
+    left: 100%;
+    border-top: none;
+    border-left: 3px solid var(--saghs-burgundy);
+}
+
+/* Indicator arrow for items with children */
+.main-navigation .menu-item-has-children > a::after {
+    content: " \25BE"; /* small down triangle */
+    font-size: 0.7em;
+    opacity: 0.6;
+}
+
+.main-navigation .sub-menu .menu-item-has-children > a::after {
+    content: " \25B8"; /* small right triangle for nested */
+}
+
+
+/* ============================================================================
+   SUBMENU TOGGLE BUTTON (MOBILE ONLY)
+   WHY: On mobile, hover doesn't work for opening submenus. The nav walker
+   injects a small toggle button next to items that have children. On desktop
+   this is hidden (CSS :hover handles dropdowns). On mobile, tapping the
+   toggle opens/closes the submenu.
+   ============================================================================ */
+
+.saghs-submenu-toggle {
+    display: none; /* Hidden on desktop — dropdowns use :hover */
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 10px 14px;
+    color: var(--saghs-taupe);
+    font-size: 0.8rem;
+    position: absolute;
+    right: 0;
+    top: 0;
+    height: 100%;
+}
+
+.saghs-submenu-toggle:hover {
+    color: var(--saghs-burgundy);
+}
+
+.saghs-toggle-icon {
+    display: inline-block;
+    transition: transform 0.2s ease;
+}
+
+.is-open > .saghs-submenu-toggle .saghs-toggle-icon {
+    transform: rotate(180deg);
+}
+
+
+/* ============================================================================
+   HAMBURGER MENU (MOBILE)
+   WHY: On screens below 768px the full nav won't fit. We collapse it behind
+   a hamburger icon that toggles a full-width dropdown panel.
+   ============================================================================ */
+
+.saghs-hamburger {
+    display: none; /* Hidden on desktop */
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 8px;
+    z-index: 1001;
+}
+
+.saghs-hamburger-bar {
+    display: block;
+    width: 26px;
+    height: 3px;
+    background: var(--saghs-burgundy);
+    margin: 5px 0;
+    border-radius: 2px;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+/* X animation when menu is open */
+.saghs-hamburger.is-active .saghs-hamburger-bar:nth-child(1) {
+    transform: translateY(8px) rotate(45deg);
+}
+
+.saghs-hamburger.is-active .saghs-hamburger-bar:nth-child(2) {
+    opacity: 0;
+}
+
+.saghs-hamburger.is-active .saghs-hamburger-bar:nth-child(3) {
+    transform: translateY(-8px) rotate(-45deg);
+}
+
+
+/* ============================================================================
+   HERO SLIDER
+   WHY: The SAGHS homepage leads with a large photo slider showing the
+   Riverwalk / San Antonio scenery. Overlay text sits on a semi-transparent
+   band so it's readable over any image.
+   ============================================================================ */
+
+.saghs-hero {
+    position: relative;
+    width: 100%;
+    min-height: 420px;
+    overflow: hidden;
+    background: var(--saghs-dark);
+}
+
+.saghs-hero-slide {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+    background-position: center;
+    opacity: 0;
+    transition: opacity 1s ease;
+}
+
+.saghs-hero-slide.is-active {
+    opacity: 1;
+    position: relative;
+}
+
+.saghs-hero-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(99, 34, 32, 0.75);
+    padding: 30px 40px;
+}
+
+.saghs-hero-overlay h2 {
+    color: var(--saghs-white);
+    font-size: 2rem;
+    margin: 0 0 8px;
+}
+
+.saghs-hero-overlay p {
+    color: var(--saghs-cream);
+    font-size: 1.1rem;
+    margin: 0;
+}
+
+/* Slider navigation dots */
+.saghs-hero-dots {
+    position: absolute;
+    bottom: 16px;
+    right: 20px;
+    display: flex;
+    gap: 8px;
+    z-index: 10;
+}
+
+.saghs-hero-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.5);
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.3s ease;
+}
+
+.saghs-hero-dot.is-active {
+    background: var(--saghs-white);
+}
+
+
+/* ============================================================================
+   FRONT PAGE — CLASSES / EVENTS SECTION
+   WHY: Showcases the next few upcoming events as cards. Uses a heading with
+   a decorative divider line in the SAGHS style, then a card grid.
+   ============================================================================ */
+
+.saghs-section {
+    max-width: var(--sp-content-width, 1100px);
+    margin: 0 auto;
+    padding: 50px 20px;
+}
+
+.saghs-section-heading {
+    text-align: center;
+    font-size: calc(1.8rem * var(--sp-font-scale, 1));
+    color: var(--saghs-burgundy);
+    margin-bottom: 8px;
+}
+
+/* Decorative divider under section headings */
+.saghs-divider {
+    width: 80px;
+    height: 3px;
+    background: var(--saghs-terracotta);
+    margin: 0 auto 40px;
+    border: none;
+}
+
+/* "More Future Events" link below the events grid */
+.saghs-more-link {
+    display: block;
+    text-align: center;
+    margin-top: 30px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--saghs-burgundy);
+    text-decoration: none;
+}
+
+.saghs-more-link:hover {
+    color: var(--saghs-terracotta);
+    text-decoration: underline;
+}
+
+
+/* ============================================================================
+   FRONT PAGE — LIBRARY CALLOUT
+   WHY: Side-by-side layout (image left, text right) highlights the SAGHS
+   library collection. Links to the library catalog page.
+   ============================================================================ */
+
+.saghs-library-callout {
+    display: flex;
+    gap: 40px;
+    align-items: center;
+    background: #f9f5ef;
+    border-radius: 8px;
+    padding: 40px;
+}
+
+.saghs-library-image {
+    flex: 0 0 45%;
+}
+
+.saghs-library-image img {
+    width: 100%;
+    border-radius: 8px;
+}
+
+.saghs-library-text {
+    flex: 1;
+}
+
+.saghs-library-text h3 {
+    font-size: calc(1.4rem * var(--sp-font-scale, 1));
+    color: var(--saghs-burgundy);
+    margin-bottom: 16px;
+}
+
+.saghs-library-text p {
+    color: var(--saghs-taupe);
+    line-height: 1.7;
+    margin-bottom: 20px;
+}
+
+
+/* ============================================================================
+   FRONT PAGE — FEATURE CARDS (Volunteer, Learn, Benefits)
+   WHY: Three-column grid showcasing key value props. Each card has an image,
+   burgundy heading, description, and a dark call-to-action button.
+   ============================================================================ */
+
+.saghs-features-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 30px;
+}
+
+.saghs-feature-card {
+    text-align: center;
+    padding: 30px 20px;
+}
+
+.saghs-feature-card img {
+    width: 100%;
+    max-height: 200px;
+    object-fit: cover;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.saghs-feature-card h3 {
+    font-size: calc(1.2rem * var(--sp-font-scale, 1));
+    color: var(--saghs-burgundy);
+    margin-bottom: 12px;
+}
+
+.saghs-feature-card p {
+    color: var(--saghs-taupe);
+    font-size: 0.95rem;
+    line-height: 1.6;
+    margin-bottom: 20px;
+}
+
+
+/* ============================================================================
+   BUTTONS — SAGHS VARIANTS
+   WHY: Two button styles — a filled burgundy primary and a dark outlined
+   secondary. Both use the brand palette.
+   ============================================================================ */
+
+.saghs-btn {
+    display: inline-block;
+    padding: 12px 28px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-decoration: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.saghs-btn-primary {
+    background: var(--saghs-burgundy);
+    color: var(--saghs-white);
+    border: 2px solid var(--saghs-burgundy);
+}
+
+.saghs-btn-primary:hover {
+    background: var(--saghs-terracotta);
+    border-color: var(--saghs-terracotta);
+    color: var(--saghs-white);
+}
+
+.saghs-btn-dark {
+    background: var(--saghs-dark);
+    color: var(--saghs-white);
+    border: 2px solid var(--saghs-dark);
+}
+
+.saghs-btn-dark:hover {
+    background: var(--saghs-burgundy);
+    border-color: var(--saghs-burgundy);
+    color: var(--saghs-white);
+}
+
+
+/* ============================================================================
+   FOOTER — SAGHS
+   WHY: Cream-colored footer with 2-column layout. Left column has org info,
+   right column has nav links. Bottom bar has copyright and branding.
+   ============================================================================ */
+
+.site-footer {
+    background: var(--saghs-cream);
+    color: var(--saghs-dark);
+    padding: 0;
+    text-align: left;
+}
+
+.saghs-footer-accent {
+    height: 4px;
+    background: var(--saghs-burgundy);
+}
+
+.saghs-footer-inner {
+    max-width: var(--sp-content-width, 1100px);
+    margin: 0 auto;
+    padding: 40px 20px;
+    display: flex;
+    gap: 60px;
+}
+
+/* Left column — org info, mission, contact */
+.saghs-footer-info {
+    flex: 1;
+}
+
+.saghs-footer-info h3 {
+    color: var(--saghs-burgundy);
+    font-size: 1.2rem;
+    margin-bottom: 12px;
+}
+
+.saghs-footer-info p {
+    color: var(--saghs-taupe);
+    line-height: 1.7;
+    font-size: 0.9rem;
+    margin-bottom: 8px;
+}
+
+.saghs-footer-info a {
+    color: var(--saghs-burgundy);
+    text-decoration: none;
+}
+
+.saghs-footer-info a:hover {
+    color: var(--saghs-terracotta);
+    text-decoration: underline;
+}
+
+/* Right column — quick links */
+.saghs-footer-links {
+    flex: 0 0 250px;
+}
+
+.saghs-footer-links h3 {
+    color: var(--saghs-burgundy);
+    font-size: 1.2rem;
+    margin-bottom: 12px;
+}
+
+.saghs-footer-links ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.saghs-footer-links li {
+    margin-bottom: 10px;
+}
+
+.saghs-footer-links a {
+    color: var(--saghs-dark);
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.saghs-footer-links a:hover {
+    color: var(--saghs-terracotta);
+}
+
+/* Bottom bar — copyright + "Powered by SocietyPress" */
+.saghs-footer-bottom {
+    border-top: 1px solid rgba(99, 34, 32, 0.2);
+    max-width: var(--sp-content-width, 1100px);
+    margin: 0 auto;
+    padding: 16px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.8rem;
+    color: var(--saghs-taupe);
+}
+
+.saghs-footer-bottom a {
+    color: var(--saghs-burgundy);
+    text-decoration: none;
+}
+
+.saghs-footer-bottom a:hover {
+    color: var(--saghs-terracotta);
+}
+
+
+/* ============================================================================
+   PLUGIN WIDGET OVERRIDES
+   WHY: Page builder widgets (events, library, etc.) are rendered by the
+   plugin with their own inline styles. These overrides ensure they pick up
+   the SAGHS color palette where the inline styles reference --sp-color-* vars.
+   We also adjust some widget layouts to fit the SAGHS front page grid.
+   ============================================================================ */
+
+/* Event cards rendered by sp_render_builder_widget_upcoming_events */
+.sp-ue-date-block {
+    background: var(--saghs-cream);
+}
+
+.sp-ue-date-block .sp-ue-month {
+    color: var(--saghs-burgundy);
+}
+
+.sp-ue-title a {
+    color: var(--saghs-burgundy);
+}
+
+.sp-ue-title a:hover {
+    color: var(--saghs-terracotta);
+}
+
+/* Hero slider rendered by sp_render_builder_widget_hero_slider */
+.sp-hero-slider .sp-slide-btn {
+    background: var(--saghs-burgundy);
+}
+
+.sp-hero-slider .sp-slide-btn:hover {
+    background: var(--saghs-terracotta);
+}
+
+.sp-slider-dot.active {
+    background: var(--saghs-burgundy);
+}
+
+
+/* ============================================================================
+   USER MENU OVERRIDES
+   WHY: Parent theme's user menu assumes dark header background. SAGHS has
+   a white header, so we flip the trigger colors to dark text.
+   ============================================================================ */
+
+.sp-user-login-link {
+    color: var(--saghs-dark);
+}
+
+.sp-user-login-link:hover {
+    background: var(--saghs-cream);
+    color: var(--saghs-burgundy);
+}
+
+.sp-user-trigger {
+    color: var(--saghs-dark);
+    background: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.1);
+}
+
+.sp-user-trigger:hover {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+.sp-user-menu:hover .sp-user-trigger,
+.sp-user-menu:focus-within .sp-user-trigger {
+    background: rgba(0, 0, 0, 0.1);
+}
+
+
+/* ============================================================================
+   RESPONSIVE — TABLET (768–1024px)
+   ============================================================================ */
+
+@media (max-width: 1024px) {
+    .saghs-features-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .saghs-library-callout {
+        padding: 30px;
+    }
+
+    .saghs-footer-inner {
+        gap: 40px;
+    }
+}
+
+
+/* ============================================================================
+   RESPONSIVE — MOBILE (<768px)
+   ============================================================================ */
+
+@media (max-width: 768px) {
+
+    /* Show hamburger, hide desktop nav */
+    .saghs-hamburger {
+        display: block;
+    }
+
+    .main-navigation {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: var(--saghs-white);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+        z-index: 999;
+        border-top: 3px solid var(--saghs-burgundy);
+    }
+
+    .main-navigation.is-open {
+        display: block;
+    }
+
+    .main-navigation ul {
+        flex-direction: column;
+        gap: 0;
+    }
+
+    .main-navigation li {
+        border-bottom: 1px solid #f0ebe3;
+    }
+
+    .main-navigation a {
+        padding: 14px 20px;
+    }
+
+    /* Show submenu toggle buttons on mobile */
+    .saghs-submenu-toggle {
+        display: block;
+    }
+
+    /* Mobile dropdowns — toggle open/close, not hover */
+    .main-navigation .sub-menu {
+        position: static;
+        box-shadow: none;
+        border-top: none;
+        border-left: none;
+        background: #faf7f2;
+        display: none;
+    }
+
+    .main-navigation li.is-open > .sub-menu {
+        display: block;
+    }
+
+    .main-navigation .sub-menu a {
+        padding-left: 40px;
+    }
+
+    .main-navigation .sub-menu .sub-menu a {
+        padding-left: 60px;
+    }
+
+    /* Hero adjustments */
+    .saghs-hero {
+        min-height: 300px;
+    }
+
+    .saghs-hero-overlay {
+        padding: 20px;
+    }
+
+    .saghs-hero-overlay h2 {
+        font-size: 1.4rem;
+    }
+
+    .saghs-hero-overlay p {
+        font-size: 0.95rem;
+    }
+
+    /* Library callout stacks vertically */
+    .saghs-library-callout {
+        flex-direction: column;
+        padding: 24px;
+    }
+
+    .saghs-library-image {
+        flex: none;
+        width: 100%;
+    }
+
+    /* Feature cards go single column */
+    .saghs-features-grid {
+        grid-template-columns: 1fr;
+    }
+
+    /* Footer stacks */
+    .saghs-footer-inner {
+        flex-direction: column;
+        gap: 30px;
+    }
+
+    .saghs-footer-links {
+        flex: none;
+    }
+
+    .saghs-footer-bottom {
+        flex-direction: column;
+        gap: 8px;
+        text-align: center;
+    }
+
+    /* Header layout for mobile */
+    .header-inner {
+        position: relative;
+    }
+
+    .header-nav-area {
+        position: static;
+    }
+}
+
+
+/* ============================================================================
+   RESPONSIVE — SMALL MOBILE (<480px)
+   ============================================================================ */
+
+@media (max-width: 480px) {
+    .saghs-hero {
+        min-height: 240px;
+    }
+
+    .saghs-hero-overlay h2 {
+        font-size: 1.2rem;
+    }
+
+    .saghs-section {
+        padding: 30px 16px;
+    }
+
+    .saghs-feature-card {
+        padding: 20px 12px;
+    }
+
+    .custom-logo {
+        max-height: 60px;
+    }
+}

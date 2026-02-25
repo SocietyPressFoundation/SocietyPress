@@ -1,82 +1,77 @@
 <?php
 /**
- * The main template file
+ * Main Index Template
  *
- * WHY: WordPress fallback template when no specific template exists.
- * Displays the blog archive.
+ * WHY: This is WordPress's ultimate fallback template. If no more specific
+ * template exists (page.php, single.php, etc.), WordPress uses this one.
+ * It displays a list of posts with a sidebar — the standard blog layout.
  *
  * @package SocietyPress
- * @since 1.0.0
  */
 
 get_header();
 ?>
 
-<main id="primary" class="site-main">
-	<div class="sp-container">
+<div class="site-content">
+    <div class="content-area-with-sidebar">
 
-		<?php if ( have_posts() ) : ?>
+        <main class="main-content">
+            <?php if ( have_posts() ) : ?>
 
-			<header class="page-header">
-				<?php
-				if ( is_home() && ! is_front_page() ) :
-					?>
-					<h1 class="page-title"><?php single_post_title(); ?></h1>
-					<?php
-				elseif ( is_archive() ) :
-					the_archive_title( '<h1 class="page-title">', '</h1>' );
-					the_archive_description( '<div class="archive-description">', '</div>' );
-				elseif ( is_search() ) :
-					?>
-					<h1 class="page-title">
-						<?php
-						/* translators: %s: search query */
-						printf( esc_html__( 'Search Results for: %s', 'societypress' ), '<span>' . get_search_query() . '</span>' );
-						?>
-					</h1>
-				<?php else : ?>
-					<h1 class="page-title"><?php esc_html_e( 'Blog', 'societypress' ); ?></h1>
-					<?php
-				endif;
-				?>
-			</header>
+                <?php while ( have_posts() ) : the_post(); ?>
 
-			<div class="posts-grid">
-				<?php
-				// Start the Loop
-				while ( have_posts() ) :
-					the_post();
+                <article id="post-<?php the_ID(); ?>" <?php post_class(); ?>>
+                    <header class="entry-header">
+                        <h2 class="entry-title">
+                            <a href="<?php the_permalink(); ?>"><?php the_title(); ?></a>
+                        </h2>
+                        <div class="entry-meta">
+                            <?php echo get_the_date(); ?> &middot; <?php the_author(); ?>
+                        </div>
+                    </header>
 
-					/*
-					 * Include the Post-Type-specific template for the content.
-					 * WHY: Allows different content layouts for different post types.
-					 */
-					get_template_part( 'template-parts/content', get_post_type() );
+                    <?php if ( has_post_thumbnail() ) : ?>
+                    <div class="post-thumbnail">
+                        <a href="<?php the_permalink(); ?>">
+                            <?php the_post_thumbnail( 'large' ); ?>
+                        </a>
+                    </div>
+                    <?php endif; ?>
 
-				endwhile;
-				?>
-			</div>
+                    <div class="entry-content">
+                        <?php the_excerpt(); ?>
+                        <a href="<?php the_permalink(); ?>" class="read-more">Read more &rarr;</a>
+                    </div>
+                </article>
 
-			<?php
-			// Previous/next page navigation
-			the_posts_pagination(
-				array(
-					'mid_size'  => 2,
-					'prev_text' => __( '&larr; Previous', 'societypress' ),
-					'next_text' => __( 'Next &rarr;', 'societypress' ),
-				)
-			);
+                <?php endwhile; ?>
 
-		else :
+                <div class="pagination">
+                    <?php
+                    the_posts_pagination([
+                        'prev_text' => '&laquo; Previous',
+                        'next_text' => 'Next &raquo;',
+                    ]);
+                    ?>
+                </div>
 
-			// No content found
-			get_template_part( 'template-parts/content', 'none' );
+            <?php else : ?>
 
-		endif;
-		?>
+                <article class="no-results">
+                    <header class="entry-header">
+                        <h2 class="entry-title">Nothing here yet</h2>
+                    </header>
+                    <div class="entry-content">
+                        <p>There are no posts to display. Once you start publishing content, it will appear here.</p>
+                    </div>
+                </article>
 
-	</div><!-- .sp-container -->
-</main><!-- #primary -->
+            <?php endif; ?>
+        </main>
 
-<?php
-get_footer();
+        <?php get_sidebar(); ?>
+
+    </div>
+</div>
+
+<?php get_footer(); ?>

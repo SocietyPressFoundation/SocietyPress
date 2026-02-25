@@ -1,48 +1,55 @@
 <?php
 /**
- * The template for displaying single posts
+ * Single Post Template
  *
- * WHY: Custom layout for individual blog posts with full content and comments.
+ * WHY: Individual blog posts get a two-column layout (content + sidebar).
+ * The sidebar provides navigation to other content (recent posts,
+ * categories, search) which helps visitors explore the site.
  *
  * @package SocietyPress
- * @since 1.01d
  */
 
 get_header();
 ?>
 
-<main id="primary" class="site-main">
-	<div class="sp-container">
-		<div class="content-area">
+<div class="site-content">
+    <div class="content-area-with-sidebar">
 
-			<?php
-			while ( have_posts() ) :
-				the_post();
+        <main class="main-content">
+            <?php while ( have_posts() ) : the_post(); ?>
 
-				get_template_part( 'template-parts/content', get_post_type() );
+            <article id="post-<?php the_ID(); ?>" <?php post_class(); ?>>
+                <header class="entry-header">
+                    <h1 class="entry-title"><?php the_title(); ?></h1>
+                    <div class="entry-meta">
+                        <?php echo get_the_date(); ?> &middot; <?php the_author(); ?>
+                    </div>
+                </header>
 
-				// Post navigation (previous/next)
-				the_post_navigation(
-					array(
-						'prev_text' => '<span class="nav-subtitle">' . esc_html__( 'Previous:', 'societypress' ) . '</span> <span class="nav-title">%title</span>',
-						'next_text' => '<span class="nav-subtitle">' . esc_html__( 'Next:', 'societypress' ) . '</span> <span class="nav-title">%title</span>',
-					)
-				);
+                <?php if ( has_post_thumbnail() ) : ?>
+                <div class="post-thumbnail">
+                    <?php the_post_thumbnail( 'large' ); ?>
+                </div>
+                <?php endif; ?>
 
-				// If comments are open or we have at least one comment, load up the comment template
-				if ( comments_open() || get_comments_number() ) :
-					comments_template();
-				endif;
+                <div class="entry-content">
+                    <?php the_content(); ?>
+                </div>
+            </article>
 
-			endwhile;
-			?>
+            <?php
+            // Show comments section if comments are open or there are existing comments
+            if ( comments_open() || get_comments_number() ) {
+                comments_template();
+            }
+            ?>
 
-		</div><!-- .content-area -->
+            <?php endwhile; ?>
+        </main>
 
-		<?php get_sidebar(); ?>
+        <?php get_sidebar(); ?>
 
-	</div><!-- .sp-container -->
-</main><!-- #primary -->
+    </div>
+</div>
 
-<?php
-get_footer();
+<?php get_footer(); ?>

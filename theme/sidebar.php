@@ -1,18 +1,18 @@
 <?php
 /**
- * The sidebar containing the main widget area
+ * Sidebar Template
  *
- * WHY: Provides widget-ready sidebar for posts and pages.
+ * WHY: Outputs the sidebar widget area. If no widgets have been added
+ * by the site admin, nothing is displayed — we don't show an empty box.
  *
  * @package SocietyPress
- * @since 1.01d
  */
 
 if ( ! is_active_sidebar( 'sidebar-1' ) ) {
-	return;
+    return; // No widgets? Don't output anything.
 }
 ?>
 
-<aside id="secondary" class="widget-area sidebar">
-	<?php dynamic_sidebar( 'sidebar-1' ); ?>
-</aside><!-- #secondary -->
+<aside class="widget-area" role="complementary">
+    <?php dynamic_sidebar( 'sidebar-1' ); ?>
+</aside>

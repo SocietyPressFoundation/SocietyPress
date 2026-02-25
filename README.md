@@ -1,92 +1,96 @@
 # SocietyPress
 
-**Commercial WordPress plugin for genealogical societies, historical societies, and heritage organizations.**
+**Free, open-source WordPress platform for genealogical societies, historical societies, and heritage organizations.**
 
-A valid license key is required. [Purchase at stricklindevelopment.com/studiopress/societypress](https://stricklindevelopment.com/studiopress/societypress)
+No pricing. No paid tiers. No upgrades. Community software, freely given.
+
+**Current version: 0.22d**
 
 ---
 
-## Overview
+## What It Does
 
-Membership management built for the volunteers who actually run these organizations: dues and renewals, searchable member directories, committee management, and governance tracking.
+Membership management built for the volunteers who actually run these organizations. Senior-friendly by default. Your society, your server, your control.
 
-Senior-friendly by default. No subscriptions required to use your own data. Your society, your server, your control.
+### Members
+- Full member CRUD with custom fields for genealogical research
+- Individual and organizational member support
+- Membership tiers, statuses (Active, Expired, Pending, Cancelled, Deceased)
+- CSV import with auto-mapping, CSV export with filters
+- Searchable member directory (frontend, members-only, privacy layers)
 
-## Features
+### Events
+- Event management with categories, locations, time slots
+- Recurring events (weekly, monthly nth-day)
+- Registration system with capacity limits and waitlists
+- Walk-in tracking and attendance management
+- iCal export
 
-### Member Management
-- Full CRUD operations with custom fields for genealogical research
-- Surnames researched and geographic research areas
-- Multiple statuses: Active, Expired, Pending, Cancelled, Deceased
-- Contact info with multiple emails, phones, and addresses
-- Directory visibility and communication preferences
+### Library Catalog
+- Full catalog management for society research libraries (19,000+ items tested)
+- CSV import/export with field mapping
+- Frontend catalog with expandable item details (AJAX)
+- Faceted search and filtering (media type, subject, acquisition source, sort)
+- Clickable subject and surname tags
+- Admin stats dashboard (collection value, breakdowns by type/source)
 
-### Membership Tiers
-- Configurable levels (Individual, Family, Student, Lifetime, Institutional)
-- Custom pricing, duration, and member limits per tier
-- Active/inactive tier management
+### Committees & Leadership
+- Committee management with delegated permissions
+- Chairpersons manage their own committees from the frontend
+- Officer positions and terms tracking
+- Co-chair support
 
-### Import/Export
-- CSV import with intelligent field auto-mapping
-- Supports Wild Apricot, Excel, and other membership systems
-- Filter-aware CSV export
+### Page Builder
+- 10 widget types for building society pages
+- Hero slider, events calendar, member directory, library catalog, contact form, and more
+- No Gutenberg required — works with the classic editor
 
-### Admin Interface
-- WordPress-native UI with WP_List_Table
-- Sortable, searchable, filterable member lists
-- Bulk actions with "select all across pages"
-- Centralized settings page
+### Design System
+- CSS custom properties throughout
+- 7 color pickers, font/size/width controls
+- Live preview in admin
+- Theme uses design system values with sensible fallback defaults
 
-### Security
-- AES-256-GCM encryption for sensitive data
-- Prepared statements, nonce verification, capability checks
-- Full audit logging
+### Admin
+- Unified sidebar menu with flyout groups
+- WordPress branding hidden — your members see your society's name, not WordPress
+- Custom login page
+- Site lockdown (logged-in users only for frontend, admin-only for backend)
+
+---
+
+## Architecture
+
+SocietyPress is a single-file plugin (`societypress.php`) paired with a companion theme. The plugin handles all business logic; the theme handles presentation.
+
+- **Plugin:** `plugin/societypress.php` — function-based, inline JS/CSS, no external dependencies
+- **Theme:** `theme/` — classic PHP WordPress theme, CSS custom properties, vanilla JS only
+- **Database:** Custom tables with `{prefix}sp_` naming (members, events, library, committees, etc.)
+- **Settings:** Single `societypress_settings` option array
+
+No jQuery. No CSS frameworks. No Gutenberg. No block editor. No Full Site Editing.
+
+---
 
 ## Requirements
 
 - WordPress 6.0+
 - PHP 8.0+
 - MySQL 5.7+ or MariaDB 10.3+
-- Valid SocietyPress license key
+
+---
 
 ## Installation
 
-1. Purchase a license at [stricklindevelopment.com/studiopress/societypress](https://stricklindevelopment.com/studiopress/societypress)
-2. Download the plugin from your account
-3. Upload to `/wp-content/plugins/societypress/`
-4. Activate in WordPress admin
-5. Enter your license key in Settings > SocietyPress
+1. Upload the `societypress` folder from `plugin/` to `wp-content/plugins/`
+2. Upload the `societypress` folder from `theme/` to `wp-content/themes/`
+3. Activate the plugin, then activate the theme
+4. Visit the SocietyPress settings page to configure your society
 
-## File Structure
-
-```
-plugin/
-├── societypress.php              # Main plugin file
-├── admin/
-│   ├── class-admin.php           # Admin controller
-│   ├── class-import.php          # CSV import handler
-│   └── class-members-list-table.php
-├── includes/
-│   ├── class-database.php        # Schema installation
-│   ├── class-encryption.php      # AES-256-GCM
-│   ├── class-members.php         # Member operations
-│   └── class-tiers.php           # Tier management
-└── assets/
-    ├── css/admin.css
-    └── js/{admin,import}.js
-```
+---
 
 ## License
 
-This is **commercial software**. The source code is licensed under GPL v2+, but a valid license key is required for use. See [LICENSE](LICENSE) for details.
+SocietyPress is released under the [GNU General Public License v2.0](LICENSE) (or later).
 
-"SocietyPress" is a trademark of Charles Stricklin.
-
-## Support
-
-Licensed users receive support at [stricklindevelopment.com/studiopress/support](https://stricklindevelopment.com/studiopress/support)
-
-## Author
-
-Charles Stricklin
-[stricklindevelopment.com/studiopress](https://stricklindevelopment.com/studiopress/)
+Free as in freedom. Free as in beer.

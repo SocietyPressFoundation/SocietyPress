@@ -1,0 +1,965 @@
+/*
+Theme Name: the society
+Theme URI: https://example.org
+Author: Stricklin Development
+Author URI: https://stricklindevelopment.com/
+Description: Child theme for the the society.
+             Applies the society branding — burgundy/cream palette, Poppins font,
+             hero slider, 3-level nav, and custom front-page layout — on top
+             of the SocietyPress parent theme.
+Version: 0.03d
+Template: societypress
+Requires at least: 6.0
+Tested up to: 6.7
+Requires PHP: 8.0
+License: Proprietary
+Text Domain: society
+*/
+
+/* ============================================================================
+   the society COLOR PALETTE & FONT
+   WHY: Define the the society brand colors and typography as CSS custom properties
+   so every element references these tokens instead of hardcoded values.
+   Override the parent theme's --sp-color-* and --sp-font-* vars so
+   plugin-rendered widgets (events, library, etc.) also pick up the the society
+   palette and font automatically.
+   ============================================================================ */
+
+:root {
+    /* the society brand colors */
+    --society-burgundy:    #632220;
+    --society-cream:       #fbebd2;
+    --society-taupe:       #7f7166;
+    --society-terracotta:  #ba5f36;
+    --society-dark:        #1a1a1a;
+    --society-white:       #ffffff;
+
+    /* Override plugin design vars so page-builder widgets inherit the society colors.
+       These are normally set by the Design tab in SocietyPress Settings, but
+       the child theme CSS loads AFTER the inline <style> block, so these win. */
+    --sp-color-primary:       #632220;
+    --sp-color-primary-hover: #ba5f36;
+    --sp-color-accent:        #ba5f36;
+    --sp-color-header-bg:     #ffffff;
+    --sp-color-header-text:   #1a1a1a;
+    --sp-color-footer-bg:     #fbebd2;
+    --sp-color-footer-text:   #1a1a1a;
+
+    /* Override plugin font vars so everything uses Poppins.
+       WHY Poppins: The reference the society site uses it. It's clean, geometric,
+       and reads well at all sizes — important for an older demographic. */
+    --sp-font-body:    'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    --sp-font-heading: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+
+
+/* ============================================================================
+   GLOBAL OVERRIDES
+   WHY: The parent theme assumes a dark header and system fonts. the society uses
+   Poppins throughout with a white header and dark text, so we flip several
+   color and font assumptions.
+   ============================================================================ */
+
+body {
+    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    font-weight: 400;
+    font-size: 14px;
+    color: var(--society-dark);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-family: 'Poppins', sans-serif;
+    color: var(--society-burgundy);
+}
+
+a {
+    color: var(--society-burgundy);
+}
+
+a:hover {
+    color: var(--society-terracotta);
+}
+
+/* Dark text selection to match reference site */
+::selection {
+    background: #343a3e;
+    color: #fff;
+}
+
+
+/* ============================================================================
+   HEADER
+   WHY: the society uses a white header fixed to the top of the viewport, with the
+   logo prominent on the left and horizontal nav links on the right. A subtle
+   burgundy bottom border anchors the header visually.
+   ============================================================================ */
+
+.site-header {
+    background: var(--society-white);
+    color: var(--society-dark);
+    border-bottom: none;
+    padding: 0 20px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1030;
+}
+
+/* WHY body padding-top: Since the header is fixed, we need to push the page
+   content down so it doesn't hide behind the header. With 40px top/bottom
+   padding and a 120px logo, the header renders ~200px tall. */
+body {
+    padding-top: 210px;
+}
+
+/* Extra vertical padding gives the logo room to breathe, matching the
+   reference site's ~335px header height. Width is controlled by the
+   Design settings' Content Width (--sp-content-width).
+   align-items: center ensures the logo, nav, and user menu all sit on
+   the same vertical midline regardless of their individual heights. */
+.site-header .header-inner {
+    padding: 40px 0;
+    display: flex;
+    align-items: center;
+}
+
+.site-branding a,
+.site-title a {
+    color: var(--society-burgundy);
+}
+
+.site-description {
+    color: var(--society-taupe);
+    opacity: 1;
+}
+
+/* Make the logo prominent for the society — they have a large seal.
+   150px matches the reference site exactly. !important is needed because
+   the parent theme's .custom-logo rule loads at the same specificity and
+   the cascade order isn't guaranteed with how WP enqueues parent+child. */
+.custom-logo {
+    max-height: 120px !important;
+    width: auto !important;
+}
+
+
+/* ============================================================================
+   NAVIGATION — 3-LEVEL DROPDOWN (DESKTOP)
+   WHY: the society has a deep content hierarchy (Resources > Library, Research, etc.)
+   so we need multi-level dropdown support. The parent theme uses depth:1,
+   but the child header.php overrides that to depth:3.
+   ============================================================================ */
+
+/* Top-level nav links — reference site uses small, light system fonts (~13px).
+   Poppins has a taller x-height than system fonts so it reads larger at the
+   same nominal size. 13px Poppins ≈ 14px system visually. Weight 400 keeps
+   it light and delicate like the reference. */
+.main-navigation a {
+    color: var(--society-dark);
+    font-family: 'Poppins', sans-serif;
+    font-weight: 400;
+    font-size: 13px;
+    padding: 10px 14px;
+    transition: color 0.2s ease, background 0.2s ease;
+}
+
+.main-navigation a:hover,
+.main-navigation .current-menu-item > a {
+    color: var(--society-terracotta);
+    background: transparent;
+}
+
+/* Dropdown containers (level 2 and 3) */
+.main-navigation .sub-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background: var(--society-white);
+    min-width: 220px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    border-top: 3px solid var(--society-burgundy);
+    z-index: 1000;
+    list-style: none;
+    padding: 8px 0;
+    margin: 0;
+}
+
+/* Show dropdown on hover */
+.main-navigation li:hover > .sub-menu {
+    display: block;
+}
+
+/* Parent items need relative positioning for dropdown anchoring */
+.main-navigation li {
+    position: relative;
+}
+
+/* Dropdown links — full width, stacked vertically */
+.main-navigation .sub-menu a {
+    padding: 10px 20px;
+    font-size: 0.85rem;
+    font-weight: 400;
+    border-bottom: 1px solid #f0ebe3;
+    white-space: nowrap;
+}
+
+.main-navigation .sub-menu li:last-child a {
+    border-bottom: none;
+}
+
+.main-navigation .sub-menu a:hover {
+    background: var(--society-cream);
+    color: var(--society-burgundy);
+}
+
+/* Level 3 — opens to the LEFT of level 2.
+   WHY left instead of right: The deepest dropdowns (Library, Research, etc.)
+   live under Resources which sits at the far right of the nav bar. Opening
+   level 3 to the right (left:100%) pushes it off-screen. Opening to the left
+   (right:100%) keeps it visible. */
+.main-navigation .sub-menu .sub-menu {
+    top: 0;
+    left: auto;
+    right: 100%;
+    border-top: none;
+    border-left: none;
+    border-right: 3px solid var(--society-burgundy);
+}
+
+/* Indicator arrow for items with children */
+.main-navigation .menu-item-has-children > a::after {
+    content: " \25BE"; /* small down triangle */
+    font-size: 0.7em;
+    opacity: 0.6;
+}
+
+.main-navigation .sub-menu .menu-item-has-children > a::after {
+    content: " \25B8"; /* small right triangle for nested */
+}
+
+
+/* ============================================================================
+   SUBMENU TOGGLE BUTTON (MOBILE ONLY)
+   WHY: On mobile, hover doesn't work for opening submenus. The nav walker
+   injects a small toggle button next to items that have children. On desktop
+   this is hidden (CSS :hover handles dropdowns). On mobile, tapping the
+   toggle opens/closes the submenu.
+   ============================================================================ */
+
+.society-submenu-toggle {
+    display: none; /* Hidden on desktop — dropdowns use :hover */
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 10px 14px;
+    color: var(--society-taupe);
+    font-size: 0.8rem;
+    position: absolute;
+    right: 0;
+    top: 0;
+    height: 100%;
+}
+
+.society-submenu-toggle:hover {
+    color: var(--society-burgundy);
+}
+
+.society-toggle-icon {
+    display: inline-block;
+    transition: transform 0.2s ease;
+}
+
+.is-open > .society-submenu-toggle .society-toggle-icon {
+    transform: rotate(180deg);
+}
+
+
+/* ============================================================================
+   HAMBURGER MENU (MOBILE)
+   WHY: On screens below 768px the full nav won't fit. We collapse it behind
+   a hamburger icon that toggles a full-width dropdown panel.
+   ============================================================================ */
+
+.society-hamburger {
+    display: none; /* Hidden on desktop */
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 8px;
+    z-index: 1001;
+}
+
+.society-hamburger-bar {
+    display: block;
+    width: 26px;
+    height: 3px;
+    background: var(--society-burgundy);
+    margin: 5px 0;
+    border-radius: 2px;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+/* X animation when menu is open */
+.society-hamburger.is-active .society-hamburger-bar:nth-child(1) {
+    transform: translateY(8px) rotate(45deg);
+}
+
+.society-hamburger.is-active .society-hamburger-bar:nth-child(2) {
+    opacity: 0;
+}
+
+.society-hamburger.is-active .society-hamburger-bar:nth-child(3) {
+    transform: translateY(-8px) rotate(-45deg);
+}
+
+
+/* ============================================================================
+   HERO / WELCOME BANNER
+   WHY: The the society homepage leads with a full-width welcome banner. The
+   reference site uses a simple centered heading on a solid/photo background
+   with a burgundy overlay. We support both a static hero and the page
+   builder's hero_slider widget.
+   ============================================================================ */
+
+.society-hero {
+    position: relative;
+    width: 100%;
+    min-height: 420px;
+    overflow: hidden;
+    background: var(--society-dark);
+}
+
+.society-hero-slide {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+    background-position: center;
+    opacity: 0;
+    transition: opacity 1s ease;
+}
+
+.society-hero-slide.is-active {
+    opacity: 1;
+    position: relative;
+}
+
+.society-hero-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(99, 34, 32, 0.75);
+    padding: 30px 40px;
+    text-align: center;
+}
+
+.society-hero-overlay h2 {
+    color: var(--society-white);
+    font-family: 'Poppins', sans-serif;
+    font-size: 2rem;
+    font-weight: 600;
+    margin: 0 0 8px;
+}
+
+.society-hero-overlay p {
+    color: var(--society-cream);
+    font-size: 1.1rem;
+    margin: 0;
+}
+
+/* Slider navigation dots */
+.society-hero-dots {
+    position: absolute;
+    bottom: 16px;
+    right: 20px;
+    display: flex;
+    gap: 8px;
+    z-index: 10;
+}
+
+.society-hero-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.5);
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.3s ease;
+}
+
+.society-hero-dot.is-active {
+    background: var(--society-white);
+}
+
+
+/* ============================================================================
+   FRONT PAGE — SECTION SYSTEM
+   WHY: The reference site alternates between white and cream backgrounds to
+   create visual rhythm and separate content areas. Each section is full-width
+   for the background color, with content constrained to --sp-content-width.
+   ============================================================================ */
+
+.society-section {
+    padding: 50px 20px;
+}
+
+.society-section-inner {
+    max-width: var(--sp-content-width, 1100px);
+    margin: 0 auto;
+}
+
+/* Alternating backgrounds — cream sections get the warm tan background */
+.society-section-cream {
+    background: var(--society-cream);
+}
+
+.society-section-white {
+    background: var(--society-white);
+}
+
+.society-section-heading {
+    text-align: center;
+    font-family: 'Poppins', sans-serif;
+    font-size: 1.8rem;
+    font-weight: 600;
+    color: var(--society-burgundy);
+    margin-bottom: 8px;
+}
+
+/* Decorative divider under section headings */
+.society-divider {
+    width: 80px;
+    height: 3px;
+    background: var(--society-terracotta);
+    margin: 0 auto 40px;
+    border: none;
+}
+
+
+/* ============================================================================
+   FRONT PAGE — CLASSES / EVENTS SECTION
+   WHY: Events are displayed as a simple stacked list (not a card grid) to
+   match the reference site. Each event shows date, title, time, and location
+   in a clean, scannable format.
+   ============================================================================ */
+
+/* "More Future Events" link below the events list */
+.society-more-link {
+    display: block;
+    text-align: center;
+    margin-top: 30px;
+    font-family: 'Poppins', sans-serif;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--society-burgundy);
+    text-decoration: none;
+}
+
+.society-more-link:hover {
+    color: var(--society-terracotta);
+    text-decoration: underline;
+}
+
+
+/* ============================================================================
+   FRONT PAGE — LIBRARY CALLOUT
+   WHY: Side-by-side layout (image left, text right) highlights the the society
+   library collection. Links to the library catalog page. Sits on a cream
+   background section to create contrast with adjacent white sections.
+   ============================================================================ */
+
+.society-library-callout {
+    display: flex;
+    gap: 40px;
+    align-items: center;
+}
+
+.society-library-image {
+    flex: 0 0 45%;
+}
+
+.society-library-image img {
+    width: 100%;
+    border-radius: 8px;
+}
+
+.society-library-text {
+    flex: 1;
+}
+
+.society-library-text h3 {
+    font-family: 'Poppins', sans-serif;
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: var(--society-burgundy);
+    margin-bottom: 16px;
+}
+
+.society-library-text p {
+    color: var(--society-taupe);
+    line-height: 1.7;
+    margin-bottom: 20px;
+}
+
+
+/* ============================================================================
+   FRONT PAGE — FEATURE CARDS (Volunteer, Learn, Benefits)
+   WHY: Three-column grid showcasing key value props. Each card has an image,
+   burgundy heading, description, and a dark call-to-action button. The cards
+   sit on a cream background to match the reference site's alternating pattern.
+   ============================================================================ */
+
+.society-features-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 30px;
+}
+
+.society-feature-card {
+    text-align: center;
+    padding: 30px 20px;
+    background: var(--society-white);
+    border-radius: 8px;
+}
+
+.society-feature-card img {
+    width: 100%;
+    max-height: 200px;
+    object-fit: cover;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.society-feature-card h3 {
+    font-family: 'Poppins', sans-serif;
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--society-burgundy);
+    margin-bottom: 12px;
+}
+
+.society-feature-card p {
+    color: var(--society-taupe);
+    font-size: 0.95rem;
+    line-height: 1.6;
+    margin-bottom: 20px;
+}
+
+
+/* ============================================================================
+   BUTTONS — the society VARIANTS
+   WHY: Two button styles — a filled burgundy primary and a dark outlined
+   secondary. Both use the brand palette and Poppins font.
+   ============================================================================ */
+
+.society-btn {
+    display: inline-block;
+    padding: 12px 28px;
+    font-family: 'Poppins', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-decoration: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.society-btn-primary {
+    background: var(--society-burgundy);
+    color: var(--society-white);
+    border: 2px solid var(--society-burgundy);
+}
+
+.society-btn-primary:hover {
+    background: var(--society-terracotta);
+    border-color: var(--society-terracotta);
+    color: var(--society-white);
+}
+
+.society-btn-dark {
+    background: var(--society-dark);
+    color: var(--society-white);
+    border: 2px solid var(--society-dark);
+}
+
+.society-btn-dark:hover {
+    background: var(--society-burgundy);
+    border-color: var(--society-burgundy);
+    color: var(--society-white);
+}
+
+
+/* ============================================================================
+   FOOTER — the society (3-COLUMN)
+   WHY: The reference site uses a 3-column footer on a cream background:
+   Column 1 = org mission/tagline, Column 2 = quick links, Column 3 = contact.
+   A burgundy accent bar tops it, and a bottom bar has copyright + SP credit.
+   ============================================================================ */
+
+.site-footer {
+    background: var(--society-cream);
+    color: var(--society-dark);
+    padding: 0;
+    text-align: left;
+}
+
+.society-footer-accent {
+    height: 4px;
+    background: var(--society-burgundy);
+}
+
+.society-footer-inner {
+    max-width: var(--sp-content-width, 1100px);
+    margin: 0 auto;
+    padding: 40px 20px;
+    display: flex;
+    gap: 40px;
+}
+
+/* Each footer column shares base styling */
+.society-footer-col {
+    flex: 1;
+}
+
+.society-footer-col h3 {
+    font-family: 'Poppins', sans-serif;
+    color: var(--society-burgundy);
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 16px;
+}
+
+.society-footer-col p {
+    color: var(--society-dark);
+    line-height: 1.7;
+    font-size: 0.9rem;
+    margin-bottom: 10px;
+}
+
+.society-footer-col a {
+    color: var(--society-burgundy);
+    text-decoration: none;
+}
+
+.society-footer-col a:hover {
+    color: var(--society-terracotta);
+    text-decoration: underline;
+}
+
+/* Mission column — slightly wider to accommodate the longer text */
+.society-footer-mission {
+    flex: 1.3;
+}
+
+/* Quick links list */
+.society-footer-links ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.society-footer-links li {
+    margin-bottom: 10px;
+}
+
+.society-footer-links a {
+    color: var(--society-dark);
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.society-footer-links a:hover {
+    color: var(--society-terracotta);
+}
+
+/* Bottom bar — copyright + "Powered by SocietyPress" */
+.society-footer-bottom {
+    border-top: 1px solid rgba(99, 34, 32, 0.2);
+    max-width: var(--sp-content-width, 1100px);
+    margin: 0 auto;
+    padding: 16px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.8rem;
+    color: var(--society-taupe);
+}
+
+.society-footer-bottom a {
+    color: var(--society-burgundy);
+    text-decoration: none;
+}
+
+.society-footer-bottom a:hover {
+    color: var(--society-terracotta);
+}
+
+
+/* ============================================================================
+   PLUGIN WIDGET OVERRIDES
+   WHY: Page builder widgets (events, library, etc.) are rendered by the
+   plugin with their own inline styles. These overrides ensure they pick up
+   the the society color palette where the inline styles reference --sp-color-* vars.
+   ============================================================================ */
+
+/* Event cards rendered by sp_render_builder_widget_upcoming_events */
+.sp-ue-date-block {
+    background: var(--society-cream);
+}
+
+.sp-ue-date-block .sp-ue-month {
+    color: var(--society-burgundy);
+}
+
+.sp-ue-title a {
+    color: var(--society-burgundy);
+}
+
+.sp-ue-title a:hover {
+    color: var(--society-terracotta);
+}
+
+/* Hero slider rendered by sp_render_builder_widget_hero_slider */
+.sp-hero-slider .sp-slide-btn {
+    background: var(--society-burgundy);
+}
+
+.sp-hero-slider .sp-slide-btn:hover {
+    background: var(--society-terracotta);
+}
+
+.sp-slider-dot.active {
+    background: var(--society-burgundy);
+}
+
+
+/* ============================================================================
+   USER MENU OVERRIDES
+   WHY: Parent theme's user menu assumes dark header background. the society has
+   a white header, so we flip the trigger colors to dark text.
+   ============================================================================ */
+
+/* Match the "Log In" link to the nav items — same font, size, weight */
+.sp-user-login-link {
+    color: var(--society-dark);
+    font-family: 'Poppins', sans-serif;
+    font-size: 13px;
+    font-weight: 400;
+}
+
+.sp-user-login-link:hover {
+    background: var(--society-cream);
+    color: var(--society-burgundy);
+}
+
+.sp-user-trigger {
+    color: var(--society-dark);
+    background: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.1);
+}
+
+.sp-user-trigger:hover {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+.sp-user-menu:hover .sp-user-trigger,
+.sp-user-menu:focus-within .sp-user-trigger {
+    background: rgba(0, 0, 0, 0.1);
+}
+
+
+/* ============================================================================
+   RESPONSIVE — TABLET (768–1024px)
+   ============================================================================ */
+
+@media (max-width: 1024px) {
+    .society-features-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    /* Footer goes 2-column on tablet — mission spans full width, links + contact side by side */
+    .society-footer-inner {
+        flex-wrap: wrap;
+        gap: 30px;
+    }
+
+    .society-footer-mission {
+        flex: 1 1 100%;
+    }
+
+    .society-footer-links,
+    .society-footer-contact {
+        flex: 1;
+    }
+}
+
+
+/* ============================================================================
+   RESPONSIVE — MOBILE (<768px)
+   ============================================================================ */
+
+@media (max-width: 768px) {
+
+    /* Reduce body padding for shorter fixed header on mobile — logo shrinks
+       on small screens so header is shorter. */
+    body {
+        padding-top: 100px;
+    }
+
+    /* Show hamburger, hide desktop nav */
+    .society-hamburger {
+        display: block;
+    }
+
+    .main-navigation {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: var(--society-white);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+        z-index: 999;
+        border-top: 3px solid var(--society-burgundy);
+    }
+
+    .main-navigation.is-open {
+        display: block;
+    }
+
+    .main-navigation ul {
+        flex-direction: column;
+        gap: 0;
+    }
+
+    .main-navigation li {
+        border-bottom: 1px solid #f0ebe3;
+    }
+
+    .main-navigation a {
+        padding: 14px 20px;
+    }
+
+    /* Show submenu toggle buttons on mobile */
+    .society-submenu-toggle {
+        display: block;
+    }
+
+    /* Mobile dropdowns — toggle open/close, not hover */
+    .main-navigation .sub-menu {
+        position: static;
+        box-shadow: none;
+        border-top: none;
+        border-left: none;
+        background: #faf7f2;
+        display: none;
+    }
+
+    .main-navigation li.is-open > .sub-menu {
+        display: block;
+    }
+
+    .main-navigation .sub-menu a {
+        padding-left: 40px;
+    }
+
+    .main-navigation .sub-menu .sub-menu a {
+        padding-left: 60px;
+    }
+
+    /* Hero adjustments */
+    .society-hero {
+        min-height: 300px;
+    }
+
+    .society-hero-overlay {
+        padding: 20px;
+    }
+
+    .society-hero-overlay h2 {
+        font-size: 1.4rem;
+    }
+
+    .society-hero-overlay p {
+        font-size: 0.95rem;
+    }
+
+    /* Library callout stacks vertically */
+    .society-library-callout {
+        flex-direction: column;
+    }
+
+    .society-library-image {
+        flex: none;
+        width: 100%;
+    }
+
+    /* Feature cards go single column */
+    .society-features-grid {
+        grid-template-columns: 1fr;
+    }
+
+    /* Footer stacks to single column on mobile */
+    .society-footer-inner {
+        flex-direction: column;
+        gap: 30px;
+    }
+
+    .society-footer-mission,
+    .society-footer-links,
+    .society-footer-contact {
+        flex: none;
+    }
+
+    .society-footer-bottom {
+        flex-direction: column;
+        gap: 8px;
+        text-align: center;
+    }
+
+    /* Header layout for mobile */
+    .header-inner {
+        position: relative;
+    }
+
+    .header-nav-area {
+        position: static;
+    }
+}
+
+
+/* ============================================================================
+   RESPONSIVE — SMALL MOBILE (<480px)
+   ============================================================================ */
+
+@media (max-width: 480px) {
+    .society-hero {
+        min-height: 240px;
+    }
+
+    .society-hero-overlay h2 {
+        font-size: 1.2rem;
+    }
+
+    .society-section {
+        padding: 30px 16px;
+    }
+
+    .society-feature-card {
+        padding: 20px 12px;
+    }
+
+    .custom-logo {
+        max-height: 80px;
+    }
+}
+
+

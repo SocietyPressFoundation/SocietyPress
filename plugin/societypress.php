@@ -1262,9 +1262,36 @@ function sp_create_tables(): void {
         KEY created_at (created_at)
     ) {$charset_collate};" );
 
+    // ========================================================================
+    // NEWSLETTERS
+    // WHY: Admins upload PDF newsletters and the system generates cover
+    //      thumbnails so members can browse, preview, and download past
+    //      issues. Non-members can see the archive grid but cannot open or
+    //      download the actual PDFs.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}newsletters (
+        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        title           VARCHAR(255)        NOT NULL,
+        slug            VARCHAR(255)        NOT NULL,
+        description     TEXT                NULL,
+        pub_date        DATE                NULL,
+        volume          SMALLINT UNSIGNED   NULL,
+        issue_number    SMALLINT UNSIGNED   NULL,
+        file_id         BIGINT(20) UNSIGNED NULL,
+        cover_image_id  BIGINT(20) UNSIGNED NULL,
+        visibility      VARCHAR(20)         NOT NULL DEFAULT 'members_only',
+        created_by      BIGINT(20) UNSIGNED NULL,
+        created_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY slug (slug),
+        KEY pub_date (pub_date),
+        KEY visibility (visibility)
+    ) {$charset_collate};" );
+
     // Store the schema version so we can run migrations in future updates
     // without re-running the full dbDelta on every page load.
-    update_option( 'societypress_db_version', '0.22d' );
+    update_option( 'societypress_db_version', '0.23d' );
 }
 
 
@@ -1967,6 +1994,28 @@ add_action( 'admin_menu', function () {
         'sp_render_help_requests_admin_page'
     );
 
+    // Newsletter Archive — PDF newsletter archive with cover thumbnails.
+    // WHY: Admins upload PDF newsletters and the system auto-generates cover
+    //      thumbnails. Members can browse, preview, and download past issues.
+    add_submenu_page(
+        'societypress',
+        'Newsletter Archive — SocietyPress',
+        'Newsletter Archive',
+        'manage_options',
+        'sp-newsletter-archive',
+        'sp_render_newsletter_archive_page'
+    );
+
+    // Newsletter Edit — hidden (accessed via Add New / Edit row actions)
+    add_submenu_page(
+        '',
+        'Edit Newsletter — SocietyPress',
+        'Edit Newsletter',
+        'manage_options',
+        'sp-newsletter-edit',
+        'sp_render_newsletter_edit_page'
+    );
+
     // Newsletter posts — link to WP Posts list filtered to Newsletter category.
     // WHY: Rather than building a custom newsletter manager, we reuse WP Posts
     //      filtered to the Newsletter category. Harold writes posts in the
@@ -2053,10 +2102,21 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Pages',
+        'Pages — SocietyPress',
         'Pages',
         'manage_options',
-        'edit.php?post_type=page'
+        'sp-pages',
+        'sp_render_pages_page'
+    );
+
+    // Page Edit — hidden (no sidebar link, accessed via row actions or Add New)
+    add_submenu_page(
+        '',
+        'Edit Page — SocietyPress',
+        'Edit Page',
+        'manage_options',
+        'sp-page-edit',
+        'sp_render_page_edit'
     );
 
     add_submenu_page(
@@ -2171,8 +2231,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Design Settings — SocietyPress',
-        'Design',
+        'Settings — SocietyPress',
+        'Settings',
         'manage_options',
         'sp-settings-design',
         'sp_render_settings_design_page'
@@ -2279,6 +2339,21 @@ add_action( 'admin_bar_menu', function ( $wp_admin_bar ) {
 
 
 // ============================================================================
+// WP-NATIVE PAGES LIST — Show all pages (no pagination)
+// ============================================================================
+//
+// WHY: WordPress's native edit.php?post_type=page screen defaults to 20 items
+//      per page. Most societies have under 50 pages, so paginating is just an
+//      annoyance. This filter forces the per-page count to 999 so Harold sees
+//      all pages on one screen without needing to click through pages.
+// ============================================================================
+
+add_filter( 'edit_page_per_page', function () {
+    return 999;
+} );
+
+
+// ============================================================================
 // ADMIN FOOTER — Remove WordPress branding
 // ============================================================================
 //
@@ -2297,6 +2372,48 @@ add_filter( 'admin_footer_text', function () {
 add_filter( 'update_footer', function () {
     return 'SocietyPress ' . SOCIETYPRESS_VERSION;
 }, 11 ); // Priority 11 = override WordPress's default (priority 10)
+
+// ============================================================================
+// SVG UPLOAD SUPPORT
+// ============================================================================
+//
+// WHY: WordPress blocks SVG uploads by default because SVGs can contain
+//      embedded JavaScript (XSS vector). On a multi-user site that's a real
+//      concern — but SocietyPress sites have a single admin (Harold), so the
+//      risk is essentially zero. Society logos are frequently SVGs, and Harold
+//      needs to upload them through the Media Library / Customizer without
+//      hitting a "file type not permitted" wall.
+//
+//      Locked to manage_options so only full admins can upload SVGs — if a
+//      site ever adds editor/author roles, they won't get this ability.
+// ============================================================================
+
+add_filter( 'upload_mimes', function ( $mimes ) {
+    if ( current_user_can( 'manage_options' ) ) {
+        $mimes['svg']  = 'image/svg+xml';
+        $mimes['svgz'] = 'image/svg+xml';
+    }
+    return $mimes;
+} );
+
+// WHY: WordPress 4.7.1+ runs a "real MIME type" check using fileinfo/getimagesize.
+//      SVGs fail this check because they're XML, not a binary image format.
+//      This filter tells WordPress "yes, this SVG is what it claims to be"
+//      so the upload doesn't get rejected after the MIME type whitelist passes.
+add_filter( 'wp_check_filetype_and_ext', function ( $data, $file, $filename, $mimes ) {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return $data;
+    }
+
+    $ext = strtolower( pathinfo( $filename, PATHINFO_EXTENSION ) );
+    if ( $ext === 'svg' || $ext === 'svgz' ) {
+        $data['ext']  = $ext;
+        $data['type'] = 'image/svg+xml';
+    }
+
+    return $data;
+}, 10, 4 );
+
 
 // ============================================================================
 // FRONTEND: DESIGN SYSTEM — CSS CUSTOM PROPERTIES
@@ -2350,8 +2467,15 @@ add_action( 'wp_head', function () {
     $scale_map = [ 'small' => '0.85', 'normal' => '1', 'large' => '1.15' ];
     $font_scale = $scale_map[ $settings['design_heading_scale'] ?? 'normal' ] ?? '1';
 
-    $width_map = [ 'narrow' => '900px', 'standard' => '1100px', 'wide' => '1400px' ];
-    $content_width = $width_map[ $settings['design_content_width'] ?? 'standard' ] ?? '1100px';
+    $width_key = $settings['design_content_width'] ?? 'standard';
+    if ( $width_key === 'custom' ) {
+        $content_width = max( 600, min( 2000, (int) ( $settings['design_content_width_px'] ?? 1100 ) ) ) . 'px';
+    } else {
+        $width_map = [ 'narrow' => '900px', 'standard' => '1100px', 'wide' => '1400px' ];
+        $content_width = $width_map[ $width_key ] ?? '1100px';
+    }
+
+    $header_height = (int) ( $settings['design_header_height'] ?? 0 );
 
     echo '<style id="sp-design-vars">
 :root {
@@ -2368,6 +2492,8 @@ add_action( 'wp_head', function () {
     --sp-font-scale: ' . esc_attr( $font_scale ) . ';
     --sp-content-width: ' . esc_attr( $content_width ) . ';
 }
+' . ( $header_height ? '.site-header .header-inner { height: ' . $header_height . 'px; align-items: center; }
+body { padding-top: ' . ( $header_height + 3 ) . 'px; }' : '' ) . '
 </style>' . "\n";
 
 }, 1 );
@@ -2403,10 +2529,19 @@ add_action( 'wp_head', function () {
 
 
 // ============================================================================
-// FRONTEND: HIDE ADMIN BAR + LOAD DASHICONS
+// FRONTEND: ADMIN BAR TOGGLE + LOAD DASHICONS
 // ============================================================================
 
-add_filter( 'show_admin_bar', '__return_false' );
+// WHY: The admin bar is handy during development but Harold doesn't need it.
+// Controlled by Settings → Website → "Admin Toolbar" checkbox.
+// When off (default), the bar is hidden on the frontend for everyone.
+add_filter( 'show_admin_bar', function ( $show ) {
+    $sp = get_option( 'societypress_settings', [] );
+    if ( empty( $sp['website_show_admin_bar'] ) ) {
+        return false;
+    }
+    return $show;
+} );
 
 add_action( 'wp_enqueue_scripts', function () {
     wp_enqueue_style( 'dashicons' );
@@ -3108,7 +3243,7 @@ var spMenuConfig = {
             id:    'library',
             label: 'Library',
             icon:  'dashicons-book-alt',
-            items: ['sp-library', 'sp-resource-categories', 'sp-library-catalog', 'sp-library-categories', 'sp-import-library', 'sp-help-requests', 'edit.php?category_name=newsletter']
+            items: ['sp-library', 'sp-resource-categories', 'sp-library-catalog', 'sp-library-categories', 'sp-import-library', 'sp-help-requests', 'sp-newsletter-archive', 'edit.php?category_name=newsletter']
         },
         {
             id:    'finances',
@@ -3120,7 +3255,7 @@ var spMenuConfig = {
             id:    'appearance',
             label: 'Appearance',
             icon:  'dashicons-admin-appearance',
-            items: ['sp-themes', 'edit.php?post_type=page', 'upload.php', 'nav-menus.php', 'widgets.php']
+            items: ['sp-themes', 'sp-pages', 'upload.php', 'nav-menus.php', 'widgets.php', 'sp-settings-design']
         },
         {
             id:    'reports',
@@ -3132,7 +3267,7 @@ var spMenuConfig = {
             id:    'settings',
             label: 'Settings',
             icon:  'dashicons-admin-generic',
-            items: ['sp-settings-website', 'sp-settings-organization', 'sp-settings-membership', 'sp-settings-directory', 'sp-settings-events', 'sp-settings-privacy', 'sp-settings-design']
+            items: ['sp-settings-website', 'sp-settings-organization', 'sp-settings-membership', 'sp-settings-directory', 'sp-settings-events', 'sp-settings-privacy']
         }
     ],
     standalone: []
@@ -3415,10 +3550,16 @@ add_filter( 'login_redirect', function ( $redirect_to, $requested_redirect_to, $
  *      visitors get bounced to the login page. This keeps the site private
  *      while data is being imported and configured.
  *
+ *      Controlled by Settings → Website → "Require Login" checkbox.
  *      The login page itself, admin-ajax, cron, and REST API are excluded
  *      so WordPress internals keep working normally.
  */
 add_action( 'template_redirect', function () {
+    $sp = get_option( 'societypress_settings', [] );
+    if ( empty( $sp['website_require_login'] ) ) {
+        return; // Setting is off — site is public
+    }
+
     // Don't block the login page itself — that would be an infinite redirect
     if ( is_login() ) {
         return;
@@ -9041,6 +9182,16 @@ add_action( 'admin_init', function () {
     register_setting( 'societypress_settings_group', 'blog_public',
         [ 'sanitize_callback' => 'absint' ] );
 
+    // ---- WEBSITE page also has SP settings (login requirement, admin bar) ----
+    register_setting(
+        'societypress_settings_group',
+        'societypress_settings',
+        [
+            'type'              => 'array',
+            'sanitize_callback' => 'sp_sanitize_settings',
+        ]
+    );
+
     // ---- ORGANIZATION page — saves to societypress_settings array ----
     register_setting(
         'sp-settings-org',
@@ -9325,8 +9476,12 @@ add_action( 'admin_init', function () {
             // wp_dropdown_pages() outputs nothing if there are no published
             // pages — which leaves Harold staring at a bare description with
             // no dropdown. We check for that and show a helpful message instead.
-            $pages_exist = get_pages( [ 'number' => 1 ] );
-            if ( ! empty( $pages_exist ) ) {
+            // WHY not get_pages(['number'=>1]): The 'number' param in get_pages()
+            // doesn't reliably limit results in all WP versions. A direct count
+            // query is fast and always works.
+            global $wpdb;
+            $pages_exist = (int) $wpdb->get_var( "SELECT COUNT(*) FROM $wpdb->posts WHERE post_type = 'page' AND post_status = 'publish'" );
+            if ( $pages_exist > 0 ) {
                 wp_dropdown_pages( [
                     'name'              => 'page_on_front',
                     'show_option_none'  => '— Select a page —',
@@ -9362,6 +9517,48 @@ add_action( 'admin_init', function () {
             );
             echo '<p class="description">Check this while you\'re still building your site. '
                . 'Uncheck it when you\'re ready for the world to find you.</p>';
+        },
+        'sp-settings-website',
+        'sp_website_section'
+    );
+
+    // --- Require Login to View Site ---
+    add_settings_field(
+        'website_require_login',
+        'Require Login',
+        function () {
+            $settings = get_option( 'societypress_settings', [] );
+            $checked  = ! empty( $settings['website_require_login'] );
+
+            echo '<input type="hidden" name="societypress_settings[website_require_login]" value="0">';
+            printf(
+                '<label><input type="checkbox" name="societypress_settings[website_require_login]" value="1" %s> '
+                . 'Require visitors to log in before they can see any page</label>',
+                checked( $checked, true, false )
+            );
+            echo '<p class="description">When checked, anonymous visitors are sent to the login page. '
+               . 'Useful while building your site or for members-only organizations.</p>';
+        },
+        'sp-settings-website',
+        'sp_website_section'
+    );
+
+    // --- Show Admin Toolbar ---
+    add_settings_field(
+        'website_show_admin_bar',
+        'Admin Toolbar',
+        function () {
+            $settings = get_option( 'societypress_settings', [] );
+            $checked  = ! empty( $settings['website_show_admin_bar'] );
+
+            echo '<input type="hidden" name="societypress_settings[website_show_admin_bar]" value="0">';
+            printf(
+                '<label><input type="checkbox" name="societypress_settings[website_show_admin_bar]" value="1" %s> '
+                . 'Show the admin toolbar when viewing the site</label>',
+                checked( $checked, true, false )
+            );
+            echo '<p class="description">The toolbar across the top of the page with quick links back to the admin area. '
+               . 'Only visible to administrators.</p>';
         },
         'sp-settings-website',
         'sp_website_section'
@@ -9694,8 +9891,9 @@ add_action( 'admin_init', function () {
             $privacy_page = get_option( 'wp_page_for_privacy_policy', 0 );
 
             // Same guard as Homepage — don't show an invisible empty dropdown.
-            $pages_exist = get_pages( [ 'number' => 1 ] );
-            if ( ! empty( $pages_exist ) ) {
+            global $wpdb;
+            $pages_exist = (int) $wpdb->get_var( "SELECT COUNT(*) FROM $wpdb->posts WHERE post_type = 'page' AND post_status = 'publish'" );
+            if ( $pages_exist > 0 ) {
                 wp_dropdown_pages( [
                     'name'              => 'wp_page_for_privacy_policy',
                     'show_option_none'  => '— Select a page —',
@@ -9986,6 +10184,11 @@ function sp_sanitize_settings( array $input ): array {
     // place. When adding a new setting, add one line here and you're done.
     $sanitizers = [
         // Organization
+        // Website
+        'website_require_login'   => fn() => ! empty( $input['website_require_login'] ) ? 1 : 0,
+        'website_show_admin_bar'  => fn() => ! empty( $input['website_show_admin_bar'] ) ? 1 : 0,
+
+        // Organization
         'organization_name'       => fn() => sanitize_text_field( $input['organization_name'] ?? '' ),
         'organization_address'    => fn() => sanitize_textarea_field( $input['organization_address'] ?? '' ),
         'organization_phone'      => fn() => sanitize_text_field( $input['organization_phone'] ?? '' ),
@@ -10060,6 +10263,26 @@ function sp_sanitize_settings( array $input ): array {
                                                    ? $input['design_heading_scale'] : 'normal',
         'design_content_width'        => fn() => in_array( $input['design_content_width'] ?? '', [ 'narrow', 'standard', 'wide' ], true )
                                                    ? $input['design_content_width'] : 'standard',
+
+        // Logo — stores the attachment ID from the Media Library.
+        // WHY absint: Attachment IDs are always positive integers. Zero = no logo.
+        'design_logo_id'              => fn() => absint( $input['design_logo_id'] ?? 0 ),
+
+        // Header title/tagline toggle — 1 = show, 0 = hide.
+        // WHY: Some societies have their name baked into their logo and don't
+        //      want it repeated as text next to it. Default on (1) so existing
+        //      sites aren't affected.
+        'design_show_header_title'    => fn() => ! empty( $input['design_show_header_title'] ) ? 1 : 0,
+
+        // Header height in pixels. 0 = auto (no explicit height set).
+        // WHY: Some societies want to match a specific header size from a
+        //      reference design. Clamped to 50–500px to prevent absurd values.
+        'design_header_height'        => fn() => max( 0, min( 500, (int) ( $input['design_header_height'] ?? 0 ) ) ),
+
+        // Content width in exact pixels. Replaces the old preset dropdown.
+        // WHY: Harold may need to match a specific design width (e.g., 975px).
+        //      Clamped to 600–2000px to prevent unusable layouts.
+        'design_content_width_px'     => fn() => max( 600, min( 2000, (int) ( $input['design_content_width_px'] ?? 1100 ) ) ),
     ];
 
     // Only sanitize + update keys that were actually submitted in the form.
@@ -10073,6 +10296,13 @@ function sp_sanitize_settings( array $input ): array {
     // This tells us which group of keys to process (and zero out unchecked
     // checkboxes for), while leaving every other page's data untouched.
     $page_keys = [];
+
+    // Website page — signature: website_require_login hidden field is always present
+    if ( array_key_exists( 'website_require_login', $input ) ) {
+        $page_keys = array_merge( $page_keys, [
+            'website_require_login', 'website_show_admin_bar',
+        ]);
+    }
 
     // Organization page — signature: organization_name is always in the form
     if ( array_key_exists( 'organization_name', $input ) ) {
@@ -10123,6 +10353,8 @@ function sp_sanitize_settings( array $input ): array {
             'design_color_footer_text', 'design_font_body',
             'design_font_heading', 'design_font_size',
             'design_heading_scale', 'design_content_width',
+            'design_logo_id', 'design_show_header_title',
+            'design_header_height', 'design_content_width_px',
         ]);
     }
 
@@ -10131,6 +10363,21 @@ function sp_sanitize_settings( array $input ): array {
     foreach ( $page_keys as $key ) {
         if ( isset( $sanitizers[ $key ] ) ) {
             $result[ $key ] = $sanitizers[ $key ]();
+        }
+    }
+
+    // Sync logo to WordPress's custom_logo theme mod.
+    // WHY: The theme reads the logo via has_custom_logo() / the_custom_logo(),
+    //      which uses get_theme_mod('custom_logo'). We store the attachment ID
+    //      in our own settings array (design_logo_id) so it's part of the SP
+    //      settings system, but we also write it to the theme mod so the theme
+    //      picks it up without any changes to header.php.
+    if ( in_array( 'design_logo_id', $page_keys, true ) ) {
+        $logo_id = $result['design_logo_id'] ?? 0;
+        if ( $logo_id ) {
+            set_theme_mod( 'custom_logo', $logo_id );
+        } else {
+            remove_theme_mod( 'custom_logo' );
         }
     }
 
@@ -11355,6 +11602,753 @@ function sp_ajax_leave_group(): void {
 }
 add_action( 'wp_ajax_sp_leave_group', 'sp_ajax_leave_group' );
 
+// =========================================================================
+// PAGES MANAGEMENT
+// =========================================================================
+//
+// WHY: WordPress's native Pages screen (edit.php?post_type=page) drops
+//      Harold into the WP admin he's not supposed to see. This section
+//      builds an SP-native Pages interface that wraps wp_posts (type=page)
+//      with our own list table, add/edit form, and save/delete handlers.
+//
+//      No new database tables — we query and write to WP's pages table
+//      directly using wp_insert_post(), wp_update_post(), wp_delete_post(),
+//      and get_page_template_slug().
+// =========================================================================
+
+/**
+ * SP_Pages_List_Table
+ *
+ * Extends WP_List_Table to display WordPress pages in the SP admin UI.
+ * Same pattern as SP_Members_List_Table and other SP list tables.
+ */
+class SP_Pages_List_Table extends WP_List_Table {
+
+    public function __construct() {
+        parent::__construct( [
+            'singular' => 'page',
+            'plural'   => 'pages',
+            'ajax'     => false,
+        ] );
+    }
+
+    /**
+     * Define the columns Harold sees in the pages list.
+     *
+     * WHY each column:
+     *   Title     — primary identifier, links to edit
+     *   Page Type — which SP template is assigned (Events, Directory, etc.)
+     *   Status    — Published or Draft so Harold knows what's live
+     *   Date      — when the page was created/modified
+     */
+    public function get_columns(): array {
+        return [
+            'cb'        => '<input type="checkbox" />',
+            'title'     => 'Title',
+            'page_type' => 'Page Type',
+            'status'    => 'Status',
+            'date'      => 'Date',
+        ];
+    }
+
+    /**
+     * Which columns can be clicked to sort the list.
+     */
+    public function get_sortable_columns(): array {
+        return [
+            'title' => [ 'post_title', true ],   // Default sort: title A→Z
+            'date'  => [ 'post_date', false ],
+        ];
+    }
+
+    /**
+     * Bulk actions dropdown — appears above the table.
+     */
+    protected function get_bulk_actions(): array {
+        return [
+            'delete' => 'Delete',
+        ];
+    }
+
+    /**
+     * Checkbox column for bulk actions.
+     */
+    protected function column_cb( $item ): string {
+        return sprintf(
+            '<input type="checkbox" name="page_id[]" value="%d" />',
+            $item->ID
+        );
+    }
+
+    /**
+     * Title column — the primary column with row actions.
+     *
+     * Links to the SP page editor, not the WP editor.
+     */
+    protected function column_title( $item ): string {
+        $title = ! empty( $item->post_title ) ? $item->post_title : '(no title)';
+        $name  = '<strong>' . esc_html( $title ) . '</strong>';
+
+        $edit_url = admin_url( 'admin.php?page=sp-page-edit&post_id=' . $item->ID );
+
+        $actions = [
+            'edit' => sprintf( '<a href="%s">Edit</a>', esc_url( $edit_url ) ),
+            'quick_edit' => sprintf(
+                '<a href="#" class="sp-quick-edit-trigger" data-id="%d" data-title="%s" data-status="%s" data-template="%s">Quick Edit</a>',
+                $item->ID,
+                esc_attr( $item->post_title ),
+                esc_attr( $item->post_status ),
+                esc_attr( get_page_template_slug( $item->ID ) )
+            ),
+        ];
+
+        // View link — only for published pages
+        if ( $item->post_status === 'publish' ) {
+            $actions['view'] = sprintf(
+                '<a href="%s" target="_blank">View</a>',
+                esc_url( get_permalink( $item->ID ) )
+            );
+        }
+
+        // Delete link with confirmation
+        $delete_url = wp_nonce_url(
+            admin_url( 'admin.php?page=sp-pages&action=delete&post_id=' . $item->ID ),
+            'sp_delete_page_' . $item->ID
+        );
+        $actions['delete'] = sprintf(
+            '<a href="%s" onclick="return confirm(\'Are you sure you want to delete this page?\');">Delete</a>',
+            esc_url( $delete_url )
+        );
+
+        return $name . $this->row_actions( $actions );
+    }
+
+    /**
+     * Page Type column — shows the friendly template label.
+     *
+     * WHY: Harold doesn't know what "sp-events" means. He sees "Events".
+     *      If no template is set, it's just a "Standard Page" — a plain
+     *      content page Harold typed up.
+     */
+    protected function column_page_type( $item ): string {
+        $template = get_page_template_slug( $item->ID );
+        $labels   = sp_get_page_type_labels();
+
+        if ( ! empty( $template ) && isset( $labels[ $template ] ) ) {
+            return '<span style="color: #0073aa; font-weight: 500;">'
+                 . esc_html( $labels[ $template ] )
+                 . '</span>';
+        }
+
+        return 'Standard Page';
+    }
+
+    /**
+     * Status column — color-coded so Harold can see at a glance.
+     */
+    protected function column_status( $item ): string {
+        if ( $item->post_status === 'publish' ) {
+            return '<span style="color: #00a32a; font-weight: 600;">Published</span>';
+        }
+        return '<span style="color: #787c82; font-weight: 600;">Draft</span>';
+    }
+
+    /**
+     * Date column — when the page was last modified.
+     */
+    protected function column_date( $item ): string {
+        return esc_html( date_i18n(
+            get_option( 'date_format', 'F j, Y' ),
+            strtotime( $item->post_modified )
+        ) );
+    }
+
+    /**
+     * Fetch page data from wp_posts.
+     *
+     * Handles searching, sorting, and pagination.
+     */
+    public function prepare_items(): void {
+        // WHY: Most societies have a small number of pages (under 50). Showing
+        //      all on one screen is often more useful than paginating. The
+        //      ?show_all=1 parameter toggles between paginated and full list.
+        $show_all = ! empty( $_GET['show_all'] );
+        $per_page = $show_all ? 999 : 100;
+
+        // Build query args
+        $args = [
+            'post_type'      => 'page',
+            'post_status'    => [ 'publish', 'draft' ],
+            'posts_per_page' => $per_page,
+            'paged'          => $show_all ? 1 : $this->get_pagenum(),
+        ];
+
+        // Search by title
+        $search = $_GET['s'] ?? '';
+        if ( ! empty( $search ) ) {
+            $args['s'] = sanitize_text_field( $search );
+        }
+
+        // Sorting — default to menu_order so pages appear in the same
+        // order Harold arranged them in Appearance → Menus / Pages.
+        // WHY menu_order: WordPress stores a numeric order on each page.
+        // When Harold drags pages around in the WP page list or sets parent
+        // pages, menu_order reflects that hierarchy. Showing pages in this
+        // order matches what he sees on the actual site nav.
+        $orderby = $_GET['orderby'] ?? 'menu_order';
+        $order   = $_GET['order'] ?? 'ASC';
+
+        $allowed_orderby = [ 'post_title', 'post_date', 'menu_order' ];
+        if ( in_array( $orderby, $allowed_orderby, true ) ) {
+            $args['orderby'] = $orderby;
+            $args['order']   = strtoupper( $order ) === 'DESC' ? 'DESC' : 'ASC';
+        } else {
+            $args['orderby'] = 'menu_order';
+            $args['order']   = 'ASC';
+        }
+
+        $query = new WP_Query( $args );
+
+        $this->items = $query->posts;
+
+        $this->set_pagination_args( [
+            'total_items' => $query->found_posts,
+            'per_page'    => $per_page,
+            'total_pages' => $query->max_num_pages,
+        ] );
+
+        $this->_column_headers = [
+            $this->get_columns(),
+            [],  // hidden columns
+            $this->get_sortable_columns(),
+        ];
+    }
+
+    /**
+     * Message shown when no pages exist yet.
+     */
+    public function no_items(): void {
+        echo 'No pages found. <a href="'
+           . esc_url( admin_url( 'admin.php?page=sp-page-edit' ) )
+           . '">Create your first page</a>.';
+    }
+}
+
+
+/**
+ * Returns the map of SP template slugs → friendly labels.
+ *
+ * WHY: This is the single source of truth for page type labels used in
+ *      the list table, the add/edit dropdown, and anywhere else we need
+ *      to translate a template slug into something Harold understands.
+ *      Add new SP page templates here as they're built.
+ */
+function sp_get_page_type_labels(): array {
+    return [
+        'sp-events'          => 'Events',
+        'sp-directory'       => 'Membership Directory',
+        'sp-library-catalog' => 'Library Catalog',
+        'sp-groups'          => 'Interest Groups',
+        'sp-help-requests'   => 'Research Help Requests',
+        'sp-resources'       => 'Resource Links Directory',
+        'sp-builder'         => 'Page Builder',
+    ];
+}
+
+
+/**
+ * Render the Pages list page.
+ *
+ * Shows the SP-native pages list with search, bulk actions, and pagination.
+ * Pattern matches sp_render_members_page().
+ */
+function sp_render_pages_page(): void {
+
+    // Handle single delete action (row action — has post_id as scalar, not array)
+    if ( ( $_GET['action'] ?? '' ) === 'delete'
+         && isset( $_GET['post_id'] ) && ! is_array( $_GET['post_id'] ) ) {
+        $post_id = (int) $_GET['post_id'];
+        check_admin_referer( 'sp_delete_page_' . $post_id );
+        wp_delete_post( $post_id, true ); // true = bypass trash, permanent delete
+        wp_redirect( admin_url( 'admin.php?page=sp-pages&deleted=1' ) );
+        exit;
+    }
+
+    // Handle bulk delete action
+    // WHY: WP_List_Table submits bulk actions via action (top dropdown) or
+    //      action2 (bottom dropdown). We check both so either works.
+    if ( ( ( $_GET['action'] ?? '' ) === 'delete' || ( $_GET['action2'] ?? '' ) === 'delete' )
+         && ! empty( $_GET['page_id'] ) && is_array( $_GET['page_id'] ) ) {
+        check_admin_referer( 'bulk-pages' );
+        $count = 0;
+        foreach ( $_GET['page_id'] as $pid ) {
+            wp_delete_post( (int) $pid, true );
+            $count++;
+        }
+        wp_redirect( admin_url( 'admin.php?page=sp-pages&deleted=' . $count ) );
+        exit;
+    }
+
+    $table = new SP_Pages_List_Table();
+    $table->prepare_items();
+    ?>
+    <div class="wrap">
+        <h1 class="wp-heading-inline">Pages</h1>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-page-edit' ) ); ?>" class="page-title-action">
+            Add New
+        </a>
+        <hr class="wp-header-end">
+
+        <?php
+        // Success notices
+        if ( isset( $_GET['deleted'] ) ) {
+            $count = (int) $_GET['deleted'];
+            if ( $count > 0 ) {
+                printf(
+                    '<div class="notice notice-success is-dismissible"><p>%s deleted.</p></div>',
+                    $count === 1 ? '1 page' : $count . ' pages'
+                );
+            }
+        }
+        if ( isset( $_GET['saved'] ) ) {
+            echo '<div class="notice notice-success is-dismissible"><p>Page saved.</p></div>';
+        }
+        ?>
+
+        <?php
+        // Show All / Show Paginated toggle
+        $showing_all = ! empty( $_GET['show_all'] );
+        if ( $showing_all ) {
+            echo '<p><a href="' . esc_url( admin_url( 'admin.php?page=sp-pages' ) ) . '">Show paginated</a></p>';
+        } else {
+            echo '<p><a href="' . esc_url( admin_url( 'admin.php?page=sp-pages&show_all=1' ) ) . '">Show all pages</a></p>';
+        }
+        ?>
+
+        <form method="get">
+            <input type="hidden" name="page" value="sp-pages">
+            <?php if ( $showing_all ) : ?>
+                <input type="hidden" name="show_all" value="1">
+            <?php endif; ?>
+            <?php
+            $table->search_box( 'Search Pages', 'sp-page-search' );
+            $table->display();
+            ?>
+        </form>
+
+        <!-- Quick Edit inline form — hidden by default, JS clones it into the row -->
+        <div id="sp-quick-edit-template" style="display:none;">
+            <div class="sp-quick-edit-form" style="background:#f6f7f7; padding:12px 16px; border:1px solid #c3c4c7; margin:4px 0;">
+                <div style="display:flex; gap:16px; align-items:flex-end; flex-wrap:wrap;">
+                    <label style="flex:1; min-width:200px;">
+                        <span style="display:block; font-weight:600; margin-bottom:4px;">Title</span>
+                        <input type="text" class="sp-qe-title" style="width:100%;">
+                    </label>
+                    <label>
+                        <span style="display:block; font-weight:600; margin-bottom:4px;">Page Type</span>
+                        <select class="sp-qe-template">
+                            <option value="">Standard Page</option>
+                            <?php foreach ( sp_get_page_type_labels() as $slug => $label ) : ?>
+                                <option value="<?php echo esc_attr( $slug ); ?>"><?php echo esc_html( $label ); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <label>
+                        <span style="display:block; font-weight:600; margin-bottom:4px;">Status</span>
+                        <select class="sp-qe-status">
+                            <option value="publish">Published</option>
+                            <option value="draft">Draft</option>
+                        </select>
+                    </label>
+                    <div style="display:flex; gap:8px;">
+                        <button type="button" class="button button-primary sp-qe-save">Update</button>
+                        <button type="button" class="button sp-qe-cancel">Cancel</button>
+                    </div>
+                </div>
+                <input type="hidden" class="sp-qe-id">
+            </div>
+        </div>
+
+        <script>
+        /**
+         * SP Pages Quick Edit
+         *
+         * WHY: Lets Harold change title, page type, and status without leaving
+         * the list or loading the full edit form. Clicking "Quick Edit" opens
+         * an inline form right below the row. Save fires an AJAX request so
+         * the page doesn't reload.
+         */
+        (function() {
+            var template = document.getElementById('sp-quick-edit-template');
+            if (!template) return;
+
+            var activeRow = null;
+            var activeForm = null;
+
+            document.addEventListener('click', function(e) {
+                var trigger = e.target.closest('.sp-quick-edit-trigger');
+                if (!trigger) return;
+                e.preventDefault();
+
+                // Close any existing quick edit form
+                if (activeForm) {
+                    activeForm.remove();
+                    activeForm = null;
+                }
+
+                var row = trigger.closest('tr');
+                activeRow = row;
+
+                // Clone the template form
+                var form = template.firstElementChild.cloneNode(true);
+                form.style.display = '';
+
+                // Populate fields from data attributes
+                form.querySelector('.sp-qe-id').value = trigger.dataset.id;
+                form.querySelector('.sp-qe-title').value = trigger.dataset.title;
+                form.querySelector('.sp-qe-status').value = trigger.dataset.status;
+                form.querySelector('.sp-qe-template').value = trigger.dataset.template || '';
+
+                // Insert form after the row — create a full-width row to hold it
+                var formRow = document.createElement('tr');
+                formRow.className = 'sp-quick-edit-row';
+                var formCell = document.createElement('td');
+                formCell.colSpan = row.cells.length;
+                formCell.appendChild(form);
+                formRow.appendChild(formCell);
+                row.parentNode.insertBefore(formRow, row.nextSibling);
+                activeForm = formRow;
+
+                // Focus the title field
+                form.querySelector('.sp-qe-title').focus();
+
+                // Cancel button
+                form.querySelector('.sp-qe-cancel').addEventListener('click', function() {
+                    formRow.remove();
+                    activeForm = null;
+                });
+
+                // Save button — AJAX POST
+                form.querySelector('.sp-qe-save').addEventListener('click', function() {
+                    var btn = this;
+                    btn.disabled = true;
+                    btn.textContent = 'Saving...';
+
+                    var data = new FormData();
+                    data.append('action', 'sp_quick_edit_page');
+                    data.append('post_id', form.querySelector('.sp-qe-id').value);
+                    data.append('title', form.querySelector('.sp-qe-title').value);
+                    data.append('status', form.querySelector('.sp-qe-status').value);
+                    data.append('template', form.querySelector('.sp-qe-template').value);
+                    data.append('_ajax_nonce', '<?php echo wp_create_nonce( "sp_quick_edit_page" ); ?>');
+
+                    fetch(ajaxurl, { method: 'POST', body: data })
+                        .then(function(r) { return r.json(); })
+                        .then(function(resp) {
+                            if (resp.success) {
+                                // Update the row in place
+                                location.reload();
+                            } else {
+                                alert(resp.data || 'Error saving.');
+                                btn.disabled = false;
+                                btn.textContent = 'Update';
+                            }
+                        })
+                        .catch(function() {
+                            alert('Network error.');
+                            btn.disabled = false;
+                            btn.textContent = 'Update';
+                        });
+                });
+            });
+        })();
+        </script>
+    </div>
+    <?php
+}
+
+
+/**
+ * AJAX handler for Quick Edit on the SP Pages list.
+ *
+ * WHY: Saves title, status, and page type changes without a full page reload.
+ *      Validates nonce, sanitizes input, updates the post and template meta.
+ */
+function sp_handle_quick_edit_page(): void {
+    check_ajax_referer( 'sp_quick_edit_page' );
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( 'Permission denied.' );
+    }
+
+    $post_id  = (int) ( $_POST['post_id'] ?? 0 );
+    $title    = sanitize_text_field( $_POST['title'] ?? '' );
+    $status   = in_array( $_POST['status'] ?? '', [ 'publish', 'draft' ], true )
+                ? $_POST['status'] : 'draft';
+    $template = sanitize_text_field( $_POST['template'] ?? '' );
+
+    if ( ! $post_id || ! get_post( $post_id ) ) {
+        wp_send_json_error( 'Page not found.' );
+    }
+
+    if ( empty( $title ) ) {
+        wp_send_json_error( 'Title cannot be empty.' );
+    }
+
+    // Validate template slug
+    $valid_templates = array_keys( sp_get_page_type_labels() );
+    if ( ! empty( $template ) && ! in_array( $template, $valid_templates, true ) ) {
+        $template = '';
+    }
+
+    wp_update_post( [
+        'ID'          => $post_id,
+        'post_title'  => $title,
+        'post_status' => $status,
+    ] );
+
+    // Set or clear the page template
+    if ( ! empty( $template ) ) {
+        update_post_meta( $post_id, '_wp_page_template', $template );
+    } else {
+        delete_post_meta( $post_id, '_wp_page_template' );
+    }
+
+    wp_send_json_success();
+}
+add_action( 'wp_ajax_sp_quick_edit_page', 'sp_handle_quick_edit_page' );
+
+
+/**
+ * Render the Page add/edit form.
+ *
+ * WHY: This gives Harold a clean, SP-native form to create and edit pages
+ *      without ever seeing the WordPress editor. The Page Type dropdown
+ *      assigns an SP template (Events, Directory, etc.) so the right
+ *      frontend rendering kicks in automatically.
+ */
+function sp_render_page_edit(): void {
+
+    // Handle save on POST
+    if ( $_SERVER['REQUEST_METHOD'] === 'POST' && isset( $_POST['sp_page_nonce'] ) ) {
+        sp_handle_page_save();
+        return; // sp_handle_page_save() redirects, but just in case
+    }
+
+    // Load existing page data if editing
+    $post_id  = (int) ( $_GET['post_id'] ?? 0 );
+    $post     = $post_id ? get_post( $post_id ) : null;
+    $is_edit  = (bool) $post;
+
+    $title    = $is_edit ? $post->post_title : '';
+    $content  = $is_edit ? $post->post_content : '';
+    $status   = $is_edit ? $post->post_status : 'publish';
+    $template = $is_edit ? get_page_template_slug( $post_id ) : '';
+
+    $page_types = sp_get_page_type_labels();
+    ?>
+    <div class="wrap">
+        <h1><?php echo $is_edit ? 'Edit Page' : 'Add New Page'; ?></h1>
+
+        <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-page-edit' ) ); ?>">
+            <?php wp_nonce_field( 'sp_save_page', 'sp_page_nonce' ); ?>
+            <?php if ( $is_edit ) : ?>
+                <input type="hidden" name="post_id" value="<?php echo esc_attr( $post_id ); ?>">
+            <?php endif; ?>
+
+            <table class="form-table" role="presentation">
+
+                <!-- Title -->
+                <tr>
+                    <th scope="row"><label for="page_title">Title</label></th>
+                    <td>
+                        <input type="text"
+                               id="page_title"
+                               name="page_title"
+                               value="<?php echo esc_attr( $title ); ?>"
+                               class="regular-text"
+                               style="width: 100%; max-width: 600px;"
+                               required>
+                    </td>
+                </tr>
+
+                <!-- Page Type -->
+                <tr>
+                    <th scope="row"><label for="page_type">Page Type</label></th>
+                    <td>
+                        <select id="page_type" name="page_type" style="min-width: 250px;">
+                            <option value="" <?php selected( $template, '' ); ?>>Standard Page</option>
+                            <?php foreach ( $page_types as $slug => $label ) : ?>
+                                <option value="<?php echo esc_attr( $slug ); ?>"
+                                    <?php selected( $template, $slug ); ?>>
+                                    <?php echo esc_html( $label ); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <p class="description">
+                            Standard Pages use the content editor below.
+                            Other page types display their own specialized content.
+                        </p>
+                    </td>
+                </tr>
+
+                <!-- Content Editor -->
+                <tr>
+                    <th scope="row"><label for="page_content">Content</label></th>
+                    <td>
+                        <?php
+                        // WHY: wp_editor() gives Harold a WYSIWYG editor for page
+                        // content. For Standard Pages this is the main content. For
+                        // template pages (Events, Directory, etc.) this content appears
+                        // above the template output — useful for intro text.
+                        wp_editor(
+                            $content,
+                            'page_content',
+                            [
+                                'textarea_name' => 'page_content',
+                                'textarea_rows' => 15,
+                                'media_buttons' => true,
+                                'teeny'         => false,
+                                'quicktags'     => true,
+                            ]
+                        );
+                        ?>
+                    </td>
+                </tr>
+
+                <!-- Status -->
+                <tr>
+                    <th scope="row"><label for="page_status">Status</label></th>
+                    <td>
+                        <select id="page_status" name="page_status">
+                            <option value="publish" <?php selected( $status, 'publish' ); ?>>Published</option>
+                            <option value="draft" <?php selected( $status, 'draft' ); ?>>Draft</option>
+                        </select>
+                    </td>
+                </tr>
+
+            </table>
+
+            <p class="submit">
+                <input type="submit"
+                       name="sp_save_page"
+                       class="button button-primary"
+                       value="<?php echo $is_edit ? 'Update Page' : 'Create Page'; ?>">
+
+                <?php if ( $is_edit ) : ?>
+                    <?php
+                    $delete_url = wp_nonce_url(
+                        admin_url( 'admin.php?page=sp-pages&action=delete&post_id=' . $post_id ),
+                        'sp_delete_page_' . $post_id
+                    );
+                    ?>
+                    <a href="<?php echo esc_url( $delete_url ); ?>"
+                       class="button"
+                       style="color: #b32d2e; border-color: #b32d2e; margin-left: 8px;"
+                       onclick="return confirm('Are you sure you want to delete this page?');">
+                        Delete Page
+                    </a>
+                <?php endif; ?>
+
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-pages' ) ); ?>"
+                   class="button"
+                   style="margin-left: 8px;">
+                    Cancel
+                </a>
+            </p>
+        </form>
+    </div>
+    <?php
+}
+
+
+/**
+ * Handle saving a page (both create and update).
+ *
+ * WHY: Validates the nonce, sanitizes input, uses wp_insert_post() for new
+ *      pages and wp_update_post() for existing ones. Sets the SP template
+ *      via _wp_page_template post meta — the same mechanism WordPress uses
+ *      natively, so template_include filters work seamlessly.
+ */
+function sp_handle_page_save(): void {
+    // Verify nonce
+    if ( ! wp_verify_nonce( $_POST['sp_page_nonce'] ?? '', 'sp_save_page' ) ) {
+        wp_die( 'Security check failed.' );
+    }
+
+    // Only admins can manage pages
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( 'You do not have permission to manage pages.' );
+    }
+
+    $post_id  = (int) ( $_POST['post_id'] ?? 0 );
+    $title    = sanitize_text_field( $_POST['page_title'] ?? '' );
+    $content  = wp_kses_post( $_POST['page_content'] ?? '' );
+    $status   = in_array( $_POST['page_status'] ?? '', [ 'publish', 'draft' ], true )
+                ? $_POST['page_status']
+                : 'draft';
+    $template = sanitize_text_field( $_POST['page_type'] ?? '' );
+
+    // Validate template slug — must be empty (Standard Page) or a known SP template
+    $valid_templates = array_keys( sp_get_page_type_labels() );
+    if ( ! empty( $template ) && ! in_array( $template, $valid_templates, true ) ) {
+        $template = '';
+    }
+
+    if ( empty( $title ) ) {
+        // Redirect back with error — page title is required
+        $redirect = admin_url( 'admin.php?page=sp-page-edit' );
+        if ( $post_id ) {
+            $redirect .= '&post_id=' . $post_id;
+        }
+        $redirect .= '&sp_error=no_title';
+        wp_redirect( $redirect );
+        exit;
+    }
+
+    $post_data = [
+        'post_title'   => $title,
+        'post_content' => $content,
+        'post_status'  => $status,
+        'post_type'    => 'page',
+    ];
+
+    if ( $post_id ) {
+        // Update existing page
+        $post_data['ID'] = $post_id;
+        $result = wp_update_post( $post_data, true );
+    } else {
+        // Create new page
+        // WHY: post_author is the current user so the page is "owned" by the
+        //      admin who created it, even though Harold doesn't see WP's
+        //      author system.
+        $post_data['post_author'] = get_current_user_id();
+        $result = wp_insert_post( $post_data, true );
+    }
+
+    if ( is_wp_error( $result ) ) {
+        wp_die( 'Error saving page: ' . $result->get_error_message() );
+    }
+
+    $saved_id = $post_id ?: $result;
+
+    // Set or clear the page template
+    // WHY: WordPress stores the page template as _wp_page_template post meta.
+    //      An empty string or 'default' means "use the theme's page.php".
+    //      Our SP template slugs (sp-events, sp-directory, etc.) are picked up
+    //      by the theme_page_templates + template_include filters registered
+    //      elsewhere in this plugin.
+    if ( ! empty( $template ) ) {
+        update_post_meta( $saved_id, '_wp_page_template', $template );
+    } else {
+        delete_post_meta( $saved_id, '_wp_page_template' );
+    }
+
+    wp_redirect( admin_url( 'admin.php?page=sp-pages&saved=1' ) );
+    exit;
+}
+
+
 /**
  * Register "Interest Groups" as a page template.
  */
@@ -12332,6 +13326,96 @@ function sp_render_settings_design_page(): void {
             $heading_font_options = [ 'inherit' => 'Same as Body Font' ] + $font_options;
             ?>
 
+            <!-- ---- LOGO SECTION ---- -->
+            <!-- WHY this is first: The logo is the single most visible piece
+                 of branding on the site. Harold will look for it first when
+                 setting up his society's identity. -->
+            <div style="margin-bottom: 32px;">
+                <h2 style="font-size: 1.3em; margin-bottom: 4px;">Logo</h2>
+                <p class="description" style="margin-bottom: 16px;">Upload your society's logo. It appears in the site header next to your society name.</p>
+
+                <table class="form-table" role="presentation">
+                    <tr>
+                        <th scope="row">Site Logo</th>
+                        <td>
+                            <?php
+                            $logo_id  = (int) ( $settings['design_logo_id'] ?? 0 );
+                            $logo_url = $logo_id ? wp_get_attachment_image_url( $logo_id, 'medium' ) : '';
+                            // SVGs don't have intermediate sizes — wp_get_attachment_image_url
+                            // returns false. Fall back to the full URL.
+                            if ( ! $logo_url && $logo_id ) {
+                                $logo_url = wp_get_attachment_url( $logo_id );
+                            }
+                            ?>
+                            <div id="sp-logo-preview" style="margin-bottom: 10px;">
+                                <?php if ( $logo_url ) : ?>
+                                    <img src="<?php echo esc_url( $logo_url ); ?>"
+                                         style="max-height: 80px; width: auto; background: #f0f0f0; padding: 8px; border-radius: 4px;">
+                                <?php endif; ?>
+                            </div>
+                            <input type="hidden"
+                                   id="sp-design-logo-id"
+                                   name="societypress_settings[design_logo_id]"
+                                   value="<?php echo esc_attr( $logo_id ); ?>">
+                            <button type="button" class="button" id="sp-logo-upload-btn">
+                                <?php echo $logo_id ? 'Change Logo' : 'Upload Logo'; ?>
+                            </button>
+                            <?php if ( $logo_id ) : ?>
+                                <button type="button" class="button" id="sp-logo-remove-btn"
+                                        style="color: #b32d2e; margin-left: 4px;">
+                                    Remove
+                                </button>
+                            <?php else : ?>
+                                <button type="button" class="button" id="sp-logo-remove-btn"
+                                        style="color: #b32d2e; margin-left: 4px; display: none;">
+                                    Remove
+                                </button>
+                            <?php endif; ?>
+                            <p class="description" style="margin-top: 8px;">
+                                Recommended: PNG or SVG with a transparent background, at least 200px wide.
+                                The logo will be displayed at a maximum height of 75px in the header.
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Header Text</th>
+                        <td>
+                            <?php $show_title = (int) ( $settings['design_show_header_title'] ?? 1 ); ?>
+                            <label>
+                                <input type="checkbox"
+                                       name="societypress_settings[design_show_header_title]"
+                                       value="1"
+                                       <?php checked( $show_title, 1 ); ?>>
+                                Show site name and tagline in the header
+                            </label>
+                            <p class="description">
+                                Uncheck this if your logo already includes your society's name.
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="sp-design-header-height">Header Height</label></th>
+                        <td>
+                            <?php $header_height = (int) ( $settings['design_header_height'] ?? 0 ); ?>
+                            <input type="number"
+                                   id="sp-design-header-height"
+                                   name="societypress_settings[design_header_height]"
+                                   value="<?php echo esc_attr( $header_height ?: '' ); ?>"
+                                   min="50"
+                                   max="500"
+                                   step="1"
+                                   style="width: 80px;"
+                                   placeholder="Auto">
+                            <span>px</span>
+                            <p class="description">
+                                Leave blank for automatic height (based on logo and content).
+                                Set a value to match a specific design — e.g., 175 for a tall header with a large logo.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+
             <!-- ---- COLORS SECTION ---- -->
             <div style="margin-bottom: 32px;">
                 <h2 style="font-size: 1.3em; margin-bottom: 4px;">Colors</h2>
@@ -12459,8 +13543,26 @@ function sp_render_settings_design_page(): void {
                                 <option value="narrow" <?php selected( $d_content_width, 'narrow' ); ?>>Narrow (900px) — Easy reading</option>
                                 <option value="standard" <?php selected( $d_content_width, 'standard' ); ?>>Standard (1100px) — Recommended</option>
                                 <option value="wide" <?php selected( $d_content_width, 'wide' ); ?>>Wide (1400px) — More space</option>
+                                <option value="custom" <?php selected( $d_content_width, 'custom' ); ?>>Custom</option>
                             </select>
                             <p class="description">How wide the main content area is. Narrower is easier to read; wider shows more content.</p>
+                        </td>
+                    </tr>
+                    <tr id="sp-custom-width-row" style="<?php echo $d_content_width === 'custom' ? '' : 'display:none;'; ?>">
+                        <th scope="row"><label for="sp-design-content-width-px">Custom Width</label></th>
+                        <td>
+                            <?php $d_content_width_px = (int) ( $settings['design_content_width_px'] ?? 1100 ); ?>
+                            <input type="number"
+                                   id="sp-design-content-width-px"
+                                   name="societypress_settings[design_content_width_px]"
+                                   value="<?php echo esc_attr( $d_content_width_px ); ?>"
+                                   min="600"
+                                   max="2000"
+                                   step="1"
+                                   style="width: 90px;"
+                                   class="sp-design-control">
+                            <span>px</span>
+                            <p class="description">Enter an exact width in pixels (600–2000).</p>
                         </td>
                     </tr>
                 </table>
@@ -12510,6 +13612,62 @@ function sp_render_settings_design_page(): void {
     <!-- there's zero overhead on other admin pages or the frontend.         -->
     <script>
     (function() {
+        // ---- Logo uploader ----
+        // WHY deferred to window load: wp_enqueue_media() outputs its scripts
+        // in the footer (wp_footer hook), which runs AFTER our inline <script>
+        // in the page body. If we check for wp.media right now, it doesn't
+        // exist yet and the handler silently never attaches. Deferring to
+        // window 'load' guarantees all footer scripts have executed.
+        window.addEventListener('load', function() {
+            var logoBtn    = document.getElementById('sp-logo-upload-btn');
+            var logoRemove = document.getElementById('sp-logo-remove-btn');
+            var logoInput  = document.getElementById('sp-design-logo-id');
+            var logoPreview = document.getElementById('sp-logo-preview');
+
+            if (logoBtn && typeof wp !== 'undefined' && wp.media) {
+                var logoFrame;
+
+                logoBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+
+                    if (logoFrame) {
+                        logoFrame.open();
+                        return;
+                    }
+
+                    logoFrame = wp.media({
+                        title:    'Select Logo',
+                        button:   { text: 'Use as Logo' },
+                        multiple: false
+                    });
+
+                    logoFrame.on('select', function() {
+                        var attachment = logoFrame.state().get('selection').first().toJSON();
+                        logoInput.value = attachment.id;
+                        // Use medium size if available, otherwise full URL (SVGs only have full)
+                        var url = (attachment.sizes && attachment.sizes.medium)
+                                ? attachment.sizes.medium.url
+                                : attachment.url;
+                        logoPreview.innerHTML = '<img src="' + url + '" style="max-height: 80px; width: auto; background: #f0f0f0; padding: 8px; border-radius: 4px;">';
+                        logoBtn.textContent = 'Change Logo';
+                        if (logoRemove) logoRemove.style.display = '';
+                    });
+
+                    logoFrame.open();
+                });
+
+                if (logoRemove) {
+                    logoRemove.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        logoInput.value = '0';
+                        logoPreview.innerHTML = '';
+                        logoBtn.textContent = 'Upload Logo';
+                        logoRemove.style.display = 'none';
+                    });
+                }
+            }
+        });
+
         // ---- Initialize WordPress color pickers ----
         // WHY: WordPress ships wp-color-picker (based on Iris) but we need
         // to initialize it ourselves. The 'change' and 'clear' callbacks
@@ -12614,7 +13772,9 @@ function sp_render_settings_design_page(): void {
                     + '  --sp-font-heading: ' + headingFontCSS + ';\n'
                     + '  --sp-font-size-base: ' + (sizeMap[fontSize] || '18px') + ';\n'
                     + '  --sp-font-scale: ' + (scaleMap[headingScale] || '1') + ';\n'
-                    + '  --sp-content-width: ' + (widthMap[contentWidth] || '1100px') + ';\n'
+                    + '  --sp-content-width: ' + (contentWidth === 'custom'
+                        ? (document.getElementById('sp-design-content-width-px').value || '1100') + 'px'
+                        : (widthMap[contentWidth] || '1100px')) + ';\n'
                     + '}\n';
 
                 // Remove any existing preview override style
@@ -12706,6 +13866,18 @@ function sp_render_settings_design_page(): void {
         styleTag.textContent = '.sp-preview-device-active { background: #2271b1 !important; color: #fff !important; border-color: #2271b1 !important; }';
         document.head.appendChild(styleTag);
 
+        // ---- Custom width row toggle ----
+        // WHY: The Custom Width field should only show when "Custom" is selected
+        // in the Content Width dropdown. No point confusing Harold with an extra
+        // field when he's using a preset.
+        var widthSelect  = document.getElementById('sp-design-content-width');
+        var customRow    = document.getElementById('sp-custom-width-row');
+        if (widthSelect && customRow) {
+            widthSelect.addEventListener('change', function() {
+                customRow.style.display = (this.value === 'custom') ? '' : 'none';
+            });
+        }
+
         // ---- Initial preview update after iframe loads ----
         if (iframe) {
             iframe.addEventListener('load', function() {
@@ -12747,6 +13919,10 @@ add_action( 'admin_enqueue_scripts', function ( $hook ) {
     // It provides a nice UI with a color swatch, hex input, and visual picker.
     wp_enqueue_style( 'wp-color-picker' );
     wp_enqueue_script( 'wp-color-picker' );
+
+    // WHY: The Logo uploader uses wp.media — WordPress's built-in media modal.
+    // Must be enqueued before the page renders or wp.media will be undefined.
+    wp_enqueue_media();
 });
 
 
@@ -33072,4 +34248,736 @@ function sp_ajax_export_library(): void {
 
     fclose( $out );
     exit;
+}
+
+
+// ============================================================================
+// NEWSLETTER ARCHIVE
+//
+// WHY: Societies produce regular newsletters (monthly, quarterly, etc.) and
+//      members expect to find an archive of past issues. Admins upload PDFs,
+//      the system auto-generates a cover thumbnail from page 1, and members
+//      can browse, preview in an inline viewer, and download. Non-members
+//      can see the archive grid (for marketing value) but cannot open or
+//      download the actual files.
+// ============================================================================
+
+
+/**
+ * Render: Newsletter Archive Admin Page (Card Grid)
+ *
+ * WHY: Card grid matches the Gallery pattern — newsletters are visual items
+ *      (cover thumbnails) so a card layout is more intuitive than a table.
+ *      Shows cover image, title, date, volume/issue, visibility badge, and
+ *      Edit/Delete action links. Sorted newest-first by publication date.
+ */
+function sp_render_newsletter_archive_page(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // ========== HANDLE DELETE ==========
+    if ( ( $_GET['action'] ?? '' ) === 'delete' && ! empty( $_GET['newsletter_id'] ) ) {
+        $newsletter_id = absint( $_GET['newsletter_id'] );
+        check_admin_referer( 'sp_delete_newsletter_' . $newsletter_id );
+        $wpdb->delete( $prefix . 'newsletters', [ 'id' => $newsletter_id ] );
+        echo '<div class="notice notice-success"><p>Newsletter deleted.</p></div>';
+    }
+
+    // ========== SEARCH FILTER ==========
+    $search = sanitize_text_field( $_GET['s'] ?? '' );
+
+    // ========== FETCH NEWSLETTERS ==========
+    $sql = "SELECT * FROM {$prefix}newsletters";
+    if ( $search ) {
+        $sql .= $wpdb->prepare( " WHERE title LIKE %s", '%' . $wpdb->esc_like( $search ) . '%' );
+    }
+    $sql .= " ORDER BY pub_date DESC, created_at DESC";
+
+    $newsletters = $wpdb->get_results( $sql );
+    ?>
+    <div class="wrap">
+        <h1 class="wp-heading-inline">Newsletter Archive</h1>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-newsletter-edit' ) ); ?>" class="page-title-action">Add New</a>
+        <hr class="wp-header-end">
+
+        <!-- Search bar -->
+        <form method="get" style="margin:16px 0;">
+            <input type="hidden" name="page" value="sp-newsletter-archive">
+            <p class="search-box">
+                <input type="search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="Search newsletters…">
+                <input type="submit" class="button" value="Search">
+                <?php if ( $search ) : ?>
+                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-newsletter-archive' ) ); ?>" class="button">Clear</a>
+                <?php endif; ?>
+            </p>
+        </form>
+
+        <?php if ( empty( $newsletters ) ) : ?>
+            <p>No newsletters yet. <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-newsletter-edit' ) ); ?>">Upload your first newsletter</a>.</p>
+        <?php else : ?>
+            <div style="display:flex; flex-wrap:wrap; gap:20px; margin-top:20px;">
+                <?php foreach ( $newsletters as $nl ) :
+                    // Cover thumbnail — use auto-generated cover, fall back to placeholder
+                    $cover_url = $nl->cover_image_id
+                        ? wp_get_attachment_image_url( $nl->cover_image_id, 'medium' )
+                        : '';
+
+                    $edit_url   = admin_url( 'admin.php?page=sp-newsletter-edit&newsletter_id=' . $nl->id );
+                    $delete_url = wp_nonce_url(
+                        admin_url( 'admin.php?page=sp-newsletter-archive&action=delete&newsletter_id=' . $nl->id ),
+                        'sp_delete_newsletter_' . $nl->id
+                    );
+
+                    // Format the volume/issue line (e.g. "Vol. 3, No. 2")
+                    $vol_issue = '';
+                    if ( $nl->volume )       $vol_issue .= 'Vol.&nbsp;' . $nl->volume;
+                    if ( $nl->issue_number ) $vol_issue .= ( $vol_issue ? ', ' : '' ) . 'No.&nbsp;' . $nl->issue_number;
+
+                    // Format the publication date
+                    $date_display = $nl->pub_date ? date( 'M j, Y', strtotime( $nl->pub_date ) ) : '';
+                ?>
+                    <div style="width:220px; background:#fff; border:1px solid #ccd0d4; border-radius:8px; overflow:hidden;">
+                        <!-- Cover image area -->
+                        <a href="<?php echo esc_url( $edit_url ); ?>" style="display:block;">
+                            <?php if ( $cover_url ) : ?>
+                                <img src="<?php echo esc_url( $cover_url ); ?>" alt="" style="width:100%; height:280px; object-fit:cover;">
+                            <?php else : ?>
+                                <div style="width:100%; height:280px; background:#f0f0f0; display:flex; align-items:center; justify-content:center;">
+                                    <span class="dashicons dashicons-media-document" style="font-size:48px; width:48px; height:48px; color:#ccc;"></span>
+                                </div>
+                            <?php endif; ?>
+                        </a>
+                        <!-- Card body -->
+                        <div style="padding:12px;">
+                            <h4 style="margin:0 0 4px;">
+                                <a href="<?php echo esc_url( $edit_url ); ?>" style="text-decoration:none; color:#1d2327;">
+                                    <?php echo esc_html( $nl->title ); ?>
+                                </a>
+                            </h4>
+                            <?php if ( $date_display ) : ?>
+                                <span style="color:#666; font-size:12px;"><?php echo $date_display; ?></span><br>
+                            <?php endif; ?>
+                            <?php if ( $vol_issue ) : ?>
+                                <span style="color:#666; font-size:12px;"><?php echo $vol_issue; ?></span>
+                            <?php endif; ?>
+                            <?php if ( $nl->visibility === 'members_only' ) : ?>
+                                <span style="background:#fef0c7; color:#92400e; font-size:10px; padding:2px 6px; border-radius:3px; margin-left:4px;">Members Only</span>
+                            <?php endif; ?>
+                            <?php if ( $nl->visibility === 'public' ) : ?>
+                                <span style="background:#d1fae5; color:#065f46; font-size:10px; padding:2px 6px; border-radius:3px; margin-left:4px;">Public</span>
+                            <?php endif; ?>
+                            <div style="margin-top:8px; font-size:12px;">
+                                <a href="<?php echo esc_url( $edit_url ); ?>">Edit</a> |
+                                <a href="<?php echo esc_url( $delete_url ); ?>" style="color:#b32d2e;" onclick="return confirm('Delete this newsletter?');">Delete</a>
+                            </div>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+    </div>
+    <?php
+}
+
+
+/**
+ * Render: Newsletter Edit Page (Add / Edit)
+ *
+ * WHY: Single form handles both creation and editing. Uses the WordPress
+ *      media library picker for PDF upload. On PDF selection, fires an AJAX
+ *      request to auto-generate a cover thumbnail from the first page using
+ *      Imagick. If Imagick isn't available or fails, admin can manually pick
+ *      a cover image. The wp.media picker is deferred to window.load to
+ *      avoid conflicts with other media-related scripts.
+ */
+function sp_render_newsletter_edit_page(): void {
+    global $wpdb;
+    $prefix        = $wpdb->prefix . 'sp_';
+    $newsletter_id = absint( $_GET['newsletter_id'] ?? 0 );
+
+    // ========== HANDLE SAVE ==========
+    if ( isset( $_POST['sp_save_newsletter'] ) && check_admin_referer( 'sp_newsletter_save' ) ) {
+        $data = [
+            'title'          => sanitize_text_field( $_POST['title'] ?? '' ),
+            'slug'           => sanitize_title( $_POST['title'] ?? '' ),
+            'description'    => sanitize_textarea_field( $_POST['description'] ?? '' ),
+            'pub_date'       => sanitize_text_field( $_POST['pub_date'] ?? '' ) ?: null,
+            'volume'         => absint( $_POST['volume'] ?? 0 ) ?: null,
+            'issue_number'   => absint( $_POST['issue_number'] ?? 0 ) ?: null,
+            'file_id'        => absint( $_POST['file_id'] ?? 0 ) ?: null,
+            'cover_image_id' => absint( $_POST['cover_image_id'] ?? 0 ) ?: null,
+            'visibility'     => sanitize_text_field( $_POST['visibility'] ?? 'members_only' ),
+        ];
+
+        if ( $newsletter_id ) {
+            $wpdb->update( $prefix . 'newsletters', $data, [ 'id' => $newsletter_id ] );
+        } else {
+            $data['created_by'] = get_current_user_id();
+            $wpdb->insert( $prefix . 'newsletters', $data );
+            $newsletter_id = $wpdb->insert_id;
+        }
+
+        echo '<div class="notice notice-success"><p>Newsletter saved.</p></div>';
+    }
+
+    // ========== LOAD DATA ==========
+    $nl = $newsletter_id ? $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$prefix}newsletters WHERE id = %d", $newsletter_id
+    ) ) : null;
+
+    // Get existing attachment URLs for display
+    $pdf_url   = ( $nl && $nl->file_id )        ? wp_get_attachment_url( $nl->file_id )                        : '';
+    $pdf_name  = ( $nl && $nl->file_id )        ? basename( get_attached_file( $nl->file_id ) )               : '';
+    $cover_url = ( $nl && $nl->cover_image_id ) ? wp_get_attachment_image_url( $nl->cover_image_id, 'medium' ) : '';
+
+    // WordPress media uploader needs this
+    wp_enqueue_media();
+    ?>
+    <div class="wrap">
+        <h1><?php echo $nl ? 'Edit Newsletter' : 'Add New Newsletter'; ?></h1>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-newsletter-archive' ) ); ?>">&larr; Back to Newsletter Archive</a>
+
+        <form method="post" style="margin-top:20px;">
+            <?php wp_nonce_field( 'sp_newsletter_save' ); ?>
+
+            <table class="form-table">
+                <tr>
+                    <th><label for="title">Title</label></th>
+                    <td><input type="text" name="title" id="title" class="regular-text" value="<?php echo esc_attr( $nl->title ?? '' ); ?>" required></td>
+                </tr>
+                <tr>
+                    <th><label for="description">Description</label></th>
+                    <td><textarea name="description" id="description" rows="3" class="large-text"><?php echo esc_textarea( $nl->description ?? '' ); ?></textarea>
+                    <p class="description">Optional summary shown on the frontend archive.</p></td>
+                </tr>
+                <tr>
+                    <th><label for="pub_date">Publication Date</label></th>
+                    <td><input type="date" name="pub_date" id="pub_date" value="<?php echo esc_attr( $nl->pub_date ?? '' ); ?>"></td>
+                </tr>
+                <tr>
+                    <th>Volume &amp; Issue</th>
+                    <td>
+                        <label for="volume" style="margin-right:8px;">Vol.</label>
+                        <input type="number" name="volume" id="volume" value="<?php echo esc_attr( $nl->volume ?? '' ); ?>" min="1" style="width:80px; margin-right:16px;">
+                        <label for="issue_number" style="margin-right:8px;">No.</label>
+                        <input type="number" name="issue_number" id="issue_number" value="<?php echo esc_attr( $nl->issue_number ?? '' ); ?>" min="1" style="width:80px;">
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="visibility">Visibility</label></th>
+                    <td>
+                        <select name="visibility" id="visibility">
+                            <option value="members_only" <?php selected( $nl->visibility ?? 'members_only', 'members_only' ); ?>>Members Only</option>
+                            <option value="public" <?php selected( $nl->visibility ?? '', 'public' ); ?>>Public</option>
+                        </select>
+                        <p class="description">Members Only: grid is visible to everyone, but only logged-in members can view/download the PDF.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th>PDF File</th>
+                    <td>
+                        <input type="hidden" name="file_id" id="file_id" value="<?php echo esc_attr( $nl->file_id ?? 0 ); ?>">
+                        <div id="pdf-preview" style="margin-bottom:8px;">
+                            <?php if ( $pdf_name ) : ?>
+                                <span class="dashicons dashicons-media-document" style="color:#0073aa; vertical-align:middle;"></span>
+                                <a href="<?php echo esc_url( $pdf_url ); ?>" target="_blank"><?php echo esc_html( $pdf_name ); ?></a>
+                            <?php endif; ?>
+                        </div>
+                        <button type="button" class="button" id="select-pdf-btn">Select PDF</button>
+                        <button type="button" class="button" id="remove-pdf-btn" <?php if ( empty( $nl->file_id ) ) echo 'style="display:none;"'; ?>>Remove</button>
+                        <span id="cover-generating" style="display:none; margin-left:12px; color:#666;">
+                            <span class="spinner is-active" style="float:none; margin:0 4px 0 0;"></span> Generating cover…
+                        </span>
+                    </td>
+                </tr>
+                <tr>
+                    <th>Cover Image</th>
+                    <td>
+                        <input type="hidden" name="cover_image_id" id="cover_image_id" value="<?php echo esc_attr( $nl->cover_image_id ?? 0 ); ?>">
+                        <div id="cover-preview" style="margin-bottom:8px;">
+                            <?php if ( $cover_url ) : ?>
+                                <img src="<?php echo esc_url( $cover_url ); ?>" style="max-width:200px; border:1px solid #ddd; border-radius:4px;">
+                            <?php endif; ?>
+                        </div>
+                        <button type="button" class="button" id="select-cover-btn">Choose Cover Image</button>
+                        <button type="button" class="button" id="remove-cover-btn" <?php if ( empty( $nl->cover_image_id ) ) echo 'style="display:none;"'; ?>>Remove</button>
+                        <p class="description">Auto-generated from the PDF. Use this to override with a custom image if needed.</p>
+                    </td>
+                </tr>
+            </table>
+
+            <p class="submit">
+                <input type="submit" name="sp_save_newsletter" class="button button-primary" value="Save Newsletter">
+            </p>
+        </form>
+    </div>
+
+    <script>
+    /**
+     * Newsletter Edit Page — Media Pickers & Auto Thumbnail
+     *
+     * WHY: Deferred to window.load because wp.media can conflict with other
+     *      scripts if initialized too early. PDF picker filters to application/pdf
+     *      only. On PDF selection, fires AJAX to sp_generate_newsletter_cover
+     *      to auto-generate a cover thumbnail via Imagick. Cover image picker
+     *      lets the admin manually choose or override the auto-generated cover.
+     */
+    window.addEventListener('load', function() {
+
+        // ========== PDF PICKER ==========
+        var selectPdfBtn  = document.getElementById('select-pdf-btn');
+        var removePdfBtn  = document.getElementById('remove-pdf-btn');
+        var fileIdInput   = document.getElementById('file_id');
+        var pdfPreview    = document.getElementById('pdf-preview');
+        var coverGen      = document.getElementById('cover-generating');
+
+        selectPdfBtn.addEventListener('click', function() {
+            var frame = wp.media({
+                title:    'Select Newsletter PDF',
+                button:   { text: 'Use This PDF' },
+                multiple: false,
+                library:  { type: 'application/pdf' }
+            });
+            frame.on('select', function() {
+                var att = frame.state().get('selection').first().toJSON();
+                fileIdInput.value = att.id;
+                pdfPreview.innerHTML = '<span class="dashicons dashicons-media-document" style="color:#0073aa; vertical-align:middle;"></span> '
+                    + '<a href="' + att.url + '" target="_blank">' + att.filename + '</a>';
+                removePdfBtn.style.display = '';
+
+                // Auto-generate cover thumbnail via AJAX
+                coverGen.style.display = 'inline';
+                var formData = new FormData();
+                formData.append('action', 'sp_generate_newsletter_cover');
+                formData.append('pdf_id', att.id);
+                formData.append('_ajax_nonce', '<?php echo wp_create_nonce( 'sp_newsletter_cover' ); ?>');
+
+                fetch(ajaxurl, { method: 'POST', body: formData })
+                    .then(function(r) { return r.json(); })
+                    .then(function(resp) {
+                        coverGen.style.display = 'none';
+                        if (resp.success && resp.data.cover_id) {
+                            document.getElementById('cover_image_id').value = resp.data.cover_id;
+                            document.getElementById('cover-preview').innerHTML =
+                                '<img src="' + resp.data.cover_url + '" style="max-width:200px; border:1px solid #ddd; border-radius:4px;">';
+                            document.getElementById('remove-cover-btn').style.display = '';
+                        }
+                    })
+                    .catch(function() {
+                        coverGen.style.display = 'none';
+                    });
+            });
+            frame.open();
+        });
+
+        removePdfBtn.addEventListener('click', function() {
+            fileIdInput.value = 0;
+            pdfPreview.innerHTML = '';
+            this.style.display = 'none';
+        });
+
+        // ========== COVER IMAGE PICKER (manual override) ==========
+        var selectCoverBtn = document.getElementById('select-cover-btn');
+        var removeCoverBtn = document.getElementById('remove-cover-btn');
+        var coverIdInput   = document.getElementById('cover_image_id');
+        var coverPreview   = document.getElementById('cover-preview');
+
+        selectCoverBtn.addEventListener('click', function() {
+            var frame = wp.media({
+                title:    'Select Cover Image',
+                button:   { text: 'Set as Cover' },
+                multiple: false
+            });
+            frame.on('select', function() {
+                var att = frame.state().get('selection').first().toJSON();
+                coverIdInput.value = att.id;
+                var thumbUrl = (att.sizes && att.sizes.medium) ? att.sizes.medium.url : att.url;
+                coverPreview.innerHTML = '<img src="' + thumbUrl + '" style="max-width:200px; border:1px solid #ddd; border-radius:4px;">';
+                removeCoverBtn.style.display = '';
+            });
+            frame.open();
+        });
+
+        removeCoverBtn.addEventListener('click', function() {
+            coverIdInput.value = 0;
+            coverPreview.innerHTML = '';
+            this.style.display = 'none';
+        });
+    });
+    </script>
+    <?php
+}
+
+
+// ============================================================================
+// AJAX: Generate Newsletter Cover Thumbnail from PDF
+//
+// WHY: When an admin uploads a PDF newsletter, we want to auto-generate a
+//      cover thumbnail from page 1 so the archive grid looks good without
+//      requiring manual screenshot work. Uses Imagick (ImageMagick PHP
+//      extension) which needs Ghostscript installed on the server to handle
+//      PDF rendering. Falls back gracefully if either is missing.
+// ============================================================================
+add_action( 'wp_ajax_sp_generate_newsletter_cover', 'sp_ajax_generate_newsletter_cover' );
+
+function sp_ajax_generate_newsletter_cover(): void {
+    check_ajax_referer( 'sp_newsletter_cover' );
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( 'Permission denied.' );
+    }
+
+    $pdf_id = absint( $_POST['pdf_id'] ?? 0 );
+    if ( ! $pdf_id ) {
+        wp_send_json_error( 'Missing PDF ID.' );
+    }
+
+    $pdf_path = get_attached_file( $pdf_id );
+    if ( ! $pdf_path || ! file_exists( $pdf_path ) ) {
+        wp_send_json_error( 'PDF file not found.' );
+    }
+
+    // Check that Imagick is available and can handle PDFs
+    if ( ! class_exists( 'Imagick' ) ) {
+        wp_send_json_error( 'Imagick extension not available. Upload a cover image manually.' );
+    }
+
+    try {
+        $im = new Imagick();
+
+        // Set resolution BEFORE reading so Ghostscript renders at this DPI
+        // WHY: 150 DPI gives a good balance between quality and file size for
+        //      a cover thumbnail. Higher DPI would be wasteful for a 200–300px
+        //      wide preview image.
+        $im->setResolution( 150, 150 );
+
+        // Read only the first page (index [0]) of the PDF
+        $im->readImage( $pdf_path . '[0]' );
+
+        // Flatten to remove alpha channel (PDFs can have transparency)
+        $im->setImageBackgroundColor( 'white' );
+        $im->setImageAlphaChannel( Imagick::ALPHACHANNEL_REMOVE );
+        $im = $im->mergeImageLayers( Imagick::LAYERMETHOD_FLATTEN );
+
+        // Convert to JPEG for web display
+        $im->setImageFormat( 'jpg' );
+        $im->setImageCompressionQuality( 85 );
+
+        // Generate unique filename and save to uploads directory
+        $upload_dir = wp_upload_dir();
+        $filename   = 'newsletter-cover-' . $pdf_id . '-' . time() . '.jpg';
+        $filepath   = $upload_dir['path'] . '/' . $filename;
+        $fileurl    = $upload_dir['url'] . '/' . $filename;
+
+        $im->writeImage( $filepath );
+        $im->clear();
+        $im->destroy();
+
+        // Register as a WordPress attachment so it shows up in the media library
+        // and gets cleaned up properly if the newsletter is deleted
+        $attachment_id = wp_insert_attachment( [
+            'post_mime_type' => 'image/jpeg',
+            'post_title'     => 'Newsletter Cover — ' . basename( $pdf_path, '.pdf' ),
+            'post_status'    => 'inherit',
+        ], $filepath );
+
+        if ( is_wp_error( $attachment_id ) ) {
+            wp_send_json_error( 'Failed to register cover image attachment.' );
+        }
+
+        // Generate standard WP image sizes (thumbnail, medium, etc.)
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+        $metadata = wp_generate_attachment_metadata( $attachment_id, $filepath );
+        wp_update_attachment_metadata( $attachment_id, $metadata );
+
+        wp_send_json_success( [
+            'cover_id'  => $attachment_id,
+            'cover_url' => $fileurl,
+        ] );
+
+    } catch ( Exception $e ) {
+        wp_send_json_error( 'Imagick error: ' . $e->getMessage() . '. Upload a cover image manually.' );
+    }
+}
+
+
+// ============================================================================
+// AJAX: Newsletter PDF Download
+//
+// WHY: Rather than exposing the raw wp-content/uploads URL (which anyone could
+//      guess or share), downloads go through this endpoint which checks that
+//      the user is logged in before serving the file. For public newsletters,
+//      anyone can download. This also lets us log downloads in the future if
+//      we ever want analytics on newsletter engagement.
+// ============================================================================
+add_action( 'wp_ajax_sp_newsletter_download',        'sp_ajax_newsletter_download' );
+add_action( 'wp_ajax_nopriv_sp_newsletter_download', 'sp_ajax_newsletter_download' );
+
+function sp_ajax_newsletter_download(): void {
+    $newsletter_id = absint( $_GET['newsletter_id'] ?? 0 );
+    if ( ! $newsletter_id ) {
+        wp_die( 'Invalid newsletter.' );
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    $nl = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$prefix}newsletters WHERE id = %d", $newsletter_id
+    ) );
+
+    if ( ! $nl || ! $nl->file_id ) {
+        wp_die( 'Newsletter not found.' );
+    }
+
+    // Members-only newsletters require login
+    if ( $nl->visibility === 'members_only' && ! is_user_logged_in() ) {
+        wp_redirect( wp_login_url( add_query_arg( [] ) ) );
+        exit;
+    }
+
+    $file_path = get_attached_file( $nl->file_id );
+    if ( ! $file_path || ! file_exists( $file_path ) ) {
+        wp_die( 'PDF file not found on server.' );
+    }
+
+    // Serve the file with proper headers for download
+    header( 'Content-Type: application/pdf' );
+    header( 'Content-Disposition: attachment; filename="' . sanitize_file_name( $nl->title ) . '.pdf"' );
+    header( 'Content-Length: ' . filesize( $file_path ) );
+    header( 'Cache-Control: private, max-age=0' );
+    header( 'Pragma: public' );
+
+    readfile( $file_path );
+    exit;
+}
+
+
+// ============================================================================
+// FRONTEND: Newsletter Archive Page Template
+//
+// WHY: Registered as a page template so Harold can create a "Newsletters"
+//      page and select this template. Shows a grid of newsletter cards with
+//      cover thumbnails, titles, dates, and volume/issue info. Clicking a
+//      card opens an inline PDF viewer (modal with iframe) for logged-in
+//      members. Non-members see the grid but get a "Members Only" message
+//      instead of the viewer/download.
+// ============================================================================
+
+// Register the template in the page template dropdown
+add_filter( 'theme_page_templates', function( $templates ) {
+    $templates['sp-newsletter-archive'] = 'Newsletter Archive';
+    return $templates;
+} );
+
+// Intercept template loading and render our custom output
+add_filter( 'template_include', function( $template ) {
+    if ( ! is_page() ) return $template;
+
+    $page_template = get_page_template_slug();
+    if ( $page_template !== 'sp-newsletter-archive' ) {
+        return $template;
+    }
+
+    // Newsletter archive is visible to everyone — login is only required
+    // for viewing/downloading members-only PDFs, not for seeing the grid.
+    get_header();
+    echo '<div class="site-content"><div class="content-area-full" style="max-width:var(--sp-content-width,1100px);">';
+    sp_frontend_newsletter_archive();
+    echo '</div></div>';
+    get_footer();
+    return '';
+}, 98 ); // Priority 98 — just before the existing 99 hook for other templates
+
+
+/**
+ * Frontend: Newsletter Archive Grid + PDF Viewer Modal
+ *
+ * WHY: The archive grid is the public-facing view of all newsletters. Cards
+ *      show the cover thumbnail, title, date, and volume/issue. The grid is
+ *      visible to everyone (good for marketing — prospective members can see
+ *      the society produces quality content). But the viewer modal and download
+ *      button only work for logged-in members when visibility is members_only.
+ */
+function sp_frontend_newsletter_archive(): void {
+    global $wpdb;
+    $prefix    = $wpdb->prefix . 'sp_';
+    $logged_in = is_user_logged_in();
+
+    // Fetch all newsletters, newest first
+    $newsletters = $wpdb->get_results(
+        "SELECT * FROM {$prefix}newsletters ORDER BY pub_date DESC, created_at DESC"
+    );
+    ?>
+    <div class="sp-newsletter-archive">
+        <h1 class="entry-title" style="margin-bottom:8px;">Newsletter Archive</h1>
+
+        <!-- Search bar -->
+        <div style="margin-bottom:24px;">
+            <input type="text" id="sp-nl-search" placeholder="Search newsletters…"
+                   style="width:100%; max-width:400px; padding:10px 14px; border:2px solid #dee2e6; border-radius:6px; font-size:16px;">
+        </div>
+
+        <?php if ( empty( $newsletters ) ) : ?>
+            <p>No newsletters have been published yet. Check back soon!</p>
+        <?php else : ?>
+            <div class="sp-newsletter-grid" id="sp-nl-grid">
+                <?php foreach ( $newsletters as $nl ) :
+                    $cover_url = $nl->cover_image_id
+                        ? wp_get_attachment_image_url( $nl->cover_image_id, 'medium' )
+                        : '';
+
+                    $pdf_url = $nl->file_id ? wp_get_attachment_url( $nl->file_id ) : '';
+
+                    // Can this user view/download?
+                    $can_access = ( $nl->visibility === 'public' ) || $logged_in;
+
+                    // Format volume/issue
+                    $vol_issue = '';
+                    if ( $nl->volume )       $vol_issue .= 'Vol.&nbsp;' . $nl->volume;
+                    if ( $nl->issue_number ) $vol_issue .= ( $vol_issue ? ', ' : '' ) . 'No.&nbsp;' . $nl->issue_number;
+
+                    // Format date
+                    $date_display = $nl->pub_date ? date( 'F Y', strtotime( $nl->pub_date ) ) : '';
+
+                    // Download URL goes through our AJAX endpoint for access control
+                    $download_url = admin_url( 'admin-ajax.php?action=sp_newsletter_download&newsletter_id=' . $nl->id );
+                ?>
+                    <div class="sp-newsletter-card" data-title="<?php echo esc_attr( strtolower( $nl->title ) ); ?>">
+                        <!-- Cover image -->
+                        <div class="sp-newsletter-card-cover"
+                             <?php if ( $can_access && $pdf_url ) : ?>
+                                 data-pdf="<?php echo esc_url( $pdf_url ); ?>"
+                                 data-title="<?php echo esc_attr( $nl->title ); ?>"
+                                 data-download="<?php echo esc_url( $download_url ); ?>"
+                                 style="cursor:pointer;"
+                                 title="Click to preview"
+                             <?php endif; ?>>
+                            <?php if ( $cover_url ) : ?>
+                                <img src="<?php echo esc_url( $cover_url ); ?>" alt="<?php echo esc_attr( $nl->title ); ?>">
+                            <?php else : ?>
+                                <div class="sp-newsletter-card-placeholder">
+                                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="1.5">
+                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                        <polyline points="14 2 14 8 20 8"></polyline>
+                                    </svg>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+
+                        <!-- Card body -->
+                        <div class="sp-newsletter-card-body">
+                            <h3 class="sp-newsletter-card-title"><?php echo esc_html( $nl->title ); ?></h3>
+                            <?php if ( $date_display ) : ?>
+                                <span class="sp-newsletter-card-date"><?php echo $date_display; ?></span>
+                            <?php endif; ?>
+                            <?php if ( $vol_issue ) : ?>
+                                <span class="sp-newsletter-card-issue"><?php echo $vol_issue; ?></span>
+                            <?php endif; ?>
+                            <?php if ( $nl->description ) : ?>
+                                <p class="sp-newsletter-card-desc"><?php echo esc_html( $nl->description ); ?></p>
+                            <?php endif; ?>
+
+                            <!-- Action buttons -->
+                            <div class="sp-newsletter-card-actions">
+                                <?php if ( $can_access && $pdf_url ) : ?>
+                                    <a href="<?php echo esc_url( $download_url ); ?>" class="sp-newsletter-btn sp-newsletter-btn-download">Download</a>
+                                <?php else : ?>
+                                    <span class="sp-newsletter-members-badge">Members Only</span>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+    </div>
+
+    <!-- PDF Viewer Modal -->
+    <div id="sp-pdf-modal" class="sp-pdf-modal" style="display:none;">
+        <div class="sp-pdf-modal-overlay"></div>
+        <div class="sp-pdf-modal-content">
+            <div class="sp-pdf-modal-header">
+                <h3 id="sp-pdf-modal-title"></h3>
+                <div class="sp-pdf-modal-actions">
+                    <a href="#" id="sp-pdf-modal-download" class="sp-newsletter-btn sp-newsletter-btn-download" target="_blank">Download</a>
+                    <button type="button" id="sp-pdf-modal-close" class="sp-newsletter-btn sp-newsletter-btn-close">&times;</button>
+                </div>
+            </div>
+            <div class="sp-pdf-modal-body">
+                <iframe id="sp-pdf-modal-iframe" src="" frameborder="0"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    /**
+     * Newsletter Archive — Frontend Interactions
+     *
+     * WHY: Three pieces of interactivity:
+     * 1. Search filter — instant client-side filtering by title as the user types
+     * 2. PDF viewer modal — clicking a card cover opens an iframe modal with the
+     *    browser's native PDF renderer (no PDF.js dependency needed)
+     * 3. Escape key / overlay click closes the modal
+     */
+    (function() {
+        'use strict';
+
+        // ========== SEARCH FILTER ==========
+        var searchInput = document.getElementById('sp-nl-search');
+        if (searchInput) {
+            searchInput.addEventListener('input', function() {
+                var query = this.value.toLowerCase().trim();
+                var cards = document.querySelectorAll('.sp-newsletter-card');
+                cards.forEach(function(card) {
+                    var title = card.getAttribute('data-title') || '';
+                    card.style.display = (!query || title.indexOf(query) !== -1) ? '' : 'none';
+                });
+            });
+        }
+
+        // ========== PDF VIEWER MODAL ==========
+        var modal       = document.getElementById('sp-pdf-modal');
+        var modalTitle  = document.getElementById('sp-pdf-modal-title');
+        var modalIframe = document.getElementById('sp-pdf-modal-iframe');
+        var modalDL     = document.getElementById('sp-pdf-modal-download');
+        var modalClose  = document.getElementById('sp-pdf-modal-close');
+        var overlay     = modal ? modal.querySelector('.sp-pdf-modal-overlay') : null;
+
+        // Open modal when clicking a card cover that has a data-pdf attribute
+        document.addEventListener('click', function(e) {
+            var cover = e.target.closest('.sp-newsletter-card-cover[data-pdf]');
+            if (!cover || !modal) return;
+            e.preventDefault();
+
+            var pdfUrl      = cover.getAttribute('data-pdf');
+            var title       = cover.getAttribute('data-title');
+            var downloadUrl = cover.getAttribute('data-download');
+
+            modalTitle.textContent = title;
+            modalIframe.src        = pdfUrl;
+            modalDL.href           = downloadUrl;
+            modal.style.display    = 'flex';
+            document.body.style.overflow = 'hidden'; // Prevent background scrolling
+        });
+
+        // Close modal
+        function closeModal() {
+            if (!modal) return;
+            modal.style.display          = 'none';
+            modalIframe.src              = '';
+            document.body.style.overflow = '';
+        }
+
+        if (modalClose) modalClose.addEventListener('click', closeModal);
+        if (overlay)    overlay.addEventListener('click', closeModal);
+
+        // Escape key closes modal
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && modal && modal.style.display !== 'none') {
+                closeModal();
+            }
+        });
+    })();
+    </script>
+    <?php
 }

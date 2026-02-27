@@ -24,11 +24,20 @@
         <div class="header-inner">
 
             <!-- Site branding: logo and/or site title -->
+            <?php
+            // WHY we read this setting here: The admin can toggle the site
+            // title/tagline on or off from Settings → Design. Default is on
+            // (1) so existing sites keep their text. When the logo already
+            // includes the society name, showing it again as text is redundant.
+            $sp_settings      = get_option( 'societypress_settings', [] );
+            $show_header_title = (int) ( $sp_settings['design_show_header_title'] ?? 1 );
+            ?>
             <div class="site-branding">
                 <?php if ( has_custom_logo() ) : ?>
                     <?php the_custom_logo(); ?>
                 <?php endif; ?>
 
+                <?php if ( $show_header_title ) : ?>
                 <div>
                     <h1 class="site-title">
                         <a href="<?php echo esc_url( home_url( '/' ) ); ?>">
@@ -42,6 +51,7 @@
                         <p class="site-description"><?php echo $description; ?></p>
                     <?php endif; ?>
                 </div>
+                <?php endif; ?>
             </div>
 
             <!--

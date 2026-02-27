@@ -112,7 +112,7 @@ a:hover {
    content down so it doesn't hide behind the header. With 40px top/bottom
    padding and a 120px logo, the header renders ~200px tall. */
 body {
-    padding-top: 210px;
+    padding-top: 180px;
 }
 
 /* Extra vertical padding gives the logo room to breathe, matching the
@@ -141,7 +141,7 @@ body {
    the parent theme's .custom-logo rule loads at the same specificity and
    the cascade order isn't guaranteed with how WP enqueues parent+child. */
 .custom-logo {
-    max-height: 120px !important;
+    max-height: 132px !important;
     width: auto !important;
 }
 

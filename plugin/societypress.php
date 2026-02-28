@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     0.22d
+ * Version:     0.23d
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '0.22d' );
+define( 'SOCIETYPRESS_VERSION', '0.23d' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -1985,6 +1985,18 @@ add_action( 'admin_menu', function () {
         'sp_render_library_import_page'
     );
 
+    // WHY separate import page: Resource links come from a different CSV format
+    //     than library items (EasyNetSites links export vs. catalog export), so
+    //     they need their own field mapping and processing logic.
+    add_submenu_page(
+        'societypress',
+        'Import Links — SocietyPress',
+        'Import Links',
+        'manage_options',
+        'sp-import-links',
+        'sp_render_links_import_page'
+    );
+
     add_submenu_page(
         'societypress',
         'Research Help — SocietyPress',
@@ -2015,23 +2027,6 @@ add_action( 'admin_menu', function () {
         'sp-newsletter-edit',
         'sp_render_newsletter_edit_page'
     );
-
-    // Newsletter posts — link to WP Posts list filtered to Newsletter category.
-    // WHY: Rather than building a custom newsletter manager, we reuse WP Posts
-    //      filtered to the Newsletter category. Harold writes posts in the
-    //      normal editor, categorises them as "Newsletter," and the archive
-    //      widget picks them up automatically.
-    $newsletter_cat = get_term_by( 'slug', 'newsletter', 'category' );
-    if ( $newsletter_cat ) {
-        add_submenu_page(
-            'societypress',
-            'Newsletter Posts — SocietyPress',
-            'Newsletter Posts',
-            'manage_options',
-            'edit.php?category_name=newsletter',
-            '' // WP handles the rendering for built-in screens
-        );
-    }
 
     // Library item edit — hidden (accessed via row actions)
     add_submenu_page(
@@ -2574,6 +2569,81 @@ function sp_user_has_member_record( $user_id ) {
 
 
 // ============================================================================
+// SOCIAL MEDIA ICONS — Rendered in the header
+// ============================================================================
+//
+// WHY IN THE PLUGIN: Like sp_user_menu(), this is called by the theme's
+//      header.php. Keeping it in the plugin means any theme can show social
+//      icons without duplicating the SVG markup or settings lookup.
+
+/**
+ * Outputs social media icon links based on Settings → Website values.
+ *
+ * WHY inline SVGs: No external icon library dependency, no font loading,
+ *     no FOUT. Each icon is a tiny inline SVG — clean, crisp at any size,
+ *     and styled via CSS currentColor so they inherit the header palette.
+ */
+function sp_social_icons(): void {
+    $settings = get_option( 'societypress_settings', [] );
+
+    // Map of setting keys → [ label, SVG path data ]
+    // WHY this structure: Easy to add new platforms — one entry per network.
+    // SVGs are simplified brand marks at 24x24 viewBox.
+    $networks = [
+        'social_facebook' => [
+            'Facebook',
+            '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.879V14.89h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.989C18.343 21.129 22 16.99 22 12c0-5.523-4.477-10-10-10z"/></svg>',
+        ],
+        'social_youtube' => [
+            'YouTube',
+            '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>',
+        ],
+        'social_instagram' => [
+            'Instagram',
+            '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></svg>',
+        ],
+        'social_tiktok' => [
+            'TikTok',
+            '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1v-3.5a6.37 6.37 0 0 0-.79-.05A6.34 6.34 0 0 0 3.15 15a6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.34-6.34V8.71a8.21 8.21 0 0 0 4.8 1.54V6.8a4.86 4.86 0 0 1-1.04-.11z"/></svg>',
+        ],
+        'social_x' => [
+            'X',
+            '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>',
+        ],
+    ];
+
+    // Collect only the networks that have a URL set
+    $active = [];
+    foreach ( $networks as $key => [ $label, $svg ] ) {
+        $url = trim( $settings[ $key ] ?? '' );
+        if ( ! empty( $url ) ) {
+            $active[] = [
+                'url'   => $url,
+                'label' => $label,
+                'svg'   => $svg,
+            ];
+        }
+    }
+
+    // Nothing to show — bail silently
+    if ( empty( $active ) ) {
+        return;
+    }
+
+    echo '<div class="sp-social-icons">';
+    foreach ( $active as $network ) {
+        printf(
+            '<a href="%s" class="sp-social-icon" target="_blank" rel="noopener noreferrer" aria-label="%s">%s</a>',
+            esc_url( $network['url'] ),
+            esc_attr( $network['label'] ),
+            $network['svg'] // Already hardcoded SVG — safe
+        );
+    }
+    echo '</div>';
+}
+
+
+// ============================================================================
 // USER MENU — Header dropdown for logged-in users
 // ============================================================================
 //
@@ -2589,8 +2659,27 @@ function sp_user_menu() {
         return;
     }
 
-    $user         = wp_get_current_user();
-    $display_name = esc_html( $user->display_name );
+    $user = wp_get_current_user();
+
+    // WHY preferred_name first: Charles wants the header to show what the
+    // member wants to be called — just the first name, saving horizontal
+    // space in the nav bar. preferred_name → first_name → display_name.
+    global $wpdb;
+    $sp_member    = $wpdb->get_row( $wpdb->prepare(
+        "SELECT preferred_name, first_name FROM {$wpdb->prefix}sp_members WHERE user_id = %d",
+        $user->ID
+    ) );
+    $short_name   = '';
+    if ( $sp_member ) {
+        $short_name = ! empty( $sp_member->preferred_name ) ? $sp_member->preferred_name : $sp_member->first_name;
+    }
+    // WHY WP first_name fallback: Admins and users who don't have an
+    // sp_members row (e.g., the site owner) still need a short name.
+    // WordPress stores first_name in usermeta for all users.
+    if ( empty( $short_name ) ) {
+        $short_name = $user->first_name;
+    }
+    $display_name = esc_html( $short_name ?: $user->display_name );
     $avatar       = get_avatar( $user->ID, 32, '', $display_name, [ 'class' => 'sp-user-avatar' ] );
     $admin_url    = admin_url();
     $account_url  = sp_get_my_account_url();
@@ -3243,7 +3332,7 @@ var spMenuConfig = {
             id:    'library',
             label: 'Library',
             icon:  'dashicons-book-alt',
-            items: ['sp-library', 'sp-resource-categories', 'sp-library-catalog', 'sp-library-categories', 'sp-import-library', 'sp-help-requests', 'sp-newsletter-archive', 'edit.php?category_name=newsletter']
+            items: ['sp-library', 'sp-resource-categories', 'sp-library-catalog', 'sp-library-categories', 'sp-import-library', 'sp-import-links', 'sp-help-requests', 'sp-newsletter-archive']
         },
         {
             id:    'finances',
@@ -9564,6 +9653,46 @@ add_action( 'admin_init', function () {
         'sp_website_section'
     );
 
+    // --- Social Media Links ---
+    // WHY on the Website tab: Social links are site-wide branding, not
+    // org-specific contact info. They control what shows in the header,
+    // so they belong with other site display settings.
+    add_settings_field(
+        'social_facebook',
+        'Social Media',
+        function () {
+            $settings = get_option( 'societypress_settings', [] );
+
+            $socials = [
+                'social_facebook'  => [ 'Facebook',  'https://facebook.com/yourpage' ],
+                'social_youtube'   => [ 'YouTube',   'https://youtube.com/@yourchannel' ],
+                'social_instagram' => [ 'Instagram', 'https://instagram.com/yourhandle' ],
+                'social_tiktok'    => [ 'TikTok',    'https://tiktok.com/@yourhandle' ],
+                'social_x'         => [ 'X (Twitter)', 'https://x.com/yourhandle' ],
+            ];
+
+            foreach ( $socials as $key => [ $label, $placeholder ] ) {
+                $val = esc_attr( $settings[ $key ] ?? '' );
+                printf(
+                    '<div style="margin-bottom:8px;">'
+                    . '<label style="display:inline-block; width:100px; font-weight:500;">%s</label>'
+                    . '<input type="url" name="societypress_settings[%s]" value="%s" placeholder="%s" '
+                    . 'style="width:400px; max-width:100%%;">'
+                    . '</div>',
+                    esc_html( $label ),
+                    esc_attr( $key ),
+                    $val,
+                    esc_attr( $placeholder )
+                );
+            }
+
+            echo '<p class="description">Enter the full URL for each platform your society uses. '
+               . 'Leave blank to hide. Icons appear in the site header.</p>';
+        },
+        'sp-settings-website',
+        'sp_website_section'
+    );
+
 
     // ====================================================================
     // SECTION: Organization Information
@@ -10187,6 +10316,11 @@ function sp_sanitize_settings( array $input ): array {
         // Website
         'website_require_login'   => fn() => ! empty( $input['website_require_login'] ) ? 1 : 0,
         'website_show_admin_bar'  => fn() => ! empty( $input['website_show_admin_bar'] ) ? 1 : 0,
+        'social_facebook'         => fn() => esc_url_raw( $input['social_facebook'] ?? '' ),
+        'social_youtube'          => fn() => esc_url_raw( $input['social_youtube'] ?? '' ),
+        'social_instagram'        => fn() => esc_url_raw( $input['social_instagram'] ?? '' ),
+        'social_tiktok'           => fn() => esc_url_raw( $input['social_tiktok'] ?? '' ),
+        'social_x'                => fn() => esc_url_raw( $input['social_x'] ?? '' ),
 
         // Organization
         'organization_name'       => fn() => sanitize_text_field( $input['organization_name'] ?? '' ),
@@ -10261,7 +10395,7 @@ function sp_sanitize_settings( array $input ): array {
                                                    ? $input['design_font_size'] : 'comfortable',
         'design_heading_scale'        => fn() => in_array( $input['design_heading_scale'] ?? '', [ 'small', 'normal', 'large' ], true )
                                                    ? $input['design_heading_scale'] : 'normal',
-        'design_content_width'        => fn() => in_array( $input['design_content_width'] ?? '', [ 'narrow', 'standard', 'wide' ], true )
+        'design_content_width'        => fn() => in_array( $input['design_content_width'] ?? '', [ 'narrow', 'standard', 'wide', 'custom' ], true )
                                                    ? $input['design_content_width'] : 'standard',
 
         // Logo — stores the attachment ID from the Media Library.
@@ -10301,6 +10435,8 @@ function sp_sanitize_settings( array $input ): array {
     if ( array_key_exists( 'website_require_login', $input ) ) {
         $page_keys = array_merge( $page_keys, [
             'website_require_login', 'website_show_admin_bar',
+            'social_facebook', 'social_youtube', 'social_instagram',
+            'social_tiktok', 'social_x',
         ]);
     }
 
@@ -11852,6 +11988,8 @@ function sp_get_page_type_labels(): array {
         'sp-help-requests'   => 'Research Help Requests',
         'sp-resources'       => 'Resource Links Directory',
         'sp-builder'         => 'Page Builder',
+        'sp-newsletter-archive' => 'Newsletter Archive',
+        'sp-search'          => 'Site Search',
     ];
 }
 
@@ -18258,6 +18396,17 @@ add_action( 'admin_init', function () {
 //   5. Contact        — Name, Email, Phone
 // ============================================================================
 
+// WHY: wp_enqueue_media() must run during admin_enqueue_scripts — NOT inside
+//      the page callback. If called during render, the media modal scripts
+//      arrive after wp_head() and wp.media is undefined, so the "Select Image"
+//      button silently does nothing.
+add_action( 'admin_enqueue_scripts', function ( $hook ) {
+    if ( strpos( $hook, 'sp-event-edit' ) === false ) {
+        return;
+    }
+    wp_enqueue_media();
+});
+
 function sp_render_event_edit_page(): void {
     global $wpdb;
 
@@ -18976,53 +19125,59 @@ function sp_render_event_edit_page(): void {
         }
 
         // ---- Featured Image picker (uses WordPress Media Library) ----
-        var imageBtn    = document.getElementById('sp-event-image-btn');
-        var imageRemove = document.getElementById('sp-event-image-remove');
-        var imageInput  = document.getElementById('event_image_id');
-        var imagePreview = document.getElementById('sp-event-image-preview');
+        // WHY window.load: WordPress media scripts (wp.media) may be enqueued
+        //      in the admin footer, which hasn't printed yet when this inline
+        //      script runs mid-page. Deferring to window load guarantees all
+        //      scripts — head and footer — have finished loading.
+        window.addEventListener('load', function() {
+            var imageBtn    = document.getElementById('sp-event-image-btn');
+            var imageRemove = document.getElementById('sp-event-image-remove');
+            var imageInput  = document.getElementById('event_image_id');
+            var imagePreview = document.getElementById('sp-event-image-preview');
 
-        if (imageBtn && typeof wp !== 'undefined' && wp.media) {
-            var frame;
+            if (imageBtn && typeof wp !== 'undefined' && wp.media) {
+                var frame;
 
-            imageBtn.addEventListener('click', function(e) {
-                e.preventDefault();
-
-                if (frame) {
-                    frame.open();
-                    return;
-                }
-
-                frame = wp.media({
-                    title:    'Select Event Image',
-                    button:   { text: 'Use this image' },
-                    multiple: false,
-                    library:  { type: 'image' }
-                });
-
-                frame.on('select', function() {
-                    var attachment = frame.state().get('selection').first().toJSON();
-                    imageInput.value = attachment.id;
-                    var url = attachment.sizes && attachment.sizes.medium
-                            ? attachment.sizes.medium.url
-                            : attachment.url;
-                    imagePreview.innerHTML = '<img src="' + url + '" style="max-width: 300px; height: auto; border-radius: 4px;">';
-                    imageBtn.textContent = 'Change Image';
-                    if (imageRemove) imageRemove.style.display = '';
-                });
-
-                frame.open();
-            });
-
-            if (imageRemove) {
-                imageRemove.addEventListener('click', function(e) {
+                imageBtn.addEventListener('click', function(e) {
                     e.preventDefault();
-                    imageInput.value = '';
-                    imagePreview.innerHTML = '';
-                    imageBtn.textContent = 'Select Image';
-                    this.style.display = 'none';
+
+                    if (frame) {
+                        frame.open();
+                        return;
+                    }
+
+                    frame = wp.media({
+                        title:    'Select Event Image',
+                        button:   { text: 'Use this image' },
+                        multiple: false,
+                        library:  { type: 'image' }
+                    });
+
+                    frame.on('select', function() {
+                        var attachment = frame.state().get('selection').first().toJSON();
+                        imageInput.value = attachment.id;
+                        var url = attachment.sizes && attachment.sizes.medium
+                                ? attachment.sizes.medium.url
+                                : attachment.url;
+                        imagePreview.innerHTML = '<img src="' + url + '" style="max-width: 300px; height: auto; border-radius: 4px;">';
+                        imageBtn.textContent = 'Change Image';
+                        if (imageRemove) imageRemove.style.display = '';
+                    });
+
+                    frame.open();
                 });
+
+                if (imageRemove) {
+                    imageRemove.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        imageInput.value = '';
+                        imagePreview.innerHTML = '';
+                        imageBtn.textContent = 'Select Image';
+                        this.style.display = 'none';
+                    });
+                }
             }
-        }
+        });
 
         // ---- Phone number auto-formatting for contact phone ----
         // WHY: Same formatting as everywhere else in SocietyPress — consistent
@@ -19186,9 +19341,6 @@ function sp_render_event_edit_page(): void {
     })();
     </script>
     <?php
-
-    // Enqueue WP Media Library scripts so the image picker works
-    wp_enqueue_media();
 }
 
 
@@ -20612,29 +20764,275 @@ add_action( 'admin_init', function () {
 
 
 // ============================================================================
-// IMPORT EVENTS — CSV Upload, Preview, and Import
+// IMPORT EVENTS — File Upload, Preview, and Import
 // ============================================================================
 //
 // WHY: Harold gets event lists from committee chairs in spreadsheets —
 //      "here are next year's meeting dates" or a program schedule exported
 //      from the old system. Manually entering 20+ events one at a time is
-//      tedious and error-prone. A CSV import lets him upload once and go.
+//      tedious and error-prone. An import lets him upload once and go.
+//
+// FORMATS: CSV (comma-delimited), TSV/TXT (tab-delimited), XLSX (Excel).
+//   Delimiter is auto-detected for text files. XLSX is parsed natively
+//   using ZipArchive + SimpleXML — no external libraries needed.
 //
 // FLOW (two-step, same as member import):
-//   Step 1: Upload CSV → show preview table + column mapping dropdowns
+//   Step 1: Upload file → show preview table + column mapping dropdowns
 //   Step 2: Confirm → import events into sp_events table
 // ============================================================================
 
 /**
- * Process the event CSV import.
+ * Parse an import file (CSV, TSV, or XLSX) into a normalized array.
  *
- * WHY: Takes a CSV file path and column mapping, creates event rows in the
+ * WHY: Societies export event data from all kinds of tools — Excel, Google
+ *      Sheets, LibreOffice, legacy databases. Instead of forcing everyone
+ *      to "Save as CSV" (which many non-technical users struggle with),
+ *      we accept the most common formats and normalize them internally.
+ *
+ * @param string $file_path  Absolute path to the uploaded file.
+ * @return array|false  ['headers' => [...], 'rows' => [[...], ...]] or false on failure.
+ */
+function sp_parse_import_file( string $file_path ) {
+    if ( ! file_exists( $file_path ) || ! is_readable( $file_path ) ) {
+        return false;
+    }
+
+    $extension = strtolower( pathinfo( $file_path, PATHINFO_EXTENSION ) );
+
+    // -----------------------------------------------------------------
+    // XLSX — Excel Open XML format
+    // -----------------------------------------------------------------
+    // WHY: XLSX files are ZIP archives containing XML. PHP's ZipArchive
+    //      and SimpleXML can parse them without any external library.
+    //      We read the shared string table (where Excel stores text) and
+    //      then walk through sheet1's cell data to reconstruct rows.
+    // -----------------------------------------------------------------
+    if ( $extension === 'xlsx' ) {
+        return sp_parse_xlsx_file( $file_path );
+    }
+
+    // -----------------------------------------------------------------
+    // CSV / TSV / TXT — auto-detect delimiter
+    // -----------------------------------------------------------------
+    // WHY: Tab-delimited exports are common from older systems and some
+    //      spreadsheet "Save As" options. Rather than making Harold guess
+    //      which format he has, we peek at the first line and pick
+    //      whichever delimiter (comma or tab) appears more often.
+    // -----------------------------------------------------------------
+    $handle = fopen( $file_path, 'r' );
+    if ( ! $handle ) {
+        return false;
+    }
+
+    // Read first line to detect delimiter
+    $first_line = fgets( $handle );
+    if ( $first_line === false ) {
+        fclose( $handle );
+        return false;
+    }
+    rewind( $handle );
+
+    $tab_count   = substr_count( $first_line, "\t" );
+    $comma_count = substr_count( $first_line, ',' );
+    $delimiter   = ( $tab_count > $comma_count ) ? "\t" : ',';
+
+    // Read header row
+    $headers = fgetcsv( $handle, 0, $delimiter );
+    if ( ! $headers ) {
+        fclose( $handle );
+        return false;
+    }
+
+    // Strip BOM and whitespace from headers
+    $headers = array_map( function( $h ) {
+        return trim( $h, "\xEF\xBB\xBF \t\n\r" );
+    }, $headers );
+
+    // Read all data rows
+    $rows = [];
+    while ( ( $row = fgetcsv( $handle, 0, $delimiter ) ) !== false ) {
+        $rows[] = $row;
+    }
+
+    fclose( $handle );
+
+    return [
+        'headers' => $headers,
+        'rows'    => $rows,
+    ];
+}
+
+/**
+ * Parse an XLSX (Excel) file into headers + rows.
+ *
+ * WHY: XLSX is a ZIP containing XML files. The key pieces are:
+ *   - xl/sharedStrings.xml: lookup table of all text strings in the workbook
+ *   - xl/worksheets/sheet1.xml: the actual cell data for the first sheet
+ *
+ * Each cell has a reference like "A1", "B2", etc. and a type attribute:
+ *   - type="s" means the value is an index into the shared strings table
+ *   - type="inlineStr" means the string is stored directly in the cell
+ *   - no type or type="n" means the value is a literal number
+ *
+ * We convert column letters (A, B, ..., Z, AA, AB...) to 0-based indexes
+ * and reconstruct a dense row array so it looks just like fgetcsv() output.
+ *
+ * @param string $file_path  Path to the .xlsx file.
+ * @return array|false  ['headers' => [...], 'rows' => [[...], ...]] or false.
+ */
+function sp_parse_xlsx_file( string $file_path ) {
+    if ( ! class_exists( 'ZipArchive' ) ) {
+        return false;
+    }
+
+    $zip = new ZipArchive();
+    if ( $zip->open( $file_path ) !== true ) {
+        return false;
+    }
+
+    // ---- Shared strings table ----
+    // WHY: Excel stores repeated strings once in a lookup table and
+    //      references them by index in each cell. This keeps file size
+    //      small when the same category name appears in 200 rows.
+    $shared_strings = [];
+    $ss_xml = $zip->getFromName( 'xl/sharedStrings.xml' );
+    if ( $ss_xml !== false ) {
+        $ss = simplexml_load_string( $ss_xml );
+        if ( $ss ) {
+            foreach ( $ss->si as $si ) {
+                // Some shared strings use <t> directly, others use <r> runs
+                // (rich text with formatting). We concatenate all <t> elements.
+                $text = '';
+                if ( isset( $si->t ) ) {
+                    $text = (string) $si->t;
+                } elseif ( isset( $si->r ) ) {
+                    foreach ( $si->r as $run ) {
+                        $text .= (string) $run->t;
+                    }
+                }
+                $shared_strings[] = $text;
+            }
+        }
+    }
+
+    // ---- Worksheet data (sheet1) ----
+    $sheet_xml = $zip->getFromName( 'xl/worksheets/sheet1.xml' );
+    if ( $sheet_xml === false ) {
+        $zip->close();
+        return false;
+    }
+
+    $sheet = simplexml_load_string( $sheet_xml );
+    if ( ! $sheet ) {
+        $zip->close();
+        return false;
+    }
+
+    $zip->close();
+
+    // Parse all rows from the sheet
+    $all_rows = [];
+    $max_col  = 0;
+
+    if ( isset( $sheet->sheetData->row ) ) {
+        foreach ( $sheet->sheetData->row as $row ) {
+            $row_data = [];
+
+            if ( isset( $row->c ) ) {
+                foreach ( $row->c as $cell ) {
+                    // Extract column index from cell reference (e.g., "C5" → column 2)
+                    $ref    = (string) $cell['r'];
+                    $col_letters = preg_replace( '/[0-9]/', '', $ref );
+                    $col_idx     = sp_xlsx_col_to_index( $col_letters );
+
+                    if ( $col_idx > $max_col ) {
+                        $max_col = $col_idx;
+                    }
+
+                    // Determine cell value based on type attribute
+                    $type  = (string) ( $cell['t'] ?? '' );
+                    $value = '';
+
+                    if ( $type === 's' ) {
+                        // Shared string reference
+                        $string_idx = (int) (string) $cell->v;
+                        $value = $shared_strings[ $string_idx ] ?? '';
+                    } elseif ( $type === 'inlineStr' ) {
+                        // Inline string — value is in <is><t>
+                        $value = (string) ( $cell->is->t ?? '' );
+                    } elseif ( isset( $cell->v ) ) {
+                        // Numeric or other literal value
+                        $value = (string) $cell->v;
+                    }
+
+                    $row_data[ $col_idx ] = $value;
+                }
+            }
+
+            $all_rows[] = $row_data;
+        }
+    }
+
+    if ( empty( $all_rows ) ) {
+        return false;
+    }
+
+    // Convert sparse row arrays into dense arrays (fill gaps with empty strings)
+    // WHY: Cells with no data in XLSX don't appear in the XML at all, so we
+    //      might have [0 => 'Title', 2 => 'Date'] with column 1 missing.
+    //      We need dense arrays like fgetcsv() returns.
+    $dense_rows = [];
+    foreach ( $all_rows as $sparse ) {
+        $dense = [];
+        for ( $i = 0; $i <= $max_col; $i++ ) {
+            $dense[] = $sparse[ $i ] ?? '';
+        }
+        $dense_rows[] = $dense;
+    }
+
+    // First row is headers, rest is data
+    $headers = array_shift( $dense_rows );
+
+    // Strip BOM and whitespace from headers (shouldn't be in XLSX but just in case)
+    $headers = array_map( function( $h ) {
+        return trim( $h, "\xEF\xBB\xBF \t\n\r" );
+    }, $headers );
+
+    return [
+        'headers' => $headers,
+        'rows'    => $dense_rows,
+    ];
+}
+
+/**
+ * Convert an Excel column letter string to a 0-based index.
+ *
+ * WHY: Excel uses letters for columns — A=0, B=1, ..., Z=25, AA=26, AB=27, etc.
+ *      We need numeric indexes to build our dense row arrays.
+ *
+ * @param string $letters  Column letters (e.g., "A", "AA", "BZ").
+ * @return int  0-based column index.
+ */
+function sp_xlsx_col_to_index( string $letters ): int {
+    $letters = strtoupper( $letters );
+    $index   = 0;
+    $len     = strlen( $letters );
+    for ( $i = 0; $i < $len; $i++ ) {
+        $index = $index * 26 + ( ord( $letters[ $i ] ) - ord( 'A' ) + 1 );
+    }
+    return $index - 1; // Convert to 0-based
+}
+
+/**
+ * Process the event import (CSV, TSV, or XLSX).
+ *
+ * WHY: Takes a file path and column mapping, creates event rows in the
  *      database. Categories are matched by name (case-insensitive) — if a
- *      category name in the CSV doesn't exist yet, we create it automatically
+ *      category name in the file doesn't exist yet, we create it automatically
  *      so Harold doesn't have to set them up first.
  *
- * @param string $file_path  Path to the CSV temp file.
- * @param array  $field_map  Column mapping: csv_header => target_field.
+ * @param string $file_path  Path to the temp file (CSV, TSV, or XLSX).
+ * @param array  $field_map  Column mapping: column_header => target_field.
  * @return array Results summary with imported/skipped/errors counts.
  */
 function sp_process_event_import( string $file_path, array $field_map ): array {
@@ -20650,27 +21048,23 @@ function sp_process_event_import( string $file_path, array $field_map ): array {
         'categories_created' => [],
     ];
 
-    $handle = fopen( $file_path, 'r' );
-    if ( ! $handle ) {
-        $results['errors'][] = 'Could not open the uploaded file.';
+    // Parse file using the multi-format helper (handles CSV, TSV, XLSX)
+    $parsed = sp_parse_import_file( $file_path );
+    if ( ! $parsed ) {
+        $results['errors'][] = 'Could not open or parse the uploaded file.';
         return $results;
     }
 
-    // Read header row
-    $headers = fgetcsv( $handle );
-    if ( ! $headers ) {
-        fclose( $handle );
-        $results['errors'][] = 'CSV file is empty or has no header row.';
+    $headers = $parsed['headers'];
+    $rows    = $parsed['rows'];
+
+    if ( empty( $headers ) ) {
+        $results['errors'][] = 'File is empty or has no header row.';
         return $results;
     }
 
-    // Strip BOM and whitespace from headers
-    $headers = array_map( function( $h ) {
-        return trim( $h, "\xEF\xBB\xBF \t\n\r" );
-    }, $headers );
-
-    // Build a reverse lookup: which CSV column index maps to which target field
-    // WHY: The admin chose which CSV column maps to which event field via the
+    // Build a reverse lookup: which column index maps to which target field
+    // WHY: The admin chose which column maps to which event field via the
     //      dropdowns on the preview page. We need to know "column 3 = title"
     //      so we can pull the right value from each row.
     $col_to_field = [];
@@ -20693,7 +21087,7 @@ function sp_process_event_import( string $file_path, array $field_map ): array {
 
     $row_num = 1; // 1-based (header was row 0)
 
-    while ( ( $row = fgetcsv( $handle ) ) !== false ) {
+    foreach ( $rows as $row ) {
         $row_num++;
 
         // Build an associative array of target_field => value for this row
@@ -20843,7 +21237,6 @@ function sp_process_event_import( string $file_path, array $field_map ): array {
         }
     }
 
-    fclose( $handle );
     return $results;
 }
 
@@ -20853,7 +21246,7 @@ function sp_process_event_import( string $file_path, array $field_map ): array {
  *
  * WHY: Two-step flow (same as member import) — upload first, preview the
  *      data and adjust column mappings, then confirm the import. This prevents
- *      surprises like importing "Date" into "Location" because the CSV columns
+ *      surprises like importing "Date" into "Location" because the columns
  *      were in a different order than expected.
  */
 function sp_render_import_events_page(): void {
@@ -20904,36 +21297,29 @@ function sp_render_import_events_page(): void {
                 file_put_contents( $temp_dir . '/.htaccess', 'Deny from all' );
             }
 
-            $temp_file = $temp_dir . '/event-import-' . wp_generate_password( 12, false ) . '.csv';
+            // Preserve the original extension so the parser can detect format
+            // WHY: XLSX detection relies on the file extension. If we always
+            //      save as .csv, the parser would try to fgetcsv() an XLSX
+            //      file and get garbage.
+            $orig_name = $_FILES['import_file']['name'] ?? 'import.csv';
+            $orig_ext  = strtolower( pathinfo( $orig_name, PATHINFO_EXTENSION ) );
+            $safe_ext  = in_array( $orig_ext, [ 'csv', 'tsv', 'txt', 'xlsx' ], true ) ? $orig_ext : 'csv';
+            $temp_file = $temp_dir . '/event-import-' . wp_generate_password( 12, false ) . '.' . $safe_ext;
             move_uploaded_file( $_FILES['import_file']['tmp_name'], $temp_file );
 
-            $handle  = fopen( $temp_file, 'r' );
-            $headers = fgetcsv( $handle );
+            // Use the multi-format parser (handles CSV, TSV, XLSX)
+            $parsed = sp_parse_import_file( $temp_file );
 
-            if ( $headers ) {
-                $headers = array_map( function( $h ) {
-                    return trim( $h, "\xEF\xBB\xBF \t\n\r" );
-                }, $headers );
-
-                $row_count   = 0;
-                $sample_rows = [];
-                while ( ( $row = fgetcsv( $handle ) ) !== false ) {
-                    $row_count++;
-                    if ( count( $sample_rows ) < 5 ) {
-                        $sample_rows[] = $row;
-                    }
-                }
-
+            if ( $parsed && ! empty( $parsed['headers'] ) ) {
                 $preview = [
-                    'headers'     => $headers,
-                    'sample_rows' => $sample_rows,
-                    'row_count'   => $row_count,
+                    'headers'     => $parsed['headers'],
+                    'sample_rows' => array_slice( $parsed['rows'], 0, 5 ),
+                    'row_count'   => count( $parsed['rows'] ),
                     'temp_file'   => $temp_file,
                 ];
             } else {
                 @unlink( $temp_file );
             }
-            fclose( $handle );
         }
     }
 
@@ -21069,7 +21455,7 @@ function sp_render_import_events_page(): void {
             <div class="card" style="max-width: 100%; padding: 20px; margin-top: 10px;">
                 <h2 style="margin-top: 0;">Preview &amp; Column Mapping</h2>
                 <p>
-                    Found <strong><?php echo (int) $preview['row_count']; ?> events</strong> in the CSV.
+                    Found <strong><?php echo (int) $preview['row_count']; ?> events</strong> in the file.
                     Review the column mapping below, then click <strong>Import Events</strong>.
                 </p>
 
@@ -21083,7 +21469,7 @@ function sp_render_import_events_page(): void {
                     <table class="widefat" style="margin-bottom: 20px;">
                         <thead>
                             <tr>
-                                <th style="width: 25%;">CSV Column</th>
+                                <th style="width: 25%;">File Column</th>
                                 <th style="width: 25%;">Maps To</th>
                                 <th>Sample Values</th>
                             </tr>
@@ -21140,9 +21526,10 @@ function sp_render_import_events_page(): void {
         <?php // ============================================================ ?>
         <?php if ( ! $preview && ! $results ) : ?>
             <div class="card" style="max-width: 700px; padding: 20px; margin-top: 10px;">
-                <h2 style="margin-top: 0;">Upload Event CSV</h2>
-                <p>Upload a CSV file containing your events. The file should have a header row
-                   with column names. Common formats are auto-detected.</p>
+                <h2 style="margin-top: 0;">Upload Events</h2>
+                <p>Upload a file containing your events. CSV, tab-delimited (TSV/TXT), and
+                   Excel (.xlsx) files are all supported. The file should have a header row
+                   with column names.</p>
 
                 <form method="post" enctype="multipart/form-data">
                     <?php wp_nonce_field( 'sp_import_events' ); ?>
@@ -21150,11 +21537,12 @@ function sp_render_import_events_page(): void {
 
                     <table class="form-table" role="presentation">
                         <tr>
-                            <th scope="row"><label for="import_file">CSV File</label></th>
+                            <th scope="row"><label for="import_file">Import File</label></th>
                             <td>
                                 <input type="file" id="import_file" name="import_file"
-                                       accept=".csv,.txt" required>
+                                       accept=".csv,.tsv,.txt,.xlsx" required>
                                 <p class="description">
+                                    Accepted formats: CSV, TSV, TXT, Excel (.xlsx).
                                     Maximum file size: <?php echo esc_html( ini_get( 'upload_max_filesize' ) ); ?>
                                 </p>
                             </td>
@@ -21166,8 +21554,8 @@ function sp_render_import_events_page(): void {
 
                 <hr style="margin: 24px 0;">
 
-                <h3 style="margin-top: 0;">Expected CSV Format</h3>
-                <p>Your CSV should include at minimum a <strong>title</strong> and <strong>date</strong> column.
+                <h3 style="margin-top: 0;">Expected Format</h3>
+                <p>Your file should include at minimum a <strong>title</strong> and <strong>date</strong> column.
                    All other columns are optional. The importer will try to auto-detect column mappings,
                    and you can adjust them on the next screen.</p>
 
@@ -21738,10 +22126,28 @@ function sp_render_events_listing( array $settings ): void {
                                     <span class="sp-event-badge sp-badge-postponed">Postponed</span>
                                 <?php endif; ?>
 
-                                <?php if ( (float) $ev->member_price > 0 ) : ?>
-                                    <span class="sp-event-price">$<?php echo esc_html( number_format( (float) $ev->member_price, 2 ) ); ?></span>
+                                <?php
+                                // WHY show both prices: Members and non-members see
+                                // different fees. Showing both up front sets expectations
+                                // and highlights the membership value — "Members $5 /
+                                // Non-Members $10" makes the benefit obvious.
+                                $m_price  = (float) $ev->member_price;
+                                $nm_price = (float) $ev->nonmember_price;
+
+                                if ( $m_price > 0 && $nm_price > 0 ) : ?>
+                                    <span class="sp-event-price">
+                                        <?php echo esc_html__( 'Members', 'societypress' ) . ' $' . esc_html( number_format( $m_price, 2 ) ); ?>
+                                        / <?php echo esc_html__( 'Non-Members', 'societypress' ) . ' $' . esc_html( number_format( $nm_price, 2 ) ); ?>
+                                    </span>
+                                <?php elseif ( $m_price > 0 ) : ?>
+                                    <span class="sp-event-price">$<?php echo esc_html( number_format( $m_price, 2 ) ); ?></span>
+                                <?php elseif ( $nm_price > 0 ) : ?>
+                                    <span class="sp-event-price">
+                                        <?php echo esc_html__( 'Free for Members', 'societypress' ); ?>
+                                        / <?php echo esc_html__( 'Non-Members', 'societypress' ) . ' $' . esc_html( number_format( $nm_price, 2 ) ); ?>
+                                    </span>
                                 <?php elseif ( $ev->registration_enabled ) : ?>
-                                    <span class="sp-event-price sp-event-free">Free</span>
+                                    <span class="sp-event-price sp-event-free"><?php esc_html_e( 'Free', 'societypress' ); ?></span>
                                 <?php endif; ?>
 
                                 <?php if ( $reg_info ) : ?>
@@ -27319,6 +27725,25 @@ function sp_render_builder_widget_upcoming_events( array $s ): void {
                      . esc_html( $event->category_name ) . '</span>';
             }
 
+            // Price badge — show both member and non-member when applicable
+            $m_price  = (float) $event->member_price;
+            $nm_price = (float) $event->nonmember_price;
+
+            if ( $m_price > 0 && $nm_price > 0 ) {
+                echo '<span class="sp-ue-category-badge" style="background:#555;">'
+                     . esc_html__( 'Members', 'societypress' ) . ' $' . esc_html( number_format( $m_price, 2 ) )
+                     . ' / ' . esc_html__( 'Non-Members', 'societypress' ) . ' $' . esc_html( number_format( $nm_price, 2 ) )
+                     . '</span>';
+            } elseif ( $m_price > 0 ) {
+                echo '<span class="sp-ue-category-badge" style="background:#555;">$'
+                     . esc_html( number_format( $m_price, 2 ) ) . '</span>';
+            } elseif ( $nm_price > 0 ) {
+                echo '<span class="sp-ue-category-badge" style="background:#555;">'
+                     . esc_html__( 'Free for Members', 'societypress' )
+                     . ' / ' . esc_html__( 'Non-Members', 'societypress' ) . ' $' . esc_html( number_format( $nm_price, 2 ) )
+                     . '</span>';
+            }
+
             echo '</div>'; // .sp-ue-details
             echo '</li>';
         }
@@ -29838,12 +30263,32 @@ function sp_frontend_help_requests(): void {
 function sp_frontend_resources_directory(): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
-    $search = isset( $_GET['sp_resource'] ) ? sanitize_text_field( $_GET['sp_resource'] ) : '';
+    $search     = isset( $_GET['sp_resource'] ) ? sanitize_text_field( $_GET['sp_resource'] ) : '';
+    $cat_filter = absint( $_GET['sp_rcat'] ?? 0 );
 
+    // Fetch categories sorted alphabetically for the dropdown
+    $categories = $wpdb->get_results(
+        "SELECT rc.id, rc.name, COUNT(r.id) as link_count
+         FROM {$prefix}resource_categories rc
+         LEFT JOIN {$prefix}resources r ON r.category_id = rc.id AND r.active = 1
+         WHERE rc.active = 1
+         GROUP BY rc.id
+         ORDER BY rc.name ASC"
+    );
+
+    // WHY OR not AND: Search and category filter are independent controls.
+    //     If someone searches "Bexar" they get everything matching "Bexar"
+    //     across all categories. If they pick a category they get everything
+    //     in that category. They don't combine — whichever one is active wins.
     $where = 'r.active = 1';
     if ( $search ) {
         $like = '%' . $wpdb->esc_like( $search ) . '%';
-        $where .= $wpdb->prepare( ' AND (r.title LIKE %s OR r.description LIKE %s)', $like, $like );
+        $where .= $wpdb->prepare(
+            ' AND (r.title LIKE %s OR r.description LIKE %s OR rc.name LIKE %s)',
+            $like, $like, $like
+        );
+    } elseif ( $cat_filter ) {
+        $where .= $wpdb->prepare( ' AND r.category_id = %d', $cat_filter );
     }
 
     $resources = $wpdb->get_results(
@@ -29851,39 +30296,65 @@ function sp_frontend_resources_directory(): void {
          FROM {$prefix}resources r
          LEFT JOIN {$prefix}resource_categories rc ON r.category_id = rc.id
          WHERE {$where}
-         ORDER BY rc.sort_order ASC, rc.name ASC, r.sort_order ASC, r.title ASC"
+         ORDER BY r.title ASC"
     );
 
-    echo '<h2>Resource Links</h2>';
-    echo '<form method="get" style="margin-bottom:20px; display:flex; gap:8px;">';
-    echo '<input type="text" name="sp_resource" value="' . esc_attr( $search ) . '" placeholder="Search resources..." style="flex:1; padding:10px; border:1px solid #ccc; border-radius:6px; font-size:16px;">';
-    echo '<button type="submit" class="sp-btn sp-btn-primary">Search</button>';
+    echo '<h2>' . esc_html__( 'Resource Links', 'societypress' ) . '</h2>';
+
+    // Two independent controls: a search box and a category dropdown.
+    // WHY independent: They don't combine — search searches everything,
+    //     the dropdown filters by category. Using one clears the other.
+    //     This keeps it simple for Harold: type to find something specific,
+    //     or browse by category. No confusing AND logic.
+    echo '<div style="display:flex; flex-wrap:wrap; gap:12px; margin-bottom:24px; align-items:center;">';
+
+    // Search form — searches title, description, and category name
+    echo '<form method="get" style="display:flex; gap:8px; flex:1; min-width:220px;">';
+    echo '<input type="text" name="sp_resource" value="' . esc_attr( $search ) . '" placeholder="' . esc_attr__( 'Search resources…', 'societypress' ) . '" style="flex:1; padding:10px; border:1px solid #ccc; border-radius:6px; font-size:16px;">';
+    echo '<button type="submit" class="sp-btn sp-btn-primary">' . esc_html__( 'Search', 'societypress' ) . '</button>';
     echo '</form>';
 
+    // Category dropdown — auto-submits, clears any active search
+    echo '<form method="get">';
+    echo '<select name="sp_rcat" onchange="this.form.submit()" style="padding:10px; border:1px solid #ccc; border-radius:6px; font-size:16px; min-width:240px;">';
+    echo '<option value="0">' . esc_html__( 'All Categories', 'societypress' ) . '</option>';
+    foreach ( $categories as $cat ) {
+        if ( $cat->link_count < 1 ) continue;
+        $sel = selected( $cat_filter, (int) $cat->id, false );
+        echo '<option value="' . esc_attr( $cat->id ) . '"' . $sel . '>'
+             . esc_html( $cat->name )
+             . '</option>';
+    }
+    echo '</select>';
+    echo '</form>';
+
+    // Clear link — shows when any filter is active
+    if ( $search || $cat_filter ) {
+        echo '<a href="' . esc_url( get_permalink() ) . '" style="font-size:14px; color:var(--sp-color-text-secondary, #6b7280);">' . esc_html__( 'Clear', 'societypress' ) . '</a>';
+    }
+
+    echo '</div>';
+
     if ( empty( $resources ) ) {
-        echo '<p style="color:#666;">No resources found.</p>';
+        echo '<p style="color:#666;">' . esc_html__( 'No resources found.', 'societypress' ) . '</p>';
         return;
     }
 
-    // Group by category
-    $grouped = [];
-    foreach ( $resources as $r ) {
-        $grouped[ $r->category_name ?: 'Other' ][] = $r;
-    }
-
-    foreach ( $grouped as $cat_name => $items ) {
-        echo '<h3 style="margin:24px 0 12px; border-bottom:2px solid #eee; padding-bottom:8px;">' . esc_html( $cat_name ) . '</h3>';
-        foreach ( $items as $item ) {
-            echo '<div style="padding:12px 0; border-bottom:1px solid #f0f0f0;">';
-            echo '<a href="' . esc_url( $item->url ) . '" target="_blank" rel="noopener noreferrer" style="font-weight:600; font-size:16px; color:var(--sp-color-primary);">' . esc_html( $item->title ) . '</a>';
-            if ( $item->featured ) {
-                echo ' <span style="background:#fef0c7; color:#92400e; font-size:11px; padding:2px 6px; border-radius:4px;">Featured</span>';
-            }
-            if ( $item->description ) {
-                echo '<p style="margin:4px 0 0; color:#555; font-size:14px;">' . esc_html( $item->description ) . '</p>';
-            }
-            echo '</div>';
+    // Alphabetical list within the selected category (or all)
+    foreach ( $resources as $item ) {
+        echo '<div style="padding:12px 0; border-bottom:1px solid #f0f0f0;">';
+        echo '<a href="' . esc_url( $item->url ) . '" target="_blank" rel="noopener noreferrer" style="font-weight:600; font-size:16px; color:var(--sp-color-primary);">' . esc_html( $item->title ) . '</a>';
+        if ( $item->featured ) {
+            echo ' <span style="background:#fef0c7; color:#92400e; font-size:11px; padding:2px 6px; border-radius:4px;">' . esc_html__( 'Featured', 'societypress' ) . '</span>';
         }
+        // Show category tag when viewing all categories so links have context
+        if ( ! $cat_filter && ! empty( $item->category_name ) ) {
+            echo ' <span style="background:#f0f0f0; color:#555; font-size:11px; padding:2px 6px; border-radius:4px;">' . esc_html( $item->category_name ) . '</span>';
+        }
+        if ( $item->description ) {
+            echo '<p style="margin:4px 0 0; color:#555; font-size:14px;">' . esc_html( $item->description ) . '</p>';
+        }
+        echo '</div>';
     }
 }
 
@@ -31226,6 +31697,7 @@ function sp_render_resources_page(): void {
     ?>
     <div class="wrap">
         <h1 class="wp-heading-inline">Resource Links</h1>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-import-links' ) ); ?>" class="page-title-action">Import CSV</a>
         <hr class="wp-header-end">
 
         <div style="background:#fff; border:1px solid #ccd0d4; border-radius:4px; padding:20px; margin:16px 0;">
@@ -31425,6 +31897,460 @@ function sp_render_resource_categories_page(): void {
                 </table>
             </div>
         </div>
+    </div>
+    <?php
+}
+
+
+// ============================================================================
+// RESOURCE LINKS CSV IMPORT
+// ============================================================================
+// WHY: SAGHS has 171 curated genealogy resource links exported from their old
+//      EasyNetSites platform as CSV. This importer reads that format, creates
+//      categories on the fly, and populates the sp_resources table so the admin
+//      doesn't have to re-enter everything by hand.
+// ============================================================================
+
+
+/**
+ * Process a resource links CSV import.
+ *
+ * WHY a dedicated function: Same pattern as sp_process_library_import() — the
+ *     actual data crunching is separated from the UI rendering so it can be
+ *     tested or called programmatically if ever needed.
+ *
+ * @param string $file_path      Absolute path to the temp CSV file.
+ * @param array  $field_map      CSV column name => target field key.
+ * @return array { imported: int, skipped: int, categories_created: int, errors: string[] }
+ */
+function sp_process_links_import( string $file_path, array $field_map ): array {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $imported           = 0;
+    $skipped            = 0;
+    $categories_created = 0;
+    $errors             = [];
+
+    $handle = fopen( $file_path, 'r' );
+    if ( ! $handle ) {
+        return [ 'imported' => 0, 'skipped' => 0, 'categories_created' => 0, 'errors' => [ 'Could not open CSV file.' ] ];
+    }
+
+    // Read headers and strip BOM / whitespace
+    $headers = fgetcsv( $handle );
+    if ( ! $headers ) {
+        fclose( $handle );
+        return [ 'imported' => 0, 'skipped' => 0, 'categories_created' => 0, 'errors' => [ 'CSV file has no headers.' ] ];
+    }
+    $headers = array_map( function( $h ) {
+        return trim( $h, "\xEF\xBB\xBF \t\n\r" );
+    }, $headers );
+
+    // Build a column-index-to-target lookup from the field map.
+    // WHY: The field map uses CSV column names as keys, but we need to look up
+    //      by column index as we iterate each row.
+    $col_targets = [];
+    foreach ( $headers as $idx => $header_name ) {
+        if ( isset( $field_map[ $header_name ] ) && $field_map[ $header_name ] !== '' ) {
+            $col_targets[ $idx ] = $field_map[ $header_name ];
+        }
+    }
+
+    // Cache of category name → ID so we only query/create once per unique name
+    $category_cache = [];
+
+    // Pre-load existing categories
+    $existing_cats = $wpdb->get_results( "SELECT id, name FROM {$prefix}resource_categories" );
+    foreach ( $existing_cats as $cat ) {
+        $category_cache[ strtolower( trim( $cat->name ) ) ] = (int) $cat->id;
+    }
+
+    // Pre-load existing resource URLs for duplicate detection
+    $existing_urls = $wpdb->get_col( "SELECT url FROM {$prefix}resources" );
+    $existing_url_set = array_flip( array_map( 'strtolower', $existing_urls ) );
+
+    $row_num = 1; // 1-based (header is row 0)
+    while ( ( $row = fgetcsv( $handle ) ) !== false ) {
+        $row_num++;
+
+        // Map this row's values into named fields
+        $mapped = [];
+        foreach ( $col_targets as $idx => $target ) {
+            $mapped[ $target ] = isset( $row[ $idx ] ) ? trim( $row[ $idx ] ) : '';
+        }
+
+        // Title and URL are required
+        $title = $mapped['title'] ?? '';
+        $url   = $mapped['url'] ?? '';
+        if ( empty( $title ) || empty( $url ) ) {
+            $skipped++;
+            continue;
+        }
+
+        // Duplicate detection — skip if this URL already exists
+        if ( isset( $existing_url_set[ strtolower( $url ) ] ) ) {
+            $skipped++;
+            continue;
+        }
+
+        // Clean up description — the EasyNetSites export has HTML in description fields.
+        // Convert <br> to newlines, <li> items to dash-prefixed lines, then strip remaining HTML.
+        $description = $mapped['description'] ?? '';
+        if ( ! empty( $description ) ) {
+            $description = preg_replace( '/<br\s*\/?>/i', "\n", $description );
+            $description = preg_replace( '/<li[^>]*>/i', "\n- ", $description );
+            $description = wp_strip_all_tags( $description );
+            $description = trim( $description );
+        }
+
+        // Sort order — default to 0 if not mapped or not numeric
+        $sort_order = 0;
+        if ( ! empty( $mapped['sort_order'] ) && is_numeric( $mapped['sort_order'] ) ) {
+            $sort_order = absint( $mapped['sort_order'] );
+        }
+
+        // Updated date — parse MM/DD/YYYY format from EasyNetSites export
+        $updated_at = current_time( 'mysql' );
+        if ( ! empty( $mapped['updated_at'] ) ) {
+            $parsed_date = DateTime::createFromFormat( 'm/d/Y', $mapped['updated_at'] );
+            if ( $parsed_date ) {
+                $updated_at = $parsed_date->format( 'Y-m-d H:i:s' );
+            }
+        }
+
+        // Category — look up by name or create if it doesn't exist
+        $category_id = null;
+        if ( ! empty( $mapped['category'] ) ) {
+            $cat_name = trim( $mapped['category'] );
+            $cat_key  = strtolower( $cat_name );
+
+            if ( isset( $category_cache[ $cat_key ] ) ) {
+                $category_id = $category_cache[ $cat_key ];
+            } else {
+                // Create the category
+                $cat_sort = 0;
+                if ( ! empty( $mapped['category_sort_order'] ) && is_numeric( $mapped['category_sort_order'] ) ) {
+                    $cat_sort = absint( $mapped['category_sort_order'] );
+                }
+                $wpdb->insert( $prefix . 'resource_categories', [
+                    'name'       => sanitize_text_field( $cat_name ),
+                    'slug'       => sanitize_title( $cat_name ),
+                    'sort_order' => $cat_sort,
+                    'active'     => 1,
+                ] );
+                $category_id = (int) $wpdb->insert_id;
+                $category_cache[ $cat_key ] = $category_id;
+                $categories_created++;
+            }
+
+            // Update category sort order if this row provides one and the
+            // category was pre-existing — the CSV may have a better sort value
+            // than whatever the default was.
+            if ( ! empty( $mapped['category_sort_order'] ) && is_numeric( $mapped['category_sort_order'] ) ) {
+                $wpdb->update(
+                    $prefix . 'resource_categories',
+                    [ 'sort_order' => absint( $mapped['category_sort_order'] ) ],
+                    [ 'id' => $category_id ]
+                );
+            }
+        }
+
+        // Insert the resource
+        $inserted = $wpdb->insert( $prefix . 'resources', [
+            'title'       => sanitize_text_field( $title ),
+            'url'         => esc_url_raw( $url ),
+            'description' => sanitize_textarea_field( $description ),
+            'category_id' => $category_id,
+            'featured'    => 0,
+            'active'      => 1,
+            'sort_order'  => $sort_order,
+            'updated_at'  => $updated_at,
+        ] );
+
+        if ( $inserted ) {
+            $imported++;
+            // Track the URL so duplicate detection works within the same import
+            $existing_url_set[ strtolower( $url ) ] = true;
+        } else {
+            $errors[] = sprintf( 'Row %d: Database insert failed for "%s".', $row_num, $title );
+        }
+    }
+
+    fclose( $handle );
+
+    return [
+        'imported'           => $imported,
+        'skipped'            => $skipped,
+        'categories_created' => $categories_created,
+        'errors'             => $errors,
+    ];
+}
+
+
+/**
+ * Render: Resource Links Import Page
+ *
+ * WHY two-step: Same UX pattern as library import — upload first, preview the
+ *     data and confirm field mapping, then run the actual import. This prevents
+ *     accidental imports and lets the admin verify the CSV looks right before
+ *     committing ~171 rows to the database.
+ */
+function sp_render_links_import_page(): void {
+    global $wpdb;
+
+    $results = null;
+    $preview = null;
+
+    // ------------------------------------------------------------------
+    // STEP 2: Run the actual import from the temp file
+    // ------------------------------------------------------------------
+    if ( isset( $_POST['sp_import_action'] ) && $_POST['sp_import_action'] === 'run_import' ) {
+        check_admin_referer( 'sp_import_links' );
+
+        $temp_file = sanitize_text_field( $_POST['sp_import_temp_file'] ?? '' );
+
+        $raw_map = isset( $_POST['sp_field_map'] ) && is_array( $_POST['sp_field_map'] )
+                 ? $_POST['sp_field_map']
+                 : [];
+        $import_field_map = [];
+        foreach ( $raw_map as $csv_col => $target ) {
+            $import_field_map[ sanitize_text_field( $csv_col ) ] = sanitize_text_field( $target );
+        }
+
+        if ( ! empty( $temp_file ) && file_exists( $temp_file ) ) {
+            $results = sp_process_links_import( $temp_file, $import_field_map );
+            @unlink( $temp_file );
+        } else {
+            $results = [
+                'imported' => 0, 'skipped' => 0, 'categories_created' => 0,
+                'errors'   => [ 'The uploaded file has expired. Please upload again.' ],
+            ];
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // STEP 1: Upload CSV and show preview / field mapping
+    // ------------------------------------------------------------------
+    if ( isset( $_POST['sp_import_action'] ) && $_POST['sp_import_action'] === 'preview' ) {
+        check_admin_referer( 'sp_import_links' );
+
+        if ( ! empty( $_FILES['import_file']['tmp_name'] ) ) {
+            $upload_dir = wp_upload_dir();
+            $temp_dir   = $upload_dir['basedir'] . '/sp-import-temp';
+            if ( ! is_dir( $temp_dir ) ) {
+                wp_mkdir_p( $temp_dir );
+                file_put_contents( $temp_dir . '/.htaccess', 'Deny from all' );
+            }
+
+            $temp_file = $temp_dir . '/links-import-' . wp_generate_password( 12, false ) . '.csv';
+            move_uploaded_file( $_FILES['import_file']['tmp_name'], $temp_file );
+
+            $handle  = fopen( $temp_file, 'r' );
+            $headers = fgetcsv( $handle );
+
+            if ( $headers ) {
+                $headers = array_map( function( $h ) {
+                    return trim( $h, "\xEF\xBB\xBF \t\n\r" );
+                }, $headers );
+
+                $row_count   = 0;
+                $sample_rows = [];
+                while ( ( $row = fgetcsv( $handle ) ) !== false ) {
+                    $row_count++;
+                    if ( count( $sample_rows ) < 5 ) {
+                        $sample_rows[] = $row;
+                    }
+                }
+
+                $preview = [
+                    'headers'     => $headers,
+                    'sample_rows' => $sample_rows,
+                    'row_count'   => $row_count,
+                    'temp_file'   => $temp_file,
+                ];
+            } else {
+                @unlink( $temp_file );
+            }
+            fclose( $handle );
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Target fields — the resource link columns available for mapping.
+    // WHY fewer fields than library: Resource links are simpler — just a title,
+    //     URL, description, category, and sort order. No ISBN, call number, etc.
+    // ------------------------------------------------------------------
+    $target_fields = [
+        'title'               => 'Link Title',
+        'url'                 => 'URL',
+        'description'         => 'Description',
+        'sort_order'          => 'Sort Order',
+        'updated_at'          => 'Last Updated Date',
+        'category'            => 'Category Name',
+        'category_sort_order' => 'Category Sort Order',
+    ];
+
+    // ------------------------------------------------------------------
+    // Auto-mapping — known column names from the EasyNetSites links export.
+    // WHY: The SAGHS export uses specific column names like "Link Title" and
+    //      "Link Description". Auto-mapping these means the admin just clicks
+    //      "Import" instead of mapping 9 columns by hand.
+    // ------------------------------------------------------------------
+    $auto_map = [
+        'Link Title'          => 'title',
+        'Link'                => 'url',
+        'Link Description'    => 'description',
+        'Link Sort Order'     => 'sort_order',
+        'Last Updated'        => 'updated_at',
+        'Link Category'       => 'category',
+        'Category Sort Order' => 'category_sort_order',
+    ];
+
+    ?>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Import Resource Links', 'societypress' ); ?></h1>
+
+        <?php if ( $results ) : ?>
+            <!-- ============================================================
+                 IMPORT RESULTS
+                 Shows how many links were imported, skipped, and any errors.
+                 ============================================================ -->
+            <div class="notice notice-<?php echo $results['imported'] > 0 ? 'success' : 'warning'; ?>">
+                <p>
+                    <strong><?php esc_html_e( 'Import complete.', 'societypress' ); ?></strong>
+                    <?php echo number_format( $results['imported'] ); ?> link<?php echo $results['imported'] !== 1 ? 's' : ''; ?> imported.
+                    <?php if ( $results['categories_created'] > 0 ) : ?>
+                        <?php echo number_format( $results['categories_created'] ); ?> new categor<?php echo $results['categories_created'] !== 1 ? 'ies' : 'y'; ?> created.
+                    <?php endif; ?>
+                    <?php if ( $results['skipped'] > 0 ) : ?>
+                        <?php echo number_format( $results['skipped'] ); ?> skipped (duplicates or missing title/URL).
+                    <?php endif; ?>
+                </p>
+            </div>
+            <?php if ( ! empty( $results['errors'] ) ) : ?>
+                <div class="notice notice-error">
+                    <p><strong><?php esc_html_e( 'Errors:', 'societypress' ); ?></strong></p>
+                    <ul style="margin-left:20px; list-style:disc;">
+                        <?php foreach ( $results['errors'] as $err ) : ?>
+                            <li><?php echo esc_html( $err ); ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                </div>
+            <?php endif; ?>
+
+            <?php
+            $total_links = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}sp_resources" );
+            ?>
+            <p>
+                <?php esc_html_e( 'You now have', 'societypress' ); ?> <strong><?php echo number_format( $total_links ); ?></strong> <?php esc_html_e( 'resource links.', 'societypress' ); ?>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-library' ) ); ?>"><?php esc_html_e( 'View Resources →', 'societypress' ); ?></a>
+            </p>
+        <?php endif; ?>
+
+        <?php if ( $preview ) : ?>
+            <!-- ============================================================
+                 STEP 2: FIELD MAPPING PREVIEW
+                 Shows the detected CSV columns, sample data, and dropdowns
+                 for mapping each column to a resource link field.
+                 ============================================================ -->
+            <div class="card" style="max-width:100%; padding:20px; margin-top:16px;">
+                <h2 style="margin-top:0;"><?php esc_html_e( 'Map CSV Columns', 'societypress' ); ?></h2>
+                <p class="description">
+                    <?php
+                    printf(
+                        /* translators: %d is the number of data rows found */
+                        esc_html__( 'Found %d data rows. Map each CSV column to a resource field, or leave as "— Skip —" to ignore it.', 'societypress' ),
+                        $preview['row_count']
+                    );
+                    ?>
+                </p>
+
+                <form method="post">
+                    <?php wp_nonce_field( 'sp_import_links' ); ?>
+                    <input type="hidden" name="sp_import_action" value="run_import">
+                    <input type="hidden" name="sp_import_temp_file" value="<?php echo esc_attr( $preview['temp_file'] ); ?>">
+
+                    <table class="widefat striped" style="margin-top:12px;">
+                        <thead>
+                            <tr>
+                                <th><?php esc_html_e( 'CSV Column', 'societypress' ); ?></th>
+                                <th><?php esc_html_e( 'Map To', 'societypress' ); ?></th>
+                                <th><?php esc_html_e( 'Sample Data (first rows)', 'societypress' ); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ( $preview['headers'] as $col_idx => $col_name ) :
+                                // Check if auto-map has a suggestion for this column
+                                $suggested = $auto_map[ $col_name ] ?? '';
+                            ?>
+                                <tr>
+                                    <td><strong><?php echo esc_html( $col_name ); ?></strong></td>
+                                    <td>
+                                        <select name="sp_field_map[<?php echo esc_attr( $col_name ); ?>]">
+                                            <option value=""><?php esc_html_e( '— Skip —', 'societypress' ); ?></option>
+                                            <?php foreach ( $target_fields as $key => $label ) : ?>
+                                                <option value="<?php echo esc_attr( $key ); ?>" <?php selected( $suggested, $key ); ?>><?php echo esc_html( $label ); ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </td>
+                                    <td style="font-size:12px; color:#666; max-width:400px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                                        <?php
+                                        // Show sample values from first few rows for this column
+                                        $samples = [];
+                                        foreach ( $preview['sample_rows'] as $sample_row ) {
+                                            if ( isset( $sample_row[ $col_idx ] ) && trim( $sample_row[ $col_idx ] ) !== '' ) {
+                                                $samples[] = esc_html( mb_substr( trim( $sample_row[ $col_idx ] ), 0, 60 ) );
+                                            }
+                                        }
+                                        echo implode( ' | ', array_slice( $samples, 0, 3 ) );
+                                        ?>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+
+                    <p class="submit">
+                        <input type="submit" class="button button-primary" value="<?php esc_attr_e( 'Run Import', 'societypress' ); ?>">
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-import-links' ) ); ?>" class="button"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
+                    </p>
+                </form>
+            </div>
+
+        <?php else : ?>
+            <!-- ============================================================
+                 STEP 1: UPLOAD FORM
+                 Simple file upload — same pattern as the library import.
+                 ============================================================ -->
+            <?php if ( ! $results ) : ?>
+                <div class="card" style="max-width:600px; padding:20px; margin-top:16px;">
+                    <h2 style="margin-top:0;"><?php esc_html_e( 'Upload Links CSV', 'societypress' ); ?></h2>
+                    <p class="description">
+                        <?php esc_html_e( 'Upload a CSV file containing resource links. The importer will auto-detect columns from common export formats (EasyNetSites, etc.) and let you map them before importing.', 'societypress' ); ?>
+                    </p>
+
+                    <form method="post" enctype="multipart/form-data">
+                        <?php wp_nonce_field( 'sp_import_links' ); ?>
+                        <input type="hidden" name="sp_import_action" value="preview">
+
+                        <table class="form-table">
+                            <tr>
+                                <th><label for="import_file"><?php esc_html_e( 'CSV File', 'societypress' ); ?></label></th>
+                                <td>
+                                    <input type="file" name="import_file" id="import_file" accept=".csv" required>
+                                    <p class="description"><?php esc_html_e( 'Maximum file size: 2 MB. Must be a .csv file.', 'societypress' ); ?></p>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <p class="submit">
+                            <input type="submit" class="button button-primary" value="<?php esc_attr_e( 'Upload & Preview', 'societypress' ); ?>">
+                        </p>
+                    </form>
+                </div>
+            <?php endif; ?>
+        <?php endif; ?>
     </div>
     <?php
 }
@@ -34417,7 +35343,10 @@ function sp_render_newsletter_edit_page(): void {
             $newsletter_id = $wpdb->insert_id;
         }
 
-        echo '<div class="notice notice-success"><p>Newsletter saved.</p></div>';
+        // Redirect back to the newsletter archive after saving so the admin
+        // lands on the list view, not a stale edit form.
+        wp_redirect( admin_url( 'admin.php?page=sp-newsletter-archive&sp_notice=newsletter_saved' ) );
+        exit;
     }
 
     // ========== LOAD DATA ==========
@@ -34980,4 +35909,745 @@ function sp_frontend_newsletter_archive(): void {
     })();
     </script>
     <?php
+}
+
+
+// ============================================================================
+// SITE SEARCH — Unified search across all modules
+//
+// WHY: Each module (library, events, members, newsletters) has its own isolated
+//      search. But Harold's members need a way to search across everything from
+//      one place — a search box in the header that returns results from all
+//      modules on a single page. This is the "Google for the society site."
+//
+// Architecture:
+// 1. sp_get_search_page_url() — finds the page with the sp-search template
+// 2. theme_page_templates filter — adds "Site Search" to the template dropdown
+// 3. template_include filter — renders sp_render_search_page() when loaded
+// 4. sp_render_search_page() — queries all modules, groups results by type
+// 5. sp_unified_search() — AJAX endpoint returning JSON (for future live search)
+// 6. sp_do_unified_search() — shared query logic used by both render + AJAX
+// ============================================================================
+
+
+/**
+ * Returns the permalink to the page using the sp-search template.
+ *
+ * WHY: The search form in the header needs to know where to submit. Rather
+ *      than hardcoding a URL, we find the actual page Harold created and
+ *      assigned the "Site Search" template to. Falls back to home_url()
+ *      if no page has been assigned yet — the form won't break, it just
+ *      won't go to a dedicated search page.
+ */
+function sp_get_search_page_url(): string {
+    // Cache the result so we don't hit the DB on every page load for every
+    // header render. Transient expires after 1 hour — if Harold creates or
+    // reassigns the page, it'll pick up within an hour (or on next save).
+    $cached = get_transient( 'sp_search_page_url' );
+    if ( $cached !== false ) {
+        return $cached;
+    }
+
+    // Find a published page with the sp-search template assigned
+    $pages = get_pages([
+        'meta_key'   => '_wp_page_template',
+        'meta_value' => 'sp-search',
+        'number'     => 1,
+    ]);
+
+    $url = ! empty( $pages ) ? get_permalink( $pages[0]->ID ) : home_url( '/' );
+    set_transient( 'sp_search_page_url', $url, HOUR_IN_SECONDS );
+
+    return $url;
+}
+
+/**
+ * Clear the search page URL cache whenever a page is saved.
+ *
+ * WHY: If Harold creates a new page and assigns the sp-search template,
+ *      or changes which page uses it, we need the header form to pick up
+ *      the new URL promptly instead of waiting for the transient to expire.
+ */
+add_action( 'save_post_page', function () {
+    delete_transient( 'sp_search_page_url' );
+} );
+
+
+// Register the "Site Search" template in the page template dropdown
+add_filter( 'theme_page_templates', function ( $templates ) {
+    $templates['sp-search'] = 'Site Search';
+    return $templates;
+} );
+
+// Intercept template loading and render the search results page
+add_filter( 'template_include', function ( $template ) {
+    if ( ! is_page() ) return $template;
+
+    $page_template = get_page_template_slug();
+    if ( $page_template !== 'sp-search' ) {
+        return $template;
+    }
+
+    get_header();
+    echo '<div class="site-content"><div class="content-area-full" style="max-width:var(--sp-content-width,1100px);">';
+    sp_render_search_page();
+    echo '</div></div>';
+    get_footer();
+    return '';
+}, 97 ); // Priority 97 — before newsletter archive (98) and other templates (99)
+
+
+/**
+ * Finds the permalink to a page using a specific SP template slug.
+ *
+ * WHY: The "View all X results" links in search results need to link to
+ *      the correct module page (e.g., the Events page, Library Catalog page).
+ *      Each module uses a template slug like 'sp-events' or 'sp-library-catalog'.
+ *      This helper finds the page Harold assigned that template to.
+ *
+ * @param  string $template_slug  The SP template slug (e.g., 'sp-events')
+ * @return string                 Page permalink, or empty string if not found
+ */
+function sp_get_template_page_url( string $template_slug ): string {
+    $pages = get_pages([
+        'meta_key'   => '_wp_page_template',
+        'meta_value' => $template_slug,
+        'number'     => 1,
+    ]);
+
+    return ! empty( $pages ) ? get_permalink( $pages[0]->ID ) : '';
+}
+
+
+/**
+ * Shared search logic — queries all modules and returns structured results.
+ *
+ * WHY: Both the page render (sp_render_search_page) and the AJAX endpoint
+ *      (sp_unified_search) need the same query logic. Centralizing it here
+ *      means one set of queries to maintain, one set of visibility rules,
+ *      and consistent results regardless of how the search is invoked.
+ *
+ * @param  string $query      The sanitized search term
+ * @param  int    $per_module Max results per module (default 5 for page, more for AJAX)
+ * @return array              Keyed by module name, each containing 'items' and 'total'
+ */
+function sp_do_unified_search( string $query, int $per_module = 5 ): array {
+    global $wpdb;
+    $prefix    = $wpdb->prefix . 'sp_';
+    $logged_in = is_user_logged_in();
+    $results   = [];
+
+    // Prepare LIKE pattern once — used by every module query below
+    $like = '%' . $wpdb->esc_like( $query ) . '%';
+
+    // =====================================================================
+    // EVENTS — Search title, description, location
+    // WHY visibility check: Public events are visible to everyone. Members-
+    //     only events should only appear for logged-in users. Cancelled
+    //     events are excluded entirely — nobody needs to find those.
+    // =====================================================================
+    $events_where = $wpdb->prepare(
+        "WHERE status != 'cancelled'
+         AND (title LIKE %s OR description LIKE %s OR location_name LIKE %s)",
+        $like, $like, $like
+    );
+
+    // Non-logged-in visitors only see public events
+    if ( ! $logged_in ) {
+        $events_where .= " AND visibility = 'public'";
+    }
+
+    $events_total = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$prefix}events {$events_where}"
+    );
+
+    $events_items = $wpdb->get_results(
+        "SELECT id, title, description, event_date, start_time, location_name, visibility
+         FROM {$prefix}events {$events_where}
+         ORDER BY event_date DESC
+         LIMIT {$per_module}"
+    );
+
+    if ( $events_total > 0 ) {
+        $results['events'] = [
+            'label'    => __( 'Events', 'societypress' ),
+            'total'    => $events_total,
+            'items'    => $events_items,
+            'page_url' => sp_get_template_page_url( 'sp-events' ),
+        ];
+    }
+
+    // =====================================================================
+    // LIBRARY — Search title, author, call number, subject, surname, description
+    // WHY no visibility check: The library catalog is public — it's a selling
+    //     point for prospective members to see the society's collection.
+    // =====================================================================
+    $library_where = $wpdb->prepare(
+        "WHERE (title LIKE %s OR author LIKE %s OR call_number LIKE %s
+               OR subject LIKE %s OR surname LIKE %s OR description LIKE %s)",
+        $like, $like, $like, $like, $like, $like
+    );
+
+    $library_total = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$prefix}library_items {$library_where}"
+    );
+
+    $library_items = $wpdb->get_results(
+        "SELECT id, title, author, call_number, media_type
+         FROM {$prefix}library_items {$library_where}
+         ORDER BY title ASC
+         LIMIT {$per_module}"
+    );
+
+    if ( $library_total > 0 ) {
+        $results['library'] = [
+            'label'    => __( 'Library', 'societypress' ),
+            'total'    => $library_total,
+            'items'    => $library_items,
+            'page_url' => sp_get_template_page_url( 'sp-library-catalog' ),
+        ];
+    }
+
+    // =====================================================================
+    // RESOURCES — Search title, url, description
+    // WHY no visibility check: Resource links are public — they're curated
+    //     external URLs (genealogy databases, county records, etc.) that
+    //     benefit everyone, not member-only content.
+    // =====================================================================
+    $resources_where = $wpdb->prepare(
+        "WHERE active = 1 AND (title LIKE %s OR url LIKE %s OR description LIKE %s)",
+        $like, $like, $like
+    );
+
+    $resources_total = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$prefix}resources {$resources_where}"
+    );
+
+    $resource_items = $wpdb->get_results(
+        "SELECT r.id, r.title, r.url, r.description, rc.name as category_name
+         FROM {$prefix}resources r
+         LEFT JOIN {$prefix}resource_categories rc ON r.category_id = rc.id
+         {$resources_where}
+         ORDER BY r.title ASC
+         LIMIT {$per_module}"
+    );
+
+    if ( $resources_total > 0 ) {
+        $results['resources'] = [
+            'label'    => __( 'Resource Links', 'societypress' ),
+            'total'    => $resources_total,
+            'items'    => $resource_items,
+            'page_url' => sp_get_template_page_url( 'sp-resources' ),
+        ];
+    }
+
+    // =====================================================================
+    // MEMBERS — Search first_name, last_name, preferred_name, organization_name
+    // WHY logged-in only: The membership directory is private. Non-members
+    //     shouldn't be able to search for member names.
+    // WHY active-only: Expired/inactive members shouldn't appear in search.
+    // WHY privacy check: Members who've opted out of the directory (dir_show_name=0)
+    //     shouldn't be discoverable through search either.
+    // =====================================================================
+    if ( $logged_in ) {
+        $members_where = $wpdb->prepare(
+            "WHERE status = 'active' AND dir_show_name = 1
+             AND (first_name LIKE %s OR last_name LIKE %s
+                  OR preferred_name LIKE %s OR organization_name LIKE %s)",
+            $like, $like, $like, $like
+        );
+
+        $members_total = (int) $wpdb->get_var(
+            "SELECT COUNT(*) FROM {$prefix}members {$members_where}"
+        );
+
+        $members_items = $wpdb->get_results(
+            "SELECT user_id, first_name, last_name, preferred_name,
+                    organization_name, member_type, city, state
+             FROM {$prefix}members {$members_where}
+             ORDER BY last_name ASC, first_name ASC
+             LIMIT {$per_module}"
+        );
+
+        if ( $members_total > 0 ) {
+            $results['members'] = [
+                'label'    => __( 'Members', 'societypress' ),
+                'total'    => $members_total,
+                'items'    => $members_items,
+                'page_url' => sp_get_template_page_url( 'sp-directory' ),
+            ];
+        }
+    }
+
+    // =====================================================================
+    // NEWSLETTERS — Search title, description
+    // WHY logged-in only: Newsletters are member content. The archive grid
+    //     is visible publicly (for marketing), but search results showing
+    //     newsletter titles/descriptions should be member-only to be
+    //     consistent with the download access control.
+    // =====================================================================
+    if ( $logged_in ) {
+        $nl_where = $wpdb->prepare(
+            "WHERE (title LIKE %s OR description LIKE %s)",
+            $like, $like
+        );
+
+        $nl_total = (int) $wpdb->get_var(
+            "SELECT COUNT(*) FROM {$prefix}newsletters {$nl_where}"
+        );
+
+        $nl_items = $wpdb->get_results(
+            "SELECT id, title, description, pub_date, volume, issue_number
+             FROM {$prefix}newsletters {$nl_where}
+             ORDER BY pub_date DESC
+             LIMIT {$per_module}"
+        );
+
+        if ( $nl_total > 0 ) {
+            $results['newsletters'] = [
+                'label'    => __( 'Newsletters', 'societypress' ),
+                'total'    => $nl_total,
+                'items'    => $nl_items,
+                'page_url' => sp_get_template_page_url( 'sp-newsletter-archive' ),
+            ];
+        }
+    }
+
+    // =====================================================================
+    // PAGES — Standard WordPress content pages
+    // WHY WP_Query: Pages are regular WordPress posts, not custom tables.
+    //     WP_Query handles searching post_title and post_content natively.
+    // WHY exclude SP template pages: Pages like "Events" or "Directory" are
+    //     just containers for plugin output — their content is empty. Including
+    //     them in search results would be confusing.
+    // =====================================================================
+    $wp_query = new WP_Query([
+        's'              => $query,
+        'post_type'      => 'page',
+        'post_status'    => 'publish',
+        'posts_per_page' => $per_module,
+    ]);
+
+    // Filter out pages that use SP templates (they're just containers)
+    $sp_templates = array_keys( sp_get_page_type_labels() );
+    $page_items   = [];
+    $page_total   = 0;
+
+    if ( $wp_query->have_posts() ) {
+        while ( $wp_query->have_posts() ) {
+            $wp_query->the_post();
+            $tmpl = get_page_template_slug();
+            if ( ! empty( $tmpl ) && in_array( $tmpl, $sp_templates, true ) ) {
+                continue; // Skip SP template pages
+            }
+            $page_items[] = (object) [
+                'ID'      => get_the_ID(),
+                'title'   => get_the_title(),
+                'excerpt' => wp_trim_words( get_the_excerpt(), 20, '…' ),
+                'url'     => get_permalink(),
+            ];
+            $page_total++;
+        }
+        wp_reset_postdata();
+    }
+
+    if ( $page_total > 0 ) {
+        $results['pages'] = [
+            'label'    => __( 'Pages', 'societypress' ),
+            'total'    => $page_total,
+            'items'    => $page_items,
+        ];
+    }
+
+    return $results;
+}
+
+
+/**
+ * Render the Site Search results page.
+ *
+ * WHY: This is the frontend output for pages using the "Site Search" template.
+ *      It shows a search field at the top (pre-filled with the query so the user
+ *      can refine), followed by results grouped by module. Each section shows up
+ *      to 5 results with a "View all X results" link to the module's own page.
+ */
+function sp_render_search_page(): void {
+    $raw_query = isset( $_GET['sp_q'] ) ? trim( $_GET['sp_q'] ) : '';
+    $query     = sanitize_text_field( $raw_query );
+    $has_query = strlen( $query ) >= 2;
+
+    ?>
+    <div class="sp-search-page">
+        <h1 class="entry-title" style="margin-bottom:8px;">
+            <?php esc_html_e( 'Search', 'societypress' ); ?>
+        </h1>
+
+        <!-- Search form — pre-filled with current query so the user can refine -->
+        <form class="sp-search-form" action="" method="get" style="margin-bottom:32px;">
+            <div style="display:flex; gap:8px; max-width:500px;">
+                <input type="text" name="sp_q"
+                       value="<?php echo esc_attr( $query ); ?>"
+                       placeholder="<?php esc_attr_e( 'Search events, library, members, newsletters…', 'societypress' ); ?>"
+                       autocomplete="off" required minlength="2"
+                       style="flex:1; padding:10px 14px; border:2px solid #dee2e6; border-radius:6px; font-size:16px;">
+                <button type="submit"
+                        style="padding:10px 20px; background:var(--sp-color-primary,#1e3a5f); color:#fff; border:none; border-radius:6px; font-size:16px; cursor:pointer;">
+                    <?php esc_html_e( 'Search', 'societypress' ); ?>
+                </button>
+            </div>
+        </form>
+
+        <?php if ( ! $has_query && ! empty( $raw_query ) ) : ?>
+            <!-- User typed something but it's too short -->
+            <p style="color:var(--sp-color-text-secondary,#6b7280);">
+                <?php esc_html_e( 'Please enter at least 2 characters to search.', 'societypress' ); ?>
+            </p>
+
+        <?php elseif ( $has_query ) :
+            $results = sp_do_unified_search( $query, 5 );
+
+            if ( empty( $results ) ) : ?>
+                <div class="sp-search-no-results" style="text-align:center; padding:48px 20px;">
+                    <p style="font-size:1.1rem; color:var(--sp-color-text-secondary,#6b7280);">
+                        <?php
+                        printf(
+                            /* translators: %s is the search query */
+                            esc_html__( 'No results found for "%s". Try a different search term.', 'societypress' ),
+                            esc_html( $query )
+                        );
+                        ?>
+                    </p>
+                </div>
+            <?php else :
+                // Loop through each module's results and render a section
+                foreach ( $results as $module_key => $module ) :
+                    ?>
+                    <div class="sp-search-section" style="margin-bottom:32px;">
+                        <h2 style="font-size:1.2rem; margin-bottom:12px; padding-bottom:8px; border-bottom:2px solid var(--sp-color-border,#e5e7eb);">
+                            <?php echo esc_html( $module['label'] ); ?>
+                            <span style="font-weight:400; font-size:0.85rem; color:var(--sp-color-text-secondary,#6b7280);">
+                                (<?php echo esc_html( $module['total'] ); ?>)
+                            </span>
+                        </h2>
+
+                        <div class="sp-search-results-list">
+                            <?php
+                            switch ( $module_key ) {
+                                case 'events':
+                                    sp_render_search_events( $module['items'] );
+                                    break;
+                                case 'library':
+                                    sp_render_search_library( $module['items'] );
+                                    break;
+                                case 'resources':
+                                    sp_render_search_resources( $module['items'] );
+                                    break;
+                                case 'members':
+                                    sp_render_search_members( $module['items'] );
+                                    break;
+                                case 'newsletters':
+                                    sp_render_search_newsletters( $module['items'] );
+                                    break;
+                                case 'pages':
+                                    sp_render_search_pages( $module['items'] );
+                                    break;
+                            }
+                            ?>
+                        </div>
+
+                        <?php
+                        // "View all X results" link — only show if there are more results
+                        // than we're displaying, and we have a page URL to link to
+                        if ( $module['total'] > 5 && ! empty( $module['page_url'] ?? '' ) ) :
+                            // Append the search query so the module page can pre-fill its search
+                            $view_all_url = add_query_arg( 's', urlencode( $query ), $module['page_url'] );
+                            ?>
+                            <a href="<?php echo esc_url( $view_all_url ); ?>"
+                               style="display:inline-block; margin-top:8px; font-weight:600; font-size:0.9rem;">
+                                <?php
+                                printf(
+                                    /* translators: %d is the total number of results */
+                                    esc_html__( 'View all %d results →', 'societypress' ),
+                                    $module['total']
+                                );
+                                ?>
+                            </a>
+                        <?php endif; ?>
+                    </div>
+                    <?php
+                endforeach;
+            endif;
+        endif; ?>
+    </div>
+
+    <style id="sp-search-page-css">
+        /* Search result items — clean card-style rows */
+        .sp-search-item {
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 4px;
+            transition: background 0.15s ease;
+        }
+
+        .sp-search-item:hover {
+            background: rgba(0, 0, 0, 0.03);
+        }
+
+        .sp-search-item-title {
+            font-weight: 600;
+            font-size: 1rem;
+            color: var(--sp-color-primary, #1e3a5f);
+            margin-bottom: 2px;
+        }
+
+        .sp-search-item-title a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        .sp-search-item-title a:hover {
+            color: var(--sp-color-primary-hover, #2c5282);
+            text-decoration: underline;
+        }
+
+        .sp-search-item-meta {
+            font-size: 0.85rem;
+            color: var(--sp-color-text-secondary, #6b7280);
+        }
+    </style>
+    <?php
+}
+
+
+/**
+ * Render event search results.
+ *
+ * WHY individual render functions: Each module has different data to display.
+ *     Events show date + location, library shows author + call number, etc.
+ *     Separate functions keep each module's output clean and maintainable.
+ */
+function sp_render_search_events( array $items ): void {
+    foreach ( $items as $event ) {
+        $date_str = '';
+        if ( ! empty( $event->event_date ) ) {
+            $date_str = date_i18n( get_option( 'date_format', 'F j, Y' ), strtotime( $event->event_date ) );
+            if ( ! empty( $event->start_time ) ) {
+                $date_str .= ' · ' . date_i18n( get_option( 'time_format', 'g:i A' ), strtotime( $event->start_time ) );
+            }
+        }
+        ?>
+        <div class="sp-search-item">
+            <div class="sp-search-item-title">
+                <?php echo esc_html( $event->title ); ?>
+                <?php if ( $event->visibility === 'members_only' ) : ?>
+                    <span style="font-size:0.75rem; font-weight:400; color:var(--sp-color-text-secondary,#6b7280);">
+                        (<?php esc_html_e( 'Members Only', 'societypress' ); ?>)
+                    </span>
+                <?php endif; ?>
+            </div>
+            <div class="sp-search-item-meta">
+                <?php
+                $meta_parts = [];
+                if ( $date_str ) $meta_parts[] = $date_str;
+                if ( ! empty( $event->location_name ) ) $meta_parts[] = esc_html( $event->location_name );
+                echo implode( ' · ', $meta_parts );
+                ?>
+            </div>
+        </div>
+        <?php
+    }
+}
+
+
+/**
+ * Render library search results.
+ */
+function sp_render_search_library( array $items ): void {
+    foreach ( $items as $item ) {
+        ?>
+        <div class="sp-search-item">
+            <div class="sp-search-item-title">
+                <?php echo esc_html( $item->title ); ?>
+            </div>
+            <div class="sp-search-item-meta">
+                <?php
+                $meta_parts = [];
+                if ( ! empty( $item->author ) )      $meta_parts[] = esc_html( $item->author );
+                if ( ! empty( $item->call_number ) )  $meta_parts[] = esc_html( $item->call_number );
+                if ( ! empty( $item->media_type ) )   $meta_parts[] = esc_html( $item->media_type );
+                echo implode( ' · ', $meta_parts );
+                ?>
+            </div>
+        </div>
+        <?php
+    }
+}
+
+
+/**
+ * Render resource link search results.
+ *
+ * WHY links open in new tab: These are external URLs — genealogy databases,
+ *     county records offices, etc. Opening in a new tab keeps the user on the
+ *     society site while still letting them access the resource.
+ */
+function sp_render_search_resources( array $items ): void {
+    foreach ( $items as $resource ) {
+        ?>
+        <div class="sp-search-item">
+            <div class="sp-search-item-title">
+                <a href="<?php echo esc_url( $resource->url ); ?>" target="_blank" rel="noopener noreferrer">
+                    <?php echo esc_html( $resource->title ); ?>
+                </a>
+            </div>
+            <div class="sp-search-item-meta">
+                <?php
+                $meta_parts = [];
+                if ( ! empty( $resource->category_name ) ) {
+                    $meta_parts[] = esc_html( $resource->category_name );
+                }
+                if ( ! empty( $resource->description ) ) {
+                    // Truncate long descriptions to keep search results scannable
+                    $desc = wp_strip_all_tags( $resource->description );
+                    if ( mb_strlen( $desc ) > 120 ) {
+                        $desc = mb_substr( $desc, 0, 120 ) . '…';
+                    }
+                    $meta_parts[] = esc_html( $desc );
+                }
+                echo implode( ' · ', $meta_parts );
+                ?>
+            </div>
+        </div>
+        <?php
+    }
+}
+
+
+/**
+ * Render member search results.
+ *
+ * WHY minimal info: We only show name and city/state — enough to identify
+ *     someone without exposing contact details. Members who want full info
+ *     go to the directory.
+ */
+function sp_render_search_members( array $items ): void {
+    foreach ( $items as $member ) {
+        // Use preferred name if set — Charles' preference is to show what
+        // the member wants to be called, not necessarily their legal name.
+        $display_name = ! empty( $member->preferred_name )
+            ? $member->preferred_name . ' ' . $member->last_name
+            : $member->first_name . ' ' . $member->last_name;
+
+        // Organizations show the org name instead
+        if ( $member->member_type === 'organization' && ! empty( $member->organization_name ) ) {
+            $display_name = $member->organization_name;
+        }
+
+        ?>
+        <div class="sp-search-item">
+            <div class="sp-search-item-title">
+                <?php echo esc_html( $display_name ); ?>
+            </div>
+            <div class="sp-search-item-meta">
+                <?php
+                $meta_parts = [];
+                if ( $member->member_type === 'organization' ) {
+                    $meta_parts[] = esc_html__( 'Organization', 'societypress' );
+                }
+                $location_parts = array_filter( [
+                    $member->city ?? '',
+                    $member->state ?? '',
+                ] );
+                if ( $location_parts ) {
+                    $meta_parts[] = esc_html( implode( ', ', $location_parts ) );
+                }
+                echo implode( ' · ', $meta_parts );
+                ?>
+            </div>
+        </div>
+        <?php
+    }
+}
+
+
+/**
+ * Render newsletter search results.
+ */
+function sp_render_search_newsletters( array $items ): void {
+    foreach ( $items as $nl ) {
+        $date_str = '';
+        if ( ! empty( $nl->pub_date ) ) {
+            $date_str = date_i18n( 'F Y', strtotime( $nl->pub_date ) );
+        }
+
+        $vol_issue = '';
+        if ( $nl->volume )       $vol_issue .= 'Vol. ' . $nl->volume;
+        if ( $nl->issue_number ) $vol_issue .= ( $vol_issue ? ', ' : '' ) . 'No. ' . $nl->issue_number;
+
+        ?>
+        <div class="sp-search-item">
+            <div class="sp-search-item-title">
+                <?php echo esc_html( $nl->title ); ?>
+            </div>
+            <div class="sp-search-item-meta">
+                <?php
+                $meta_parts = [];
+                if ( $date_str )   $meta_parts[] = $date_str;
+                if ( $vol_issue )  $meta_parts[] = $vol_issue;
+                echo implode( ' · ', $meta_parts );
+                ?>
+            </div>
+        </div>
+        <?php
+    }
+}
+
+
+/**
+ * Render page search results.
+ */
+function sp_render_search_pages( array $items ): void {
+    foreach ( $items as $page ) {
+        ?>
+        <div class="sp-search-item">
+            <div class="sp-search-item-title">
+                <a href="<?php echo esc_url( $page->url ); ?>">
+                    <?php echo esc_html( $page->title ); ?>
+                </a>
+            </div>
+            <?php if ( ! empty( $page->excerpt ) ) : ?>
+                <div class="sp-search-item-meta">
+                    <?php echo esc_html( $page->excerpt ); ?>
+                </div>
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+}
+
+
+// ============================================================================
+// AJAX ENDPOINT — Unified search (for future live search-as-you-type)
+//
+// WHY build this now: The backend work is identical to the page render. By
+//     exposing the same data as JSON, we can add a live search dropdown to
+//     the header in a future iteration without any backend changes — just
+//     a JS fetch() call to this endpoint.
+// ============================================================================
+
+add_action( 'wp_ajax_sp_unified_search', 'sp_unified_search' );
+add_action( 'wp_ajax_nopriv_sp_unified_search', 'sp_unified_search' );
+
+/**
+ * AJAX handler for unified search — returns JSON grouped by module.
+ */
+function sp_unified_search(): void {
+    $query = isset( $_GET['sp_q'] ) ? sanitize_text_field( trim( $_GET['sp_q'] ) ) : '';
+
+    if ( strlen( $query ) < 2 ) {
+        wp_send_json_error( [ 'message' => 'Query must be at least 2 characters.' ] );
+    }
+
+    $results = sp_do_unified_search( $query, 5 );
+    wp_send_json_success( $results );
 }

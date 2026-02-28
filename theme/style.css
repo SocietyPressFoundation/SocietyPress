@@ -257,6 +257,116 @@ img {
 }
 
 /* ============================================================================
+   HEADER TOP BAR
+   WHY: A slim utility strip above the main header row. Social media icons
+   sit here, flush-right. Keeps them visible without crowding the nav,
+   search, and user menu below. The bar inherits the header background so
+   it blends seamlessly — child themes can override for a distinct look.
+   ============================================================================ */
+
+.header-top-bar {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.header-top-bar-inner {
+    max-width: var(--sp-content-width, 1100px);
+    margin: 0 auto;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 4px 0;
+}
+
+
+/* ============================================================================
+   SOCIAL MEDIA ICONS
+   WHY: Small icon links to the society's social media profiles. Displayed
+   in the header top bar, flush-right. Icons inherit currentColor so they
+   match the header text color.
+   ============================================================================ */
+
+.sp-social-icons {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.sp-social-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    color: var(--sp-color-header-text, #fff);
+    opacity: 0.7;
+    transition: opacity 0.2s ease, background 0.2s ease;
+    text-decoration: none;
+}
+
+.sp-social-icon:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.15);
+}
+
+/* ============================================================================
+   HEADER SEARCH FIELD
+   WHY: A persistent search field in the header lets members search across
+   the entire site (events, library, members, newsletters, pages) from any
+   page. Compact on desktop (~180px, expands on focus), hidden on mobile
+   where the hamburger menu provides the search field instead.
+   ============================================================================ */
+
+.sp-header-search {
+    display: flex;
+    align-items: center;
+    position: relative;
+}
+
+.sp-header-search input[type="text"] {
+    width: 180px;
+    padding: 6px 36px 6px 12px; /* Right padding leaves room for the button */
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--sp-color-header-text, #fff);
+    font-size: 0.85rem;
+    outline: none;
+    transition: width 0.3s ease, border-color 0.3s ease, background 0.3s ease;
+}
+
+.sp-header-search input[type="text"]::placeholder {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.sp-header-search input[type="text"]:focus {
+    width: 240px;
+    border-color: rgba(255, 255, 255, 0.6);
+    background: rgba(255, 255, 255, 0.15);
+}
+
+/* Magnifying glass submit button — positioned inside the input */
+.sp-header-search button {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px 8px;
+    color: rgba(255, 255, 255, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s ease;
+}
+
+.sp-header-search button:hover {
+    color: var(--sp-color-header-text, #fff);
+}
+
+/* ============================================================================
    USER ACCOUNT MENU
    WHY: Replaces the WordPress admin bar with a clean dropdown in the header.
    Shows the user's avatar and name at a glance, with a dropdown for

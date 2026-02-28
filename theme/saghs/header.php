@@ -29,7 +29,14 @@
 
 <div class="site">
     <header class="site-header">
+
         <div class="header-inner">
+
+            <!-- Social media icons — large, brand-colored, top-right of header.
+                 WHY here: They sit in the vertical space above the nav row, using
+                 the height the logo provides. Absolutely positioned so they don't
+                 affect the logo/nav flexbox layout. -->
+            <?php if ( function_exists( 'sp_social_icons' ) ) { sp_social_icons(); } ?>
 
             <!-- Site branding: SAGHS logo and/or site title -->
             <?php
@@ -81,6 +88,21 @@
                 <?php if ( has_nav_menu( 'primary' ) ) : ?>
                 <nav class="main-navigation" aria-label="Primary navigation">
                     <?php
+                    // WHY the search form is inside the nav on mobile: When the
+                    // hamburger opens the nav panel, we want the search field at
+                    // the top of that panel. On desktop, this form is hidden via
+                    // CSS (.sp-header-search-mobile) and the inline version shows
+                    // instead. This avoids duplicating the form in JS.
+                    if ( function_exists( 'sp_get_search_page_url' ) ) : ?>
+                    <form class="sp-header-search sp-header-search-mobile" action="<?php echo esc_url( sp_get_search_page_url() ); ?>" method="get">
+                        <input type="text" name="sp_q" placeholder="<?php esc_attr_e( 'Search…', 'societypress' ); ?>" autocomplete="off" required minlength="2">
+                        <button type="submit" aria-label="<?php esc_attr_e( 'Search', 'societypress' ); ?>">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        </button>
+                    </form>
+                    <?php endif; ?>
+
+                    <?php
                     wp_nav_menu([
                         'theme_location' => 'primary',
                         'container'      => false,
@@ -89,6 +111,19 @@
                     ]);
                     ?>
                 </nav>
+                <?php endif; ?>
+
+                <!-- Site search — desktop only (inline in nav bar).
+                     WHY a separate form: On desktop, the search field sits inline
+                     with the nav and user menu. On mobile, the hamburger panel
+                     has its own copy above the nav links. CSS toggles visibility. -->
+                <?php if ( function_exists( 'sp_get_search_page_url' ) ) : ?>
+                <form class="sp-header-search sp-header-search-desktop" action="<?php echo esc_url( sp_get_search_page_url() ); ?>" method="get">
+                    <input type="text" name="sp_q" placeholder="<?php esc_attr_e( 'Search…', 'societypress' ); ?>" autocomplete="off" required minlength="2">
+                    <button type="submit" aria-label="<?php esc_attr_e( 'Search', 'societypress' ); ?>">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    </button>
+                </form>
                 <?php endif; ?>
 
                 <!-- User account menu — rendered by the SocietyPress plugin -->

@@ -24,6 +24,7 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 - [x] GitHub repo: Cleaned up, current single-file plugin + theme, GPL-2.0
 - [x] Member re-import: 385 members imported with all new fields populated
 - [x] SAGHS child theme: Front page, 3-level nav, hamburger, footer, hero slider
+- [x] Resource Links: CSV import (EasyNetSites format), auto-category creation, frontend directory with search + category dropdown, unified search integration
 
 ## In Progress
 
@@ -81,13 +82,26 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 - [ ] Hours tracking: Logged per signup, builds contribution record
 - [ ] Tables: sp_volunteer_opportunities, sp_volunteer_signups
 
-## Newsletter Archive — Not Started
+## Newsletter Archive — Done
 
-- [ ] PDF upload through admin
-- [ ] Automatic cover thumbnail generation (PDF.js)
-- [ ] Browse archive, inline preview modal with zoom/page nav
-- [ ] Download restricted to members only
-- [ ] Delete with overwrite confirmation
+- [x] PDF upload through admin
+- [x] Automatic cover thumbnail generation (Imagick)
+- [x] Browse archive, inline preview modal with zoom/page nav
+- [x] Download restricted to members only
+- [x] Admin card grid, frontend grid, search
+
+## Genealogical Records Module — Not Started
+
+- [ ] Records database: Searchable transcribed genealogical records (cemetery indexes, census transcriptions, church records, obituary indexes, etc.)
+  - Distinct from Library (which catalogs physical items) — this is digitized/transcribed record data
+  - Tables: sp_record_collections, sp_records, sp_record_fields (flexible schema per collection type)
+  - Field-level access control: public vs members-only per field per collection
+  - Public-facing search with faceted filters (record type, date range, location, surname)
+  - Full-text search across all record fields
+  - CSV/spreadsheet import per collection type with field mapping
+  - Admin: collection manager, record browser, import tool, field configuration
+  - Frontend: public search page ([societypress_records]), detail view with access-controlled fields
+- [ ] This is the EasyNetSites "Unified Data Module" equivalent — the white paper claims parity, so this needs to deliver
 
 ## Payment Processing — Not Started
 
@@ -111,10 +125,39 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 - [ ] Admin dashboard: Stat cards (total members, active, expiring soon, recent signups), expiring members list, recent signups, upcoming events, activity feed
 - [ ] Audit logging: Complete coverage — member CRUD, status changes, position/committee assignments, volunteer activity (partially built)
 
+## Demo Installation — Not Started
+
+- [ ] Standalone demo site (separate from kndgs.org production)
+  - Fake society with sample members, events, records, newsletters
+  - Read-only or resettable so evaluators can explore without breaking anything
+  - White paper offers this twice — needs to actually exist before the paper circulates
+
+## ENS Migration — Not Started
+
+- [ ] EasyNetSites migration guide: Document how to export ENS data and import into SP
+  - Member data: CSV export → SP member import with ENS field mapping
+  - Genealogical records: If ENS provides any export, build an import path
+  - Content pages: Manual migration guidance (copy/paste is realistic for most societies)
+- [ ] Migration assistance as a selling point — reduce the switching-cost objection
+
 ## getsocietypress.org — On Hold
 
 - [ ] Documentation pages (waiting until SP features are more complete)
 - [ ] Feedback form (structured: bug report / feature request / general question) — future companion plugin
+
+## Integrations — Not Started
+
+- [ ] Mailchimp: Sync member list to Mailchimp audience (white paper claims this)
+- [ ] Google Analytics: Integration beyond what the getsocietypress.org companion plugin does
+- [ ] Zoom: Event integration for online programming (white paper mentions this)
+- [ ] Note: PayPal and Stripe are under Payment Processing above
+
+## White Paper Alignment — Review Needed
+
+- [ ] Tighten white paper language: "dues processing" listed as current feature — payments aren't built yet
+- [ ] "Core feature" claim for genealogical records search — module doesn't exist yet
+- [ ] Consider adding a Roadmap section to the white paper to separate built/in-progress/planned
+- [ ] Or soften present-tense claims to "core and planned features include..."
 
 ## Not Doing (spec divergences)
 

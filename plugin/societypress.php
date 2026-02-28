@@ -12284,6 +12284,17 @@ function sp_render_page_edit(): void {
     $template = $is_edit ? get_page_template_slug( $post_id ) : '';
 
     $page_types = sp_get_page_type_labels();
+
+    // WHY: wp_enqueue_media() and wp_enqueue_editor() must be called so the
+    // Page Builder's Image widget, Hero Slider "Choose Image" buttons, and
+    // Rich Text widget all work. Calling them here (in the page callback)
+    // is safe because WordPress prints footer scripts AFTER the callback
+    // runs. The admin_enqueue_scripts hook should also load these, but
+    // calling them directly guarantees they're available regardless of
+    // hook-suffix matching quirks on hidden submenu pages.
+    wp_enqueue_media();
+    wp_enqueue_editor();
+
     ?>
     <div class="wrap">
         <h1><?php echo $is_edit ? 'Edit Page' : 'Add New Page'; ?></h1>
@@ -12327,6 +12338,36 @@ function sp_render_page_edit(): void {
                             Standard Pages use the content editor below.
                             Other page types display their own specialized content.
                         </p>
+                    </td>
+                </tr>
+
+                <!-- Page Builder widgets — shown only when Page Type is "Page Builder" -->
+                <?php
+                // WHY: The builder UI needs to live inside the custom page editor form
+                // so Harold can add/configure widgets without ever seeing WordPress'
+                // native post.php screen. Hidden by default; JS below toggles visibility
+                // based on the Page Type dropdown value.
+                $builder_display = ( 'sp-builder' === $template ) ? '' : 'display:none;';
+                ?>
+                <tr id="sp-builder-row" style="<?php echo $builder_display; ?>">
+                    <th scope="row">Page Builder</th>
+                    <td>
+                        <?php
+                        // WHY: The builder nonce is separate from the page nonce because
+                        // save_post_page (native WP) and sp_handle_page_save (custom editor)
+                        // both need to verify it independently.
+                        wp_nonce_field( 'sp_page_builder_save', 'sp_page_builder_nonce' );
+
+                        if ( $is_edit && $post ) {
+                            // Existing page — render the full builder UI with saved widgets
+                            sp_render_builder_ui( $post );
+                        } else {
+                            // New page — can't render widgets until the page exists.
+                            // Harold picks the type, creates the page, then edits it
+                            // to add widgets. This avoids orphaned widget data.
+                            echo '<p class="description">Save this page first, then edit it to add widgets.</p>';
+                        }
+                        ?>
                     </td>
                 </tr>
 
@@ -12396,6 +12437,29 @@ function sp_render_page_edit(): void {
             </p>
         </form>
     </div>
+
+    <?php
+    // WHY: Toggle the builder row visibility when Harold changes the Page Type
+    // dropdown. If it's "sp-builder", show the builder; otherwise hide it.
+    // This runs on both page load (in case we're editing an existing builder
+    // page) and on change events.
+    ?>
+    <script>
+    (function() {
+        var sel = document.getElementById('page_type');
+        var row = document.getElementById('sp-builder-row');
+        if (!sel || !row) return;
+
+        function toggleBuilder() {
+            row.style.display = (sel.value === 'sp-builder') ? '' : 'none';
+        }
+
+        sel.addEventListener('change', toggleBuilder);
+        // Initial state is already set via PHP $builder_display, but run once
+        // in case browser auto-fills a cached form value on back-navigation.
+        toggleBuilder();
+    })();
+    </script>
     <?php
 }
 
@@ -12480,6 +12544,37 @@ function sp_handle_page_save(): void {
         update_post_meta( $saved_id, '_wp_page_template', $template );
     } else {
         delete_post_meta( $saved_id, '_wp_page_template' );
+    }
+
+    // --- Save Page Builder widgets (if applicable) ---
+    // WHY: When the page type is "Page Builder" and the builder nonce is present,
+    // save the widget data to post meta. This mirrors the save_post_page hook
+    // used by the native WP meta box, but works within our custom editor flow.
+    // If the page type is NOT "Page Builder", clean up any orphaned widget data
+    // so switching away from builder doesn't leave stale widgets behind.
+    if ( 'sp-builder' === $template
+         && isset( $_POST['sp_page_builder_nonce'] )
+         && wp_verify_nonce( $_POST['sp_page_builder_nonce'], 'sp_page_builder_save' )
+    ) {
+        $registry    = sp_get_widget_registry();
+        $raw_widgets = $_POST['sp_widgets'] ?? [];
+        $clean       = [];
+
+        foreach ( $raw_widgets as $w ) {
+            $type = sanitize_key( $w['type'] ?? '' );
+            if ( ! isset( $registry[ $type ] ) ) continue;
+
+            $s       = $w['settings'] ?? [];
+            $clean[] = [
+                'type'     => $type,
+                'settings' => sp_sanitize_builder_widget( $type, $s ),
+            ];
+        }
+
+        update_post_meta( $saved_id, '_sp_page_widgets', $clean );
+    } elseif ( 'sp-builder' !== $template ) {
+        // Not a builder page — remove widget meta if it exists
+        delete_post_meta( $saved_id, '_sp_page_widgets' );
     }
 
     wp_redirect( admin_url( 'admin.php?page=sp-pages&saved=1' ) );
@@ -15296,6 +15391,24 @@ function sp_render_builder_meta_box( WP_Post $post ): void {
         return;
     }
 
+    // WHY: The builder UI is shared between the native WP meta box and the
+    // custom SocietyPress page editor. Extracted into sp_render_builder_ui()
+    // so both screens get identical markup without duplicating ~100 lines.
+    sp_render_builder_ui( $post );
+}
+
+
+/**
+ * Render the Page Builder widget list, picker, and templates.
+ *
+ * WHY: This is the shared "guts" of the builder UI. Called from the native
+ * WordPress meta box (sp_render_builder_meta_box) AND from the custom
+ * SocietyPress page editor (sp_render_page_edit). Keeping it in one place
+ * means every builder screen stays in sync — no divergence risk.
+ *
+ * @param WP_Post $post The page being edited.
+ */
+function sp_render_builder_ui( WP_Post $post ): void {
     $widgets  = get_post_meta( $post->ID, '_sp_page_widgets', true );
     $registry = sp_get_widget_registry();
     if ( ! is_array( $widgets ) ) {
@@ -16022,22 +16135,50 @@ function sp_builder_fields_hero_slider( $index, array $settings ): void {
                 <?php foreach ( $slides as $si => $slide ) : ?>
                     <div class="sp-slider-slide-row" style="border:1px solid #c3c4c7; padding:12px; margin-bottom:8px; border-radius:4px; background:#fafafa;">
                         <p>
-                            <label><strong>Image URL</strong></label><br>
+                            <label><strong>Image or Video URL</strong></label><br>
                             <input type="text" name="<?php echo $name; ?>[slides][<?php echo $si; ?>][image]"
                                    value="<?php echo esc_attr( $slide['image'] ?? '' ); ?>" style="width:100%;"
                                    placeholder="Paste image URL or use Media Library">
                             <button type="button" class="button sp-media-select" style="margin-top:4px;">Choose Image</button>
                         </p>
-                        <p>
-                            <label><strong>Heading</strong></label><br>
-                            <input type="text" name="<?php echo $name; ?>[slides][<?php echo $si; ?>][heading]"
-                                   value="<?php echo esc_attr( $slide['heading'] ?? '' ); ?>" style="width:100%;">
-                        </p>
-                        <p>
-                            <label><strong>Subtitle</strong></label><br>
-                            <input type="text" name="<?php echo $name; ?>[slides][<?php echo $si; ?>][subtitle]"
-                                   value="<?php echo esc_attr( $slide['subtitle'] ?? '' ); ?>" style="width:100%;">
-                        </p>
+                        <!-- WHY: Per-line repeater replaces the old single textarea so each
+                             line of overlay text can have its own size, weight, and color.
+                             This lets Harold style slides differently — white text on dark
+                             video, dark text on light images, accent-colored emphasis, etc. -->
+                        <div style="margin-bottom:12px;">
+                            <label><strong>Overlay Text Lines</strong></label>
+                            <div class="sp-slider-lines" data-name="<?php echo esc_attr( $name ); ?>[slides][<?php echo $si; ?>]">
+                                <?php
+                                $lines = $slide['lines'] ?? [];
+                                if ( ! empty( $lines ) && is_array( $lines ) ) :
+                                    foreach ( $lines as $li => $line ) :
+                                ?>
+                                    <div class="sp-slider-line-row" style="display:flex; gap:6px; align-items:center; margin-bottom:6px; flex-wrap:wrap;">
+                                        <input type="text" name="<?php echo $name; ?>[slides][<?php echo $si; ?>][lines][<?php echo $li; ?>][text]"
+                                               value="<?php echo esc_attr( $line['text'] ?? '' ); ?>" style="flex:1; min-width:180px;" placeholder="Line text">
+                                        <select name="<?php echo $name; ?>[slides][<?php echo $si; ?>][lines][<?php echo $li; ?>][size]" style="width:90px;">
+                                            <option value="small" <?php selected( $line['size'] ?? 'medium', 'small' ); ?>>Small</option>
+                                            <option value="medium" <?php selected( $line['size'] ?? 'medium', 'medium' ); ?>>Medium</option>
+                                            <option value="large" <?php selected( $line['size'] ?? 'medium', 'large' ); ?>>Large</option>
+                                        </select>
+                                        <select name="<?php echo $name; ?>[slides][<?php echo $si; ?>][lines][<?php echo $li; ?>][weight]" style="width:80px;">
+                                            <option value="light" <?php selected( $line['weight'] ?? 'light', 'light' ); ?>>Light</option>
+                                            <option value="bold" <?php selected( $line['weight'] ?? 'light', 'bold' ); ?>>Bold</option>
+                                        </select>
+                                        <select name="<?php echo $name; ?>[slides][<?php echo $si; ?>][lines][<?php echo $li; ?>][color]" style="width:85px;">
+                                            <option value="white" <?php selected( $line['color'] ?? 'white', 'white' ); ?>>White</option>
+                                            <option value="dark" <?php selected( $line['color'] ?? 'white', 'dark' ); ?>>Dark</option>
+                                            <option value="accent" <?php selected( $line['color'] ?? 'white', 'accent' ); ?>>Accent</option>
+                                        </select>
+                                        <button type="button" class="button sp-slider-remove-line" style="color:#b32d2e;" title="Remove line">&times;</button>
+                                    </div>
+                                <?php
+                                    endforeach;
+                                endif;
+                                ?>
+                            </div>
+                            <button type="button" class="button sp-slider-add-line" style="margin-top:4px;">+ Add Line</button>
+                        </div>
                         <p>
                             <label><strong>Button Text</strong></label><br>
                             <input type="text" name="<?php echo $name; ?>[slides][<?php echo $si; ?>][btn_text]"
@@ -16055,18 +16196,20 @@ function sp_builder_fields_hero_slider( $index, array $settings ): void {
         <template class="sp-slider-slide-template">
             <div class="sp-slider-slide-row" style="border:1px solid #c3c4c7; padding:12px; margin-bottom:8px; border-radius:4px; background:#fafafa;">
                 <p>
-                    <label><strong>Image URL</strong></label><br>
+                    <label><strong>Image or Video URL</strong></label><br>
                     <input type="text" data-field="image" value="" style="width:100%;" placeholder="Paste image URL or use Media Library">
                     <button type="button" class="button sp-media-select" style="margin-top:4px;">Choose Image</button>
                 </p>
-                <p>
-                    <label><strong>Heading</strong></label><br>
-                    <input type="text" data-field="heading" value="" style="width:100%;">
-                </p>
-                <p>
-                    <label><strong>Subtitle</strong></label><br>
-                    <input type="text" data-field="subtitle" value="" style="width:100%;">
-                </p>
+                <!-- WHY: Lines repeater in the template starts empty — Harold adds
+                     lines after creating the slide. The data-field-group attribute
+                     tells the JS to set name prefixes on child inputs when cloning. -->
+                <div style="margin-bottom:12px;">
+                    <label><strong>Overlay Text Lines</strong></label>
+                    <div class="sp-slider-lines" data-field-group="lines">
+                        <!-- Lines added dynamically via Add Line button -->
+                    </div>
+                    <button type="button" class="button sp-slider-add-line" style="margin-top:4px;">+ Add Line</button>
+                </div>
                 <p>
                     <label><strong>Button Text</strong></label><br>
                     <input type="text" data-field="btn_text" value="" style="width:48%; display:inline-block;" placeholder="e.g., Learn More">
@@ -16076,31 +16219,102 @@ function sp_builder_fields_hero_slider( $index, array $settings ): void {
             </div>
         </template>
 
+        <!-- WHY: Separate template for individual text lines within a slide.
+             Used by both "Add Line" inside existing slides and "Add Line"
+             inside newly-added slides. Kept outside the slide template so
+             the browser doesn't nest <template> tags (some browsers choke). -->
+        <template class="sp-slider-line-template">
+            <div class="sp-slider-line-row" style="display:flex; gap:6px; align-items:center; margin-bottom:6px; flex-wrap:wrap;">
+                <input type="text" data-line-field="text" value="" style="flex:1; min-width:180px;" placeholder="Line text">
+                <select data-line-field="size" style="width:90px;">
+                    <option value="small">Small</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="large">Large</option>
+                </select>
+                <select data-line-field="weight" style="width:80px;">
+                    <option value="light" selected>Light</option>
+                    <option value="bold">Bold</option>
+                </select>
+                <select data-line-field="color" style="width:85px;">
+                    <option value="white" selected>White</option>
+                    <option value="dark">Dark</option>
+                    <option value="accent">Accent</option>
+                </select>
+                <button type="button" class="button sp-slider-remove-line" style="color:#b32d2e;" title="Remove line">&times;</button>
+            </div>
+        </template>
+
         <script>
         (function() {
-            // Add slide
-            document.querySelectorAll('.sp-slider-add-slide').forEach(function(btn) {
-                btn.addEventListener('click', function() {
-                    var container = this.previousElementSibling.previousElementSibling; // .sp-slider-slides (skip <template>)
-                    // Find the template
-                    var tpl = this.parentElement.querySelector('.sp-slider-slide-template');
-                    if (!tpl) return;
-                    var clone = tpl.content.cloneNode(true);
-                    var baseName = container.getAttribute('data-name');
-                    var idx = container.querySelectorAll('.sp-slider-slide-row').length;
-                    // Set proper name attributes
-                    clone.querySelectorAll('[data-field]').forEach(function(input) {
-                        var field = input.getAttribute('data-field');
-                        input.setAttribute('name', baseName + '[slides][' + idx + '][' + field + ']');
-                        input.removeAttribute('data-field');
-                    });
-                    container.appendChild(clone);
+            // WHY: All click handlers use event delegation on document so they
+            // work on hero_slider widgets added dynamically via the builder's
+            // "Add Widget" picker, and on lines/slides added after page load.
+
+            // Add slide — delegated
+            document.addEventListener('click', function(e) {
+                if (!e.target.classList.contains('sp-slider-add-slide')) return;
+                var wrapper   = e.target.closest('.sp-slider-settings');
+                if (!wrapper) return;
+                var container = wrapper.querySelector('.sp-slider-slides');
+                var tpl       = wrapper.querySelector('.sp-slider-slide-template');
+                if (!container || !tpl) return;
+                var clone    = tpl.content.cloneNode(true);
+                var baseName = container.getAttribute('data-name');
+                var idx      = container.querySelectorAll('.sp-slider-slide-row').length;
+                // WHY: Only set names on direct slide-level fields (image, btn_text, btn_url).
+                // Lines inside the slide get their names set by the Add Line handler.
+                clone.querySelectorAll('[data-field]').forEach(function(input) {
+                    var field = input.getAttribute('data-field');
+                    input.setAttribute('name', baseName + '[slides][' + idx + '][' + field + ']');
+                    input.removeAttribute('data-field');
                 });
+                // WHY: The lines container inside a new slide needs its data-name
+                // set so Add Line knows what name prefix to use for line inputs.
+                var linesDiv = clone.querySelector('[data-field-group="lines"]');
+                if (linesDiv) {
+                    linesDiv.setAttribute('data-name', baseName + '[slides][' + idx + ']');
+                    linesDiv.removeAttribute('data-field-group');
+                }
+                container.appendChild(clone);
             });
-            // Remove slide
+
+            // Remove slide — delegated
             document.addEventListener('click', function(e) {
                 if (e.target.classList.contains('sp-slider-remove-slide')) {
                     e.target.closest('.sp-slider-slide-row').remove();
+                }
+            });
+
+            // Add line — delegated
+            // WHY: Finds the lines container relative to the clicked button,
+            // clones the line template, and assigns name attributes based on
+            // the container's data-name and the current line count.
+            document.addEventListener('click', function(e) {
+                if (!e.target.classList.contains('sp-slider-add-line')) return;
+                var wrapper    = e.target.closest('.sp-slider-settings');
+                var linesDiv   = e.target.previousElementSibling;
+                if (!linesDiv || !linesDiv.classList.contains('sp-slider-lines')) {
+                    // WHY: fallback — button might be a sibling of the container
+                    linesDiv = e.target.parentElement.querySelector('.sp-slider-lines');
+                }
+                if (!wrapper || !linesDiv) return;
+                var lineTpl = wrapper.querySelector('.sp-slider-line-template');
+                if (!lineTpl) return;
+                var clone    = lineTpl.content.cloneNode(true);
+                var baseName = linesDiv.getAttribute('data-name');
+                var lineIdx  = linesDiv.querySelectorAll('.sp-slider-line-row').length;
+                clone.querySelectorAll('[data-line-field]').forEach(function(input) {
+                    var field = input.getAttribute('data-line-field');
+                    input.setAttribute('name', baseName + '[lines][' + lineIdx + '][' + field + ']');
+                    input.removeAttribute('data-line-field');
+                });
+                linesDiv.appendChild(clone);
+            });
+
+            // Remove line — delegated
+            document.addEventListener('click', function(e) {
+                if (e.target.classList.contains('sp-slider-remove-line')) {
+                    e.target.closest('.sp-slider-line-row').remove();
                 }
             });
         })();
@@ -16282,6 +16496,59 @@ function sp_sanitize_builder_widget( string $type, array $settings ): array {
                 'login_required' => ! empty( $settings['login_required'] ),
             ];
 
+        case 'hero_slider':
+            // WHY: Each slide has image URL, heading, subtitle, and optional CTA
+            // button. We sanitize the slides array individually to prevent XSS
+            // and ensure all URLs are safe. Height and interval are clamped to
+            // reasonable ranges so Harold can't accidentally break the layout.
+            $slides_raw = $settings['slides'] ?? [];
+            $slides     = [];
+            // WHY: Valid values for per-line style dropdowns. Anything outside
+            // these lists defaults to safe values, so Harold can't inject
+            // arbitrary CSS through the size/weight/color fields.
+            $valid_sizes   = [ 'small', 'medium', 'large' ];
+            $valid_weights = [ 'light', 'bold' ];
+            $valid_colors  = [ 'white', 'dark', 'accent' ];
+            if ( is_array( $slides_raw ) ) {
+                foreach ( $slides_raw as $slide ) {
+                    if ( ! is_array( $slide ) ) continue;
+                    // WHY: Per-line repeater data replaces the old overlay_text
+                    // textarea. Each line has text + size/weight/color dropdowns.
+                    $lines_raw = $slide['lines'] ?? [];
+                    $lines     = [];
+                    if ( is_array( $lines_raw ) ) {
+                        foreach ( $lines_raw as $line ) {
+                            if ( ! is_array( $line ) ) continue;
+                            $text = sanitize_text_field( $line['text'] ?? '' );
+                            if ( '' === $text ) continue; // WHY: skip blank lines
+                            $lines[] = [
+                                'text'   => $text,
+                                'size'   => in_array( $line['size'] ?? 'medium', $valid_sizes, true ) ? $line['size'] : 'medium',
+                                'weight' => in_array( $line['weight'] ?? 'light', $valid_weights, true ) ? $line['weight'] : 'light',
+                                'color'  => in_array( $line['color'] ?? 'white', $valid_colors, true ) ? $line['color'] : 'white',
+                            ];
+                        }
+                    }
+                    $slides[] = [
+                        'image'    => esc_url_raw( $slide['image'] ?? '' ),
+                        'lines'    => $lines,
+                        'btn_text' => sanitize_text_field( $slide['btn_text'] ?? '' ),
+                        'btn_url'  => esc_url_raw( $slide['btn_url'] ?? '' ),
+                    ];
+                }
+            }
+            $height = absint( $settings['height'] ?? 400 );
+            $height = max( 200, min( 800, $height ) );
+            $interval = absint( $settings['interval'] ?? 5 );
+            $interval = max( 2, min( 15, $interval ) );
+            return [
+                'height'   => $height,
+                'autoplay' => ! empty( $settings['autoplay'] ),
+                'interval' => $interval,
+                'overlay'  => ! empty( $settings['overlay'] ),
+                'slides'   => $slides,
+            ];
+
         default:
             return [];
     }
@@ -16299,9 +16566,15 @@ function sp_sanitize_builder_widget( string $type, array $settings ): array {
  * Image widget and wp_editor for the Rich Text widget.
  */
 add_action( 'admin_enqueue_scripts', function ( $hook ) {
-    if ( ! in_array( $hook, [ 'post.php', 'post-new.php' ], true ) ) return;
-    $screen = get_current_screen();
-    if ( ! $screen || 'page' !== $screen->post_type ) return;
+    // WHY: The builder needs wp_enqueue_media() and wp_enqueue_editor() for the
+    // Image widget and Rich Text widget. Originally only loaded on native WP
+    // page screens; now also loads on our custom SocietyPress page editor
+    // (admin_page_sp-page-edit) so the builder works there too.
+    $is_native_page = in_array( $hook, [ 'post.php', 'post-new.php' ], true )
+                      && ( $s = get_current_screen() ) && 'page' === $s->post_type;
+    $is_sp_editor   = ( 'admin_page_sp-page-edit' === $hook );
+
+    if ( ! $is_native_page && ! $is_sp_editor ) return;
 
     wp_enqueue_media();
     wp_enqueue_editor();
@@ -16314,7 +16587,11 @@ add_action( 'admin_enqueue_scripts', function ( $hook ) {
 
 add_action( 'admin_head', function () {
     $screen = get_current_screen();
-    if ( ! $screen || 'page' !== $screen->id ) return;
+    if ( ! $screen ) return;
+    // WHY: Builder CSS needs to load on the native WP page editor AND the
+    // custom SocietyPress page editor so the widget cards, picker modal,
+    // and layout all render correctly in both contexts.
+    if ( 'page' !== $screen->id && 'admin_page_sp-page-edit' !== $screen->id ) return;
     ?>
     <style id="sp-builder-admin-css">
         .sp-builder-card { border: 1px solid #c3c4c7; border-radius: 4px; margin-bottom: 10px; background: #fff; }
@@ -16342,7 +16619,10 @@ add_action( 'admin_head', function () {
 
 add_action( 'admin_footer', function () {
     $screen = get_current_screen();
-    if ( ! $screen || 'page' !== $screen->id ) return;
+    if ( ! $screen ) return;
+    // WHY: Builder JS (widget add/remove/reorder, picker, media library) must
+    // run on both the native WP page editor and the custom SocietyPress editor.
+    if ( 'page' !== $screen->id && 'admin_page_sp-page-edit' !== $screen->id ) return;
     ?>
     <script id="sp-builder-admin-js">
     jQuery(function($) {
@@ -16444,6 +16724,30 @@ add_action( 'admin_footer', function () {
             $field.find('.sp-builder-image-select').text('Select Image');
             $(this).hide();
         });
+
+        // Media library for Hero Slider slide images
+        // WHY: Slide image fields store a URL (not an attachment ID) because the
+        // slider renderer uses the URL directly via esc_url(). We open the WP
+        // media frame, grab the full-size URL from the selected attachment, and
+        // write it into the text input that's the sibling of the clicked button.
+        // Delegation on $(document) because slider cards are cloned dynamically.
+        $(document).on('click', '.sp-media-select', function(e) {
+            e.preventDefault();
+            var $btn   = $(this);
+            var $input = $btn.closest('p').find('input[type="text"]');
+            var frame  = wp.media({
+                title: 'Choose Slide Media',
+                button: { text: 'Use This' },
+                multiple: false,
+                library: { type: ['image', 'video'] }
+            });
+            frame.on('select', function() {
+                var att = frame.state().get('selection').first().toJSON();
+                // Use the full-size URL for the slider — it renders at full width
+                $input.val(att.url);
+            });
+            frame.open();
+        });
     });
     </script>
     <?php
@@ -16489,8 +16793,11 @@ add_filter( 'template_include', function ( $template ) {
     echo '<div class="site-content"><div class="content-area-full">';
     echo '<article class="page type-page">';
 
-    // Page title
-    echo '<header class="entry-header"><h1 class="entry-title">' . get_the_title() . '</h1></header>';
+    // Page title — skip on the front page because "Home" as a big heading
+    // above a hero slider looks wrong. Interior builder pages still get it.
+    if ( ! is_front_page() ) {
+        echo '<header class="entry-header"><h1 class="entry-title">' . get_the_title() . '</h1></header>';
+    }
 
     // Render widgets
     echo '<div class="entry-content">';
@@ -29062,43 +29369,104 @@ function sp_render_builder_widget_hero_slider( array $s ): void {
 
     ?>
     <style>
+        /* WHY the viewport-width trick: The slider sits inside nested content
+           wrappers that cap the width. This breaks out to full viewport width
+           regardless of how many max-width containers wrap it. */
+        .sp-widget--hero_slider { width: 100vw; position: relative; left: 50%; right: 50%; margin-left: -50vw; margin-right: -50vw; margin-top: -130px; }
         .sp-hero-slider { position: relative; overflow: hidden; width: 100%; }
         .sp-hero-slider .sp-slide { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 0.8s ease; background-size: cover; background-position: center; display: flex; align-items: center; justify-content: center; }
         .sp-hero-slider .sp-slide.active { opacity: 1; position: relative; }
+        .sp-hero-slider .sp-slide video.sp-slide-video { position: absolute; top: 50%; left: 50%; min-width: 100%; min-height: 100%; width: auto; height: auto; transform: translate(-50%, -50%); object-fit: cover; z-index: 0; }
         .sp-hero-slider .sp-slide-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-        .sp-hero-slider .sp-slide-content { position: relative; z-index: 2; text-align: center; color: #fff; padding: 20px; max-width: 800px; }
-        .sp-hero-slider .sp-slide-content h2 { font-size: 36px; margin: 0 0 12px; text-shadow: 0 2px 8px rgba(0,0,0,0.4); }
-        .sp-hero-slider .sp-slide-content p { font-size: 18px; margin: 0 0 20px; text-shadow: 0 1px 4px rgba(0,0,0,0.3); }
+        .sp-hero-slider .sp-slide-content { position: relative; z-index: 2; text-align: center; color: #fff; padding: 20px; max-width: 900px; }
+        /* WHY: Per-line styling is now inline on each .sp-slide-line element
+           (font-size, font-weight, color). This rule just handles margin and
+           text-shadow — the shared bits that don't vary per line. */
+        .sp-hero-slider .sp-slide-content .sp-slide-line { margin: 0 0 6px; text-shadow: 0 2px 8px rgba(0,0,0,0.5); }
         .sp-hero-slider .sp-slide-btn { display: inline-block; padding: 12px 28px; background: var(--sp-color-accent, #667eea); color: #fff; text-decoration: none; border-radius: 4px; font-size: 16px; font-weight: 600; transition: background 0.2s; }
         .sp-hero-slider .sp-slide-btn:hover { background: var(--sp-color-primary, #2271b1); }
-        .sp-slider-dots { display: flex; justify-content: center; gap: 8px; margin-top: 12px; }
-        .sp-slider-dot { width: 12px; height: 12px; border-radius: 50%; background: #c3c4c7; border: none; cursor: pointer; padding: 0; }
-        .sp-slider-dot.active { background: var(--sp-color-primary, #2271b1); }
-        .sp-slider-arrows { position: absolute; top: 50%; width: 100%; display: flex; justify-content: space-between; transform: translateY(-50%); z-index: 3; padding: 0 12px; box-sizing: border-box; pointer-events: none; }
-        .sp-slider-arrow { pointer-events: auto; background: rgba(0,0,0,0.4); color: #fff; border: none; font-size: 24px; padding: 8px 14px; cursor: pointer; border-radius: 4px; }
-        .sp-slider-arrow:hover { background: rgba(0,0,0,0.7); }
+        .sp-slider-dots { display: none; }
+        .sp-slider-arrows { display: none; }
+        /* WHY: Mobile sizes are applied via a CSS class on each line element
+           rather than inline styles, so the media query can override them.
+           .sp-line-small = 16px, .sp-line-medium = 22px, .sp-line-large = 30px */
         @media (max-width: 768px) {
-            .sp-hero-slider .sp-slide-content h2 { font-size: 24px; }
-            .sp-hero-slider .sp-slide-content p { font-size: 15px; }
+            .sp-hero-slider .sp-slide-content .sp-line-small  { font-size: 16px !important; }
+            .sp-hero-slider .sp-slide-content .sp-line-medium { font-size: 22px !important; }
+            .sp-hero-slider .sp-slide-content .sp-line-large  { font-size: 30px !important; }
         }
     </style>
 
     <div class="sp-hero-slider" id="<?php echo esc_attr( $uid ); ?>" style="height: <?php echo $height; ?>px;">
         <?php foreach ( $slides as $i => $slide ) :
-            $img = esc_url( $slide['image'] ?? '' );
+            $media_url = esc_url( $slide['image'] ?? '' );
+            // WHY: Detect video files so we can render a <video> element instead
+            // of a CSS background-image. Videos need autoplay + muted + loop to
+            // behave like a background — muted is required by browsers for
+            // autoplay to work without user interaction.
+            $is_video  = (bool) preg_match( '/\.(mp4|webm|ogg)(\?|$)/i', $media_url );
         ?>
             <div class="sp-slide <?php echo $i === 0 ? 'active' : ''; ?>"
-                 style="background-image: url('<?php echo $img; ?>');">
+                 <?php if ( ! $is_video && $media_url ) : ?>
+                     style="background-image: url('<?php echo $media_url; ?>');"
+                 <?php endif; ?>>
+                <?php if ( $is_video && $media_url ) : ?>
+                    <video class="sp-slide-video" autoplay muted loop playsinline>
+                        <source src="<?php echo $media_url; ?>" type="video/<?php echo esc_attr( pathinfo( parse_url( $media_url, PHP_URL_PATH ), PATHINFO_EXTENSION ) ); ?>">
+                    </video>
+                <?php endif; ?>
                 <?php if ( $overlay ) : ?>
                     <div class="sp-slide-overlay" style="background: rgba(0,0,0,0.35);"></div>
                 <?php endif; ?>
                 <div class="sp-slide-content">
-                    <?php if ( ! empty( $slide['heading'] ) ) : ?>
-                        <h2><?php echo esc_html( $slide['heading'] ); ?></h2>
-                    <?php endif; ?>
-                    <?php if ( ! empty( $slide['subtitle'] ) ) : ?>
-                        <p><?php echo esc_html( $slide['subtitle'] ); ?></p>
-                    <?php endif; ?>
+                    <?php
+                    // WHY: Per-line repeater data provides independent styling
+                    // for each text line (size, weight, color). Falls back to
+                    // legacy overlay_text format for slides saved before this
+                    // change — auto-migrates on next save.
+                    $slide_lines = $slide['lines'] ?? [];
+
+                    // WHY: Legacy migration — if old overlay_text exists but no
+                    // lines array, convert it. Line 1 → large/bold, line 2+ →
+                    // medium/light, line 3+ → small/light. All white by default.
+                    if ( empty( $slide_lines ) && ! empty( $slide['overlay_text'] ) ) {
+                        $raw = array_filter( array_map( 'trim', explode( "\n", $slide['overlay_text'] ) ), 'strlen' );
+                        $slide_lines = [];
+                        foreach ( array_values( $raw ) as $li => $text ) {
+                            if ( $li === 0 ) {
+                                $slide_lines[] = [ 'text' => $text, 'size' => 'large',  'weight' => 'bold',  'color' => 'white' ];
+                            } elseif ( $li === 1 ) {
+                                $slide_lines[] = [ 'text' => $text, 'size' => 'medium', 'weight' => 'light', 'color' => 'white' ];
+                            } else {
+                                $slide_lines[] = [ 'text' => $text, 'size' => 'small',  'weight' => 'light', 'color' => 'white' ];
+                            }
+                        }
+                    }
+
+                    // WHY: Size/weight/color maps translate dropdown values to
+                    // actual CSS values. Using a class for size so the media
+                    // query can override it on mobile (inline styles beat MQs).
+                    $size_map   = [ 'small' => '22px', 'medium' => '30px', 'large' => '44px' ];
+                    $weight_map = [ 'light' => '300', 'bold' => '700' ];
+                    $color_map  = [ 'white' => '#fff', 'dark' => '#1a1a1a', 'accent' => 'var(--sp-color-accent)' ];
+
+                    foreach ( $slide_lines as $line ) {
+                        $text   = esc_html( $line['text'] ?? '' );
+                        if ( '' === $text ) continue;
+                        $sz     = $size_map[ $line['size'] ?? 'medium' ] ?? '30px';
+                        $wt     = $weight_map[ $line['weight'] ?? 'light' ] ?? '300';
+                        $cl     = $color_map[ $line['color'] ?? 'white' ] ?? '#fff';
+                        $szClass = 'sp-line-' . ( $line['size'] ?? 'medium' );
+                        printf(
+                            '<p class="sp-slide-line %s" style="font-size:%s; font-weight:%s; color:%s;">%s</p>',
+                            esc_attr( $szClass ),
+                            esc_attr( $sz ),
+                            esc_attr( $wt ),
+                            esc_attr( $cl ),
+                            $text
+                        );
+                    }
+                    ?>
                     <?php if ( ! empty( $slide['btn_text'] ) && ! empty( $slide['btn_url'] ) ) : ?>
                         <a href="<?php echo esc_url( $slide['btn_url'] ); ?>" class="sp-slide-btn"><?php echo esc_html( $slide['btn_text'] ); ?></a>
                     <?php endif; ?>

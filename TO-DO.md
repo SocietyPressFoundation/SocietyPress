@@ -25,13 +25,14 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 - [x] Member re-import: 385 members imported with all new fields populated
 - [x] the society child theme: Front page, 3-level nav, hamburger, footer, hero slider
 - [x] Resource Links: CSV import (EasyNetSites format), auto-category creation, frontend directory with search + category dropdown, unified search integration
+- [x] Hero slider: Per-line text styling (size/weight/color per line, legacy migration)
+- [x] the society child theme: Footer restyled to match reference site (2-column + contact bar + logo strip)
 
 ## In Progress
 
 - [ ] the society child theme: Header/nav matching reference site
   - Logo size (~132px, needs slight bump)
   - Excess whitespace below header (body padding-top)
-  - Rob may be changing reference site footer — keep an eye on it
 
 ---
 

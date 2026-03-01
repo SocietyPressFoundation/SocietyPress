@@ -7,7 +7,7 @@ Description: Child theme for the San Antonio Genealogical & Historical Society.
              Applies SAGHS branding — burgundy/cream palette, Poppins font,
              hero slider, 3-level nav, and custom front-page layout — on top
              of the SocietyPress parent theme.
-Version: 0.03d
+Version: 0.04d
 Template: societypress
 Requires at least: 6.0
 Tested up to: 6.7
@@ -632,8 +632,10 @@ body {
    A burgundy accent bar tops it, and a bottom bar has copyright + SP credit.
    ============================================================================ */
 
+/* WHY white background instead of cream: The reference site uses a clean
+   white footer, not cream. Cream is reserved for the page body. */
 .site-footer {
-    background: var(--saghs-cream);
+    background: #fff;
     color: var(--saghs-dark);
     padding: 0;
     text-align: left;
@@ -644,12 +646,15 @@ body {
     background: var(--saghs-burgundy);
 }
 
+/* WHY two-column layout: The reference site puts org identity on the left
+   (roughly 60% width) and a short link list on the right (40%). No third
+   column — contact details live in the bottom bar instead. */
 .saghs-footer-inner {
     max-width: var(--sp-content-width, 1100px);
     margin: 0 auto;
     padding: 40px 20px;
     display: flex;
-    gap: 40px;
+    gap: 60px;
 }
 
 /* Each footer column shares base styling */
@@ -659,9 +664,9 @@ body {
 
 .saghs-footer-col h3 {
     font-family: 'Poppins', sans-serif;
-    color: var(--saghs-burgundy);
-    font-size: 1.1rem;
-    font-weight: 600;
+    color: var(--saghs-dark);
+    font-size: 1.2rem;
+    font-weight: 700;
     margin-bottom: 16px;
 }
 
@@ -682,12 +687,16 @@ body {
     text-decoration: underline;
 }
 
-/* Mission column — slightly wider to accommodate the longer text */
+/* Mission column — wider to accommodate the description paragraph */
 .saghs-footer-mission {
-    flex: 1.3;
+    flex: 1.5;
 }
 
-/* Quick links list */
+/* Quick links list — no heading, just bare links matching the reference */
+.saghs-footer-links {
+    padding-top: 4px;
+}
+
 .saghs-footer-links ul {
     list-style: none;
     padding: 0;
@@ -699,35 +708,79 @@ body {
 }
 
 .saghs-footer-links a {
-    color: var(--saghs-dark);
+    color: var(--saghs-burgundy);
     font-size: 0.9rem;
-    font-weight: 500;
+    font-weight: 400;
 }
 
 .saghs-footer-links a:hover {
     color: var(--saghs-terracotta);
 }
 
-/* Bottom bar — copyright + "Powered by SocietyPress" */
+/* Bottom bar — contact info on the left, copyright stacked on the right.
+   WHY this layout: The reference site puts address/phone/email in a single
+   line on the left and stacks copyright + "Powered by" on the right. */
 .saghs-footer-bottom {
-    border-top: 1px solid rgba(99, 34, 32, 0.2);
+    border-top: 1px solid #e5e5e5;
     max-width: var(--sp-content-width, 1100px);
     margin: 0 auto;
-    padding: 16px 20px;
+    padding: 20px 20px;
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    font-size: 0.8rem;
-    color: var(--saghs-taupe);
+    align-items: flex-start;
+    font-size: 0.85rem;
+    color: var(--saghs-dark);
 }
 
-.saghs-footer-bottom a {
+.saghs-footer-contact-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.saghs-footer-contact-info a {
+    color: var(--saghs-dark);
+    text-decoration: none;
+}
+
+.saghs-footer-contact-info a:hover {
+    color: var(--saghs-terracotta);
+}
+
+/* WHY hidden separator: Originally planned inline separators between
+   address/phone/email, but the reference stacks them vertically. The
+   separator class is kept in the markup but hidden in case we want to
+   switch to an inline layout later. */
+.saghs-footer-separator {
+    display: none;
+}
+
+.saghs-footer-copyright {
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.saghs-footer-copyright a {
     color: var(--saghs-burgundy);
     text-decoration: none;
 }
 
-.saghs-footer-bottom a:hover {
+.saghs-footer-copyright a:hover {
     color: var(--saghs-terracotta);
+}
+
+/* Logo strip — repeats the society logo at the very bottom of the page */
+.saghs-footer-logo-strip {
+    max-width: var(--sp-content-width, 1100px);
+    margin: 0 auto;
+    padding: 20px 20px 30px;
+}
+
+.saghs-footer-logo-strip img {
+    max-height: 80px;
+    width: auto;
 }
 
 
@@ -923,7 +976,7 @@ body {
         grid-template-columns: repeat(2, 1fr);
     }
 
-    /* Footer goes 2-column on tablet — mission spans full width, links + contact side by side */
+    /* Footer stacks on tablet — mission full width, links below */
     .saghs-footer-inner {
         flex-wrap: wrap;
         gap: 30px;
@@ -933,8 +986,7 @@ body {
         flex: 1 1 100%;
     }
 
-    .saghs-footer-links,
-    .saghs-footer-contact {
+    .saghs-footer-links {
         flex: 1;
     }
 
@@ -1092,14 +1144,17 @@ body {
     }
 
     .saghs-footer-mission,
-    .saghs-footer-links,
-    .saghs-footer-contact {
+    .saghs-footer-links {
         flex: none;
     }
 
     .saghs-footer-bottom {
         flex-direction: column;
-        gap: 8px;
+        gap: 12px;
+        text-align: center;
+    }
+
+    .saghs-footer-copyright {
         text-align: center;
     }
 }

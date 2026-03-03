@@ -59,7 +59,7 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 - [ ] Time slots: Multiple slots per event with individual capacity limits
 - [ ] Waitlist: Auto-promotion when cancellation occurs
 - [ ] Payment tracking: Fee amounts and payment status per registration
-- [ ] Calendar shortcode: [societypress_calendar] month-grid with AJAX navigation, color-coded by category
+- [x] Calendar: Page Builder widget + standalone page template, shared renderer, category filter, month navigation
 - [ ] Event change notifications: Email registrants when date/time/location changes
 - [ ] "Notice only" events: Appear on calendar but no detail page or registration (board meetings, holidays)
 
@@ -145,6 +145,16 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 
 - [ ] Documentation pages (waiting until SP features are more complete)
 - [ ] Feedback form (structured: bug report / feature request / general question) — future companion plugin
+
+## AI — Not Started
+
+- [ ] AI-powered Q&A: Let members (or the public) ask natural-language questions and get answers drawn from society data
+  - Could cover library catalog, events, newsletters, resource links, genealogical records, FAQs, etc.
+  - Needs clear scoping: what data sources feed the AI, what stays private vs public
+  - Consider embeddings + vector search vs API-based retrieval-augmented generation (RAG)
+  - Privacy implications: member data must NEVER leak into AI responses unless explicitly intended
+  - Could start simple (FAQ-style knowledge base) and expand to full RAG later
+  - Admin controls: toggle on/off, choose which data sources are indexed, review/audit responses
 
 ## Integrations — Not Started
 

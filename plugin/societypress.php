@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     0.23d
+ * Version:     0.25d
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '0.24d' );
+define( 'SOCIETYPRESS_VERSION', '0.25d' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -11990,6 +11990,7 @@ function sp_get_page_type_labels(): array {
         'sp-builder'         => 'Page Builder',
         'sp-newsletter-archive' => 'Newsletter Archive',
         'sp-search'          => 'Site Search',
+        'sp-calendar'        => 'Calendar',
     ];
 }
 
@@ -15243,6 +15244,12 @@ function sp_get_widget_registry(): array {
             'icon'        => 'calendar-alt',
             'category'    => 'content',
         ],
+        'event_calendar' => [
+            'label'       => 'Events Calendar',
+            'description' => 'Monthly calendar grid with event pills, month navigation, and mobile day-tap.',
+            'icon'        => 'calendar',
+            'category'    => 'content',
+        ],
         // --- New widgets (v0.16d) ---
         'community_link' => [
             'label'       => 'Community Link',
@@ -15868,6 +15875,48 @@ function sp_builder_fields_upcoming_events( $index, array $settings ): void {
 
 
 /**
+ * Events Calendar widget settings.
+ *
+ * WHY: Lets the admin drop a full monthly calendar grid into any Page Builder
+ *      page. The only setting is an optional category filter — everything else
+ *      (start day, colors, mobile behavior) comes from the global settings
+ *      and the events data itself. Keeping it simple because the calendar
+ *      already handles its own month navigation via query params.
+ */
+function sp_builder_fields_event_calendar( $index, array $settings ): void {
+    global $wpdb;
+    $category_id = $settings['category_id'] ?? '';
+    $heading     = $settings['heading'] ?? '';
+
+    // Fetch active event categories for the dropdown
+    $categories = $wpdb->get_results(
+        "SELECT id, name FROM {$wpdb->prefix}sp_event_categories WHERE active = 1 ORDER BY sort_order, name"
+    );
+    ?>
+    <div class="sp-builder-field">
+        <p class="description"><?php echo esc_html__( 'Displays a monthly calendar grid with color-coded event pills, month navigation, and mobile day-tap.', 'societypress' ); ?></p>
+
+        <label style="display:block; font-weight:600; margin-bottom:4px;"><?php echo esc_html__( 'Heading (optional)', 'societypress' ); ?></label>
+        <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][heading]"
+               value="<?php echo esc_attr( $heading ); ?>"
+               placeholder="<?php echo esc_attr__( 'Events Calendar', 'societypress' ); ?>"
+               style="width:100%;">
+
+        <label style="display:block; font-weight:600; margin:12px 0 4px;"><?php echo esc_html__( 'Filter by category', 'societypress' ); ?></label>
+        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][category_id]">
+            <option value=""><?php echo esc_html__( 'All Categories', 'societypress' ); ?></option>
+            <?php foreach ( $categories as $cat ) : ?>
+                <option value="<?php echo esc_attr( $cat->id ); ?>" <?php selected( $category_id, $cat->id ); ?>>
+                    <?php echo esc_html( $cat->name ); ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+    </div>
+    <?php
+}
+
+
+/**
  * Community Link widget settings.
  *
  * WHY: Lets the admin customise the button label, description text, and style
@@ -16436,6 +16485,12 @@ function sp_sanitize_builder_widget( string $type, array $settings ): array {
                 'show_date'     => ! empty( $settings['show_date'] ) ? 1 : 0,
                 'show_time'     => ! empty( $settings['show_time'] ) ? 1 : 0,
                 'show_location' => ! empty( $settings['show_location'] ) ? 1 : 0,
+            ];
+
+        case 'event_calendar':
+            return [
+                'category_id' => absint( $settings['category_id'] ?? 0 ),
+                'heading'     => sanitize_text_field( $settings['heading'] ?? '' ),
             ];
 
         case 'community_link':
@@ -21978,6 +22033,320 @@ add_filter( 'template_include', function ( $template ) {
 
 
 // ============================================================================
+// EVENTS — STANDALONE CALENDAR PAGE TEMPLATE
+// ============================================================================
+
+/**
+ * Register the "Calendar" page template.
+ *
+ * WHY: Harold might want a dedicated calendar page separate from the events
+ *      listing — no list view, no search/filter bar, just a clean monthly
+ *      calendar grid. This shows up in the Template dropdown in the page editor.
+ */
+add_filter( 'theme_page_templates', function ( $templates ) {
+    $templates['sp-calendar'] = __( 'Calendar', 'societypress' );
+    return $templates;
+});
+
+/**
+ * Register sp_cal_cat query var for the calendar category filter.
+ *
+ * WHY: The standalone calendar template has a category filter dropdown that
+ *      uses ?sp_cal_cat=ID in the URL. WordPress strips unknown query vars,
+ *      so we need to register it.
+ */
+add_filter( 'query_vars', function ( $vars ) {
+    $vars[] = 'sp_cal_cat';
+    return $vars;
+});
+
+/**
+ * Intercept the template load for the Calendar page and render the grid.
+ *
+ * WHY: Since sp-calendar isn't a physical theme file, WordPress would 404.
+ *      We catch it here, render the calendar with the theme's header/footer,
+ *      and return a blank template so WordPress doesn't try to load anything.
+ */
+add_filter( 'template_include', function ( $template ) {
+
+    if ( ! is_page() || get_page_template_slug() !== 'sp-calendar' ) {
+        return $template;
+    }
+
+    // Output calendar CSS and queue JS for footer
+    add_action( 'wp_head', 'sp_events_calendar_styles' );
+    add_action( 'wp_footer', 'sp_events_calendar_scripts', 50 );
+
+    get_header();
+
+    global $wpdb;
+    $base_url = get_permalink();
+    $page_title = get_the_title();
+
+    // Category filter from query param
+    $cat_filter = absint( get_query_var( 'sp_cal_cat', 0 ) );
+
+    // Fetch active event categories for the filter dropdown
+    $categories = $wpdb->get_results(
+        "SELECT id, name FROM {$wpdb->prefix}sp_event_categories WHERE active = 1 ORDER BY sort_order, name"
+    );
+
+    echo '<div class="site-content"><div class="content-area-full" style="max-width:var(--sp-content-width,1100px); margin:0 auto; padding:40px 20px;">';
+
+    // Page heading
+    echo '<h1 style="margin:0 0 24px; font-size:28px; font-weight:700; color:#1d2327;">'
+         . esc_html( $page_title ) . '</h1>';
+
+    // Category filter bar — only show if there are categories to filter by
+    if ( ! empty( $categories ) ) {
+        echo '<form method="get" action="' . esc_url( $base_url ) . '" style="margin-bottom:20px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">';
+
+        // Preserve the current month if set
+        $current_cal_month = isset( $_GET['sp_cal_month'] ) ? sanitize_text_field( $_GET['sp_cal_month'] ) : '';
+        if ( $current_cal_month && preg_match( '/^\d{4}-\d{2}$/', $current_cal_month ) ) {
+            echo '<input type="hidden" name="sp_cal_month" value="' . esc_attr( $current_cal_month ) . '">';
+        }
+
+        echo '<select name="sp_cal_cat" style="padding:8px 12px; border:1px solid #ddd; border-radius:6px; font-size:14px;">';
+        echo '<option value="0">' . esc_html__( 'All Categories', 'societypress' ) . '</option>';
+        foreach ( $categories as $cat ) {
+            echo '<option value="' . esc_attr( $cat->id ) . '"' . selected( $cat_filter, (int) $cat->id, false ) . '>'
+                 . esc_html( $cat->name ) . '</option>';
+        }
+        echo '</select>';
+        echo '<button type="submit" style="padding:8px 16px; background:var(--sp-color-primary,#1e3a5f); color:#fff; border:none; border-radius:6px; font-size:14px; cursor:pointer;">'
+             . esc_html__( 'Filter', 'societypress' ) . '</button>';
+
+        if ( $cat_filter > 0 ) {
+            echo '<a href="' . esc_url( $base_url ) . '" style="font-size:14px; color:#666; text-decoration:none;">'
+                 . esc_html__( 'Clear', 'societypress' ) . '</a>';
+        }
+        echo '</form>';
+    }
+
+    // Extra args to preserve in calendar nav links
+    $extra_args = [];
+    if ( $cat_filter > 0 ) {
+        $extra_args['sp_cal_cat'] = $cat_filter;
+    }
+
+    // Render the shared calendar grid
+    sp_render_calendar_grid( $cat_filter, $base_url, $extra_args );
+
+    echo '</div></div>';
+
+    get_footer();
+
+    return SOCIETYPRESS_PLUGIN_DIR . 'sp-blank-template.php';
+});
+
+
+// ============================================================================
+// EVENTS — SHARED CALENDAR GRID RENDERER
+// ============================================================================
+
+/**
+ * Render a monthly calendar grid with event pills, mobile dots, and nav.
+ *
+ * WHY: The calendar grid is used in three places — the events listing page
+ *      (calendar view toggle), the Page Builder "Events Calendar" widget,
+ *      and the standalone "Calendar" page template. Centralizing the
+ *      rendering here keeps one source of truth: same HTML structure, same
+ *      mobile behavior, same category-colored pills everywhere.
+ *
+ * @param int    $category_id  Optional category filter (0 = all).
+ * @param string $base_url     The page URL for nav links and event detail links.
+ * @param array  $extra_args   Extra query args to preserve in nav links (e.g., sp_view, sp_cat).
+ */
+function sp_render_calendar_grid( int $category_id = 0, string $base_url = '', array $extra_args = [] ): void {
+    global $wpdb;
+
+    $settings    = get_option( 'societypress_settings', [] );
+    $events_table = $wpdb->prefix . 'sp_events';
+    $cats_table   = $wpdb->prefix . 'sp_event_categories';
+
+    if ( empty( $base_url ) ) {
+        $base_url = get_permalink();
+    }
+
+    // ---- Determine which month to display ----
+    // WHY: The sp_cal_month query param lets users navigate months via
+    //      prev/next links. Default to current month if not set or invalid.
+    $cal_month = isset( $_GET['sp_cal_month'] ) ? sanitize_text_field( $_GET['sp_cal_month'] ) : date( 'Y-m' );
+    if ( ! preg_match( '/^\d{4}-\d{2}$/', $cal_month ) ) {
+        $cal_month = date( 'Y-m' );
+    }
+
+    $cal_year    = (int) substr( $cal_month, 0, 4 );
+    $cal_mon     = (int) substr( $cal_month, 5, 2 );
+    $days_in     = (int) date( 't', mktime( 0, 0, 0, $cal_mon, 1, $cal_year ) );
+    $first_dow   = (int) date( 'w', mktime( 0, 0, 0, $cal_mon, 1, $cal_year ) ); // 0=Sun
+    $month_label = date( 'F Y', mktime( 0, 0, 0, $cal_mon, 1, $cal_year ) );
+
+    // ---- Start day of week (Sunday or Monday) ----
+    $start_day  = (int) ( $settings['events_calendar_start_day'] ?? 0 );
+    $day_names  = $start_day === 1
+                ? [ 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun' ]
+                : [ 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat' ];
+
+    // Adjust first day of week offset for Monday start
+    if ( $start_day === 1 ) {
+        $first_offset = ( $first_dow === 0 ) ? 6 : $first_dow - 1;
+    } else {
+        $first_offset = $first_dow;
+    }
+
+    // ---- Fetch events for this month ----
+    $month_start = sprintf( '%04d-%02d-01', $cal_year, $cal_mon );
+    $month_end   = sprintf( '%04d-%02d-%02d', $cal_year, $cal_mon, $days_in );
+
+    $cal_where  = [ "e.status != 'cancelled'", "e.event_date >= %s", "e.event_date <= %s" ];
+    $cal_params = [ $month_start, $month_end ];
+
+    if ( $category_id > 0 ) {
+        $cal_where[]  = 'e.category_id = %d';
+        $cal_params[] = $category_id;
+    }
+
+    if ( ! is_user_logged_in() ) {
+        $cal_where[] = "e.visibility = 'public'";
+    }
+
+    $cal_sql = "SELECT e.id, e.title, e.slug, e.event_date, e.start_time,
+                       c.name AS category_name, c.color AS category_color
+                FROM {$events_table} e
+                LEFT JOIN {$cats_table} c ON e.category_id = c.id
+                WHERE " . implode( ' AND ', $cal_where ) . "
+                ORDER BY e.event_date ASC, e.start_time ASC";
+    $cal_events = $wpdb->get_results( $wpdb->prepare( $cal_sql, ...$cal_params ) );
+
+    // ---- Build day → events lookup ----
+    $events_by_day = [];
+    foreach ( $cal_events as $ce ) {
+        $day = (int) substr( $ce->event_date, 8, 2 );
+        $events_by_day[ $day ][] = $ce;
+    }
+
+    $today_str = current_time( 'Y-m-d' );
+
+    // ---- Find the events listing page for detail links ----
+    // WHY: Event pills link to the event detail page (?sp_event=slug) on
+    //      whichever page uses the sp-events template. If no events page
+    //      exists, pills still show but without links.
+    $events_page_url = '';
+    $events_pages = get_pages( [ 'meta_key' => '_wp_page_template', 'meta_value' => 'sp-events' ] );
+    if ( ! empty( $events_pages ) ) {
+        $events_page_url = get_permalink( $events_pages[0]->ID );
+    }
+
+    // ---- Prev/Next month links ----
+    $prev_month = date( 'Y-m', mktime( 0, 0, 0, $cal_mon - 1, 1, $cal_year ) );
+    $next_month = date( 'Y-m', mktime( 0, 0, 0, $cal_mon + 1, 1, $cal_year ) );
+    $cal_nav_args = $extra_args;
+    $cal_nav_args['sp_cal_month'] = $prev_month;
+    $prev_url = add_query_arg( $cal_nav_args, $base_url );
+    $cal_nav_args['sp_cal_month'] = $next_month;
+    $next_url = add_query_arg( $cal_nav_args, $base_url );
+
+    ?>
+    <div class="sp-calendar-wrap">
+        <!-- Calendar Navigation -->
+        <div class="sp-calendar-nav">
+            <a href="<?php echo esc_url( $prev_url ); ?>"
+               class="sp-cal-nav-btn">&laquo; <?php echo esc_html__( 'Prev', 'societypress' ); ?></a>
+            <h2 class="sp-cal-month-label"><?php echo esc_html( $month_label ); ?></h2>
+            <a href="<?php echo esc_url( $next_url ); ?>"
+               class="sp-cal-nav-btn"><?php echo esc_html__( 'Next', 'societypress' ); ?> &raquo;</a>
+        </div>
+
+        <!-- Calendar Grid -->
+        <div class="sp-calendar-grid">
+            <!-- Day headers -->
+            <?php foreach ( $day_names as $dn ) : ?>
+                <div class="sp-cal-header"><?php echo esc_html( $dn ); ?></div>
+            <?php endforeach; ?>
+
+            <!-- Empty cells before first day -->
+            <?php for ( $i = 0; $i < $first_offset; $i++ ) : ?>
+                <div class="sp-cal-day sp-cal-empty"></div>
+            <?php endfor; ?>
+
+            <!-- Day cells -->
+            <?php for ( $d = 1; $d <= $days_in; $d++ ) :
+                $date_str  = sprintf( '%04d-%02d-%02d', $cal_year, $cal_mon, $d );
+                $is_today  = ( $date_str === $today_str );
+                $has_events = isset( $events_by_day[ $d ] );
+                $day_class = 'sp-cal-day';
+                if ( $is_today ) $day_class .= ' sp-cal-today';
+                if ( $has_events ) $day_class .= ' sp-cal-has-events';
+            ?>
+                <div class="<?php echo $day_class; ?>">
+                    <div class="sp-cal-day-num"><?php echo $d; ?></div>
+                    <?php if ( $has_events ) : ?>
+                        <div class="sp-cal-events">
+                            <?php foreach ( $events_by_day[ $d ] as $ce ) :
+                                $detail_url = $events_page_url ? add_query_arg( 'sp_event', $ce->slug, $events_page_url ) : '';
+                                $color = $ce->category_color ?: '#2271b1';
+                            ?>
+                                <?php if ( $detail_url ) : ?>
+                                <a href="<?php echo esc_url( $detail_url ); ?>"
+                                   class="sp-cal-event"
+                                   style="background: <?php echo esc_attr( $color ); ?>;"
+                                   title="<?php echo esc_attr( $ce->title ); ?>">
+                                    <span class="sp-cal-event-title"><?php echo esc_html( $ce->title ); ?></span>
+                                    <?php if ( $ce->start_time ) : ?>
+                                        <span class="sp-cal-event-time"><?php echo esc_html( date( 'g:iA', strtotime( $ce->start_time ) ) ); ?></span>
+                                    <?php endif; ?>
+                                </a>
+                                <?php else : ?>
+                                <span class="sp-cal-event"
+                                      style="background: <?php echo esc_attr( $color ); ?>;"
+                                      title="<?php echo esc_attr( $ce->title ); ?>">
+                                    <span class="sp-cal-event-title"><?php echo esc_html( $ce->title ); ?></span>
+                                    <?php if ( $ce->start_time ) : ?>
+                                        <span class="sp-cal-event-time"><?php echo esc_html( date( 'g:iA', strtotime( $ce->start_time ) ) ); ?></span>
+                                    <?php endif; ?>
+                                </span>
+                                <?php endif; ?>
+                            <?php endforeach; ?>
+                        </div>
+                        <!-- Mobile: dots instead of full titles -->
+                        <div class="sp-cal-dots">
+                            <?php foreach ( $events_by_day[ $d ] as $ce ) :
+                                $color = $ce->category_color ?: '#2271b1';
+                            ?>
+                                <span class="sp-cal-dot" style="background: <?php echo esc_attr( $color ); ?>;"></span>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            <?php endfor; ?>
+
+            <!-- Empty cells after last day to fill the row -->
+            <?php
+            $total_cells = $first_offset + $days_in;
+            $remainder   = $total_cells % 7;
+            if ( $remainder > 0 ) :
+                for ( $i = 0; $i < ( 7 - $remainder ); $i++ ) :
+            ?>
+                <div class="sp-cal-day sp-cal-empty"></div>
+            <?php endfor; endif; ?>
+        </div>
+
+        <!-- Mobile: expanded day panel (populated by JS on tap) -->
+        <div class="sp-cal-mobile-panel" id="sp-cal-mobile-panel" style="display: none;">
+            <div class="sp-cal-mobile-panel-header">
+                <span id="sp-cal-mobile-date"></span>
+                <button type="button" class="sp-cal-mobile-close" id="sp-cal-mobile-close">&times;</button>
+            </div>
+            <div id="sp-cal-mobile-events"></div>
+        </div>
+    </div>
+    <?php
+}
+
+
+// ============================================================================
 // EVENTS — FRONTEND LISTING (List View + Calendar View)
 // ============================================================================
 
@@ -22094,28 +22463,10 @@ function sp_render_events_listing( array $settings ): void {
         "SELECT id, name FROM {$cats_table} WHERE active = 1 ORDER BY sort_order"
     );
 
-    // ---- Fetch ALL events for the calendar view (current month scope is handled in JS) ----
-    // We fetch the next 12 months of events for calendar rendering
-    $cal_events = [];
-    if ( $view === 'calendar' ) {
-        $cal_start = date( 'Y-m-01' ); // First of current month
-        $cal_end   = date( 'Y-m-d', strtotime( '+13 months' ) );
-
-        $cal_where = [ "e.status != 'cancelled'", "e.event_date >= %s", "e.event_date <= %s" ];
-        $cal_params = [ $cal_start, $cal_end ];
-
-        if ( ! is_user_logged_in() ) {
-            $cal_where[] = "e.visibility = 'public'";
-        }
-
-        $cal_sql = "SELECT e.id, e.title, e.slug, e.event_date, e.start_time,
-                           c.name AS category_name, c.color AS category_color
-                    FROM {$events_table} e
-                    LEFT JOIN {$cats_table} c ON e.category_id = c.id
-                    WHERE " . implode( ' AND ', $cal_where ) . "
-                    ORDER BY e.event_date ASC, e.start_time ASC";
-        $cal_events = $wpdb->get_results( $wpdb->prepare( $cal_sql, ...$cal_params ) );
-    }
+    // Calendar events are now fetched inside sp_render_calendar_grid() — no
+    // need to pre-fetch here. The shared function handles its own data query
+    // scoped to the displayed month, which is more efficient than the old
+    // approach of fetching 13 months of events up front.
 
     // ---- Build persistent query args for pagination links ----
     $page_args = [];
@@ -22194,134 +22545,17 @@ function sp_render_events_listing( array $settings ): void {
     <?php if ( $view === 'calendar' ) : ?>
 
     <!-- ================================================================ -->
-    <!-- CALENDAR VIEW                                                     -->
+    <!-- CALENDAR VIEW (rendered by shared sp_render_calendar_grid)        -->
     <!-- ================================================================ -->
     <?php
-    $start_day  = (int) ( $settings['events_calendar_start_day'] ?? 0 );
-    $day_names  = $start_day === 1
-                ? [ 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun' ]
-                : [ 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat' ];
-
-    // Get the month to display (default: current month)
-    $cal_month = isset( $_GET['sp_cal_month'] ) ? sanitize_text_field( $_GET['sp_cal_month'] ) : date( 'Y-m' );
-    if ( ! preg_match( '/^\d{4}-\d{2}$/', $cal_month ) ) {
-        $cal_month = date( 'Y-m' );
-    }
-
-    $cal_year    = (int) substr( $cal_month, 0, 4 );
-    $cal_mon     = (int) substr( $cal_month, 5, 2 );
-    $days_in     = (int) date( 't', mktime( 0, 0, 0, $cal_mon, 1, $cal_year ) );
-    $first_dow   = (int) date( 'w', mktime( 0, 0, 0, $cal_mon, 1, $cal_year ) ); // 0=Sun
-    $month_label = date( 'F Y', mktime( 0, 0, 0, $cal_mon, 1, $cal_year ) );
-
-    // Adjust first day of week offset for Monday start
-    if ( $start_day === 1 ) {
-        $first_offset = ( $first_dow === 0 ) ? 6 : $first_dow - 1;
-    } else {
-        $first_offset = $first_dow;
-    }
-
-    // Build a lookup: day number → array of events on that day
-    $events_by_day = [];
-    foreach ( $cal_events as $ce ) {
-        $ed = $ce->event_date;
-        if ( substr( $ed, 0, 7 ) === $cal_month ) {
-            $day = (int) substr( $ed, 8, 2 );
-            $events_by_day[ $day ][] = $ce;
-        }
-    }
-
-    $today_str = current_time( 'Y-m-d' );
-
-    // Prev/Next month links
-    $prev_month = date( 'Y-m', mktime( 0, 0, 0, $cal_mon - 1, 1, $cal_year ) );
-    $next_month = date( 'Y-m', mktime( 0, 0, 0, $cal_mon + 1, 1, $cal_year ) );
-    $cal_base_args = $page_args;
-    $cal_base_args['sp_view'] = 'calendar';
+    // WHY: Calendar rendering is now a shared function so the same grid
+    //      can be used by the Page Builder widget and standalone template.
+    //      We pass the category filter and extra args so the nav links
+    //      preserve the current filter state and view toggle.
+    $cal_extra_args = $page_args;
+    $cal_extra_args['sp_view'] = 'calendar';
+    sp_render_calendar_grid( $cat_filter, $base_url, $cal_extra_args );
     ?>
-
-    <div class="sp-calendar-wrap">
-        <!-- Calendar Navigation -->
-        <div class="sp-calendar-nav">
-            <a href="<?php echo esc_url( add_query_arg( array_merge( $cal_base_args, [ 'sp_cal_month' => $prev_month ] ), $base_url ) ); ?>"
-               class="sp-cal-nav-btn">&laquo; Prev</a>
-            <h2 class="sp-cal-month-label"><?php echo esc_html( $month_label ); ?></h2>
-            <a href="<?php echo esc_url( add_query_arg( array_merge( $cal_base_args, [ 'sp_cal_month' => $next_month ] ), $base_url ) ); ?>"
-               class="sp-cal-nav-btn">Next &raquo;</a>
-        </div>
-
-        <!-- Calendar Grid -->
-        <div class="sp-calendar-grid">
-            <!-- Day headers -->
-            <?php foreach ( $day_names as $dn ) : ?>
-                <div class="sp-cal-header"><?php echo esc_html( $dn ); ?></div>
-            <?php endforeach; ?>
-
-            <!-- Empty cells before first day -->
-            <?php for ( $i = 0; $i < $first_offset; $i++ ) : ?>
-                <div class="sp-cal-day sp-cal-empty"></div>
-            <?php endfor; ?>
-
-            <!-- Day cells -->
-            <?php for ( $d = 1; $d <= $days_in; $d++ ) :
-                $date_str  = sprintf( '%04d-%02d-%02d', $cal_year, $cal_mon, $d );
-                $is_today  = ( $date_str === $today_str );
-                $has_events = isset( $events_by_day[ $d ] );
-                $day_class = 'sp-cal-day';
-                if ( $is_today ) $day_class .= ' sp-cal-today';
-                if ( $has_events ) $day_class .= ' sp-cal-has-events';
-            ?>
-                <div class="<?php echo $day_class; ?>">
-                    <div class="sp-cal-day-num"><?php echo $d; ?></div>
-                    <?php if ( $has_events ) : ?>
-                        <div class="sp-cal-events">
-                            <?php foreach ( $events_by_day[ $d ] as $ce ) :
-                                $detail_url = add_query_arg( 'sp_event', $ce->slug, $base_url );
-                                $color = $ce->category_color ?: '#2271b1';
-                            ?>
-                                <a href="<?php echo esc_url( $detail_url ); ?>"
-                                   class="sp-cal-event"
-                                   style="background: <?php echo esc_attr( $color ); ?>;"
-                                   title="<?php echo esc_attr( $ce->title ); ?>">
-                                    <span class="sp-cal-event-title"><?php echo esc_html( $ce->title ); ?></span>
-                                    <?php if ( $ce->start_time ) : ?>
-                                        <span class="sp-cal-event-time"><?php echo esc_html( date( 'g:iA', strtotime( $ce->start_time ) ) ); ?></span>
-                                    <?php endif; ?>
-                                </a>
-                            <?php endforeach; ?>
-                        </div>
-                        <!-- Mobile: dots instead of full titles -->
-                        <div class="sp-cal-dots">
-                            <?php foreach ( $events_by_day[ $d ] as $ce ) :
-                                $color = $ce->category_color ?: '#2271b1';
-                            ?>
-                                <span class="sp-cal-dot" style="background: <?php echo esc_attr( $color ); ?>;"></span>
-                            <?php endforeach; ?>
-                        </div>
-                    <?php endif; ?>
-                </div>
-            <?php endfor; ?>
-
-            <!-- Empty cells after last day to fill the row -->
-            <?php
-            $total_cells = $first_offset + $days_in;
-            $remainder   = $total_cells % 7;
-            if ( $remainder > 0 ) :
-                for ( $i = 0; $i < ( 7 - $remainder ); $i++ ) :
-            ?>
-                <div class="sp-cal-day sp-cal-empty"></div>
-            <?php endfor; endif; ?>
-        </div>
-
-        <!-- Mobile: expanded day panel (populated by JS on tap) -->
-        <div class="sp-cal-mobile-panel" id="sp-cal-mobile-panel" style="display: none;">
-            <div class="sp-cal-mobile-panel-header">
-                <span id="sp-cal-mobile-date"></span>
-                <button type="button" class="sp-cal-mobile-close" id="sp-cal-mobile-close">&times;</button>
-            </div>
-            <div id="sp-cal-mobile-events"></div>
-        </div>
-    </div>
 
     <?php else : ?>
 
@@ -28064,6 +28298,296 @@ function sp_render_builder_widget_upcoming_events( array $s ): void {
     }
 
     echo '</div>'; // .sp-upcoming-events-widget
+}
+
+
+/**
+ * Render: Events Calendar
+ *
+ * WHY: Lets Harold drop a full monthly calendar onto any Page Builder page.
+ *      Uses the shared sp_render_calendar_grid() function so the calendar
+ *      looks and behaves identically everywhere — events listing page,
+ *      standalone calendar template, or embedded in a builder page.
+ *
+ *      CSS and JS for the calendar are already output by sp_events_frontend_styles()
+ *      and sp_events_frontend_scripts() respectively. We enqueue both here
+ *      so the calendar works standalone without needing the events page.
+ */
+function sp_render_builder_widget_event_calendar( array $s ): void {
+    $category_id = (int) ( $s['category_id'] ?? 0 );
+    $heading     = $s['heading'] ?? '';
+
+    // WHY: The calendar CSS and mobile-tap JS normally only load on the events
+    //      page template. When the calendar is embedded via Page Builder, we
+    //      need those styles and scripts available too. wp_head has already
+    //      fired by the time widget rendering happens, so we output them inline.
+    //      The calendar CSS is already in sp_events_frontend_styles() and we
+    //      hook the JS to wp_footer via an action that only fires once.
+    static $calendar_assets_enqueued = false;
+    if ( ! $calendar_assets_enqueued ) {
+        $calendar_assets_enqueued = true;
+        // Output calendar CSS inline (since wp_head has already fired)
+        sp_events_calendar_styles();
+        // Queue mobile tap JS for footer
+        add_action( 'wp_footer', 'sp_events_calendar_scripts', 50 );
+    }
+
+    // Optional heading above the calendar
+    if ( ! empty( $heading ) ) {
+        echo '<h2 style="margin:0 0 16px; font-size:22px; font-weight:600; color:#1d2327;">'
+             . esc_html( $heading ) . '</h2>';
+    }
+
+    // Render the calendar grid — the base URL is the current page so month
+    // nav links keep the user on the same builder page.
+    sp_render_calendar_grid( $category_id, get_permalink() );
+}
+
+
+/**
+ * Output only the calendar-specific CSS.
+ *
+ * WHY: When the calendar is embedded via Page Builder or the standalone
+ *      template, we need the calendar styles without loading the entire
+ *      events listing stylesheet. This function outputs only the calendar
+ *      grid, navigation, day cell, event pill, mobile dots, and mobile
+ *      panel styles — the same CSS that lives inside sp_events_frontend_styles()
+ *      but isolated for standalone use.
+ */
+function sp_events_calendar_styles(): void {
+    ?>
+    <style id="sp-calendar-widget-css">
+        /* Calendar wrap */
+        .sp-calendar-wrap {
+            margin-top: 8px;
+        }
+        .sp-calendar-nav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+        .sp-cal-nav-btn {
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--sp-color-primary);
+            text-decoration: none;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+        }
+        .sp-cal-nav-btn:hover { border-color: var(--sp-color-primary); }
+        .sp-cal-month-label {
+            margin: 0;
+            font-size: 22px;
+            font-weight: 600;
+            color: #1d2327;
+        }
+        .sp-calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .sp-cal-header {
+            padding: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            text-align: center;
+            color: #555;
+            background: #f7f7f7;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .sp-cal-day {
+            min-height: 100px;
+            padding: 6px;
+            border-right: 1px solid #eee;
+            border-bottom: 1px solid #eee;
+            background: #fff;
+            position: relative;
+        }
+        .sp-cal-day:nth-child(7n) { border-right: none; }
+        .sp-cal-empty { background: #fafafa; }
+        .sp-cal-today {
+            background: #f0f7fd;
+        }
+        .sp-cal-today .sp-cal-day-num {
+            background: var(--sp-color-primary);
+            color: #fff;
+            border-radius: 50%;
+            width: 26px;
+            height: 26px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .sp-cal-day-num {
+            font-size: 13px;
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 4px;
+        }
+        .sp-cal-events {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .sp-cal-event {
+            display: block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            color: #fff;
+            text-decoration: none;
+            font-size: 11px;
+            line-height: 1.3;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            transition: opacity 0.15s;
+        }
+        .sp-cal-event:hover { opacity: 0.85; }
+        .sp-cal-event-title { font-weight: 500; }
+        .sp-cal-event-time {
+            font-size: 10px;
+            opacity: 0.85;
+            margin-left: 4px;
+        }
+
+        /* Mobile dots (hidden on desktop) */
+        .sp-cal-dots { display: none; }
+        .sp-cal-dot {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            margin: 1px;
+        }
+
+        /* Mobile panel for calendar day tap */
+        .sp-cal-mobile-panel {
+            margin-top: 12px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            background: #fff;
+            overflow: hidden;
+        }
+        .sp-cal-mobile-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: #f7f7f7;
+            border-bottom: 1px solid #e0e0e0;
+            font-weight: 600;
+        }
+        .sp-cal-mobile-close {
+            background: none;
+            border: none;
+            font-size: 22px;
+            cursor: pointer;
+            color: #555;
+            padding: 0 4px;
+        }
+        .sp-cal-mobile-event {
+            display: block;
+            padding: 12px 16px;
+            border-bottom: 1px solid #eee;
+            text-decoration: none;
+            color: inherit;
+        }
+        .sp-cal-mobile-event:last-child { border-bottom: none; }
+        .sp-cal-mobile-event-title {
+            font-weight: 600;
+            color: #1d2327;
+        }
+        .sp-cal-mobile-event-time {
+            font-size: 13px;
+            color: #787c82;
+            margin-top: 2px;
+        }
+
+        /* Mobile responsive */
+        @media (max-width: 768px) {
+            .sp-cal-day {
+                min-height: 48px;
+                padding: 4px;
+            }
+            .sp-cal-events { display: none; }
+            .sp-cal-dots { display: flex; flex-wrap: wrap; justify-content: center; }
+            .sp-cal-day-num { font-size: 12px; text-align: center; }
+            .sp-cal-header { padding: 6px 2px; font-size: 11px; }
+            .sp-cal-has-events { cursor: pointer; }
+        }
+    </style>
+    <?php
+}
+
+
+/**
+ * Output the calendar mobile-tap JavaScript.
+ *
+ * WHY: On mobile, the full event titles are hidden and replaced with dots.
+ *      Tapping a day cell opens a panel below the calendar that lists the
+ *      day's events. This JS is identical to what's in sp_events_frontend_scripts()
+ *      but isolated so it can be loaded independently for the Page Builder
+ *      widget and standalone calendar template.
+ */
+function sp_events_calendar_scripts(): void {
+    ?>
+    <script id="sp-calendar-widget-js">
+    (function() {
+        'use strict';
+
+        // ---- Calendar mobile: tap day to show events panel ----
+        var calDays = document.querySelectorAll('.sp-cal-has-events');
+        var panel   = document.getElementById('sp-cal-mobile-panel');
+        var panelDate   = document.getElementById('sp-cal-mobile-date');
+        var panelEvents = document.getElementById('sp-cal-mobile-events');
+        var closeBtn    = document.getElementById('sp-cal-mobile-close');
+
+        if (calDays.length && panel) {
+            calDays.forEach(function(day) {
+                day.addEventListener('click', function(e) {
+                    // Only on mobile (when dots are visible)
+                    if (window.innerWidth > 768) return;
+
+                    // Don't intercept link clicks inside event titles
+                    if (e.target.closest('.sp-cal-event')) return;
+
+                    var dayNum = this.querySelector('.sp-cal-day-num').textContent;
+                    var monthLabel = document.querySelector('.sp-cal-month-label');
+                    panelDate.textContent = monthLabel ? monthLabel.textContent + ' ' + dayNum : 'Day ' + dayNum;
+
+                    // Build event list from the hidden .sp-cal-events links
+                    var events = this.querySelectorAll('.sp-cal-event');
+                    var html = '';
+                    events.forEach(function(ev) {
+                        var title = ev.querySelector('.sp-cal-event-title');
+                        var time  = ev.querySelector('.sp-cal-event-time');
+                        var href  = ev.href || '#';
+                        html += '<a class="sp-cal-mobile-event" href="' + href + '">';
+                        html += '<div class="sp-cal-mobile-event-title">' + (title ? title.textContent : '') + '</div>';
+                        if (time) {
+                            html += '<div class="sp-cal-mobile-event-time">' + time.textContent + '</div>';
+                        }
+                        html += '</a>';
+                    });
+                    panelEvents.innerHTML = html;
+                    panel.style.display = 'block';
+                    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                });
+            });
+
+            if (closeBtn) {
+                closeBtn.addEventListener('click', function() {
+                    panel.style.display = 'none';
+                });
+            }
+        }
+    })();
+    </script>
+    <?php
 }
 
 

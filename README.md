@@ -4,7 +4,7 @@
 
 No pricing. No paid tiers. No upgrades. Community software, freely given.
 
-**Current version: 0.22d**
+**Current version: 0.25d**
 
 ---
 
@@ -34,6 +34,19 @@ Membership management built for the volunteers who actually run these organizati
 - Clickable subject and surname tags
 - Admin stats dashboard (collection value, breakdowns by type/source)
 
+### Newsletters
+- PDF newsletter archive with automatic cover image thumbnails
+- Admin card grid for managing the collection
+- Frontend grid with inline PDF viewer modal
+- Access-controlled downloads (members only)
+- Search across the newsletter archive
+
+### Resource Links
+- CSV import (supports EasyNetSites format)
+- Automatic category creation from imported data
+- Frontend directory with search and category filtering
+- Integrated with the site-wide unified search
+
 ### Committees & Leadership
 - Committee management with delegated permissions
 - Chairpersons manage their own committees from the frontend
@@ -42,7 +55,8 @@ Membership management built for the volunteers who actually run these organizati
 
 ### Page Builder
 - 10 widget types for building society pages
-- Hero slider, events calendar, member directory, library catalog, contact form, and more
+- Hero slider with per-line text styling (size, weight, color per line)
+- Events calendar, member directory, library catalog, contact form, and more
 - No Gutenberg required — works with the classic editor
 
 ### Design System
@@ -65,6 +79,7 @@ SocietyPress is a single-file plugin (`societypress.php`) paired with a companio
 
 - **Plugin:** `plugin/societypress.php` — function-based, inline JS/CSS, no external dependencies
 - **Theme:** `theme/` — classic PHP WordPress theme, CSS custom properties, vanilla JS only
+- **Child themes:** Drop a child theme in `theme/` to customize for your society (see `theme/society/` for an example)
 - **Database:** Custom tables with `{prefix}sp_` naming (members, events, library, committees, etc.)
 - **Settings:** Single `societypress_settings` option array
 
@@ -77,6 +92,7 @@ No jQuery. No CSS frameworks. No Gutenberg. No block editor. No Full Site Editin
 - WordPress 6.0+
 - PHP 8.0+
 - MySQL 5.7+ or MariaDB 10.3+
+- Imagick PHP extension (for newsletter cover thumbnails)
 
 ---
 

@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '0.25d' );
+define( 'SOCIETYPRESS_VERSION', '0.26d' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -510,6 +510,7 @@ function sp_create_tables(): void {
         dir_show_email      TINYINT(1)          NOT NULL DEFAULT 1,
         dir_show_website    TINYINT(1)          NOT NULL DEFAULT 1,
         dir_show_photo      TINYINT(1)          NOT NULL DEFAULT 0,
+        blast_email_opt_out TINYINT(1)          NOT NULL DEFAULT 0,
         created_at          DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at          DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY (user_id),
@@ -1289,9 +1290,99 @@ function sp_create_tables(): void {
         KEY visibility (visibility)
     ) {$charset_collate};" );
 
+    // ========================================================================
+    // sp_campaigns — Fundraising campaign definitions
+    //
+    // WHY: the society runs multiple donation campaigns throughout the year —
+    //      building fund, memorial fund, annual fund drive, etc. Each
+    //      campaign has a goal amount and a date range. Donations can be
+    //      linked to a campaign so the treasurer can track how close each
+    //      campaign is to its goal. Unlinked donations are general/unrestricted.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}campaigns (
+        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        name            VARCHAR(200)        NOT NULL,
+        slug            VARCHAR(200)        NOT NULL,
+        description     TEXT                NULL,
+        goal_amount     DECIMAL(10,2)       NULL,
+        start_date      DATE                NULL,
+        end_date        DATE                NULL,
+        status          VARCHAR(20)         NOT NULL DEFAULT 'active',
+        created_by      BIGINT(20) UNSIGNED NULL,
+        created_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        UNIQUE KEY slug (slug),
+        KEY status (status)
+    ) {$charset_collate};" );
+
+    // ========================================================================
+    // sp_donations — Individual donation records
+    //
+    // WHY: Separate from sp_member_payments because donations have different
+    //      tracking needs — campaign linkage, anonymous flag, in-kind support,
+    //      acknowledgment tracking, and non-member donors. The member_payments
+    //      table handles dues and membership-related payments; this table
+    //      handles charitable giving, which the society tracks heavily.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}donations (
+        id                  BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        campaign_id         BIGINT(20) UNSIGNED NULL,
+        user_id             BIGINT(20) UNSIGNED NULL,
+        donor_name          VARCHAR(255)        NOT NULL,
+        donor_email         VARCHAR(255)        NULL,
+        amount              DECIMAL(10,2)       NOT NULL DEFAULT 0.00,
+        type                VARCHAR(30)         NOT NULL DEFAULT 'cash',
+        in_kind_description TEXT                NULL,
+        date                DATE                NOT NULL,
+        note                TEXT                NULL,
+        is_anonymous        TINYINT(1)          NOT NULL DEFAULT 0,
+        acknowledgment_sent TINYINT(1)          NOT NULL DEFAULT 0,
+        acknowledgment_date DATETIME            NULL,
+        recorded_by         BIGINT(20) UNSIGNED NULL,
+        stripe_session_id   VARCHAR(255)        NULL,
+        created_at          DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY campaign_id (campaign_id),
+        KEY user_id (user_id),
+        KEY date (date),
+        KEY type (type),
+        KEY is_anonymous (is_anonymous)
+    ) {$charset_collate};" );
+
+    // ========================================================================
+    // sp_blast_emails — Mass email campaigns sent to member groups
+    //
+    // WHY: the society sends weekly blast emails to members — meeting reminders,
+    //      research tips, event announcements. This table stores each blast
+    //      with its content, targeting criteria, and delivery stats. The
+    //      recipient_filter column stores JSON (group IDs, tier IDs, etc.)
+    //      so we can target any combination without needing a join table.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}blast_emails (
+        id                  BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        subject             VARCHAR(255)        NOT NULL,
+        body                LONGTEXT            NOT NULL,
+        sender_id           BIGINT(20) UNSIGNED NOT NULL,
+        recipient_type      VARCHAR(30)         NOT NULL DEFAULT 'all_members',
+        recipient_filter    TEXT                NULL,
+        total_recipients    INT UNSIGNED        NOT NULL DEFAULT 0,
+        total_sent          INT UNSIGNED        NOT NULL DEFAULT 0,
+        total_failed        INT UNSIGNED        NOT NULL DEFAULT 0,
+        status              VARCHAR(20)         NOT NULL DEFAULT 'draft',
+        scheduled_at        DATETIME            NULL,
+        sent_at             DATETIME            NULL,
+        created_at          DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at          DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY status (status),
+        KEY sender_id (sender_id),
+        KEY sent_at (sent_at)
+    ) {$charset_collate};" );
+
     // Store the schema version so we can run migrations in future updates
     // without re-running the full dbDelta on every page load.
-    update_option( 'societypress_db_version', '0.23d' );
+    update_option( 'societypress_db_version', '0.25d' );
 }
 
 
@@ -2061,13 +2152,72 @@ add_action( 'admin_menu', function () {
         'sp_render_record_payment_page'
     );
 
+    // Donations — charitable giving tracker, separate from dues payments
+    add_submenu_page(
+        'societypress',
+        'Donations — SocietyPress',
+        'Donations',
+        'manage_options',
+        'sp-donations',
+        'sp_render_donations_page'
+    );
+
+    // Hidden: Donation edit/record page
+    add_submenu_page(
+        null,
+        'Record Donation — SocietyPress',
+        'Record Donation',
+        'manage_options',
+        'sp-donation-edit',
+        'sp_render_donation_edit_page'
+    );
+
+    // Campaigns — fundraising campaign management
+    add_submenu_page(
+        'societypress',
+        'Campaigns — SocietyPress',
+        'Campaigns',
+        'manage_options',
+        'sp-campaigns',
+        'sp_render_campaigns_page'
+    );
+
+    // Hidden: Campaign edit page
+    add_submenu_page(
+        null,
+        'Edit Campaign — SocietyPress',
+        'Edit Campaign',
+        'manage_options',
+        'sp-campaign-edit',
+        'sp_render_campaign_edit_page'
+    );
+
 
     // -----------------------------------------------------------------
-    // COMMUNICATIONS GROUP — Email Log
-    // WHY: Admins need visibility into what emails are going out.
-    //      Email Log shows every email SocietyPress sends, with status
-    //      tracking and full content preview.
+    // COMMUNICATIONS GROUP — Blast Email + Email Log
+    // WHY: the society sends weekly blast emails to members — this is their
+    //      most-used ENS feature. Blast Email handles composition and
+    //      sending; Email Log provides the audit trail.
     // -----------------------------------------------------------------
+
+    add_submenu_page(
+        'societypress',
+        'Blast Email — SocietyPress',
+        'Blast Email',
+        'manage_options',
+        'sp-blast-email',
+        'sp_render_blast_email_page'
+    );
+
+    // Hidden: Compose/edit blast email page
+    add_submenu_page(
+        null,
+        'Compose Email — SocietyPress',
+        'Compose Email',
+        'manage_options',
+        'sp-blast-email-compose',
+        'sp_render_blast_email_compose_page'
+    );
 
     add_submenu_page(
         'societypress',
@@ -3338,7 +3488,13 @@ var spMenuConfig = {
             id:    'finances',
             label: 'Finances',
             icon:  'dashicons-money-alt',
-            items: ['sp-finances', 'sp-record-payment']
+            items: ['sp-finances', 'sp-record-payment', 'sp-donations', 'sp-campaigns']
+        },
+        {
+            id:    'communications',
+            label: 'Communications',
+            icon:  'dashicons-email-alt',
+            items: ['sp-blast-email', 'sp-email-log']
         },
         {
             id:    'appearance',
@@ -4411,10 +4567,15 @@ class SP_Members_List_Table extends WP_List_Table {
 
     /**
      * Bulk actions dropdown — appears above the table.
+     *
+     * WHY: "Assign to Group" lets Harold select a batch of members and add
+     *      them to a group in one action — much faster than editing each
+     *      group individually when building email lists for blast emails.
      */
     protected function get_bulk_actions(): array {
         return [
-            'delete' => 'Delete',
+            'assign_to_group' => 'Assign to Group',
+            'delete'          => 'Delete',
         ];
     }
 
@@ -4604,6 +4765,26 @@ class SP_Members_List_Table extends WP_List_Table {
         }
         echo '</select>';
 
+        // Group filter — filter members by group membership
+        // WHY: When building blast email lists, Harold needs to see which
+        //      members are in a specific group. This dropdown filters the
+        //      members list to show only members in the selected group.
+        $groups = $wpdb->get_results(
+            "SELECT id, name FROM {$wpdb->prefix}sp_groups WHERE status = 'active' ORDER BY sort_order, name"
+        );
+        $current_group = $_GET['member_group'] ?? '';
+        echo '<select name="member_group">';
+        echo '<option value="">All Groups</option>';
+        foreach ( $groups as $g ) {
+            printf(
+                '<option value="%d" %s>%s</option>',
+                $g->id,
+                selected( $current_group, $g->id, false ),
+                esc_html( $g->name )
+            );
+        }
+        echo '</select>';
+
         // Member type checkboxes — Individual and/or Organization
         // WHY: Checkboxes feel more natural than a dropdown for a binary toggle.
         //      Both checked (or both unchecked) = show all. Uncheck one to exclude it.
@@ -4666,6 +4847,14 @@ class SP_Members_List_Table extends WP_List_Table {
         if ( ! empty( $tier_filter ) ) {
             $where[]  = "m.tier_id = %d";
             $values[] = (int) $tier_filter;
+        }
+
+        // Group filter — only show members in the selected group
+        // WHY: Enables filtering by group membership for blast email targeting
+        $group_filter = $_GET['member_group'] ?? '';
+        if ( ! empty( $group_filter ) ) {
+            $where[]  = "m.user_id IN (SELECT user_id FROM {$wpdb->prefix}sp_group_members WHERE group_id = %d)";
+            $values[] = (int) $group_filter;
         }
 
         // Member type filter — checkboxes for individual / organization.
@@ -4881,6 +5070,47 @@ add_action( 'admin_init', function () {
         exit;
     }
 
+    // ---- Bulk Assign to Group ----
+    // WHY: Harold needs to batch-add members to groups for blast email targeting.
+    //      Select 20 members, pick a group, done — instead of editing each group
+    //      one at a time and adding members individually.
+    if ( ( ( $_REQUEST['action'] ?? '' ) === 'assign_to_group' || ( $_REQUEST['action2'] ?? '' ) === 'assign_to_group' )
+         && ! empty( $_REQUEST['member'] ) && ! empty( $_REQUEST['sp_assign_group_id'] ) ) {
+
+        global $wpdb;
+        $prefix   = $wpdb->prefix . 'sp_';
+        $group_id = (int) $_REQUEST['sp_assign_group_id'];
+        $added    = 0;
+
+        // Verify the group exists
+        $group_exists = $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$prefix}groups WHERE id = %d", $group_id
+        ) );
+
+        if ( $group_exists ) {
+            foreach ( (array) $_REQUEST['member'] as $user_id ) {
+                $user_id = (int) $user_id;
+                // Only insert if not already in the group (UNIQUE KEY handles
+                // this at the DB level too, but checking first avoids errors)
+                $already = $wpdb->get_var( $wpdb->prepare(
+                    "SELECT COUNT(*) FROM {$prefix}group_members WHERE group_id = %d AND user_id = %d",
+                    $group_id, $user_id
+                ) );
+                if ( ! $already ) {
+                    $wpdb->insert( $prefix . 'group_members', [
+                        'group_id'  => $group_id,
+                        'user_id'   => $user_id,
+                        'joined_at' => current_time( 'mysql' ),
+                    ] );
+                    $added++;
+                }
+            }
+        }
+
+        wp_redirect( admin_url( 'admin.php?page=sp-members&group_assigned=' . $added ) );
+        exit;
+    }
+
     // ---- Delete All Others (nuclear button) ----
     // WHY: During testing or a botched import, the admin needs to wipe the
     //      slate clean without locking themselves out.
@@ -5054,15 +5284,61 @@ function sp_render_members_page(): void {
         if ( isset( $_GET['saved'] ) ) {
             echo '<div class="notice notice-success is-dismissible"><p>Member saved.</p></div>';
         }
+        if ( isset( $_GET['group_assigned'] ) ) {
+            $count = (int) $_GET['group_assigned'];
+            printf(
+                '<div class="notice notice-success is-dismissible"><p>%s added to group.</p></div>',
+                $count === 1 ? '1 member' : $count . ' members'
+            );
+        }
         ?>
 
+        <?php
+        // Group selector for the "Assign to Group" bulk action
+        // WHY: The group dropdown needs to appear inline so Harold can pick
+        //      a group and submit in one step. JS shows it only when the
+        //      "Assign to Group" action is selected.
+        $assign_groups = $wpdb->get_results(
+            "SELECT id, name FROM {$wpdb->prefix}sp_groups WHERE status = 'active' ORDER BY sort_order, name"
+        );
+        ?>
         <form method="get">
             <input type="hidden" name="page" value="sp-members">
+
+            <div id="sp-group-assign-wrap" style="display:none; margin: 8px 0; padding: 8px 12px; background: #f0f6fc; border: 1px solid #72aee6; border-radius: 4px;">
+                <label for="sp-assign-group-id" style="font-weight: 600; margin-right: 8px;">Assign to:</label>
+                <select name="sp_assign_group_id" id="sp-assign-group-id">
+                    <option value="">— Select Group —</option>
+                    <?php foreach ( $assign_groups as $ag ) : ?>
+                        <option value="<?php echo esc_attr( $ag->id ); ?>"><?php echo esc_html( $ag->name ); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
             <?php
             $table->search_box( 'Search Members', 'sp-member-search' );
             $table->display();
             ?>
         </form>
+
+        <script>
+        // Show the group selector only when "Assign to Group" is selected
+        // WHY: Keeps the UI clean — the dropdown only appears when it's relevant.
+        (function() {
+            function toggleGroupPicker() {
+                var sel = document.querySelector('select[name="action"]');
+                var wrap = document.getElementById('sp-group-assign-wrap');
+                if (sel && wrap) {
+                    wrap.style.display = sel.value === 'assign_to_group' ? '' : 'none';
+                }
+            }
+            var sel = document.querySelector('select[name="action"]');
+            if (sel) {
+                sel.addEventListener('change', toggleGroupPicker);
+                toggleGroupPicker();
+            }
+        })();
+        </script>
     </div>
     <?php
 }
@@ -5237,6 +5513,7 @@ add_action( 'admin_init', function () {
         'dir_show_email'        => $dir_show_email,
         'dir_show_website'      => $dir_show_website,
         'dir_show_photo'        => $dir_show_photo,
+        'blast_email_opt_out'   => isset( $_POST['blast_email_opt_out'] ) ? 1 : 0,
     ];
 
     $editing_user_id = absint( $_POST['user_id'] ?? 0 );
@@ -6610,6 +6887,18 @@ function sp_render_member_edit_page(): void {
                                     Surname match alerts
                                 </label>
                             </div>
+                        </div>
+
+                        <div class="sp-field">
+                            <label style="font-weight: 600; margin-bottom: 8px;">Blast Email</label>
+                            <div class="sp-checkboxes">
+                                <label>
+                                    <input type="checkbox" name="blast_email_opt_out" value="1"
+                                        <?php checked( $member->blast_email_opt_out ?? 0, 1 ); ?>>
+                                    Opted out of blast emails
+                                </label>
+                            </div>
+                            <p class="description">When checked, this member will not receive blast emails.</p>
                         </div>
 
                         <div class="sp-field">
@@ -30479,6 +30768,27 @@ function sp_render_reports_page(): void {
     $help_requests   = (int) $wpdb->get_var(
         "SELECT COUNT(*) FROM {$prefix}help_requests WHERE status = 'open'"
     );
+
+    // Donation stats for this year
+    $year_start     = date( 'Y-01-01' );
+    $donations_year = (float) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COALESCE(SUM(amount), 0) FROM {$prefix}donations WHERE date >= %s", $year_start
+    ) );
+    $donor_count    = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(DISTINCT donor_email) FROM {$prefix}donations WHERE date >= %s AND donor_email IS NOT NULL AND donor_email != ''", $year_start
+    ) );
+
+    // Top campaign this year
+    $top_campaign = $wpdb->get_row( $wpdb->prepare(
+        "SELECT c.name, SUM(d.amount) AS raised
+         FROM {$prefix}donations d
+         JOIN {$prefix}campaigns c ON d.campaign_id = c.id
+         WHERE d.date >= %s
+         GROUP BY d.campaign_id
+         ORDER BY raised DESC
+         LIMIT 1", $year_start
+    ) );
+
     ?>
     <div class="wrap">
         <h1>Reports</h1>
@@ -30507,6 +30817,18 @@ function sp_render_reports_page(): void {
                 <div style="font-size:32px; font-weight:700; color:var(--sp-color-primary);"><?php echo $help_requests; ?></div>
                 <div style="color:#666; font-size:13px;">Open Help Requests</div>
             </div>
+            <div style="background:#fff; border:1px solid #ccd0d4; border-radius:8px; padding:20px; text-align:center;">
+                <div style="font-size:32px; font-weight:700; color:#00a32a;">$<?php echo number_format( $donations_year, 0 ); ?></div>
+                <div style="color:#666; font-size:13px;">Donations This Year</div>
+                <div style="color:#999; font-size:12px;"><?php echo $donor_count; ?> donors</div>
+            </div>
+            <?php if ( $top_campaign ) : ?>
+            <div style="background:#fff; border:1px solid #ccd0d4; border-radius:8px; padding:20px; text-align:center;">
+                <div style="font-size:32px; font-weight:700; color:#00a32a;">$<?php echo number_format( (float) $top_campaign->raised, 0 ); ?></div>
+                <div style="color:#666; font-size:13px;">Top Campaign</div>
+                <div style="color:#999; font-size:12px;"><?php echo esc_html( $top_campaign->name ); ?></div>
+            </div>
+            <?php endif; ?>
         </div>
 
         <div style="margin-top:24px;">
@@ -35211,6 +35533,1557 @@ function sp_render_email_log_detail( int $log_id ): void {
             }
             ?>
         </div>
+    </div>
+    <?php
+}
+
+
+// ============================================================================
+// BLAST EMAIL — ADMIN PAGES + SENDING ENGINE
+// ============================================================================
+//
+// WHY: the society sends weekly blast emails to members — meeting reminders,
+//      research tips, event announcements, volunteer requests. This was their
+//      most-used ENS feature (972 archived messages). The blast email system
+//      lets admins compose rich HTML emails, target them by group or tier,
+//      and batch-send via WP cron to avoid server timeouts.
+// ============================================================================
+
+/**
+ * Render the Blast Email list page.
+ *
+ * WHY: Shows all blast emails — drafts, sent, failed — with filtering by
+ *      status. Each row shows subject, sender, date, recipient count, and
+ *      delivery stats. Clicking a sent email shows a read-only preview.
+ */
+function sp_render_blast_email_page(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // Handle delete action
+    if ( isset( $_GET['action'] ) && $_GET['action'] === 'delete' && isset( $_GET['blast_id'] ) ) {
+        check_admin_referer( 'sp_delete_blast_' . $_GET['blast_id'] );
+        $wpdb->delete( $prefix . 'blast_emails', [ 'id' => (int) $_GET['blast_id'] ] );
+        wp_redirect( admin_url( 'admin.php?page=sp-blast-email&deleted=1' ) );
+        exit;
+    }
+
+    // View a single blast email (read-only)
+    $view_id = isset( $_GET['view'] ) ? absint( $_GET['view'] ) : 0;
+    if ( $view_id ) {
+        sp_render_blast_email_detail( $view_id );
+        return;
+    }
+
+    // Filters
+    $filter_status = sanitize_text_field( $_GET['status'] ?? '' );
+    $per_page      = 20;
+    $paged         = max( 1, (int) ( $_GET['paged'] ?? 1 ) );
+    $offset        = ( $paged - 1 ) * $per_page;
+
+    $where = [ '1=1' ];
+    $args  = [];
+
+    if ( $filter_status ) {
+        $where[] = 'b.status = %s';
+        $args[]  = $filter_status;
+    }
+
+    $where_sql = implode( ' AND ', $where );
+
+    // Count total
+    $count_sql = "SELECT COUNT(*) FROM {$prefix}blast_emails b WHERE {$where_sql}";
+    $total = $args
+        ? (int) $wpdb->get_var( $wpdb->prepare( $count_sql, ...$args ) )
+        : (int) $wpdb->get_var( $count_sql );
+
+    $total_pages = ceil( $total / $per_page );
+
+    // Fetch rows
+    $rows_sql = "SELECT b.*, u.display_name AS sender_name
+                 FROM {$prefix}blast_emails b
+                 LEFT JOIN {$wpdb->users} u ON b.sender_id = u.ID
+                 WHERE {$where_sql}
+                 ORDER BY b.created_at DESC
+                 LIMIT %d OFFSET %d";
+
+    $query_args = array_merge( $args, [ $per_page, $offset ] );
+    $rows = $wpdb->get_results( $wpdb->prepare( $rows_sql, ...$query_args ) );
+
+    ?>
+    <div class="wrap sp-admin-wrap">
+        <h1 class="wp-heading-inline">Blast Email</h1>
+        <a href="<?php echo admin_url( 'admin.php?page=sp-blast-email-compose' ); ?>" class="page-title-action">Compose New</a>
+
+        <?php if ( isset( $_GET['deleted'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p>Blast email deleted.</p></div>
+        <?php endif; ?>
+        <?php if ( isset( $_GET['sent'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p>Blast email is being sent.</p></div>
+        <?php endif; ?>
+        <?php if ( isset( $_GET['saved'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p>Draft saved.</p></div>
+        <?php endif; ?>
+
+        <!-- Status filter tabs -->
+        <ul class="subsubsub" style="margin: 12px 0;">
+            <?php
+            $statuses = [ '' => 'All', 'draft' => 'Drafts', 'sending' => 'Sending', 'sent' => 'Sent', 'failed' => 'Failed' ];
+            $links = [];
+            foreach ( $statuses as $key => $label ) {
+                $url = add_query_arg( [ 'page' => 'sp-blast-email', 'status' => $key ], admin_url( 'admin.php' ) );
+                $class = ( $filter_status === $key ) ? ' class="current"' : '';
+                $links[] = sprintf( '<li><a href="%s"%s>%s</a></li>', esc_url( $url ), $class, esc_html( $label ) );
+            }
+            echo implode( ' | ', $links );
+            ?>
+        </ul>
+
+        <table class="widefat striped" style="margin-top: 16px; clear: both;">
+            <thead>
+                <tr>
+                    <th>Subject</th>
+                    <th>Sender</th>
+                    <th>Recipients</th>
+                    <th>Status</th>
+                    <th>Date</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if ( empty( $rows ) ) : ?>
+                    <tr><td colspan="6" style="text-align: center; padding: 20px;">No blast emails yet. <a href="<?php echo admin_url( 'admin.php?page=sp-blast-email-compose' ); ?>">Compose one</a>.</td></tr>
+                <?php else : ?>
+                    <?php foreach ( $rows as $row ) : ?>
+                        <tr>
+                            <td>
+                                <strong>
+                                    <?php if ( $row->status === 'draft' ) : ?>
+                                        <a href="<?php echo admin_url( 'admin.php?page=sp-blast-email-compose&blast_id=' . $row->id ); ?>"><?php echo esc_html( $row->subject ); ?></a>
+                                    <?php else : ?>
+                                        <a href="<?php echo admin_url( 'admin.php?page=sp-blast-email&view=' . $row->id ); ?>"><?php echo esc_html( $row->subject ); ?></a>
+                                    <?php endif; ?>
+                                </strong>
+                            </td>
+                            <td><?php echo esc_html( $row->sender_name ?: '—' ); ?></td>
+                            <td>
+                                <?php
+                                if ( $row->status === 'sent' || $row->status === 'sending' ) {
+                                    echo (int) $row->total_sent . ' / ' . (int) $row->total_recipients;
+                                    if ( (int) $row->total_failed > 0 ) {
+                                        echo ' <span style="color: #d63638;">(' . (int) $row->total_failed . ' failed)</span>';
+                                    }
+                                } else {
+                                    echo (int) $row->total_recipients ?: '—';
+                                }
+                                ?>
+                            </td>
+                            <td>
+                                <?php
+                                $status_colors = [
+                                    'draft'   => '#787c82',
+                                    'sending' => '#dba617',
+                                    'sent'    => '#00a32a',
+                                    'failed'  => '#d63638',
+                                ];
+                                $color = $status_colors[ $row->status ] ?? '#787c82';
+                                printf( '<span style="color: %s; font-weight: 600;">%s</span>', esc_attr( $color ), esc_html( ucfirst( $row->status ) ) );
+                                ?>
+                            </td>
+                            <td>
+                                <?php
+                                $date = $row->sent_at ?: $row->created_at;
+                                echo esc_html( date_i18n( 'M j, Y g:i a', strtotime( $date ) ) );
+                                ?>
+                            </td>
+                            <td>
+                                <?php if ( $row->status === 'draft' ) : ?>
+                                    <a href="<?php echo admin_url( 'admin.php?page=sp-blast-email-compose&blast_id=' . $row->id ); ?>">Edit</a> |
+                                <?php else : ?>
+                                    <a href="<?php echo admin_url( 'admin.php?page=sp-blast-email&view=' . $row->id ); ?>">View</a> |
+                                <?php endif; ?>
+                                <a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=sp-blast-email&action=delete&blast_id=' . $row->id ), 'sp_delete_blast_' . $row->id ); ?>"
+                                   onclick="return confirm('Delete this blast email?');"
+                                   style="color: #b32d2e;">Delete</a>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
+
+        <?php if ( $total_pages > 1 ) : ?>
+            <div class="tablenav bottom">
+                <div class="tablenav-pages">
+                    <?php
+                    echo paginate_links( [
+                        'base'      => add_query_arg( 'paged', '%#%' ),
+                        'format'    => '',
+                        'current'   => $paged,
+                        'total'     => $total_pages,
+                        'prev_text' => '&laquo;',
+                        'next_text' => '&raquo;',
+                    ] );
+                    ?>
+                </div>
+            </div>
+        <?php endif; ?>
+    </div>
+    <?php
+}
+
+/**
+ * Render a single blast email in read-only detail view.
+ *
+ * WHY: After a blast is sent, admins need to review what went out —
+ *      the subject, body, targeting, and delivery stats. This is the
+ *      audit trail for email communications.
+ *
+ * @param int $blast_id The blast email ID.
+ */
+function sp_render_blast_email_detail( int $blast_id ): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $blast = $wpdb->get_row( $wpdb->prepare(
+        "SELECT b.*, u.display_name AS sender_name
+         FROM {$prefix}blast_emails b
+         LEFT JOIN {$wpdb->users} u ON b.sender_id = u.ID
+         WHERE b.id = %d", $blast_id
+    ) );
+
+    if ( ! $blast ) {
+        echo '<div class="wrap"><h1>Blast Email Not Found</h1>';
+        echo '<p><a href="' . admin_url( 'admin.php?page=sp-blast-email' ) . '">&larr; Back</a></p></div>';
+        return;
+    }
+
+    // Decode recipient filter for display
+    $filter_display = 'All Active Members';
+    if ( $blast->recipient_type === 'group' && $blast->recipient_filter ) {
+        $filter_data = json_decode( $blast->recipient_filter, true );
+        if ( ! empty( $filter_data['group_ids'] ) ) {
+            $group_names = $wpdb->get_col( sprintf(
+                "SELECT name FROM {$prefix}groups WHERE id IN (%s)",
+                implode( ',', array_map( 'intval', $filter_data['group_ids'] ) )
+            ) );
+            $filter_display = 'Groups: ' . implode( ', ', $group_names );
+        }
+    } elseif ( $blast->recipient_type === 'tier' && $blast->recipient_filter ) {
+        $filter_data = json_decode( $blast->recipient_filter, true );
+        if ( ! empty( $filter_data['tier_ids'] ) ) {
+            $tier_names = $wpdb->get_col( sprintf(
+                "SELECT name FROM {$prefix}membership_tiers WHERE id IN (%s)",
+                implode( ',', array_map( 'intval', $filter_data['tier_ids'] ) )
+            ) );
+            $filter_display = 'Tiers: ' . implode( ', ', $tier_names );
+        }
+    }
+
+    ?>
+    <div class="wrap">
+        <h1>Blast Email — <?php echo esc_html( $blast->subject ); ?></h1>
+        <p><a href="<?php echo admin_url( 'admin.php?page=sp-blast-email' ); ?>">&larr; Back to Blast Email</a></p>
+
+        <table class="widefat" style="max-width: 800px; margin-bottom: 24px;">
+            <tbody>
+                <tr><th style="width: 140px; background: #f6f7f7;">Subject</th><td><?php echo esc_html( $blast->subject ); ?></td></tr>
+                <tr><th style="background: #f6f7f7;">Sender</th><td><?php echo esc_html( $blast->sender_name ?: '—' ); ?></td></tr>
+                <tr><th style="background: #f6f7f7;">Recipients</th><td><?php echo esc_html( $filter_display ); ?></td></tr>
+                <tr><th style="background: #f6f7f7;">Delivery</th><td><?php echo (int) $blast->total_sent; ?> sent, <?php echo (int) $blast->total_failed; ?> failed, <?php echo (int) $blast->total_recipients; ?> total</td></tr>
+                <tr><th style="background: #f6f7f7;">Status</th><td><strong><?php echo esc_html( ucfirst( $blast->status ) ); ?></strong></td></tr>
+                <tr><th style="background: #f6f7f7;">Sent</th><td><?php echo $blast->sent_at ? esc_html( date_i18n( 'F j, Y g:i a', strtotime( $blast->sent_at ) ) ) : '—'; ?></td></tr>
+            </tbody>
+        </table>
+
+        <h3>Email Body</h3>
+        <div style="background: #fff; border: 1px solid #c3c4c7; padding: 20px; max-width: 800px;">
+            <?php
+            $rendered = sp_build_email_html( $blast->subject, $blast->body );
+            echo '<iframe srcdoc="' . esc_attr( $rendered ) . '" style="width: 100%; min-height: 500px; border: none;" sandbox></iframe>';
+            ?>
+        </div>
+    </div>
+    <?php
+}
+
+/**
+ * Render the Blast Email compose/edit page.
+ *
+ * WHY: The compose page is where Harold crafts his weekly email. It uses
+ *      wp_editor() for rich text editing (media insertion, formatting),
+ *      radio buttons for recipient targeting, and AJAX to show the estimated
+ *      recipient count as targeting changes. Preview shows the rendered
+ *      email exactly as recipients will see it.
+ */
+function sp_render_blast_email_compose_page(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $blast_id = (int) ( $_GET['blast_id'] ?? 0 );
+    $blast    = null;
+
+    if ( $blast_id ) {
+        $blast = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$prefix}blast_emails WHERE id = %d", $blast_id
+        ) );
+        // Only allow editing drafts
+        if ( $blast && $blast->status !== 'draft' ) {
+            echo '<div class="wrap"><h1>Cannot Edit</h1>';
+            echo '<p>This blast email has already been sent and cannot be edited.</p>';
+            echo '<p><a href="' . admin_url( 'admin.php?page=sp-blast-email' ) . '">&larr; Back</a></p></div>';
+            return;
+        }
+    }
+
+    // Handle save/send
+    if ( $_SERVER['REQUEST_METHOD'] === 'POST' && isset( $_POST['sp_blast_nonce'] ) ) {
+        check_admin_referer( 'sp_save_blast', 'sp_blast_nonce' );
+
+        $subject        = sanitize_text_field( $_POST['blast_subject'] ?? '' );
+        $body           = wp_kses_post( $_POST['blast_body'] ?? '' );
+        $recipient_type = sanitize_text_field( $_POST['recipient_type'] ?? 'all_members' );
+        $action         = sanitize_text_field( $_POST['sp_blast_action'] ?? 'save_draft' );
+
+        // Build recipient filter JSON
+        $recipient_filter = null;
+        if ( $recipient_type === 'group' && ! empty( $_POST['group_ids'] ) ) {
+            $recipient_filter = wp_json_encode( [
+                'group_ids' => array_map( 'intval', (array) $_POST['group_ids'] ),
+            ] );
+        } elseif ( $recipient_type === 'tier' && ! empty( $_POST['tier_ids'] ) ) {
+            $recipient_filter = wp_json_encode( [
+                'tier_ids' => array_map( 'intval', (array) $_POST['tier_ids'] ),
+            ] );
+        }
+
+        // Count recipients
+        $total_recipients = sp_blast_count_recipients( $recipient_type, $recipient_filter );
+
+        $data = [
+            'subject'          => $subject,
+            'body'             => $body,
+            'sender_id'        => get_current_user_id(),
+            'recipient_type'   => $recipient_type,
+            'recipient_filter' => $recipient_filter,
+            'total_recipients' => $total_recipients,
+            'status'           => 'draft',
+            'updated_at'       => current_time( 'mysql' ),
+        ];
+
+        if ( $blast_id ) {
+            $wpdb->update( $prefix . 'blast_emails', $data, [ 'id' => $blast_id ] );
+        } else {
+            $data['created_at'] = current_time( 'mysql' );
+            $wpdb->insert( $prefix . 'blast_emails', $data );
+            $blast_id = (int) $wpdb->insert_id;
+        }
+
+        // If "Send Now" was clicked, trigger the send
+        if ( $action === 'send_now' && $blast_id && $total_recipients > 0 ) {
+            $wpdb->update( $prefix . 'blast_emails', [
+                'status' => 'sending',
+            ], [ 'id' => $blast_id ] );
+
+            // Schedule the first batch via WP cron (runs immediately on next page load)
+            wp_schedule_single_event( time(), 'sp_blast_email_send_batch', [ $blast_id, 0 ] );
+
+            wp_redirect( admin_url( 'admin.php?page=sp-blast-email&sent=1' ) );
+            exit;
+        }
+
+        wp_redirect( admin_url( 'admin.php?page=sp-blast-email&saved=1' ) );
+        exit;
+    }
+
+    // Load groups and tiers for targeting
+    $groups = $wpdb->get_results(
+        "SELECT g.id, g.name,
+                (SELECT COUNT(*) FROM {$prefix}group_members gm WHERE gm.group_id = g.id) AS member_count
+         FROM {$prefix}groups g
+         WHERE g.status = 'active'
+         ORDER BY g.sort_order, g.name"
+    );
+
+    $tiers = $wpdb->get_results(
+        "SELECT t.id, t.name,
+                (SELECT COUNT(*) FROM {$prefix}members m WHERE m.tier_id = t.id AND m.status = 'active') AS member_count
+         FROM {$prefix}membership_tiers t
+         WHERE t.active = 1
+         ORDER BY t.sort_order"
+    );
+
+    // Parse existing filter for pre-selecting checkboxes
+    $selected_groups = [];
+    $selected_tiers  = [];
+    $recipient_type  = $blast->recipient_type ?? 'all_members';
+
+    if ( $blast && $blast->recipient_filter ) {
+        $filter_data = json_decode( $blast->recipient_filter, true );
+        $selected_groups = $filter_data['group_ids'] ?? [];
+        $selected_tiers  = $filter_data['tier_ids'] ?? [];
+    }
+
+    // Total active members who haven't opted out (for the "all" count)
+    $all_count = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$prefix}members m
+         JOIN {$wpdb->users} u ON m.user_id = u.ID
+         WHERE m.status = 'active' AND m.blast_email_opt_out = 0
+         AND u.user_email != '' AND u.user_email IS NOT NULL"
+    );
+
+    ?>
+    <div class="wrap sp-admin-wrap">
+        <h1><?php echo $blast_id ? 'Edit Blast Email' : 'Compose Blast Email'; ?></h1>
+        <p><a href="<?php echo admin_url( 'admin.php?page=sp-blast-email' ); ?>">&larr; Back to Blast Email</a></p>
+
+        <form method="post" id="sp-blast-form">
+            <?php wp_nonce_field( 'sp_save_blast', 'sp_blast_nonce' ); ?>
+            <input type="hidden" name="sp_blast_action" id="sp-blast-action" value="save_draft">
+
+            <table class="form-table" style="max-width: 800px;">
+                <tr>
+                    <th><label for="sp-blast-subject">Subject <span style="color: #d63638;">*</span></label></th>
+                    <td><input type="text" name="blast_subject" id="sp-blast-subject" value="<?php echo esc_attr( $blast->subject ?? '' ); ?>" required style="width: 100%; font-size: 14px; padding: 6px 10px;"></td>
+                </tr>
+                <tr>
+                    <th>Recipients</th>
+                    <td>
+                        <fieldset>
+                            <label style="display: block; margin-bottom: 8px;">
+                                <input type="radio" name="recipient_type" value="all_members" <?php checked( $recipient_type, 'all_members' ); ?>>
+                                All Active Members <span style="color: #787c82;">(<?php echo $all_count; ?>)</span>
+                            </label>
+
+                            <label style="display: block; margin-bottom: 4px;">
+                                <input type="radio" name="recipient_type" value="group" <?php checked( $recipient_type, 'group' ); ?>>
+                                By Group
+                            </label>
+                            <div id="sp-blast-groups" style="margin: 4px 0 12px 24px; <?php echo $recipient_type !== 'group' ? 'display:none;' : ''; ?>">
+                                <?php foreach ( $groups as $g ) : ?>
+                                    <label style="display: block; margin-bottom: 2px;">
+                                        <input type="checkbox" name="group_ids[]" value="<?php echo esc_attr( $g->id ); ?>"
+                                            <?php checked( in_array( (int) $g->id, $selected_groups, true ) ); ?>>
+                                        <?php echo esc_html( $g->name ); ?>
+                                        <span style="color: #787c82;">(<?php echo (int) $g->member_count; ?>)</span>
+                                    </label>
+                                <?php endforeach; ?>
+                                <?php if ( empty( $groups ) ) : ?>
+                                    <em style="color: #787c82;">No active groups. <a href="<?php echo admin_url( 'admin.php?page=sp-group-edit' ); ?>">Create one</a>.</em>
+                                <?php endif; ?>
+                            </div>
+
+                            <label style="display: block; margin-bottom: 4px;">
+                                <input type="radio" name="recipient_type" value="tier" <?php checked( $recipient_type, 'tier' ); ?>>
+                                By Membership Tier
+                            </label>
+                            <div id="sp-blast-tiers" style="margin: 4px 0 12px 24px; <?php echo $recipient_type !== 'tier' ? 'display:none;' : ''; ?>">
+                                <?php foreach ( $tiers as $t ) : ?>
+                                    <label style="display: block; margin-bottom: 2px;">
+                                        <input type="checkbox" name="tier_ids[]" value="<?php echo esc_attr( $t->id ); ?>"
+                                            <?php checked( in_array( (int) $t->id, $selected_tiers, true ) ); ?>>
+                                        <?php echo esc_html( $t->name ); ?>
+                                        <span style="color: #787c82;">(<?php echo (int) $t->member_count; ?>)</span>
+                                    </label>
+                                <?php endforeach; ?>
+                            </div>
+                        </fieldset>
+                        <p class="description">Members who have opted out of blast emails will be excluded automatically.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label>Email Body</label></th>
+                    <td>
+                        <p class="description" style="margin-bottom: 8px;">
+                            Merge tags: <code>{first_name}</code> <code>{last_name}</code> <code>{display_name}</code> <code>{organization_name}</code>
+                        </p>
+                        <?php
+                        wp_editor( $blast->body ?? '', 'blast_body', [
+                            'textarea_name' => 'blast_body',
+                            'textarea_rows' => 20,
+                            'media_buttons' => true,
+                            'teeny'         => false,
+                            'quicktags'     => true,
+                        ] );
+                        ?>
+                    </td>
+                </tr>
+            </table>
+
+            <p class="submit" style="display: flex; gap: 8px; align-items: center;">
+                <button type="submit" class="button button-primary" onclick="document.getElementById('sp-blast-action').value='save_draft';">Save Draft</button>
+                <button type="submit" class="button button-primary" style="background: #00a32a; border-color: #00a32a;"
+                        onclick="if(!confirm('Send this email to all selected recipients? This cannot be undone.')){event.preventDefault();return;}document.getElementById('sp-blast-action').value='send_now';">
+                    Send Now
+                </button>
+                <a href="<?php echo admin_url( 'admin.php?page=sp-blast-email' ); ?>" class="button">Cancel</a>
+            </p>
+        </form>
+
+        <script>
+        // Toggle group/tier checkboxes based on recipient type selection
+        (function() {
+            var radios = document.querySelectorAll('input[name="recipient_type"]');
+            var groupsDiv = document.getElementById('sp-blast-groups');
+            var tiersDiv = document.getElementById('sp-blast-tiers');
+
+            function toggle() {
+                var selected = document.querySelector('input[name="recipient_type"]:checked');
+                if (!selected) return;
+                groupsDiv.style.display = selected.value === 'group' ? '' : 'none';
+                tiersDiv.style.display = selected.value === 'tier' ? '' : 'none';
+            }
+
+            radios.forEach(function(r) { r.addEventListener('change', toggle); });
+            toggle();
+        })();
+        </script>
+    </div>
+    <?php
+}
+
+/**
+ * Count how many recipients a blast email would reach.
+ *
+ * WHY: The compose page needs to show an estimated recipient count, and
+ *      the send engine needs the exact count for progress tracking. This
+ *      function builds the recipient query based on targeting type and
+ *      respects opt-out flags.
+ *
+ * @param string      $recipient_type   'all_members', 'group', or 'tier'.
+ * @param string|null $recipient_filter JSON filter data.
+ * @return int Number of recipients.
+ */
+function sp_blast_count_recipients( string $recipient_type, ?string $recipient_filter ): int {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // Base: active members with valid email who haven't opted out
+    $base_where = "m.status = 'active' AND m.blast_email_opt_out = 0
+                   AND u.user_email != '' AND u.user_email IS NOT NULL";
+
+    if ( $recipient_type === 'group' && $recipient_filter ) {
+        $filter = json_decode( $recipient_filter, true );
+        if ( ! empty( $filter['group_ids'] ) ) {
+            $ids = implode( ',', array_map( 'intval', $filter['group_ids'] ) );
+            return (int) $wpdb->get_var(
+                "SELECT COUNT(DISTINCT m.user_id) FROM {$prefix}members m
+                 JOIN {$wpdb->users} u ON m.user_id = u.ID
+                 JOIN {$prefix}group_members gm ON m.user_id = gm.user_id
+                 WHERE {$base_where} AND gm.group_id IN ({$ids})"
+            );
+        }
+    }
+
+    if ( $recipient_type === 'tier' && $recipient_filter ) {
+        $filter = json_decode( $recipient_filter, true );
+        if ( ! empty( $filter['tier_ids'] ) ) {
+            $ids = implode( ',', array_map( 'intval', $filter['tier_ids'] ) );
+            return (int) $wpdb->get_var(
+                "SELECT COUNT(*) FROM {$prefix}members m
+                 JOIN {$wpdb->users} u ON m.user_id = u.ID
+                 WHERE {$base_where} AND m.tier_id IN ({$ids})"
+            );
+        }
+    }
+
+    // Default: all active members
+    return (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$prefix}members m
+         JOIN {$wpdb->users} u ON m.user_id = u.ID
+         WHERE {$base_where}"
+    );
+}
+
+/**
+ * Get the list of recipient emails for a blast email.
+ *
+ * WHY: The send engine needs actual email addresses and member data to
+ *      process merge tags and send individual emails. Returns an array
+ *      of objects with user_id, email, first_name, last_name, display_name.
+ *
+ * @param string      $recipient_type   'all_members', 'group', or 'tier'.
+ * @param string|null $recipient_filter JSON filter data.
+ * @param int         $offset           Start position for batching.
+ * @param int         $limit            Batch size.
+ * @return array Array of recipient objects.
+ */
+function sp_blast_get_recipients( string $recipient_type, ?string $recipient_filter, int $offset = 0, int $limit = 50 ): array {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $base_where = "m.status = 'active' AND m.blast_email_opt_out = 0
+                   AND u.user_email != '' AND u.user_email IS NOT NULL";
+
+    $base_select = "SELECT DISTINCT m.user_id, u.user_email AS email, m.first_name, m.last_name, u.display_name
+                    FROM {$prefix}members m
+                    JOIN {$wpdb->users} u ON m.user_id = u.ID";
+
+    if ( $recipient_type === 'group' && $recipient_filter ) {
+        $filter = json_decode( $recipient_filter, true );
+        if ( ! empty( $filter['group_ids'] ) ) {
+            $ids = implode( ',', array_map( 'intval', $filter['group_ids'] ) );
+            return $wpdb->get_results( $wpdb->prepare(
+                "{$base_select}
+                 JOIN {$prefix}group_members gm ON m.user_id = gm.user_id
+                 WHERE {$base_where} AND gm.group_id IN ({$ids})
+                 ORDER BY m.last_name ASC
+                 LIMIT %d OFFSET %d",
+                $limit, $offset
+            ) );
+        }
+    }
+
+    if ( $recipient_type === 'tier' && $recipient_filter ) {
+        $filter = json_decode( $recipient_filter, true );
+        if ( ! empty( $filter['tier_ids'] ) ) {
+            $ids = implode( ',', array_map( 'intval', $filter['tier_ids'] ) );
+            return $wpdb->get_results( $wpdb->prepare(
+                "{$base_select}
+                 WHERE {$base_where} AND m.tier_id IN ({$ids})
+                 ORDER BY m.last_name ASC
+                 LIMIT %d OFFSET %d",
+                $limit, $offset
+            ) );
+        }
+    }
+
+    // Default: all active members
+    return $wpdb->get_results( $wpdb->prepare(
+        "{$base_select}
+         WHERE {$base_where}
+         ORDER BY m.last_name ASC
+         LIMIT %d OFFSET %d",
+        $limit, $offset
+    ) );
+}
+
+/**
+ * Process merge tags in blast email body.
+ *
+ * WHY: Personalization makes blast emails feel less like spam. Harold types
+ *      {first_name} and each recipient sees their own name. Simple and
+ *      effective — the society does this in every email.
+ *
+ * @param string $body      The email body with merge tags.
+ * @param object $recipient The recipient object from sp_blast_get_recipients().
+ * @return string Body with merge tags replaced.
+ */
+function sp_blast_process_merge_tags( string $body, object $recipient ): string {
+    $settings = get_option( 'societypress_settings', [] );
+    $org_name = $settings['organization_name'] ?? get_bloginfo( 'name' );
+
+    $tags = [
+        '{first_name}'        => $recipient->first_name ?? '',
+        '{last_name}'         => $recipient->last_name ?? '',
+        '{display_name}'      => $recipient->display_name ?? '',
+        '{organization_name}' => $org_name,
+    ];
+
+    return str_replace( array_keys( $tags ), array_values( $tags ), $body );
+}
+
+/**
+ * WP Cron handler: send a batch of blast emails.
+ *
+ * WHY: Sending 300+ emails in one PHP request would timeout on shared hosting.
+ *      Instead we send in batches of 50 (configurable), then schedule the next
+ *      batch via WP cron. Each individual email is logged to sp_email_log for
+ *      the audit trail. Progress is tracked on the sp_blast_emails row.
+ *
+ * @param int $blast_id The blast email row ID.
+ * @param int $offset   Current position in the recipient list.
+ */
+function sp_blast_email_send_batch( int $blast_id, int $offset ): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $blast = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$prefix}blast_emails WHERE id = %d", $blast_id
+    ) );
+
+    if ( ! $blast || $blast->status !== 'sending' ) {
+        return; // Already completed, cancelled, or doesn't exist
+    }
+
+    $settings   = get_option( 'societypress_settings', [] );
+    $batch_size = (int) ( $settings['blast_batch_size'] ?? 50 );
+
+    $recipients = sp_blast_get_recipients(
+        $blast->recipient_type,
+        $blast->recipient_filter,
+        $offset,
+        $batch_size
+    );
+
+    if ( empty( $recipients ) ) {
+        // All done — mark as sent
+        $wpdb->update( $prefix . 'blast_emails', [
+            'status'  => 'sent',
+            'sent_at' => current_time( 'mysql' ),
+        ], [ 'id' => $blast_id ] );
+        return;
+    }
+
+    $headers    = sp_get_email_headers();
+    $sent_count = 0;
+    $fail_count = 0;
+
+    foreach ( $recipients as $recipient ) {
+        // Process merge tags for this recipient
+        $personalized_body = sp_blast_process_merge_tags( $blast->body, $recipient );
+
+        // Wrap in the email HTML template
+        $html_body = sp_build_email_html( $blast->subject, $personalized_body );
+
+        // Send the email
+        $sent = wp_mail( $recipient->email, $blast->subject, $html_body, $headers );
+
+        // Log to email log
+        sp_email_log_insert(
+            $recipient->email,
+            $blast->subject,
+            $html_body,
+            implode( "\n", $headers ),
+            $sent ? 'sent' : 'failed',
+            $sent ? null : 'wp_mail() returned false',
+            (int) $recipient->user_id,
+            'blast'
+        );
+
+        if ( $sent ) {
+            $sent_count++;
+        } else {
+            $fail_count++;
+        }
+    }
+
+    // Update progress on the blast email row
+    $wpdb->query( $wpdb->prepare(
+        "UPDATE {$prefix}blast_emails
+         SET total_sent = total_sent + %d, total_failed = total_failed + %d, updated_at = %s
+         WHERE id = %d",
+        $sent_count, $fail_count, current_time( 'mysql' ), $blast_id
+    ) );
+
+    // Schedule the next batch
+    $next_offset = $offset + $batch_size;
+    wp_schedule_single_event( time() + 5, 'sp_blast_email_send_batch', [ $blast_id, $next_offset ] );
+}
+add_action( 'sp_blast_email_send_batch', 'sp_blast_email_send_batch', 10, 2 );
+
+/**
+ * AJAX handler: get recipient count for blast email compose preview.
+ *
+ * WHY: As Harold toggles between "All Members", "By Group", and "By Tier"
+ *      on the compose page, he needs to see how many people will receive
+ *      the email. This endpoint returns the count without a full page reload.
+ */
+function sp_ajax_blast_recipient_count(): void {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( 'Unauthorized' );
+    }
+
+    $type   = sanitize_text_field( $_POST['recipient_type'] ?? 'all_members' );
+    $filter = null;
+
+    if ( $type === 'group' && ! empty( $_POST['group_ids'] ) ) {
+        $filter = wp_json_encode( [
+            'group_ids' => array_map( 'intval', (array) $_POST['group_ids'] ),
+        ] );
+    } elseif ( $type === 'tier' && ! empty( $_POST['tier_ids'] ) ) {
+        $filter = wp_json_encode( [
+            'tier_ids' => array_map( 'intval', (array) $_POST['tier_ids'] ),
+        ] );
+    }
+
+    $count = sp_blast_count_recipients( $type, $filter );
+    wp_send_json_success( [ 'count' => $count ] );
+}
+add_action( 'wp_ajax_sp_blast_recipient_count', 'sp_ajax_blast_recipient_count' );
+
+
+// ============================================================================
+// DONATIONS — ADMIN PAGES (LIST, EDIT, CAMPAIGNS)
+// ============================================================================
+//
+// WHY: the society tracks donations separately from membership dues. Campaigns
+//      let them organize giving around specific goals (building fund,
+//      memorial fund, etc.). The acknowledgment system automates thank-you
+//      emails so the treasurer doesn't have to do them manually.
+// ============================================================================
+
+/**
+ * Render the Donations list page.
+ *
+ * WHY: Shows all donations with summary stats, filtering by campaign/type/
+ *      date range, and search. Each row has edit/delete actions and an
+ *      acknowledgment status indicator. Summary cards show total giving
+ *      at a glance.
+ */
+function sp_render_donations_page(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // Handle delete
+    if ( isset( $_GET['action'] ) && $_GET['action'] === 'delete' && isset( $_GET['donation_id'] ) ) {
+        check_admin_referer( 'sp_delete_donation_' . $_GET['donation_id'] );
+        $wpdb->delete( $prefix . 'donations', [ 'id' => (int) $_GET['donation_id'] ] );
+        wp_redirect( admin_url( 'admin.php?page=sp-donations&deleted=1' ) );
+        exit;
+    }
+
+    // Handle bulk acknowledgment
+    if ( isset( $_POST['sp_bulk_acknowledge'] ) && ! empty( $_POST['donation_ids'] ) ) {
+        check_admin_referer( 'sp_bulk_acknowledge' );
+        sp_send_donation_acknowledgments( array_map( 'intval', (array) $_POST['donation_ids'] ) );
+        wp_redirect( admin_url( 'admin.php?page=sp-donations&acknowledged=1' ) );
+        exit;
+    }
+
+    // Filters
+    $filter_campaign = (int) ( $_GET['campaign'] ?? 0 );
+    $filter_type     = sanitize_text_field( $_GET['type'] ?? '' );
+    $filter_from     = sanitize_text_field( $_GET['from'] ?? '' );
+    $filter_to       = sanitize_text_field( $_GET['to'] ?? '' );
+    $search          = sanitize_text_field( $_GET['s'] ?? '' );
+    $per_page        = 50;
+    $paged           = max( 1, (int) ( $_GET['paged'] ?? 1 ) );
+    $offset          = ( $paged - 1 ) * $per_page;
+
+    $where = [ '1=1' ];
+    $args  = [];
+
+    if ( $filter_campaign ) {
+        $where[] = 'd.campaign_id = %d';
+        $args[]  = $filter_campaign;
+    }
+    if ( $filter_type ) {
+        $where[] = 'd.type = %s';
+        $args[]  = $filter_type;
+    }
+    if ( $filter_from ) {
+        $where[] = 'd.date >= %s';
+        $args[]  = $filter_from;
+    }
+    if ( $filter_to ) {
+        $where[] = 'd.date <= %s';
+        $args[]  = $filter_to;
+    }
+    if ( $search ) {
+        $like    = '%' . $wpdb->esc_like( $search ) . '%';
+        $where[] = '(d.donor_name LIKE %s OR d.donor_email LIKE %s OR d.note LIKE %s)';
+        $args[]  = $like;
+        $args[]  = $like;
+        $args[]  = $like;
+    }
+
+    $where_sql = implode( ' AND ', $where );
+
+    // Summary stats
+    $stats_sql = "SELECT
+        COUNT(*) AS total_count,
+        COALESCE(SUM(d.amount), 0) AS total_amount
+        FROM {$prefix}donations d
+        WHERE {$where_sql}";
+
+    $stats = $args
+        ? $wpdb->get_row( $wpdb->prepare( $stats_sql, ...$args ) )
+        : $wpdb->get_row( $stats_sql );
+
+    // This year's total (always unfiltered)
+    $year_start = date( 'Y-01-01' );
+    $year_total = (float) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COALESCE(SUM(amount), 0) FROM {$prefix}donations WHERE date >= %s",
+        $year_start
+    ) );
+
+    // Paginated results
+    $rows_sql = "SELECT d.*, c.name AS campaign_name,
+                        r.display_name AS recorded_by_name
+                 FROM {$prefix}donations d
+                 LEFT JOIN {$prefix}campaigns c ON d.campaign_id = c.id
+                 LEFT JOIN {$wpdb->users} r ON d.recorded_by = r.ID
+                 WHERE {$where_sql}
+                 ORDER BY d.date DESC, d.created_at DESC
+                 LIMIT %d OFFSET %d";
+
+    $query_args = array_merge( $args, [ $per_page, $offset ] );
+    $rows = $wpdb->get_results( $wpdb->prepare( $rows_sql, ...$query_args ) );
+
+    $total_rows  = (int) ( $stats->total_count ?? 0 );
+    $total_pages = ceil( $total_rows / $per_page );
+
+    // Dropdowns
+    $campaigns = $wpdb->get_results( "SELECT id, name FROM {$prefix}campaigns ORDER BY name" );
+    $types     = $wpdb->get_col( "SELECT DISTINCT type FROM {$prefix}donations ORDER BY type" );
+
+    ?>
+    <div class="wrap sp-admin-wrap">
+        <h1 class="wp-heading-inline">Donations</h1>
+        <a href="<?php echo admin_url( 'admin.php?page=sp-donation-edit' ); ?>" class="page-title-action">Record Donation</a>
+
+        <?php if ( isset( $_GET['deleted'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p>Donation deleted.</p></div>
+        <?php endif; ?>
+        <?php if ( isset( $_GET['saved'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p>Donation saved.</p></div>
+        <?php endif; ?>
+        <?php if ( isset( $_GET['acknowledged'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p>Acknowledgment emails sent.</p></div>
+        <?php endif; ?>
+
+        <style>
+            .sp-donation-stats { display: flex; gap: 16px; margin: 16px 0; flex-wrap: wrap; }
+            .sp-donation-stat { background: #fff; border: 1px solid #c3c4c7; border-radius: 4px; padding: 12px 20px; min-width: 140px; }
+            .sp-donation-stat .stat-label { font-size: 12px; color: #646970; text-transform: uppercase; letter-spacing: 0.5px; }
+            .sp-donation-stat .stat-value { font-size: 24px; font-weight: 600; margin-top: 4px; }
+            .sp-donation-stat .stat-value.money { color: #00a32a; }
+        </style>
+
+        <!-- Summary Stats -->
+        <div class="sp-donation-stats">
+            <div class="sp-donation-stat">
+                <div class="stat-label">Shown</div>
+                <div class="stat-value"><?php echo number_format( $total_rows ); ?></div>
+            </div>
+            <div class="sp-donation-stat">
+                <div class="stat-label">Shown Total</div>
+                <div class="stat-value money">$<?php echo number_format( (float) ( $stats->total_amount ?? 0 ), 2 ); ?></div>
+            </div>
+            <div class="sp-donation-stat">
+                <div class="stat-label">This Year</div>
+                <div class="stat-value money">$<?php echo number_format( $year_total, 2 ); ?></div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <form method="get" style="background: #fff; border: 1px solid #c3c4c7; padding: 12px; margin-bottom: 12px; display: flex; gap: 8px; align-items: end; flex-wrap: wrap;">
+            <input type="hidden" name="page" value="sp-donations">
+            <div>
+                <label style="font-size: 12px; display: block; margin-bottom: 2px; color: #646970;">Campaign</label>
+                <select name="campaign">
+                    <option value="">All Campaigns</option>
+                    <?php foreach ( $campaigns as $c ) : ?>
+                        <option value="<?php echo esc_attr( $c->id ); ?>" <?php selected( $filter_campaign, $c->id ); ?>><?php echo esc_html( $c->name ); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div>
+                <label style="font-size: 12px; display: block; margin-bottom: 2px; color: #646970;">Type</label>
+                <select name="type">
+                    <option value="">All Types</option>
+                    <?php foreach ( $types as $t ) : ?>
+                        <option value="<?php echo esc_attr( $t ); ?>" <?php selected( $filter_type, $t ); ?>><?php echo esc_html( ucfirst( str_replace( '_', ' ', $t ) ) ); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div>
+                <label style="font-size: 12px; display: block; margin-bottom: 2px; color: #646970;">From</label>
+                <input type="date" name="from" value="<?php echo esc_attr( $filter_from ); ?>">
+            </div>
+            <div>
+                <label style="font-size: 12px; display: block; margin-bottom: 2px; color: #646970;">To</label>
+                <input type="date" name="to" value="<?php echo esc_attr( $filter_to ); ?>">
+            </div>
+            <div>
+                <label style="font-size: 12px; display: block; margin-bottom: 2px; color: #646970;">Search</label>
+                <input type="search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="Donor name or note...">
+            </div>
+            <div>
+                <button type="submit" class="button">Filter</button>
+                <?php if ( $filter_campaign || $filter_type || $filter_from || $filter_to || $search ) : ?>
+                    <a href="<?php echo admin_url( 'admin.php?page=sp-donations' ); ?>" class="button">Clear</a>
+                <?php endif; ?>
+            </div>
+        </form>
+
+        <!-- Donations Table -->
+        <form method="post">
+            <?php wp_nonce_field( 'sp_bulk_acknowledge' ); ?>
+            <table class="widefat striped">
+                <thead>
+                    <tr>
+                        <th style="width: 30px;"><input type="checkbox" id="sp-don-check-all"></th>
+                        <th>Date</th>
+                        <th>Donor</th>
+                        <th>Amount</th>
+                        <th>Type</th>
+                        <th>Campaign</th>
+                        <th>Ack'd</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if ( empty( $rows ) ) : ?>
+                        <tr><td colspan="8" style="text-align: center; padding: 20px;">No donations found.</td></tr>
+                    <?php else : ?>
+                        <?php foreach ( $rows as $row ) : ?>
+                            <tr>
+                                <td><input type="checkbox" name="donation_ids[]" value="<?php echo esc_attr( $row->id ); ?>"></td>
+                                <td><?php echo esc_html( date_i18n( 'M j, Y', strtotime( $row->date ) ) ); ?></td>
+                                <td>
+                                    <?php if ( $row->is_anonymous ) : ?>
+                                        <em style="color: #787c82;">Anonymous</em>
+                                    <?php else : ?>
+                                        <?php echo esc_html( $row->donor_name ); ?>
+                                        <?php if ( $row->donor_email ) : ?>
+                                            <br><span style="color: #787c82; font-size: 12px;"><?php echo esc_html( $row->donor_email ); ?></span>
+                                        <?php endif; ?>
+                                    <?php endif; ?>
+                                </td>
+                                <td style="font-weight: 600;">
+                                    <?php if ( $row->type === 'in_kind' ) : ?>
+                                        In-Kind
+                                    <?php else : ?>
+                                        $<?php echo number_format( (float) $row->amount, 2 ); ?>
+                                    <?php endif; ?>
+                                </td>
+                                <td><?php echo esc_html( ucfirst( str_replace( '_', ' ', $row->type ) ) ); ?></td>
+                                <td><?php echo esc_html( $row->campaign_name ?: '—' ); ?></td>
+                                <td>
+                                    <?php if ( $row->acknowledgment_sent ) : ?>
+                                        <span style="color: #00a32a;" title="<?php echo esc_attr( $row->acknowledgment_date ); ?>">&#10003;</span>
+                                    <?php else : ?>
+                                        <span style="color: #787c82;">—</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <a href="<?php echo admin_url( 'admin.php?page=sp-donation-edit&donation_id=' . $row->id ); ?>">Edit</a>
+                                    |
+                                    <a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=sp-donations&action=delete&donation_id=' . $row->id ), 'sp_delete_donation_' . $row->id ); ?>"
+                                       onclick="return confirm('Delete this donation record?');"
+                                       style="color: #b32d2e;">Delete</a>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+
+            <?php if ( ! empty( $rows ) ) : ?>
+                <div style="margin-top: 12px;">
+                    <button type="submit" name="sp_bulk_acknowledge" value="1" class="button"
+                            onclick="return confirm('Send acknowledgment emails to all selected donors?');">
+                        Send Acknowledgment Email
+                    </button>
+                </div>
+            <?php endif; ?>
+        </form>
+
+        <?php if ( $total_pages > 1 ) : ?>
+            <div class="tablenav bottom">
+                <div class="tablenav-pages">
+                    <?php
+                    echo paginate_links( [
+                        'base'      => add_query_arg( 'paged', '%#%' ),
+                        'format'    => '',
+                        'current'   => $paged,
+                        'total'     => $total_pages,
+                        'prev_text' => '&laquo;',
+                        'next_text' => '&raquo;',
+                    ] );
+                    ?>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <script>
+        // Check-all checkbox for bulk acknowledgment
+        document.getElementById('sp-don-check-all').addEventListener('change', function() {
+            var boxes = document.querySelectorAll('input[name="donation_ids[]"]');
+            for (var i = 0; i < boxes.length; i++) boxes[i].checked = this.checked;
+        });
+        </script>
+    </div>
+    <?php
+}
+
+/**
+ * Render the Donation edit/record page.
+ *
+ * WHY: Records a new donation or edits an existing one. If a member is
+ *      selected from the dropdown, their name and email auto-fill. Non-member
+ *      donors can be entered manually. In-kind donations show an extra
+ *      description field.
+ */
+function sp_render_donation_edit_page(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $donation_id = (int) ( $_GET['donation_id'] ?? 0 );
+    $donation    = null;
+
+    if ( $donation_id ) {
+        $donation = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$prefix}donations WHERE id = %d", $donation_id
+        ) );
+    }
+
+    // Handle save
+    if ( $_SERVER['REQUEST_METHOD'] === 'POST' && isset( $_POST['sp_donation_nonce'] ) ) {
+        check_admin_referer( 'sp_save_donation', 'sp_donation_nonce' );
+
+        $member_id   = (int) ( $_POST['member_id'] ?? 0 );
+        $donor_name  = sanitize_text_field( $_POST['donor_name'] ?? '' );
+        $donor_email = sanitize_email( $_POST['donor_email'] ?? '' );
+
+        // If a member was selected, pull their name/email
+        if ( $member_id ) {
+            $member = $wpdb->get_row( $wpdb->prepare(
+                "SELECT m.first_name, m.last_name, u.user_email
+                 FROM {$prefix}members m
+                 JOIN {$wpdb->users} u ON m.user_id = u.ID
+                 WHERE m.user_id = %d", $member_id
+            ) );
+            if ( $member ) {
+                $donor_name  = trim( $member->first_name . ' ' . $member->last_name );
+                $donor_email = $member->user_email;
+            }
+        }
+
+        $data = [
+            'campaign_id'         => (int) ( $_POST['campaign_id'] ?? 0 ) ?: null,
+            'user_id'             => $member_id ?: null,
+            'donor_name'          => $donor_name,
+            'donor_email'         => $donor_email,
+            'amount'              => (float) ( $_POST['amount'] ?? 0 ),
+            'type'                => sanitize_text_field( $_POST['donation_type'] ?? 'cash' ),
+            'in_kind_description' => sanitize_textarea_field( $_POST['in_kind_description'] ?? '' ) ?: null,
+            'date'                => sanitize_text_field( $_POST['donation_date'] ?? date( 'Y-m-d' ) ),
+            'note'                => sanitize_textarea_field( $_POST['note'] ?? '' ) ?: null,
+            'is_anonymous'        => isset( $_POST['is_anonymous'] ) ? 1 : 0,
+            'recorded_by'         => get_current_user_id(),
+        ];
+
+        if ( $donation_id ) {
+            $wpdb->update( $prefix . 'donations', $data, [ 'id' => $donation_id ] );
+        } else {
+            $data['created_at'] = current_time( 'mysql' );
+            $wpdb->insert( $prefix . 'donations', $data );
+        }
+
+        wp_redirect( admin_url( 'admin.php?page=sp-donations&saved=1' ) );
+        exit;
+    }
+
+    // Members for dropdown
+    $members = $wpdb->get_results(
+        "SELECT m.user_id, m.first_name, m.last_name, u.user_email
+         FROM {$prefix}members m
+         JOIN {$wpdb->users} u ON m.user_id = u.ID
+         ORDER BY m.last_name, m.first_name"
+    );
+
+    // Campaigns for dropdown
+    $campaigns = $wpdb->get_results(
+        "SELECT id, name FROM {$prefix}campaigns WHERE status = 'active' ORDER BY name"
+    );
+
+    $types = [ 'cash', 'check', 'credit_card', 'paypal', 'stripe', 'in_kind', 'other' ];
+
+    ?>
+    <div class="wrap sp-admin-wrap">
+        <h1><?php echo $donation_id ? 'Edit Donation' : 'Record Donation'; ?></h1>
+        <p><a href="<?php echo admin_url( 'admin.php?page=sp-donations' ); ?>">&larr; Back to Donations</a></p>
+
+        <form method="post" style="max-width: 600px;">
+            <?php wp_nonce_field( 'sp_save_donation', 'sp_donation_nonce' ); ?>
+
+            <table class="form-table">
+                <tr>
+                    <th><label for="sp-d-campaign">Campaign</label></th>
+                    <td>
+                        <select name="campaign_id" id="sp-d-campaign" style="width: 100%;">
+                            <option value="">— General / No Campaign —</option>
+                            <?php foreach ( $campaigns as $c ) : ?>
+                                <option value="<?php echo esc_attr( $c->id ); ?>" <?php selected( $donation->campaign_id ?? 0, $c->id ); ?>><?php echo esc_html( $c->name ); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="sp-d-member">Member</label></th>
+                    <td>
+                        <select name="member_id" id="sp-d-member" style="width: 100%;">
+                            <option value="">— Non-member / Manual Entry —</option>
+                            <?php foreach ( $members as $m ) : ?>
+                                <option value="<?php echo esc_attr( $m->user_id ); ?>"
+                                        data-name="<?php echo esc_attr( trim( $m->first_name . ' ' . $m->last_name ) ); ?>"
+                                        data-email="<?php echo esc_attr( $m->user_email ); ?>"
+                                        <?php selected( $donation->user_id ?? 0, $m->user_id ); ?>>
+                                    <?php echo esc_html( $m->last_name . ', ' . $m->first_name . ' (' . $m->user_email . ')' ); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <p class="description">Select a member to auto-fill name and email, or leave blank for manual entry.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="sp-d-name">Donor Name <span style="color: #d63638;">*</span></label></th>
+                    <td><input type="text" name="donor_name" id="sp-d-name" value="<?php echo esc_attr( $donation->donor_name ?? '' ); ?>" required style="width: 100%;"></td>
+                </tr>
+                <tr>
+                    <th><label for="sp-d-email">Donor Email</label></th>
+                    <td><input type="email" name="donor_email" id="sp-d-email" value="<?php echo esc_attr( $donation->donor_email ?? '' ); ?>" style="width: 100%;"></td>
+                </tr>
+                <tr>
+                    <th><label for="sp-d-amount">Amount</label></th>
+                    <td><input type="number" name="amount" id="sp-d-amount" value="<?php echo esc_attr( number_format( (float) ( $donation->amount ?? 0 ), 2, '.', '' ) ); ?>" step="0.01" min="0" style="width: 150px;"></td>
+                </tr>
+                <tr>
+                    <th><label for="sp-d-type">Type</label></th>
+                    <td>
+                        <select name="donation_type" id="sp-d-type" style="width: 200px;">
+                            <?php foreach ( $types as $t ) : ?>
+                                <option value="<?php echo esc_attr( $t ); ?>" <?php selected( $donation->type ?? 'cash', $t ); ?>><?php echo esc_html( ucfirst( str_replace( '_', ' ', $t ) ) ); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </td>
+                </tr>
+                <tr id="sp-d-inkind-row" style="<?php echo ( $donation->type ?? '' ) !== 'in_kind' ? 'display:none;' : ''; ?>">
+                    <th><label for="sp-d-inkind">In-Kind Description</label></th>
+                    <td><textarea name="in_kind_description" id="sp-d-inkind" rows="3" style="width: 100%;"><?php echo esc_textarea( $donation->in_kind_description ?? '' ); ?></textarea></td>
+                </tr>
+                <tr>
+                    <th><label for="sp-d-date">Date <span style="color: #d63638;">*</span></label></th>
+                    <td><input type="date" name="donation_date" id="sp-d-date" value="<?php echo esc_attr( $donation->date ?? date( 'Y-m-d' ) ); ?>" required></td>
+                </tr>
+                <tr>
+                    <th><label for="sp-d-note">Note</label></th>
+                    <td><textarea name="note" id="sp-d-note" rows="3" style="width: 100%;"><?php echo esc_textarea( $donation->note ?? '' ); ?></textarea></td>
+                </tr>
+                <tr>
+                    <th>Options</th>
+                    <td>
+                        <label><input type="checkbox" name="is_anonymous" value="1" <?php checked( $donation->is_anonymous ?? 0, 1 ); ?>> Anonymous donation</label>
+                    </td>
+                </tr>
+            </table>
+
+            <p class="submit">
+                <button type="submit" class="button button-primary"><?php echo $donation_id ? 'Save Changes' : 'Record Donation'; ?></button>
+                <a href="<?php echo admin_url( 'admin.php?page=sp-donations' ); ?>" class="button">Cancel</a>
+            </p>
+        </form>
+
+        <script>
+        // Auto-fill donor name/email when a member is selected
+        document.getElementById('sp-d-member').addEventListener('change', function() {
+            var opt = this.options[this.selectedIndex];
+            if (this.value) {
+                document.getElementById('sp-d-name').value = opt.getAttribute('data-name') || '';
+                document.getElementById('sp-d-email').value = opt.getAttribute('data-email') || '';
+            }
+        });
+
+        // Show/hide in-kind description based on type
+        document.getElementById('sp-d-type').addEventListener('change', function() {
+            document.getElementById('sp-d-inkind-row').style.display = this.value === 'in_kind' ? '' : 'none';
+        });
+        </script>
+    </div>
+    <?php
+}
+
+/**
+ * Send donation acknowledgment emails for selected donation IDs.
+ *
+ * WHY: The treasurer needs to send thank-you emails for tax-deductible
+ *      donations. This function handles the batch: builds the email from
+ *      the donation record, sends via wp_mail, logs to sp_email_log,
+ *      and marks the donation as acknowledged.
+ *
+ * @param array $donation_ids Array of donation row IDs.
+ */
+function sp_send_donation_acknowledgments( array $donation_ids ): void {
+    global $wpdb;
+    $prefix   = $wpdb->prefix . 'sp_';
+    $settings = get_option( 'societypress_settings', [] );
+    $org_name = $settings['organization_name'] ?? get_bloginfo( 'name' );
+    $headers  = sp_get_email_headers();
+
+    foreach ( $donation_ids as $did ) {
+        $donation = $wpdb->get_row( $wpdb->prepare(
+            "SELECT d.*, c.name AS campaign_name
+             FROM {$prefix}donations d
+             LEFT JOIN {$prefix}campaigns c ON d.campaign_id = c.id
+             WHERE d.id = %d", $did
+        ) );
+
+        if ( ! $donation || ! $donation->donor_email || $donation->acknowledgment_sent ) {
+            continue; // Skip if no email or already acknowledged
+        }
+
+        $subject = 'Thank You for Your Donation — ' . $org_name;
+
+        $body_html = '<p>Dear ' . esc_html( $donation->donor_name ) . ',</p>';
+        $body_html .= '<p>Thank you for your generous donation';
+
+        if ( $donation->type !== 'in_kind' ) {
+            $body_html .= ' of <strong>$' . number_format( (float) $donation->amount, 2 ) . '</strong>';
+        }
+
+        if ( $donation->campaign_name ) {
+            $body_html .= ' to our <strong>' . esc_html( $donation->campaign_name ) . '</strong> campaign';
+        }
+
+        $body_html .= ' on ' . date( 'F j, Y', strtotime( $donation->date ) ) . '.</p>';
+
+        if ( $donation->type === 'in_kind' && $donation->in_kind_description ) {
+            $body_html .= '<p>In-kind contribution: ' . esc_html( $donation->in_kind_description ) . '</p>';
+        }
+
+        $body_html .= '<p>Your support helps ' . esc_html( $org_name ) . ' continue its mission. '
+                    . 'Please keep this email for your tax records.</p>';
+        $body_html .= '<p>With gratitude,<br>' . esc_html( $org_name ) . '</p>';
+
+        $full_html = sp_build_email_html( 'Donation Acknowledgment', $body_html );
+
+        $sent = wp_mail( $donation->donor_email, $subject, $full_html, $headers );
+
+        // Log to email log
+        sp_email_log_insert(
+            $donation->donor_email,
+            $subject,
+            $full_html,
+            implode( "\n", $headers ),
+            $sent ? 'sent' : 'failed',
+            $sent ? null : 'wp_mail() returned false',
+            $donation->user_id ? (int) $donation->user_id : null,
+            'donation_acknowledgment'
+        );
+
+        // Mark as acknowledged
+        if ( $sent ) {
+            $wpdb->update( $prefix . 'donations', [
+                'acknowledgment_sent' => 1,
+                'acknowledgment_date' => current_time( 'mysql' ),
+            ], [ 'id' => $did ] );
+        }
+    }
+}
+
+
+/**
+ * Render the Campaigns list page.
+ *
+ * WHY: Campaigns organize donations around specific fundraising goals.
+ *      The list shows each campaign's name, goal, amount raised, status,
+ *      and date range. The raised amount is a live sum from sp_donations.
+ */
+function sp_render_campaigns_page(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // Handle delete
+    if ( isset( $_GET['action'] ) && $_GET['action'] === 'delete' && isset( $_GET['campaign_id'] ) ) {
+        check_admin_referer( 'sp_delete_campaign_' . $_GET['campaign_id'] );
+        // Don't delete donations — just unlink them
+        $wpdb->update( $prefix . 'donations', [ 'campaign_id' => null ], [ 'campaign_id' => (int) $_GET['campaign_id'] ] );
+        $wpdb->delete( $prefix . 'campaigns', [ 'id' => (int) $_GET['campaign_id'] ] );
+        wp_redirect( admin_url( 'admin.php?page=sp-campaigns&deleted=1' ) );
+        exit;
+    }
+
+    $campaigns = $wpdb->get_results(
+        "SELECT c.*,
+                u.display_name AS created_by_name,
+                COALESCE((SELECT SUM(d.amount) FROM {$prefix}donations d WHERE d.campaign_id = c.id), 0) AS raised,
+                (SELECT COUNT(*) FROM {$prefix}donations d WHERE d.campaign_id = c.id) AS donation_count
+         FROM {$prefix}campaigns c
+         LEFT JOIN {$wpdb->users} u ON c.created_by = u.ID
+         ORDER BY c.status ASC, c.created_at DESC"
+    );
+
+    ?>
+    <div class="wrap sp-admin-wrap">
+        <h1 class="wp-heading-inline">Campaigns</h1>
+        <a href="<?php echo admin_url( 'admin.php?page=sp-campaign-edit' ); ?>" class="page-title-action">Add New</a>
+
+        <?php if ( isset( $_GET['deleted'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p>Campaign deleted. Donations have been unlinked.</p></div>
+        <?php endif; ?>
+        <?php if ( isset( $_GET['saved'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p>Campaign saved.</p></div>
+        <?php endif; ?>
+
+        <table class="widefat striped" style="margin-top: 16px;">
+            <thead>
+                <tr>
+                    <th>Campaign</th>
+                    <th>Goal</th>
+                    <th>Raised</th>
+                    <th>Progress</th>
+                    <th>Status</th>
+                    <th>Date Range</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if ( empty( $campaigns ) ) : ?>
+                    <tr><td colspan="7" style="text-align: center; padding: 20px;">No campaigns yet. <a href="<?php echo admin_url( 'admin.php?page=sp-campaign-edit' ); ?>">Create one</a>.</td></tr>
+                <?php else : ?>
+                    <?php foreach ( $campaigns as $c ) : ?>
+                        <?php
+                        $raised    = (float) $c->raised;
+                        $goal      = (float) ( $c->goal_amount ?? 0 );
+                        $pct       = $goal > 0 ? min( 100, round( ( $raised / $goal ) * 100 ) ) : 0;
+                        $bar_color = $pct >= 100 ? '#00a32a' : '#2271b1';
+                        ?>
+                        <tr>
+                            <td>
+                                <strong><a href="<?php echo admin_url( 'admin.php?page=sp-campaign-edit&campaign_id=' . $c->id ); ?>"><?php echo esc_html( $c->name ); ?></a></strong>
+                                <?php if ( $c->description ) : ?>
+                                    <br><span style="color: #646970; font-size: 12px;"><?php echo esc_html( wp_trim_words( $c->description, 15 ) ); ?></span>
+                                <?php endif; ?>
+                            </td>
+                            <td><?php echo $goal > 0 ? '$' . number_format( $goal, 2 ) : '—'; ?></td>
+                            <td style="font-weight: 600; color: #00a32a;">$<?php echo number_format( $raised, 2 ); ?> <span style="font-weight: normal; color: #787c82;">(<?php echo (int) $c->donation_count; ?>)</span></td>
+                            <td style="width: 120px;">
+                                <?php if ( $goal > 0 ) : ?>
+                                    <div style="background: #e5e7eb; border-radius: 4px; height: 16px; overflow: hidden;">
+                                        <div style="background: <?php echo $bar_color; ?>; height: 100%; width: <?php echo $pct; ?>%; border-radius: 4px;"></div>
+                                    </div>
+                                    <span style="font-size: 11px; color: #787c82;"><?php echo $pct; ?>%</span>
+                                <?php else : ?>
+                                    —
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php
+                                $status_colors = [ 'active' => '#00a32a', 'closed' => '#787c82', 'draft' => '#dba617' ];
+                                $color = $status_colors[ $c->status ] ?? '#787c82';
+                                printf( '<span style="color: %s; font-weight: 600;">%s</span>', esc_attr( $color ), esc_html( ucfirst( $c->status ) ) );
+                                ?>
+                            </td>
+                            <td>
+                                <?php
+                                $dates = [];
+                                if ( $c->start_date ) $dates[] = date_i18n( 'M j, Y', strtotime( $c->start_date ) );
+                                if ( $c->end_date )   $dates[] = date_i18n( 'M j, Y', strtotime( $c->end_date ) );
+                                echo $dates ? implode( ' — ', $dates ) : '—';
+                                ?>
+                            </td>
+                            <td>
+                                <a href="<?php echo admin_url( 'admin.php?page=sp-campaign-edit&campaign_id=' . $c->id ); ?>">Edit</a>
+                                |
+                                <a href="<?php echo admin_url( 'admin.php?page=sp-donations&campaign=' . $c->id ); ?>">Donations</a>
+                                |
+                                <a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=sp-campaigns&action=delete&campaign_id=' . $c->id ), 'sp_delete_campaign_' . $c->id ); ?>"
+                                   onclick="return confirm('Delete this campaign? Donations will be unlinked, not deleted.');"
+                                   style="color: #b32d2e;">Delete</a>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+}
+
+/**
+ * Render the Campaign edit/add page.
+ *
+ * WHY: Simple form for creating or editing a fundraising campaign.
+ *      Name and status are required; goal, description, and dates are optional.
+ */
+function sp_render_campaign_edit_page(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $campaign_id = (int) ( $_GET['campaign_id'] ?? 0 );
+    $campaign    = null;
+
+    if ( $campaign_id ) {
+        $campaign = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$prefix}campaigns WHERE id = %d", $campaign_id
+        ) );
+        if ( ! $campaign ) {
+            echo '<div class="wrap"><h1>Campaign Not Found</h1><p><a href="' . admin_url( 'admin.php?page=sp-campaigns' ) . '">&larr; Back</a></p></div>';
+            return;
+        }
+    }
+
+    // Handle save
+    if ( $_SERVER['REQUEST_METHOD'] === 'POST' && isset( $_POST['sp_campaign_nonce'] ) ) {
+        check_admin_referer( 'sp_save_campaign', 'sp_campaign_nonce' );
+
+        $name = sanitize_text_field( $_POST['name'] ?? '' );
+        if ( ! $name ) {
+            echo '<div class="notice notice-error"><p>Campaign name is required.</p></div>';
+        } else {
+            $data = [
+                'name'        => $name,
+                'slug'        => sanitize_title( $name ),
+                'description' => sanitize_textarea_field( $_POST['description'] ?? '' ) ?: null,
+                'goal_amount' => (float) ( $_POST['goal_amount'] ?? 0 ) ?: null,
+                'start_date'  => sanitize_text_field( $_POST['start_date'] ?? '' ) ?: null,
+                'end_date'    => sanitize_text_field( $_POST['end_date'] ?? '' ) ?: null,
+                'status'      => sanitize_text_field( $_POST['campaign_status'] ?? 'active' ),
+                'updated_at'  => current_time( 'mysql' ),
+            ];
+
+            if ( $campaign_id ) {
+                $wpdb->update( $prefix . 'campaigns', $data, [ 'id' => $campaign_id ] );
+            } else {
+                $data['created_by']  = get_current_user_id();
+                $data['created_at']  = current_time( 'mysql' );
+                $wpdb->insert( $prefix . 'campaigns', $data );
+            }
+
+            wp_redirect( admin_url( 'admin.php?page=sp-campaigns&saved=1' ) );
+            exit;
+        }
+    }
+
+    ?>
+    <div class="wrap sp-admin-wrap">
+        <h1><?php echo $campaign_id ? 'Edit Campaign' : 'Add New Campaign'; ?></h1>
+        <p><a href="<?php echo admin_url( 'admin.php?page=sp-campaigns' ); ?>">&larr; Back to Campaigns</a></p>
+
+        <form method="post" style="max-width: 600px;">
+            <?php wp_nonce_field( 'sp_save_campaign', 'sp_campaign_nonce' ); ?>
+
+            <table class="form-table">
+                <tr>
+                    <th><label for="sp-c-name">Campaign Name <span style="color: #d63638;">*</span></label></th>
+                    <td><input type="text" name="name" id="sp-c-name" value="<?php echo esc_attr( $campaign->name ?? '' ); ?>" required style="width: 100%;"></td>
+                </tr>
+                <tr>
+                    <th><label for="sp-c-desc">Description</label></th>
+                    <td><textarea name="description" id="sp-c-desc" rows="4" style="width: 100%;"><?php echo esc_textarea( $campaign->description ?? '' ); ?></textarea></td>
+                </tr>
+                <tr>
+                    <th><label for="sp-c-goal">Goal Amount</label></th>
+                    <td><input type="number" name="goal_amount" id="sp-c-goal" value="<?php echo esc_attr( $campaign->goal_amount ?? '' ); ?>" step="0.01" min="0" style="width: 150px;" placeholder="0.00"></td>
+                </tr>
+                <tr>
+                    <th><label for="sp-c-start">Start Date</label></th>
+                    <td><input type="date" name="start_date" id="sp-c-start" value="<?php echo esc_attr( $campaign->start_date ?? '' ); ?>"></td>
+                </tr>
+                <tr>
+                    <th><label for="sp-c-end">End Date</label></th>
+                    <td><input type="date" name="end_date" id="sp-c-end" value="<?php echo esc_attr( $campaign->end_date ?? '' ); ?>"></td>
+                </tr>
+                <tr>
+                    <th><label for="sp-c-status">Status</label></th>
+                    <td>
+                        <select name="campaign_status" id="sp-c-status">
+                            <option value="active" <?php selected( $campaign->status ?? 'active', 'active' ); ?>>Active</option>
+                            <option value="draft" <?php selected( $campaign->status ?? '', 'draft' ); ?>>Draft</option>
+                            <option value="closed" <?php selected( $campaign->status ?? '', 'closed' ); ?>>Closed</option>
+                        </select>
+                    </td>
+                </tr>
+            </table>
+
+            <p class="submit">
+                <button type="submit" class="button button-primary"><?php echo $campaign_id ? 'Save Changes' : 'Create Campaign'; ?></button>
+                <a href="<?php echo admin_url( 'admin.php?page=sp-campaigns' ); ?>" class="button">Cancel</a>
+            </p>
+        </form>
     </div>
     <?php
 }

@@ -27,6 +27,9 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 - [x] Resource Links: CSV import (EasyNetSites format), auto-category creation, frontend directory with search + category dropdown, unified search integration
 - [x] Hero slider: Per-line text styling (size/weight/color per line, legacy migration)
 - [x] the society child theme: Footer restyled to match reference site (2-column + contact bar + logo strip)
+- [x] Blast Email: Compose/send mass emails to members by group or tier, batch sending via WP cron, merge tags, opt-out support, delivery tracking
+- [x] Donations: Campaign-based donation tracking, CRUD, acknowledgment emails, anonymous + in-kind support
+- [x] Member Groups Enhancement: Bulk "Assign to Group" action, group filter on Members list
 
 ## In Progress
 
@@ -71,7 +74,7 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 - [ ] Registration confirmation: Sent on event slot registration
 - [ ] Waitlist promotion email: Sent when moved from waitlist to confirmed
 - [ ] Communication preference check: Email vs postal mail vs both — respect before sending
-- [ ] Batch processing with transient locking
+- [x] Blast email: Compose, target by group/tier/all, batch send via WP cron, merge tags, opt-out, delivery stats
 - [ ] Email template editor in admin with merge tag support
 
 ## Volunteer System — Not Started

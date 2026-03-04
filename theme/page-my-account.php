@@ -13,16 +13,19 @@
  *   3. Contact Information — email, phone, cell, website
  *   4. Address — street, city, state, zip, country
  *   5. Seasonal Address — toggle + seasonal address fields + date range
- *   6. Communication Preferences — print newsletter, email categories
+ *   6. Communication Preferences — print newsletter, email categories, blast opt-out
  *   7. Directory Privacy — which fields appear in the membership directory
- *   8. Change Password — current + new + confirm
+ *   8. Interests & Skills — free-text fields for member expertise and hobbies
+ *   9. Research Surnames — surnames with county/state/country/year range
+ *  10. My Events — upcoming with cancel, past 6 months
+ *  11. Change Password — current + new + confirm
  *
  * Fields the member CANNOT change (admin-only):
  *   - member_number, status, tier_id, household_id
  *   - join_date, expiration_date
  *   - created_at, updated_at
  *
- * All form processing happens in functions.php via sp_handle_account_forms()
+ * All form processing happens in societypress.php via sp_handle_account_forms()
  * hooked to template_redirect. By the time this template renders, any
  * submitted changes have already been saved.
  *
@@ -59,7 +62,7 @@ if ( $member && ! empty( $member['photo_url'] ) ) {
 }
 $photo_url = $custom_photo ? $custom_photo : get_avatar_url( $user->ID, [ 'size' => 150 ] );
 
-// Flash messages set by sp_handle_account_forms() in functions.php
+// Flash messages set by sp_handle_account_forms() in societypress.php
 $success = isset( $_GET['sp-updated'] ) ? sanitize_text_field( $_GET['sp-updated'] ) : '';
 $error   = isset( $_GET['sp-error'] )   ? sanitize_text_field( $_GET['sp-error'] )   : '';
 
@@ -70,12 +73,148 @@ function sp_m( $member, $field ) {
 }
 ?>
 
+<!--
+    WHY: Scoped styles for sections that were previously using inline styles
+    (surnames, events). Keeps presentation in CSS where it belongs while staying
+    self-contained in this template — consistent with how the rest of the page
+    uses class-based styling defined in the theme's style.css.
+-->
+<style>
+/* ---- Research Surnames ---- */
+.sp-surname-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 6px;
+    padding: 8px 12px;
+    background: var(--sp-surface, #f9f9f9);
+    border: 1px solid var(--sp-border, #e0e0e0);
+    border-radius: 4px;
+    flex-wrap: wrap;
+}
+.sp-surname-row strong {
+    flex: 0 0 auto;
+    min-width: 120px;
+}
+.sp-surname-row .sp-surname-detail {
+    flex: 1;
+    color: var(--sp-text-muted, #666);
+    font-size: 13px;
+}
+.sp-surname-row .sp-surname-remove {
+    background: none;
+    border: none;
+    color: var(--sp-danger, #b32d2e);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 2px 6px;
+    line-height: 1;
+}
+.sp-surname-row .sp-surname-remove:hover {
+    opacity: 0.7;
+}
+.sp-surname-list {
+    margin-bottom: 16px;
+}
+.sp-surname-empty {
+    color: var(--sp-text-muted, #999);
+    font-style: italic;
+}
+.sp-surname-add-form {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+.sp-surname-add-form .sp-form-field {
+    flex: 1;
+    min-width: 120px;
+}
+.sp-surname-add-form .sp-form-field--surname {
+    flex: 1.5;
+}
+.sp-surname-add-form .sp-form-field--year {
+    flex: 0 0 80px;
+    min-width: 80px;
+}
+
+/* ---- My Events ---- */
+.sp-events-subheading {
+    font-size: 16px;
+    margin-bottom: 12px;
+}
+.sp-events-subheading--past {
+    margin-top: 20px;
+}
+.sp-event-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    margin-bottom: 8px;
+    background: var(--sp-surface, #f9f9f9);
+    border: 1px solid var(--sp-border, #e0e0e0);
+    border-radius: 4px;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.sp-event-card__details {
+    color: var(--sp-text-muted, #666);
+    font-size: 13px;
+}
+.sp-event-badge--waitlisted {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 8px;
+    background: #fef8ee;
+    color: #996800;
+    border: 1px solid #dba617;
+    border-radius: 3px;
+    font-size: 12px;
+}
+.sp-event-cancel-btn {
+    background: var(--sp-danger, #b32d2e);
+    font-size: 13px;
+    padding: 6px 14px;
+}
+.sp-events-empty {
+    color: var(--sp-text-muted, #999);
+    font-style: italic;
+}
+.sp-events-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+.sp-events-table thead tr {
+    border-bottom: 2px solid var(--sp-border, #e0e0e0);
+    text-align: left;
+}
+.sp-events-table th,
+.sp-events-table td {
+    padding: 6px 8px;
+}
+.sp-events-table tbody tr {
+    border-bottom: 1px solid var(--sp-border, #e0e0e0);
+}
+.sp-status--cancelled { color: var(--sp-danger, #b32d2e); }
+.sp-status--attended  { color: #00a32a; }
+.sp-status--noshow    { color: #996800; }
+.sp-status--registered { color: var(--sp-text-muted, #666); }
+
+/* ---- Section description (reusable) ---- */
+.sp-section-hint {
+    color: var(--sp-text-muted, #666);
+    margin-bottom: 16px;
+}
+</style>
+
 <div class="site-content">
     <div class="content-area-full">
 
         <article class="sp-my-account">
             <header class="entry-header">
-                <h1 class="entry-title">My Account</h1>
+                <h1 class="entry-title"><?php esc_html_e( 'My Account', 'societypress' ); ?></h1>
             </header>
 
             <?php
@@ -92,25 +231,34 @@ function sp_m( $member, $field ) {
                     <?php
                     switch ( $success ) {
                         case 'profile':
-                            echo 'Your information has been updated.';
+                            esc_html_e( 'Your information has been updated.', 'societypress' );
                             break;
                         case 'photo':
-                            echo 'Your profile photo has been updated.';
+                            esc_html_e( 'Your profile photo has been updated.', 'societypress' );
                             break;
                         case 'photo-removed':
-                            echo 'Your profile photo has been removed.';
+                            esc_html_e( 'Your profile photo has been removed.', 'societypress' );
                             break;
                         case 'password':
-                            echo 'Your password has been changed.';
+                            esc_html_e( 'Your password has been changed.', 'societypress' );
                             break;
                         case 'preferences':
-                            echo 'Your preferences have been saved.';
+                            esc_html_e( 'Your preferences have been saved.', 'societypress' );
                             break;
                         case 'privacy':
-                            echo 'Your directory privacy settings have been saved.';
+                            esc_html_e( 'Your directory privacy settings have been saved.', 'societypress' );
+                            break;
+                        case 'interests':
+                            esc_html_e( 'Your interests and skills have been saved.', 'societypress' );
+                            break;
+                        case 'surnames':
+                            esc_html_e( 'Your research surnames have been updated.', 'societypress' );
+                            break;
+                        case 'event-cancelled':
+                            esc_html_e( 'Your event registration has been cancelled.', 'societypress' );
                             break;
                         default:
-                            echo 'Changes saved.';
+                            esc_html_e( 'Changes saved.', 'societypress' );
                     }
                     ?>
                 </div>
@@ -121,37 +269,37 @@ function sp_m( $member, $field ) {
                     <?php
                     switch ( $error ) {
                         case 'password-mismatch':
-                            echo 'The new passwords do not match. Please try again.';
+                            esc_html_e( 'The new passwords do not match. Please try again.', 'societypress' );
                             break;
                         case 'password-wrong':
-                            echo 'Your current password is incorrect.';
+                            esc_html_e( 'Your current password is incorrect.', 'societypress' );
                             break;
                         case 'password-short':
-                            echo 'Your new password must be at least 8 characters.';
+                            esc_html_e( 'Your new password must be at least 8 characters.', 'societypress' );
                             break;
                         case 'email-invalid':
-                            echo 'Please enter a valid email address.';
+                            esc_html_e( 'Please enter a valid email address.', 'societypress' );
                             break;
                         case 'email-taken':
-                            echo 'That email address is already in use by another account.';
+                            esc_html_e( 'That email address is already in use by another account.', 'societypress' );
                             break;
                         case 'photo-type':
-                            echo 'Please upload a JPG, PNG, or GIF image.';
+                            esc_html_e( 'Please upload a JPG, PNG, or GIF image.', 'societypress' );
                             break;
                         case 'photo-size':
-                            echo 'The image is too large. Maximum file size is 2 MB.';
+                            esc_html_e( 'The image is too large. Maximum file size is 2 MB.', 'societypress' );
                             break;
                         case 'photo-upload':
-                            echo 'There was a problem uploading your photo. Please try again.';
+                            esc_html_e( 'There was a problem uploading your photo. Please try again.', 'societypress' );
                             break;
                         case 'no-member':
-                            echo 'Your membership record was not found. Please contact an administrator.';
+                            esc_html_e( 'Your membership record was not found. Please contact an administrator.', 'societypress' );
                             break;
                         case 'nonce':
-                            echo 'Your session has expired. Please try again.';
+                            esc_html_e( 'Your session has expired. Please try again.', 'societypress' );
                             break;
                         default:
-                            echo 'Something went wrong. Please try again.';
+                            esc_html_e( 'Something went wrong. Please try again.', 'societypress' );
                     }
                     ?>
                 </div>
@@ -163,7 +311,7 @@ function sp_m( $member, $field ) {
             // ================================================================
             ?>
             <section class="sp-account-section" id="photo">
-                <h2>Profile Photo</h2>
+                <h2><?php esc_html_e( 'Profile Photo', 'societypress' ); ?></h2>
 
                 <div class="sp-photo-section">
                     <div class="sp-photo-current">
@@ -177,7 +325,7 @@ function sp_m( $member, $field ) {
                             <?php wp_nonce_field( 'sp_update_photo', 'sp_photo_nonce' ); ?>
 
                             <label for="sp-photo-upload" class="sp-button sp-button--secondary">
-                                <?php echo $custom_photo ? 'Change Photo' : 'Upload Photo'; ?>
+                                <?php echo $custom_photo ? esc_html__( 'Change Photo', 'societypress' ) : esc_html__( 'Upload Photo', 'societypress' ); ?>
                             </label>
                             <input type="file"
                                    id="sp-photo-upload"
@@ -193,11 +341,11 @@ function sp_m( $member, $field ) {
                             <form method="post" class="sp-photo-remove-form">
                                 <?php wp_nonce_field( 'sp_remove_photo', 'sp_remove_photo_nonce' ); ?>
                                 <input type="hidden" name="sp_action" value="remove_photo" />
-                                <button type="submit" class="sp-button sp-button--text">Remove Photo</button>
+                                <button type="submit" class="sp-button sp-button--text"><?php esc_html_e( 'Remove Photo', 'societypress' ); ?></button>
                             </form>
                         <?php endif; ?>
 
-                        <p class="sp-photo-hint">JPG, PNG, or GIF. Max 2 MB.</p>
+                        <p class="sp-photo-hint"><?php esc_html_e( 'JPG, PNG, or GIF. Max 2 MB.', 'societypress' ); ?></p>
                     </div>
                 </div>
             </section>
@@ -211,7 +359,7 @@ function sp_m( $member, $field ) {
             // ================================================================
             ?>
             <section class="sp-account-section" id="info">
-                <h2>Personal Information</h2>
+                <h2><?php esc_html_e( 'Personal Information', 'societypress' ); ?></h2>
 
                 <form method="post" class="sp-account-form">
                     <?php wp_nonce_field( 'sp_update_profile', 'sp_profile_nonce' ); ?>
@@ -220,9 +368,9 @@ function sp_m( $member, $field ) {
                     <!-- Prefix and Suffix on one row -->
                     <div class="sp-form-row sp-form-row--thirds">
                         <div class="sp-form-field">
-                            <label for="sp-prefix">Prefix</label>
+                            <label for="sp-prefix"><?php esc_html_e( 'Prefix', 'societypress' ); ?></label>
                             <select id="sp-prefix" name="prefix">
-                                <option value="">—</option>
+                                <option value="">&mdash;</option>
                                 <?php
                                 $prefixes = [ 'Mr.', 'Mrs.', 'Ms.', 'Miss', 'Dr.', 'Rev.', 'Hon.' ];
                                 foreach ( $prefixes as $p ) {
@@ -233,9 +381,9 @@ function sp_m( $member, $field ) {
                             </select>
                         </div>
                         <div class="sp-form-field">
-                            <label for="sp-suffix">Suffix</label>
+                            <label for="sp-suffix"><?php esc_html_e( 'Suffix', 'societypress' ); ?></label>
                             <select id="sp-suffix" name="suffix">
-                                <option value="">—</option>
+                                <option value="">&mdash;</option>
                                 <?php
                                 $suffixes = [ 'Jr.', 'Sr.', 'II', 'III', 'IV', 'Esq.', 'Ph.D.', 'M.D.' ];
                                 foreach ( $suffixes as $s ) {
@@ -250,18 +398,18 @@ function sp_m( $member, $field ) {
                     <!-- First / Middle / Last -->
                     <div class="sp-form-row sp-form-row--thirds">
                         <div class="sp-form-field">
-                            <label for="sp-first-name">First Name</label>
+                            <label for="sp-first-name"><?php esc_html_e( 'First Name', 'societypress' ); ?></label>
                             <input type="text" id="sp-first-name" name="first_name"
                                    value="<?php echo esc_attr( sp_m( $member, 'first_name' ) ?: $user->first_name ); ?>"
                                    required />
                         </div>
                         <div class="sp-form-field">
-                            <label for="sp-middle-name">Middle Name</label>
+                            <label for="sp-middle-name"><?php esc_html_e( 'Middle Name', 'societypress' ); ?></label>
                             <input type="text" id="sp-middle-name" name="middle_name"
                                    value="<?php echo esc_attr( sp_m( $member, 'middle_name' ) ); ?>" />
                         </div>
                         <div class="sp-form-field">
-                            <label for="sp-last-name">Last Name</label>
+                            <label for="sp-last-name"><?php esc_html_e( 'Last Name', 'societypress' ); ?></label>
                             <input type="text" id="sp-last-name" name="last_name"
                                    value="<?php echo esc_attr( sp_m( $member, 'last_name' ) ?: $user->last_name ); ?>"
                                    required />
@@ -271,13 +419,13 @@ function sp_m( $member, $field ) {
                     <!-- Preferred Name / Maiden Name -->
                     <div class="sp-form-row sp-form-row--half">
                         <div class="sp-form-field">
-                            <label for="sp-preferred-name">Preferred Name</label>
+                            <label for="sp-preferred-name"><?php esc_html_e( 'Preferred Name', 'societypress' ); ?></label>
                             <input type="text" id="sp-preferred-name" name="preferred_name"
                                    value="<?php echo esc_attr( sp_m( $member, 'preferred_name' ) ); ?>" />
-                            <p class="sp-field-hint">What you'd like to be called (e.g., "Bob" instead of "Robert").</p>
+                            <p class="sp-field-hint"><?php esc_html_e( 'What you\'d like to be called (e.g., "Bob" instead of "Robert").', 'societypress' ); ?></p>
                         </div>
                         <div class="sp-form-field">
-                            <label for="sp-maiden-name">Maiden Name</label>
+                            <label for="sp-maiden-name"><?php esc_html_e( 'Maiden Name', 'societypress' ); ?></label>
                             <input type="text" id="sp-maiden-name" name="maiden_name"
                                    value="<?php echo esc_attr( sp_m( $member, 'maiden_name' ) ); ?>" />
                         </div>
@@ -286,7 +434,7 @@ function sp_m( $member, $field ) {
                     <!-- Date of Birth -->
                     <div class="sp-form-row sp-form-row--half">
                         <div class="sp-form-field">
-                            <label for="sp-dob">Date of Birth</label>
+                            <label for="sp-dob"><?php esc_html_e( 'Date of Birth', 'societypress' ); ?></label>
                             <input type="date" id="sp-dob" name="date_of_birth"
                                    value="<?php echo esc_attr( sp_m( $member, 'date_of_birth' ) ); ?>" />
                         </div>
@@ -295,7 +443,7 @@ function sp_m( $member, $field ) {
                         </div>
                     </div>
 
-                    <button type="submit" class="sp-button">Save Personal Information</button>
+                    <button type="submit" class="sp-button"><?php esc_html_e( 'Save Personal Information', 'societypress' ); ?></button>
                 </form>
             </section>
 
@@ -308,29 +456,29 @@ function sp_m( $member, $field ) {
             // ================================================================
             ?>
             <section class="sp-account-section" id="contact">
-                <h2>Contact Information</h2>
+                <h2><?php esc_html_e( 'Contact Information', 'societypress' ); ?></h2>
 
                 <form method="post" class="sp-account-form">
                     <?php wp_nonce_field( 'sp_update_contact', 'sp_contact_nonce' ); ?>
                     <input type="hidden" name="sp_action" value="update_contact" />
 
                     <div class="sp-form-field">
-                        <label for="sp-email">Email Address</label>
+                        <label for="sp-email"><?php esc_html_e( 'Email Address', 'societypress' ); ?></label>
                         <input type="email" id="sp-email" name="user_email"
                                value="<?php echo esc_attr( $user->user_email ); ?>"
                                required />
-                        <p class="sp-field-hint">This is used for logging in and receiving communications.</p>
+                        <p class="sp-field-hint"><?php esc_html_e( 'This is used for logging in and receiving communications.', 'societypress' ); ?></p>
                     </div>
 
                     <div class="sp-form-row sp-form-row--half">
                         <div class="sp-form-field">
-                            <label for="sp-phone">Home Phone</label>
+                            <label for="sp-phone"><?php esc_html_e( 'Home Phone', 'societypress' ); ?></label>
                             <input type="tel" id="sp-phone" name="phone"
                                    value="<?php echo esc_attr( sp_m( $member, 'phone' ) ); ?>"
                                    placeholder="(210) 555-1234" />
                         </div>
                         <div class="sp-form-field">
-                            <label for="sp-cell">Cell Phone</label>
+                            <label for="sp-cell"><?php esc_html_e( 'Cell Phone', 'societypress' ); ?></label>
                             <input type="tel" id="sp-cell" name="cell"
                                    value="<?php echo esc_attr( sp_m( $member, 'cell' ) ); ?>"
                                    placeholder="(210) 555-1234" />
@@ -338,13 +486,13 @@ function sp_m( $member, $field ) {
                     </div>
 
                     <div class="sp-form-field">
-                        <label for="sp-website">Website</label>
+                        <label for="sp-website"><?php esc_html_e( 'Website', 'societypress' ); ?></label>
                         <input type="url" id="sp-website" name="website"
                                value="<?php echo esc_attr( sp_m( $member, 'website' ) ); ?>"
                                placeholder="https://" />
                     </div>
 
-                    <button type="submit" class="sp-button">Save Contact Information</button>
+                    <button type="submit" class="sp-button"><?php esc_html_e( 'Save Contact Information', 'societypress' ); ?></button>
                 </form>
             </section>
 
@@ -354,39 +502,39 @@ function sp_m( $member, $field ) {
             // ================================================================
             ?>
             <section class="sp-account-section" id="address">
-                <h2>Mailing Address</h2>
+                <h2><?php esc_html_e( 'Mailing Address', 'societypress' ); ?></h2>
 
                 <form method="post" class="sp-account-form">
                     <?php wp_nonce_field( 'sp_update_address', 'sp_address_nonce' ); ?>
                     <input type="hidden" name="sp_action" value="update_address" />
 
                     <div class="sp-form-field">
-                        <label for="sp-address1">Street Address</label>
+                        <label for="sp-address1"><?php esc_html_e( 'Street Address', 'societypress' ); ?></label>
                         <input type="text" id="sp-address1" name="address_1"
                                value="<?php echo esc_attr( sp_m( $member, 'address_1' ) ); ?>" />
                     </div>
 
                     <div class="sp-form-field">
-                        <label for="sp-address2">Address Line 2</label>
+                        <label for="sp-address2"><?php esc_html_e( 'Address Line 2', 'societypress' ); ?></label>
                         <input type="text" id="sp-address2" name="address_2"
                                value="<?php echo esc_attr( sp_m( $member, 'address_2' ) ); ?>"
-                               placeholder="Apt, Suite, Unit, etc." />
+                               placeholder="<?php esc_attr_e( 'Apt, Suite, Unit, etc.', 'societypress' ); ?>" />
                     </div>
 
                     <div class="sp-form-row sp-form-row--city-state">
                         <div class="sp-form-field sp-form-field--city">
-                            <label for="sp-city">City</label>
+                            <label for="sp-city"><?php esc_html_e( 'City', 'societypress' ); ?></label>
                             <input type="text" id="sp-city" name="city"
                                    value="<?php echo esc_attr( sp_m( $member, 'city' ) ); ?>" />
                         </div>
                         <div class="sp-form-field sp-form-field--state">
-                            <label for="sp-state">State</label>
+                            <label for="sp-state"><?php esc_html_e( 'State', 'societypress' ); ?></label>
                             <input type="text" id="sp-state" name="state"
                                    value="<?php echo esc_attr( sp_m( $member, 'state' ) ); ?>"
                                    maxlength="100" />
                         </div>
                         <div class="sp-form-field sp-form-field--zip">
-                            <label for="sp-postal">Zip / Postal Code</label>
+                            <label for="sp-postal"><?php esc_html_e( 'Zip / Postal Code', 'societypress' ); ?></label>
                             <input type="text" id="sp-postal" name="postal_code"
                                    value="<?php echo esc_attr( sp_m( $member, 'postal_code' ) ); ?>" />
                         </div>
@@ -394,7 +542,7 @@ function sp_m( $member, $field ) {
 
                     <div class="sp-form-row sp-form-row--half">
                         <div class="sp-form-field">
-                            <label for="sp-country">Country</label>
+                            <label for="sp-country"><?php esc_html_e( 'Country', 'societypress' ); ?></label>
                             <input type="text" id="sp-country" name="country"
                                    value="<?php echo esc_attr( sp_m( $member, 'country' ) ?: 'US' ); ?>" />
                         </div>
@@ -409,7 +557,7 @@ function sp_m( $member, $field ) {
                             <input type="checkbox" name="seasonal" value="1"
                                    id="sp-seasonal"
                                    <?php checked( sp_m( $member, 'seasonal' ), '1' ); ?> />
-                            I have a seasonal / alternate address
+                            <?php esc_html_e( 'I have a seasonal / alternate address', 'societypress' ); ?>
                         </label>
                     </div>
 
@@ -422,35 +570,35 @@ function sp_m( $member, $field ) {
                     <div class="sp-seasonal-fields" id="sp-seasonal-fields"
                          <?php echo sp_m( $member, 'seasonal' ) ? '' : 'style="display:none;"'; ?>>
 
-                        <h3 class="sp-subsection-heading">Seasonal Address</h3>
+                        <h3 class="sp-subsection-heading"><?php esc_html_e( 'Seasonal Address', 'societypress' ); ?></h3>
 
                         <div class="sp-form-row sp-form-row--half">
                             <div class="sp-form-field">
-                                <label for="sp-seasonal-from">From (Month)</label>
+                                <label for="sp-seasonal-from"><?php esc_html_e( 'From (Month)', 'societypress' ); ?></label>
                                 <select id="sp-seasonal-from" name="seasonal_from">
-                                    <option value="">—</option>
+                                    <option value="">&mdash;</option>
                                     <?php
                                     $months = [
-                                        '01' => 'January', '02' => 'February', '03' => 'March',
-                                        '04' => 'April',   '05' => 'May',      '06' => 'June',
-                                        '07' => 'July',    '08' => 'August',   '09' => 'September',
-                                        '10' => 'October', '11' => 'November', '12' => 'December',
+                                        '01' => __( 'January', 'societypress' ),   '02' => __( 'February', 'societypress' ),  '03' => __( 'March', 'societypress' ),
+                                        '04' => __( 'April', 'societypress' ),     '05' => __( 'May', 'societypress' ),       '06' => __( 'June', 'societypress' ),
+                                        '07' => __( 'July', 'societypress' ),      '08' => __( 'August', 'societypress' ),    '09' => __( 'September', 'societypress' ),
+                                        '10' => __( 'October', 'societypress' ),   '11' => __( 'November', 'societypress' ),  '12' => __( 'December', 'societypress' ),
                                     ];
                                     foreach ( $months as $num => $name ) {
                                         $selected = ( sp_m( $member, 'seasonal_from' ) === $num ) ? ' selected' : '';
-                                        echo '<option value="' . $num . '"' . $selected . '>' . $name . '</option>';
+                                        echo '<option value="' . $num . '"' . $selected . '>' . esc_html( $name ) . '</option>';
                                     }
                                     ?>
                                 </select>
                             </div>
                             <div class="sp-form-field">
-                                <label for="sp-seasonal-to">To (Month)</label>
+                                <label for="sp-seasonal-to"><?php esc_html_e( 'To (Month)', 'societypress' ); ?></label>
                                 <select id="sp-seasonal-to" name="seasonal_to">
-                                    <option value="">—</option>
+                                    <option value="">&mdash;</option>
                                     <?php
                                     foreach ( $months as $num => $name ) {
                                         $selected = ( sp_m( $member, 'seasonal_to' ) === $num ) ? ' selected' : '';
-                                        echo '<option value="' . $num . '"' . $selected . '>' . $name . '</option>';
+                                        echo '<option value="' . $num . '"' . $selected . '>' . esc_html( $name ) . '</option>';
                                     }
                                     ?>
                                 </select>
@@ -458,24 +606,24 @@ function sp_m( $member, $field ) {
                         </div>
 
                         <div class="sp-form-field">
-                            <label for="sp-seasonal-address1">Street Address</label>
+                            <label for="sp-seasonal-address1"><?php esc_html_e( 'Street Address', 'societypress' ); ?></label>
                             <input type="text" id="sp-seasonal-address1" name="seasonal_address_1"
                                    value="<?php echo esc_attr( sp_m( $member, 'seasonal_address_1' ) ); ?>" />
                         </div>
 
                         <div class="sp-form-row sp-form-row--city-state">
                             <div class="sp-form-field sp-form-field--city">
-                                <label for="sp-seasonal-city">City</label>
+                                <label for="sp-seasonal-city"><?php esc_html_e( 'City', 'societypress' ); ?></label>
                                 <input type="text" id="sp-seasonal-city" name="seasonal_city"
                                        value="<?php echo esc_attr( sp_m( $member, 'seasonal_city' ) ); ?>" />
                             </div>
                             <div class="sp-form-field sp-form-field--state">
-                                <label for="sp-seasonal-state">State</label>
+                                <label for="sp-seasonal-state"><?php esc_html_e( 'State', 'societypress' ); ?></label>
                                 <input type="text" id="sp-seasonal-state" name="seasonal_state"
                                        value="<?php echo esc_attr( sp_m( $member, 'seasonal_state' ) ); ?>" />
                             </div>
                             <div class="sp-form-field sp-form-field--zip">
-                                <label for="sp-seasonal-postal">Zip / Postal Code</label>
+                                <label for="sp-seasonal-postal"><?php esc_html_e( 'Zip / Postal Code', 'societypress' ); ?></label>
                                 <input type="text" id="sp-seasonal-postal" name="seasonal_postal_code"
                                        value="<?php echo esc_attr( sp_m( $member, 'seasonal_postal_code' ) ); ?>" />
                             </div>
@@ -483,7 +631,7 @@ function sp_m( $member, $field ) {
 
                         <div class="sp-form-row sp-form-row--half">
                             <div class="sp-form-field">
-                                <label for="sp-seasonal-country">Country</label>
+                                <label for="sp-seasonal-country"><?php esc_html_e( 'Country', 'societypress' ); ?></label>
                                 <input type="text" id="sp-seasonal-country" name="seasonal_country"
                                        value="<?php echo esc_attr( sp_m( $member, 'seasonal_country' ) ?: 'US' ); ?>" />
                             </div>
@@ -493,7 +641,7 @@ function sp_m( $member, $field ) {
                         </div>
                     </div>
 
-                    <button type="submit" class="sp-button">Save Address</button>
+                    <button type="submit" class="sp-button"><?php esc_html_e( 'Save Address', 'societypress' ); ?></button>
                 </form>
             </section>
 
@@ -502,11 +650,13 @@ function sp_m( $member, $field ) {
             // SECTION 5: COMMUNICATION PREFERENCES
             // WHY: Let members control what emails they receive. Respecting
             // preferences builds trust and reduces unsubscribe complaints.
+            // Blast email opt-out gives members a way to silence mass emails
+            // without turning off targeted category notifications.
             // ================================================================
             ?>
             <?php if ( $member ) : ?>
             <section class="sp-account-section" id="preferences">
-                <h2>Communication Preferences</h2>
+                <h2><?php esc_html_e( 'Communication Preferences', 'societypress' ); ?></h2>
 
                 <form method="post" class="sp-account-form">
                     <?php wp_nonce_field( 'sp_update_preferences', 'sp_preferences_nonce' ); ?>
@@ -516,35 +666,41 @@ function sp_m( $member, $field ) {
                         <label class="sp-checkbox-label">
                             <input type="checkbox" name="receive_print" value="1"
                                    <?php checked( sp_m( $member, 'receive_print' ), '1' ); ?> />
-                            Receive print newsletter by mail
+                            <?php esc_html_e( 'Receive print newsletter by mail', 'societypress' ); ?>
                         </label>
 
                         <label class="sp-checkbox-label">
                             <input type="checkbox" name="pref_email_notices" value="1"
                                    <?php checked( sp_m( $member, 'pref_email_notices' ), '1' ); ?> />
-                            Email me general notices and announcements
+                            <?php esc_html_e( 'Email me general notices and announcements', 'societypress' ); ?>
                         </label>
 
                         <label class="sp-checkbox-label">
                             <input type="checkbox" name="pref_email_events" value="1"
                                    <?php checked( sp_m( $member, 'pref_email_events' ), '1' ); ?> />
-                            Email me about upcoming events
+                            <?php esc_html_e( 'Email me about upcoming events', 'societypress' ); ?>
                         </label>
 
                         <label class="sp-checkbox-label">
                             <input type="checkbox" name="pref_email_newsletters" value="1"
                                    <?php checked( sp_m( $member, 'pref_email_newsletters' ), '1' ); ?> />
-                            Email me when new newsletters are published
+                            <?php esc_html_e( 'Email me when new newsletters are published', 'societypress' ); ?>
                         </label>
 
                         <label class="sp-checkbox-label">
                             <input type="checkbox" name="pref_email_surnames" value="1"
                                    <?php checked( sp_m( $member, 'pref_email_surnames' ), '1' ); ?> />
-                            Email me when someone is researching one of my surnames
+                            <?php esc_html_e( 'Email me when someone is researching one of my surnames', 'societypress' ); ?>
+                        </label>
+
+                        <label class="sp-checkbox-label">
+                            <input type="checkbox" name="blast_email_opt_out" value="1"
+                                   <?php checked( sp_m( $member, 'blast_email_opt_out' ), '1' ); ?> />
+                            <?php esc_html_e( 'Opt out of mass/blast emails', 'societypress' ); ?>
                         </label>
                     </div>
 
-                    <button type="submit" class="sp-button">Save Preferences</button>
+                    <button type="submit" class="sp-button"><?php esc_html_e( 'Save Preferences', 'societypress' ); ?></button>
                 </form>
             </section>
             <?php endif; ?>
@@ -560,10 +716,9 @@ function sp_m( $member, $field ) {
             ?>
             <?php if ( $member ) : ?>
             <section class="sp-account-section" id="privacy">
-                <h2>Directory Privacy</h2>
+                <h2><?php esc_html_e( 'Directory Privacy', 'societypress' ); ?></h2>
                 <p class="sp-section-description">
-                    Choose which of your details are visible to other members in the membership directory.
-                    Unchecked items will be hidden.
+                    <?php esc_html_e( 'Choose which of your details are visible to other members in the membership directory. Unchecked items will be hidden.', 'societypress' ); ?>
                 </p>
 
                 <form method="post" class="sp-account-form">
@@ -574,122 +729,212 @@ function sp_m( $member, $field ) {
                         <label class="sp-checkbox-label">
                             <input type="checkbox" name="dir_show_name" value="1"
                                    <?php checked( sp_m( $member, 'dir_show_name' ), '1' ); ?> />
-                            Show my name
+                            <?php esc_html_e( 'Show my name', 'societypress' ); ?>
                         </label>
 
                         <label class="sp-checkbox-label">
                             <input type="checkbox" name="dir_show_address" value="1"
                                    <?php checked( sp_m( $member, 'dir_show_address' ), '1' ); ?> />
-                            Show my address
+                            <?php esc_html_e( 'Show my address', 'societypress' ); ?>
                         </label>
 
                         <label class="sp-checkbox-label">
                             <input type="checkbox" name="dir_show_phone" value="1"
                                    <?php checked( sp_m( $member, 'dir_show_phone' ), '1' ); ?> />
-                            Show my phone number
+                            <?php esc_html_e( 'Show my phone number', 'societypress' ); ?>
                         </label>
 
                         <label class="sp-checkbox-label">
                             <input type="checkbox" name="dir_show_email" value="1"
                                    <?php checked( sp_m( $member, 'dir_show_email' ), '1' ); ?> />
-                            Show my email address
+                            <?php esc_html_e( 'Show my email address', 'societypress' ); ?>
                         </label>
 
                         <label class="sp-checkbox-label">
                             <input type="checkbox" name="dir_show_website" value="1"
                                    <?php checked( sp_m( $member, 'dir_show_website' ), '1' ); ?> />
-                            Show my website
+                            <?php esc_html_e( 'Show my website', 'societypress' ); ?>
                         </label>
 
                         <label class="sp-checkbox-label">
                             <input type="checkbox" name="dir_show_photo" value="1"
                                    <?php checked( sp_m( $member, 'dir_show_photo' ), '1' ); ?> />
-                            Show my photo
+                            <?php esc_html_e( 'Show my photo', 'societypress' ); ?>
                         </label>
                     </div>
 
-                    <button type="submit" class="sp-button">Save Privacy Settings</button>
+                    <button type="submit" class="sp-button"><?php esc_html_e( 'Save Privacy Settings', 'societypress' ); ?></button>
                 </form>
             </section>
             <?php endif; ?>
 
             <?php
             // ================================================================
-            // SECTION 7: CHANGE PASSWORD
-            // WHY: Separated from other forms so members can update their
-            // info without thinking about passwords, and vice versa.
-            // Requires current password as a security measure.
+            // SECTION 7: INTERESTS & SKILLS
+            // WHY: Lets members share what they're interested in and what
+            // expertise they bring. Society admins can use this to match
+            // volunteers to committees, find speakers, or connect members
+            // with shared interests. Free-text keeps it flexible — every
+            // society's needs are different.
+            // ================================================================
+            ?>
+            <?php if ( $member ) : ?>
+            <section class="sp-account-section" id="interests">
+                <h2><?php esc_html_e( 'Interests & Skills', 'societypress' ); ?></h2>
+
+                <form method="post" class="sp-account-form">
+                    <?php wp_nonce_field( 'sp_update_interests', 'sp_interests_nonce' ); ?>
+                    <input type="hidden" name="sp_action" value="update_interests" />
+
+                    <div class="sp-form-field">
+                        <label for="sp-interests"><?php esc_html_e( 'Interests', 'societypress' ); ?></label>
+                        <textarea id="sp-interests" name="interests" rows="3"
+                                  placeholder="<?php esc_attr_e( 'e.g., Texas Rangers, Civil War records, DNA research, cemetery preservation', 'societypress' ); ?>"
+                        ><?php echo esc_textarea( sp_m( $member, 'interests' ) ); ?></textarea>
+                        <p class="sp-field-hint"><?php esc_html_e( 'Genealogical topics, time periods, or geographic areas you\'re interested in.', 'societypress' ); ?></p>
+                    </div>
+
+                    <div class="sp-form-field">
+                        <label for="sp-skills"><?php esc_html_e( 'Skills', 'societypress' ); ?></label>
+                        <textarea id="sp-skills" name="skills" rows="3"
+                                  placeholder="<?php esc_attr_e( 'e.g., German translation, courthouse research, photo restoration, web design', 'societypress' ); ?>"
+                        ><?php echo esc_textarea( sp_m( $member, 'skills' ) ); ?></textarea>
+                        <p class="sp-field-hint"><?php esc_html_e( 'Skills or expertise you\'d be willing to share with other members.', 'societypress' ); ?></p>
+                    </div>
+
+                    <button type="submit" class="sp-button"><?php esc_html_e( 'Save Interests & Skills', 'societypress' ); ?></button>
+                </form>
+            </section>
+            <?php endif; ?>
+
+            <?php
+            // ================================================================
+            // SECTION 8: RESEARCH SURNAMES
+            // WHY: Members register the surnames they're researching so
+            // other members researching the same names can connect. This
+            // is the core social feature of a genealogical society.
             // ================================================================
             ?>
 
-            <!-- ============================================================ -->
-            <!-- RESEARCH SURNAMES                                            -->
-            <!-- WHY: Members register the surnames they're researching so    -->
-            <!-- other members researching the same names can connect. This   -->
-            <!-- is the core social feature of a genealogical society.        -->
-            <!-- ============================================================ -->
-
             <section class="sp-account-section" id="surnames">
-                <h2>Research Surnames</h2>
-                <p style="color: var(--sp-text-muted, #666); margin-bottom: 16px;">
-                    Add the surnames you're researching so other members can find and contact you.
+                <h2><?php esc_html_e( 'Research Surnames', 'societypress' ); ?></h2>
+                <p class="sp-section-hint">
+                    <?php esc_html_e( 'Add the surnames you\'re researching so other members can find and contact you.', 'societypress' ); ?>
                 </p>
 
                 <?php
-                // Load this member's current research surnames
+                // Load this member's current research surnames with full location columns
                 $surnames = $wpdb->get_results( $wpdb->prepare(
-                    "SELECT id, surname, location FROM {$wpdb->prefix}sp_member_surnames WHERE user_id = %d ORDER BY surname ASC",
+                    "SELECT id, surname, county, state, country, year_from, year_to
+                     FROM {$wpdb->prefix}sp_member_surnames
+                     WHERE user_id = %d
+                     ORDER BY surname ASC",
                     $user->ID
                 ) );
                 ?>
 
                 <!-- Existing surnames -->
-                <div id="sp-surname-list" style="margin-bottom: 16px;">
+                <div class="sp-surname-list">
                     <?php if ( ! empty( $surnames ) ) : ?>
                         <?php foreach ( $surnames as $sn ) : ?>
-                            <div class="sp-surname-row" style="display: flex; gap: 8px; align-items: center; margin-bottom: 6px; padding: 8px 12px; background: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 4px;">
-                                <strong style="flex: 1;"><?php echo esc_html( $sn->surname ); ?></strong>
-                                <?php if ( $sn->location ) : ?>
-                                    <span style="color: #666; font-size: 13px;"><?php echo esc_html( $sn->location ); ?></span>
+                            <div class="sp-surname-row">
+                                <strong><?php echo esc_html( $sn->surname ); ?></strong>
+                                <?php
+                                // Build a location + year string from the individual columns,
+                                // matching the format used in the directory detail view:
+                                // "Bexar County, TX, US (1830–1890)"
+                                $parts = [];
+                                if ( $sn->county )  $parts[] = esc_html( $sn->county );
+                                if ( $sn->state )   $parts[] = esc_html( $sn->state );
+                                if ( $sn->country && $sn->country !== 'US' ) $parts[] = esc_html( $sn->country );
+                                $location_str = implode( ', ', $parts );
+
+                                $year_str = '';
+                                if ( $sn->year_from && $sn->year_to ) {
+                                    $year_str = '(' . esc_html( $sn->year_from ) . '–' . esc_html( $sn->year_to ) . ')';
+                                } elseif ( $sn->year_from ) {
+                                    $year_str = '(' . esc_html( $sn->year_from ) . '–)';
+                                } elseif ( $sn->year_to ) {
+                                    $year_str = '(–' . esc_html( $sn->year_to ) . ')';
+                                }
+
+                                $detail = trim( $location_str . ( $year_str ? ' ' . $year_str : '' ) );
+                                ?>
+                                <?php if ( $detail ) : ?>
+                                    <span class="sp-surname-detail"><?php echo $detail; ?></span>
                                 <?php endif; ?>
-                                <form method="post" style="margin: 0;" onsubmit="return confirm('Remove this surname?');">
+                                <form method="post" onsubmit="return confirm('<?php echo esc_js( __( 'Remove this surname?', 'societypress' ) ); ?>');">
                                     <?php wp_nonce_field( 'sp_remove_surname', 'sp_surname_nonce' ); ?>
                                     <input type="hidden" name="sp_action" value="remove_surname">
                                     <input type="hidden" name="surname_id" value="<?php echo esc_attr( $sn->id ); ?>">
-                                    <button type="submit" style="background: none; border: none; color: #b32d2e; cursor: pointer; font-size: 13px; padding: 2px 6px;">&times;</button>
+                                    <button type="submit" class="sp-surname-remove" aria-label="<?php esc_attr_e( 'Remove surname', 'societypress' ); ?>">&times;</button>
                                 </form>
                             </div>
                         <?php endforeach; ?>
                     <?php else : ?>
-                        <p style="color: #999; font-style: italic;">No research surnames added yet.</p>
+                        <p class="sp-surname-empty"><?php esc_html_e( 'No research surnames added yet.', 'societypress' ); ?></p>
                     <?php endif; ?>
                 </div>
 
                 <!-- Add new surname form -->
-                <form method="post" class="sp-form" style="display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap;">
+                <form method="post" class="sp-surname-add-form">
                     <?php wp_nonce_field( 'sp_add_surname', 'sp_surname_nonce' ); ?>
                     <input type="hidden" name="sp_action" value="add_surname">
-                    <div style="flex: 1; min-width: 150px;">
-                        <label for="sp-new-surname" style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px;">Surname</label>
-                        <input type="text" id="sp-new-surname" name="new_surname" required placeholder="e.g., STRICKLIN" style="width: 100%; text-transform: uppercase;">
+
+                    <div class="sp-form-field sp-form-field--surname">
+                        <label for="sp-new-surname"><?php esc_html_e( 'Surname', 'societypress' ); ?></label>
+                        <input type="text" id="sp-new-surname" name="new_surname" required
+                               placeholder="<?php esc_attr_e( 'e.g., STRICKLIN', 'societypress' ); ?>"
+                               style="text-transform: uppercase;" />
                     </div>
-                    <div style="flex: 1; min-width: 150px;">
-                        <label for="sp-new-location" style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px;">Location (optional)</label>
-                        <input type="text" id="sp-new-location" name="new_location" placeholder="e.g., Bexar County, TX">
+
+                    <div class="sp-form-field">
+                        <label for="sp-new-county"><?php esc_html_e( 'County', 'societypress' ); ?></label>
+                        <input type="text" id="sp-new-county" name="new_county"
+                               placeholder="<?php esc_attr_e( 'e.g., Bexar', 'societypress' ); ?>" />
                     </div>
-                    <button type="submit" class="sp-button" style="white-space: nowrap;">Add Surname</button>
+
+                    <div class="sp-form-field">
+                        <label for="sp-new-state"><?php esc_html_e( 'State', 'societypress' ); ?></label>
+                        <input type="text" id="sp-new-state" name="new_state"
+                               placeholder="<?php esc_attr_e( 'e.g., TX', 'societypress' ); ?>" />
+                    </div>
+
+                    <div class="sp-form-field">
+                        <label for="sp-new-country"><?php esc_html_e( 'Country', 'societypress' ); ?></label>
+                        <input type="text" id="sp-new-country" name="new_country"
+                               placeholder="<?php esc_attr_e( 'e.g., US', 'societypress' ); ?>" />
+                    </div>
+
+                    <div class="sp-form-field sp-form-field--year">
+                        <label for="sp-new-year-from"><?php esc_html_e( 'From', 'societypress' ); ?></label>
+                        <input type="number" id="sp-new-year-from" name="new_year_from"
+                               placeholder="<?php esc_attr_e( '1830', 'societypress' ); ?>"
+                               min="1000" max="2100" />
+                    </div>
+
+                    <div class="sp-form-field sp-form-field--year">
+                        <label for="sp-new-year-to"><?php esc_html_e( 'To', 'societypress' ); ?></label>
+                        <input type="number" id="sp-new-year-to" name="new_year_to"
+                               placeholder="<?php esc_attr_e( '1890', 'societypress' ); ?>"
+                               min="1000" max="2100" />
+                    </div>
+
+                    <button type="submit" class="sp-button"><?php esc_html_e( 'Add Surname', 'societypress' ); ?></button>
                 </form>
             </section>
 
-            <!-- ============================================================ -->
-            <!-- MY EVENTS                                                    -->
-            <!-- WHY: Members need to see what events they're registered for  -->
-            <!-- and be able to cancel if their plans change. Reduces admin   -->
-            <!-- workload — members handle their own registrations.           -->
-            <!-- ============================================================ -->
+            <?php
+            // ================================================================
+            // SECTION 9: MY EVENTS
+            // WHY: Members need to see what events they're registered for
+            // and be able to cancel if their plans change. Reduces admin
+            // workload — members handle their own registrations.
+            // ================================================================
+            ?>
 
             <section class="sp-account-section" id="events">
-                <h2>My Events</h2>
+                <h2><?php esc_html_e( 'My Events', 'societypress' ); ?></h2>
 
                 <?php
                 // Get upcoming event registrations for this member
@@ -724,61 +969,64 @@ function sp_m( $member, $field ) {
                 ?>
 
                 <?php if ( ! empty( $upcoming_regs ) ) : ?>
-                    <h3 style="font-size: 16px; margin-bottom: 12px;">Upcoming</h3>
+                    <h3 class="sp-events-subheading"><?php esc_html_e( 'Upcoming', 'societypress' ); ?></h3>
                     <?php foreach ( $upcoming_regs as $reg ) : ?>
-                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; margin-bottom: 8px; background: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 4px; flex-wrap: wrap; gap: 8px;">
+                        <div class="sp-event-card">
                             <div>
                                 <strong><?php echo esc_html( $reg->title ); ?></strong><br>
-                                <span style="color: #666; font-size: 13px;">
+                                <span class="sp-event-card__details">
                                     <?php echo esc_html( date_i18n( 'l, F j, Y', strtotime( $reg->event_date ) ) ); ?>
                                     <?php if ( $reg->start_time ) : ?>
-                                        at <?php echo esc_html( date_i18n( 'g:i A', strtotime( $reg->start_time ) ) ); ?>
+                                        <?php
+                                        /* translators: precedes a time, e.g. "at 2:00 PM" */
+                                        echo esc_html( sprintf( __( 'at %s', 'societypress' ), date_i18n( 'g:i A', strtotime( $reg->start_time ) ) ) );
+                                        ?>
                                     <?php endif; ?>
                                     <?php if ( $reg->location_name ) : ?>
                                         &mdash; <?php echo esc_html( $reg->location_name ); ?>
                                     <?php endif; ?>
                                 </span>
                                 <?php if ( $reg->reg_status === 'waitlisted' ) : ?>
-                                    <span style="display: inline-block; margin-left: 8px; padding: 1px 8px; background: #fef8ee; color: #996800; border: 1px solid #dba617; border-radius: 3px; font-size: 12px;">Waitlisted</span>
+                                    <span class="sp-event-badge--waitlisted"><?php esc_html_e( 'Waitlisted', 'societypress' ); ?></span>
                                 <?php endif; ?>
                             </div>
-                            <form method="post" style="margin: 0;" onsubmit="return confirm('Cancel your registration for this event?');">
+                            <form method="post" onsubmit="return confirm('<?php echo esc_js( __( 'Cancel your registration for this event?', 'societypress' ) ); ?>');">
                                 <?php wp_nonce_field( 'sp_cancel_event_reg', 'sp_event_nonce' ); ?>
                                 <input type="hidden" name="sp_action" value="cancel_event_registration">
                                 <input type="hidden" name="registration_id" value="<?php echo esc_attr( $reg->reg_id ); ?>">
-                                <button type="submit" class="sp-button" style="background: #b32d2e; font-size: 13px; padding: 6px 14px;">Cancel</button>
+                                <button type="submit" class="sp-button sp-event-cancel-btn"><?php esc_html_e( 'Cancel', 'societypress' ); ?></button>
                             </form>
                         </div>
                     <?php endforeach; ?>
                 <?php else : ?>
-                    <p style="color: #999; font-style: italic;">You're not registered for any upcoming events.</p>
+                    <p class="sp-events-empty"><?php esc_html_e( 'You\'re not registered for any upcoming events.', 'societypress' ); ?></p>
                 <?php endif; ?>
 
                 <?php if ( ! empty( $past_regs ) ) : ?>
-                    <h3 style="font-size: 16px; margin: 20px 0 12px;">Past Events (6 months)</h3>
-                    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                    <h3 class="sp-events-subheading sp-events-subheading--past"><?php esc_html_e( 'Past Events (6 months)', 'societypress' ); ?></h3>
+                    <table class="sp-events-table">
                         <thead>
-                            <tr style="border-bottom: 2px solid #e0e0e0; text-align: left;">
-                                <th style="padding: 6px 8px;">Event</th>
-                                <th style="padding: 6px 8px;">Date</th>
-                                <th style="padding: 6px 8px;">Status</th>
+                            <tr>
+                                <th><?php esc_html_e( 'Event', 'societypress' ); ?></th>
+                                <th><?php esc_html_e( 'Date', 'societypress' ); ?></th>
+                                <th><?php esc_html_e( 'Status', 'societypress' ); ?></th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php foreach ( $past_regs as $past ) : ?>
-                                <tr style="border-bottom: 1px solid #e0e0e0;">
-                                    <td style="padding: 6px 8px;"><?php echo esc_html( $past->title ); ?></td>
-                                    <td style="padding: 6px 8px;"><?php echo esc_html( date_i18n( 'M j, Y', strtotime( $past->event_date ) ) ); ?></td>
-                                    <td style="padding: 6px 8px;">
+                                <tr>
+                                    <td><?php echo esc_html( $past->title ); ?></td>
+                                    <td><?php echo esc_html( date_i18n( 'M j, Y', strtotime( $past->event_date ) ) ); ?></td>
+                                    <td>
                                         <?php
                                         if ( $past->reg_status === 'cancelled' ) {
-                                            echo '<span style="color: #b32d2e;">Cancelled</span>';
+                                            echo '<span class="sp-status--cancelled">' . esc_html__( 'Cancelled', 'societypress' ) . '</span>';
                                         } elseif ( $past->attended === '1' ) {
-                                            echo '<span style="color: #00a32a;">Attended</span>';
+                                            echo '<span class="sp-status--attended">' . esc_html__( 'Attended', 'societypress' ) . '</span>';
                                         } elseif ( $past->attended === '0' ) {
-                                            echo '<span style="color: #996800;">No-show</span>';
+                                            echo '<span class="sp-status--noshow">' . esc_html__( 'No-show', 'societypress' ) . '</span>';
                                         } else {
-                                            echo '<span style="color: #666;">Registered</span>';
+                                            echo '<span class="sp-status--registered">' . esc_html__( 'Registered', 'societypress' ) . '</span>';
                                         }
                                         ?>
                                     </td>
@@ -790,15 +1038,24 @@ function sp_m( $member, $field ) {
             </section>
 
 
+            <?php
+            // ================================================================
+            // SECTION 10: CHANGE PASSWORD
+            // WHY: Separated from other forms so members can update their
+            // info without thinking about passwords, and vice versa.
+            // Requires current password as a security measure.
+            // ================================================================
+            ?>
+
             <section class="sp-account-section" id="password">
-                <h2>Change Password</h2>
+                <h2><?php esc_html_e( 'Change Password', 'societypress' ); ?></h2>
 
                 <form method="post" class="sp-account-form">
                     <?php wp_nonce_field( 'sp_update_password', 'sp_password_nonce' ); ?>
                     <input type="hidden" name="sp_action" value="update_password" />
 
                     <div class="sp-form-field">
-                        <label for="sp-current-password">Current Password</label>
+                        <label for="sp-current-password"><?php esc_html_e( 'Current Password', 'societypress' ); ?></label>
                         <input type="password"
                                id="sp-current-password"
                                name="current_password"
@@ -807,18 +1064,18 @@ function sp_m( $member, $field ) {
                     </div>
 
                     <div class="sp-form-field">
-                        <label for="sp-new-password">New Password</label>
+                        <label for="sp-new-password"><?php esc_html_e( 'New Password', 'societypress' ); ?></label>
                         <input type="password"
                                id="sp-new-password"
                                name="new_password"
                                required
                                minlength="8"
                                autocomplete="new-password" />
-                        <p class="sp-field-hint">At least 8 characters.</p>
+                        <p class="sp-field-hint"><?php esc_html_e( 'At least 8 characters.', 'societypress' ); ?></p>
                     </div>
 
                     <div class="sp-form-field">
-                        <label for="sp-confirm-password">Confirm New Password</label>
+                        <label for="sp-confirm-password"><?php esc_html_e( 'Confirm New Password', 'societypress' ); ?></label>
                         <input type="password"
                                id="sp-confirm-password"
                                name="confirm_password"
@@ -827,7 +1084,7 @@ function sp_m( $member, $field ) {
                                autocomplete="new-password" />
                     </div>
 
-                    <button type="submit" class="sp-button">Change Password</button>
+                    <button type="submit" class="sp-button"><?php esc_html_e( 'Change Password', 'societypress' ); ?></button>
                 </form>
             </section>
 

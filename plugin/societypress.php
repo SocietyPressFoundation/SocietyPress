@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '0.26d' );
+define( 'SOCIETYPRESS_VERSION', '0.27d' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -2947,6 +2947,7 @@ function sp_handle_account_forms() {
             'pref_email_events' => ! empty( $_POST['pref_email_events'] ) ? 1 : 0,
             'pref_email_newsletters' => ! empty( $_POST['pref_email_newsletters'] ) ? 1 : 0,
             'pref_email_surnames' => ! empty( $_POST['pref_email_surnames'] ) ? 1 : 0,
+            'blast_email_opt_out' => ! empty( $_POST['blast_email_opt_out'] ) ? 1 : 0,
             'updated_at' => current_time( 'mysql' ),
         ], [ 'user_id' => $user->ID ] );
         wp_redirect( add_query_arg( 'sp-updated', 'preferences', $account_url . '#preferences' ) ); exit;
@@ -2965,6 +2966,20 @@ function sp_handle_account_forms() {
             'updated_at' => current_time( 'mysql' ),
         ], [ 'user_id' => $user->ID ] );
         wp_redirect( add_query_arg( 'sp-updated', 'privacy', $account_url . '#privacy' ) ); exit;
+    }
+
+    // ---- Interests & Skills ----
+    // WHY: Members can share their research interests and skills so admins
+    // can match volunteers to committees and connect members with shared interests.
+    if ( $action === 'update_interests' ) {
+        if ( ! wp_verify_nonce( $_POST['sp_interests_nonce'] ?? '', 'sp_update_interests' ) ) { wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
+        if ( ! sp_user_has_member_record( $user->ID ) ) { wp_redirect( add_query_arg( 'sp-error', 'no-member', $account_url ) ); exit; }
+        $wpdb->update( $table, [
+            'interests'  => sanitize_textarea_field( $_POST['interests'] ?? '' ),
+            'skills'     => sanitize_textarea_field( $_POST['skills'] ?? '' ),
+            'updated_at' => current_time( 'mysql' ),
+        ], [ 'user_id' => $user->ID ] );
+        wp_redirect( add_query_arg( 'sp-updated', 'interests', $account_url . '#interests' ) ); exit;
     }
 
     if ( $action === 'update_photo' ) {
@@ -3031,18 +3046,29 @@ function sp_handle_account_forms() {
     }
 
     // ---- Research Surnames: Add ----
+    // ---- Research Surnames: Add ----
+    // WHY: The real schema uses county/state/country/year_from/year_to,
+    // not a single 'location' column. This matches the admin surname form.
     if ( $action === 'add_surname' ) {
         if ( ! wp_verify_nonce( $_POST['sp_surname_nonce'] ?? '', 'sp_add_surname' ) ) {
             wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url . '#surnames' ) );
             exit;
         }
-        $surname  = strtoupper( sanitize_text_field( $_POST['new_surname'] ?? '' ) );
-        $location = sanitize_text_field( $_POST['new_location'] ?? '' );
+        $surname   = strtoupper( sanitize_text_field( $_POST['new_surname'] ?? '' ) );
+        $county    = sanitize_text_field( $_POST['new_county'] ?? '' );
+        $state     = sanitize_text_field( $_POST['new_state'] ?? '' );
+        $country   = sanitize_text_field( $_POST['new_country'] ?? '' );
+        $year_from = absint( $_POST['new_year_from'] ?? 0 );
+        $year_to   = absint( $_POST['new_year_to'] ?? 0 );
         if ( $surname ) {
             $wpdb->insert( $wpdb->prefix . 'sp_member_surnames', [
-                'user_id'  => $user->ID,
-                'surname'  => $surname,
-                'location' => $location ?: null,
+                'user_id'   => $user->ID,
+                'surname'   => $surname,
+                'county'    => $county ?: null,
+                'state'     => $state ?: null,
+                'country'   => $country ?: null,
+                'year_from' => $year_from ?: null,
+                'year_to'   => $year_to ?: null,
             ] );
         }
         wp_redirect( add_query_arg( 'sp-updated', 'surnames', $account_url . '#surnames' ) );
@@ -14459,6 +14485,52 @@ add_action( 'admin_enqueue_scripts', function ( $hook ) {
 //      "Membership Directory" that they simply select from the Template
 //      dropdown when editing a page. WordPress handles the rest.
 //
+// ============================================================================
+// NAV MENU — HIDE MEMBERS-ONLY PAGES FROM LOGGED-OUT VISITORS
+// ============================================================================
+// WHY: The membership directory (and any future members-only pages) already
+// show a "Members Only" gate when visited by non-members, but there's no
+// reason to advertise the link in the nav if they can't use it. This filter
+// removes nav menu items that point to pages using members-only templates
+// (sp-directory) when the visitor isn't logged in.
+// ----------------------------------------------------------------------------
+
+add_filter( 'wp_nav_menu_objects', 'sp_hide_members_only_nav_items', 10, 2 );
+
+function sp_hide_members_only_nav_items( $items, $args ) {
+    // Don't filter if logged in — members see everything
+    if ( is_user_logged_in() ) return $items;
+
+    // Templates that require login — add more here as needed
+    $members_only_templates = [ 'sp-directory' ];
+
+    // Build a list of menu item IDs to remove (including their children)
+    $remove_ids = [];
+    foreach ( $items as $item ) {
+        // Only check page-type menu items
+        if ( $item->type !== 'post_type' || $item->object !== 'page' ) continue;
+        $template = get_page_template_slug( $item->object_id );
+        if ( in_array( $template, $members_only_templates, true ) ) {
+            $remove_ids[] = $item->ID;
+        }
+    }
+
+    if ( empty( $remove_ids ) ) return $items;
+
+    // Also remove any child items whose parent is being removed
+    // WHY: If "Directory" has sub-items, they'd be orphaned in the nav
+    $all_remove = $remove_ids;
+    foreach ( $items as $item ) {
+        if ( in_array( (int) $item->menu_item_parent, $remove_ids, true ) ) {
+            $all_remove[] = $item->ID;
+        }
+    }
+
+    return array_filter( $items, function( $item ) use ( $all_remove ) {
+        return ! in_array( $item->ID, $all_remove, true );
+    } );
+}
+
 // HOW IT WORKS:
 //      1. theme_page_templates filter — adds "Membership Directory" to the
 //         template dropdown in the Page editor
@@ -14521,6 +14593,8 @@ add_filter( 'template_include', function ( $template ) {
         // WHY: We add the CSS via wp_head so it loads in the <head> where
         //      stylesheets belong, not inline in the body.
         add_action( 'wp_head', 'sp_directory_styles' );
+        add_action( 'wp_head', 'sp_directory_detail_styles' );
+        add_action( 'wp_footer', 'sp_directory_detail_script' );
 
         // Start output with the theme's header
         get_header();
@@ -14579,15 +14653,18 @@ add_action( 'init', function () {
         file_put_contents( $blank, "<?php\n// Intentionally blank — used by the directory page template.\n" );
     }
 });
-
-
 /**
  * Render the membership directory — the main content between header and footer.
  *
- * WHY: This function builds the complete directory UI: search bar, letter
- *      filter, results table, and pagination. It queries the database
- *      respecting both society-level column toggles (settings) and
- *      individual member privacy preferences (dir_show_* fields).
+ * WHY: This function builds the complete directory UI: search bar, filter
+ *      dropdowns, letter filter, results table, and pagination. It queries
+ *      the database respecting both society-level column toggles (settings)
+ *      and individual member privacy preferences (dir_show_* fields).
+ *
+ * FILTERS: Text search + status + group + tier + surname all combine with
+ *          AND logic. This lets members drill down precisely — e.g., find
+ *          all active members in the "Cemetery Research" group who are
+ *          researching the surname "Smith."
  *
  * @param array $settings The societypress_settings option array.
  */
@@ -14608,6 +14685,24 @@ function sp_render_directory( array $settings ): void {
         $letter = ''; // Invalid letter — show all
     }
 
+    // Status filter — default to "active" so the directory shows current members
+    $status_filter = isset( $_GET['sp_status'] ) ? sanitize_text_field( $_GET['sp_status'] ) : 'active';
+    $allowed_statuses = [ 'active', 'inactive', 'all' ];
+    if ( ! in_array( $status_filter, $allowed_statuses, true ) ) {
+        $status_filter = 'active';
+    }
+
+    // Group/committee filter — numeric group ID or empty for "all"
+    $group_filter = isset( $_GET['sp_group'] ) ? (int) $_GET['sp_group'] : 0;
+
+    // Membership tier filter — numeric tier ID or empty for "all"
+    $tier_filter = isset( $_GET['sp_tier'] ) ? (int) $_GET['sp_tier'] : 0;
+
+    // Dedicated surname search — separate from the main text search so members
+    // can filter specifically by surname being researched without mixing it
+    // into the general name/email search.
+    $surname_search = isset( $_GET['sp_surname'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_surname'] ) ) : '';
+
     // Sort column and direction
     $allowed_sorts = [ 'last_name', 'first_name', 'city', 'state', 'join_date', 'tier_name', 'phone', 'user_email', 'website' ];
     $sort_by       = isset( $_GET['sp_sort'] ) && in_array( $_GET['sp_sort'], $allowed_sorts, true )
@@ -14619,12 +14714,31 @@ function sp_render_directory( array $settings ): void {
     $offset       = ( $current_page - 1 ) * $per_page;
 
 
+    // ---- Load filter options from the database ----
+    // WHY: We need these for the dropdown menus. One query each — cheap,
+    //      and we cache-bust naturally since these change rarely.
+
+    $groups = $wpdb->get_results(
+        "SELECT id, name FROM {$prefix}groups WHERE status = 'active' ORDER BY name"
+    );
+
+    $tiers = $wpdb->get_results(
+        "SELECT id, name FROM {$prefix}membership_tiers ORDER BY sort_order, name"
+    );
+
+
     // ---- Build the WHERE clause ----
 
-    $where  = [ "m.status = 'active'" ];
+    $where  = [];
     $params = [];
 
-    // Search — look in name, city, email, and surnames
+    // Status filter — "all" shows everyone, otherwise filter by status
+    if ( $status_filter !== 'all' ) {
+        $where[]  = "m.status = %s";
+        $params[] = $status_filter;
+    }
+
+    // Text search — look in name, city, email, member number, interests, skills, and surnames
     if ( $search !== '' ) {
         $like     = '%' . $wpdb->esc_like( $search ) . '%';
         $where[]  = "(
@@ -14633,19 +14747,54 @@ function sp_render_directory( array $settings ): void {
             OR m.preferred_name LIKE %s
             OR m.organization_name LIKE %s
             OR m.city LIKE %s
+            OR m.member_number LIKE %s
+            OR m.interests LIKE %s
+            OR m.skills LIKE %s
             OR u.user_email LIKE %s
             OR EXISTS (
                 SELECT 1 FROM {$prefix}member_surnames s
                 WHERE s.user_id = m.user_id AND s.surname LIKE %s
             )
         )";
-        $params[] = $like;
-        $params[] = $like;
-        $params[] = $like;
-        $params[] = $like;
-        $params[] = $like;
-        $params[] = $like;
-        $params[] = $like;
+        $params[] = $like; // first_name
+        $params[] = $like; // last_name
+        $params[] = $like; // preferred_name
+        $params[] = $like; // organization_name
+        $params[] = $like; // city
+        $params[] = $like; // member_number
+        $params[] = $like; // interests
+        $params[] = $like; // skills
+        $params[] = $like; // user_email
+        $params[] = $like; // surname
+    }
+
+    // Dedicated surname filter — matches against the surnames table specifically.
+    // WHY: Surnames are THE killer feature for genealogical societies. Members
+    //      want to find others researching the same family lines without wading
+    //      through general search results. A dedicated surname filter makes
+    //      this dead simple.
+    if ( $surname_search !== '' ) {
+        $surname_like = '%' . $wpdb->esc_like( $surname_search ) . '%';
+        $where[]  = "EXISTS (
+            SELECT 1 FROM {$prefix}member_surnames s
+            WHERE s.user_id = m.user_id AND s.surname LIKE %s
+        )";
+        $params[] = $surname_like;
+    }
+
+    // Group/committee filter — find members who belong to the selected group
+    if ( $group_filter > 0 ) {
+        $where[]  = "m.user_id IN (
+            SELECT gm.user_id FROM {$prefix}group_members gm
+            WHERE gm.group_id = %d
+        )";
+        $params[] = $group_filter;
+    }
+
+    // Tier filter — match against the membership tier
+    if ( $tier_filter > 0 ) {
+        $where[]  = "m.tier_id = %d";
+        $params[] = $tier_filter;
     }
 
     // Letter filter — match first character of last name (or org name for orgs)
@@ -14655,7 +14804,8 @@ function sp_render_directory( array $settings ): void {
         $params[] = $letter . '%';
     }
 
-    $where_sql = implode( ' AND ', $where );
+    // Default: if no filters at all, show all records (no WHERE restriction beyond joins)
+    $where_sql = ! empty( $where ) ? implode( ' AND ', $where ) : '1=1';
 
 
     // ---- Count total matching members (for pagination) ----
@@ -14726,6 +14876,30 @@ function sp_render_directory( array $settings ): void {
     }
 
 
+    // ---- Load group memberships for all members on this page ----
+    // WHY: We show which groups each member belongs to in the results,
+    //      so members can see at a glance who's in what committee.
+
+    $groups_map = [];
+    if ( ! empty( $members ) ) {
+        $user_ids     = array_map( fn( $m ) => (int) $m->user_id, $members );
+        $placeholders = implode( ', ', array_fill( 0, count( $user_ids ), '%d' ) );
+        $group_rows   = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT gm.user_id, g.name
+                 FROM {$prefix}group_members gm
+                 JOIN {$prefix}groups g ON g.id = gm.group_id
+                 WHERE gm.user_id IN ({$placeholders}) AND g.status = 'active'
+                 ORDER BY g.name",
+                ...$user_ids
+            )
+        );
+        foreach ( $group_rows as $row ) {
+            $groups_map[ $row->user_id ][] = $row->name;
+        }
+    }
+
+
     // ---- Determine which columns to show (society-level settings) ----
 
     $show_city_state = ! empty( $settings['dir_show_city_state'] );
@@ -14751,12 +14925,25 @@ function sp_render_directory( array $settings ): void {
     $base_url = get_permalink();
 
 
+    // ---- Helper: collect all active filter args for URL building ----
+    // WHY: Every link on the page (sort headers, letter filter, pagination)
+    //      needs to preserve the current filter state. This array holds all
+    //      non-empty filter values so we can merge them into URLs.
+
+    $filter_args = array_filter( [
+        'sp_search'  => $search ?: null,
+        'sp_status'  => $status_filter !== 'active' ? $status_filter : null,
+        'sp_group'   => $group_filter > 0 ? $group_filter : null,
+        'sp_tier'    => $tier_filter > 0 ? $tier_filter : null,
+        'sp_surname' => $surname_search ?: null,
+    ] );
+
+
     // ---- Helper: build a sort URL for a column header ----
 
-    $sort_url = function ( $col ) use ( $base_url, $search, $letter, $sort_by, $sort_dir ) {
+    $sort_url = function ( $col ) use ( $base_url, $filter_args, $letter, $sort_by, $sort_dir ) {
         $new_dir = ( $sort_by === $col && $sort_dir === 'ASC' ) ? 'desc' : 'asc';
-        $args    = [ 'sp_sort' => $col, 'sp_dir' => $new_dir ];
-        if ( $search !== '' ) $args['sp_search'] = $search;
+        $args    = array_merge( $filter_args, [ 'sp_sort' => $col, 'sp_dir' => $new_dir ] );
         if ( $letter !== '' ) $args['sp_letter'] = $letter;
         return esc_url( add_query_arg( $args, $base_url ) );
     };
@@ -14769,25 +14956,100 @@ function sp_render_directory( array $settings ): void {
     };
 
 
+    // ---- Check if any filters are active (for the "Clear All" button) ----
+    $has_filters = $search !== '' || $status_filter !== 'active' || $group_filter > 0
+                   || $tier_filter > 0 || $surname_search !== '' || $letter !== '';
+
+
     // ================================================================
-    // OUTPUT: Search bar
+    // OUTPUT: Search bar + filter dropdowns
     // ================================================================
 
     ?>
     <div class="sp-directory-search">
         <form method="get" action="<?php echo esc_url( $base_url ); ?>">
+
+            <!-- Text search row -->
             <div class="sp-search-row">
                 <input type="text"
                        name="sp_search"
                        value="<?php echo esc_attr( $search ); ?>"
-                       placeholder="Search by name, city, email, or surname&hellip;"
+                       placeholder="<?php echo esc_attr__( 'Search by name, city, email, or surname…', 'societypress' ); ?>"
                        class="sp-search-input"
-                       aria-label="Search the membership directory">
-                <button type="submit" class="sp-search-button">Search</button>
-                <?php if ( $search !== '' || $letter !== '' ) : ?>
-                    <a href="<?php echo esc_url( $base_url ); ?>" class="sp-search-clear">Clear</a>
+                       aria-label="<?php echo esc_attr__( 'Search the membership directory', 'societypress' ); ?>">
+                <button type="submit" class="sp-search-button"><?php echo esc_html__( 'Search', 'societypress' ); ?></button>
+                <?php if ( $has_filters ) : ?>
+                    <a href="<?php echo esc_url( $base_url ); ?>" class="sp-search-clear"><?php echo esc_html__( 'Clear All', 'societypress' ); ?></a>
                 <?php endif; ?>
             </div>
+
+            <!-- Filter dropdowns row -->
+            <div class="sp-filter-row">
+
+                <!-- Status filter -->
+                <div class="sp-filter-group">
+                    <label for="sp-filter-status" class="sp-filter-label"><?php echo esc_html__( 'Status', 'societypress' ); ?></label>
+                    <select name="sp_status" id="sp-filter-status" class="sp-filter-select">
+                        <option value="active" <?php selected( $status_filter, 'active' ); ?>><?php echo esc_html__( 'Active', 'societypress' ); ?></option>
+                        <option value="inactive" <?php selected( $status_filter, 'inactive' ); ?>><?php echo esc_html__( 'Inactive', 'societypress' ); ?></option>
+                        <option value="all" <?php selected( $status_filter, 'all' ); ?>><?php echo esc_html__( 'All Members', 'societypress' ); ?></option>
+                    </select>
+                </div>
+
+                <?php if ( ! empty( $groups ) ) : ?>
+                <!-- Group/committee filter -->
+                <div class="sp-filter-group">
+                    <label for="sp-filter-group" class="sp-filter-label"><?php echo esc_html__( 'Group', 'societypress' ); ?></label>
+                    <select name="sp_group" id="sp-filter-group" class="sp-filter-select">
+                        <option value="0"><?php echo esc_html__( 'All Groups', 'societypress' ); ?></option>
+                        <?php foreach ( $groups as $g ) : ?>
+                            <option value="<?php echo (int) $g->id; ?>" <?php selected( $group_filter, (int) $g->id ); ?>>
+                                <?php echo esc_html( $g->name ); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <?php endif; ?>
+
+                <?php if ( ! empty( $tiers ) ) : ?>
+                <!-- Membership tier filter -->
+                <div class="sp-filter-group">
+                    <label for="sp-filter-tier" class="sp-filter-label"><?php echo esc_html__( 'Membership', 'societypress' ); ?></label>
+                    <select name="sp_tier" id="sp-filter-tier" class="sp-filter-select">
+                        <option value="0"><?php echo esc_html__( 'All Types', 'societypress' ); ?></option>
+                        <?php foreach ( $tiers as $t ) : ?>
+                            <option value="<?php echo (int) $t->id; ?>" <?php selected( $tier_filter, (int) $t->id ); ?>>
+                                <?php echo esc_html( $t->name ); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <?php endif; ?>
+
+                <!-- Dedicated surname search -->
+                <div class="sp-filter-group">
+                    <label for="sp-filter-surname" class="sp-filter-label"><?php echo esc_html__( 'Surname Being Researched', 'societypress' ); ?></label>
+                    <input type="text"
+                           name="sp_surname"
+                           id="sp-filter-surname"
+                           value="<?php echo esc_attr( $surname_search ); ?>"
+                           placeholder="<?php echo esc_attr__( 'e.g. Smith', 'societypress' ); ?>"
+                           class="sp-filter-input">
+                </div>
+
+            </div>
+
+            <!-- Preserve sort state across filter changes -->
+            <?php if ( $sort_by !== 'last_name' ) : ?>
+                <input type="hidden" name="sp_sort" value="<?php echo esc_attr( $sort_by ); ?>">
+            <?php endif; ?>
+            <?php if ( $sort_dir !== 'ASC' ) : ?>
+                <input type="hidden" name="sp_dir" value="<?php echo esc_attr( strtolower( $sort_dir ) ); ?>">
+            <?php endif; ?>
+            <?php if ( $letter !== '' ) : ?>
+                <input type="hidden" name="sp_letter" value="<?php echo esc_attr( $letter ); ?>">
+            <?php endif; ?>
+
         </form>
     </div>
     <?php
@@ -14799,16 +15061,13 @@ function sp_render_directory( array $settings ): void {
 
     ?>
     <div class="sp-directory-letters">
-        <a href="<?php echo esc_url( add_query_arg( array_filter( [ 'sp_search' => $search ?: null ] ), $base_url ) ); ?>"
-           class="sp-letter <?php echo $letter === '' ? 'sp-letter-active' : ''; ?>">All</a>
+        <a href="<?php echo esc_url( add_query_arg( $filter_args, $base_url ) ); ?>"
+           class="sp-letter <?php echo $letter === '' ? 'sp-letter-active' : ''; ?>"><?php echo esc_html__( 'All', 'societypress' ); ?></a>
         <?php
         foreach ( range( 'A', 'Z' ) as $l ) :
-            $l_url  = add_query_arg( array_filter( [
-                'sp_letter' => $l,
-                'sp_search' => $search ?: null,
-            ] ), $base_url );
+            $l_args = array_merge( $filter_args, [ 'sp_letter' => $l ] );
         ?>
-            <a href="<?php echo esc_url( $l_url ); ?>"
+            <a href="<?php echo esc_url( add_query_arg( $l_args, $base_url ) ); ?>"
                class="sp-letter <?php echo $letter === $l ? 'sp-letter-active' : ''; ?>"><?php echo $l; ?></a>
         <?php endforeach; ?>
     </div>
@@ -14816,18 +15075,18 @@ function sp_render_directory( array $settings ): void {
 
 
     // ================================================================
-    // OUTPUT: Results count
+    // OUTPUT: Results count + active filter summary
     // ================================================================
 
     ?>
     <div class="sp-directory-count">
         <?php
         if ( $total_members === 0 ) {
-            echo '<p>No members found.</p>';
+            echo '<p>' . esc_html__( 'No members found.', 'societypress' ) . '</p>';
         } elseif ( $total_members === 1 ) {
-            echo '<p>1 member</p>';
+            echo '<p>' . esc_html__( '1 member', 'societypress' ) . '</p>';
         } else {
-            printf( '<p>%s members</p>', number_format_i18n( $total_members ) );
+            printf( '<p>%s ' . esc_html__( 'members', 'societypress' ) . '</p>', number_format_i18n( $total_members ) );
         }
         ?>
     </div>
@@ -14845,36 +15104,36 @@ function sp_render_directory( array $settings ): void {
             <thead>
                 <tr>
                     <th class="sp-col-name">
-                        <a href="<?php echo $sort_url( 'last_name' ); ?>">Name<?php echo $sort_arrow( 'last_name' ); ?></a>
+                        <a href="<?php echo $sort_url( 'last_name' ); ?>"><?php echo esc_html__( 'Name', 'societypress' ); ?><?php echo $sort_arrow( 'last_name' ); ?></a>
                     </th>
                     <?php if ( $show_city_state ) : ?>
                         <th class="sp-col-location">
-                            <a href="<?php echo $sort_url( 'city' ); ?>">Location<?php echo $sort_arrow( 'city' ); ?></a>
+                            <a href="<?php echo $sort_url( 'city' ); ?>"><?php echo esc_html__( 'Location', 'societypress' ); ?><?php echo $sort_arrow( 'city' ); ?></a>
                         </th>
                     <?php endif; ?>
                     <?php if ( $show_phone ) : ?>
                         <th class="sp-col-phone">
-                            <a href="<?php echo $sort_url( 'phone' ); ?>">Phone<?php echo $sort_arrow( 'phone' ); ?></a>
+                            <a href="<?php echo $sort_url( 'phone' ); ?>"><?php echo esc_html__( 'Phone', 'societypress' ); ?><?php echo $sort_arrow( 'phone' ); ?></a>
                         </th>
                     <?php endif; ?>
                     <?php if ( $show_email ) : ?>
                         <th class="sp-col-email">
-                            <a href="<?php echo $sort_url( 'user_email' ); ?>">Email<?php echo $sort_arrow( 'user_email' ); ?></a>
+                            <a href="<?php echo $sort_url( 'user_email' ); ?>"><?php echo esc_html__( 'Email', 'societypress' ); ?><?php echo $sort_arrow( 'user_email' ); ?></a>
                         </th>
                     <?php endif; ?>
                     <?php if ( $show_website ) : ?>
                         <th class="sp-col-website">
-                            <a href="<?php echo $sort_url( 'website' ); ?>">Website<?php echo $sort_arrow( 'website' ); ?></a>
+                            <a href="<?php echo $sort_url( 'website' ); ?>"><?php echo esc_html__( 'Website', 'societypress' ); ?><?php echo $sort_arrow( 'website' ); ?></a>
                         </th>
                     <?php endif; ?>
                     <?php if ( $show_tier ) : ?>
                         <th class="sp-col-tier">
-                            <a href="<?php echo $sort_url( 'tier_name' ); ?>">Type<?php echo $sort_arrow( 'tier_name' ); ?></a>
+                            <a href="<?php echo $sort_url( 'tier_name' ); ?>"><?php echo esc_html__( 'Type', 'societypress' ); ?><?php echo $sort_arrow( 'tier_name' ); ?></a>
                         </th>
                     <?php endif; ?>
                     <?php if ( $show_join_date ) : ?>
                         <th class="sp-col-date">
-                            <a href="<?php echo $sort_url( 'join_date' ); ?>">Member Since<?php echo $sort_arrow( 'join_date' ); ?></a>
+                            <a href="<?php echo $sort_url( 'join_date' ); ?>"><?php echo esc_html__( 'Member Since', 'societypress' ); ?><?php echo $sort_arrow( 'join_date' ); ?></a>
                         </th>
                     <?php endif; ?>
                 </tr>
@@ -14903,10 +15162,10 @@ function sp_render_directory( array $settings ): void {
                 }
             ?>
                 <tr>
-                    <td class="sp-col-name" data-label="Name"><?php echo $display_name; ?></td>
+                    <td class="sp-col-name" data-label="<?php echo esc_attr__( 'Name', 'societypress' ); ?>"><a href="#" class="sp-member-name-link" data-user-id="<?php echo (int) $m->user_id; ?>"><?php echo $display_name; ?></a></td>
 
                     <?php if ( $show_city_state ) : ?>
-                        <td class="sp-col-location" data-label="Location">
+                        <td class="sp-col-location" data-label="<?php echo esc_attr__( 'Location', 'societypress' ); ?>">
                             <?php
                             // Respect the member's address privacy preference
                             if ( ! empty( $m->dir_show_address ) ) {
@@ -14918,7 +15177,7 @@ function sp_render_directory( array $settings ): void {
                     <?php endif; ?>
 
                     <?php if ( $show_phone ) : ?>
-                        <td class="sp-col-phone" data-label="Phone">
+                        <td class="sp-col-phone" data-label="<?php echo esc_attr__( 'Phone', 'societypress' ); ?>">
                             <?php
                             if ( ! empty( $m->dir_show_phone ) && $m->phone ) {
                                 // Link the phone number for mobile users
@@ -14933,7 +15192,7 @@ function sp_render_directory( array $settings ): void {
                     <?php endif; ?>
 
                     <?php if ( $show_email ) : ?>
-                        <td class="sp-col-email" data-label="Email">
+                        <td class="sp-col-email" data-label="<?php echo esc_attr__( 'Email', 'societypress' ); ?>">
                             <?php
                             if ( ! empty( $m->dir_show_email ) && $m->user_email ) {
                                 // Obfuscate the email slightly to slow down scrapers.
@@ -14949,7 +15208,7 @@ function sp_render_directory( array $settings ): void {
                     <?php endif; ?>
 
                     <?php if ( $show_website ) : ?>
-                        <td class="sp-col-website" data-label="Website">
+                        <td class="sp-col-website" data-label="<?php echo esc_attr__( 'Website', 'societypress' ); ?>">
                             <?php
                             if ( ! empty( $m->dir_show_website ) && $m->website ) {
                                 // Strip protocol for display but keep it for the href
@@ -14969,13 +15228,13 @@ function sp_render_directory( array $settings ): void {
                     <?php endif; ?>
 
                     <?php if ( $show_tier ) : ?>
-                        <td class="sp-col-tier" data-label="Type">
+                        <td class="sp-col-tier" data-label="<?php echo esc_attr__( 'Type', 'societypress' ); ?>">
                             <?php echo esc_html( $m->tier_name ?? '' ); ?>
                         </td>
                     <?php endif; ?>
 
                     <?php if ( $show_join_date ) : ?>
-                        <td class="sp-col-date" data-label="Member Since">
+                        <td class="sp-col-date" data-label="<?php echo esc_attr__( 'Member Since', 'societypress' ); ?>">
                             <?php
                             if ( $m->join_date && $m->join_date !== '0000-00-00' ) {
                                 echo esc_html( wp_date( get_option( 'date_format', 'F j, Y' ), strtotime( $m->join_date ) ) );
@@ -14996,7 +15255,7 @@ function sp_render_directory( array $settings ): void {
                     <tr class="sp-surname-row">
                         <td colspan="<?php echo $col_count; ?>">
                             <div class="sp-surnames">
-                                <span class="sp-surnames-label">Researching:</span>
+                                <span class="sp-surnames-label"><?php echo esc_html__( 'Researching:', 'societypress' ); ?></span>
                                 <?php
                                 $parts = [];
                                 foreach ( $surnames_map[ $m->user_id ] as $s ) {
@@ -15024,6 +15283,28 @@ function sp_render_directory( array $settings ): void {
                     </tr>
                 <?php endif; ?>
 
+                <?php
+                // ---- Groups row (spans full width below the member/surnames) ----
+                // WHY: Showing group membership helps members find others in the
+                //      same committee or interest group. Displayed as tags.
+                if ( ! empty( $groups_map[ $m->user_id ] ) ) :
+                ?>
+                    <tr class="sp-groups-row">
+                        <td colspan="<?php echo $col_count; ?>">
+                            <div class="sp-member-groups">
+                                <span class="sp-groups-label"><?php echo esc_html__( 'Groups:', 'societypress' ); ?></span>
+                                <?php
+                                $group_tags = [];
+                                foreach ( $groups_map[ $m->user_id ] as $gname ) {
+                                    $group_tags[] = '<span class="sp-group-tag">' . esc_html( $gname ) . '</span>';
+                                }
+                                echo implode( ' ', $group_tags );
+                                ?>
+                            </div>
+                        </td>
+                    </tr>
+                <?php endif; ?>
+
             <?php endforeach; ?>
             </tbody>
         </table>
@@ -15037,17 +15318,16 @@ function sp_render_directory( array $settings ): void {
     // ================================================================
 
     if ( $total_pages > 1 ) :
-        // Build base args that persist across page links
-        $page_args = [];
-        if ( $search !== '' ) $page_args['sp_search'] = $search;
+        // Build base args that persist across page links — includes all filters
+        $page_args = $filter_args;
         if ( $letter !== '' ) $page_args['sp_letter'] = $letter;
         if ( $sort_by !== 'last_name' ) $page_args['sp_sort'] = $sort_by;
         if ( $sort_dir !== 'ASC' ) $page_args['sp_dir'] = strtolower( $sort_dir );
     ?>
-    <nav class="sp-directory-pagination" aria-label="Directory pagination">
+    <nav class="sp-directory-pagination" aria-label="<?php echo esc_attr__( 'Directory pagination', 'societypress' ); ?>">
         <?php if ( $current_page > 1 ) : ?>
             <a href="<?php echo esc_url( add_query_arg( array_merge( $page_args, [ 'sp_page' => $current_page - 1 ] ), $base_url ) ); ?>"
-               class="sp-page-link sp-page-prev">&laquo; Previous</a>
+               class="sp-page-link sp-page-prev">&laquo; <?php echo esc_html__( 'Previous', 'societypress' ); ?></a>
         <?php endif; ?>
 
         <?php
@@ -15086,7 +15366,7 @@ function sp_render_directory( array $settings ): void {
 
         <?php if ( $current_page < $total_pages ) : ?>
             <a href="<?php echo esc_url( add_query_arg( array_merge( $page_args, [ 'sp_page' => $current_page + 1 ] ), $base_url ) ); ?>"
-               class="sp-page-link sp-page-next">Next &raquo;</a>
+               class="sp-page-link sp-page-next"><?php echo esc_html__( 'Next', 'societypress' ); ?> &raquo;</a>
         <?php endif; ?>
     </nav>
     <?php endif; // $total_pages > 1 ?>
@@ -15095,23 +15375,10 @@ function sp_render_directory( array $settings ): void {
 }
 
 
+
 // ============================================================================
 // MEMBERSHIP DIRECTORY — FRONTEND CSS
 // ============================================================================
-
-/**
- * Output the directory page styles in <head>.
- *
- * WHY: These styles are only loaded on pages using the directory template
- *      (via the wp_head action added in template_include above). They're
- *      not loaded site-wide — no reason to add CSS weight to every page.
- *
- *      The design is intentionally clean and minimal so it works with any
- *      WordPress theme. We use neutral colors (grays, one accent blue) and
- *      avoid fighting with theme stylesheets. The responsive breakpoint at
- *      768px converts the table to stacked cards for mobile — because no
- *      octogenarian is going to side-scroll a table on their iPad.
- */
 function sp_directory_styles(): void {
     ?>
     <style id="sp-directory-css">
@@ -15167,6 +15434,49 @@ function sp_directory_styles(): void {
         }
         .sp-search-clear:hover {
             color: #d63638;
+        }
+
+        /* ---- Filter dropdowns row ---- */
+        .sp-filter-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 12px;
+            padding: 14px 16px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border: 1px solid #e5e7eb;
+            align-items: flex-end;
+        }
+        .sp-filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 140px;
+            flex: 1;
+        }
+        .sp-filter-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .sp-filter-select,
+        .sp-filter-input {
+            padding: 8px 10px;
+            font-size: 14px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: #fff;
+            outline: none;
+            transition: border-color 0.2s;
+            height: 38px;
+            box-sizing: border-box;
+        }
+        .sp-filter-select:focus,
+        .sp-filter-input:focus {
+            border-color: var(--sp-color-primary);
         }
 
         /* ---- Alphabetical letter filter ---- */
@@ -15306,6 +15616,38 @@ function sp_directory_styles(): void {
             font-size: 12px;
         }
 
+        /* ---- Group membership sub-rows ---- */
+        .sp-groups-row {
+            background: #fafafa !important;
+        }
+        .sp-groups-row:hover {
+            background: #f5f5f5 !important;
+        }
+        .sp-groups-row td {
+            padding: 4px 12px 10px 12px;
+            border-bottom: 1px solid #eee;
+        }
+        .sp-member-groups {
+            font-size: 13px;
+            color: #555;
+            line-height: 1.8;
+        }
+        .sp-groups-label {
+            font-weight: 600;
+            color: #666;
+            margin-right: 4px;
+        }
+        .sp-group-tag {
+            display: inline-block;
+            padding: 2px 10px;
+            margin: 2px 4px 2px 0;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--sp-color-primary, #0D1F3C);
+            background: rgba(13, 31, 60, 0.08);
+            border-radius: 12px;
+        }
+
         /* ---- Pagination ---- */
         .sp-directory-pagination {
             display: flex;
@@ -15405,6 +15747,27 @@ function sp_directory_styles(): void {
                 padding-top: 0;
             }
 
+            /* Group sub-rows — same treatment */
+            .sp-groups-row {
+                margin-top: -12px;
+                padding-top: 0;
+                border-top: none !important;
+                border-top-left-radius: 0;
+                border-top-right-radius: 0;
+            }
+            .sp-groups-row td {
+                padding-top: 0;
+            }
+
+            /* Filter row stacks vertically on mobile */
+            .sp-filter-row {
+                flex-direction: column;
+                gap: 10px;
+            }
+            .sp-filter-group {
+                min-width: 100%;
+            }
+
             /* Search input fills the width on mobile */
             .sp-search-row {
                 flex-direction: column;
@@ -15422,7 +15785,607 @@ function sp_directory_styles(): void {
 
 
 
+
 // ============================================================================
+
+
+// ============================================================================
+// MEMBERSHIP DIRECTORY — MEMBER DETAIL MODAL (AJAX)
+// ============================================================================
+//
+// WHY: When a member clicks a name in the directory, they want to see more
+//      about that person — what they're researching, what groups they're in,
+//      how to reach them. Instead of navigating to a whole new page (and
+//      losing their place in the directory), we show a clean modal overlay
+//      with the member's public profile. All privacy settings are respected.
+//
+// HOW: The directory wraps each member name in a clickable link. JavaScript
+//      intercepts the click, fires an AJAX request to sp_member_detail,
+//      and displays the response in a modal. Same pattern as the library
+//      catalog detail view.
+// ============================================================================
+
+
+/**
+ * AJAX handler: Return member detail data for the modal.
+ *
+ * WHY: This endpoint fetches a single member's public-facing profile data,
+ *      respecting both society-level display settings and the individual
+ *      member's privacy preferences. Only logged-in users can call this
+ *      (wp_ajax_ prefix, no nopriv equivalent).
+ */
+add_action( 'wp_ajax_sp_member_detail', 'sp_ajax_member_detail' );
+function sp_ajax_member_detail(): void {
+    $user_id = absint( $_GET['user_id'] ?? 0 );
+    if ( ! $user_id ) {
+        wp_send_json_error( __( 'Missing member ID.', 'societypress' ) );
+    }
+
+    // Only logged-in members can view profiles
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( __( 'You must be logged in to view member profiles.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $prefix   = $wpdb->prefix . 'sp_';
+    $settings = get_option( 'societypress_settings', [] );
+
+    // Fetch the member record with tier name and email from wp_users
+    $member = $wpdb->get_row( $wpdb->prepare(
+        "SELECT m.*, u.user_email, t.name AS tier_name
+         FROM {$prefix}members m
+         JOIN {$wpdb->users} u ON u.ID = m.user_id
+         LEFT JOIN {$prefix}membership_tiers t ON t.id = m.tier_id
+         WHERE m.user_id = %d",
+        $user_id
+    ) );
+
+    if ( ! $member ) {
+        wp_send_json_error( __( 'Member not found.', 'societypress' ) );
+    }
+
+    // If the member has opted out of the directory entirely, don't show them
+    if ( empty( $member->dir_show_name ) ) {
+        wp_send_json_error( __( 'This member has opted out of the directory.', 'societypress' ) );
+    }
+
+    // Build display name
+    if ( ( $member->member_type ?? 'individual' ) === 'organization' && ! empty( $member->organization_name ) ) {
+        $display_name = $member->organization_name;
+    } else {
+        $display_name = trim(
+            ( $member->preferred_name ?: $member->first_name ) . ' ' . $member->last_name
+        );
+        if ( $member->suffix ) {
+            $display_name .= ', ' . $member->suffix;
+        }
+    }
+
+    // Build the response data, respecting both society-level and member-level privacy.
+    // WHY: Two layers of privacy control. The society admin decides which columns
+    //      appear at all (settings). Individual members decide whether THEIR data
+    //      appears in those columns (dir_show_* fields). Both must agree.
+    $data = [
+        'display_name' => $display_name,
+        'member_type'  => $member->member_type ?? 'individual',
+        'status'       => $member->status,
+    ];
+
+    // Photo — only if the member has enabled it and has one
+    if ( ! empty( $member->dir_show_photo ) && ! empty( $member->photo_url ) ) {
+        $data['photo_url'] = $member->photo_url;
+    }
+
+    // Location — society setting + member preference
+    if ( ! empty( $settings['dir_show_city_state'] ) && ! empty( $member->dir_show_address ) ) {
+        $location_parts = array_filter( [ $member->city, $member->state ] );
+        $data['location'] = implode( ', ', $location_parts );
+    }
+
+    // Phone — society setting + member preference
+    if ( ! empty( $settings['dir_show_phone'] ) && ! empty( $member->dir_show_phone ) && $member->phone ) {
+        $data['phone'] = $member->phone;
+    }
+
+    // Email — society setting + member preference
+    if ( ! empty( $settings['dir_show_email'] ) && ! empty( $member->dir_show_email ) && $member->user_email ) {
+        $data['email'] = $member->user_email;
+    }
+
+    // Website — society setting + member preference
+    if ( ! empty( $settings['dir_show_website'] ) && ! empty( $member->dir_show_website ) && $member->website ) {
+        $data['website'] = $member->website;
+    }
+
+    // Tier — society setting (no member-level toggle for this)
+    if ( ! empty( $settings['dir_show_tier'] ) && $member->tier_name ) {
+        $data['tier'] = $member->tier_name;
+    }
+
+    // Join date — society setting (no member-level toggle)
+    if ( ! empty( $settings['dir_show_join_date'] ) && $member->join_date && $member->join_date !== '0000-00-00' ) {
+        $data['join_date'] = wp_date( get_option( 'date_format', 'F j, Y' ), strtotime( $member->join_date ) );
+    }
+
+    // Interests and skills — always show if they have them (not sensitive data)
+    if ( ! empty( $member->interests ) ) {
+        $data['interests'] = $member->interests;
+    }
+    if ( ! empty( $member->skills ) ) {
+        $data['skills'] = $member->skills;
+    }
+
+    // Surnames being researched
+    if ( ! empty( $settings['dir_show_surnames'] ) ) {
+        $surnames = $wpdb->get_results( $wpdb->prepare(
+            "SELECT surname, county, state, country, year_from, year_to
+             FROM {$prefix}member_surnames
+             WHERE user_id = %d
+             ORDER BY surname",
+            $user_id
+        ) );
+        if ( $surnames ) {
+            $data['surnames'] = array_map( function ( $s ) {
+                $entry = [ 'surname' => $s->surname ];
+                $loc = array_filter( [ $s->county, $s->state, $s->country ] );
+                if ( $loc ) {
+                    $entry['location'] = implode( ', ', $loc );
+                }
+                if ( $s->year_from || $s->year_to ) {
+                    $entry['years'] = ( $s->year_from ?: '?' ) . '–' . ( $s->year_to ?: 'present' );
+                }
+                return $entry;
+            }, $surnames );
+        }
+    }
+
+    // Group memberships
+    $groups = $wpdb->get_col( $wpdb->prepare(
+        "SELECT g.name
+         FROM {$prefix}group_members gm
+         JOIN {$prefix}groups g ON g.id = gm.group_id
+         WHERE gm.user_id = %d AND g.status = 'active'
+         ORDER BY g.name",
+        $user_id
+    ) );
+    if ( $groups ) {
+        $data['groups'] = $groups;
+    }
+
+    wp_send_json_success( $data );
+}
+
+
+/**
+ * Inline JavaScript for the member detail modal.
+ *
+ * WHY: Handles the click-to-view interaction on directory member names.
+ *      Opens a modal overlay, fetches member data via AJAX, and renders
+ *      a clean profile card. Follows the same pattern as the library
+ *      catalog detail modal.
+ *
+ * Hooked into wp_head because the directory page is rendered via
+ * template_include (not a normal template file), and the directory
+ * styles/scripts are output inline in the head.
+ */
+function sp_directory_detail_script(): void {
+    ?>
+    <script id="sp-directory-detail-js">
+    (function() {
+        'use strict';
+
+        var ajaxUrl = '<?php echo esc_js( admin_url( 'admin-ajax.php' ) ); ?>';
+
+        // ---- Create modal overlay (once) ----
+        var overlay = document.createElement('div');
+        overlay.className = 'sp-member-modal-overlay';
+        overlay.style.display = 'none';
+        overlay.innerHTML = '<div class="sp-member-modal">'
+            + '<button class="sp-member-modal-close" aria-label="Close">&times;</button>'
+            + '<div class="sp-member-modal-body"></div>'
+            + '</div>';
+        document.body.appendChild(overlay);
+
+        var modalBody = overlay.querySelector('.sp-member-modal-body');
+        var closeBtn  = overlay.querySelector('.sp-member-modal-close');
+
+        // ---- Close handlers ----
+        closeBtn.addEventListener('click', closeModal);
+        overlay.addEventListener('click', function(e) {
+            if (e.target === overlay) closeModal();
+        });
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeModal();
+        });
+
+        function closeModal() {
+            overlay.style.display = 'none';
+            document.body.style.overflow = '';
+        }
+
+        function openModal() {
+            overlay.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+
+        // ---- Delegate clicks on member name links ----
+        document.addEventListener('click', function(e) {
+            var link = e.target.closest('.sp-member-name-link');
+            if (!link) return;
+
+            e.preventDefault();
+            var userId = link.getAttribute('data-user-id');
+            if (!userId) return;
+
+            // Show loading state
+            modalBody.innerHTML = '<div class="sp-member-modal-loading">Loading&hellip;</div>';
+            openModal();
+
+            // Fetch member detail
+            fetch(ajaxUrl + '?action=sp_member_detail&user_id=' + encodeURIComponent(userId), {
+                credentials: 'same-origin'
+            })
+            .then(function(res) { return res.json(); })
+            .then(function(json) {
+                if (!json.success) {
+                    modalBody.innerHTML = '<div class="sp-member-modal-error">'
+                        + (json.data || 'Could not load member profile.') + '</div>';
+                    return;
+                }
+                renderMemberDetail(json.data);
+            })
+            .catch(function() {
+                modalBody.innerHTML = '<div class="sp-member-modal-error">'
+                    + 'Could not load member profile. Please try again.</div>';
+            });
+        });
+
+
+        /**
+         * Render the member profile inside the modal.
+         */
+        function renderMemberDetail(d) {
+            var html = '';
+
+            // Header: photo + name + status badge
+            html += '<div class="sp-member-detail-header">';
+            if (d.photo_url) {
+                html += '<img src="' + escHtml(d.photo_url) + '" alt="" class="sp-member-detail-photo">';
+            }
+            html += '<div class="sp-member-detail-identity">';
+            html += '<h2 class="sp-member-detail-name">' + escHtml(d.display_name) + '</h2>';
+            if (d.tier) {
+                html += '<span class="sp-member-detail-tier">' + escHtml(d.tier) + '</span>';
+            }
+            if (d.status && d.status !== 'active') {
+                html += ' <span class="sp-member-detail-status sp-status-' + escHtml(d.status) + '">'
+                    + escHtml(d.status.charAt(0).toUpperCase() + d.status.slice(1)) + '</span>';
+            }
+            html += '</div></div>';
+
+            // Contact info section
+            var hasContact = d.location || d.phone || d.email || d.website;
+            if (hasContact) {
+                html += '<div class="sp-member-detail-section">';
+                html += '<h3 class="sp-member-detail-section-title">Contact</h3>';
+                html += '<dl class="sp-member-detail-list">';
+                if (d.location) {
+                    html += '<dt>Location</dt><dd>' + escHtml(d.location) + '</dd>';
+                }
+                if (d.phone) {
+                    html += '<dt>Phone</dt><dd><a href="tel:' + escHtml(d.phone.replace(/[^+0-9]/g, ''))
+                        + '">' + escHtml(d.phone) + '</a></dd>';
+                }
+                if (d.email) {
+                    html += '<dt>Email</dt><dd><a href="mailto:' + escHtml(d.email)
+                        + '">' + escHtml(d.email) + '</a></dd>';
+                }
+                if (d.website) {
+                    var displayUrl = d.website.replace(/^https?:\/\//, '').replace(/\/$/, '');
+                    var fullUrl = d.website.match(/^https?:\/\//) ? d.website : 'https://' + d.website;
+                    html += '<dt>Website</dt><dd><a href="' + escHtml(fullUrl)
+                        + '" target="_blank" rel="noopener">' + escHtml(displayUrl) + '</a></dd>';
+                }
+                html += '</dl></div>';
+            }
+
+            // Membership info
+            if (d.join_date) {
+                html += '<div class="sp-member-detail-section">';
+                html += '<h3 class="sp-member-detail-section-title">Membership</h3>';
+                html += '<dl class="sp-member-detail-list">';
+                html += '<dt>Member Since</dt><dd>' + escHtml(d.join_date) + '</dd>';
+                html += '</dl></div>';
+            }
+
+            // Surnames being researched — the big one for genealogy folks
+            if (d.surnames && d.surnames.length) {
+                html += '<div class="sp-member-detail-section">';
+                html += '<h3 class="sp-member-detail-section-title">Surnames Being Researched</h3>';
+                html += '<div class="sp-member-detail-surnames">';
+                for (var i = 0; i < d.surnames.length; i++) {
+                    var s = d.surnames[i];
+                    html += '<div class="sp-member-detail-surname">';
+                    html += '<strong>' + escHtml(s.surname) + '</strong>';
+                    var meta = [];
+                    if (s.location) meta.push(s.location);
+                    if (s.years) meta.push(s.years);
+                    if (meta.length) {
+                        html += ' <span class="sp-surname-meta">(' + escHtml(meta.join(', ')) + ')</span>';
+                    }
+                    html += '</div>';
+                }
+                html += '</div></div>';
+            }
+
+            // Groups / committees
+            if (d.groups && d.groups.length) {
+                html += '<div class="sp-member-detail-section">';
+                html += '<h3 class="sp-member-detail-section-title">Groups</h3>';
+                html += '<div class="sp-member-detail-groups">';
+                for (var g = 0; g < d.groups.length; g++) {
+                    html += '<span class="sp-group-tag">' + escHtml(d.groups[g]) + '</span>';
+                }
+                html += '</div></div>';
+            }
+
+            // Interests
+            if (d.interests) {
+                html += '<div class="sp-member-detail-section">';
+                html += '<h3 class="sp-member-detail-section-title">Interests</h3>';
+                html += '<p class="sp-member-detail-text">' + escHtml(d.interests) + '</p>';
+                html += '</div>';
+            }
+
+            // Skills
+            if (d.skills) {
+                html += '<div class="sp-member-detail-section">';
+                html += '<h3 class="sp-member-detail-section-title">Skills</h3>';
+                html += '<p class="sp-member-detail-text">' + escHtml(d.skills) + '</p>';
+                html += '</div>';
+            }
+
+            modalBody.innerHTML = html;
+        }
+
+
+        /**
+         * Simple HTML escaping — prevents XSS from member-entered data.
+         */
+        function escHtml(str) {
+            if (!str) return '';
+            var div = document.createElement('div');
+            div.appendChild(document.createTextNode(str));
+            return div.innerHTML;
+        }
+    })();
+    </script>
+    <?php
+}
+
+
+/**
+ * CSS for the member detail modal.
+ *
+ * WHY: Separate from the directory table styles for clarity. This styles
+ *      the overlay, modal card, and all the profile sections inside it.
+ */
+function sp_directory_detail_styles(): void {
+    ?>
+    <style id="sp-directory-detail-css">
+        /* ---- Modal overlay ---- */
+        .sp-member-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 999999;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        /* ---- Modal card ---- */
+        .sp-member-modal {
+            position: relative;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 560px;
+            width: 100%;
+            max-height: 85vh;
+            overflow-y: auto;
+            padding: 32px;
+        }
+
+        /* ---- Close button ---- */
+        .sp-member-modal-close {
+            position: absolute;
+            top: 12px;
+            right: 16px;
+            background: none;
+            border: none;
+            font-size: 28px;
+            line-height: 1;
+            color: #999;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: color 0.15s, background-color 0.15s;
+        }
+        .sp-member-modal-close:hover {
+            color: #333;
+            background: #f0f0f0;
+        }
+
+        /* ---- Loading / error states ---- */
+        .sp-member-modal-loading,
+        .sp-member-modal-error {
+            text-align: center;
+            padding: 40px 20px;
+            font-size: 16px;
+            color: #666;
+        }
+        .sp-member-modal-error {
+            color: #d63638;
+        }
+
+        /* ---- Header: photo + name ---- */
+        .sp-member-detail-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 24px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #eee;
+        }
+        .sp-member-detail-photo {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            object-fit: cover;
+            flex-shrink: 0;
+        }
+        .sp-member-detail-identity {
+            flex: 1;
+            min-width: 0;
+        }
+        .sp-member-detail-name {
+            font-size: 22px;
+            font-weight: 700;
+            margin: 0 0 4px 0;
+            color: #1a1a1a;
+            line-height: 1.2;
+        }
+        .sp-member-detail-tier {
+            display: inline-block;
+            padding: 2px 10px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--sp-color-primary, #0D1F3C);
+            background: rgba(13, 31, 60, 0.08);
+            border-radius: 12px;
+        }
+        .sp-member-detail-status {
+            display: inline-block;
+            padding: 2px 10px;
+            font-size: 12px;
+            font-weight: 600;
+            border-radius: 12px;
+            margin-left: 4px;
+        }
+        .sp-status-inactive {
+            color: #8b5e0b;
+            background: #fef3cd;
+        }
+
+        /* ---- Sections ---- */
+        .sp-member-detail-section {
+            margin-bottom: 20px;
+        }
+        .sp-member-detail-section-title {
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #888;
+            margin: 0 0 8px 0;
+        }
+
+        /* ---- Definition list for contact/membership info ---- */
+        .sp-member-detail-list {
+            margin: 0;
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 6px 16px;
+            font-size: 15px;
+        }
+        .sp-member-detail-list dt {
+            font-weight: 600;
+            color: #555;
+            white-space: nowrap;
+        }
+        .sp-member-detail-list dd {
+            margin: 0;
+            color: #333;
+            word-break: break-word;
+        }
+        .sp-member-detail-list a {
+            color: var(--sp-color-primary, #0D1F3C);
+            text-decoration: none;
+        }
+        .sp-member-detail-list a:hover {
+            text-decoration: underline;
+        }
+
+        /* ---- Surnames ---- */
+        .sp-member-detail-surnames {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .sp-member-detail-surname {
+            font-size: 15px;
+            color: #333;
+            line-height: 1.5;
+        }
+        .sp-surname-meta {
+            color: #888;
+            font-size: 13px;
+        }
+
+        /* ---- Groups (reuses the tag style from the directory) ---- */
+        .sp-member-detail-groups {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        /* ---- Text blocks (interests, skills) ---- */
+        .sp-member-detail-text {
+            font-size: 15px;
+            color: #333;
+            line-height: 1.6;
+            margin: 0;
+        }
+
+        /* ---- Clickable member name in the directory ---- */
+        .sp-member-name-link {
+            color: var(--sp-color-primary, #0D1F3C);
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .sp-member-name-link:hover {
+            text-decoration: underline;
+        }
+
+        /* ---- Mobile responsive ---- */
+        @media screen and (max-width: 768px) {
+            .sp-member-modal {
+                padding: 20px;
+                max-height: 90vh;
+                border-radius: 8px;
+            }
+            .sp-member-detail-header {
+                flex-direction: column;
+                text-align: center;
+            }
+            .sp-member-detail-list {
+                grid-template-columns: 1fr;
+                gap: 4px;
+            }
+            .sp-member-detail-list dt {
+                margin-top: 8px;
+            }
+        }
+    </style>
+    <?php
+}
+
+
 // PAGE BUILDER — ADMIN META BOX + FRONTEND RENDERING
 // ============================================================================
 //

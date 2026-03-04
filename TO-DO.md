@@ -30,6 +30,9 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 - [x] Blast Email: Compose/send mass emails to members by group or tier, batch sending via WP cron, merge tags, opt-out support, delivery tracking
 - [x] Donations: Campaign-based donation tracking, CRUD, acknowledgment emails, anonymous + in-kind support
 - [x] Member Groups Enhancement: Bulk "Assign to Group" action, group filter on Members list
+- [x] Member portal (My Account): Profile photo, personal info, contact, address, seasonal address, communication preferences (incl. blast opt-out), directory privacy, interests & skills, research surnames (county/state/country/year range), my events, change password
+- [x] Directory: Hide nav link for logged-out visitors, "Surname Being Researched" filter label
+- [x] i18n: My Account page fully wrapped in __() / esc_html__() / esc_attr__() with societypress text domain
 
 ## In Progress
 
@@ -41,10 +44,9 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 
 ## Membership — Remaining
 
-- [ ] Member portal: Self-service profile editing via shortcode ([societypress_portal])
-  - View/update own profile, see upcoming event registrations, cancel registrations
-  - AJAX save (individual fields or all at once)
+- [ ] Member portal polish:
   - Optional admin approval for profile changes (setting already exists)
+  - AJAX save (individual fields or all at once) — currently uses full-page POST/redirect
 - [ ] Join form: Public signup with online payment ([societypress_join])
 - [ ] Contact information table: Separate from core member record (spec: sp_member_contact)
   - Primary/secondary email, home/cell/work phone, preferred phone, home + mailing address
@@ -63,6 +65,8 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 - [ ] Waitlist: Auto-promotion when cancellation occurs
 - [ ] Payment tracking: Fee amounts and payment status per registration
 - [x] Calendar: Page Builder widget + standalone page template, shared renderer, category filter, month navigation
+- [ ] Calendar bug: Current month renders full-width, other months render narrower — same HTML/CSS from server, likely browser rendering or caching issue. Needs DevTools inspection.
+- [ ] Add to calendar: Let members add registered events to their personal calendars (iCal/.ics download link on My Account and/or event detail page)
 - [ ] Event change notifications: Email registrants when date/time/location changes
 - [ ] "Notice only" events: Appear on calendar but no detail page or registration (board meetings, holidays)
 

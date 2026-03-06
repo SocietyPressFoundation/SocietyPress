@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '0.27d' );
+define( 'SOCIETYPRESS_VERSION', '0.28d' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -39032,6 +39032,44 @@ function sp_render_newsletter_archive_page(): void {
     </div>
     <?php
 }
+// WHY: Newsletter save must happen on admin_init (before any output) because
+// wp_redirect() requires headers not yet sent. The page render callback fires
+// after admin_head has already output CSS, so redirect would silently fail.
+add_action( 'admin_init', function () {
+    // Only run on the newsletter edit page when the save button was clicked.
+    if ( ! isset( $_POST['sp_save_newsletter'] ) ) return;
+    if ( ( $_GET['page'] ?? '' ) !== 'sp-newsletter-edit' ) return;
+    if ( ! current_user_can( 'manage_options' ) ) return;
+
+    check_admin_referer( 'sp_newsletter_save' );
+
+    global $wpdb;
+    $prefix        = $wpdb->prefix . 'sp_';
+    $newsletter_id = absint( $_GET['newsletter_id'] ?? 0 );
+
+    $data = [
+        'title'          => sanitize_text_field( $_POST['title'] ?? '' ),
+        'slug'           => sanitize_title( $_POST['title'] ?? '' ),
+        'description'    => sanitize_textarea_field( $_POST['description'] ?? '' ),
+        'pub_date'       => sanitize_text_field( $_POST['pub_date'] ?? '' ) ?: null,
+        'volume'         => absint( $_POST['volume'] ?? 0 ) ?: null,
+        'issue_number'   => absint( $_POST['issue_number'] ?? 0 ) ?: null,
+        'file_id'        => absint( $_POST['file_id'] ?? 0 ) ?: null,
+        'cover_image_id' => absint( $_POST['cover_image_id'] ?? 0 ) ?: null,
+        'visibility'     => sanitize_text_field( $_POST['visibility'] ?? 'members_only' ),
+    ];
+
+    if ( $newsletter_id ) {
+        $wpdb->update( $prefix . 'newsletters', $data, [ 'id' => $newsletter_id ] );
+    } else {
+        $data['created_by'] = get_current_user_id();
+        $wpdb->insert( $prefix . 'newsletters', $data );
+    }
+
+    wp_redirect( admin_url( 'admin.php?page=sp-newsletter-archive&sp_notice=newsletter_saved' ) );
+    exit;
+} );
+
 
 
 /**
@@ -39048,34 +39086,6 @@ function sp_render_newsletter_edit_page(): void {
     global $wpdb;
     $prefix        = $wpdb->prefix . 'sp_';
     $newsletter_id = absint( $_GET['newsletter_id'] ?? 0 );
-
-    // ========== HANDLE SAVE ==========
-    if ( isset( $_POST['sp_save_newsletter'] ) && check_admin_referer( 'sp_newsletter_save' ) ) {
-        $data = [
-            'title'          => sanitize_text_field( $_POST['title'] ?? '' ),
-            'slug'           => sanitize_title( $_POST['title'] ?? '' ),
-            'description'    => sanitize_textarea_field( $_POST['description'] ?? '' ),
-            'pub_date'       => sanitize_text_field( $_POST['pub_date'] ?? '' ) ?: null,
-            'volume'         => absint( $_POST['volume'] ?? 0 ) ?: null,
-            'issue_number'   => absint( $_POST['issue_number'] ?? 0 ) ?: null,
-            'file_id'        => absint( $_POST['file_id'] ?? 0 ) ?: null,
-            'cover_image_id' => absint( $_POST['cover_image_id'] ?? 0 ) ?: null,
-            'visibility'     => sanitize_text_field( $_POST['visibility'] ?? 'members_only' ),
-        ];
-
-        if ( $newsletter_id ) {
-            $wpdb->update( $prefix . 'newsletters', $data, [ 'id' => $newsletter_id ] );
-        } else {
-            $data['created_by'] = get_current_user_id();
-            $wpdb->insert( $prefix . 'newsletters', $data );
-            $newsletter_id = $wpdb->insert_id;
-        }
-
-        // Redirect back to the newsletter archive after saving so the admin
-        // lands on the list view, not a stale edit form.
-        wp_redirect( admin_url( 'admin.php?page=sp-newsletter-archive&sp_notice=newsletter_saved' ) );
-        exit;
-    }
 
     // ========== LOAD DATA ==========
     $nl = $newsletter_id ? $wpdb->get_row( $wpdb->prepare(

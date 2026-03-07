@@ -34,12 +34,10 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 - [x] Directory: Hide nav link for logged-out visitors, "Surname Being Researched" filter label
 - [x] i18n: My Account page fully wrapped in __() / esc_html__() / esc_attr__() with societypress text domain
 - [x] Email obfuscation: All frontend email addresses use JS-based obfuscation (base64 split, assembled on page load) to block scrapers
+- [x] Admin dashboard: Stat cards (total/active/expiring/expired/new), upcoming events, expiring members list, recent signups, quick links, site info
+- [x] SAGHS child theme: Header/nav matching reference site (logo 140px, padding 220px)
 
 ## In Progress
-
-- [ ] SAGHS child theme: Header/nav matching reference site
-  - Logo size (~132px, needs slight bump)
-  - Excess whitespace below header (body padding-top)
 
 ---
 
@@ -73,10 +71,11 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 
 ## Email & Notifications — Remaining
 
-- [ ] Welcome email: Sent on new member creation, merge tags for name/org/portal URL/tier
-- [ ] Renewal reminders: Automated at 30/14/7/1 day before expiration (daily cron)
+- [x] Welcome email: Sent on new member creation, merge tags, configurable subject, enabled via settings
+- [x] Renewal reminders: Automated at 30/15/7 days before expiration (daily cron), dedup via sp_renewal_reminders table
 - [ ] Expiration notice: Sent after expiration (daily cron)
-- [ ] Registration confirmation: Sent on event slot registration
+- [x] Registration confirmation: Sent on event registration (confirmed + waitlisted), includes event details
+- [x] Event reminders: Daily cron sends reminders before upcoming events
 - [ ] Waitlist promotion email: Sent when moved from waitlist to confirmed
 - [ ] Communication preference check: Email vs postal mail vs both — respect before sending
 - [x] Blast email: Compose, target by group/tier/all, batch send via WP cron, merge tags, opt-out, delivery stats
@@ -131,7 +130,8 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 
 ## Admin — Remaining
 
-- [ ] Admin dashboard: Stat cards (total members, active, expiring soon, recent signups), expiring members list, recent signups, upcoming events, activity feed
+- [x] Admin dashboard: Stat cards (total/active/expiring/expired/new), upcoming events table, expiring members table, recent members table, quick links, site info
+- [ ] Admin dashboard: Activity feed (future enhancement)
 - [ ] Audit logging: Complete coverage — member CRUD, status changes, position/committee assignments, volunteer activity (partially built)
 
 ## Demo Installation — Not Started

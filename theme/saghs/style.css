@@ -110,9 +110,9 @@ a:hover {
 
 /* WHY body padding-top: Since the header is fixed, we need to push the page
    content down so it doesn't hide behind the header. With 40px top/bottom
-   padding and a 120px logo, the header renders ~200px tall. */
+   padding and a 140px logo, the header renders ~220px tall. */
 body {
-    padding-top: 180px;
+    padding-top: 220px;
 }
 
 /* Extra vertical padding gives the logo room to breathe.
@@ -150,7 +150,7 @@ body {
    attributes (171x75). Browsers won't scale an SVG past its intrinsic size
    with max-height alone — we need an explicit height to force it larger. */
 .custom-logo {
-    height: 100px !important;
+    height: 140px !important;
     max-height: none !important;
     width: auto !important;
 }

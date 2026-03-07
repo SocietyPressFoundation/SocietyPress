@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '0.29d' );
+define( 'SOCIETYPRESS_VERSION', '0.30d' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -4545,63 +4545,396 @@ add_filter( 'auto_update_theme', '__return_true' );
  *      plugin grows.
  */
 function sp_render_dashboard_page(): void {
-    $settings    = get_option( 'societypress_settings', [] );
-    $org_name    = $settings['organization_name'] ?? '';
-    $site_name   = get_option( 'blogname', '' );
+    global $wpdb;
+    $prefix       = $wpdb->prefix . 'sp_';
+    $settings     = get_option( 'societypress_settings', [] );
+    $org_name     = $settings['organization_name'] ?? '';
+    $site_name    = get_option( 'blogname', '' );
     $display_name = ! empty( $org_name ) ? $org_name : $site_name;
+    $today        = current_time( 'Y-m-d' );
+    $thirty_days  = date( 'Y-m-d', strtotime( '+30 days', strtotime( $today ) ) );
+
+    // ---- Stat queries ----
+    // WHY one query per stat: These are simple COUNT queries on indexed columns.
+    // They run in <1ms each, and keeping them separate makes the code easy to
+    // maintain vs one giant UNION that's hard to debug.
+    $total_members  = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}members" );
+    $active_members = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$prefix}members WHERE status = 'active'"
+    );
+    $expired_members = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$prefix}members WHERE status = 'expired'"
+    );
+
+    // Members expiring in the next 30 days (still active, but running out)
+    $expiring_soon = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$prefix}members
+         WHERE status = 'active'
+           AND expiration_date IS NOT NULL
+           AND expiration_date BETWEEN %s AND %s",
+        $today, $thirty_days
+    ) );
+
+    // New members in the last 30 days
+    $recent_signup_count = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$prefix}members WHERE join_date >= %s",
+        date( 'Y-m-d', strtotime( '-30 days', strtotime( $today ) ) )
+    ) );
+
+    // ---- Upcoming events (next 5) ----
+    $upcoming_events = $wpdb->get_results( $wpdb->prepare(
+        "SELECT id, title, slug, start_date, start_time, location_name
+         FROM {$prefix}events
+         WHERE start_date >= %s AND status = 'published'
+         ORDER BY start_date ASC, start_time ASC
+         LIMIT 5",
+        $today
+    ) );
+
+    // ---- Members expiring soonest (next 10 active, with expiration date) ----
+    $expiring_list = $wpdb->get_results( $wpdb->prepare(
+        "SELECT m.user_id, m.first_name, m.last_name, m.organization_name,
+                m.member_type, m.expiration_date, u.user_email
+         FROM {$prefix}members m
+         INNER JOIN {$wpdb->users} u ON u.ID = m.user_id
+         WHERE m.status = 'active'
+           AND m.expiration_date IS NOT NULL
+           AND m.expiration_date BETWEEN %s AND %s
+         ORDER BY m.expiration_date ASC
+         LIMIT 10",
+        $today, $thirty_days
+    ) );
+
+    // ---- Recent signups (last 10) ----
+    $recent_signups = $wpdb->get_results(
+        "SELECT m.user_id, m.first_name, m.last_name, m.organization_name,
+                m.member_type, m.join_date, u.user_email
+         FROM {$prefix}members m
+         INNER JOIN {$wpdb->users} u ON u.ID = m.user_id
+         ORDER BY m.join_date DESC, m.user_id DESC
+         LIMIT 10"
+    );
+
     ?>
     <div class="wrap">
-        <h1>Welcome<?php echo ! empty( $display_name ) ? ' to ' . esc_html( $display_name ) : ''; ?></h1>
+        <h1><?php echo esc_html__( 'Dashboard', 'societypress' ); ?></h1>
+        <?php if ( $display_name ) : ?>
+            <p style="font-size: 14px; color: #666; margin-top: 4px;">
+                <?php echo esc_html( $display_name ); ?> &mdash; SocietyPress <?php echo esc_html( SOCIETYPRESS_VERSION ); ?>
+            </p>
+        <?php endif; ?>
 
-        <div class="sp-dashboard-cards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-top: 20px;">
+        <style>
+            /* Dashboard stat cards — consistent sizing, clean layout */
+            .sp-dash-stats {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                gap: 16px;
+                margin: 20px 0 30px;
+            }
+            .sp-dash-stat {
+                background: #fff;
+                border: 1px solid #e0e0e0;
+                border-radius: 8px;
+                padding: 20px;
+                text-align: center;
+                border-left: 4px solid var(--sp-color-primary, #2271b1);
+            }
+            .sp-dash-stat-number {
+                font-size: 32px;
+                font-weight: 700;
+                color: #1d2327;
+                line-height: 1;
+                margin-bottom: 6px;
+            }
+            .sp-dash-stat-label {
+                font-size: 13px;
+                color: #646970;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            /* Accent colors for different stat types */
+            .sp-dash-stat-active   { border-left-color: #00a32a; }
+            .sp-dash-stat-expiring { border-left-color: #dba617; }
+            .sp-dash-stat-expired  { border-left-color: #d63638; }
+            .sp-dash-stat-new      { border-left-color: #2271b1; }
 
-            <!-- Quick Links Card -->
-            <div class="card" style="padding: 20px;">
-                <h2 style="margin-top: 0;">Quick Links</h2>
-                <ul style="list-style: none; padding: 0; margin: 0;">
-                    <li style="margin-bottom: 12px;">
-                        <a href="<?php echo esc_url( admin_url( 'edit.php?post_type=page' ) ); ?>" style="text-decoration: none; font-size: 14px;">
-                            <span class="dashicons dashicons-admin-page" style="margin-right: 8px;"></span>
-                            Manage Pages
-                        </a>
-                    </li>
-                    <li style="margin-bottom: 12px;">
-                        <a href="<?php echo esc_url( admin_url( 'upload.php' ) ); ?>" style="text-decoration: none; font-size: 14px;">
-                            <span class="dashicons dashicons-admin-media" style="margin-right: 8px;"></span>
-                            Media Library
-                        </a>
-                    </li>
-                    <li style="margin-bottom: 12px;">
-                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-settings-website' ) ); ?>" style="text-decoration: none; font-size: 14px;">
-                            <span class="dashicons dashicons-admin-generic" style="margin-right: 8px;"></span>
-                            Settings
-                        </a>
-                    </li>
-                    <li>
-                        <a href="<?php echo esc_url( home_url( '/' ) ); ?>" target="_blank" style="text-decoration: none; font-size: 14px;">
-                            <span class="dashicons dashicons-external" style="margin-right: 8px;"></span>
-                            View Your Website
-                        </a>
-                    </li>
-                </ul>
+            /* Dashboard panels — two-column on desktop, stacked on narrow */
+            .sp-dash-panels {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 20px;
+                margin-bottom: 20px;
+            }
+            @media (max-width: 1200px) {
+                .sp-dash-panels { grid-template-columns: 1fr; }
+            }
+            .sp-dash-panel {
+                background: #fff;
+                border: 1px solid #e0e0e0;
+                border-radius: 8px;
+                overflow: hidden;
+            }
+            .sp-dash-panel-header {
+                padding: 14px 20px;
+                border-bottom: 1px solid #f0f0f0;
+                font-size: 14px;
+                font-weight: 600;
+                color: #1d2327;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            .sp-dash-panel-header a {
+                font-size: 13px;
+                font-weight: 400;
+                text-decoration: none;
+            }
+            .sp-dash-panel table {
+                width: 100%;
+                border-collapse: collapse;
+            }
+            .sp-dash-panel th {
+                text-align: left;
+                padding: 10px 20px;
+                font-size: 12px;
+                color: #646970;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                border-bottom: 1px solid #f0f0f0;
+                font-weight: 600;
+            }
+            .sp-dash-panel td {
+                padding: 10px 20px;
+                font-size: 13px;
+                border-bottom: 1px solid #f6f6f6;
+                color: #1d2327;
+            }
+            .sp-dash-panel tr:last-child td { border-bottom: none; }
+            .sp-dash-panel td a { text-decoration: none; }
+            .sp-dash-panel td a:hover { text-decoration: underline; }
+            .sp-dash-empty {
+                padding: 30px 20px;
+                text-align: center;
+                color: #999;
+                font-size: 13px;
+            }
+            /* Quick links row */
+            .sp-dash-links {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 12px;
+                margin-bottom: 24px;
+            }
+            .sp-dash-links a {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 8px 16px;
+                background: #fff;
+                border: 1px solid #e0e0e0;
+                border-radius: 6px;
+                text-decoration: none;
+                font-size: 13px;
+                color: #2271b1;
+                transition: border-color 0.15s;
+            }
+            .sp-dash-links a:hover {
+                border-color: #2271b1;
+            }
+        </style>
+
+        <!-- Stat Cards -->
+        <div class="sp-dash-stats">
+            <div class="sp-dash-stat">
+                <div class="sp-dash-stat-number"><?php echo esc_html( $total_members ); ?></div>
+                <div class="sp-dash-stat-label"><?php echo esc_html__( 'Total Members', 'societypress' ); ?></div>
+            </div>
+            <div class="sp-dash-stat sp-dash-stat-active">
+                <div class="sp-dash-stat-number"><?php echo esc_html( $active_members ); ?></div>
+                <div class="sp-dash-stat-label"><?php echo esc_html__( 'Active', 'societypress' ); ?></div>
+            </div>
+            <div class="sp-dash-stat sp-dash-stat-expiring">
+                <div class="sp-dash-stat-number"><?php echo esc_html( $expiring_soon ); ?></div>
+                <div class="sp-dash-stat-label"><?php echo esc_html__( 'Expiring Soon', 'societypress' ); ?></div>
+            </div>
+            <div class="sp-dash-stat sp-dash-stat-expired">
+                <div class="sp-dash-stat-number"><?php echo esc_html( $expired_members ); ?></div>
+                <div class="sp-dash-stat-label"><?php echo esc_html__( 'Expired', 'societypress' ); ?></div>
+            </div>
+            <div class="sp-dash-stat sp-dash-stat-new">
+                <div class="sp-dash-stat-number"><?php echo esc_html( $recent_signup_count ); ?></div>
+                <div class="sp-dash-stat-label"><?php echo esc_html__( 'New (30 Days)', 'societypress' ); ?></div>
+            </div>
+        </div>
+
+        <!-- Quick Links -->
+        <div class="sp-dash-links">
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-members' ) ); ?>">
+                <span class="dashicons dashicons-groups"></span> <?php echo esc_html__( 'Members', 'societypress' ); ?>
+            </a>
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-events' ) ); ?>">
+                <span class="dashicons dashicons-calendar-alt"></span> <?php echo esc_html__( 'Events', 'societypress' ); ?>
+            </a>
+            <a href="<?php echo esc_url( admin_url( 'edit.php?post_type=page' ) ); ?>">
+                <span class="dashicons dashicons-admin-page"></span> <?php echo esc_html__( 'Pages', 'societypress' ); ?>
+            </a>
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-settings-website' ) ); ?>">
+                <span class="dashicons dashicons-admin-generic"></span> <?php echo esc_html__( 'Settings', 'societypress' ); ?>
+            </a>
+            <a href="<?php echo esc_url( home_url( '/' ) ); ?>" target="_blank">
+                <span class="dashicons dashicons-external"></span> <?php echo esc_html__( 'View Site', 'societypress' ); ?>
+            </a>
+        </div>
+
+        <!-- Two-Column Panels -->
+        <div class="sp-dash-panels">
+
+            <!-- Upcoming Events -->
+            <div class="sp-dash-panel">
+                <div class="sp-dash-panel-header">
+                    <?php echo esc_html__( 'Upcoming Events', 'societypress' ); ?>
+                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-events' ) ); ?>">
+                        <?php echo esc_html__( 'View All →', 'societypress' ); ?>
+                    </a>
+                </div>
+                <?php if ( $upcoming_events ) : ?>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th><?php echo esc_html__( 'Date', 'societypress' ); ?></th>
+                                <th><?php echo esc_html__( 'Event', 'societypress' ); ?></th>
+                                <th><?php echo esc_html__( 'Location', 'societypress' ); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ( $upcoming_events as $evt ) :
+                                $date_display = wp_date( 'M j', strtotime( $evt->start_date ) );
+                                $edit_url     = admin_url( 'admin.php?page=sp-event-edit&event_id=' . $evt->id );
+                            ?>
+                                <tr>
+                                    <td style="white-space: nowrap; font-weight: 600;"><?php echo esc_html( $date_display ); ?></td>
+                                    <td><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $evt->title ); ?></a></td>
+                                    <td style="color: #646970;"><?php echo esc_html( $evt->location_name ?: '—' ); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                <?php else : ?>
+                    <div class="sp-dash-empty"><?php echo esc_html__( 'No upcoming events.', 'societypress' ); ?></div>
+                <?php endif; ?>
             </div>
 
-            <!-- Site Info Card -->
-            <div class="card" style="padding: 20px;">
-                <h2 style="margin-top: 0;">Site Information</h2>
-                <table style="width: 100%; border-collapse: collapse;">
-                    <tr>
-                        <td style="padding: 6px 0; color: #666;">Website</td>
-                        <td style="padding: 6px 0;">
-                            <a href="<?php echo esc_url( home_url( '/' ) ); ?>" target="_blank">
-                                <?php echo esc_html( home_url( '/' ) ); ?>
-                            </a>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 6px 0; color: #666;">SocietyPress</td>
-                        <td style="padding: 6px 0;">Version <?php echo esc_html( SOCIETYPRESS_VERSION ); ?></td>
-                    </tr>
+            <!-- Expiring Soon -->
+            <div class="sp-dash-panel">
+                <div class="sp-dash-panel-header">
+                    <?php echo esc_html__( 'Expiring Within 30 Days', 'societypress' ); ?>
+                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-members' ) ); ?>">
+                        <?php echo esc_html__( 'View All →', 'societypress' ); ?>
+                    </a>
+                </div>
+                <?php if ( $expiring_list ) : ?>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th><?php echo esc_html__( 'Member', 'societypress' ); ?></th>
+                                <th><?php echo esc_html__( 'Expires', 'societypress' ); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ( $expiring_list as $em ) :
+                                $name = ( $em->member_type === 'organization' && $em->organization_name )
+                                    ? $em->organization_name
+                                    : trim( $em->first_name . ' ' . $em->last_name );
+                                $edit_url = admin_url( 'admin.php?page=sp-member-edit&user_id=' . $em->user_id );
+                                $exp_display = wp_date( 'M j, Y', strtotime( $em->expiration_date ) );
+                                $days_left   = (int) ( ( strtotime( $em->expiration_date ) - strtotime( $today ) ) / DAY_IN_SECONDS );
+                            ?>
+                                <tr>
+                                    <td><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $name ); ?></a></td>
+                                    <td style="white-space: nowrap;">
+                                        <?php echo esc_html( $exp_display ); ?>
+                                        <?php if ( $days_left <= 7 ) : ?>
+                                            <span style="color: #d63638; font-weight: 600; font-size: 12px; margin-left: 4px;">
+                                                (<?php echo $days_left === 0 ? esc_html__( 'today', 'societypress' ) : sprintf( esc_html__( '%dd', 'societypress' ), $days_left ); ?>)
+                                            </span>
+                                        <?php endif; ?>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                <?php else : ?>
+                    <div class="sp-dash-empty"><?php echo esc_html__( 'No members expiring in the next 30 days.', 'societypress' ); ?></div>
+                <?php endif; ?>
+            </div>
+
+            <!-- Recent Signups -->
+            <div class="sp-dash-panel">
+                <div class="sp-dash-panel-header">
+                    <?php echo esc_html__( 'Recent Members', 'societypress' ); ?>
+                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-members' ) ); ?>">
+                        <?php echo esc_html__( 'View All →', 'societypress' ); ?>
+                    </a>
+                </div>
+                <?php if ( $recent_signups ) : ?>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th><?php echo esc_html__( 'Member', 'societypress' ); ?></th>
+                                <th><?php echo esc_html__( 'Joined', 'societypress' ); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ( $recent_signups as $rs ) :
+                                $name = ( $rs->member_type === 'organization' && $rs->organization_name )
+                                    ? $rs->organization_name
+                                    : trim( $rs->first_name . ' ' . $rs->last_name );
+                                $edit_url     = admin_url( 'admin.php?page=sp-member-edit&user_id=' . $rs->user_id );
+                                $join_display = ( $rs->join_date && $rs->join_date !== '0000-00-00' )
+                                    ? wp_date( 'M j, Y', strtotime( $rs->join_date ) )
+                                    : '—';
+                            ?>
+                                <tr>
+                                    <td><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $name ); ?></a></td>
+                                    <td style="color: #646970;"><?php echo esc_html( $join_display ); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                <?php else : ?>
+                    <div class="sp-dash-empty"><?php echo esc_html__( 'No members yet.', 'societypress' ); ?></div>
+                <?php endif; ?>
+            </div>
+
+            <!-- Quick Links / Site Info -->
+            <div class="sp-dash-panel">
+                <div class="sp-dash-panel-header">
+                    <?php echo esc_html__( 'Site Information', 'societypress' ); ?>
+                </div>
+                <table>
+                    <tbody>
+                        <tr>
+                            <td style="font-weight: 500;"><?php echo esc_html__( 'Website', 'societypress' ); ?></td>
+                            <td>
+                                <a href="<?php echo esc_url( home_url( '/' ) ); ?>" target="_blank">
+                                    <?php echo esc_html( home_url( '/' ) ); ?>
+                                </a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="font-weight: 500;"><?php echo esc_html__( 'SocietyPress', 'societypress' ); ?></td>
+                            <td><?php echo esc_html( sprintf( __( 'Version %s', 'societypress' ), SOCIETYPRESS_VERSION ) ); ?></td>
+                        </tr>
+                        <tr>
+                            <td style="font-weight: 500;"><?php echo esc_html__( 'PHP', 'societypress' ); ?></td>
+                            <td><?php echo esc_html( phpversion() ); ?></td>
+                        </tr>
+                        <tr>
+                            <td style="font-weight: 500;"><?php echo esc_html__( 'WordPress', 'societypress' ); ?></td>
+                            <td><?php echo esc_html( get_bloginfo( 'version' ) ); ?></td>
+                        </tr>
+                    </tbody>
                 </table>
             </div>
 
@@ -29700,9 +30033,13 @@ function sp_render_builder_widget_event_calendar( array $s ): void {
 function sp_events_calendar_styles(): void {
     ?>
     <style id="sp-calendar-widget-css">
-        /* Calendar wrap */
+        /* Calendar wrap — explicit width prevents layout narrowing when
+           navigating to a different month (the grid inherits full width
+           from this container instead of sizing to content). */
         .sp-calendar-wrap {
             margin-top: 8px;
+            width: 100%;
+            box-sizing: border-box;
         }
         .sp-calendar-nav {
             display: flex;

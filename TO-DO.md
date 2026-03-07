@@ -33,6 +33,7 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 - [x] Member portal (My Account): Profile photo, personal info, contact, address, seasonal address, communication preferences (incl. blast opt-out), directory privacy, interests & skills, research surnames (county/state/country/year range), my events, change password
 - [x] Directory: Hide nav link for logged-out visitors, "Surname Being Researched" filter label
 - [x] i18n: My Account page fully wrapped in __() / esc_html__() / esc_attr__() with societypress text domain
+- [x] Email obfuscation: All frontend email addresses use JS-based obfuscation (base64 split, assembled on page load) to block scrapers
 
 ## In Progress
 

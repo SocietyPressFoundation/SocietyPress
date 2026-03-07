@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '0.28d' );
+define( 'SOCIETYPRESS_VERSION', '0.29d' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -2719,6 +2719,91 @@ function sp_user_has_member_record( $user_id ) {
 
 
 // ============================================================================
+// EMAIL OBFUSCATION — Hide email addresses from scrapers on the frontend
+// ============================================================================
+//
+// WHY: Bots crawl pages looking for mailto: links and plaintext email addresses.
+//      Instead of rendering emails directly, we split each address at the "@",
+//      base64-encode both halves, and store them in data attributes on a <span>.
+//      A small JS snippet (injected via wp_footer) assembles the real address
+//      and creates a clickable mailto: link on page load. Since almost no email
+//      harvester executes JavaScript, this blocks the vast majority of scrapers
+//      while keeping emails fully functional for real visitors.
+//
+// USAGE: Anywhere you'd normally echo an email on the frontend, call:
+//        echo sp_obfuscate_email( $email_address );
+//
+//        The JS assembler runs automatically on every frontend page.
+
+/**
+ * Returns an obfuscated <span> that JS will convert to a mailto: link.
+ *
+ * Falls back to an empty string for invalid/empty emails so callers
+ * don't need to guard against nulls.
+ */
+function sp_obfuscate_email( string $email ): string {
+    if ( ! $email || ! is_email( $email ) ) {
+        return '';
+    }
+
+    $parts = explode( '@', $email, 2 );
+
+    return sprintf(
+        '<span class="sp-eml" data-u="%s" data-d="%s"></span>',
+        esc_attr( base64_encode( $parts[0] ) ),
+        esc_attr( base64_encode( $parts[1] ) )
+    );
+}
+
+/**
+ * Frontend JS: assembles obfuscated email spans into real mailto: links.
+ *
+ * WHY wp_footer: The script runs after all page content has rendered, so
+ * every .sp-eml span — including those injected by AJAX callbacks that
+ * write HTML before the footer — will be picked up. We also expose a
+ * global spAssembleEmails() so dynamically-built HTML (like the member
+ * detail modal) can trigger assembly on demand.
+ */
+add_action( 'wp_footer', function () {
+    // Only run on the frontend, never in wp-admin
+    if ( is_admin() ) {
+        return;
+    }
+    ?>
+    <script>
+    (function(){
+        /**
+         * Find every .sp-eml span in the given root (or the whole document),
+         * decode the two base64 halves, and replace the span with a real
+         * <a href="mailto:..."> link.
+         */
+        function spAssembleEmails(root) {
+            (root || document).querySelectorAll('.sp-eml').forEach(function(el) {
+                try {
+                    var u = atob(el.getAttribute('data-u') || '');
+                    var d = atob(el.getAttribute('data-d') || '');
+                    if (!u || !d) return;
+                    var addr = u + '@' + d;
+                    var a = document.createElement('a');
+                    a.href = 'mailto:' + addr;
+                    a.textContent = addr;
+                    el.parentNode.replaceChild(a, el);
+                } catch(e) {
+                    // Malformed base64 — leave the span as-is
+                }
+            });
+        }
+        // Run once on page load for all server-rendered emails
+        spAssembleEmails();
+        // Expose globally so AJAX-built HTML can call it after insertion
+        window.spAssembleEmails = spAssembleEmails;
+    })();
+    </script>
+    <?php
+}, 99 ); // Priority 99: run after other wp_footer scripts so all spans exist
+
+
+// ============================================================================
 // SOCIAL MEDIA ICONS — Rendered in the header
 // ============================================================================
 //
@@ -4132,9 +4217,9 @@ add_filter( 'login_message', function ( $message ) {
     $notice .= '<p>Just as you would not share your private family conversations or your family financial matters with the general public, please do not share our financial reports, board meeting notes, etc. with non-members. In an effort to keep our members well informed, we are exceptionally open with this data within our membership. However, it is not intended for public dissemination.</p>';
 
     if ( $org_email ) {
-        $notice .= '<p>If you have any membership questions, please contact the Membership Chair at <a href="mailto:' . esc_attr( $org_email ) . '">' . esc_html( $org_email ) . '</a>.</p>';
+        $notice .= '<p>' . esc_html__( 'If you have any membership questions, please contact the Membership Chair at ', 'societypress' ) . sp_obfuscate_email( $org_email ) . '.</p>';
     } else {
-        $notice .= '<p>If you have any membership questions, please contact the Membership Chair.</p>';
+        $notice .= '<p>' . esc_html__( 'If you have any membership questions, please contact the Membership Chair.', 'societypress' ) . '</p>';
     }
 
     $notice .= '</div>';
@@ -4290,7 +4375,7 @@ add_action( 'admin_footer', function () {
             <h2>Important Notice</h2>
             <p>This information is for members only; please do not share your ID and password with non-members or other members. Each member in good standing has been provided their own individual ID and password. Names and contact information are provided to assist members in collaborating on society projects and in genealogical research. The use of this information for commercial, political, personal, or religious purposes is strictly forbidden. It would show a lack of respect for the privacy of our dedicated members and would reduce their willingness to share contact data. Any violation will be considered a serious offense and will have legal consequences. Appropriate action will be taken immediately upon violation of this policy and will result in immediate loss of membership, in addition to legal consequences.</p>
             <p>Just as you would not share your private family conversations or your family financial matters with the general public, please do not share our financial reports, board meeting notes, etc. with non-members. In an effort to keep our members well informed, we are open with this data within our membership. However, it is not intended for public dissemination for any reason. Individuals who violate the confidential nature of this information will be dealt with by the Board of Directors and appropriate action will be taken, including immediate loss of membership.</p>
-            <p>If you have any questions, please contact the President or Compliance officer at <a href="mailto:President@upstream-society.org">President@upstream-society.org</a>.</p>
+            <p><?php echo esc_html__( 'If you have any questions, please contact the President or Compliance officer at ', 'societypress' ); ?><?php echo sp_obfuscate_email( 'President@upstream-society.org' ); ?>.</p>
             <button type="button" class="sp-acknowledge-btn" id="sp-login-ack-btn">I Understand</button>
         </div>
     </div>
@@ -15195,13 +15280,11 @@ function sp_render_directory( array $settings ): void {
                         <td class="sp-col-email" data-label="<?php echo esc_attr__( 'Email', 'societypress' ); ?>">
                             <?php
                             if ( ! empty( $m->dir_show_email ) && $m->user_email ) {
-                                // Obfuscate the email slightly to slow down scrapers.
-                                // Not bulletproof, but it stops the dumbest bots.
-                                printf(
-                                    '<a href="mailto:%s">%s</a>',
-                                    esc_attr( antispambot( $m->user_email ) ),
-                                    esc_html( antispambot( $m->user_email ) )
-                                );
+                                // JS-based obfuscation: email is split and base64-encoded
+                                // in data attributes, assembled into a real mailto: link
+                                // by the spAssembleEmails() script in the footer. Bots
+                                // that don't execute JS get nothing.
+                                echo sp_obfuscate_email( $m->user_email );
                             }
                             ?>
                         </td>
@@ -15888,8 +15971,13 @@ function sp_ajax_member_detail(): void {
     }
 
     // Email — society setting + member preference
+    // WHY obfuscated: The AJAX endpoint returns JSON. Even though it requires
+    // authentication, we split and base64-encode the email so it never appears
+    // as a plain address in any network response. The frontend JS decodes it.
     if ( ! empty( $settings['dir_show_email'] ) && ! empty( $member->dir_show_email ) && $member->user_email ) {
-        $data['email'] = $member->user_email;
+        $parts = explode( '@', $member->user_email, 2 );
+        $data['email_u'] = base64_encode( $parts[0] );
+        $data['email_d'] = base64_encode( $parts[1] ?? '' );
     }
 
     // Website — society setting + member preference
@@ -16064,7 +16152,7 @@ function sp_directory_detail_script(): void {
             html += '</div></div>';
 
             // Contact info section
-            var hasContact = d.location || d.phone || d.email || d.website;
+            var hasContact = d.location || d.phone || d.email_u || d.website;
             if (hasContact) {
                 html += '<div class="sp-member-detail-section">';
                 html += '<h3 class="sp-member-detail-section-title">Contact</h3>';
@@ -16076,9 +16164,12 @@ function sp_directory_detail_script(): void {
                     html += '<dt>Phone</dt><dd><a href="tel:' + escHtml(d.phone.replace(/[^+0-9]/g, ''))
                         + '">' + escHtml(d.phone) + '</a></dd>';
                 }
-                if (d.email) {
-                    html += '<dt>Email</dt><dd><a href="mailto:' + escHtml(d.email)
-                        + '">' + escHtml(d.email) + '</a></dd>';
+                if (d.email_u) {
+                    // Decode the obfuscated halves and build the mailto link.
+                    // Same base64 split used by sp_obfuscate_email() on the server.
+                    var emlAddr = atob(d.email_u) + '@' + atob(d.email_d || '');
+                    html += '<dt>Email</dt><dd><a href="mailto:' + escHtml(emlAddr)
+                        + '">' + escHtml(emlAddr) + '</a></dd>';
                 }
                 if (d.website) {
                     var displayUrl = d.website.replace(/^https?:\/\//, '').replace(/\/$/, '');
@@ -18476,7 +18567,7 @@ function sp_render_builder_widget_contact_card( array $s ): void {
     if ( $show_email && $email ) {
         echo '<div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">';
         echo '<span class="dashicons dashicons-email" style="color:var(--sp-color-primary);"></span>';
-        echo '<a href="mailto:' . esc_attr( $email ) . '">' . esc_html( $email ) . '</a>';
+        echo sp_obfuscate_email( $email );
         echo '</div>';
     }
     if ( $show_hours && $hours ) {
@@ -24638,7 +24729,7 @@ function sp_render_event_detail( string $slug, array $settings ): void {
                     <p class="sp-contact-name"><?php echo esc_html( $event->contact_name ); ?></p>
                 <?php endif; ?>
                 <?php if ( ! empty( $event->contact_email ) ) : ?>
-                    <p><a href="mailto:<?php echo esc_attr( $event->contact_email ); ?>"><?php echo esc_html( $event->contact_email ); ?></a></p>
+                    <p><?php echo sp_obfuscate_email( $event->contact_email ); ?></p>
                 <?php endif; ?>
                 <?php if ( ! empty( $event->contact_phone ) ) : ?>
                     <?php

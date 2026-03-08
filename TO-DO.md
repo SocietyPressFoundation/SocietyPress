@@ -36,6 +36,10 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 - [x] Email obfuscation: All frontend email addresses use JS-based obfuscation (base64 split, assembled on page load) to block scrapers
 - [x] Admin dashboard: Stat cards (total/active/expiring/expired/new), upcoming events, expiring members list, recent signups, quick links, site info
 - [x] SAGHS child theme: Header/nav matching reference site (logo 140px, padding 220px)
+- [x] Library Enrichment: Open Library API integration — batch LCCN/title+author lookup, cover images, admin enrichment page with progress bar, cover display in frontend detail view
+- [x] Store: Public-facing storefront (/store/) for SAGHS publications — category sidebar with counts, product card grid, quantity selector, placeholder Add to Cart buttons, responsive layout
+- [x] Genealogical Records Module: EAV-based records system — 4 tables (collections, collection_fields, records, record_values), 13 record type templates, admin collection manager with drag-reorder field configurator, record browser/editor, CSV import with field mapping, public frontend search with faceted filters and access-controlled fields
+- [x] Finances cleanup: Imported records no longer show recorder's name (recorded_by = NULL for imports)
 
 ## In Progress
 
@@ -98,18 +102,25 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 - [x] Download restricted to members only
 - [x] Admin card grid, frontend grid, search
 
-## Genealogical Records Module — Not Started
+## Genealogical Records Module — Core Built, Needs Data
 
-- [ ] Records database: Searchable transcribed genealogical records (cemetery indexes, census transcriptions, church records, obituary indexes, etc.)
-  - Distinct from Library (which catalogs physical items) — this is digitized/transcribed record data
-  - Tables: sp_record_collections, sp_records, sp_record_fields (flexible schema per collection type)
-  - Field-level access control: public vs members-only per field per collection
-  - Public-facing search with faceted filters (record type, date range, location, surname)
-  - Full-text search across all record fields
-  - CSV/spreadsheet import per collection type with field mapping
-  - Admin: collection manager, record browser, import tool, field configuration
-  - Frontend: public search page ([societypress_records]), detail view with access-controlled fields
+- [x] Records database: EAV-based system with 4 tables (sp_record_collections, sp_record_collection_fields, sp_records, sp_record_values)
+- [x] 13 record type templates with default fields (Cemetery, Census, Church, Court, Immigration, Land, Marriage, Military, Newspaper, Obituary, Probate, Tax, Vital)
+- [x] Admin: Collection manager, drag-reorder field configurator, record browser, record editor, CSV import with field mapping
+- [x] Frontend: Public search page (/records/), faceted filters (collection, search text), access-controlled fields per collection
+- [x] Concatenated search_text column for fast full-text search without EAV joins
+- [ ] Needs real data imported — no collections populated yet
 - [ ] This is the EasyNetSites "Unified Data Module" equivalent — the white paper claims parity, so this needs to deliver
+
+## Store — Frontend Built, Needs Payments
+
+- [x] Public storefront (/store/): Category sidebar, product grid, quantity selector, Add to Cart buttons
+- [x] Products sourced from library catalog (acq_code = 'SAGHS Publication', item_value > 0)
+- [x] 8 auto-categorized store categories (Cemetery Records, Vital Records, Marriage Records, etc.)
+- [ ] Real marketing descriptions (currently showing physical specs from library import)
+- [ ] Payment integration (depends on Payment Processing below)
+- [ ] Shopping cart / checkout flow
+- [ ] Order tracking
 
 ## Payment Processing — Not Started
 
@@ -174,7 +185,7 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 ## White Paper Alignment — Review Needed
 
 - [ ] Tighten white paper language: "dues processing" listed as current feature — payments aren't built yet
-- [ ] "Core feature" claim for genealogical records search — module doesn't exist yet
+- [ ] "Core feature" claim for genealogical records search — module exists now but needs real data
 - [ ] Consider adding a Roadmap section to the white paper to separate built/in-progress/planned
 - [ ] Or soften present-tense claims to "core and planned features include..."
 

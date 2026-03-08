@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     0.25d
+ * Version:     0.31d
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '0.30d' );
+define( 'SOCIETYPRESS_VERSION', '0.31d' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -1179,6 +1179,8 @@ function sp_create_tables(): void {
         last_updated_date   DATE                NULL,
         item_condition      VARCHAR(20)         NOT NULL DEFAULT 'good',
         available           TINYINT(1)          NOT NULL DEFAULT 1,
+        cover_url           VARCHAR(500)        NULL,
+        store_category      VARCHAR(50)         NULL,
         created_at          DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at          DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
@@ -1380,9 +1382,108 @@ function sp_create_tables(): void {
         KEY sent_at (sent_at)
     ) {$charset_collate};" );
 
+    // ========================================================================
+    // sp_record_collections — Genealogical record collections
+    //
+    // WHY: Societies hold transcribed genealogical records — cemetery indexes,
+    //      census transcriptions, church records, obituary indexes, etc.
+    //      Each collection has its own schema (different fields), so this table
+    //      defines the collection metadata while sp_record_collection_fields
+    //      defines the per-collection column structure. This is the "Unified
+    //      Data Module" equivalent from EasyNetSites.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}record_collections (
+        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        name            VARCHAR(200)        NOT NULL,
+        slug            VARCHAR(200)        NOT NULL,
+        description     TEXT                NULL,
+        record_type     VARCHAR(50)         NOT NULL DEFAULT 'general',
+        source_info     TEXT                NULL,
+        date_range      VARCHAR(100)        NULL,
+        location        VARCHAR(200)        NULL,
+        access_level    VARCHAR(20)         NOT NULL DEFAULT 'members',
+        status          VARCHAR(20)         NOT NULL DEFAULT 'active',
+        record_count    INT UNSIGNED        NOT NULL DEFAULT 0,
+        created_by      BIGINT(20) UNSIGNED NULL,
+        created_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        UNIQUE KEY slug (slug),
+        KEY record_type (record_type),
+        KEY status (status),
+        KEY access_level (access_level)
+    ) {$charset_collate};" );
+
+    // ========================================================================
+    // sp_record_collection_fields — Per-collection field definitions
+    //
+    // WHY: Each collection has a different schema. A cemetery index needs
+    //      plot/section/burial_date. A census needs age/occupation/household.
+    //      This table defines the fields for each collection, including type,
+    //      sort order, whether it's searchable, and whether it's visible to
+    //      the public or members-only. The admin configures this when creating
+    //      a collection, and it drives both the import mapping and the
+    //      frontend display.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}record_collection_fields (
+        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        collection_id   BIGINT(20) UNSIGNED NOT NULL,
+        field_name      VARCHAR(100)        NOT NULL,
+        field_slug      VARCHAR(100)        NOT NULL,
+        field_type      VARCHAR(20)         NOT NULL DEFAULT 'text',
+        sort_order      INT                 NOT NULL DEFAULT 0,
+        required        TINYINT(1)          NOT NULL DEFAULT 0,
+        searchable      TINYINT(1)          NOT NULL DEFAULT 1,
+        is_public       TINYINT(1)          NOT NULL DEFAULT 1,
+        options         TEXT                NULL,
+        PRIMARY KEY (id),
+        KEY collection_id (collection_id),
+        KEY sort_order (sort_order)
+    ) {$charset_collate};" );
+
+    // ========================================================================
+    // sp_records — Individual genealogical records
+    //
+    // WHY: One row per transcribed record. The actual field values live in
+    //      sp_record_values (EAV pattern), but we keep a search_text column
+    //      here that concatenates all values for fast FULLTEXT search. This
+    //      avoids joining the EAV table on every search query.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}records (
+        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        collection_id   BIGINT(20) UNSIGNED NOT NULL,
+        search_text     TEXT                NULL,
+        created_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY collection_id (collection_id),
+        FULLTEXT KEY search_text (search_text)
+    ) {$charset_collate};" );
+
+    // ========================================================================
+    // sp_record_values — EAV storage for record field values
+    //
+    // WHY: Each record in a collection has different fields (defined in
+    //      sp_record_collection_fields). This EAV table stores the actual
+    //      values. One row per field per record. This gives complete
+    //      flexibility — any collection can have any fields — at the cost
+    //      of needing joins for display. The search_text column on sp_records
+    //      compensates for the search performance hit.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}record_values (
+        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        record_id       BIGINT(20) UNSIGNED NOT NULL,
+        field_id        BIGINT(20) UNSIGNED NOT NULL,
+        field_value     TEXT                NULL,
+        PRIMARY KEY (id),
+        KEY record_id (record_id),
+        KEY field_id (field_id),
+        KEY record_field (record_id, field_id)
+    ) {$charset_collate};" );
+
     // Store the schema version so we can run migrations in future updates
     // without re-running the full dbDelta on every page load.
-    update_option( 'societypress_db_version', '0.25d' );
+    update_option( 'societypress_db_version', '0.31d' );
 }
 
 
@@ -2076,6 +2177,19 @@ add_action( 'admin_menu', function () {
         'sp_render_library_import_page'
     );
 
+    // Library Enrichment — batch-fetch cover images and ISBNs from Open Library.
+    // WHY: The the society catalog has 19k+ items but zero ISBNs and no cover images.
+    //      This tool queries Open Library's API using LCCNs (3,200+ available) and
+    //      title+author fallback to populate cover_url and isbn fields automatically.
+    add_submenu_page(
+        'societypress',
+        'Library Enrichment — SocietyPress',
+        'Library Enrichment',
+        'manage_options',
+        'sp-library-enrich',
+        'sp_render_library_enrich_page'
+    );
+
     // WHY separate import page: Resource links come from a different CSV format
     //     than library items (EasyNetSites links export vs. catalog export), so
     //     they need their own field mapping and processing logic.
@@ -2127,6 +2241,56 @@ add_action( 'admin_menu', function () {
         'manage_options',
         'sp-library-item-edit',
         'sp_render_library_item_edit_page'
+    );
+
+    // -----------------------------------------------------------------
+    // GENEALOGICAL RECORDS — Transcribed record collections
+    // -----------------------------------------------------------------
+
+    add_submenu_page(
+        'societypress',
+        'Record Collections — SocietyPress',
+        'Record Collections',
+        'manage_options',
+        'sp-record-collections',
+        'sp_render_record_collections_page'
+    );
+
+    add_submenu_page(
+        'societypress',
+        'Import Records — SocietyPress',
+        'Import Records',
+        'manage_options',
+        'sp-import-records',
+        'sp_render_record_import_page'
+    );
+
+    // Hidden pages — accessed via row actions, not visible in sidebar
+    add_submenu_page(
+        '',
+        'Edit Collection — SocietyPress',
+        'Edit Collection',
+        'manage_options',
+        'sp-record-collection-edit',
+        'sp_render_record_collection_edit_page'
+    );
+
+    add_submenu_page(
+        '',
+        'Browse Records — SocietyPress',
+        'Browse Records',
+        'manage_options',
+        'sp-record-browse',
+        'sp_render_record_browse_page'
+    );
+
+    add_submenu_page(
+        '',
+        'Edit Record — SocietyPress',
+        'Edit Record',
+        'manage_options',
+        'sp-record-edit',
+        'sp_render_record_edit_page'
     );
 
     // -----------------------------------------------------------------
@@ -3593,7 +3757,13 @@ var spMenuConfig = {
             id:    'library',
             label: 'Library',
             icon:  'dashicons-book-alt',
-            items: ['sp-library', 'sp-resource-categories', 'sp-library-catalog', 'sp-library-categories', 'sp-import-library', 'sp-import-links', 'sp-help-requests', 'sp-newsletter-archive']
+            items: ['sp-library', 'sp-resource-categories', 'sp-library-catalog', 'sp-library-categories', 'sp-import-library', 'sp-library-enrich', 'sp-import-links', 'sp-help-requests', 'sp-newsletter-archive']
+        },
+        {
+            id:    'genealogy',
+            label: 'Genealogy',
+            icon:  'dashicons-book',
+            items: ['sp-record-collections', 'sp-import-records']
         },
         {
             id:    'finances',
@@ -8444,6 +8614,9 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
             $donation    = $get( $row, 'payment_donation' );
 
             if ( ! empty( $amount_paid ) && (float) $amount_paid > 0 && ! empty( $date_paid ) ) {
+                // WHY recorded_by is null: CSV imports are system actions, not manual entries.
+                // Showing the importer's name on every record is misleading — null means
+                // "imported" while a user ID means "manually recorded by that person."
                 $wpdb->insert( $prefix . 'member_payments', [
                     'user_id'     => $user_id,
                     'amount'      => (float) $amount_paid,
@@ -8451,7 +8624,7 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
                     'method'      => sanitize_text_field( $get( $row, 'payment_method' ) ) ?: null,
                     'date'        => $date_paid,
                     'note'        => sanitize_text_field( $get( $row, 'payment_note' ) ) ?: null,
-                    'recorded_by' => get_current_user_id(),
+                    'recorded_by' => null,
                 ]);
             }
 
@@ -8464,7 +8637,7 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
                     'method'      => sanitize_text_field( $get( $row, 'payment_method' ) ) ?: null,
                     'date'        => $date_paid,
                     'note'        => 'Imported from previous system',
-                    'recorded_by' => get_current_user_id(),
+                    'recorded_by' => null,
                 ]);
             }
         }
@@ -31198,6 +31371,10 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
         .sp-catalog-detail-row td { padding: 0 !important; border-bottom: 2px solid var(--sp-color-accent, #667eea) !important; }
         .sp-catalog-detail { padding: 20px 24px; background: #fafbfc; animation: spDetailSlide 0.25s ease-out; }
         @keyframes spDetailSlide { from { opacity: 0; max-height: 0; } to { opacity: 1; max-height: 600px; } }
+        .sp-catalog-detail-layout { display: flex; gap: 24px; }
+        .sp-catalog-detail-cover { flex: 0 0 auto; }
+        .sp-catalog-detail-cover img { max-width: 140px; max-height: 200px; border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+        .sp-catalog-detail-body { flex: 1; min-width: 0; }
         .sp-catalog-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 32px; }
         .sp-catalog-detail-field { }
         .sp-catalog-detail-field dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #888; margin-bottom: 2px; font-weight: 600; }
@@ -31226,6 +31403,9 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
             .sp-catalog-table tbody td { display: block; padding: 3px 0 !important; border-bottom: none !important; }
             .sp-catalog-table tbody td:before { content: attr(data-label); font-weight: 600; font-size: 11px; text-transform: uppercase; color: #888; display: block; }
             .sp-catalog-detail-grid { grid-template-columns: 1fr; }
+            .sp-catalog-detail-layout { flex-direction: column; }
+            .sp-catalog-detail-cover { text-align: center; }
+            .sp-catalog-detail-cover img { max-width: 120px; }
         }
     </style>
     <?php
@@ -31456,6 +31636,16 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
 
                     // Build the detail panel HTML
                     var html = '<div class="sp-catalog-detail">';
+                    html += '<div class="sp-catalog-detail-layout">';
+
+                    // Cover image — shown on the left if available
+                    if ( d.cover_url ) {
+                        html += '<div class="sp-catalog-detail-cover">';
+                        html += '<img src="' + escAttr(d.cover_url) + '" alt="' + escAttr(d.title) + ' cover" loading="lazy">';
+                        html += '</div>';
+                    }
+
+                    html += '<div class="sp-catalog-detail-body">';
                     html += '<div class="sp-catalog-detail-grid">';
 
                     // Helper to add a field if it has a value
@@ -31514,6 +31704,8 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
                     }
 
                     html += '</div>'; // close grid
+                    html += '</div>'; // close body
+                    html += '</div>'; // close layout
                     html += '</div>'; // close detail
 
                     detailCell.innerHTML = html;
@@ -32597,9 +32789,11 @@ function sp_render_help_requests_admin_page(): void {
  *      Registered via theme_page_templates and rendered via template_include.
  */
 add_filter( 'theme_page_templates', function( $templates ) {
-    $templates['sp-help-requests'] = 'Research Help Requests';
-    $templates['sp-resources']     = 'Resource Links Directory';
+    $templates['sp-help-requests']   = 'Research Help Requests';
+    $templates['sp-resources']       = 'Resource Links Directory';
     $templates['sp-library-catalog'] = 'Library Catalog';
+    $templates['sp-records']         = 'Genealogical Records Search';
+    $templates['sp-store']           = 'Store';
     return $templates;
 } );
 
@@ -32607,12 +32801,13 @@ add_filter( 'template_include', function( $template ) {
     if ( ! is_page() ) return $template;
 
     $page_template = get_page_template_slug();
-    if ( ! in_array( $page_template, [ 'sp-help-requests', 'sp-resources', 'sp-library-catalog' ], true ) ) {
+    if ( ! in_array( $page_template, [ 'sp-help-requests', 'sp-resources', 'sp-library-catalog', 'sp-records', 'sp-store' ], true ) ) {
         return $template;
     }
 
-    // These templates require login
-    if ( ! is_user_logged_in() ) {
+    // Most templates require login. Records and Store handle their own access
+    // (records: per-collection, store: public storefront).
+    if ( ! in_array( $page_template, [ 'sp-records', 'sp-store' ], true ) && ! is_user_logged_in() ) {
         wp_redirect( wp_login_url( get_permalink() ) );
         exit;
     }
@@ -32630,6 +32825,12 @@ add_filter( 'template_include', function( $template ) {
             break;
         case 'sp-library-catalog':
             sp_frontend_library_catalog();
+            break;
+        case 'sp-records':
+            sp_render_records_frontend();
+            break;
+        case 'sp-store':
+            sp_render_store_frontend();
             break;
     }
 
@@ -33384,6 +33585,7 @@ function sp_render_library_item_edit_page(): void {
             'librarian_notes'     => sanitize_textarea_field( $_POST['librarian_notes'] ?? '' ) ?: null,
             'item_condition'      => sanitize_text_field( $_POST['item_condition'] ?? 'good' ),
             'available'           => ! empty( $_POST['available'] ) ? 1 : 0,
+            'cover_url'           => esc_url_raw( $_POST['cover_url'] ?? '' ) ?: null,
         ];
 
         if ( ! empty( $data['title'] ) ) {
@@ -33475,6 +33677,18 @@ function sp_render_library_item_edit_page(): void {
                     <th><label for="lccn">LCCN</label></th>
                     <td><input type="text" name="lccn" id="lccn" value="<?php echo esc_attr( $item->lccn ?? '' ); ?>" style="width:200px;">
                     <p class="description">Library of Congress Control Number.</p></td>
+                </tr>
+                <tr>
+                    <th><label for="cover_url">Cover Image URL</label></th>
+                    <td>
+                        <input type="url" name="cover_url" id="cover_url" class="large-text" value="<?php echo esc_attr( $item->cover_url ?? '' ); ?>" placeholder="https://...">
+                        <p class="description">URL to the book cover image. Can be populated automatically via Library Enrichment.</p>
+                        <?php if ( ! empty( $item->cover_url ) ) : ?>
+                            <div style="margin-top:8px;">
+                                <img src="<?php echo esc_url( $item->cover_url ); ?>" alt="Cover preview" style="max-height:150px; border:1px solid #ddd; border-radius:4px;">
+                            </div>
+                        <?php endif; ?>
+                    </td>
                 </tr>
             </table>
 
@@ -33867,6 +34081,7 @@ function sp_process_library_import( string $file_path, array $field_map ): array
             'last_updated_date'   => $last_updated,
             'item_condition'      => 'good',
             'available'           => 1,
+            'cover_url'           => esc_url_raw( $get( $row, 'cover_url' ) ) ?: null,
         ];
 
         $wpdb->insert( $prefix . 'library_items', $data );
@@ -34013,6 +34228,7 @@ function sp_render_library_import_page(): void {
         'librarian_notes'     => 'Librarian Notes',
         'updated_by'          => 'Updated By (name)',
         'last_updated_date'   => 'Last Updated Date',
+        'cover_url'           => 'Cover Image URL',
     ];
 
     // ------------------------------------------------------------------
@@ -39219,6 +39435,7 @@ function sp_ajax_library_item_detail(): void {
         'available'           => (bool) $item->available,
         'librarian_notes'     => $item->librarian_notes ?: '',
         'acquisition_number'  => $item->acquisition_number ?: '',
+        'cover_url'           => $item->cover_url ?: '',
     ] );
 }
 
@@ -39275,7 +39492,7 @@ function sp_ajax_export_library(): void {
         'Acq. Year', 'Acq. Month', 'Acq. Day', 'Acq. Code', 'Donor',
         'Value', 'County', 'State', 'Surname', 'Subject',
         'Librarian Notes', 'Updated By', 'Last Updated Date',
-        'Condition', 'Available',
+        'Condition', 'Available', 'Cover URL',
     ];
 
     $filename = 'library-catalog-' . gmdate( 'Y-m-d' ) . '.csv';
@@ -39325,11 +39542,467 @@ function sp_ajax_export_library(): void {
             $item->last_updated_date,
             $item->item_condition,
             $item->available,
+            $item->cover_url,
         ] );
     }
 
     fclose( $out );
     exit;
+}
+
+
+// ============================================================================
+// LIBRARY ENRICHMENT — Batch-fetch cover images + ISBNs from Open Library
+//
+// WHY: The imported catalog has 19k+ items but zero ISBNs and no cover images.
+//      Open Library's free API can be queried by LCCN (3,200+ items have these)
+//      and by title+author for the rest. This tool batch-processes the catalog,
+//      storing cover_url and isbn for any matches found. The hit rate for niche
+//      genealogy material will be modest, but even partial coverage makes the
+//      catalog look dramatically more polished.
+//
+// HOW IT WORKS:
+//   1. Admin clicks "Start Enrichment" on the Library Enrichment page.
+//   2. JavaScript sends AJAX requests in small batches (10 items at a time)
+//      to avoid timeouts and API rate limits.
+//   3. Each batch: PHP queries Open Library for each item, stores results,
+//      returns progress to the frontend.
+//   4. Admin sees a live progress bar with running stats.
+//
+// OPEN LIBRARY API — Free, no key needed:
+//   - Search: https://openlibrary.org/search.json?title=X&author=Y&limit=1
+//   - LCCN lookup: https://openlibrary.org/search.json?lccn=X&limit=1
+//   - Covers by OLID: https://covers.openlibrary.org/b/olid/{OLID}-M.jpg
+//   - Covers by ISBN: https://covers.openlibrary.org/b/isbn/{ISBN}-M.jpg
+// ============================================================================
+
+add_action( 'wp_ajax_sp_library_enrich_batch', 'sp_ajax_library_enrich_batch' );
+
+/**
+ * Render: Library Enrichment Admin Page
+ *
+ * WHY: Provides an admin interface to batch-fetch cover images and ISBNs from
+ *      Open Library. Shows current enrichment status and a Start button that
+ *      processes items in AJAX batches with a live progress bar.
+ */
+function sp_render_library_enrich_page(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // Current stats
+    $total      = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}library_items" );
+    $has_cover  = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}library_items WHERE cover_url IS NOT NULL AND cover_url != ''" );
+    $has_isbn   = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}library_items WHERE isbn IS NOT NULL AND isbn != ''" );
+    $has_lccn   = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}library_items WHERE lccn IS NOT NULL AND TRIM(lccn) != ''" );
+    $no_cover   = $total - $has_cover;
+    ?>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Library Enrichment', 'societypress' ); ?></h1>
+        <p><?php esc_html_e( 'Automatically fetch book cover images and ISBNs from Open Library. This queries their free, public API using LCCNs and title/author data from your catalog.', 'societypress' ); ?></p>
+
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:16px; margin:20px 0;">
+            <div style="background:#fff; border:1px solid #ddd; border-radius:8px; padding:16px; text-align:center;">
+                <div style="font-size:28px; font-weight:700; color:#0a6b2e;"><?php echo number_format( $has_cover ); ?></div>
+                <div style="font-size:13px; color:#666;"><?php esc_html_e( 'Have Covers', 'societypress' ); ?></div>
+            </div>
+            <div style="background:#fff; border:1px solid #ddd; border-radius:8px; padding:16px; text-align:center;">
+                <div style="font-size:28px; font-weight:700; color:#b32d2e;"><?php echo number_format( $no_cover ); ?></div>
+                <div style="font-size:13px; color:#666;"><?php esc_html_e( 'Missing Covers', 'societypress' ); ?></div>
+            </div>
+            <div style="background:#fff; border:1px solid #ddd; border-radius:8px; padding:16px; text-align:center;">
+                <div style="font-size:28px; font-weight:700; color:#2271b1;"><?php echo number_format( $has_isbn ); ?></div>
+                <div style="font-size:13px; color:#666;"><?php esc_html_e( 'Have ISBNs', 'societypress' ); ?></div>
+            </div>
+            <div style="background:#fff; border:1px solid #ddd; border-radius:8px; padding:16px; text-align:center;">
+                <div style="font-size:28px; font-weight:700; color:#555;"><?php echo number_format( $has_lccn ); ?></div>
+                <div style="font-size:13px; color:#666;"><?php esc_html_e( 'Have LCCNs', 'societypress' ); ?></div>
+            </div>
+        </div>
+
+        <div style="background:#fff; border:1px solid #ddd; border-radius:8px; padding:20px; margin:20px 0; max-width:700px;">
+            <h2 style="margin-top:0;"><?php esc_html_e( 'Run Enrichment', 'societypress' ); ?></h2>
+            <p style="color:#666; font-size:14px;">
+                <?php esc_html_e( 'This will process items that don\'t yet have a cover image. Items with LCCNs are tried first (higher match rate), then title+author search for the rest. Open Library\'s API is free but rate-limited, so this runs in small batches.', 'societypress' ); ?>
+            </p>
+
+            <div style="margin:16px 0;">
+                <label style="display:block; margin-bottom:8px;">
+                    <input type="checkbox" id="sp-enrich-lccn-only" value="1">
+                    <?php esc_html_e( 'Only process items with LCCNs (faster, higher hit rate)', 'societypress' ); ?>
+                </label>
+                <label style="display:block; margin-bottom:8px;">
+                    <input type="checkbox" id="sp-enrich-skip-attempted" value="1" checked>
+                    <?php esc_html_e( 'Skip items already attempted (no cover found previously)', 'societypress' ); ?>
+                </label>
+            </div>
+
+            <button type="button" id="sp-enrich-start" class="button button-primary button-hero"><?php esc_html_e( 'Start Enrichment', 'societypress' ); ?></button>
+            <button type="button" id="sp-enrich-stop" class="button button-hero" style="display:none;"><?php esc_html_e( 'Stop', 'societypress' ); ?></button>
+
+            <!-- Progress bar -->
+            <div id="sp-enrich-progress" style="display:none; margin-top:20px;">
+                <div style="background:#eee; border-radius:6px; height:24px; overflow:hidden;">
+                    <div id="sp-enrich-bar" style="background:#2271b1; height:100%; width:0%; transition:width 0.3s ease; border-radius:6px;"></div>
+                </div>
+                <div id="sp-enrich-status" style="margin-top:10px; font-size:14px; color:#555;"></div>
+            </div>
+
+            <!-- Results log -->
+            <div id="sp-enrich-log" style="display:none; margin-top:20px; max-height:300px; overflow-y:auto; background:#f8f9fa; border:1px solid #ddd; border-radius:6px; padding:12px; font-size:13px; font-family:monospace; line-height:1.6;"></div>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        var startBtn   = document.getElementById('sp-enrich-start');
+        var stopBtn    = document.getElementById('sp-enrich-stop');
+        var progressEl = document.getElementById('sp-enrich-progress');
+        var barEl      = document.getElementById('sp-enrich-bar');
+        var statusEl   = document.getElementById('sp-enrich-status');
+        var logEl      = document.getElementById('sp-enrich-log');
+        var running    = false;
+        var stopped    = false;
+
+        // Running totals for the session
+        var processed  = 0;
+        var found      = 0;
+        var notFound   = 0;
+        var errors     = 0;
+        var totalToProcess = 0;
+        var ajaxUrl    = '<?php echo esc_js( admin_url( 'admin-ajax.php' ) ); ?>';
+        var nonce      = '<?php echo esc_js( wp_create_nonce( 'sp_library_enrich' ) ); ?>';
+
+        startBtn.addEventListener('click', function() {
+            if ( running ) return;
+            running = true;
+            stopped = false;
+            processed = 0; found = 0; notFound = 0; errors = 0;
+
+            startBtn.style.display = 'none';
+            stopBtn.style.display = '';
+            progressEl.style.display = 'block';
+            logEl.style.display = 'block';
+            logEl.innerHTML = '';
+            barEl.style.width = '0%';
+
+            log('Starting enrichment...');
+            fetchBatch();
+        });
+
+        stopBtn.addEventListener('click', function() {
+            stopped = true;
+            stopBtn.style.display = 'none';
+            log('Stopping after current batch completes...');
+        });
+
+        function fetchBatch() {
+            if ( stopped ) {
+                finish('Stopped by user.');
+                return;
+            }
+
+            var lccnOnly = document.getElementById('sp-enrich-lccn-only').checked ? '1' : '0';
+            var skipAttempted = document.getElementById('sp-enrich-skip-attempted').checked ? '1' : '0';
+
+            var params = new URLSearchParams({
+                action: 'sp_library_enrich_batch',
+                _wpnonce: nonce,
+                batch_size: '10',
+                offset: processed.toString(),
+                lccn_only: lccnOnly,
+                skip_attempted: skipAttempted
+            });
+
+            fetch(ajaxUrl + '?' + params.toString(), { credentials: 'same-origin' })
+                .then(function(r) { return r.json(); })
+                .then(function(resp) {
+                    if ( ! resp.success ) {
+                        log('Error: ' + (resp.data || 'Unknown error'));
+                        finish('Stopped due to error.');
+                        return;
+                    }
+
+                    var d = resp.data;
+                    totalToProcess = d.total_remaining + processed;
+
+                    // Update counters with this batch's results
+                    processed += d.processed;
+                    found     += d.found;
+                    notFound  += d.not_found;
+                    errors    += d.errors;
+
+                    // Log individual results
+                    if ( d.results && d.results.length ) {
+                        d.results.forEach(function(r) {
+                            var icon = r.status === 'found' ? '✅' : (r.status === 'error' ? '❌' : '⬜');
+                            log(icon + ' ' + r.title + (r.method ? ' [' + r.method + ']' : ''));
+                        });
+                    }
+
+                    // Update progress
+                    var pct = totalToProcess > 0 ? Math.round( (processed / totalToProcess) * 100 ) : 0;
+                    barEl.style.width = pct + '%';
+                    statusEl.textContent = 'Processed: ' + processed + ' / ' + totalToProcess +
+                        ' | Covers found: ' + found + ' | Not found: ' + notFound + ' | Errors: ' + errors;
+
+                    // If there are more items, continue after a brief delay
+                    // WHY: Open Library rate-limits to ~100 requests/5min for unauthed clients.
+                    //      A 2-second pause between batches of 10 keeps us well within limits.
+                    if ( d.has_more && ! stopped ) {
+                        setTimeout(fetchBatch, 2000);
+                    } else {
+                        finish(d.has_more ? 'Stopped.' : 'Complete!');
+                    }
+                })
+                .catch(function(err) {
+                    log('Network error: ' + err.message);
+                    finish('Stopped due to network error.');
+                });
+        }
+
+        function finish(msg) {
+            running = false;
+            startBtn.style.display = '';
+            stopBtn.style.display = 'none';
+            log(msg + ' Covers found: ' + found + ' of ' + processed + ' processed.');
+            statusEl.textContent = msg + ' Processed: ' + processed +
+                ' | Covers found: ' + found + ' | Not found: ' + notFound + ' | Errors: ' + errors;
+        }
+
+        function log(msg) {
+            logEl.innerHTML += msg + '<br>';
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+    })();
+    </script>
+    <?php
+}
+
+/**
+ * AJAX: Process one batch of library enrichment
+ *
+ * WHY: Runs server-side to query Open Library's API for each item in the batch.
+ *      We do this in PHP (not client-side JS) because:
+ *      1. We need to write results to the database immediately.
+ *      2. Server-side HTTP is more reliable than browser CORS requests.
+ *      3. We can control rate limiting and error handling centrally.
+ *
+ * STRATEGY:
+ *   - Items with LCCNs: query by LCCN first (most specific match).
+ *   - All items: fall back to title+author search.
+ *   - For each match, grab the cover ID (if available) and any ISBN.
+ *   - Cover URL pattern: https://covers.openlibrary.org/b/olid/{cover_edition_key}-M.jpg
+ *   - We also mark items as "attempted" by setting cover_url to empty string
+ *     (as opposed to NULL which means never tried), so we can skip them on re-runs.
+ */
+function sp_ajax_library_enrich_batch(): void {
+    check_ajax_referer( 'sp_library_enrich' );
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( 'Unauthorized.' );
+    }
+
+    global $wpdb;
+    $prefix     = $wpdb->prefix . 'sp_';
+    $batch_size = min( 20, max( 1, absint( $_GET['batch_size'] ?? 10 ) ) );
+    $lccn_only  = ( $_GET['lccn_only'] ?? '0' ) === '1';
+    $skip_attempted = ( $_GET['skip_attempted'] ?? '1' ) === '1';
+
+    // Build WHERE clause for items needing enrichment
+    // WHY: NULL cover_url = never attempted. Empty string = attempted, nothing found.
+    //      If skip_attempted is on, we only process NULLs. Otherwise we retry everything
+    //      without a cover (both NULL and empty).
+    $where = [];
+    if ( $skip_attempted ) {
+        $where[] = 'cover_url IS NULL';
+    } else {
+        $where[] = "(cover_url IS NULL OR cover_url = '')";
+    }
+    if ( $lccn_only ) {
+        $where[] = "lccn IS NOT NULL AND TRIM(lccn) != ''";
+    }
+    $where_sql = implode( ' AND ', $where );
+
+    // Get total remaining for progress tracking
+    $total_remaining = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$prefix}library_items WHERE {$where_sql}"
+    );
+
+    // Fetch the next batch — prioritize items with LCCNs (higher match rate)
+    $items = $wpdb->get_results( $wpdb->prepare(
+        "SELECT id, title, author, lccn, isbn
+         FROM {$prefix}library_items
+         WHERE {$where_sql}
+         ORDER BY (lccn IS NOT NULL AND TRIM(lccn) != '') DESC, id ASC
+         LIMIT %d",
+        $batch_size
+    ) );
+
+    $results   = [];
+    $found     = 0;
+    $not_found = 0;
+    $err_count = 0;
+
+    foreach ( $items as $item ) {
+        $cover_url = '';
+        $isbn      = $item->isbn ?: '';
+        $method    = '';
+
+        // ------------------------------------------------------------------
+        // Strategy 1: Try LCCN lookup (most specific)
+        // ------------------------------------------------------------------
+        if ( $item->lccn && trim( $item->lccn ) !== '' ) {
+            // WHY strip dashes: the society LCCNs are stored as "85-082513" but Open Library
+            // expects them without dashes (e.g. "85082513"). The dash format returns 0 results.
+            $lccn_clean = str_replace( '-', '', trim( $item->lccn ) );
+            $api_url = 'https://openlibrary.org/search.json?' . http_build_query( [
+                'lccn'   => $lccn_clean,
+                'limit'  => 1,
+                'fields' => 'cover_edition_key,isbn,cover_i,edition_key',
+            ] );
+
+            $response = wp_remote_get( $api_url, [
+                'timeout' => 15,
+                'headers' => [ 'User-Agent' => 'SocietyPress/0.30 (WordPress plugin; library enrichment)' ],
+            ] );
+
+            if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) === 200 ) {
+                $body = json_decode( wp_remote_retrieve_body( $response ), true );
+                if ( ! empty( $body['docs'][0] ) ) {
+                    $doc = $body['docs'][0];
+                    $cover_url = sp_extract_cover_url( $doc );
+                    if ( empty( $isbn ) && ! empty( $doc['isbn'] ) ) {
+                        $isbn = is_array( $doc['isbn'] ) ? $doc['isbn'][0] : $doc['isbn'];
+                    }
+                    if ( $cover_url ) {
+                        $method = 'LCCN';
+                    }
+                }
+            } else {
+                $err_count++;
+                $results[] = [
+                    'title'  => mb_substr( $item->title, 0, 60 ),
+                    'status' => 'error',
+                    'method' => 'LCCN lookup failed',
+                ];
+                // Mark as attempted so we don't loop forever on network errors
+                $wpdb->update( $prefix . 'library_items', [ 'cover_url' => '' ], [ 'id' => $item->id ] );
+                continue;
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // Strategy 2: Title + Author search (broader, lower precision)
+        // ------------------------------------------------------------------
+        if ( ! $cover_url && $item->title ) {
+            $search_params = [
+                'title'  => $item->title,
+                'limit'  => 1,
+                'fields' => 'cover_edition_key,isbn,cover_i,edition_key',
+            ];
+            if ( $item->author ) {
+                $search_params['author'] = $item->author;
+            }
+
+            $api_url  = 'https://openlibrary.org/search.json?' . http_build_query( $search_params );
+            $response = wp_remote_get( $api_url, [
+                'timeout' => 15,
+                'headers' => [ 'User-Agent' => 'SocietyPress/0.30 (WordPress plugin; library enrichment)' ],
+            ] );
+
+            if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) === 200 ) {
+                $body = json_decode( wp_remote_retrieve_body( $response ), true );
+                if ( ! empty( $body['docs'][0] ) ) {
+                    $doc = $body['docs'][0];
+                    $url = sp_extract_cover_url( $doc );
+                    if ( $url ) {
+                        $cover_url = $url;
+                        $method = 'title+author';
+                    }
+                    if ( empty( $isbn ) && ! empty( $doc['isbn'] ) ) {
+                        $isbn = is_array( $doc['isbn'] ) ? $doc['isbn'][0] : $doc['isbn'];
+                    }
+                }
+            }
+
+            if ( ! $cover_url ) {
+                $method = '';
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // Store results
+        // ------------------------------------------------------------------
+        $update_data = [
+            // Empty string = attempted but not found. Null = never attempted.
+            'cover_url' => $cover_url ?: '',
+        ];
+        if ( $isbn && empty( $item->isbn ) ) {
+            $update_data['isbn'] = mb_substr( $isbn, 0, 20 );
+        }
+        $wpdb->update( $prefix . 'library_items', $update_data, [ 'id' => $item->id ] );
+
+        if ( $cover_url ) {
+            $found++;
+            $results[] = [
+                'title'  => mb_substr( $item->title, 0, 60 ),
+                'status' => 'found',
+                'method' => $method,
+            ];
+        } else {
+            $not_found++;
+            $results[] = [
+                'title'  => mb_substr( $item->title, 0, 60 ),
+                'status' => 'not_found',
+                'method' => '',
+            ];
+        }
+
+        // Brief pause between API calls to be a respectful API consumer
+        usleep( 200000 ); // 200ms
+    }
+
+    wp_send_json_success( [
+        'processed'       => count( $items ),
+        'found'           => $found,
+        'not_found'       => $not_found,
+        'errors'          => $err_count,
+        'total_remaining' => $total_remaining,
+        'has_more'        => $total_remaining > count( $items ),
+        'results'         => $results,
+    ] );
+}
+
+/**
+ * Helper: Extract a cover image URL from an Open Library search result doc.
+ *
+ * WHY: Open Library has multiple ways to reference cover images:
+ *      1. cover_i — a numeric cover ID → https://covers.openlibrary.org/b/id/{cover_i}-M.jpg
+ *      2. cover_edition_key — an OLID → https://covers.openlibrary.org/b/olid/{key}-M.jpg
+ *      3. edition_key array — can construct OLID-based URLs from any edition
+ *      We try them in order of reliability. The -M suffix gives a medium-sized
+ *      image (180px wide), which is perfect for catalog display.
+ *
+ * @param  array  $doc  A single document from Open Library's search API response.
+ * @return string       Cover image URL, or empty string if none found.
+ */
+function sp_extract_cover_url( array $doc ): string {
+    // Method 1: Direct cover ID (most reliable when present)
+    if ( ! empty( $doc['cover_i'] ) ) {
+        return 'https://covers.openlibrary.org/b/id/' . (int) $doc['cover_i'] . '-M.jpg';
+    }
+
+    // Method 2: Cover edition key (OLID)
+    if ( ! empty( $doc['cover_edition_key'] ) ) {
+        return 'https://covers.openlibrary.org/b/olid/' . sanitize_text_field( $doc['cover_edition_key'] ) . '-M.jpg';
+    }
+
+    // Method 3: First edition key as fallback
+    if ( ! empty( $doc['edition_key'] ) && is_array( $doc['edition_key'] ) ) {
+        return 'https://covers.openlibrary.org/b/olid/' . sanitize_text_field( $doc['edition_key'][0] ) . '-M.jpg';
+    }
+
+    return '';
 }
 
 
@@ -40816,4 +41489,1841 @@ function sp_unified_search(): void {
 
     $results = sp_do_unified_search( $query, 5 );
     wp_send_json_success( $results );
+}
+
+
+// ============================================================================
+// GENEALOGICAL RECORDS MODULE
+//
+// WHY: Genealogical societies hold transcribed records — cemetery indexes,
+//      census transcriptions, church records, obituary indexes, etc. Each
+//      collection has a different schema (fields), so this module uses an
+//      EAV (Entity-Attribute-Value) pattern: admins define collections and
+//      their fields, then import or manually enter records. A concatenated
+//      search_text column on sp_records enables fast FULLTEXT search without
+//      joining the EAV table on every query.
+//
+// ARCHITECTURE:
+//   sp_record_collections       — One row per collection (e.g., "Sample County Cemetery Index")
+//   sp_record_collection_fields — Per-collection field definitions (name, type, searchable, public)
+//   sp_records                  — One row per record, with search_text for FULLTEXT
+//   sp_record_values            — EAV: field_id + field_value per record
+//
+// ADMIN PAGES:
+//   sp-record-collections       — List/manage collections
+//   sp-record-collection-edit   — Create/edit a collection + its fields
+//   sp-record-browse            — Browse records within a collection
+//   sp-record-edit              — Add/edit a single record
+//   sp-import-records           — CSV import into a collection
+//
+// FRONTEND:
+//   Page builder widget: records_search
+//   Page template: sp-records
+// ============================================================================
+
+
+/**
+ * Render: Record Collections Admin Page
+ *
+ * WHY: The main admin landing for genealogical records. Lists all collections
+ *      with their record counts, types, and status. Admins can create new
+ *      collections, edit existing ones, or jump into browsing records.
+ */
+function sp_render_record_collections_page(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // Handle delete action
+    if ( isset( $_GET['action'] ) && $_GET['action'] === 'delete' && isset( $_GET['collection_id'] ) ) {
+        $del_id = absint( $_GET['collection_id'] );
+        check_admin_referer( 'sp_delete_collection_' . $del_id );
+
+        // Delete all record values for records in this collection
+        $wpdb->query( $wpdb->prepare(
+            "DELETE rv FROM {$prefix}record_values rv
+             INNER JOIN {$prefix}records r ON rv.record_id = r.id
+             WHERE r.collection_id = %d",
+            $del_id
+        ) );
+        // Delete all records
+        $wpdb->delete( $prefix . 'records', [ 'collection_id' => $del_id ] );
+        // Delete field definitions
+        $wpdb->delete( $prefix . 'record_collection_fields', [ 'collection_id' => $del_id ] );
+        // Delete the collection itself
+        $wpdb->delete( $prefix . 'record_collections', [ 'id' => $del_id ] );
+
+        echo '<div class="notice notice-success"><p>' . esc_html__( 'Collection and all its records deleted.', 'societypress' ) . '</p></div>';
+    }
+
+    $collections = $wpdb->get_results(
+        "SELECT c.*, u.display_name AS created_by_name
+         FROM {$prefix}record_collections c
+         LEFT JOIN {$wpdb->users} u ON c.created_by = u.ID
+         ORDER BY c.name ASC"
+    );
+
+    // Record type labels for display
+    $type_labels = sp_record_type_labels();
+    ?>
+    <div class="wrap">
+        <h1>
+            <?php esc_html_e( 'Record Collections', 'societypress' ); ?>
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-collection-edit' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Add New Collection', 'societypress' ); ?></a>
+        </h1>
+        <p><?php esc_html_e( 'Manage your society\'s transcribed genealogical record collections — cemetery indexes, census transcriptions, church records, and more.', 'societypress' ); ?></p>
+
+        <?php if ( empty( $collections ) ) : ?>
+            <div style="text-align:center; padding:60px 20px; color:#666;">
+                <span class="dashicons dashicons-book" style="font-size:48px; width:48px; height:48px; color:#ccc;"></span>
+                <h2><?php esc_html_e( 'No collections yet', 'societypress' ); ?></h2>
+                <p><?php esc_html_e( 'Create your first record collection to start importing transcribed genealogical records.', 'societypress' ); ?></p>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-collection-edit' ) ); ?>" class="button button-primary button-hero"><?php esc_html_e( 'Create Collection', 'societypress' ); ?></a>
+            </div>
+        <?php else : ?>
+            <table class="wp-list-table widefat fixed striped" style="margin-top:16px;">
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e( 'Collection', 'societypress' ); ?></th>
+                        <th style="width:140px;"><?php esc_html_e( 'Type', 'societypress' ); ?></th>
+                        <th style="width:100px; text-align:center;"><?php esc_html_e( 'Records', 'societypress' ); ?></th>
+                        <th style="width:100px;"><?php esc_html_e( 'Access', 'societypress' ); ?></th>
+                        <th style="width:80px;"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                        <th style="width:200px;"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ( $collections as $c ) :
+                        $edit_url   = admin_url( 'admin.php?page=sp-record-collection-edit&collection_id=' . $c->id );
+                        $browse_url = admin_url( 'admin.php?page=sp-record-browse&collection_id=' . $c->id );
+                        $import_url = admin_url( 'admin.php?page=sp-import-records&collection_id=' . $c->id );
+                        $delete_url = wp_nonce_url(
+                            admin_url( 'admin.php?page=sp-record-collections&action=delete&collection_id=' . $c->id ),
+                            'sp_delete_collection_' . $c->id
+                        );
+                    ?>
+                        <tr>
+                            <td>
+                                <strong><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $c->name ); ?></a></strong>
+                                <?php if ( $c->description ) : ?>
+                                    <br><span style="color:#666; font-size:13px;"><?php echo esc_html( wp_trim_words( $c->description, 15 ) ); ?></span>
+                                <?php endif; ?>
+                            </td>
+                            <td><?php echo esc_html( $type_labels[ $c->record_type ] ?? ucfirst( $c->record_type ) ); ?></td>
+                            <td style="text-align:center;">
+                                <a href="<?php echo esc_url( $browse_url ); ?>"><?php echo number_format( $c->record_count ); ?></a>
+                            </td>
+                            <td>
+                                <?php if ( $c->access_level === 'public' ) : ?>
+                                    <span style="color:#0a6b2e;"><?php esc_html_e( 'Public', 'societypress' ); ?></span>
+                                <?php else : ?>
+                                    <span style="color:#92400e;"><?php esc_html_e( 'Members', 'societypress' ); ?></span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php if ( $c->status === 'active' ) : ?>
+                                    <span style="color:#0a6b2e; font-weight:600;"><?php esc_html_e( 'Active', 'societypress' ); ?></span>
+                                <?php else : ?>
+                                    <span style="color:#666;"><?php esc_html_e( 'Draft', 'societypress' ); ?></span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <a href="<?php echo esc_url( $browse_url ); ?>" class="button button-small"><?php esc_html_e( 'Browse', 'societypress' ); ?></a>
+                                <a href="<?php echo esc_url( $import_url ); ?>" class="button button-small"><?php esc_html_e( 'Import', 'societypress' ); ?></a>
+                                <a href="<?php echo esc_url( $edit_url ); ?>" class="button button-small"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
+                                <a href="<?php echo esc_url( $delete_url ); ?>" class="button button-small" style="color:#b32d2e;" onclick="return confirm('Delete this collection and ALL its records? This cannot be undone.');"><?php esc_html_e( 'Delete', 'societypress' ); ?></a>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+    </div>
+    <?php
+}
+
+
+/**
+ * Helper: Record type labels
+ *
+ * WHY: Provides human-readable labels for the record_type column.
+ *      Used in both admin display and the collection edit form dropdown.
+ */
+function sp_record_type_labels(): array {
+    return [
+        'cemetery'    => __( 'Cemetery / Burial Index', 'societypress' ),
+        'census'      => __( 'Census Transcription', 'societypress' ),
+        'church'      => __( 'Church Records', 'societypress' ),
+        'obituary'    => __( 'Obituary Index', 'societypress' ),
+        'marriage'    => __( 'Marriage Records', 'societypress' ),
+        'vital'       => __( 'Vital Records', 'societypress' ),
+        'military'    => __( 'Military Records', 'societypress' ),
+        'land'        => __( 'Land / Deed Records', 'societypress' ),
+        'probate'     => __( 'Probate / Estate Records', 'societypress' ),
+        'immigration' => __( 'Immigration / Naturalization', 'societypress' ),
+        'newspaper'   => __( 'Newspaper Abstracts', 'societypress' ),
+        'tax'         => __( 'Tax Lists', 'societypress' ),
+        'general'     => __( 'General / Other', 'societypress' ),
+    ];
+}
+
+
+/**
+ * Helper: Default field templates for common record types
+ *
+ * WHY: When an admin creates a new collection, we can pre-populate sensible
+ *      fields based on the record type. This saves them from having to define
+ *      "Surname, Given Name, Date of Death, Cemetery, Section, Lot" by hand
+ *      every time. They can always add/remove/reorder fields after creation.
+ */
+function sp_record_type_default_fields( string $type ): array {
+    $templates = [
+        'cemetery' => [
+            [ 'field_name' => 'Surname',        'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Given Name',      'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Birth Date',      'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
+            [ 'field_name' => 'Death Date',      'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
+            [ 'field_name' => 'Cemetery',        'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Location',        'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Section',         'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
+            [ 'field_name' => 'Lot',             'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
+            [ 'field_name' => 'Notes',           'field_type' => 'textarea', 'searchable' => 1, 'is_public' => 1 ],
+        ],
+        'census' => [
+            [ 'field_name' => 'Surname',         'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Given Name',      'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Age',             'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
+            [ 'field_name' => 'Sex',             'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
+            [ 'field_name' => 'Race',            'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
+            [ 'field_name' => 'Occupation',      'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Birthplace',      'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'County',          'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'State',           'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Year',            'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
+            [ 'field_name' => 'Household',       'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
+            [ 'field_name' => 'Page',            'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
+        ],
+        'church' => [
+            [ 'field_name' => 'Surname',         'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Given Name',      'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Event Type',      'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Date',            'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
+            [ 'field_name' => 'Church',          'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Location',        'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Notes',           'field_type' => 'textarea', 'searchable' => 1, 'is_public' => 1 ],
+        ],
+        'obituary' => [
+            [ 'field_name' => 'Surname',         'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Given Name',      'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Death Date',      'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
+            [ 'field_name' => 'Newspaper',       'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Publication Date', 'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
+            [ 'field_name' => 'Page',            'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
+            [ 'field_name' => 'Notes',           'field_type' => 'textarea', 'searchable' => 1, 'is_public' => 1 ],
+        ],
+        'marriage' => [
+            [ 'field_name' => 'Groom Surname',    'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Groom Given Name',  'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Bride Surname',     'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Bride Given Name',  'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Date',              'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
+            [ 'field_name' => 'Location',          'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Officiant',         'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
+            [ 'field_name' => 'Book/Page',         'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
+        ],
+        'vital' => [
+            [ 'field_name' => 'Surname',         'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Given Name',      'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Event Type',      'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Date',            'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
+            [ 'field_name' => 'Location',        'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Book/Page',       'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
+            [ 'field_name' => 'Notes',           'field_type' => 'textarea', 'searchable' => 1, 'is_public' => 1 ],
+        ],
+    ];
+
+    return $templates[ $type ] ?? [
+        [ 'field_name' => 'Surname',    'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+        [ 'field_name' => 'Given Name', 'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+        [ 'field_name' => 'Date',       'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
+        [ 'field_name' => 'Location',   'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+        [ 'field_name' => 'Notes',      'field_type' => 'textarea', 'searchable' => 1, 'is_public' => 1 ],
+    ];
+}
+
+
+/**
+ * Render: Collection Edit Page (Create / Edit)
+ *
+ * WHY: This is where admins define a collection's metadata (name, type, access
+ *      level) and its field schema. The field configurator lets them add, remove,
+ *      reorder, and configure fields. When creating a new collection, default
+ *      fields are pre-populated based on the selected record type.
+ */
+function sp_render_record_collection_edit_page(): void {
+    global $wpdb;
+    $prefix        = $wpdb->prefix . 'sp_';
+    $collection_id = absint( $_GET['collection_id'] ?? 0 );
+
+    // Handle save
+    if ( isset( $_POST['sp_save_collection'] ) && check_admin_referer( 'sp_record_collection_save' ) ) {
+
+        $data = [
+            'name'         => sanitize_text_field( $_POST['name'] ?? '' ),
+            'slug'         => sanitize_title( $_POST['name'] ?? '' ),
+            'description'  => sanitize_textarea_field( $_POST['description'] ?? '' ) ?: null,
+            'record_type'  => sanitize_text_field( $_POST['record_type'] ?? 'general' ),
+            'source_info'  => sanitize_textarea_field( $_POST['source_info'] ?? '' ) ?: null,
+            'date_range'   => sanitize_text_field( $_POST['date_range'] ?? '' ) ?: null,
+            'location'     => sanitize_text_field( $_POST['location'] ?? '' ) ?: null,
+            'access_level' => in_array( $_POST['access_level'] ?? '', [ 'public', 'members' ], true ) ? $_POST['access_level'] : 'members',
+            'status'       => in_array( $_POST['status'] ?? '', [ 'active', 'draft' ], true ) ? $_POST['status'] : 'draft',
+        ];
+
+        if ( ! empty( $data['name'] ) ) {
+            if ( $collection_id ) {
+                $wpdb->update( $prefix . 'record_collections', $data, [ 'id' => $collection_id ] );
+            } else {
+                $data['created_by'] = get_current_user_id();
+                $wpdb->insert( $prefix . 'record_collections', $data );
+                $collection_id = $wpdb->insert_id;
+            }
+
+            // Save fields — rebuild from POST data
+            // WHY: Simpler than tracking adds/deletes/moves individually. We delete
+            //      all existing field defs and re-insert from the form. This is safe
+            //      because field_id references in sp_record_values use the field's
+            //      slug for matching during import, not the auto-increment ID.
+            $wpdb->delete( $prefix . 'record_collection_fields', [ 'collection_id' => $collection_id ] );
+
+            $field_names = $_POST['field_name'] ?? [];
+            $field_types = $_POST['field_type'] ?? [];
+            $field_searchable = $_POST['field_searchable'] ?? [];
+            $field_public     = $_POST['field_public'] ?? [];
+
+            foreach ( $field_names as $i => $fname ) {
+                $fname = sanitize_text_field( $fname );
+                if ( empty( $fname ) ) continue;
+
+                $wpdb->insert( $prefix . 'record_collection_fields', [
+                    'collection_id' => $collection_id,
+                    'field_name'    => $fname,
+                    'field_slug'    => sanitize_title( $fname ),
+                    'field_type'    => sanitize_text_field( $field_types[ $i ] ?? 'text' ),
+                    'sort_order'    => (int) $i,
+                    'searchable'    => isset( $field_searchable[ $i ] ) ? 1 : 0,
+                    'is_public'     => isset( $field_public[ $i ] ) ? 1 : 0,
+                ] );
+            }
+
+            echo '<div class="notice notice-success"><p>' . esc_html__( 'Collection saved.', 'societypress' ) . '</p></div>';
+        }
+    }
+
+    // Load collection + fields
+    $collection = $collection_id ? $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$prefix}record_collections WHERE id = %d", $collection_id
+    ) ) : null;
+
+    $fields = $collection_id ? $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$prefix}record_collection_fields WHERE collection_id = %d ORDER BY sort_order ASC",
+        $collection_id
+    ) ) : [];
+
+    $type_labels = sp_record_type_labels();
+    $field_types = [
+        'text'     => __( 'Text', 'societypress' ),
+        'textarea' => __( 'Long Text', 'societypress' ),
+        'number'   => __( 'Number', 'societypress' ),
+        'date'     => __( 'Date', 'societypress' ),
+    ];
+    ?>
+    <div class="wrap">
+        <h1><?php echo $collection ? esc_html__( 'Edit Collection', 'societypress' ) : esc_html__( 'Add Collection', 'societypress' ); ?></h1>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-collections' ) ); ?>">&larr; <?php esc_html_e( 'Back to Collections', 'societypress' ); ?></a>
+
+        <form method="post" style="margin-top:16px; max-width:900px;">
+            <?php wp_nonce_field( 'sp_record_collection_save' ); ?>
+
+            <h2><?php esc_html_e( 'Collection Details', 'societypress' ); ?></h2>
+            <table class="form-table">
+                <tr>
+                    <th><label for="name"><?php esc_html_e( 'Name', 'societypress' ); ?></label></th>
+                    <td><input type="text" name="name" id="name" class="large-text" value="<?php echo esc_attr( $collection->name ?? '' ); ?>" required placeholder="e.g., Sample County Cemetery Index"></td>
+                </tr>
+                <tr>
+                    <th><label for="record_type"><?php esc_html_e( 'Record Type', 'societypress' ); ?></label></th>
+                    <td>
+                        <select name="record_type" id="record_type">
+                            <?php foreach ( $type_labels as $val => $label ) : ?>
+                                <option value="<?php echo esc_attr( $val ); ?>" <?php selected( $collection->record_type ?? 'general', $val ); ?>><?php echo esc_html( $label ); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <?php if ( ! $collection ) : ?>
+                            <p class="description"><?php esc_html_e( 'Selecting a type pre-populates default fields below. You can customize them after.', 'societypress' ); ?></p>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
+                    <td><textarea name="description" id="description" rows="3" class="large-text"><?php echo esc_textarea( $collection->description ?? '' ); ?></textarea></td>
+                </tr>
+                <tr>
+                    <th><label for="source_info"><?php esc_html_e( 'Source Information', 'societypress' ); ?></label></th>
+                    <td><textarea name="source_info" id="source_info" rows="2" class="large-text"><?php echo esc_textarea( $collection->source_info ?? '' ); ?></textarea>
+                    <p class="description"><?php esc_html_e( 'Where this data came from — e.g., "Transcribed from original records at Sample County Courthouse, 2019–2021."', 'societypress' ); ?></p></td>
+                </tr>
+                <tr>
+                    <th><label for="date_range"><?php esc_html_e( 'Date Range', 'societypress' ); ?></label></th>
+                    <td><input type="text" name="date_range" id="date_range" class="regular-text" value="<?php echo esc_attr( $collection->date_range ?? '' ); ?>" placeholder="e.g., 1850–1920"></td>
+                </tr>
+                <tr>
+                    <th><label for="location"><?php esc_html_e( 'Location', 'societypress' ); ?></label></th>
+                    <td><input type="text" name="location" id="location" class="regular-text" value="<?php echo esc_attr( $collection->location ?? '' ); ?>" placeholder="e.g., Sample County, Texas"></td>
+                </tr>
+                <tr>
+                    <th><label for="access_level"><?php esc_html_e( 'Access Level', 'societypress' ); ?></label></th>
+                    <td>
+                        <select name="access_level" id="access_level">
+                            <option value="public" <?php selected( $collection->access_level ?? 'members', 'public' ); ?>><?php esc_html_e( 'Public — anyone can search', 'societypress' ); ?></option>
+                            <option value="members" <?php selected( $collection->access_level ?? 'members', 'members' ); ?>><?php esc_html_e( 'Members only — login required', 'societypress' ); ?></option>
+                        </select>
+                        <p class="description"><?php esc_html_e( 'Individual fields can also be restricted to members even if the collection is public.', 'societypress' ); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
+                    <td>
+                        <select name="status" id="status">
+                            <option value="active" <?php selected( $collection->status ?? 'draft', 'active' ); ?>><?php esc_html_e( 'Active — visible to users', 'societypress' ); ?></option>
+                            <option value="draft" <?php selected( $collection->status ?? 'draft', 'draft' ); ?>><?php esc_html_e( 'Draft — hidden while setting up', 'societypress' ); ?></option>
+                        </select>
+                    </td>
+                </tr>
+            </table>
+
+            <!-- ====== FIELD CONFIGURATOR ====== -->
+            <h2><?php esc_html_e( 'Fields', 'societypress' ); ?></h2>
+            <p class="description"><?php esc_html_e( 'Define the columns for this collection. Drag to reorder. Searchable fields are included in the frontend search. Non-public fields are hidden from non-members.', 'societypress' ); ?></p>
+
+            <table id="sp-field-config" class="wp-list-table widefat" style="margin:16px 0;">
+                <thead>
+                    <tr>
+                        <th style="width:30px;"></th>
+                        <th><?php esc_html_e( 'Field Name', 'societypress' ); ?></th>
+                        <th style="width:130px;"><?php esc_html_e( 'Type', 'societypress' ); ?></th>
+                        <th style="width:90px; text-align:center;"><?php esc_html_e( 'Searchable', 'societypress' ); ?></th>
+                        <th style="width:90px; text-align:center;"><?php esc_html_e( 'Public', 'societypress' ); ?></th>
+                        <th style="width:50px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="sp-field-rows">
+                    <?php
+                    // If editing, show existing fields. If new, we'll populate via JS
+                    // based on the record type selection.
+                    if ( $fields ) :
+                        foreach ( $fields as $i => $f ) :
+                    ?>
+                        <tr class="sp-field-row" draggable="true">
+                            <td style="cursor:grab; text-align:center; color:#999;">&#9776;</td>
+                            <td><input type="text" name="field_name[<?php echo $i; ?>]" value="<?php echo esc_attr( $f->field_name ); ?>" class="regular-text" required></td>
+                            <td>
+                                <select name="field_type[<?php echo $i; ?>]">
+                                    <?php foreach ( $field_types as $fv => $fl ) : ?>
+                                        <option value="<?php echo esc_attr( $fv ); ?>" <?php selected( $f->field_type, $fv ); ?>><?php echo esc_html( $fl ); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </td>
+                            <td style="text-align:center;"><input type="checkbox" name="field_searchable[<?php echo $i; ?>]" value="1" <?php checked( $f->searchable ); ?>></td>
+                            <td style="text-align:center;"><input type="checkbox" name="field_public[<?php echo $i; ?>]" value="1" <?php checked( $f->is_public ); ?>></td>
+                            <td><button type="button" class="button sp-remove-field" style="color:#b32d2e;">&times;</button></td>
+                        </tr>
+                    <?php
+                        endforeach;
+                    endif;
+                    ?>
+                </tbody>
+            </table>
+            <button type="button" id="sp-add-field" class="button"><?php esc_html_e( '+ Add Field', 'societypress' ); ?></button>
+
+            <p class="submit" style="margin-top:24px;">
+                <input type="submit" name="sp_save_collection" class="button button-primary" value="<?php echo $collection ? esc_attr__( 'Update Collection', 'societypress' ) : esc_attr__( 'Create Collection', 'societypress' ); ?>">
+            </p>
+        </form>
+    </div>
+
+    <script>
+    (function() {
+        var tbody      = document.getElementById('sp-field-rows');
+        var addBtn     = document.getElementById('sp-add-field');
+        var typeSelect = document.getElementById('record_type');
+        var fieldIdx   = <?php echo max( count( $fields ), 0 ); ?>;
+
+        // Default field templates per record type (from PHP)
+        var defaults = <?php echo wp_json_encode( array_map( function( $type ) {
+            return sp_record_type_default_fields( $type );
+        }, array_combine( array_keys( sp_record_type_labels() ), array_keys( sp_record_type_labels() ) ) ) ); ?>;
+
+        var fieldTypeOptions = <?php echo wp_json_encode( $field_types ); ?>;
+
+        // Add a single field row
+        function addFieldRow(name, type, searchable, isPublic) {
+            var tr = document.createElement('tr');
+            tr.className = 'sp-field-row';
+            tr.draggable = true;
+            var typeOpts = '';
+            for (var k in fieldTypeOptions) {
+                typeOpts += '<option value="' + k + '"' + (k === type ? ' selected' : '') + '>' + fieldTypeOptions[k] + '</option>';
+            }
+            tr.innerHTML =
+                '<td style="cursor:grab; text-align:center; color:#999;">&#9776;</td>' +
+                '<td><input type="text" name="field_name[' + fieldIdx + ']" value="' + (name || '') + '" class="regular-text" required></td>' +
+                '<td><select name="field_type[' + fieldIdx + ']">' + typeOpts + '</select></td>' +
+                '<td style="text-align:center;"><input type="checkbox" name="field_searchable[' + fieldIdx + ']" value="1"' + (searchable ? ' checked' : '') + '></td>' +
+                '<td style="text-align:center;"><input type="checkbox" name="field_public[' + fieldIdx + ']" value="1"' + (isPublic ? ' checked' : '') + '></td>' +
+                '<td><button type="button" class="button sp-remove-field" style="color:#b32d2e;">&times;</button></td>';
+            tbody.appendChild(tr);
+            fieldIdx++;
+        }
+
+        // Add field button
+        addBtn.addEventListener('click', function() {
+            addFieldRow('', 'text', true, true);
+        });
+
+        // Remove field button (delegated)
+        tbody.addEventListener('click', function(e) {
+            if (e.target.classList.contains('sp-remove-field')) {
+                e.target.closest('tr').remove();
+            }
+        });
+
+        // When record type changes on a NEW collection, populate default fields
+        <?php if ( ! $collection ) : ?>
+        typeSelect.addEventListener('change', function() {
+            var type = this.value;
+            var tmpl = defaults[type] || defaults['general'];
+            tbody.innerHTML = '';
+            fieldIdx = 0;
+            tmpl.forEach(function(f) {
+                addFieldRow(f.field_name, f.field_type, !!f.searchable, !!f.is_public);
+            });
+        });
+        // Trigger on load for new collections
+        typeSelect.dispatchEvent(new Event('change'));
+        <?php endif; ?>
+
+        // Drag-and-drop reorder
+        var dragRow = null;
+        tbody.addEventListener('dragstart', function(e) {
+            dragRow = e.target.closest('tr');
+            if (dragRow) dragRow.style.opacity = '0.5';
+        });
+        tbody.addEventListener('dragend', function(e) {
+            if (dragRow) dragRow.style.opacity = '';
+            dragRow = null;
+        });
+        tbody.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            var target = e.target.closest('tr');
+            if (target && target !== dragRow && target.parentNode === tbody) {
+                var rect = target.getBoundingClientRect();
+                var after = (e.clientY - rect.top) > (rect.height / 2);
+                tbody.insertBefore(dragRow, after ? target.nextSibling : target);
+            }
+        });
+
+        // Re-index field names before submit so sort_order is correct
+        document.querySelector('form').addEventListener('submit', function() {
+            var rows = tbody.querySelectorAll('.sp-field-row');
+            rows.forEach(function(row, idx) {
+                row.querySelectorAll('input, select').forEach(function(el) {
+                    if (el.name) {
+                        el.name = el.name.replace(/\[\d+\]/, '[' + idx + ']');
+                    }
+                });
+            });
+        });
+    })();
+    </script>
+    <?php
+}
+
+
+/**
+ * Render: Record Browse Page (Admin)
+ *
+ * WHY: Lets admins view, search, and manage individual records within a
+ *      collection. Uses the collection's field definitions to build dynamic
+ *      table columns. Supports search and pagination.
+ */
+function sp_render_record_browse_page(): void {
+    global $wpdb;
+    $prefix        = $wpdb->prefix . 'sp_';
+    $collection_id = absint( $_GET['collection_id'] ?? 0 );
+
+    if ( ! $collection_id ) {
+        echo '<div class="wrap"><h1>' . esc_html__( 'Browse Records', 'societypress' ) . '</h1>';
+        echo '<p>' . esc_html__( 'No collection specified.', 'societypress' ) . ' <a href="' . esc_url( admin_url( 'admin.php?page=sp-record-collections' ) ) . '">' . esc_html__( 'View Collections', 'societypress' ) . '</a></p></div>';
+        return;
+    }
+
+    $collection = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$prefix}record_collections WHERE id = %d", $collection_id
+    ) );
+    if ( ! $collection ) {
+        echo '<div class="wrap"><p>' . esc_html__( 'Collection not found.', 'societypress' ) . '</p></div>';
+        return;
+    }
+
+    // Handle delete
+    if ( isset( $_GET['action'] ) && $_GET['action'] === 'delete' && isset( $_GET['record_id'] ) ) {
+        $del_id = absint( $_GET['record_id'] );
+        check_admin_referer( 'sp_delete_record_' . $del_id );
+        $wpdb->delete( $prefix . 'record_values', [ 'record_id' => $del_id ] );
+        $wpdb->delete( $prefix . 'records', [ 'id' => $del_id ] );
+        // Update count
+        $new_count = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$prefix}records WHERE collection_id = %d", $collection_id
+        ) );
+        $wpdb->update( $prefix . 'record_collections', [ 'record_count' => $new_count ], [ 'id' => $collection_id ] );
+        echo '<div class="notice notice-success"><p>' . esc_html__( 'Record deleted.', 'societypress' ) . '</p></div>';
+    }
+
+    $fields = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$prefix}record_collection_fields WHERE collection_id = %d ORDER BY sort_order ASC",
+        $collection_id
+    ) );
+
+    // Search + pagination
+    $search   = isset( $_GET['s'] ) ? sanitize_text_field( $_GET['s'] ) : '';
+    $per_page = 50;
+    $page_num = max( 1, absint( $_GET['paged'] ?? 1 ) );
+    $offset   = ( $page_num - 1 ) * $per_page;
+
+    $where = $wpdb->prepare( 'r.collection_id = %d', $collection_id );
+    if ( $search ) {
+        $like   = '%' . $wpdb->esc_like( $search ) . '%';
+        $where .= $wpdb->prepare( ' AND r.search_text LIKE %s', $like );
+    }
+
+    $total = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}records r WHERE {$where}" );
+    $records = $wpdb->get_results(
+        "SELECT r.* FROM {$prefix}records r WHERE {$where} ORDER BY r.id DESC LIMIT {$per_page} OFFSET {$offset}"
+    );
+    $total_pages = (int) ceil( $total / $per_page );
+
+    // Load all values for these records in one query (avoid N+1)
+    $record_ids = wp_list_pluck( $records, 'id' );
+    $values_map = []; // record_id => [ field_id => value ]
+    if ( $record_ids ) {
+        $id_list = implode( ',', array_map( 'absint', $record_ids ) );
+        $all_vals = $wpdb->get_results(
+            "SELECT record_id, field_id, field_value FROM {$prefix}record_values WHERE record_id IN ({$id_list})"
+        );
+        foreach ( $all_vals as $v ) {
+            $values_map[ $v->record_id ][ $v->field_id ] = $v->field_value;
+        }
+    }
+
+    // Limit display columns to first 5 fields (to fit the table)
+    $display_fields = array_slice( $fields, 0, 5 );
+    ?>
+    <div class="wrap">
+        <h1>
+            <?php echo esc_html( $collection->name ); ?>
+            <span style="font-size:14px; font-weight:400; color:#666;">(<?php echo number_format( $total ); ?> <?php esc_html_e( 'records', 'societypress' ); ?>)</span>
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-edit&collection_id=' . $collection_id ) ); ?>" class="page-title-action"><?php esc_html_e( 'Add Record', 'societypress' ); ?></a>
+        </h1>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-collections' ) ); ?>">&larr; <?php esc_html_e( 'Back to Collections', 'societypress' ); ?></a>
+
+        <!-- Search -->
+        <form method="get" style="margin:16px 0;">
+            <input type="hidden" name="page" value="sp-record-browse">
+            <input type="hidden" name="collection_id" value="<?php echo esc_attr( $collection_id ); ?>">
+            <input type="text" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php esc_attr_e( 'Search records...', 'societypress' ); ?>" style="width:300px; padding:6px 10px;">
+            <input type="submit" class="button" value="<?php esc_attr_e( 'Search', 'societypress' ); ?>">
+            <?php if ( $search ) : ?>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-browse&collection_id=' . $collection_id ) ); ?>" class="button"><?php esc_html_e( 'Clear', 'societypress' ); ?></a>
+            <?php endif; ?>
+        </form>
+
+        <?php if ( empty( $records ) ) : ?>
+            <p style="color:#666; font-style:italic;"><?php esc_html_e( 'No records found.', 'societypress' ); ?></p>
+        <?php else : ?>
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th style="width:60px;">ID</th>
+                        <?php foreach ( $display_fields as $f ) : ?>
+                            <th><?php echo esc_html( $f->field_name ); ?></th>
+                        <?php endforeach; ?>
+                        <th style="width:120px;"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ( $records as $rec ) :
+                        $edit_url   = admin_url( 'admin.php?page=sp-record-edit&collection_id=' . $collection_id . '&record_id=' . $rec->id );
+                        $delete_url = wp_nonce_url(
+                            admin_url( 'admin.php?page=sp-record-browse&collection_id=' . $collection_id . '&action=delete&record_id=' . $rec->id ),
+                            'sp_delete_record_' . $rec->id
+                        );
+                    ?>
+                        <tr>
+                            <td><?php echo esc_html( $rec->id ); ?></td>
+                            <?php foreach ( $display_fields as $f ) : ?>
+                                <td><?php echo esc_html( wp_trim_words( $values_map[ $rec->id ][ $f->id ] ?? '', 10 ) ); ?></td>
+                            <?php endforeach; ?>
+                            <td>
+                                <a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> |
+                                <a href="<?php echo esc_url( $delete_url ); ?>" style="color:#b32d2e;" onclick="return confirm('Delete this record?');"><?php esc_html_e( 'Delete', 'societypress' ); ?></a>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+
+            <?php if ( $total_pages > 1 ) : ?>
+                <div class="tablenav" style="margin-top:12px;">
+                    <div class="tablenav-pages">
+                        <span class="displaying-num"><?php echo number_format( $total ) . ' ' . esc_html__( 'items', 'societypress' ); ?></span>
+                        <?php
+                        echo paginate_links( [
+                            'base'    => add_query_arg( 'paged', '%#%' ),
+                            'format'  => '',
+                            'current' => $page_num,
+                            'total'   => $total_pages,
+                        ] );
+                        ?>
+                    </div>
+                </div>
+            <?php endif; ?>
+        <?php endif; ?>
+    </div>
+    <?php
+}
+
+
+/**
+ * Render: Record Edit Page (Add / Edit Single Record)
+ *
+ * WHY: Lets admins manually add or edit a single record. The form is
+ *      dynamically built from the collection's field definitions. Each field
+ *      is rendered as the appropriate input type (text, textarea, number, date).
+ */
+function sp_render_record_edit_page(): void {
+    global $wpdb;
+    $prefix        = $wpdb->prefix . 'sp_';
+    $collection_id = absint( $_GET['collection_id'] ?? 0 );
+    $record_id     = absint( $_GET['record_id'] ?? 0 );
+
+    if ( ! $collection_id ) {
+        echo '<div class="wrap"><p>' . esc_html__( 'No collection specified.', 'societypress' ) . '</p></div>';
+        return;
+    }
+
+    $collection = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$prefix}record_collections WHERE id = %d", $collection_id
+    ) );
+    if ( ! $collection ) {
+        echo '<div class="wrap"><p>' . esc_html__( 'Collection not found.', 'societypress' ) . '</p></div>';
+        return;
+    }
+
+    $fields = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$prefix}record_collection_fields WHERE collection_id = %d ORDER BY sort_order ASC",
+        $collection_id
+    ) );
+
+    // Handle save
+    if ( isset( $_POST['sp_save_record'] ) && check_admin_referer( 'sp_record_save' ) ) {
+
+        if ( $record_id ) {
+            // Update existing — delete old values and re-insert
+            $wpdb->delete( $prefix . 'record_values', [ 'record_id' => $record_id ] );
+        } else {
+            // Insert new record shell
+            $wpdb->insert( $prefix . 'records', [
+                'collection_id' => $collection_id,
+                'search_text'   => '',
+            ] );
+            $record_id = $wpdb->insert_id;
+        }
+
+        // Insert field values + build search text
+        $search_parts = [];
+        foreach ( $fields as $f ) {
+            $val = sanitize_textarea_field( $_POST[ 'field_' . $f->id ] ?? '' );
+            if ( $val !== '' ) {
+                $wpdb->insert( $prefix . 'record_values', [
+                    'record_id'   => $record_id,
+                    'field_id'    => $f->id,
+                    'field_value' => $val,
+                ] );
+                if ( $f->searchable ) {
+                    $search_parts[] = $val;
+                }
+            }
+        }
+
+        // Update search_text
+        $wpdb->update( $prefix . 'records', [
+            'search_text' => implode( ' ', $search_parts ),
+        ], [ 'id' => $record_id ] );
+
+        // Update collection record count
+        $new_count = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$prefix}records WHERE collection_id = %d", $collection_id
+        ) );
+        $wpdb->update( $prefix . 'record_collections', [ 'record_count' => $new_count ], [ 'id' => $collection_id ] );
+
+        echo '<div class="notice notice-success"><p>' . esc_html__( 'Record saved.', 'societypress' ) . '</p></div>';
+    }
+
+    // Load existing values
+    $values = [];
+    if ( $record_id ) {
+        $rows = $wpdb->get_results( $wpdb->prepare(
+            "SELECT field_id, field_value FROM {$prefix}record_values WHERE record_id = %d", $record_id
+        ) );
+        foreach ( $rows as $r ) {
+            $values[ $r->field_id ] = $r->field_value;
+        }
+    }
+    ?>
+    <div class="wrap">
+        <h1><?php echo $record_id ? esc_html__( 'Edit Record', 'societypress' ) : esc_html__( 'Add Record', 'societypress' ); ?></h1>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-browse&collection_id=' . $collection_id ) ); ?>">&larr; <?php echo esc_html( $collection->name ); ?></a>
+
+        <form method="post" style="margin-top:16px; max-width:700px;">
+            <?php wp_nonce_field( 'sp_record_save' ); ?>
+            <table class="form-table">
+                <?php foreach ( $fields as $f ) :
+                    $val = $values[ $f->id ] ?? '';
+                ?>
+                    <tr>
+                        <th><label for="field_<?php echo esc_attr( $f->id ); ?>"><?php echo esc_html( $f->field_name ); ?></label></th>
+                        <td>
+                            <?php if ( $f->field_type === 'textarea' ) : ?>
+                                <textarea name="field_<?php echo esc_attr( $f->id ); ?>" id="field_<?php echo esc_attr( $f->id ); ?>" rows="3" class="large-text"><?php echo esc_textarea( $val ); ?></textarea>
+                            <?php elseif ( $f->field_type === 'number' ) : ?>
+                                <input type="number" name="field_<?php echo esc_attr( $f->id ); ?>" id="field_<?php echo esc_attr( $f->id ); ?>" value="<?php echo esc_attr( $val ); ?>" class="regular-text">
+                            <?php elseif ( $f->field_type === 'date' ) : ?>
+                                <input type="date" name="field_<?php echo esc_attr( $f->id ); ?>" id="field_<?php echo esc_attr( $f->id ); ?>" value="<?php echo esc_attr( $val ); ?>">
+                            <?php else : ?>
+                                <input type="text" name="field_<?php echo esc_attr( $f->id ); ?>" id="field_<?php echo esc_attr( $f->id ); ?>" value="<?php echo esc_attr( $val ); ?>" class="regular-text">
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            </table>
+            <p class="submit">
+                <input type="submit" name="sp_save_record" class="button button-primary" value="<?php echo $record_id ? esc_attr__( 'Update Record', 'societypress' ) : esc_attr__( 'Add Record', 'societypress' ); ?>">
+            </p>
+        </form>
+    </div>
+    <?php
+}
+
+
+/**
+ * Render: Record Import Page
+ *
+ * WHY: Societies typically have genealogical records in spreadsheets — sometimes
+ *      thousands or tens of thousands of rows. This two-step import (upload +
+ *      map columns → process) follows the same pattern as the library and member
+ *      imports. The admin maps CSV columns to collection fields, then we batch-
+ *      insert records and build search_text for each.
+ */
+function sp_render_record_import_page(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // Get all active collections for the selector
+    $collections = $wpdb->get_results(
+        "SELECT id, name, record_type FROM {$prefix}record_collections ORDER BY name ASC"
+    );
+
+    $collection_id = absint( $_GET['collection_id'] ?? $_POST['collection_id'] ?? 0 );
+
+    // STEP 2: Process the import
+    if ( isset( $_POST['sp_process_record_import'] ) && check_admin_referer( 'sp_record_import' ) ) {
+        $collection_id = absint( $_POST['collection_id'] );
+        $temp_file     = sanitize_text_field( $_POST['temp_file'] ?? '' );
+        $field_map     = $_POST['field_map'] ?? [];
+
+        if ( ! $collection_id || ! $temp_file || ! file_exists( $temp_file ) ) {
+            echo '<div class="notice notice-error"><p>' . esc_html__( 'Missing data. Please try again.', 'societypress' ) . '</p></div>';
+        } else {
+            // Build column-index → field_id map
+            $import_map = [];
+            foreach ( $field_map as $col_idx => $field_id ) {
+                $field_id = absint( $field_id );
+                if ( $field_id > 0 ) {
+                    $import_map[ (int) $col_idx ] = $field_id;
+                }
+            }
+
+            $results = sp_process_record_import( $temp_file, $collection_id, $import_map );
+
+            echo '<div class="notice notice-success"><p>';
+            printf(
+                esc_html__( 'Import complete: %d records imported, %d skipped, %d errors.', 'societypress' ),
+                $results['imported'],
+                $results['skipped'],
+                count( $results['errors'] )
+            );
+            echo '</p></div>';
+
+            if ( $results['errors'] ) {
+                echo '<div class="notice notice-warning"><p><strong>' . esc_html__( 'Errors:', 'societypress' ) . '</strong><br>';
+                foreach ( $results['errors'] as $err ) {
+                    echo esc_html( $err ) . '<br>';
+                }
+                echo '</p></div>';
+            }
+
+            @unlink( $temp_file );
+        }
+    }
+
+    // STEP 1: Upload + preview with field mapping
+    if ( isset( $_POST['sp_upload_record_csv'] ) && check_admin_referer( 'sp_record_import' ) ) {
+        $collection_id = absint( $_POST['collection_id'] );
+
+        if ( ! $collection_id ) {
+            echo '<div class="notice notice-error"><p>' . esc_html__( 'Please select a collection.', 'societypress' ) . '</p></div>';
+        } elseif ( empty( $_FILES['csv_file']['tmp_name'] ) ) {
+            echo '<div class="notice notice-error"><p>' . esc_html__( 'Please select a CSV file.', 'societypress' ) . '</p></div>';
+        } else {
+            $collection = $wpdb->get_row( $wpdb->prepare(
+                "SELECT * FROM {$prefix}record_collections WHERE id = %d", $collection_id
+            ) );
+            $fields = $wpdb->get_results( $wpdb->prepare(
+                "SELECT * FROM {$prefix}record_collection_fields WHERE collection_id = %d ORDER BY sort_order ASC",
+                $collection_id
+            ) );
+
+            // Move uploaded file to temp location
+            $temp_file = wp_tempnam( 'sp_record_import_' );
+            move_uploaded_file( $_FILES['csv_file']['tmp_name'], $temp_file );
+
+            // Read headers + sample rows
+            $handle  = fopen( $temp_file, 'r' );
+            $headers = fgetcsv( $handle );
+            if ( $headers ) {
+                $headers = array_map( function( $h ) {
+                    return trim( $h, "\xEF\xBB\xBF \t\n\r" );
+                }, $headers );
+            }
+            $sample_rows = [];
+            for ( $i = 0; $i < 3 && ( $row = fgetcsv( $handle ) ) !== false; $i++ ) {
+                $sample_rows[] = $row;
+            }
+            fclose( $handle );
+
+            // Auto-mapping: try to match CSV headers to field names
+            $auto_map = [];
+            foreach ( $headers as $col_idx => $header ) {
+                $header_lower = strtolower( trim( $header ) );
+                foreach ( $fields as $f ) {
+                    if ( strtolower( $f->field_name ) === $header_lower || strtolower( $f->field_slug ) === $header_lower ) {
+                        $auto_map[ $col_idx ] = $f->id;
+                        break;
+                    }
+                }
+            }
+            ?>
+            <div class="wrap">
+                <h1><?php esc_html_e( 'Import Records — Map Fields', 'societypress' ); ?></h1>
+                <p><?php printf( esc_html__( 'Importing into: %s', 'societypress' ), '<strong>' . esc_html( $collection->name ) . '</strong>' ); ?></p>
+
+                <form method="post" style="max-width:1000px;">
+                    <?php wp_nonce_field( 'sp_record_import' ); ?>
+                    <input type="hidden" name="collection_id" value="<?php echo esc_attr( $collection_id ); ?>">
+                    <input type="hidden" name="temp_file" value="<?php echo esc_attr( $temp_file ); ?>">
+
+                    <table class="wp-list-table widefat" style="margin:16px 0;">
+                        <thead>
+                            <tr>
+                                <th><?php esc_html_e( 'CSV Column', 'societypress' ); ?></th>
+                                <th><?php esc_html_e( 'Sample Data', 'societypress' ); ?></th>
+                                <th><?php esc_html_e( 'Map To Field', 'societypress' ); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ( $headers as $col_idx => $header ) : ?>
+                                <tr>
+                                    <td><strong><?php echo esc_html( $header ); ?></strong></td>
+                                    <td style="color:#666; font-size:13px;">
+                                        <?php
+                                        $samples = [];
+                                        foreach ( $sample_rows as $sr ) {
+                                            if ( isset( $sr[ $col_idx ] ) && $sr[ $col_idx ] !== '' ) {
+                                                $samples[] = mb_substr( $sr[ $col_idx ], 0, 50 );
+                                            }
+                                        }
+                                        echo esc_html( implode( ' | ', $samples ) ?: '—' );
+                                        ?>
+                                    </td>
+                                    <td>
+                                        <select name="field_map[<?php echo esc_attr( $col_idx ); ?>]">
+                                            <option value="0">— <?php esc_html_e( 'Skip', 'societypress' ); ?> —</option>
+                                            <?php foreach ( $fields as $f ) : ?>
+                                                <option value="<?php echo esc_attr( $f->id ); ?>" <?php selected( $auto_map[ $col_idx ] ?? 0, $f->id ); ?>><?php echo esc_html( $f->field_name ); ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+
+                    <p class="submit">
+                        <input type="submit" name="sp_process_record_import" class="button button-primary" value="<?php esc_attr_e( 'Import Records', 'societypress' ); ?>">
+                    </p>
+                </form>
+            </div>
+            <?php
+            return; // Don't render the upload form below
+        }
+    }
+
+    // Default: show upload form
+    ?>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Import Records', 'societypress' ); ?></h1>
+        <p><?php esc_html_e( 'Import transcribed genealogical records from a CSV file into a collection. You\'ll map CSV columns to collection fields on the next step.', 'societypress' ); ?></p>
+
+        <?php if ( empty( $collections ) ) : ?>
+            <div class="notice notice-warning">
+                <p><?php esc_html_e( 'You need to create a collection before importing records.', 'societypress' ); ?>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-collection-edit' ) ); ?>"><?php esc_html_e( 'Create one now', 'societypress' ); ?></a></p>
+            </div>
+        <?php else : ?>
+            <form method="post" enctype="multipart/form-data" style="max-width:600px; margin-top:16px;">
+                <?php wp_nonce_field( 'sp_record_import' ); ?>
+                <table class="form-table">
+                    <tr>
+                        <th><label for="collection_id"><?php esc_html_e( 'Collection', 'societypress' ); ?></label></th>
+                        <td>
+                            <select name="collection_id" id="collection_id" required>
+                                <option value="">— <?php esc_html_e( 'Select Collection', 'societypress' ); ?> —</option>
+                                <?php foreach ( $collections as $c ) : ?>
+                                    <option value="<?php echo esc_attr( $c->id ); ?>" <?php selected( $collection_id, $c->id ); ?>><?php echo esc_html( $c->name ); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="csv_file"><?php esc_html_e( 'CSV File', 'societypress' ); ?></label></th>
+                        <td><input type="file" name="csv_file" id="csv_file" accept=".csv" required></td>
+                    </tr>
+                </table>
+                <p class="submit">
+                    <input type="submit" name="sp_upload_record_csv" class="button button-primary" value="<?php esc_attr_e( 'Upload & Map Fields', 'societypress' ); ?>">
+                </p>
+            </form>
+        <?php endif; ?>
+    </div>
+    <?php
+}
+
+
+/**
+ * Process: Record CSV Import
+ *
+ * WHY: Takes a CSV file and a column→field_id mapping, inserts records into
+ *      sp_records + sp_record_values, and builds search_text for each. Updates
+ *      the collection's record_count when done.
+ *
+ * @param  string $file_path     Path to the uploaded CSV temp file.
+ * @param  int    $collection_id The collection to import into.
+ * @param  array  $import_map    Column index => field_id mapping.
+ * @return array  Results with imported/skipped/errors counts.
+ */
+function sp_process_record_import( string $file_path, int $collection_id, array $import_map ): array {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $results = [ 'imported' => 0, 'skipped' => 0, 'errors' => [] ];
+
+    $handle = fopen( $file_path, 'r' );
+    if ( ! $handle ) {
+        $results['errors'][] = 'Could not open CSV file.';
+        return $results;
+    }
+
+    // Skip header row
+    $headers = fgetcsv( $handle );
+    if ( ! $headers ) {
+        fclose( $handle );
+        $results['errors'][] = 'CSV file is empty.';
+        return $results;
+    }
+
+    // Load field definitions for searchable check
+    $field_searchable = [];
+    $field_rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT id, searchable FROM {$prefix}record_collection_fields WHERE collection_id = %d",
+        $collection_id
+    ) );
+    foreach ( $field_rows as $fr ) {
+        $field_searchable[ (int) $fr->id ] = (bool) $fr->searchable;
+    }
+
+    $row_num = 1;
+    while ( ( $row = fgetcsv( $handle ) ) !== false ) {
+        $row_num++;
+
+        // Check if the row has any mapped, non-empty values
+        $has_data = false;
+        foreach ( $import_map as $col_idx => $field_id ) {
+            if ( isset( $row[ $col_idx ] ) && trim( $row[ $col_idx ] ) !== '' ) {
+                $has_data = true;
+                break;
+            }
+        }
+        if ( ! $has_data ) {
+            $results['skipped']++;
+            continue;
+        }
+
+        // Insert record shell
+        $wpdb->insert( $prefix . 'records', [
+            'collection_id' => $collection_id,
+            'search_text'   => '',
+        ] );
+
+        if ( $wpdb->last_error ) {
+            $results['errors'][] = "Row {$row_num}: " . $wpdb->last_error;
+            if ( count( $results['errors'] ) >= 50 ) {
+                $results['errors'][] = '(Error reporting capped at 50.)';
+                break;
+            }
+            continue;
+        }
+
+        $record_id    = $wpdb->insert_id;
+        $search_parts = [];
+
+        // Insert field values
+        foreach ( $import_map as $col_idx => $field_id ) {
+            $val = isset( $row[ $col_idx ] ) ? trim( $row[ $col_idx ] ) : '';
+            if ( $val === '' ) continue;
+
+            $wpdb->insert( $prefix . 'record_values', [
+                'record_id'   => $record_id,
+                'field_id'    => $field_id,
+                'field_value' => $val,
+            ] );
+
+            if ( $field_searchable[ $field_id ] ?? false ) {
+                $search_parts[] = $val;
+            }
+        }
+
+        // Update search_text
+        if ( $search_parts ) {
+            $wpdb->update( $prefix . 'records', [
+                'search_text' => implode( ' ', $search_parts ),
+            ], [ 'id' => $record_id ] );
+        }
+
+        $results['imported']++;
+    }
+
+    fclose( $handle );
+
+    // Update collection record count
+    $new_count = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$prefix}records WHERE collection_id = %d", $collection_id
+    ) );
+    $wpdb->update( $prefix . 'record_collections', [ 'record_count' => $new_count ], [ 'id' => $collection_id ] );
+
+    return $results;
+}
+
+
+// ============================================================================
+// GENEALOGICAL RECORDS — Frontend Search
+//
+// WHY: The whole point of transcribing records is making them searchable.
+//      The frontend provides a public (or members-only) search interface
+//      where visitors can search across all collections or filter by a
+//      specific one. Results show the collection name and the first few
+//      fields of each matching record, with a detail view.
+// ============================================================================
+
+/**
+ * Page Builder Widget: records_search
+ *
+ * WHY: Allows embedding the records search on any page via the page builder,
+ *      not just the dedicated sp-records template page.
+ */
+add_filter( 'sp_builder_widget_types', function( array $types ): array {
+    $types['records_search'] = [
+        'label'       => __( 'Genealogical Records Search', 'societypress' ),
+        'description' => __( 'Searchable interface for transcribed genealogical records.', 'societypress' ),
+        'fields'      => [
+            'collection_id' => [
+                'label'   => __( 'Collection (optional)', 'societypress' ),
+                'type'    => 'number',
+                'default' => 0,
+            ],
+            'login_required' => [
+                'label'   => __( 'Require Login', 'societypress' ),
+                'type'    => 'checkbox',
+                'default' => false,
+            ],
+        ],
+    ];
+    return $types;
+} );
+
+
+/**
+ * Render: Frontend Records Search
+ *
+ * WHY: The member-facing (or public-facing) records search. Lets users search
+ *      across all collections or a specific one. Results are displayed in a
+ *      responsive table with expandable detail rows (same UX pattern as the
+ *      library catalog). Respects per-collection and per-field access levels.
+ */
+function sp_render_records_frontend( array $widget_settings = [] ): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $login_required = $widget_settings['login_required'] ?? false;
+    if ( $login_required && ! is_user_logged_in() ) {
+        echo '<div class="sp-widget-login-required">';
+        echo '<p>' . sprintf(
+            __( 'Please <a href="%s">log in</a> to search genealogical records.', 'societypress' ),
+            esc_url( wp_login_url( get_permalink() ) )
+        ) . '</p>';
+        echo '</div>';
+        return;
+    }
+
+    $is_member     = is_user_logged_in();
+    $fixed_coll_id = absint( $widget_settings['collection_id'] ?? 0 );
+
+    // Read search params
+    $search        = isset( $_GET['sp_rec_q'] ) ? sanitize_text_field( $_GET['sp_rec_q'] ) : '';
+    $coll_filter   = $fixed_coll_id ?: ( isset( $_GET['sp_rec_coll'] ) ? absint( $_GET['sp_rec_coll'] ) : 0 );
+    $per_page      = 25;
+    $page_num      = max( 1, absint( $_GET['sp_rec_pg'] ?? 1 ) );
+    $offset        = ( $page_num - 1 ) * $per_page;
+
+    // Get active collections the user can see
+    $access_where = $is_member ? "status = 'active'" : "status = 'active' AND access_level = 'public'";
+    $available_collections = $wpdb->get_results(
+        "SELECT id, name, record_type FROM {$prefix}record_collections WHERE {$access_where} ORDER BY name ASC"
+    );
+    $coll_ids = wp_list_pluck( $available_collections, 'id' );
+    if ( empty( $coll_ids ) ) {
+        echo '<p style="color:#666;">' . esc_html__( 'No record collections are available at this time.', 'societypress' ) . '</p>';
+        return;
+    }
+
+    // Build WHERE
+    $where = [ 'r.collection_id IN (' . implode( ',', array_map( 'absint', $coll_ids ) ) . ')' ];
+    if ( $coll_filter && in_array( $coll_filter, $coll_ids, true ) ) {
+        $where = [ $wpdb->prepare( 'r.collection_id = %d', $coll_filter ) ];
+    }
+    if ( $search ) {
+        $like    = '%' . $wpdb->esc_like( $search ) . '%';
+        $where[] = $wpdb->prepare( 'r.search_text LIKE %s', $like );
+    }
+    $where_sql = implode( ' AND ', $where );
+
+    // Count + fetch
+    $total   = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}records r WHERE {$where_sql}" );
+    $records = $wpdb->get_results(
+        "SELECT r.*, c.name AS collection_name, c.record_type
+         FROM {$prefix}records r
+         INNER JOIN {$prefix}record_collections c ON r.collection_id = c.id
+         WHERE {$where_sql}
+         ORDER BY r.id DESC
+         LIMIT {$per_page} OFFSET {$offset}"
+    );
+    $total_pages = (int) ceil( $total / $per_page );
+
+    // Load field definitions for display collections
+    $active_coll_ids = array_unique( wp_list_pluck( $records, 'collection_id' ) );
+    $fields_by_coll  = [];
+    if ( $active_coll_ids ) {
+        $cid_list  = implode( ',', array_map( 'absint', $active_coll_ids ) );
+        $all_fields = $wpdb->get_results(
+            "SELECT * FROM {$prefix}record_collection_fields WHERE collection_id IN ({$cid_list}) ORDER BY sort_order ASC"
+        );
+        foreach ( $all_fields as $f ) {
+            // Respect per-field access: hide non-public fields from non-members
+            if ( ! $is_member && ! $f->is_public ) continue;
+            $fields_by_coll[ $f->collection_id ][] = $f;
+        }
+    }
+
+    // Load values for displayed records
+    $record_ids = wp_list_pluck( $records, 'id' );
+    $values_map = [];
+    if ( $record_ids ) {
+        $rid_list = implode( ',', array_map( 'absint', $record_ids ) );
+        $all_vals = $wpdb->get_results(
+            "SELECT record_id, field_id, field_value FROM {$prefix}record_values WHERE record_id IN ({$rid_list})"
+        );
+        foreach ( $all_vals as $v ) {
+            $values_map[ $v->record_id ][ $v->field_id ] = $v->field_value;
+        }
+    }
+
+    $uid = 'sp-records-' . wp_rand( 1000, 9999 );
+
+    echo '<div class="sp-records-search" id="' . esc_attr( $uid ) . '">';
+
+    // Inline styles
+    ?>
+    <style>
+        .sp-records-search { font-family: var(--sp-font-body, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif); }
+        .sp-records-filters { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; align-items: flex-end; }
+        .sp-records-filters input[type="text"] { flex: 1; min-width: 200px; padding: 10px 14px; border: 1px solid #d0d5dd; border-radius: 6px; font-size: 15px; }
+        .sp-records-filters select { padding: 10px 12px; border: 1px solid #d0d5dd; border-radius: 6px; font-size: 14px; background: #fff; min-width: 180px; }
+        .sp-records-status { margin-bottom: 14px; color: #555; font-size: 14px; }
+        .sp-records-table { width: 100%; border-collapse: collapse; }
+        .sp-records-table thead th { padding: 10px 14px; text-align: left; border-bottom: 2px solid #d0d5dd; background: #f8f9fa; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: #555; }
+        .sp-records-table tbody td { padding: 10px 14px; border-bottom: 1px solid #eee; font-size: 14px; vertical-align: top; }
+        .sp-records-table tbody tr:hover { background: #f8f9fa; cursor: pointer; }
+        .sp-records-coll-badge { font-size: 11px; color: #666; background: #f0f0f0; padding: 2px 8px; border-radius: 10px; display: inline-block; }
+        .sp-records-detail-row td { padding: 0 !important; border-bottom: 2px solid var(--sp-color-accent, #667eea) !important; }
+        .sp-records-detail { padding: 20px 24px; background: #fafbfc; animation: spRecDetailSlide 0.25s ease-out; }
+        @keyframes spRecDetailSlide { from { opacity: 0; } to { opacity: 1; } }
+        .sp-records-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 32px; }
+        .sp-records-detail-grid dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #888; margin-bottom: 2px; font-weight: 600; }
+        .sp-records-detail-grid dd { margin: 0; font-size: 14px; color: #333; }
+        .sp-records-pagination { display: flex; justify-content: center; gap: 4px; margin-top: 20px; flex-wrap: wrap; }
+        .sp-records-pagination a, .sp-records-pagination span { display: inline-block; padding: 6px 12px; border: 1px solid #d0d5dd; border-radius: 4px; font-size: 14px; text-decoration: none; color: #333; }
+        .sp-records-pagination a:hover { background: #f0f0f0; }
+        .sp-records-pagination .current { background: var(--sp-color-primary, #2271b1); color: #fff; border-color: var(--sp-color-primary, #2271b1); }
+        @media (max-width: 768px) {
+            .sp-records-filters { flex-direction: column; }
+            .sp-records-table thead { display: none; }
+            .sp-records-table tbody tr { display: block; padding: 12px 0; border-bottom: 1px solid #eee; }
+            .sp-records-table tbody td { display: block; padding: 3px 0 !important; border-bottom: none !important; }
+            .sp-records-table tbody td:before { content: attr(data-label); font-weight: 600; font-size: 11px; text-transform: uppercase; color: #888; display: block; }
+            .sp-records-detail-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+    <?php
+
+    // Search + filter bar
+    $base_params = [];
+    foreach ( $_GET as $k => $v ) {
+        if ( strpos( $k, 'sp_rec_' ) !== 0 ) {
+            $base_params[ $k ] = $v;
+        }
+    }
+
+    echo '<form method="get" class="sp-records-filters">';
+    foreach ( $base_params as $k => $v ) {
+        echo '<input type="hidden" name="' . esc_attr( $k ) . '" value="' . esc_attr( $v ) . '">';
+    }
+    echo '<input type="text" name="sp_rec_q" value="' . esc_attr( $search ) . '" placeholder="' . esc_attr__( 'Search names, places, dates...', 'societypress' ) . '">';
+
+    if ( ! $fixed_coll_id && count( $available_collections ) > 1 ) {
+        echo '<select name="sp_rec_coll">';
+        echo '<option value="">' . esc_html__( 'All Collections', 'societypress' ) . '</option>';
+        foreach ( $available_collections as $ac ) {
+            $sel = ( $coll_filter === (int) $ac->id ) ? ' selected' : '';
+            echo '<option value="' . esc_attr( $ac->id ) . '"' . $sel . '>' . esc_html( $ac->name ) . '</option>';
+        }
+        echo '</select>';
+    }
+
+    echo '<button type="submit" class="sp-btn sp-btn-primary">' . esc_html__( 'Search', 'societypress' ) . '</button>';
+    echo '</form>';
+
+    // Results count
+    echo '<div class="sp-records-status">' . number_format( $total ) . ' ' . esc_html__( 'records found', 'societypress' ) . '</div>';
+
+    if ( empty( $records ) ) {
+        echo '<p style="color:#666; font-style:italic; padding:20px 0;">' . esc_html__( 'No records match your search. Try broadening your query.', 'societypress' ) . '</p>';
+    } else {
+        // For multi-collection results, show Collection + first 3 fields
+        // For single-collection, show first 4 fields
+        $show_coll_column = ! $coll_filter || count( $active_coll_ids ) > 1;
+
+        echo '<table class="sp-records-table">';
+        echo '<thead><tr>';
+        if ( $show_coll_column ) {
+            echo '<th>' . esc_html__( 'Collection', 'societypress' ) . '</th>';
+        }
+        // Show generic column headers (we can't know field names across collections)
+        // For single-collection, use actual field names
+        if ( $coll_filter && isset( $fields_by_coll[ $coll_filter ] ) ) {
+            $display_fields = array_slice( $fields_by_coll[ $coll_filter ], 0, $show_coll_column ? 3 : 4 );
+            foreach ( $display_fields as $df ) {
+                echo '<th>' . esc_html( $df->field_name ) . '</th>';
+            }
+        } else {
+            echo '<th>' . esc_html__( 'Summary', 'societypress' ) . '</th>';
+        }
+        echo '</tr></thead><tbody>';
+
+        foreach ( $records as $rec ) {
+            $rec_fields = $fields_by_coll[ $rec->collection_id ] ?? [];
+            $rec_values = $values_map[ $rec->id ] ?? [];
+
+            echo '<tr class="sp-record-row" data-record-id="' . esc_attr( $rec->id ) . '" data-collection-id="' . esc_attr( $rec->collection_id ) . '">';
+
+            if ( $show_coll_column ) {
+                echo '<td data-label="' . esc_attr__( 'Collection', 'societypress' ) . '"><span class="sp-records-coll-badge">' . esc_html( $rec->collection_name ) . '</span></td>';
+            }
+
+            if ( $coll_filter && isset( $fields_by_coll[ $coll_filter ] ) ) {
+                $display_fields = array_slice( $fields_by_coll[ $coll_filter ], 0, $show_coll_column ? 3 : 4 );
+                foreach ( $display_fields as $df ) {
+                    $val = $rec_values[ $df->id ] ?? '';
+                    echo '<td data-label="' . esc_attr( $df->field_name ) . '">' . esc_html( wp_trim_words( $val, 8 ) ?: '—' ) . '</td>';
+                }
+            } else {
+                // Multi-collection: show first few field values as a summary
+                $summary_parts = [];
+                $shown = 0;
+                foreach ( $rec_fields as $rf ) {
+                    if ( isset( $rec_values[ $rf->id ] ) && $rec_values[ $rf->id ] !== '' ) {
+                        $summary_parts[] = wp_trim_words( $rec_values[ $rf->id ], 6 );
+                        $shown++;
+                        if ( $shown >= 4 ) break;
+                    }
+                }
+                echo '<td data-label="' . esc_attr__( 'Summary', 'societypress' ) . '">' . esc_html( implode( ' · ', $summary_parts ) ?: '—' ) . '</td>';
+            }
+
+            echo '</tr>';
+        }
+
+        echo '</tbody></table>';
+
+        // Pagination
+        if ( $total_pages > 1 ) {
+            echo '<div class="sp-records-pagination">';
+            $base_url = remove_query_arg( 'sp_rec_pg' );
+            if ( $page_num > 1 ) {
+                echo '<a href="' . esc_url( add_query_arg( 'sp_rec_pg', $page_num - 1, $base_url ) ) . '">&laquo; ' . esc_html__( 'Prev', 'societypress' ) . '</a>';
+            }
+            $range = 2;
+            for ( $i = 1; $i <= $total_pages; $i++ ) {
+                if ( $i === 1 || $i === $total_pages || abs( $i - $page_num ) <= $range ) {
+                    if ( $i === $page_num ) {
+                        echo '<span class="current">' . $i . '</span>';
+                    } else {
+                        echo '<a href="' . esc_url( add_query_arg( 'sp_rec_pg', $i, $base_url ) ) . '">' . $i . '</a>';
+                    }
+                } elseif ( $i === 2 && $page_num > $range + 2 ) {
+                    echo '<span>&hellip;</span>';
+                } elseif ( $i === $total_pages - 1 && $page_num < $total_pages - $range - 1 ) {
+                    echo '<span>&hellip;</span>';
+                }
+            }
+            if ( $page_num < $total_pages ) {
+                echo '<a href="' . esc_url( add_query_arg( 'sp_rec_pg', $page_num + 1, $base_url ) ) . '">' . esc_html__( 'Next', 'societypress' ) . ' &raquo;</a>';
+            }
+            echo '</div>';
+        }
+    }
+
+    // Expand/collapse detail on row click
+    ?>
+    <script>
+    (function() {
+        var container = document.getElementById('<?php echo esc_js( $uid ); ?>');
+        if (!container) return;
+        var openRow = null;
+
+        // Pre-load field data and values for displayed records (avoids AJAX)
+        var recordData = <?php
+            $js_data = [];
+            foreach ( $records as $rec ) {
+                $rec_fields = $fields_by_coll[ $rec->collection_id ] ?? [];
+                $rec_values = $values_map[ $rec->id ] ?? [];
+                $field_list = [];
+                foreach ( $rec_fields as $rf ) {
+                    $field_list[] = [
+                        'name'  => $rf->field_name,
+                        'value' => $rec_values[ $rf->id ] ?? '',
+                    ];
+                }
+                $js_data[ $rec->id ] = [
+                    'collection' => $rec->collection_name,
+                    'fields'     => $field_list,
+                ];
+            }
+            echo wp_json_encode( $js_data );
+        ?>;
+
+        container.addEventListener('click', function(e) {
+            var row = e.target.closest('.sp-record-row');
+            if (!row) return;
+            var recId = row.getAttribute('data-record-id');
+
+            // Toggle existing
+            var existing = row.nextElementSibling;
+            if (existing && existing.classList.contains('sp-records-detail-row')) {
+                existing.remove();
+                openRow = null;
+                return;
+            }
+            if (openRow) { openRow.remove(); openRow = null; }
+
+            var data = recordData[recId];
+            if (!data) return;
+
+            var detailRow = document.createElement('tr');
+            detailRow.className = 'sp-records-detail-row';
+            var td = document.createElement('td');
+            var colSpan = row.children.length;
+            td.setAttribute('colspan', colSpan);
+
+            var html = '<div class="sp-records-detail"><div class="sp-records-detail-grid">';
+            data.fields.forEach(function(f) {
+                if (f.value) {
+                    html += '<dl><dt>' + escHtml(f.name) + '</dt><dd>' + escHtml(f.value) + '</dd></dl>';
+                }
+            });
+            html += '</div></div>';
+            td.innerHTML = html;
+            detailRow.appendChild(td);
+            row.after(detailRow);
+            openRow = detailRow;
+        });
+
+        function escHtml(s) {
+            var d = document.createElement('div');
+            d.appendChild(document.createTextNode(s));
+            return d.innerHTML;
+        }
+    })();
+    </script>
+    <?php
+    echo '</div>';
+}
+
+
+// ============================================================================
+// STORE — Frontend Book Sales
+//
+// WHY: the society has 24 self-published books available for purchase. This store
+//      pulls directly from the library catalog (acq_code = 'Society Publication'
+//      with a price > 0), so there's no separate product management — the
+//      library catalog IS the product database. The store is a public-facing
+//      card grid with cover images, descriptions, and Buy Now buttons.
+//
+//      Buy Now buttons are placeholder links (href="#") until payment
+//      processing (Stripe/PayPal) is wired in. They're styled and positioned
+//      so the store looks complete — just swap the href later.
+// ============================================================================
+
+
+/**
+ * Render: Store Frontend
+ *
+ * WHY: A clean, public-facing storefront for society publications. Modeled
+ *      after the EasyNetSites store layout with category sidebar filters,
+ *      quantity selectors, and Add to Cart buttons. Uses the same design
+ *      language as the rest of the site (CSS custom properties, responsive
+ *      grid). Each book is a card with cover image (or placeholder), title,
+ *      author, price, description, quantity picker, and Add to Cart.
+ *
+ *      Cart/payment is not yet wired — Add to Cart buttons are placeholders
+ *      that will connect to Stripe/PayPal when payment processing is built.
+ */
+function sp_render_store_frontend(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // Read active category filter from URL
+    $active_cat = isset( $_GET['sp_store_cat'] ) ? sanitize_text_field( $_GET['sp_store_cat'] ) : '';
+
+    // Pull all for-sale the society publications from the library catalog
+    $where = "acq_code = 'Society Publication' AND item_value IS NOT NULL AND item_value > 0";
+    if ( $active_cat ) {
+        $where .= $wpdb->prepare( ' AND store_category = %s', $active_cat );
+    }
+
+    $items = $wpdb->get_results(
+        "SELECT id, title, author, pub_year, description, item_value, cover_url, store_category
+         FROM {$prefix}library_items
+         WHERE {$where}
+         ORDER BY title ASC"
+    );
+
+    // Get all categories with counts (unfiltered) for the sidebar
+    $categories = $wpdb->get_results(
+        "SELECT store_category, COUNT(*) as cnt
+         FROM {$prefix}library_items
+         WHERE acq_code = 'Society Publication'
+           AND item_value IS NOT NULL AND item_value > 0
+           AND store_category IS NOT NULL AND store_category != ''
+         GROUP BY store_category
+         ORDER BY store_category ASC"
+    );
+    $total_count = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$prefix}library_items
+         WHERE acq_code = 'Society Publication' AND item_value IS NOT NULL AND item_value > 0"
+    );
+
+    ?>
+    <style>
+        .sp-store-intro { text-align: center; margin-bottom: 32px; }
+        .sp-store-intro h1 { font-size: 32px; font-weight: 700; color: var(--sp-color-heading, #1a1a1a); margin-bottom: 8px; }
+        .sp-store-intro p { font-size: 16px; color: var(--sp-color-text-secondary, #666); max-width: 600px; margin: 0 auto; line-height: 1.6; }
+
+        .sp-store-layout { display: flex; gap: 32px; align-items: flex-start; }
+
+        /* Category sidebar */
+        .sp-store-sidebar { flex: 0 0 220px; }
+        .sp-store-sidebar h3 { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #555; margin: 0 0 12px; }
+        .sp-store-cat-list { list-style: none; margin: 0; padding: 0; }
+        .sp-store-cat-list li { margin-bottom: 4px; }
+        .sp-store-cat-list a {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 12px; border-radius: 6px; text-decoration: none;
+            font-size: 14px; color: #333; transition: background 0.15s ease;
+        }
+        .sp-store-cat-list a:hover { background: #f0f0f0; }
+        .sp-store-cat-list a.active { background: var(--sp-color-primary, #2271b1); color: #fff; font-weight: 600; }
+        .sp-store-cat-list a.active .sp-store-cat-count { background: rgba(255,255,255,0.25); color: #fff; }
+        .sp-store-cat-count { font-size: 12px; background: #eee; padding: 1px 8px; border-radius: 10px; color: #666; }
+
+        /* Main content */
+        .sp-store-main { flex: 1; min-width: 0; }
+        .sp-store-count { font-size: 14px; color: var(--sp-color-text-secondary, #888); margin-bottom: 20px; }
+
+        .sp-store-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 28px;
+        }
+
+        .sp-store-card {
+            background: #fff;
+            border: 1px solid var(--sp-color-border, #e5e7eb);
+            border-radius: 10px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            transition: box-shadow 0.2s ease, transform 0.2s ease;
+        }
+        .sp-store-card:hover {
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .sp-store-cover {
+            aspect-ratio: 3 / 4;
+            background: #f0ebe3;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .sp-store-cover img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .sp-store-cover-placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #b8a88a;
+            gap: 8px;
+            padding: 20px;
+            text-align: center;
+        }
+        .sp-store-cover-placeholder svg {
+            width: 48px;
+            height: 48px;
+            opacity: 0.5;
+        }
+        .sp-store-cover-placeholder span {
+            font-size: 13px;
+            font-weight: 600;
+            line-height: 1.3;
+            max-width: 180px;
+        }
+
+        .sp-store-body {
+            padding: 20px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .sp-store-cat-badge {
+            font-size: 11px;
+            color: var(--sp-color-accent, #c9973a);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 6px;
+        }
+        .sp-store-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--sp-color-heading, #1a1a1a);
+            margin: 0 0 4px;
+            line-height: 1.3;
+        }
+        .sp-store-author {
+            font-size: 13px;
+            color: var(--sp-color-text-secondary, #888);
+            margin-bottom: 10px;
+        }
+        .sp-store-desc {
+            font-size: 13px;
+            color: #555;
+            line-height: 1.5;
+            margin-bottom: 16px;
+            flex: 1;
+        }
+        .sp-store-price {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--sp-color-primary, #1a1a1a);
+            margin-bottom: 12px;
+        }
+
+        .sp-store-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .sp-store-qty {
+            width: 60px;
+            padding: 8px 6px;
+            border: 1px solid #d0d5dd;
+            border-radius: 6px;
+            font-size: 14px;
+            text-align: center;
+        }
+        .sp-store-add-to-cart {
+            flex: 1;
+            display: inline-block;
+            padding: 10px 20px;
+            background: var(--sp-color-accent, #c9973a);
+            color: #fff;
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: 6px;
+            text-decoration: none;
+            text-align: center;
+            transition: opacity 0.2s ease;
+            cursor: pointer;
+            border: none;
+        }
+        .sp-store-add-to-cart:hover {
+            opacity: 0.85;
+            color: #fff;
+        }
+
+        @media (max-width: 768px) {
+            .sp-store-layout { flex-direction: column; }
+            .sp-store-sidebar { flex: none; width: 100%; }
+            .sp-store-cat-list { display: flex; flex-wrap: wrap; gap: 6px; }
+            .sp-store-cat-list li { margin: 0; }
+            .sp-store-cat-list a { padding: 6px 12px; font-size: 13px; background: #f0f0f0; border-radius: 20px; }
+            .sp-store-cat-list a.active { background: var(--sp-color-primary, #2271b1); }
+            .sp-store-grid {
+                grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+                gap: 20px;
+            }
+            .sp-store-intro h1 { font-size: 26px; }
+        }
+        @media (max-width: 480px) {
+            .sp-store-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+
+    <div class="sp-store-intro">
+        <h1><?php esc_html_e( 'Publications', 'societypress' ); ?></h1>
+        <p><?php esc_html_e( 'Books and research materials published by the the society. These publications represent decades of original research by our members.', 'societypress' ); ?></p>
+    </div>
+
+    <div class="sp-store-layout">
+        <!-- Category sidebar -->
+        <aside class="sp-store-sidebar">
+            <h3><?php esc_html_e( 'Categories', 'societypress' ); ?></h3>
+            <ul class="sp-store-cat-list">
+                <li>
+                    <a href="<?php echo esc_url( remove_query_arg( 'sp_store_cat' ) ); ?>"<?php echo ! $active_cat ? ' class="active"' : ''; ?>>
+                        <?php esc_html_e( 'All Publications', 'societypress' ); ?>
+                        <span class="sp-store-cat-count"><?php echo $total_count; ?></span>
+                    </a>
+                </li>
+                <?php foreach ( $categories as $cat ) : ?>
+                    <li>
+                        <a href="<?php echo esc_url( add_query_arg( 'sp_store_cat', urlencode( $cat->store_category ) ) ); ?>"<?php echo $active_cat === $cat->store_category ? ' class="active"' : ''; ?>>
+                            <?php echo esc_html( $cat->store_category ); ?>
+                            <span class="sp-store-cat-count"><?php echo $cat->cnt; ?></span>
+                        </a>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+        </aside>
+
+        <!-- Product grid -->
+        <div class="sp-store-main">
+            <?php if ( empty( $items ) ) : ?>
+                <p style="color:#666; font-style:italic;"><?php esc_html_e( 'No publications found in this category.', 'societypress' ); ?></p>
+            <?php else : ?>
+                <div class="sp-store-count">
+                    <?php echo count( $items ); ?> <?php esc_html_e( 'publications', 'societypress' ); ?>
+                    <?php if ( $active_cat ) : ?>
+                        <?php esc_html_e( 'in', 'societypress' ); ?> <strong><?php echo esc_html( $active_cat ); ?></strong>
+                    <?php endif; ?>
+                </div>
+
+                <div class="sp-store-grid">
+                    <?php foreach ( $items as $item ) :
+                        $author = rtrim( trim( $item->author ?? '' ), ',' );
+                        $desc   = $item->description ?: '';
+                    ?>
+                        <div class="sp-store-card">
+                            <div class="sp-store-cover">
+                                <?php if ( ! empty( $item->cover_url ) ) : ?>
+                                    <img src="<?php echo esc_url( $item->cover_url ); ?>" alt="<?php echo esc_attr( $item->title ); ?>" loading="lazy">
+                                <?php else : ?>
+                                    <div class="sp-store-cover-placeholder">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                                            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+                                        </svg>
+                                        <span><?php echo esc_html( wp_trim_words( $item->title, 6, '...' ) ); ?></span>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                            <div class="sp-store-body">
+                                <?php if ( $item->store_category ) : ?>
+                                    <div class="sp-store-cat-badge"><?php echo esc_html( $item->store_category ); ?></div>
+                                <?php endif; ?>
+                                <h3 class="sp-store-title"><?php echo esc_html( $item->title ); ?></h3>
+                                <?php if ( $author ) : ?>
+                                    <div class="sp-store-author"><?php echo esc_html( $author ); ?><?php if ( $item->pub_year ) echo ' (' . esc_html( $item->pub_year ) . ')'; ?></div>
+                                <?php endif; ?>
+                                <?php if ( $desc ) : ?>
+                                    <div class="sp-store-desc"><?php echo esc_html( $desc ); ?></div>
+                                <?php endif; ?>
+                                <div class="sp-store-price">$<?php echo esc_html( number_format( (float) $item->item_value, 2 ) ); ?></div>
+                                <div class="sp-store-actions">
+                                    <input type="number" class="sp-store-qty" value="1" min="1" max="99" aria-label="<?php esc_attr_e( 'Quantity', 'societypress' ); ?>">
+                                    <a href="#" class="sp-store-add-to-cart" onclick="return false;"><?php esc_html_e( 'Add to Cart', 'societypress' ); ?></a>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+    <?php
 }

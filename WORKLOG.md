@@ -1,5 +1,27 @@
 # SocietyPress — WORKLOG
 
+## v0.32d — 2026-03-08
+
+### Full Codebase Audit
+- Audited all 43,745 lines of societypress.php across 6 parallel passes
+- Audited all 39 database tables with schemas and row counts
+- Documented 22 known issues (3 critical, 10 should-fix, 9 cosmetic/low-priority)
+
+### Library Catalog Enhancement
+- Rewrote `sp_render_builder_widget_library_catalog()` — OPAC-style frontend with collection stats header, tabbed search (keyword/title/author/subject/call number), browse-by-type cards with SVG icons, popular subjects tag cloud
+- Updated `sp_builder_fields_library_catalog()` — added `show_landing` setting
+- Attached library_catalog widget to catalog page (ID 39), fixed template to `sp-builder`
+
+### Documentation Suite (new `Docs/` directory)
+- `ARCHITECTURE.md` — Full technical reference: 39 tables, 34+ AJAX endpoints, 5 cron jobs, 10 templates, 19 widgets, admin menu map, encryption, email system, GDPR
+- `FEATURES.md` — Complete 18-module feature inventory with summary matrix
+- `KNOWN-ISSUES.md` — 22 items from audit, organized by severity with fix recommendations
+- `PROJECT-PROMPT.md` — Drop-in recreation prompt for bootstrapping new sessions
+
+### Rewrites
+- `TO-DO.md` — Complete rewrite reflecting actual codebase state from audit
+- `README.md` — Updated to v0.30d with accurate feature descriptions
+
 ## v0.27d — 2026-03-03
 
 ### Member Portal (My Account)

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     0.31d
+ * Version:     0.25d
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '0.31d' );
+define( 'SOCIETYPRESS_VERSION', '0.30d' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -1483,7 +1483,7 @@ function sp_create_tables(): void {
 
     // Store the schema version so we can run migrations in future updates
     // without re-running the full dbDelta on every page load.
-    update_option( 'societypress_db_version', '0.31d' );
+    update_option( 'societypress_db_version', '0.26d' );
 }
 
 
@@ -17956,6 +17956,7 @@ function sp_builder_fields_resource_links( $index, array $settings ): void {
 function sp_builder_fields_library_catalog( $index, array $settings ): void {
     global $wpdb;
     $show_search    = $settings['show_search'] ?? true;
+    $show_landing   = $settings['show_landing'] ?? true;
     $category_id    = $settings['category_id'] ?? '';
     $available_only = $settings['available_only'] ?? false;
     $count          = $settings['count'] ?? 25;
@@ -17966,7 +17967,7 @@ function sp_builder_fields_library_catalog( $index, array $settings ): void {
     );
     ?>
     <div class="sp-builder-field">
-        <p class="description">Displays a searchable table of library catalog items.</p>
+        <p class="description">Displays a searchable, browsable library catalog with collection stats, tabbed search, browse-by-type cards, popular subjects, and a paginated results table with expandable detail rows.</p>
         <label style="display:block; font-weight:600; margin-bottom:4px;">Filter by category</label>
         <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][category_id]">
             <option value="">All Categories</option>
@@ -17984,6 +17985,7 @@ function sp_builder_fields_library_catalog( $index, array $settings ): void {
         </select>
     </div>
     <div class="sp-builder-field">
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_landing]" value="1" <?php checked( $show_landing ); ?>> Show landing page (stats, browse by type, popular subjects)</label><br>
         <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_search]" value="1" <?php checked( $show_search ); ?>> Show search box</label><br>
         <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][available_only]" value="1" <?php checked( $available_only ); ?>> Show available items only</label><br>
         <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][login_required]" value="1" <?php checked( $login_required ); ?>> Require login to view</label>
@@ -31246,35 +31248,55 @@ function sp_render_builder_widget_resource_links( array $s ): void {
 }
 
 /**
- * Render: Library Catalog
+ * Render: Library Catalog (Enhanced Landing Page)
  *
- * WHY: Feature 7 — displays a searchable table of library items so members
- *      can browse the society's book/periodical/media collection.
+ * WHY: The catalog is the crown jewel of any genealogical society's website.
+ *      19,000+ items need a proper landing experience — not just a raw table dump.
+ *      Inspired by NEHGS (tabbed search, researcher-focused) and NGS (visual
+ *      browsing, cover images, editorial feel). The page has three zones:
+ *
+ *      1. Collection overview — stats that convey the depth of the collection
+ *      2. Tabbed search — keyword/title/author/subject/call# (like an OPAC)
+ *      3. Browse sections — media type cards + popular subject tags
+ *      4. Results table — the existing paginated, sortable, expandable catalog
+ *
+ *      Browse sections auto-hide when a search/filter is active so the results
+ *      get top billing. They reappear when filters are cleared.
  */
 function sp_render_builder_widget_library_catalog( array $s ): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
+    // ---- Access control ----
     $login_required = $s['login_required'] ?? false;
     if ( $login_required && ! is_user_logged_in() ) {
         echo '<div class="sp-widget-login-required">';
-        echo '<p>Please <a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">log in</a> to browse the catalog.</p>';
+        echo '<p>' . esc_html__( 'Please', 'societypress' ) . ' <a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">' . esc_html__( 'log in', 'societypress' ) . '</a> ' . esc_html__( 'to browse the catalog.', 'societypress' ) . '</p>';
         echo '</div>';
         return;
     }
 
+    // ---- Widget settings ----
     $show_search    = $s['show_search'] ?? true;
+    $show_landing   = $s['show_landing'] ?? true;
     $category_id    = absint( $s['category_id'] ?? 0 );
     $available_only = $s['available_only'] ?? false;
     $per_page       = max( 1, (int) ( $s['count'] ?? 25 ) );
 
-    // Read all filter/search/sort/page params from the URL
+    // ---- Read URL parameters ----
     $search       = isset( $_GET['sp_lib_search'] ) ? sanitize_text_field( $_GET['sp_lib_search'] ) : '';
+    $search_field = isset( $_GET['sp_lib_field'] ) ? sanitize_text_field( $_GET['sp_lib_field'] ) : 'keyword';
     $media_filter = isset( $_GET['sp_lib_media'] ) ? sanitize_text_field( $_GET['sp_lib_media'] ) : '';
     $subj_filter  = isset( $_GET['sp_lib_subject'] ) ? sanitize_text_field( $_GET['sp_lib_subject'] ) : '';
     $acq_filter   = isset( $_GET['sp_lib_acq'] ) ? sanitize_text_field( $_GET['sp_lib_acq'] ) : '';
     $sort_by      = isset( $_GET['sp_lib_sort'] ) ? sanitize_text_field( $_GET['sp_lib_sort'] ) : 'title';
     $page_num     = max( 1, absint( $_GET['sp_lib_pg'] ?? 1 ) );
+
+    // Validate search field tab
+    $allowed_fields = [ 'keyword', 'title', 'author', 'subject', 'call_number' ];
+    if ( ! in_array( $search_field, $allowed_fields, true ) ) {
+        $search_field = 'keyword';
+    }
 
     // Validate sort column
     $allowed_sorts = [ 'title', 'author', 'pub_year', 'call_number', 'media_type' ];
@@ -31287,7 +31309,7 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
         $order_sql = 'li.pub_year DESC';
     }
 
-    // Build WHERE clause
+    // ---- Build WHERE clause ----
     $where = [ '1=1' ];
     if ( $category_id ) {
         $where[] = $wpdb->prepare( 'li.category_id = %d', $category_id );
@@ -31295,13 +31317,33 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
     if ( $available_only ) {
         $where[] = 'li.available = 1';
     }
+
+    // WHY: Tabbed search — instead of one generic search box, let the researcher
+    //      target a specific field (title, author, subject, call number) or search
+    //      everything (keyword). This mirrors how real library OPACs work and helps
+    //      researchers who know exactly what they're looking for.
     if ( $search ) {
-        // Use LIKE for broad search across title, author, call #, subject, surname, description
         $like = '%' . $wpdb->esc_like( $search ) . '%';
-        $where[] = $wpdb->prepare(
-            '(li.title LIKE %s OR li.author LIKE %s OR li.call_number LIKE %s OR li.subject LIKE %s OR li.surname LIKE %s OR li.description LIKE %s)',
-            $like, $like, $like, $like, $like, $like
-        );
+        switch ( $search_field ) {
+            case 'title':
+                $where[] = $wpdb->prepare( 'li.title LIKE %s', $like );
+                break;
+            case 'author':
+                $where[] = $wpdb->prepare( 'li.author LIKE %s', $like );
+                break;
+            case 'subject':
+                $where[] = $wpdb->prepare( 'li.subject LIKE %s', $like );
+                break;
+            case 'call_number':
+                $where[] = $wpdb->prepare( 'li.call_number LIKE %s', $like );
+                break;
+            default: // keyword — all fields
+                $where[] = $wpdb->prepare(
+                    '(li.title LIKE %s OR li.author LIKE %s OR li.call_number LIKE %s OR li.subject LIKE %s OR li.surname LIKE %s OR li.description LIKE %s)',
+                    $like, $like, $like, $like, $like, $like
+                );
+                break;
+        }
     }
     if ( $media_filter ) {
         $where[] = $wpdb->prepare( 'li.media_type = %s', $media_filter );
@@ -31316,11 +31358,17 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
     }
     $where_sql = implode( ' AND ', $where );
 
-    // Get distinct values for filter dropdowns (from the full catalog, not filtered)
+    // ---- Detect whether any search/filter is active ----
+    // WHY: When the user hasn't searched or filtered yet, we show the full landing
+    //      page experience (stats, browse cards, subjects). Once they've drilled in,
+    //      those sections collapse so results get the spotlight.
+    $has_active_filter = ( $search || $media_filter || $subj_filter || $acq_filter );
+
+    // ---- Get dropdown values (always from full catalog, not filtered) ----
     $media_types = $wpdb->get_col( "SELECT DISTINCT media_type FROM {$prefix}library_items WHERE media_type IS NOT NULL AND media_type != '' ORDER BY media_type ASC" );
     $acq_codes   = $wpdb->get_col( "SELECT DISTINCT acq_code FROM {$prefix}library_items WHERE acq_code IS NOT NULL AND acq_code != '' ORDER BY acq_code ASC" );
 
-    // Count + fetch
+    // ---- Count + fetch results ----
     $offset = ( $page_num - 1 ) * $per_page;
     $total  = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}library_items li WHERE {$where_sql}" );
     $items  = $wpdb->get_results(
@@ -31333,23 +31381,201 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
     );
     $total_pages = (int) ceil( $total / $per_page );
 
+    // ---- Collection-wide stats (for the landing header) ----
+    // WHY: Showing the breadth of the collection upfront — "19,418 items across
+    //      6 formats" — immediately tells a researcher this is a serious library,
+    //      not a shelf of pamphlets. Cached via transient so we don't re-count
+    //      on every page load.
+    $stats = get_transient( 'sp_library_catalog_stats' );
+    if ( false === $stats ) {
+        $total_items = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}library_items" );
+        $type_counts = $wpdb->get_results(
+            "SELECT media_type, COUNT(*) as cnt FROM {$prefix}library_items WHERE media_type IS NOT NULL AND media_type != '' GROUP BY media_type ORDER BY cnt DESC"
+        );
+        // Top subjects for the tag cloud
+        $subject_rows = $wpdb->get_col(
+            "SELECT subject FROM {$prefix}library_items WHERE subject IS NOT NULL AND subject != ''"
+        );
+        $subject_counts = [];
+        foreach ( $subject_rows as $subj_raw ) {
+            foreach ( explode( ',', $subj_raw ) as $part ) {
+                $part = trim( $part );
+                if ( $part ) {
+                    $subject_counts[ $part ] = ( $subject_counts[ $part ] ?? 0 ) + 1;
+                }
+            }
+        }
+        arsort( $subject_counts );
+
+        $stats = [
+            'total'          => $total_items,
+            'type_counts'    => $type_counts,
+            'subject_counts' => array_slice( $subject_counts, 0, 24, true ),
+        ];
+        // Cache for 1 hour — stats don't change often and the query is expensive
+        set_transient( 'sp_library_catalog_stats', $stats, HOUR_IN_SECONDS );
+    }
+
     // Unique ID so multiple catalog widgets on one page don't collide
     $uid = 'sp-catalog-' . wp_rand( 1000, 9999 );
 
     echo '<div class="sp-widget-library-catalog" id="' . esc_attr( $uid ) . '">';
 
-    // ---- Inline styles for the enhanced catalog ----
+    // ---- Inline styles ----
     // WHY: Scoped inside the widget so they don't leak into the rest of the page.
     //      Uses CSS custom properties from the design system where available.
     ?>
     <style>
         .sp-widget-library-catalog { font-family: var(--sp-font-body, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif); }
 
-        /* Search + filter bar */
-        .sp-catalog-filters { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; align-items: flex-end; }
-        .sp-catalog-filters input[type="text"] { flex: 1; min-width: 200px; padding: 10px 14px; border: 1px solid #d0d5dd; border-radius: 6px; font-size: 15px; }
-        .sp-catalog-filters select { padding: 10px 12px; border: 1px solid #d0d5dd; border-radius: 6px; font-size: 14px; background: #fff; min-width: 140px; }
-        .sp-catalog-filters .sp-btn { white-space: nowrap; }
+        /* ================================================================
+           COLLECTION HEADER — stats bar at the top of the landing page
+           ================================================================ */
+        .sp-catalog-header { margin-bottom: 32px; }
+        .sp-catalog-header h2 {
+            font-size: 28px; font-weight: 700; margin: 0 0 8px 0;
+            color: var(--sp-color-primary, #1a1a2e);
+        }
+        .sp-catalog-header .sp-catalog-subtitle {
+            font-size: 16px; color: #555; margin: 0 0 20px 0; line-height: 1.5;
+        }
+        .sp-catalog-stats-bar {
+            display: flex; flex-wrap: wrap; gap: 12px;
+        }
+        .sp-catalog-stat {
+            background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px;
+            padding: 14px 20px; text-align: center; min-width: 100px;
+        }
+        .sp-catalog-stat-number {
+            font-size: 24px; font-weight: 700;
+            color: var(--sp-color-primary, #1a1a2e);
+            display: block; line-height: 1.2;
+        }
+        .sp-catalog-stat-label {
+            font-size: 12px; color: #666; text-transform: uppercase;
+            letter-spacing: 0.04em; font-weight: 500; margin-top: 2px; display: block;
+        }
+
+        /* ================================================================
+           TABBED SEARCH — OPAC-style search with field targeting
+           ================================================================ */
+        .sp-catalog-search { margin-bottom: 28px; }
+        .sp-catalog-tabs {
+            display: flex; gap: 0; border-bottom: 2px solid #d0d5dd; margin-bottom: 0;
+        }
+        .sp-catalog-tab {
+            padding: 10px 18px; font-size: 14px; font-weight: 500; color: #555;
+            background: none; border: none; border-bottom: 2px solid transparent;
+            margin-bottom: -2px; cursor: pointer; transition: all 0.15s ease;
+        }
+        .sp-catalog-tab:hover { color: var(--sp-color-primary, #1a1a2e); background: #f8f9fa; }
+        .sp-catalog-tab.active {
+            color: var(--sp-color-primary, #1a1a2e); font-weight: 600;
+            border-bottom-color: var(--sp-color-accent, #667eea);
+            background: #f8f9fa;
+        }
+        .sp-catalog-search-form {
+            display: flex; gap: 0; background: #f8f9fa;
+            border: 1px solid #d0d5dd; border-top: none;
+            border-radius: 0 0 8px 8px; padding: 16px;
+        }
+        .sp-catalog-search-form input[type="text"] {
+            flex: 1; padding: 12px 16px; border: 1px solid #d0d5dd;
+            border-radius: 6px 0 0 6px; font-size: 15px;
+            border-right: none; background: #fff;
+        }
+        .sp-catalog-search-form input[type="text"]:focus {
+            outline: none; border-color: var(--sp-color-accent, #667eea);
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+        }
+        .sp-catalog-search-form button[type="submit"] {
+            padding: 12px 24px; border: 1px solid var(--sp-color-primary, #1a1a2e);
+            background: var(--sp-color-primary, #1a1a2e); color: #fff;
+            font-size: 15px; font-weight: 600; cursor: pointer;
+            border-radius: 0 6px 6px 0; white-space: nowrap;
+            transition: background 0.15s ease;
+        }
+        .sp-catalog-search-form button[type="submit"]:hover {
+            background: var(--sp-color-accent, #667eea);
+            border-color: var(--sp-color-accent, #667eea);
+        }
+
+        /* Additional filter row below the search bar */
+        .sp-catalog-filter-row {
+            display: flex; flex-wrap: wrap; gap: 10px; padding: 12px 16px;
+            background: #f8f9fa; border: 1px solid #d0d5dd; border-top: none;
+            border-radius: 0 0 8px 8px; margin-top: -8px; padding-top: 0;
+        }
+        .sp-catalog-filter-row select {
+            padding: 8px 10px; border: 1px solid #d0d5dd; border-radius: 6px;
+            font-size: 13px; background: #fff; min-width: 130px;
+        }
+
+        /* ================================================================
+           BROWSE SECTIONS — media type cards + subject tag cloud
+           ================================================================ */
+        .sp-catalog-browse { margin-bottom: 32px; }
+        .sp-catalog-browse h3 {
+            font-size: 16px; font-weight: 700; margin: 0 0 14px 0;
+            color: var(--sp-color-primary, #1a1a2e);
+            text-transform: uppercase; letter-spacing: 0.03em;
+        }
+        .sp-catalog-type-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 12px; margin-bottom: 28px;
+        }
+        .sp-catalog-type-card {
+            display: block; background: #fff; border: 1px solid #e0e0e0;
+            border-radius: 8px; padding: 18px 14px; text-align: center;
+            text-decoration: none; color: inherit;
+            transition: all 0.15s ease; cursor: pointer;
+        }
+        .sp-catalog-type-card:hover {
+            border-color: var(--sp-color-accent, #667eea);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transform: translateY(-1px);
+        }
+        .sp-catalog-type-card.active {
+            border-color: var(--sp-color-accent, #667eea);
+            background: #f0f4ff;
+        }
+        .sp-catalog-type-icon {
+            font-size: 28px; display: block; margin-bottom: 8px; line-height: 1;
+            color: var(--sp-color-primary, #1a1a2e);
+        }
+        .sp-catalog-type-name {
+            font-size: 14px; font-weight: 600; display: block; margin-bottom: 4px;
+            color: var(--sp-color-primary, #1a1a2e);
+        }
+        .sp-catalog-type-count {
+            font-size: 13px; color: #888; display: block;
+        }
+
+        /* Subject tag cloud */
+        .sp-catalog-subject-cloud { display: flex; flex-wrap: wrap; gap: 8px; }
+        .sp-catalog-subject-tag {
+            display: inline-block; padding: 6px 14px;
+            background: #f0f0f0; border: 1px solid #e0e0e0; border-radius: 20px;
+            font-size: 13px; color: #444; text-decoration: none;
+            transition: all 0.15s ease;
+        }
+        .sp-catalog-subject-tag:hover {
+            background: var(--sp-color-primary, #1a1a2e); color: #fff;
+            border-color: var(--sp-color-primary, #1a1a2e);
+        }
+        .sp-catalog-subject-tag .sp-tag-count {
+            font-size: 11px; color: #999; margin-left: 4px;
+        }
+        .sp-catalog-subject-tag:hover .sp-tag-count { color: rgba(255,255,255,0.7); }
+
+        /* Divider between landing and results */
+        .sp-catalog-divider {
+            border: none; border-top: 1px solid #e5e7eb; margin: 28px 0;
+        }
+
+        /* ================================================================
+           RESULTS — status bar, table, detail rows, pagination
+           ================================================================ */
 
         /* Results count + active filters */
         .sp-catalog-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px; color: #555; font-size: 14px; }
@@ -31359,7 +31585,11 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
 
         /* Table */
         .sp-catalog-table { width: 100%; border-collapse: collapse; }
-        .sp-catalog-table thead th { padding: 10px 14px; text-align: left; border-bottom: 2px solid #d0d5dd; background: #f8f9fa; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: #555; }
+        .sp-catalog-table thead th { padding: 10px 14px; text-align: left; border-bottom: 2px solid #d0d5dd; background: #f8f9fa; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: #555; cursor: pointer; user-select: none; }
+        .sp-catalog-table thead th:hover { color: var(--sp-color-primary, #1a1a2e); }
+        .sp-catalog-table thead th.sorted { color: var(--sp-color-primary, #1a1a2e); }
+        .sp-catalog-table thead th .sp-sort-arrow { font-size: 11px; margin-left: 4px; opacity: 0.4; }
+        .sp-catalog-table thead th.sorted .sp-sort-arrow { opacity: 1; }
         .sp-catalog-table tbody td { padding: 10px 14px; border-bottom: 1px solid #eee; font-size: 14px; vertical-align: top; }
         .sp-catalog-table tbody tr:hover { background: #f8f9fa; }
         .sp-catalog-table .sp-item-title { color: var(--sp-color-primary, #2271b1); cursor: pointer; font-weight: 600; text-decoration: none; }
@@ -31383,7 +31613,7 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
         .sp-catalog-detail-desc dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #888; margin-bottom: 4px; font-weight: 600; }
         .sp-catalog-detail-desc dd { margin: 0; font-size: 14px; color: #333; line-height: 1.6; }
 
-        /* Subject / surname tags */
+        /* Subject / surname tags (in detail rows) */
         .sp-catalog-tag { display: inline-block; background: var(--sp-color-primary, #2271b1); color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 12px; margin: 2px 3px 2px 0; text-decoration: none; cursor: pointer; }
         .sp-catalog-tag:hover { opacity: 0.85; color: #fff; }
         .sp-catalog-tag.sp-tag-surname { background: #6b7280; }
@@ -31395,9 +31625,24 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
         .sp-catalog-pagination .current { background: var(--sp-color-primary, #2271b1); color: #fff; border-color: var(--sp-color-primary, #2271b1); }
         .sp-catalog-pagination .dots { border: none; color: #999; }
 
+        /* ================================================================
+           RESPONSIVE — mobile-first adjustments
+           ================================================================ */
         @media (max-width: 768px) {
-            .sp-catalog-filters { flex-direction: column; }
-            .sp-catalog-filters input[type="text"] { min-width: 100%; }
+            .sp-catalog-header h2 { font-size: 22px; }
+            .sp-catalog-stats-bar { gap: 8px; }
+            .sp-catalog-stat { padding: 10px 14px; min-width: 80px; }
+            .sp-catalog-stat-number { font-size: 20px; }
+
+            .sp-catalog-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            .sp-catalog-tab { padding: 8px 12px; font-size: 13px; white-space: nowrap; }
+            .sp-catalog-search-form { flex-direction: column; gap: 8px; }
+            .sp-catalog-search-form input[type="text"] { border-radius: 6px; border-right: 1px solid #d0d5dd; }
+            .sp-catalog-search-form button[type="submit"] { border-radius: 6px; }
+
+            .sp-catalog-filter-row { flex-direction: column; }
+            .sp-catalog-type-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+
             .sp-catalog-table thead { display: none; }
             .sp-catalog-table tbody tr { display: block; padding: 12px 0; border-bottom: 1px solid #eee; }
             .sp-catalog-table tbody td { display: block; padding: 3px 0 !important; border-bottom: none !important; }
@@ -31410,7 +31655,35 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
     </style>
     <?php
 
-    // ---- Search + filter bar ----
+    // ================================================================
+    // SECTION 1: COLLECTION HEADER — stats that show the depth of the library
+    // ================================================================
+    if ( $show_landing ) {
+        echo '<div class="sp-catalog-header">';
+        echo '<h2>' . esc_html__( 'Library Catalog', 'societypress' ) . '</h2>';
+        echo '<p class="sp-catalog-subtitle">' . esc_html__( 'Search and browse our collection of books, periodicals, maps, and more. Click any title for full details.', 'societypress' ) . '</p>';
+
+        echo '<div class="sp-catalog-stats-bar">';
+        // Total items stat
+        echo '<div class="sp-catalog-stat">';
+        echo '<span class="sp-catalog-stat-number">' . number_format( $stats['total'] ) . '</span>';
+        echo '<span class="sp-catalog-stat-label">' . esc_html__( 'Total Items', 'societypress' ) . '</span>';
+        echo '</div>';
+
+        // One stat card per media type
+        foreach ( $stats['type_counts'] as $tc ) {
+            echo '<div class="sp-catalog-stat">';
+            echo '<span class="sp-catalog-stat-number">' . number_format( $tc->cnt ) . '</span>';
+            echo '<span class="sp-catalog-stat-label">' . esc_html( $tc->media_type ) . '</span>';
+            echo '</div>';
+        }
+        echo '</div>'; // close stats bar
+        echo '</div>'; // close header
+    }
+
+    // ================================================================
+    // SECTION 2: TABBED SEARCH — OPAC-style field-targeted search
+    // ================================================================
     if ( $show_search ) {
         // Build base URL preserving non-catalog query params
         $base_params = [];
@@ -31420,16 +31693,58 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
             }
         }
 
-        echo '<form method="get" class="sp-catalog-filters">';
+        // WHY: Tabs let the researcher target their search. A genealogist looking
+        //      for "Smith" as a surname doesn't want to also match books with
+        //      "Goldsmith" in the title. Targeting = precision.
+        $tab_labels = [
+            'keyword'     => __( 'Keyword', 'societypress' ),
+            'title'       => __( 'Title', 'societypress' ),
+            'author'      => __( 'Author', 'societypress' ),
+            'subject'     => __( 'Subject', 'societypress' ),
+            'call_number' => __( 'Call Number', 'societypress' ),
+        ];
+        $tab_placeholders = [
+            'keyword'     => __( 'Search titles, authors, subjects, surnames, descriptions...', 'societypress' ),
+            'title'       => __( 'Search by title...', 'societypress' ),
+            'author'      => __( 'Search by author or editor...', 'societypress' ),
+            'subject'     => __( 'Search by subject...', 'societypress' ),
+            'call_number' => __( 'Search by call number or shelf location...', 'societypress' ),
+        ];
+
+        echo '<div class="sp-catalog-search">';
+
+        // Tabs
+        echo '<div class="sp-catalog-tabs" role="tablist">';
+        foreach ( $tab_labels as $field_key => $label ) {
+            $active = ( $search_field === $field_key ) ? ' active' : '';
+            echo '<button type="button" class="sp-catalog-tab' . $active . '" data-field="' . esc_attr( $field_key ) . '" role="tab">' . esc_html( $label ) . '</button>';
+        }
+        echo '</div>';
+
+        // Search form
+        echo '<form method="get" class="sp-catalog-search-form" id="' . esc_attr( $uid ) . '-form">';
         foreach ( $base_params as $k => $v ) {
             echo '<input type="hidden" name="' . esc_attr( $k ) . '" value="' . esc_attr( $v ) . '">';
         }
+        echo '<input type="hidden" name="sp_lib_field" value="' . esc_attr( $search_field ) . '" id="' . esc_attr( $uid ) . '-field">';
+        echo '<input type="text" name="sp_lib_search" value="' . esc_attr( $search ) . '" placeholder="' . esc_attr( $tab_placeholders[ $search_field ] ) . '" id="' . esc_attr( $uid ) . '-input">';
+        echo '<button type="submit">' . esc_html__( 'Search', 'societypress' ) . '</button>';
+        echo '</form>';
 
-        echo '<input type="text" name="sp_lib_search" value="' . esc_attr( $search ) . '" placeholder="Search titles, authors, subjects, surnames...">';
+        // Additional filter dropdowns (media type, source, sort)
+        echo '<form method="get" class="sp-catalog-filter-row" id="' . esc_attr( $uid ) . '-filters">';
+        foreach ( $base_params as $k => $v ) {
+            echo '<input type="hidden" name="' . esc_attr( $k ) . '" value="' . esc_attr( $v ) . '">';
+        }
+        // Carry search params forward when changing filters
+        if ( $search ) {
+            echo '<input type="hidden" name="sp_lib_search" value="' . esc_attr( $search ) . '">';
+            echo '<input type="hidden" name="sp_lib_field" value="' . esc_attr( $search_field ) . '">';
+        }
 
         // Media type filter
-        echo '<select name="sp_lib_media">';
-        echo '<option value="">All Types</option>';
+        echo '<select name="sp_lib_media" onchange="this.form.submit()">';
+        echo '<option value="">' . esc_html__( 'All Types', 'societypress' ) . '</option>';
         foreach ( $media_types as $mt ) {
             $sel = ( $media_filter === $mt ) ? ' selected' : '';
             echo '<option value="' . esc_attr( $mt ) . '"' . $sel . '>' . esc_html( $mt ) . '</option>';
@@ -31437,8 +31752,8 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
         echo '</select>';
 
         // Acquisition code filter
-        echo '<select name="sp_lib_acq">';
-        echo '<option value="">All Sources</option>';
+        echo '<select name="sp_lib_acq" onchange="this.form.submit()">';
+        echo '<option value="">' . esc_html__( 'All Sources', 'societypress' ) . '</option>';
         foreach ( $acq_codes as $ac ) {
             $sel = ( $acq_filter === $ac ) ? ' selected' : '';
             echo '<option value="' . esc_attr( $ac ) . '"' . $sel . '>' . esc_html( $ac ) . '</option>';
@@ -31446,63 +31761,143 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
         echo '</select>';
 
         // Sort
-        echo '<select name="sp_lib_sort">';
+        echo '<select name="sp_lib_sort" onchange="this.form.submit()">';
         $sort_options = [
-            'title'      => 'Sort: Title',
-            'author'     => 'Sort: Author',
-            'pub_year'   => 'Sort: Year Published',
-            'call_number' => 'Sort: Call Number',
-            'media_type' => 'Sort: Media Type',
+            'title'       => __( 'Sort: Title', 'societypress' ),
+            'author'      => __( 'Sort: Author', 'societypress' ),
+            'pub_year'    => __( 'Sort: Year Published', 'societypress' ),
+            'call_number' => __( 'Sort: Call Number', 'societypress' ),
+            'media_type'  => __( 'Sort: Media Type', 'societypress' ),
         ];
         foreach ( $sort_options as $val => $label ) {
             $sel = ( $sort_by === $val ) ? ' selected' : '';
             echo '<option value="' . esc_attr( $val ) . '"' . $sel . '>' . esc_html( $label ) . '</option>';
         }
         echo '</select>';
-
-        echo '<button type="submit" class="sp-btn sp-btn-primary">Search</button>';
         echo '</form>';
+
+        echo '</div>'; // close .sp-catalog-search
     }
 
-    // ---- Results status + active filter chips ----
+    // ================================================================
+    // SECTION 3: BROWSE — media type cards + popular subjects
+    // WHY: Not every researcher comes with a specific search in mind. Some want
+    //      to browse — "what maps do you have?" or "show me everything about
+    //      cemeteries." These sections let people explore by collection type
+    //      or subject area without typing anything. Once a filter is active
+    //      these collapse so the results take center stage.
+    // ================================================================
+    if ( $show_landing && ! $has_active_filter ) {
+        echo '<div class="sp-catalog-browse">';
+
+        // ---- Browse by media type ----
+        echo '<h3>' . esc_html__( 'Browse by Collection', 'societypress' ) . '</h3>';
+        echo '<div class="sp-catalog-type-grid">';
+
+        // WHY: Simple SVG icons give visual weight to the cards without adding
+        //      external dependencies. Each icon is a single inline <svg> — no
+        //      icon font, no image requests, no accessibility issues.
+        $type_icons = [
+            'Book'          => '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
+            'Periodicals'   => '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16v16H4z"/><path d="M4 8h16"/><path d="M8 4v16"/></svg>',
+            'Map'           => '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>',
+            'Vertical File' => '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
+            'eBook'         => '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="9" y1="6" x2="15" y2="6"/><line x1="9" y1="10" x2="15" y2="10"/><line x1="9" y1="14" x2="12" y2="14"/></svg>',
+            'Rare Books'    => '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>',
+        ];
+
+        $base_catalog_url = get_permalink();
+        foreach ( $stats['type_counts'] as $tc ) {
+            $filter_url = add_query_arg( 'sp_lib_media', $tc->media_type, $base_catalog_url );
+            $icon = $type_icons[ $tc->media_type ] ?? $type_icons['Book'];
+            $is_active = ( $media_filter === $tc->media_type ) ? ' active' : '';
+
+            echo '<a href="' . esc_url( $filter_url ) . '" class="sp-catalog-type-card' . $is_active . '">';
+            echo '<span class="sp-catalog-type-icon">' . $icon . '</span>';
+            echo '<span class="sp-catalog-type-name">' . esc_html( $tc->media_type ) . '</span>';
+            echo '<span class="sp-catalog-type-count">' . number_format( $tc->cnt ) . ' ' . esc_html__( 'items', 'societypress' ) . '</span>';
+            echo '</a>';
+        }
+        echo '</div>'; // close type grid
+
+        // ---- Browse by subject ----
+        echo '<h3>' . esc_html__( 'Popular Subjects', 'societypress' ) . '</h3>';
+        echo '<div class="sp-catalog-subject-cloud">';
+        foreach ( $stats['subject_counts'] as $subj_name => $subj_cnt ) {
+            $subj_url = add_query_arg( 'sp_lib_subject', $subj_name, $base_catalog_url );
+            echo '<a href="' . esc_url( $subj_url ) . '" class="sp-catalog-subject-tag">';
+            echo esc_html( $subj_name );
+            echo ' <span class="sp-tag-count">(' . number_format( $subj_cnt ) . ')</span>';
+            echo '</a>';
+        }
+        echo '</div>'; // close subject cloud
+
+        echo '</div>'; // close .sp-catalog-browse
+
+        echo '<hr class="sp-catalog-divider">';
+    }
+
+    // ================================================================
+    // SECTION 4: RESULTS — status bar, table, pagination
+    // ================================================================
+
+    // ---- Active filter chips + result count ----
     echo '<div class="sp-catalog-status">';
-    echo '<span>' . number_format( $total ) . ' item' . ( $total !== 1 ? 's' : '' ) . ' found</span>';
-    // Show active filter chips with remove links
-    $remove_base = remove_query_arg( [ 'sp_lib_pg' ] ); // always reset page when removing filter
+    echo '<span>' . number_format( $total ) . ' ' . esc_html( _n( 'item', 'items', $total, 'societypress' ) ) . ' ' . esc_html__( 'found', 'societypress' ) . '</span>';
+
+    $remove_base = remove_query_arg( [ 'sp_lib_pg' ] );
     if ( $search ) {
-        $remove_url = remove_query_arg( 'sp_lib_search', $remove_base );
-        echo '<span class="sp-catalog-active-filter">Search: ' . esc_html( $search ) . ' <a href="' . esc_url( $remove_url ) . '">&times;</a></span>';
+        $field_label = $tab_labels[ $search_field ] ?? __( 'Keyword', 'societypress' );
+        $remove_url  = remove_query_arg( [ 'sp_lib_search', 'sp_lib_field' ], $remove_base );
+        echo '<span class="sp-catalog-active-filter">' . esc_html( $field_label ) . ': ' . esc_html( $search ) . ' <a href="' . esc_url( $remove_url ) . '">&times;</a></span>';
     }
     if ( $media_filter ) {
         $remove_url = remove_query_arg( 'sp_lib_media', $remove_base );
-        echo '<span class="sp-catalog-active-filter">Type: ' . esc_html( $media_filter ) . ' <a href="' . esc_url( $remove_url ) . '">&times;</a></span>';
+        echo '<span class="sp-catalog-active-filter">' . esc_html__( 'Type', 'societypress' ) . ': ' . esc_html( $media_filter ) . ' <a href="' . esc_url( $remove_url ) . '">&times;</a></span>';
     }
     if ( $subj_filter ) {
         $remove_url = remove_query_arg( 'sp_lib_subject', $remove_base );
-        echo '<span class="sp-catalog-active-filter">Subject: ' . esc_html( $subj_filter ) . ' <a href="' . esc_url( $remove_url ) . '">&times;</a></span>';
+        echo '<span class="sp-catalog-active-filter">' . esc_html__( 'Subject', 'societypress' ) . ': ' . esc_html( $subj_filter ) . ' <a href="' . esc_url( $remove_url ) . '">&times;</a></span>';
     }
     if ( $acq_filter ) {
         $remove_url = remove_query_arg( 'sp_lib_acq', $remove_base );
-        echo '<span class="sp-catalog-active-filter">Source: ' . esc_html( $acq_filter ) . ' <a href="' . esc_url( $remove_url ) . '">&times;</a></span>';
+        echo '<span class="sp-catalog-active-filter">' . esc_html__( 'Source', 'societypress' ) . ': ' . esc_html( $acq_filter ) . ' <a href="' . esc_url( $remove_url ) . '">&times;</a></span>';
     }
-    if ( $search || $media_filter || $subj_filter || $acq_filter ) {
-        $clear_url = remove_query_arg( [ 'sp_lib_search', 'sp_lib_media', 'sp_lib_subject', 'sp_lib_acq', 'sp_lib_sort', 'sp_lib_pg' ] );
-        echo '<a href="' . esc_url( $clear_url ) . '" style="font-size:13px; color:#b32d2e;">Clear all</a>';
+    if ( $has_active_filter ) {
+        $clear_url = remove_query_arg( [ 'sp_lib_search', 'sp_lib_field', 'sp_lib_media', 'sp_lib_subject', 'sp_lib_acq', 'sp_lib_sort', 'sp_lib_pg' ] );
+        echo '<a href="' . esc_url( $clear_url ) . '" style="font-size:13px; color:#b32d2e;">' . esc_html__( 'Clear all', 'societypress' ) . '</a>';
     }
     echo '</div>';
 
     // ---- Results table ----
     if ( empty( $items ) ) {
-        echo '<p style="color:#666; font-style:italic; padding:20px 0;">No items match your search. Try broadening your filters.</p>';
+        echo '<p style="color:#666; font-style:italic; padding:20px 0;">' . esc_html__( 'No items match your search. Try broadening your filters.', 'societypress' ) . '</p>';
     } else {
+        // WHY: Sortable column headers let the researcher reorder results without
+        //      scrolling back up to the sort dropdown. The arrow indicator shows
+        //      which column is active.
+        $sort_url_base = remove_query_arg( [ 'sp_lib_sort', 'sp_lib_pg' ] );
+
         echo '<table class="sp-catalog-table">';
         echo '<thead><tr>';
-        echo '<th>Title</th>';
-        echo '<th>Author</th>';
-        echo '<th>Type</th>';
-        echo '<th>Call #</th>';
-        echo '<th>Year</th>';
-        echo '<th style="text-align:center;">Status</th>';
+
+        $columns = [
+            'title'       => __( 'Title', 'societypress' ),
+            'author'      => __( 'Author', 'societypress' ),
+            'media_type'  => __( 'Type', 'societypress' ),
+            'call_number' => __( 'Call #', 'societypress' ),
+            'pub_year'    => __( 'Year', 'societypress' ),
+        ];
+        foreach ( $columns as $col_key => $col_label ) {
+            $is_sorted = ( $sort_by === $col_key ) ? ' sorted' : '';
+            $arrow     = ( $sort_by === $col_key ) ? ( $col_key === 'pub_year' ? '&#9660;' : '&#9650;' ) : '&#9650;';
+            $col_url   = add_query_arg( 'sp_lib_sort', $col_key, $sort_url_base );
+            echo '<th class="' . esc_attr( trim( $is_sorted ) ) . '">';
+            echo '<a href="' . esc_url( $col_url ) . '" style="color:inherit; text-decoration:none;">';
+            echo esc_html( $col_label ) . ' <span class="sp-sort-arrow">' . $arrow . '</span>';
+            echo '</a></th>';
+        }
+        echo '<th style="text-align:center;">' . esc_html__( 'Status', 'societypress' ) . '</th>';
         echo '</tr></thead><tbody>';
 
         foreach ( $items as $item ) {
@@ -31517,27 +31912,27 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
             echo '<tr class="sp-catalog-item-row" data-item-id="' . esc_attr( $item->id ) . '">';
 
             // Title cell — clickable to expand detail
-            echo '<td data-label="Title">';
+            echo '<td data-label="' . esc_attr__( 'Title', 'societypress' ) . '">';
             echo '<a class="sp-item-title" data-item-id="' . esc_attr( $item->id ) . '">' . esc_html( $item->title ) . '</a>';
             if ( $item->item_condition ) {
                 echo ' <span class="sp-item-condition" style="color:' . esc_attr( $cond_color ) . ';">(' . esc_html( ucfirst( $item->item_condition ) ) . ')</span>';
             }
             echo '</td>';
 
-            echo '<td data-label="Author">' . esc_html( $item->author ?: '—' ) . '</td>';
-            echo '<td data-label="Type">';
+            echo '<td data-label="' . esc_attr__( 'Author', 'societypress' ) . '">' . esc_html( $item->author ?: '—' ) . '</td>';
+            echo '<td data-label="' . esc_attr__( 'Type', 'societypress' ) . '">';
             if ( $item->media_type ) {
                 echo '<span class="sp-item-media-type">' . esc_html( $item->media_type ) . '</span>';
             } else {
                 echo '—';
             }
             echo '</td>';
-            echo '<td data-label="Call #">' . esc_html( $item->call_number ?: '—' ) . '</td>';
-            echo '<td data-label="Year">' . esc_html( $item->pub_year ?: '—' ) . '</td>';
-            echo '<td data-label="Status" style="text-align:center;">';
+            echo '<td data-label="' . esc_attr__( 'Call #', 'societypress' ) . '">' . esc_html( $item->call_number ?: '—' ) . '</td>';
+            echo '<td data-label="' . esc_attr__( 'Year', 'societypress' ) . '">' . esc_html( $item->pub_year ?: '—' ) . '</td>';
+            echo '<td data-label="' . esc_attr__( 'Status', 'societypress' ) . '" style="text-align:center;">';
             echo $item->available
-                ? '<span style="color:#0a6b2e; font-weight:600;">Available</span>'
-                : '<span style="color:#b32d2e;">Checked Out</span>';
+                ? '<span style="color:#0a6b2e; font-weight:600;">' . esc_html__( 'Available', 'societypress' ) . '</span>'
+                : '<span style="color:#b32d2e;">' . esc_html__( 'Checked Out', 'societypress' ) . '</span>';
             echo '</td>';
             echo '</tr>';
         }
@@ -31550,11 +31945,11 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
 
             // Previous
             if ( $page_num > 1 ) {
-                echo '<a href="' . esc_url( add_query_arg( 'sp_lib_pg', $page_num - 1, $base_url ) ) . '">&laquo; Prev</a>';
+                echo '<a href="' . esc_url( add_query_arg( 'sp_lib_pg', $page_num - 1, $base_url ) ) . '">&laquo; ' . esc_html__( 'Prev', 'societypress' ) . '</a>';
             }
 
             // Page numbers with smart truncation for large catalogs
-            $range = 2; // show 2 pages on each side of current
+            $range = 2;
             for ( $i = 1; $i <= $total_pages; $i++ ) {
                 if ( $i === 1 || $i === $total_pages || abs( $i - $page_num ) <= $range ) {
                     if ( $i === $page_num ) {
@@ -31571,17 +31966,15 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
 
             // Next
             if ( $page_num < $total_pages ) {
-                echo '<a href="' . esc_url( add_query_arg( 'sp_lib_pg', $page_num + 1, $base_url ) ) . '">Next &raquo;</a>';
+                echo '<a href="' . esc_url( add_query_arg( 'sp_lib_pg', $page_num + 1, $base_url ) ) . '">' . esc_html__( 'Next', 'societypress' ) . ' &raquo;</a>';
             }
             echo '</div>';
         }
     }
 
-    // ---- AJAX expand/collapse script ----
-    // WHY: Clicking a title row fetches full item details via AJAX and injects
-    //      a detail panel below the row. Clicking again collapses it. No page
-    //      reload, no separate URL — the member stays in context of their results.
-    //      Subject tags are rendered as clickable filter chips that re-run the search.
+    // ================================================================
+    // JAVASCRIPT — tab switching, AJAX detail expansion
+    // ================================================================
     ?>
     <script>
     (function() {
@@ -31589,8 +31982,36 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
         if ( ! container ) return;
 
         var ajaxUrl = '<?php echo esc_js( admin_url( "admin-ajax.php" ) ); ?>';
-        var openRow = null; // track which detail row is currently open
+        var openRow = null;
 
+        // ---- Tab switching ----
+        // WHY: Clicking a tab doesn't submit the form — it just changes which
+        //      field the search targets. The hidden input and placeholder update
+        //      instantly so the researcher knows what they're searching.
+        var tabs = container.querySelectorAll('.sp-catalog-tab');
+        var fieldInput = document.getElementById('<?php echo esc_js( $uid ); ?>-field');
+        var searchInput = document.getElementById('<?php echo esc_js( $uid ); ?>-input');
+        var placeholders = <?php echo wp_json_encode( $tab_placeholders ); ?>;
+
+        tabs.forEach(function(tab) {
+            tab.addEventListener('click', function() {
+                var field = this.getAttribute('data-field');
+
+                // Update active tab styling
+                tabs.forEach(function(t) { t.classList.remove('active'); });
+                this.classList.add('active');
+
+                // Update hidden field value and placeholder
+                if ( fieldInput ) fieldInput.value = field;
+                if ( searchInput ) searchInput.placeholder = placeholders[field] || '';
+                if ( searchInput ) searchInput.focus();
+            });
+        });
+
+        // ---- AJAX expand/collapse ----
+        // WHY: Clicking a title row fetches full item details via AJAX and injects
+        //      a detail panel below the row. Clicking again collapses it. No page
+        //      reload — the researcher stays in context of their results.
         container.addEventListener('click', function(e) {
             var titleLink = e.target.closest('.sp-item-title');
             if ( ! titleLink ) return;
@@ -31634,7 +32055,6 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
                     }
                     var d = resp.data;
 
-                    // Build the detail panel HTML
                     var html = '<div class="sp-catalog-detail">';
                     html += '<div class="sp-catalog-detail-layout">';
 
@@ -31648,7 +32068,6 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
                     html += '<div class="sp-catalog-detail-body">';
                     html += '<div class="sp-catalog-detail-grid">';
 
-                    // Helper to add a field if it has a value
                     function field(label, value) {
                         if ( ! value ) return '';
                         return '<dl class="sp-catalog-detail-field"><dt>' + label + '</dt><dd>' + escHtml(value) + '</dd></dl>';
@@ -31721,17 +32140,14 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
             div.appendChild(document.createTextNode(str));
             return div.innerHTML;
         }
-        // Utility: escape attribute
         function escAttr(str) {
             return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
-        // Utility: add or replace a URL param
         function addOrReplaceParam(url, key, value) {
             var u = new URL(url);
             u.searchParams.set(key, value);
             return u.toString();
         }
-        // Utility: remove a URL param
         function removeParam(url, key) {
             var u = new URL(url);
             u.searchParams.delete(key);

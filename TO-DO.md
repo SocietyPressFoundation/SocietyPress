@@ -289,6 +289,7 @@ Existing wizard (4 steps): Org Info → Membership → Feature Selection → App
 
 ## Admin — Remaining
 
+- [ ] Site health monitoring: REST API health-check endpoint (`/wp-json/societypress/v1/health`) that verifies DB connection, cron health, plugin status. Pair with external uptime monitor (e.g. UptimeRobot free tier) for downtime alerts. Internal alerting for failed crons, missing DB tables, PHP errors.
 - [x] Admin dashboard: activity feed — recent 15 audit log entries with categorized icons (member/event/settings/email/volunteer), relative timestamps, user attribution. Full-width panel below the existing two-column dashboard layout.
 - [x] Audit logging: expanded to cover member CRUD + bulk delete + "Delete All Others", settings saves, event CRUD + bulk delete, event registration + cancellation, group assignment, blast email send, volunteer role CRUD
 - [x] Governance menu: already exists as `sp-governance` page with volunteer roles (officer positions, committee assignments). Renamed menu label from "Volunteers" to "Leadership & Committees" for clarity.

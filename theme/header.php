@@ -78,18 +78,24 @@
                 <!-- Social media icons — inline in the header row -->
                 <?php if ( function_exists( 'sp_social_icons' ) ) { sp_social_icons(); } ?>
 
-                <!-- Site search — compact field in the header bar.
-                     WHY here (between nav and user menu): It's visually part of
-                     the nav area but distinct from the menu links. The magnifying
-                     glass icon makes it immediately recognizable as a search field
-                     without taking up much horizontal space. -->
+                <!-- Site search — click-to-expand dropdown in the header bar.
+                     WHY dropdown: A persistent text input takes up valuable nav
+                     space, especially on tablets. The magnifying glass icon is
+                     universally recognized as "search." Clicking it reveals the
+                     input field; clicking away or pressing Escape closes it.
+                     The expanded state is wide enough to type a real query. -->
                 <?php if ( function_exists( 'sp_get_search_page_url' ) ) : ?>
-                <form class="sp-header-search" action="<?php echo esc_url( sp_get_search_page_url() ); ?>" method="get">
-                    <input type="text" name="sp_q" placeholder="<?php esc_attr_e( 'Search…', 'societypress' ); ?>" autocomplete="off" required minlength="2">
-                    <button type="submit" aria-label="<?php esc_attr_e( 'Search', 'societypress' ); ?>">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <div class="sp-header-search-wrap">
+                    <button type="button" class="sp-search-toggle" aria-label="<?php esc_attr_e( 'Open search', 'societypress' ); ?>" aria-expanded="false">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                     </button>
-                </form>
+                    <form class="sp-header-search" action="<?php echo esc_url( sp_get_search_page_url() ); ?>" method="get">
+                        <input type="text" name="sp_q" placeholder="<?php esc_attr_e( 'Search…', 'societypress' ); ?>" autocomplete="off" required minlength="2">
+                        <button type="submit" aria-label="<?php esc_attr_e( 'Search', 'societypress' ); ?>">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        </button>
+                    </form>
+                </div>
                 <?php endif; ?>
 
                 <!-- User account menu (replaces the admin bar) -->

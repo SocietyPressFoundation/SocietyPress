@@ -317,22 +317,69 @@ img {
    where the hamburger menu provides the search field instead.
    ============================================================================ */
 
-.sp-header-search {
+/* Search wrapper — holds the toggle button and the expandable form */
+.sp-header-search-wrap {
+    position: relative;
     display: flex;
     align-items: center;
-    position: relative;
+}
+
+/* Toggle button — the magnifying glass icon that opens/closes the search */
+.sp-search-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 6px;
+    color: rgba(255, 255, 255, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s ease;
+    border-radius: 50%;
+}
+.sp-search-toggle:hover {
+    color: var(--sp-color-header-text, #fff);
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* Search form — hidden by default, slides open from the right */
+.sp-header-search {
+    display: none; /* JS toggles this to flex */
+    align-items: center;
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 100;
+    animation: sp-search-slide-in 0.2s ease-out;
+}
+
+/* WHY the open class: JS adds this when the toggle is clicked.
+   Using a class (not :focus-within) gives us explicit control over
+   open/close state — clicking away closes it via a document listener. */
+.sp-header-search-wrap.sp-search-open .sp-header-search {
+    display: flex;
+}
+.sp-header-search-wrap.sp-search-open .sp-search-toggle {
+    /* Hide the toggle when search is open — the form has its own icon */
+    display: none;
+}
+
+@keyframes sp-search-slide-in {
+    from { opacity: 0; transform: translateY(-50%) translateX(10px); }
+    to   { opacity: 1; transform: translateY(-50%) translateX(0); }
 }
 
 .sp-header-search input[type="text"] {
-    width: 180px;
-    padding: 6px 36px 6px 12px; /* Right padding leaves room for the button */
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    width: 240px;
+    padding: 8px 36px 8px 14px; /* Right padding leaves room for the button */
+    border: 1px solid rgba(255, 255, 255, 0.4);
     border-radius: 20px;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.15);
     color: var(--sp-color-header-text, #fff);
     font-size: 0.85rem;
     outline: none;
-    transition: width 0.3s ease, border-color 0.3s ease, background 0.3s ease;
+    transition: border-color 0.2s ease, background 0.2s ease;
 }
 
 .sp-header-search input[type="text"]::placeholder {
@@ -340,13 +387,12 @@ img {
 }
 
 .sp-header-search input[type="text"]:focus {
-    width: 240px;
-    border-color: rgba(255, 255, 255, 0.6);
-    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.7);
+    background: rgba(255, 255, 255, 0.2);
 }
 
 /* Magnifying glass submit button — positioned inside the input */
-.sp-header-search button {
+.sp-header-search button[type="submit"] {
     position: absolute;
     right: 4px;
     top: 50%;
@@ -362,7 +408,7 @@ img {
     transition: color 0.2s ease;
 }
 
-.sp-header-search button:hover {
+.sp-header-search button[type="submit"]:hover {
     color: var(--sp-color-header-text, #fff);
 }
 

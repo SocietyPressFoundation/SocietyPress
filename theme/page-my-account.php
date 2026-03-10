@@ -16,9 +16,11 @@
  *   6. Communication Preferences — print newsletter, email categories, blast opt-out
  *   7. Directory Privacy — which fields appear in the membership directory
  *   8. Interests & Skills — free-text fields for member expertise and hobbies
- *   9. Research Surnames — surnames with county/state/country/year range
- *  10. My Events — upcoming with cancel, past 6 months
- *  11. Change Password — current + new + confirm
+ *  8a. Research Surnames — surnames with county/state/country/year range + notes
+ *  8b. Research Areas — geographic areas with type/year range/notes
+ *  8c. Family Connections — read-only display of member relationships
+ *   9. My Events — upcoming with cancel, past 6 months
+ *  10. Change Password — current + new + confirm
  *
  * Fields the member CANNOT change (admin-only):
  *   - member_number, status, tier_id, household_id
@@ -52,6 +54,12 @@ $member = $wpdb->get_row(
     $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}sp_members WHERE user_id = %d", $user->ID ),
     ARRAY_A
 );
+// Decrypt sensitive contact/address fields that are encrypted at rest.
+// WHY: We need plaintext values for the form fields so the member can see
+// and edit their own phone numbers and addresses.
+if ( function_exists( 'sp_member_decrypt_row' ) ) {
+    $member = sp_member_decrypt_row( $member );
+}
 
 // Profile photo: check sp_members.photo_url first, then WP user meta, then Gravatar
 $custom_photo = '';
@@ -65,6 +73,7 @@ $photo_url = $custom_photo ? $custom_photo : get_avatar_url( $user->ID, [ 'size'
 // Flash messages set by sp_handle_account_forms() in societypress.php
 $success = isset( $_GET['sp-updated'] ) ? sanitize_text_field( $_GET['sp-updated'] ) : '';
 $error   = isset( $_GET['sp-error'] )   ? sanitize_text_field( $_GET['sp-error'] )   : '';
+$pending = isset( $_GET['sp-pending'] ) ? true : false;
 
 // Helper: safely get a member field or empty string
 // WHY: Avoids repeated isset() checks throughout the template
@@ -172,6 +181,19 @@ function sp_m( $member, $field ) {
     border-radius: 3px;
     font-size: 12px;
 }
+.sp-event-card__actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-shrink: 0;
+}
+.sp-event-ics-btn {
+    background: var(--sp-color-primary, #2271b1);
+    font-size: 13px;
+    padding: 6px 14px;
+    text-decoration: none;
+}
+.sp-event-ics-btn:hover { opacity: 0.85; }
 .sp-event-cancel-btn {
     background: var(--sp-danger, #b32d2e);
     font-size: 13px;
@@ -206,6 +228,33 @@ function sp_m( $member, $field ) {
 .sp-section-hint {
     color: var(--sp-text-muted, #666);
     margin-bottom: 16px;
+}
+
+/* ---- AJAX save feedback messages ---- */
+/* WHY inline messages instead of a page-top banner: The member might be
+   saving address info halfway down the page. A banner at the top wouldn't
+   be visible. Inline messages appear right next to the save button. */
+.sp-ajax-msg {
+    display: inline-block;
+    padding: 6px 14px;
+    border-radius: 4px;
+    font-size: 14px;
+    margin-right: 12px;
+    animation: sp-fade-in 0.2s ease-out;
+}
+.sp-ajax-msg--success {
+    background: #edfaef;
+    color: #00703c;
+    border: 1px solid #b8e6c0;
+}
+.sp-ajax-msg--error {
+    background: #fef0f0;
+    color: #b32d2e;
+    border: 1px solid #f0c0c0;
+}
+@keyframes sp-fade-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 </style>
 
@@ -261,6 +310,12 @@ function sp_m( $member, $field ) {
                             esc_html_e( 'Changes saved.', 'societypress' );
                     }
                     ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if ( $pending ) : ?>
+                <div class="sp-notice sp-notice--info" style="background: #fff8e1; border-left: 4px solid #f9a825; color: #5d4037; padding: 12px 16px; border-radius: 4px; margin-bottom: 16px;">
+                    <?php esc_html_e( 'Your changes have been submitted for review. An administrator will approve them shortly.', 'societypress' ); ?>
                 </div>
             <?php endif; ?>
 
@@ -475,13 +530,43 @@ function sp_m( $member, $field ) {
                             <label for="sp-phone"><?php esc_html_e( 'Home Phone', 'societypress' ); ?></label>
                             <input type="tel" id="sp-phone" name="phone"
                                    value="<?php echo esc_attr( sp_m( $member, 'phone' ) ); ?>"
-                                   placeholder="(210) 555-1234" />
+                                   placeholder="(210) 555-1234"
+                                   class="sp-phone-input" />
                         </div>
                         <div class="sp-form-field">
                             <label for="sp-cell"><?php esc_html_e( 'Cell Phone', 'societypress' ); ?></label>
                             <input type="tel" id="sp-cell" name="cell"
                                    value="<?php echo esc_attr( sp_m( $member, 'cell' ) ); ?>"
-                                   placeholder="(210) 555-1234" />
+                                   placeholder="(210) 555-1234"
+                                   class="sp-phone-input" />
+                        </div>
+                    </div>
+
+                    <?php
+                    // Preferred phone — tells the system which number to use
+                    // when Harold needs to call a member or send SMS notifications.
+                    // WHY: Many older members have both a landline and cell.
+                    //      Rather than guess, we ask which one they prefer.
+                    $pref_phone = sp_m( $member, 'preferred_phone' ) ?: 'cell';
+                    ?>
+                    <div class="sp-form-field">
+                        <label><?php esc_html_e( 'Preferred Phone', 'societypress' ); ?></label>
+                        <div style="display: flex; gap: 20px; margin-top: 4px;">
+                            <label style="font-weight: 400;">
+                                <input type="radio" name="preferred_phone" value="phone"
+                                       <?php checked( $pref_phone, 'phone' ); ?>>
+                                <?php esc_html_e( 'Home', 'societypress' ); ?>
+                            </label>
+                            <label style="font-weight: 400;">
+                                <input type="radio" name="preferred_phone" value="cell"
+                                       <?php checked( $pref_phone, 'cell' ); ?>>
+                                <?php esc_html_e( 'Cell', 'societypress' ); ?>
+                            </label>
+                            <label style="font-weight: 400;">
+                                <input type="radio" name="preferred_phone" value="work_phone"
+                                       <?php checked( $pref_phone, 'work_phone' ); ?>>
+                                <?php esc_html_e( 'Work', 'societypress' ); ?>
+                            </label>
                         </div>
                     </div>
 
@@ -809,6 +894,62 @@ function sp_m( $member, $field ) {
 
             <?php
             // ================================================================
+            // SECTION 7b: GENEALOGY SERVICE PROFILES
+            // WHY: Many members maintain profiles on external genealogy
+            //      platforms. Linking them here lets other members find
+            //      and connect with them across services — the genealogy
+            //      equivalent of sharing your LinkedIn or GitHub.
+            //      Stored as user_meta (not sp_members columns) because
+            //      these are optional supplemental links, not core data.
+            // ================================================================
+            ?>
+            <?php if ( $member ) : ?>
+            <section class="sp-account-section" id="genealogy-services">
+                <h2><?php esc_html_e( 'Genealogy Service Profiles', 'societypress' ); ?></h2>
+                <p class="sp-section-hint">
+                    <?php esc_html_e( 'Link your profiles on genealogy research platforms so other members can find and connect with you.', 'societypress' ); ?>
+                </p>
+
+                <form method="post" class="sp-account-form">
+                    <?php wp_nonce_field( 'sp_update_genealogy_services', 'sp_genealogy_nonce' ); ?>
+                    <input type="hidden" name="sp_action" value="update_genealogy_services" />
+
+                    <?php
+                    // The 8 services from the spec, plus their expected URL patterns
+                    // as placeholder hints so members know what to enter.
+                    $services = [
+                        'wikitree'     => [ 'WikiTree',      'https://www.wikitree.com/wiki/YourProfile' ],
+                        'familysearch' => [ 'FamilySearch',  'https://www.familysearch.org/tree/person/details/XXXX-XXX' ],
+                        'geni'         => [ 'Geni',          'https://www.geni.com/people/Your-Name/123456789' ],
+                        'werelate'     => [ 'WeRelate',      'https://www.werelate.org/wiki/Person:Your_Name' ],
+                        'ancestry'     => [ 'Ancestry',      'https://www.ancestry.com/family-tree/person/...' ],
+                        'myheritage'   => [ 'MyHeritage',    'https://www.myheritage.com/...' ],
+                        'findagrave'   => [ 'Find A Grave',  'https://www.findagrave.com/memorial/...' ],
+                        '23andme'      => [ '23andMe',       'https://you.23andme.com/...' ],
+                    ];
+                    foreach ( $services as $key => [ $label, $placeholder ] ) :
+                        $meta_key = 'sp_genealogy_' . $key;
+                        $value    = get_user_meta( $user->ID, $meta_key, true );
+                    ?>
+                    <div class="sp-form-field">
+                        <label for="sp-gen-<?php echo esc_attr( $key ); ?>">
+                            <?php echo esc_html( $label ); ?>
+                        </label>
+                        <input type="url"
+                               id="sp-gen-<?php echo esc_attr( $key ); ?>"
+                               name="genealogy_<?php echo esc_attr( $key ); ?>"
+                               value="<?php echo esc_attr( $value ); ?>"
+                               placeholder="<?php echo esc_attr( $placeholder ); ?>" />
+                    </div>
+                    <?php endforeach; ?>
+
+                    <button type="submit" class="sp-button"><?php esc_html_e( 'Save Genealogy Profiles', 'societypress' ); ?></button>
+                </form>
+            </section>
+            <?php endif; ?>
+
+            <?php
+            // ================================================================
             // SECTION 8: RESEARCH SURNAMES
             // WHY: Members register the surnames they're researching so
             // other members researching the same names can connect. This
@@ -825,7 +966,7 @@ function sp_m( $member, $field ) {
                 <?php
                 // Load this member's current research surnames with full location columns
                 $surnames = $wpdb->get_results( $wpdb->prepare(
-                    "SELECT id, surname, county, state, country, year_from, year_to
+                    "SELECT id, surname, county, state, country, year_from, year_to, note
                      FROM {$wpdb->prefix}sp_member_surnames
                      WHERE user_id = %d
                      ORDER BY surname ASC",
@@ -862,6 +1003,9 @@ function sp_m( $member, $field ) {
                                 ?>
                                 <?php if ( $detail ) : ?>
                                     <span class="sp-surname-detail"><?php echo $detail; ?></span>
+                                <?php endif; ?>
+                                <?php if ( ! empty( $sn->note ) ) : ?>
+                                    <span class="sp-surname-note"><?php echo esc_html( $sn->note ); ?></span>
                                 <?php endif; ?>
                                 <form method="post" onsubmit="return confirm('<?php echo esc_js( __( 'Remove this surname?', 'societypress' ) ); ?>');">
                                     <?php wp_nonce_field( 'sp_remove_surname', 'sp_surname_nonce' ); ?>
@@ -920,9 +1064,158 @@ function sp_m( $member, $field ) {
                                min="1000" max="2100" />
                     </div>
 
+                    <div class="sp-form-field sp-form-field--full">
+                        <label for="sp-new-surname-note"><?php esc_html_e( 'Research Notes', 'societypress' ); ?></label>
+                        <input type="text" id="sp-new-surname-note" name="new_surname_note"
+                               placeholder="<?php esc_attr_e( 'e.g., German immigrants, arrived 1850s via Galveston', 'societypress' ); ?>" />
+                    </div>
+
                     <button type="submit" class="sp-button"><?php esc_html_e( 'Add Surname', 'societypress' ); ?></button>
                 </form>
             </section>
+
+            <?php
+            // ================================================================
+            // SECTION 8b: RESEARCH AREAS
+            // WHY: The geographic complement to research surnames. Members
+            // register the counties, states, or regions they're researching
+            // so others working in the same area can find them. A member
+            // might research a dozen surnames all in one county — this
+            // surfaces the geographic overlap.
+            // ================================================================
+            ?>
+
+            <section class="sp-account-section" id="research-areas">
+                <h2><?php esc_html_e( 'Research Areas', 'societypress' ); ?></h2>
+                <p class="sp-section-hint">
+                    <?php esc_html_e( 'Add the geographic areas you\'re researching — counties, states, regions, or countries.', 'societypress' ); ?>
+                </p>
+
+                <?php
+                $research_areas = $wpdb->get_results( $wpdb->prepare(
+                    "SELECT id, area, area_type, year_from, year_to, note
+                     FROM {$wpdb->prefix}sp_member_research_areas
+                     WHERE user_id = %d
+                     ORDER BY area ASC",
+                    $user->ID
+                ) );
+                ?>
+
+                <!-- Existing research areas -->
+                <div class="sp-surname-list">
+                    <?php if ( ! empty( $research_areas ) ) : ?>
+                        <?php foreach ( $research_areas as $ra ) : ?>
+                            <div class="sp-surname-row">
+                                <strong><?php echo esc_html( $ra->area ); ?></strong>
+                                <?php if ( $ra->area_type ) : ?>
+                                    <span class="sp-surname-detail"><?php echo esc_html( ucfirst( $ra->area_type ) ); ?></span>
+                                <?php endif; ?>
+                                <?php
+                                $year_str = '';
+                                if ( $ra->year_from && $ra->year_to ) {
+                                    $year_str = '(' . esc_html( $ra->year_from ) . '–' . esc_html( $ra->year_to ) . ')';
+                                } elseif ( $ra->year_from ) {
+                                    $year_str = '(' . esc_html( $ra->year_from ) . '–)';
+                                } elseif ( $ra->year_to ) {
+                                    $year_str = '(–' . esc_html( $ra->year_to ) . ')';
+                                }
+                                if ( $year_str ) :
+                                ?>
+                                    <span class="sp-surname-detail"><?php echo $year_str; ?></span>
+                                <?php endif; ?>
+                                <?php if ( ! empty( $ra->note ) ) : ?>
+                                    <span class="sp-surname-note"><?php echo esc_html( $ra->note ); ?></span>
+                                <?php endif; ?>
+                                <form method="post" onsubmit="return confirm('<?php echo esc_js( __( 'Remove this research area?', 'societypress' ) ); ?>');">
+                                    <?php wp_nonce_field( 'sp_remove_research_area', 'sp_research_area_nonce' ); ?>
+                                    <input type="hidden" name="sp_action" value="remove_research_area">
+                                    <input type="hidden" name="area_id" value="<?php echo esc_attr( $ra->id ); ?>">
+                                    <button type="submit" class="sp-surname-remove" aria-label="<?php esc_attr_e( 'Remove research area', 'societypress' ); ?>">&times;</button>
+                                </form>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php else : ?>
+                        <p class="sp-surname-empty"><?php esc_html_e( 'No research areas added yet.', 'societypress' ); ?></p>
+                    <?php endif; ?>
+                </div>
+
+                <!-- Add new research area form -->
+                <form method="post" class="sp-surname-add-form">
+                    <?php wp_nonce_field( 'sp_add_research_area', 'sp_research_area_nonce' ); ?>
+                    <input type="hidden" name="sp_action" value="add_research_area">
+
+                    <div class="sp-form-field sp-form-field--surname">
+                        <label for="sp-new-area"><?php esc_html_e( 'Area', 'societypress' ); ?></label>
+                        <input type="text" id="sp-new-area" name="new_area" required
+                               placeholder="<?php esc_attr_e( 'e.g., Sample County', 'societypress' ); ?>" />
+                    </div>
+
+                    <div class="sp-form-field">
+                        <label for="sp-new-area-type"><?php esc_html_e( 'Type', 'societypress' ); ?></label>
+                        <select id="sp-new-area-type" name="new_area_type">
+                            <option value=""><?php esc_html_e( '(optional)', 'societypress' ); ?></option>
+                            <option value="county"><?php esc_html_e( 'County', 'societypress' ); ?></option>
+                            <option value="state"><?php esc_html_e( 'State/Province', 'societypress' ); ?></option>
+                            <option value="country"><?php esc_html_e( 'Country', 'societypress' ); ?></option>
+                            <option value="region"><?php esc_html_e( 'Region', 'societypress' ); ?></option>
+                            <option value="city"><?php esc_html_e( 'City/Town', 'societypress' ); ?></option>
+                        </select>
+                    </div>
+
+                    <div class="sp-form-field sp-form-field--year">
+                        <label for="sp-new-area-year-from"><?php esc_html_e( 'From', 'societypress' ); ?></label>
+                        <input type="number" id="sp-new-area-year-from" name="new_area_year_from"
+                               placeholder="<?php esc_attr_e( '1830', 'societypress' ); ?>"
+                               min="1000" max="2100" />
+                    </div>
+
+                    <div class="sp-form-field sp-form-field--year">
+                        <label for="sp-new-area-year-to"><?php esc_html_e( 'To', 'societypress' ); ?></label>
+                        <input type="number" id="sp-new-area-year-to" name="new_area_year_to"
+                               placeholder="<?php esc_attr_e( '1890', 'societypress' ); ?>"
+                               min="1000" max="2100" />
+                    </div>
+
+                    <div class="sp-form-field sp-form-field--full">
+                        <label for="sp-new-area-note"><?php esc_html_e( 'Notes', 'societypress' ); ?></label>
+                        <input type="text" id="sp-new-area-note" name="new_area_note"
+                               placeholder="<?php esc_attr_e( 'e.g., German settlements along the Guadalupe River', 'societypress' ); ?>" />
+                    </div>
+
+                    <button type="submit" class="sp-button"><?php esc_html_e( 'Add Research Area', 'societypress' ); ?></button>
+                </form>
+            </section>
+
+            <?php
+            // ================================================================
+            // SECTION 8c: RELATIONSHIPS
+            // WHY: Shows the member's family connections — spouse, parent,
+            // sibling, etc. Read-only display; the admin manages these
+            // from the member edit page. Members can see who they're linked
+            // to, which matters for household memberships and billing.
+            // ================================================================
+            $relationships = sp_get_member_relationships( $user->ID );
+            if ( ! empty( $relationships ) ) :
+            ?>
+            <section class="sp-account-section" id="relationships">
+                <h2><?php esc_html_e( 'Family Connections', 'societypress' ); ?></h2>
+                <p class="sp-section-hint">
+                    <?php esc_html_e( 'Family relationships linked to your account. Contact your society administrator to update these.', 'societypress' ); ?>
+                </p>
+
+                <div class="sp-surname-list">
+                    <?php foreach ( $relationships as $rel ) : ?>
+                        <div class="sp-surname-row">
+                            <strong><?php echo esc_html( $rel->related_name ); ?></strong>
+                            <span class="sp-surname-detail"><?php echo esc_html( ucfirst( $rel->relationship ) ); ?></span>
+                            <?php if ( ! empty( $rel->note ) ) : ?>
+                                <span class="sp-surname-note"><?php echo esc_html( $rel->note ); ?></span>
+                            <?php endif; ?>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </section>
+            <?php endif; ?>
 
             <?php
             // ================================================================
@@ -990,12 +1283,19 @@ function sp_m( $member, $field ) {
                                     <span class="sp-event-badge--waitlisted"><?php esc_html_e( 'Waitlisted', 'societypress' ); ?></span>
                                 <?php endif; ?>
                             </div>
-                            <form method="post" onsubmit="return confirm('<?php echo esc_js( __( 'Cancel your registration for this event?', 'societypress' ) ); ?>');">
-                                <?php wp_nonce_field( 'sp_cancel_event_reg', 'sp_event_nonce' ); ?>
-                                <input type="hidden" name="sp_action" value="cancel_event_registration">
-                                <input type="hidden" name="registration_id" value="<?php echo esc_attr( $reg->reg_id ); ?>">
-                                <button type="submit" class="sp-button sp-event-cancel-btn"><?php esc_html_e( 'Cancel', 'societypress' ); ?></button>
-                            </form>
+                            <div class="sp-event-card__actions">
+                                <a href="<?php echo esc_url( add_query_arg( 'sp_ics', $reg->event_id, home_url( '/' ) ) ); ?>"
+                                   class="sp-button sp-event-ics-btn"
+                                   title="<?php esc_attr_e( 'Download .ics file', 'societypress' ); ?>">
+                                    <?php esc_html_e( 'Add to Calendar', 'societypress' ); ?>
+                                </a>
+                                <form method="post" onsubmit="return confirm('<?php echo esc_js( __( 'Cancel your registration for this event?', 'societypress' ) ); ?>');">
+                                    <?php wp_nonce_field( 'sp_cancel_event_reg', 'sp_event_nonce' ); ?>
+                                    <input type="hidden" name="sp_action" value="cancel_event_registration">
+                                    <input type="hidden" name="registration_id" value="<?php echo esc_attr( $reg->reg_id ); ?>">
+                                    <button type="submit" class="sp-button sp-event-cancel-btn"><?php esc_html_e( 'Cancel', 'societypress' ); ?></button>
+                                </form>
+                            </div>
                         </div>
                     <?php endforeach; ?>
                 <?php else : ?>
@@ -1132,6 +1432,141 @@ function sp_m( $member, $field ) {
 
     var phoneFields = document.querySelectorAll('input[type="tel"]');
     phoneFields.forEach(formatPhone);
+
+    // =========================================================================
+    // AJAX SAVE — Intercept form submissions for text-based sections
+    // =========================================================================
+    // WHY: Full-page POST/redirect for saving a phone number or checking a
+    //      preference box is a poor experience. AJAX saves are instant, keep
+    //      the member's scroll position, and show inline feedback. The old
+    //      POST handlers remain as a no-JS fallback.
+    //
+    // WHICH forms: Only the 6 text/checkbox sections — not photo (file upload),
+    //      password (re-auth sensitive), surnames, research areas, or event
+    //      cancellation (those use add/remove patterns with redirects).
+    // =========================================================================
+    var ajaxUrl = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
+    var ajaxActions = [
+        'update_profile', 'update_contact', 'update_address',
+        'update_preferences', 'update_privacy', 'update_interests',
+        'update_genealogy_services'
+    ];
+
+    // Find all forms with a matching sp_action and intercept them
+    document.querySelectorAll('form').forEach(function(form) {
+        var actionInput = form.querySelector('input[name="sp_action"]');
+        if (!actionInput || ajaxActions.indexOf(actionInput.value) === -1) return;
+
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            var btn = form.querySelector('button[type="submit"]');
+            var origText = btn ? btn.textContent : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = <?php echo wp_json_encode( __( 'Saving…', 'societypress' ) ); ?>;
+            }
+
+            // Remove any existing feedback message in this form
+            var oldMsg = form.querySelector('.sp-ajax-msg');
+            if (oldMsg) oldMsg.remove();
+
+            var formData = new FormData(form);
+            formData.append('action', 'sp_save_account');
+
+            fetch(ajaxUrl, { method: 'POST', body: formData, credentials: 'same-origin' })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    var msg = document.createElement('div');
+                    msg.className = 'sp-ajax-msg';
+                    msg.setAttribute('role', 'status');
+
+                    if (data.success) {
+                        msg.className += ' sp-ajax-msg--success';
+                        msg.textContent = data.data.message;
+                    } else {
+                        msg.className += ' sp-ajax-msg--error';
+                        msg.textContent = (data.data && data.data.message)
+                            ? data.data.message
+                            : <?php echo wp_json_encode( __( 'Something went wrong. Please try again.', 'societypress' ) ); ?>;
+                    }
+
+                    // Insert message right before the submit button
+                    if (btn) {
+                        btn.parentNode.insertBefore(msg, btn);
+                    } else {
+                        form.appendChild(msg);
+                    }
+
+                    // Auto-dismiss after 5 seconds
+                    setTimeout(function() { msg.remove(); }, 5000);
+                })
+                .catch(function() {
+                    // Network error — let the form fall through to normal POST
+                    form.submit();
+                })
+                .finally(function() {
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.textContent = origText;
+                    }
+                });
+        });
+    });
+    // =========================================================================
+    // PHONE AUTO-FORMATTING
+    // =========================================================================
+    // WHY: Genealogy society members are often older and type phone numbers in
+    //      all sorts of formats — "2105551234", "210.555.1234", "210-555-1234".
+    //      Auto-formatting to (210) 555-1234 on blur keeps the data clean and
+    //      consistent without requiring any specific input format. We only
+    //      format 10-digit US numbers — international numbers pass through as-is.
+    // =========================================================================
+    document.querySelectorAll('.sp-phone-input').forEach(function(input) {
+        input.addEventListener('blur', function() {
+            var digits = this.value.replace(/\D/g, '');
+            // Strip leading 1 for US numbers (11 digits starting with 1)
+            if (digits.length === 11 && digits[0] === '1') {
+                digits = digits.substring(1);
+            }
+            if (digits.length === 10) {
+                this.value = '(' + digits.substring(0, 3) + ') ' + digits.substring(3, 6) + '-' + digits.substring(6);
+            }
+            // If not 10 digits, leave the value as-is (international, partial, etc.)
+        });
+    });
+
+    // =========================================================================
+    // EMAIL VALIDATION — Real-time feedback on email fields
+    // =========================================================================
+    // WHY: Members type their email wrong more often than you'd think — missing
+    //      the @ sign, adding spaces, typing .con instead of .com. Catching
+    //      these before submit saves Harold from bounced renewal reminders.
+    // =========================================================================
+    var emailInput = document.getElementById('sp-email');
+    if (emailInput) {
+        emailInput.addEventListener('blur', function() {
+            var val = this.value.trim();
+            // Simple but effective: must have @ with chars on both sides, and a dot after @
+            var valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
+            if (val && !valid) {
+                this.style.borderColor = '#d63638';
+                // Add hint if not already present
+                if (!this.nextElementSibling || !this.nextElementSibling.classList.contains('sp-email-hint')) {
+                    var hint = document.createElement('p');
+                    hint.className = 'sp-field-hint sp-email-hint';
+                    hint.style.color = '#d63638';
+                    hint.textContent = <?php echo wp_json_encode( __( 'This doesn\'t look like a valid email address.', 'societypress' ) ); ?>;
+                    this.parentNode.insertBefore(hint, this.nextSibling);
+                }
+            } else {
+                this.style.borderColor = '';
+                var hint = this.parentNode.querySelector('.sp-email-hint');
+                if (hint) hint.remove();
+            }
+        });
+    }
+
 })();
 </script>
 

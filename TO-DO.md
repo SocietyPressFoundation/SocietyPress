@@ -8,10 +8,11 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 ## Completed
 
 ### Core Platform
-- [x] Single-file plugin architecture (43,745 lines, function-based, inline JS/CSS)
-- [x] 39 database tables via dbDelta on activation
+- [x] Single-file plugin architecture (~48,000 lines, function-based, inline JS/CSS)
+- [x] 41 database tables via dbDelta on activation (39 original + sp_pending_profile_changes + sp_orders + sp_order_items)
 - [x] Constants: `SOCIETYPRESS_VERSION`, `SOCIETYPRESS_PLUGIN_DIR`, `SOCIETYPRESS_PLUGIN_URL`, `SOCIETYPRESS_PLUGIN_FILE`
-- [x] Settings: single `societypress_settings` option array (68 keys), 7-tab admin page (Website, Organization, Membership, Directory, Events, Privacy, Design)
+- [x] Settings: single `societypress_settings` option array (68 keys), 8-tab admin page (Website, Organization, Membership, Directory, Events, Privacy, Design, Modules)
+- [x] Module toggle system: 11 feature modules (Events, Library, Newsletters, Resources, Governance, Store, Records, Donations, Blast Email, Gallery, Research Help) — wizard step + settings page, gates admin menus, page templates, shortcodes, and crons
 - [x] Admin: unified sidebar with flyout groups (Communications, Finances), WP branding hidden, custom login page
 - [x] Admin dashboard: stat cards (total/active/expiring/expired/new members), upcoming events, expiring members, recent signups, quick links, site info
 - [x] Site lockdown: logged-in for frontend, admin-only for backend
@@ -20,7 +21,7 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 - [x] Email log admin: stat cards (sent/blocked/failed/total), status/type filters, search, single-entry detail with sandboxed iframe body preview
 - [x] GDPR compliance: 5 privacy data exporters + 5 erasers, privacy policy content registration
 - [x] Unified site search: searches events, library, resources, members (logged-in), newsletters (logged-in), WP pages — frontend template + AJAX JSON endpoint
-- [x] Audit logging (partial): member CRUD, status changes, position/committee assignments
+- [x] Audit logging: member CRUD, status changes, position/committee assignments, settings saves, event CRUD, event registration/cancellation, bulk member delete, group assignment, blast email send, volunteer role CRUD
 - [x] GitHub repo: cleaned up, current single-file plugin + theme, GPL-2.0
 
 ### Members
@@ -123,9 +124,12 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 - [x] Hours tracking: logged per signup, summary stats, CSV export
 
 ### Store
-- [x] Public storefront (/store/): category sidebar with counts, product card grid, quantity selector, placeholder Add to Cart buttons
-- [x] Products sourced from library catalog (`acq_code = 'Society Publication'`, `item_value > 0`)
+- [x] Public storefront (/store/): category sidebar with counts, product card grid, quantity selector, functional Add to Cart buttons (AJAX, logged-in users)
+- [x] Products sourced from library catalog (configurable `store_acq_code` setting, `item_value > 0`)
 - [x] 8 auto-categorized store categories
+- [x] Shopping cart: user_meta storage, AJAX CRUD, responsive cart page with quantity controls, header badge with live count
+- [x] Checkout: Stripe Checkout Sessions with multi-line-item support, order confirmation email
+- [x] Admin order management: orders list with status filters, order detail with fulfillment controls, Finances flyout integration
 
 ### the society Child Theme (v0.04d)
 - [x] Front page template, 3-level dropdown nav, hamburger menu
@@ -154,79 +158,95 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 See `Docs/KNOWN-ISSUES.md` for the full list from the March 2026 audit.
 
 **Critical:**
-- [ ] Version mismatch: plugin header says `0.25d`, constant says `0.30d` — pick one and update both
-- [ ] Attendance NULL bug: `sp_event_attendance_count()` doesn't account for NULL `attended` column — counts are wrong
-- [ ] Join form sends welcome email before payment completes — member created pre-payment
+- [x] Version mismatch: plugin header updated to `0.30d` to match constant
+- [x] Attendance NULL bug: added proper `attended = 1` query + "Attended" stat card to annual report (original function never existed)
+- [x] Join form sends welcome email before payment completes — added pending-status guard in `sp_send_welcome_email()`, welcome email now fires when admin activates the member
 
 **Should Fix:**
-- [ ] Merge tag syntax split: renewal/welcome emails use `{{double_braces}}`, blast emails use `{single_braces}}` — unify to one syntax
-- [ ] GDPR gap: donations not covered by privacy exporters/erasers
-- [ ] Library item detail AJAX missing `nopriv` handler — non-logged-in users can't expand catalog rows if catalog is public
-- [ ] jQuery usage in contact form widget and album edit page (project policy: vanilla JS only)
-- [ ] `get_page_by_title()` deprecated in WP 6.2 — replace with `WP_Query`
-- [ ] `auto_update_plugin` filter affects ALL plugins, not just SocietyPress
-- [ ] Event delete doesn't clean up associated time slots
-- [ ] Duplicate `Deceased` key in CSV import column map (cosmetic)
-- [ ] Duplicate `{{organization_name}}` merge tag key (cosmetic)
-- [ ] No rate limiting on join form submissions
-- [ ] Server path exposure in event import hidden field
-- [ ] Orphaned temp files from CSV imports not cleaned up
-- [ ] Breadcrumb settings exist in code but have no admin UI
-- [ ] Help request notifications blast all site members with no opt-out
+- [x] Merge tag syntax split: unified to `{{double_braces}}` everywhere, legacy `{single_braces}` fallback in blast emails
+- [x] GDPR gap: added donation exporter + eraser (anonymizes donor info, retains financial records)
+- [x] Library item detail AJAX: added `nopriv` handler so public catalogs work for non-logged-in users
+- [ ] jQuery usage in contact form widget, album edit page, and page builder admin (project policy: vanilla JS only) — substantial rewrite, deferred
+- [x] `get_page_by_title()` deprecated in WP 6.2 — replaced all 3 instances with `WP_Query`
+- [x] `auto_update_plugin` filter: now scoped to SocietyPress only (was forcing auto-updates on ALL plugins)
+- [x] Event delete already cleans up time slots (both single and bulk paths call `sp_slots_delete_by_event`)
+- [x] Duplicate `Deceased` key in CSV import column map: removed duplicate `__meta` mapping that was overwriting the status mapping
+- [x] Duplicate `{{organization_name}}` merge tag key: removed duplicate entry
+- [x] Rate limiting on join form: 3 attempts per IP per hour via transient
+- [ ] Server path exposure in event import hidden fields — requires refactoring 5 import flows to use transients, deferred
+- [x] Orphaned temp files: all 5 CSV import flows already call `@unlink()` after processing — audit was wrong
+- [x] Breadcrumb settings: added enable/disable, home label, separator fields to Settings → Website
+- [x] Help request notifications: now sends to admins only, not all members
+- [x] Email log cleanup cron: added to deactivation hook (was orphaned after deactivation)
 
 **i18n:**
-- [ ] Retroactive i18n pass on all admin strings (volunteer section, store, resource links, many admin notices unwrapped)
+- [x] Retroactive i18n pass on all admin strings — comprehensive pass wrapping ~350+ strings across the entire plugin:
+  - All 8 settings tabs: section titles, field titles, descriptions, select options, checkbox labels
+  - All admin notices (success/error): member list, events, pages, groups, speakers, albums, library, resources, volunteers, donations, campaigns, newsletters, blast email, help requests
+  - Member edit form: all labels, status options, descriptions, placeholders
+  - Event edit form: all labels, status/visibility/payment mode options, checkbox labels, descriptions
+  - Design settings: all color/font/layout labels, select options, descriptions
+  - Setup wizard: all step labels
+  - Page builder widget fields: all 28 widget field labels
+  - Library item edit: all 30+ field labels and descriptions
+  - All other admin forms: groups, finance, export, tiers, categories, speakers, albums, newsletters, resources, volunteer opportunities, volunteer roles, volunteer hours, donations, campaigns, walk-in registration, audit log filters
+  - Member profile frontend: all form labels
+  - Import result notices: member/event import with proper _n() pluralization
+  - Contact form and event registration labels
 
 ---
 
 ## Membership — Remaining
 
 - [ ] Member portal polish:
-  - Optional admin approval for profile changes (setting already exists)
-  - AJAX save (individual fields or all at once) — currently uses full-page POST/redirect
-- [ ] Contact information table: Separate from core member record (spec: `sp_member_contact`)
-  - Primary/secondary email, home/cell/work phone, preferred phone, home + mailing address
-  - Phone auto-formatting, email validation
+  - [x] Optional admin approval for profile changes — new `sp_pending_profile_changes` table, `profile_changes_require_approval` setting in Directory settings, queues Personal Info/Contact/Address changes for review when enabled. Admin review page (`sp-pending-changes`) with side-by-side diff, approve/reject with optional notes, email notifications both ways (admin on submit, member on decision). Preferences/privacy/interests/genealogy save immediately. Count badge in Members flyout menu.
+  - [x] AJAX save for 6 text/checkbox sections (profile, contact, address, preferences, privacy, interests) — inline success/error messages, no page reload, old POST handlers remain as no-JS fallback. Photo and password forms still use traditional POST.
+- [x] Contact information enhancements (spec called for separate `sp_member_contact` table — implemented as enhancements to existing `sp_members` instead, avoiding a massive query refactor across 40+ locations):
+  - [x] `preferred_phone` column: home/cell/work radio in My Account + select in admin member edit, saved to sp_members, shown in pending changes review
+  - [x] Phone auto-formatting: JS on blur converts 10-digit input to (555) 123-4567 format, handles 1+ prefix, leaves international numbers alone
+  - [x] Email validation: real-time blur check on email field, red border + hint for invalid format
+  - Existing fields already cover: primary email (wp_users), alt_email, home/cell/work/fax/alt phone, home + seasonal/mailing address
 - [ ] Genealogy fields:
-  - Surnames being researched (`sp_member_surnames`) with normalized variants and research notes — table exists, frontend rough
-  - Geographic research areas (`sp_member_research_areas`) with time periods — table exists, frontend missing
-  - Member relationships (`sp_member_relationships`): spouse, family, referred by — table exists, no UI
-  - 8 genealogy service integrations (WikiTree, FamilySearch, Geni, WeRelate, Ancestry, MyHeritage, Find A Grave, 23andMe) — settings toggle exists, UI doesn't
-- [ ] Contact data encryption: AES-256-GCM at rest for sensitive fields (encryption infrastructure built, not applied to contacts yet)
+  - [x] Surnames: added `note` column for research notes, notes display in My Account + add form
+  - [x] Geographic research areas (`sp_member_research_areas`): new table + full My Account section (add/remove/display with area type, year range, notes)
+  - [x] Member relationships: read-only "Family Connections" section in My Account (admin manages via member edit page)
+  - [ ] Normalized surname variants — deferred (needs design: auto-suggest? alias table?)
+  - [x] 8 genealogy service integrations (WikiTree, FamilySearch, Geni, WeRelate, Ancestry, MyHeritage, Find A Grave, 23andMe) — My Account section with URL fields per service, AJAX save, directory member detail modal shows linked profiles as colored buttons. Stored as user_meta (`sp_genealogy_*`).
+- [x] Contact data encryption at rest: XChaCha20-Poly1305 (libsodium) encryption for 7 sensitive fields — cell, work_phone, alt_phone, fax, address_1, address_2, seasonal_address_1. Phone (home) and city/state left plaintext for directory search/sort. Columns widened (VARCHAR 200/512) to fit ciphertext. Helper functions `sp_member_encrypt_fields()` / `sp_member_decrypt_row()` / `sp_member_decrypt_rows()` applied at all 9 write points (admin edit, CSV import, join form, AJAX/POST contact+address, profile change approval) and all 10 read points (admin edit, member list, directory listing+detail, CSV export, GDPR export, welcome email, My Account, generic getter, profile change comparison). One-time migration `sp_maybe_migrate_encrypt_contacts()` runs on activation, batched by 100, idempotent. Graceful fallback: if decryption fails (plaintext data), value passes through unchanged.
 - [ ] Couples sharing accounts: revisit later
 
 ## Events — Remaining
 
-- [ ] Time slots: individual capacity limits per slot (CRUD built, capacity logic incomplete)
-- [ ] Waitlist: auto-promotion when cancellation occurs (volunteer waitlist works, event waitlist needs work)
-- [ ] Payment tracking: fee amounts and payment status per registration
+- [x] Time slots: individual capacity limits per slot — already implemented (`sp_slot_get_remaining_capacity()`, enforced in registration AJAX)
+- [x] Waitlist: auto-promotion when cancellation occurs — already implemented (`sp_promote_waitlist()` called from cancel handler)
+- [x] Payment tracking: fee amounts and payment status per registration — already implemented (fee_amount, payment_status, payment_method, payment_date columns + Stripe flow)
 - [ ] Calendar bug: current month renders full-width, other months render narrower — same HTML/CSS from server, likely browser rendering/caching. Needs DevTools inspection.
-- [ ] Add to calendar: let members add registered events to their personal calendars (iCal/.ics download link on My Account and/or event detail page)
-- [ ] Event change notifications: email registrants when date/time/location changes
-- [ ] "Notice only" events: appear on calendar but no detail page or registration (board meetings, holidays)
+- [x] Add to calendar: .ics download on event detail page (key details section) and My Account upcoming events. RFC 5545 compliant, handles timed + all-day events, UTC conversion, line folding.
+- [x] Event change notifications: already implemented — save handler detects date/time/location/cancellation changes, `sp_send_event_update_emails()` and `sp_send_event_cancellation_emails()` send HTML emails to all registrants
+- [x] "Notice only" events: `notice_only` column, admin checkbox, calendar shows them as non-clickable pills (muted style), excluded from list view, detail page shows title/date + "calendar notice" message
 
 ## Email & Notifications — Remaining
 
-- [ ] Expiration notice: sent after expiration (daily cron) — renewal reminders built, post-expiration notice not
-- [ ] Waitlist promotion email: sent when moved from waitlist to confirmed
-- [ ] Communication preference check: email vs postal mail vs both — respect before sending
-- [ ] Email template editor in admin with merge tag support
+- [x] Expiration notice: `sp_process_expired_notices()` — already implemented, daily cron, dedup via reminder_key, auto-status-update, merge tags. Added settings UI (enable toggle + subject field) on Membership settings page.
+- [x] Waitlist promotion email: `sp_send_waitlist_promotion_email()` — already fully implemented, called from cancel handler when waitlisted registrant gets promoted
+- [x] Communication preference check: event reminders, update notifications, and cancellation emails now check `pref_email_events` on the member record. Registration confirmations always send (transactional). Renewal/expiration notices already checked `pref_email_notices`.
+- [x] Email template editor in admin with merge tag support — tabbed editor (Welcome, Renewal Reminder, Expiration Notice) with wp_editor, merge tag reference sidebar with click-to-copy, reset-to-default button, shares subject keys with existing Membership settings
 
 ## Store — Remaining
 
 - [ ] Real marketing descriptions (currently showing physical specs from library import)
-- [ ] Shopping cart / checkout flow
-- [ ] Order tracking
-- [ ] Payment integration (Stripe infrastructure exists from join form, needs cart flow)
-- [ ] Generalize store — currently hardcoded to `acq_code = 'Society Publication'`
+- [x] Shopping cart / checkout flow: Full cart system — cart stored as user_meta (JSON), AJAX add/update/remove/get endpoints, store page "Add to Cart" buttons wired with JS (logged-in only, logged-out see "please log in"), cart badge in header (SVG cart icon with red count badge next to user menu, updates live via AJAX). Cart page (`sp-cart` template, auto-created on example.org): responsive table with cover images, +/- quantity buttons, remove links, real-time AJAX updates without page reload, "Continue Shopping" link, total display, "Proceed to Checkout" button. Mobile: stacked card layout.
+- [x] Order tracking: `sp_orders` + `sp_order_items` tables (41 total DB tables now). Admin "Store Orders" page with status filter tabs (all/paid/pending/shipped/completed/refunded), colored status badges, item count, customer info, date. Order detail page: 2-column layout (order info + customer), items table, status update form with admin note. Added to Finances flyout menu.
+- [x] Payment integration: Stripe Checkout for store — reuses existing Stripe REST API pattern (no SDK). Checkout AJAX creates order (status=pending), builds multi-line-item Stripe session, redirects to Stripe. Return handler verifies session, updates order to "paid", clears cart, sends confirmation email (HTML receipt with item table + total). Supports multiple items per checkout. Audit logging for order create + payment.
+- [x] Generalize store — replaced hardcoded `acq_code = 'Society Publication'` with configurable `store_acq_code` setting (Settings → Organization → Store). Intro text also configurable. Blank acq_code shows all priced items.
 
 ## Payment Processing — Remaining
 
-- [ ] Stripe: card payments via PaymentIntent (join form has this, needs generalization)
+- [x] Stripe: card payments via Checkout Sessions — join form, event registration, and store all use `wp_remote_post()` to Stripe REST API (no SDK). Test/live mode toggle via settings. Store checkout sends multi-line-item sessions.
 - [ ] PayPal integration: Balance, Venmo, credit/debit, pay-later (SDK)
-- [ ] Sandbox + live modes (settings toggle exists)
-- [ ] Payment history table (`sp_payments`)
-- [ ] Payment status tracking per member and per event registration
+- [x] Sandbox + live modes: `stripe_test_mode` setting switches between test/live keys
+- [x] Payment history: `sp_orders` table tracks store purchases with Stripe session ID + payment intent. Event registrations track via `sp_event_registrations.payment_status`.
+- [x] Payment status tracking: orders have full lifecycle (pending → paid → shipped → completed → refunded), event registrations have payment_status + payment_date
 
 ## Genealogical Records — Remaining
 
@@ -235,34 +255,43 @@ See `Docs/KNOWN-ISSUES.md` for the full list from the March 2026 audit.
 
 ## Installation Wizard — Extend Existing
 
-Existing wizard (3 steps, lines ~11436-11710): Org Info → Membership → Appearance/Email. Triggers on first activation, redirects admin, saves to `societypress_settings`, marks complete via `sp_wizard_completed` option.
+Existing wizard (4 steps): Org Info → Membership → Feature Selection → Appearance/Email. Triggers on first activation, redirects admin, saves to `societypress_settings`, marks complete via `sp_wizard_completed` option.
 
-- [ ] Add Step 2.5 (between Membership and Appearance): Feature Selection
-  - Checklist of modules: Members, Events, Library, Newsletters, Committees & Leadership, Store, Genealogical Records, Donations, Blast Email, Resource Links, Volunteers, etc.
+- [x] Add Step 3 (between Membership and Appearance): Feature Selection
+  - Checklist of 11 modules with dashicons, descriptions, and checkboxes
   - Plain-language descriptions of each so non-technical admins understand what they're choosing
   - All modules on by default — admin unchecks what they don't need
   - Saved as `sp_enabled_modules` option (array of module slugs)
-- [ ] Feature toggle system: enable/disable modules after wizard via Settings tab
-  - Disabled modules: hide admin menu items, suppress frontend output, skip cron jobs
+  - Step indicators updated from 3 circles to 4
+- [x] Feature toggle system: enable/disable modules after wizard via Settings → Modules
+  - Settings page with card grid, toggle switches, Enable All / Disable All buttons
+  - Disabled modules: admin menu items hidden (priority 1000 filter), page templates removed from dropdown (priority 999 filter), frontend pages show "Feature Not Available" (priority 5 template_include guard)
   - Tables stay intact when a module is disabled — data is never destroyed
-  - Re-enabling surfaces everything again, creates any missing tables if needed
+  - Re-enabling surfaces everything again immediately
   - Key principle: toggling off is never destructive, toggling on is seamless
-- [ ] Wire module checks into the codebase: each module's menu registration, shortcode, widget, cron, and frontend rendering checks `sp_module_enabled( 'library' )` (or similar) before executing
+- [x] Wire module checks into the codebase:
+  - Module registry: `sp_get_modules()` (11 modules), `sp_module_enabled()`, `sp_get_enabled_modules()`
+  - Admin menu filtering: priority 1000 `admin_menu` hook removes submenus for disabled modules
+  - Template dropdown: `theme_page_templates` filter (priority 999) hides disabled module templates
+  - Frontend guard: `template_include` filter (priority 5) blocks disabled module page rendering
+  - Template→module map: `sp_template_module_map()` — 10 template slugs mapped to modules
+  - Shortcodes: `[societypress_volunteers]` gated by `governance` module
+  - Cron: event reminder cron gated by `events` module (unschedules when disabled)
+  - Members is always enabled (hardcoded in `sp_module_enabled()`)
 
 ## Theme — Remaining
 
-- [ ] Style presets: 6 named presets (Parchment, Slate, Ledger, Hearth, Archive, Chronicle)
-  - Curated color/font/token combos, one-click selection, further customization allowed
-- [ ] Starter content on activation: auto-create pages (Home, About, Events, Join, Contact, News, Portal, Directory, Newsletters), menus, reading settings, remove default WP post/page
-- [ ] Smart nav behavior: Join link hides for logged-in members, Directory hides for logged-out visitors
-- [ ] Search dropdown in primary nav
-- [ ] My Account menu for logged-in members (profile link + logout)
+- [x] Style presets: 6 named presets (Parchment, Slate, Ledger, Hearth, Archive, Chronicle) — clickable cards on Design settings page, each fills in all 7 colors + 2 fonts, instant live preview update, highlighted selection state. Harold picks a preset then fine-tunes.
+- [x] Starter content on activation: auto-creates 15 pages (Home, About, Membership, Events, Calendar, Directory, My Account, Join, Newsletters, Library, Search, Contact, Resources, Leadership, News + Privacy Policy), removes WP default post/page/comment, sets static front page + blog page, creates Primary Menu with all key pages assigned to `primary` theme location. Smart nav filter handles visibility. Only runs on fresh installs (skips if pages already exist).
+- [x] Smart nav behavior: `wp_nav_menu_objects` filter hides Join page for logged-in members, Directory/My Account for logged-out visitors. Template + shortcode detection, cached lookups.
+- [x] Search dropdown in primary nav — magnifying glass icon button that expands to a search input on click. Click-away and Escape to close. Slide-in animation, aria-expanded for accessibility.
+- [x] My Account menu for logged-in members — already implemented: `sp_user_menu()` shows avatar + preferred name + dropdown (My Account/Log Out for members, Dashboard/Log Out for admins)
 
 ## Admin — Remaining
 
-- [ ] Admin dashboard: activity feed (future enhancement)
-- [ ] Audit logging: complete coverage — currently partial (member CRUD, status, positions)
-- [ ] Governance menu: admin UI for creating/managing leadership positions and committees (backend exists, needs dedicated admin menu entry)
+- [x] Admin dashboard: activity feed — recent 15 audit log entries with categorized icons (member/event/settings/email/volunteer), relative timestamps, user attribution. Full-width panel below the existing two-column dashboard layout.
+- [x] Audit logging: expanded to cover member CRUD + bulk delete + "Delete All Others", settings saves, event CRUD + bulk delete, event registration + cancellation, group assignment, blast email send, volunteer role CRUD
+- [x] Governance menu: already exists as `sp-governance` page with volunteer roles (officer positions, committee assignments). Renamed menu label from "Volunteers" to "Leadership & Committees" for clarity.
 
 ## Demo Installation — Not Started
 

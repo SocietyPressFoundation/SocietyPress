@@ -9,10 +9,10 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 
 ### Core Platform
 - [x] Single-file plugin architecture (~48,000 lines, function-based, inline JS/CSS)
-- [x] 41 database tables via dbDelta on activation (39 original + sp_pending_profile_changes + sp_orders + sp_order_items)
+- [x] 43 database tables via dbDelta on activation (39 original + sp_pending_profile_changes + sp_orders + sp_order_items + sp_documents + sp_document_categories)
 - [x] Constants: `SOCIETYPRESS_VERSION`, `SOCIETYPRESS_PLUGIN_DIR`, `SOCIETYPRESS_PLUGIN_URL`, `SOCIETYPRESS_PLUGIN_FILE`
 - [x] Settings: single `societypress_settings` option array (68 keys), 8-tab admin page (Website, Organization, Membership, Directory, Events, Privacy, Design, Modules)
-- [x] Module toggle system: 11 feature modules (Events, Library, Newsletters, Resources, Governance, Store, Records, Donations, Blast Email, Gallery, Research Help) — wizard step + settings page, gates admin menus, page templates, shortcodes, and crons
+- [x] Module toggle system: 12 feature modules (Events, Library, Newsletters, Resources, Governance, Store, Records, Donations, Blast Email, Gallery, Research Help, Documents) — wizard step + settings page, gates admin menus, page templates, shortcodes, and crons
 - [x] Admin: unified sidebar with flyout groups (Communications, Finances), WP branding hidden, custom login page
 - [x] Admin dashboard: stat cards (total/active/expiring/expired/new members), upcoming events, expiring members, recent signups, quick links, site info
 - [x] Site lockdown: logged-in for frontend, admin-only for backend
@@ -137,6 +137,9 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 - [x] Footer: 2-column + contact bar + logo strip, white background
 - [x] Header/nav: logo 140px, nav 13px/400 weight Poppins, body padding-top 220px
 - [x] SAGHS palette: burgundy #632220, cream #fbebd2, taupe #7f7166, terracotta #ba5f36
+- [x] Header layout fixes: search field positioned inline (not absolute), cart icon hidden, user trigger pill removed, caret spacing, header aligned to --sp-content-width guides
+- [x] Social icons: brand-colored (Facebook blue, YouTube red), absolutely positioned top-right
+- [x] Dual search forms: mobile (inside hamburger panel) + desktop (inline in nav bar)
 
 ### Finances Cleanup
 - [x] Imported donation records no longer show recorder's name (`recorded_by = NULL` for imports)
@@ -146,6 +149,15 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 - [x] Stripe integration: direct REST API calls (no SDK), PaymentIntent flow, success/cancel handling
 
 ---
+
+### Documents Module
+- [x] Documents module: 2 tables (sp_documents, sp_document_categories), admin CRUD (list/add/edit/delete), category management, WP media library file picker, per-document access control (public/members_only), frontend page template (sp-documents) with category grouping and lock icons for restricted docs, seeded default categories (Meeting Minutes, Society Documents)
+- [x] Members-only page checkbox: per-page `_sp_members_only` meta, branded login prompt on frontend for non-logged-in visitors, auto-hides restricted pages from nav menu
+
+### Roles & Permissions (Spec Complete, Not Built)
+- [ ] Site-wide roles: pre-built role bundles (Webmaster, Treasurer, Librarian, etc.) with customizable access area checkboxes per user
+- [ ] Committee-scoped access: automatic chair/member permissions from governance data
+- [ ] Non-admin backend access: filtered admin experience showing only permitted sections
 
 ## In Progress
 

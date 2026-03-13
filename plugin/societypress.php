@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     0.34d
+ * Version:     0.35d
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '0.34d' );
+define( 'SOCIETYPRESS_VERSION', '0.35d' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -162,6 +162,10 @@ register_activation_hook( __FILE__, function () {
     // Seed default library item categories so the catalog has sensible
     // classification from day one (Books, Periodicals, Maps, etc.).
     sp_maybe_seed_library_categories();
+
+    // Seed default document categories (Meeting Minutes, Society Documents)
+    // so the Documents module is ready to use on day one.
+    sp_maybe_seed_document_categories();
 
     // Encrypt existing plaintext contact data in sp_members.
     // WHY: On first deploy of this feature, all contact data is plaintext.
@@ -1750,6 +1754,57 @@ function sp_create_tables(): void {
         KEY record_field (record_id, field_id)
     ) {$charset_collate};" );
 
+
+    // ========================================================================
+    // DOCUMENT CATEGORIES
+    // WHY: Societies need to organize internal documents (meeting minutes,
+    //      bylaws, policies, etc.) into logical categories. This table stores
+    //      those categories with a sort order for display.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}document_categories (
+        id          BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        name        VARCHAR(200)        NOT NULL,
+        slug        VARCHAR(200)        NOT NULL,
+        description TEXT                NULL,
+        sort_order  INT                 NOT NULL DEFAULT 0,
+        created_at  DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        UNIQUE KEY slug (slug)
+    ) {$charset_collate};" );
+
+
+    // ========================================================================
+    // DOCUMENTS
+    // WHY: The Documents module lets societies upload and manage files
+    //      (meeting minutes, bylaws, forms, etc.) with per-document access
+    //      control. Members-only documents are hidden from non-members on
+    //      the frontend but still listed (with a lock icon) so visitors
+    //      know the content exists and can log in to access it.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}documents (
+        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        title           VARCHAR(255)        NOT NULL,
+        description     TEXT                NULL,
+        category_id     BIGINT(20) UNSIGNED NULL,
+        file_url        VARCHAR(500)        NOT NULL,
+        file_name       VARCHAR(255)        NOT NULL,
+        file_size       BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
+        file_type       VARCHAR(100)        NULL,
+        access_level    VARCHAR(20)         NOT NULL DEFAULT 'members_only',
+        document_date   DATE                NULL,
+        uploaded_by     BIGINT(20) UNSIGNED NULL,
+        status          VARCHAR(20)         NOT NULL DEFAULT 'published',
+        sort_order      INT                 NOT NULL DEFAULT 0,
+        created_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY category_id (category_id),
+        KEY access_level (access_level),
+        KEY status (status),
+        KEY document_date (document_date)
+    ) {$charset_collate};" );
+
+
     // Store the schema version so we can run migrations in future updates
     // without re-running the full dbDelta on every page load.
     update_option( 'societypress_db_version', '0.26d' );
@@ -1938,6 +1993,40 @@ function sp_maybe_seed_library_categories(): void {
 }
 
 
+/**
+ * Seed default document categories if none exist yet.
+ *
+ * WHY: Most societies immediately need "Meeting Minutes" and "Society Documents"
+ *      categories. Seeding these means Harold can start uploading documents
+ *      right away without setting up categories first. He can rename, reorder,
+ *      or delete them later.
+ *
+ * SAFETY: Only runs if the document_categories table is empty.
+ */
+function sp_maybe_seed_document_categories(): void {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_document_categories';
+
+    $count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" );
+    if ( $count > 0 ) {
+        return;
+    }
+
+    $defaults = [
+        [ 'name' => 'Meeting Minutes',   'slug' => 'meeting-minutes',   'sort_order' => 1 ],
+        [ 'name' => 'Society Documents', 'slug' => 'society-documents', 'sort_order' => 2 ],
+    ];
+
+    foreach ( $defaults as $cat ) {
+        $wpdb->insert( $table, [
+            'name'       => $cat['name'],
+            'slug'       => $cat['slug'],
+            'sort_order' => $cat['sort_order'],
+        ] );
+    }
+}
+
+
 // ============================================================================
 // DATABASE UPGRADE CHECK — Run migrations when the plugin version changes
 // ============================================================================
@@ -1965,6 +2054,7 @@ add_action( 'admin_init', function () {
         sp_maybe_create_newsletter_category();
         sp_maybe_seed_resource_categories();
         sp_maybe_seed_library_categories();
+        sp_maybe_seed_document_categories();
     }
 });
 
@@ -2416,6 +2506,12 @@ function sp_get_modules(): array {
             'icon'        => 'dashicons-sos',
             'menu_slugs'  => [ 'sp-help-requests' ],
         ],
+        'documents' => [
+            'name'        => __( 'Documents', 'societypress' ),
+            'description' => __( 'Upload and manage society documents like meeting minutes, bylaws, and policies. Control member-only access per document.', 'societypress' ),
+            'icon'        => 'dashicons-media-text',
+            'menu_slugs'  => [ 'sp-documents', 'sp-document-categories', 'sp-document-edit' ],
+        ],
     ];
 }
 
@@ -2497,6 +2593,7 @@ function sp_template_module_map(): array {
         'sp-cart'               => 'store',
         'sp-records'            => 'records',
         'sp-help-requests'      => 'help_requests',
+        'sp-documents'          => 'documents',
     ];
 }
 
@@ -2949,6 +3046,39 @@ add_action( 'admin_menu', function () {
         'manage_options',
         'sp-newsletter-edit',
         'sp_render_newsletter_edit_page'
+    );
+
+    // -----------------------------------------------------------------
+    // DOCUMENTS — Upload and manage society documents (meeting minutes,
+    // bylaws, policies, etc.) with per-document access control.
+    // -----------------------------------------------------------------
+
+    add_submenu_page(
+        'societypress',
+        __( 'Documents', 'societypress' ) . ' — SocietyPress',
+        __( 'Documents', 'societypress' ),
+        'manage_options',
+        'sp-documents',
+        'sp_render_documents_page'
+    );
+
+    add_submenu_page(
+        'societypress',
+        __( 'Document Categories', 'societypress' ) . ' — SocietyPress',
+        __( 'Document Categories', 'societypress' ),
+        'manage_options',
+        'sp-document-categories',
+        'sp_render_document_categories_page'
+    );
+
+    // Document Edit — hidden (accessed via Add New / Edit row actions)
+    add_submenu_page(
+        '',
+        __( 'Edit Document', 'societypress' ) . ' — SocietyPress',
+        __( 'Edit Document', 'societypress' ),
+        'manage_options',
+        'sp-document-edit',
+        'sp_render_document_edit_page'
     );
 
     // Library item edit — hidden (accessed via row actions)
@@ -5418,7 +5548,7 @@ var spMenuConfig = {
             id:    'library',
             label: 'Library',
             icon:  'dashicons-book-alt',
-            items: ['sp-library', 'sp-resource-categories', 'sp-library-catalog', 'sp-library-categories', 'sp-import-library', 'sp-library-enrich', 'sp-import-links', 'sp-help-requests', 'sp-newsletter-archive']
+            items: ['sp-library', 'sp-resource-categories', 'sp-library-catalog', 'sp-library-categories', 'sp-import-library', 'sp-library-enrich', 'sp-import-links', 'sp-help-requests', 'sp-newsletter-archive', 'sp-documents', 'sp-document-categories']
         },
         {
             id:    'genealogy',
@@ -5757,6 +5887,43 @@ add_action( 'template_redirect', function () {
         auth_redirect();
     }
 } );
+
+/**
+ * Gate members-only pages for non-logged-in visitors.
+ *
+ * WHY: Any page with the _sp_members_only meta set to '1' should show a
+ *      friendly login prompt instead of its content when the visitor is not
+ *      logged in. We use the_content filter (not a redirect) so the page
+ *      keeps its header/footer/layout — the visitor sees a branded "please
+ *      log in" message rather than being dumped on wp-login.php.
+ *
+ * NOTE: This is independent of the Documents module. It works on Standard
+ *       Pages, Builder pages, or any page type. SP template pages (Events,
+ *       Directory, etc.) handle their own access control separately, so we
+ *       skip them to avoid double-gating.
+ */
+add_filter( 'the_content', function ( $content ) {
+    if ( ! is_page() ) return $content;
+    if ( is_user_logged_in() ) return $content;
+
+    $members_only = get_post_meta( get_the_ID(), '_sp_members_only', true );
+    if ( $members_only !== '1' ) return $content;
+
+    // Skip SP template pages — they have their own access control
+    $template = get_page_template_slug( get_the_ID() );
+    if ( ! empty( $template ) && str_starts_with( $template, 'sp-' ) ) return $content;
+
+    $login_url = function_exists( 'sp_get_login_page_url' )
+        ? sp_get_login_page_url()
+        : wp_login_url( get_permalink() );
+
+    return '<div style="text-align:center; padding:60px 20px; max-width:500px; margin:0 auto;">'
+         . '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:#999; margin-bottom:16px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
+         . '<h2 style="margin:0 0 12px; font-size:1.4em;">' . esc_html__( 'Members Only', 'societypress' ) . '</h2>'
+         . '<p style="color:#666; margin:0 0 24px;">' . esc_html__( 'This page is available to members only. Please log in to view this content.', 'societypress' ) . '</p>'
+         . '<a href="' . esc_url( $login_url ) . '" style="display:inline-block; padding:10px 28px; background:var(--sp-color-primary, #0D1F3C); color:#fff; text-decoration:none; border-radius:4px; font-weight:600;">' . esc_html__( 'Log In', 'societypress' ) . '</a>'
+         . '</div>';
+}, 1 );
 
 /**
  * Block non-admin access to the backend too.
@@ -15058,6 +15225,7 @@ function sp_get_page_type_labels(): array {
         'sp-newsletter-archive' => 'Newsletter Archive',
         'sp-search'          => 'Site Search',
         'sp-calendar'        => 'Calendar',
+        'sp-documents'       => 'Documents',
     ];
 }
 
@@ -15478,6 +15646,26 @@ function sp_render_page_edit(): void {
                     </td>
                 </tr>
 
+                <!-- Members Only access restriction -->
+                <?php
+                // WHY: Any WordPress page can be restricted to logged-in members
+                // only. This is independent of the Documents module — it works on
+                // Standard Pages, Builder pages, any page type. When checked,
+                // non-logged-in visitors see a login prompt instead of the content.
+                $members_only = $is_edit ? get_post_meta( $post_id, '_sp_members_only', true ) : '';
+                ?>
+                <tr>
+                    <th scope="row"><?php esc_html_e( 'Access', 'societypress' ); ?></th>
+                    <td>
+                        <label>
+                            <input type="checkbox" name="sp_members_only" value="1"
+                                   <?php checked( $members_only, '1' ); ?>>
+                            <?php esc_html_e( 'Restrict to Members Only', 'societypress' ); ?>
+                        </label>
+                        <p class="description"><?php esc_html_e( 'When checked, visitors who are not logged in will see a login prompt instead of the page content.', 'societypress' ); ?></p>
+                    </td>
+                </tr>
+
             </table>
 
             <p class="submit">
@@ -15616,6 +15804,16 @@ function sp_handle_page_save(): void {
         update_post_meta( $saved_id, '_wp_page_template', $template );
     } else {
         delete_post_meta( $saved_id, '_wp_page_template' );
+    }
+
+    // Save or clear the "Members Only" access restriction.
+    // WHY: This is a simple per-page toggle. When checked, the frontend
+    //      template_redirect hook replaces page content with a login prompt
+    //      for non-logged-in visitors. Works on any page type.
+    if ( ! empty( $_POST['sp_members_only'] ) ) {
+        update_post_meta( $saved_id, '_sp_members_only', '1' );
+    } else {
+        delete_post_meta( $saved_id, '_sp_members_only' );
     }
 
     // --- Save Page Builder widgets (if applicable) ---
@@ -17603,8 +17801,15 @@ function sp_hide_members_only_nav_items( $items, $args ) {
     foreach ( $items as $item ) {
         // Only check page-type menu items
         if ( $item->type !== 'post_type' || $item->object !== 'page' ) continue;
+
         $template = get_page_template_slug( $item->object_id );
         if ( in_array( $template, $members_only_templates, true ) ) {
+            $remove_ids[] = $item->ID;
+            continue;
+        }
+
+        // Also hide pages with the per-page "Members Only" checkbox
+        if ( get_post_meta( $item->object_id, '_sp_members_only', true ) === '1' ) {
             $remove_ids[] = $item->ID;
         }
     }
@@ -36230,6 +36435,7 @@ add_filter( 'theme_page_templates', function( $templates ) {
     $templates['sp-records']         = 'Genealogical Records Search';
     $templates['sp-store']           = 'Store';
     $templates['sp-cart']            = 'Shopping Cart';
+    $templates['sp-documents']       = 'Documents';
     return $templates;
 } );
 
@@ -36237,14 +36443,14 @@ add_filter( 'template_include', function( $template ) {
     if ( ! is_page() ) return $template;
 
     $page_template = get_page_template_slug();
-    if ( ! in_array( $page_template, [ 'sp-help-requests', 'sp-resources', 'sp-library-catalog', 'sp-records', 'sp-store', 'sp-cart' ], true ) ) {
+    if ( ! in_array( $page_template, [ 'sp-help-requests', 'sp-resources', 'sp-library-catalog', 'sp-records', 'sp-store', 'sp-cart', 'sp-documents' ], true ) ) {
         return $template;
     }
 
-    // Most templates require login. Records and Store handle their own access
-    // (records: per-collection, store: public storefront). Cart requires login
-    // to purchase.
-    if ( ! in_array( $page_template, [ 'sp-records', 'sp-store', 'sp-cart' ], true ) && ! is_user_logged_in() ) {
+    // Most templates require login. Records, Store, and Documents handle their
+    // own access (records: per-collection, store: public storefront, documents:
+    // per-document access_level). Cart requires login to purchase.
+    if ( ! in_array( $page_template, [ 'sp-records', 'sp-store', 'sp-cart', 'sp-documents' ], true ) && ! is_user_logged_in() ) {
         wp_redirect( wp_login_url( get_permalink() ) );
         exit;
     }
@@ -36271,6 +36477,9 @@ add_filter( 'template_include', function( $template ) {
             break;
         case 'sp-cart':
             sp_render_cart_page();
+            break;
+        case 'sp-documents':
+            sp_frontend_documents();
             break;
     }
 
@@ -48460,4 +48669,752 @@ function sp_render_order_detail_page(): void {
         </div>
     </div>
     <?php
+}
+
+
+// ============================================================================
+// DOCUMENTS MODULE — Admin Pages, Frontend Template, AJAX Download
+// ============================================================================
+//
+// WHY: Societies need a way to share internal documents (meeting minutes,
+//      bylaws, financial reports, policies) with their members. Some documents
+//      are public (bylaws posted for transparency), others are members-only
+//      (meeting minutes, financial reports). This module provides:
+//
+//      - Admin: upload/manage documents, organize by category, set access level
+//      - Frontend: grouped-by-category listing with download links
+//      - Access control: per-document public/members_only toggle
+//      - AJAX download endpoint: enforces access control on file downloads
+//
+// The module integrates with the existing module toggle system — Harold can
+// enable/disable it from Settings → Modules.
+// ============================================================================
+
+
+// ---------------------------------------------------------------------------
+// ADMIN: Document save handler (runs on admin_init before output)
+// ---------------------------------------------------------------------------
+
+add_action( 'admin_init', function () {
+    if ( empty( $_POST['sp_save_document'] ) ) return;
+
+    if ( ! wp_verify_nonce( $_POST['sp_document_nonce'] ?? '', 'sp_save_document' ) ) {
+        wp_die( __( 'Security check failed.', 'societypress' ) );
+    }
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( __( 'You do not have permission to manage documents.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $table   = $wpdb->prefix . 'sp_documents';
+    $doc_id  = (int) ( $_POST['document_id'] ?? 0 );
+
+    $data = [
+        'title'         => sanitize_text_field( $_POST['document_title'] ?? '' ),
+        'description'   => sanitize_textarea_field( $_POST['document_description'] ?? '' ),
+        'category_id'   => (int) ( $_POST['document_category'] ?? 0 ) ?: null,
+        'file_url'      => esc_url_raw( $_POST['document_file_url'] ?? '' ),
+        'file_name'     => sanitize_file_name( $_POST['document_file_name'] ?? '' ),
+        'file_size'     => (int) ( $_POST['document_file_size'] ?? 0 ),
+        'file_type'     => sanitize_text_field( $_POST['document_file_type'] ?? '' ),
+        'access_level'  => in_array( $_POST['document_access'] ?? '', [ 'public', 'members_only' ], true )
+                           ? $_POST['document_access'] : 'members_only',
+        'document_date' => sanitize_text_field( $_POST['document_date'] ?? '' ) ?: null,
+        'status'        => in_array( $_POST['document_status'] ?? '', [ 'published', 'draft' ], true )
+                           ? $_POST['document_status'] : 'published',
+        'sort_order'    => (int) ( $_POST['document_sort_order'] ?? 0 ),
+        'updated_at'    => current_time( 'mysql' ),
+    ];
+
+    if ( empty( $data['title'] ) || empty( $data['file_url'] ) ) {
+        wp_redirect( admin_url( 'admin.php?page=sp-document-edit' . ( $doc_id ? '&id=' . $doc_id : '' ) . '&sp_error=missing_fields' ) );
+        exit;
+    }
+
+    if ( $doc_id ) {
+        $wpdb->update( $table, $data, [ 'id' => $doc_id ] );
+    } else {
+        $data['uploaded_by'] = get_current_user_id();
+        $data['created_at']  = current_time( 'mysql' );
+        $wpdb->insert( $table, $data );
+        $doc_id = $wpdb->insert_id;
+    }
+
+    wp_redirect( admin_url( 'admin.php?page=sp-documents&sp_updated=1' ) );
+    exit;
+});
+
+
+// ---------------------------------------------------------------------------
+// ADMIN: Document delete handler
+// ---------------------------------------------------------------------------
+
+add_action( 'admin_init', function () {
+    if ( ( $_GET['page'] ?? '' ) !== 'sp-documents' ) return;
+    if ( ( $_GET['action'] ?? '' ) !== 'delete' ) return;
+
+    $doc_id = (int) ( $_GET['id'] ?? 0 );
+    if ( ! $doc_id ) return;
+
+    if ( ! wp_verify_nonce( $_GET['_wpnonce'] ?? '', 'sp_delete_document_' . $doc_id ) ) {
+        wp_die( __( 'Security check failed.', 'societypress' ) );
+    }
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( __( 'You do not have permission to delete documents.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $wpdb->delete( $wpdb->prefix . 'sp_documents', [ 'id' => $doc_id ] );
+
+    wp_redirect( admin_url( 'admin.php?page=sp-documents&sp_deleted=1' ) );
+    exit;
+});
+
+
+// ---------------------------------------------------------------------------
+// ADMIN: Document category save handler
+// ---------------------------------------------------------------------------
+
+add_action( 'admin_init', function () {
+    if ( empty( $_POST['sp_save_document_category'] ) ) return;
+
+    if ( ! wp_verify_nonce( $_POST['sp_doc_cat_nonce'] ?? '', 'sp_save_document_category' ) ) {
+        wp_die( __( 'Security check failed.', 'societypress' ) );
+    }
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( __( 'You do not have permission to manage document categories.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $table  = $wpdb->prefix . 'sp_document_categories';
+    $cat_id = (int) ( $_POST['category_id'] ?? 0 );
+    $name   = sanitize_text_field( $_POST['category_name'] ?? '' );
+
+    if ( empty( $name ) ) {
+        wp_redirect( admin_url( 'admin.php?page=sp-document-categories&sp_error=no_name' ) );
+        exit;
+    }
+
+    $data = [
+        'name'        => $name,
+        'slug'        => sanitize_title( $name ),
+        'description' => sanitize_textarea_field( $_POST['category_description'] ?? '' ),
+        'sort_order'  => (int) ( $_POST['category_sort_order'] ?? 0 ),
+    ];
+
+    if ( $cat_id ) {
+        $wpdb->update( $table, $data, [ 'id' => $cat_id ] );
+    } else {
+        $wpdb->insert( $table, $data );
+    }
+
+    wp_redirect( admin_url( 'admin.php?page=sp-document-categories&sp_updated=1' ) );
+    exit;
+});
+
+
+// ---------------------------------------------------------------------------
+// ADMIN: Document category delete handler
+// ---------------------------------------------------------------------------
+
+add_action( 'admin_init', function () {
+    if ( ( $_GET['page'] ?? '' ) !== 'sp-document-categories' ) return;
+    if ( ( $_GET['action'] ?? '' ) !== 'delete' ) return;
+
+    $cat_id = (int) ( $_GET['id'] ?? 0 );
+    if ( ! $cat_id ) return;
+
+    if ( ! wp_verify_nonce( $_GET['_wpnonce'] ?? '', 'sp_delete_doc_cat_' . $cat_id ) ) {
+        wp_die( __( 'Security check failed.', 'societypress' ) );
+    }
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( __( 'You do not have permission to delete categories.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    // Null out category_id on documents that used this category
+    $wpdb->update(
+        $wpdb->prefix . 'sp_documents',
+        [ 'category_id' => null ],
+        [ 'category_id' => $cat_id ]
+    );
+    $wpdb->delete( $wpdb->prefix . 'sp_document_categories', [ 'id' => $cat_id ] );
+
+    wp_redirect( admin_url( 'admin.php?page=sp-document-categories&sp_deleted=1' ) );
+    exit;
+});
+
+
+// ---------------------------------------------------------------------------
+// ADMIN: Documents list page
+// ---------------------------------------------------------------------------
+
+function sp_render_documents_page(): void {
+    global $wpdb;
+
+    $docs_table = $wpdb->prefix . 'sp_documents';
+    $cats_table = $wpdb->prefix . 'sp_document_categories';
+
+    // Filters
+    $search      = sanitize_text_field( $_GET['s'] ?? '' );
+    $filter_cat  = (int) ( $_GET['cat'] ?? 0 );
+    $filter_access = sanitize_text_field( $_GET['access'] ?? '' );
+
+    $where = '1=1';
+    $params = [];
+
+    if ( $search ) {
+        $like = '%' . $wpdb->esc_like( $search ) . '%';
+        $where .= $wpdb->prepare( ' AND (d.title LIKE %s OR d.description LIKE %s)', $like, $like );
+    }
+
+    if ( $filter_cat ) {
+        $where .= $wpdb->prepare( ' AND d.category_id = %d', $filter_cat );
+    }
+
+    if ( in_array( $filter_access, [ 'public', 'members_only' ], true ) ) {
+        $where .= $wpdb->prepare( ' AND d.access_level = %s', $filter_access );
+    }
+
+    $docs = $wpdb->get_results(
+        "SELECT d.*, c.name AS category_name
+         FROM {$docs_table} d
+         LEFT JOIN {$cats_table} c ON d.category_id = c.id
+         WHERE {$where}
+         ORDER BY d.document_date DESC, d.created_at DESC"
+    );
+
+    $categories = $wpdb->get_results( "SELECT * FROM {$cats_table} ORDER BY sort_order, name" );
+
+    ?>
+    <div class="wrap">
+        <h1 class="wp-heading-inline"><?php esc_html_e( 'Documents', 'societypress' ); ?></h1>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-document-edit' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Add New', 'societypress' ); ?></a>
+        <hr class="wp-header-end">
+
+        <?php if ( ! empty( $_GET['sp_updated'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Document saved.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+        <?php if ( ! empty( $_GET['sp_deleted'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Document deleted.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+
+        <!-- Filters -->
+        <form method="get" style="margin:16px 0; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <input type="hidden" name="page" value="sp-documents">
+            <input type="text" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php esc_attr_e( 'Search documents…', 'societypress' ); ?>" style="width:220px;">
+            <select name="cat">
+                <option value=""><?php esc_html_e( 'All Categories', 'societypress' ); ?></option>
+                <?php foreach ( $categories as $cat ) : ?>
+                    <option value="<?php echo (int) $cat->id; ?>" <?php selected( $filter_cat, (int) $cat->id ); ?>><?php echo esc_html( $cat->name ); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <select name="access">
+                <option value=""><?php esc_html_e( 'All Access Levels', 'societypress' ); ?></option>
+                <option value="public" <?php selected( $filter_access, 'public' ); ?>><?php esc_html_e( 'Public', 'societypress' ); ?></option>
+                <option value="members_only" <?php selected( $filter_access, 'members_only' ); ?>><?php esc_html_e( 'Members Only', 'societypress' ); ?></option>
+            </select>
+            <?php submit_button( __( 'Filter', 'societypress' ), 'secondary', '', false ); ?>
+        </form>
+
+        <table class="widefat striped">
+            <thead>
+                <tr>
+                    <th><?php esc_html_e( 'Title', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Category', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Date', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Type', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Size', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Access', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if ( empty( $docs ) ) : ?>
+                    <tr><td colspan="8" style="text-align:center; padding:20px; color:#999;"><?php esc_html_e( 'No documents found.', 'societypress' ); ?></td></tr>
+                <?php else : ?>
+                    <?php foreach ( $docs as $doc ) : ?>
+                    <tr>
+                        <td><strong><?php echo esc_html( $doc->title ); ?></strong></td>
+                        <td><?php echo esc_html( $doc->category_name ?? '—' ); ?></td>
+                        <td><?php echo $doc->document_date ? esc_html( date( 'M j, Y', strtotime( $doc->document_date ) ) ) : '—'; ?></td>
+                        <td><?php echo esc_html( strtoupper( pathinfo( $doc->file_name, PATHINFO_EXTENSION ) ) ?: '—' ); ?></td>
+                        <td><?php echo $doc->file_size ? esc_html( size_format( $doc->file_size ) ) : '—'; ?></td>
+                        <td>
+                            <?php if ( $doc->access_level === 'members_only' ) : ?>
+                                <span style="color:#b32d2e; font-weight:600;">&#128274; <?php esc_html_e( 'Members', 'societypress' ); ?></span>
+                            <?php else : ?>
+                                <span style="color:#2e7d32;">&#127760; <?php esc_html_e( 'Public', 'societypress' ); ?></span>
+                            <?php endif; ?>
+                        </td>
+                        <td><?php echo $doc->status === 'published' ? esc_html__( 'Published', 'societypress' ) : esc_html__( 'Draft', 'societypress' ); ?></td>
+                        <td>
+                            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-document-edit&id=' . $doc->id ) ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
+                            |
+                            <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=sp-documents&action=delete&id=' . $doc->id ), 'sp_delete_document_' . $doc->id ) ); ?>"
+                               style="color:#b32d2e;"
+                               onclick="return confirm('<?php esc_attr_e( 'Delete this document?', 'societypress' ); ?>');">
+                                <?php esc_html_e( 'Delete', 'societypress' ); ?>
+                            </a>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
+
+        <p style="color:#666; margin-top:12px;">
+            <?php printf( esc_html__( '%d document(s)', 'societypress' ), count( $docs ) ); ?>
+        </p>
+    </div>
+    <?php
+}
+
+
+// ---------------------------------------------------------------------------
+// ADMIN: Document categories page
+// ---------------------------------------------------------------------------
+
+function sp_render_document_categories_page(): void {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_document_categories';
+
+    // Editing an existing category?
+    $edit_id  = (int) ( $_GET['edit'] ?? 0 );
+    $edit_cat = $edit_id ? $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", $edit_id ) ) : null;
+
+    $categories = $wpdb->get_results( "SELECT * FROM {$table} ORDER BY sort_order, name" );
+
+    // Count documents per category
+    $doc_counts = $wpdb->get_results(
+        "SELECT category_id, COUNT(*) AS cnt FROM {$wpdb->prefix}sp_documents GROUP BY category_id",
+        OBJECT_K
+    );
+
+    ?>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Document Categories', 'societypress' ); ?></h1>
+
+        <?php if ( ! empty( $_GET['sp_updated'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Category saved.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+        <?php if ( ! empty( $_GET['sp_deleted'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Category deleted.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+
+        <div style="display:flex; gap:40px; flex-wrap:wrap; margin-top:20px;">
+
+            <!-- Add/Edit form -->
+            <div style="flex:0 0 320px;">
+                <h2><?php echo $edit_cat ? esc_html__( 'Edit Category', 'societypress' ) : esc_html__( 'Add Category', 'societypress' ); ?></h2>
+                <form method="post">
+                    <?php wp_nonce_field( 'sp_save_document_category', 'sp_doc_cat_nonce' ); ?>
+                    <input type="hidden" name="sp_save_document_category" value="1">
+                    <?php if ( $edit_cat ) : ?>
+                        <input type="hidden" name="category_id" value="<?php echo (int) $edit_cat->id; ?>">
+                    <?php endif; ?>
+
+                    <table class="form-table">
+                        <tr>
+                            <th><label for="category_name"><?php esc_html_e( 'Name', 'societypress' ); ?></label></th>
+                            <td><input type="text" id="category_name" name="category_name" value="<?php echo esc_attr( $edit_cat->name ?? '' ); ?>" class="regular-text" required></td>
+                        </tr>
+                        <tr>
+                            <th><label for="category_description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
+                            <td><textarea id="category_description" name="category_description" rows="3" class="large-text"><?php echo esc_textarea( $edit_cat->description ?? '' ); ?></textarea></td>
+                        </tr>
+                        <tr>
+                            <th><label for="category_sort_order"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label></th>
+                            <td><input type="number" id="category_sort_order" name="category_sort_order" value="<?php echo (int) ( $edit_cat->sort_order ?? 0 ); ?>" min="0" style="width:80px;"></td>
+                        </tr>
+                    </table>
+
+                    <?php submit_button( $edit_cat ? __( 'Update Category', 'societypress' ) : __( 'Add Category', 'societypress' ) ); ?>
+
+                    <?php if ( $edit_cat ) : ?>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-document-categories' ) ); ?>"><?php esc_html_e( 'Cancel editing', 'societypress' ); ?></a>
+                    <?php endif; ?>
+                </form>
+            </div>
+
+            <!-- Categories table -->
+            <div style="flex:1; min-width:400px;">
+                <table class="widefat striped">
+                    <thead>
+                        <tr>
+                            <th><?php esc_html_e( 'Name', 'societypress' ); ?></th>
+                            <th><?php esc_html_e( 'Slug', 'societypress' ); ?></th>
+                            <th><?php esc_html_e( 'Documents', 'societypress' ); ?></th>
+                            <th><?php esc_html_e( 'Order', 'societypress' ); ?></th>
+                            <th><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if ( empty( $categories ) ) : ?>
+                            <tr><td colspan="5" style="text-align:center; padding:20px; color:#999;"><?php esc_html_e( 'No categories yet.', 'societypress' ); ?></td></tr>
+                        <?php else : ?>
+                            <?php foreach ( $categories as $cat ) : ?>
+                            <tr>
+                                <td><strong><?php echo esc_html( $cat->name ); ?></strong></td>
+                                <td><code><?php echo esc_html( $cat->slug ); ?></code></td>
+                                <td><?php echo (int) ( $doc_counts[ $cat->id ]->cnt ?? 0 ); ?></td>
+                                <td><?php echo (int) $cat->sort_order; ?></td>
+                                <td>
+                                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-document-categories&edit=' . $cat->id ) ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
+                                    |
+                                    <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=sp-document-categories&action=delete&id=' . $cat->id ), 'sp_delete_doc_cat_' . $cat->id ) ); ?>"
+                                       style="color:#b32d2e;"
+                                       onclick="return confirm('<?php esc_attr_e( 'Delete this category? Documents in it will become uncategorized.', 'societypress' ); ?>');">
+                                        <?php esc_html_e( 'Delete', 'societypress' ); ?>
+                                    </a>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+
+        </div>
+    </div>
+    <?php
+}
+
+
+// ---------------------------------------------------------------------------
+// ADMIN: Document add/edit page
+// ---------------------------------------------------------------------------
+
+function sp_render_document_edit_page(): void {
+    global $wpdb;
+
+    $doc_id = (int) ( $_GET['id'] ?? 0 );
+    $doc    = $doc_id ? $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_documents WHERE id = %d", $doc_id
+    ) ) : null;
+
+    $is_edit    = (bool) $doc;
+    $categories = $wpdb->get_results(
+        "SELECT * FROM {$wpdb->prefix}sp_document_categories ORDER BY sort_order, name"
+    );
+
+    // Enqueue media library for file picker
+    wp_enqueue_media();
+
+    ?>
+    <div class="wrap">
+        <h1><?php echo $is_edit ? esc_html__( 'Edit Document', 'societypress' ) : esc_html__( 'Add Document', 'societypress' ); ?></h1>
+
+        <?php if ( ! empty( $_GET['sp_error'] ) && $_GET['sp_error'] === 'missing_fields' ) : ?>
+            <div class="notice notice-error"><p><?php esc_html_e( 'Title and file are required.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+
+        <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-document-edit' ) ); ?>">
+            <?php wp_nonce_field( 'sp_save_document', 'sp_document_nonce' ); ?>
+            <input type="hidden" name="sp_save_document" value="1">
+            <?php if ( $is_edit ) : ?>
+                <input type="hidden" name="document_id" value="<?php echo (int) $doc->id; ?>">
+            <?php endif; ?>
+
+            <table class="form-table">
+                <tr>
+                    <th><label for="document_title"><?php esc_html_e( 'Title', 'societypress' ); ?></label></th>
+                    <td><input type="text" id="document_title" name="document_title" value="<?php echo esc_attr( $doc->title ?? '' ); ?>" class="regular-text" style="width:100%; max-width:600px;" required></td>
+                </tr>
+                <tr>
+                    <th><label for="document_description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
+                    <td><textarea id="document_description" name="document_description" rows="3" class="large-text" style="max-width:600px;"><?php echo esc_textarea( $doc->description ?? '' ); ?></textarea></td>
+                </tr>
+                <tr>
+                    <th><label for="document_category"><?php esc_html_e( 'Category', 'societypress' ); ?></label></th>
+                    <td>
+                        <select id="document_category" name="document_category">
+                            <option value=""><?php esc_html_e( '— None —', 'societypress' ); ?></option>
+                            <?php foreach ( $categories as $cat ) : ?>
+                                <option value="<?php echo (int) $cat->id; ?>" <?php selected( $doc->category_id ?? 0, $cat->id ); ?>><?php echo esc_html( $cat->name ); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="document_date"><?php esc_html_e( 'Document Date', 'societypress' ); ?></label></th>
+                    <td><input type="date" id="document_date" name="document_date" value="<?php echo esc_attr( $doc->document_date ?? '' ); ?>"></td>
+                </tr>
+                <tr>
+                    <th><?php esc_html_e( 'File', 'societypress' ); ?></th>
+                    <td>
+                        <input type="hidden" id="document_file_url" name="document_file_url" value="<?php echo esc_attr( $doc->file_url ?? '' ); ?>">
+                        <input type="hidden" id="document_file_name" name="document_file_name" value="<?php echo esc_attr( $doc->file_name ?? '' ); ?>">
+                        <input type="hidden" id="document_file_size" name="document_file_size" value="<?php echo (int) ( $doc->file_size ?? 0 ); ?>">
+                        <input type="hidden" id="document_file_type" name="document_file_type" value="<?php echo esc_attr( $doc->file_type ?? '' ); ?>">
+
+                        <div id="sp-doc-file-info" style="margin-bottom:8px; <?php echo empty( $doc->file_url ?? '' ) ? 'display:none;' : ''; ?>">
+                            <span id="sp-doc-file-display"><?php echo esc_html( $doc->file_name ?? '' ); ?></span>
+                            <?php if ( ! empty( $doc->file_size ) ) : ?>
+                                <span style="color:#666;"> (<?php echo esc_html( size_format( $doc->file_size ) ); ?>)</span>
+                            <?php endif; ?>
+                        </div>
+
+                        <button type="button" id="sp-doc-upload-btn" class="button"><?php esc_html_e( 'Choose File', 'societypress' ); ?></button>
+                        <button type="button" id="sp-doc-remove-btn" class="button" style="color:#b32d2e; <?php echo empty( $doc->file_url ?? '' ) ? 'display:none;' : ''; ?>"><?php esc_html_e( 'Remove', 'societypress' ); ?></button>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="document_access"><?php esc_html_e( 'Access Level', 'societypress' ); ?></label></th>
+                    <td>
+                        <select id="document_access" name="document_access">
+                            <option value="members_only" <?php selected( $doc->access_level ?? 'members_only', 'members_only' ); ?>><?php esc_html_e( 'Members Only', 'societypress' ); ?></option>
+                            <option value="public" <?php selected( $doc->access_level ?? '', 'public' ); ?>><?php esc_html_e( 'Public', 'societypress' ); ?></option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="document_status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
+                    <td>
+                        <select id="document_status" name="document_status">
+                            <option value="published" <?php selected( $doc->status ?? 'published', 'published' ); ?>><?php esc_html_e( 'Published', 'societypress' ); ?></option>
+                            <option value="draft" <?php selected( $doc->status ?? '', 'draft' ); ?>><?php esc_html_e( 'Draft', 'societypress' ); ?></option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="document_sort_order"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label></th>
+                    <td><input type="number" id="document_sort_order" name="document_sort_order" value="<?php echo (int) ( $doc->sort_order ?? 0 ); ?>" min="0" style="width:80px;"></td>
+                </tr>
+            </table>
+
+            <p class="submit">
+                <input type="submit" class="button button-primary" value="<?php echo $is_edit ? esc_attr__( 'Update Document', 'societypress' ) : esc_attr__( 'Add Document', 'societypress' ); ?>">
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-documents' ) ); ?>" class="button" style="margin-left:8px;"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
+            </p>
+        </form>
+    </div>
+
+    <!-- WHY inline JS: The media library picker is a single-use interaction on
+         this page. A separate .js file would add an HTTP request for ~30 lines
+         of code that only runs on this one admin screen. -->
+    <script>
+    (function() {
+        var frame;
+        var uploadBtn  = document.getElementById('sp-doc-upload-btn');
+        var removeBtn  = document.getElementById('sp-doc-remove-btn');
+        var fileInfo   = document.getElementById('sp-doc-file-info');
+        var fileDisplay = document.getElementById('sp-doc-file-display');
+
+        if (!uploadBtn) return;
+
+        uploadBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+
+            if (frame) { frame.open(); return; }
+
+            frame = wp.media({
+                title: '<?php echo esc_js( __( 'Select Document', 'societypress' ) ); ?>',
+                button: { text: '<?php echo esc_js( __( 'Use This File', 'societypress' ) ); ?>' },
+                multiple: false
+            });
+
+            frame.on('select', function() {
+                var attachment = frame.state().get('selection').first().toJSON();
+                document.getElementById('document_file_url').value  = attachment.url;
+                document.getElementById('document_file_name').value = attachment.filename;
+                document.getElementById('document_file_size').value = attachment.filesizeInBytes || 0;
+                document.getElementById('document_file_type').value = attachment.mime || '';
+
+                fileDisplay.textContent = attachment.filename;
+                fileInfo.style.display = '';
+                removeBtn.style.display = '';
+            });
+
+            frame.open();
+        });
+
+        removeBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            document.getElementById('document_file_url').value  = '';
+            document.getElementById('document_file_name').value = '';
+            document.getElementById('document_file_size').value = '0';
+            document.getElementById('document_file_type').value = '';
+            fileInfo.style.display = 'none';
+            removeBtn.style.display = 'none';
+        });
+    })();
+    </script>
+    <?php
+}
+
+
+// ---------------------------------------------------------------------------
+// FRONTEND: Documents page template
+// ---------------------------------------------------------------------------
+
+/**
+ * Render the public-facing documents page.
+ *
+ * WHY: Groups documents by category, shows title/date/type/size with download
+ *      links. Members-only documents show a lock icon and "Log in to access"
+ *      message for non-logged-in visitors. Public documents are downloadable
+ *      by anyone.
+ */
+function sp_frontend_documents(): void {
+    global $wpdb;
+
+    $cats_table = $wpdb->prefix . 'sp_document_categories';
+    $docs_table = $wpdb->prefix . 'sp_documents';
+    $is_member  = is_user_logged_in();
+
+    // Get all categories with their documents
+    $categories = $wpdb->get_results(
+        "SELECT * FROM {$cats_table} ORDER BY sort_order, name"
+    );
+
+    $all_docs = $wpdb->get_results(
+        "SELECT * FROM {$docs_table} WHERE status = 'published' ORDER BY sort_order, document_date DESC, title"
+    );
+
+    // Group documents by category
+    $by_cat = [];
+    $uncategorized = [];
+    foreach ( $all_docs as $doc ) {
+        if ( $doc->category_id ) {
+            $by_cat[ $doc->category_id ][] = $doc;
+        } else {
+            $uncategorized[] = $doc;
+        }
+    }
+
+    if ( empty( $all_docs ) ) {
+        echo '<p style="text-align:center; color:#999; padding:40px 0;">' . esc_html__( 'No documents available at this time.', 'societypress' ) . '</p>';
+        return;
+    }
+
+    $login_url = function_exists( 'sp_get_login_page_url' )
+        ? sp_get_login_page_url()
+        : wp_login_url( get_permalink() );
+
+    // File type icon helper
+    $type_icon = function( $filename ) {
+        $ext = strtolower( pathinfo( $filename, PATHINFO_EXTENSION ) );
+        switch ( $ext ) {
+            case 'pdf':  return '&#128196;'; // page facing up
+            case 'doc':
+            case 'docx': return '&#128462;'; // page with curl
+            case 'xls':
+            case 'xlsx': return '&#128202;'; // chart
+            case 'ppt':
+            case 'pptx': return '&#128218;'; // book
+            case 'jpg':
+            case 'jpeg':
+            case 'png':
+            case 'gif':  return '&#128247;'; // camera
+            default:     return '&#128196;';
+        }
+    };
+
+    echo '<style>
+    .sp-docs-category { margin-bottom:40px; }
+    .sp-docs-category h2 { font-size:1.3em; margin:0 0 4px; color:var(--sp-color-primary, #0D1F3C); }
+    .sp-docs-divider { width:50px; height:3px; background:var(--sp-color-accent, #C9973A); margin:0 0 16px; border:none; }
+    .sp-doc-row { display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid #eee; flex-wrap:wrap; }
+    .sp-doc-row:last-child { border-bottom:none; }
+    .sp-doc-icon { font-size:1.4em; flex-shrink:0; }
+    .sp-doc-info { flex:1; min-width:200px; }
+    .sp-doc-title { font-weight:600; color:var(--sp-color-primary, #0D1F3C); }
+    .sp-doc-meta { font-size:0.85em; color:#888; margin-top:2px; }
+    .sp-doc-desc { font-size:0.9em; color:#666; margin-top:4px; }
+    .sp-doc-action { flex-shrink:0; }
+    .sp-doc-download { display:inline-block; padding:6px 16px; background:var(--sp-color-primary, #0D1F3C); color:#fff !important; text-decoration:none; border-radius:4px; font-size:0.85em; font-weight:600; }
+    .sp-doc-download:hover { opacity:0.85; }
+    .sp-doc-locked { display:inline-flex; align-items:center; gap:6px; padding:6px 16px; background:#f5f5f5; color:#999; border-radius:4px; font-size:0.85em; }
+    .sp-doc-locked a { color:var(--sp-color-primary, #0D1F3C); font-weight:600; }
+    </style>';
+
+    foreach ( $categories as $cat ) {
+        $docs = $by_cat[ $cat->id ] ?? [];
+        if ( empty( $docs ) ) continue;
+
+        echo '<div class="sp-docs-category">';
+        echo '<h2>' . esc_html( $cat->name ) . '</h2>';
+        echo '<hr class="sp-docs-divider">';
+        if ( ! empty( $cat->description ) ) {
+            echo '<p style="color:#666; margin:0 0 12px;">' . esc_html( $cat->description ) . '</p>';
+        }
+
+        foreach ( $docs as $doc ) {
+            sp_render_document_row( $doc, $is_member, $login_url, $type_icon );
+        }
+
+        echo '</div>';
+    }
+
+    // Uncategorized documents
+    if ( ! empty( $uncategorized ) ) {
+        echo '<div class="sp-docs-category">';
+        echo '<h2>' . esc_html__( 'Other Documents', 'societypress' ) . '</h2>';
+        echo '<hr class="sp-docs-divider">';
+
+        foreach ( $uncategorized as $doc ) {
+            sp_render_document_row( $doc, $is_member, $login_url, $type_icon );
+        }
+
+        echo '</div>';
+    }
+}
+
+
+/**
+ * Render a single document row on the frontend.
+ *
+ * WHY extracted: Both categorized and uncategorized docs use the same markup.
+ *      Keeps the main function cleaner.
+ */
+function sp_render_document_row( object $doc, bool $is_member, string $login_url, callable $type_icon ): void {
+    $can_access = ( $doc->access_level === 'public' ) || $is_member;
+
+    echo '<div class="sp-doc-row">';
+
+    // Icon
+    echo '<span class="sp-doc-icon">' . $type_icon( $doc->file_name ) . '</span>';
+
+    // Info
+    echo '<div class="sp-doc-info">';
+    echo '<div class="sp-doc-title">' . esc_html( $doc->title ) . '</div>';
+
+    $meta_parts = [];
+    if ( $doc->document_date ) {
+        $meta_parts[] = date( 'F j, Y', strtotime( $doc->document_date ) );
+    }
+    $ext = strtoupper( pathinfo( $doc->file_name, PATHINFO_EXTENSION ) );
+    if ( $ext ) {
+        $meta_parts[] = $ext;
+    }
+    if ( $doc->file_size ) {
+        $meta_parts[] = size_format( $doc->file_size );
+    }
+    if ( ! empty( $meta_parts ) ) {
+        echo '<div class="sp-doc-meta">' . esc_html( implode( ' · ', $meta_parts ) ) . '</div>';
+    }
+
+    if ( ! empty( $doc->description ) ) {
+        echo '<div class="sp-doc-desc">' . esc_html( $doc->description ) . '</div>';
+    }
+    echo '</div>';
+
+    // Action
+    echo '<div class="sp-doc-action">';
+    if ( $can_access ) {
+        echo '<a href="' . esc_url( $doc->file_url ) . '" class="sp-doc-download" target="_blank" rel="noopener">'
+             . esc_html__( 'Download', 'societypress' ) . '</a>';
+    } else {
+        echo '<span class="sp-doc-locked">&#128274; <a href="' . esc_url( $login_url ) . '">'
+             . esc_html__( 'Log in to access', 'societypress' ) . '</a></span>';
+    }
+    echo '</div>';
+
+    echo '</div>';
 }

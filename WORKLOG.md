@@ -1,5 +1,16 @@
 # SocietyPress — WORKLOG
 
+## v0.35d — 2026-03-11
+
+### the society Child Theme — Header & Footer Fixes
+- Fixed desktop search form overlapping Store nav item: added `position: static; transform: none; z-index: auto` to `.sp-header-search-desktop` (parent CSS set `position: absolute` for a toggle-style search, but the society uses always-visible inline)
+- Hidden cart icon via `display: none !important` (overrides inline style from `sp_user_menu()`)
+- Removed gray pill background/border from `.sp-user-trigger` — cleaner look matching ENS reference
+- Added `margin-left: 6px` to `.sp-user-caret` so dropdown arrow doesn't clip the username
+- Aligned header to `--sp-content-width` guides (`max-width: var(--sp-content-width, 1400px); margin: 0 auto`)
+- Synced git clone `theme-society/` with authoritative server `society/` directory (files had diverged)
+- Discovered deploy path mismatch: active theme is `society/`, not `societypress-society/` — updated memory
+
 ## v0.32d — 2026-03-08
 
 ### Full Codebase Audit

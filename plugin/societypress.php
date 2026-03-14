@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     0.35d
+ * Version:     0.36d
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '0.35d' );
+define( 'SOCIETYPRESS_VERSION', '0.36d' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -3079,6 +3079,16 @@ add_action( 'admin_menu', function () {
         'manage_options',
         'sp-document-edit',
         'sp_render_document_edit_page'
+    );
+
+    // Document Bulk Upload — hidden (accessed via Bulk Upload button on Documents list)
+    add_submenu_page(
+        '',
+        __( 'Bulk Upload Documents', 'societypress' ) . ' — SocietyPress',
+        __( 'Bulk Upload Documents', 'societypress' ),
+        'manage_options',
+        'sp-document-bulk-upload',
+        'sp_render_document_bulk_upload_page'
     );
 
     // Library item edit — hidden (accessed via row actions)
@@ -48894,6 +48904,7 @@ function sp_render_documents_page(): void {
     <div class="wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Documents', 'societypress' ); ?></h1>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-document-edit' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Add New', 'societypress' ); ?></a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-document-bulk-upload' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Bulk Upload', 'societypress' ); ?></a>
         <hr class="wp-header-end">
 
         <?php if ( ! empty( $_GET['sp_updated'] ) ) : ?>
@@ -48901,6 +48912,9 @@ function sp_render_documents_page(): void {
         <?php endif; ?>
         <?php if ( ! empty( $_GET['sp_deleted'] ) ) : ?>
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Document deleted.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+        <?php if ( ! empty( $_GET['sp_bulk_count'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php printf( esc_html( _n( '%d document uploaded.', '%d documents uploaded.', (int) $_GET['sp_bulk_count'], 'societypress' ) ), (int) $_GET['sp_bulk_count'] ); ?></p></div>
         <?php endif; ?>
 
         <!-- Filters -->
@@ -49242,6 +49256,421 @@ function sp_render_document_edit_page(): void {
             document.getElementById('document_file_type').value = '';
             fileInfo.style.display = 'none';
             removeBtn.style.display = 'none';
+        });
+    })();
+    </script>
+    <?php
+}
+
+
+// ---------------------------------------------------------------------------
+// ADMIN: Document bulk upload handler
+// ---------------------------------------------------------------------------
+
+/**
+ * Process bulk document uploads.
+ *
+ * WHY: Societies often have dozens or hundreds of documents (meeting minutes,
+ *      newsletters, reports) to upload at once. Doing them one at a time through
+ *      the single-document form is impractical. This handler processes an array
+ *      of files selected via the multi-select WP media picker, creating one
+ *      sp_documents row per file with shared category/access/status settings.
+ */
+add_action( 'admin_init', function () {
+    if ( empty( $_POST['sp_bulk_upload_documents'] ) ) return;
+
+    if ( ! wp_verify_nonce( $_POST['sp_bulk_doc_nonce'] ?? '', 'sp_bulk_upload_documents' ) ) {
+        wp_die( __( 'Security check failed.', 'societypress' ) );
+    }
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( __( 'You do not have permission to manage documents.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_documents';
+
+    // Shared settings for all files in this batch
+    $category_id  = (int) ( $_POST['bulk_category'] ?? 0 ) ?: null;
+    $access_level = in_array( $_POST['bulk_access'] ?? '', [ 'public', 'members_only' ], true )
+                    ? $_POST['bulk_access'] : 'members_only';
+    $status       = in_array( $_POST['bulk_status'] ?? '', [ 'published', 'draft' ], true )
+                    ? $_POST['bulk_status'] : 'published';
+
+    // Per-file data arrays
+    $urls   = $_POST['bulk_file_url']  ?? [];
+    $names  = $_POST['bulk_file_name'] ?? [];
+    $sizes  = $_POST['bulk_file_size'] ?? [];
+    $types  = $_POST['bulk_file_type'] ?? [];
+    $titles = $_POST['bulk_title']     ?? [];
+    $dates  = $_POST['bulk_date']      ?? [];
+
+    $count = 0;
+    $now   = current_time( 'mysql' );
+    $uid   = get_current_user_id();
+
+    for ( $i = 0, $len = count( $urls ); $i < $len; $i++ ) {
+        $file_url  = esc_url_raw( $urls[ $i ] ?? '' );
+        $file_name = sanitize_file_name( $names[ $i ] ?? '' );
+
+        // Skip rows with no file
+        if ( empty( $file_url ) || empty( $file_name ) ) continue;
+
+        $title = sanitize_text_field( $titles[ $i ] ?? '' );
+        if ( empty( $title ) ) {
+            // Fallback: use filename without extension as title
+            $title = pathinfo( $file_name, PATHINFO_FILENAME );
+        }
+
+        $doc_date = sanitize_text_field( $dates[ $i ] ?? '' );
+        // Validate date format (YYYY-MM-DD)
+        if ( $doc_date && ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $doc_date ) ) {
+            $doc_date = null;
+        }
+
+        $wpdb->insert( $table, [
+            'title'         => $title,
+            'description'   => '',
+            'category_id'   => $category_id,
+            'file_url'      => $file_url,
+            'file_name'     => $file_name,
+            'file_size'     => (int) ( $sizes[ $i ] ?? 0 ),
+            'file_type'     => sanitize_text_field( $types[ $i ] ?? '' ),
+            'access_level'  => $access_level,
+            'document_date' => $doc_date ?: null,
+            'uploaded_by'   => $uid,
+            'status'        => $status,
+            'sort_order'    => 0,
+            'created_at'    => $now,
+            'updated_at'    => $now,
+        ] );
+
+        $count++;
+    }
+
+    wp_redirect( admin_url( 'admin.php?page=sp-documents&sp_bulk_count=' . $count ) );
+    exit;
+});
+
+
+// ---------------------------------------------------------------------------
+// ADMIN: Document bulk upload page
+// ---------------------------------------------------------------------------
+
+/**
+ * Render the bulk upload page for documents.
+ *
+ * WHY: Lets admins select multiple files from the WP media library in one go,
+ *      set shared settings (category, access, status), review/edit individual
+ *      titles and dates, and create all document entries with a single submit.
+ *      Titles are auto-generated from filenames (cleaned up — underscores to
+ *      spaces, trailing numeric IDs stripped, extension removed). Dates are
+ *      auto-detected from filenames when possible.
+ */
+function sp_render_document_bulk_upload_page(): void {
+    global $wpdb;
+
+    $categories = $wpdb->get_results(
+        "SELECT * FROM {$wpdb->prefix}sp_document_categories ORDER BY sort_order, name"
+    );
+
+    // Enqueue media library for multi-file picker
+    wp_enqueue_media();
+
+    ?>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Bulk Upload Documents', 'societypress' ); ?></h1>
+        <p class="description"><?php esc_html_e( 'Select multiple files from the Media Library, set shared options, review the titles and dates, then upload them all at once.', 'societypress' ); ?></p>
+
+        <form method="post" id="sp-bulk-upload-form">
+            <?php wp_nonce_field( 'sp_bulk_upload_documents', 'sp_bulk_doc_nonce' ); ?>
+            <input type="hidden" name="sp_bulk_upload_documents" value="1">
+
+            <!-- Shared settings -->
+            <table class="form-table" style="max-width:600px;">
+                <tr>
+                    <th><label for="bulk_category"><?php esc_html_e( 'Category', 'societypress' ); ?></label></th>
+                    <td>
+                        <select id="bulk_category" name="bulk_category">
+                            <option value=""><?php esc_html_e( '— None —', 'societypress' ); ?></option>
+                            <?php foreach ( $categories as $cat ) : ?>
+                                <option value="<?php echo (int) $cat->id; ?>"><?php echo esc_html( $cat->name ); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="bulk_access"><?php esc_html_e( 'Access Level', 'societypress' ); ?></label></th>
+                    <td>
+                        <select id="bulk_access" name="bulk_access">
+                            <option value="members_only"><?php esc_html_e( 'Members Only', 'societypress' ); ?></option>
+                            <option value="public"><?php esc_html_e( 'Public', 'societypress' ); ?></option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="bulk_status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
+                    <td>
+                        <select id="bulk_status" name="bulk_status">
+                            <option value="published"><?php esc_html_e( 'Published', 'societypress' ); ?></option>
+                            <option value="draft"><?php esc_html_e( 'Draft', 'societypress' ); ?></option>
+                        </select>
+                    </td>
+                </tr>
+            </table>
+
+            <p>
+                <button type="button" id="sp-bulk-select-btn" class="button button-primary" style="margin-right:8px;"><?php esc_html_e( 'Select Files from Media Library', 'societypress' ); ?></button>
+                <span id="sp-bulk-count" style="color:#666;"></span>
+            </p>
+
+            <!-- File preview table — populated by JS when files are selected -->
+            <div id="sp-bulk-preview" style="display:none; margin-top:20px;">
+                <table class="widefat striped" id="sp-bulk-table">
+                    <thead>
+                        <tr>
+                            <th style="width:30px;"></th>
+                            <th><?php esc_html_e( 'Title', 'societypress' ); ?></th>
+                            <th style="width:150px;"><?php esc_html_e( 'Date', 'societypress' ); ?></th>
+                            <th style="width:120px;"><?php esc_html_e( 'Type', 'societypress' ); ?></th>
+                            <th style="width:100px;"><?php esc_html_e( 'Size', 'societypress' ); ?></th>
+                            <th style="width:30px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="sp-bulk-tbody">
+                    </tbody>
+                </table>
+
+                <p class="submit" style="margin-top:16px;">
+                    <button type="submit" class="button button-primary" id="sp-bulk-submit-btn"><?php esc_html_e( 'Upload All Documents', 'societypress' ); ?></button>
+                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-documents' ) ); ?>" class="button" style="margin-left:8px;"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
+                </p>
+            </div>
+        </form>
+    </div>
+
+    <!-- WHY inline JS: Bulk upload is a single admin page. The media picker
+         integration and preview table builder are tightly coupled to this page's
+         DOM and would gain nothing from being a separate file. -->
+    <script>
+    (function() {
+        var frame;
+        var selectBtn   = document.getElementById('sp-bulk-select-btn');
+        var preview     = document.getElementById('sp-bulk-preview');
+        var tbody       = document.getElementById('sp-bulk-tbody');
+        var countSpan   = document.getElementById('sp-bulk-count');
+        var submitBtn   = document.getElementById('sp-bulk-submit-btn');
+
+        if (!selectBtn) return;
+
+        /**
+         * Clean up a filename into a readable document title.
+         *
+         * WHY: Uploaded files often have ugly names like
+         *      "FINAL_GEN_MEM_MEET_02-15-2020_1630604484.pdf"
+         *      This function strips the extension, removes trailing numeric IDs
+         *      (ENS-style timestamps), replaces underscores/hyphens with spaces,
+         *      collapses multiple spaces, and title-cases common patterns.
+         */
+        function cleanTitle(filename) {
+            // Remove extension
+            var name = filename.replace(/\.[^.]+$/, '');
+
+            // Remove trailing numeric ID (ENS pattern: _1234567890)
+            name = name.replace(/_\d{8,}$/, '');
+
+            // Remove leading/trailing underscores and hyphens
+            name = name.replace(/^[_-]+|[_-]+$/g, '');
+
+            // Replace underscores and hyphens with spaces
+            name = name.replace(/[_-]+/g, ' ');
+
+            // Collapse multiple spaces
+            name = name.replace(/\s+/g, ' ').trim();
+
+            return name;
+        }
+
+        /**
+         * Try to extract a date (YYYY-MM-DD) from a filename.
+         *
+         * WHY: Many document files have dates embedded in their names in various
+         *      formats (2020-01-18, 01-18-2020, Jan_2019, etc.). Auto-detecting
+         *      saves the admin from manually entering dates for every file.
+         *      Returns empty string if no date pattern found.
+         */
+        function detectDate(filename) {
+            var name = filename.replace(/\.[^.]+$/, '');
+            var m;
+
+            // YYYY-MM-DD or YYYY_MM_DD
+            m = name.match(/(\d{4})[_-](\d{2})[_-](\d{2})/);
+            if (m && parseInt(m[1]) >= 1900 && parseInt(m[1]) <= 2100) {
+                return m[1] + '-' + m[2] + '-' + m[3];
+            }
+
+            // MM-DD-YYYY or MM_DD_YYYY
+            m = name.match(/(\d{2})[_-](\d{2})[_-](\d{4})/);
+            if (m && parseInt(m[3]) >= 1900 && parseInt(m[3]) <= 2100) {
+                return m[3] + '-' + m[1] + '-' + m[2];
+            }
+
+            // Month name + year patterns: "Jan_2019", "January 2025", "May_17_2025"
+            var months = {
+                'jan':1,'january':1,'feb':2,'february':2,'mar':3,'march':3,
+                'apr':4,'april':4,'may':5,'jun':6,'june':6,
+                'jul':7,'july':7,'aug':8,'august':8,'sep':9,'sept':9,'september':9,
+                'oct':10,'october':10,'nov':11,'november':11,'dec':12,'december':12
+            };
+
+            // "Month DD YYYY" or "Month_DD_YYYY"
+            m = name.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)[_\s]+(\d{1,2})[_\s,]+(\d{4})\b/i);
+            if (m) {
+                var mo = months[m[1].toLowerCase()];
+                return m[3] + '-' + String(mo).padStart(2, '0') + '-' + m[2].padStart(2, '0');
+            }
+
+            // "DD Month YYYY" or "DD_Month_YYYY"
+            m = name.match(/\b(\d{1,2})[_\s]+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)[_\s]+(\d{2,4})\b/i);
+            if (m) {
+                var yr = m[3].length === 2 ? '20' + m[3] : m[3];
+                var mo2 = months[m[2].toLowerCase()];
+                return yr + '-' + String(mo2).padStart(2, '0') + '-' + m[1].padStart(2, '0');
+            }
+
+            // "Month YYYY" — set day to 1
+            m = name.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)[_\s]+(\d{4})\b/i);
+            if (m) {
+                var mo3 = months[m[1].toLowerCase()];
+                return m[2] + '-' + String(mo3).padStart(2, '0') + '-01';
+            }
+
+            // "YYYY_M_Month" pattern (e.g., "2025_3_March")
+            m = name.match(/(\d{4})[_\s]+\d{1,2}[_\s]+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)/i);
+            if (m) {
+                var mo4 = months[m[2].toLowerCase()];
+                return m[1] + '-' + String(mo4).padStart(2, '0') + '-01';
+            }
+
+            return '';
+        }
+
+        /**
+         * Format file size in human-readable form.
+         */
+        function formatSize(bytes) {
+            if (!bytes) return '—';
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / 1048576).toFixed(1) + ' MB';
+        }
+
+        /**
+         * Build a table row for a selected file.
+         */
+        function buildRow(attachment, index) {
+            var ext  = (attachment.filename || '').split('.').pop().toUpperCase() || '—';
+            var tr   = document.createElement('tr');
+            tr.setAttribute('data-index', index);
+
+            tr.innerHTML =
+                '<td style="text-align:center; font-size:1.3em;">&#128196;</td>' +
+                '<td>' +
+                    '<input type="text" name="bulk_title[]" value="' + escAttr(cleanTitle(attachment.filename)) + '" style="width:100%;" required>' +
+                    '<input type="hidden" name="bulk_file_url[]" value="' + escAttr(attachment.url) + '">' +
+                    '<input type="hidden" name="bulk_file_name[]" value="' + escAttr(attachment.filename) + '">' +
+                    '<input type="hidden" name="bulk_file_size[]" value="' + (attachment.filesizeInBytes || 0) + '">' +
+                    '<input type="hidden" name="bulk_file_type[]" value="' + escAttr(attachment.mime || '') + '">' +
+                    '<div style="font-size:0.8em; color:#999; margin-top:2px;">' + escHtml(attachment.filename) + '</div>' +
+                '</td>' +
+                '<td><input type="date" name="bulk_date[]" value="' + detectDate(attachment.filename) + '" style="width:100%;"></td>' +
+                '<td>' + escHtml(ext) + '</td>' +
+                '<td>' + formatSize(attachment.filesizeInBytes) + '</td>' +
+                '<td><button type="button" class="button sp-bulk-remove" title="Remove" style="color:#b32d2e;">&times;</button></td>';
+
+            return tr;
+        }
+
+        /**
+         * Escape HTML for safe insertion.
+         */
+        function escHtml(str) {
+            var div = document.createElement('div');
+            div.appendChild(document.createTextNode(str || ''));
+            return div.innerHTML;
+        }
+
+        /**
+         * Escape a string for use in an HTML attribute value.
+         */
+        function escAttr(str) {
+            return (str || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        /**
+         * Update the file count display and submit button state.
+         */
+        function updateCount() {
+            var rows = tbody.querySelectorAll('tr');
+            var n = rows.length;
+            if (n === 0) {
+                preview.style.display = 'none';
+                countSpan.textContent = '';
+            } else {
+                preview.style.display = '';
+                countSpan.textContent = n + (n === 1 ? ' file selected' : ' files selected');
+            }
+        }
+
+        // Open multi-select media picker
+        selectBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+
+            if (frame) { frame.open(); return; }
+
+            frame = wp.media({
+                title: '<?php echo esc_js( __( 'Select Documents', 'societypress' ) ); ?>',
+                button: { text: '<?php echo esc_js( __( 'Add Selected Files', 'societypress' ) ); ?>' },
+                multiple: true
+            });
+
+            frame.on('select', function() {
+                var attachments = frame.state().get('selection').toJSON();
+
+                // Build a set of URLs already in the table to avoid duplicates
+                var existing = {};
+                var existingInputs = tbody.querySelectorAll('input[name="bulk_file_url[]"]');
+                for (var j = 0; j < existingInputs.length; j++) {
+                    existing[existingInputs[j].value] = true;
+                }
+
+                var startIndex = tbody.querySelectorAll('tr').length;
+                for (var i = 0; i < attachments.length; i++) {
+                    if (existing[attachments[i].url]) continue;
+                    tbody.appendChild(buildRow(attachments[i], startIndex + i));
+                }
+
+                updateCount();
+            });
+
+            frame.open();
+        });
+
+        // Remove individual file row
+        document.addEventListener('click', function(e) {
+            if (!e.target.classList.contains('sp-bulk-remove')) return;
+            e.preventDefault();
+            var tr = e.target.closest('tr');
+            if (tr) tr.remove();
+            updateCount();
+        });
+
+        // Prevent submit if no files
+        document.getElementById('sp-bulk-upload-form').addEventListener('submit', function(e) {
+            if (tbody.querySelectorAll('tr').length === 0) {
+                e.preventDefault();
+                alert('<?php echo esc_js( __( 'Please select at least one file.', 'societypress' ) ); ?>');
+            }
         });
     })();
     </script>

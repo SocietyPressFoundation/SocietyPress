@@ -1,5 +1,16 @@
 # SocietyPress — WORKLOG
 
+## v0.36d — 2026-03-14
+
+### Documents Module — Bulk Upload
+- Added bulk upload admin page (`sp-document-bulk-upload`): select multiple files from WP Media Library, set shared category/access/status, review auto-generated titles and auto-detected dates, submit all at once
+- Title auto-generation: strips file extension, removes ENS-style trailing numeric IDs (`_1630604484`), replaces underscores/hyphens with spaces
+- Date auto-detection: parses YYYY-MM-DD, MM-DD-YYYY, "Month YYYY", "Month DD YYYY", "DD Month YYYY", "YYYY_M_Month" patterns from filenames
+- Duplicate prevention: files already in the preview table are skipped on re-select
+- "Bulk Upload" button added to Documents list page alongside "Add New"
+- Success notice with proper `_n()` pluralization on redirect
+- Bulk upload handler: validates nonce + capability, inserts one `sp_documents` row per file with shared settings
+
 ## v0.35d — 2026-03-11
 
 ### the society Child Theme — Header & Footer Fixes

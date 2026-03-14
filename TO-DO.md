@@ -152,6 +152,7 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 
 ### Documents Module
 - [x] Documents module: 2 tables (sp_documents, sp_document_categories), admin CRUD (list/add/edit/delete), category management, WP media library file picker, per-document access control (public/members_only), frontend page template (sp-documents) with category grouping and lock icons for restricted docs, seeded default categories (Meeting Minutes, Society Documents)
+- [x] Bulk upload: multi-select media picker, shared category/access/status settings, auto-generated titles (cleaned filenames), auto-detected dates from filename patterns, per-file review/edit before submit
 - [x] Members-only page checkbox: per-page `_sp_members_only` meta, branded login prompt on frontend for non-logged-in visitors, auto-hides restricted pages from nav menu
 
 ### Roles & Permissions (Spec Complete, Not Built)

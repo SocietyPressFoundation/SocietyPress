@@ -26,7 +26,7 @@
     // =========================================================================
     // 1. HAMBURGER MENU TOGGLE
     // =========================================================================
-    // WHY: On mobile (<768px) the full nav is hidden. The hamburger button
+    // WHY: On smaller screens (≤1024px) the full nav is hidden. The hamburger button
     // toggles the .is-open class on the nav container, which CSS uses to
     // show/hide the mobile menu.
 

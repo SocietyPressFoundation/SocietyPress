@@ -4,16 +4,16 @@
  *
  * WHY: This is the bootstrap file for the the society child theme. It enqueues the
  * parent stylesheet first (so the base layout loads), then the child stylesheet
- * (so the society overrides win). It also registers a footer nav menu and enqueues
- * the the society-specific JavaScript for hamburger toggle, dropdown nav, and the
- * hero slider.
+ * (so the society overrides win). It also registers a footer nav menu, loads the
+ * Poppins font from Google Fonts, and enqueues the the society-specific JavaScript
+ * for hamburger toggle, dropdown nav, and the hero slider.
  *
  * NOTE: All backend functionality (events, library, members, page builder, etc.)
  * lives in the SocietyPress plugin. This child theme only handles the society-specific
  * presentation — colors, layout, and branding.
  *
  * @package the society
- * @since   0.01d
+ * @since   0.02d
  */
 
 // Prevent direct access
@@ -21,7 +21,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'the society_THEME_VERSION', '0.01d' );
+define( 'the society_THEME_VERSION', '0.02d' );
 
 
 // ============================================================================
@@ -29,7 +29,7 @@ define( 'the society_THEME_VERSION', '0.01d' );
 // ============================================================================
 
 /**
- * Load parent + child stylesheets and the society JavaScript.
+ * Load Google Fonts, parent + child stylesheets, and the society JavaScript.
  *
  * WHY the parent must be enqueued explicitly: When a child theme is active,
  * WordPress only auto-loads the CHILD's style.css. The parent's stylesheet
@@ -37,18 +37,30 @@ define( 'the society_THEME_VERSION', '0.01d' );
  * inherits. Without enqueuing it here, the site would lose all base styling.
  *
  * Load order:
- * 1. Parent style.css (base layout, forms, widgets)
- * 2. Child style.css  (the society color overrides, custom components)
- * 3. society.js         (hamburger, dropdowns, hero slider)
+ * 1. Google Fonts (Poppins — the the society brand font)
+ * 2. Parent style.css (base layout, forms, widgets)
+ * 3. Child style.css  (the society color overrides, custom components)
+ * 4. society.js         (hamburger, dropdowns, hero slider)
  */
 add_action( 'wp_enqueue_scripts', function () {
+
+    // Google Fonts — Poppins with weights 300–700
+    // WHY Poppins: The reference the society site uses Poppins as its primary font.
+    // It's clean, modern, and highly readable — important for an older
+    // demographic that makes up most genealogical society members.
+    wp_enqueue_style(
+        'society-google-fonts',
+        'https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap',
+        [],
+        null // No version — Google handles caching via the URL
+    );
 
     // Parent stylesheet — use get_template_directory_uri() which always
     // points to the PARENT theme, even when a child theme is active.
     wp_enqueue_style(
         'societypress-parent-style',
         get_template_directory_uri() . '/style.css',
-        [],
+        [ 'society-google-fonts' ],
         SOCIETYPRESS_THEME_VERSION
     );
 

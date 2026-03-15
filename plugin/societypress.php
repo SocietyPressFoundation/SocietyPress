@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     0.36d
+ * Version:     0.37d
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -26,10 +26,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '0.36d' );
+define( 'SOCIETYPRESS_VERSION', '0.37d' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
+define( 'SOCIETYPRESS_GITHUB_REPO', 'charles-stricklin/SocietyPress' );
 
 // ============================================================================
 // ACTIVATION
@@ -117,6 +118,9 @@ register_activation_hook( __FILE__, function () {
             // Store — configurable product source
             'store_acq_code'               => '',
             'store_intro_text'             => '',
+            // Analytics — Google Analytics integration
+            'analytics_google_id'          => '',
+            'analytics_exclude_admins'     => 1,
         ]);
     }
 
@@ -272,32 +276,35 @@ function sp_maybe_create_default_pages(): void {
         $existing_privacy = $privacy_query->have_posts() ? $privacy_query->posts[0] : null;
     }
 
+    // WHY the template: sp-privacy-policy generates a complete, accurate
+    // privacy policy dynamically based on the site's actual settings.
+    // Using a template (not a shortcode) means Harold can't accidentally
+    // delete it by editing the page, and it survives content changes.
     if ( $existing_privacy ) {
-        // WordPress's default privacy page exists — publish it if it's a draft
+        // WordPress's default privacy page exists — publish it and assign template
         $privacy_id = $existing_privacy->ID;
+        $update_data = [ 'ID' => $privacy_id ];
         if ( $existing_privacy->post_status !== 'publish' ) {
-            wp_update_post( [
-                'ID'          => $privacy_id,
-                'post_status' => 'publish',
-            ] );
+            $update_data['post_status'] = 'publish';
+        }
+        wp_update_post( $update_data );
+        // Assign our template (won't overwrite if already set)
+        $current_template = get_post_meta( $privacy_id, '_wp_page_template', true );
+        if ( empty( $current_template ) || $current_template === 'default' ) {
+            update_post_meta( $privacy_id, '_wp_page_template', 'sp-privacy-policy' );
         }
     } else {
-        // No existing privacy page — create one
+        // No existing privacy page — create one with our template
         $privacy_id = wp_insert_post( [
             'post_title'   => 'Privacy Policy',
-            'post_content' => '<!-- wp:paragraph -->'
-                            . '<p>This website collects minimal personal information. '
-                            . 'Your information is never shared with third parties '
-                            . 'without your consent.</p>'
-                            . '<!-- /wp:paragraph -->'
-                            . '<!-- wp:paragraph -->'
-                            . '<p>Please update this page with your organization\'s '
-                            . 'full privacy policy.</p>'
-                            . '<!-- /wp:paragraph -->',
+            'post_content' => '',
             'post_status'  => 'publish',
             'post_type'    => 'page',
             'post_name'    => 'privacy-policy',
         ] );
+        if ( $privacy_id && ! is_wp_error( $privacy_id ) ) {
+            update_post_meta( $privacy_id, '_wp_page_template', 'sp-privacy-policy' );
+        }
     }
 
     // Tell WordPress this is the official privacy policy page
@@ -583,6 +590,7 @@ function sp_create_tables(): void {
         name        VARCHAR(100)        NOT NULL,
         price       DECIMAL(10,2)       NOT NULL DEFAULT 0.00,
         duration_months INT UNSIGNED    NULL,
+        allows_joint TINYINT(1)         NOT NULL DEFAULT 0,
         sort_order  INT                 NOT NULL DEFAULT 0,
         active      TINYINT(1)          NOT NULL DEFAULT 1,
         created_at  DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -650,6 +658,9 @@ function sp_create_tables(): void {
         lifetime            TINYINT(1)          NOT NULL DEFAULT 0,
         volunteer           TINYINT(1)          NOT NULL DEFAULT 0,
         joint_member        TINYINT(1)          NOT NULL DEFAULT 0,
+        joint_first_name    VARCHAR(100)        NULL,
+        joint_last_name     VARCHAR(100)        NULL,
+        joint_preferred_name VARCHAR(100)       NULL,
         joint_email         VARCHAR(255)        NULL,
         joint_phone         VARCHAR(30)         NULL,
         skills              TEXT                NULL,
@@ -2660,6 +2671,306 @@ add_filter( 'template_include', function ( $template ) {
 
 
 // ============================================================================
+// ROLES & PERMISSIONS — GRANULAR ACCESS CONTROL
+// ============================================================================
+//
+// WHY: By default, only WordPress administrators (manage_options) can access
+//      the SocietyPress admin panel. But many societies need to delegate:
+//      the treasurer manages finances, the librarian manages the catalog,
+//      the event coordinator handles event setup, etc. These people shouldn't
+//      need full admin access — and they shouldn't see sections they don't
+//      manage.
+//
+// HOW IT WORKS:
+//   1. We define "access areas" — granular permissions like sp_manage_members,
+//      sp_manage_events, sp_manage_library, etc.
+//   2. We define "role templates" — pre-built bundles of access areas that
+//      Harold can assign with one click (Webmaster, Treasurer, Librarian, etc.)
+//   3. Per-user access areas are stored as user meta (sp_access_areas array).
+//   4. The user_has_cap filter grants all sp_* capabilities to WordPress
+//      admins automatically, and grants specific capabilities to users who
+//      have been assigned access areas.
+//   5. All admin menus and AJAX handlers use sp_* capabilities instead of
+//      manage_options, so non-admin staff see only their permitted sections.
+//
+// BACKWARDS COMPATIBLE: Existing WordPress admins retain full access. No
+//      existing behavior changes unless Harold explicitly assigns roles.
+// ============================================================================
+
+/**
+ * Get all SocietyPress access areas.
+ *
+ * WHY: Central registry of every permission area. Each area maps to a
+ *      WordPress capability (sp_manage_*) and controls visibility of
+ *      specific admin menu items.
+ *
+ * @return array Associative array of area_slug => area_info.
+ */
+function sp_get_access_areas(): array {
+    return [
+        'members' => [
+            'name'       => __( 'Members', 'societypress' ),
+            'capability' => 'sp_manage_members',
+            'icon'       => 'dashicons-groups',
+            'description'=> __( 'View and manage all members, import/export, groups, and membership plans.', 'societypress' ),
+        ],
+        'events' => [
+            'name'       => __( 'Events', 'societypress' ),
+            'capability' => 'sp_manage_events',
+            'icon'       => 'dashicons-calendar-alt',
+            'description'=> __( 'Create and manage events, categories, speakers, registrations, and the calendar.', 'societypress' ),
+        ],
+        'library' => [
+            'name'       => __( 'Library', 'societypress' ),
+            'capability' => 'sp_manage_library',
+            'icon'       => 'dashicons-book-alt',
+            'description'=> __( 'Manage the library catalog, import items, and run enrichment.', 'societypress' ),
+        ],
+        'finances' => [
+            'name'       => __( 'Finances', 'societypress' ),
+            'capability' => 'sp_manage_finances',
+            'icon'       => 'dashicons-chart-area',
+            'description'=> __( 'Donations, campaigns, store orders, and financial reports.', 'societypress' ),
+        ],
+        'communications' => [
+            'name'       => __( 'Communications', 'societypress' ),
+            'capability' => 'sp_manage_communications',
+            'icon'       => 'dashicons-email-alt',
+            'description'=> __( 'Blast email, newsletters, email log, and email templates.', 'societypress' ),
+        ],
+        'records' => [
+            'name'       => __( 'Genealogical Records', 'societypress' ),
+            'capability' => 'sp_manage_records',
+            'icon'       => 'dashicons-database',
+            'description'=> __( 'Manage genealogical record collections, import records, and configure search.', 'societypress' ),
+        ],
+        'governance' => [
+            'name'       => __( 'Leadership & Volunteers', 'societypress' ),
+            'capability' => 'sp_manage_governance',
+            'icon'       => 'dashicons-businessman',
+            'description'=> __( 'Officer positions, committees, volunteer opportunities, and hours tracking.', 'societypress' ),
+        ],
+        'content' => [
+            'name'       => __( 'Content & Pages', 'societypress' ),
+            'capability' => 'sp_manage_content',
+            'icon'       => 'dashicons-admin-page',
+            'description'=> __( 'Pages, media library, resources, documents, gallery, and the page builder.', 'societypress' ),
+        ],
+        'settings' => [
+            'name'       => __( 'Settings & Design', 'societypress' ),
+            'capability' => 'sp_manage_settings',
+            'icon'       => 'dashicons-admin-generic',
+            'description'=> __( 'All plugin settings, design system, modules, and user access management.', 'societypress' ),
+        ],
+        'reports' => [
+            'name'       => __( 'Reports', 'societypress' ),
+            'capability' => 'sp_view_reports',
+            'icon'       => 'dashicons-chart-bar',
+            'description'=> __( 'View membership reports, event statistics, and financial summaries.', 'societypress' ),
+        ],
+    ];
+}
+
+/**
+ * Get pre-built role templates.
+ *
+ * WHY: Harold shouldn't have to check 10 boxes every time he wants to give
+ *      someone standard access. Role templates are shortcuts — pick "Treasurer"
+ *      and the right access areas are pre-selected. Harold can then customize.
+ *
+ * @return array Associative array of role_slug => role_info.
+ */
+function sp_get_role_templates(): array {
+    return [
+        'webmaster' => [
+            'name'   => __( 'Webmaster', 'societypress' ),
+            'description' => __( 'Full access to everything — equivalent to a site administrator.', 'societypress' ),
+            'areas'  => array_keys( sp_get_access_areas() ),
+        ],
+        'membership_manager' => [
+            'name'   => __( 'Membership Manager', 'societypress' ),
+            'description' => __( 'Manages members, imports, tiers, groups, and membership reports.', 'societypress' ),
+            'areas'  => [ 'members', 'reports' ],
+        ],
+        'treasurer' => [
+            'name'   => __( 'Treasurer', 'societypress' ),
+            'description' => __( 'Handles donations, store orders, and financial reports.', 'societypress' ),
+            'areas'  => [ 'finances', 'reports' ],
+        ],
+        'event_coordinator' => [
+            'name'   => __( 'Event Coordinator', 'societypress' ),
+            'description' => __( 'Creates and manages events, speakers, and registrations.', 'societypress' ),
+            'areas'  => [ 'events' ],
+        ],
+        'librarian' => [
+            'name'   => __( 'Librarian', 'societypress' ),
+            'description' => __( 'Manages the library catalog, imports, and enrichment.', 'societypress' ),
+            'areas'  => [ 'library' ],
+        ],
+        'communications_director' => [
+            'name'   => __( 'Communications Director', 'societypress' ),
+            'description' => __( 'Sends blast emails, manages newsletters and email templates.', 'societypress' ),
+            'areas'  => [ 'communications' ],
+        ],
+        'records_manager' => [
+            'name'   => __( 'Records Manager', 'societypress' ),
+            'description' => __( 'Manages genealogical record collections and imports.', 'societypress' ),
+            'areas'  => [ 'records' ],
+        ],
+        'content_editor' => [
+            'name'   => __( 'Content Editor', 'societypress' ),
+            'description' => __( 'Manages pages, resources, documents, gallery, and media.', 'societypress' ),
+            'areas'  => [ 'content' ],
+        ],
+    ];
+}
+
+/**
+ * Check if the current user has access to a specific SocietyPress area.
+ *
+ * WHY: This is the single function called everywhere in the plugin to check
+ *      permissions. It replaces direct current_user_can('manage_options')
+ *      calls. WordPress admins always pass. Non-admin users pass only if
+ *      they've been granted the specific access area.
+ *
+ * @param string $area Access area slug (e.g., 'members', 'events').
+ * @return bool True if the current user has access.
+ */
+function sp_user_can( string $area ): bool {
+    // WordPress administrators always have full access
+    if ( current_user_can( 'manage_options' ) ) {
+        return true;
+    }
+
+    // Check the user's assigned access areas
+    $user_areas = get_user_meta( get_current_user_id(), 'sp_access_areas', true );
+    if ( ! is_array( $user_areas ) ) {
+        return false;
+    }
+
+    return in_array( $area, $user_areas, true );
+}
+
+/**
+ * Check if the current user can access ANY SocietyPress admin area.
+ *
+ * WHY: Used to determine if a user should see the SocietyPress menu at all.
+ *      A user with zero access areas shouldn't see the top-level menu item.
+ *
+ * @return bool True if the user has at least one access area (or is admin).
+ */
+function sp_user_can_access_admin(): bool {
+    if ( current_user_can( 'manage_options' ) ) {
+        return true;
+    }
+
+    $user_areas = get_user_meta( get_current_user_id(), 'sp_access_areas', true );
+    return is_array( $user_areas ) && ! empty( $user_areas );
+}
+
+/**
+ * Grant SocietyPress capabilities to users based on their access areas.
+ *
+ * WHY: WordPress menus and capability checks use the has_cap system. We
+ *      intercept it to transparently grant sp_* capabilities based on the
+ *      user's assigned access areas. This means:
+ *      - WordPress admins auto-get ALL sp_* caps (backwards compatible)
+ *      - Non-admin SP staff get only their assigned caps
+ *      - Menu items using sp_manage_events (etc.) just work
+ *      - No need to modify WordPress roles or the wp_usermeta capabilities blob
+ */
+add_filter( 'user_has_cap', function ( array $allcaps, array $caps, array $args, $user ): array {
+
+    // If WordPress admin, grant all SocietyPress capabilities
+    if ( ! empty( $allcaps['manage_options'] ) ) {
+        foreach ( sp_get_access_areas() as $area ) {
+            $allcaps[ $area['capability'] ] = true;
+        }
+        // Also grant the umbrella cap used for menu visibility
+        $allcaps['sp_access_admin'] = true;
+        return $allcaps;
+    }
+
+    // For non-admins, check their assigned access areas
+    $user_id = $user->ID ?? 0;
+    if ( ! $user_id ) return $allcaps;
+
+    $user_areas = get_user_meta( $user_id, 'sp_access_areas', true );
+    if ( ! is_array( $user_areas ) || empty( $user_areas ) ) {
+        return $allcaps;
+    }
+
+    // Grant the umbrella cap so they can see the top-level menu
+    $allcaps['sp_access_admin'] = true;
+
+    // Grant specific area capabilities
+    $areas = sp_get_access_areas();
+    foreach ( $user_areas as $area_slug ) {
+        if ( isset( $areas[ $area_slug ] ) ) {
+            $allcaps[ $areas[ $area_slug ]['capability'] ] = true;
+        }
+    }
+
+    // Non-admin SP staff need basic WP caps to access wp-admin
+    $allcaps['read'] = true;
+
+    return $allcaps;
+}, 10, 4 );
+
+/**
+ * Allow non-admin SP staff to access wp-admin.
+ *
+ * WHY: By default, WordPress blocks users without 'edit_posts' from
+ *      accessing wp-admin at all. Our SP staff don't need edit_posts —
+ *      they need access to our custom admin pages only. We let them through
+ *      the gate if they have any SP access areas assigned.
+ */
+add_filter( 'user_has_cap', function ( array $allcaps, array $caps ): array {
+    // Only intervene when WordPress is checking 'edit_posts' for admin access
+    if ( ! in_array( 'edit_posts', $caps, true ) ) {
+        return $allcaps;
+    }
+
+    // If they already have edit_posts, nothing to do
+    if ( ! empty( $allcaps['edit_posts'] ) ) {
+        return $allcaps;
+    }
+
+    // If they have SP admin access, grant edit_posts so wp-admin doesn't block them
+    if ( ! empty( $allcaps['sp_access_admin'] ) ) {
+        $allcaps['edit_posts'] = true;
+    }
+
+    return $allcaps;
+}, 20, 2 );
+
+/**
+ * Redirect non-admin SP staff away from the WordPress dashboard to the
+ * SocietyPress dashboard.
+ *
+ * WHY: When a Treasurer or Librarian logs into wp-admin, they'd land on
+ *      the WordPress Dashboard which is useless to them. We redirect them
+ *      to the SocietyPress dashboard where they see relevant stats and
+ *      quick links for their assigned areas.
+ */
+add_action( 'admin_init', function () {
+    global $pagenow;
+
+    // Only redirect on the WP dashboard (index.php)
+    if ( $pagenow !== 'index.php' ) return;
+
+    // Don't redirect WordPress admins — they might want the WP dashboard
+    if ( current_user_can( 'manage_options' ) ) return;
+
+    // If they have SP access, redirect to our dashboard
+    if ( sp_user_can_access_admin() ) {
+        wp_redirect( admin_url( 'admin.php?page=societypress' ) );
+        exit;
+    }
+} );
+
+
+// ============================================================================
 // ADMIN MENU — UNIFIED SOCIETYPRESS WITH FLYOUT GROUPS
 // ============================================================================
 
@@ -2692,10 +3003,14 @@ add_action( 'admin_menu', function () {
     // ---- SocietyPress = Dashboard (parent menu) ----
     // Clicking "SocietyPress" in the sidebar takes the user straight to their
     // dashboard. Position 2 puts it at the very top of the sidebar.
+    // WHY sp_access_admin: Non-admin SP staff (Treasurer, Librarian, etc.)
+    // need to see this top-level menu. The user_has_cap filter grants
+    // sp_access_admin to anyone with at least one access area. WordPress
+    // admins (manage_options) get it automatically.
     add_menu_page(
         'SocietyPress',
         'SocietyPress',
-        'manage_options',
+        'sp_access_admin',
         'societypress',
         'sp_render_dashboard_page',
         'dashicons-groups',
@@ -3425,6 +3740,20 @@ add_action( 'admin_menu', function () {
         'sp_render_settings_privacy_page'
     );
 
+    // Privacy Policy Builder — WordPress's built-in privacy policy guide.
+    // WHY: WordPress ships a privacy policy builder that collects suggested
+    //      content from all active plugins (including SocietyPress's GDPR
+    //      section). Since we hide the native Settings menu, Harold has no
+    //      way to reach it. Linking directly to the WP core page here keeps
+    //      it accessible without us rebuilding what WordPress already provides.
+    add_submenu_page(
+        'societypress',
+        __( 'Privacy Policy Builder', 'societypress' ),
+        __( 'Privacy Policy Builder', 'societypress' ),
+        'manage_options',
+        'privacy-policy-guide.php'
+    );
+
     add_submenu_page(
         'societypress',
         'Settings — SocietyPress',
@@ -3441,6 +3770,19 @@ add_action( 'admin_menu', function () {
         'manage_options',
         'sp-settings-modules',
         'sp_render_settings_modules_page'
+    );
+
+    // User Access — assign roles and access areas to non-admin users.
+    // WHY: This is how Harold delegates admin tasks to board members,
+    //      volunteers, and staff without giving them full WordPress
+    //      administrator access. They see only what they need.
+    add_submenu_page(
+        'societypress',
+        __( 'User Access — SocietyPress', 'societypress' ),
+        __( 'User Access', 'societypress' ),
+        'manage_options',
+        'sp-user-access',
+        'sp_render_user_access_page'
     );
 
     // -----------------------------------------------------------------
@@ -3503,6 +3845,179 @@ add_action( 'admin_menu', function () {
     remove_menu_page( 'options-general.php' );     // Settings
 
 }, 999 ); // Priority 999 = run AFTER all default menus are registered
+
+
+// ============================================================================
+// PERMISSION-BASED MENU CAPABILITY REMAPPING
+//
+// WHY: All add_submenu_page() calls above use 'manage_options' because that
+//      was the original (and only) access level. Rather than modifying every
+//      single call, we remap capabilities centrally in one pass. This is the
+//      same pattern as the module filtering below — let everything register
+//      normally, then adjust in bulk.
+//
+// HOW: We walk the global $submenu['societypress'] array and replace each
+//      item's capability based on a slug→capability mapping. Hidden pages
+//      (registered with null/empty parent) live in $submenu[''] and are
+//      also remapped.
+// ============================================================================
+
+/**
+ * Map menu slugs to their required SocietyPress capability.
+ *
+ * WHY centralized: One table that controls who sees what. When adding a
+ *      new admin page, add one line here. The mapping is intentionally
+ *      explicit — if a slug isn't listed, it stays at manage_options.
+ *
+ * @return array Slug => capability string.
+ */
+function sp_get_menu_capability_map(): array {
+    return [
+        // Dashboard — anyone with any SP access
+        'societypress'             => 'sp_access_admin',
+
+        // Members
+        'sp-members'               => 'sp_manage_members',
+        'sp-import'                => 'sp_manage_members',
+        'sp-export'                => 'sp_manage_members',
+        'sp-member-tiers'          => 'sp_manage_members',
+        'sp-groups'                => 'sp_manage_members',
+        'sp-group-edit'            => 'sp_manage_members',
+        'sp-member-edit'           => 'sp_manage_members',
+        'sp-pending-changes'       => 'sp_manage_members',
+
+        // Events
+        'sp-events'                => 'sp_manage_events',
+        'sp-event-categories'      => 'sp_manage_events',
+        'sp-import-events'         => 'sp_manage_events',
+        'sp-speakers'              => 'sp_manage_events',
+        'sp-event-edit'            => 'sp_manage_events',
+        'sp-speaker-edit'          => 'sp_manage_events',
+
+        // Governance / Volunteers
+        'sp-governance'            => 'sp_manage_governance',
+        'sp-volunteer-hours'       => 'sp_manage_governance',
+        'sp-volunteer-opportunities' => 'sp_manage_governance',
+        'sp-volunteer-opportunity-edit' => 'sp_manage_governance',
+
+        // Gallery
+        'sp-gallery'               => 'sp_manage_content',
+        'sp-album-edit'            => 'sp_manage_content',
+
+        // Library
+        'sp-library-catalog'       => 'sp_manage_library',
+        'sp-library-categories'    => 'sp_manage_library',
+        'sp-import-library'        => 'sp_manage_library',
+        'sp-library-enrich'        => 'sp_manage_library',
+        'sp-library-item-edit'     => 'sp_manage_library',
+
+        // Resources, Help Requests
+        'sp-library'               => 'sp_manage_content',
+        'sp-resource-categories'   => 'sp_manage_content',
+        'sp-import-links'          => 'sp_manage_content',
+        'sp-help-requests'         => 'sp_manage_content',
+
+        // Communications
+        'sp-newsletter-archive'    => 'sp_manage_communications',
+        'sp-newsletter-edit'       => 'sp_manage_communications',
+        'sp-blast-email'           => 'sp_manage_communications',
+        'sp-blast-email-compose'   => 'sp_manage_communications',
+        'sp-email-templates'       => 'sp_manage_communications',
+        'sp-email-log'             => 'sp_manage_communications',
+
+        // Documents
+        'sp-documents'             => 'sp_manage_content',
+        'sp-document-categories'   => 'sp_manage_content',
+        'sp-document-edit'         => 'sp_manage_content',
+        'sp-document-bulk-upload'  => 'sp_manage_content',
+
+        // Records
+        'sp-record-collections'    => 'sp_manage_records',
+        'sp-import-records'        => 'sp_manage_records',
+        'sp-record-collection-edit'=> 'sp_manage_records',
+        'sp-record-browse'         => 'sp_manage_records',
+        'sp-record-edit'           => 'sp_manage_records',
+
+        // Finances
+        'sp-finances'              => 'sp_manage_finances',
+        'sp-record-payment'        => 'sp_manage_finances',
+        'sp-donations'             => 'sp_manage_finances',
+        'sp-donation-edit'         => 'sp_manage_finances',
+        'sp-campaigns'             => 'sp_manage_finances',
+        'sp-campaign-edit'         => 'sp_manage_finances',
+        'sp-orders'                => 'sp_manage_finances',
+        'sp-order-detail'          => 'sp_manage_finances',
+
+        // Content / Appearance
+        'sp-themes'                => 'sp_manage_settings',
+        'sp-pages'                 => 'sp_manage_content',
+        'sp-page-edit'             => 'sp_manage_content',
+        'upload.php'               => 'sp_manage_content',
+        'nav-menus.php'            => 'sp_manage_settings',
+        'widgets.php'              => 'sp_manage_settings',
+
+        // Reports
+        'sp-reports'               => 'sp_view_reports',
+        'sp-annual-report'         => 'sp_view_reports',
+
+        // Settings — admin-only (sp_manage_settings)
+        'sp-settings-website'      => 'sp_manage_settings',
+        'sp-settings-org'          => 'sp_manage_settings',
+        'sp-settings-membership'   => 'sp_manage_settings',
+        'sp-settings-directory'    => 'sp_manage_settings',
+        'sp-settings-events'       => 'sp_manage_settings',
+        'sp-settings-privacy'      => 'sp_manage_settings',
+        'privacy-policy-guide.php' => 'sp_manage_settings',
+        'sp-design'                => 'sp_manage_settings',
+        'sp-settings-modules'      => 'sp_manage_settings',
+        'sp-user-access'           => 'sp_manage_settings',
+        'sp-audit-log'             => 'sp_manage_settings',
+    ];
+}
+
+add_action( 'admin_menu', function () {
+    global $menu, $submenu;
+
+    $cap_map = sp_get_menu_capability_map();
+
+    // Remap the top-level menu's capability (belt & suspenders — we already
+    // set it to sp_access_admin in add_menu_page, but future-proofing).
+    if ( isset( $menu ) && is_array( $menu ) ) {
+        foreach ( $menu as &$item ) {
+            if ( ( $item[2] ?? '' ) === 'societypress' && isset( $cap_map['societypress'] ) ) {
+                $item[1] = $cap_map['societypress'];
+                break;
+            }
+        }
+        unset( $item );
+    }
+
+    // Remap all SocietyPress submenu items
+    if ( isset( $submenu['societypress'] ) ) {
+        foreach ( $submenu['societypress'] as &$item ) {
+            $slug = $item[2] ?? '';
+            if ( isset( $cap_map[ $slug ] ) ) {
+                $item[1] = $cap_map[ $slug ];
+            }
+        }
+        unset( $item );
+    }
+
+    // Also remap hidden pages (null or '' parent — stored in $submenu[''])
+    $hidden_parents = [ '', null ];
+    foreach ( $hidden_parents as $parent ) {
+        $parent_key = (string) $parent;
+        if ( ! isset( $submenu[ $parent_key ] ) ) continue;
+        foreach ( $submenu[ $parent_key ] as &$item ) {
+            $slug = $item[2] ?? '';
+            if ( isset( $cap_map[ $slug ] ) ) {
+                $item[1] = $cap_map[ $slug ];
+            }
+        }
+        unset( $item );
+    }
+
+}, 998 ); // Priority 998 = after all menus registered (999) but before module filter (1000)
 
 
 // ============================================================================
@@ -3754,6 +4269,55 @@ add_action( 'wp_head', function () {
     echo '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' . "\n";
     echo '<link href="https://fonts.googleapis.com/css2?family=' . implode( '&family=', $families ) . '&display=swap" rel="stylesheet">' . "\n";
 }, 0 );
+
+
+// ============================================================================
+// FRONTEND: GOOGLE ANALYTICS
+// ============================================================================
+//
+// WHY: Most societies want page view tracking for grant applications, board
+//      reports, or general curiosity. Rather than requiring a separate plugin,
+//      we output the official gtag.js snippet when a GA4 Measurement ID is
+//      configured in Settings → Website. Admin traffic can be excluded so
+//      Harold's own browsing doesn't skew the numbers.
+
+add_action( 'wp_head', function () {
+
+    // Don't output analytics on admin pages — only the public-facing site.
+    if ( is_admin() ) {
+        return;
+    }
+
+    $settings = get_option( 'societypress_settings', [] );
+    $ga_id    = $settings['analytics_google_id'] ?? '';
+
+    // No measurement ID configured — nothing to output.
+    if ( empty( $ga_id ) ) {
+        return;
+    }
+
+    // If "exclude admins" is on and the current user is an administrator,
+    // skip the tracking snippet entirely. This is more reliable than GA
+    // filters because it never sends the hit in the first place.
+    if ( ! empty( $settings['analytics_exclude_admins'] ) && current_user_can( 'manage_options' ) ) {
+        return;
+    }
+
+    // Output the standard Google Analytics 4 (gtag.js) snippet.
+    // WHY async: Google recommends async loading so the script doesn't
+    // block page rendering. The dataLayer push pattern is Google's
+    // official integration method for GA4.
+    $escaped_id = esc_attr( $ga_id );
+    echo "<!-- SocietyPress: Google Analytics -->\n";
+    echo '<script async src="https://www.googletagmanager.com/gtag/js?id=' . $escaped_id . '"></script>' . "\n";
+    echo "<script>\n";
+    echo "window.dataLayer = window.dataLayer || [];\n";
+    echo "function gtag(){dataLayer.push(arguments);}\n";
+    echo "gtag('js', new Date());\n";
+    echo "gtag('config', '" . $escaped_id . "');\n";
+    echo "</script>\n";
+
+}, 5 );
 
 
 // ============================================================================
@@ -4228,6 +4792,31 @@ function sp_handle_account_forms() {
         sp_member_encrypt_fields( $new_data );
         $wpdb->update( $table, $new_data, [ 'user_id' => $user->ID ] );
         wp_redirect( add_query_arg( 'sp-updated', 'profile', $account_url . '#address' ) ); exit;
+    }
+
+    // ---- Joint Member ----
+    // WHY: Couples sharing a membership can update the second person's name,
+    // email, and phone from their My Account page. This saves immediately
+    // (no approval required) since it's adding/updating supplemental info,
+    // not changing the primary member's identity.
+    if ( $action === 'update_joint' ) {
+        if ( ! wp_verify_nonce( $_POST['sp_joint_nonce'] ?? '', 'sp_update_joint' ) ) { wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
+        if ( ! sp_user_has_member_record( $user->ID ) ) { wp_redirect( add_query_arg( 'sp-error', 'no-member', $account_url ) ); exit; }
+
+        $joint_first = sanitize_text_field( $_POST['joint_first_name'] ?? '' );
+        $has_joint   = ! empty( $joint_first );
+
+        $joint_data = [
+            'joint_member'         => $has_joint ? 1 : 0,
+            'joint_first_name'     => $has_joint ? $joint_first : null,
+            'joint_last_name'      => $has_joint ? sanitize_text_field( $_POST['joint_last_name'] ?? '' ) ?: null : null,
+            'joint_preferred_name' => $has_joint ? sanitize_text_field( $_POST['joint_preferred_name'] ?? '' ) ?: null : null,
+            'joint_email'          => $has_joint ? sanitize_email( $_POST['joint_email'] ?? '' ) ?: null : null,
+            'joint_phone'          => $has_joint ? sanitize_text_field( $_POST['joint_phone'] ?? '' ) ?: null : null,
+            'updated_at'           => current_time( 'mysql' ),
+        ];
+        $wpdb->update( $table, $joint_data, [ 'user_id' => $user->ID ] );
+        wp_redirect( add_query_arg( 'sp-updated', 'joint', $account_url . '#joint-member' ) ); exit;
     }
 
     if ( $action === 'update_preferences' ) {
@@ -5594,7 +6183,7 @@ var spMenuConfig = {
             id:    'settings',
             label: 'Settings',
             icon:  'dashicons-admin-generic',
-            items: ['sp-settings-website', 'sp-settings-organization', 'sp-settings-membership', 'sp-settings-directory', 'sp-settings-events', 'sp-settings-privacy', 'sp-settings-modules']
+            items: ['sp-settings-website', 'sp-settings-organization', 'sp-settings-membership', 'sp-settings-directory', 'sp-settings-events', 'sp-settings-privacy', 'privacy-policy-guide.php', 'sp-settings-modules', 'sp-user-access']
         }
     ],
     standalone: []
@@ -6556,6 +7145,584 @@ add_filter( 'auto_update_theme', function ( $update, $item ) {
 
 
 // ============================================================================
+// GITHUB UPDATE CHECKER — Version notifications & one-click updates
+// ============================================================================
+//
+// WHY: SocietyPress is distributed via GitHub, not wordpress.org. WordPress
+//      has no idea new versions exist unless we tell it. These hooks:
+//
+//      1. Check the GitHub Releases API for the latest published release
+//      2. Compare the tag version against SOCIETYPRESS_VERSION
+//      3. Inject the update into WordPress's plugin update transient so WP's
+//         built-in updater can download and install it
+//      4. Show a banner on the SP dashboard so Harold knows an update is
+//         available — since we hide the WP updates screen
+//      5. Provide an AJAX endpoint for one-click updating from our dashboard
+//
+// CACHING: API responses are cached in a transient for 12 hours so we don't
+//          hammer GitHub's API on every page load. The transient is deleted
+//          when Harold clicks "Check for Updates" to force a fresh check.
+//
+// NO AUTH REQUIRED: The repo is public, so the GitHub API works without a
+//          token. Rate limit is 60 requests/hour per IP — with 12-hour
+//          caching, we'll use ~2 requests/day.
+// ============================================================================
+
+/**
+ * Fetch the latest release info from GitHub.
+ *
+ * WHY: Central function that both the transient filter and the dashboard
+ *      banner call. Returns cached data when available, fetches fresh
+ *      data when the transient has expired.
+ *
+ * @param bool $force_check Skip the cache and fetch from GitHub.
+ * @return object|null Release data or null if unavailable.
+ */
+function sp_get_github_release( bool $force_check = false ): ?object {
+    $transient_key = 'sp_github_release_check';
+
+    if ( ! $force_check ) {
+        $cached = get_transient( $transient_key );
+        if ( $cached !== false ) {
+            return $cached ?: null;
+        }
+    }
+
+    $api_url  = 'https://api.github.com/repos/' . SOCIETYPRESS_GITHUB_REPO . '/releases/latest';
+    $response = wp_remote_get( $api_url, [
+        'timeout'    => 10,
+        'headers'    => [
+            'Accept'     => 'application/vnd.github.v3+json',
+            'User-Agent' => 'SocietyPress/' . SOCIETYPRESS_VERSION,
+        ],
+    ] );
+
+    if ( is_wp_error( $response ) || wp_remote_retrieve_response_code( $response ) !== 200 ) {
+        // Cache the failure for 1 hour so we don't keep retrying
+        set_transient( $transient_key, '', HOUR_IN_SECONDS );
+        return null;
+    }
+
+    $body = json_decode( wp_remote_retrieve_body( $response ) );
+    if ( ! $body || empty( $body->tag_name ) ) {
+        set_transient( $transient_key, '', HOUR_IN_SECONDS );
+        return null;
+    }
+
+    // Normalize the tag — strip leading 'v' if present (e.g., "v0.37d" → "0.37d")
+    $version = ltrim( $body->tag_name, 'vV' );
+
+    // Look for a release asset named societypress.zip — if attached, use it
+    // as the download URL. Otherwise fall back to the zipball (GitHub source
+    // archive), which needs directory renaming on install.
+    $download_url = $body->zipball_url ?? '';
+    $has_asset    = false;
+    if ( ! empty( $body->assets ) && is_array( $body->assets ) ) {
+        foreach ( $body->assets as $asset ) {
+            if ( str_contains( strtolower( $asset->name ), 'societypress' ) && str_ends_with( strtolower( $asset->name ), '.zip' ) ) {
+                $download_url = $asset->browser_download_url;
+                $has_asset    = true;
+                break;
+            }
+        }
+    }
+
+    $release = (object) [
+        'version'       => $version,
+        'download_url'  => $download_url,
+        'has_asset'     => $has_asset,
+        'html_url'      => $body->html_url ?? '',
+        'published_at'  => $body->published_at ?? '',
+        'body'          => $body->body ?? '',
+        'tag_name'      => $body->tag_name ?? '',
+    ];
+
+    // Cache for 12 hours
+    set_transient( $transient_key, $release, 12 * HOUR_IN_SECONDS );
+
+    return $release;
+}
+
+/**
+ * Check if a newer version is available on GitHub.
+ *
+ * WHY: Simple comparison wrapper. Returns the release object only if the
+ *      remote version is actually newer than what's installed.
+ *
+ * @return object|null Release data if update available, null otherwise.
+ */
+function sp_check_for_update(): ?object {
+    $release = sp_get_github_release();
+    if ( ! $release || empty( $release->version ) ) {
+        return null;
+    }
+
+    // version_compare returns -1 if arg1 < arg2 (i.e., installed is older)
+    if ( version_compare( SOCIETYPRESS_VERSION, $release->version, '<' ) ) {
+        return $release;
+    }
+
+    return null;
+}
+
+/**
+ * Inject GitHub release data into WordPress's plugin update transient.
+ *
+ * WHY: WordPress checks for plugin updates by reading the update_plugins
+ *      site transient. For plugins hosted on wordpress.org, WP populates
+ *      this automatically. For our GitHub-hosted plugin, we hook into the
+ *      transient filter and add our own entry when a new version exists.
+ *
+ *      Once we inject the data, WordPress's built-in updater handles
+ *      everything: download, extract, replace, reactivate.
+ */
+add_filter( 'pre_set_site_transient_update_plugins', function ( $transient ) {
+    if ( empty( $transient->checked ) ) {
+        return $transient;
+    }
+
+    $release = sp_check_for_update();
+    if ( ! $release ) {
+        return $transient;
+    }
+
+    $plugin_slug = plugin_basename( SOCIETYPRESS_PLUGIN_FILE );
+
+    $transient->response[ $plugin_slug ] = (object) [
+        'slug'        => 'societypress',
+        'plugin'      => $plugin_slug,
+        'new_version' => $release->version,
+        'url'         => $release->html_url,
+        'package'     => $release->download_url,
+        'icons'       => [],
+        'banners'     => [],
+        'tested'      => '',
+        'requires'    => '6.0',
+        'requires_php'=> '8.0',
+    ];
+
+    return $transient;
+} );
+
+/**
+ * Provide plugin info for the "View Details" modal in WordPress updates.
+ *
+ * WHY: When Harold clicks "View version X details" in the Plugins list
+ *      (or our dashboard), WordPress fetches plugin info via the plugins_api
+ *      hook. For wordpress.org plugins this hits the WP API. For us, we
+ *      return our GitHub release data so the modal shows useful info.
+ */
+add_filter( 'plugins_api', function ( $result, $action, $args ) {
+    if ( $action !== 'plugin_information' ) return $result;
+    if ( ( $args->slug ?? '' ) !== 'societypress' ) return $result;
+
+    $release = sp_get_github_release();
+    if ( ! $release ) return $result;
+
+    return (object) [
+        'name'          => 'SocietyPress',
+        'slug'          => 'societypress',
+        'version'       => $release->version,
+        'author'        => '<a href="https://stricklindevelopment.com/">Stricklin Development</a>',
+        'homepage'      => 'https://getsocietypress.org',
+        'download_link' => $release->download_url,
+        'requires'      => '6.0',
+        'requires_php'  => '8.0',
+        'tested'        => '',
+        'sections'      => [
+            'description'  => 'Membership management for genealogical and historical societies.',
+            'changelog'    => nl2br( esc_html( $release->body ?: 'See the release notes on GitHub.' ) ),
+        ],
+    ];
+}, 10, 3 );
+
+/**
+ * Rename the extracted directory after downloading from GitHub's zipball.
+ *
+ * WHY: GitHub's source archive zips are named like "SocietyPress-v0.37d/"
+ *      inside, but WordPress expects the plugin directory to match the
+ *      existing directory name ("societypress/"). If we used a release
+ *      asset zip with the correct structure, this isn't needed — but
+ *      for zipball downloads, we rename the extracted directory so
+ *      WordPress installs it in the right place.
+ */
+add_filter( 'upgrader_source_selection', function ( $source, $remote_source, $upgrader, $hook_extra ) {
+    // Only act on our plugin
+    if ( ! isset( $hook_extra['plugin'] ) || $hook_extra['plugin'] !== plugin_basename( SOCIETYPRESS_PLUGIN_FILE ) ) {
+        return $source;
+    }
+
+    // If the source directory already matches, nothing to do
+    $expected_dirname = 'societypress';
+    $source_dirname   = basename( rtrim( $source, '/' ) );
+    if ( $source_dirname === $expected_dirname ) {
+        return $source;
+    }
+
+    // Rename to the expected directory
+    global $wp_filesystem;
+    $corrected_source = trailingslashit( $remote_source ) . $expected_dirname . '/';
+    if ( $wp_filesystem->move( $source, $corrected_source ) ) {
+        return $corrected_source;
+    }
+
+    return $source;
+}, 10, 4 );
+
+/**
+ * AJAX: Perform one-click update from the SocietyPress dashboard.
+ *
+ * WHY: Since we hide the WordPress updates screen, Harold needs a way to
+ *      update directly from our dashboard. This endpoint triggers WordPress's
+ *      built-in Plugin_Upgrader to download and install the new version.
+ *      The result is returned as JSON for the dashboard JS to display.
+ */
+add_action( 'wp_ajax_sp_run_update', function () {
+    if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_run_update_nonce' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ] );
+    }
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ] );
+    }
+
+    $release = sp_check_for_update();
+    if ( ! $release ) {
+        wp_send_json_error( [ 'message' => __( 'No update available.', 'societypress' ) ] );
+    }
+
+    // Use WordPress's built-in upgrader
+    require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+    require_once ABSPATH . 'wp-admin/includes/class-wp-ajax-upgrader-skin.php';
+
+    $skin     = new WP_Ajax_Upgrader_Skin();
+    $upgrader = new Plugin_Upgrader( $skin );
+
+    // Force WordPress to see our update in the transient
+    $plugin_slug = plugin_basename( SOCIETYPRESS_PLUGIN_FILE );
+    $update_data = get_site_transient( 'update_plugins' );
+    if ( ! is_object( $update_data ) ) {
+        $update_data = new stdClass();
+    }
+    $update_data->response[ $plugin_slug ] = (object) [
+        'slug'        => 'societypress',
+        'plugin'      => $plugin_slug,
+        'new_version' => $release->version,
+        'package'     => $release->download_url,
+    ];
+    set_site_transient( 'update_plugins', $update_data );
+
+    $result = $upgrader->upgrade( $plugin_slug );
+
+    if ( is_wp_error( $result ) ) {
+        wp_send_json_error( [ 'message' => $result->get_error_message() ] );
+    }
+
+    if ( $result === false ) {
+        $errors = $skin->get_errors();
+        $msg    = is_wp_error( $errors ) ? $errors->get_error_message() : __( 'Update failed.', 'societypress' );
+        wp_send_json_error( [ 'message' => $msg ] );
+    }
+
+    // Clear the release cache so the dashboard shows the new version
+    delete_transient( 'sp_github_release_check' );
+
+    sp_audit( 'plugin_updated', sprintf( 'SocietyPress updated to %s', $release->version ), 'settings' );
+
+    wp_send_json_success( [
+        'message' => sprintf( __( 'Updated to version %s. Reloading...', 'societypress' ), $release->version ),
+        'version' => $release->version,
+    ] );
+} );
+
+/**
+ * AJAX: Force-check for updates (clears the cache).
+ *
+ * WHY: Harold might know an update was just published and want to check
+ *      immediately, rather than waiting for the 12-hour cache to expire.
+ */
+add_action( 'wp_ajax_sp_check_update', function () {
+    if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_check_update_nonce' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ] );
+    }
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ] );
+    }
+
+    // Force fresh check
+    delete_transient( 'sp_github_release_check' );
+    $release = sp_get_github_release( true );
+
+    if ( $release && version_compare( SOCIETYPRESS_VERSION, $release->version, '<' ) ) {
+        wp_send_json_success( [
+            'available'    => true,
+            'version'      => $release->version,
+            'published_at' => $release->published_at,
+            'html_url'     => $release->html_url,
+            'changelog'    => $release->body,
+        ] );
+    }
+
+    wp_send_json_success( [
+        'available' => false,
+        'message'   => sprintf( __( 'You are running the latest version (%s).', 'societypress' ), SOCIETYPRESS_VERSION ),
+    ] );
+} );
+
+
+// ============================================================================
+// THEME UPDATE CHECKER — Parent theme + child theme update notifications
+// ============================================================================
+//
+// WHY: The plugin update checker handles the plugin itself, but the parent
+//      theme and child themes also need updates. Since we hide WordPress's
+//      native updates screen, all update notifications live on our dashboard.
+//
+//      The parent theme version is tracked here (ships with the plugin).
+//      Child theme versions come from sp_get_theme_registry().
+//
+//      For the parent theme, we inject into WordPress's theme update
+//      transient so auto-updates work. For child themes, the gallery
+//      page handles install/update and we show a notification here.
+// ============================================================================
+
+/**
+ * The latest parent theme version available in the repo.
+ *
+ * WHY: This value ships with each plugin release. When you update the
+ *      parent theme in the repo and release a new plugin version, bump
+ *      this value. Harold's dashboard will then show "Theme update
+ *      available" and the one-click updater will pull the new theme files.
+ *
+ * WHY a function, not a constant: The theme's functions.php also defines
+ *      SOCIETYPRESS_THEME_VERSION (for cache-busting its enqueued assets).
+ *      That constant reflects the INSTALLED version. We need to track the
+ *      LATEST AVAILABLE version separately so update detection works.
+ *      A function avoids the naming collision entirely.
+ */
+function sp_latest_parent_theme_version(): string {
+    return '1.0.5';
+}
+
+/**
+ * Check if the installed parent theme needs an update.
+ *
+ * @return array|null Array with 'installed' and 'available' keys, or null if up to date.
+ */
+function sp_check_parent_theme_update(): ?array {
+    $installed_theme = wp_get_theme( 'societypress' );
+    if ( ! $installed_theme->exists() ) {
+        return null;
+    }
+
+    $installed_version = $installed_theme->get( 'Version' );
+    $latest = sp_latest_parent_theme_version();
+    if ( version_compare( $installed_version, $latest, '<' ) ) {
+        return [
+            'installed' => $installed_version,
+            'available' => $latest,
+        ];
+    }
+
+    return null;
+}
+
+/**
+ * Check if any installed child themes need updates.
+ *
+ * @return array Array of [ slug => [ 'name', 'installed', 'available' ] ] for outdated themes.
+ */
+function sp_check_child_theme_updates(): array {
+    $registry = sp_get_theme_registry();
+    $outdated = [];
+
+    foreach ( $registry as $slug => $reg ) {
+        $theme = wp_get_theme( $slug );
+        if ( ! $theme->exists() ) {
+            continue; // Not installed — not an update issue
+        }
+
+        $installed_version = $theme->get( 'Version' );
+        if ( version_compare( $installed_version, $reg['version'], '<' ) ) {
+            $outdated[ $slug ] = [
+                'name'      => $reg['name'],
+                'installed' => $installed_version,
+                'available' => $reg['version'],
+            ];
+        }
+    }
+
+    return $outdated;
+}
+
+/**
+ * Inject parent theme update into WordPress's theme update transient.
+ *
+ * WHY: WordPress checks this transient for theme updates. By injecting
+ *      our data here, WP's built-in auto-updater can update the parent
+ *      theme automatically (since auto_update_theme is already enabled
+ *      for 'societypress'). Harold can also trigger it manually from
+ *      our dashboard.
+ */
+add_filter( 'pre_set_site_transient_update_themes', function ( $transient ) {
+    if ( ! is_object( $transient ) ) {
+        return $transient;
+    }
+
+    $update = sp_check_parent_theme_update();
+    if ( ! $update ) {
+        return $transient;
+    }
+
+    // Get the download URL from the latest GitHub release
+    $release = sp_get_github_release();
+    if ( ! $release || empty( $release->download_url ) ) {
+        return $transient;
+    }
+
+    $transient->response['societypress'] = [
+        'theme'       => 'societypress',
+        'new_version' => $update['available'],
+        'url'         => $release->html_url,
+        'package'     => $release->download_url,
+        'requires'    => '6.0',
+        'requires_php'=> '8.0',
+    ];
+
+    return $transient;
+} );
+
+/**
+ * Rename the extracted directory when WordPress updates the parent theme
+ * from a GitHub zipball.
+ *
+ * WHY: GitHub's zipball extracts to "charles-stricklin-SocietyPress-abc1234/"
+ *      but WordPress expects the theme directory to be "societypress/".
+ *      We intercept the extraction and rename the directory. Only acts
+ *      on our theme — other themes are unaffected.
+ */
+add_filter( 'upgrader_source_selection', function ( $source, $remote_source, $upgrader, $hook_extra ) {
+    // Only act on theme upgrades for our theme
+    if ( ! isset( $hook_extra['theme'] ) || $hook_extra['theme'] !== 'societypress' ) {
+        return $source;
+    }
+
+    // Look for the theme/ subdirectory inside the extracted repo
+    $extracted_dirs = glob( rtrim( $source, '/' ) . '/*', GLOB_ONLYDIR );
+
+    // If the source already IS the theme dir (has style.css), leave it alone
+    if ( file_exists( $source . 'style.css' ) ) {
+        return $source;
+    }
+
+    // GitHub zipball: repo root is inside. Look for theme/ subdir.
+    foreach ( $extracted_dirs as $dir ) {
+        $theme_subdir = $dir . '/theme/';
+        if ( is_dir( $theme_subdir ) && file_exists( $theme_subdir . 'style.css' ) ) {
+            // Move theme/ contents up to where WP expects them
+            global $wp_filesystem;
+            $corrected = trailingslashit( $remote_source ) . 'societypress/';
+            if ( $wp_filesystem->move( $theme_subdir, $corrected ) ) {
+                // Clean up the rest of the extracted repo
+                $wp_filesystem->delete( $source, true );
+                return $corrected;
+            }
+        }
+    }
+
+    return $source;
+}, 10, 4 );
+
+/**
+ * AJAX: Update the parent theme from the dashboard.
+ *
+ * WHY: Same pattern as the plugin updater — Harold clicks "Update Theme"
+ *      on the dashboard, we download the GitHub zipball, extract the
+ *      theme/ directory, and copy it to wp-content/themes/societypress/.
+ */
+add_action( 'wp_ajax_sp_update_parent_theme', function () {
+    if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_update_theme_nonce' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ] );
+    }
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ] );
+    }
+
+    $update = sp_check_parent_theme_update();
+    if ( ! $update ) {
+        wp_send_json_error( [ 'message' => __( 'Parent theme is already up to date.', 'societypress' ) ] );
+    }
+
+    $release = sp_get_github_release();
+    if ( ! $release || empty( $release->download_url ) ) {
+        wp_send_json_error( [ 'message' => __( 'Could not reach GitHub.', 'societypress' ) ] );
+    }
+
+    // Download the release zipball
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+    $tmp_file = download_url( $release->download_url, 120 );
+    if ( is_wp_error( $tmp_file ) ) {
+        wp_send_json_error( [ 'message' => $tmp_file->get_error_message() ] );
+    }
+
+    global $wp_filesystem;
+    WP_Filesystem();
+
+    // Unzip to temp
+    $tmp_dir = get_temp_dir() . 'sp_parent_theme_update/';
+    if ( $wp_filesystem->exists( $tmp_dir ) ) {
+        $wp_filesystem->delete( $tmp_dir, true );
+    }
+    $unzip_result = unzip_file( $tmp_file, $tmp_dir );
+    @unlink( $tmp_file );
+
+    if ( is_wp_error( $unzip_result ) ) {
+        $wp_filesystem->delete( $tmp_dir, true );
+        wp_send_json_error( [ 'message' => $unzip_result->get_error_message() ] );
+    }
+
+    // Find the theme/ directory inside the extracted repo
+    $extracted_dirs = glob( $tmp_dir . '*', GLOB_ONLYDIR );
+    $source_path    = null;
+
+    foreach ( $extracted_dirs as $dir ) {
+        $candidate = $dir . '/theme/';
+        if ( is_dir( $candidate ) && file_exists( $candidate . 'style.css' ) ) {
+            $source_path = $candidate;
+            break;
+        }
+    }
+
+    if ( ! $source_path ) {
+        $wp_filesystem->delete( $tmp_dir, true );
+        wp_send_json_error( [ 'message' => __( 'Theme directory not found in the release archive.', 'societypress' ) ] );
+    }
+
+    // Copy to wp-content/themes/societypress/
+    $dest_path = get_theme_root() . '/societypress/';
+    if ( $wp_filesystem->exists( $dest_path ) ) {
+        $wp_filesystem->delete( $dest_path, true );
+    }
+
+    $copy_result = copy_dir( $source_path, $dest_path );
+    $wp_filesystem->delete( $tmp_dir, true );
+
+    if ( is_wp_error( $copy_result ) ) {
+        wp_send_json_error( [ 'message' => $copy_result->get_error_message() ] );
+    }
+
+    sp_audit(
+        'theme_updated',
+        sprintf( 'Parent theme updated from %s to %s', $update['installed'], $update['available'] ),
+        'settings'
+    );
+
+    wp_send_json_success( [
+        'message' => sprintf( __( 'Theme updated to version %s. Reloading...', 'societypress' ), $update['available'] ),
+    ] );
+} );
+
+
+// ============================================================================
 // DASHBOARD PAGE
 // ============================================================================
 
@@ -6659,6 +7826,244 @@ function sp_render_dashboard_page(): void {
             <p style="font-size: 14px; color: #666; margin-top: 4px;">
                 <?php echo esc_html( $display_name ); ?> &mdash; SocietyPress <?php echo esc_html( SOCIETYPRESS_VERSION ); ?>
             </p>
+        <?php endif; ?>
+
+        <?php
+        // ---- Update notification banner ----
+        // WHY: Since we hide WordPress's native updates screen, the admin
+        //      needs to see update availability right here on the dashboard.
+        //      The banner includes version info, a link to release notes,
+        //      and a one-click "Update Now" button that runs the upgrade
+        //      via AJAX without leaving the page.
+        if ( current_user_can( 'manage_options' ) ) :
+            $sp_update = sp_check_for_update();
+            ?>
+
+            <?php if ( $sp_update ) : ?>
+            <div id="sp-update-banner" style="background:#f0f6fc; border:1px solid #72aee6; border-left:4px solid #2271b1; padding:14px 18px; margin:16px 0; border-radius:4px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                <div>
+                    <strong style="font-size:14px;">
+                        <?php printf(
+                            esc_html__( 'SocietyPress %s is available', 'societypress' ),
+                            esc_html( $sp_update->version )
+                        ); ?>
+                    </strong>
+                    <span style="color:#50575e; margin-left:6px;">
+                        (<?php printf( esc_html__( 'you have %s', 'societypress' ), esc_html( SOCIETYPRESS_VERSION ) ); ?>)
+                    </span>
+                    <?php if ( ! empty( $sp_update->html_url ) ) : ?>
+                        <br>
+                        <a href="<?php echo esc_url( $sp_update->html_url ); ?>" target="_blank" rel="noopener" style="font-size:13px;">
+                            <?php esc_html_e( 'View release notes', 'societypress' ); ?> &rarr;
+                        </a>
+                    <?php endif; ?>
+                </div>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <button type="button" id="sp-update-btn" class="button button-primary" style="white-space:nowrap;">
+                        <?php esc_html_e( 'Update Now', 'societypress' ); ?>
+                    </button>
+                    <span id="sp-update-status" style="font-size:13px; color:#50575e;"></span>
+                </div>
+            </div>
+
+            <script>
+            (function() {
+                'use strict';
+                var btn    = document.getElementById('sp-update-btn');
+                var status = document.getElementById('sp-update-status');
+                var banner = document.getElementById('sp-update-banner');
+                if (!btn) return;
+
+                btn.addEventListener('click', function() {
+                    if (!confirm(<?php echo wp_json_encode( __( 'Update SocietyPress now? The site will be briefly unavailable during the update.', 'societypress' ) ); ?>)) return;
+
+                    btn.disabled    = true;
+                    btn.textContent = <?php echo wp_json_encode( __( 'Updating...', 'societypress' ) ); ?>;
+                    status.textContent = '';
+
+                    var data = new FormData();
+                    data.append('action', 'sp_run_update');
+                    data.append('nonce', <?php echo wp_json_encode( wp_create_nonce( 'sp_run_update_nonce' ) ); ?>);
+
+                    fetch(ajaxurl, { method: 'POST', body: data })
+                        .then(function(r) { return r.json(); })
+                        .then(function(r) {
+                            if (r.success) {
+                                banner.style.borderColor = '#00a32a';
+                                banner.style.borderLeftColor = '#00a32a';
+                                banner.style.background = '#edfaef';
+                                status.style.color = '#00a32a';
+                                status.textContent = r.data.message;
+                                btn.style.display = 'none';
+                                // Reload after 2 seconds to show the new version
+                                setTimeout(function() { location.reload(); }, 2000);
+                            } else {
+                                status.style.color = '#d63638';
+                                status.textContent = r.data.message || <?php echo wp_json_encode( __( 'Update failed.', 'societypress' ) ); ?>;
+                                btn.disabled    = false;
+                                btn.textContent = <?php echo wp_json_encode( __( 'Retry', 'societypress' ) ); ?>;
+                            }
+                        })
+                        .catch(function() {
+                            status.style.color = '#d63638';
+                            status.textContent = <?php echo wp_json_encode( __( 'Network error. Please try again.', 'societypress' ) ); ?>;
+                            btn.disabled    = false;
+                            btn.textContent = <?php echo wp_json_encode( __( 'Retry', 'societypress' ) ); ?>;
+                        });
+                });
+            })();
+            </script>
+
+            <?php endif; ?>
+
+            <?php
+            // ---- Theme update notifications ----
+            // WHY: Parent theme and child theme updates are just as important
+            //      as plugin updates. Harold needs to see them on the dashboard
+            //      since we hide the WordPress updates screen.
+            $parent_theme_update   = sp_check_parent_theme_update();
+            $child_theme_updates   = sp_check_child_theme_updates();
+            $has_theme_updates     = $parent_theme_update || ! empty( $child_theme_updates );
+            $theme_update_nonce    = wp_create_nonce( 'sp_update_theme_nonce' );
+            $child_install_nonce   = wp_create_nonce( 'sp_install_theme_nonce' );
+            ?>
+
+            <?php if ( $has_theme_updates ) : ?>
+            <div id="sp-theme-update-banner" style="background:#fcf9e8; border:1px solid #dba617; border-left:4px solid #dba617; padding:14px 18px; margin:12px 0; border-radius:4px;">
+                <strong style="font-size:14px; display:block; margin-bottom:8px;">
+                    <span class="dashicons dashicons-admin-appearance" style="margin-right:4px;"></span>
+                    <?php esc_html_e( 'Theme Updates Available', 'societypress' ); ?>
+                </strong>
+
+                <?php if ( $parent_theme_update ) : ?>
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:<?php echo ! empty( $child_theme_updates ) ? '10px' : '0'; ?>;">
+                    <span style="font-size:13px;">
+                        <?php printf(
+                            esc_html__( 'SocietyPress parent theme: %s → %s', 'societypress' ),
+                            '<strong>' . esc_html( $parent_theme_update['installed'] ) . '</strong>',
+                            '<strong>' . esc_html( $parent_theme_update['available'] ) . '</strong>'
+                        ); ?>
+                    </span>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <button type="button" id="sp-update-parent-theme-btn" class="button button-small" style="white-space:nowrap;">
+                            <?php esc_html_e( 'Update Theme', 'societypress' ); ?>
+                        </button>
+                        <span id="sp-parent-theme-status" style="font-size:12px; color:#50575e;"></span>
+                    </div>
+                </div>
+                <?php endif; ?>
+
+                <?php foreach ( $child_theme_updates as $ct_slug => $ct_info ) : ?>
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:4px;" data-child-slug="<?php echo esc_attr( $ct_slug ); ?>">
+                    <span style="font-size:13px;">
+                        <?php printf(
+                            esc_html__( '%s child theme: %s → %s', 'societypress' ),
+                            '<strong>' . esc_html( $ct_info['name'] ) . '</strong>',
+                            esc_html( $ct_info['installed'] ),
+                            '<strong>' . esc_html( $ct_info['available'] ) . '</strong>'
+                        ); ?>
+                    </span>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <button type="button" class="button button-small sp-update-child-btn"
+                                data-slug="<?php echo esc_attr( $ct_slug ); ?>" style="white-space:nowrap;">
+                            <?php esc_html_e( 'Update', 'societypress' ); ?>
+                        </button>
+                        <span class="sp-child-theme-status" data-slug="<?php echo esc_attr( $ct_slug ); ?>" style="font-size:12px; color:#50575e;"></span>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+
+            <script>
+            (function() {
+                'use strict';
+
+                // Parent theme update
+                var parentBtn    = document.getElementById('sp-update-parent-theme-btn');
+                var parentStatus = document.getElementById('sp-parent-theme-status');
+                if (parentBtn) {
+                    parentBtn.addEventListener('click', function() {
+                        if (!confirm(<?php echo wp_json_encode( __( 'Update the parent theme now?', 'societypress' ) ); ?>)) return;
+                        parentBtn.disabled    = true;
+                        parentBtn.textContent = <?php echo wp_json_encode( __( 'Updating...', 'societypress' ) ); ?>;
+
+                        var data = new FormData();
+                        data.append('action', 'sp_update_parent_theme');
+                        data.append('nonce', <?php echo wp_json_encode( $theme_update_nonce ); ?>);
+
+                        fetch(ajaxurl, { method: 'POST', body: data })
+                            .then(function(r) { return r.json(); })
+                            .then(function(r) {
+                                if (r.success) {
+                                    parentStatus.style.color = '#00a32a';
+                                    parentStatus.textContent = r.data.message;
+                                    parentBtn.style.display = 'none';
+                                    setTimeout(function() { location.reload(); }, 2000);
+                                } else {
+                                    parentStatus.style.color = '#d63638';
+                                    parentStatus.textContent = r.data.message;
+                                    parentBtn.disabled = false;
+                                    parentBtn.textContent = <?php echo wp_json_encode( __( 'Retry', 'societypress' ) ); ?>;
+                                }
+                            })
+                            .catch(function() {
+                                parentStatus.style.color = '#d63638';
+                                parentStatus.textContent = <?php echo wp_json_encode( __( 'Network error.', 'societypress' ) ); ?>;
+                                parentBtn.disabled = false;
+                                parentBtn.textContent = <?php echo wp_json_encode( __( 'Retry', 'societypress' ) ); ?>;
+                            });
+                    });
+                }
+
+                // Child theme updates
+                document.querySelectorAll('.sp-update-child-btn').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        var slug      = this.getAttribute('data-slug');
+                        var statusEl  = document.querySelector('.sp-child-theme-status[data-slug="' + slug + '"]');
+                        if (!confirm(<?php echo wp_json_encode( __( 'Update this child theme?', 'societypress' ) ); ?>)) return;
+
+                        this.disabled    = true;
+                        this.textContent = <?php echo wp_json_encode( __( 'Updating...', 'societypress' ) ); ?>;
+                        var thisBtn = this;
+
+                        var data = new FormData();
+                        data.append('action', 'sp_install_theme');
+                        data.append('nonce', <?php echo wp_json_encode( $child_install_nonce ); ?>);
+                        data.append('theme_slug', slug);
+
+                        fetch(ajaxurl, { method: 'POST', body: data })
+                            .then(function(r) { return r.json(); })
+                            .then(function(r) {
+                                if (r.success) {
+                                    if (statusEl) {
+                                        statusEl.style.color = '#00a32a';
+                                        statusEl.textContent = r.data.message;
+                                    }
+                                    thisBtn.style.display = 'none';
+                                    setTimeout(function() { location.reload(); }, 1500);
+                                } else {
+                                    if (statusEl) {
+                                        statusEl.style.color = '#d63638';
+                                        statusEl.textContent = r.data.message;
+                                    }
+                                    thisBtn.disabled = false;
+                                    thisBtn.textContent = <?php echo wp_json_encode( __( 'Retry', 'societypress' ) ); ?>;
+                                }
+                            })
+                            .catch(function() {
+                                if (statusEl) {
+                                    statusEl.style.color = '#d63638';
+                                    statusEl.textContent = <?php echo wp_json_encode( __( 'Network error.', 'societypress' ) ); ?>;
+                                }
+                                thisBtn.disabled = false;
+                                thisBtn.textContent = <?php echo wp_json_encode( __( 'Retry', 'societypress' ) ); ?>;
+                            });
+                    });
+                });
+            })();
+            </script>
+            <?php endif; ?>
+
         <?php endif; ?>
 
         <style>
@@ -8032,7 +9437,13 @@ add_action( 'admin_init', function () {
     $tier_id        = absint( $_POST['tier_id'] ?? 0 );
     $join_date      = sanitize_text_field( $_POST['join_date'] ?? '' );
     $expiration_date = sanitize_text_field( $_POST['expiration_date'] ?? '' );
-    $household_id   = absint( $_POST['household_id'] ?? 0 );
+    $household_id        = absint( $_POST['household_id'] ?? 0 );
+    $joint_member        = isset( $_POST['joint_member'] ) ? 1 : 0;
+    $joint_first_name    = sanitize_text_field( $_POST['joint_first_name'] ?? '' );
+    $joint_last_name     = sanitize_text_field( $_POST['joint_last_name'] ?? '' );
+    $joint_preferred_name = sanitize_text_field( $_POST['joint_preferred_name'] ?? '' );
+    $joint_email         = sanitize_email( $_POST['joint_email'] ?? '' );
+    $joint_phone         = sanitize_text_field( $_POST['joint_phone'] ?? '' );
     $phone          = sanitize_text_field( $_POST['phone'] ?? '' );
     $cell           = sanitize_text_field( $_POST['cell'] ?? '' );
     $preferred_phone = sanitize_text_field( $_POST['preferred_phone'] ?? 'cell' );
@@ -8111,6 +9522,12 @@ add_action( 'admin_init', function () {
         'member_type'           => $member_type,
         'organization_name'     => ( $member_type === 'organization' ) ? $organization_name : null,
         'household_id'          => $household_id ?: null,
+        'joint_member'          => $joint_member,
+        'joint_first_name'      => $joint_member ? ( $joint_first_name ?: null ) : null,
+        'joint_last_name'       => $joint_member ? ( $joint_last_name ?: null ) : null,
+        'joint_preferred_name'  => $joint_member ? ( $joint_preferred_name ?: null ) : null,
+        'joint_email'           => $joint_member ? ( $joint_email ?: null ) : null,
+        'joint_phone'           => $joint_member ? ( $joint_phone ?: null ) : null,
         'member_number'         => $member_number ?: null,
         'status'                => $status,
         'tier_id'               => $tier_id ?: null,
@@ -8783,6 +10200,65 @@ function sp_render_member_edit_page(): void {
                                    min="0" placeholder="<?php esc_attr_e( '0 = none', 'societypress' ); ?>">
                             <p class="description"><?php esc_html_e( 'Members with the same household ID are linked as a household.', 'societypress' ); ?></p>
                         </div>
+
+                        <!-- Joint Member toggle and fields -->
+                        <!-- WHY: Many genealogical societies offer "joint" or "family"  -->
+                        <!--      memberships where a couple shares one account and pays -->
+                        <!--      one dues amount. Both names appear in the directory    -->
+                        <!--      and can attend events. This keeps it simple — one      -->
+                        <!--      login, one membership, two people.                     -->
+                        <div class="sp-field sp-field-full">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" name="joint_member" id="sp-joint-member" value="1"
+                                       <?php checked( ! empty( $member->joint_member ) ); ?>>
+                                <?php esc_html_e( 'Joint Membership (couple/household)', 'societypress' ); ?>
+                            </label>
+                            <p class="description"><?php esc_html_e( 'Check this to add a second person who shares this membership. Both names will appear in the directory.', 'societypress' ); ?></p>
+                        </div>
+
+                        <div id="sp-joint-fields" style="<?php echo empty( $member->joint_member ) ? 'display:none;' : ''; ?>">
+                            <div class="sp-field">
+                                <label for="sp-joint-first-name"><?php esc_html_e( 'Joint Member First Name', 'societypress' ); ?></label>
+                                <input type="text" name="joint_first_name" id="sp-joint-first-name"
+                                       value="<?php echo esc_attr( $member->joint_first_name ?? '' ); ?>">
+                            </div>
+                            <div class="sp-field">
+                                <label for="sp-joint-last-name"><?php esc_html_e( 'Joint Member Last Name', 'societypress' ); ?></label>
+                                <input type="text" name="joint_last_name" id="sp-joint-last-name"
+                                       value="<?php echo esc_attr( $member->joint_last_name ?? '' ); ?>">
+                            </div>
+                            <div class="sp-field">
+                                <label for="sp-joint-preferred-name"><?php esc_html_e( 'Joint Member Preferred Name', 'societypress' ); ?></label>
+                                <input type="text" name="joint_preferred_name" id="sp-joint-preferred-name"
+                                       value="<?php echo esc_attr( $member->joint_preferred_name ?? '' ); ?>"
+                                       placeholder="<?php esc_attr_e( 'Optional — if different from first name', 'societypress' ); ?>">
+                            </div>
+                            <div class="sp-field">
+                                <label for="sp-joint-email"><?php esc_html_e( 'Joint Member Email', 'societypress' ); ?></label>
+                                <input type="email" name="joint_email" id="sp-joint-email"
+                                       value="<?php echo esc_attr( $member->joint_email ?? '' ); ?>"
+                                       placeholder="<?php esc_attr_e( 'Optional — separate email for the second person', 'societypress' ); ?>">
+                            </div>
+                            <div class="sp-field">
+                                <label for="sp-joint-phone"><?php esc_html_e( 'Joint Member Phone', 'societypress' ); ?></label>
+                                <input type="text" name="joint_phone" id="sp-joint-phone"
+                                       value="<?php echo esc_attr( $member->joint_phone ?? '' ); ?>"
+                                       placeholder="<?php esc_attr_e( 'Optional', 'societypress' ); ?>">
+                            </div>
+                        </div>
+
+                        <!-- JS toggle for joint member fields -->
+                        <script>
+                        (function() {
+                            var cb = document.getElementById('sp-joint-member');
+                            var wrap = document.getElementById('sp-joint-fields');
+                            if (cb && wrap) {
+                                cb.addEventListener('change', function() {
+                                    wrap.style.display = this.checked ? '' : 'none';
+                                });
+                            }
+                        })();
+                        </script>
 
                     </div>
                 </div>
@@ -12757,6 +14233,44 @@ add_action( 'admin_init', function () {
         'sp_website_section'
     );
 
+    // Google Analytics — Measurement ID field.
+    // WHY: Harold can paste in his GA4 measurement ID and get tracking
+    //      immediately — no extra plugins needed. We also let him exclude
+    //      admin traffic so his own page views don't pollute the data.
+    add_settings_field(
+        'analytics_google_id',
+        __( 'Google Analytics', 'societypress' ),
+        function () {
+            $settings = get_option( 'societypress_settings', [] );
+            $ga_id    = esc_attr( $settings['analytics_google_id'] ?? '' );
+            $exclude  = ! empty( $settings['analytics_exclude_admins'] );
+
+            printf(
+                '<input type="text" name="societypress_settings[analytics_google_id]" '
+                . 'value="%s" class="regular-text" placeholder="G-XXXXXXXXXX">',
+                $ga_id
+            );
+            echo '<p class="description">'
+               . esc_html__( 'Your Google Analytics 4 Measurement ID (starts with G-). Leave blank to disable tracking.', 'societypress' )
+               . '</p>';
+
+            echo '<div style="margin-top:8px;">';
+            echo '<input type="hidden" name="societypress_settings[analytics_exclude_admins]" value="0">';
+            printf(
+                '<label><input type="checkbox" name="societypress_settings[analytics_exclude_admins]" value="1" %s> '
+                . '%s</label>',
+                checked( $exclude, true, false ),
+                esc_html__( 'Exclude logged-in administrators from tracking', 'societypress' )
+            );
+            echo '<p class="description">'
+               . esc_html__( 'When checked, page views by site admins won\'t appear in your analytics.', 'societypress' )
+               . '</p>';
+            echo '</div>';
+        },
+        'sp-settings-website',
+        'sp_website_section'
+    );
+
 
     // ====================================================================
     // SECTION: Organization Information
@@ -13513,6 +15027,11 @@ function sp_sanitize_settings( array $input ): array {
         'breadcrumb_home_label'   => fn() => sanitize_text_field( $input['breadcrumb_home_label'] ?? 'Home' ),
         'breadcrumb_separator'    => fn() => sanitize_text_field( $input['breadcrumb_separator'] ?? '›' ),
 
+        // Analytics — Google Analytics
+        'analytics_google_id'     => fn() => preg_match( '/^(G|UA|GT)-[A-Z0-9-]+$/i', $input['analytics_google_id'] ?? '' )
+                                              ? sanitize_text_field( $input['analytics_google_id'] ) : '',
+        'analytics_exclude_admins'=> fn() => ! empty( $input['analytics_exclude_admins'] ) ? 1 : 0,
+
         // Organization
         'organization_name'       => fn() => sanitize_text_field( $input['organization_name'] ?? '' ),
         'organization_address'    => fn() => sanitize_textarea_field( $input['organization_address'] ?? '' ),
@@ -13632,6 +15151,7 @@ function sp_sanitize_settings( array $input ): array {
             'social_facebook', 'social_youtube', 'social_instagram',
             'social_tiktok', 'social_x',
             'breadcrumbs_enabled', 'breadcrumb_home_label', 'breadcrumb_separator',
+            'analytics_google_id', 'analytics_exclude_admins',
         ]);
     }
 
@@ -16665,19 +18185,171 @@ add_action( 'admin_init', function () {
 } );
 
 /**
- * Render the Theme Chooser page.
+ * Get the SocietyPress child theme registry.
  *
- * WHY: Shows all available SocietyPress-compatible themes in a visual grid.
- *      Each card shows: screenshot (or placeholder), theme name, description,
- *      version, and an Activate button (or "Active" badge if already current).
- *      Only the societypress parent theme and its child themes appear — no
- *      random WordPress themes polluting the list.
+ * WHY: This is the catalog of all available SocietyPress child themes. It
+ *      ships with the plugin, so whenever the plugin updates, new themes
+ *      automatically appear in Harold's gallery. No separate download
+ *      manifest or API call needed — the registry IS the source of truth.
+ *
+ *      Each entry has:
+ *        slug        — directory name under wp-content/themes/
+ *        name        — display name
+ *        version     — current version in the repo
+ *        description — what Harold sees in the gallery
+ *        colors      — key palette colors for the preview swatch
+ *        repo_path   — path within the GitHub repo (for download)
+ *
+ * @return array Array of theme data arrays.
+ */
+function sp_get_theme_registry(): array {
+    return [
+        'society' => [
+            'slug'        => 'society',
+            'name'        => 'the society',
+            'version'     => '0.04d',
+            'description' => 'the society — burgundy and cream palette with brand-specific header, dual search forms, and social media icons.',
+            'colors'      => [ '#632220', '#fbebd2', '#7f7166', '#ba5f36' ],
+            'repo_path'   => 'theme-society',
+        ],
+        // Future child themes go here. When you add a new theme to the
+        // GitHub repo, add an entry here and bump the plugin version.
+        // Harold will see it in the gallery after updating.
+        //
+        // 'heritage' => [
+        //     'slug'        => 'heritage',
+        //     'name'        => 'Heritage',
+        //     'version'     => '1.0.0',
+        //     'description' => 'A warm, traditional look inspired by historical document aesthetics.',
+        //     'colors'      => [ '#3b2f2f', '#f5f0e8', '#8b7355', '#c4a35a' ],
+        //     'repo_path'   => 'theme-heritage',
+        // ],
+    ];
+}
+
+/**
+ * AJAX: Install or update a child theme from the GitHub repo.
+ *
+ * WHY: Harold clicks "Install" or "Update" on the themes gallery. We
+ *      download the latest GitHub release zipball (which contains the
+ *      entire repo), extract just the requested theme directory, and
+ *      copy it to wp-content/themes/. This avoids needing separate
+ *      release assets per theme.
+ */
+add_action( 'wp_ajax_sp_install_theme', function () {
+    if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_install_theme_nonce' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ] );
+    }
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ] );
+    }
+
+    $theme_slug = sanitize_text_field( $_POST['theme_slug'] ?? '' );
+    $registry   = sp_get_theme_registry();
+
+    if ( ! isset( $registry[ $theme_slug ] ) ) {
+        wp_send_json_error( [ 'message' => __( 'Unknown theme.', 'societypress' ) ] );
+    }
+
+    $theme_info = $registry[ $theme_slug ];
+    $repo_path  = $theme_info['repo_path'];
+
+    // Get the latest release download URL
+    $release = sp_get_github_release();
+    if ( ! $release || empty( $release->download_url ) ) {
+        wp_send_json_error( [ 'message' => __( 'Could not reach GitHub. Try again later.', 'societypress' ) ] );
+    }
+
+    // Download the release zipball
+    $tmp_file = download_url( $release->download_url, 120 );
+    if ( is_wp_error( $tmp_file ) ) {
+        wp_send_json_error( [ 'message' => $tmp_file->get_error_message() ] );
+    }
+
+    // Initialize the WP_Filesystem
+    global $wp_filesystem;
+    if ( ! function_exists( 'WP_Filesystem' ) ) {
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+    }
+    WP_Filesystem();
+
+    // Unzip to a temporary directory
+    $tmp_dir = get_temp_dir() . 'sp_theme_install_' . $theme_slug . '/';
+    if ( $wp_filesystem->exists( $tmp_dir ) ) {
+        $wp_filesystem->delete( $tmp_dir, true );
+    }
+
+    $unzip_result = unzip_file( $tmp_file, $tmp_dir );
+    @unlink( $tmp_file ); // Clean up the zip
+
+    if ( is_wp_error( $unzip_result ) ) {
+        $wp_filesystem->delete( $tmp_dir, true );
+        wp_send_json_error( [ 'message' => $unzip_result->get_error_message() ] );
+    }
+
+    // Find the theme directory inside the extracted repo.
+    // GitHub zipballs extract to a directory like "charles-stricklin-SocietyPress-abc1234/"
+    // We need to find $repo_path inside that.
+    $extracted_dirs = glob( $tmp_dir . '*', GLOB_ONLYDIR );
+    $source_path    = null;
+
+    foreach ( $extracted_dirs as $dir ) {
+        $candidate = $dir . '/' . $repo_path . '/';
+        if ( is_dir( $candidate ) ) {
+            $source_path = $candidate;
+            break;
+        }
+    }
+
+    if ( ! $source_path ) {
+        $wp_filesystem->delete( $tmp_dir, true );
+        wp_send_json_error( [ 'message' => sprintf(
+            __( 'Theme directory "%s" not found in the release archive.', 'societypress' ),
+            $repo_path
+        ) ] );
+    }
+
+    // Copy the theme to wp-content/themes/
+    $dest_path = get_theme_root() . '/' . $theme_slug . '/';
+    if ( $wp_filesystem->exists( $dest_path ) ) {
+        $wp_filesystem->delete( $dest_path, true );
+    }
+
+    $copy_result = copy_dir( $source_path, $dest_path );
+    $wp_filesystem->delete( $tmp_dir, true ); // Clean up temp
+
+    if ( is_wp_error( $copy_result ) ) {
+        wp_send_json_error( [ 'message' => $copy_result->get_error_message() ] );
+    }
+
+    sp_audit(
+        'theme_installed',
+        sprintf( 'Child theme "%s" installed/updated to version %s', $theme_info['name'], $theme_info['version'] ),
+        'settings'
+    );
+
+    wp_send_json_success( [
+        'message' => sprintf( __( '%s has been installed.', 'societypress' ), $theme_info['name'] ),
+    ] );
+} );
+
+/**
+ * Render the Theme Gallery page.
+ *
+ * WHY: Shows all SocietyPress-compatible themes in a visual grid:
+ *      - Currently active theme (highlighted)
+ *      - Other installed themes (Activate button)
+ *      - Available-but-not-installed themes from the registry (Install button)
+ *      - Themes with available updates (Update button)
+ *
+ *      Only the parent theme and its child themes appear — no random
+ *      WordPress themes polluting the list.
  */
 function sp_render_themes_page(): void {
     $current_theme = wp_get_theme();
     $current_slug  = $current_theme->get_stylesheet();
 
-    // Gather all themes that are either the parent or children of societypress
+    // Gather all installed themes that are the parent or children of societypress
     $all_themes = wp_get_themes();
     $sp_themes  = [];
 
@@ -16694,24 +18366,39 @@ function sp_render_themes_page(): void {
         return strcasecmp( $a, $b );
     } );
 
+    // Get the registry of all available child themes
+    $registry = sp_get_theme_registry();
+
+    // Determine which registry themes are not yet installed
+    $not_installed = [];
+    foreach ( $registry as $reg_slug => $reg_info ) {
+        if ( ! isset( $sp_themes[ $reg_slug ] ) ) {
+            $not_installed[ $reg_slug ] = $reg_info;
+        }
+    }
+
     // Check for activation success message
     $activated = isset( $_GET['activated'] ) ? sanitize_text_field( $_GET['activated'] ) : '';
+
+    $install_nonce = wp_create_nonce( 'sp_install_theme_nonce' );
     ?>
     <div class="wrap">
         <h1><?php esc_html_e( 'Themes', 'societypress' ); ?></h1>
         <p style="color:#555; margin-bottom:24px;">
-            Choose a theme for your society website. Each theme changes the look
-            and layout of your site. Your content, members, and settings stay the same.
+            <?php esc_html_e( 'Choose a theme for your society website. Each theme changes the look and layout of your site. Your content, members, and settings stay the same.', 'societypress' ); ?>
         </p>
 
         <?php if ( $activated ) :
             $activated_theme = wp_get_theme( $activated );
         ?>
             <div style="background:#d4edda; border:1px solid #c3e6cb; border-radius:6px; padding:12px 16px; margin-bottom:20px; color:#155724;">
-                <strong><?php echo esc_html( $activated_theme->get( 'Name' ) ); ?></strong> has been activated.
+                <strong><?php echo esc_html( $activated_theme->get( 'Name' ) ); ?></strong> <?php esc_html_e( 'has been activated.', 'societypress' ); ?>
             </div>
         <?php endif; ?>
 
+        <!-- ============================================================ -->
+        <!-- INSTALLED THEMES                                             -->
+        <!-- ============================================================ -->
         <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:24px;">
             <?php foreach ( $sp_themes as $slug => $theme ) :
                 $is_active   = ( $slug === $current_slug );
@@ -16721,6 +18408,15 @@ function sp_render_themes_page(): void {
                 $author      = $theme->get( 'Author' );
                 $screenshot  = $theme->get_screenshot();
                 $is_parent   = ( $slug === 'societypress' );
+
+                // Check if a registry update is available for this installed theme
+                $update_available = false;
+                if ( isset( $registry[ $slug ] ) ) {
+                    $reg_version = $registry[ $slug ]['version'];
+                    if ( version_compare( $version, $reg_version, '<' ) ) {
+                        $update_available = true;
+                    }
+                }
             ?>
                 <div style="background:#fff; border:1px solid <?php echo $is_active ? 'var(--sp-color-primary, #1e3a5f)' : '#ddd'; ?>; border-radius:8px; overflow:hidden; position:relative; <?php echo $is_active ? 'box-shadow:0 0 0 2px var(--sp-color-primary, #1e3a5f);' : ''; ?>">
 
@@ -16731,7 +18427,7 @@ function sp_render_themes_page(): void {
                         <?php else : ?>
                             <div style="text-align:center; color:#999;">
                                 <span class="dashicons dashicons-format-image" style="font-size:48px; width:48px; height:48px;"></span>
-                                <br>No preview available
+                                <br><?php esc_html_e( 'No preview available', 'societypress' ); ?>
                             </div>
                         <?php endif; ?>
                     </div>
@@ -16739,7 +18435,7 @@ function sp_render_themes_page(): void {
                     <!-- Active badge -->
                     <?php if ( $is_active ) : ?>
                         <div style="position:absolute; top:12px; right:12px; background:var(--sp-color-primary, #1e3a5f); color:#fff; font-size:0.75rem; font-weight:600; padding:4px 10px; border-radius:12px;">
-                            Active
+                            <?php esc_html_e( 'Active', 'societypress' ); ?>
                         </div>
                     <?php endif; ?>
 
@@ -16748,11 +18444,11 @@ function sp_render_themes_page(): void {
                         <h3 style="margin:0 0 4px; font-size:1.1rem;">
                             <?php echo esc_html( $name ); ?>
                             <?php if ( $is_parent ) : ?>
-                                <span style="font-size:0.75rem; font-weight:400; color:#888;">(Default)</span>
+                                <span style="font-size:0.75rem; font-weight:400; color:#888;">(<?php esc_html_e( 'Default', 'societypress' ); ?>)</span>
                             <?php endif; ?>
                         </h3>
                         <p style="font-size:0.8rem; color:#888; margin:0 0 8px;">
-                            Version <?php echo esc_html( $version ); ?>
+                            <?php printf( esc_html__( 'Version %s', 'societypress' ), esc_html( $version ) ); ?>
                             <?php if ( $author ) echo '&middot; ' . wp_kses_post( $author ); ?>
                         </p>
                         <?php if ( $description ) : ?>
@@ -16761,24 +18457,155 @@ function sp_render_themes_page(): void {
                             </p>
                         <?php endif; ?>
 
-                        <?php if ( $is_active ) : ?>
-                            <span style="display:inline-block; padding:8px 20px; background:#f0f0f0; color:#888; border-radius:6px; font-size:0.9rem; font-weight:600;">
-                                Currently Active
-                            </span>
-                        <?php else : ?>
-                            <form method="post" style="margin:0;">
-                                <?php wp_nonce_field( 'sp_switch_theme', '_sp_theme_nonce' ); ?>
-                                <input type="hidden" name="sp_activate_theme" value="<?php echo esc_attr( $slug ); ?>">
-                                <button type="submit" style="padding:8px 20px; background:var(--sp-color-primary, #1e3a5f); color:#fff; border:none; border-radius:6px; font-size:0.9rem; font-weight:600; cursor:pointer; transition:background 0.2s;">
-                                    Activate
+                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                            <?php if ( $is_active ) : ?>
+                                <span style="display:inline-block; padding:8px 20px; background:#f0f0f0; color:#888; border-radius:6px; font-size:0.9rem; font-weight:600;">
+                                    <?php esc_html_e( 'Currently Active', 'societypress' ); ?>
+                                </span>
+                            <?php else : ?>
+                                <form method="post" style="margin:0;">
+                                    <?php wp_nonce_field( 'sp_switch_theme', '_sp_theme_nonce' ); ?>
+                                    <input type="hidden" name="sp_activate_theme" value="<?php echo esc_attr( $slug ); ?>">
+                                    <button type="submit" class="button button-primary">
+                                        <?php esc_html_e( 'Activate', 'societypress' ); ?>
+                                    </button>
+                                </form>
+                            <?php endif; ?>
+
+                            <?php if ( $update_available ) : ?>
+                                <button type="button" class="button sp-theme-update-btn"
+                                        data-slug="<?php echo esc_attr( $slug ); ?>"
+                                        data-version="<?php echo esc_attr( $reg_version ); ?>"
+                                        style="color:#d63638; border-color:#d63638;">
+                                    <?php printf( esc_html__( 'Update to %s', 'societypress' ), esc_html( $reg_version ) ); ?>
                                 </button>
-                            </form>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+
+            <!-- ============================================================ -->
+            <!-- AVAILABLE (NOT INSTALLED) THEMES FROM REGISTRY               -->
+            <!-- WHY: Harold sees what's available and can install with one    -->
+            <!--      click. The card shows a color swatch preview, name,     -->
+            <!--      description, and an Install button.                     -->
+            <!-- ============================================================ -->
+            <?php foreach ( $not_installed as $reg_slug => $reg ) : ?>
+                <div style="background:#fff; border:1px dashed #bbb; border-radius:8px; overflow:hidden; position:relative;">
+
+                    <!-- Color swatch preview (since we don't have a screenshot for uninstalled themes) -->
+                    <div style="width:100%; height:200px; display:flex; align-items:stretch;">
+                        <?php if ( ! empty( $reg['colors'] ) ) :
+                            $count = count( $reg['colors'] );
+                            foreach ( $reg['colors'] as $color ) : ?>
+                                <div style="flex:1; background:<?php echo esc_attr( $color ); ?>;"></div>
+                            <?php endforeach;
+                        else : ?>
+                            <div style="flex:1; background:#f0f0f0; display:flex; align-items:center; justify-content:center; color:#999;">
+                                <span class="dashicons dashicons-art" style="font-size:48px; width:48px; height:48px;"></span>
+                            </div>
                         <?php endif; ?>
+                    </div>
+
+                    <!-- "Available" badge -->
+                    <div style="position:absolute; top:12px; right:12px; background:#50575e; color:#fff; font-size:0.75rem; font-weight:600; padding:4px 10px; border-radius:12px;">
+                        <?php esc_html_e( 'Available', 'societypress' ); ?>
+                    </div>
+
+                    <!-- Theme info -->
+                    <div style="padding:16px 20px;">
+                        <h3 style="margin:0 0 4px; font-size:1.1rem;">
+                            <?php echo esc_html( $reg['name'] ); ?>
+                        </h3>
+                        <p style="font-size:0.8rem; color:#888; margin:0 0 8px;">
+                            <?php printf( esc_html__( 'Version %s', 'societypress' ), esc_html( $reg['version'] ) ); ?>
+                        </p>
+                        <?php if ( ! empty( $reg['description'] ) ) : ?>
+                            <p style="font-size:0.85rem; color:#555; line-height:1.5; margin:0 0 16px;">
+                                <?php echo esc_html( $reg['description'] ); ?>
+                            </p>
+                        <?php endif; ?>
+
+                        <button type="button" class="button button-primary sp-theme-install-btn"
+                                data-slug="<?php echo esc_attr( $reg_slug ); ?>"
+                                data-name="<?php echo esc_attr( $reg['name'] ); ?>">
+                            <?php esc_html_e( 'Install', 'societypress' ); ?>
+                        </button>
+                        <span class="sp-theme-status" data-slug="<?php echo esc_attr( $reg_slug ); ?>"
+                              style="margin-left:8px; font-size:13px; color:#50575e;"></span>
                     </div>
                 </div>
             <?php endforeach; ?>
         </div>
     </div>
+
+    <!-- Theme install/update AJAX handler -->
+    <script>
+    (function() {
+        'use strict';
+        var ajaxUrl = ajaxurl;
+        var nonce   = <?php echo wp_json_encode( $install_nonce ); ?>;
+
+        function handleThemeAction(btn, slug, actionLabel) {
+            btn.disabled    = true;
+            btn.textContent = actionLabel + '...';
+            var statusEl    = document.querySelector('.sp-theme-status[data-slug="' + slug + '"]');
+
+            var data = new FormData();
+            data.append('action', 'sp_install_theme');
+            data.append('nonce', nonce);
+            data.append('theme_slug', slug);
+
+            fetch(ajaxUrl, { method: 'POST', body: data })
+                .then(function(r) { return r.json(); })
+                .then(function(r) {
+                    if (r.success) {
+                        if (statusEl) {
+                            statusEl.style.color = '#00a32a';
+                            statusEl.textContent = r.data.message;
+                        }
+                        // Reload to show the newly installed theme as an installed card
+                        setTimeout(function() { location.reload(); }, 1000);
+                    } else {
+                        btn.disabled = false;
+                        btn.textContent = actionLabel;
+                        if (statusEl) {
+                            statusEl.style.color = '#d63638';
+                            statusEl.textContent = r.data.message || <?php echo wp_json_encode( __( 'Installation failed.', 'societypress' ) ); ?>;
+                        }
+                    }
+                })
+                .catch(function() {
+                    btn.disabled = false;
+                    btn.textContent = actionLabel;
+                    if (statusEl) {
+                        statusEl.style.color = '#d63638';
+                        statusEl.textContent = <?php echo wp_json_encode( __( 'Network error.', 'societypress' ) ); ?>;
+                    }
+                });
+        }
+
+        // Install buttons
+        document.querySelectorAll('.sp-theme-install-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var slug = this.getAttribute('data-slug');
+                var name = this.getAttribute('data-name');
+                if (!confirm(<?php echo wp_json_encode( __( 'Install this theme?', 'societypress' ) ); ?>)) return;
+                handleThemeAction(this, slug, <?php echo wp_json_encode( __( 'Installing', 'societypress' ) ); ?>);
+            });
+        });
+
+        // Update buttons
+        document.querySelectorAll('.sp-theme-update-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var slug = this.getAttribute('data-slug');
+                if (!confirm(<?php echo wp_json_encode( __( 'Update this theme? Your customizations in style.css and functions.php will be overwritten.', 'societypress' ) ); ?>)) return;
+                handleThemeAction(this, slug, <?php echo wp_json_encode( __( 'Updating', 'societypress' ) ); ?>);
+            });
+        });
+    })();
+    </script>
     <?php
 }
 
@@ -17742,6 +19569,270 @@ function sp_render_settings_modules_page(): void {
 
 
 // ============================================================================
+// USER ACCESS — ASSIGN ROLES & PERMISSIONS TO NON-ADMIN USERS
+// ============================================================================
+//
+// WHY: Harold needs to delegate admin tasks to board members and volunteers
+//      without making them full WordPress administrators. This page shows all
+//      WordPress users and lets Harold assign a role template (Treasurer,
+//      Librarian, etc.) or customize individual access areas per user.
+//
+//      Non-admin users with access areas see a filtered SocietyPress admin —
+//      only their assigned sections are visible. This is how the board
+//      treasurer sees only Finances and Reports, while the librarian sees
+//      only the Library Catalog.
+// ============================================================================
+
+/**
+ * Render the User Access admin page.
+ *
+ * WHY: Central hub for managing who has access to what. Shows a table of
+ *      all users (excluding plain members) with their current role template
+ *      and access areas. Harold can edit each user's permissions inline.
+ */
+function sp_render_user_access_page(): void {
+    global $wpdb;
+
+    // Handle form submission — save access areas for a user
+    if ( $_SERVER['REQUEST_METHOD'] === 'POST' && isset( $_POST['_sp_access_nonce'] ) ) {
+        if ( wp_verify_nonce( $_POST['_sp_access_nonce'], 'sp_save_user_access' ) && current_user_can( 'manage_options' ) ) {
+            $target_user_id = absint( $_POST['sp_target_user_id'] ?? 0 );
+            if ( $target_user_id && $target_user_id !== get_current_user_id() ) {
+                $all_areas    = array_keys( sp_get_access_areas() );
+                $granted      = [];
+                foreach ( $all_areas as $area_slug ) {
+                    if ( ! empty( $_POST[ 'sp_area_' . $area_slug ] ) ) {
+                        $granted[] = $area_slug;
+                    }
+                }
+                $role_template = sanitize_text_field( $_POST['sp_role_template'] ?? '' );
+
+                if ( empty( $granted ) ) {
+                    // No areas selected — remove all SP access
+                    delete_user_meta( $target_user_id, 'sp_access_areas' );
+                    delete_user_meta( $target_user_id, 'sp_role_template' );
+                } else {
+                    update_user_meta( $target_user_id, 'sp_access_areas', $granted );
+                    update_user_meta( $target_user_id, 'sp_role_template', $role_template );
+                }
+
+                sp_audit(
+                    'user_access_updated',
+                    sprintf( 'Access updated for user #%d: %s', $target_user_id, implode( ', ', $granted ) ?: 'none' ),
+                    'settings'
+                );
+
+                echo '<div class="notice notice-success is-dismissible"><p>'
+                   . esc_html__( 'User access updated.', 'societypress' ) . '</p></div>';
+            }
+        }
+    }
+
+    // Handle revoke action
+    if ( isset( $_GET['sp_revoke'] ) && isset( $_GET['_wpnonce'] ) ) {
+        $revoke_id = absint( $_GET['sp_revoke'] );
+        if ( wp_verify_nonce( $_GET['_wpnonce'], 'sp_revoke_' . $revoke_id ) && current_user_can( 'manage_options' ) ) {
+            delete_user_meta( $revoke_id, 'sp_access_areas' );
+            delete_user_meta( $revoke_id, 'sp_role_template' );
+            sp_audit( 'user_access_revoked', sprintf( 'All SP access revoked for user #%d', $revoke_id ), 'settings' );
+            echo '<div class="notice notice-success is-dismissible"><p>'
+               . esc_html__( 'Access revoked.', 'societypress' ) . '</p></div>';
+        }
+    }
+
+    $areas          = sp_get_access_areas();
+    $role_templates = sp_get_role_templates();
+
+    // Editing a specific user?
+    $editing_user_id = absint( $_GET['edit_user'] ?? 0 );
+    $editing_user    = $editing_user_id ? get_userdata( $editing_user_id ) : null;
+
+    // Get all users who have SP access areas (non-admin staff)
+    $sp_staff_ids = $wpdb->get_col(
+        "SELECT DISTINCT user_id FROM {$wpdb->usermeta} WHERE meta_key = 'sp_access_areas'"
+    );
+    $sp_staff = [];
+    foreach ( $sp_staff_ids as $uid ) {
+        $u = get_userdata( (int) $uid );
+        if ( $u ) {
+            $sp_staff[] = $u;
+        }
+    }
+
+    ?>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'User Access', 'societypress' ); ?></h1>
+        <p><?php esc_html_e( 'Grant non-administrator users access to specific sections of the admin panel. WordPress administrators always have full access.', 'societypress' ); ?></p>
+
+        <?php if ( $editing_user && ! user_can( $editing_user, 'manage_options' ) ) : ?>
+            <?php
+            $user_areas     = get_user_meta( $editing_user->ID, 'sp_access_areas', true ) ?: [];
+            $user_role_tpl  = get_user_meta( $editing_user->ID, 'sp_role_template', true ) ?: '';
+            ?>
+            <!-- Edit User Access Form -->
+            <div style="max-width:700px; background:#fff; border:1px solid #c3c4c7; border-radius:4px; padding:20px; margin-bottom:30px;">
+                <h2 style="margin-top:0;">
+                    <?php printf(
+                        esc_html__( 'Editing Access for: %s', 'societypress' ),
+                        '<strong>' . esc_html( $editing_user->display_name ) . '</strong> (' . esc_html( $editing_user->user_email ) . ')'
+                    ); ?>
+                </h2>
+
+                <form method="post">
+                    <?php wp_nonce_field( 'sp_save_user_access', '_sp_access_nonce' ); ?>
+                    <input type="hidden" name="sp_target_user_id" value="<?php echo esc_attr( $editing_user->ID ); ?>">
+
+                    <!-- Role Template Dropdown -->
+                    <div style="margin-bottom:20px;">
+                        <label for="sp-role-template" style="display:block; font-weight:600; margin-bottom:6px;">
+                            <?php esc_html_e( 'Role Template', 'societypress' ); ?>
+                        </label>
+                        <select id="sp-role-template" name="sp_role_template" style="min-width:250px;">
+                            <option value=""><?php esc_html_e( '— Custom (no template) —', 'societypress' ); ?></option>
+                            <?php foreach ( $role_templates as $tpl_slug => $tpl ) : ?>
+                                <option value="<?php echo esc_attr( $tpl_slug ); ?>"
+                                        data-areas="<?php echo esc_attr( wp_json_encode( $tpl['areas'] ) ); ?>"
+                                        <?php selected( $user_role_tpl, $tpl_slug ); ?>>
+                                    <?php echo esc_html( $tpl['name'] ); ?> — <?php echo esc_html( $tpl['description'] ); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <p class="description"><?php esc_html_e( 'Selecting a template pre-fills the checkboxes below. You can then customize.', 'societypress' ); ?></p>
+                    </div>
+
+                    <!-- Access Area Checkboxes -->
+                    <fieldset style="border:1px solid #e0e0e0; padding:16px 20px; border-radius:4px;">
+                        <legend style="font-weight:600; padding:0 8px;"><?php esc_html_e( 'Access Areas', 'societypress' ); ?></legend>
+                        <?php foreach ( $areas as $area_slug => $area ) : ?>
+                            <label style="display:flex; align-items:flex-start; gap:8px; margin-bottom:10px; cursor:pointer;">
+                                <input type="checkbox" name="sp_area_<?php echo esc_attr( $area_slug ); ?>" value="1"
+                                       class="sp-area-checkbox" data-area="<?php echo esc_attr( $area_slug ); ?>"
+                                       <?php checked( in_array( $area_slug, $user_areas, true ) ); ?>>
+                                <span>
+                                    <span class="dashicons <?php echo esc_attr( $area['icon'] ); ?>" style="color:#2271b1; margin-right:4px;"></span>
+                                    <strong><?php echo esc_html( $area['name'] ); ?></strong><br>
+                                    <span style="color:#646970; font-size:13px;"><?php echo esc_html( $area['description'] ); ?></span>
+                                </span>
+                            </label>
+                        <?php endforeach; ?>
+                    </fieldset>
+
+                    <p style="margin-top:16px;">
+                        <?php submit_button( __( 'Save Access', 'societypress' ), 'primary', 'submit', false ); ?>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-user-access' ) ); ?>" class="button" style="margin-left:8px;">
+                            <?php esc_html_e( 'Cancel', 'societypress' ); ?>
+                        </a>
+                    </p>
+                </form>
+            </div>
+
+            <!-- JS: Role template auto-fills checkboxes -->
+            <script>
+            (function() {
+                'use strict';
+                var select = document.getElementById('sp-role-template');
+                if (!select) return;
+                select.addEventListener('change', function() {
+                    var opt   = this.options[this.selectedIndex];
+                    var areas = JSON.parse(opt.getAttribute('data-areas') || '[]');
+                    document.querySelectorAll('.sp-area-checkbox').forEach(function(cb) {
+                        cb.checked = areas.indexOf(cb.getAttribute('data-area')) !== -1;
+                    });
+                });
+            })();
+            </script>
+        <?php endif; ?>
+
+        <!-- Current SP Staff -->
+        <h2><?php esc_html_e( 'Users with SocietyPress Access', 'societypress' ); ?></h2>
+        <?php if ( empty( $sp_staff ) ) : ?>
+            <p style="color:#646970;"><?php esc_html_e( 'No non-admin users have been granted SocietyPress access yet.', 'societypress' ); ?></p>
+        <?php else : ?>
+            <table class="widefat striped" style="max-width:900px;">
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e( 'User', 'societypress' ); ?></th>
+                        <th><?php esc_html_e( 'Role Template', 'societypress' ); ?></th>
+                        <th><?php esc_html_e( 'Access Areas', 'societypress' ); ?></th>
+                        <th><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ( $sp_staff as $staff_user ) :
+                        $staff_areas = get_user_meta( $staff_user->ID, 'sp_access_areas', true ) ?: [];
+                        $staff_role  = get_user_meta( $staff_user->ID, 'sp_role_template', true ) ?: '';
+                        $tpl_name    = isset( $role_templates[ $staff_role ] ) ? $role_templates[ $staff_role ]['name'] : __( 'Custom', 'societypress' );
+                        $area_names  = [];
+                        foreach ( $staff_areas as $a ) {
+                            if ( isset( $areas[ $a ] ) ) $area_names[] = $areas[ $a ]['name'];
+                        }
+                    ?>
+                    <tr>
+                        <td>
+                            <strong><?php echo esc_html( $staff_user->display_name ); ?></strong><br>
+                            <span style="color:#646970; font-size:12px;"><?php echo esc_html( $staff_user->user_email ); ?></span>
+                        </td>
+                        <td><?php echo esc_html( $tpl_name ); ?></td>
+                        <td><?php echo esc_html( implode( ', ', $area_names ) ?: '—' ); ?></td>
+                        <td>
+                            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-user-access&edit_user=' . $staff_user->ID ) ); ?>" class="button button-small">
+                                <?php esc_html_e( 'Edit', 'societypress' ); ?>
+                            </a>
+                            <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=sp-user-access&sp_revoke=' . $staff_user->ID ), 'sp_revoke_' . $staff_user->ID ) ); ?>"
+                               class="button button-small" style="color:#b32d2e;"
+                               onclick="return confirm('<?php esc_attr_e( 'Revoke all SocietyPress access for this user?', 'societypress' ); ?>');">
+                                <?php esc_html_e( 'Revoke', 'societypress' ); ?>
+                            </a>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+
+        <!-- Add New User -->
+        <h2 style="margin-top:30px;"><?php esc_html_e( 'Grant Access to a User', 'societypress' ); ?></h2>
+        <p><?php esc_html_e( 'Search for a WordPress user to grant them SocietyPress admin access. WordPress administrators already have full access and don\'t need to be added here.', 'societypress' ); ?></p>
+
+        <?php
+        // Get all WP users who are NOT admins and NOT already SP staff
+        $exclude_ids = array_merge( [ 0 ], array_map( 'intval', $sp_staff_ids ) );
+        $available_users = get_users( [
+            'exclude'  => $exclude_ids,
+            'number'   => 200,
+            'orderby'  => 'display_name',
+            'order'    => 'ASC',
+        ] );
+        // Filter out admins
+        $available_users = array_filter( $available_users, function( $u ) {
+            return ! user_can( $u, 'manage_options' );
+        } );
+        ?>
+
+        <?php if ( ! empty( $available_users ) ) : ?>
+            <form method="get" style="max-width:500px;">
+                <input type="hidden" name="page" value="sp-user-access">
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <select name="edit_user" style="min-width:300px;">
+                        <option value=""><?php esc_html_e( '— Select a user —', 'societypress' ); ?></option>
+                        <?php foreach ( $available_users as $au ) : ?>
+                            <option value="<?php echo esc_attr( $au->ID ); ?>">
+                                <?php echo esc_html( $au->display_name . ' (' . $au->user_email . ')' ); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <button type="submit" class="button button-primary"><?php esc_html_e( 'Edit Access', 'societypress' ); ?></button>
+                </div>
+            </form>
+        <?php else : ?>
+            <p style="color:#646970;"><?php esc_html_e( 'All available users are either administrators or already have SP access assigned.', 'societypress' ); ?></p>
+        <?php endif; ?>
+    </div>
+    <?php
+}
+
+
+// ============================================================================
 // DESIGN TAB — ENQUEUE COLOR PICKER ON SETTINGS PAGE
 // ============================================================================
 
@@ -18477,6 +20568,30 @@ function sp_render_directory( array $settings ): void {
                     ) );
                     if ( $m->suffix ) {
                         $display_name .= ', ' . esc_html( $m->suffix );
+                    }
+                    // Joint member — show both names in the directory.
+                    // WHY: Couples who share a membership expect to both be
+                    //      visible in the directory. "John & Jane Smith" or
+                    //      "John Smith & Jane Doe" if different last names.
+                    if ( ! empty( $m->joint_member ) && ! empty( $m->joint_first_name ) ) {
+                        $joint_display = esc_html( $m->joint_preferred_name ?: $m->joint_first_name );
+                        if ( ! empty( $m->joint_last_name ) && $m->joint_last_name !== $m->last_name ) {
+                            $joint_display .= ' ' . esc_html( $m->joint_last_name );
+                        }
+                        // Rebuild as "John & Jane Smith" or "John Smith & Jane Doe"
+                        $primary = esc_html( $m->preferred_name ?: $m->first_name );
+                        if ( ! empty( $m->joint_last_name ) && $m->joint_last_name !== $m->last_name ) {
+                            // Different last names — show both full names
+                            $display_name = $primary . ' ' . esc_html( $m->last_name )
+                                          . ' &amp; ' . $joint_display;
+                        } else {
+                            // Same last name — "John & Jane Smith"
+                            $display_name = $primary . ' &amp; ' . $joint_display
+                                          . ' ' . esc_html( $m->last_name );
+                        }
+                        if ( $m->suffix ) {
+                            $display_name .= ', ' . esc_html( $m->suffix );
+                        }
                     }
                 }
             ?>
@@ -24931,6 +27046,16 @@ function sp_render_member_tiers_page(): void {
                             <p class="description">Lower numbers appear first in dropdowns.</p>
                         </td>
                     </tr>
+                    <tr>
+                        <th scope="row"><?php esc_html_e( 'Joint Membership', 'societypress' ); ?></th>
+                        <td>
+                            <label>
+                                <input type="checkbox" id="sp-tier-allows-joint">
+                                <?php esc_html_e( 'This plan allows a second household member', 'societypress' ); ?>
+                            </label>
+                            <p class="description"><?php esc_html_e( 'Couples sharing one membership — both names appear in the directory and can attend events.', 'societypress' ); ?></p>
+                        </td>
+                    </tr>
                 </table>
                 <p style="margin-bottom: 0;">
                     <button type="submit" class="button button-primary">Add Plan</button>
@@ -24944,11 +27069,12 @@ function sp_render_member_tiers_page(): void {
             <table class="widefat striped" id="sp-tiers-table">
                 <thead>
                     <tr>
-                        <th style="width: 22%;">Name</th>
-                        <th style="width: 13%;">Dues</th>
-                        <th style="width: 15%;">Duration</th>
-                        <th style="width: 10%;">Sort</th>
-                        <th style="width: 10%;">Active</th>
+                        <th style="width: 20%;">Name</th>
+                        <th style="width: 11%;">Dues</th>
+                        <th style="width: 13%;">Duration</th>
+                        <th style="width: 8%;">Sort</th>
+                        <th style="width: 8%;">Active</th>
+                        <th style="width: 8%;">Joint</th>
                         <th style="width: 12%;">Members</th>
                         <th style="width: 18%;">Actions</th>
                     </tr>
@@ -24956,7 +27082,7 @@ function sp_render_member_tiers_page(): void {
                 <tbody>
                     <?php if ( empty( $tiers ) ) : ?>
                         <tr id="sp-no-tiers-row">
-                            <td colspan="7" style="text-align: center; color: #787c82; padding: 20px;">
+                            <td colspan="8" style="text-align: center; color: #787c82; padding: 20px;">
                                 No membership plans yet. Add one above.
                             </td>
                         </tr>
@@ -24998,6 +27124,12 @@ function sp_render_member_tiers_page(): void {
                                 <span class="sp-tier-display-active"><?php echo $tier->active ? '&#10003;' : '&mdash;'; ?></span>
                                 <label class="sp-tier-edit-active" style="display: none;">
                                     <input type="checkbox" class="sp-tier-edit-active-cb" <?php checked( $tier->active, 1 ); ?>>
+                                </label>
+                            </td>
+                            <td>
+                                <span class="sp-tier-display-joint"><?php echo ! empty( $tier->allows_joint ) ? '&#10003;' : '&mdash;'; ?></span>
+                                <label class="sp-tier-edit-joint" style="display: none;">
+                                    <input type="checkbox" class="sp-tier-edit-joint-cb" <?php checked( ! empty( $tier->allows_joint ) ); ?>>
                                 </label>
                             </td>
                             <td style="color: #787c82;">
@@ -25058,6 +27190,8 @@ function sp_render_member_tiers_page(): void {
             var duration = lifetimeCb.checked ? '' : document.getElementById('sp-tier-duration').value;
             var sort     = document.getElementById('sp-tier-sort').value;
             var lifetime = lifetimeCb.checked ? '1' : '0';
+            var jointCb  = document.getElementById('sp-tier-allows-joint');
+            var joint    = (jointCb && jointCb.checked) ? '1' : '0';
 
             if (!name) return;
 
@@ -25072,6 +27206,7 @@ function sp_render_member_tiers_page(): void {
             data.append('duration_months', duration);
             data.append('lifetime', lifetime);
             data.append('sort_order', sort);
+            data.append('allows_joint', joint);
 
             fetch(ajaxUrl, { method: 'POST', body: data })
                 .then(function(r) { return r.json(); })
@@ -25132,6 +27267,7 @@ function sp_render_member_tiers_page(): void {
                 row.querySelectorAll('.sp-tier-edit-name, .sp-tier-edit-price, .sp-tier-edit-sort').forEach(function(el) { el.style.display = 'none'; });
                 row.querySelector('.sp-tier-edit-duration-wrap').style.display = 'none';
                 row.querySelector('.sp-tier-edit-active').style.display = 'none';
+                row.querySelector('.sp-tier-edit-joint').style.display = 'none';
                 row.querySelector('.sp-tier-edit-btn').style.display = '';
                 btn.style.display = 'none';
                 row.querySelector('.sp-tier-save-btn').style.display = 'none';
@@ -25148,6 +27284,8 @@ function sp_render_member_tiers_page(): void {
                 var ltCb     = row.querySelector('.sp-tier-edit-lifetime-cb');
                 var lifetime = ltCb.checked ? '1' : '0';
                 var duration = ltCb.checked ? '' : row.querySelector('.sp-tier-edit-duration').value;
+                var jointCb  = row.querySelector('.sp-tier-edit-joint-cb');
+                var joint    = (jointCb && jointCb.checked) ? '1' : '0';
 
                 if (!name) { alert('Plan name is required.'); return; }
 
@@ -25164,6 +27302,7 @@ function sp_render_member_tiers_page(): void {
                 data.append('lifetime', lifetime);
                 data.append('sort_order', sort);
                 data.append('active', active);
+                data.append('allows_joint', joint);
 
                 fetch(ajaxUrl, { method: 'POST', body: data })
                     .then(function(r) { return r.json(); })
@@ -25174,6 +27313,7 @@ function sp_render_member_tiers_page(): void {
                             row.querySelector('.sp-tier-display-price').textContent = '$' + parseFloat(price).toFixed(2);
                             row.querySelector('.sp-tier-display-sort').textContent = sort;
                             row.querySelector('.sp-tier-display-active').innerHTML = active ? '&#10003;' : '&mdash;';
+                            row.querySelector('.sp-tier-display-joint').innerHTML = (joint === '1') ? '&#10003;' : '&mdash;';
 
                             // Duration display
                             if (lifetime === '1') {
@@ -25188,6 +27328,7 @@ function sp_render_member_tiers_page(): void {
                             row.querySelectorAll('.sp-tier-edit-name, .sp-tier-edit-price, .sp-tier-edit-sort').forEach(function(el) { el.style.display = 'none'; });
                             row.querySelector('.sp-tier-edit-duration-wrap').style.display = 'none';
                             row.querySelector('.sp-tier-edit-active').style.display = 'none';
+                            row.querySelector('.sp-tier-edit-joint').style.display = 'none';
                             row.querySelector('.sp-tier-edit-btn').style.display = '';
                             row.querySelector('.sp-tier-save-btn').style.display = 'none';
                             row.querySelector('.sp-tier-cancel-btn').style.display = 'none';
@@ -25228,7 +27369,7 @@ function sp_render_member_tiers_page(): void {
                             if (!tbody.querySelector('tr[data-tier-id]')) {
                                 var emptyRow = document.createElement('tr');
                                 emptyRow.id = 'sp-no-tiers-row';
-                                emptyRow.innerHTML = '<td colspan="7" style="text-align: center; color: #787c82; padding: 20px;">No membership plans yet. Add one above.</td>';
+                                emptyRow.innerHTML = '<td colspan="8" style="text-align: center; color: #787c82; padding: 20px;">No membership plans yet. Add one above.</td>';
                                 tbody.appendChild(emptyRow);
                             }
                         } else {
@@ -25285,6 +27426,7 @@ add_action( 'wp_ajax_sp_save_membership_tier', function () {
     $duration_months = $lifetime ? null : max( 1, (int) ( $_POST['duration_months'] ?? 12 ) );
     $sort_order      = (int) ( $_POST['sort_order'] ?? 0 );
     $active          = isset( $_POST['active'] ) ? (int) $_POST['active'] : 1;
+    $allows_joint    = ( $_POST['allows_joint'] ?? '0' ) === '1' ? 1 : 0;
 
     if ( empty( $name ) ) {
         wp_send_json_error( [ 'message' => 'Plan name is required.' ] );
@@ -25305,10 +27447,11 @@ add_action( 'wp_ajax_sp_save_membership_tier', function () {
         'duration_months' => $duration_months,
         'sort_order'      => $sort_order,
         'active'          => $active,
+        'allows_joint'    => $allows_joint,
     ];
 
     // Format strings for wpdb — NULL needs special handling for duration_months
-    $formats = [ '%s', '%f', $lifetime ? null : '%d', '%d', '%d' ];
+    $formats = [ '%s', '%f', $lifetime ? null : '%d', '%d', '%d', '%d' ];
 
     if ( $tier_id > 0 ) {
         // Update existing tier
@@ -25317,22 +27460,22 @@ add_action( 'wp_ajax_sp_save_membership_tier', function () {
         //      when lifetime is selected so we get a proper SQL NULL.
         if ( $lifetime ) {
             $wpdb->query( $wpdb->prepare(
-                "UPDATE {$table} SET name = %s, price = %f, duration_months = NULL, sort_order = %d, active = %d WHERE id = %d",
-                $name, $price, $sort_order, $active, $tier_id
+                "UPDATE {$table} SET name = %s, price = %f, duration_months = NULL, sort_order = %d, active = %d, allows_joint = %d WHERE id = %d",
+                $name, $price, $sort_order, $active, $allows_joint, $tier_id
             ) );
         } else {
-            $wpdb->update( $table, $data, [ 'id' => $tier_id ], [ '%s', '%f', '%d', '%d', '%d' ], [ '%d' ] );
+            $wpdb->update( $table, $data, [ 'id' => $tier_id ], [ '%s', '%f', '%d', '%d', '%d', '%d' ], [ '%d' ] );
         }
     } else {
         // Insert new tier
         if ( $lifetime ) {
             $wpdb->query( $wpdb->prepare(
-                "INSERT INTO {$table} (name, price, duration_months, sort_order, active) VALUES (%s, %f, NULL, %d, %d)",
-                $name, $price, $sort_order, $active
+                "INSERT INTO {$table} (name, price, duration_months, sort_order, active, allows_joint) VALUES (%s, %f, NULL, %d, %d, %d)",
+                $name, $price, $sort_order, $active, $allows_joint
             ) );
             $tier_id = $wpdb->insert_id;
         } else {
-            $wpdb->insert( $table, $data, [ '%s', '%f', '%d', '%d', '%d' ] );
+            $wpdb->insert( $table, $data, [ '%s', '%f', '%d', '%d', '%d', '%d' ] );
             $tier_id = $wpdb->insert_id;
         }
     }
@@ -30917,6 +33060,17 @@ add_action( 'init', function () {
         $exp_date = sprintf( '%04d-%02d-01', $exp_year, $start_month );
     }
 
+    // Joint member fields — only populate if the selected tier allows it
+    // WHY: Even if someone tampers with the form and submits joint fields
+    //      for a non-joint tier, we ignore them. The tier controls eligibility.
+    $joint_first = '';
+    $joint_last  = '';
+    if ( ! empty( $tier->allows_joint ) ) {
+        $joint_first = sanitize_text_field( $_POST['joint_first_name'] ?? '' );
+        $joint_last  = sanitize_text_field( $_POST['joint_last_name'] ?? '' );
+    }
+    $has_joint = ! empty( $joint_first );
+
     // Create the member record
     // WHY: Build the data array first so we can encrypt sensitive fields
     // before the insert. cell, address_1, address_2 are encrypted at rest.
@@ -30928,6 +33082,12 @@ add_action( 'init', function () {
         'first_name'      => $first_name,
         'last_name'       => $last_name,
         'preferred_name'  => sanitize_text_field( $_POST['preferred_name'] ?? '' ),
+        'joint_member'    => $has_joint ? 1 : 0,
+        'joint_first_name'     => $has_joint ? $joint_first : null,
+        'joint_last_name'      => $has_joint ? $joint_last : null,
+        'joint_preferred_name' => $has_joint ? sanitize_text_field( $_POST['joint_preferred_name'] ?? '' ) ?: null : null,
+        'joint_email'          => $has_joint ? sanitize_email( $_POST['joint_email'] ?? '' ) ?: null : null,
+        'joint_phone'          => $has_joint ? sanitize_text_field( $_POST['joint_phone'] ?? '' ) ?: null : null,
         'phone'           => sanitize_text_field( $_POST['phone'] ?? '' ),
         'cell'            => sanitize_text_field( $_POST['cell'] ?? '' ),
         'address_1'       => sanitize_text_field( $_POST['address_1'] ?? '' ),
@@ -31118,6 +33278,56 @@ function sp_render_join_form(): string {
             </div>
         </fieldset>
 
+        <!-- Joint Member — shown only when the selected tier allows it -->
+        <!-- WHY: Couples filling out the join form need to provide the  -->
+        <!--      second person's info right here, not as a separate     -->
+        <!--      step. We show/hide this fieldset dynamically based on  -->
+        <!--      whether the selected tier has allows_joint = 1.        -->
+        <?php
+        // Build a JS-friendly map of which tiers allow joint membership.
+        $joint_tier_ids = [];
+        foreach ( $tiers as $t ) {
+            if ( ! empty( $t->allows_joint ) ) {
+                $joint_tier_ids[] = (int) $t->id;
+            }
+        }
+        ?>
+        <fieldset id="sp-join-joint-fieldset" style="display: none;">
+            <legend><?php esc_html_e( 'Joint Member (Optional)', 'societypress' ); ?></legend>
+            <p style="font-size: 13px; color: #666; margin-top: 0;">
+                <?php esc_html_e( 'This membership plan allows a second household member. Fill in their details below, or leave blank for an individual membership.', 'societypress' ); ?>
+            </p>
+            <div class="sp-field-row">
+                <div class="sp-field">
+                    <label for="sp-joint-first"><?php esc_html_e( 'First Name', 'societypress' ); ?></label>
+                    <input type="text" id="sp-joint-first" name="joint_first_name"
+                           value="<?php echo esc_attr( $_POST['joint_first_name'] ?? '' ); ?>">
+                </div>
+                <div class="sp-field">
+                    <label for="sp-joint-last"><?php esc_html_e( 'Last Name', 'societypress' ); ?></label>
+                    <input type="text" id="sp-joint-last" name="joint_last_name"
+                           value="<?php echo esc_attr( $_POST['joint_last_name'] ?? '' ); ?>">
+                </div>
+            </div>
+            <div class="sp-field">
+                <label for="sp-joint-preferred"><?php esc_html_e( 'Preferred Name', 'societypress' ); ?> <small style="font-weight: normal; color: #666;">(<?php esc_html_e( 'optional', 'societypress' ); ?>)</small></label>
+                <input type="text" id="sp-joint-preferred" name="joint_preferred_name"
+                       value="<?php echo esc_attr( $_POST['joint_preferred_name'] ?? '' ); ?>">
+            </div>
+            <div class="sp-field-row">
+                <div class="sp-field">
+                    <label for="sp-joint-email2"><?php esc_html_e( 'Email', 'societypress' ); ?> <small style="font-weight: normal; color: #666;">(<?php esc_html_e( 'optional', 'societypress' ); ?>)</small></label>
+                    <input type="email" id="sp-joint-email2" name="joint_email"
+                           value="<?php echo esc_attr( $_POST['joint_email'] ?? '' ); ?>">
+                </div>
+                <div class="sp-field">
+                    <label for="sp-joint-phone2"><?php esc_html_e( 'Phone', 'societypress' ); ?> <small style="font-weight: normal; color: #666;">(<?php esc_html_e( 'optional', 'societypress' ); ?>)</small></label>
+                    <input type="tel" id="sp-joint-phone2" name="joint_phone"
+                           value="<?php echo esc_attr( $_POST['joint_phone'] ?? '' ); ?>">
+                </div>
+            </div>
+        </fieldset>
+
         <!-- Mailing Address -->
         <fieldset>
             <legend>Mailing Address</legend>
@@ -31152,6 +33362,36 @@ function sp_render_join_form(): string {
 
         <button type="submit" class="sp-submit">Submit Application</button>
     </form>
+
+    <!-- Joint member fieldset visibility toggle based on selected tier -->
+    <script>
+    (function() {
+        'use strict';
+        var jointTierIds = <?php echo wp_json_encode( $joint_tier_ids ); ?>;
+        var fieldset = document.getElementById('sp-join-joint-fieldset');
+        if (!fieldset || !jointTierIds.length) return;
+
+        var form = fieldset.closest('form');
+        if (!form) return;
+
+        function updateJointVisibility() {
+            var checked = form.querySelector('input[name="tier_id"]:checked');
+            if (checked && jointTierIds.indexOf(parseInt(checked.value, 10)) !== -1) {
+                fieldset.style.display = '';
+            } else {
+                fieldset.style.display = 'none';
+            }
+        }
+
+        // Listen on all tier radio buttons
+        form.querySelectorAll('input[name="tier_id"]').forEach(function(radio) {
+            radio.addEventListener('change', updateJointVisibility);
+        });
+
+        // Run on load in case a tier is pre-selected (form resubmit)
+        updateJointVisibility();
+    })();
+    </script>
 
     <?php
     return ob_get_clean();
@@ -42761,34 +45001,316 @@ function sp_render_campaign_edit_page(): void {
 // --------------------------------------------------------------------------
 
 add_action( 'admin_init', function () {
-    $content = <<<'POLICY'
-<h2>Membership Data</h2>
-<p>When you register as a member, we collect your name, email address, mailing address, phone number, and optional information such as date of birth, maiden name, and preferred name. This data is stored in our membership database and is used to manage your membership, communicate with you about society activities, and (if you opt in) display your information in the member directory.</p>
-<p>You can control which personal details appear in the member directory through your profile settings. You can request a full export or deletion of your membership data at any time by contacting us.</p>
-
-<h2>Event Registration</h2>
-<p>When you register for an event, we collect your name, email address, and optionally your phone number. If you register as a guest (non-member), this information is stored separately from our membership database. We use it to manage event attendance, send confirmation and reminder emails, and track capacity.</p>
-<p>Registration data is retained for historical and reporting purposes. You can request deletion of your registration history by contacting us.</p>
-
-<h2>Payments</h2>
-<p>For paid events, we offer online payment through Stripe. When you pay online, your payment is processed entirely by Stripe — we never see, store, or have access to your credit card number. We do store a record of the transaction amount, date, and Stripe reference ID for bookkeeping purposes.</p>
-<p>For more information about how Stripe handles your payment data, please see <a href="https://stripe.com/privacy" target="_blank">Stripe's Privacy Policy</a>.</p>
-
-<h2>Contact Form Submissions</h2>
-<p>If you use a contact form on this site, the information you submit (name, email, message) is sent via email to our organization and is not stored in a database.</p>
-
-<h2>Cookies</h2>
-<p>This site uses standard cookies for login sessions and site preferences. We do not use tracking cookies, advertising cookies, or third-party analytics cookies beyond what the underlying platform provides.</p>
-
-<h2>Data Retention</h2>
-<p>Membership records are retained for the duration of your membership and for a reasonable period afterward for administrative continuity. Event registration records are retained indefinitely for historical reporting. You may request deletion at any time.</p>
-POLICY;
-
     wp_add_privacy_policy_content(
         'SocietyPress',
-        wp_kses_post( $content )
+        '<p>' . __( 'SocietyPress automatically generates a complete privacy policy for your Privacy Policy page using the <strong>Privacy Policy</strong> page template. No manual configuration is needed — the policy adapts to your current site settings.', 'societypress' ) . '</p>'
     );
 } );
+
+/**
+ * Register the Privacy Policy page template.
+ *
+ * WHY: Page templates appear in the "Template" dropdown on the Edit Page screen.
+ *      Harold doesn't need to know this exists — the Privacy Policy page is
+ *      auto-created with this template on activation. But if he ever needs to
+ *      assign it to a different page, it's available.
+ */
+add_filter( 'theme_page_templates', function ( $templates ) {
+    $templates['sp-privacy-policy'] = __( 'Privacy Policy', 'societypress' );
+    return $templates;
+} );
+
+/**
+ * Render the Privacy Policy page template.
+ *
+ * WHY: When WordPress loads a page assigned to the sp-privacy-policy template,
+ *      we intercept it and render the complete privacy policy inside the active
+ *      theme's header/footer. The policy is generated dynamically based on the
+ *      site's actual configuration — no manual maintenance needed.
+ */
+add_filter( 'template_include', function ( $template ) {
+    if ( ! is_page() || get_page_template_slug() !== 'sp-privacy-policy' ) {
+        return $template;
+    }
+
+    get_header();
+    echo '<div class="entry-content" style="max-width:var(--sp-content-width,800px); margin:40px auto; padding:0 20px;">';
+    echo '<h1 class="entry-title">' . esc_html( get_the_title() ) . '</h1>';
+    sp_render_privacy_policy_content();
+    echo '</div>';
+    get_footer();
+
+    return sp_get_blank_template_path();
+}, 50 );
+
+/**
+ * Render the privacy policy content.
+ *
+ * WHY: Harold should never have to write or maintain a privacy policy by hand.
+ *      This function renders a complete, legally comprehensive privacy policy
+ *      that adapts dynamically to the site's actual configuration:
+ *
+ *      - Google Analytics enabled? The cookie disclosure appears automatically.
+ *      - Stripe keys configured? The payment section appears.
+ *      - Donations module enabled? The donation data section appears.
+ *      - Store module enabled? Store purchase data is disclosed.
+ *
+ *      Using a template means the content can't be accidentally deleted by
+ *      editing the page. The page content is ignored — the template controls
+ *      everything.
+ */
+function sp_render_privacy_policy_content(): void {
+
+    $settings    = get_option( 'societypress_settings', [] );
+    $org_name    = esc_html( $settings['organization_name'] ?? get_bloginfo( 'name' ) );
+    $org_email   = esc_html( $settings['organization_email'] ?? get_option( 'admin_email' ) );
+    $site_url    = esc_url( home_url( '/' ) );
+    $ga_enabled  = ! empty( $settings['analytics_google_id'] );
+    $has_stripe  = ! empty( $settings['stripe_test_publishable_key'] ) || ! empty( $settings['stripe_live_publishable_key'] );
+    $has_donations = sp_module_enabled( 'donations' );
+    $has_store     = sp_module_enabled( 'store' );
+    $has_events    = sp_module_enabled( 'events' );
+    $has_library   = sp_module_enabled( 'library' );
+    $has_volunteers = sp_module_enabled( 'governance' );
+    $has_records   = sp_module_enabled( 'records' );
+    $has_blast     = sp_module_enabled( 'blast_email' );
+    $has_newsletters = sp_module_enabled( 'newsletters' );
+    $has_documents = sp_module_enabled( 'documents' );
+    $last_updated  = current_time( 'F j, Y' );
+    ?>
+    <div class="sp-privacy-policy">
+
+        <p><em><?php printf( esc_html__( 'Last updated: %s', 'societypress' ), $last_updated ); ?></em></p>
+
+        <!-- ============================================================ -->
+        <!-- WHO WE ARE                                                   -->
+        <!-- ============================================================ -->
+        <h2><?php esc_html_e( 'Who We Are', 'societypress' ); ?></h2>
+        <p><?php printf(
+            esc_html__( 'This website is operated by %s. Our website address is: %s', 'societypress' ),
+            '<strong>' . $org_name . '</strong>',
+            '<a href="' . $site_url . '">' . $site_url . '</a>'
+        ); ?></p>
+        <?php if ( $org_email ) : ?>
+            <p><?php printf( esc_html__( 'For privacy-related inquiries, contact us at %s.', 'societypress' ), '<a href="mailto:' . $org_email . '">' . $org_email . '</a>' ); ?></p>
+        <?php endif; ?>
+
+        <!-- ============================================================ -->
+        <!-- WHAT DATA WE COLLECT                                         -->
+        <!-- ============================================================ -->
+        <h2><?php esc_html_e( 'What Personal Data We Collect and Why', 'societypress' ); ?></h2>
+
+        <h3><?php esc_html_e( 'Membership Information', 'societypress' ); ?></h3>
+        <p><?php esc_html_e( 'When you join as a member, we collect:', 'societypress' ); ?></p>
+        <ul>
+            <li><?php esc_html_e( 'Your name (first, last, and optionally preferred name, middle name, maiden name, prefix, and suffix)', 'societypress' ); ?></li>
+            <li><?php esc_html_e( 'Email address', 'societypress' ); ?></li>
+            <li><?php esc_html_e( 'Mailing address (and optionally a seasonal address)', 'societypress' ); ?></li>
+            <li><?php esc_html_e( 'Phone number(s) (home, cell, work)', 'societypress' ); ?></li>
+            <li><?php esc_html_e( 'Optional: date of birth, profile photo, personal website', 'societypress' ); ?></li>
+            <li><?php esc_html_e( 'If you have a joint (couple/household) membership: your partner\'s name, email, and phone number', 'societypress' ); ?></li>
+        </ul>
+        <p><?php esc_html_e( 'We use this information to manage your membership, communicate with you about society activities, process renewals, and (if you opt in) display your information in the member directory.', 'societypress' ); ?></p>
+        <p><?php esc_html_e( 'Sensitive contact information — including phone numbers and street addresses — is encrypted at rest using modern cryptographic methods. Even in the unlikely event of a database breach, these fields cannot be read without the encryption key.', 'societypress' ); ?></p>
+        <p><?php esc_html_e( 'You control which of your personal details are visible to other members through the directory privacy settings on your account page.', 'societypress' ); ?></p>
+
+        <h3><?php esc_html_e( 'Genealogical Research Information', 'societypress' ); ?></h3>
+        <p><?php esc_html_e( 'Members may optionally provide:', 'societypress' ); ?></p>
+        <ul>
+            <li><?php esc_html_e( 'Surnames being researched, including geographic location and date ranges', 'societypress' ); ?></li>
+            <li><?php esc_html_e( 'Geographic research areas of interest', 'societypress' ); ?></li>
+            <li><?php esc_html_e( 'Links to profiles on external genealogy platforms (such as WikiTree, FamilySearch, Ancestry, and others)', 'societypress' ); ?></li>
+            <li><?php esc_html_e( 'Research interests and skills', 'societypress' ); ?></li>
+        </ul>
+        <p><?php esc_html_e( 'This information is entirely optional and exists to help connect members with shared research interests. It is visible to other logged-in members through the membership directory.', 'societypress' ); ?></p>
+
+        <?php if ( $has_events ) : ?>
+        <h3><?php esc_html_e( 'Event Registration', 'societypress' ); ?></h3>
+        <p><?php esc_html_e( 'When you register for an event, we record your name and registration details. We use this to manage attendance, send confirmation and reminder emails, and track capacity. If you register as a guest (non-member), your information is stored separately from the membership database.', 'societypress' ); ?></p>
+        <p><?php esc_html_e( 'You can view your upcoming and past event registrations, and cancel upcoming registrations, from your account page.', 'societypress' ); ?></p>
+        <?php endif; ?>
+
+        <?php if ( $has_stripe ) : ?>
+        <h3><?php esc_html_e( 'Payments', 'societypress' ); ?></h3>
+        <p><?php
+            $payment_uses = [ esc_html__( 'membership dues', 'societypress' ) ];
+            if ( $has_events ) $payment_uses[] = esc_html__( 'event fees', 'societypress' );
+            if ( $has_store ) $payment_uses[] = esc_html__( 'store purchases', 'societypress' );
+            if ( $has_donations ) $payment_uses[] = esc_html__( 'donations', 'societypress' );
+            printf(
+                esc_html__( 'We accept online payments for %s through Stripe. When you pay online:', 'societypress' ),
+                implode( ', ', $payment_uses )
+            );
+        ?></p>
+        <ul>
+            <li><?php esc_html_e( 'Your payment is processed entirely by Stripe. We never see, store, or have access to your credit card number or bank account details.', 'societypress' ); ?></li>
+            <li><?php esc_html_e( 'We store a record of the transaction amount, date, and Stripe reference ID for our bookkeeping records.', 'societypress' ); ?></li>
+        </ul>
+        <p><?php printf(
+            esc_html__( 'For more information about how Stripe handles your payment data, see %sStripe\'s Privacy Policy%s.', 'societypress' ),
+            '<a href="https://stripe.com/privacy" target="_blank" rel="noopener">', '</a>'
+        ); ?></p>
+        <?php endif; ?>
+
+        <?php if ( $has_donations ) : ?>
+        <h3><?php esc_html_e( 'Donations', 'societypress' ); ?></h3>
+        <p><?php esc_html_e( 'If you make a donation, we record your name, donation amount, date, and method. You may choose to donate anonymously — your name will not be displayed publicly, but is retained in our records for acknowledgment and tax purposes. If you request data erasure, your donor identity will be anonymized while the financial record is retained as required for tax reporting.', 'societypress' ); ?></p>
+        <?php endif; ?>
+
+        <?php if ( $has_volunteers ) : ?>
+        <h3><?php esc_html_e( 'Volunteer Activity', 'societypress' ); ?></h3>
+        <p><?php esc_html_e( 'If you sign up for volunteer opportunities, we record your participation, hours, and any skills you provide. This information is used to coordinate volunteer activities, track contributions, and recognize service.', 'societypress' ); ?></p>
+        <?php endif; ?>
+
+        <h3><?php esc_html_e( 'Contact Form', 'societypress' ); ?></h3>
+        <p><?php esc_html_e( 'If you use a contact form on this site, the information you submit (name, email address, message) is sent via email to our organization. Contact form submissions are not stored in a database on this website.', 'societypress' ); ?></p>
+
+        <h3><?php esc_html_e( 'Profile Photos', 'societypress' ); ?></h3>
+        <p><?php esc_html_e( 'If you upload a profile photo, avoid uploading images with embedded location data (EXIF GPS). Other members may be able to download images from the site and extract any location data from them.', 'societypress' ); ?></p>
+
+        <!-- ============================================================ -->
+        <!-- COOKIES                                                      -->
+        <!-- ============================================================ -->
+        <h2><?php esc_html_e( 'Cookies', 'societypress' ); ?></h2>
+        <p><?php esc_html_e( 'Cookies are small text files stored on your device by your web browser. This site uses cookies for the following purposes:', 'societypress' ); ?></p>
+
+        <table style="width:100%; border-collapse:collapse; margin:16px 0;">
+            <thead>
+                <tr style="border-bottom:2px solid #ddd; text-align:left;">
+                    <th style="padding:8px;"><?php esc_html_e( 'Cookie', 'societypress' ); ?></th>
+                    <th style="padding:8px;"><?php esc_html_e( 'Purpose', 'societypress' ); ?></th>
+                    <th style="padding:8px;"><?php esc_html_e( 'Duration', 'societypress' ); ?></th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr style="border-bottom:1px solid #eee;">
+                    <td style="padding:8px;"><code>wordpress_logged_in_*</code></td>
+                    <td style="padding:8px;"><?php esc_html_e( 'Keeps you logged in after you enter your username and password.', 'societypress' ); ?></td>
+                    <td style="padding:8px;"><?php esc_html_e( '2 days (2 weeks with "Remember Me")', 'societypress' ); ?></td>
+                </tr>
+                <tr style="border-bottom:1px solid #eee;">
+                    <td style="padding:8px;"><code>wordpress_test_cookie</code></td>
+                    <td style="padding:8px;"><?php esc_html_e( 'Checks whether your browser accepts cookies. Contains no personal data.', 'societypress' ); ?></td>
+                    <td style="padding:8px;"><?php esc_html_e( 'Session (deleted when you close your browser)', 'societypress' ); ?></td>
+                </tr>
+                <tr style="border-bottom:1px solid #eee;">
+                    <td style="padding:8px;"><code>wp-settings-*</code></td>
+                    <td style="padding:8px;"><?php esc_html_e( 'Remembers your display preferences (e.g., screen layout choices).', 'societypress' ); ?></td>
+                    <td style="padding:8px;"><?php esc_html_e( '1 year', 'societypress' ); ?></td>
+                </tr>
+                <?php if ( $ga_enabled ) : ?>
+                <tr style="border-bottom:1px solid #eee;">
+                    <td style="padding:8px;"><code>_ga</code></td>
+                    <td style="padding:8px;"><?php esc_html_e( 'Google Analytics — distinguishes unique visitors. Does not contain personal information.', 'societypress' ); ?></td>
+                    <td style="padding:8px;"><?php esc_html_e( '2 years', 'societypress' ); ?></td>
+                </tr>
+                <tr style="border-bottom:1px solid #eee;">
+                    <td style="padding:8px;"><code>_gid</code></td>
+                    <td style="padding:8px;"><?php esc_html_e( 'Google Analytics — distinguishes unique visitors within a session.', 'societypress' ); ?></td>
+                    <td style="padding:8px;"><?php esc_html_e( '24 hours', 'societypress' ); ?></td>
+                </tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+
+        <?php if ( ! $ga_enabled ) : ?>
+            <p><?php esc_html_e( 'This site does not use tracking cookies, advertising cookies, or third-party analytics cookies.', 'societypress' ); ?></p>
+        <?php endif; ?>
+
+        <!-- ============================================================ -->
+        <!-- EMAIL COMMUNICATIONS                                         -->
+        <!-- ============================================================ -->
+        <h2><?php esc_html_e( 'Email Communications', 'societypress' ); ?></h2>
+        <p><?php esc_html_e( 'As a member, you may receive the following types of email from us:', 'societypress' ); ?></p>
+        <ul>
+            <li><?php esc_html_e( 'Welcome message when your membership is activated', 'societypress' ); ?></li>
+            <li><?php esc_html_e( 'Membership renewal reminders and expiration notices', 'societypress' ); ?></li>
+            <?php if ( $has_events ) : ?>
+                <li><?php esc_html_e( 'Event registration confirmations and reminders', 'societypress' ); ?></li>
+            <?php endif; ?>
+            <?php if ( $has_blast ) : ?>
+                <li><?php esc_html_e( 'Society news and announcements (mass emails)', 'societypress' ); ?></li>
+            <?php endif; ?>
+        </ul>
+        <p><?php esc_html_e( 'You can control which categories of email you receive through the communication preferences on your account page, including opting out of mass emails entirely. Renewal and transaction-related emails cannot be opted out of, as they relate directly to your membership.', 'societypress' ); ?></p>
+        <p><?php esc_html_e( 'All outgoing emails are logged internally for troubleshooting and administrative purposes.', 'societypress' ); ?></p>
+
+        <!-- ============================================================ -->
+        <!-- EMBEDDED CONTENT                                             -->
+        <!-- ============================================================ -->
+        <h2><?php esc_html_e( 'Embedded Content from Other Websites', 'societypress' ); ?></h2>
+        <p><?php esc_html_e( 'Pages on this site may include embedded content (such as videos or maps) from other websites. Embedded content from other websites behaves in the same way as if you visited those websites directly. These websites may collect data about you, use cookies, embed additional third-party tracking, and monitor your interaction with the embedded content.', 'societypress' ); ?></p>
+
+        <!-- ============================================================ -->
+        <!-- WHO WE SHARE DATA WITH                                       -->
+        <!-- ============================================================ -->
+        <h2><?php esc_html_e( 'Who We Share Your Data With', 'societypress' ); ?></h2>
+        <p><?php esc_html_e( 'We do not sell, trade, or rent your personal information to anyone. Your data may be shared with the following parties for the purposes described:', 'societypress' ); ?></p>
+        <ul>
+            <?php if ( $has_stripe ) : ?>
+                <li><?php esc_html_e( 'Stripe (payment processor) — receives only the data necessary to process your payment. We never transmit your card number; Stripe collects it directly.', 'societypress' ); ?></li>
+            <?php endif; ?>
+            <?php if ( $ga_enabled ) : ?>
+                <li><?php printf(
+                    esc_html__( 'Google Analytics — receives anonymous, aggregated usage data (pages visited, visit duration). See %sGoogle\'s Privacy Policy%s.', 'societypress' ),
+                    '<a href="https://policies.google.com/privacy" target="_blank" rel="noopener">', '</a>'
+                ); ?></li>
+            <?php endif; ?>
+            <li><?php esc_html_e( 'Other members — only the information you choose to make visible through your directory privacy settings. You control this entirely from your account page.', 'societypress' ); ?></li>
+        </ul>
+        <p><?php esc_html_e( 'If you request a password reset, your IP address will be included in the reset email for security purposes.', 'societypress' ); ?></p>
+
+        <!-- ============================================================ -->
+        <!-- DATA RETENTION                                               -->
+        <!-- ============================================================ -->
+        <h2><?php esc_html_e( 'How Long We Retain Your Data', 'societypress' ); ?></h2>
+        <ul>
+            <li><?php esc_html_e( 'Membership records: retained for the duration of your membership and for a reasonable period afterward for administrative continuity.', 'societypress' ); ?></li>
+            <?php if ( $has_events ) : ?>
+                <li><?php esc_html_e( 'Event registrations: retained indefinitely for historical reporting and attendance records.', 'societypress' ); ?></li>
+            <?php endif; ?>
+            <?php if ( $has_stripe || $has_donations ) : ?>
+                <li><?php esc_html_e( 'Financial records (payments, donations, purchases): retained as required for tax and accounting purposes. If you request data erasure, financial records are anonymized rather than deleted.', 'societypress' ); ?></li>
+            <?php endif; ?>
+            <li><?php esc_html_e( 'Email logs: retained for administrative troubleshooting and are periodically cleaned up.', 'societypress' ); ?></li>
+            <li><?php esc_html_e( 'Audit logs: retained for security and accountability purposes.', 'societypress' ); ?></li>
+        </ul>
+
+        <!-- ============================================================ -->
+        <!-- YOUR RIGHTS                                                  -->
+        <!-- ============================================================ -->
+        <h2><?php esc_html_e( 'What Rights You Have Over Your Data', 'societypress' ); ?></h2>
+        <p><?php esc_html_e( 'If you have an account on this site, you have the right to:', 'societypress' ); ?></p>
+        <ul>
+            <li><?php esc_html_e( 'View and update your personal information through your account page at any time.', 'societypress' ); ?></li>
+            <li><?php esc_html_e( 'Control exactly which personal details are visible to other members in the directory.', 'societypress' ); ?></li>
+            <li><?php esc_html_e( 'Choose which types of email communications you receive.', 'societypress' ); ?></li>
+            <li><?php esc_html_e( 'Request a complete export of all personal data we hold about you.', 'societypress' ); ?></li>
+            <li><?php esc_html_e( 'Request erasure of your personal data. This does not include data we are legally obligated to retain for tax, accounting, or security purposes.', 'societypress' ); ?></li>
+        </ul>
+        <p><?php printf(
+            esc_html__( 'To request a data export or erasure, contact us at %s. We will respond within 30 days.', 'societypress' ),
+            '<a href="mailto:' . $org_email . '">' . $org_email . '</a>'
+        ); ?></p>
+
+        <!-- ============================================================ -->
+        <!-- DATA SECURITY                                                -->
+        <!-- ============================================================ -->
+        <h2><?php esc_html_e( 'How We Protect Your Data', 'societypress' ); ?></h2>
+        <p><?php esc_html_e( 'We take the security of your personal information seriously:', 'societypress' ); ?></p>
+        <ul>
+            <li><?php esc_html_e( 'Sensitive contact information (phone numbers, street addresses) is encrypted at rest using modern cryptographic methods.', 'societypress' ); ?></li>
+            <li><?php esc_html_e( 'All administrative actions are logged for accountability.', 'societypress' ); ?></li>
+            <li><?php esc_html_e( 'Access to member data is restricted to authorized administrators.', 'societypress' ); ?></li>
+            <li><?php esc_html_e( 'All pages on this site are served over HTTPS (encrypted connections).', 'societypress' ); ?></li>
+            <?php if ( $has_stripe ) : ?>
+                <li><?php esc_html_e( 'Payment information is handled entirely by Stripe and never touches our servers.', 'societypress' ); ?></li>
+            <?php endif; ?>
+        </ul>
+
+    </div>
+    <?php
+}
 
 
 // --------------------------------------------------------------------------

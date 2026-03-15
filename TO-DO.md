@@ -23,6 +23,13 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 - [x] Unified site search: searches events, library, resources, members (logged-in), newsletters (logged-in), WP pages — frontend template + AJAX JSON endpoint
 - [x] Audit logging: member CRUD, status changes, position/committee assignments, settings saves, event CRUD, event registration/cancellation, bulk member delete, group assignment, blast email send, volunteer role CRUD
 - [x] GitHub repo: cleaned up, current single-file plugin + theme, GPL-2.0
+- [x] GitHub update checker: `pre_set_site_transient_update_plugins` + `plugins_api` filters, 12-hour cached API check, `upgrader_source_selection` rename for zipball installs, one-click AJAX update from dashboard, audit logging
+- [x] Parent theme update checker: `pre_set_site_transient_update_themes` filter, `sp_latest_parent_theme_version()`, one-click AJAX update from dashboard, `upgrader_source_selection` for theme directory extraction
+- [x] Child theme gallery: `sp_get_theme_registry()` built-in catalog, enhanced Themes admin page with install/update for available themes, AJAX download from GitHub zipball with selective directory extraction, version comparison for update detection
+- [x] Dashboard update banners: plugin update (blue), theme updates (amber) for parent + child themes, one-click update buttons, auto-hidden when current
+- [x] Privacy policy template: `sp-privacy-policy` page template generates complete dynamic privacy policy based on site configuration (GA, Stripe, enabled modules), auto-assigned to Privacy Policy page on activation
+- [x] Privacy Policy Builder: WordPress built-in `privacy-policy-guide.php` accessible via Settings flyout
+- [x] Google Analytics: GA4 Measurement ID field on Website settings, gtag.js in wp_head, admin traffic exclusion
 
 ### Members
 - [x] CRUD: individual + organizational support, custom fields for genealogical research
@@ -155,10 +162,14 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 - [x] Bulk upload: multi-select media picker, shared category/access/status settings, auto-generated titles (cleaned filenames), auto-detected dates from filename patterns, per-file review/edit before submit
 - [x] Members-only page checkbox: per-page `_sp_members_only` meta, branded login prompt on frontend for non-logged-in visitors, auto-hides restricted pages from nav menu
 
-### Roles & Permissions (Spec Complete, Not Built)
-- [ ] Site-wide roles: pre-built role bundles (Webmaster, Treasurer, Librarian, etc.) with customizable access area checkboxes per user
-- [ ] Committee-scoped access: automatic chair/member permissions from governance data
-- [ ] Non-admin backend access: filtered admin experience showing only permitted sections
+### Roles & Permissions
+- [x] 10 access areas: Members, Events, Library, Finances, Communications, Records, Governance, Content, Settings, Reports
+- [x] 8 pre-built role templates: Webmaster, Membership Manager, Treasurer, Event Coordinator, Librarian, Communications Director, Records Manager, Content Editor
+- [x] `sp_user_can()` helper + `user_has_cap` filter — WP admins auto-get all SP capabilities
+- [x] Centralized capability map remaps all 100+ menu items without touching individual `add_submenu_page` calls
+- [x] User Access admin page: assign roles, customize per-user access areas, revoke access
+- [x] Non-admin SP staff: redirected from WP dashboard to SP dashboard, see only permitted sections
+- [ ] Committee-scoped access: automatic chair/member permissions from governance data (deferred)
 
 ## In Progress
 
@@ -226,7 +237,7 @@ See `Docs/KNOWN-ISSUES.md` for the full list from the March 2026 audit.
   - [ ] Normalized surname variants — deferred (needs design: auto-suggest? alias table?)
   - [x] 8 genealogy service integrations (WikiTree, FamilySearch, Geni, WeRelate, Ancestry, MyHeritage, Find A Grave, 23andMe) — My Account section with URL fields per service, AJAX save, directory member detail modal shows linked profiles as colored buttons. Stored as user_meta (`sp_genealogy_*`).
 - [x] Contact data encryption at rest: XChaCha20-Poly1305 (libsodium) encryption for 7 sensitive fields — cell, work_phone, alt_phone, fax, address_1, address_2, seasonal_address_1. Phone (home) and city/state left plaintext for directory search/sort. Columns widened (VARCHAR 200/512) to fit ciphertext. Helper functions `sp_member_encrypt_fields()` / `sp_member_decrypt_row()` / `sp_member_decrypt_rows()` applied at all 9 write points (admin edit, CSV import, join form, AJAX/POST contact+address, profile change approval) and all 10 read points (admin edit, member list, directory listing+detail, CSV export, GDPR export, welcome email, My Account, generic getter, profile change comparison). One-time migration `sp_maybe_migrate_encrypt_contacts()` runs on activation, batched by 100, idempotent. Graceful fallback: if decryption fails (plaintext data), value passes through unchanged.
-- [ ] Couples sharing accounts: revisit later
+- [x] Couples / household accounts: `allows_joint` flag on tiers, `joint_first_name`/`joint_last_name`/`joint_preferred_name` columns on sp_members, admin member edit joint section with toggle, join form shows joint fields when tier allows it, My Account joint member management section, directory shows "John & Jane Smith" for joint memberships, form handler for My Account joint updates
 
 ## Events — Remaining
 
@@ -339,8 +350,8 @@ Existing wizard (4 steps): Org Info → Membership → Feature Selection → App
 
 ## Integrations — Not Started
 
+- [x] Google Analytics: GA4 Measurement ID setting on Website page, gtag.js output in wp_head, admin traffic exclusion option
 - [ ] Mailchimp: sync member list to Mailchimp audience (white paper claims this)
-- [ ] Google Analytics: integration beyond what the getsocietypress.org companion plugin does
 - [ ] Zoom: event integration for online programming (white paper mentions this)
 - [ ] Note: PayPal and Stripe are under Payment Processing above
 

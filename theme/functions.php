@@ -88,9 +88,13 @@ add_action( 'after_setup_theme', function () {
  * (see the SAGHS child theme's functions.php for an example).
  */
 add_action( 'wp_enqueue_scripts', function () {
+    // WHY get_template_directory_uri: When a child theme is active,
+    // get_stylesheet_uri() returns the CHILD theme's style.css — not ours.
+    // We must explicitly point to the parent directory so our base styles
+    // always load, regardless of which child theme (if any) is active.
     wp_enqueue_style(
         'societypress-style',
-        get_stylesheet_uri(),
+        get_template_directory_uri() . '/style.css',
         [],
         SOCIETYPRESS_THEME_VERSION
     );

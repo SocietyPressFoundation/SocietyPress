@@ -732,6 +732,91 @@ function sp_m( $member, $field ) {
 
             <?php
             // ================================================================
+            // SECTION 4b: JOINT MEMBER (COUPLE / HOUSEHOLD)
+            // WHY: Joint memberships let couples share one account. The primary
+            // member can view and update their partner's name, email, and phone
+            // right here. Both names show in the directory and both people can
+            // attend events under this membership.
+            //
+            // Only shown if the member's tier allows joint membership (the
+            // allows_joint flag on sp_membership_tiers).
+            // ================================================================
+            $show_joint_section = false;
+            if ( $member ) {
+                // Check if this member's tier allows joint membership
+                $member_tier_id = sp_m( $member, 'tier_id' );
+                if ( $member_tier_id ) {
+                    global $wpdb;
+                    $tier_allows_joint = (int) $wpdb->get_var( $wpdb->prepare(
+                        "SELECT allows_joint FROM {$wpdb->prefix}sp_membership_tiers WHERE id = %d",
+                        $member_tier_id
+                    ) );
+                    if ( $tier_allows_joint ) {
+                        $show_joint_section = true;
+                    }
+                }
+                // Also show if they already have joint member data (e.g., tier changed later)
+                if ( ! $show_joint_section && ! empty( sp_m( $member, 'joint_member' ) ) ) {
+                    $show_joint_section = true;
+                }
+            }
+            ?>
+            <?php if ( $show_joint_section ) : ?>
+            <section class="sp-account-section" id="joint-member">
+                <h2><?php esc_html_e( 'Joint Member', 'societypress' ); ?></h2>
+                <p class="sp-section-desc">
+                    <?php esc_html_e( 'Your membership plan includes a second household member. Both names will appear in the directory and both people can attend events.', 'societypress' ); ?>
+                </p>
+
+                <form method="post" class="sp-account-form">
+                    <?php wp_nonce_field( 'sp_update_joint', 'sp_joint_nonce' ); ?>
+                    <input type="hidden" name="sp_action" value="update_joint" />
+
+                    <div class="sp-form-row">
+                        <div class="sp-form-field">
+                            <label for="sp-joint-fn"><?php esc_html_e( 'First Name', 'societypress' ); ?></label>
+                            <input type="text" id="sp-joint-fn" name="joint_first_name"
+                                   value="<?php echo esc_attr( sp_m( $member, 'joint_first_name' ) ); ?>" />
+                        </div>
+                        <div class="sp-form-field">
+                            <label for="sp-joint-ln"><?php esc_html_e( 'Last Name', 'societypress' ); ?></label>
+                            <input type="text" id="sp-joint-ln" name="joint_last_name"
+                                   value="<?php echo esc_attr( sp_m( $member, 'joint_last_name' ) ); ?>" />
+                        </div>
+                    </div>
+                    <div class="sp-form-row">
+                        <div class="sp-form-field">
+                            <label for="sp-joint-pn"><?php esc_html_e( 'Preferred Name', 'societypress' ); ?></label>
+                            <input type="text" id="sp-joint-pn" name="joint_preferred_name"
+                                   value="<?php echo esc_attr( sp_m( $member, 'joint_preferred_name' ) ); ?>"
+                                   placeholder="<?php esc_attr_e( 'Optional — if different from first name', 'societypress' ); ?>" />
+                        </div>
+                        <div class="sp-form-field">
+                            <!-- spacer -->
+                        </div>
+                    </div>
+                    <div class="sp-form-row">
+                        <div class="sp-form-field">
+                            <label for="sp-joint-em"><?php esc_html_e( 'Email', 'societypress' ); ?></label>
+                            <input type="email" id="sp-joint-em" name="joint_email"
+                                   value="<?php echo esc_attr( sp_m( $member, 'joint_email' ) ); ?>"
+                                   placeholder="<?php esc_attr_e( 'Optional', 'societypress' ); ?>" />
+                        </div>
+                        <div class="sp-form-field">
+                            <label for="sp-joint-ph"><?php esc_html_e( 'Phone', 'societypress' ); ?></label>
+                            <input type="tel" id="sp-joint-ph" name="joint_phone"
+                                   value="<?php echo esc_attr( sp_m( $member, 'joint_phone' ) ); ?>"
+                                   placeholder="<?php esc_attr_e( 'Optional', 'societypress' ); ?>" />
+                        </div>
+                    </div>
+
+                    <button type="submit" class="sp-button"><?php esc_html_e( 'Save Joint Member', 'societypress' ); ?></button>
+                </form>
+            </section>
+            <?php endif; ?>
+
+            <?php
+            // ================================================================
             // SECTION 5: COMMUNICATION PREFERENCES
             // WHY: Let members control what emails they receive. Respecting
             // preferences builds trust and reduces unsubscribe complaints.

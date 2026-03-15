@@ -4,10 +4,10 @@ Theme URI: https://kndgs.org
 Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
 Description: Child theme for the San Antonio Genealogical & Historical Society.
-             Applies SAGHS branding — burgundy/cream palette, hero slider,
-             3-level nav, and custom front-page layout — on top of the
-             SocietyPress parent theme.
-Version: 0.01d
+             Applies SAGHS branding — burgundy/cream palette, Poppins font,
+             hero slider, 3-level nav, and custom front-page layout — on top
+             of the SocietyPress parent theme.
+Version: 0.04d
 Template: societypress
 Requires at least: 6.0
 Tested up to: 6.7
@@ -17,11 +17,12 @@ Text Domain: saghs
 */
 
 /* ============================================================================
-   SAGHS COLOR PALETTE
-   WHY: Define the SAGHS brand colors as CSS custom properties so every element
-   references these tokens instead of hardcoded hex values. Override the parent
-   theme's --sp-color-* vars so plugin-rendered widgets (events, library, etc.)
-   also pick up the SAGHS palette automatically.
+   SAGHS COLOR PALETTE & FONT
+   WHY: Define the SAGHS brand colors and typography as CSS custom properties
+   so every element references these tokens instead of hardcoded values.
+   Override the parent theme's --sp-color-* and --sp-font-* vars so
+   plugin-rendered widgets (events, library, etc.) also pick up the SAGHS
+   palette and font automatically.
    ============================================================================ */
 
 :root {
@@ -43,20 +44,33 @@ Text Domain: saghs
     --sp-color-header-text:   #1a1a1a;
     --sp-color-footer-bg:     #fbebd2;
     --sp-color-footer-text:   #1a1a1a;
+
+    /* Override plugin font vars so everything uses Poppins.
+       WHY Poppins: The reference SAGHS site uses it. It's clean, geometric,
+       and reads well at all sizes — important for an older demographic. */
+    --sp-font-body:    'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    --sp-font-heading: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 }
 
 
 /* ============================================================================
    GLOBAL OVERRIDES
-   WHY: The parent theme assumes a dark header. SAGHS uses a white header with
-   dark text, so we need to flip several color assumptions.
+   WHY: The parent theme assumes a dark header and system fonts. SAGHS uses
+   Poppins throughout with a white header and dark text, so we flip several
+   color and font assumptions.
    ============================================================================ */
 
 body {
+    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    font-weight: 400;
+    font-size: 14px;
     color: var(--saghs-dark);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 h1, h2, h3, h4, h5, h6 {
+    font-family: 'Poppins', sans-serif;
     color: var(--saghs-burgundy);
 }
 
@@ -68,19 +82,78 @@ a:hover {
     color: var(--saghs-terracotta);
 }
 
+/* Dark text selection to match reference site */
+::selection {
+    background: #343a3e;
+    color: #fff;
+}
+
 
 /* ============================================================================
    HEADER
-   WHY: SAGHS uses a white header with the logo prominent on the left and
-   horizontal nav links on the right. The parent's dark header is overridden
-   to a clean white background with a subtle bottom border.
+   WHY: SAGHS uses a white header fixed to the top of the viewport, with the
+   logo prominent on the left and horizontal nav links on the right. A subtle
+   burgundy bottom border anchors the header visually.
    ============================================================================ */
 
 .site-header {
     background: var(--saghs-white);
     color: var(--saghs-dark);
-    border-bottom: 3px solid var(--saghs-burgundy);
+    border-bottom: none;
     padding: 0 20px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1030;
+}
+
+/* WHY body padding-top: Since the header is fixed, we need to push the page
+   content down so it doesn't hide behind the header. With 40px top/bottom
+   padding and a 140px logo, the header renders ~220px tall. */
+body {
+    padding-top: 220px;
+}
+
+/* Extra vertical padding gives the logo room to breathe.
+   WHY max-width override: The parent theme ties header-inner to
+   --sp-content-width, which is great for page body content but too
+   narrow for the header when Harold sets a tight content width (e.g.,
+   900px). The header needs room for logo + nav + search + user menu.
+   We decouple it so the header always has enough space regardless of
+   the content width setting.
+   WHY position relative: The social media icons are absolutely positioned
+   in the top-right corner — they need a positioned ancestor. */
+/* WHY we use the same --sp-content-width as the page body: The header
+   content (logo, nav, search, profile) should align with the footer and
+   page content below. Using the same max-width + auto margins keeps
+   everything on the same vertical guides at any viewport width. */
+/* WHY 40px 0: Vertical padding gives the header breathing room. Zero side
+   padding lets the logo and user menu sit flush with the content boundary.
+   The max-width + margin:auto still centers the header on wide viewports. */
+.site-header .header-inner {
+    padding: 40px 0;
+    display: flex;
+    align-items: center;
+    max-width: var(--sp-content-width, 1400px);
+    margin: 0 auto;
+    position: relative;
+}
+
+/* WHY flex-shrink:0 — the logo must never shrink to accommodate the nav.
+   WHY margin/padding:0 — strip any inherited spacing so the logo sits
+   flush against the content boundary (left red line). */
+.site-branding {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 0;
+}
+
+.custom-logo-link {
+    display: block;
+    margin: 0;
+    padding: 0;
+    line-height: 0;
 }
 
 .site-branding a,
@@ -93,9 +166,17 @@ a:hover {
     opacity: 1;
 }
 
-/* Make the logo larger for SAGHS — they have a prominent seal */
+/* Make the logo prominent for SAGHS — they have a large seal.
+   !important is needed because the parent theme's .custom-logo rule loads
+   at the same specificity and the cascade order isn't guaranteed with how
+   WP enqueues parent+child.
+   WHY explicit height: The SAGHS logo is an SVG with hardcoded width/height
+   attributes (171x75). Browsers won't scale an SVG past its intrinsic size
+   with max-height alone — we need an explicit height to force it larger. */
 .custom-logo {
-    max-height: 90px;
+    height: 140px !important;
+    max-height: none !important;
+    width: auto !important;
 }
 
 
@@ -106,13 +187,60 @@ a:hover {
    but the child header.php overrides that to depth:3.
    ============================================================================ */
 
-/* Top-level nav links */
+/* WHY flex:1 + min-width:0 on header-nav-area: Without this, the nav area
+   takes its natural width (all nav items + search + user menu laid out at
+   full size) and overflows the header-inner boundary. flex:1 constrains it
+   to only the space remaining after the logo. min-width:0 lets flex items
+   shrink below their content size when needed. */
+.header-nav-area {
+    flex: 1;
+    min-width: 0;
+}
+
+/* WHY flex:1 + justify-content center: The nav links should be visually
+   centered in the header row, with search + profile sitting at the far
+   right. Giving the nav flex:1 lets it fill the space between the logo
+   and the search/profile, then centering the ul within it achieves the
+   centered look Charles wants. */
+.main-navigation {
+    flex: 1;
+    min-width: 0;
+}
+
+/* WHY min-width on search: Without a floor, the flex layout crushes the
+   search field to zero width when space is tight. 120px is enough for
+   the placeholder text to be readable. */
+.sp-header-search-desktop {
+    min-width: 120px;
+    flex-shrink: 1;
+}
+
+/* WHY flex-shrink:0 on user menu: The user avatar + name should never
+   truncate or disappear — it's a critical navigation element. */
+.sp-user-menu {
+    flex-shrink: 0;
+}
+
+.main-navigation > ul {
+    justify-content: center;
+}
+
+/* Top-level nav links — reference site uses small, light system fonts (~13px).
+   Poppins has a taller x-height than system fonts so it reads larger at the
+   same nominal size. 13px Poppins ≈ 14px system visually. Weight 400 keeps
+   it light and delicate like the reference. */
 .main-navigation a {
     color: var(--saghs-dark);
-    font-weight: 600;
-    font-size: 0.9rem;
-    padding: 12px 16px;
+    font-family: 'Poppins', sans-serif;
+    font-weight: 400;
+    font-size: 14px;
+    padding: 10px 12px;
     transition: color 0.2s ease, background 0.2s ease;
+    /* WHY white-space: nowrap: Prevents individual nav links from wrapping
+       mid-word at narrower desktop widths. "About Us" stays on one line
+       instead of breaking "About" / "Us". Combined with bumping the
+       hamburger breakpoint to 1024px, this eliminates nav wrapping. */
+    white-space: nowrap;
 }
 
 .main-navigation a:hover,
@@ -151,7 +279,7 @@ a:hover {
 .main-navigation .sub-menu a {
     padding: 10px 20px;
     font-size: 0.85rem;
-    font-weight: 500;
+    font-weight: 400;
     border-bottom: 1px solid #f0ebe3;
     white-space: nowrap;
 }
@@ -165,12 +293,18 @@ a:hover {
     color: var(--saghs-burgundy);
 }
 
-/* Level 3 — opens to the right of level 2 */
+/* Level 3 — opens to the LEFT of level 2.
+   WHY left instead of right: The deepest dropdowns (Library, Research, etc.)
+   live under Resources which sits at the far right of the nav bar. Opening
+   level 3 to the right (left:100%) pushes it off-screen. Opening to the left
+   (right:100%) keeps it visible. */
 .main-navigation .sub-menu .sub-menu {
     top: 0;
-    left: 100%;
+    left: auto;
+    right: 100%;
     border-top: none;
-    border-left: 3px solid var(--saghs-burgundy);
+    border-left: none;
+    border-right: 3px solid var(--saghs-burgundy);
 }
 
 /* Indicator arrow for items with children */
@@ -261,10 +395,11 @@ a:hover {
 
 
 /* ============================================================================
-   HERO SLIDER
-   WHY: The SAGHS homepage leads with a large photo slider showing the
-   Riverwalk / San Antonio scenery. Overlay text sits on a semi-transparent
-   band so it's readable over any image.
+   HERO / WELCOME BANNER
+   WHY: The SAGHS homepage leads with a full-width welcome banner. The
+   reference site uses a simple centered heading on a solid/photo background
+   with a burgundy overlay. We support both a static hero and the page
+   builder's hero_slider widget.
    ============================================================================ */
 
 .saghs-hero {
@@ -292,6 +427,10 @@ a:hover {
     position: relative;
 }
 
+/* WHY max-width + margin auto: The overlay spans the full slider width
+   for the background color, but the text inside should align with the
+   same content boundary as the header and page body. This keeps the
+   hero text from stretching edge-to-edge on wide screens. */
 .saghs-hero-overlay {
     position: absolute;
     bottom: 0;
@@ -299,11 +438,23 @@ a:hover {
     right: 0;
     background: rgba(99, 34, 32, 0.75);
     padding: 30px 40px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.saghs-hero-overlay h2,
+.saghs-hero-overlay p {
+    max-width: var(--sp-content-width, 1100px);
+    width: 100%;
 }
 
 .saghs-hero-overlay h2 {
     color: var(--saghs-white);
+    font-family: 'Poppins', sans-serif;
     font-size: 2rem;
+    font-weight: 600;
     margin: 0 0 8px;
 }
 
@@ -340,20 +491,35 @@ a:hover {
 
 
 /* ============================================================================
-   FRONT PAGE — CLASSES / EVENTS SECTION
-   WHY: Showcases the next few upcoming events as cards. Uses a heading with
-   a decorative divider line in the SAGHS style, then a card grid.
+   FRONT PAGE — SECTION SYSTEM
+   WHY: The reference site alternates between white and cream backgrounds to
+   create visual rhythm and separate content areas. Each section is full-width
+   for the background color, with content constrained to --sp-content-width.
    ============================================================================ */
 
 .saghs-section {
+    padding: 50px 20px;
+}
+
+.saghs-section-inner {
     max-width: var(--sp-content-width, 1100px);
     margin: 0 auto;
-    padding: 50px 20px;
+}
+
+/* Alternating backgrounds — cream sections get the warm tan background */
+.saghs-section-cream {
+    background: var(--saghs-cream);
+}
+
+.saghs-section-white {
+    background: var(--saghs-white);
 }
 
 .saghs-section-heading {
     text-align: center;
-    font-size: calc(1.8rem * var(--sp-font-scale, 1));
+    font-family: 'Poppins', sans-serif;
+    font-size: 1.8rem;
+    font-weight: 600;
     color: var(--saghs-burgundy);
     margin-bottom: 8px;
 }
@@ -367,11 +533,20 @@ a:hover {
     border: none;
 }
 
-/* "More Future Events" link below the events grid */
+
+/* ============================================================================
+   FRONT PAGE — CLASSES / EVENTS SECTION
+   WHY: Events are displayed as a simple stacked list (not a card grid) to
+   match the reference site. Each event shows date, title, time, and location
+   in a clean, scannable format.
+   ============================================================================ */
+
+/* "More Future Events" link below the events list */
 .saghs-more-link {
     display: block;
     text-align: center;
     margin-top: 30px;
+    font-family: 'Poppins', sans-serif;
     font-size: 1rem;
     font-weight: 600;
     color: var(--saghs-burgundy);
@@ -387,16 +562,14 @@ a:hover {
 /* ============================================================================
    FRONT PAGE — LIBRARY CALLOUT
    WHY: Side-by-side layout (image left, text right) highlights the SAGHS
-   library collection. Links to the library catalog page.
+   library collection. Links to the library catalog page. Sits on a cream
+   background section to create contrast with adjacent white sections.
    ============================================================================ */
 
 .saghs-library-callout {
     display: flex;
     gap: 40px;
     align-items: center;
-    background: #f9f5ef;
-    border-radius: 8px;
-    padding: 40px;
 }
 
 .saghs-library-image {
@@ -413,7 +586,9 @@ a:hover {
 }
 
 .saghs-library-text h3 {
-    font-size: calc(1.4rem * var(--sp-font-scale, 1));
+    font-family: 'Poppins', sans-serif;
+    font-size: 1.4rem;
+    font-weight: 600;
     color: var(--saghs-burgundy);
     margin-bottom: 16px;
 }
@@ -428,7 +603,8 @@ a:hover {
 /* ============================================================================
    FRONT PAGE — FEATURE CARDS (Volunteer, Learn, Benefits)
    WHY: Three-column grid showcasing key value props. Each card has an image,
-   burgundy heading, description, and a dark call-to-action button.
+   burgundy heading, description, and a dark call-to-action button. The cards
+   sit on a cream background to match the reference site's alternating pattern.
    ============================================================================ */
 
 .saghs-features-grid {
@@ -440,6 +616,8 @@ a:hover {
 .saghs-feature-card {
     text-align: center;
     padding: 30px 20px;
+    background: var(--saghs-white);
+    border-radius: 8px;
 }
 
 .saghs-feature-card img {
@@ -451,7 +629,9 @@ a:hover {
 }
 
 .saghs-feature-card h3 {
-    font-size: calc(1.2rem * var(--sp-font-scale, 1));
+    font-family: 'Poppins', sans-serif;
+    font-size: 1.2rem;
+    font-weight: 600;
     color: var(--saghs-burgundy);
     margin-bottom: 12px;
 }
@@ -467,12 +647,13 @@ a:hover {
 /* ============================================================================
    BUTTONS — SAGHS VARIANTS
    WHY: Two button styles — a filled burgundy primary and a dark outlined
-   secondary. Both use the brand palette.
+   secondary. Both use the brand palette and Poppins font.
    ============================================================================ */
 
 .saghs-btn {
     display: inline-block;
     padding: 12px 28px;
+    font-family: 'Poppins', sans-serif;
     font-size: 0.9rem;
     font-weight: 600;
     text-decoration: none;
@@ -507,13 +688,16 @@ a:hover {
 
 
 /* ============================================================================
-   FOOTER — SAGHS
-   WHY: Cream-colored footer with 2-column layout. Left column has org info,
-   right column has nav links. Bottom bar has copyright and branding.
+   FOOTER — SAGHS (3-COLUMN)
+   WHY: The reference site uses a 3-column footer on a cream background:
+   Column 1 = org mission/tagline, Column 2 = quick links, Column 3 = contact.
+   A burgundy accent bar tops it, and a bottom bar has copyright + SP credit.
    ============================================================================ */
 
+/* WHY white background instead of cream: The reference site uses a clean
+   white footer, not cream. Cream is reserved for the page body. */
 .site-footer {
-    background: var(--saghs-cream);
+    background: #fff;
     color: var(--saghs-dark);
     padding: 0;
     text-align: left;
@@ -524,6 +708,9 @@ a:hover {
     background: var(--saghs-burgundy);
 }
 
+/* WHY two-column layout: The reference site puts org identity on the left
+   (roughly 60% width) and a short link list on the right (40%). No third
+   column — contact details live in the bottom bar instead. */
 .saghs-footer-inner {
     max-width: var(--sp-content-width, 1100px);
     margin: 0 auto;
@@ -532,43 +719,44 @@ a:hover {
     gap: 60px;
 }
 
-/* Left column — org info, mission, contact */
-.saghs-footer-info {
+/* Each footer column shares base styling */
+.saghs-footer-col {
     flex: 1;
 }
 
-.saghs-footer-info h3 {
-    color: var(--saghs-burgundy);
+.saghs-footer-col h3 {
+    font-family: 'Poppins', sans-serif;
+    color: var(--saghs-dark);
     font-size: 1.2rem;
-    margin-bottom: 12px;
+    font-weight: 700;
+    margin-bottom: 16px;
 }
 
-.saghs-footer-info p {
-    color: var(--saghs-taupe);
+.saghs-footer-col p {
+    color: var(--saghs-dark);
     line-height: 1.7;
     font-size: 0.9rem;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
 }
 
-.saghs-footer-info a {
+.saghs-footer-col a {
     color: var(--saghs-burgundy);
     text-decoration: none;
 }
 
-.saghs-footer-info a:hover {
+.saghs-footer-col a:hover {
     color: var(--saghs-terracotta);
     text-decoration: underline;
 }
 
-/* Right column — quick links */
-.saghs-footer-links {
-    flex: 0 0 250px;
+/* Mission column — wider to accommodate the description paragraph */
+.saghs-footer-mission {
+    flex: 1.5;
 }
 
-.saghs-footer-links h3 {
-    color: var(--saghs-burgundy);
-    font-size: 1.2rem;
-    margin-bottom: 12px;
+/* Quick links list — no heading, just bare links matching the reference */
+.saghs-footer-links {
+    padding-top: 4px;
 }
 
 .saghs-footer-links ul {
@@ -582,36 +770,79 @@ a:hover {
 }
 
 .saghs-footer-links a {
-    color: var(--saghs-dark);
-    text-decoration: none;
+    color: var(--saghs-burgundy);
     font-size: 0.9rem;
-    font-weight: 500;
+    font-weight: 400;
 }
 
 .saghs-footer-links a:hover {
     color: var(--saghs-terracotta);
 }
 
-/* Bottom bar — copyright + "Powered by SocietyPress" */
+/* Bottom bar — contact info on the left, copyright stacked on the right.
+   WHY this layout: The reference site puts address/phone/email in a single
+   line on the left and stacks copyright + "Powered by" on the right. */
 .saghs-footer-bottom {
-    border-top: 1px solid rgba(99, 34, 32, 0.2);
+    border-top: 1px solid #e5e5e5;
     max-width: var(--sp-content-width, 1100px);
     margin: 0 auto;
-    padding: 16px 20px;
+    padding: 20px 20px;
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    font-size: 0.8rem;
-    color: var(--saghs-taupe);
+    align-items: flex-start;
+    font-size: 0.85rem;
+    color: var(--saghs-dark);
 }
 
-.saghs-footer-bottom a {
+.saghs-footer-contact-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.saghs-footer-contact-info a {
+    color: var(--saghs-dark);
+    text-decoration: none;
+}
+
+.saghs-footer-contact-info a:hover {
+    color: var(--saghs-terracotta);
+}
+
+/* WHY hidden separator: Originally planned inline separators between
+   address/phone/email, but the reference stacks them vertically. The
+   separator class is kept in the markup but hidden in case we want to
+   switch to an inline layout later. */
+.saghs-footer-separator {
+    display: none;
+}
+
+.saghs-footer-copyright {
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.saghs-footer-copyright a {
     color: var(--saghs-burgundy);
     text-decoration: none;
 }
 
-.saghs-footer-bottom a:hover {
+.saghs-footer-copyright a:hover {
     color: var(--saghs-terracotta);
+}
+
+/* Logo strip — repeats the society logo at the very bottom of the page */
+.saghs-footer-logo-strip {
+    max-width: var(--sp-content-width, 1100px);
+    margin: 0 auto;
+    padding: 20px 20px 30px;
+}
+
+.saghs-footer-logo-strip img {
+    max-height: 80px;
+    width: auto;
 }
 
 
@@ -620,7 +851,6 @@ a:hover {
    WHY: Page builder widgets (events, library, etc.) are rendered by the
    plugin with their own inline styles. These overrides ensure they pick up
    the SAGHS color palette where the inline styles reference --sp-color-* vars.
-   We also adjust some widget layouts to fit the SAGHS front page grid.
    ============================================================================ */
 
 /* Event cards rendered by sp_render_builder_widget_upcoming_events */
@@ -660,8 +890,12 @@ a:hover {
    a white header, so we flip the trigger colors to dark text.
    ============================================================================ */
 
+/* Match the "Log In" link to the nav items — same font, size, weight */
 .sp-user-login-link {
     color: var(--saghs-dark);
+    font-family: 'Poppins', sans-serif;
+    font-size: 13px;
+    font-weight: 400;
 }
 
 .sp-user-login-link:hover {
@@ -671,22 +905,158 @@ a:hover {
 
 .sp-user-trigger {
     color: var(--saghs-dark);
-    background: rgba(0, 0, 0, 0.05);
-    border-color: rgba(0, 0, 0, 0.1);
+    background: none;
+    border: none;
+    text-decoration: none;
 }
 
 .sp-user-trigger:hover {
-    background: rgba(0, 0, 0, 0.08);
+    background: none;
+    text-decoration: none;
 }
 
 .sp-user-menu:hover .sp-user-trigger,
 .sp-user-menu:focus-within .sp-user-trigger {
-    background: rgba(0, 0, 0, 0.1);
+    background: none;
+}
+
+/* Give the dropdown caret breathing room so it doesn't overlap the name */
+/* WHY hidden: The down-arrow caret next to the user name is unnecessary
+   visual clutter — hovering reveals the dropdown, the caret doesn't add
+   anything. Hiding it cleans up the header. */
+.sp-user-caret {
+    display: none;
+}
+
+/* WHY right: 0 — with zero side padding on header-inner, the user menu
+   sits at the content boundary. right:0 aligns the dropdown's right edge
+   with the trigger's right edge, which is flush with the boundary. */
+.sp-user-dropdown {
+    right: 0;
+}
+
+
+/* Hide cart icon — !important needed because sp_user_menu() outputs
+   an inline display:inline-flex style. */
+.sp-header-cart {
+    display: none !important;
+}
+
+/* ============================================================================
+   SOCIAL MEDIA ICONS — SAGHS (LARGE, BRAND-COLORED, TOP-RIGHT)
+   WHY: Charles wants big, recognizable brand icons in the upper-right corner
+   of the header — using the vertical space the tall logo provides, above
+   the nav/search/profile row. Absolutely positioned so they don't push
+   the logo or nav around.
+   ============================================================================ */
+
+.sp-social-icons {
+    position: absolute;
+    top: 12px;
+    right: 0;
+    gap: 10px;
+}
+
+.sp-social-icon {
+    width: 28px;
+    height: 28px;
+    opacity: 1;
+    border-radius: 50%;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.sp-social-icon:hover {
+    transform: scale(1.1);
+    opacity: 0.85;
+    background: transparent;
+}
+
+.sp-social-icon svg {
+    width: 28px;
+    height: 28px;
+}
+
+/* Brand colors — each network gets its own fill color instead of
+   monochrome currentColor. These override the fill="currentColor"
+   set in the SVG markup. */
+.sp-social-icon[aria-label="Facebook"] svg {
+    fill: #1877F2;
+    color: #1877F2;
+}
+
+.sp-social-icon[aria-label="YouTube"] svg {
+    fill: #FF0000;
+    color: #FF0000;
+}
+
+.sp-social-icon[aria-label="Instagram"] svg {
+    fill: #E4405F;
+    color: #E4405F;
+}
+
+.sp-social-icon[aria-label="TikTok"] svg {
+    fill: #000000;
+    color: #000000;
+}
+
+.sp-social-icon[aria-label="X"] svg {
+    fill: #000000;
+    color: #000000;
 }
 
 
 /* ============================================================================
-   RESPONSIVE — TABLET (768–1024px)
+   HEADER SEARCH FIELD — SAGHS PALETTE
+   WHY: The parent theme styles .sp-header-search for a dark header background.
+   SAGHS has a white header, so we flip to dark text/borders on light background.
+   ============================================================================ */
+
+/* Desktop search field — visible inline with nav above 1024px */
+.sp-header-search-desktop {
+    position: static;
+    transform: none;
+    display: flex;
+    z-index: auto;
+}
+
+/* Mobile search field — hidden on desktop, shown inside hamburger panel */
+.sp-header-search-mobile {
+    display: none;
+}
+
+.sp-header-search input[type="text"] {
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    background: rgba(0, 0, 0, 0.04);
+    color: var(--saghs-dark);
+    font-family: 'Poppins', sans-serif;
+    font-size: 13px;
+}
+
+.sp-header-search input[type="text"]::placeholder {
+    color: var(--saghs-taupe);
+}
+
+.sp-header-search input[type="text"]:focus {
+    border-color: var(--saghs-burgundy);
+    background: rgba(0, 0, 0, 0.02);
+}
+
+.sp-header-search button {
+    color: var(--saghs-taupe);
+}
+
+.sp-header-search button:hover {
+    color: var(--saghs-burgundy);
+}
+
+
+/* ============================================================================
+   RESPONSIVE — TABLET & NAV COLLAPSE (≤1024px)
+   WHY the hamburger kicks in at 1024px now: With the user profile menu,
+   search field, and links like "About Us" and "Privacy Policy," the
+   horizontal nav was wrapping to two lines at narrower desktop widths.
+   Bumping the collapse point from 768px to 1024px means the hamburger
+   takes over before the nav gets cramped.
    ============================================================================ */
 
 @media (max-width: 1024px) {
@@ -694,21 +1064,27 @@ a:hover {
         grid-template-columns: repeat(2, 1fr);
     }
 
-    .saghs-library-callout {
-        padding: 30px;
-    }
-
+    /* Footer stacks on tablet — mission full width, links below */
     .saghs-footer-inner {
-        gap: 40px;
+        flex-wrap: wrap;
+        gap: 30px;
     }
-}
 
+    .saghs-footer-mission {
+        flex: 1 1 100%;
+    }
 
-/* ============================================================================
-   RESPONSIVE — MOBILE (<768px)
-   ============================================================================ */
+    .saghs-footer-links {
+        flex: 1;
+    }
 
-@media (max-width: 768px) {
+    /* Hide the large social icons on mobile — not enough room in the
+       header, and they're accessible from the footer. */
+    .sp-social-icons {
+        display: none;
+    }
+
+    /* === HAMBURGER + NAV COLLAPSE === */
 
     /* Show hamburger, hide desktop nav */
     .saghs-hamburger {
@@ -742,14 +1118,16 @@ a:hover {
 
     .main-navigation a {
         padding: 14px 20px;
+        /* Allow wrapping again inside the hamburger panel — there's room */
+        white-space: normal;
     }
 
-    /* Show submenu toggle buttons on mobile */
+    /* Show submenu toggle buttons */
     .saghs-submenu-toggle {
         display: block;
     }
 
-    /* Mobile dropdowns — toggle open/close, not hover */
+    /* Dropdowns — toggle open/close, not hover */
     .main-navigation .sub-menu {
         position: static;
         box-shadow: none;
@@ -769,6 +1147,52 @@ a:hover {
 
     .main-navigation .sub-menu .sub-menu a {
         padding-left: 60px;
+    }
+
+    /* === SEARCH FIELD — MOBILE LAYOUT === */
+
+    /* Hide the desktop inline search field */
+    .sp-header-search-desktop {
+    position: static;
+    transform: none;
+        display: none;
+    }
+
+    /* Show the mobile search field inside the hamburger panel */
+    .sp-header-search-mobile {
+        display: flex;
+        padding: 12px 20px;
+        border-bottom: 1px solid #f0ebe3;
+    }
+
+    .sp-header-search-mobile input[type="text"] {
+        width: 100%;
+        padding: 10px 36px 10px 14px;
+        border-radius: 6px;
+        font-size: 14px;
+    }
+
+    /* Header layout adjustments */
+    .header-inner {
+        position: relative;
+    }
+
+    .header-nav-area {
+        position: static;
+    }
+}
+
+
+/* ============================================================================
+   RESPONSIVE — MOBILE (<768px)
+   ============================================================================ */
+
+@media (max-width: 768px) {
+
+    /* Reduce body padding for shorter fixed header on mobile — logo shrinks
+       on small screens so header is shorter. */
+    body {
+        padding-top: 100px;
     }
 
     /* Hero adjustments */
@@ -791,7 +1215,6 @@ a:hover {
     /* Library callout stacks vertically */
     .saghs-library-callout {
         flex-direction: column;
-        padding: 24px;
     }
 
     .saghs-library-image {
@@ -804,29 +1227,25 @@ a:hover {
         grid-template-columns: 1fr;
     }
 
-    /* Footer stacks */
+    /* Footer stacks to single column on mobile */
     .saghs-footer-inner {
         flex-direction: column;
         gap: 30px;
     }
 
+    .saghs-footer-mission,
     .saghs-footer-links {
         flex: none;
     }
 
     .saghs-footer-bottom {
         flex-direction: column;
-        gap: 8px;
+        gap: 12px;
         text-align: center;
     }
 
-    /* Header layout for mobile */
-    .header-inner {
-        position: relative;
-    }
-
-    .header-nav-area {
-        position: static;
+    .saghs-footer-copyright {
+        text-align: center;
     }
 }
 
@@ -853,6 +1272,8 @@ a:hover {
     }
 
     .custom-logo {
-        max-height: 60px;
+        max-height: 80px;
     }
 }
+
+

@@ -179,44 +179,46 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 
 ## Known Bugs & Technical Debt
 
-See `Docs/KNOWN-ISSUES.md` for the full list from the March 2026 audit.
+See `Docs/KNOWN-ISSUES.md` for the full list (43 items tracked, 41 fixed, 2 deferred).
 
-**Critical:**
-- [x] Version mismatch: plugin header updated to `0.30d` to match constant
-- [x] Attendance NULL bug: added proper `attended = 1` query + "Attended" stat card to annual report (original function never existed)
-- [x] Join form sends welcome email before payment completes — added pending-status guard in `sp_send_welcome_email()`, welcome email now fires when admin activates the member
+**Critical (all fixed):**
+- [x] Version mismatch (v0.30d)
+- [x] Attendance NULL bug (v0.30d)
+- [x] Join form welcome email before payment (v0.30d)
+- [x] DB version never saved after upgrade — dbDelta ran every admin page load (v0.38d)
+- [x] Record collection field ID orphaning — editing schema orphaned all record data (v0.38d)
+- [x] Incomplete cascade delete — only 4 of 16 tables cleaned up, now uses `sp_cascade_delete_member_data()` (v0.38d)
 
-**Should Fix:**
-- [x] Merge tag syntax split: unified to `{{double_braces}}` everywhere, legacy `{single_braces}` fallback in blast emails
-- [x] GDPR gap: added donation exporter + eraser (anonymizes donor info, retains financial records)
-- [x] Library item detail AJAX: added `nopriv` handler so public catalogs work for non-logged-in users
-- [ ] jQuery usage in contact form widget, album edit page, and page builder admin (project policy: vanilla JS only) — substantial rewrite, deferred
-- [x] `get_page_by_title()` deprecated in WP 6.2 — replaced all 3 instances with `WP_Query`
-- [x] `auto_update_plugin` filter: now scoped to SocietyPress only (was forcing auto-updates on ALL plugins)
-- [x] Event delete already cleans up time slots (both single and bulk paths call `sp_slots_delete_by_event`)
-- [x] Duplicate `Deceased` key in CSV import column map: removed duplicate `__meta` mapping that was overwriting the status mapping
-- [x] Duplicate `{{organization_name}}` merge tag key: removed duplicate entry
-- [x] Rate limiting on join form: 3 attempts per IP per hour via transient
-- [ ] Server path exposure in event import hidden fields — requires refactoring 5 import flows to use transients, deferred
-- [x] Orphaned temp files: all 5 CSV import flows already call `@unlink()` after processing — audit was wrong
-- [x] Breadcrumb settings: added enable/disable, home label, separator fields to Settings → Website
-- [x] Help request notifications: now sends to admins only, not all members
-- [x] Email log cleanup cron: added to deactivation hook (was orphaned after deactivation)
+**Security (all fixed):**
+- [x] Document download bypasses access control — added AJAX handler with access checks (v0.38d)
+- [x] Guest registration cancel ownership gap — null user_id check added (v0.38d)
+- [x] Missing nonce on blast recipient count (v0.38d)
+- [x] Hardcoded SAGHS email — now pulls from org_email setting (v0.38d)
+- [x] Unescaped get_the_title() XSS (v0.38d)
+
+**Code quality (all fixed in v0.38d):**
+- [x] date() → wp_date() for ~30 display-context calls
+- [x] admin_url() wrapped in esc_url() (~40+ instances)
+- [x] Stripe refund handles 'pending' status
+- [x] ICS multibyte line folding (mb_strlen/mb_substr)
+- [x] preferred_name fallback PHP 8.x notice
+- [x] wp_enqueue_media() moved before output in speaker edit
+- [x] N+1 query on frontend event listing (batch query)
+- [x] Library stats transient invalidation on write operations
+- [x] Email template uses brand colors from settings
+- [x] Dashicons only loaded for logged-in users
+- [x] Merge tag docs unified to {{double_braces}}
+- [x] Blank template moved from /tmp/ to wp_upload_dir()
+
+**Previously fixed (v0.30d-v0.37d):**
+- [x] Merge tag syntax, GDPR donations, library AJAX nopriv, deprecated get_page_by_title, auto_update scope, rate limiting, help notifications, email log cron, breadcrumb settings, store SAGHS references, and 6 more
+
+**Deferred:**
+- [ ] jQuery → vanilla JS rewrite (contact form widget, album edit, page builder admin) — substantial effort, low user impact
+- [ ] Server path exposure in 5 import flows — admin-only, nonce-protected, low risk
 
 **i18n:**
-- [x] Retroactive i18n pass on all admin strings — comprehensive pass wrapping ~350+ strings across the entire plugin:
-  - All 8 settings tabs: section titles, field titles, descriptions, select options, checkbox labels
-  - All admin notices (success/error): member list, events, pages, groups, speakers, albums, library, resources, volunteers, donations, campaigns, newsletters, blast email, help requests
-  - Member edit form: all labels, status options, descriptions, placeholders
-  - Event edit form: all labels, status/visibility/payment mode options, checkbox labels, descriptions
-  - Design settings: all color/font/layout labels, select options, descriptions
-  - Setup wizard: all step labels
-  - Page builder widget fields: all 28 widget field labels
-  - Library item edit: all 30+ field labels and descriptions
-  - All other admin forms: groups, finance, export, tiers, categories, speakers, albums, newsletters, resources, volunteer opportunities, volunteer roles, volunteer hours, donations, campaigns, walk-in registration, audit log filters
-  - Member profile frontend: all form labels
-  - Import result notices: member/event import with proper _n() pluralization
-  - Contact form and event registration labels
+- [x] Comprehensive i18n pass (v0.38d): ~500+ strings wrapped across 4 agent passes, text domain appears 2,564+ times, estimated ~95% coverage
 
 ---
 
@@ -311,12 +313,76 @@ Existing wizard (4 steps): Org Info → Membership → Feature Selection → App
 - [x] Search dropdown in primary nav — magnifying glass icon button that expands to a search input on click. Click-away and Escape to close. Slide-in animation, aria-expanded for accessibility.
 - [x] My Account menu for logged-in members — already implemented: `sp_user_menu()` shows avatar + preferred name + dropdown (My Account/Log Out for members, Dashboard/Log Out for admins)
 
+## Localization
+
+- [x] Complete i18n string wrapping pass — ~500+ strings wrapped across 52K lines, text domain appears 2,564+ times (v0.38d)
+- [x] Fixed all date() → wp_date() for timezone-correct display (~30 instances)
+- [x] Fixed all admin_url() → esc_url(admin_url()) (~40+ instances)
+- [x] Currency setting: `sp_format_currency()` helper + `currency_symbol`/`currency_position` settings (v0.38d, in progress)
+- [ ] Generate `.pot` file: `wp i18n make-pot plugin/ plugin/languages/societypress.pot`
+  - Master translation template — translators load this in Poedit/GlotPress/Loco Translate
+  - Produces `.po` (human-editable) and `.mo` (compiled) files per language
+  - Should be regenerated on every release
+  - Ship the `.pot` in the repo so translators can grab it from GitHub
+- [ ] Use WordPress date/time format settings for display dates
+  - Replace hardcoded format strings like `'M j, Y'` with `get_option( 'date_format' )`
+  - Replace hardcoded time formats with `get_option( 'time_format' )`
+  - Internal/DB dates stay as `Y-m-d` — only display dates change
+  - WHY: A German society expects "18. März 2026", not "March 18, 2026"
+
 ## Admin — Remaining
 
 - [ ] Site health monitoring: REST API health-check endpoint (`/wp-json/societypress/v1/health`) that verifies DB connection, cron health, plugin status. Pair with external uptime monitor (e.g. UptimeRobot free tier) for downtime alerts. Internal alerting for failed crons, missing DB tables, PHP errors.
 - [x] Admin dashboard: activity feed — recent 15 audit log entries with categorized icons (member/event/settings/email/volunteer), relative timestamps, user attribution. Full-width panel below the existing two-column dashboard layout.
 - [x] Audit logging: expanded to cover member CRUD + bulk delete + "Delete All Others", settings saves, event CRUD + bulk delete, event registration + cancellation, group assignment, blast email send, volunteer role CRUD
 - [x] Governance menu: already exists as `sp-governance` page with volunteer roles (officer positions, committee assignments). Renamed menu label from "Volunteers" to "Leadership & Committees" for clarity.
+
+## Data Portability — Not Started
+
+Principle: Every piece of data a society puts into SocietyPress can come back out in a standard format, with one click, at any time, no questions asked. No export fees, no "contact us," no degraded exports. Your data is yours. Always.
+
+- [ ] Per-module CSV exports (extend existing member/library pattern to all modules):
+  - [ ] Events: all events + categories + registrations with attendee info + speakers
+  - [ ] Genealogical records: CSV per collection, all records with all field values
+  - [ ] Donations: all donations, campaigns, acknowledgment status
+  - [ ] Volunteer data: opportunities, signups, hours
+  - [ ] Committees & leadership: positions, terms, members
+  - [ ] Store orders: order history with line items
+  - [ ] Email log: full email history
+  - [ ] Resource links: all links with categories
+  - [ ] Settings: JSON export for backup/migration
+- [ ] Newsletters export: ZIP of all PDFs + metadata CSV
+- [ ] Documents export: ZIP of all files + metadata CSV
+- [ ] **Full Site Export** button in Settings → one click, one ZIP containing:
+  - All module CSVs
+  - All newsletter PDFs
+  - All document files
+  - Settings JSON
+  - README explaining the file structure
+  - WHY: This is the single feature that proves we mean it when we say "no lock-in." If a society can download their entire operation in one click, they know we're not holding them hostage. It also doubles as a complete backup.
+- [ ] Marketing: "Your data is yours" messaging on getsocietypress.org — front and center, not buried in a FAQ
+
+## One-Click Installer — Not Started (separate project)
+
+Single-file `install.php` that takes Harold from empty hosting to running SocietyPress in one step. Upload one file, fill out one form, done.
+
+- [ ] Server requirements check: PHP 8.0+, MySQL/MariaDB, ZipArchive, curl/allow_url_fopen, libsodium, writable directory
+- [ ] Download WordPress latest from wordpress.org/latest.zip
+- [ ] Download SocietyPress plugin + parent theme from GitHub latest release
+- [ ] Extract WordPress to web root
+- [ ] Collect DB credentials + site info via branded web form
+- [ ] Generate security keys (WordPress salt API)
+- [ ] Write wp-config.php
+- [ ] Run WordPress DB install programmatically
+- [ ] Install plugin to wp-content/plugins/, theme to wp-content/themes/
+- [ ] Activate plugin and theme via options table
+- [ ] Set permalink structure to /%postname%/
+- [ ] Self-delete after successful install (security — installer must not persist)
+- [ ] Redirect to SocietyPress setup wizard
+- [ ] Error handling: clear messages for every failure point (bad credentials, no ZipArchive, permissions, download failure)
+- [ ] Fallback: if outbound HTTP is blocked, offer manual upload instructions for the WordPress + SP ZIPs
+- [ ] Branding: SocietyPress logo, colors, professional look — this is Harold's first impression
+- [ ] Repo: separate file in SocietyPress repo (e.g., `installer/install.php`) or its own mini-repo, not part of the plugin itself
 
 ## Demo Installation — Not Started
 
@@ -338,6 +404,28 @@ Existing wizard (4 steps): Org Info → Membership → Feature Selection → App
 - [ ] Documentation pages (waiting until SP features are more complete)
 - [ ] Feedback form (structured: bug report / feature request / general question) — future companion plugin
 
+## Voting & Elections — Not Started
+
+- [ ] Ballot / election system for officer elections
+  - Create ballot with positions and candidates
+  - Configurable voting window (open/close dates)
+  - One vote per member, verified by user_id
+  - Secret ballot (votes stored without voter identity link)
+  - Results page with vote counts, automatic winner determination
+  - Admin can create, open, close, and publish results
+  - Email notification when a ballot opens
+  - Absentee / proxy voting support (optional, society-configurable)
+  - ENS and ClubExpress both have this — table stakes for society software
+
+## Mobile — Not Started
+
+- [ ] Progressive Web App (PWA) layer
+  - Web app manifest (name, icons, theme color, display: standalone)
+  - Service worker for offline caching (directory, events, library)
+  - "Add to Home Screen" prompt for mobile visitors
+  - Push notifications for event reminders, blast emails, renewal notices
+  - WHY: Native apps (iOS + Android) would be a second full-time project with app store overhead. A PWA gives app-like experience from the browser with zero friction. Can wrap in Capacitor later if store presence is ever needed.
+
 ## AI — Not Started
 
 - [ ] AI-powered Q&A: let members (or the public) ask natural-language questions and get answers drawn from society data
@@ -351,6 +439,14 @@ Existing wizard (4 steps): Org Info → Membership → Feature Selection → App
 ## Integrations — Not Started
 
 - [x] Google Analytics: GA4 Measurement ID setting on Website page, gtag.js output in wp_head, admin traffic exclusion option
+- [ ] bbPress forum integration (if installed):
+  - Detect bbPress via `class_exists('bbPress')`
+  - Members-only forum access via existing `_sp_members_only` page mechanism
+  - Role sync: active members can post, expired get read-only, non-members blocked — hook `bbp_current_user_can_access_forum_id` and `bbp_current_user_can_publish_topics`
+  - Nav integration: auto-add Forums link if bbPress detected
+  - Admin flyout: show under Communications group
+  - Module toggle: "Forums (bbPress)" in Settings → Modules, nudge to install bbPress if not present
+  - ~200-300 lines of glue code — let bbPress handle the forum engine
 - [ ] Mailchimp: sync member list to Mailchimp audience (white paper claims this)
 - [ ] Zoom: event integration for online programming (white paper mentions this)
 - [ ] Note: PayPal and Stripe are under Payment Processing above
@@ -372,3 +468,4 @@ Existing wizard (4 steps): Org Info → Membership → Feature Selection → App
 - ~~Swiper.js~~ → custom slider
 - ~~Separate volunteer admin panel (/sp-admin/)~~ → existing admin panel is sufficient
 - ~~"Contributions welcomed" language~~ → open source ≠ open to contributions
+- ~~Built-in forums~~ → Most societies already use Facebook groups; building a quality forum engine is thousands of lines for minimal adoption. bbPress exists for societies that want WP-native forums. The existing `community_link` page builder widget lets Harold point members to wherever discussion happens.

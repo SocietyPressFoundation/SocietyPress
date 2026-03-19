@@ -1,0 +1,86 @@
+/*
+Theme Name: Prairie
+Theme URI: https://getsocietypress.org/themes/prairie
+Author: Stricklin Development
+Author URI: https://stricklindevelopment.com/
+Description: An earthy, welcoming theme with warm greens and natural tones. Inspired by
+             open landscapes and community gathering places. Ideal for Midwest and rural
+             societies that value warmth, accessibility, and a down-to-earth personality.
+Version: 1.0.0
+Template: societypress
+Requires at least: 6.0
+Tested up to: 6.7
+Requires PHP: 8.0
+License: GPL-2.0-or-later
+Text Domain: prairie
+Tags: genealogy, historical-society, earthy, warm, natural, serif
+*/
+
+/* ============================================================================
+   PRAIRIE COLOR PALETTE & FONT
+   ============================================================================ */
+
+:root {
+    /* Prairie brand colors */
+    --prairie-forest:   #2D5016;
+    --prairie-wheat:    #E8DCC8;
+    --prairie-sage:     #7A9A5E;
+    --prairie-clay:     #C4A265;
+    --prairie-bark:     #5C4033;
+    --prairie-text:     #2A2118;
+    --prairie-muted:    #7D7060;
+
+    /* Override SocietyPress design vars */
+    --sp-color-primary:       #2D5016;
+    --sp-color-primary-hover: #7A9A5E;
+    --sp-color-accent:        #C4A265;
+    --sp-color-secondary:     #E8DCC8;
+    --sp-color-background:    #FAF7F2;
+    --sp-color-text:          #2A2118;
+    --sp-color-text-muted:    #7D7060;
+    --sp-color-border:        #D8CEBC;
+    --sp-color-header-bg:     #2D5016;
+    --sp-color-header-text:   #FAF7F2;
+    --sp-color-footer-bg:     #2D5016;
+    --sp-color-footer-text:   #FAF7F2;
+
+    /* WHY Lora: A contemporary serif that balances elegance with readability.
+       Warm character fits the earthy palette. Works beautifully for body text
+       at larger sizes — important for our older demographic. */
+    --sp-font-body:    'Lora', Georgia, 'Times New Roman', serif;
+    --sp-font-heading: 'Lora', Georgia, 'Times New Roman', serif;
+}
+
+/* ============================================================================
+   PRAIRIE-SPECIFIC TWEAKS
+   ============================================================================ */
+
+body {
+    background-color: #FAF7F2;
+}
+
+a {
+    color: var(--prairie-sage);
+}
+a:hover {
+    color: var(--prairie-forest);
+}
+
+.sp-btn,
+button.sp-btn,
+input[type="submit"] {
+    background-color: var(--prairie-forest);
+    border-color: var(--prairie-forest);
+}
+.sp-btn:hover,
+button.sp-btn:hover,
+input[type="submit"]:hover {
+    background-color: var(--prairie-sage);
+    border-color: var(--prairie-sage);
+}
+
+/* Warm horizontal rules */
+hr,
+.sp-divider {
+    border-color: var(--prairie-wheat);
+}

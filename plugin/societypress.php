@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     0.37d
+ * Version:     0.38d
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '0.37d' );
+define( 'SOCIETYPRESS_VERSION', '0.38d' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -2066,6 +2066,11 @@ add_action( 'admin_init', function () {
         sp_maybe_seed_resource_categories();
         sp_maybe_seed_library_categories();
         sp_maybe_seed_document_categories();
+
+        // WHY: Without saving the new version, the upgrade check fires on every admin
+        // page load, re-running dbDelta on 43 tables and all seeding functions. This was
+        // a silent performance killer — every admin request did full schema reconciliation.
+        update_option( 'societypress_db_version', SOCIETYPRESS_VERSION );
     }
 });
 
@@ -2421,6 +2426,69 @@ function sp_maybe_migrate_encrypt_contacts(): void {
     }
 
     update_option( 'sp_contacts_encrypted', 1, true );
+}
+
+
+// ============================================================================
+// CURRENCY FORMATTING
+//
+// WHY: The plugin hardcoded '$' throughout finances, tiers, payments, store,
+//      and donations. Non-US societies need €, £, ¥, etc. This function reads
+//      from settings so Harold configures it once (Settings → Organization)
+//      and every monetary display respects it.
+// ============================================================================
+
+/**
+ * Format a monetary amount with the configured currency symbol and position.
+ *
+ * WHY: Centralizes all currency display so societies outside the US can use
+ *      their own symbol (€, £, ¥, etc.) and position (before or after the
+ *      amount). Harold sets this once in Settings → Organization and every
+ *      monetary value in admin, frontend, and emails picks it up.
+ *
+ * @param float|string $amount The numeric amount.
+ * @param bool         $html   Whether to wrap in a <span> for styling (default false).
+ * @return string Formatted amount like "$25.00" or "25.00 €".
+ */
+function sp_format_currency( $amount, bool $html = false ): string {
+    $settings = get_option( 'societypress_settings', [] );
+    $symbol   = $settings['currency_symbol'] ?? '$';
+    $position = $settings['currency_position'] ?? 'before';
+    $formatted = number_format( (float) $amount, 2 );
+
+    if ( $position === 'after' ) {
+        $result = $formatted . $symbol;
+    } else {
+        $result = $symbol . $formatted;
+    }
+
+    return $html ? '<span class="sp-currency">' . esc_html( $result ) . '</span>' : $result;
+}
+
+/**
+ * Get just the configured currency symbol.
+ *
+ * WHY: JavaScript code needs the raw symbol and position to format amounts
+ *      client-side. This avoids duplicating the settings lookup everywhere.
+ *
+ * @return string The currency symbol (e.g., '$', '€', '£').
+ */
+function sp_get_currency_symbol(): string {
+    $settings = get_option( 'societypress_settings', [] );
+    return $settings['currency_symbol'] ?? '$';
+}
+
+/**
+ * Get the configured currency position.
+ *
+ * WHY: JavaScript code needs to know whether the symbol goes before or after
+ *      the amount. Paired with sp_get_currency_symbol() for client-side use.
+ *
+ * @return string 'before' or 'after'.
+ */
+function sp_get_currency_position(): string {
+    $settings = get_option( 'societypress_settings', [] );
+    return $settings['currency_position'] ?? 'before';
 }
 
 
@@ -4108,7 +4176,7 @@ add_filter( 'edit_page_per_page', function () {
 
 // Left side: "Thank you for creating with WordPress" → SocietyPress branding
 add_filter( 'admin_footer_text', function () {
-    return '<span id="footer-thankyou">Powered by <strong>SocietyPress</strong></span>';
+    return '<span id="footer-thankyou">' . sprintf( esc_html__( 'Powered by %s', 'societypress' ), '<strong>SocietyPress</strong>' ) . '</span>';
 });
 
 // Right side: "Version 6.9.1" → SocietyPress version
@@ -4159,6 +4227,95 @@ add_filter( 'wp_check_filetype_and_ext', function ( $data, $file, $filename, $mi
 
 
 // ============================================================================
+// FONT FAMILY HELPERS
+// ============================================================================
+//
+// WHY: The font-name-to-CSS-font-family mapping was duplicated in three places:
+//      the Design System CSS vars output, the login page styles, and the login
+//      acknowledgment modal. A single canonical source prevents drift and makes
+//      adding new fonts a one-line change.
+// ============================================================================
+
+/**
+ * Get the full font-name → CSS font-family map.
+ *
+ * WHY: Every place that converts a stored font key (e.g. 'georgia') into a
+ *      CSS font-family string should call this instead of maintaining its
+ *      own copy of the map. One map, one place to update.
+ *
+ * @return array<string, string> Font key => CSS font-family value.
+ */
+function sp_get_font_family_options(): array {
+    return [
+        'system'       => "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif",
+        'inter'        => '"Inter", sans-serif',
+        'georgia'      => "Georgia, 'Times New Roman', serif",
+        'palatino'     => "'Palatino Linotype', 'Book Antiqua', Palatino, serif",
+        'garamond'     => "'EB Garamond', Georgia, serif",
+        'merriweather' => "Merriweather, Georgia, serif",
+        'lora'         => "Lora, Georgia, serif",
+        'roboto'       => "Roboto, -apple-system, BlinkMacSystemFont, sans-serif",
+        'open-sans'    => "'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif",
+        'source-sans'  => "'Source Sans 3', -apple-system, BlinkMacSystemFont, sans-serif",
+        'nunito'       => "Nunito, -apple-system, BlinkMacSystemFont, sans-serif",
+        'lato'         => '"Lato", sans-serif',
+    ];
+}
+
+/**
+ * Look up the CSS font-family string for a given font key.
+ *
+ * WHY: Callers that just need the CSS value for one font shouldn't have to
+ *      grab the full map, look up the key, and handle the fallback themselves.
+ *      This does all three in one call.
+ *
+ * @param string|null $font_key Font key (e.g. 'georgia'). Null = use the
+ *                              design_font_body setting, falling back to 'system'.
+ * @return string CSS font-family value.
+ */
+function sp_get_font_family_css( ?string $font_key = null ): string {
+    $map = sp_get_font_family_options();
+    if ( $font_key === null ) {
+        $settings = get_option( 'societypress_settings', [] );
+        $font_key = $settings['design_font_body'] ?? 'system';
+    }
+    return $map[ $font_key ] ?? $map['system'];
+}
+
+
+// ============================================================================
+// MEMBER STATUS HELPERS
+// ============================================================================
+//
+// WHY: The list of valid member statuses was duplicated across the members list
+//      table filter, the member edit form dropdown, and the import mapper. A
+//      single canonical source prevents drift and ensures every dropdown/filter
+//      shows the same options.
+// ============================================================================
+
+/**
+ * Get the canonical list of member statuses with translated labels.
+ *
+ * WHY: Every place that builds a status dropdown, validates a status value, or
+ *      displays a status label should call this instead of maintaining its own
+ *      copy. One list, one place to update.
+ *
+ * @return array<string, string> Status key => Translated label.
+ */
+function sp_get_member_statuses(): array {
+    return [
+        'active'   => __( 'Active', 'societypress' ),
+        'expired'  => __( 'Expired', 'societypress' ),
+        'lapsed'   => __( 'Lapsed', 'societypress' ),
+        'grace'    => __( 'Grace Period', 'societypress' ),
+        'pending'  => __( 'Pending', 'societypress' ),
+        'inactive' => __( 'Inactive', 'societypress' ),
+        'deceased' => __( 'Deceased', 'societypress' ),
+    ];
+}
+
+
+// ============================================================================
 // FRONTEND: DESIGN SYSTEM — CSS CUSTOM PROPERTIES
 // ============================================================================
 //
@@ -4186,18 +4343,8 @@ add_action( 'wp_head', function () {
     $footer_bg     = $settings['design_color_footer_bg']     ?? '#1e3a5f';
     $footer_text   = $settings['design_color_footer_text']   ?? '#ffffff';
 
-    $font_map = [
-        'system'      => "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif",
-        'georgia'     => "Georgia, 'Times New Roman', serif",
-        'palatino'    => "'Palatino Linotype', 'Book Antiqua', Palatino, serif",
-        'garamond'    => "'EB Garamond', Georgia, serif",
-        'merriweather'=> "Merriweather, Georgia, serif",
-        'lora'        => "Lora, Georgia, serif",
-        'roboto'      => "Roboto, -apple-system, BlinkMacSystemFont, sans-serif",
-        'open-sans'   => "'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif",
-        'source-sans' => "'Source Sans 3', -apple-system, BlinkMacSystemFont, sans-serif",
-        'nunito'      => "Nunito, -apple-system, BlinkMacSystemFont, sans-serif",
-    ];
+    // Use the canonical font map — no more inline duplicates
+    $font_map = sp_get_font_family_options();
 
     $body_key    = $settings['design_font_body']    ?? 'system';
     $heading_key = $settings['design_font_heading']  ?? 'inherit';
@@ -4335,8 +4482,12 @@ add_filter( 'show_admin_bar', function ( $show ) {
     return $show;
 } );
 
+// WHY: Dashicons are only needed for logged-in users (admin bar, My Account
+//      icons). Loading them for anonymous visitors wastes ~46KB of CSS + font.
 add_action( 'wp_enqueue_scripts', function () {
-    wp_enqueue_style( 'dashicons' );
+    if ( is_user_logged_in() ) {
+        wp_enqueue_style( 'dashicons' );
+    }
 } );
 
 
@@ -4358,6 +4509,7 @@ function sp_get_my_account_url() {
 // ============================================================================
 
 function sp_user_has_member_record( $user_id ) {
+
     global $wpdb;
     return (bool) $wpdb->get_var(
         $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}sp_members WHERE user_id = %d", $user_id )
@@ -4604,7 +4756,7 @@ add_filter( 'wp_nav_menu_objects', function ( array $items ): array {
 function sp_user_menu() {
     if ( ! is_user_logged_in() ) {
         echo '<div class="sp-user-menu sp-user-menu--logged-out">';
-        echo '<a href="' . esc_url( wp_login_url( get_permalink() ) ) . '" class="sp-user-login-link">Log In</a>';
+        echo '<a href="' . esc_url( wp_login_url( get_permalink() ) ) . '" class="sp-user-login-link">' . esc_html__( 'Log In', 'societypress' ) . '</a>';
         echo '</div>';
         return;
     }
@@ -4655,10 +4807,10 @@ function sp_user_menu() {
             </a>
             <div class="sp-user-dropdown" role="menu">
                 <a href="<?php echo esc_url( $admin_url ); ?>" class="sp-user-dropdown-item" role="menuitem">
-                    <span class="sp-user-dropdown-icon dashicons dashicons-dashboard"></span> Dashboard
+                    <span class="sp-user-dropdown-icon dashicons dashicons-dashboard"></span> <?php esc_html_e( 'Dashboard', 'societypress' ); ?>
                 </a>
                 <a href="<?php echo esc_url( $logout_url ); ?>" class="sp-user-dropdown-item" role="menuitem">
-                    <span class="sp-user-dropdown-icon dashicons dashicons-exit"></span> Log Out
+                    <span class="sp-user-dropdown-icon dashicons dashicons-exit"></span> <?php esc_html_e( 'Log Out', 'societypress' ); ?>
                 </a>
             </div>
         <?php else : ?>
@@ -4669,10 +4821,10 @@ function sp_user_menu() {
             </a>
             <div class="sp-user-dropdown" role="menu">
                 <a href="<?php echo esc_url( $account_url ); ?>" class="sp-user-dropdown-item" role="menuitem">
-                    <span class="sp-user-dropdown-icon dashicons dashicons-admin-users"></span> My Account
+                    <span class="sp-user-dropdown-icon dashicons dashicons-admin-users"></span> <?php esc_html_e( 'My Account', 'societypress' ); ?>
                 </a>
                 <a href="<?php echo esc_url( $logout_url ); ?>" class="sp-user-dropdown-item" role="menuitem">
-                    <span class="sp-user-dropdown-icon dashicons dashicons-exit"></span> Log Out
+                    <span class="sp-user-dropdown-icon dashicons dashicons-exit"></span> <?php esc_html_e( 'Log Out', 'societypress' ); ?>
                 </a>
             </div>
         <?php endif; ?>
@@ -6568,18 +6720,8 @@ add_action( 'login_enqueue_scripts', function () {
     $primary       = $settings['design_color_primary']       ?? '#1e3a5f';
     $primary_hover = $settings['design_color_primary_hover'] ?? '#2c5282';
     $accent        = $settings['design_color_accent']        ?? '#667eea';
-    $font_body     = $settings['design_font_body']           ?? 'system';
-
-    // Map font setting to actual font-family
-    $font_map = [
-        'system'    => '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-        'inter'     => '"Inter", sans-serif',
-        'georgia'   => 'Georgia, "Times New Roman", serif',
-        'merriweather' => '"Merriweather", Georgia, serif',
-        'lato'      => '"Lato", sans-serif',
-        'open-sans' => '"Open Sans", sans-serif',
-    ];
-    $font_family = $font_map[ $font_body ] ?? $font_map['system'];
+    // Use the canonical font map instead of a local duplicate
+    $font_family = sp_get_font_family_css( $settings['design_font_body'] ?? null );
     ?>
     <style>
         /* ----------------------------------------------------------------
@@ -6955,24 +7097,22 @@ add_action( 'admin_footer', function () {
     $settings  = get_option( 'societypress_settings', [] );
     $primary   = $settings['design_color_primary'] ?? '#1e3a5f';
     $primary_hover = $settings['design_color_primary_hover'] ?? '#2c5282';
-    $font_body = $settings['design_font_body'] ?? 'system';
 
-    $font_map = [
-        'system'    => '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-        'inter'     => '"Inter", sans-serif',
-        'georgia'   => 'Georgia, "Times New Roman", serif',
-        'merriweather' => '"Merriweather", Georgia, serif',
-        'lato'      => '"Lato", sans-serif',
-        'open-sans' => '"Open Sans", sans-serif',
-    ];
-    $font_family = $font_map[ $font_body ] ?? $font_map['system'];
+    // Use the canonical font map instead of a local duplicate
+    $font_family = sp_get_font_family_css( $settings['design_font_body'] ?? null );
     ?>
     <div class="sp-acknowledge-overlay" id="sp-login-ack-overlay">
         <div class="sp-acknowledge-modal">
             <h2>Important Notice</h2>
             <p>This information is for members only; please do not share your ID and password with non-members or other members. Each member in good standing has been provided their own individual ID and password. Names and contact information are provided to assist members in collaborating on society projects and in genealogical research. The use of this information for commercial, political, personal, or religious purposes is strictly forbidden. It would show a lack of respect for the privacy of our dedicated members and would reduce their willingness to share contact data. Any violation will be considered a serious offense and will have legal consequences. Appropriate action will be taken immediately upon violation of this policy and will result in immediate loss of membership, in addition to legal consequences.</p>
             <p>Just as you would not share your private family conversations or your family financial matters with the general public, please do not share our financial reports, board meeting notes, etc. with non-members. In an effort to keep our members well informed, we are open with this data within our membership. However, it is not intended for public dissemination for any reason. Individuals who violate the confidential nature of this information will be dealt with by the Board of Directors and appropriate action will be taken, including immediate loss of membership.</p>
-            <p><?php echo esc_html__( 'If you have any questions, please contact the President or Compliance officer at ', 'societypress' ); ?><?php echo sp_obfuscate_email( 'President@txsaghs.org' ); ?>.</p>
+            <?php
+            // WHY: The contact email was hardcoded to President@txsaghs.org. Every society
+            // needs their own email here, so we pull from the org_email setting instead.
+            $sp_ack_settings = get_option( 'societypress_settings', [] );
+            $sp_ack_email    = $sp_ack_settings['org_email'] ?? '';
+            ?>
+            <p><?php echo esc_html__( 'If you have any questions, please contact us at ', 'societypress' ); ?><?php echo $sp_ack_email ? sp_obfuscate_email( $sp_ack_email ) : ''; ?>.</p>
             <button type="button" class="sp-acknowledge-btn" id="sp-login-ack-btn">I Understand</button>
         </div>
     </div>
@@ -7077,7 +7217,7 @@ add_action( 'wp_before_admin_bar_render', function () {
     $wp_admin_bar->add_node( [
         'parent' => 'user-actions',
         'id'     => 'sp-logout',
-        'title'  => 'Log Out',
+        'title'  => __( 'Log Out', 'societypress' ),
         'href'   => wp_logout_url(),
     ] );
 });
@@ -8542,12 +8682,12 @@ class SP_Members_List_Table extends WP_List_Table {
     public function get_columns(): array {
         return [
             'cb'         => '<input type="checkbox" />',
-            'name'       => 'Name',
-            'email'      => 'Email',
-            'phone'      => 'Phone',
-            'plan'       => 'Plan',
-            'status'     => 'Status',
-            'expiration' => 'Expiration',
+            'name'       => __( 'Name', 'societypress' ),
+            'email'      => __( 'Email', 'societypress' ),
+            'phone'      => __( 'Phone', 'societypress' ),
+            'plan'       => __( 'Plan', 'societypress' ),
+            'status'     => __( 'Status', 'societypress' ),
+            'expiration' => __( 'Expiration', 'societypress' ),
         ];
     }
 
@@ -8572,8 +8712,8 @@ class SP_Members_List_Table extends WP_List_Table {
      */
     protected function get_bulk_actions(): array {
         return [
-            'assign_to_group' => 'Assign to Group',
-            'delete'          => 'Delete',
+            'assign_to_group' => __( 'Assign to Group', 'societypress' ),
+            'delete'          => __( 'Delete', 'societypress' ),
         ];
     }
 
@@ -8611,7 +8751,7 @@ class SP_Members_List_Table extends WP_List_Table {
         $edit_url = admin_url( 'admin.php?page=sp-member-edit&user_id=' . $item->user_id );
 
         $actions = [
-            'edit' => sprintf( '<a href="%s">Edit</a>', esc_url( $edit_url ) ),
+            'edit' => sprintf( '<a href="%s">%s</a>', esc_url( $edit_url ), esc_html__( 'Edit', 'societypress' ) ),
         ];
 
         // Don't show Delete on your own row or any administrator.
@@ -8620,14 +8760,7 @@ class SP_Members_List_Table extends WP_List_Table {
         //      remove them, demote their role first (Edit → change Role to
         //      Subscriber), then delete. That two-step process is intentional.
         if ( (int) $item->user_id !== get_current_user_id() && ! user_can( (int) $item->user_id, 'manage_options' ) ) {
-            $delete_url = wp_nonce_url(
-                admin_url( 'admin.php?page=sp-members&action=delete&member=' . $item->user_id ),
-                'sp_delete_member_' . $item->user_id
-            );
-            $actions['delete'] = sprintf(
-                '<a href="%s" onclick="return confirm(\'Are you sure you want to delete this member?\');">Delete</a>',
-                esc_url( $delete_url )
-            );
+            $actions['delete'] = '<a href="#" style="color:#b32d2e;" onclick="if(confirm(\'' . esc_js( __( 'Are you sure you want to delete this member?', 'societypress' ) ) . '\')){var f=document.createElement(\'form\');f.method=\'post\';f.action=\'' . esc_url( admin_url( 'admin.php?page=sp-members' ) ) . '\';var d=[[\'_wpnonce\',\'' . wp_create_nonce( 'sp_delete_member_' . $item->user_id ) . '\'],[\'action\',\'delete\'],[\'member\',\'' . (int) $item->user_id . '\']];d.forEach(function(p){var i=document.createElement(\'input\');i.type=\'hidden\';i.name=p[0];i.value=p[1];f.appendChild(i);});document.body.appendChild(f);f.submit();}return false;">' . esc_html__( 'Delete', 'societypress' ) . '</a>';
         }
 
         return $name . $this->row_actions( $actions );
@@ -8689,12 +8822,17 @@ class SP_Members_List_Table extends WP_List_Table {
         $colors = [
             'active'   => '#00a32a',
             'expired'  => '#d63638',
+            'lapsed'   => '#d63638',
             'grace'    => '#dba617',
+            'pending'  => '#dba617',
             'deceased' => '#787c82',
             'inactive' => '#787c82',
         ];
         $color = $colors[ $item->status ] ?? '#787c82';
-        $label = ucfirst( $item->status );
+
+        // Use the canonical status labels so "grace" shows "Grace Period", etc.
+        $statuses = sp_get_member_statuses();
+        $label    = $statuses[ $item->status ] ?? ucfirst( $item->status );
 
         return sprintf(
             '<span style="color: %s; font-weight: 600;">%s</span>',
@@ -8732,17 +8870,17 @@ class SP_Members_List_Table extends WP_List_Table {
         $current_tier   = $_GET['member_tier'] ?? '';
         $current_type   = $_GET['member_type'] ?? '';
 
-        // Status filter
-        $statuses = [ 'active', 'expired', 'grace', 'deceased', 'inactive' ];
+        // Status filter — uses the canonical status list so every dropdown
+        // in the system shows the same options
         echo '<div class="alignleft actions">';
         echo '<select name="member_status">';
-        echo '<option value="">All Statuses</option>';
-        foreach ( $statuses as $s ) {
+        echo '<option value="">' . esc_html__( 'All Statuses', 'societypress' ) . '</option>';
+        foreach ( sp_get_member_statuses() as $s => $label ) {
             printf(
                 '<option value="%s" %s>%s</option>',
                 esc_attr( $s ),
                 selected( $current_status, $s, false ),
-                esc_html( ucfirst( $s ) )
+                esc_html( $label )
             );
         }
         echo '</select>';
@@ -8800,7 +8938,7 @@ class SP_Members_List_Table extends WP_List_Table {
             checked( $show_organization || $neither_checked, true, false ) );
         echo '</label>';
 
-        submit_button( 'Filter', '', 'filter_action', false );
+        submit_button( __( 'Filter', 'societypress' ), '', 'filter_action', false );
         echo '</div>';
     }
 
@@ -8942,6 +9080,59 @@ class SP_Members_List_Table extends WP_List_Table {
 
 
 /**
+ * Cascade-delete all SocietyPress data for a member.
+ *
+ * WHY: When a member is deleted, we must clean up ALL related tables — not just the core
+ * four (members, surnames, payments, notes). Leaving orphaned rows in registrations,
+ * volunteer signups, research areas, donations, orders, etc. wastes space, skews reports,
+ * and can cause confusing results in exports and searches. This function is the single
+ * source of truth for member data cleanup — all delete paths call it.
+ *
+ * @param int $user_id The WordPress user ID of the member being deleted.
+ */
+function sp_cascade_delete_member_data( $user_id ) {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    $uid    = (int) $user_id;
+
+    // Core member tables
+    $wpdb->delete( "{$prefix}member_surnames",        [ 'user_id' => $uid ], [ '%d' ] );
+    $wpdb->delete( "{$prefix}member_payments",         [ 'user_id' => $uid ], [ '%d' ] );
+    $wpdb->delete( "{$prefix}member_notes",            [ 'user_id' => $uid ], [ '%d' ] );
+
+    // Research & genealogy
+    $wpdb->delete( "{$prefix}member_research_areas",   [ 'user_id' => $uid ], [ '%d' ] );
+    $wpdb->query( $wpdb->prepare(
+        "DELETE FROM {$prefix}member_relationships WHERE user_id_a = %d OR user_id_b = %d",
+        $uid, $uid
+    ) );
+
+    // Groups
+    $wpdb->delete( "{$prefix}group_members",           [ 'user_id' => $uid ], [ '%d' ] );
+
+    // Events
+    $wpdb->delete( "{$prefix}event_registrations",     [ 'user_id' => $uid ], [ '%d' ] );
+
+    // Volunteers
+    $wpdb->delete( "{$prefix}volunteer_signups",       [ 'user_id' => $uid ], [ '%d' ] );
+    $wpdb->delete( "{$prefix}volunteer_hours",         [ 'user_id' => $uid ], [ '%d' ] );
+    $wpdb->delete( "{$prefix}volunteer_roles",         [ 'user_id' => $uid ], [ '%d' ] );
+
+    // Communications & approvals
+    $wpdb->delete( "{$prefix}pending_profile_changes", [ 'user_id' => $uid ], [ '%d' ] );
+    $wpdb->delete( "{$prefix}help_requests",           [ 'user_id' => $uid ], [ '%d' ] );
+    $wpdb->delete( "{$prefix}help_responses",          [ 'user_id' => $uid ], [ '%d' ] );
+
+    // Financial
+    $wpdb->delete( "{$prefix}donations",               [ 'user_id' => $uid ], [ '%d' ] );
+    $wpdb->delete( "{$prefix}store_orders",            [ 'user_id' => $uid ], [ '%d' ] );
+
+    // Core member record last — so foreign references are cleaned up first
+    $wpdb->delete( "{$prefix}members",                 [ 'user_id' => $uid ], [ '%d' ] );
+}
+
+
+/**
  * Handle ALL member delete actions (single, bulk, delete-all-others) BEFORE
  * any HTML output.
  *
@@ -8987,9 +9178,9 @@ add_action( 'admin_init', function () {
     $current_login = $current_user->user_login;
 
 
-    // ---- Single delete (row action) ----
-    if ( isset( $_GET['action'] ) && $_GET['action'] === 'delete' && isset( $_GET['member'] ) ) {
-        $user_id = (int) $_GET['member'];
+    // ---- Single delete (row action) — POST-only to prevent browser prefetch accidents ----
+    if ( isset( $_POST['action'] ) && $_POST['action'] === 'delete' && isset( $_POST['member'] ) ) {
+        $user_id = (int) $_POST['member'];
         check_admin_referer( 'sp_delete_member_' . $user_id );
 
         // Block self-deletion — you can't remove yourself from the system.
@@ -9020,10 +9211,7 @@ add_action( 'admin_init', function () {
             "SELECT CONCAT(first_name, ' ', last_name) FROM {$prefix}members WHERE user_id = %d", $user_id
         ) );
 
-        $wpdb->delete( $prefix . 'members', [ 'user_id' => $user_id ] );
-        $wpdb->delete( $prefix . 'member_surnames', [ 'user_id' => $user_id ] );
-        $wpdb->delete( $prefix . 'member_payments', [ 'user_id' => $user_id ] );
-        $wpdb->delete( $prefix . 'member_notes', [ 'user_id' => $user_id ] );
+        sp_cascade_delete_member_data( $user_id );
 
         require_once ABSPATH . 'wp-admin/includes/user.php';
         wp_delete_user( $user_id );
@@ -9066,10 +9254,7 @@ add_action( 'admin_init', function () {
                 "SELECT CONCAT(first_name, ' ', last_name) FROM {$prefix}members WHERE user_id = %d", $user_id
             ) );
 
-            $wpdb->delete( $prefix . 'members', [ 'user_id' => $user_id ] );
-            $wpdb->delete( $prefix . 'member_surnames', [ 'user_id' => $user_id ] );
-            $wpdb->delete( $prefix . 'member_payments', [ 'user_id' => $user_id ] );
-            $wpdb->delete( $prefix . 'member_notes', [ 'user_id' => $user_id ] );
+            sp_cascade_delete_member_data( $user_id );
             wp_delete_user( $user_id );
 
             sp_audit( 'member_deleted', 'Member deleted (bulk): ' . ( trim( $del_name ) ?: "User #{$user_id}" ), 'member', $user_id );
@@ -9142,7 +9327,7 @@ add_action( 'admin_init', function () {
     // ---- Delete All Others (nuclear button) ----
     // WHY: During testing or a botched import, the admin needs to wipe the
     //      slate clean without locking themselves out.
-    if ( isset( $_GET['action'] ) && $_GET['action'] === 'delete_all_others' ) {
+    if ( isset( $_POST['action'] ) && $_POST['action'] === 'delete_all_others' ) {
         check_admin_referer( 'sp_delete_all_others' );
 
         global $wpdb;
@@ -9197,10 +9382,7 @@ add_action( 'admin_init', function () {
                 continue;
             }
 
-            $wpdb->delete( $prefix . 'members',         [ 'user_id' => $uid ] );
-            $wpdb->delete( $prefix . 'member_surnames',  [ 'user_id' => $uid ] );
-            $wpdb->delete( $prefix . 'member_payments',  [ 'user_id' => $uid ] );
-            $wpdb->delete( $prefix . 'member_notes',     [ 'user_id' => $uid ] );
+            sp_cascade_delete_member_data( $uid );
             wp_delete_user( $uid );
             $deleted++;
         }
@@ -9230,7 +9412,7 @@ function sp_render_members_page(): void {
     <div class="wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Members', 'societypress' ); ?></h1>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-member-edit' ) ); ?>" class="page-title-action">
-            Add New
+            <?php esc_html_e( 'Add New', 'societypress' ); ?>
         </a>
         <?php
         // Only show the nuclear button if there are other members to delete.
@@ -9257,17 +9439,12 @@ function sp_render_members_page(): void {
             $admin_display
         ) );
         if ( $others_count > 0 ) :
-            $delete_all_url = wp_nonce_url(
-                admin_url( 'admin.php?page=sp-members&action=delete_all_others' ),
-                'sp_delete_all_others'
-            );
         ?>
-            <a href="<?php echo esc_url( $delete_all_url ); ?>"
-               class="page-title-action"
-               style="color: #b32d2e; border-color: #b32d2e;"
-               onclick="return confirm('This will permanently delete all <?php echo $others_count; ?> other members and their accounts.\n\nYour own account will NOT be touched.\n\nAre you sure?');">
-                Delete All Others
-            </a>
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-members' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( sprintf( __( 'This will permanently delete all %d other members and their accounts.\n\nYour own account will NOT be touched.\n\nAre you sure?', 'societypress' ), $others_count ) ); ?>');">
+                <?php wp_nonce_field( 'sp_delete_all_others' ); ?>
+                <input type="hidden" name="action" value="delete_all_others">
+                <button type="submit" class="page-title-action" style="color:#b32d2e; border-color:#b32d2e; cursor:pointer; background:none;"><?php esc_html_e( 'Delete All Others', 'societypress' ); ?></button>
+            </form>
         <?php endif; ?>
         <hr class="wp-header-end">
 
@@ -9282,25 +9459,23 @@ function sp_render_members_page(): void {
         );
         if ( ! $has_members ) {
             echo '<div class="notice notice-info" style="padding: 12px 16px;">'
-               . '<p style="margin: 0 0 8px 0; font-size: 14px;"><strong>No members yet!</strong></p>'
+               . '<p style="margin: 0 0 8px 0; font-size: 14px;"><strong>' . esc_html__( 'No members yet!', 'societypress' ) . '</strong></p>'
                . '<p style="margin: 0;">'
-               . '<a href="' . esc_url( admin_url( 'admin.php?page=sp-member-edit&self=1' ) ) . '" class="button button-primary">Add Yourself as Your First Member</a>'
+               . '<a href="' . esc_url( admin_url( 'admin.php?page=sp-member-edit&self=1' ) ) . '" class="button button-primary">' . esc_html__( 'Add Yourself as Your First Member', 'societypress' ) . '</a>'
                . '</p></div>';
         }
 
         // Self-delete warning — shown when someone tries to delete their own record
         if ( isset( $_GET['sp_error'] ) && $_GET['sp_error'] === 'self_delete' ) {
             echo '<div class="notice notice-error is-dismissible">'
-               . '<p>You can\'t delete your own member record. '
-               . 'Removing yourself would lock you out of the system.</p></div>';
+               . '<p>' . esc_html__( 'You can\'t delete your own member record. Removing yourself would lock you out of the system.', 'societypress' ) . '</p></div>';
         }
 
         // Auth failure — get_current_user_id() returned 0, so we refused to
         // run any delete operation rather than risk nuking the admin's account.
         if ( isset( $_GET['sp_error'] ) && $_GET['sp_error'] === 'auth_failed' ) {
             echo '<div class="notice notice-error is-dismissible">'
-               . '<p>Delete cancelled — could not verify your identity. '
-               . 'Please log out, log back in, and try again.</p></div>';
+               . '<p>' . esc_html__( 'Delete cancelled — could not verify your identity. Please log out, log back in, and try again.', 'societypress' ) . '</p></div>';
         }
 
         // Success notices
@@ -9348,7 +9523,7 @@ function sp_render_members_page(): void {
             <div id="sp-group-assign-wrap" style="display:none; margin: 8px 0; padding: 8px 12px; background: #f0f6fc; border: 1px solid #72aee6; border-radius: 4px;">
                 <label for="sp-assign-group-id" style="font-weight: 600; margin-right: 8px;"><?php esc_html_e( 'Assign to:', 'societypress' ); ?></label>
                 <select name="sp_assign_group_id" id="sp-assign-group-id">
-                    <option value="">— Select Group —</option>
+                    <option value=""><?php echo esc_html( '— ' . __( 'Select Group', 'societypress' ) . ' —' ); ?></option>
                     <?php foreach ( $assign_groups as $ag ) : ?>
                         <option value="<?php echo esc_attr( $ag->id ); ?>"><?php echo esc_html( $ag->name ); ?></option>
                     <?php endforeach; ?>
@@ -9411,10 +9586,10 @@ add_action( 'admin_init', function () {
         return;
     }
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_die( 'Unauthorized.' );
+        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
     }
     if ( ! wp_verify_nonce( $_POST['sp_member_nonce'], 'sp_save_member' ) ) {
-        wp_die( 'Security check failed.' );
+        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
     }
 
     global $wpdb;
@@ -9862,7 +10037,7 @@ function sp_render_member_edit_page(): void {
 
         if ( ! $member ) {
             echo '<div class="wrap"><h1>' . esc_html__( 'Member not found.', 'societypress' ) . '</h1>'
-               . '<p><a href="' . esc_url( admin_url( 'admin.php?page=sp-members' ) ) . '">&larr; Back to Members</a></p></div>';
+               . '<p><a href="' . esc_url( admin_url( 'admin.php?page=sp-members' ) ) . '">&larr; ' . esc_html__( 'Back to Members', 'societypress' ) . '</a></p></div>';
             return;
         }
 
@@ -9898,18 +10073,20 @@ function sp_render_member_edit_page(): void {
     // WHY: Org members display their organization name in the title instead of
     //      the first+last placeholder values that were stored in those columns.
     if ( $is_edit && ( $member->member_type ?? 'individual' ) === 'organization' && ! empty( $member->organization_name ) ) {
-        $page_title = 'Edit Member: ' . esc_html( $member->organization_name );
+        /* translators: %s: organization name */
+        $page_title = sprintf( __( 'Edit Member: %s', 'societypress' ), esc_html( $member->organization_name ) );
     } elseif ( $is_edit ) {
-        $page_title = 'Edit Member: ' . esc_html( $member->first_name . ' ' . $member->last_name );
+        /* translators: %s: member full name */
+        $page_title = sprintf( __( 'Edit Member: %s', 'societypress' ), esc_html( $member->first_name . ' ' . $member->last_name ) );
     } else {
-        $page_title = 'Add New Member';
+        $page_title = __( 'Add New Member', 'societypress' );
     }
 
     ?>
     <div class="wrap">
         <h1 class="wp-heading-inline"><?php echo $page_title; ?></h1>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-members' ) ); ?>" class="page-title-action">
-            &larr; Back to Members
+            &larr; <?php esc_html_e( 'Back to Members', 'societypress' ); ?>
         </a>
         <hr class="wp-header-end">
 
@@ -9921,7 +10098,7 @@ function sp_render_member_edit_page(): void {
 
         <?php if ( isset( $_GET['saved'] ) ) : ?>
             <div class="notice notice-success is-dismissible">
-                <p>Member saved successfully.</p>
+                <p><?php esc_html_e( 'Member saved successfully.', 'societypress' ); ?></p>
             </div>
         <?php endif; ?>
 
@@ -10072,13 +10249,8 @@ function sp_render_member_edit_page(): void {
                             <label for="sp-status"><?php esc_html_e( 'Status', 'societypress' ); ?></label>
                             <select name="status" id="sp-status">
                                 <?php
-                                $statuses = [
-                                    'active'   => __( 'Active', 'societypress' ),
-                                    'expired'  => __( 'Expired', 'societypress' ),
-                                    'grace'    => __( 'Grace Period', 'societypress' ),
-                                    'inactive' => __( 'Inactive', 'societypress' ),
-                                    'deceased' => __( 'Deceased', 'societypress' ),
-                                ];
+                                // Canonical status list — single source of truth
+                                $statuses = sp_get_member_statuses();
                                 $current_status = $member->status ?? 'active';
                                 foreach ( $statuses as $val => $label ) {
                                     printf(
@@ -10104,8 +10276,8 @@ function sp_render_member_edit_page(): void {
                                 <?php endforeach; ?>
                             </select>
                             <?php if ( empty( $tiers ) ) : ?>
-                                <p class="description">No plans created yet.
-                                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-member-tiers' ) ); ?>">Set up membership plans</a> under Members &rarr; Membership Plans.</p>
+                                <p class="description"><?php esc_html_e( 'No plans created yet.', 'societypress' ); ?>
+                                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-member-tiers' ) ); ?>"><?php esc_html_e( 'Set up membership plans', 'societypress' ); ?></a> <?php esc_html_e( 'under Members &rarr; Membership Plans.', 'societypress' ); ?></p>
                             <?php endif; ?>
                         </div>
 
@@ -10300,7 +10472,7 @@ function sp_render_member_edit_page(): void {
                             <label for="sp-org-name"><?php esc_html_e( 'Organization Name', 'societypress' ); ?> <span style="color: #d63638;">*</span></label>
                             <input type="text" name="organization_name" id="sp-org-name"
                                    value="<?php echo esc_attr( $member->organization_name ?? '' ); ?>"
-                                   placeholder="e.g. San Antonio Public Library">
+                                   placeholder="<?php echo esc_attr__( 'e.g. San Antonio Public Library', 'societypress' ); ?>">
                         </div>
                     </div>
                 </div>
@@ -10563,7 +10735,7 @@ function sp_render_member_edit_page(): void {
                             <label for="sp-state-select" id="sp-state-label"><?php esc_html_e( 'State / Province', 'societypress' ); ?></label>
                             <!-- Dropdown for US/CA — populated by JavaScript -->
                             <select name="state" id="sp-state-select">
-                                <option value="">— Select —</option>
+                                <option value=""><?php esc_html_e( '— Select —', 'societypress' ); ?></option>
                             </select>
                             <!-- Freetext for all other countries -->
                             <input type="text" id="sp-state-text"
@@ -10592,15 +10764,14 @@ function sp_render_member_edit_page(): void {
                 <h2><?php esc_html_e( 'Seasonal Address', 'societypress' ); ?></h2>
                 <div class="sp-section-body">
                     <p style="margin-top: 0; color: #50575e;">
-                        For members who spend part of the year at a different address (snowbirds).
-                        Check the box to enable, then fill in the alternate address and the months it applies.
+                        <?php esc_html_e( 'For members who spend part of the year at a different address (snowbirds). Check the box to enable, then fill in the alternate address and the months it applies.', 'societypress' ); ?>
                     </p>
 
                     <label style="display: block; margin-bottom: 16px; font-weight: 600;">
                         <input type="checkbox" name="seasonal" value="1"
                             <?php checked( $member->seasonal ?? 0, 1 ); ?>
                                id="sp-seasonal-toggle">
-                        This member has a seasonal address
+                        <?php esc_html_e( 'This member has a seasonal address', 'societypress' ); ?>
                     </label>
 
                     <div id="sp-seasonal-fields" style="<?php echo ( $member->seasonal ?? 0 ) ? '' : 'display: none;'; ?>">
@@ -10800,7 +10971,7 @@ function sp_render_member_edit_page(): void {
 
                             if (list) {
                                 // -- DROPDOWN MODE --
-                                stateSelect.innerHTML = '<option value="">— Select —</option>';
+                                stateSelect.innerHTML = '<option value=""><?php esc_html_e( '— Select —', 'societypress' ); ?></option>';
                                 Object.keys(list).forEach(function(code) {
                                     var opt = document.createElement("option");
                                     opt.value = code;
@@ -10942,18 +11113,17 @@ function sp_render_member_edit_page(): void {
                 <h2><?php esc_html_e( 'Research Surnames', 'societypress' ); ?></h2>
                 <div class="sp-section-body">
                     <p style="margin-top: 0; color: #50575e;">
-                        Surnames this member is researching. Other members researching the same
-                        surnames can find each other — that's what makes a genealogical society tick.
+                        <?php esc_html_e( 'Surnames this member is researching. Other members researching the same surnames can find each other — that\'s what makes a genealogical society tick.', 'societypress' ); ?>
                     </p>
 
                     <!-- Column headers -->
                     <div class="sp-surname-header">
-                        <span>Surname</span>
-                        <span>County</span>
-                        <span>State</span>
-                        <span>Country</span>
-                        <span>Year From</span>
-                        <span>Year To</span>
+                        <span><?php esc_html_e( 'Surname', 'societypress' ); ?></span>
+                        <span><?php esc_html_e( 'County', 'societypress' ); ?></span>
+                        <span><?php esc_html_e( 'State', 'societypress' ); ?></span>
+                        <span><?php esc_html_e( 'Country', 'societypress' ); ?></span>
+                        <span><?php esc_html_e( 'Year From', 'societypress' ); ?></span>
+                        <span><?php esc_html_e( 'Year To', 'societypress' ); ?></span>
                         <span></span>
                     </div>
 
@@ -10999,7 +11169,7 @@ function sp_render_member_edit_page(): void {
 
                     <p>
                         <button type="button" class="button" id="sp-add-surname">
-                            + Add Surname
+                            + <?php esc_html_e( 'Add Surname', 'societypress' ); ?>
                         </button>
                     </p>
 
@@ -11043,22 +11213,22 @@ function sp_render_member_edit_page(): void {
                                 <label>
                                     <input type="checkbox" name="pref_email_notices" value="1"
                                         <?php checked( $member->pref_email_notices ?? 1, 1 ); ?>>
-                                    General notices
+                                    <?php esc_html_e( 'General notices', 'societypress' ); ?>
                                 </label>
                                 <label>
                                     <input type="checkbox" name="pref_email_events" value="1"
                                         <?php checked( $member->pref_email_events ?? 1, 1 ); ?>>
-                                    Event announcements
+                                    <?php esc_html_e( 'Event announcements', 'societypress' ); ?>
                                 </label>
                                 <label>
                                     <input type="checkbox" name="pref_email_newsletters" value="1"
                                         <?php checked( $member->pref_email_newsletters ?? 1, 1 ); ?>>
-                                    Newsletter notifications
+                                    <?php esc_html_e( 'Newsletter notifications', 'societypress' ); ?>
                                 </label>
                                 <label>
                                     <input type="checkbox" name="pref_email_surnames" value="1"
                                         <?php checked( $member->pref_email_surnames ?? 1, 1 ); ?>>
-                                    Surname match alerts
+                                    <?php esc_html_e( 'Surname match alerts', 'societypress' ); ?>
                                 </label>
                             </div>
                         </div>
@@ -11069,47 +11239,47 @@ function sp_render_member_edit_page(): void {
                                 <label>
                                     <input type="checkbox" name="blast_email_opt_out" value="1"
                                         <?php checked( $member->blast_email_opt_out ?? 0, 1 ); ?>>
-                                    Opted out of blast emails
+                                    <?php esc_html_e( 'Opted out of blast emails', 'societypress' ); ?>
                                 </label>
                             </div>
-                            <p class="description">When checked, this member will not receive blast emails.</p>
+                            <p class="description"><?php esc_html_e( 'When checked, this member will not receive blast emails.', 'societypress' ); ?></p>
                         </div>
 
                         <div class="sp-field">
                             <label style="font-weight: 600; margin-bottom: 8px;"><?php esc_html_e( 'Directory Visibility', 'societypress' ); ?></label>
                             <p class="description" style="margin-bottom: 8px;">
-                                Controls what other members can see in the member directory.
+                                <?php esc_html_e( 'Controls what other members can see in the member directory.', 'societypress' ); ?>
                             </p>
                             <div class="sp-checkboxes">
                                 <label>
                                     <input type="checkbox" name="dir_show_name" value="1"
                                         <?php checked( $member->dir_show_name ?? 1, 1 ); ?>>
-                                    Show name
+                                    <?php esc_html_e( 'Show name', 'societypress' ); ?>
                                 </label>
                                 <label>
                                     <input type="checkbox" name="dir_show_email" value="1"
                                         <?php checked( $member->dir_show_email ?? 1, 1 ); ?>>
-                                    Show email
+                                    <?php esc_html_e( 'Show email', 'societypress' ); ?>
                                 </label>
                                 <label>
                                     <input type="checkbox" name="dir_show_phone" value="1"
                                         <?php checked( $member->dir_show_phone ?? 1, 1 ); ?>>
-                                    Show phone
+                                    <?php esc_html_e( 'Show phone', 'societypress' ); ?>
                                 </label>
                                 <label>
                                     <input type="checkbox" name="dir_show_address" value="1"
                                         <?php checked( $member->dir_show_address ?? 1, 1 ); ?>>
-                                    Show address
+                                    <?php esc_html_e( 'Show address', 'societypress' ); ?>
                                 </label>
                                 <label>
                                     <input type="checkbox" name="dir_show_website" value="1"
                                         <?php checked( $member->dir_show_website ?? 1, 1 ); ?>>
-                                    Show website
+                                    <?php esc_html_e( 'Show website', 'societypress' ); ?>
                                 </label>
                                 <label>
                                     <input type="checkbox" name="dir_show_photo" value="1"
                                         <?php checked( $member->dir_show_photo ?? 0, 1 ); ?>>
-                                    Show photo
+                                    <?php esc_html_e( 'Show photo', 'societypress' ); ?>
                                 </label>
                             </div>
                         </div>
@@ -11120,7 +11290,7 @@ function sp_render_member_edit_page(): void {
                                 <label>
                                     <input type="checkbox" name="receive_print" value="1"
                                         <?php checked( $member->receive_print ?? 0, 1 ); ?>>
-                                    Receives print newsletter by mail
+                                    <?php esc_html_e( 'Receives print newsletter by mail', 'societypress' ); ?>
                                 </label>
                             </div>
                         </div>
@@ -11152,16 +11322,16 @@ function sp_render_member_edit_page(): void {
                             </div>
                         <?php endforeach; ?>
                     <?php else : ?>
-                        <p style="color: #787c82; margin-top: 0;">No notes yet.</p>
+                        <p style="color: #787c82; margin-top: 0;"><?php esc_html_e( 'No notes yet.', 'societypress' ); ?></p>
                     <?php endif; ?>
 
                     <div style="margin-top: 16px;">
                         <label for="sp-new-note" style="font-weight: 600; display: block; margin-bottom: 4px;">
-                            Add a Note
+                            <?php esc_html_e( 'Add a Note', 'societypress' ); ?>
                         </label>
                         <textarea name="new_note" id="sp-new-note" rows="3"
                                   style="width: 100%;"
-                                  placeholder="Type a note about this member..."></textarea>
+                                  placeholder="<?php echo esc_attr__( 'Type a note about this member...', 'societypress' ); ?>"></textarea>
                     </div>
 
                 </div>
@@ -11178,12 +11348,12 @@ function sp_render_member_edit_page(): void {
                         <table class="sp-payments-table">
                             <thead>
                                 <tr>
-                                    <th>Date</th>
-                                    <th>Amount</th>
-                                    <th>Type</th>
-                                    <th>Method</th>
-                                    <th>Note</th>
-                                    <th>Recorded By</th>
+                                    <th><?php esc_html_e( 'Date', 'societypress' ); ?></th>
+                                    <th><?php esc_html_e( 'Amount', 'societypress' ); ?></th>
+                                    <th><?php esc_html_e( 'Type', 'societypress' ); ?></th>
+                                    <th><?php esc_html_e( 'Method', 'societypress' ); ?></th>
+                                    <th><?php esc_html_e( 'Note', 'societypress' ); ?></th>
+                                    <th><?php esc_html_e( 'Recorded By', 'societypress' ); ?></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -11193,7 +11363,7 @@ function sp_render_member_edit_page(): void {
                                 ?>
                                     <tr>
                                         <td><?php echo esc_html( date_i18n( 'M j, Y', strtotime( $pay->date ) ) ); ?></td>
-                                        <td>$<?php echo esc_html( number_format( (float) $pay->amount, 2 ) ); ?></td>
+                                        <td><?php echo esc_html( sp_format_currency( $pay->amount ) ); ?></td>
                                         <td><?php echo esc_html( ucfirst( $pay->type ) ); ?></td>
                                         <td><?php echo esc_html( $pay->method ?: '—' ); ?></td>
                                         <td><?php echo esc_html( $pay->note ?: '—' ); ?></td>
@@ -11203,13 +11373,13 @@ function sp_render_member_edit_page(): void {
                             </tbody>
                         </table>
                     <?php else : ?>
-                        <p style="color: #787c82; margin-top: 0;">No payments recorded yet.</p>
+                        <p style="color: #787c82; margin-top: 0;"><?php esc_html_e( 'No payments recorded yet.', 'societypress' ); ?></p>
                     <?php endif; ?>
 
                     <!-- Add new payment inline form -->
                     <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #e0e0e0;">
                         <h3 style="margin: 0 0 12px 0; font-size: 13px; font-weight: 600;">
-                            Record a Payment
+                            <?php esc_html_e( 'Record a Payment', 'societypress' ); ?>
                         </h3>
                         <div class="sp-fields">
 
@@ -11222,10 +11392,10 @@ function sp_render_member_edit_page(): void {
                             <div class="sp-field">
                                 <label for="sp-pay-type"><?php esc_html_e( 'Type', 'societypress' ); ?></label>
                                 <select name="new_payment_type" id="sp-pay-type">
-                                    <option value="dues">Dues</option>
-                                    <option value="donation">Donation</option>
-                                    <option value="event">Event Fee</option>
-                                    <option value="other">Other</option>
+                                    <option value="dues"><?php esc_html_e( 'Dues', 'societypress' ); ?></option>
+                                    <option value="donation"><?php esc_html_e( 'Donation', 'societypress' ); ?></option>
+                                    <option value="event"><?php esc_html_e( 'Event Fee', 'societypress' ); ?></option>
+                                    <option value="other"><?php esc_html_e( 'Other', 'societypress' ); ?></option>
                                 </select>
                             </div>
 
@@ -11233,11 +11403,11 @@ function sp_render_member_edit_page(): void {
                                 <label for="sp-pay-method"><?php esc_html_e( 'Method', 'societypress' ); ?></label>
                                 <select name="new_payment_method" id="sp-pay-method">
                                     <option value="">—</option>
-                                    <option value="check">Check</option>
-                                    <option value="cash">Cash</option>
-                                    <option value="credit_card">Credit Card</option>
-                                    <option value="paypal">PayPal</option>
-                                    <option value="other">Other</option>
+                                    <option value="check"><?php esc_html_e( 'Check', 'societypress' ); ?></option>
+                                    <option value="cash"><?php esc_html_e( 'Cash', 'societypress' ); ?></option>
+                                    <option value="credit_card"><?php esc_html_e( 'Credit Card', 'societypress' ); ?></option>
+                                    <option value="paypal"><?php esc_html_e( 'PayPal', 'societypress' ); ?></option>
+                                    <option value="other"><?php esc_html_e( 'Other', 'societypress' ); ?></option>
                                 </select>
                             </div>
 
@@ -11250,7 +11420,7 @@ function sp_render_member_edit_page(): void {
                             <div class="sp-field sp-field-full">
                                 <label for="sp-pay-note"><?php esc_html_e( 'Note', 'societypress' ); ?></label>
                                 <input type="text" name="new_payment_note" id="sp-pay-note"
-                                       placeholder="Optional — e.g., Check #1234">
+                                       placeholder="<?php echo esc_attr__( 'Optional — e.g., Check #1234', 'societypress' ); ?>">
                             </div>
 
                         </div>
@@ -11266,7 +11436,7 @@ function sp_render_member_edit_page(): void {
             <!-- ============================================================ -->
             <p class="submit" style="margin-top: 20px;">
                 <?php submit_button(
-                    $is_edit ? 'Save Member' : 'Add Member',
+                    $is_edit ? __( 'Save Member', 'societypress' ) : __( 'Add Member', 'societypress' ),
                     'primary',
                     'submit',
                     false
@@ -11276,20 +11446,19 @@ function sp_render_member_edit_page(): void {
                 // Show Delete button only when editing someone else's record.
                 // WHY: Deleting yourself nukes your WP user account too, which
                 //      locks you out entirely. The only recovery is phpMyAdmin.
-                if ( $is_edit && (int) $user_id !== get_current_user_id() ) : ?>
-                    <a href="<?php echo esc_url( wp_nonce_url(
-                        admin_url( 'admin.php?page=sp-members&action=delete&member=' . $user_id ),
-                        'sp_delete_member_' . $user_id
-                    ) ); ?>"
-                       class="button button-link-delete"
-                       style="margin-left: 12px;"
-                       onclick="return confirm('Are you sure you want to permanently delete this member? This cannot be undone.');">
-                        Delete Member
-                    </a>
+                <?php // Delete button is in a separate POST form below ?>
                 <?php endif; ?>
             </p>
 
         </form>
+        <?php if ( $is_edit && (int) $user_id !== get_current_user_id() ) : ?>
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-members' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Are you sure you want to permanently delete this member? This cannot be undone.', 'societypress' ) ); ?>');">
+                <?php wp_nonce_field( 'sp_delete_member_' . $user_id ); ?>
+                <input type="hidden" name="action" value="delete">
+                <input type="hidden" name="member" value="<?php echo (int) $user_id; ?>">
+                <button type="submit" class="button button-link-delete"><?php esc_html_e( 'Delete Member', 'societypress' ); ?></button>
+            </form>
+        <?php endif; ?>
     </div>
     <?php
 }
@@ -11313,44 +11482,36 @@ function sp_render_placeholder_page(): void {
 
     $sections = [
         'sp-members'    => [
-            'title' => 'Members',
+            'title' => __( 'Members', 'societypress' ),
             'icon'  => 'dashicons-id',
-            'desc'  => 'Manage your society\'s membership — track members, '
-                     . 'membership levels, surnames being researched, and '
-                     . 'handle imports and exports.',
+            'desc'  => __( 'Manage your society\'s membership — track members, membership levels, surnames being researched, and handle imports and exports.', 'societypress' ),
         ],
         'sp-governance' => [
-            'title' => 'Governance',
+            'title' => __( 'Governance', 'societypress' ),
             'icon'  => 'dashicons-building',
-            'desc'  => 'Board of directors, committees, volunteer '
-                     . 'coordination and scheduling, and important '
-                     . 'documents like bylaws and meeting minutes.',
+            'desc'  => __( 'Board of directors, committees, volunteer coordination and scheduling, and important documents like bylaws and meeting minutes.', 'societypress' ),
         ],
         'sp-library'    => [
-            'title' => 'Library',
+            'title' => __( 'Library', 'societypress' ),
             'icon'  => 'dashicons-book-alt',
-            'desc'  => 'Your research library collection, incoming '
-                     . 'research queries, publications, and newsletter '
-                     . 'archives.',
+            'desc'  => __( 'Your research library collection, incoming research queries, publications, and newsletter archives.', 'societypress' ),
         ],
         'sp-finances'   => [
-            'title' => 'Finances',
+            'title' => __( 'Finances', 'societypress' ),
             'icon'  => 'dashicons-money-alt',
-            'desc'  => 'Dues collection, donation tracking, and '
-                     . 'financial reports for your treasurer.',
+            'desc'  => __( 'Dues collection, donation tracking, and financial reports for your treasurer.', 'societypress' ),
         ],
         'sp-reports'    => [
-            'title' => 'Reports',
+            'title' => __( 'Reports', 'societypress' ),
             'icon'  => 'dashicons-chart-bar',
-            'desc'  => 'Membership reports, volunteer lists, renewal '
-                     . 'tracking, surname research queries, and statistics.',
+            'desc'  => __( 'Membership reports, volunteer lists, renewal tracking, surname research queries, and statistics.', 'societypress' ),
         ],
     ];
 
     $section = $sections[ $page_slug ] ?? [
-        'title' => 'Coming Soon',
+        'title' => __( 'Coming Soon', 'societypress' ),
         'icon'  => 'dashicons-admin-generic',
-        'desc'  => 'This section is under development.',
+        'desc'  => __( 'This section is under development.', 'societypress' ),
     ];
 
     ?>
@@ -11367,7 +11528,7 @@ function sp_render_placeholder_page(): void {
                         <?php echo esc_html( $section['desc'] ); ?>
                     </p>
                     <p style="margin: 16px 0 0 0; color: #787c82; font-size: 13px;">
-                        This feature is being built. It will appear here in a future update.
+                        <?php esc_html_e( 'This feature is being built. It will appear here in a future update.', 'societypress' ); ?>
                     </p>
                 </div>
             </div>
@@ -12311,7 +12472,7 @@ function sp_render_import_page(): void {
         } else {
             $results = [
                 'imported' => 0, 'skipped' => 0,
-                'errors'   => [ 'The uploaded file has expired. Please upload again.' ],
+                'errors'   => [ __( 'The uploaded file has expired. Please upload again.', 'societypress' ) ],
                 'tiers_created' => [],
             ];
         }
@@ -12646,9 +12807,9 @@ function sp_render_import_page(): void {
                     <table class="widefat striped" style="margin-top: 16px;">
                         <thead>
                             <tr>
-                                <th style="width: 30%;">CSV Column</th>
-                                <th style="width: 40%;">Maps To</th>
-                                <th style="width: 30%;">Sample Value</th>
+                                <th style="width: 30%;"><?php esc_html_e( 'CSV Column', 'societypress' ); ?></th>
+                                <th style="width: 40%;"><?php esc_html_e( 'Maps To', 'societypress' ); ?></th>
+                                <th style="width: 30%;"><?php esc_html_e( 'Sample Value', 'societypress' ); ?></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -12775,14 +12936,13 @@ function sp_render_import_page(): void {
                     <!-- Confirm import button — inside the same form as the mapping dropdowns -->
                     <div style="margin-top: 24px; padding: 16px; background: #f0f6fc; border-left: 4px solid #2271b1; border-radius: 0 3px 3px 0;">
                             <p style="margin: 0 0 12px 0;">
-                                <strong>Ready to import <?php echo (int) $preview['row_count']; ?> members?</strong><br>
-                                This will create login accounts for each member (no welcome emails are sent).
-                                Duplicates are automatically skipped.
+                                <strong><?php printf( esc_html__( 'Ready to import %d members?', 'societypress' ), (int) $preview['row_count'] ); ?></strong><br>
+                                <?php esc_html_e( 'This will create login accounts for each member (no welcome emails are sent). Duplicates are automatically skipped.', 'societypress' ); ?>
                             </p>
 
                             <?php submit_button( 'Run Import', 'primary', 'sp_import_submit', false ); ?>
                             <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-import' ) ); ?>"
-                               class="button" style="margin-left: 8px;">Cancel</a>
+                               class="button" style="margin-left: 8px;"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
                     </div>
                     </form>
                 </div>
@@ -12796,15 +12956,14 @@ function sp_render_import_page(): void {
                 <h2 style="margin: 0; padding: 12px 20px; border-bottom: 1px solid #c3c4c7; font-size: 14px; font-weight: 600; background: #f6f7f7;"><?php esc_html_e( 'Import Members', 'societypress' ); ?></h2>
                 <div style="padding: 20px;">
                     <p style="margin-top: 0;">
-                        Upload a membership export CSV to import all members,
-                        membership plans, payment records, and admin notes.
+                        <?php esc_html_e( 'Upload a membership export CSV to import all members, membership plans, payment records, and admin notes.', 'societypress' ); ?>
                     </p>
 
-                    <h3 style="margin-top: 20px;">How to prepare your import file:</h3>
+                    <h3 style="margin-top: 20px;"><?php esc_html_e( 'How to prepare your import file:', 'societypress' ); ?></h3>
                     <ol>
-                        <li>Export your membership data from your current system as CSV</li>
-                        <li>Make sure the export includes <strong>all fields</strong></li>
-                        <li>Upload the CSV file below</li>
+                        <li><?php esc_html_e( 'Export your membership data from your current system as CSV', 'societypress' ); ?></li>
+                        <li><?php echo wp_kses( __( 'Make sure the export includes <strong>all fields</strong>', 'societypress' ), [ 'strong' => [] ] ); ?></li>
+                        <li><?php esc_html_e( 'Upload the CSV file below', 'societypress' ); ?></li>
                     </ol>
 
                     <form method="post" enctype="multipart/form-data" style="margin-top: 20px;">
@@ -12813,12 +12972,12 @@ function sp_render_import_page(): void {
 
                         <div style="margin-bottom: 16px;">
                             <label for="sp-import-file" style="display: block; font-weight: 600; margin-bottom: 6px;">
-                                CSV File
+                                <?php esc_html_e( 'CSV File', 'societypress' ); ?>
                             </label>
                             <input type="file" name="import_file" id="sp-import-file"
                                    accept=".csv,.txt" required>
                             <p class="description" style="margin-top: 6px;">
-                                Accepts CSV format. Compatible with most membership platform exports.
+                                <?php esc_html_e( 'Accepts CSV format. Compatible with most membership platform exports.', 'societypress' ); ?>
                             </p>
                         </div>
 
@@ -12904,7 +13063,7 @@ add_action( 'admin_init', function () {
 
     // Security: verify nonce and capability
     if ( ! check_admin_referer( 'sp_export_members' ) ) {
-        wp_die( 'Security check failed.' );
+        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
     }
     if ( ! current_user_can( 'manage_options' ) ) {
         wp_die( 'You do not have permission to export members.' );
@@ -13494,8 +13653,7 @@ function sp_render_export_page(): void {
         <h1><?php esc_html_e( 'Export Members', 'societypress' ); ?></h1>
 
         <p style="font-size: 14px; color: #50575e; margin-bottom: 20px;">
-            <strong id="sp-export-count"><?php echo esc_html( number_format( $total_members ) ); ?></strong> members match your filters.
-            Adjust the filters below to narrow your export, or leave them blank to export everyone.
+            <strong id="sp-export-count"><?php echo esc_html( number_format( $total_members ) ); ?></strong> <?php esc_html_e( 'members match your filters. Adjust the filters below to narrow your export, or leave them blank to export everyone.', 'societypress' ); ?>
         </p>
         <?php // AJAX nonce for live count updates ?>
         <input type="hidden" id="sp-export-count-nonce"
@@ -13521,13 +13679,13 @@ function sp_render_export_page(): void {
                             <th scope="row"><label for="sp-export-status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
                             <td>
                                 <select name="sp_export_status" id="sp-export-status">
-                                    <option value="all">All Statuses</option>
-                                    <option value="active">Active</option>
-                                    <option value="lapsed">Lapsed</option>
-                                    <option value="expired">Expired</option>
-                                    <option value="grace">Grace Period</option>
-                                    <option value="deceased">Deceased</option>
-                                    <option value="inactive">Inactive</option>
+                                    <option value="all"><?php esc_html_e( 'All Statuses', 'societypress' ); ?></option>
+                                    <option value="active"><?php esc_html_e( 'Active', 'societypress' ); ?></option>
+                                    <option value="lapsed"><?php esc_html_e( 'Lapsed', 'societypress' ); ?></option>
+                                    <option value="expired"><?php esc_html_e( 'Expired', 'societypress' ); ?></option>
+                                    <option value="grace"><?php esc_html_e( 'Grace Period', 'societypress' ); ?></option>
+                                    <option value="deceased"><?php esc_html_e( 'Deceased', 'societypress' ); ?></option>
+                                    <option value="inactive"><?php esc_html_e( 'Inactive', 'societypress' ); ?></option>
                                 </select>
                             </td>
                         </tr>
@@ -13535,7 +13693,7 @@ function sp_render_export_page(): void {
                             <th scope="row"><label for="sp-export-tier"><?php esc_html_e( 'Membership Type', 'societypress' ); ?></label></th>
                             <td>
                                 <select name="sp_export_tier" id="sp-export-tier">
-                                    <option value="0">All Types</option>
+                                    <option value="0"><?php esc_html_e( 'All Types', 'societypress' ); ?></option>
                                     <?php foreach ( $tiers as $tier ) : ?>
                                         <option value="<?php echo esc_attr( $tier->id ); ?>">
                                             <?php echo esc_html( $tier->name ); ?>
@@ -13548,7 +13706,7 @@ function sp_render_export_page(): void {
                             <th scope="row"><?php esc_html_e( 'Join Date Range', 'societypress' ); ?></th>
                             <td>
                                 <input type="date" name="sp_export_join_from" style="width: 160px;">
-                                <span style="padding: 0 8px; color: #50575e;">to</span>
+                                <span style="padding: 0 8px; color: #50575e;"><?php esc_html_e( 'to', 'societypress' ); ?></span>
                                 <input type="date" name="sp_export_join_to" style="width: 160px;">
                             </td>
                         </tr>
@@ -13556,7 +13714,7 @@ function sp_render_export_page(): void {
                             <th scope="row"><?php esc_html_e( 'Expiration Date Range', 'societypress' ); ?></th>
                             <td>
                                 <input type="date" name="sp_export_exp_from" style="width: 160px;">
-                                <span style="padding: 0 8px; color: #50575e;">to</span>
+                                <span style="padding: 0 8px; color: #50575e;"><?php esc_html_e( 'to', 'societypress' ); ?></span>
                                 <input type="date" name="sp_export_exp_to" style="width: 160px;">
                             </td>
                         </tr>
@@ -13580,9 +13738,9 @@ function sp_render_export_page(): void {
 
                     <!-- Select All / None toggle -->
                     <p style="margin-top: 0; margin-bottom: 16px;">
-                        <a href="#" id="sp-export-select-all" style="text-decoration: none;">Select All</a>
+                        <a href="#" id="sp-export-select-all" style="text-decoration: none;"><?php esc_html_e( 'Select All', 'societypress' ); ?></a>
                         &nbsp;|&nbsp;
-                        <a href="#" id="sp-export-select-none" style="text-decoration: none;">Select None</a>
+                        <a href="#" id="sp-export-select-none" style="text-decoration: none;"><?php esc_html_e( 'Select None', 'societypress' ); ?></a>
                     </p>
 
                     <?php foreach ( $groups as $group_label => $group_keys ) : ?>
@@ -14381,6 +14539,47 @@ add_action( 'admin_init', function () {
         'sp_org_section'
     );
 
+    // --- Currency Symbol ---
+    // WHY: Non-US societies need €, £, ¥, etc. This lets Harold set the
+    //      currency symbol once and have it apply everywhere — finances,
+    //      tiers, events, store, donations, emails.
+    add_settings_field(
+        'currency_symbol',
+        __( 'Currency Symbol', 'societypress' ),
+        function () {
+            $settings = get_option( 'societypress_settings', [] );
+            $value    = $settings['currency_symbol'] ?? '$';
+            printf(
+                '<input type="text" name="societypress_settings[currency_symbol]" value="%s" class="small-text" maxlength="5" style="width:60px;">',
+                esc_attr( $value )
+            );
+            echo '<p class="description">' . esc_html__( 'The symbol shown next to monetary amounts (e.g., $, €, £, ¥).', 'societypress' ) . '</p>';
+        },
+        'sp-settings-org',
+        'sp_org_section'
+    );
+
+    // --- Currency Position ---
+    // WHY: Some currencies place the symbol before the amount ($25.00) and
+    //      others place it after (25,00 €). This dropdown handles both.
+    add_settings_field(
+        'currency_position',
+        __( 'Currency Position', 'societypress' ),
+        function () {
+            $settings = get_option( 'societypress_settings', [] );
+            $current  = $settings['currency_position'] ?? 'before';
+            ?>
+            <select name="societypress_settings[currency_position]">
+                <option value="before" <?php selected( $current, 'before' ); ?>><?php esc_html_e( 'Before amount ($25.00)', 'societypress' ); ?></option>
+                <option value="after" <?php selected( $current, 'after' ); ?>><?php esc_html_e( 'After amount (25.00€)', 'societypress' ); ?></option>
+            </select>
+            <p class="description"><?php esc_html_e( 'Whether the currency symbol appears before or after the number.', 'societypress' ); ?></p>
+            <?php
+        },
+        'sp-settings-org',
+        'sp_org_section'
+    );
+
 
     // ---- Store Settings ----
     // WHY: The store pulls products from the library catalog. Different
@@ -15039,6 +15238,10 @@ function sp_sanitize_settings( array $input ): array {
         'organization_email'      => fn() => sanitize_email( $input['organization_email'] ?? '' ),
         'community_forum_url'     => fn() => esc_url_raw( $input['community_forum_url'] ?? '' ),
         'help_requests_notify_all'=> fn() => ! empty( $input['help_requests_notify_all'] ) ? 1 : 0,
+        // Currency — symbol and position for all monetary displays
+        'currency_symbol'         => fn() => sanitize_text_field( $input['currency_symbol'] ?? '$' ),
+        'currency_position'       => fn() => in_array( $input['currency_position'] ?? '', [ 'before', 'after' ], true )
+                                              ? $input['currency_position'] : 'before',
 
         // Membership
         'membership_period_type'  => fn() => in_array( $input['membership_period_type'] ?? '', [ 'annual', 'rolling', 'lifetime' ], true )
@@ -15160,6 +15363,8 @@ function sp_sanitize_settings( array $input ): array {
         $page_keys = array_merge( $page_keys, [
             'organization_name', 'organization_address', 'organization_phone',
             'organization_email', 'community_forum_url', 'help_requests_notify_all',
+            'currency_symbol', 'currency_position',
+            'store_acq_code', 'store_intro_text',
         ]);
     }
 
@@ -15454,7 +15659,7 @@ function sp_render_setup_wizard(): void {
                     </div>
 
                     <div class="sp-wizard-actions">
-                        <a href="<?php echo admin_url( 'admin.php?page=societypress' ); ?>" class="sp-wizard-skip">Skip setup</a>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=societypress' ) ); ?>" class="sp-wizard-skip">Skip setup</a>
                         <button type="submit" class="button button-primary">Continue &rarr;</button>
                     </div>
 
@@ -15488,7 +15693,7 @@ function sp_render_setup_wizard(): void {
                     </div>
 
                     <div class="sp-wizard-actions">
-                        <a href="<?php echo admin_url( 'admin.php?page=sp-setup-wizard&step=1' ); ?>" class="button">&larr; Back</a>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-setup-wizard&step=1' ) ); ?>" class="button">&larr; Back</a>
                         <button type="submit" class="button button-primary">Continue &rarr;</button>
                     </div>
 
@@ -15535,7 +15740,7 @@ function sp_render_setup_wizard(): void {
                     </p>
 
                     <div class="sp-wizard-actions">
-                        <a href="<?php echo admin_url( 'admin.php?page=sp-setup-wizard&step=2' ); ?>" class="button">&larr; <?php esc_html_e( 'Back', 'societypress' ); ?></a>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-setup-wizard&step=2' ) ); ?>" class="button">&larr; <?php esc_html_e( 'Back', 'societypress' ); ?></a>
                         <button type="submit" class="button button-primary"><?php esc_html_e( 'Continue', 'societypress' ); ?> &rarr;</button>
                     </div>
 
@@ -15573,7 +15778,7 @@ function sp_render_setup_wizard(): void {
                     </div>
 
                     <div class="sp-wizard-actions">
-                        <a href="<?php echo admin_url( 'admin.php?page=sp-setup-wizard&step=3' ); ?>" class="button">&larr; <?php esc_html_e( 'Back', 'societypress' ); ?></a>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-setup-wizard&step=3' ) ); ?>" class="button">&larr; <?php esc_html_e( 'Back', 'societypress' ); ?></a>
                         <button type="submit" class="button button-primary"><?php esc_html_e( 'Finish Setup', 'societypress' ); ?> &check;</button>
                     </div>
 
@@ -15886,9 +16091,9 @@ function sp_render_audit_log_page(): void {
                 <input type="search" name="s" id="sp-af-search" value="<?php echo esc_attr( $search ); ?>" placeholder="Description...">
             </div>
             <div>
-                <button type="submit" class="button">Filter</button>
+                <button type="submit" class="button"><?php esc_html_e( 'Filter', 'societypress' ); ?></button>
                 <?php if ( $filter_action || $filter_user || $search ) : ?>
-                    <a href="<?php echo admin_url( 'admin.php?page=sp-audit-log' ); ?>" class="button">Clear</a>
+                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-audit-log' ) ); ?>" class="button"><?php esc_html_e( 'Clear', 'societypress' ); ?></a>
                 <?php endif; ?>
             </div>
         </form>
@@ -15896,21 +16101,22 @@ function sp_render_audit_log_page(): void {
         <table class="widefat striped">
             <thead>
                 <tr>
-                    <th>Date/Time</th>
-                    <th>User</th>
-                    <th>Action</th>
-                    <th>Description</th>
-                    <th>Object</th>
-                    <th>IP</th>
+                    <th><?php esc_html_e( 'Date/Time', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'User', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Action', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Description', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Object', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'IP', 'societypress' ); ?></th>
                 </tr>
             </thead>
             <tbody>
                 <?php if ( empty( $rows ) ) : ?>
-                    <tr><td colspan="6" style="text-align: center; padding: 20px;">No log entries found.</td></tr>
+                    <tr><td colspan="6" style="text-align: center; padding: 20px;"><?php esc_html_e( 'No log entries found.', 'societypress' ); ?></td></tr>
                 <?php else : ?>
                     <?php foreach ( $rows as $row ) : ?>
                         <tr>
-                            <td style="white-space: nowrap;"><?php echo esc_html( date( 'M j, Y g:i A', strtotime( $row->created_at ) ) ); ?></td>
+                            <!-- WHY: wp_date() respects the site's timezone setting; PHP date() uses server timezone. -->
+                            <td style="white-space: nowrap;"><?php echo esc_html( wp_date( 'M j, Y g:i A', strtotime( $row->created_at ) ) ); ?></td>
                             <td><?php echo $row->user_name ? esc_html( $row->user_name ) : '<span style="color:#787c82;">System</span>'; ?></td>
                             <td><span class="sp-audit-action"><?php echo esc_html( $row->action ); ?></span></td>
                             <td><?php echo $row->description ? esc_html( $row->description ) : ''; ?></td>
@@ -16172,10 +16378,10 @@ function sp_render_groups_page(): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
-    // Handle delete
-    if ( isset( $_GET['action'] ) && $_GET['action'] === 'delete' && isset( $_GET['group_id'] ) ) {
-        check_admin_referer( 'sp_delete_group_' . $_GET['group_id'] );
-        $gid = (int) $_GET['group_id'];
+    // Handle delete — POST-only to prevent browser prefetch / link-preview accidents
+    if ( isset( $_POST['action'] ) && $_POST['action'] === 'delete' && isset( $_POST['group_id'] ) ) {
+        check_admin_referer( 'sp_delete_group_' . $_POST['group_id'] );
+        $gid = (int) $_POST['group_id'];
         $wpdb->delete( $prefix . 'group_members', [ 'group_id' => $gid ] );
         $wpdb->delete( $prefix . 'groups', [ 'id' => $gid ] );
         wp_redirect( admin_url( 'admin.php?page=sp-groups&deleted=1' ) );
@@ -16194,7 +16400,7 @@ function sp_render_groups_page(): void {
     ?>
     <div class="wrap sp-admin-wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Groups', 'societypress' ); ?></h1>
-        <a href="<?php echo admin_url( 'admin.php?page=sp-group-edit' ); ?>" class="page-title-action">Add New</a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-group-edit' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Add New', 'societypress' ); ?></a>
 
         <?php if ( isset( $_GET['deleted'] ) ) : ?>
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Group deleted.', 'societypress' ); ?></p></div>
@@ -16206,21 +16412,21 @@ function sp_render_groups_page(): void {
         <table class="widefat striped" style="margin-top: 16px;">
             <thead>
                 <tr>
-                    <th>Name</th>
-                    <th>Members</th>
-                    <th>Leader</th>
-                    <th>Status</th>
-                    <th>Actions</th>
+                    <th><?php esc_html_e( 'Name', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Members', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Leader', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
                 </tr>
             </thead>
             <tbody>
                 <?php if ( empty( $groups ) ) : ?>
-                    <tr><td colspan="5" style="text-align: center; padding: 20px;">No groups yet. <a href="<?php echo admin_url( 'admin.php?page=sp-group-edit' ); ?>">Create one</a>.</td></tr>
+                    <tr><td colspan="5" style="text-align: center; padding: 20px;"><?php esc_html_e( 'No groups yet.', 'societypress' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-group-edit' ) ); ?>"><?php esc_html_e( 'Create one', 'societypress' ); ?></a>.</td></tr>
                 <?php else : ?>
                     <?php foreach ( $groups as $g ) : ?>
                         <tr>
                             <td>
-                                <strong><a href="<?php echo admin_url( 'admin.php?page=sp-group-edit&group_id=' . $g->id ); ?>"><?php echo esc_html( $g->name ); ?></a></strong>
+                                <strong><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-group-edit&group_id=' . $g->id ) ); ?>"><?php echo esc_html( $g->name ); ?></a></strong>
                                 <?php if ( $g->description ) : ?>
                                     <br><span style="color: #646970; font-size: 12px;"><?php echo esc_html( wp_trim_words( $g->description, 15 ) ); ?></span>
                                 <?php endif; ?>
@@ -16229,17 +16435,20 @@ function sp_render_groups_page(): void {
                             <td><?php echo $g->leader_name ? esc_html( $g->leader_name ) : '&#8212;'; ?></td>
                             <td>
                                 <?php if ( $g->status === 'active' ) : ?>
-                                    <span style="color: #00a32a;">Active</span>
+                                    <span style="color: #00a32a;"><?php esc_html_e( 'Active', 'societypress' ); ?></span>
                                 <?php else : ?>
-                                    <span style="color: #787c82;">Inactive</span>
+                                    <span style="color: #787c82;"><?php esc_html_e( 'Inactive', 'societypress' ); ?></span>
                                 <?php endif; ?>
                             </td>
                             <td>
-                                <a href="<?php echo admin_url( 'admin.php?page=sp-group-edit&group_id=' . $g->id ); ?>">Edit</a>
+                                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-group-edit&group_id=' . $g->id ) ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
                                 |
-                                <a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=sp-groups&action=delete&group_id=' . $g->id ), 'sp_delete_group_' . $g->id ); ?>"
-                                   onclick="return confirm('Delete this group and remove all members from it?');"
-                                   style="color: #b32d2e;">Delete</a>
+                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-groups' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this group and remove all members from it?', 'societypress' ) ); ?>');">
+                                    <?php wp_nonce_field( 'sp_delete_group_' . $g->id ); ?>
+                                    <input type="hidden" name="action" value="delete">
+                                    <input type="hidden" name="group_id" value="<?php echo (int) $g->id; ?>">
+                                    <button type="submit" class="sp-link-btn" style="background:none; border:none; color:#b32d2e; cursor:pointer; padding:0; font:inherit; text-decoration:underline;"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                                </form>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -16346,14 +16555,14 @@ function sp_render_group_edit_page(): void {
     ?>
     <div class="wrap sp-admin-wrap">
         <h1><?php echo $group_id ? esc_html__( 'Edit Group', 'societypress' ) : esc_html__( 'Add New Group', 'societypress' ); ?></h1>
-        <p><a href="<?php echo admin_url( 'admin.php?page=sp-groups' ); ?>">&larr; Back to Groups</a></p>
+        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-groups' ) ); ?>">&larr; <?php esc_html_e( 'Back to Groups', 'societypress' ); ?></a></p>
 
         <form method="post" style="max-width: 600px;">
             <?php wp_nonce_field( 'sp_save_group', 'sp_group_nonce' ); ?>
 
             <table class="form-table">
                 <tr>
-                    <th><label for="sp-g-name">Group Name <span style="color: #d63638;">*</span></label></th>
+                    <th><label for="sp-g-name"><?php esc_html_e( 'Group Name', 'societypress' ); ?> <span style="color: #d63638;">*</span></label></th>
                     <td><input type="text" name="name" id="sp-g-name" value="<?php echo esc_attr( $group->name ?? '' ); ?>" required style="width: 100%;"></td>
                 </tr>
                 <tr>
@@ -16381,8 +16590,8 @@ function sp_render_group_edit_page(): void {
                     <th><label for="sp-g-status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
                     <td>
                         <select name="status" id="sp-g-status">
-                            <option value="active" <?php selected( $group->status ?? 'active', 'active' ); ?>>Active</option>
-                            <option value="inactive" <?php selected( $group->status ?? '', 'inactive' ); ?>>Inactive</option>
+                            <option value="active" <?php selected( $group->status ?? 'active', 'active' ); ?>><?php esc_html_e( 'Active', 'societypress' ); ?></option>
+                            <option value="inactive" <?php selected( $group->status ?? '', 'inactive' ); ?>><?php esc_html_e( 'Inactive', 'societypress' ); ?></option>
                         </select>
                     </td>
                 </tr>
@@ -16395,14 +16604,14 @@ function sp_render_group_edit_page(): void {
             <?php if ( $group_id && ! empty( $members ) ) : ?>
                 <h2><?php echo esc_html( sprintf( __( 'Current Members (%d)', 'societypress' ), count( $members ) ) ); ?></h2>
                 <table class="widefat striped" style="max-width: 600px;">
-                    <thead><tr><th>Name</th><th>Email</th><th>Joined</th><th>Remove</th></tr></thead>
+                    <thead><tr><th><?php esc_html_e( 'Name', 'societypress' ); ?></th><th><?php esc_html_e( 'Email', 'societypress' ); ?></th><th><?php esc_html_e( 'Joined', 'societypress' ); ?></th><th><?php esc_html_e( 'Remove', 'societypress' ); ?></th></tr></thead>
                     <tbody>
                         <?php foreach ( $members as $gm ) : ?>
                             <tr>
                                 <td><?php echo esc_html( $gm->display_name ); ?></td>
                                 <td><?php echo esc_html( $gm->user_email ); ?></td>
-                                <td><?php echo esc_html( date( 'M j, Y', strtotime( $gm->joined_at ) ) ); ?></td>
-                                <td><label><input type="checkbox" name="remove_members[]" value="<?php echo esc_attr( $gm->user_id ); ?>"> Remove</label></td>
+                                <td><?php echo esc_html( wp_date( 'M j, Y', strtotime( $gm->joined_at ) ) ); ?></td>
+                                <td><label><input type="checkbox" name="remove_members[]" value="<?php echo esc_attr( $gm->user_id ); ?>"> <?php esc_html_e( 'Remove', 'societypress' ); ?></label></td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -16426,8 +16635,8 @@ function sp_render_group_edit_page(): void {
             <?php endif; ?>
 
             <p class="submit">
-                <button type="submit" class="button button-primary"><?php echo $group_id ? 'Save Changes' : 'Create Group'; ?></button>
-                <a href="<?php echo admin_url( 'admin.php?page=sp-groups' ); ?>" class="button">Cancel</a>
+                <button type="submit" class="button button-primary"><?php echo $group_id ? esc_html__( 'Save Changes', 'societypress' ) : esc_html__( 'Create Group', 'societypress' ); ?></button>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-groups' ) ); ?>" class="button"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
             </p>
         </form>
     </div>
@@ -16441,7 +16650,7 @@ function sp_ajax_join_group(): void {
     check_ajax_referer( 'sp_groups_nonce', 'nonce' );
 
     if ( ! is_user_logged_in() ) {
-        wp_send_json_error( [ 'message' => 'You must be logged in.' ] );
+        wp_send_json_error( [ 'message' => __( 'You must be logged in.', 'societypress' ) ] );
     }
 
     global $wpdb;
@@ -16450,14 +16659,14 @@ function sp_ajax_join_group(): void {
     $user_id  = get_current_user_id();
 
     if ( ! $group_id ) {
-        wp_send_json_error( [ 'message' => 'Invalid group.' ] );
+        wp_send_json_error( [ 'message' => __( 'Invalid group.', 'societypress' ) ] );
     }
 
     $group = $wpdb->get_row( $wpdb->prepare(
         "SELECT * FROM {$prefix}groups WHERE id = %d AND status = 'active'", $group_id
     ) );
     if ( ! $group ) {
-        wp_send_json_error( [ 'message' => 'Group not found or inactive.' ] );
+        wp_send_json_error( [ 'message' => __( 'Group not found or inactive.', 'societypress' ) ] );
     }
 
     $exists = $wpdb->get_var( $wpdb->prepare(
@@ -16465,7 +16674,7 @@ function sp_ajax_join_group(): void {
         $group_id, $user_id
     ) );
     if ( $exists ) {
-        wp_send_json_error( [ 'message' => 'You are already in this group.' ] );
+        wp_send_json_error( [ 'message' => __( 'You are already in this group.', 'societypress' ) ] );
     }
 
     $wpdb->insert( $prefix . 'group_members', [
@@ -16474,7 +16683,7 @@ function sp_ajax_join_group(): void {
         'joined_at' => current_time( 'mysql' ),
     ] );
 
-    wp_send_json_success( [ 'message' => 'You have joined ' . $group->name . '!' ] );
+    wp_send_json_success( [ 'message' => sprintf( __( 'You have joined %s!', 'societypress' ), $group->name ) ] );
 }
 add_action( 'wp_ajax_sp_join_group', 'sp_ajax_join_group' );
 
@@ -16485,7 +16694,7 @@ function sp_ajax_leave_group(): void {
     check_ajax_referer( 'sp_groups_nonce', 'nonce' );
 
     if ( ! is_user_logged_in() ) {
-        wp_send_json_error( [ 'message' => 'You must be logged in.' ] );
+        wp_send_json_error( [ 'message' => __( 'You must be logged in.', 'societypress' ) ] );
     }
 
     global $wpdb;
@@ -16498,7 +16707,7 @@ function sp_ajax_leave_group(): void {
         'user_id'  => $user_id,
     ] );
 
-    wp_send_json_success( [ 'message' => 'You have left the group.' ] );
+    wp_send_json_success( [ 'message' => __( 'You have left the group.', 'societypress' ) ] );
 }
 add_action( 'wp_ajax_sp_leave_group', 'sp_ajax_leave_group' );
 
@@ -16544,10 +16753,10 @@ class SP_Pages_List_Table extends WP_List_Table {
     public function get_columns(): array {
         return [
             'cb'        => '<input type="checkbox" />',
-            'title'     => 'Title',
-            'page_type' => 'Page Type',
-            'status'    => 'Status',
-            'date'      => 'Date',
+            'title'     => __( 'Title', 'societypress' ),
+            'page_type' => __( 'Page Type', 'societypress' ),
+            'status'    => __( 'Status', 'societypress' ),
+            'date'      => __( 'Date', 'societypress' ),
         ];
     }
 
@@ -16566,7 +16775,7 @@ class SP_Pages_List_Table extends WP_List_Table {
      */
     protected function get_bulk_actions(): array {
         return [
-            'delete' => 'Delete',
+            'delete' => __( 'Delete', 'societypress' ),
         ];
     }
 
@@ -16586,39 +16795,34 @@ class SP_Pages_List_Table extends WP_List_Table {
      * Links to the SP page editor, not the WP editor.
      */
     protected function column_title( $item ): string {
-        $title = ! empty( $item->post_title ) ? $item->post_title : '(no title)';
+        $title = ! empty( $item->post_title ) ? $item->post_title : __( '(no title)', 'societypress' );
         $name  = '<strong>' . esc_html( $title ) . '</strong>';
 
         $edit_url = admin_url( 'admin.php?page=sp-page-edit&post_id=' . $item->ID );
 
         $actions = [
-            'edit' => sprintf( '<a href="%s">Edit</a>', esc_url( $edit_url ) ),
+            'edit' => sprintf( '<a href="%s">%s</a>', esc_url( $edit_url ), esc_html__( 'Edit', 'societypress' ) ),
             'quick_edit' => sprintf(
-                '<a href="#" class="sp-quick-edit-trigger" data-id="%d" data-title="%s" data-status="%s" data-template="%s">Quick Edit</a>',
+                '<a href="#" class="sp-quick-edit-trigger" data-id="%d" data-title="%s" data-status="%s" data-template="%s">%s</a>',
                 $item->ID,
                 esc_attr( $item->post_title ),
                 esc_attr( $item->post_status ),
-                esc_attr( get_page_template_slug( $item->ID ) )
+                esc_attr( get_page_template_slug( $item->ID ) ),
+                esc_html__( 'Quick Edit', 'societypress' )
             ),
         ];
 
         // View link — only for published pages
         if ( $item->post_status === 'publish' ) {
             $actions['view'] = sprintf(
-                '<a href="%s" target="_blank">View</a>',
-                esc_url( get_permalink( $item->ID ) )
+                '<a href="%s" target="_blank">%s</a>',
+                esc_url( get_permalink( $item->ID ) ),
+                esc_html__( 'View', 'societypress' )
             );
         }
 
-        // Delete link with confirmation
-        $delete_url = wp_nonce_url(
-            admin_url( 'admin.php?page=sp-pages&action=delete&post_id=' . $item->ID ),
-            'sp_delete_page_' . $item->ID
-        );
-        $actions['delete'] = sprintf(
-            '<a href="%s" onclick="return confirm(\'Are you sure you want to delete this page?\');">Delete</a>',
-            esc_url( $delete_url )
-        );
+        // Delete — JS-based POST to avoid nested forms inside the list table
+        $actions['delete'] = '<a href="#" style="color:#b32d2e;" onclick="if(confirm(\'' . esc_js( __( 'Are you sure you want to delete this page?', 'societypress' ) ) . '\')){var f=document.createElement(\'form\');f.method=\'post\';f.action=\'' . esc_url( admin_url( 'admin.php?page=sp-pages' ) ) . '\';var d=[[\'_wpnonce\',\'' . wp_create_nonce( 'sp_delete_page_' . $item->ID ) . '\'],[\'action\',\'delete\'],[\'post_id\',\'' . (int) $item->ID . '\']];d.forEach(function(p){var i=document.createElement(\'input\');i.type=\'hidden\';i.name=p[0];i.value=p[1];f.appendChild(i);});document.body.appendChild(f);f.submit();}return false;">' . esc_html__( 'Delete', 'societypress' ) . '</a>';
 
         return $name . $this->row_actions( $actions );
     }
@@ -16640,7 +16844,7 @@ class SP_Pages_List_Table extends WP_List_Table {
                  . '</span>';
         }
 
-        return 'Standard Page';
+        return __( 'Standard Page', 'societypress' );
     }
 
     /**
@@ -16648,9 +16852,9 @@ class SP_Pages_List_Table extends WP_List_Table {
      */
     protected function column_status( $item ): string {
         if ( $item->post_status === 'publish' ) {
-            return '<span style="color: #00a32a; font-weight: 600;">Published</span>';
+            return '<span style="color: #00a32a; font-weight: 600;">' . esc_html__( 'Published', 'societypress' ) . '</span>';
         }
-        return '<span style="color: #787c82; font-weight: 600;">Draft</span>';
+        return '<span style="color: #787c82; font-weight: 600;">' . esc_html__( 'Draft', 'societypress' ) . '</span>';
     }
 
     /**
@@ -16728,9 +16932,9 @@ class SP_Pages_List_Table extends WP_List_Table {
      * Message shown when no pages exist yet.
      */
     public function no_items(): void {
-        echo 'No pages found. <a href="'
+        echo esc_html__( 'No pages found.', 'societypress' ) . ' <a href="'
            . esc_url( admin_url( 'admin.php?page=sp-page-edit' ) )
-           . '">Create your first page</a>.';
+           . '">' . esc_html__( 'Create your first page', 'societypress' ) . '</a>.';
     }
 }
 
@@ -16745,17 +16949,17 @@ class SP_Pages_List_Table extends WP_List_Table {
  */
 function sp_get_page_type_labels(): array {
     return [
-        'sp-events'          => 'Events',
-        'sp-directory'       => 'Membership Directory',
-        'sp-library-catalog' => 'Library Catalog',
-        'sp-groups'          => 'Interest Groups',
-        'sp-help-requests'   => 'Research Help Requests',
-        'sp-resources'       => 'Resource Links Directory',
-        'sp-builder'         => 'Page Builder',
-        'sp-newsletter-archive' => 'Newsletter Archive',
-        'sp-search'          => 'Site Search',
-        'sp-calendar'        => 'Calendar',
-        'sp-documents'       => 'Documents',
+        'sp-events'          => __( 'Events', 'societypress' ),
+        'sp-directory'       => __( 'Membership Directory', 'societypress' ),
+        'sp-library-catalog' => __( 'Library Catalog', 'societypress' ),
+        'sp-groups'          => __( 'Interest Groups', 'societypress' ),
+        'sp-help-requests'   => __( 'Research Help Requests', 'societypress' ),
+        'sp-resources'       => __( 'Resource Links Directory', 'societypress' ),
+        'sp-builder'         => __( 'Page Builder', 'societypress' ),
+        'sp-newsletter-archive' => __( 'Newsletter Archive', 'societypress' ),
+        'sp-search'          => __( 'Site Search', 'societypress' ),
+        'sp-calendar'        => __( 'Calendar', 'societypress' ),
+        'sp-documents'       => __( 'Documents', 'societypress' ),
     ];
 }
 
@@ -16768,10 +16972,10 @@ function sp_get_page_type_labels(): array {
  */
 function sp_render_pages_page(): void {
 
-    // Handle single delete action (row action — has post_id as scalar, not array)
-    if ( ( $_GET['action'] ?? '' ) === 'delete'
-         && isset( $_GET['post_id'] ) && ! is_array( $_GET['post_id'] ) ) {
-        $post_id = (int) $_GET['post_id'];
+    // Handle single delete action — POST-only to prevent browser prefetch / link-preview accidents
+    if ( ( $_POST['action'] ?? '' ) === 'delete'
+         && isset( $_POST['post_id'] ) && ! is_array( $_POST['post_id'] ) ) {
+        $post_id = (int) $_POST['post_id'];
         check_admin_referer( 'sp_delete_page_' . $post_id );
         wp_delete_post( $post_id, true ); // true = bypass trash, permanent delete
         wp_redirect( admin_url( 'admin.php?page=sp-pages&deleted=1' ) );
@@ -16799,7 +17003,7 @@ function sp_render_pages_page(): void {
     <div class="wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Pages', 'societypress' ); ?></h1>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-page-edit' ) ); ?>" class="page-title-action">
-            Add New
+            <?php esc_html_e( 'Add New', 'societypress' ); ?>
         </a>
         <hr class="wp-header-end">
 
@@ -16827,9 +17031,9 @@ function sp_render_pages_page(): void {
         // Show All / Show Paginated toggle
         $showing_all = ! empty( $_GET['show_all'] );
         if ( $showing_all ) {
-            echo '<p><a href="' . esc_url( admin_url( 'admin.php?page=sp-pages' ) ) . '">Show paginated</a></p>';
+            echo '<p><a href="' . esc_url( admin_url( 'admin.php?page=sp-pages' ) ) . '">' . esc_html__( 'Show paginated', 'societypress' ) . '</a></p>';
         } else {
-            echo '<p><a href="' . esc_url( admin_url( 'admin.php?page=sp-pages&show_all=1' ) ) . '">Show all pages</a></p>';
+            echo '<p><a href="' . esc_url( admin_url( 'admin.php?page=sp-pages&show_all=1' ) ) . '">' . esc_html__( 'Show all pages', 'societypress' ) . '</a></p>';
         }
         ?>
 
@@ -16849,28 +17053,28 @@ function sp_render_pages_page(): void {
             <div class="sp-quick-edit-form" style="background:#f6f7f7; padding:12px 16px; border:1px solid #c3c4c7; margin:4px 0;">
                 <div style="display:flex; gap:16px; align-items:flex-end; flex-wrap:wrap;">
                     <label style="flex:1; min-width:200px;">
-                        <span style="display:block; font-weight:600; margin-bottom:4px;">Title</span>
+                        <span style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Title', 'societypress' ); ?></span>
                         <input type="text" class="sp-qe-title" style="width:100%;">
                     </label>
                     <label>
-                        <span style="display:block; font-weight:600; margin-bottom:4px;">Page Type</span>
+                        <span style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Page Type', 'societypress' ); ?></span>
                         <select class="sp-qe-template">
-                            <option value="">Standard Page</option>
+                            <option value=""><?php esc_html_e( 'Standard Page', 'societypress' ); ?></option>
                             <?php foreach ( sp_get_page_type_labels() as $slug => $label ) : ?>
                                 <option value="<?php echo esc_attr( $slug ); ?>"><?php echo esc_html( $label ); ?></option>
                             <?php endforeach; ?>
                         </select>
                     </label>
                     <label>
-                        <span style="display:block; font-weight:600; margin-bottom:4px;">Status</span>
+                        <span style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Status', 'societypress' ); ?></span>
                         <select class="sp-qe-status">
-                            <option value="publish">Published</option>
-                            <option value="draft">Draft</option>
+                            <option value="publish"><?php esc_html_e( 'Published', 'societypress' ); ?></option>
+                            <option value="draft"><?php esc_html_e( 'Draft', 'societypress' ); ?></option>
                         </select>
                     </label>
                     <div style="display:flex; gap:8px;">
-                        <button type="button" class="button button-primary sp-qe-save">Update</button>
-                        <button type="button" class="button sp-qe-cancel">Cancel</button>
+                        <button type="button" class="button button-primary sp-qe-save"><?php esc_html_e( 'Update', 'societypress' ); ?></button>
+                        <button type="button" class="button sp-qe-cancel"><?php esc_html_e( 'Cancel', 'societypress' ); ?></button>
                     </div>
                 </div>
                 <input type="hidden" class="sp-qe-id">
@@ -16940,7 +17144,7 @@ function sp_render_pages_page(): void {
                 form.querySelector('.sp-qe-save').addEventListener('click', function() {
                     var btn = this;
                     btn.disabled = true;
-                    btn.textContent = 'Saving...';
+                    btn.textContent = '<?php echo esc_js( __( 'Saving...', 'societypress' ) ); ?>';
 
                     var data = new FormData();
                     data.append('action', 'sp_quick_edit_page');
@@ -16957,15 +17161,15 @@ function sp_render_pages_page(): void {
                                 // Update the row in place
                                 location.reload();
                             } else {
-                                alert(resp.data || 'Error saving.');
+                                alert(resp.data || '<?php echo esc_js( __( 'Error saving.', 'societypress' ) ); ?>');
                                 btn.disabled = false;
-                                btn.textContent = 'Update';
+                                btn.textContent = '<?php echo esc_js( __( 'Update', 'societypress' ) ); ?>';
                             }
                         })
                         .catch(function() {
-                            alert('Network error.');
+                            alert('<?php echo esc_js( __( 'Network error.', 'societypress' ) ); ?>');
                             btn.disabled = false;
-                            btn.textContent = 'Update';
+                            btn.textContent = '<?php echo esc_js( __( 'Update', 'societypress' ) ); ?>';
                         });
                 });
             });
@@ -17135,7 +17339,7 @@ function sp_render_page_edit(): void {
                             // New page — can't render widgets until the page exists.
                             // Harold picks the type, creates the page, then edits it
                             // to add widgets. This avoids orphaned widget data.
-                            echo '<p class="description">Save this page first, then edit it to add widgets.</p>';
+                            echo '<p class="description">' . esc_html__( 'Save this page first, then edit it to add widgets.', 'societypress' ) . '</p>';
                         }
                         ?>
                     </td>
@@ -17204,20 +17408,7 @@ function sp_render_page_edit(): void {
                        class="button button-primary"
                        value="<?php echo $is_edit ? 'Update Page' : 'Create Page'; ?>">
 
-                <?php if ( $is_edit ) : ?>
-                    <?php
-                    $delete_url = wp_nonce_url(
-                        admin_url( 'admin.php?page=sp-pages&action=delete&post_id=' . $post_id ),
-                        'sp_delete_page_' . $post_id
-                    );
-                    ?>
-                    <a href="<?php echo esc_url( $delete_url ); ?>"
-                       class="button"
-                       style="color: #b32d2e; border-color: #b32d2e; margin-left: 8px;"
-                       onclick="return confirm('Are you sure you want to delete this page?');">
-                        Delete Page
-                    </a>
-                <?php endif; ?>
+                <?php // Delete button is in a separate POST form below the save form ?>
 
                 <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-pages' ) ); ?>"
                    class="button"
@@ -17226,6 +17417,14 @@ function sp_render_page_edit(): void {
                 </a>
             </p>
         </form>
+        <?php if ( $is_edit ) : ?>
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-pages' ) ); ?>" style="display:inline; margin-top:-10px;" onsubmit="return confirm('<?php echo esc_js( __( 'Are you sure you want to delete this page?', 'societypress' ) ); ?>');">
+                <?php wp_nonce_field( 'sp_delete_page_' . $post_id ); ?>
+                <input type="hidden" name="action" value="delete">
+                <input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>">
+                <button type="submit" class="button" style="color:#b32d2e; border-color:#b32d2e;"><?php esc_html_e( 'Delete Page', 'societypress' ); ?></button>
+            </form>
+        <?php endif; ?>
     </div>
 
     <?php
@@ -17265,12 +17464,12 @@ function sp_render_page_edit(): void {
 function sp_handle_page_save(): void {
     // Verify nonce
     if ( ! wp_verify_nonce( $_POST['sp_page_nonce'] ?? '', 'sp_save_page' ) ) {
-        wp_die( 'Security check failed.' );
+        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
     }
 
     // Only admins can manage pages
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_die( 'You do not have permission to manage pages.' );
+        wp_die( esc_html__( 'You do not have permission to manage pages.', 'societypress' ) );
     }
 
     $post_id  = (int) ( $_POST['post_id'] ?? 0 );
@@ -17319,7 +17518,7 @@ function sp_handle_page_save(): void {
     }
 
     if ( is_wp_error( $result ) ) {
-        wp_die( 'Error saving page: ' . $result->get_error_message() );
+        wp_die( esc_html( sprintf( __( 'Error saving page: %s', 'societypress' ), $result->get_error_message() ) ) );
     }
 
     $saved_id = $post_id ?: $result;
@@ -17520,7 +17719,7 @@ function sp_render_groups_frontend( $content ): string {
                         }
                     })
                     .catch(function() {
-                        alert('Network error. Please try again.');
+                        alert('<?php echo esc_js( __( 'Network error. Please try again.', 'societypress' ) ); ?>');
                         self.disabled = false;
                         self.textContent = action === 'join' ? 'Join Group' : 'Leave Group';
                     });
@@ -17549,10 +17748,10 @@ function sp_render_finances_page(): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
-    // Handle delete action
-    if ( isset( $_GET['action'] ) && $_GET['action'] === 'delete' && isset( $_GET['payment_id'] ) ) {
-        check_admin_referer( 'sp_delete_payment_' . $_GET['payment_id'] );
-        $wpdb->delete( $prefix . 'member_payments', [ 'id' => (int) $_GET['payment_id'] ] );
+    // Handle delete action — POST-only to prevent browser prefetch / link-preview accidents
+    if ( isset( $_POST['action'] ) && $_POST['action'] === 'delete' && isset( $_POST['payment_id'] ) ) {
+        check_admin_referer( 'sp_delete_payment_' . $_POST['payment_id'] );
+        $wpdb->delete( $prefix . 'member_payments', [ 'id' => (int) $_POST['payment_id'] ] );
         wp_redirect( admin_url( 'admin.php?page=sp-finances&deleted=1' ) );
         exit;
     }
@@ -17638,7 +17837,7 @@ function sp_render_finances_page(): void {
     ?>
     <div class="wrap sp-admin-wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Finances', 'societypress' ); ?></h1>
-        <a href="<?php echo admin_url( 'admin.php?page=sp-record-payment' ); ?>" class="page-title-action">Record Payment</a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-payment' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Record Payment', 'societypress' ); ?></a>
 
         <?php if ( isset( $_GET['deleted'] ) ) : ?>
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Payment deleted.', 'societypress' ); ?></p></div>
@@ -17659,20 +17858,20 @@ function sp_render_finances_page(): void {
         <!-- Summary Stats -->
         <div class="sp-finance-stats">
             <div class="sp-finance-stat">
-                <div class="stat-label">Transactions</div>
+                <div class="stat-label"><?php esc_html_e( 'Transactions', 'societypress' ); ?></div>
                 <div class="stat-value"><?php echo number_format( $total_rows ); ?></div>
             </div>
             <div class="sp-finance-stat">
-                <div class="stat-label">Total Amount</div>
-                <div class="stat-value money">$<?php echo number_format( (float) $stats->total_amount, 2 ); ?></div>
+                <div class="stat-label"><?php esc_html_e( 'Total Amount', 'societypress' ); ?></div>
+                <div class="stat-value money"><?php echo esc_html( sp_format_currency( $stats->total_amount ) ); ?></div>
             </div>
             <div class="sp-finance-stat">
-                <div class="stat-label">Dues</div>
-                <div class="stat-value money">$<?php echo number_format( (float) $stats->dues_total, 2 ); ?></div>
+                <div class="stat-label"><?php esc_html_e( 'Dues', 'societypress' ); ?></div>
+                <div class="stat-value money"><?php echo esc_html( sp_format_currency( $stats->dues_total ) ); ?></div>
             </div>
             <div class="sp-finance-stat">
-                <div class="stat-label">Donations</div>
-                <div class="stat-value money">$<?php echo number_format( (float) $stats->donation_total, 2 ); ?></div>
+                <div class="stat-label"><?php esc_html_e( 'Donations', 'societypress' ); ?></div>
+                <div class="stat-value money"><?php echo esc_html( sp_format_currency( $stats->donation_total ) ); ?></div>
             </div>
         </div>
 
@@ -17682,7 +17881,7 @@ function sp_render_finances_page(): void {
             <div>
                 <label for="sp-f-type"><?php esc_html_e( 'Type', 'societypress' ); ?></label>
                 <select name="type" id="sp-f-type">
-                    <option value="">All Types</option>
+                    <option value=""><?php esc_html_e( 'All Types', 'societypress' ); ?></option>
                     <?php foreach ( $types as $t ) : ?>
                         <option value="<?php echo esc_attr( $t ); ?>" <?php selected( $filter_type, $t ); ?>><?php echo esc_html( ucfirst( $t ) ); ?></option>
                     <?php endforeach; ?>
@@ -17691,7 +17890,7 @@ function sp_render_finances_page(): void {
             <div>
                 <label for="sp-f-method"><?php esc_html_e( 'Method', 'societypress' ); ?></label>
                 <select name="method" id="sp-f-method">
-                    <option value="">All Methods</option>
+                    <option value=""><?php esc_html_e( 'All Methods', 'societypress' ); ?></option>
                     <?php foreach ( $methods as $m ) : ?>
                         <option value="<?php echo esc_attr( $m ); ?>" <?php selected( $filter_method, $m ); ?>><?php echo esc_html( ucfirst( $m ) ); ?></option>
                     <?php endforeach; ?>
@@ -17707,12 +17906,12 @@ function sp_render_finances_page(): void {
             </div>
             <div>
                 <label for="sp-f-search"><?php esc_html_e( 'Search', 'societypress' ); ?></label>
-                <input type="search" name="s" id="sp-f-search" value="<?php echo esc_attr( $search ); ?>" placeholder="Name or note...">
+                <input type="search" name="s" id="sp-f-search" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php echo esc_attr__( 'Name or note...', 'societypress' ); ?>">
             </div>
             <div>
-                <button type="submit" class="button">Filter</button>
+                <button type="submit" class="button"><?php esc_html_e( 'Filter', 'societypress' ); ?></button>
                 <?php if ( $filter_type || $filter_method || $filter_from || $filter_to || $search ) : ?>
-                    <a href="<?php echo admin_url( 'admin.php?page=sp-finances' ); ?>" class="button">Clear</a>
+                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-finances' ) ); ?>" class="button"><?php esc_html_e( 'Clear', 'societypress' ); ?></a>
                 <?php endif; ?>
             </div>
         </form>
@@ -17721,41 +17920,44 @@ function sp_render_finances_page(): void {
         <table class="widefat striped">
             <thead>
                 <tr>
-                    <th>Date</th>
-                    <th>Member</th>
-                    <th>Amount</th>
-                    <th>Type</th>
-                    <th>Method</th>
-                    <th>Note</th>
-                    <th>Recorded By</th>
-                    <th>Actions</th>
+                    <th><?php esc_html_e( 'Date', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Member', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Amount', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Type', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Method', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Note', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Recorded By', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
                 </tr>
             </thead>
             <tbody>
                 <?php if ( empty( $rows ) ) : ?>
-                    <tr><td colspan="8" style="text-align: center; padding: 20px;">No transactions found.</td></tr>
+                    <tr><td colspan="8" style="text-align: center; padding: 20px;"><?php esc_html_e( 'No transactions found.', 'societypress' ); ?></td></tr>
                 <?php else : ?>
                     <?php foreach ( $rows as $row ) : ?>
                         <tr>
                             <td><?php echo esc_html( $row->date ); ?></td>
                             <td>
                                 <?php if ( $row->member_name ) : ?>
-                                    <a href="<?php echo admin_url( 'admin.php?page=sp-member-edit&user_id=' . $row->user_id ); ?>">
+                                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-member-edit&user_id=' . $row->user_id ) ); ?>">
                                         <?php echo esc_html( $row->member_name ); ?>
                                     </a>
                                 <?php else : ?>
                                     <span style="color: #787c82;">Unknown (ID <?php echo esc_html( $row->user_id ); ?>)</span>
                                 <?php endif; ?>
                             </td>
-                            <td style="font-weight: 600; color: #00a32a;">$<?php echo esc_html( number_format( (float) $row->amount, 2 ) ); ?></td>
+                            <td style="font-weight: 600; color: #00a32a;"><?php echo esc_html( sp_format_currency( $row->amount ) ); ?></td>
                             <td><?php echo esc_html( ucfirst( $row->type ) ); ?></td>
                             <td><?php echo $row->method ? esc_html( ucfirst( $row->method ) ) : '<span style="color:#787c82;">—</span>'; ?></td>
                             <td><?php echo $row->note ? esc_html( wp_trim_words( $row->note, 10 ) ) : ''; ?></td>
                             <td><?php echo $row->recorded_by_name ? esc_html( $row->recorded_by_name ) : ''; ?></td>
                             <td>
-                                <a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=sp-finances&action=delete&payment_id=' . $row->id ), 'sp_delete_payment_' . $row->id ); ?>"
-                                   onclick="return confirm('Delete this payment record?');"
-                                   style="color: #b32d2e;">Delete</a>
+                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-finances' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this payment record?', 'societypress' ) ); ?>');">
+                                    <?php wp_nonce_field( 'sp_delete_payment_' . $row->id ); ?>
+                                    <input type="hidden" name="action" value="delete">
+                                    <input type="hidden" name="payment_id" value="<?php echo (int) $row->id; ?>">
+                                    <button type="submit" class="sp-link-btn" style="background:none; border:none; color:#b32d2e; cursor:pointer; padding:0; font:inherit; text-decoration:underline;"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                                </form>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -17766,7 +17968,7 @@ function sp_render_finances_page(): void {
         <?php if ( $total_pages > 1 ) : ?>
             <div class="tablenav bottom">
                 <div class="tablenav-pages">
-                    <span class="displaying-num"><?php echo number_format( $total_rows ); ?> item(s)</span>
+                    <span class="displaying-num"><?php echo esc_html( sprintf( _n( '%s item', '%s items', $total_rows, 'societypress' ), number_format( $total_rows ) ) ); ?></span>
                     <?php
                     echo paginate_links( [
                         'base'    => add_query_arg( 'paged', '%#%' ),
@@ -17834,17 +18036,17 @@ function sp_render_record_payment_page(): void {
     ?>
     <div class="wrap sp-admin-wrap">
         <h1><?php esc_html_e( 'Record Payment', 'societypress' ); ?></h1>
-        <p><a href="<?php echo admin_url( 'admin.php?page=sp-finances' ); ?>">&larr; Back to Finances</a></p>
+        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-finances' ) ); ?>">&larr; <?php esc_html_e( 'Back to Finances', 'societypress' ); ?></a></p>
 
         <form method="post" style="max-width: 500px;">
             <?php wp_nonce_field( 'sp_record_payment', 'sp_record_payment_nonce' ); ?>
 
             <table class="form-table">
                 <tr>
-                    <th><label for="sp-pay-member">Member <span style="color: #d63638;">*</span></label></th>
+                    <th><label for="sp-pay-member"><?php esc_html_e( 'Member', 'societypress' ); ?> <span style="color: #d63638;">*</span></label></th>
                     <td>
                         <select name="user_id" id="sp-pay-member" required style="width: 100%;">
-                            <option value="">— Select Member —</option>
+                            <option value=""><?php echo '— ' . esc_html__( 'Select Member', 'societypress' ) . ' —'; ?></option>
                             <?php foreach ( $members as $m ) : ?>
                                 <option value="<?php echo esc_attr( $m->user_id ); ?>">
                                     <?php echo esc_html( $m->display_name ); ?> (<?php echo esc_html( $m->user_email ); ?>)
@@ -17854,17 +18056,17 @@ function sp_render_record_payment_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="sp-pay-amount">Amount <span style="color: #d63638;">*</span></label></th>
-                    <td><input type="number" name="amount" id="sp-pay-amount" step="0.01" min="0.01" required style="width: 120px;"> USD</td>
+                    <th><label for="sp-pay-amount"><?php esc_html_e( 'Amount', 'societypress' ); ?> <span style="color: #d63638;">*</span></label></th>
+                    <td><input type="number" name="amount" id="sp-pay-amount" step="0.01" min="0.01" required style="width: 120px;"> <?php esc_html_e( 'USD', 'societypress' ); ?></td>
                 </tr>
                 <tr>
                     <th><label for="sp-pay-type"><?php esc_html_e( 'Type', 'societypress' ); ?></label></th>
                     <td>
                         <select name="type" id="sp-pay-type">
-                            <option value="dues">Dues</option>
-                            <option value="donation">Donation</option>
-                            <option value="event">Event Fee</option>
-                            <option value="other">Other</option>
+                            <option value="dues"><?php esc_html_e( 'Dues', 'societypress' ); ?></option>
+                            <option value="donation"><?php esc_html_e( 'Donation', 'societypress' ); ?></option>
+                            <option value="event"><?php esc_html_e( 'Event Fee', 'societypress' ); ?></option>
+                            <option value="other"><?php esc_html_e( 'Other', 'societypress' ); ?></option>
                         </select>
                     </td>
                 </tr>
@@ -17872,14 +18074,14 @@ function sp_render_record_payment_page(): void {
                     <th><label for="sp-pay-method"><?php esc_html_e( 'Method', 'societypress' ); ?></label></th>
                     <td>
                         <select name="method" id="sp-pay-method">
-                            <option value="">— None —</option>
-                            <option value="check">Check</option>
-                            <option value="cash">Cash</option>
-                            <option value="card">Credit/Debit Card</option>
-                            <option value="stripe">Stripe</option>
-                            <option value="paypal">PayPal</option>
-                            <option value="transfer">Bank Transfer</option>
-                            <option value="other">Other</option>
+                            <option value=""><?php esc_html_e( '— None —', 'societypress' ); ?></option>
+                            <option value="check"><?php esc_html_e( 'Check', 'societypress' ); ?></option>
+                            <option value="cash"><?php esc_html_e( 'Cash', 'societypress' ); ?></option>
+                            <option value="card"><?php esc_html_e( 'Credit/Debit Card', 'societypress' ); ?></option>
+                            <option value="stripe"><?php esc_html_e( 'Stripe', 'societypress' ); ?></option>
+                            <option value="paypal"><?php esc_html_e( 'PayPal', 'societypress' ); ?></option>
+                            <option value="transfer"><?php esc_html_e( 'Bank Transfer', 'societypress' ); ?></option>
+                            <option value="other"><?php esc_html_e( 'Other', 'societypress' ); ?></option>
                         </select>
                     </td>
                 </tr>
@@ -17894,8 +18096,8 @@ function sp_render_record_payment_page(): void {
             </table>
 
             <p class="submit">
-                <button type="submit" class="button button-primary">Record Payment</button>
-                <a href="<?php echo admin_url( 'admin.php?page=sp-finances' ); ?>" class="button">Cancel</a>
+                <button type="submit" class="button button-primary"><?php esc_html_e( 'Record Payment', 'societypress' ); ?></button>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-finances' ) ); ?>" class="button"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
             </p>
         </form>
     </div>
@@ -17928,7 +18130,7 @@ function sp_render_settings_website_page(): void {
             <?php
             settings_fields( 'societypress_settings_group' );
             do_settings_sections( 'sp-settings-website' );
-            submit_button( 'Save Settings' );
+            submit_button( __( 'Save Settings', 'societypress' ) );
             ?>
         </form>
     </div>
@@ -17958,7 +18160,7 @@ function sp_render_settings_organization_page(): void {
             <?php
             settings_fields( 'sp-settings-org' );
             do_settings_sections( 'sp-settings-org' );
-            submit_button( 'Save Settings' );
+            submit_button( __( 'Save Settings', 'societypress' ) );
             ?>
         </form>
     </div>
@@ -18038,7 +18240,7 @@ function sp_render_settings_membership_page(): void {
             <?php
             settings_fields( 'sp-settings-membership' );
             do_settings_sections( 'sp-settings-membership' );
-            submit_button( 'Save Settings' );
+            submit_button( __( 'Save Settings', 'societypress' ) );
             ?>
         </form>
     </div>
@@ -18068,7 +18270,7 @@ function sp_render_settings_directory_page(): void {
             <?php
             settings_fields( 'sp-settings-directory' );
             do_settings_sections( 'sp-settings-directory' );
-            submit_button( 'Save Settings' );
+            submit_button( __( 'Save Settings', 'societypress' ) );
             ?>
         </form>
     </div>
@@ -18098,7 +18300,7 @@ function sp_render_settings_events_page(): void {
             <?php
             settings_fields( 'sp-settings-events' );
             do_settings_sections( 'sp-settings-events' );
-            submit_button( 'Save Settings' );
+            submit_button( __( 'Save Settings', 'societypress' ) );
             ?>
         </form>
     </div>
@@ -18128,7 +18330,7 @@ function sp_render_settings_privacy_page(): void {
             <?php
             settings_fields( 'sp-settings-privacy' );
             do_settings_sections( 'sp-settings-privacy' );
-            submit_button( 'Save Settings' );
+            submit_button( __( 'Save Settings', 'societypress' ) );
             ?>
         </form>
     </div>
@@ -18167,7 +18369,7 @@ add_action( 'admin_init', function () {
     if ( ! isset( $_POST['sp_activate_theme'] ) ) return;
     if ( ! current_user_can( 'manage_options' ) ) return;
     if ( ! wp_verify_nonce( $_POST['_sp_theme_nonce'] ?? '', 'sp_switch_theme' ) ) {
-        wp_die( 'Security check failed.' );
+        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
     }
 
     $theme_slug = sanitize_text_field( $_POST['sp_activate_theme'] );
@@ -18794,17 +18996,17 @@ function sp_render_settings_design_page(): void {
                                    name="societypress_settings[design_logo_id]"
                                    value="<?php echo esc_attr( $logo_id ); ?>">
                             <button type="button" class="button" id="sp-logo-upload-btn">
-                                <?php echo $logo_id ? 'Change Logo' : 'Upload Logo'; ?>
+                                <?php echo $logo_id ? esc_html__( 'Change Logo', 'societypress' ) : esc_html__( 'Upload Logo', 'societypress' ); ?>
                             </button>
                             <?php if ( $logo_id ) : ?>
                                 <button type="button" class="button" id="sp-logo-remove-btn"
                                         style="color: #b32d2e; margin-left: 4px;">
-                                    Remove
+                                    <?php esc_html_e( 'Remove', 'societypress' ); ?>
                                 </button>
                             <?php else : ?>
                                 <button type="button" class="button" id="sp-logo-remove-btn"
                                         style="color: #b32d2e; margin-left: 4px; display: none;">
-                                    Remove
+                                    <?php esc_html_e( 'Remove', 'societypress' ); ?>
                                 </button>
                             <?php endif; ?>
                             <p class="description" style="margin-top: 8px;">
@@ -18863,7 +19065,7 @@ function sp_render_settings_design_page(): void {
                         <td>
                             <input type="text" id="sp-design-primary" name="societypress_settings[design_color_primary]"
                                    value="<?php echo esc_attr( $d_primary ); ?>" class="sp-color-picker" data-default-color="#1e3a5f">
-                            <p class="description">Used for headings, buttons, links, and borders throughout the site.</p>
+                            <p class="description"><?php esc_html_e( 'Used for headings, buttons, links, and borders throughout the site.', 'societypress' ); ?></p>
                         </td>
                     </tr>
                     <tr>
@@ -18871,7 +19073,7 @@ function sp_render_settings_design_page(): void {
                         <td>
                             <input type="text" id="sp-design-primary-hover" name="societypress_settings[design_color_primary_hover]"
                                    value="<?php echo esc_attr( $d_primary_hover ); ?>" class="sp-color-picker" data-default-color="#2c5282">
-                            <p class="description">The color buttons and links change to when hovered over.</p>
+                            <p class="description"><?php esc_html_e( 'The color buttons and links change to when hovered over.', 'societypress' ); ?></p>
                         </td>
                     </tr>
                     <tr>
@@ -18879,7 +19081,7 @@ function sp_render_settings_design_page(): void {
                         <td>
                             <input type="text" id="sp-design-accent" name="societypress_settings[design_color_accent]"
                                    value="<?php echo esc_attr( $d_accent ); ?>" class="sp-color-picker" data-default-color="#667eea">
-                            <p class="description">Used for input focus borders and other subtle highlights.</p>
+                            <p class="description"><?php esc_html_e( 'Used for input focus borders and other subtle highlights.', 'societypress' ); ?></p>
                         </td>
                     </tr>
                     <tr>
@@ -18927,7 +19129,7 @@ function sp_render_settings_design_page(): void {
                                     <option value="<?php echo esc_attr( $key ); ?>" <?php selected( $d_font_body, $key ); ?>><?php echo esc_html( $label ); ?></option>
                                 <?php endforeach; ?>
                             </select>
-                            <p class="description">The main font used for all body text on your website.</p>
+                            <p class="description"><?php esc_html_e( 'The main font used for all body text on your website.', 'societypress' ); ?></p>
                         </td>
                     </tr>
                     <tr>
@@ -18998,7 +19200,7 @@ function sp_render_settings_design_page(): void {
                                    style="width: 90px;"
                                    class="sp-design-control">
                             <span>px</span>
-                            <p class="description">Enter an exact width in pixels (600–2000).</p>
+                            <p class="description"><?php esc_html_e( 'Enter an exact width in pixels (600–2000).', 'societypress' ); ?></p>
                         </td>
                     </tr>
                 </table>
@@ -19035,7 +19237,7 @@ function sp_render_settings_design_page(): void {
                 </div>
             </div>
 
-            <?php submit_button( 'Save Settings' ); ?>
+            <?php submit_button( __( 'Save Settings', 'societypress' ) ); ?>
         </form>
     </div>
 
@@ -19085,7 +19287,7 @@ function sp_render_settings_design_page(): void {
                                 ? attachment.sizes.medium.url
                                 : attachment.url;
                         logoPreview.innerHTML = '<img src="' + url + '" style="max-height: 80px; width: auto; background: #f0f0f0; padding: 8px; border-radius: 4px;">';
-                        logoBtn.textContent = 'Change Logo';
+                        logoBtn.textContent = '<?php echo esc_js( __( 'Change Logo', 'societypress' ) ); ?>';
                         if (logoRemove) logoRemove.style.display = '';
                     });
 
@@ -19097,7 +19299,7 @@ function sp_render_settings_design_page(): void {
                         e.preventDefault();
                         logoInput.value = '0';
                         logoPreview.innerHTML = '';
-                        logoBtn.textContent = 'Upload Logo';
+                        logoBtn.textContent = '<?php echo esc_js( __( 'Upload Logo', 'societypress' ) ); ?>';
                         logoRemove.style.display = 'none';
                     });
                 }
@@ -19968,7 +20170,7 @@ function sp_hide_members_only_nav_items( $items, $args ) {
  *      intercept it in template_include below.
  */
 add_filter( 'theme_page_templates', function ( $templates ) {
-    $templates['sp-directory'] = 'Membership Directory';
+    $templates['sp-directory'] = __( 'Membership Directory', 'societypress' );
     return $templates;
 });
 
@@ -20006,10 +20208,11 @@ add_filter( 'template_include', function ( $template ) {
         //      and email addresses. This isn't a setting — it's a principle.
         if ( ! is_user_logged_in() ) {
             echo '<div class="sp-directory-login-required">';
-            echo '<h2>Members Only</h2>';
-            echo '<p>The membership directory is available to logged-in members. '
-               . 'Please <a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">log in</a> '
-               . 'to view the directory.</p>';
+            echo '<h2>' . esc_html__( 'Members Only', 'societypress' ) . '</h2>';
+            echo '<p>' . sprintf(
+                esc_html__( 'The membership directory is available to logged-in members. Please %s to view the directory.', 'societypress' ),
+                '<a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">' . esc_html__( 'log in', 'societypress' ) . '</a>'
+            ) . '</p>';
             echo '</div>';
         } else {
             sp_render_directory( $settings );
@@ -20054,12 +20257,16 @@ add_filter( 'template_include', function ( $template ) {
  *      when actually needed (not on every page load).
  */
 function sp_get_blank_template_path(): string {
-    // Use system temp directory — avoids writing to the plugin folder
-    $blank = sys_get_temp_dir() . '/sp-blank-template.php';
-    if ( ! file_exists( $blank ) ) {
-        @file_put_contents( $blank, "<?php\n// Intentionally blank — SocietyPress template shim.\n" );
+    // WHY: sys_get_temp_dir() is unreliable — some hosts purge /tmp on cron,
+    //      some have open_basedir restrictions, and shared hosting may expose
+    //      the file to other accounts. wp_upload_dir() gives us a WordPress-
+    //      managed, writable, per-site directory that persists reliably.
+    $upload_dir = wp_upload_dir();
+    $blank_path = $upload_dir['basedir'] . '/sp-blank-template.php';
+    if ( ! file_exists( $blank_path ) ) {
+        @file_put_contents( $blank_path, "<?php\n// Intentionally blank — SocietyPress template shim.\n" );
     }
-    return $blank;
+    return $blank_path;
 }
 /**
  * Render the membership directory — the main content between header and footer.
@@ -20564,7 +20771,7 @@ function sp_render_directory( array $settings ): void {
                     $display_name = esc_html( $m->organization_name );
                 } else {
                     $display_name = esc_html( trim(
-                        ( $m->preferred_name ?: $m->first_name ) . ' ' . $m->last_name
+                        ( ($m->preferred_name ?? '') ?: $m->first_name ) . ' ' . $m->last_name
                     ) );
                     if ( $m->suffix ) {
                         $display_name .= ', ' . esc_html( $m->suffix );
@@ -20574,12 +20781,12 @@ function sp_render_directory( array $settings ): void {
                     //      visible in the directory. "John & Jane Smith" or
                     //      "John Smith & Jane Doe" if different last names.
                     if ( ! empty( $m->joint_member ) && ! empty( $m->joint_first_name ) ) {
-                        $joint_display = esc_html( $m->joint_preferred_name ?: $m->joint_first_name );
+                        $joint_display = esc_html( ($m->joint_preferred_name ?? '') ?: $m->joint_first_name );
                         if ( ! empty( $m->joint_last_name ) && $m->joint_last_name !== $m->last_name ) {
                             $joint_display .= ' ' . esc_html( $m->joint_last_name );
                         }
                         // Rebuild as "John & Jane Smith" or "John Smith & Jane Doe"
-                        $primary = esc_html( $m->preferred_name ?: $m->first_name );
+                        $primary = esc_html( ($m->preferred_name ?? '') ?: $m->first_name );
                         if ( ! empty( $m->joint_last_name ) && $m->joint_last_name !== $m->last_name ) {
                             // Different last names — show both full names
                             $display_name = $primary . ' ' . esc_html( $m->last_name )
@@ -21288,7 +21495,7 @@ function sp_ajax_member_detail(): void {
         $display_name = $member->organization_name;
     } else {
         $display_name = trim(
-            ( $member->preferred_name ?: $member->first_name ) . ' ' . $member->last_name
+            ( ($member->preferred_name ?? '') ?: $member->first_name ) . ' ' . $member->last_name
         );
         if ( $member->suffix ) {
             $display_name .= ', ' . $member->suffix;
@@ -22332,10 +22539,10 @@ function sp_builder_fields_member_directory( $index, array $settings ): void {
 
     ?>
     <div class="sp-builder-field">
-        <p class="description">Displays the full searchable member directory. Uses existing directory settings.</p>
+        <p class="description"><?php esc_html_e( 'Displays the full searchable member directory. Uses existing directory settings.', 'societypress' ); ?></p>
         <label>
             <input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][login_required]" value="1" <?php checked( $login_required ); ?>>
-            Require login to view
+            <?php esc_html_e( 'Require login to view', 'societypress' ); ?>
         </label>
     </div>
     <div class="sp-builder-field">
@@ -22352,10 +22559,10 @@ function sp_builder_fields_surname_lookup( $index, array $settings ): void {
     $login_required = $settings['login_required'] ?? true;
     ?>
     <div class="sp-builder-field">
-        <p class="description">Lets visitors search surnames being researched by members.</p>
+        <p class="description"><?php esc_html_e( 'Lets visitors search surnames being researched by members.', 'societypress' ); ?></p>
         <label>
             <input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][login_required]" value="1" <?php checked( $login_required ); ?>>
-            Require login to view
+            <?php esc_html_e( 'Require login to view', 'societypress' ); ?>
         </label>
     </div>
     <?php
@@ -22369,9 +22576,9 @@ function sp_builder_fields_membership_tiers( $index, array $settings ): void {
     $show_inactive = $settings['show_inactive'] ?? false;
     ?>
     <div class="sp-builder-field">
-        <p class="description">Displays available membership levels from your tier settings.</p>
-        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_prices]" value="1" <?php checked( $show_prices ); ?>> Show prices</label><br>
-        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_inactive]" value="1" <?php checked( $show_inactive ); ?>> Include inactive tiers</label>
+        <p class="description"><?php esc_html_e( 'Displays available membership levels from your tier settings.', 'societypress' ); ?></p>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_prices]" value="1" <?php checked( $show_prices ); ?>> <?php esc_html_e( 'Show prices', 'societypress' ); ?></label><br>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_inactive]" value="1" <?php checked( $show_inactive ); ?>> <?php esc_html_e( 'Include inactive tiers', 'societypress' ); ?></label>
     </div>
     <?php
 }
@@ -22386,11 +22593,11 @@ function sp_builder_fields_contact_card( $index, array $settings ): void {
     $show_hours   = $settings['show_hours'] ?? true;
     ?>
     <div class="sp-builder-field">
-        <p class="description">Shows organization contact info from your SocietyPress settings.</p>
-        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_address]" value="1" <?php checked( $show_address ); ?>> Show address</label><br>
-        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_phone]" value="1" <?php checked( $show_phone ); ?>> Show phone</label><br>
-        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_email]" value="1" <?php checked( $show_email ); ?>> Show email</label><br>
-        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_hours]" value="1" <?php checked( $show_hours ); ?>> Show hours</label>
+        <p class="description"><?php esc_html_e( 'Shows organization contact info from your SocietyPress settings.', 'societypress' ); ?></p>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_address]" value="1" <?php checked( $show_address ); ?>> <?php esc_html_e( 'Show address', 'societypress' ); ?></label><br>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_phone]" value="1" <?php checked( $show_phone ); ?>> <?php esc_html_e( 'Show phone', 'societypress' ); ?></label><br>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_email]" value="1" <?php checked( $show_email ); ?>> <?php esc_html_e( 'Show email', 'societypress' ); ?></label><br>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_hours]" value="1" <?php checked( $show_hours ); ?>> <?php esc_html_e( 'Show hours', 'societypress' ); ?></label>
     </div>
     <?php
 }
@@ -22403,9 +22610,9 @@ function sp_builder_fields_member_stats( $index, array $settings ): void {
     $show_status_counts  = $settings['show_status_counts'] ?? false;
     ?>
     <div class="sp-builder-field">
-        <p class="description">Displays membership statistics pulled live from the database.</p>
-        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_tier_breakdown]" value="1" <?php checked( $show_tier_breakdown ); ?>> Show tier breakdown</label><br>
-        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_status_counts]" value="1" <?php checked( $show_status_counts ); ?>> Show status counts (active, expired, etc.)</label>
+        <p class="description"><?php esc_html_e( 'Displays membership statistics pulled live from the database.', 'societypress' ); ?></p>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_tier_breakdown]" value="1" <?php checked( $show_tier_breakdown ); ?>> <?php esc_html_e( 'Show tier breakdown', 'societypress' ); ?></label><br>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_status_counts]" value="1" <?php checked( $show_status_counts ); ?>> <?php esc_html_e( 'Show status counts (active, expired, etc.)', 'societypress' ); ?></label>
     </div>
     <?php
 }
@@ -22441,14 +22648,14 @@ function sp_builder_fields_heading( $index, array $settings ): void {
         <div style="flex:1;">
             <label style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Alignment', 'societypress' ); ?></label>
             <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][alignment]" style="width:100%;">
-                <option value="left" <?php selected( $alignment, 'left' ); ?>>Left</option>
-                <option value="center" <?php selected( $alignment, 'center' ); ?>>Center</option>
-                <option value="right" <?php selected( $alignment, 'right' ); ?>>Right</option>
+                <option value="left" <?php selected( $alignment, 'left' ); ?>><?php esc_html_e( 'Left', 'societypress' ); ?></option>
+                <option value="center" <?php selected( $alignment, 'center' ); ?>><?php esc_html_e( 'Center', 'societypress' ); ?></option>
+                <option value="right" <?php selected( $alignment, 'right' ); ?>><?php esc_html_e( 'Right', 'societypress' ); ?></option>
             </select>
         </div>
     </div>
     <div class="sp-builder-field">
-        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_divider]" value="1" <?php checked( $show_divider ); ?>> Show divider line below heading</label>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_divider]" value="1" <?php checked( $show_divider ); ?>> <?php esc_html_e( 'Show divider line below heading', 'societypress' ); ?></label>
     </div>
     <?php
 }
@@ -22490,17 +22697,17 @@ function sp_builder_fields_image( $index, array $settings ): void {
         <div style="flex:1;">
             <label style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Size', 'societypress' ); ?></label>
             <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][size]" style="width:100%;">
-                <option value="medium" <?php selected( $size, 'medium' ); ?>>Medium</option>
-                <option value="large" <?php selected( $size, 'large' ); ?>>Large</option>
-                <option value="full" <?php selected( $size, 'full' ); ?>>Full width</option>
+                <option value="medium" <?php selected( $size, 'medium' ); ?>><?php esc_html_e( 'Medium', 'societypress' ); ?></option>
+                <option value="large" <?php selected( $size, 'large' ); ?>><?php esc_html_e( 'Large', 'societypress' ); ?></option>
+                <option value="full" <?php selected( $size, 'full' ); ?>><?php esc_html_e( 'Full width', 'societypress' ); ?></option>
             </select>
         </div>
         <div style="flex:1;">
             <label style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Alignment', 'societypress' ); ?></label>
             <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][alignment]" style="width:100%;">
-                <option value="left" <?php selected( $alignment, 'left' ); ?>>Left</option>
-                <option value="center" <?php selected( $alignment, 'center' ); ?>>Center</option>
-                <option value="right" <?php selected( $alignment, 'right' ); ?>>Right</option>
+                <option value="left" <?php selected( $alignment, 'left' ); ?>><?php esc_html_e( 'Left', 'societypress' ); ?></option>
+                <option value="center" <?php selected( $alignment, 'center' ); ?>><?php esc_html_e( 'Center', 'societypress' ); ?></option>
+                <option value="right" <?php selected( $alignment, 'right' ); ?>><?php esc_html_e( 'Right', 'societypress' ); ?></option>
             </select>
         </div>
     </div>
@@ -22529,22 +22736,22 @@ function sp_builder_fields_button( $index, array $settings ): void {
         <div style="flex:1;">
             <label style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Style', 'societypress' ); ?></label>
             <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][style]" style="width:100%;">
-                <option value="primary" <?php selected( $style, 'primary' ); ?>>Primary (filled)</option>
-                <option value="secondary" <?php selected( $style, 'secondary' ); ?>>Secondary (gray)</option>
-                <option value="outline" <?php selected( $style, 'outline' ); ?>>Outline</option>
+                <option value="primary" <?php selected( $style, 'primary' ); ?>><?php esc_html_e( 'Primary (filled)', 'societypress' ); ?></option>
+                <option value="secondary" <?php selected( $style, 'secondary' ); ?>><?php esc_html_e( 'Secondary (gray)', 'societypress' ); ?></option>
+                <option value="outline" <?php selected( $style, 'outline' ); ?>><?php esc_html_e( 'Outline', 'societypress' ); ?></option>
             </select>
         </div>
         <div style="flex:1;">
             <label style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Alignment', 'societypress' ); ?></label>
             <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][alignment]" style="width:100%;">
-                <option value="left" <?php selected( $alignment, 'left' ); ?>>Left</option>
-                <option value="center" <?php selected( $alignment, 'center' ); ?>>Center</option>
-                <option value="right" <?php selected( $alignment, 'right' ); ?>>Right</option>
+                <option value="left" <?php selected( $alignment, 'left' ); ?>><?php esc_html_e( 'Left', 'societypress' ); ?></option>
+                <option value="center" <?php selected( $alignment, 'center' ); ?>><?php esc_html_e( 'Center', 'societypress' ); ?></option>
+                <option value="right" <?php selected( $alignment, 'right' ); ?>><?php esc_html_e( 'Right', 'societypress' ); ?></option>
             </select>
         </div>
     </div>
     <div class="sp-builder-field">
-        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][new_window]" value="1" <?php checked( $new_window ); ?>> Open in new window</label>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][new_window]" value="1" <?php checked( $new_window ); ?>> <?php esc_html_e( 'Open in new window', 'societypress' ); ?></label>
     </div>
     <?php
 }
@@ -22556,7 +22763,7 @@ function sp_builder_fields_contact_form( $index, array $settings ): void {
     $intro_text = $settings['intro_text'] ?? '';
     ?>
     <div class="sp-builder-field">
-        <p class="description">Displays a simple name/email/message form. Submissions are emailed to the organization email from your SocietyPress settings.</p>
+        <p class="description"><?php esc_html_e( 'Displays a simple name/email/message form. Submissions are emailed to the organization email from your SocietyPress settings.', 'societypress' ); ?></p>
         <label style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Introductory text (optional)', 'societypress' ); ?></label>
         <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][intro_text]" value="<?php echo esc_attr( $intro_text ); ?>" class="widefat" placeholder="e.g., We\'d love to hear from you!">
     </div>
@@ -22584,7 +22791,7 @@ function sp_builder_fields_upcoming_events( $index, array $settings ): void {
     );
     ?>
     <div class="sp-builder-field">
-        <p class="description">Displays a compact list of upcoming events pulled from your Events system.</p>
+        <p class="description"><?php esc_html_e( 'Displays a compact list of upcoming events pulled from your Events system.', 'societypress' ); ?></p>
 
         <label style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Number of events to show', 'societypress' ); ?></label>
         <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][count]">
@@ -22681,7 +22888,7 @@ function sp_builder_fields_community_link( $index, array $settings ): void {
     $style       = $settings['style'] ?? 'primary';
     ?>
     <div class="sp-builder-field">
-        <p class="description">Links to the Community Forum URL set in Settings &gt; Organization. If that URL is empty, this widget will be invisible to visitors.</p>
+        <p class="description"><?php echo esc_html__( 'Links to the Community Forum URL set in Settings > Organization. If that URL is empty, this widget will be invisible to visitors.', 'societypress' ); ?></p>
         <label style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Button label', 'societypress' ); ?></label>
         <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][label]" value="<?php echo esc_attr( $label ); ?>" class="widefat">
     </div>
@@ -22694,7 +22901,7 @@ function sp_builder_fields_community_link( $index, array $settings ): void {
         <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][style]">
             <option value="primary" <?php selected( $style, 'primary' ); ?>>Primary (Blue)</option>
             <option value="secondary" <?php selected( $style, 'secondary' ); ?>>Secondary (Gray)</option>
-            <option value="outline" <?php selected( $style, 'outline' ); ?>>Outline</option>
+            <option value="outline" <?php selected( $style, 'outline' ); ?>><?php esc_html_e( 'Outline', 'societypress' ); ?></option>
         </select>
     </div>
     <?php
@@ -22711,7 +22918,7 @@ function sp_builder_fields_newsletter_archive( $index, array $settings ): void {
     $login_required = $settings['login_required'] ?? false;
     ?>
     <div class="sp-builder-field">
-        <p class="description">Displays recent posts from the "Newsletter" category. Create posts and assign them to the Newsletter category to populate this widget.</p>
+        <p class="description"><?php esc_html_e( 'Displays recent posts from the "Newsletter" category. Create posts and assign them to the Newsletter category to populate this widget.', 'societypress' ); ?></p>
         <label style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Number of newsletters to show', 'societypress' ); ?></label>
         <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][count]">
             <?php foreach ( [ 5, 10, 15, 20, 50 ] as $opt ) : ?>
@@ -22720,9 +22927,9 @@ function sp_builder_fields_newsletter_archive( $index, array $settings ): void {
         </select>
     </div>
     <div class="sp-builder-field">
-        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_excerpt]" value="1" <?php checked( $show_excerpt ); ?>> Show excerpt</label><br>
-        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_date]" value="1" <?php checked( $show_date ); ?>> Show date</label><br>
-        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][login_required]" value="1" <?php checked( $login_required ); ?>> Require login to view</label>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_excerpt]" value="1" <?php checked( $show_excerpt ); ?>> <?php esc_html_e( 'Show excerpt', 'societypress' ); ?></label><br>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_date]" value="1" <?php checked( $show_date ); ?>> <?php esc_html_e( 'Show date', 'societypress' ); ?></label><br>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][login_required]" value="1" <?php checked( $login_required ); ?>> <?php esc_html_e( 'Require login to view', 'societypress' ); ?></label>
     </div>
     <?php
 }
@@ -22738,16 +22945,16 @@ function sp_builder_fields_volunteer_stats( $index, array $settings ): void {
     $time_period         = $settings['time_period'] ?? 'year';
     ?>
     <div class="sp-builder-field">
-        <p class="description">Displays volunteer statistics from the Governance &gt; Volunteer Hours system.</p>
-        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_count]" value="1" <?php checked( $show_count ); ?>> Show active volunteer count</label><br>
-        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_hours]" value="1" <?php checked( $show_hours ); ?>> Show total hours</label><br>
-        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_top_volunteers]" value="1" <?php checked( $show_top_volunteers ); ?>> Show top contributors</label>
+        <p class="description"><?php echo esc_html__( 'Displays volunteer statistics from the Governance > Volunteer Hours system.', 'societypress' ); ?></p>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_count]" value="1" <?php checked( $show_count ); ?>> <?php esc_html_e( 'Show active volunteer count', 'societypress' ); ?></label><br>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_hours]" value="1" <?php checked( $show_hours ); ?>> <?php esc_html_e( 'Show total hours', 'societypress' ); ?></label><br>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_top_volunteers]" value="1" <?php checked( $show_top_volunteers ); ?>> <?php esc_html_e( 'Show top contributors', 'societypress' ); ?></label>
     </div>
     <div class="sp-builder-field">
         <label style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Time period', 'societypress' ); ?></label>
         <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][time_period]">
-            <option value="year" <?php selected( $time_period, 'year' ); ?>>This year</option>
-            <option value="all" <?php selected( $time_period, 'all' ); ?>>All time</option>
+            <option value="year" <?php selected( $time_period, 'year' ); ?>><?php esc_html_e( 'This year', 'societypress' ); ?></option>
+            <option value="all" <?php selected( $time_period, 'all' ); ?>><?php esc_html_e( 'All time', 'societypress' ); ?></option>
         </select>
     </div>
     <?php
@@ -22770,7 +22977,7 @@ function sp_builder_fields_photo_gallery( $index, array $settings ): void {
     );
     ?>
     <div class="sp-builder-field">
-        <p class="description">Displays photo albums from the Gallery section.</p>
+        <p class="description"><?php esc_html_e( 'Displays photo albums from the Gallery section.', 'societypress' ); ?></p>
         <label style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Display mode', 'societypress' ); ?></label>
         <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][display_mode]">
             <option value="albums" <?php selected( $display_mode, 'albums' ); ?>>All albums (grid of thumbnails)</option>
@@ -22805,7 +23012,7 @@ function sp_builder_fields_photo_gallery( $index, array $settings ): void {
         </div>
     </div>
     <div class="sp-builder-field">
-        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][login_required]" value="1" <?php checked( $login_required ); ?>> Require login to view</label>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][login_required]" value="1" <?php checked( $login_required ); ?>> <?php esc_html_e( 'Require login to view', 'societypress' ); ?></label>
     </div>
     <?php
 }
@@ -22827,7 +23034,7 @@ function sp_builder_fields_resource_links( $index, array $settings ): void {
     );
     ?>
     <div class="sp-builder-field">
-        <p class="description">Displays curated research resource links from Library &gt; Resource Links.</p>
+        <p class="description"><?php echo esc_html__( 'Displays curated research resource links from Library > Resource Links.', 'societypress' ); ?></p>
         <label style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Filter by category', 'societypress' ); ?></label>
         <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][category_id]">
             <option value="">All Categories</option>
@@ -22845,9 +23052,9 @@ function sp_builder_fields_resource_links( $index, array $settings ): void {
         </select>
     </div>
     <div class="sp-builder-field">
-        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][featured_only]" value="1" <?php checked( $featured_only ); ?>> Show featured links only</label><br>
-        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_descriptions]" value="1" <?php checked( $show_descriptions ); ?>> Show descriptions</label><br>
-        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][login_required]" value="1" <?php checked( $login_required ); ?>> Require login to view</label>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][featured_only]" value="1" <?php checked( $featured_only ); ?>> <?php esc_html_e( 'Show featured links only', 'societypress' ); ?></label><br>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_descriptions]" value="1" <?php checked( $show_descriptions ); ?>> <?php esc_html_e( 'Show descriptions', 'societypress' ); ?></label><br>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][login_required]" value="1" <?php checked( $login_required ); ?>> <?php esc_html_e( 'Require login to view', 'societypress' ); ?></label>
     </div>
     <?php
 }
@@ -22870,7 +23077,7 @@ function sp_builder_fields_library_catalog( $index, array $settings ): void {
     );
     ?>
     <div class="sp-builder-field">
-        <p class="description">Displays a searchable, browsable library catalog with collection stats, tabbed search, browse-by-type cards, popular subjects, and a paginated results table with expandable detail rows.</p>
+        <p class="description"><?php esc_html_e( 'Displays a searchable, browsable library catalog with collection stats, tabbed search, browse-by-type cards, popular subjects, and a paginated results table with expandable detail rows.', 'societypress' ); ?></p>
         <label style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Filter by category', 'societypress' ); ?></label>
         <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][category_id]">
             <option value="">All Categories</option>
@@ -22888,10 +23095,10 @@ function sp_builder_fields_library_catalog( $index, array $settings ): void {
         </select>
     </div>
     <div class="sp-builder-field">
-        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_landing]" value="1" <?php checked( $show_landing ); ?>> Show landing page (stats, browse by type, popular subjects)</label><br>
-        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_search]" value="1" <?php checked( $show_search ); ?>> Show search box</label><br>
-        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][available_only]" value="1" <?php checked( $available_only ); ?>> Show available items only</label><br>
-        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][login_required]" value="1" <?php checked( $login_required ); ?>> Require login to view</label>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_landing]" value="1" <?php checked( $show_landing ); ?>> <?php esc_html_e( 'Show landing page (stats, browse by type, popular subjects)', 'societypress' ); ?></label><br>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_search]" value="1" <?php checked( $show_search ); ?>> <?php esc_html_e( 'Show search box', 'societypress' ); ?></label><br>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][available_only]" value="1" <?php checked( $available_only ); ?>> <?php esc_html_e( 'Show available items only', 'societypress' ); ?></label><br>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][login_required]" value="1" <?php checked( $login_required ); ?>> <?php esc_html_e( 'Require login to view', 'societypress' ); ?></label>
     </div>
     <?php
 }
@@ -22961,8 +23168,8 @@ function sp_builder_fields_hero_slider( $index, array $settings ): void {
                                                value="<?php echo esc_attr( $line['text'] ?? '' ); ?>" style="flex:1; min-width:180px;" placeholder="Line text">
                                         <select name="<?php echo $name; ?>[slides][<?php echo $si; ?>][lines][<?php echo $li; ?>][size]" style="width:90px;">
                                             <option value="small" <?php selected( $line['size'] ?? 'medium', 'small' ); ?>>Small</option>
-                                            <option value="medium" <?php selected( $line['size'] ?? 'medium', 'medium' ); ?>>Medium</option>
-                                            <option value="large" <?php selected( $line['size'] ?? 'medium', 'large' ); ?>>Large</option>
+                                            <option value="medium" <?php selected( $line['size'] ?? 'medium', 'medium' ); ?>><?php esc_html_e( 'Medium', 'societypress' ); ?></option>
+                                            <option value="large" <?php selected( $line['size'] ?? 'medium', 'large' ); ?>><?php esc_html_e( 'Large', 'societypress' ); ?></option>
                                         </select>
                                         <select name="<?php echo $name; ?>[slides][<?php echo $si; ?>][lines][<?php echo $li; ?>][weight]" style="width:80px;">
                                             <option value="light" <?php selected( $line['weight'] ?? 'light', 'light' ); ?>>Light</option>
@@ -23465,7 +23672,7 @@ add_action( 'admin_footer', function () {
         // Remove widget
         $list.on('click', '.sp-builder-remove', function(e) {
             e.stopPropagation();
-            if (!confirm('Remove this widget?')) return;
+            if (!confirm('<?php echo esc_js( __( 'Remove this widget?', 'societypress' ) ); ?>')) return;
             $(this).closest('.sp-builder-card').remove();
             reindex();
         });
@@ -23605,7 +23812,7 @@ add_filter( 'template_include', function ( $template ) {
     // Page title — skip on the front page because "Home" as a big heading
     // above a hero slider looks wrong. Interior builder pages still get it.
     if ( ! is_front_page() ) {
-        echo '<header class="entry-header"><h1 class="entry-title">' . get_the_title() . '</h1></header>';
+        echo '<header class="entry-header"><h1 class="entry-title">' . esc_html( get_the_title() ) . '</h1></header>';
     }
 
     // Render widgets
@@ -23929,7 +24136,7 @@ function sp_render_builder_widget_membership_tiers( array $s ): void {
         echo '<h3 style="margin:0 0 8px; color:#1e3a5f;">' . esc_html( $tier->name ) . '</h3>';
         if ( $show_prices ) {
             $price = floatval( $tier->price );
-            echo '<div style="font-size:24px; font-weight:700; color:var(--sp-color-primary);">' . ( $price > 0 ? '$' . number_format( $price, 2 ) : 'Free' ) . '</div>';
+            echo '<div style="font-size:24px; font-weight:700; color:var(--sp-color-primary);">' . ( $price > 0 ? esc_html( sp_format_currency( $price ) ) : esc_html__( 'Free', 'societypress' ) ) . '</div>';
             if ( $price > 0 && $tier->duration_months ) {
                 $d = intval( $tier->duration_months );
                 echo '<div style="font-size:14px; color:#666;">' . ( $d === 12 ? 'per year' : "per {$d} months" ) . '</div>';
@@ -24567,7 +24774,7 @@ function sp_slot_format_time_range( $slot, string $format = 'g:i A' ): string {
         return '';
     }
 
-    return date( $format, strtotime( $start ) ) . ' \u2013 ' . date( $format, strtotime( $end ) );
+    return wp_date( $format, strtotime( $start ) ) . ' \u2013 ' . wp_date( $format, strtotime( $end ) );
 }
 
 /**
@@ -24727,12 +24934,12 @@ class SP_Events_List_Table extends WP_List_Table {
     public function get_columns(): array {
         return [
             'cb'            => '<input type="checkbox" />',
-            'title'         => 'Title',
-            'event_date'    => 'Date / Time',
-            'location'      => 'Location',
-            'category'      => 'Category',
-            'registrations' => 'Registrations',
-            'status'        => 'Status',
+            'title'         => __( 'Title', 'societypress' ),
+            'event_date'    => __( 'Date / Time', 'societypress' ),
+            'location'      => __( 'Location', 'societypress' ),
+            'category'      => __( 'Category', 'societypress' ),
+            'registrations' => __( 'Registrations', 'societypress' ),
+            'status'        => __( 'Status', 'societypress' ),
         ];
     }
 
@@ -24752,7 +24959,7 @@ class SP_Events_List_Table extends WP_List_Table {
      */
     protected function get_bulk_actions(): array {
         return [
-            'delete' => 'Delete',
+            'delete' => __( 'Delete', 'societypress' ),
         ];
     }
 
@@ -24778,7 +24985,7 @@ class SP_Events_List_Table extends WP_List_Table {
 
         // Build row actions
         $actions = [
-            'edit' => sprintf( '<a href="%s">Edit</a>', esc_url( $edit_url ) ),
+            'edit' => sprintf( '<a href="%s">%s</a>', esc_url( $edit_url ), esc_html__( 'Edit', 'societypress' ) ),
         ];
 
         // Duplicate — creates a copy of the event
@@ -24786,7 +24993,7 @@ class SP_Events_List_Table extends WP_List_Table {
             admin_url( 'admin.php?page=sp-events&action=duplicate&event_id=' . $item->id ),
             'sp_duplicate_event_' . $item->id
         );
-        $actions['duplicate'] = sprintf( '<a href="%s">Duplicate</a>', esc_url( $duplicate_url ) );
+        $actions['duplicate'] = sprintf( '<a href="%s">%s</a>', esc_url( $duplicate_url ), esc_html__( 'Duplicate', 'societypress' ) );
 
         // Cancel — only for scheduled events
         if ( $item->status === 'scheduled' ) {
@@ -24795,20 +25002,15 @@ class SP_Events_List_Table extends WP_List_Table {
                 'sp_cancel_event_' . $item->id
             );
             $actions['cancel'] = sprintf(
-                '<a href="%s" onclick="return confirm(\'Cancel this event?\');">Cancel</a>',
-                esc_url( $cancel_url )
+                '<a href="%s" onclick="return confirm(\'%s\');">%s</a>',
+                esc_url( $cancel_url ),
+                esc_js( __( 'Cancel this event?', 'societypress' ) ),
+                esc_html__( 'Cancel', 'societypress' )
             );
         }
 
-        // Delete
-        $delete_url = wp_nonce_url(
-            admin_url( 'admin.php?page=sp-events&action=delete&event_id=' . $item->id ),
-            'sp_delete_event_' . $item->id
-        );
-        $actions['delete'] = sprintf(
-            '<a href="%s" style="color: #b32d2e;" onclick="return confirm(\'Permanently delete this event?\');">Delete</a>',
-            esc_url( $delete_url )
-        );
+        // Delete — JS-based POST to avoid nested forms inside the list table
+        $actions['delete'] = '<a href="#" style="color:#b32d2e;" onclick="if(confirm(\'' . esc_js( __( 'Permanently delete this event?', 'societypress' ) ) . '\')){var f=document.createElement(\'form\');f.method=\'post\';f.action=\'' . esc_url( admin_url( 'admin.php?page=sp-events' ) ) . '\';var d=[[\'_wpnonce\',\'' . wp_create_nonce( 'sp_delete_event_' . $item->id ) . '\'],[\'action\',\'delete\'],[\'event_id\',\'' . (int) $item->id . '\']];d.forEach(function(p){var i=document.createElement(\'input\');i.type=\'hidden\';i.name=p[0];i.value=p[1];f.appendChild(i);});document.body.appendChild(f);f.submit();}return false;">' . esc_html__( 'Delete', 'societypress' ) . '</a>';
 
         return $title . $this->row_actions( $actions );
     }
@@ -24847,7 +25049,7 @@ class SP_Events_List_Table extends WP_List_Table {
             return $output;
         }
         if ( $item->is_virtual ) {
-            return '<span style="background: #dbe9f4; color: var(--sp-color-primary); padding: 2px 6px; border-radius: 3px; font-size: 11px;">Virtual</span>';
+            return '<span style="background: #dbe9f4; color: var(--sp-color-primary); padding: 2px 6px; border-radius: 3px; font-size: 11px;">' . esc_html__( 'Virtual', 'societypress' ) . '</span>';
         }
         return '—';
     }
@@ -24942,7 +25144,7 @@ class SP_Events_List_Table extends WP_List_Table {
             "SELECT id, name FROM {$wpdb->prefix}sp_event_categories WHERE active = 1 ORDER BY sort_order"
         );
         echo '<select name="event_category">';
-        echo '<option value="">All Categories</option>';
+        echo '<option value="">' . esc_html__( 'All Categories', 'societypress' ) . '</option>';
         foreach ( $categories as $cat ) {
             printf(
                 '<option value="%d" %s>%s</option>',
@@ -24956,7 +25158,7 @@ class SP_Events_List_Table extends WP_List_Table {
         // Status filter
         $statuses = [ 'scheduled', 'cancelled', 'postponed', 'completed' ];
         echo '<select name="event_status">';
-        echo '<option value="">All Statuses</option>';
+        echo '<option value="">' . esc_html__( 'All Statuses', 'societypress' ) . '</option>';
         foreach ( $statuses as $s ) {
             printf(
                 '<option value="%s" %s>%s</option>',
@@ -24969,9 +25171,9 @@ class SP_Events_List_Table extends WP_List_Table {
 
         // Timeframe filter
         $timeframes = [
-            'upcoming' => 'Upcoming',
-            'past'     => 'Past',
-            'all'      => 'All',
+            'upcoming' => __( 'Upcoming', 'societypress' ),
+            'past'     => __( 'Past', 'societypress' ),
+            'all'      => __( 'All', 'societypress' ),
         ];
         echo '<select name="event_timeframe">';
         foreach ( $timeframes as $val => $label ) {
@@ -24984,7 +25186,7 @@ class SP_Events_List_Table extends WP_List_Table {
         }
         echo '</select>';
 
-        submit_button( 'Filter', '', 'filter_action', false );
+        submit_button( __( 'Filter', 'societypress' ), '', 'filter_action', false );
         echo '</div>';
     }
 
@@ -25107,7 +25309,7 @@ class SP_Events_List_Table extends WP_List_Table {
      * Message shown when there are no events yet.
      */
     public function no_items(): void {
-        echo 'No events found. <a href="' . esc_url( admin_url( 'admin.php?page=sp-event-edit' ) ) . '">Create your first event</a>.';
+        echo esc_html__( 'No events found.', 'societypress' ) . ' <a href="' . esc_url( admin_url( 'admin.php?page=sp-event-edit' ) ) . '">' . esc_html__( 'Create your first event', 'societypress' ) . '</a>.';
     }
 }
 
@@ -25135,9 +25337,9 @@ add_action( 'admin_init', function () {
     $events_table = $wpdb->prefix . 'sp_events';
     $action       = $_GET['action'] ?? $_POST['action'] ?? '';
 
-    // ---- Single event delete ----
-    if ( $action === 'delete' && ! empty( $_GET['event_id'] ) ) {
-        $event_id = (int) $_GET['event_id'];
+    // ---- Single event delete — POST-only to prevent browser prefetch accidents ----
+    if ( $action === 'delete' && ! empty( $_POST['event_id'] ) ) {
+        $event_id = (int) $_POST['event_id'];
         check_admin_referer( 'sp_delete_event_' . $event_id );
 
         // Get title before delete for the audit log
@@ -25335,10 +25537,10 @@ add_action( 'admin_init', function () {
         return;
     }
     if ( ! wp_verify_nonce( $_POST['sp_event_nonce'], 'sp_save_event' ) ) {
-        wp_die( 'Security check failed.' );
+        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
     }
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_die( 'Unauthorized.' );
+        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
     }
 
     global $wpdb;
@@ -25640,7 +25842,7 @@ function sp_render_event_edit_page(): void {
                     <th scope="row"><label for="event_category_id"><?php esc_html_e( 'Category', 'societypress' ); ?></label></th>
                     <td>
                         <select id="event_category_id" name="event_category_id">
-                            <option value="">— None —</option>
+                            <option value=""><?php esc_html_e( '— None —', 'societypress' ); ?></option>
                             <?php foreach ( $categories as $cat ) : ?>
                                 <option value="<?php echo esc_attr( $cat->id ); ?>"
                                     <?php selected( $val( 'category_id' ), $cat->id ); ?>>
@@ -26063,7 +26265,7 @@ function sp_render_event_edit_page(): void {
                             <?php foreach ( $assigned_speakers as $idx => $as ) : ?>
                                 <div class="sp-speaker-row" style="display: flex; gap: 8px; align-items: center; margin-bottom: 6px;">
                                     <select name="event_speakers[<?php echo $idx; ?>][id]" class="sp-speaker-select" style="min-width: 200px;">
-                                        <option value="">— Select Speaker —</option>
+                                        <option value=""><?php echo '— ' . esc_html__( 'Select Speaker', 'societypress' ) . ' —'; ?></option>
                                         <?php foreach ( $all_speakers as $sp ) : ?>
                                             <option value="<?php echo esc_attr( $sp->id ); ?>"
                                                 <?php selected( $sp->id, $as->speaker_id ); ?>>
@@ -26072,22 +26274,22 @@ function sp_render_event_edit_page(): void {
                                         <?php endforeach; ?>
                                     </select>
                                     <select name="event_speakers[<?php echo $idx; ?>][role]" style="min-width: 120px;">
-                                        <option value="speaker" <?php selected( $as->role, 'speaker' ); ?>>Speaker</option>
-                                        <option value="instructor" <?php selected( $as->role, 'instructor' ); ?>>Instructor</option>
-                                        <option value="moderator" <?php selected( $as->role, 'moderator' ); ?>>Moderator</option>
-                                        <option value="panelist" <?php selected( $as->role, 'panelist' ); ?>>Panelist</option>
+                                        <option value="speaker" <?php selected( $as->role, 'speaker' ); ?>><?php esc_html_e( 'Speaker', 'societypress' ); ?></option>
+                                        <option value="instructor" <?php selected( $as->role, 'instructor' ); ?>><?php esc_html_e( 'Instructor', 'societypress' ); ?></option>
+                                        <option value="moderator" <?php selected( $as->role, 'moderator' ); ?>><?php esc_html_e( 'Moderator', 'societypress' ); ?></option>
+                                        <option value="panelist" <?php selected( $as->role, 'panelist' ); ?>><?php esc_html_e( 'Panelist', 'societypress' ); ?></option>
                                     </select>
                                     <button type="button" class="button sp-remove-speaker" title="Remove">&times;</button>
                                 </div>
                             <?php endforeach; ?>
                         </div>
                         <button type="button" class="button" id="sp-add-speaker-btn" style="margin-top: 6px;">
-                            + Add Speaker
+                            + <?php esc_html_e( 'Add Speaker', 'societypress' ); ?>
                         </button>
                         <?php if ( empty( $all_speakers ) ) : ?>
                             <p class="description" style="margin-top: 6px;">
-                                No speakers in the system yet.
-                                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-speaker-edit' ) ); ?>">Add one</a> first.
+                                <?php echo esc_html__( 'No speakers in the system yet.', 'societypress' ); ?>
+                                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-speaker-edit' ) ); ?>"><?php esc_html_e( 'Add one', 'societypress' ); ?></a> <?php esc_html_e( 'first.', 'societypress' ); ?>
                             </p>
                         <?php endif; ?>
 
@@ -26095,7 +26297,7 @@ function sp_render_event_edit_page(): void {
                         <template id="sp-speaker-row-template">
                             <div class="sp-speaker-row" style="display: flex; gap: 8px; align-items: center; margin-bottom: 6px;">
                                 <select name="event_speakers[__IDX__][id]" class="sp-speaker-select" style="min-width: 200px;">
-                                    <option value="">— Select Speaker —</option>
+                                    <option value=""><?php echo '— ' . esc_html__( 'Select Speaker', 'societypress' ) . ' —'; ?></option>
                                     <?php foreach ( $all_speakers as $sp ) : ?>
                                         <option value="<?php echo esc_attr( $sp->id ); ?>">
                                             <?php echo esc_html( $sp->name ); ?><?php echo $sp->title ? ' — ' . esc_html( $sp->title ) : ''; ?>
@@ -26136,18 +26338,18 @@ function sp_render_event_edit_page(): void {
                     <th scope="row"><?php esc_html_e( 'Recurrence', 'societypress' ); ?></th>
                     <td>
                         <select id="sp-recurrence-type" name="event_recurrence_type" style="min-width: 200px;">
-                            <option value="">No recurrence (one-time event)</option>
+                            <option value=""><?php esc_html_e( 'No recurrence (one-time event)', 'societypress' ); ?></option>
                             <option value="weekly" <?php echo $is_parent && strpos( $event->recurrence_rule ?? '', 'weekly:' ) === 0 ? 'selected' : ''; ?>>
-                                Weekly (same day each week)
+                                <?php esc_html_e( 'Weekly (same day each week)', 'societypress' ); ?>
                             </option>
                             <option value="monthly-nth" <?php echo $is_parent && strpos( $event->recurrence_rule ?? '', 'monthly-nth:' ) === 0 ? 'selected' : ''; ?>>
-                                Monthly (e.g., 2nd Saturday)
+                                <?php esc_html_e( 'Monthly (e.g., 2nd Saturday)', 'societypress' ); ?>
                             </option>
                             <option value="monthly-date" <?php echo $is_parent && strpos( $event->recurrence_rule ?? '', 'monthly-date:' ) === 0 ? 'selected' : ''; ?>>
-                                Monthly (same date each month)
+                                <?php esc_html_e( 'Monthly (same date each month)', 'societypress' ); ?>
                             </option>
                         </select>
-                        <p class="description">The recurrence is calculated from the event date above.</p>
+                        <p class="description"><?php esc_html_e( 'The recurrence is calculated from the event date above.', 'societypress' ); ?></p>
                     </td>
                 </tr>
 
@@ -26156,7 +26358,7 @@ function sp_render_event_edit_page(): void {
                     <td>
                         <input type="date" id="event_recurrence_end" name="event_recurrence_end"
                                value="<?php echo esc_attr( $val( 'recurrence_end_date' ) ); ?>">
-                        <p class="description">Generate occurrences through this date. Leave blank for 12 months.</p>
+                        <p class="description"><?php esc_html_e( 'Generate occurrences through this date. Leave blank for 12 months.', 'societypress' ); ?></p>
                     </td>
                 </tr>
 
@@ -26175,11 +26377,11 @@ function sp_render_event_edit_page(): void {
                             </p>
                             <button type="button" class="button" id="sp-regenerate-occurrences"
                                     data-event-id="<?php echo esc_attr( $event->id ); ?>">
-                                Regenerate Future Occurrences
+                                <?php esc_html_e( 'Regenerate Future Occurrences', 'societypress' ); ?>
                             </button>
                             <span id="sp-regen-status" style="margin-left: 8px;"></span>
                             <p class="description" style="margin-top: 4px;">
-                                Only creates new dates — existing or modified occurrences are left alone.
+                                <?php esc_html_e( 'Only creates new dates — existing or modified occurrences are left alone.', 'societypress' ); ?>
                             </p>
                         </td>
                     </tr>
@@ -26474,7 +26676,7 @@ function sp_render_event_edit_page(): void {
         var regenStatus = document.getElementById('sp-regen-status');
         if (regenBtn) {
             regenBtn.addEventListener('click', function() {
-                if (!confirm('Generate future occurrences? Existing events in the series will not be affected.')) return;
+                if (!confirm('<?php echo esc_js( __( 'Generate future occurrences? Existing events in the series will not be affected.', 'societypress' ) ); ?>')) return;
                 regenBtn.disabled = true;
                 regenStatus.textContent = 'Generating\u2026';
 
@@ -26502,7 +26704,7 @@ function sp_render_event_edit_page(): void {
         var detachBtn = document.getElementById('sp-detach-from-series');
         if (detachBtn) {
             detachBtn.addEventListener('click', function() {
-                if (!confirm('Detach this event from its recurring series? This cannot be undone.')) return;
+                if (!confirm('<?php echo esc_js( __( 'Detach this event from its recurring series? This cannot be undone.', 'societypress' ) ); ?>')) return;
                 detachBtn.disabled = true;
 
                 var fd = new FormData();
@@ -26584,7 +26786,7 @@ function sp_render_event_categories_page(): void {
                         <th scope="row"><label for="sp-cat-sort"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label></th>
                         <td>
                             <input type="number" id="sp-cat-sort" value="0" min="0" class="small-text">
-                            <p class="description">Lower numbers appear first.</p>
+                            <p class="description"><?php esc_html_e( 'Lower numbers appear first.', 'societypress' ); ?></p>
                         </td>
                     </tr>
                 </table>
@@ -26769,7 +26971,7 @@ function sp_render_event_categories_page(): void {
                 var sort   = row.querySelector('.sp-cat-edit-sort').value;
                 var active = row.querySelector('.sp-cat-edit-active-cb').checked ? 1 : 0;
 
-                if (!name) { alert('Category name is required.'); return; }
+                if (!name) { alert('<?php echo esc_js( __( 'Category name is required.', 'societypress' ) ); ?>'); return; }
 
                 btn.textContent = 'Saving...';
                 btn.disabled = true;
@@ -26809,7 +27011,7 @@ function sp_render_event_categories_page(): void {
                         btn.disabled = false;
                     })
                     .catch(function() {
-                        alert('Network error. Please try again.');
+                        alert('<?php echo esc_js( __( 'Network error. Please try again.', 'societypress' ) ); ?>');
                         btn.textContent = 'Save';
                         btn.disabled = false;
                     });
@@ -26817,7 +27019,7 @@ function sp_render_event_categories_page(): void {
 
             // DELETE: Remove category via AJAX
             if (btn.classList.contains('sp-cat-delete-btn')) {
-                if (!confirm('Delete this category? This cannot be undone.')) return;
+                if (!confirm('<?php echo esc_js( __( 'Delete this category? This cannot be undone.', 'societypress' ) ); ?>')) return;
 
                 btn.textContent = 'Deleting...';
                 btn.disabled = true;
@@ -26847,7 +27049,7 @@ function sp_render_event_categories_page(): void {
                         }
                     })
                     .catch(function() {
-                        alert('Network error. Please try again.');
+                        alert('<?php echo esc_js( __( 'Network error. Please try again.', 'societypress' ) ); ?>');
                         btn.textContent = 'Delete';
                         btn.disabled = false;
                     });
@@ -27025,7 +27227,7 @@ function sp_render_member_tiers_page(): void {
                         <td>
                             <input type="number" id="sp-tier-price" value="0.00" min="0" step="0.01"
                                    style="width: 100px;">
-                            <p class="description">Set to 0 for free/honorary plans.</p>
+                            <p class="description"><?php esc_html_e( 'Set to 0 for free/honorary plans.', 'societypress' ); ?></p>
                         </td>
                     </tr>
                     <tr>
@@ -27036,7 +27238,7 @@ function sp_render_member_tiers_page(): void {
                             <label style="margin-left: 12px;">
                                 <input type="checkbox" id="sp-tier-lifetime"> No expiry (Lifetime)
                             </label>
-                            <p class="description">How many months before renewal is due.</p>
+                            <p class="description"><?php esc_html_e( 'How many months before renewal is due.', 'societypress' ); ?></p>
                         </td>
                     </tr>
                     <tr>
@@ -27104,7 +27306,7 @@ function sp_render_member_tiers_page(): void {
                                 <input type="text" class="sp-tier-edit-name regular-text" value="<?php echo esc_attr( $tier->name ); ?>" style="display: none; width: 90%;">
                             </td>
                             <td>
-                                <span class="sp-tier-display-price">$<?php echo esc_html( number_format( (float) $tier->price, 2 ) ); ?></span>
+                                <span class="sp-tier-display-price"><?php echo esc_html( sp_format_currency( $tier->price ) ); ?></span>
                                 <input type="number" class="sp-tier-edit-price" value="<?php echo esc_attr( $tier->price ); ?>" min="0" step="0.01" style="display: none; width: 80px;">
                             </td>
                             <td>
@@ -27287,7 +27489,7 @@ function sp_render_member_tiers_page(): void {
                 var jointCb  = row.querySelector('.sp-tier-edit-joint-cb');
                 var joint    = (jointCb && jointCb.checked) ? '1' : '0';
 
-                if (!name) { alert('Plan name is required.'); return; }
+                if (!name) { alert('<?php echo esc_js( __( 'Plan name is required.', 'societypress' ) ); ?>'); return; }
 
                 btn.textContent = 'Saving...';
                 btn.disabled = true;
@@ -27308,9 +27510,11 @@ function sp_render_member_tiers_page(): void {
                     .then(function(r) { return r.json(); })
                     .then(function(r) {
                         if (r.success) {
-                            // Update display values
+                            // Update display values — currency from settings
+                            var _csym = <?php echo wp_json_encode( sp_get_currency_symbol() ); ?>;
+                            var _cpos = <?php echo wp_json_encode( sp_get_currency_position() ); ?>;
                             row.querySelector('.sp-tier-display-name').textContent = name;
-                            row.querySelector('.sp-tier-display-price').textContent = '$' + parseFloat(price).toFixed(2);
+                            row.querySelector('.sp-tier-display-price').textContent = _cpos === 'before' ? _csym + parseFloat(price).toFixed(2) : parseFloat(price).toFixed(2) + _csym;
                             row.querySelector('.sp-tier-display-sort').textContent = sort;
                             row.querySelector('.sp-tier-display-active').innerHTML = active ? '&#10003;' : '&mdash;';
                             row.querySelector('.sp-tier-display-joint').innerHTML = (joint === '1') ? '&#10003;' : '&mdash;';
@@ -27341,7 +27545,7 @@ function sp_render_member_tiers_page(): void {
                         btn.disabled = false;
                     })
                     .catch(function() {
-                        alert('Network error. Please try again.');
+                        alert('<?php echo esc_js( __( 'Network error. Please try again.', 'societypress' ) ); ?>');
                         btn.textContent = 'Save';
                         btn.disabled = false;
                     });
@@ -27349,7 +27553,7 @@ function sp_render_member_tiers_page(): void {
 
             // DELETE: Remove tier via AJAX (only possible when 0 members assigned)
             if (btn.classList.contains('sp-tier-delete-btn')) {
-                if (!confirm('Delete this membership plan? This cannot be undone.')) return;
+                if (!confirm('<?php echo esc_js( __( 'Delete this membership plan? This cannot be undone.', 'societypress' ) ); ?>')) return;
 
                 btn.textContent = 'Deleting...';
                 btn.disabled = true;
@@ -27379,7 +27583,7 @@ function sp_render_member_tiers_page(): void {
                         }
                     })
                     .catch(function() {
-                        alert('Network error. Please try again.');
+                        alert('<?php echo esc_js( __( 'Network error. Please try again.', 'societypress' ) ); ?>');
                         btn.textContent = 'Delete';
                         btn.disabled = false;
                     });
@@ -27931,7 +28135,7 @@ add_action( 'admin_init', function () {
                 Test Connection
             </button>
             <span id="sp-stripe-test-result" style="margin-left: 12px; font-weight: 500;"></span>
-            <p class="description">Checks that your API keys are valid. Save your settings first, then click this button.</p>
+            <p class="description"><?php esc_html_e( 'Checks that your API keys are valid. Save your settings first, then click this button.', 'societypress' ); ?></p>
             <script>
             (function() {
                 var btn = document.getElementById('sp-stripe-test-btn');
@@ -28676,7 +28880,7 @@ function sp_render_import_events_page(): void {
             <?php endif; ?>
 
             <p>
-                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-events' ) ); ?>" class="button button-primary">View Events</a>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-events' ) ); ?>" class="button button-primary"><?php esc_html_e( 'View Events', 'societypress' ); ?></a>
                 <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-import-events' ) ); ?>" class="button" style="margin-left: 8px;">Import More</a>
             </p>
         <?php endif; ?>
@@ -28702,9 +28906,9 @@ function sp_render_import_events_page(): void {
                     <table class="widefat" style="margin-bottom: 20px;">
                         <thead>
                             <tr>
-                                <th style="width: 25%;">File Column</th>
-                                <th style="width: 25%;">Maps To</th>
-                                <th>Sample Values</th>
+                                <th style="width: 25%;"><?php esc_html_e( 'File Column', 'societypress' ); ?></th>
+                                <th style="width: 25%;"><?php esc_html_e( 'Maps To', 'societypress' ); ?></th>
+                                <th><?php esc_html_e( 'Sample Values', 'societypress' ); ?></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -28714,7 +28918,7 @@ function sp_render_import_events_page(): void {
                                     <td>
                                         <select name="sp_field_map[<?php echo esc_attr( $header ); ?>]"
                                                 style="width: 100%;">
-                                            <option value="__skip">— Skip this column —</option>
+                                            <option value="__skip"><?php esc_html_e( '— Skip this column —', 'societypress' ); ?></option>
                                             <?php foreach ( $target_fields as $key => $label ) : ?>
                                                 <option value="<?php echo esc_attr( $key ); ?>"
                                                     <?php selected( $auto_map[ $header ] ?? '', $key ); ?>>
@@ -28746,9 +28950,9 @@ function sp_render_import_events_page(): void {
                     </table>
 
                     <p>
-                        <?php submit_button( 'Import ' . (int) $preview['row_count'] . ' Events', 'primary', 'submit', false ); ?>
+                        <?php submit_button( sprintf( __( 'Import %d Events', 'societypress' ), (int) $preview['row_count'] ), 'primary', 'submit', false ); ?>
                         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-import-events' ) ); ?>"
-                           class="button" style="margin-left: 8px;">Cancel</a>
+                           class="button" style="margin-left: 8px;"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
                     </p>
                 </form>
             </div>
@@ -28795,9 +28999,9 @@ function sp_render_import_events_page(): void {
                 <table class="widefat" style="font-size: 12px;">
                     <thead>
                         <tr>
-                            <th>Column</th>
-                            <th>Required</th>
-                            <th>Example</th>
+                            <th><?php esc_html_e( 'Column', 'societypress' ); ?></th>
+                            <th><?php esc_html_e( 'Required', 'societypress' ); ?></th>
+                            <th><?php esc_html_e( 'Example', 'societypress' ); ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -29052,7 +29256,7 @@ function sp_render_calendar_grid( int $category_id = 0, string $base_url = '', a
     $cal_mon     = (int) substr( $cal_month, 5, 2 );
     $days_in     = (int) date( 't', mktime( 0, 0, 0, $cal_mon, 1, $cal_year ) );
     $first_dow   = (int) date( 'w', mktime( 0, 0, 0, $cal_mon, 1, $cal_year ) ); // 0=Sun
-    $month_label = date( 'F Y', mktime( 0, 0, 0, $cal_mon, 1, $cal_year ) );
+    $month_label = wp_date( 'F Y', mktime( 0, 0, 0, $cal_mon, 1, $cal_year ) );
 
     // ---- Start day of week (Sunday or Monday) ----
     $start_day  = (int) ( $settings['events_calendar_start_day'] ?? 0 );
@@ -29173,7 +29377,7 @@ function sp_render_calendar_grid( int $category_id = 0, string $base_url = '', a
                                    title="<?php echo esc_attr( $ce->title ); ?>">
                                     <span class="sp-cal-event-title"><?php echo esc_html( $ce->title ); ?></span>
                                     <?php if ( $ce->start_time ) : ?>
-                                        <span class="sp-cal-event-time"><?php echo esc_html( date( 'g:iA', strtotime( $ce->start_time ) ) ); ?></span>
+                                        <span class="sp-cal-event-time"><?php echo esc_html( wp_date( 'g:iA', strtotime( $ce->start_time ) ) ); ?></span>
                                     <?php endif; ?>
                                 </a>
                                 <?php else : ?>
@@ -29182,7 +29386,7 @@ function sp_render_calendar_grid( int $category_id = 0, string $base_url = '', a
                                       title="<?php echo esc_attr( $ce->title ); ?>">
                                     <span class="sp-cal-event-title"><?php echo esc_html( $ce->title ); ?></span>
                                     <?php if ( $ce->start_time ) : ?>
-                                        <span class="sp-cal-event-time"><?php echo esc_html( date( 'g:iA', strtotime( $ce->start_time ) ) ); ?></span>
+                                        <span class="sp-cal-event-time"><?php echo esc_html( wp_date( 'g:iA', strtotime( $ce->start_time ) ) ); ?></span>
                                     <?php endif; ?>
                                 </span>
                                 <?php endif; ?>
@@ -29371,12 +29575,12 @@ function sp_render_events_listing( array $settings ): void {
                 <!-- Search -->
                 <div class="sp-events-search-wrap">
                     <input type="text" name="sp_search" value="<?php echo esc_attr( $search ); ?>"
-                           placeholder="Search events..." class="sp-events-search-input">
+                           placeholder="<?php echo esc_attr__( 'Search events...', 'societypress' ); ?>" class="sp-events-search-input">
                 </div>
 
                 <!-- Category -->
                 <select name="sp_cat" class="sp-events-filter-select">
-                    <option value="0">All Categories</option>
+                    <option value="0"><?php esc_html_e( 'All Categories', 'societypress' ); ?></option>
                     <?php foreach ( $categories as $cat ) : ?>
                         <option value="<?php echo esc_attr( $cat->id ); ?>"
                             <?php selected( $cat_filter, $cat->id ); ?>>
@@ -29389,12 +29593,12 @@ function sp_render_events_listing( array $settings ): void {
                 <select name="sp_time" class="sp-events-filter-select">
                     <?php
                     $timeframes = [
-                        '30days'   => 'Next 30 Days',
-                        '3months'  => 'Next 3 Months',
-                        '6months'  => 'Next 6 Months',
-                        '12months' => 'Next 12 Months',
-                        'all'      => 'All Upcoming',
-                        'past'     => 'Past Events',
+                        '30days'   => __( 'Next 30 Days', 'societypress' ),
+                        '3months'  => __( 'Next 3 Months', 'societypress' ),
+                        '6months'  => __( 'Next 6 Months', 'societypress' ),
+                        '12months' => __( 'Next 12 Months', 'societypress' ),
+                        'all'      => __( 'All Upcoming', 'societypress' ),
+                        'past'     => __( 'Past Events', 'societypress' ),
                     ];
                     foreach ( $timeframes as $tval => $tlabel ) :
                     ?>
@@ -29405,10 +29609,10 @@ function sp_render_events_listing( array $settings ): void {
                     <?php endforeach; ?>
                 </select>
 
-                <button type="submit" class="sp-events-filter-btn">Filter</button>
+                <button type="submit" class="sp-events-filter-btn"><?php esc_html_e( 'Filter', 'societypress' ); ?></button>
 
                 <?php if ( $search !== '' || $cat_filter > 0 || $timeframe !== '12months' ) : ?>
-                    <a href="<?php echo esc_url( $base_url ); ?>" class="sp-events-clear-link">Clear</a>
+                    <a href="<?php echo esc_url( $base_url ); ?>" class="sp-events-clear-link"><?php esc_html_e( 'Clear', 'societypress' ); ?></a>
                 <?php endif; ?>
             </div>
 
@@ -29416,11 +29620,11 @@ function sp_render_events_listing( array $settings ): void {
             <div class="sp-events-view-toggle">
                 <a href="<?php echo esc_url( add_query_arg( array_merge( $page_args, [ 'sp_view' => 'list' ] ), $base_url ) ); ?>"
                    class="sp-view-btn <?php echo $view === 'list' ? 'sp-view-active' : ''; ?>">
-                    <span class="sp-view-icon">&#9776;</span> List
+                    <span class="sp-view-icon">&#9776;</span> <?php esc_html_e( 'List', 'societypress' ); ?>
                 </a>
                 <a href="<?php echo esc_url( add_query_arg( array_merge( $page_args, [ 'sp_view' => 'calendar' ] ), $base_url ) ); ?>"
                    class="sp-view-btn <?php echo $view === 'calendar' ? 'sp-view-active' : ''; ?>">
-                    <span class="sp-view-icon">&#9638;</span> Calendar
+                    <span class="sp-view-icon">&#9638;</span> <?php esc_html_e( 'Calendar', 'societypress' ); ?>
                 </a>
             </div>
         </form>
@@ -29449,9 +29653,15 @@ function sp_render_events_listing( array $settings ): void {
 
     <?php if ( empty( $events ) ) : ?>
         <div class="sp-events-empty">
-            <p>No events found<?php echo $search !== '' ? ' matching "' . esc_html( $search ) . '"' : ''; ?>.</p>
+            <p><?php
+                if ( $search !== '' ) {
+                    echo esc_html( sprintf( __( 'No events found matching "%s".', 'societypress' ), $search ) );
+                } else {
+                    esc_html_e( 'No events found.', 'societypress' );
+                }
+            ?></p>
             <?php if ( $search !== '' || $cat_filter > 0 ) : ?>
-                <p><a href="<?php echo esc_url( $base_url ); ?>">View all upcoming events</a></p>
+                <p><a href="<?php echo esc_url( $base_url ); ?>"><?php esc_html_e( 'View all upcoming events', 'societypress' ); ?></a></p>
             <?php endif; ?>
         </div>
     <?php else : ?>
@@ -29466,20 +29676,40 @@ function sp_render_events_listing( array $settings ): void {
             ?>
         </div>
 
+        <?php
+        // WHY: Batch-fetch registration counts for all events in one query instead
+        //      of querying per-card inside the loop (N+1 problem). With 12 events
+        //      per page, this eliminates 12 individual COUNT queries.
+        $event_ids  = wp_list_pluck( $events, 'id' );
+        $reg_counts = [];
+        if ( $event_ids ) {
+            $placeholders = implode( ',', array_fill( 0, count( $event_ids ), '%d' ) );
+            $counts = $wpdb->get_results( $wpdb->prepare(
+                "SELECT event_id, COALESCE(SUM(party_size), 0) as total
+                 FROM {$reg_table}
+                 WHERE event_id IN ($placeholders) AND status IN ('confirmed','waitlisted')
+                 GROUP BY event_id",
+                ...$event_ids
+            ) );
+            foreach ( $counts as $c ) {
+                $reg_counts[ (int) $c->event_id ] = (int) $c->total;
+            }
+        }
+        ?>
         <div class="sp-events-list">
             <?php foreach ( $events as $ev ) :
                 $detail_url = add_query_arg( 'sp_event', $ev->slug, $base_url );
                 $date_ts    = strtotime( $ev->event_date );
-                $day_num    = date( 'j', $date_ts );
-                $day_name   = date( 'D', $date_ts );
-                $month_name = date( 'M', $date_ts );
+                $day_num    = wp_date( 'j', $date_ts );
+                $day_name   = wp_date( 'D', $date_ts );
+                $month_name = wp_date( 'M', $date_ts );
 
                 // Build time string
                 $time_str = '';
                 if ( ! empty( $ev->start_time ) ) {
-                    $time_str = date( 'g:i A', strtotime( $ev->start_time ) );
+                    $time_str = wp_date( 'g:i A', strtotime( $ev->start_time ) );
                     if ( ! empty( $ev->end_time ) ) {
-                        $time_str .= ' – ' . date( 'g:i A', strtotime( $ev->end_time ) );
+                        $time_str .= ' – ' . wp_date( 'g:i A', strtotime( $ev->end_time ) );
                     }
                 }
 
@@ -29494,14 +29724,10 @@ function sp_render_events_listing( array $settings ): void {
                     $location .= ' + Virtual';
                 }
 
-                // Registration info
+                // Registration info (uses batch-fetched counts from above)
                 $reg_info = '';
                 if ( $ev->registration_enabled ) {
-                    $reg_count = (int) $wpdb->get_var( $wpdb->prepare(
-                        "SELECT COALESCE(SUM(party_size), 0) FROM {$reg_table}
-                         WHERE event_id = %d AND status = 'confirmed'",
-                        $ev->id
-                    ) );
+                    $reg_count = $reg_counts[ $ev->id ] ?? 0;
                     if ( $ev->registration_limit ) {
                         $spots_left = max( 0, $ev->registration_limit - $reg_count );
                         if ( $spots_left === 0 ) {
@@ -29548,7 +29774,7 @@ function sp_render_events_listing( array $settings ): void {
                                 <?php endif; ?>
 
                                 <?php if ( $ev->status === 'postponed' ) : ?>
-                                    <span class="sp-event-badge sp-badge-postponed">Postponed</span>
+                                    <span class="sp-event-badge sp-badge-postponed"><?php esc_html_e( 'Postponed', 'societypress' ); ?></span>
                                 <?php endif; ?>
 
                                 <?php
@@ -29561,15 +29787,15 @@ function sp_render_events_listing( array $settings ): void {
 
                                 if ( $m_price > 0 && $nm_price > 0 ) : ?>
                                     <span class="sp-event-price">
-                                        <?php echo esc_html__( 'Members', 'societypress' ) . ' $' . esc_html( number_format( $m_price, 2 ) ); ?>
-                                        / <?php echo esc_html__( 'Non-Members', 'societypress' ) . ' $' . esc_html( number_format( $nm_price, 2 ) ); ?>
+                                        <?php echo esc_html__( 'Members', 'societypress' ) . ' ' . esc_html( sp_format_currency( $m_price ) ); ?>
+                                        / <?php echo esc_html__( 'Non-Members', 'societypress' ) . ' ' . esc_html( sp_format_currency( $nm_price ) ); ?>
                                     </span>
                                 <?php elseif ( $m_price > 0 ) : ?>
-                                    <span class="sp-event-price">$<?php echo esc_html( number_format( $m_price, 2 ) ); ?></span>
+                                    <span class="sp-event-price"><?php echo esc_html( sp_format_currency( $m_price ) ); ?></span>
                                 <?php elseif ( $nm_price > 0 ) : ?>
                                     <span class="sp-event-price">
                                         <?php echo esc_html__( 'Free for Members', 'societypress' ); ?>
-                                        / <?php echo esc_html__( 'Non-Members', 'societypress' ) . ' $' . esc_html( number_format( $nm_price, 2 ) ); ?>
+                                        / <?php echo esc_html__( 'Non-Members', 'societypress' ) . ' ' . esc_html( sp_format_currency( $nm_price ) ); ?>
                                     </span>
                                 <?php elseif ( $ev->registration_enabled ) : ?>
                                     <span class="sp-event-price sp-event-free"><?php esc_html_e( 'Free', 'societypress' ); ?></span>
@@ -29580,7 +29806,7 @@ function sp_render_events_listing( array $settings ): void {
                                 <?php endif; ?>
 
                                 <?php if ( $ev->visibility === 'members_only' ) : ?>
-                                    <span class="sp-event-badge sp-badge-members">Members Only</span>
+                                    <span class="sp-event-badge sp-badge-members"><?php esc_html_e( 'Members Only', 'societypress' ); ?></span>
                                 <?php endif; ?>
                             </div>
                         </div>
@@ -29699,9 +29925,11 @@ function sp_render_event_detail( string $slug, array $settings ): void {
     // Visibility check — members_only events require login
     if ( $event->visibility === 'members_only' && ! is_user_logged_in() ) {
         echo '<div class="sp-event-login-required">';
-        echo '<h2>Members Only</h2>';
-        echo '<p>This event is only visible to logged-in members. ';
-        echo 'Please <a href="' . esc_url( wp_login_url( add_query_arg( 'sp_event', $slug, get_permalink() ) ) ) . '">log in</a> to view details.</p>';
+        echo '<h2>' . esc_html__( 'Members Only', 'societypress' ) . '</h2>';
+        echo '<p>' . sprintf(
+            esc_html__( 'This event is only visible to logged-in members. Please %s to view details.', 'societypress' ),
+            '<a href="' . esc_url( wp_login_url( add_query_arg( 'sp_event', $slug, get_permalink() ) ) ) . '">' . esc_html__( 'log in', 'societypress' ) . '</a>'
+        ) . '</p>';
         echo '</div>';
         return;
     }
@@ -29763,9 +29991,9 @@ function sp_render_event_detail( string $slug, array $settings ): void {
     // Format time
     $time_display = '';
     if ( ! empty( $event->start_time ) ) {
-        $time_display = date( 'g:i A', strtotime( $event->start_time ) );
+        $time_display = wp_date( 'g:i A', strtotime( $event->start_time ) );
         if ( ! empty( $event->end_time ) ) {
-            $time_display .= ' – ' . date( 'g:i A', strtotime( $event->end_time ) );
+            $time_display .= ' – ' . wp_date( 'g:i A', strtotime( $event->end_time ) );
         }
     }
 
@@ -29819,7 +30047,7 @@ function sp_render_event_detail( string $slug, array $settings ): void {
                 <?php endif; ?>
 
                 <?php if ( $event->visibility === 'members_only' ) : ?>
-                    <span class="sp-event-badge sp-badge-members">Members Only</span>
+                    <span class="sp-event-badge sp-badge-members"><?php esc_html_e( 'Members Only', 'societypress' ); ?></span>
                 <?php endif; ?>
             </div>
         </header>
@@ -29986,7 +30214,7 @@ function sp_render_event_detail( string $slug, array $settings ): void {
                         <?php if ( (float) $event->member_price > 0 ) : ?>
                             <div class="sp-price-item">
                                 <span class="sp-price-label">Members:</span>
-                                <span class="sp-price-amount">$<?php echo esc_html( number_format( (float) $event->member_price, 2 ) ); ?></span>
+                                <span class="sp-price-amount"><?php echo esc_html( sp_format_currency( $event->member_price ) ); ?></span>
                             </div>
                         <?php else : ?>
                             <div class="sp-price-item">
@@ -29999,7 +30227,7 @@ function sp_render_event_detail( string $slug, array $settings ): void {
                             <?php if ( (float) $event->nonmember_price > 0 ) : ?>
                                 <div class="sp-price-item">
                                     <span class="sp-price-label">Non-Members:</span>
-                                    <span class="sp-price-amount">$<?php echo esc_html( number_format( (float) $event->nonmember_price, 2 ) ); ?></span>
+                                    <span class="sp-price-amount"><?php echo esc_html( sp_format_currency( $event->nonmember_price ) ); ?></span>
                                 </div>
                             <?php else : ?>
                                 <div class="sp-price-item">
@@ -30072,7 +30300,7 @@ function sp_render_event_detail( string $slug, array $settings ): void {
                                             <div class="sp-user-slot-reg-row" style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
                                                 <span style="flex: 1;">
                                                     <?php if ( $usr->slot_start ) : ?>
-                                                        <?php echo esc_html( date( 'g:i A', strtotime( $usr->slot_start ) ) . ' – ' . date( 'g:i A', strtotime( $usr->slot_end ) ) ); ?>
+                                                        <?php echo esc_html( wp_date( 'g:i A', strtotime( $usr->slot_start ) ) . ' – ' . wp_date( 'g:i A', strtotime( $usr->slot_end ) ) ); ?>
                                                         <?php if ( $usr->slot_desc ) : ?>
                                                             <span style="color: #6b7280;"> — <?php echo esc_html( $usr->slot_desc ); ?></span>
                                                         <?php endif; ?>
@@ -30139,10 +30367,10 @@ function sp_render_event_detail( string $slug, array $settings ): void {
                                     <div class="sp-reg-fee-summary" id="sp-fee-summary">
                                         <span class="sp-fee-label">Fee:</span>
                                         <span class="sp-fee-amount" id="sp-fee-display">
-                                            $<?php echo number_format( $member_fee, 2 ); ?>
+                                            <?php echo esc_html( sp_format_currency( $member_fee ) ); ?>
                                         </span>
                                         <span class="sp-fee-per-person" id="sp-fee-per-person">
-                                            ($<?php echo number_format( $member_fee, 2 ); ?>/person)
+                                            (<?php echo esc_html( sp_format_currency( $member_fee ) ); ?>/person)
                                         </span>
                                         <?php if ( ! empty( $event->price_description ) ) : ?>
                                             <span class="sp-fee-note"><?php echo esc_html( $event->price_description ); ?></span>
@@ -30236,10 +30464,10 @@ function sp_render_event_detail( string $slug, array $settings ): void {
                                     <div class="sp-reg-fee-summary" id="sp-guest-fee-summary">
                                         <span class="sp-fee-label">Fee:</span>
                                         <span class="sp-fee-amount" id="sp-guest-fee-display">
-                                            $<?php echo number_format( $guest_fee, 2 ); ?>
+                                            <?php echo esc_html( sp_format_currency( $guest_fee ) ); ?>
                                         </span>
                                         <span class="sp-fee-per-person" id="sp-guest-fee-per-person">
-                                            ($<?php echo number_format( $guest_fee, 2 ); ?>/person)
+                                            (<?php echo esc_html( sp_format_currency( $guest_fee ) ); ?>/person)
                                         </span>
                                         <?php if ( ! empty( $event->price_description ) ) : ?>
                                             <span class="sp-fee-note"><?php echo esc_html( $event->price_description ); ?></span>
@@ -31318,16 +31546,25 @@ function sp_events_frontend_scripts(): void {
         // WHY: When someone changes "How many attending?" we recalculate the
         //      total fee on screen so they know exactly what they'll owe before
         //      clicking Register. Nobody likes a surprise at checkout.
+        //
+        // Currency symbol and position from settings — so non-US societies
+        // see their own currency in the dynamic fee display.
+        var spCSym = <?php echo wp_json_encode( sp_get_currency_symbol() ); ?>;
+        var spCPos = <?php echo wp_json_encode( sp_get_currency_position() ); ?>;
+        function spFmtCurrency(amount) {
+            return spCPos === 'before' ? spCSym + amount : amount + spCSym;
+        }
+
         function updateFeeDisplay(partySizeSelect, pricePerPerson, displayEl, perPersonEl) {
             if (!partySizeSelect || !displayEl) return;
             partySizeSelect.addEventListener('change', function() {
                 var qty   = parseInt(this.value, 10) || 1;
                 var total = (pricePerPerson * qty).toFixed(2);
-                displayEl.textContent = '$' + total;
+                displayEl.textContent = spFmtCurrency(total);
                 if (perPersonEl) {
                     perPersonEl.textContent = qty > 1
-                        ? '($' + pricePerPerson.toFixed(2) + '/person \u00D7 ' + qty + ')'
-                        : '($' + pricePerPerson.toFixed(2) + '/person)';
+                        ? '(' + spFmtCurrency(pricePerPerson.toFixed(2)) + '/person \u00D7 ' + qty + ')'
+                        : '(' + spFmtCurrency(pricePerPerson.toFixed(2)) + '/person)';
                 }
             });
         }
@@ -31497,7 +31734,7 @@ function sp_events_frontend_scripts(): void {
         //      its own cancel button. These use the same cancel AJAX endpoint.
         document.querySelectorAll('.sp-slot-cancel-btn').forEach(function(btn) {
             btn.addEventListener('click', function() {
-                if (!confirm('Cancel this registration?')) return;
+                if (!confirm('<?php echo esc_js( __( 'Cancel this registration?', 'societypress' ) ); ?>')) return;
                 var regId   = this.getAttribute('data-reg-id');
                 var eventId = this.getAttribute('data-event-id');
                 var row     = this.closest('.sp-user-slot-reg-row');
@@ -31563,7 +31800,7 @@ function sp_events_frontend_scripts(): void {
             var cancelBtn = document.getElementById('sp-cancel-reg-btn');
             if (!cancelBtn) return;
             cancelBtn.addEventListener('click', function() {
-                if (!confirm('Are you sure you want to cancel your registration?')) return;
+                if (!confirm('<?php echo esc_js( __( 'Are you sure you want to cancel your registration?', 'societypress' ) ); ?>')) return;
 
                 var btn     = this;
                 var eventId = btn.getAttribute('data-event-id');
@@ -31594,7 +31831,7 @@ function sp_events_frontend_scripts(): void {
                     }
                 })
                 .catch(function() {
-                    alert('Something went wrong. Please try again.');
+                    alert('<?php echo esc_js( __( 'Something went wrong. Please try again.', 'societypress' ) ); ?>');
                     btn.disabled = false;
                     btn.textContent = 'Cancel My Registration';
                 });
@@ -31655,7 +31892,7 @@ add_action( 'wp_ajax_nopriv_sp_register_for_event', 'sp_ajax_register_for_event'
 function sp_ajax_register_for_event(): void {
     // Verify nonce to prevent CSRF attacks
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_event_register' ) ) {
-        wp_send_json_error( 'Security check failed. Please refresh and try again.' );
+        wp_send_json_error( __( 'Security check failed. Please refresh and try again.', 'societypress' ) );
     }
 
     global $wpdb;
@@ -31937,7 +32174,7 @@ add_action( 'wp_ajax_sp_cancel_registration', 'sp_ajax_cancel_registration' );
 
 function sp_ajax_cancel_registration(): void {
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_event_register' ) ) {
-        wp_send_json_error( 'Security check failed. Please refresh and try again.' );
+        wp_send_json_error( __( 'Security check failed. Please refresh and try again.', 'societypress' ) );
     }
 
     global $wpdb;
@@ -31963,6 +32200,13 @@ function sp_ajax_cancel_registration(): void {
     // Security: only the registration owner can cancel their own
     if ( $reg->user_id && (int) $reg->user_id !== get_current_user_id() ) {
         wp_send_json_error( 'You can only cancel your own registration.' );
+    }
+
+    // WHY: Guest registrations have user_id = NULL. Without this check, any logged-in
+    // member could cancel a guest's registration by guessing the registration ID.
+    // Only admins should be able to cancel guest registrations.
+    if ( ! $reg->user_id && ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => __( 'You cannot cancel this registration.', 'societypress' ) ] );
     }
 
     // Soft-delete: set status to cancelled (keep record for reporting)
@@ -32312,7 +32556,7 @@ function sp_render_event_registrations_section( object $event ): void {
 
         <!-- Registrations table -->
         <?php if ( empty( $registrations ) ) : ?>
-            <p style="color: #787c82; font-style: italic;">No registrations yet.</p>
+            <p style="color: #787c82; font-style: italic;"><?php esc_html_e( 'No registrations yet.', 'societypress' ); ?></p>
         <?php else : ?>
             <table class="wp-list-table widefat fixed striped" id="sp-registrations-table">
                 <thead>
@@ -32365,7 +32609,7 @@ function sp_render_event_registrations_section( object $event ): void {
                                 <td>
                                     <?php if ( $reg->slot_start ) : ?>
                                         <span style="font-size: 12px;">
-                                            <?php echo esc_html( date( 'g:i A', strtotime( $reg->slot_start ) ) . ' – ' . date( 'g:i A', strtotime( $reg->slot_end ) ) ); ?>
+                                            <?php echo esc_html( wp_date( 'g:i A', strtotime( $reg->slot_start ) ) . ' – ' . wp_date( 'g:i A', strtotime( $reg->slot_end ) ) ); ?>
                                         </span>
                                         <?php if ( $reg->slot_desc ) : ?>
                                             <br><em style="font-size: 11px; color: #787c82;"><?php echo esc_html( $reg->slot_desc ); ?></em>
@@ -32385,7 +32629,7 @@ function sp_render_event_registrations_section( object $event ): void {
                             </td>
                             <td>
                                 <?php if ( (float) $reg->fee_amount > 0 ) : ?>
-                                    $<?php echo number_format( (float) $reg->fee_amount, 2 ); ?>
+                                    <?php echo esc_html( sp_format_currency( $reg->fee_amount ) ); ?>
                                     <?php
                                     // Color-code the payment status badge for quick visual scanning
                                     $pay_colors = [
@@ -32420,7 +32664,7 @@ function sp_render_event_registrations_section( object $event ): void {
                                     <span style="color: #787c82;">Free</span>
                                 <?php endif; ?>
                             </td>
-                            <td><?php echo date( 'M j, g:ia', strtotime( $reg->registered_at ) ); ?></td>
+                            <td><?php echo esc_html( wp_date( 'M j, g:ia', strtotime( $reg->registered_at ) ) ); ?></td>
                             <?php if ( $event_past ) : ?>
                                 <td>
                                     <?php if ( $reg->status === 'confirmed' ) : ?>
@@ -32535,7 +32779,7 @@ function sp_render_event_registrations_section( object $event ): void {
         // ---- Admin cancel registration ----
         document.querySelectorAll('.sp-admin-cancel-reg').forEach(function(btn) {
             btn.addEventListener('click', function() {
-                if (!confirm('Cancel this registration?')) return;
+                if (!confirm('<?php echo esc_js( __( 'Cancel this registration?', 'societypress' ) ); ?>')) return;
                 var regId = this.getAttribute('data-reg-id');
 
                 var fd = new FormData();
@@ -32582,7 +32826,7 @@ function sp_render_event_registrations_section( object $event ): void {
         var bulkAttended = document.getElementById('sp-bulk-attended');
         if (bulkAttended) {
             bulkAttended.addEventListener('click', function() {
-                if (!confirm('Mark all confirmed registrants as attended?')) return;
+                if (!confirm('<?php echo esc_js( __( 'Mark all confirmed registrants as attended?', 'societypress' ) ); ?>')) return;
 
                 var fd = new FormData();
                 fd.append('action', 'sp_admin_bulk_attendance');
@@ -32597,7 +32841,7 @@ function sp_render_event_registrations_section( object $event ): void {
                             document.querySelectorAll('.sp-attendance-select').forEach(function(sel) {
                                 sel.value = '1';
                             });
-                            alert('All confirmed registrants marked as attended.');
+                            alert('<?php echo esc_js( __( 'All confirmed registrants marked as attended.', 'societypress' ) ); ?>');
                         } else {
                             alert(data.data || 'Could not update attendance.');
                         }
@@ -32611,7 +32855,7 @@ function sp_render_event_registrations_section( object $event ): void {
         //      and the row updates without a page reload.
         document.querySelectorAll('.sp-admin-refund-btn').forEach(function(btn) {
             btn.addEventListener('click', function() {
-                if (!confirm('Issue a full refund for this payment? This cannot be undone.')) return;
+                if (!confirm('<?php echo esc_js( __( 'Issue a full refund for this payment? This cannot be undone.', 'societypress' ) ); ?>')) return;
                 var refundBtn = this;
                 var regId = refundBtn.getAttribute('data-reg-id');
 
@@ -32635,7 +32879,7 @@ function sp_render_event_registrations_section( object $event ): void {
                         }
                     })
                     .catch(function() {
-                        alert('Something went wrong. Please try again.');
+                        alert('<?php echo esc_js( __( 'Something went wrong. Please try again.', 'societypress' ) ); ?>');
                         refundBtn.disabled = false;
                         refundBtn.textContent = 'Refund';
                     });
@@ -32858,10 +33102,10 @@ add_action( 'wp_ajax_sp_export_registrations', 'sp_ajax_export_registrations' );
 
 function sp_ajax_export_registrations(): void {
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_die( 'Unauthorized.' );
+        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
     }
     if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_registrations' ) ) {
-        wp_die( 'Security check failed.' );
+        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
     }
 
     global $wpdb;
@@ -32870,7 +33114,7 @@ function sp_ajax_export_registrations(): void {
 
     $event_id = (int) ( $_GET['event_id'] ?? 0 );
     if ( ! $event_id ) {
-        wp_die( 'Invalid event.' );
+        wp_die( esc_html__( 'Invalid event.', 'societypress' ) );
     }
 
     // Get event title for a meaningful filename
@@ -33119,7 +33363,7 @@ add_action( 'init', function () {
 
     $GLOBALS['sp_join_result'] = [
         'success' => true,
-        'message' => 'Welcome! Your membership application has been submitted. You will receive a confirmation email shortly.',
+        'message' => __( 'Welcome! Your membership application has been submitted. You will receive a confirmation email shortly.', 'societypress' ),
     ];
 } );
 
@@ -33137,7 +33381,7 @@ function sp_render_join_form(): string {
     if ( is_user_logged_in() && sp_is_member() ) {
         $account_url = sp_get_my_account_url();
         return '<div style="padding: 20px; background: #f0f6fc; border: 1px solid #c3c4c7; border-radius: 4px;">'
-             . '<p>You are already a member. <a href="' . esc_url( $account_url ) . '">Go to My Account</a>.</p>'
+             . '<p>' . sprintf( esc_html__( 'You are already a member. %s.', 'societypress' ), '<a href="' . esc_url( $account_url ) . '">' . esc_html__( 'Go to My Account', 'societypress' ) . '</a>' ) . '</p>'
              . '</div>';
     }
 
@@ -33213,7 +33457,7 @@ function sp_render_join_form(): string {
 
         <!-- Membership Level -->
         <fieldset>
-            <legend>Choose Your Membership Level</legend>
+            <legend><?php esc_html_e( 'Choose Your Membership Level', 'societypress' ); ?></legend>
             <?php foreach ( $tiers as $tier ) : ?>
                 <label class="sp-tier-option">
                     <input type="radio" name="tier_id" value="<?php echo esc_attr( $tier->id ); ?>"
@@ -33222,9 +33466,9 @@ function sp_render_join_form(): string {
                     <span class="sp-tier-label">
                         <span class="sp-tier-name"><?php echo esc_html( $tier->name ); ?></span>
                         <?php if ( (float) $tier->price > 0 ) : ?>
-                            <span class="sp-tier-price">$<?php echo esc_html( number_format( (float) $tier->price, 2 ) ); ?>/year</span>
+                            <span class="sp-tier-price"><?php echo esc_html( sp_format_currency( $tier->price ) ); ?>/<?php esc_html_e( 'year', 'societypress' ); ?></span>
                         <?php else : ?>
-                            <span class="sp-tier-price">Free</span>
+                            <span class="sp-tier-price"><?php esc_html_e( 'Free', 'societypress' ); ?></span>
                         <?php endif; ?>
                     </span>
                     <?php if ( ! empty( $tier->description ) ) : ?>
@@ -33236,21 +33480,21 @@ function sp_render_join_form(): string {
 
         <!-- Personal Information -->
         <fieldset>
-            <legend>Personal Information</legend>
+            <legend><?php esc_html_e( 'Personal Information', 'societypress' ); ?></legend>
             <div class="sp-field-row">
                 <div class="sp-field">
-                    <label for="sp-first-name">First Name <span class="required">*</span></label>
+                    <label for="sp-first-name"><?php esc_html_e( 'First Name', 'societypress' ); ?> <span class="required">*</span></label>
                     <input type="text" id="sp-first-name" name="first_name" required
                            value="<?php echo esc_attr( $_POST['first_name'] ?? '' ); ?>">
                 </div>
                 <div class="sp-field">
-                    <label for="sp-last-name">Last Name <span class="required">*</span></label>
+                    <label for="sp-last-name"><?php esc_html_e( 'Last Name', 'societypress' ); ?> <span class="required">*</span></label>
                     <input type="text" id="sp-last-name" name="last_name" required
                            value="<?php echo esc_attr( $_POST['last_name'] ?? '' ); ?>">
                 </div>
             </div>
             <div class="sp-field">
-                <label for="sp-preferred-name">Preferred Name <small style="font-weight: normal; color: #666;">(what you'd like to be called)</small></label>
+                <label for="sp-preferred-name"><?php esc_html_e( 'Preferred Name', 'societypress' ); ?> <small style="font-weight: normal; color: #666;"><?php esc_html_e( "(what you'd like to be called)", 'societypress' ); ?></small></label>
                 <input type="text" id="sp-preferred-name" name="preferred_name"
                        value="<?php echo esc_attr( $_POST['preferred_name'] ?? '' ); ?>">
             </div>
@@ -33258,9 +33502,9 @@ function sp_render_join_form(): string {
 
         <!-- Contact Information -->
         <fieldset>
-            <legend>Contact Information</legend>
+            <legend><?php esc_html_e( 'Contact Information', 'societypress' ); ?></legend>
             <div class="sp-field">
-                <label for="sp-email">Email Address <span class="required">*</span></label>
+                <label for="sp-email"><?php esc_html_e( 'Email Address', 'societypress' ); ?> <span class="required">*</span></label>
                 <input type="email" id="sp-email" name="email" required
                        value="<?php echo esc_attr( $_POST['email'] ?? '' ); ?>">
             </div>
@@ -33330,7 +33574,7 @@ function sp_render_join_form(): string {
 
         <!-- Mailing Address -->
         <fieldset>
-            <legend>Mailing Address</legend>
+            <legend><?php esc_html_e( 'Mailing Address', 'societypress' ); ?></legend>
             <div class="sp-field">
                 <label for="sp-address1"><?php esc_html_e( 'Street Address', 'societypress' ); ?></label>
                 <input type="text" id="sp-address1" name="address_1"
@@ -33360,7 +33604,7 @@ function sp_render_join_form(): string {
             </div>
         </fieldset>
 
-        <button type="submit" class="sp-submit">Submit Application</button>
+        <button type="submit" class="sp-submit"><?php esc_html_e( 'Submit Application', 'societypress' ); ?></button>
     </form>
 
     <!-- Joint member fieldset visibility toggle based on selected tier -->
@@ -34054,6 +34298,12 @@ function sp_build_email_html( string $heading, string $body_html ): string {
     $site_name = get_bloginfo( 'name' );
     $site_url  = home_url();
 
+    // WHY: Use the society's configured brand color instead of WordPress default
+    //      blue. This way SAGHS gets burgundy headers, another society gets their
+    //      color, etc. Falls back to WP default if no color is configured.
+    $settings    = get_option( 'societypress_settings', [] );
+    $brand_color = $settings['design_color_primary'] ?? '#2271b1';
+
     return '<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
@@ -34062,7 +34312,7 @@ function sp_build_email_html( string $heading, string $body_html ): string {
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0" style="background: #ffffff; border-radius: 8px; overflow: hidden; max-width: 100%;">
     <!-- Header -->
-    <tr><td style="background: #2271b1; padding: 20px 32px;">
+    <tr><td style="background: ' . esc_attr( $brand_color ) . '; padding: 20px 32px;">
         <h1 style="margin: 0; color: #ffffff; font-size: 20px; font-weight: 600;">
             ' . esc_html( $site_name ) . '
         </h1>
@@ -34077,7 +34327,7 @@ function sp_build_email_html( string $heading, string $body_html ): string {
     </td></tr>
     <!-- Footer -->
     <tr><td style="padding: 16px 32px; background: #f6f7f7; border-top: 1px solid #e0e0e0; font-size: 13px; color: #787c82;">
-        <a href="' . esc_url( $site_url ) . '" style="color: #2271b1; text-decoration: none;">' . esc_html( $site_name ) . '</a>
+        <a href="' . esc_url( $site_url ) . '" style="color: ' . esc_attr( $brand_color ) . '; text-decoration: none;">' . esc_html( $site_name ) . '</a>
         &mdash; This is an automated message. Please do not reply directly to this email.
     </td></tr>
 </table>
@@ -34097,13 +34347,13 @@ function sp_build_email_html( string $heading, string $body_html ): string {
  * @return string HTML for the event details block.
  */
 function sp_email_event_details_block( object $event ): string {
-    $date_str = date( 'l, F j, Y', strtotime( $event->event_date ) );
+    $date_str = wp_date( 'l, F j, Y', strtotime( $event->event_date ) );
 
     $time_str = '';
     if ( $event->start_time ) {
-        $time_str = date( 'g:i A', strtotime( $event->start_time ) );
+        $time_str = wp_date( 'g:i A', strtotime( $event->start_time ) );
         if ( $event->end_time ) {
-            $time_str .= ' – ' . date( 'g:i A', strtotime( $event->end_time ) );
+            $time_str .= ' – ' . wp_date( 'g:i A', strtotime( $event->end_time ) );
         }
     }
 
@@ -34169,7 +34419,7 @@ function sp_send_registration_email( object $event, int $registration_id, string
         $body .= '<tr><td style="padding: 6px 0; color: #555;">Attending:</td><td style="padding: 6px 0;">' . $party_size . ' people</td></tr>';
     }
     if ( $fee_amount > 0 ) {
-        $body .= '<tr><td style="padding: 6px 0; color: #555;">Fee:</td><td style="padding: 6px 0;">$' . number_format( $fee_amount, 2 ) . '</td></tr>';
+        $body .= '<tr><td style="padding: 6px 0; color: #555;">Fee:</td><td style="padding: 6px 0;">' . esc_html( sp_format_currency( $fee_amount ) ) . '</td></tr>';
     }
     $body .= '<tr><td style="padding: 6px 0; color: #555;">Status:</td><td style="padding: 6px 0;"><strong>' . ucfirst( $status ) . '</strong></td></tr>';
     $body .= '</table>';
@@ -34574,11 +34824,11 @@ class SP_Speakers_List_Table extends WP_List_Table {
 
     public function get_columns(): array {
         return [
-            'name'    => 'Name',
-            'title'   => 'Title',
-            'email'   => 'Email',
-            'events'  => 'Events',
-            'active'  => 'Active',
+            'name'    => __( 'Name', 'societypress' ),
+            'title'   => __( 'Title', 'societypress' ),
+            'email'   => __( 'Email', 'societypress' ),
+            'events'  => __( 'Events', 'societypress' ),
+            'active'  => __( 'Active', 'societypress' ),
         ];
     }
 
@@ -34618,8 +34868,8 @@ class SP_Speakers_List_Table extends WP_List_Table {
     protected function column_name( $item ): string {
         $edit_url = admin_url( 'admin.php?page=sp-speaker-edit&speaker_id=' . $item->id );
         $actions  = [
-            'edit'   => '<a href="' . esc_url( $edit_url ) . '">Edit</a>',
-            'delete' => '<a href="' . esc_url( wp_nonce_url( admin_url( 'admin.php?page=sp-speakers&action=delete&speaker_id=' . $item->id ), 'sp_delete_speaker_' . $item->id ) ) . '" style="color: #d63638;" onclick="return confirm(\'Delete this speaker?\');">Delete</a>',
+            'edit'   => '<a href="' . esc_url( $edit_url ) . '">' . esc_html__( 'Edit', 'societypress' ) . '</a>',
+            'delete' => '<a href="#" style="color:#d63638;" onclick="if(confirm(\'' . esc_js( __( 'Delete this speaker?', 'societypress' ) ) . '\')){var f=document.createElement(\'form\');f.method=\'post\';f.action=\'' . esc_url( admin_url( 'admin.php?page=sp-speakers' ) ) . '\';var d=[[\'_wpnonce\',\'' . wp_create_nonce( 'sp_delete_speaker_' . $item->id ) . '\'],[\'action\',\'delete\'],[\'speaker_id\',\'' . (int) $item->id . '\']];d.forEach(function(p){var i=document.createElement(\'input\');i.type=\'hidden\';i.name=p[0];i.value=p[1];f.appendChild(i);});document.body.appendChild(f);f.submit();}return false;">' . esc_html__( 'Delete', 'societypress' ) . '</a>',
         ];
 
         $photo = '';
@@ -34649,7 +34899,7 @@ class SP_Speakers_List_Table extends WP_List_Table {
     protected function column_active( $item ): string {
         return $item->active
             ? '<span style="color: #00a32a; font-weight: 500;">Active</span>'
-            : '<span style="color: #787c82;">Inactive</span>';
+            : '<span style="color: #787c82;"><?php esc_html_e( 'Inactive', 'societypress' ); ?></span>';
     }
 
     protected function column_default( $item, $column_name ): string {
@@ -34665,9 +34915,9 @@ function sp_render_speakers_page(): void {
     global $wpdb;
 
     // Handle delete action
-    if ( ( $_GET['action'] ?? '' ) === 'delete' && ! empty( $_GET['speaker_id'] ) ) {
-        $speaker_id = (int) $_GET['speaker_id'];
-        if ( wp_verify_nonce( $_GET['_wpnonce'] ?? '', 'sp_delete_speaker_' . $speaker_id ) ) {
+    if ( ( $_POST['action'] ?? '' ) === 'delete' && ! empty( $_POST['speaker_id'] ) ) {
+        $speaker_id = (int) $_POST['speaker_id'];
+        if ( wp_verify_nonce( $_POST['_wpnonce'] ?? '', 'sp_delete_speaker_' . $speaker_id ) ) {
             // Check if speaker is assigned to any events
             $assignment_count = (int) $wpdb->get_var( $wpdb->prepare(
                 "SELECT COUNT(*) FROM {$wpdb->prefix}sp_event_speaker_assignments WHERE speaker_id = %d",
@@ -34720,10 +34970,10 @@ add_action( 'admin_init', function () {
         return;
     }
     if ( ! wp_verify_nonce( $_POST['sp_speaker_nonce'], 'sp_save_speaker' ) ) {
-        wp_die( 'Security check failed.' );
+        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
     }
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_die( 'Unauthorized.' );
+        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
     }
 
     global $wpdb;
@@ -34764,6 +35014,11 @@ add_action( 'admin_init', function () {
  */
 function sp_render_speaker_edit_page(): void {
     global $wpdb;
+
+    // WHY: wp_enqueue_media() must run before any HTML output so the media
+    //      modal scripts load in the page head. Calling it after output means
+    //      wp.media is undefined when the photo picker button tries to use it.
+    wp_enqueue_media();
 
     $speaker_id = (int) ( $_GET['speaker_id'] ?? 0 );
     $speaker    = null;
@@ -34811,7 +35066,7 @@ function sp_render_speaker_edit_page(): void {
                     <th scope="row"><label for="speaker_bio"><?php esc_html_e( 'Bio', 'societypress' ); ?></label></th>
                     <td>
                         <textarea id="speaker_bio" name="speaker_bio" rows="5" class="large-text"><?php echo esc_textarea( $val( 'bio' ) ); ?></textarea>
-                        <p class="description">Brief biography shown on event detail pages.</p>
+                        <p class="description"><?php esc_html_e( 'Brief biography shown on event detail pages.', 'societypress' ); ?></p>
                     </td>
                 </tr>
                 <tr>
@@ -34905,7 +35160,7 @@ function sp_render_speaker_edit_page(): void {
                     e.preventDefault();
                     photoInput.value = '';
                     photoPreview.innerHTML = '';
-                    photoBtn.textContent = 'Select Photo';
+                    photoBtn.textContent = '<?php echo esc_js( __( 'Select Photo', 'societypress' ) ); ?>';
                     this.style.display = 'none';
                 });
             }
@@ -34913,7 +35168,6 @@ function sp_render_speaker_edit_page(): void {
     })();
     </script>
     <?php
-    wp_enqueue_media();
 }
 
 
@@ -34942,10 +35196,10 @@ add_action( 'wp_ajax_sp_regenerate_occurrences', 'sp_ajax_regenerate_occurrences
 
 function sp_ajax_regenerate_occurrences(): void {
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_send_json_error( 'Unauthorized.' );
+        wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
     }
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_recurrence' ) ) {
-        wp_send_json_error( 'Security check failed.' );
+        wp_send_json_error( __( 'Security check failed.', 'societypress' ) );
     }
 
     global $wpdb;
@@ -34957,7 +35211,7 @@ function sp_ajax_regenerate_occurrences(): void {
     ) );
 
     if ( ! $parent || empty( $parent->recurrence_rule ) ) {
-        wp_send_json_error( 'Event has no recurrence rule.' );
+        wp_send_json_error( __( 'Event has no recurrence rule.', 'societypress' ) );
     }
 
     // Parse the recurrence rule
@@ -35117,17 +35371,17 @@ add_action( 'wp_ajax_sp_detach_from_series', 'sp_ajax_detach_from_series' );
 
 function sp_ajax_detach_from_series(): void {
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_send_json_error( 'Unauthorized.' );
+        wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
     }
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_recurrence' ) ) {
-        wp_send_json_error( 'Security check failed.' );
+        wp_send_json_error( __( 'Security check failed.', 'societypress' ) );
     }
 
     global $wpdb;
     $event_id = (int) ( $_POST['event_id'] ?? 0 );
 
     if ( ! $event_id ) {
-        wp_send_json_error( 'Invalid event.' );
+        wp_send_json_error( __( 'Invalid event.', 'societypress' ) );
     }
 
     $wpdb->update(
@@ -35309,16 +35563,16 @@ function sp_render_builder_widget_upcoming_events( array $s ): void {
     echo '<div class="sp-upcoming-events-widget">';
 
     if ( empty( $events ) ) {
-        echo '<p class="sp-ue-empty">No upcoming events scheduled.</p>';
+        echo '<p class="sp-ue-empty">' . esc_html__( 'No upcoming events scheduled.', 'societypress' ) . '</p>';
     } else {
         echo '<ul class="sp-upcoming-events-list">';
 
         foreach ( $events as $event ) {
             $ts        = strtotime( $event->event_date );
-            $month     = date( 'M', $ts );
-            $day       = date( 'j', $ts );
-            $weekday   = date( 'D', $ts );
-            $full_date = date( 'l, F j, Y', $ts );
+            $month     = wp_date( 'M', $ts );
+            $day       = wp_date( 'j', $ts );
+            $weekday   = wp_date( 'D', $ts );
+            $full_date = wp_date( 'l, F j, Y', $ts );
 
             // Build detail page URL if events page exists
             $detail_url = '';
@@ -35351,9 +35605,9 @@ function sp_render_builder_widget_upcoming_events( array $s ): void {
             // Meta line — time and/or location
             $meta_parts = [];
             if ( $show_time && $event->start_time ) {
-                $time_str = date( 'g:i A', strtotime( $event->start_time ) );
+                $time_str = wp_date( 'g:i A', strtotime( $event->start_time ) );
                 if ( $event->end_time ) {
-                    $time_str .= ' – ' . date( 'g:i A', strtotime( $event->end_time ) );
+                    $time_str .= ' – ' . wp_date( 'g:i A', strtotime( $event->end_time ) );
                 }
                 $meta_parts[] = '<span>🕐 ' . esc_html( $time_str ) . '</span>';
             }
@@ -35381,16 +35635,16 @@ function sp_render_builder_widget_upcoming_events( array $s ): void {
 
             if ( $m_price > 0 && $nm_price > 0 ) {
                 echo '<span class="sp-ue-category-badge" style="background:#555;">'
-                     . esc_html__( 'Members', 'societypress' ) . ' $' . esc_html( number_format( $m_price, 2 ) )
-                     . ' / ' . esc_html__( 'Non-Members', 'societypress' ) . ' $' . esc_html( number_format( $nm_price, 2 ) )
+                     . esc_html__( 'Members', 'societypress' ) . ' ' . esc_html( sp_format_currency( $m_price ) )
+                     . ' / ' . esc_html__( 'Non-Members', 'societypress' ) . ' ' . esc_html( sp_format_currency( $nm_price ) )
                      . '</span>';
             } elseif ( $m_price > 0 ) {
-                echo '<span class="sp-ue-category-badge" style="background:#555;">$'
-                     . esc_html( number_format( $m_price, 2 ) ) . '</span>';
+                echo '<span class="sp-ue-category-badge" style="background:#555;">'
+                     . esc_html( sp_format_currency( $m_price ) ) . '</span>';
             } elseif ( $nm_price > 0 ) {
                 echo '<span class="sp-ue-category-badge" style="background:#555;">'
                      . esc_html__( 'Free for Members', 'societypress' )
-                     . ' / ' . esc_html__( 'Non-Members', 'societypress' ) . ' $' . esc_html( number_format( $nm_price, 2 ) )
+                     . ' / ' . esc_html__( 'Non-Members', 'societypress' ) . ' ' . esc_html( sp_format_currency( $nm_price ) )
                      . '</span>';
             }
 
@@ -35403,7 +35657,7 @@ function sp_render_builder_widget_upcoming_events( array $s ): void {
 
     // "View All Events" link — only if an events page exists
     if ( $events_page_url ) {
-        echo '<a href="' . esc_url( $events_page_url ) . '" class="sp-ue-view-all">View All Events →</a>';
+        echo '<a href="' . esc_url( $events_page_url ) . '" class="sp-ue-view-all">' . esc_html__( 'View All Events', 'societypress' ) . ' &rarr;</a>';
     }
 
     echo '</div>'; // .sp-upcoming-events-widget
@@ -35789,7 +36043,7 @@ function sp_stripe_get_secret_key( array $settings ): string {
 function sp_create_stripe_checkout_session( object $event, int $registration_id, float $fee_amount, array $settings ) {
     $secret_key = sp_stripe_get_secret_key( $settings );
     if ( empty( $secret_key ) ) {
-        return new WP_Error( 'stripe_not_configured', 'Stripe is not configured.' );
+        return new WP_Error( 'stripe_not_configured', __( 'Stripe is not configured.', 'societypress' ) );
     }
 
     $currency = $settings['stripe_currency'] ?? 'usd';
@@ -35849,13 +36103,13 @@ function sp_create_stripe_checkout_session( object $event, int $registration_id,
             'line_items[0][price_data][unit_amount]'   => $amount_cents,
             'line_items[0][price_data][product_data][name]' => $line_item_name,
             'line_items[0][price_data][product_data][description]' =>
-                sprintf( 'Registration for %s — %s', $event->title, $site_name ),
+                sprintf( __( 'Registration for %1$s — %2$s', 'societypress' ), $event->title, $site_name ),
             'line_items[0][quantity]' => 1,
         ],
     ] );
 
     if ( is_wp_error( $response ) ) {
-        return new WP_Error( 'stripe_api_error', 'Could not connect to payment processor. Please try again.' );
+        return new WP_Error( 'stripe_api_error', __( 'Could not connect to payment processor. Please try again.', 'societypress' ) );
     }
 
     $body = json_decode( wp_remote_retrieve_body( $response ), true );
@@ -35864,7 +36118,7 @@ function sp_create_stripe_checkout_session( object $event, int $registration_id,
     if ( $code !== 200 || empty( $body['url'] ) ) {
         $error_msg = $body['error']['message'] ?? 'Payment setup failed. Please try again.';
         error_log( 'SocietyPress Stripe error: ' . $error_msg );
-        return new WP_Error( 'stripe_session_error', 'Could not set up payment. Please try again or choose to pay at the door.' );
+        return new WP_Error( 'stripe_session_error', __( 'Could not set up payment. Please try again or choose to pay at the door.', 'societypress' ) );
     }
 
     // Store the Stripe session ID on the registration for later verification
@@ -36092,17 +36346,20 @@ add_action( 'template_redirect', function () {
     // RFC 5545 line folding — lines must not exceed 75 octets
     // WHY: Some calendar apps (notably Outlook) strictly enforce this limit.
     //      We fold long lines by inserting CRLF + space at the 75-byte boundary.
+    // WHY: mb_strlen/mb_substr with UTF-8 encoding prevent splitting multibyte
+    //      characters (e.g., accented names, CJK) mid-byte, which would produce
+    //      invalid UTF-8 and corrupt text in calendar apps.
     $ics_fold = function ( string $line ) : string {
-        if ( strlen( $line ) <= 75 ) return $line;
+        if ( mb_strlen( $line, 'UTF-8' ) <= 75 ) return $line;
         $folded = '';
-        while ( strlen( $line ) > 75 ) {
+        while ( mb_strlen( $line, 'UTF-8' ) > 75 ) {
             if ( $folded === '' ) {
-                $folded .= substr( $line, 0, 75 );
-                $line    = substr( $line, 75 );
+                $folded .= mb_substr( $line, 0, 75, 'UTF-8' );
+                $line    = mb_substr( $line, 75, null, 'UTF-8' );
             } else {
                 // Continuation lines start with a space (counts toward the 75)
-                $folded .= "\r\n " . substr( $line, 0, 74 );
-                $line    = substr( $line, 74 );
+                $folded .= "\r\n " . mb_substr( $line, 0, 74, 'UTF-8' );
+                $line    = mb_substr( $line, 74, null, 'UTF-8' );
             }
         }
         if ( $line !== '' ) {
@@ -36189,18 +36446,18 @@ add_action( 'template_redirect', function () {
  */
 add_action( 'wp_ajax_sp_test_stripe_connection', function () {
     if ( ! check_ajax_referer( 'sp_stripe_test', 'nonce', false ) ) {
-        wp_send_json_error( 'Security check failed.' );
+        wp_send_json_error( __( 'Security check failed.', 'societypress' ) );
     }
 
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_send_json_error( 'Permission denied.' );
+        wp_send_json_error( __( 'Permission denied.', 'societypress' ) );
     }
 
     $settings   = get_option( 'societypress_settings', [] );
     $secret_key = sp_stripe_get_secret_key( $settings );
 
     if ( empty( $secret_key ) ) {
-        wp_send_json_error( 'No API keys found. Please enter your keys and save settings first.' );
+        wp_send_json_error( __( 'No API keys found. Please enter your keys and save settings first.', 'societypress' ) );
     }
 
     // Call Stripe's /v1/balance endpoint — the simplest authenticated call
@@ -36214,7 +36471,7 @@ add_action( 'wp_ajax_sp_test_stripe_connection', function () {
     ] );
 
     if ( is_wp_error( $response ) ) {
-        wp_send_json_error( 'Could not reach Stripe. Please check your internet connection.' );
+        wp_send_json_error( __( 'Could not reach Stripe. Please check your internet connection.', 'societypress' ) );
     }
 
     $code = wp_remote_retrieve_response_code( $response );
@@ -36223,9 +36480,10 @@ add_action( 'wp_ajax_sp_test_stripe_connection', function () {
     if ( $code === 200 ) {
         wp_send_json_success();
     } elseif ( $code === 401 ) {
-        wp_send_json_error( 'Invalid API key. Please double-check your keys in Stripe dashboard.' );
+        wp_send_json_error( __( 'Invalid API key. Please double-check your keys in Stripe dashboard.', 'societypress' ) );
     } else {
-        $msg = $body['error']['message'] ?? 'Unexpected error (HTTP ' . $code . ')';
+        /* translators: %d: HTTP status code from Stripe API */
+        $msg = $body['error']['message'] ?? sprintf( __( 'Unexpected error (HTTP %d)', 'societypress' ), $code );
         wp_send_json_error( $msg );
     }
 } );
@@ -36311,7 +36569,11 @@ add_action( 'wp_ajax_sp_admin_refund_payment', function () {
     $body = json_decode( wp_remote_retrieve_body( $response ), true );
     $code = wp_remote_retrieve_response_code( $response );
 
-    if ( $code === 200 && ( $body['status'] ?? '' ) === 'succeeded' ) {
+    // WHY: Stripe refunds can return 'succeeded' (instant) or 'pending' (bank
+    //      processing delay). Both are valid success states — 'pending' just means
+    //      the funds haven't cleared yet, but the refund is committed.
+    $status = $body['status'] ?? '';
+    if ( $code === 200 && in_array( $status, [ 'succeeded', 'pending' ], true ) ) {
         // Update registration to reflect the refund
         $wpdb->update(
             $reg_table,
@@ -36321,7 +36583,10 @@ add_action( 'wp_ajax_sp_admin_refund_payment', function () {
             ],
             [ 'id' => $registration_id ]
         );
-        wp_send_json_success( [ 'message' => 'Refund processed successfully.' ] );
+        $message = ( $status === 'pending' )
+            ? __( 'Refund initiated — processing with payment provider.', 'societypress' )
+            : __( 'Refund processed successfully.', 'societypress' );
+        wp_send_json_success( [ 'message' => $message ] );
     } else {
         $error_msg = $body['error']['message'] ?? 'Refund failed (HTTP ' . $code . ')';
         wp_send_json_error( $error_msg );
@@ -36343,15 +36608,15 @@ add_action( 'wp_ajax_sp_admin_refund_payment', function () {
 function sp_render_builder_widget_community_link( array $s ): void {
     $settings = get_option( 'societypress_settings', [] );
     $url      = $settings['community_forum_url'] ?? '';
-    $label    = $s['label'] ?? 'Join Our Community';
-    $desc     = $s['description'] ?? 'Connect with fellow members in our online community.';
+    $label    = $s['label'] ?? __( 'Join Our Community', 'societypress' );
+    $desc     = $s['description'] ?? __( 'Connect with fellow members in our online community.', 'societypress' );
     $style    = $s['button_style'] ?? 'primary';
 
     if ( empty( $url ) ) {
         // Only show a notice to admins — visitors see nothing
         if ( current_user_can( 'manage_options' ) ) {
             echo '<div class="sp-widget-community-link" style="padding:20px; background:#fef9e7; border:1px dashed #d4a017; border-radius:8px; text-align:center;">';
-            echo '<p style="margin:0; color:#8a6d00;">Community Forum URL not configured. <a href="' . esc_url( admin_url( 'admin.php?page=sp-settings-organization' ) ) . '">Set it in Settings &rarr; Organization</a>.</p>';
+            echo '<p style="margin:0; color:#8a6d00;">' . esc_html__( 'Community Forum URL not configured.', 'societypress' ) . ' <a href="' . esc_url( admin_url( 'admin.php?page=sp-settings-organization' ) ) . '">' . esc_html__( 'Set it in Settings &rarr; Organization', 'societypress' ) . '</a>.</p>';
             echo '</div>';
         }
         return;
@@ -36378,7 +36643,7 @@ function sp_render_builder_widget_newsletter_archive( array $s ): void {
     $login_required = $s['login_required'] ?? false;
     if ( $login_required && ! is_user_logged_in() ) {
         echo '<div class="sp-widget-login-required">';
-        echo '<p>Please <a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">log in</a> to view newsletters.</p>';
+        echo '<p>' . esc_html__( 'Please', 'societypress' ) . ' <a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">' . esc_html__( 'log in', 'societypress' ) . '</a> ' . esc_html__( 'to view newsletters.', 'societypress' ) . '</p>';
         echo '</div>';
         return;
     }
@@ -36391,7 +36656,7 @@ function sp_render_builder_widget_newsletter_archive( array $s ): void {
     $cat = get_category_by_slug( 'newsletter' );
     if ( ! $cat ) {
         if ( current_user_can( 'manage_options' ) ) {
-            echo '<p style="color:#8a6d00; padding:12px; background:#fef9e7; border-radius:6px;">Newsletter category not found. Try deactivating and reactivating the plugin.</p>';
+            echo '<p style="color:#8a6d00; padding:12px; background:#fef9e7; border-radius:6px;">' . esc_html__( 'Newsletter category not found. Try deactivating and reactivating the plugin.', 'societypress' ) . '</p>';
         }
         return;
     }
@@ -36406,7 +36671,7 @@ function sp_render_builder_widget_newsletter_archive( array $s ): void {
 
     echo '<div class="sp-widget-newsletter-archive">';
     if ( empty( $posts ) ) {
-        echo '<p style="color:#666; font-style:italic;">No newsletters published yet.</p>';
+        echo '<p style="color:#666; font-style:italic;">' . esc_html__( 'No newsletters published yet.', 'societypress' ) . '</p>';
     } else {
         echo '<ul style="list-style:none; margin:0; padding:0;">';
         foreach ( $posts as $post ) {
@@ -36460,17 +36725,17 @@ function sp_render_builder_widget_volunteer_stats( array $s ): void {
         );
         $stats_html[] = '<div style="text-align:center; flex:1; min-width:140px;">'
                       . '<div style="font-size:36px; font-weight:700; color:var(--sp-color-primary);">' . number_format( $active_count ) . '</div>'
-                      . '<div style="font-size:14px; color:#666; margin-top:4px;">Active Volunteers</div></div>';
+                      . '<div style="font-size:14px; color:#666; margin-top:4px;">' . esc_html__( 'Active Volunteers', 'societypress' ) . '</div></div>';
     }
 
     if ( $show_hours ) {
         $total_hours = (float) $wpdb->get_var(
             "SELECT COALESCE(SUM(vh.hours), 0) FROM {$prefix}volunteer_hours vh WHERE 1=1{$date_clause}"
         );
-        $period_label = $period === 'year' ? 'This Year' : ( $period === 'month' ? 'This Month' : 'All Time' );
+        $period_label = $period === 'year' ? __( 'This Year', 'societypress' ) : ( $period === 'month' ? __( 'This Month', 'societypress' ) : __( 'All Time', 'societypress' ) );
         $stats_html[] = '<div style="text-align:center; flex:1; min-width:140px;">'
                       . '<div style="font-size:36px; font-weight:700; color:var(--sp-color-primary);">' . number_format( $total_hours, 1 ) . '</div>'
-                      . '<div style="font-size:14px; color:#666; margin-top:4px;">Hours ' . esc_html( $period_label ) . '</div></div>';
+                      . '<div style="font-size:14px; color:#666; margin-top:4px;">' . esc_html__( 'Hours', 'societypress' ) . ' ' . esc_html( $period_label ) . '</div></div>';
     }
 
     echo '<div class="sp-widget-volunteer-stats">';
@@ -36491,7 +36756,7 @@ function sp_render_builder_widget_volunteer_stats( array $s ): void {
              LIMIT 5"
         );
         if ( ! empty( $top ) ) {
-            echo '<h4 style="margin:0 0 12px; font-size:16px; color:#1d2327;">Top Contributors</h4>';
+            echo '<h4 style="margin:0 0 12px; font-size:16px; color:#1d2327;">' . esc_html__( 'Top Contributors', 'societypress' ) . '</h4>';
             echo '<ol style="margin:0; padding:0 0 0 20px;">';
             foreach ( $top as $v ) {
                 echo '<li style="padding:4px 0; font-size:15px;">';
@@ -36520,7 +36785,7 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
     $login_required = $s['login_required'] ?? false;
     if ( $login_required && ! is_user_logged_in() ) {
         echo '<div class="sp-widget-login-required">';
-        echo '<p>Please <a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">log in</a> to view photos.</p>';
+        echo '<p>' . esc_html__( 'Please', 'societypress' ) . ' <a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">' . esc_html__( 'log in', 'societypress' ) . '</a> ' . esc_html__( 'to view photos.', 'societypress' ) . '</p>';
         echo '</div>';
         return;
     }
@@ -36538,13 +36803,13 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
             "SELECT * FROM {$prefix}photo_albums WHERE id = %d", $album_id
         ) );
         if ( ! $album ) {
-            echo '<p style="color:#666;">Album not found.</p></div>';
+            echo '<p style="color:#666;">' . esc_html__( 'Album not found.', 'societypress' ) . '</p></div>';
             return;
         }
 
         // Visibility check
         if ( $album->visibility === 'members_only' && ! is_user_logged_in() ) {
-            echo '<p>Please <a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">log in</a> to view this album.</p></div>';
+            echo '<p>' . esc_html__( 'Please', 'societypress' ) . ' <a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">' . esc_html__( 'log in', 'societypress' ) . '</a> ' . esc_html__( 'to view this album.', 'societypress' ) . '</p></div>';
             return;
         }
 
@@ -36561,7 +36826,7 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
         ) );
 
         if ( empty( $items ) ) {
-            echo '<p style="color:#666; font-style:italic;">No photos in this album yet.</p>';
+            echo '<p style="color:#666; font-style:italic;">' . esc_html__( 'No photos in this album yet.', 'societypress' ) . '</p>';
         } else {
             $col_width = round( 100 / $columns, 2 );
             echo '<div style="display:flex; flex-wrap:wrap; gap:8px;">';
@@ -36599,7 +36864,7 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
         );
 
         if ( empty( $albums ) ) {
-            echo '<p style="color:#666; font-style:italic;">No photo albums yet.</p>';
+            echo '<p style="color:#666; font-style:italic;">' . esc_html__( 'No photo albums yet.', 'societypress' ) . '</p>';
         } else {
             $col_width = round( 100 / $columns, 2 );
             echo '<div style="display:flex; flex-wrap:wrap; gap:16px;">';
@@ -36622,7 +36887,7 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
                     echo '</div>';
                 }
                 echo '<h4 style="margin:0 0 4px; font-size:16px;">' . esc_html( $album->title ) . '</h4>';
-                echo '<span style="color:#666; font-size:13px;">' . $photo_count . ' photo' . ( $photo_count !== 1 ? 's' : '' ) . '</span>';
+                echo '<span style="color:#666; font-size:13px;">' . sprintf( _n( '%d photo', '%d photos', $photo_count, 'societypress' ), $photo_count ) . '</span>';
                 echo '</div>';
             }
             echo '</div>';
@@ -36645,7 +36910,7 @@ function sp_render_builder_widget_resource_links( array $s ): void {
     $login_required = $s['login_required'] ?? false;
     if ( $login_required && ! is_user_logged_in() ) {
         echo '<div class="sp-widget-login-required">';
-        echo '<p>Please <a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">log in</a> to view resources.</p>';
+        echo '<p>' . sprintf( __( 'Please <a href="%s">log in</a> to view resources.', 'societypress' ), esc_url( wp_login_url( get_permalink() ) ) ) . '</p>';
         echo '</div>';
         return;
     }
@@ -36675,12 +36940,12 @@ function sp_render_builder_widget_resource_links( array $s ): void {
 
     echo '<div class="sp-widget-resource-links">';
     if ( empty( $resources ) ) {
-        echo '<p style="color:#666; font-style:italic;">No resources available yet.</p>';
+        echo '<p style="color:#666; font-style:italic;">' . esc_html__( 'No resources available yet.', 'societypress' ) . '</p>';
     } else {
         // Group by category for display
         $grouped = [];
         foreach ( $resources as $r ) {
-            $cat_name = $r->category_name ?: 'Uncategorized';
+            $cat_name = $r->category_name ?: __( 'Uncategorized', 'societypress' );
             $grouped[ $cat_name ][] = $r;
         }
 
@@ -36693,7 +36958,7 @@ function sp_render_builder_widget_resource_links( array $s ): void {
                 echo '<a href="' . esc_url( $item->url ) . '" target="_blank" rel="noopener noreferrer" style="font-weight:600; color:var(--sp-color-primary); text-decoration:none; font-size:15px;">';
                 echo esc_html( $item->title );
                 if ( $item->featured ) {
-                    echo ' <span style="background:#fef0c7; color:#92400e; font-size:11px; padding:2px 6px; border-radius:4px; font-weight:500; margin-left:4px;">Featured</span>';
+                    echo ' <span style="background:#fef0c7; color:#92400e; font-size:11px; padding:2px 6px; border-radius:4px; font-weight:500; margin-left:4px;">' . esc_html__( 'Featured', 'societypress' ) . '</span>';
                 }
                 echo '</a>';
                 if ( $show_desc && $item->description ) {
@@ -37500,7 +37765,7 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
             detailRow.className = 'sp-catalog-detail-row';
             var detailCell = document.createElement('td');
             detailCell.setAttribute('colspan', '6');
-            detailCell.innerHTML = '<div class="sp-catalog-detail" style="text-align:center; padding:30px;">Loading...</div>';
+            detailCell.innerHTML = '<div class="sp-catalog-detail" style="text-align:center; padding:30px;"><?php echo esc_js( __( 'Loading...', 'societypress' ) ); ?></div>';
             detailRow.appendChild(detailCell);
             parentRow.after(detailRow);
             openRow = detailRow;
@@ -37510,7 +37775,7 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
                 .then(function(r) { return r.json(); })
                 .then(function(resp) {
                     if ( ! resp.success || ! resp.data ) {
-                        detailCell.innerHTML = '<div class="sp-catalog-detail"><p>Unable to load details.</p></div>';
+                        detailCell.innerHTML = '<div class="sp-catalog-detail"><p><?php echo esc_js( __( 'Unable to load details.', 'societypress' ) ); ?></p></div>';
                         return;
                     }
                     var d = resp.data;
@@ -37533,31 +37798,31 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
                         return '<dl class="sp-catalog-detail-field"><dt>' + label + '</dt><dd>' + escHtml(value) + '</dd></dl>';
                     }
 
-                    html += field('Title', d.title);
-                    html += field('Author', d.author);
-                    html += field('Publisher', d.publisher);
-                    html += field('Publisher Location', d.publisher_location);
-                    html += field('Published', d.pub_date);
-                    html += field('Media Type', d.media_type);
-                    html += field('Category', d.category_name);
-                    html += field('Call Number', d.call_number);
-                    html += field('ISBN', d.isbn);
-                    html += field('LCCN', d.lccn);
-                    html += field('Shelf Location', d.shelf_location);
-                    html += field('Geographic Coverage', d.geographic_location);
-                    html += field('County', d.county);
-                    html += field('State', d.state);
-                    html += field('Condition', d.item_condition ? d.item_condition.charAt(0).toUpperCase() + d.item_condition.slice(1) : '');
-                    html += field('Status', d.available ? 'Available' : 'Checked Out');
-                    html += field('Acquisition', [d.acq_code, d.acq_date].filter(Boolean).join(' — '));
-                    html += field('Donor', d.donor);
-                    html += field('Value', d.item_value);
-                    html += field('Acquisition #', d.acquisition_number);
-                    html += field('System ID', d.system_id);
+                    html += field('<?php echo esc_js( __( 'Title', 'societypress' ) ); ?>', d.title);
+                    html += field('<?php echo esc_js( __( 'Author', 'societypress' ) ); ?>', d.author);
+                    html += field('<?php echo esc_js( __( 'Publisher', 'societypress' ) ); ?>', d.publisher);
+                    html += field('<?php echo esc_js( __( 'Publisher Location', 'societypress' ) ); ?>', d.publisher_location);
+                    html += field('<?php echo esc_js( __( 'Published', 'societypress' ) ); ?>', d.pub_date);
+                    html += field('<?php echo esc_js( __( 'Media Type', 'societypress' ) ); ?>', d.media_type);
+                    html += field('<?php echo esc_js( __( 'Category', 'societypress' ) ); ?>', d.category_name);
+                    html += field('<?php echo esc_js( __( 'Call Number', 'societypress' ) ); ?>', d.call_number);
+                    html += field('<?php echo esc_js( __( 'ISBN', 'societypress' ) ); ?>', d.isbn);
+                    html += field('<?php echo esc_js( __( 'LCCN', 'societypress' ) ); ?>', d.lccn);
+                    html += field('<?php echo esc_js( __( 'Shelf Location', 'societypress' ) ); ?>', d.shelf_location);
+                    html += field('<?php echo esc_js( __( 'Geographic Coverage', 'societypress' ) ); ?>', d.geographic_location);
+                    html += field('<?php echo esc_js( __( 'County', 'societypress' ) ); ?>', d.county);
+                    html += field('<?php echo esc_js( __( 'State', 'societypress' ) ); ?>', d.state);
+                    html += field('<?php echo esc_js( __( 'Condition', 'societypress' ) ); ?>', d.item_condition ? d.item_condition.charAt(0).toUpperCase() + d.item_condition.slice(1) : '');
+                    html += field('<?php echo esc_js( __( 'Status', 'societypress' ) ); ?>', d.available ? '<?php echo esc_js( __( 'Available', 'societypress' ) ); ?>' : '<?php echo esc_js( __( 'Checked Out', 'societypress' ) ); ?>');
+                    html += field('<?php echo esc_js( __( 'Acquisition', 'societypress' ) ); ?>', [d.acq_code, d.acq_date].filter(Boolean).join(' — '));
+                    html += field('<?php echo esc_js( __( 'Donor', 'societypress' ) ); ?>', d.donor);
+                    html += field('<?php echo esc_js( __( 'Value', 'societypress' ) ); ?>', d.item_value);
+                    html += field('<?php echo esc_js( __( 'Acquisition #', 'societypress' ) ); ?>', d.acquisition_number);
+                    html += field('<?php echo esc_js( __( 'System ID', 'societypress' ) ); ?>', d.system_id);
 
                     // Subject tags — clickable to filter
                     if ( d.subjects && d.subjects.length > 0 ) {
-                        html += '<dl class="sp-catalog-detail-field"><dt>Subjects</dt><dd>';
+                        html += '<dl class="sp-catalog-detail-field"><dt><?php echo esc_js( __( 'Subjects', 'societypress' ) ); ?></dt><dd>';
                         d.subjects.forEach(function(s) {
                             var filterUrl = addOrReplaceParam(window.location.href, 'sp_lib_subject', s);
                             filterUrl = removeParam(filterUrl, 'sp_lib_pg');
@@ -37568,7 +37833,7 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
 
                     // Surname tags
                     if ( d.surnames && d.surnames.length > 0 ) {
-                        html += '<dl class="sp-catalog-detail-field"><dt>Surnames</dt><dd>';
+                        html += '<dl class="sp-catalog-detail-field"><dt><?php echo esc_js( __( 'Surnames', 'societypress' ) ); ?></dt><dd>';
                         d.surnames.forEach(function(s) {
                             var filterUrl = addOrReplaceParam(window.location.href, 'sp_lib_search', s);
                             filterUrl = removeParam(filterUrl, 'sp_lib_pg');
@@ -37579,7 +37844,7 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
 
                     // Description — full width
                     if ( d.description ) {
-                        html += '<div class="sp-catalog-detail-desc"><dt>Description</dt><dd>' + escHtml(d.description) + '</dd></div>';
+                        html += '<div class="sp-catalog-detail-desc"><dt><?php echo esc_js( __( 'Description', 'societypress' ) ); ?></dt><dd>' + escHtml(d.description) + '</dd></div>';
                     }
 
                     html += '</div>'; // close grid
@@ -37590,7 +37855,7 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
                     detailCell.innerHTML = html;
                 })
                 .catch(function() {
-                    detailCell.innerHTML = '<div class="sp-catalog-detail"><p>Unable to load details.</p></div>';
+                    detailCell.innerHTML = '<div class="sp-catalog-detail"><p><?php echo esc_js( __( 'Unable to load details.', 'societypress' ) ); ?></p></div>';
                 });
         });
 
@@ -37635,7 +37900,7 @@ function sp_render_builder_widget_hero_slider( array $s ): void {
     $uid      = 'sp-slider-' . wp_rand( 1000, 9999 );
 
     if ( empty( $slides ) ) {
-        echo '<p style="text-align:center; padding:40px; color:#646970;">No slides configured.</p>';
+        echo '<p style="text-align:center; padding:40px; color:#646970;">' . esc_html__( 'No slides configured.', 'societypress' ) . '</p>';
         return;
     }
 
@@ -37831,10 +38096,10 @@ add_action( 'wp_ajax_sp_surname_contact', 'sp_handle_surname_contact' );
 
 function sp_handle_surname_contact(): void {
     if ( ! check_ajax_referer( 'sp_surname_contact', 'sp_surname_contact_nonce', false ) ) {
-        wp_send_json_error( 'Security check failed. Please refresh and try again.' );
+        wp_send_json_error( __( 'Security check failed. Please refresh and try again.', 'societypress' ) );
     }
     if ( ! is_user_logged_in() ) {
-        wp_send_json_error( 'You must be logged in to contact a researcher.' );
+        wp_send_json_error( __( 'You must be logged in to contact a researcher.', 'societypress' ) );
     }
 
     global $wpdb;
@@ -37846,10 +38111,10 @@ function sp_handle_surname_contact(): void {
     $message       = sanitize_textarea_field( $_POST['message'] ?? '' );
 
     if ( ! $researcher_id || ! $sender_name || ! $sender_email || ! $message ) {
-        wp_send_json_error( 'Please fill in all fields.' );
+        wp_send_json_error( __( 'Please fill in all fields.', 'societypress' ) );
     }
     if ( ! is_email( $sender_email ) ) {
-        wp_send_json_error( 'Please enter a valid email address.' );
+        wp_send_json_error( __( 'Please enter a valid email address.', 'societypress' ) );
     }
 
     // Look up the researcher's email from the contact table
@@ -37859,7 +38124,7 @@ function sp_handle_surname_contact(): void {
     ) );
 
     if ( ! $researcher_email || ! is_email( $researcher_email ) ) {
-        wp_send_json_error( 'Unable to contact this researcher at this time.' );
+        wp_send_json_error( __( 'Unable to contact this researcher at this time.', 'societypress' ) );
     }
 
     // Check opt-out preference
@@ -37869,7 +38134,7 @@ function sp_handle_surname_contact(): void {
         $researcher_id
     ) );
     if ( $opted_out === '0' ) {
-        wp_send_json_error( 'This researcher has opted out of contact messages.' );
+        wp_send_json_error( __( 'This researcher has opted out of contact messages.', 'societypress' ) );
     }
 
     // Build and send the email
@@ -37882,7 +38147,7 @@ function sp_handle_surname_contact(): void {
                . '<p style="color:#666; font-size:13px;">To reply, simply respond to this email. '
                . 'Your email address has not been shared with the sender.</p>';
 
-    $html = sp_build_email_html( 'Surname Research Inquiry', $body_html );
+    $html = sp_build_email_html( __( 'Surname Research Inquiry', 'societypress' ), $body_html );
 
     $headers = [
         'Content-Type: text/html; charset=UTF-8',
@@ -37899,7 +38164,7 @@ function sp_handle_surname_contact(): void {
     if ( $sent ) {
         wp_send_json_success( [ 'message' => 'Your message has been sent! The researcher can reply directly to your email.' ] );
     } else {
-        wp_send_json_error( 'There was a problem sending your message. Please try again later.' );
+        wp_send_json_error( __( 'There was a problem sending your message. Please try again later.', 'societypress' ) );
     }
 }
 
@@ -37923,8 +38188,8 @@ function sp_render_gallery_page(): void {
     $prefix = $wpdb->prefix . 'sp_';
 
     // Handle delete action
-    if ( ( $_GET['action'] ?? '' ) === 'delete' && ! empty( $_GET['album_id'] ) ) {
-        $album_id = absint( $_GET['album_id'] );
+    if ( ( $_POST['action'] ?? '' ) === 'delete' && ! empty( $_POST['album_id'] ) ) {
+        $album_id = absint( $_POST['album_id'] );
         check_admin_referer( 'sp_delete_album_' . $album_id );
         $wpdb->delete( $prefix . 'photo_album_items', [ 'album_id' => $album_id ] );
         $wpdb->delete( $prefix . 'photo_albums', [ 'id' => $album_id ] );
@@ -37943,7 +38208,7 @@ function sp_render_gallery_page(): void {
         <hr class="wp-header-end">
 
         <?php if ( empty( $albums ) ) : ?>
-            <p>No albums yet. <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-album-edit' ) ); ?>">Create your first album</a>.</p>
+            <p><?php esc_html_e( 'No albums yet.', 'societypress' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-album-edit' ) ); ?>"><?php esc_html_e( 'Create your first album', 'societypress' ); ?></a>.</p>
         <?php else : ?>
             <div style="display:flex; flex-wrap:wrap; gap:20px; margin-top:20px;">
                 <?php foreach ( $albums as $album ) :
@@ -37951,10 +38216,7 @@ function sp_render_gallery_page(): void {
                         ? wp_get_attachment_image_url( $album->cover_image_id, 'medium' )
                         : '';
                     $edit_url   = admin_url( 'admin.php?page=sp-album-edit&album_id=' . $album->id );
-                    $delete_url = wp_nonce_url(
-                        admin_url( 'admin.php?page=sp-gallery&action=delete&album_id=' . $album->id ),
-                        'sp_delete_album_' . $album->id
-                    );
+                    // $delete_url removed — using POST form below
                 ?>
                     <div style="width:220px; background:#fff; border:1px solid #ccd0d4; border-radius:8px; overflow:hidden;">
                         <a href="<?php echo esc_url( $edit_url ); ?>" style="display:block;">
@@ -37970,11 +38232,16 @@ function sp_render_gallery_page(): void {
                             <h4 style="margin:0 0 4px;"><a href="<?php echo esc_url( $edit_url ); ?>" style="text-decoration:none; color:#1d2327;"><?php echo esc_html( $album->title ); ?></a></h4>
                             <span style="color:#666; font-size:12px;"><?php echo $album->photo_count; ?> photos</span>
                             <?php if ( $album->visibility === 'members_only' ) : ?>
-                                <span style="background:#fef0c7; color:#92400e; font-size:10px; padding:2px 6px; border-radius:3px; margin-left:4px;">Members Only</span>
+                                <span style="background:#fef0c7; color:#92400e; font-size:10px; padding:2px 6px; border-radius:3px; margin-left:4px;"><?php esc_html_e( 'Members Only', 'societypress' ); ?></span>
                             <?php endif; ?>
                             <div style="margin-top:8px; font-size:12px;">
-                                <a href="<?php echo esc_url( $edit_url ); ?>">Edit</a> |
-                                <a href="<?php echo esc_url( $delete_url ); ?>" style="color:#b32d2e;" onclick="return confirm('Delete this album and all its photos?');">Delete</a>
+                                <a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> |
+                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-gallery' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this album and all its photos?', 'societypress' ) ); ?>');">
+                                    <?php wp_nonce_field( 'sp_delete_album_' . $album->id ); ?>
+                                    <input type="hidden" name="action" value="delete">
+                                    <input type="hidden" name="album_id" value="<?php echo (int) $album->id; ?>">
+                                    <button type="submit" class="sp-link-btn" style="background:none; border:none; color:#b32d2e; cursor:pointer; padding:0; font:inherit; text-decoration:underline;"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                                </form>
                             </div>
                         </div>
                     </div>
@@ -38277,13 +38544,13 @@ function sp_render_reports_page(): void {
                 <div style="color:#666; font-size:13px;">Open Help Requests</div>
             </div>
             <div style="background:#fff; border:1px solid #ccd0d4; border-radius:8px; padding:20px; text-align:center;">
-                <div style="font-size:32px; font-weight:700; color:#00a32a;">$<?php echo number_format( $donations_year, 0 ); ?></div>
+                <div style="font-size:32px; font-weight:700; color:#00a32a;"><?php echo esc_html( sp_format_currency( $donations_year ) ); ?></div>
                 <div style="color:#666; font-size:13px;">Donations This Year</div>
                 <div style="color:#999; font-size:12px;"><?php echo $donor_count; ?> donors</div>
             </div>
             <?php if ( $top_campaign ) : ?>
             <div style="background:#fff; border:1px solid #ccd0d4; border-radius:8px; padding:20px; text-align:center;">
-                <div style="font-size:32px; font-weight:700; color:#00a32a;">$<?php echo number_format( (float) $top_campaign->raised, 0 ); ?></div>
+                <div style="font-size:32px; font-weight:700; color:#00a32a;"><?php echo esc_html( sp_format_currency( $top_campaign->raised ) ); ?></div>
                 <div style="color:#666; font-size:13px;">Top Campaign</div>
                 <div style="color:#999; font-size:12px;"><?php echo esc_html( $top_campaign->name ); ?></div>
             </div>
@@ -38530,14 +38797,17 @@ function sp_render_help_requests_admin_page(): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
-    // Handle actions
+    // Handle actions — delete is POST-only to prevent browser prefetch accidents
     $action = $_GET['action'] ?? '';
     $req_id = absint( $_GET['request_id'] ?? 0 );
 
-    if ( $action === 'delete' && $req_id ) {
-        check_admin_referer( 'sp_delete_help_request_' . $req_id );
-        $wpdb->delete( $prefix . 'help_responses', [ 'request_id' => $req_id ] );
-        $wpdb->delete( $prefix . 'help_requests', [ 'id' => $req_id ] );
+    // Delete uses POST
+    $post_action = $_POST['action'] ?? '';
+    $post_req_id = absint( $_POST['request_id'] ?? 0 );
+    if ( $post_action === 'delete' && $post_req_id ) {
+        check_admin_referer( 'sp_delete_help_request_' . $post_req_id );
+        $wpdb->delete( $prefix . 'help_responses', [ 'request_id' => $post_req_id ] );
+        $wpdb->delete( $prefix . 'help_requests', [ 'id' => $post_req_id ] );
         echo '<div class="notice notice-success"><p>' . esc_html__( 'Request deleted.', 'societypress' ) . '</p></div>';
     }
     if ( $action === 'close' && $req_id ) {
@@ -38574,7 +38844,7 @@ function sp_render_help_requests_admin_page(): void {
 
         $close_url  = wp_nonce_url( admin_url( 'admin.php?page=sp-help-requests&action=close&request_id=' . $req_id ), 'sp_close_help_request_' . $req_id );
         $reopen_url = wp_nonce_url( admin_url( 'admin.php?page=sp-help-requests&action=reopen&request_id=' . $req_id ), 'sp_reopen_help_request_' . $req_id );
-        $delete_url = wp_nonce_url( admin_url( 'admin.php?page=sp-help-requests&action=delete&request_id=' . $req_id ), 'sp_delete_help_request_' . $req_id );
+        // Delete uses POST form below
         ?>
         <div class="wrap">
             <h1><?php echo esc_html( $request->title ); ?></h1>
@@ -38583,17 +38853,22 @@ function sp_render_help_requests_admin_page(): void {
             <div style="background:#fff; border:1px solid #ccd0d4; border-radius:4px; padding:20px; margin:16px 0;">
                 <p style="color:#666; font-size:13px; margin:0 0 12px;">
                     Asked by <?php echo esc_html( $request->first_name . ' ' . $request->last_name ); ?>
-                    on <?php echo esc_html( date( 'M j, Y g:i A', strtotime( $request->created_at ) ) ); ?>
+                    on <?php echo esc_html( wp_date( 'M j, Y g:i A', strtotime( $request->created_at ) ) ); ?>
                     — Status: <strong><?php echo esc_html( ucfirst( $request->status ) ); ?></strong>
                 </p>
                 <div style="font-size:15px; line-height:1.6;"><?php echo wpautop( esc_html( $request->description ) ); ?></div>
                 <div style="margin-top:16px;">
                     <?php if ( $request->status === 'open' ) : ?>
-                        <a href="<?php echo esc_url( $close_url ); ?>" class="button">Close Request</a>
+                        <a href="<?php echo esc_url( $close_url ); ?>" class="button"><?php esc_html_e( 'Close Request', 'societypress' ); ?></a>
                     <?php else : ?>
-                        <a href="<?php echo esc_url( $reopen_url ); ?>" class="button">Reopen Request</a>
+                        <a href="<?php echo esc_url( $reopen_url ); ?>" class="button"><?php esc_html_e( 'Reopen Request', 'societypress' ); ?></a>
                     <?php endif; ?>
-                    <a href="<?php echo esc_url( $delete_url ); ?>" class="button" style="color:#b32d2e; border-color:#b32d2e;" onclick="return confirm('Delete this request and all responses?');">Delete</a>
+                    <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-help-requests' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this request and all responses?', 'societypress' ) ); ?>');">
+                        <?php wp_nonce_field( 'sp_delete_help_request_' . $req_id ); ?>
+                        <input type="hidden" name="action" value="delete">
+                        <input type="hidden" name="request_id" value="<?php echo (int) $req_id; ?>">
+                        <button type="submit" class="button" style="color:#b32d2e; border-color:#b32d2e; cursor:pointer;"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                    </form>
                 </div>
             </div>
 
@@ -38602,7 +38877,7 @@ function sp_render_help_requests_admin_page(): void {
                 <div style="background:#f9f9f9; border:1px solid #e0e0e0; border-radius:4px; padding:16px; margin-bottom:12px;">
                     <p style="color:#666; font-size:13px; margin:0 0 8px;">
                         <strong><?php echo esc_html( $resp->first_name . ' ' . $resp->last_name ); ?></strong>
-                        — <?php echo esc_html( date( 'M j, Y g:i A', strtotime( $resp->created_at ) ) ); ?>
+                        — <?php echo esc_html( wp_date( 'M j, Y g:i A', strtotime( $resp->created_at ) ) ); ?>
                     </p>
                     <div style="font-size:14px; line-height:1.5;"><?php echo wpautop( esc_html( $resp->content ) ); ?></div>
                 </div>
@@ -38632,27 +38907,27 @@ function sp_render_help_requests_admin_page(): void {
         <h1><?php esc_html_e( 'Research Help Requests', 'societypress' ); ?></h1>
 
         <ul class="subsubsub" style="margin-bottom:16px;">
-            <li><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-help-requests' ) ); ?>" <?php if ( ! $status_filter ) echo 'class="current"'; ?>>All</a> |</li>
-            <li><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-help-requests&status=open' ) ); ?>" <?php if ( $status_filter === 'open' ) echo 'class="current"'; ?>>Open</a> |</li>
-            <li><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-help-requests&status=closed' ) ); ?>" <?php if ( $status_filter === 'closed' ) echo 'class="current"'; ?>>Closed</a></li>
+            <li><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-help-requests' ) ); ?>" <?php if ( ! $status_filter ) echo 'class="current"'; ?>><?php esc_html_e( 'All', 'societypress' ); ?></a> |</li>
+            <li><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-help-requests&status=open' ) ); ?>" <?php if ( $status_filter === 'open' ) echo 'class="current"'; ?>><?php esc_html_e( 'Open', 'societypress' ); ?></a> |</li>
+            <li><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-help-requests&status=closed' ) ); ?>" <?php if ( $status_filter === 'closed' ) echo 'class="current"'; ?>><?php esc_html_e( 'Closed', 'societypress' ); ?></a></li>
         </ul>
 
         <table class="wp-list-table widefat striped">
-            <thead><tr><th>Title</th><th>Asked By</th><th>Responses</th><th>Status</th><th>Date</th></tr></thead>
+            <thead><tr><th><?php esc_html_e( 'Title', 'societypress' ); ?></th><th><?php esc_html_e( 'Asked By', 'societypress' ); ?></th><th><?php esc_html_e( 'Responses', 'societypress' ); ?></th><th><?php esc_html_e( 'Status', 'societypress' ); ?></th><th><?php esc_html_e( 'Date', 'societypress' ); ?></th></tr></thead>
             <tbody>
                 <?php if ( empty( $requests ) ) : ?>
-                    <tr><td colspan="5">No requests found.</td></tr>
+                    <tr><td colspan="5"><?php esc_html_e( 'No requests found.', 'societypress' ); ?></td></tr>
                 <?php else : ?>
                     <?php foreach ( $requests as $req ) :
                         $view_url   = admin_url( 'admin.php?page=sp-help-requests&action=view&request_id=' . $req->id );
-                        $delete_url = wp_nonce_url( admin_url( 'admin.php?page=sp-help-requests&action=delete&request_id=' . $req->id ), 'sp_delete_help_request_' . $req->id );
+                        // delete_url removed — using POST form in row actions
                     ?>
                         <tr>
                             <td>
                                 <strong><a href="<?php echo esc_url( $view_url ); ?>"><?php echo esc_html( $req->title ); ?></a></strong>
                                 <div class="row-actions">
-                                    <span><a href="<?php echo esc_url( $view_url ); ?>">View</a> | </span>
-                                    <span><a href="<?php echo esc_url( $delete_url ); ?>" style="color:#b32d2e;" onclick="return confirm('Delete?');">Delete</a></span>
+                                    <span><a href="<?php echo esc_url( $view_url ); ?>"><?php esc_html_e( 'View', 'societypress' ); ?></a> | </span>
+                                    <span><form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-help-requests' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete?', 'societypress' ) ); ?>');"><?php wp_nonce_field( 'sp_delete_help_request_' . $req->id ); ?><input type="hidden" name="action" value="delete"><input type="hidden" name="request_id" value="<?php echo (int) $req->id; ?>"><button type="submit" class="sp-link-btn" style="background:none; border:none; color:#b32d2e; cursor:pointer; padding:0; font:inherit; text-decoration:underline;"><?php esc_html_e( 'Delete', 'societypress' ); ?></button></form></span>
                                 </div>
                             </td>
                             <td><?php echo esc_html( $req->first_name . ' ' . $req->last_name ); ?></td>
@@ -38661,7 +38936,7 @@ function sp_render_help_requests_admin_page(): void {
                                 <?php $sc = $req->status === 'open' ? '#0a6b2e' : '#666'; ?>
                                 <span style="color:<?php echo $sc; ?>; font-weight:600;"><?php echo esc_html( ucfirst( $req->status ) ); ?></span>
                             </td>
-                            <td><?php echo esc_html( date( 'M j, Y', strtotime( $req->created_at ) ) ); ?></td>
+                            <td><?php echo esc_html( wp_date( 'M j, Y', strtotime( $req->created_at ) ) ); ?></td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -38717,7 +38992,12 @@ add_filter( 'template_include', function( $template ) {
             sp_frontend_resources_directory();
             break;
         case 'sp-library-catalog':
-            sp_frontend_library_catalog();
+            // WHY: Previously called the basic 85-line sp_frontend_library_catalog(),
+            // which was a simple table with minimal search. Now unified to use the
+            // full OPAC-style builder widget version (sp_render_builder_widget_library_catalog)
+            // which supports faceted search, browse-by sections, expandable detail
+            // rows, sort options, and media type filtering. Empty array = use defaults.
+            sp_render_builder_widget_library_catalog( [] );
             break;
         case 'sp-records':
             sp_render_records_frontend();
@@ -38862,8 +39142,8 @@ function sp_frontend_help_requests(): void {
                 <label style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Details', 'societypress' ); ?></label>
                 <textarea name="question_description" rows="6" required style="width:100%; padding:10px; border:1px solid #ccc; border-radius:6px; font-size:16px; font-family:inherit;" placeholder="Provide details about what you're looking for, what you've already tried, and any specific time periods or locations..."></textarea>
             </div>
-            <button type="submit" name="sp_submit_question" class="sp-btn sp-btn-primary">Submit Question</button>
-            <a href="<?php echo esc_url( get_permalink() ); ?>" class="sp-btn sp-btn-secondary" style="margin-left:8px;">Cancel</a>
+            <button type="submit" name="sp_submit_question" class="sp-btn sp-btn-primary"><?php esc_html_e( 'Submit Question', 'societypress' ); ?></button>
+            <a href="<?php echo esc_url( get_permalink() ); ?>" class="sp-btn sp-btn-secondary" style="margin-left:8px;"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
         </form>
         <?php
 
@@ -38893,7 +39173,7 @@ function sp_frontend_help_requests(): void {
         echo '<p><a href="' . esc_url( get_permalink() ) . '">&larr; Back to Questions</a></p>';
         echo '<h2>' . esc_html( $request->title ) . '</h2>';
         echo '<p style="color:#666; font-size:13px;">Asked by ' . esc_html( $request->first_name . ' ' . $request->last_name )
-           . ' on ' . esc_html( date( 'F j, Y', strtotime( $request->created_at ) ) )
+           . ' on ' . esc_html( wp_date( 'F j, Y', strtotime( $request->created_at ) ) )
            . ' — <span style="color:' . ( $request->status === 'open' ? '#0a6b2e' : '#666' ) . ';">' . ucfirst( $request->status ) . '</span></p>';
         echo '<div style="font-size:15px; line-height:1.7; margin-bottom:32px;">' . wpautop( esc_html( $request->description ) ) . '</div>';
 
@@ -38903,7 +39183,7 @@ function sp_frontend_help_requests(): void {
             echo '<div style="background:#f9f9f9; border:1px solid #eee; border-radius:8px; padding:16px; margin-bottom:12px;">';
             echo '<p style="margin:0 0 8px; font-size:13px; color:#666;">'
                . '<strong>' . esc_html( $resp->first_name . ' ' . $resp->last_name ) . '</strong>'
-               . ' — ' . esc_html( date( 'M j, Y g:i A', strtotime( $resp->created_at ) ) ) . '</p>';
+               . ' — ' . esc_html( wp_date( 'M j, Y g:i A', strtotime( $resp->created_at ) ) ) . '</p>';
             echo '<div style="font-size:14px; line-height:1.6;">' . wpautop( esc_html( $resp->content ) ) . '</div>';
             echo '</div>';
         }
@@ -38942,7 +39222,7 @@ function sp_frontend_help_requests(): void {
         );
 
         if ( empty( $requests ) ) {
-            echo '<p style="color:#666; font-style:italic;">No questions yet. Be the first to ask!</p>';
+            echo '<p style="color:#666; font-style:italic;">' . esc_html__( 'No questions yet. Be the first to ask!', 'societypress' ) . '</p>';
         } else {
             foreach ( $requests as $req ) {
                 $view_url = add_query_arg( [ 'sp_help' => 'view', 'id' => $req->id ] );
@@ -38950,7 +39230,7 @@ function sp_frontend_help_requests(): void {
                 echo '<h3 style="margin:0 0 6px;"><a href="' . esc_url( $view_url ) . '" style="color:#1d2327; text-decoration:none;">' . esc_html( $req->title ) . '</a></h3>';
                 echo '<p style="margin:0; color:#666; font-size:13px;">'
                    . esc_html( $req->first_name . ' ' . $req->last_name )
-                   . ' &middot; ' . esc_html( date( 'M j, Y', strtotime( $req->created_at ) ) )
+                   . ' &middot; ' . esc_html( wp_date( 'M j, Y', strtotime( $req->created_at ) ) )
                    . ' &middot; ' . (int) $req->responses_count . ' response' . ( (int) $req->responses_count !== 1 ? 's' : '' )
                    . '</p>';
                 if ( $req->description ) {
@@ -39066,9 +39346,18 @@ function sp_frontend_resources_directory(): void {
 }
 
 /**
- * Frontend: Library Catalog
+ * Frontend: Library Catalog (DEPRECATED)
  *
- * WHY: Full-page searchable/filterable library catalog for the sp-library-catalog template.
+ * WHY THIS IS DEPRECATED: This was the original basic 85-line catalog — a simple
+ *      table with keyword search and category filter. It has been superseded by
+ *      sp_render_builder_widget_library_catalog(), which provides the full OPAC-style
+ *      experience: faceted search, browse-by sections, expandable detail rows, sort
+ *      options, and media type filtering. The sp-library-catalog page template now
+ *      calls the OPAC version directly. This function is retained for backward
+ *      compatibility in case any custom code references it, but new code should
+ *      use sp_render_builder_widget_library_catalog( [] ) instead.
+ *
+ * @deprecated Use sp_render_builder_widget_library_catalog( [] ) instead.
  */
 function sp_frontend_library_catalog(): void {
     global $wpdb;
@@ -39104,7 +39393,7 @@ function sp_frontend_library_catalog(): void {
     echo '<form method="get" style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">';
     echo '<input type="text" name="sp_lib_search" value="' . esc_attr( $search ) . '" placeholder="Search title, author, or call number..." style="flex:1; min-width:200px; padding:10px; border:1px solid #ccc; border-radius:6px; font-size:16px;">';
     echo '<select name="category" style="padding:10px; border:1px solid #ccc; border-radius:6px;">';
-    echo '<option value="0">All Categories</option>';
+    echo '<option value="0"><?php esc_html_e( 'All Categories', 'societypress' ); ?></option>';
     foreach ( $categories as $cat ) {
         echo '<option value="' . $cat->id . '"' . selected( $cat_filter, $cat->id, false ) . '>' . esc_html( $cat->name ) . '</option>';
     }
@@ -39151,7 +39440,7 @@ function sp_frontend_library_catalog(): void {
             echo '</div>';
         }
     } else {
-        echo '<p style="color:#666; font-style:italic;">No items found.</p>';
+        echo '<p style="color:#666; font-style:italic;">' . esc_html__( 'No items found.', 'societypress' ) . '</p>';
     }
 }
 
@@ -39174,10 +39463,13 @@ function sp_render_library_catalog_page(): void {
     $prefix = $wpdb->prefix . 'sp_';
 
     // Handle delete
-    if ( ( $_GET['action'] ?? '' ) === 'delete' && ! empty( $_GET['item_id'] ) ) {
-        $item_id = absint( $_GET['item_id'] );
+    if ( ( $_POST['action'] ?? '' ) === 'delete' && ! empty( $_POST['item_id'] ) ) {
+        $item_id = absint( $_POST['item_id'] );
         check_admin_referer( 'sp_delete_library_item_' . $item_id );
         $wpdb->delete( $prefix . 'library_items', [ 'id' => $item_id ] );
+        // WHY: The catalog stats widget caches item counts and subject breakdowns.
+        //      Any add/edit/delete/import must bust that cache or the frontend shows stale numbers.
+        delete_transient( 'sp_library_catalog_stats' );
         echo '<div class="notice notice-success"><p>' . esc_html__( 'Item deleted.', 'societypress' ) . '</p></div>';
     }
 
@@ -39283,7 +39575,7 @@ function sp_render_library_catalog_page(): void {
                 <div style="color:#666; font-size:13px;">Available</div>
             </div>
             <div style="background:#fff; border:1px solid #c3c4c7; border-radius:4px; padding:16px;">
-                <div style="font-size:32px; font-weight:700; color:#dba617;">$<?php echo number_format( $stats_value, 2 ); ?></div>
+                <div style="font-size:32px; font-weight:700; color:#dba617;"><?php echo esc_html( sp_format_currency( $stats_value ) ); ?></div>
                 <div style="color:#666; font-size:13px;">Collection Value</div>
             </div>
             <div style="background:#fff; border:1px solid #c3c4c7; border-radius:4px; padding:16px;">
@@ -39358,7 +39650,7 @@ function sp_render_library_catalog_page(): void {
             </div>
             <input type="submit" class="button" value="Filter">
             <?php if ( $search || $media_filter || $shelf_filter || $acq_filter ) : ?>
-                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-catalog' ) ); ?>" class="button">Clear</a>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-catalog' ) ); ?>" class="button"><?php esc_html_e( 'Clear', 'societypress' ); ?></a>
             <?php endif; ?>
         </form>
 
@@ -39378,21 +39670,18 @@ function sp_render_library_catalog_page(): void {
             </thead>
             <tbody>
                 <?php if ( empty( $items ) ) : ?>
-                    <tr><td colspan="7">No items found.</td></tr>
+                    <tr><td colspan="7"><?php esc_html_e( 'No items found.', 'societypress' ); ?></td></tr>
                 <?php else : ?>
                     <?php foreach ( $items as $item ) :
                         $edit_url   = admin_url( 'admin.php?page=sp-library-item-edit&item_id=' . $item->id );
-                        $delete_url = wp_nonce_url(
-                            admin_url( 'admin.php?page=sp-library-catalog&action=delete&item_id=' . $item->id ),
-                            'sp_delete_library_item_' . $item->id
-                        );
+                        // delete handled via POST form in row actions
                     ?>
                         <tr>
                             <td>
                                 <strong><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $item->title ); ?></a></strong>
                                 <div class="row-actions">
-                                    <span><a href="<?php echo esc_url( $edit_url ); ?>">Edit</a> | </span>
-                                    <span><a href="<?php echo esc_url( $delete_url ); ?>" style="color:#b32d2e;" onclick="return confirm('Delete this item?');">Delete</a></span>
+                                    <span><a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> | </span>
+                                    <span><form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-catalog' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this item?', 'societypress' ) ); ?>');"><?php wp_nonce_field( 'sp_delete_library_item_' . $item->id ); ?><input type="hidden" name="action" value="delete"><input type="hidden" name="item_id" value="<?php echo (int) $item->id; ?>"><button type="submit" class="sp-link-btn" style="background:none; border:none; color:#b32d2e; cursor:pointer; padding:0; font:inherit; text-decoration:underline;"><?php esc_html_e( 'Delete', 'societypress' ); ?></button></form></span>
                                 </div>
                             </td>
                             <td><?php echo esc_html( $item->author ?: '—' ); ?></td>
@@ -39498,6 +39787,7 @@ function sp_render_library_item_edit_page(): void {
                 $item_id = $wpdb->insert_id;
                 echo '<div class="notice notice-success"><p>' . esc_html__( 'Item added.', 'societypress' ) . '</p></div>';
             }
+            delete_transient( 'sp_library_catalog_stats' );
         }
     }
 
@@ -39730,11 +40020,12 @@ function sp_render_library_categories_page(): void {
         }
     }
 
-    if ( ( $_GET['action'] ?? '' ) === 'delete' && ! empty( $_GET['cat_id'] ) ) {
-        $cat_id = absint( $_GET['cat_id'] );
+    if ( ( $_POST['action'] ?? '' ) === 'delete' && ! empty( $_POST['cat_id'] ) ) {
+        $cat_id = absint( $_POST['cat_id'] );
         check_admin_referer( 'sp_delete_library_cat_' . $cat_id );
         $wpdb->update( $prefix . 'library_items', [ 'category_id' => null ], [ 'category_id' => $cat_id ] );
         $wpdb->delete( $prefix . 'library_categories', [ 'id' => $cat_id ] );
+        delete_transient( 'sp_library_catalog_stats' );
         echo '<div class="notice notice-success"><p>' . esc_html__( 'Category deleted.', 'societypress' ) . '</p></div>';
     }
 
@@ -39748,7 +40039,7 @@ function sp_render_library_categories_page(): void {
         <h1><?php esc_html_e( 'Library Categories', 'societypress' ); ?></h1>
         <div style="display:flex; gap:24px; margin-top:16px;">
             <div style="flex:0 0 350px; background:#fff; border:1px solid #ccd0d4; border-radius:4px; padding:20px;">
-                <h3 style="margin-top:0;"><?php echo $editing ? 'Edit Category' : 'Add Category'; ?></h3>
+                <h3 style="margin-top:0;"><?php echo $editing ? esc_html__( 'Edit Category', 'societypress' ) : esc_html__( 'Add Category', 'societypress' ); ?></h3>
                 <form method="post">
                     <?php wp_nonce_field( 'sp_library_cat_save' ); ?>
                     <input type="hidden" name="cat_id" value="<?php echo $editing ? $editing->id : 0; ?>">
@@ -39756,26 +40047,26 @@ function sp_render_library_categories_page(): void {
                         <input type="text" name="name" value="<?php echo esc_attr( $editing->name ?? '' ); ?>" class="regular-text" required></p>
                     <p><label style="font-weight:600;"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label><br>
                         <input type="number" name="sort_order" value="<?php echo esc_attr( $editing->sort_order ?? 0 ); ?>" min="0" style="width:80px;"></p>
-                    <p><label><input type="checkbox" name="active" value="1" <?php checked( $editing->active ?? 1 ); ?>> Active</label></p>
-                    <p><input type="submit" name="sp_save_library_cat" class="button button-primary" value="<?php echo $editing ? 'Update' : 'Add Category'; ?>">
-                        <?php if ( $editing ) : ?><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-categories' ) ); ?>" class="button">Cancel</a><?php endif; ?></p>
+                    <p><label><input type="checkbox" name="active" value="1" <?php checked( $editing->active ?? 1 ); ?>> <?php esc_html_e( 'Active', 'societypress' ); ?></label></p>
+                    <p><input type="submit" name="sp_save_library_cat" class="button button-primary" value="<?php echo $editing ? esc_attr__( 'Update', 'societypress' ) : esc_attr__( 'Add Category', 'societypress' ); ?>">
+                        <?php if ( $editing ) : ?><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-categories' ) ); ?>" class="button"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a><?php endif; ?></p>
                 </form>
             </div>
             <div style="flex:1;">
                 <table class="wp-list-table widefat striped">
-                    <thead><tr><th>Name</th><th>Slug</th><th>Order</th><th>Active</th></tr></thead>
+                    <thead><tr><th><?php esc_html_e( 'Name', 'societypress' ); ?></th><th><?php esc_html_e( 'Slug', 'societypress' ); ?></th><th><?php esc_html_e( 'Order', 'societypress' ); ?></th><th><?php esc_html_e( 'Active', 'societypress' ); ?></th></tr></thead>
                     <tbody>
                         <?php foreach ( $categories as $cat ) :
                             $edit_url   = admin_url( 'admin.php?page=sp-library-categories&action=edit&cat_id=' . $cat->id );
-                            $delete_url = wp_nonce_url( admin_url( 'admin.php?page=sp-library-categories&action=delete&cat_id=' . $cat->id ), 'sp_delete_library_cat_' . $cat->id );
+                            // delete via POST form in row actions
                         ?>
                             <tr>
                                 <td><strong><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $cat->name ); ?></a></strong>
-                                    <div class="row-actions"><span><a href="<?php echo esc_url( $edit_url ); ?>">Edit</a> | </span><span><a href="<?php echo esc_url( $delete_url ); ?>" style="color:#b32d2e;" onclick="return confirm('Delete?');">Delete</a></span></div>
+                                    <div class="row-actions"><span><a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> | </span><span><form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-categories' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete?', 'societypress' ) ); ?>');"><?php wp_nonce_field( 'sp_delete_library_cat_' . $cat->id ); ?><input type="hidden" name="action" value="delete"><input type="hidden" name="cat_id" value="<?php echo (int) $cat->id; ?>"><button type="submit" class="sp-link-btn" style="background:none; border:none; color:#b32d2e; cursor:pointer; padding:0; font:inherit; text-decoration:underline;"><?php esc_html_e( 'Delete', 'societypress' ); ?></button></form></span></div>
                                 </td>
                                 <td><?php echo esc_html( $cat->slug ); ?></td>
                                 <td><?php echo $cat->sort_order; ?></td>
-                                <td><?php echo $cat->active ? 'Yes' : 'No'; ?></td>
+                                <td><?php echo $cat->active ? esc_html__( 'Yes', 'societypress' ) : esc_html__( 'No', 'societypress' ); ?></td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -40004,6 +40295,7 @@ function sp_process_library_import( string $file_path, array $field_map ): array
     }
 
     fclose( $handle );
+    delete_transient( 'sp_library_catalog_stats' );
     return $results;
 }
 
@@ -40043,7 +40335,7 @@ function sp_render_library_import_page(): void {
         } else {
             $results = [
                 'imported' => 0, 'skipped' => 0,
-                'errors'   => [ 'The uploaded file has expired. Please upload again.' ],
+                'errors'   => [ __( 'The uploaded file has expired. Please upload again.', 'societypress' ) ],
             ];
         }
     }
@@ -40099,37 +40391,37 @@ function sp_render_library_import_page(): void {
     // Target fields — the library_items columns available for mapping.
     // ------------------------------------------------------------------
     $target_fields = [
-        'system_id'           => 'System ID (legacy catalog #)',
-        'title'               => 'Title',
-        'author'              => 'Author',
-        'description'         => 'Description / Physical Notes',
-        'publisher'           => 'Publisher',
-        'publisher_location'  => 'Publisher Location',
-        'pub_year'            => 'Publication Year',
-        'pub_month'           => 'Publication Month',
-        'pub_day'             => 'Publication Day',
-        'media_type'          => 'Media Type (Book, Map, etc.)',
-        'use_serials'         => 'Use Serials (0/1)',
-        'isbn'                => 'ISBN',
-        'call_number'         => 'Call Number',
-        'lccn'                => 'LCCN',
-        'shelf_location'      => 'Shelf Location (section in library)',
-        'geographic_location' => 'Geographic Coverage (region/state)',
-        'acquisition_number'  => 'Acquisition Number',
-        'acq_year'            => 'Acquisition Year',
-        'acq_month'           => 'Acquisition Month',
-        'acq_day'             => 'Acquisition Day',
-        'acq_code'            => 'Acquisition Code (Gift, Purchase, etc.)',
-        'donor'               => 'Donor',
-        'value'               => 'Value ($)',
-        'county'              => 'County',
-        'state'               => 'State',
-        'surname'             => 'Surname',
-        'subject'             => 'Subject Tags',
-        'librarian_notes'     => 'Librarian Notes',
-        'updated_by'          => 'Updated By (name)',
-        'last_updated_date'   => 'Last Updated Date',
-        'cover_url'           => 'Cover Image URL',
+        'system_id'           => __( 'System ID (legacy catalog #)', 'societypress' ),
+        'title'               => __( 'Title', 'societypress' ),
+        'author'              => __( 'Author', 'societypress' ),
+        'description'         => __( 'Description / Physical Notes', 'societypress' ),
+        'publisher'           => __( 'Publisher', 'societypress' ),
+        'publisher_location'  => __( 'Publisher Location', 'societypress' ),
+        'pub_year'            => __( 'Publication Year', 'societypress' ),
+        'pub_month'           => __( 'Publication Month', 'societypress' ),
+        'pub_day'             => __( 'Publication Day', 'societypress' ),
+        'media_type'          => __( 'Media Type (Book, Map, etc.)', 'societypress' ),
+        'use_serials'         => __( 'Use Serials (0/1)', 'societypress' ),
+        'isbn'                => __( 'ISBN', 'societypress' ),
+        'call_number'         => __( 'Call Number', 'societypress' ),
+        'lccn'                => __( 'LCCN', 'societypress' ),
+        'shelf_location'      => __( 'Shelf Location (section in library)', 'societypress' ),
+        'geographic_location' => __( 'Geographic Coverage (region/state)', 'societypress' ),
+        'acquisition_number'  => __( 'Acquisition Number', 'societypress' ),
+        'acq_year'            => __( 'Acquisition Year', 'societypress' ),
+        'acq_month'           => __( 'Acquisition Month', 'societypress' ),
+        'acq_day'             => __( 'Acquisition Day', 'societypress' ),
+        'acq_code'            => __( 'Acquisition Code (Gift, Purchase, etc.)', 'societypress' ),
+        'donor'               => __( 'Donor', 'societypress' ),
+        'value'               => __( 'Value ($)', 'societypress' ),
+        'county'              => __( 'County', 'societypress' ),
+        'state'               => __( 'State', 'societypress' ),
+        'surname'             => __( 'Surname', 'societypress' ),
+        'subject'             => __( 'Subject Tags', 'societypress' ),
+        'librarian_notes'     => __( 'Librarian Notes', 'societypress' ),
+        'updated_by'          => __( 'Updated By (name)', 'societypress' ),
+        'last_updated_date'   => __( 'Last Updated Date', 'societypress' ),
+        'cover_url'           => __( 'Cover Image URL', 'societypress' ),
     ];
 
     // ------------------------------------------------------------------
@@ -40179,16 +40471,21 @@ function sp_render_library_import_page(): void {
                  ============================================================ -->
             <div class="notice notice-<?php echo $results['imported'] > 0 ? 'success' : 'warning'; ?>">
                 <p>
-                    <strong>Import complete.</strong>
-                    <?php echo number_format( $results['imported'] ); ?> item<?php echo $results['imported'] !== 1 ? 's' : ''; ?> imported.
+                    <strong><?php esc_html_e( 'Import complete.', 'societypress' ); ?></strong>
+                    <?php
+                    printf(
+                        esc_html( _n( '%s item imported.', '%s items imported.', $results['imported'], 'societypress' ) ),
+                        number_format( $results['imported'] )
+                    );
+                    ?>
                     <?php if ( $results['skipped'] > 0 ) : ?>
-                        <?php echo number_format( $results['skipped'] ); ?> skipped (duplicates or missing title).
+                        <?php printf( esc_html__( '%s skipped (duplicates or missing title).', 'societypress' ), number_format( $results['skipped'] ) ); ?>
                     <?php endif; ?>
                 </p>
             </div>
             <?php if ( ! empty( $results['errors'] ) ) : ?>
                 <div class="notice notice-error">
-                    <p><strong>Errors:</strong></p>
+                    <p><strong><?php esc_html_e( 'Errors:', 'societypress' ); ?></strong></p>
                     <ul style="margin-left:20px; list-style:disc;">
                         <?php foreach ( $results['errors'] as $err ) : ?>
                             <li><?php echo esc_html( $err ); ?></li>
@@ -40202,8 +40499,8 @@ function sp_render_library_import_page(): void {
             $total_items = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}sp_library_items" );
             ?>
             <p>
-                Your catalog now has <strong><?php echo number_format( $total_items ); ?></strong> items.
-                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-catalog' ) ); ?>">View Catalog &rarr;</a>
+                <?php printf( esc_html__( 'Your catalog now has %s items.', 'societypress' ), '<strong>' . number_format( $total_items ) . '</strong>' ); ?>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-catalog' ) ); ?>"><?php esc_html_e( 'View Catalog', 'societypress' ); ?> &rarr;</a>
             </p>
         <?php endif; ?>
 
@@ -40216,9 +40513,13 @@ function sp_render_library_import_page(): void {
             <div class="card" style="max-width:100%; padding:20px; margin-top:16px;">
                 <h2 style="margin-top:0;"><?php esc_html_e( 'Map CSV Columns', 'societypress' ); ?></h2>
                 <p class="description">
-                    We detected <strong><?php echo number_format( $preview['row_count'] ); ?></strong> data rows
-                    and <strong><?php echo count( $preview['headers'] ); ?></strong> columns.
-                    Verify the mapping below, then click <em>Run Import</em>.
+                    <?php
+                    printf(
+                        esc_html__( 'We detected %1$s data rows and %2$s columns. Verify the mapping below, then click Run Import.', 'societypress' ),
+                        '<strong>' . number_format( $preview['row_count'] ) . '</strong>',
+                        '<strong>' . count( $preview['headers'] ) . '</strong>'
+                    );
+                    ?>
                 </p>
 
                 <form method="post">
@@ -40230,9 +40531,9 @@ function sp_render_library_import_page(): void {
                         <thead>
                             <tr>
                                 <th style="width:30px;">#</th>
-                                <th>CSV Column</th>
-                                <th>Sample Data</th>
-                                <th style="width:280px;">Map To</th>
+                                <th><?php esc_html_e( 'CSV Column', 'societypress' ); ?></th>
+                                <th><?php esc_html_e( 'Sample Data', 'societypress' ); ?></th>
+                                <th style="width:280px;"><?php esc_html_e( 'Map To', 'societypress' ); ?></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -40282,7 +40583,7 @@ function sp_render_library_import_page(): void {
                                     <td style="color:#666; font-size:12px;"><?php echo esc_html( $sample_str ); ?></td>
                                     <td>
                                         <select name="sp_field_map[<?php echo esc_attr( $form_key ); ?>]" style="width:100%;">
-                                            <option value="__skip">— Skip —</option>
+                                            <option value="__skip"><?php esc_html_e( '— Skip —', 'societypress' ); ?></option>
                                             <?php foreach ( $target_fields as $key => $label ) : ?>
                                                 <option value="<?php echo esc_attr( $key ); ?>" <?php selected( $auto_target, $key ); ?>>
                                                     <?php echo esc_html( $label ); ?>
@@ -40296,8 +40597,8 @@ function sp_render_library_import_page(): void {
                     </table>
 
                     <p class="submit">
-                        <input type="submit" class="button button-primary button-hero" value="Run Import (<?php echo number_format( $preview['row_count'] ); ?> rows)">
-                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-import-library' ) ); ?>" class="button button-hero">Cancel</a>
+                        <input type="submit" class="button button-primary button-hero" value="<?php printf( esc_attr__( 'Run Import (%s rows)', 'societypress' ), number_format( $preview['row_count'] ) ); ?>">
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-import-library' ) ); ?>" class="button button-hero"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
                     </p>
                 </form>
             </div>
@@ -40309,9 +40610,7 @@ function sp_render_library_import_page(): void {
             <div class="card" style="max-width:600px; padding:20px; margin-top:16px;">
                 <h2 style="margin-top:0;"><?php esc_html_e( 'Upload Library CSV', 'societypress' ); ?></h2>
                 <p class="description">
-                    Upload a CSV file exported from your library catalog system.
-                    The importer will detect columns automatically and let you
-                    map them before importing.
+                    <?php esc_html_e( 'Upload a CSV file exported from your library catalog system. The importer will detect columns automatically and let you map them before importing.', 'societypress' ); ?>
                 </p>
 
                 <form method="post" enctype="multipart/form-data">
@@ -40323,13 +40622,13 @@ function sp_render_library_import_page(): void {
                             <th><label for="import_file"><?php esc_html_e( 'CSV File', 'societypress' ); ?></label></th>
                             <td>
                                 <input type="file" name="import_file" id="import_file" accept=".csv" required>
-                                <p class="description">Maximum file size: <?php echo size_format( wp_max_upload_size() ); ?></p>
+                                <p class="description"><?php printf( esc_html__( 'Maximum file size: %s', 'societypress' ), size_format( wp_max_upload_size() ) ); ?></p>
                             </td>
                         </tr>
                     </table>
 
                     <p class="submit">
-                        <input type="submit" class="button button-primary" value="Upload &amp; Preview">
+                        <input type="submit" class="button button-primary" value="<?php esc_attr_e( 'Upload & Preview', 'societypress' ); ?>">
                     </p>
                 </form>
 
@@ -40339,8 +40638,7 @@ function sp_render_library_import_page(): void {
                 if ( $total_items > 0 ) : ?>
                     <hr style="margin:20px 0;">
                     <p>
-                        Your catalog currently has <strong><?php echo number_format( $total_items ); ?></strong> items.
-                        Duplicate items (matched by System ID) will be skipped during import.
+                        <?php printf( esc_html__( 'Your catalog currently has %s items. Duplicate items (matched by System ID) will be skipped during import.', 'societypress' ), '<strong>' . number_format( $total_items ) . '</strong>' ); ?>
                     </p>
                 <?php endif; ?>
             </div>
@@ -40369,8 +40667,8 @@ function sp_render_resources_page(): void {
     $prefix = $wpdb->prefix . 'sp_';
 
     // Handle delete
-    if ( ( $_GET['action'] ?? '' ) === 'delete' && ! empty( $_GET['resource_id'] ) ) {
-        $rid = absint( $_GET['resource_id'] );
+    if ( ( $_POST['action'] ?? '' ) === 'delete' && ! empty( $_POST['resource_id'] ) ) {
+        $rid = absint( $_POST['resource_id'] );
         check_admin_referer( 'sp_delete_resource_' . $rid );
         $wpdb->delete( $prefix . 'resources', [ 'id' => $rid ] );
         echo '<div class="notice notice-success"><p>' . esc_html__( 'Resource deleted.', 'societypress' ) . '</p></div>';
@@ -40419,11 +40717,11 @@ function sp_render_resources_page(): void {
     ?>
     <div class="wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Resource Links', 'societypress' ); ?></h1>
-        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-import-links' ) ); ?>" class="page-title-action">Import CSV</a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-import-links' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Import CSV', 'societypress' ); ?></a>
         <hr class="wp-header-end">
 
         <div style="background:#fff; border:1px solid #ccd0d4; border-radius:4px; padding:20px; margin:16px 0;">
-            <h3 style="margin-top:0;"><?php echo $editing ? 'Edit Resource' : 'Add Resource'; ?></h3>
+            <h3 style="margin-top:0;"><?php echo $editing ? esc_html__( 'Edit Resource', 'societypress' ) : esc_html__( 'Add Resource', 'societypress' ); ?></h3>
             <form method="post">
                 <?php wp_nonce_field( 'sp_resource_save' ); ?>
                 <input type="hidden" name="resource_id" value="<?php echo $editing ? $editing->id : 0; ?>">
@@ -40445,7 +40743,7 @@ function sp_render_resources_page(): void {
                         <th><label for="category_id"><?php esc_html_e( 'Category', 'societypress' ); ?></label></th>
                         <td>
                             <select name="category_id" id="category_id">
-                                <option value="0">— None —</option>
+                                <option value="0"><?php esc_html_e( '— None —', 'societypress' ); ?></option>
                                 <?php foreach ( $categories as $cat ) : ?>
                                     <option value="<?php echo $cat->id; ?>" <?php selected( $editing->category_id ?? 0, $cat->id ); ?>><?php echo esc_html( $cat->name ); ?></option>
                                 <?php endforeach; ?>
@@ -40453,11 +40751,11 @@ function sp_render_resources_page(): void {
                         </td>
                     </tr>
                     <tr>
-                        <th>Options</th>
+                        <th><?php esc_html_e( 'Options', 'societypress' ); ?></th>
                         <td>
-                            <label><input type="checkbox" name="featured" value="1" <?php checked( $editing->featured ?? 0 ); ?>> Featured</label>
+                            <label><input type="checkbox" name="featured" value="1" <?php checked( $editing->featured ?? 0 ); ?>> <?php esc_html_e( 'Featured', 'societypress' ); ?></label>
                             &nbsp;&nbsp;
-                            <label><input type="checkbox" name="active" value="1" <?php checked( $editing->active ?? 1 ); ?>> Active</label>
+                            <label><input type="checkbox" name="active" value="1" <?php checked( $editing->active ?? 1 ); ?>> <?php esc_html_e( 'Active', 'societypress' ); ?></label>
                         </td>
                     </tr>
                     <tr>
@@ -40466,9 +40764,9 @@ function sp_render_resources_page(): void {
                     </tr>
                 </table>
                 <p class="submit">
-                    <input type="submit" name="sp_save_resource" class="button button-primary" value="<?php echo $editing ? 'Update Resource' : 'Add Resource'; ?>">
+                    <input type="submit" name="sp_save_resource" class="button button-primary" value="<?php echo $editing ? esc_attr__( 'Update Resource', 'societypress' ) : esc_attr__( 'Add Resource', 'societypress' ); ?>">
                     <?php if ( $editing ) : ?>
-                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-library' ) ); ?>" class="button">Cancel</a>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-library' ) ); ?>" class="button"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
                     <?php endif; ?>
                 </p>
             </form>
@@ -40478,31 +40776,28 @@ function sp_render_resources_page(): void {
         <table class="wp-list-table widefat striped">
             <thead>
                 <tr>
-                    <th>Title</th>
-                    <th>Category</th>
-                    <th>Featured</th>
-                    <th>Active</th>
-                    <th>Order</th>
+                    <th><?php esc_html_e( 'Title', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Category', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Featured', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Active', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Order', 'societypress' ); ?></th>
                 </tr>
             </thead>
             <tbody>
                 <?php if ( empty( $resources ) ) : ?>
-                    <tr><td colspan="5">No resources yet.</td></tr>
+                    <tr><td colspan="5"><?php esc_html_e( 'No resources yet.', 'societypress' ); ?></td></tr>
                 <?php else : ?>
                     <?php foreach ( $resources as $r ) :
                         $edit_url   = admin_url( 'admin.php?page=sp-library&action=edit&resource_id=' . $r->id );
-                        $delete_url = wp_nonce_url(
-                            admin_url( 'admin.php?page=sp-library&action=delete&resource_id=' . $r->id ),
-                            'sp_delete_resource_' . $r->id
-                        );
+                        // delete via POST form in row actions
                     ?>
                         <tr>
                             <td>
                                 <strong><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $r->title ); ?></a></strong>
                                 <br><a href="<?php echo esc_url( $r->url ); ?>" target="_blank" style="color:#666; font-size:12px;"><?php echo esc_html( $r->url ); ?></a>
                                 <div class="row-actions">
-                                    <span class="edit"><a href="<?php echo esc_url( $edit_url ); ?>">Edit</a> | </span>
-                                    <span class="delete"><a href="<?php echo esc_url( $delete_url ); ?>" style="color:#b32d2e;" onclick="return confirm('Delete this resource?');">Delete</a></span>
+                                    <span class="edit"><a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> | </span>
+                                    <span class="delete"><form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-library' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this resource?', 'societypress' ) ); ?>');"><?php wp_nonce_field( 'sp_delete_resource_' . $r->id ); ?><input type="hidden" name="action" value="delete"><input type="hidden" name="resource_id" value="<?php echo (int) $r->id; ?>"><button type="submit" class="sp-link-btn" style="background:none; border:none; color:#b32d2e; cursor:pointer; padding:0; font:inherit; text-decoration:underline;"><?php esc_html_e( 'Delete', 'societypress' ); ?></button></form></span>
                                 </div>
                             </td>
                             <td><?php echo esc_html( $r->category_name ?: '—' ); ?></td>
@@ -40547,9 +40842,9 @@ function sp_render_resource_categories_page(): void {
         }
     }
 
-    // Handle delete
-    if ( ( $_GET['action'] ?? '' ) === 'delete' && ! empty( $_GET['cat_id'] ) ) {
-        $cat_id = absint( $_GET['cat_id'] );
+    // Handle delete — POST-only
+    if ( ( $_POST['action'] ?? '' ) === 'delete' && ! empty( $_POST['cat_id'] ) ) {
+        $cat_id = absint( $_POST['cat_id'] );
         check_admin_referer( 'sp_delete_resource_cat_' . $cat_id );
         // Nullify category_id on resources that use this category
         $wpdb->update( $prefix . 'resources', [ 'category_id' => null ], [ 'category_id' => $cat_id ] );
@@ -40569,7 +40864,7 @@ function sp_render_resource_categories_page(): void {
         <div style="display:flex; gap:24px; margin-top:16px;">
             <!-- Add/Edit form -->
             <div style="flex:0 0 350px; background:#fff; border:1px solid #ccd0d4; border-radius:4px; padding:20px;">
-                <h3 style="margin-top:0;"><?php echo $editing ? 'Edit Category' : 'Add Category'; ?></h3>
+                <h3 style="margin-top:0;"><?php echo $editing ? esc_html__( 'Edit Category', 'societypress' ) : esc_html__( 'Add Category', 'societypress' ); ?></h3>
                 <form method="post">
                     <?php wp_nonce_field( 'sp_resource_cat_save' ); ?>
                     <input type="hidden" name="cat_id" value="<?php echo $editing ? $editing->id : 0; ?>">
@@ -40582,12 +40877,12 @@ function sp_render_resource_categories_page(): void {
                         <input type="number" name="sort_order" value="<?php echo esc_attr( $editing->sort_order ?? 0 ); ?>" min="0" style="width:80px;">
                     </p>
                     <p>
-                        <label><input type="checkbox" name="active" value="1" <?php checked( $editing->active ?? 1 ); ?>> Active</label>
+                        <label><input type="checkbox" name="active" value="1" <?php checked( $editing->active ?? 1 ); ?>> <?php esc_html_e( 'Active', 'societypress' ); ?></label>
                     </p>
                     <p>
-                        <input type="submit" name="sp_save_resource_cat" class="button button-primary" value="<?php echo $editing ? 'Update' : 'Add Category'; ?>">
+                        <input type="submit" name="sp_save_resource_cat" class="button button-primary" value="<?php echo $editing ? esc_attr__( 'Update', 'societypress' ) : esc_attr__( 'Add Category', 'societypress' ); ?>">
                         <?php if ( $editing ) : ?>
-                            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-resource-categories' ) ); ?>" class="button">Cancel</a>
+                            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-resource-categories' ) ); ?>" class="button"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
                         <?php endif; ?>
                     </p>
                 </form>
@@ -40596,23 +40891,23 @@ function sp_render_resource_categories_page(): void {
             <!-- Categories list -->
             <div style="flex:1;">
                 <table class="wp-list-table widefat striped">
-                    <thead><tr><th>Name</th><th>Slug</th><th>Order</th><th>Active</th></tr></thead>
+                    <thead><tr><th><?php esc_html_e( 'Name', 'societypress' ); ?></th><th><?php esc_html_e( 'Slug', 'societypress' ); ?></th><th><?php esc_html_e( 'Order', 'societypress' ); ?></th><th><?php esc_html_e( 'Active', 'societypress' ); ?></th></tr></thead>
                     <tbody>
                         <?php foreach ( $categories as $cat ) :
                             $edit_url   = admin_url( 'admin.php?page=sp-resource-categories&action=edit&cat_id=' . $cat->id );
-                            $delete_url = wp_nonce_url( admin_url( 'admin.php?page=sp-resource-categories&action=delete&cat_id=' . $cat->id ), 'sp_delete_resource_cat_' . $cat->id );
+                            // delete via POST form in row actions
                         ?>
                             <tr>
                                 <td>
                                     <strong><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $cat->name ); ?></a></strong>
                                     <div class="row-actions">
-                                        <span><a href="<?php echo esc_url( $edit_url ); ?>">Edit</a> | </span>
-                                        <span><a href="<?php echo esc_url( $delete_url ); ?>" style="color:#b32d2e;" onclick="return confirm('Delete?');">Delete</a></span>
+                                        <span><a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> | </span>
+                                        <span><form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-resource-categories' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete?', 'societypress' ) ); ?>');"><?php wp_nonce_field( 'sp_delete_resource_cat_' . $cat->id ); ?><input type="hidden" name="action" value="delete"><input type="hidden" name="cat_id" value="<?php echo (int) $cat->id; ?>"><button type="submit" class="sp-link-btn" style="background:none; border:none; color:#b32d2e; cursor:pointer; padding:0; font:inherit; text-decoration:underline;"><?php esc_html_e( 'Delete', 'societypress' ); ?></button></form></span>
                                     </div>
                                 </td>
                                 <td><?php echo esc_html( $cat->slug ); ?></td>
                                 <td><?php echo $cat->sort_order; ?></td>
-                                <td><?php echo $cat->active ? 'Yes' : 'No'; ?></td>
+                                <td><?php echo $cat->active ? esc_html__( 'Yes', 'societypress' ) : esc_html__( 'No', 'societypress' ); ?></td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -40846,7 +41141,7 @@ function sp_render_links_import_page(): void {
         } else {
             $results = [
                 'imported' => 0, 'skipped' => 0, 'categories_created' => 0,
-                'errors'   => [ 'The uploaded file has expired. Please upload again.' ],
+                'errors'   => [ __( 'The uploaded file has expired. Please upload again.', 'societypress' ) ],
             ];
         }
     }
@@ -41105,12 +41400,12 @@ class SP_Volunteers_List_Table extends WP_List_Table {
     public function get_columns(): array {
         return [
             'cb'         => '<input type="checkbox" />',
-            'name'       => 'Volunteer',
-            'role_title' => 'Role',
-            'committee'  => 'Committee',
-            'start_date' => 'Start Date',
-            'end_date'   => 'End Date',
-            'status'     => 'Status',
+            'name'       => __( 'Volunteer', 'societypress' ),
+            'role_title' => __( 'Role', 'societypress' ),
+            'committee'  => __( 'Committee', 'societypress' ),
+            'start_date' => __( 'Start Date', 'societypress' ),
+            'end_date'   => __( 'End Date', 'societypress' ),
+            'status'     => __( 'Status', 'societypress' ),
         ];
     }
 
@@ -41124,7 +41419,7 @@ class SP_Volunteers_List_Table extends WP_List_Table {
     }
 
     protected function get_bulk_actions(): array {
-        return [ 'delete' => 'Delete' ];
+        return [ 'delete' => __( 'Delete', 'societypress' ) ];
     }
 
     protected function column_cb( $item ): string {
@@ -41134,14 +41429,9 @@ class SP_Volunteers_List_Table extends WP_List_Table {
     protected function column_name( $item ): string {
         $name = esc_html( $item->first_name . ' ' . $item->last_name );
         $edit_url = admin_url( 'admin.php?page=sp-governance&action=edit&role_id=' . $item->id );
-        $delete_url = wp_nonce_url(
-            admin_url( 'admin.php?page=sp-governance&action=delete&role_id=' . $item->id ),
-            'sp_delete_volunteer_role_' . $item->id
-        );
-
         $actions = [
-            'edit'   => sprintf( '<a href="%s">Edit</a>', esc_url( $edit_url ) ),
-            'delete' => sprintf( '<a href="%s" style="color:#b32d2e;" onclick="return confirm(\'Delete this role assignment?\');">Delete</a>', esc_url( $delete_url ) ),
+            'edit'   => sprintf( '<a href="%s">%s</a>', esc_url( $edit_url ), esc_html__( 'Edit', 'societypress' ) ),
+            'delete' => '<a href="#" style="color:#b32d2e;" onclick="if(confirm(\'' . esc_js( __( 'Delete this role assignment?', 'societypress' ) ) . '\')){var f=document.createElement(\'form\');f.method=\'post\';f.action=\'' . esc_url( admin_url( 'admin.php?page=sp-governance' ) ) . '\';var d=[[\'_wpnonce\',\'' . wp_create_nonce( 'sp_delete_volunteer_role_' . $item->id ) . '\'],[\'action\',\'delete\'],[\'role_id\',\'' . (int) $item->id . '\']];d.forEach(function(p){var i=document.createElement(\'input\');i.type=\'hidden\';i.name=p[0];i.value=p[1];f.appendChild(i);});document.body.appendChild(f);f.submit();}return false;">' . esc_html__( 'Delete', 'societypress' ) . '</a>',
         ];
 
         return '<strong><a href="' . esc_url( $edit_url ) . '">' . $name . '</a></strong>' . $this->row_actions( $actions );
@@ -41151,8 +41441,8 @@ class SP_Volunteers_List_Table extends WP_List_Table {
         switch ( $column_name ) {
             case 'role_title': return esc_html( $item->role_title ?: '—' );
             case 'committee':  return esc_html( $item->committee ?: '—' );
-            case 'start_date': return $item->start_date ? esc_html( date( 'M j, Y', strtotime( $item->start_date ) ) ) : '—';
-            case 'end_date':   return $item->end_date ? esc_html( date( 'M j, Y', strtotime( $item->end_date ) ) ) : 'Ongoing';
+            case 'start_date': return $item->start_date ? esc_html( wp_date( 'M j, Y', strtotime( $item->start_date ) ) ) : '—';
+            case 'end_date':   return $item->end_date ? esc_html( wp_date( 'M j, Y', strtotime( $item->end_date ) ) ) : esc_html__( 'Ongoing', 'societypress' );
             case 'status':
                 $colors = [ 'active' => '#0a6b2e', 'inactive' => '#b32d2e' ];
                 $color = $colors[ $item->status ] ?? '#666';
@@ -41175,9 +41465,9 @@ class SP_Volunteers_List_Table extends WP_List_Table {
             $wpdb->query( $wpdb->prepare( "DELETE FROM {$prefix}volunteer_roles WHERE id IN ({$placeholders})", ...$ids ) );
         }
 
-        // Handle single delete
-        if ( 'delete' === ( $_REQUEST['action'] ?? '' ) && ! empty( $_REQUEST['role_id'] ) ) {
-            $role_id = absint( $_REQUEST['role_id'] );
+        // Handle single delete — POST-only
+        if ( 'delete' === ( $_POST['action'] ?? '' ) && ! empty( $_POST['role_id'] ) ) {
+            $role_id = absint( $_POST['role_id'] );
             check_admin_referer( 'sp_delete_volunteer_role_' . $role_id );
             $wpdb->delete( $prefix . 'volunteer_roles', [ 'id' => $role_id ] );
         }
@@ -41241,11 +41531,11 @@ class SP_VolunteerHours_List_Table extends WP_List_Table {
     public function get_columns(): array {
         return [
             'cb'            => '<input type="checkbox" />',
-            'name'          => 'Volunteer',
-            'activity'      => 'Activity',
-            'committee'     => 'Committee',
-            'hours'         => 'Hours',
-            'activity_date' => 'Date',
+            'name'          => __( 'Volunteer', 'societypress' ),
+            'activity'      => __( 'Activity', 'societypress' ),
+            'committee'     => __( 'Committee', 'societypress' ),
+            'hours'         => __( 'Hours', 'societypress' ),
+            'activity_date' => __( 'Date', 'societypress' ),
         ];
     }
 
@@ -41258,7 +41548,7 @@ class SP_VolunteerHours_List_Table extends WP_List_Table {
     }
 
     protected function get_bulk_actions(): array {
-        return [ 'delete' => 'Delete' ];
+        return [ 'delete' => __( 'Delete', 'societypress' ) ];
     }
 
     protected function column_cb( $item ): string {
@@ -41267,12 +41557,8 @@ class SP_VolunteerHours_List_Table extends WP_List_Table {
 
     protected function column_name( $item ): string {
         $name = esc_html( $item->first_name . ' ' . $item->last_name );
-        $delete_url = wp_nonce_url(
-            admin_url( 'admin.php?page=sp-volunteer-hours&action=delete&hour_id=' . $item->id ),
-            'sp_delete_volunteer_hour_' . $item->id
-        );
         $actions = [
-            'delete' => sprintf( '<a href="%s" style="color:#b32d2e;" onclick="return confirm(\'Delete this entry?\');">Delete</a>', esc_url( $delete_url ) ),
+            'delete' => '<a href="#" style="color:#b32d2e;" onclick="if(confirm(\'' . esc_js( __( 'Delete this entry?', 'societypress' ) ) . '\')){var f=document.createElement(\'form\');f.method=\'post\';f.action=\'' . esc_url( admin_url( 'admin.php?page=sp-volunteer-hours' ) ) . '\';var d=[[\'_wpnonce\',\'' . wp_create_nonce( 'sp_delete_volunteer_hour_' . $item->id ) . '\'],[\'action\',\'delete\'],[\'hour_id\',\'' . (int) $item->id . '\']];d.forEach(function(p){var i=document.createElement(\'input\');i.type=\'hidden\';i.name=p[0];i.value=p[1];f.appendChild(i);});document.body.appendChild(f);f.submit();}return false;">' . esc_html__( 'Delete', 'societypress' ) . '</a>',
         ];
         return '<strong>' . $name . '</strong>' . $this->row_actions( $actions );
     }
@@ -41282,7 +41568,7 @@ class SP_VolunteerHours_List_Table extends WP_List_Table {
             case 'activity':      return esc_html( $item->activity ?: '—' );
             case 'committee':     return esc_html( $item->committee ?: '—' );
             case 'hours':         return esc_html( number_format( (float) $item->hours, 1 ) );
-            case 'activity_date': return $item->activity_date ? esc_html( date( 'M j, Y', strtotime( $item->activity_date ) ) ) : '—';
+            case 'activity_date': return $item->activity_date ? esc_html( wp_date( 'M j, Y', strtotime( $item->activity_date ) ) ) : '—';
             default: return '';
         }
     }
@@ -41301,9 +41587,9 @@ class SP_VolunteerHours_List_Table extends WP_List_Table {
             $wpdb->query( $wpdb->prepare( "DELETE FROM {$prefix}volunteer_hours WHERE id IN ({$placeholders})", ...$ids ) );
         }
 
-        // Handle single delete
-        if ( 'delete' === ( $_REQUEST['action'] ?? '' ) && ! empty( $_REQUEST['hour_id'] ) ) {
-            $hour_id = absint( $_REQUEST['hour_id'] );
+        // Handle single delete — POST-only
+        if ( 'delete' === ( $_POST['action'] ?? '' ) && ! empty( $_POST['hour_id'] ) ) {
+            $hour_id = absint( $_POST['hour_id'] );
             check_admin_referer( 'sp_delete_volunteer_hour_' . $hour_id );
             $wpdb->delete( $prefix . 'volunteer_hours', [ 'id' => $hour_id ] );
         }
@@ -41424,11 +41710,11 @@ function sp_volunteer_promote_waitlist( int $opp_id ): void {
 // ---- AJAX: Volunteer signup ----
 add_action( 'wp_ajax_sp_volunteer_signup', function () {
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_volunteer_opp' ) ) {
-        wp_send_json_error( 'Security check failed.' );
+        wp_send_json_error( __( 'Security check failed.', 'societypress' ) );
     }
 
     if ( ! is_user_logged_in() ) {
-        wp_send_json_error( 'Please log in to volunteer.' );
+        wp_send_json_error( __( 'Please log in to volunteer.', 'societypress' ) );
     }
 
     global $wpdb;
@@ -41440,7 +41726,7 @@ add_action( 'wp_ajax_sp_volunteer_signup', function () {
         "SELECT * FROM {$wpdb->prefix}sp_volunteer_opportunities WHERE id = %d", $opp_id
     ) );
     if ( ! $opp || ! in_array( $opp->status, [ 'open', 'filled' ], true ) ) {
-        wp_send_json_error( 'This opportunity is not available.' );
+        wp_send_json_error( __( 'This opportunity is not available.', 'societypress' ) );
     }
 
     // Check for existing signup (including cancelled — allow re-signup)
@@ -41451,7 +41737,7 @@ add_action( 'wp_ajax_sp_volunteer_signup', function () {
     ) );
 
     if ( $existing && in_array( $existing->status, [ 'confirmed', 'waitlisted' ], true ) ) {
-        wp_send_json_error( 'You are already signed up for this opportunity.' );
+        wp_send_json_error( __( 'You are already signed up for this opportunity.', 'societypress' ) );
     }
 
     // Determine status based on capacity
@@ -41493,7 +41779,7 @@ add_action( 'wp_ajax_sp_volunteer_signup', function () {
 // ---- AJAX: Cancel volunteer signup ----
 add_action( 'wp_ajax_sp_volunteer_cancel', function () {
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_volunteer_opp' ) ) {
-        wp_send_json_error( 'Security check failed.' );
+        wp_send_json_error( __( 'Security check failed.', 'societypress' ) );
     }
 
     global $wpdb;
@@ -41507,7 +41793,7 @@ add_action( 'wp_ajax_sp_volunteer_cancel', function () {
     ) );
 
     if ( ! $signup ) {
-        wp_send_json_error( 'Signup not found.' );
+        wp_send_json_error( __( 'Signup not found.', 'societypress' ) );
     }
 
     $was_confirmed = $signup->status === 'confirmed';
@@ -41593,7 +41879,7 @@ function sp_render_volunteer_opportunities_frontend(): string {
     );
 
     $nonce = wp_create_nonce( 'sp_volunteer_opp' );
-    $type_labels = [ 'one_time' => 'One-Time', 'recurring' => 'Recurring', 'ongoing' => 'Ongoing' ];
+    $type_labels = [ 'one_time' => __( 'One-Time', 'societypress' ), 'recurring' => __( 'Recurring', 'societypress' ), 'ongoing' => __( 'Ongoing', 'societypress' ) ];
 
     ob_start();
     ?>
@@ -41602,25 +41888,25 @@ function sp_render_volunteer_opportunities_frontend(): string {
         <?php if ( count( $committees ) > 1 || count( $opportunities ) > 3 ) : ?>
         <div class="sp-vol-filters" style="margin-bottom: 20px; display: flex; gap: 12px; flex-wrap: wrap;">
             <select id="sp-vol-filter-committee" style="min-width: 180px;">
-                <option value="">All Committees</option>
-                <option value="society">Society-Wide</option>
+                <option value=""><?php esc_html_e( 'All Committees', 'societypress' ); ?></option>
+                <option value="society"><?php esc_html_e( 'Society-Wide', 'societypress' ); ?></option>
                 <?php foreach ( $committees as $c ) : ?>
                     <option value="<?php echo esc_attr( $c->id ); ?>"><?php echo esc_html( $c->name ); ?></option>
                 <?php endforeach; ?>
             </select>
             <select id="sp-vol-filter-type" style="min-width: 140px;">
-                <option value="">All Types</option>
-                <option value="one_time">One-Time</option>
-                <option value="recurring">Recurring</option>
-                <option value="ongoing">Ongoing</option>
+                <option value=""><?php esc_html_e( 'All Types', 'societypress' ); ?></option>
+                <option value="one_time"><?php esc_html_e( 'One-Time', 'societypress' ); ?></option>
+                <option value="recurring"><?php esc_html_e( 'Recurring', 'societypress' ); ?></option>
+                <option value="ongoing"><?php esc_html_e( 'Ongoing', 'societypress' ); ?></option>
             </select>
         </div>
         <?php endif; ?>
 
         <?php if ( empty( $opportunities ) ) : ?>
             <div class="sp-vol-empty" style="text-align: center; padding: 40px 20px; color: var(--sp-color-text-secondary, #6b7280);">
-                <p style="font-size: 1.1em;">No volunteer opportunities available right now.</p>
-                <p>Check back later or contact us to learn how you can help.</p>
+                <p style="font-size: 1.1em;"><?php esc_html_e( 'No volunteer opportunities available right now.', 'societypress' ); ?></p>
+                <p><?php esc_html_e( 'Check back later or contact us to learn how you can help.', 'societypress' ); ?></p>
             </div>
         <?php else : ?>
             <div class="sp-vol-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;">
@@ -41647,23 +41933,23 @@ function sp_render_volunteer_opportunities_frontend(): string {
 
                         <?php if ( $opp->committee_name ) : ?>
                             <p style="margin: 4px 0; font-size: 0.9em; color: var(--sp-color-text-secondary, #6b7280);">
-                                <strong>Committee:</strong> <?php echo esc_html( $opp->committee_name ); ?>
+                                <strong><?php esc_html_e( 'Committee:', 'societypress' ); ?></strong> <?php echo esc_html( $opp->committee_name ); ?>
                             </p>
                         <?php endif; ?>
 
                         <?php if ( $opp->event_date ) : ?>
                             <p style="margin: 4px 0; font-size: 0.9em;">
-                                <strong>When:</strong> <?php echo esc_html( date_i18n( 'l, F j, Y', strtotime( $opp->event_date ) ) ); ?>
+                                <strong><?php esc_html_e( 'When:', 'societypress' ); ?></strong> <?php echo esc_html( date_i18n( 'l, F j, Y', strtotime( $opp->event_date ) ) ); ?>
                                 <?php if ( $opp->start_time ) : ?>
-                                    <?php echo esc_html( date( 'g:i A', strtotime( $opp->start_time ) ) ); ?>
-                                    <?php if ( $opp->end_time ) echo '– ' . esc_html( date( 'g:i A', strtotime( $opp->end_time ) ) ); ?>
+                                    <?php echo esc_html( wp_date( 'g:i A', strtotime( $opp->start_time ) ) ); ?>
+                                    <?php if ( $opp->end_time ) echo '– ' . esc_html( wp_date( 'g:i A', strtotime( $opp->end_time ) ) ); ?>
                                 <?php endif; ?>
                             </p>
                         <?php endif; ?>
 
                         <?php if ( $opp->location ) : ?>
                             <p style="margin: 4px 0; font-size: 0.9em;">
-                                <strong>Where:</strong> <?php echo esc_html( $opp->location ); ?>
+                                <strong><?php esc_html_e( 'Where:', 'societypress' ); ?></strong> <?php echo esc_html( $opp->location ); ?>
                             </p>
                         <?php endif; ?>
 
@@ -41675,27 +41961,27 @@ function sp_render_volunteer_opportunities_frontend(): string {
 
                         <?php if ( $opp->skills_needed ) : ?>
                             <p style="margin: 4px 0; font-size: 0.85em; color: var(--sp-color-text-secondary, #6b7280);">
-                                <strong>Skills/Requirements:</strong> <?php echo esc_html( $opp->skills_needed ); ?>
+                                <strong><?php esc_html_e( 'Skills/Requirements:', 'societypress' ); ?></strong> <?php echo esc_html( $opp->skills_needed ); ?>
                             </p>
                         <?php endif; ?>
 
                         <?php if ( $opp->capacity !== null ) : ?>
                             <p style="margin: 8px 0 4px; font-size: 0.85em; color: <?php echo $is_full ? '#d63638' : '#6b7280'; ?>;">
                                 <?php if ( $is_full ) : ?>
-                                    <strong>Full</strong> (<?php echo $signup_count; ?>/<?php echo $opp->capacity; ?>)
+                                    <strong><?php esc_html_e( 'Full', 'societypress' ); ?></strong> (<?php echo $signup_count; ?>/<?php echo $opp->capacity; ?>)
                                 <?php else : ?>
-                                    <?php echo $signup_count; ?>/<?php echo $opp->capacity; ?> spots filled
+                                    <?php printf( esc_html__( '%1$d/%2$d spots filled', 'societypress' ), $signup_count, $opp->capacity ); ?>
                                 <?php endif; ?>
                             </p>
                         <?php elseif ( $signup_count > 0 ) : ?>
                             <p style="margin: 8px 0 4px; font-size: 0.85em; color: #6b7280;">
-                                <?php echo $signup_count; ?> volunteer<?php echo $signup_count !== 1 ? 's' : ''; ?> signed up
+                                <?php printf( esc_html( _n( '%d volunteer signed up', '%d volunteers signed up', $signup_count, 'societypress' ) ), $signup_count ); ?>
                             </p>
                         <?php endif; ?>
 
                         <?php if ( $opp->contact_name ) : ?>
                             <p style="margin: 4px 0; font-size: 0.85em; color: var(--sp-color-text-secondary, #6b7280);">
-                                Contact: <?php echo esc_html( $opp->contact_name ); ?>
+                                <?php printf( esc_html__( 'Contact: %s', 'societypress' ), esc_html( $opp->contact_name ) ); ?>
                             </p>
                         <?php endif; ?>
                     </div>
@@ -41706,21 +41992,21 @@ function sp_render_volunteer_opportunities_frontend(): string {
                             <a href="<?php echo esc_url( wp_login_url( get_permalink() ) ); ?>"
                                style="display: inline-block; padding: 6px 16px; border-radius: 4px; font-size: 0.9em;
                                       background: var(--sp-color-primary, #0d1f3c); color: #fff; text-decoration: none;">
-                                Log In to Volunteer
+                                <?php esc_html_e( 'Log In to Volunteer', 'societypress' ); ?>
                             </a>
                         <?php elseif ( ! sp_is_member( get_current_user_id() ) ) : ?>
-                            <span style="font-size: 0.9em; color: #787c82;">Members only</span>
+                            <span style="font-size: 0.9em; color: #787c82;"><?php esc_html_e( 'Members only', 'societypress' ); ?></span>
                         <?php elseif ( $user_signup ) : ?>
                             <div style="display: flex; align-items: center; gap: 10px;">
                                 <span style="font-size: 0.9em; font-weight: 600;
                                     color: <?php echo $user_signup->status === 'confirmed' ? '#00a32a' : '#dba617'; ?>;">
-                                    <?php echo $user_signup->status === 'confirmed' ? '&#9989; Signed Up' : '&#128203; Waitlisted'; ?>
+                                    <?php echo $user_signup->status === 'confirmed' ? '&#9989; ' . esc_html__( 'Signed Up', 'societypress' ) : '&#128203; ' . esc_html__( 'Waitlisted', 'societypress' ); ?>
                                 </span>
                                 <button type="button" class="sp-vol-cancel-btn"
                                         data-signup-id="<?php echo esc_attr( $user_signup->signup_id ); ?>"
                                         style="padding: 4px 12px; border: 1px solid #d63638; border-radius: 4px;
                                                background: #fff; color: #d63638; font-size: 0.85em; cursor: pointer;">
-                                    Cancel
+                                    <?php esc_html_e( 'Cancel', 'societypress' ); ?>
                                 </button>
                             </div>
                         <?php elseif ( $is_full ) : ?>
@@ -41728,14 +42014,14 @@ function sp_render_volunteer_opportunities_frontend(): string {
                                     data-opp-id="<?php echo esc_attr( $opp->id ); ?>"
                                     style="padding: 6px 16px; border: 1px solid #dba617; border-radius: 4px;
                                            background: #fef3e0; color: #92400e; font-size: 0.9em; cursor: pointer;">
-                                Join Waitlist
+                                <?php esc_html_e( 'Join Waitlist', 'societypress' ); ?>
                             </button>
                         <?php else : ?>
                             <button type="button" class="sp-vol-signup-btn"
                                     data-opp-id="<?php echo esc_attr( $opp->id ); ?>"
                                     style="padding: 6px 16px; border: none; border-radius: 4px;
                                            background: var(--sp-color-accent, #c9973a); color: #fff; font-size: 0.9em; cursor: pointer;">
-                                Sign Up
+                                <?php esc_html_e( 'Sign Up', 'societypress' ); ?>
                             </button>
                         <?php endif; ?>
                     </div>
@@ -41780,7 +42066,7 @@ function sp_render_volunteer_opportunities_frontend(): string {
                         }
                     })
                     .catch(function() {
-                        alert('Something went wrong.');
+                        alert('<?php echo esc_js( __( 'Something went wrong.', 'societypress' ) ); ?>');
                         btn.disabled = false;
                         btn.textContent = origText;
                     });
@@ -41790,7 +42076,7 @@ function sp_render_volunteer_opportunities_frontend(): string {
         // Cancel buttons
         document.querySelectorAll('.sp-vol-cancel-btn').forEach(function(btn) {
             btn.addEventListener('click', function() {
-                if (!confirm('Cancel your volunteer signup?')) return;
+                if (!confirm('<?php echo esc_js( __( 'Cancel your volunteer signup?', 'societypress' ) ); ?>')) return;
                 var signupId = this.getAttribute('data-signup-id');
                 this.disabled = true;
                 this.textContent = 'Cancelling\u2026';
@@ -41844,9 +42130,9 @@ function sp_render_volunteer_opportunities_page(): void {
     $prefix = $wpdb->prefix . 'sp_';
 
     // Handle delete
-    if ( isset( $_GET['action'] ) && $_GET['action'] === 'delete' && ! empty( $_GET['opp_id'] ) ) {
-        if ( check_admin_referer( 'sp_delete_opp_' . $_GET['opp_id'] ) ) {
-            $opp_id = absint( $_GET['opp_id'] );
+    if ( isset( $_POST['action'] ) && $_POST['action'] === 'delete' && ! empty( $_POST['opp_id'] ) ) {
+        if ( check_admin_referer( 'sp_delete_opp_' . $_POST['opp_id'] ) ) {
+            $opp_id = absint( $_POST['opp_id'] );
             $wpdb->delete( $prefix . 'volunteer_signups', [ 'opportunity_id' => $opp_id ] );
             $wpdb->delete( $prefix . 'volunteer_opportunities', [ 'id' => $opp_id ] );
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Opportunity deleted.', 'societypress' ) . '</p></div>';
@@ -41866,37 +42152,37 @@ function sp_render_volunteer_opportunities_page(): void {
     ?>
     <div class="wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Volunteer Opportunities', 'societypress' ); ?></h1>
-        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-volunteer-opportunity-edit' ) ); ?>" class="page-title-action">Add New</a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-volunteer-opportunity-edit' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Add New', 'societypress' ); ?></a>
         <hr class="wp-header-end">
 
-        <p class="description">Post volunteer needs for your members to browse and sign up for.</p>
+        <p class="description"><?php esc_html_e( 'Post volunteer needs for your members to browse and sign up for.', 'societypress' ); ?></p>
 
         <?php if ( empty( $opportunities ) ) : ?>
             <p style="color: #787c82; font-style: italic; margin-top: 20px;">
-                No opportunities yet. <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-volunteer-opportunity-edit' ) ); ?>">Create your first one.</a>
+                <?php esc_html_e( 'No opportunities yet.', 'societypress' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-volunteer-opportunity-edit' ) ); ?>"><?php esc_html_e( 'Create your first one.', 'societypress' ); ?></a>
             </p>
         <?php else : ?>
             <table class="wp-list-table widefat fixed striped" style="margin-top: 16px;">
                 <thead>
                     <tr>
-                        <th style="width:25%;">Title</th>
-                        <th style="width:12%;">Type</th>
-                        <th style="width:15%;">Committee</th>
-                        <th style="width:12%;">Date</th>
-                        <th style="width:10%;">Signups</th>
-                        <th style="width:10%;">Status</th>
-                        <th style="width:16%;">Actions</th>
+                        <th style="width:25%;"><?php esc_html_e( 'Title', 'societypress' ); ?></th>
+                        <th style="width:12%;"><?php esc_html_e( 'Type', 'societypress' ); ?></th>
+                        <th style="width:15%;"><?php esc_html_e( 'Committee', 'societypress' ); ?></th>
+                        <th style="width:12%;"><?php esc_html_e( 'Date', 'societypress' ); ?></th>
+                        <th style="width:10%;"><?php esc_html_e( 'Signups', 'societypress' ); ?></th>
+                        <th style="width:10%;"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                        <th style="width:16%;"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php foreach ( $opportunities as $opp ) :
                         $badge_color = $status_colors[ $opp->status ] ?? '#787c82';
-                        $type_labels = [ 'one_time' => 'One-Time', 'recurring' => 'Recurring', 'ongoing' => 'Ongoing' ];
+                        $type_labels = [ 'one_time' => __( 'One-Time', 'societypress' ), 'recurring' => __( 'Recurring', 'societypress' ), 'ongoing' => __( 'Ongoing', 'societypress' ) ];
                     ?>
                     <tr>
                         <td><strong><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-volunteer-opportunity-edit&opp_id=' . $opp->id ) ); ?>"><?php echo esc_html( $opp->title ); ?></a></strong></td>
                         <td><?php echo esc_html( $type_labels[ $opp->opportunity_type ] ?? $opp->opportunity_type ); ?></td>
-                        <td><?php echo esc_html( $opp->committee_name ?: 'Society-Wide' ); ?></td>
+                        <td><?php echo esc_html( $opp->committee_name ?: __( 'Society-Wide', 'societypress' ) ); ?></td>
                         <td><?php echo $opp->event_date ? esc_html( date_i18n( 'M j, Y', strtotime( $opp->event_date ) ) ) : '—'; ?></td>
                         <td>
                             <?php echo (int) $opp->signup_count; ?>
@@ -41911,11 +42197,14 @@ function sp_render_volunteer_opportunities_page(): void {
                             </span>
                         </td>
                         <td>
-                            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-volunteer-opportunity-edit&opp_id=' . $opp->id ) ); ?>">Edit</a>
+                            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-volunteer-opportunity-edit&opp_id=' . $opp->id ) ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
                             |
-                            <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=sp-volunteer-opportunities&action=delete&opp_id=' . $opp->id ), 'sp_delete_opp_' . $opp->id ) ); ?>"
-                               style="color: #b32d2e;"
-                               onclick="return confirm('Delete this opportunity and all signups?');">Delete</a>
+                            <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-volunteer-opportunities' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this opportunity and all signups?', 'societypress' ) ); ?>');">
+                                <?php wp_nonce_field( 'sp_delete_opp_' . $opp->id ); ?>
+                                <input type="hidden" name="action" value="delete">
+                                <input type="hidden" name="opp_id" value="<?php echo (int) $opp->id; ?>">
+                                <button type="submit" class="sp-link-btn" style="background:none; border:none; color:#b32d2e; cursor:pointer; padding:0; font:inherit; text-decoration:underline;"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                            </form>
                         </td>
                     </tr>
                     <?php endforeach; ?>
@@ -41987,7 +42276,7 @@ function sp_render_volunteer_opportunity_edit_page(): void {
         "SELECT user_id, first_name, last_name FROM {$prefix}members WHERE status = 'active' ORDER BY last_name"
     );
 
-    $page_title = $opp ? 'Edit Opportunity' : 'Add Volunteer Opportunity';
+    $page_title = $opp ? __( 'Edit Opportunity', 'societypress' ) : __( 'Add Volunteer Opportunity', 'societypress' );
     ?>
     <div class="wrap">
         <h1><?php echo esc_html( $page_title ); ?></h1>
@@ -41997,16 +42286,16 @@ function sp_render_volunteer_opportunity_edit_page(): void {
 
             <table class="form-table">
                 <tr>
-                    <th><label for="opp_title">Title <span style="color:#d63638;">*</span></label></th>
+                    <th><label for="opp_title"><?php esc_html_e( 'Title', 'societypress' ); ?> <span style="color:#d63638;">*</span></label></th>
                     <td><input type="text" id="opp_title" name="opp_title" value="<?php echo esc_attr( $val('title') ); ?>" class="large-text" required></td>
                 </tr>
                 <tr>
                     <th><label for="opp_type"><?php esc_html_e( 'Type', 'societypress' ); ?></label></th>
                     <td>
                         <select id="opp_type" name="opp_type">
-                            <option value="one_time" <?php selected( $val('opportunity_type', 'one_time'), 'one_time' ); ?>>One-Time</option>
-                            <option value="recurring" <?php selected( $val('opportunity_type'), 'recurring' ); ?>>Recurring</option>
-                            <option value="ongoing" <?php selected( $val('opportunity_type'), 'ongoing' ); ?>>Ongoing</option>
+                            <option value="one_time" <?php selected( $val('opportunity_type', 'one_time'), 'one_time' ); ?>><?php esc_html_e( 'One-Time', 'societypress' ); ?></option>
+                            <option value="recurring" <?php selected( $val('opportunity_type'), 'recurring' ); ?>><?php esc_html_e( 'Recurring', 'societypress' ); ?></option>
+                            <option value="ongoing" <?php selected( $val('opportunity_type'), 'ongoing' ); ?>><?php esc_html_e( 'Ongoing', 'societypress' ); ?></option>
                         </select>
                     </td>
                 </tr>
@@ -42014,7 +42303,7 @@ function sp_render_volunteer_opportunity_edit_page(): void {
                     <th><label for="opp_committee_id"><?php esc_html_e( 'Committee', 'societypress' ); ?></label></th>
                     <td>
                         <select id="opp_committee_id" name="opp_committee_id">
-                            <option value="">Society-Wide (no committee)</option>
+                            <option value=""><?php esc_html_e( 'Society-Wide (no committee)', 'societypress' ); ?></option>
                             <?php foreach ( $committees as $c ) : ?>
                                 <option value="<?php echo esc_attr( $c->id ); ?>" <?php selected( $val('committee_id'), $c->id ); ?>><?php echo esc_html( $c->name ); ?></option>
                             <?php endforeach; ?>
@@ -42028,7 +42317,7 @@ function sp_render_volunteer_opportunity_edit_page(): void {
                 <tr>
                     <th><label for="opp_date"><?php esc_html_e( 'Date', 'societypress' ); ?></label></th>
                     <td><input type="date" id="opp_date" name="opp_date" value="<?php echo esc_attr( $val('event_date') ); ?>">
-                        <p class="description">For one-time opportunities. Leave blank for ongoing.</p></td>
+                        <p class="description"><?php esc_html_e( 'For one-time opportunities. Leave blank for ongoing.', 'societypress' ); ?></p></td>
                 </tr>
                 <tr>
                     <th><label for="opp_start_time"><?php esc_html_e( 'Time', 'societypress' ); ?></label></th>
@@ -42045,7 +42334,7 @@ function sp_render_volunteer_opportunity_edit_page(): void {
                 <tr>
                     <th><label for="opp_capacity"><?php esc_html_e( 'Capacity', 'societypress' ); ?></label></th>
                     <td><input type="number" id="opp_capacity" name="opp_capacity" value="<?php echo $val('capacity') !== null ? esc_attr( $val('capacity') ) : ''; ?>" min="0" class="small-text">
-                        <p class="description">Leave blank for unlimited.</p></td>
+                        <p class="description"><?php esc_html_e( 'Leave blank for unlimited.', 'societypress' ); ?></p></td>
                 </tr>
                 <tr>
                     <th><label for="opp_skills"><?php esc_html_e( 'Skills/Requirements', 'societypress' ); ?></label></th>
@@ -42055,7 +42344,7 @@ function sp_render_volunteer_opportunity_edit_page(): void {
                     <th><label for="opp_contact"><?php esc_html_e( 'Contact Person', 'societypress' ); ?></label></th>
                     <td>
                         <select id="opp_contact" name="opp_contact">
-                            <option value="">— None —</option>
+                            <option value=""><?php esc_html_e( '— None —', 'societypress' ); ?></option>
                             <?php foreach ( $members as $m ) : ?>
                                 <option value="<?php echo esc_attr( $m->user_id ); ?>" <?php selected( $val('contact_user_id'), $m->user_id ); ?>>
                                     <?php echo esc_html( $m->last_name . ', ' . $m->first_name ); ?>
@@ -42068,16 +42357,16 @@ function sp_render_volunteer_opportunity_edit_page(): void {
                     <th><label for="opp_status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
                     <td>
                         <select id="opp_status" name="opp_status">
-                            <option value="open" <?php selected( $val('status', 'open'), 'open' ); ?>>Open</option>
-                            <option value="filled" <?php selected( $val('status'), 'filled' ); ?>>Filled</option>
-                            <option value="closed" <?php selected( $val('status'), 'closed' ); ?>>Closed</option>
-                            <option value="cancelled" <?php selected( $val('status'), 'cancelled' ); ?>>Cancelled</option>
+                            <option value="open" <?php selected( $val('status', 'open'), 'open' ); ?>><?php esc_html_e( 'Open', 'societypress' ); ?></option>
+                            <option value="filled" <?php selected( $val('status'), 'filled' ); ?>><?php esc_html_e( 'Filled', 'societypress' ); ?></option>
+                            <option value="closed" <?php selected( $val('status'), 'closed' ); ?>><?php esc_html_e( 'Closed', 'societypress' ); ?></option>
+                            <option value="cancelled" <?php selected( $val('status'), 'cancelled' ); ?>><?php esc_html_e( 'Cancelled', 'societypress' ); ?></option>
                         </select>
                     </td>
                 </tr>
             </table>
 
-            <?php submit_button( $opp ? 'Update Opportunity' : 'Create Opportunity' ); ?>
+            <?php submit_button( $opp ? __( 'Update Opportunity', 'societypress' ) : __( 'Create Opportunity', 'societypress' ) ); ?>
         </form>
 
         <?php
@@ -42095,7 +42384,7 @@ function sp_render_volunteer_opportunity_edit_page(): void {
             if ( ! empty( $signups ) ) : ?>
                 <h2 style="margin-top: 30px; border-bottom: 1px solid #c3c4c7; padding-bottom: 8px;"><?php echo esc_html( sprintf( __( 'Signups (%d)', 'societypress' ), count( $signups ) ) ); ?></h2>
                 <table class="wp-list-table widefat fixed striped">
-                    <thead><tr><th>Name</th><th>Status</th><th>Signed Up</th></tr></thead>
+                    <thead><tr><th><?php esc_html_e( 'Name', 'societypress' ); ?></th><th><?php esc_html_e( 'Status', 'societypress' ); ?></th><th><?php esc_html_e( 'Signed Up', 'societypress' ); ?></th></tr></thead>
                     <tbody>
                     <?php foreach ( $signups as $s ) :
                         $name = $s->first_name ? $s->first_name . ' ' . $s->last_name : $s->display_name;
@@ -42182,7 +42471,7 @@ function sp_render_volunteers_page(): void {
 
         <!-- Add/Edit form -->
         <div style="background:#fff; border:1px solid #ccd0d4; border-radius:4px; padding:20px; margin:16px 0;">
-            <h3 style="margin-top:0;"><?php echo $editing ? 'Edit Role Assignment' : 'Add Volunteer Role'; ?></h3>
+            <h3 style="margin-top:0;"><?php echo $editing ? esc_html__( 'Edit Role Assignment', 'societypress' ) : esc_html__( 'Add Volunteer Role', 'societypress' ); ?></h3>
             <form method="post">
                 <?php wp_nonce_field( 'sp_volunteer_role_save' ); ?>
                 <input type="hidden" name="role_id" value="<?php echo $editing ? $editing->id : 0; ?>">
@@ -42192,7 +42481,7 @@ function sp_render_volunteers_page(): void {
                         <th><label for="user_id"><?php esc_html_e( 'Member', 'societypress' ); ?></label></th>
                         <td>
                             <select name="user_id" id="user_id" required style="min-width:250px;">
-                                <option value="">— Select Member —</option>
+                                <option value=""><?php echo '— ' . esc_html__( 'Select Member', 'societypress' ) . ' —'; ?></option>
                                 <?php foreach ( $members as $m ) : ?>
                                     <option value="<?php echo $m->user_id; ?>" <?php selected( $editing->user_id ?? 0, $m->user_id ); ?>>
                                         <?php echo esc_html( $m->last_name . ', ' . $m->first_name ); ?>
@@ -42215,22 +42504,22 @@ function sp_render_volunteers_page(): void {
                     </tr>
                     <tr>
                         <th><label for="end_date"><?php esc_html_e( 'End Date', 'societypress' ); ?></label></th>
-                        <td><input type="date" name="end_date" id="end_date" value="<?php echo esc_attr( $editing->end_date ?? '' ); ?>"> <span class="description">Leave blank for ongoing roles.</span></td>
+                        <td><input type="date" name="end_date" id="end_date" value="<?php echo esc_attr( $editing->end_date ?? '' ); ?>"> <span class="description"><?php esc_html_e( 'Leave blank for ongoing roles.', 'societypress' ); ?></span></td>
                     </tr>
                     <tr>
                         <th><label for="vstatus"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
                         <td>
                             <select name="status" id="vstatus">
-                                <option value="active" <?php selected( $editing->status ?? 'active', 'active' ); ?>>Active</option>
-                                <option value="inactive" <?php selected( $editing->status ?? '', 'inactive' ); ?>>Inactive</option>
+                                <option value="active" <?php selected( $editing->status ?? 'active', 'active' ); ?>><?php esc_html_e( 'Active', 'societypress' ); ?></option>
+                                <option value="inactive" <?php selected( $editing->status ?? '', 'inactive' ); ?>><?php esc_html_e( 'Inactive', 'societypress' ); ?></option>
                             </select>
                         </td>
                     </tr>
                 </table>
                 <p class="submit">
-                    <input type="submit" name="sp_save_volunteer_role" class="button button-primary" value="<?php echo $editing ? 'Update Role' : 'Add Role'; ?>">
+                    <input type="submit" name="sp_save_volunteer_role" class="button button-primary" value="<?php echo $editing ? esc_attr__( 'Update Role', 'societypress' ) : esc_attr__( 'Add Role', 'societypress' ); ?>">
                     <?php if ( $editing ) : ?>
-                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-governance' ) ); ?>" class="button">Cancel</a>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-governance' ) ); ?>" class="button"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
                     <?php endif; ?>
                 </p>
             </form>
@@ -42240,7 +42529,7 @@ function sp_render_volunteers_page(): void {
         <form method="get">
             <input type="hidden" name="page" value="sp-governance">
             <?php
-            $table->search_box( 'Search Volunteers', 'volunteer_search' );
+            $table->search_box( __( 'Search Volunteers', 'societypress' ), 'volunteer_search' );
             $table->display();
             ?>
         </form>
@@ -42301,30 +42590,30 @@ function sp_render_volunteer_hours_page(): void {
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Volunteer Hours', 'societypress' ); ?></h1>
 
         <!-- Export CSV link -->
-        <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=sp-volunteer-hours&action=export_csv' ), 'sp_export_volunteer_hours' ) ); ?>" class="page-title-action">Export CSV</a>
+        <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=sp-volunteer-hours&action=export_csv' ), 'sp_export_volunteer_hours' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Export CSV', 'societypress' ); ?></a>
         <hr class="wp-header-end">
 
         <!-- Summary stats -->
         <div style="display:flex; gap:16px; margin:16px 0;">
             <div style="background:#fff; border:1px solid #ccd0d4; border-radius:4px; padding:16px 24px; flex:1; text-align:center;">
                 <div style="font-size:28px; font-weight:700; color:var(--sp-color-primary);"><?php echo number_format( $total_hours, 1 ); ?></div>
-                <div style="color:#666; font-size:13px;">Hours This Year</div>
+                <div style="color:#666; font-size:13px;"><?php esc_html_e( 'Hours This Year', 'societypress' ); ?></div>
             </div>
             <div style="background:#fff; border:1px solid #ccd0d4; border-radius:4px; padding:16px 24px; flex:1; text-align:center;">
                 <div style="font-size:28px; font-weight:700; color:var(--sp-color-primary);"><?php echo $total_volunteers; ?></div>
-                <div style="color:#666; font-size:13px;">Active Volunteers</div>
+                <div style="color:#666; font-size:13px;"><?php esc_html_e( 'Active Volunteers', 'societypress' ); ?></div>
             </div>
         </div>
 
         <!-- Log hours form -->
         <div style="background:#fff; border:1px solid #ccd0d4; border-radius:4px; padding:20px; margin:16px 0;">
-            <h3 style="margin-top:0;">Log Hours</h3>
+            <h3 style="margin-top:0;"><?php esc_html_e( 'Log Hours', 'societypress' ); ?></h3>
             <form method="post" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
                 <?php wp_nonce_field( 'sp_volunteer_hours_save' ); ?>
                 <div>
                     <label style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Member', 'societypress' ); ?></label>
                     <select name="user_id" required style="min-width:200px;">
-                        <option value="">— Select —</option>
+                        <option value=""><?php esc_html_e( '— Select —', 'societypress' ); ?></option>
                         <?php foreach ( $members as $m ) : ?>
                             <option value="<?php echo $m->user_id; ?>"><?php echo esc_html( $m->last_name . ', ' . $m->first_name ); ?></option>
                         <?php endforeach; ?>
@@ -42347,7 +42636,7 @@ function sp_render_volunteer_hours_page(): void {
                     <input type="date" name="activity_date" value="<?php echo date( 'Y-m-d' ); ?>">
                 </div>
                 <div>
-                    <input type="submit" name="sp_log_volunteer_hours" class="button button-primary" value="Log Hours">
+                    <input type="submit" name="sp_log_volunteer_hours" class="button button-primary" value="<?php esc_attr_e( 'Log Hours', 'societypress' ); ?>">
                 </div>
             </form>
         </div>
@@ -42731,6 +43020,14 @@ function sp_get_default_email_template( string $type ): string {
 <p>We hope to see you again soon!</p>
 <p>Best regards,<br>{{organization_name}}</p>';
 
+        case 'donation_acknowledgment':
+            return '<p>Dear {{donor_name}},</p>
+<p>Thank you for your generous donation of <strong>{{amount}}</strong> to {{organization_name}} on {{donation_date}}.</p>
+<p>{{campaign}}</p>
+<p>Your support helps {{organization_name}} continue its mission of preserving and sharing our community\'s history and heritage. Please keep this email for your tax records.</p>
+<p>If you have any questions, please contact us at {{admin_email}}.</p>
+<p>With gratitude,<br>{{organization_name}}</p>';
+
         default:
             return '';
     }
@@ -42802,9 +43099,10 @@ function sp_render_email_templates_page(): void {
         // allows in post content — bold, links, lists, headings, etc. — but
         // strip any scripts or dangerous markup.
         $subject_keys = [
-            'welcome'          => 'welcome_email_subject',
-            'renewal_reminder' => 'renewal_reminder_subject',
-            'expired'          => 'expired_notice_subject',
+            'welcome'                  => 'welcome_email_subject',
+            'renewal_reminder'         => 'renewal_reminder_subject',
+            'expired'                  => 'expired_notice_subject',
+            'donation_acknowledgment'  => 'donation_acknowledgment_subject',
         ];
         foreach ( $subject_keys as $type => $subj_key ) {
             $body_key = 'email_template_' . $type;
@@ -42827,7 +43125,7 @@ function sp_render_email_templates_page(): void {
 
     // Determine active tab — default to 'welcome'
     $active_tab = sanitize_key( $_GET['tab'] ?? 'welcome' );
-    if ( ! in_array( $active_tab, [ 'welcome', 'renewal_reminder', 'expired' ], true ) ) {
+    if ( ! in_array( $active_tab, [ 'welcome', 'renewal_reminder', 'expired', 'donation_acknowledgment' ], true ) ) {
         $active_tab = 'welcome';
     }
 
@@ -42854,6 +43152,12 @@ function sp_render_email_templates_page(): void {
             'subject_key'     => 'expired_notice_subject',
             'default_subject' => __( 'Your membership has expired', 'societypress' ),
             'description'     => __( 'Sent after a membership expires and the member\'s status changes to expired.', 'societypress' ),
+        ],
+        'donation_acknowledgment' => [
+            'label'           => __( 'Donation Acknowledgment', 'societypress' ),
+            'subject_key'     => 'donation_acknowledgment_subject',
+            'default_subject' => __( 'Thank You for Your Donation — {{organization_name}}', 'societypress' ),
+            'description'     => __( 'Sent to donors when the treasurer clicks "Send Acknowledgment" on one or more donations. Supports donation-specific merge tags.', 'societypress' ),
         ],
     ];
 
@@ -42954,26 +43258,43 @@ function sp_render_email_templates_page(): void {
                     <?php esc_html_e( 'Click a tag to copy it, then paste into the subject or body.', 'societypress' ); ?>
                 </p>
                 <?php
-                // WHY this list: These are the tags supported by sp_replace_merge_tags().
-                // We show all of them so the admin knows what's available. Tags that
-                // don't apply to a given email type (like days_until_expiration in
-                // the welcome email) will simply resolve to empty — harmless.
-                $merge_tags = [
-                    '{{first_name}}'            => __( 'First name', 'societypress' ),
-                    '{{last_name}}'             => __( 'Last name', 'societypress' ),
-                    '{{full_name}}'             => __( 'Full name', 'societypress' ),
-                    '{{preferred_name}}'        => __( 'Preferred name (or first name)', 'societypress' ),
-                    '{{email}}'                 => __( 'Member email', 'societypress' ),
-                    '{{tier}}'                  => __( 'Membership tier name', 'societypress' ),
-                    '{{status}}'                => __( 'Membership status', 'societypress' ),
-                    '{{join_date}}'             => __( 'Join date', 'societypress' ),
-                    '{{expiration_date}}'       => __( 'Expiration date', 'societypress' ),
-                    '{{days_until_expiration}}' => __( 'Days until expiration', 'societypress' ),
-                    '{{days}}'                  => __( 'Days (shorthand)', 'societypress' ),
-                    '{{organization_name}}'     => __( 'Organization name', 'societypress' ),
-                    '{{site_url}}'              => __( 'Website URL', 'societypress' ),
-                    '{{admin_email}}'           => __( 'Admin email address', 'societypress' ),
-                ];
+                // WHY this list: These are the tags supported by sp_replace_merge_tags()
+                // (for member-based emails) or sp_replace_donation_merge_tags() (for
+                // donation acknowledgments). We show the appropriate set for each tab
+                // so the admin knows what's available.
+                if ( $active_tab === 'donation_acknowledgment' ) {
+                    // Donation-specific merge tags — donors aren't always members,
+                    // so we use a separate set tailored to donation data.
+                    $merge_tags = [
+                        '{{donor_name}}'        => __( 'Donor name', 'societypress' ),
+                        '{{donor_email}}'       => __( 'Donor email', 'societypress' ),
+                        '{{amount}}'            => __( 'Donation amount (formatted)', 'societypress' ),
+                        '{{campaign}}'          => __( 'Campaign name', 'societypress' ),
+                        '{{donation_date}}'     => __( 'Date of donation', 'societypress' ),
+                        '{{donation_type}}'     => __( 'Donation type (cash, check, etc.)', 'societypress' ),
+                        '{{in_kind_description}}' => __( 'In-kind item description', 'societypress' ),
+                        '{{organization_name}}' => __( 'Organization name', 'societypress' ),
+                        '{{site_url}}'          => __( 'Website URL', 'societypress' ),
+                        '{{admin_email}}'       => __( 'Admin email address', 'societypress' ),
+                    ];
+                } else {
+                    $merge_tags = [
+                        '{{first_name}}'            => __( 'First name', 'societypress' ),
+                        '{{last_name}}'             => __( 'Last name', 'societypress' ),
+                        '{{full_name}}'             => __( 'Full name', 'societypress' ),
+                        '{{preferred_name}}'        => __( 'Preferred name (or first name)', 'societypress' ),
+                        '{{email}}'                 => __( 'Member email', 'societypress' ),
+                        '{{tier}}'                  => __( 'Membership tier name', 'societypress' ),
+                        '{{status}}'                => __( 'Membership status', 'societypress' ),
+                        '{{join_date}}'             => __( 'Join date', 'societypress' ),
+                        '{{expiration_date}}'       => __( 'Expiration date', 'societypress' ),
+                        '{{days_until_expiration}}' => __( 'Days until expiration', 'societypress' ),
+                        '{{days}}'                  => __( 'Days (shorthand)', 'societypress' ),
+                        '{{organization_name}}'     => __( 'Organization name', 'societypress' ),
+                        '{{site_url}}'              => __( 'Website URL', 'societypress' ),
+                        '{{admin_email}}'           => __( 'Admin email address', 'societypress' ),
+                    ];
+                }
                 foreach ( $merge_tags as $tag => $desc ) :
                 ?>
                     <div style="margin-bottom: 6px; cursor: pointer;" class="sp-merge-tag-item"
@@ -43078,9 +43399,10 @@ add_action( 'wp_ajax_sp_get_default_template', function() {
     $type = sanitize_key( $_POST['type'] ?? '' );
 
     $default_subjects = [
-        'welcome'          => __( 'Welcome to {{organization_name}}!', 'societypress' ),
-        'renewal_reminder' => __( 'Your membership expires soon', 'societypress' ),
-        'expired'          => __( 'Your membership has expired', 'societypress' ),
+        'welcome'                 => __( 'Welcome to {{organization_name}}!', 'societypress' ),
+        'renewal_reminder'        => __( 'Your membership expires soon', 'societypress' ),
+        'expired'                 => __( 'Your membership has expired', 'societypress' ),
+        'donation_acknowledgment' => __( 'Thank You for Your Donation — {{organization_name}}', 'societypress' ),
     ];
 
     if ( ! isset( $default_subjects[ $type ] ) ) {
@@ -43206,10 +43528,10 @@ function sp_render_email_log_page(): void {
                 <?php endif; ?>
 
                 <input type="search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="Search recipient or subject..." style="width: 250px;">
-                <button type="submit" class="button">Filter</button>
+                <button type="submit" class="button"><?php esc_html_e( 'Filter', 'societypress' ); ?></button>
 
                 <?php if ( $current_status || $current_type || $search ) : ?>
-                    <a href="<?php echo esc_url( $base_url ); ?>" class="button">Clear</a>
+                    <a href="<?php echo esc_url( $base_url ); ?>" class="button"><?php esc_html_e( 'Clear', 'societypress' ); ?></a>
                 <?php endif; ?>
 
                 <span class="displaying-num" style="margin-left: auto;">
@@ -43222,12 +43544,12 @@ function sp_render_email_log_page(): void {
         <table class="wp-list-table widefat fixed striped">
             <thead>
                 <tr>
-                    <th style="width: 50px;">ID</th>
-                    <th style="width: 80px;">Status</th>
-                    <th style="width: 100px;">Type</th>
-                    <th>Recipient</th>
-                    <th>Subject</th>
-                    <th style="width: 160px;">Date</th>
+                    <th style="width: 50px;"><?php esc_html_e( 'ID', 'societypress' ); ?></th>
+                    <th style="width: 80px;"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                    <th style="width: 100px;"><?php esc_html_e( 'Type', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Recipient', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Subject', 'societypress' ); ?></th>
+                    <th style="width: 160px;"><?php esc_html_e( 'Date', 'societypress' ); ?></th>
                 </tr>
             </thead>
             <tbody>
@@ -43424,9 +43746,9 @@ function sp_render_blast_email_page(): void {
     $prefix = $wpdb->prefix . 'sp_';
 
     // Handle delete action
-    if ( isset( $_GET['action'] ) && $_GET['action'] === 'delete' && isset( $_GET['blast_id'] ) ) {
-        check_admin_referer( 'sp_delete_blast_' . $_GET['blast_id'] );
-        $wpdb->delete( $prefix . 'blast_emails', [ 'id' => (int) $_GET['blast_id'] ] );
+    if ( isset( $_POST['action'] ) && $_POST['action'] === 'delete' && isset( $_POST['blast_id'] ) ) {
+        check_admin_referer( 'sp_delete_blast_' . $_POST['blast_id'] );
+        $wpdb->delete( $prefix . 'blast_emails', [ 'id' => (int) $_POST['blast_id'] ] );
         wp_redirect( admin_url( 'admin.php?page=sp-blast-email&deleted=1' ) );
         exit;
     }
@@ -43476,7 +43798,7 @@ function sp_render_blast_email_page(): void {
     ?>
     <div class="wrap sp-admin-wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Blast Email', 'societypress' ); ?></h1>
-        <a href="<?php echo admin_url( 'admin.php?page=sp-blast-email-compose' ); ?>" class="page-title-action">Compose New</a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email-compose' ) ); ?>" class="page-title-action">Compose New</a>
 
         <?php if ( isset( $_GET['deleted'] ) ) : ?>
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Blast email deleted.', 'societypress' ); ?></p></div>
@@ -43505,26 +43827,26 @@ function sp_render_blast_email_page(): void {
         <table class="widefat striped" style="margin-top: 16px; clear: both;">
             <thead>
                 <tr>
-                    <th>Subject</th>
-                    <th>Sender</th>
-                    <th>Recipients</th>
-                    <th>Status</th>
-                    <th>Date</th>
-                    <th>Actions</th>
+                    <th><?php esc_html_e( 'Subject', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Sender', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Recipients', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Date', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
                 </tr>
             </thead>
             <tbody>
                 <?php if ( empty( $rows ) ) : ?>
-                    <tr><td colspan="6" style="text-align: center; padding: 20px;">No blast emails yet. <a href="<?php echo admin_url( 'admin.php?page=sp-blast-email-compose' ); ?>">Compose one</a>.</td></tr>
+                    <tr><td colspan="6" style="text-align: center; padding: 20px;"><?php esc_html_e( 'No blast emails yet.', 'societypress' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email-compose' ) ); ?>"><?php esc_html_e( 'Compose one', 'societypress' ); ?></a>.</td></tr>
                 <?php else : ?>
                     <?php foreach ( $rows as $row ) : ?>
                         <tr>
                             <td>
                                 <strong>
                                     <?php if ( $row->status === 'draft' ) : ?>
-                                        <a href="<?php echo admin_url( 'admin.php?page=sp-blast-email-compose&blast_id=' . $row->id ); ?>"><?php echo esc_html( $row->subject ); ?></a>
+                                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email-compose&blast_id=' . $row->id ) ); ?>"><?php echo esc_html( $row->subject ); ?></a>
                                     <?php else : ?>
-                                        <a href="<?php echo admin_url( 'admin.php?page=sp-blast-email&view=' . $row->id ); ?>"><?php echo esc_html( $row->subject ); ?></a>
+                                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email&view=' . $row->id ) ); ?>"><?php echo esc_html( $row->subject ); ?></a>
                                     <?php endif; ?>
                                 </strong>
                             </td>
@@ -43561,13 +43883,16 @@ function sp_render_blast_email_page(): void {
                             </td>
                             <td>
                                 <?php if ( $row->status === 'draft' ) : ?>
-                                    <a href="<?php echo admin_url( 'admin.php?page=sp-blast-email-compose&blast_id=' . $row->id ); ?>">Edit</a> |
+                                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email-compose&blast_id=' . $row->id ) ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> |
                                 <?php else : ?>
-                                    <a href="<?php echo admin_url( 'admin.php?page=sp-blast-email&view=' . $row->id ); ?>">View</a> |
+                                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email&view=' . $row->id ) ); ?>"><?php esc_html_e( 'View', 'societypress' ); ?></a> |
                                 <?php endif; ?>
-                                <a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=sp-blast-email&action=delete&blast_id=' . $row->id ), 'sp_delete_blast_' . $row->id ); ?>"
-                                   onclick="return confirm('Delete this blast email?');"
-                                   style="color: #b32d2e;">Delete</a>
+                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this blast email?', 'societypress' ) ); ?>');">
+                                    <?php wp_nonce_field( 'sp_delete_blast_' . $row->id ); ?>
+                                    <input type="hidden" name="action" value="delete">
+                                    <input type="hidden" name="blast_id" value="<?php echo (int) $row->id; ?>">
+                                    <button type="submit" class="sp-link-btn" style="background:none; border:none; color:#b32d2e; cursor:pointer; padding:0; font:inherit; text-decoration:underline;"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                                </form>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -43646,7 +43971,7 @@ function sp_render_blast_email_detail( int $blast_id ): void {
     ?>
     <div class="wrap">
         <h1><?php echo esc_html( sprintf( __( 'Blast Email — %s', 'societypress' ), $blast->subject ) ); ?></h1>
-        <p><a href="<?php echo admin_url( 'admin.php?page=sp-blast-email' ); ?>">&larr; Back to Blast Email</a></p>
+        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ); ?>">&larr; Back to Blast Email</a></p>
 
         <table class="widefat" style="max-width: 800px; margin-bottom: 24px;">
             <tbody>
@@ -43806,7 +44131,7 @@ function sp_render_blast_email_compose_page(): void {
     ?>
     <div class="wrap sp-admin-wrap">
         <h1><?php echo $blast_id ? esc_html__( 'Edit Blast Email', 'societypress' ) : esc_html__( 'Compose Blast Email', 'societypress' ); ?></h1>
-        <p><a href="<?php echo admin_url( 'admin.php?page=sp-blast-email' ); ?>">&larr; Back to Blast Email</a></p>
+        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ); ?>">&larr; Back to Blast Email</a></p>
 
         <form method="post" id="sp-blast-form">
             <?php wp_nonce_field( 'sp_save_blast', 'sp_blast_nonce' ); ?>
@@ -43814,21 +44139,21 @@ function sp_render_blast_email_compose_page(): void {
 
             <table class="form-table" style="max-width: 800px;">
                 <tr>
-                    <th><label for="sp-blast-subject">Subject <span style="color: #d63638;">*</span></label></th>
+                    <th><label for="sp-blast-subject"><?php esc_html_e( 'Subject', 'societypress' ); ?> <span style="color: #d63638;">*</span></label></th>
                     <td><input type="text" name="blast_subject" id="sp-blast-subject" value="<?php echo esc_attr( $blast->subject ?? '' ); ?>" required style="width: 100%; font-size: 14px; padding: 6px 10px;"></td>
                 </tr>
                 <tr>
-                    <th>Recipients</th>
+                    <th><?php esc_html_e( 'Recipients', 'societypress' ); ?></th>
                     <td>
                         <fieldset>
                             <label style="display: block; margin-bottom: 8px;">
                                 <input type="radio" name="recipient_type" value="all_members" <?php checked( $recipient_type, 'all_members' ); ?>>
-                                All Active Members <span style="color: #787c82;">(<?php echo $all_count; ?>)</span>
+                                <?php printf( esc_html__( 'All Active Members (%d)', 'societypress' ), $all_count ); ?>
                             </label>
 
                             <label style="display: block; margin-bottom: 4px;">
                                 <input type="radio" name="recipient_type" value="group" <?php checked( $recipient_type, 'group' ); ?>>
-                                By Group
+                                <?php esc_html_e( 'By Group', 'societypress' ); ?>
                             </label>
                             <div id="sp-blast-groups" style="margin: 4px 0 12px 24px; <?php echo $recipient_type !== 'group' ? 'display:none;' : ''; ?>">
                                 <?php foreach ( $groups as $g ) : ?>
@@ -43840,7 +44165,7 @@ function sp_render_blast_email_compose_page(): void {
                                     </label>
                                 <?php endforeach; ?>
                                 <?php if ( empty( $groups ) ) : ?>
-                                    <em style="color: #787c82;">No active groups. <a href="<?php echo admin_url( 'admin.php?page=sp-group-edit' ); ?>">Create one</a>.</em>
+                                    <em style="color: #787c82;">No active groups. <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-group-edit' ) ); ?>">Create one</a>.</em>
                                 <?php endif; ?>
                             </div>
 
@@ -43866,7 +44191,7 @@ function sp_render_blast_email_compose_page(): void {
                     <th><label><?php esc_html_e( 'Email Body', 'societypress' ); ?></label></th>
                     <td>
                         <p class="description" style="margin-bottom: 8px;">
-                            Merge tags: <code>{first_name}</code> <code>{last_name}</code> <code>{display_name}</code> <code>{organization_name}</code>
+                            Merge tags: <code>{{first_name}}</code> <code>{{last_name}}</code> <code>{{display_name}}</code> <code>{{organization_name}}</code>
                         </p>
                         <?php
                         wp_editor( $blast->body ?? '', 'blast_body', [
@@ -43882,12 +44207,12 @@ function sp_render_blast_email_compose_page(): void {
             </table>
 
             <p class="submit" style="display: flex; gap: 8px; align-items: center;">
-                <button type="submit" class="button button-primary" onclick="document.getElementById('sp-blast-action').value='save_draft';">Save Draft</button>
+                <button type="submit" class="button button-primary" onclick="document.getElementById('sp-blast-action').value='save_draft';"><?php esc_html_e( 'Save Draft', 'societypress' ); ?></button>
                 <button type="submit" class="button button-primary" style="background: #00a32a; border-color: #00a32a;"
-                        onclick="if(!confirm('Send this email to all selected recipients? This cannot be undone.')){event.preventDefault();return;}document.getElementById('sp-blast-action').value='send_now';">
-                    Send Now
+                        onclick="if(!confirm('<?php echo esc_js( __( 'Send this email to all selected recipients? This cannot be undone.', 'societypress' ) ); ?>')){event.preventDefault();return;}document.getElementById('sp-blast-action').value='send_now';">
+                    <?php esc_html_e( 'Send Now', 'societypress' ); ?>
                 </button>
-                <a href="<?php echo admin_url( 'admin.php?page=sp-blast-email' ); ?>" class="button">Cancel</a>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ); ?>" class="button"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
             </p>
         </form>
 
@@ -44033,7 +44358,7 @@ function sp_blast_get_recipients( string $recipient_type, ?string $recipient_fil
  * Process merge tags in blast email body.
  *
  * WHY: Personalization makes blast emails feel less like spam. Harold types
- *      {first_name} and each recipient sees their own name. Simple and
+ *      {{first_name}} and each recipient sees their own name. Simple and
  *      effective — SAGHS does this in every email.
  *
  * @param string $body      The email body with merge tags.
@@ -44168,6 +44493,10 @@ function sp_ajax_blast_recipient_count(): void {
         wp_send_json_error( 'Unauthorized' );
     }
 
+    // WHY: CSRF protection — this endpoint returns member counts, which is information
+    // disclosure that should require both capability AND a valid nonce.
+    check_ajax_referer( 'sp_blast_nonce', 'nonce' );
+
     $type   = sanitize_text_field( $_POST['recipient_type'] ?? 'all_members' );
     $filter = null;
 
@@ -44210,9 +44539,9 @@ function sp_render_donations_page(): void {
     $prefix = $wpdb->prefix . 'sp_';
 
     // Handle delete
-    if ( isset( $_GET['action'] ) && $_GET['action'] === 'delete' && isset( $_GET['donation_id'] ) ) {
-        check_admin_referer( 'sp_delete_donation_' . $_GET['donation_id'] );
-        $wpdb->delete( $prefix . 'donations', [ 'id' => (int) $_GET['donation_id'] ] );
+    if ( isset( $_POST['action'] ) && $_POST['action'] === 'delete' && isset( $_POST['donation_id'] ) ) {
+        check_admin_referer( 'sp_delete_donation_' . $_POST['donation_id'] );
+        $wpdb->delete( $prefix . 'donations', [ 'id' => (int) $_POST['donation_id'] ] );
         wp_redirect( admin_url( 'admin.php?page=sp-donations&deleted=1' ) );
         exit;
     }
@@ -44305,7 +44634,7 @@ function sp_render_donations_page(): void {
     ?>
     <div class="wrap sp-admin-wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Donations', 'societypress' ); ?></h1>
-        <a href="<?php echo admin_url( 'admin.php?page=sp-donation-edit' ); ?>" class="page-title-action">Record Donation</a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-donation-edit' ) ); ?>" class="page-title-action">Record Donation</a>
 
         <?php if ( isset( $_GET['deleted'] ) ) : ?>
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Donation deleted.', 'societypress' ); ?></p></div>
@@ -44333,11 +44662,11 @@ function sp_render_donations_page(): void {
             </div>
             <div class="sp-donation-stat">
                 <div class="stat-label">Shown Total</div>
-                <div class="stat-value money">$<?php echo number_format( (float) ( $stats->total_amount ?? 0 ), 2 ); ?></div>
+                <div class="stat-value money"><?php echo esc_html( sp_format_currency( $stats->total_amount ?? 0 ) ); ?></div>
             </div>
             <div class="sp-donation-stat">
                 <div class="stat-label">This Year</div>
-                <div class="stat-value money">$<?php echo number_format( $year_total, 2 ); ?></div>
+                <div class="stat-value money"><?php echo esc_html( sp_format_currency( $year_total ) ); ?></div>
             </div>
         </div>
 
@@ -44375,9 +44704,9 @@ function sp_render_donations_page(): void {
                 <input type="search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="Donor name or note...">
             </div>
             <div>
-                <button type="submit" class="button">Filter</button>
+                <button type="submit" class="button"><?php esc_html_e( 'Filter', 'societypress' ); ?></button>
                 <?php if ( $filter_campaign || $filter_type || $filter_from || $filter_to || $search ) : ?>
-                    <a href="<?php echo admin_url( 'admin.php?page=sp-donations' ); ?>" class="button">Clear</a>
+                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-donations' ) ); ?>" class="button"><?php esc_html_e( 'Clear', 'societypress' ); ?></a>
                 <?php endif; ?>
             </div>
         </form>
@@ -44389,18 +44718,18 @@ function sp_render_donations_page(): void {
                 <thead>
                     <tr>
                         <th style="width: 30px;"><input type="checkbox" id="sp-don-check-all"></th>
-                        <th>Date</th>
-                        <th>Donor</th>
-                        <th>Amount</th>
-                        <th>Type</th>
-                        <th>Campaign</th>
-                        <th>Ack'd</th>
-                        <th>Actions</th>
+                        <th><?php esc_html_e( 'Date', 'societypress' ); ?></th>
+                        <th><?php esc_html_e( 'Donor', 'societypress' ); ?></th>
+                        <th><?php esc_html_e( 'Amount', 'societypress' ); ?></th>
+                        <th><?php esc_html_e( 'Type', 'societypress' ); ?></th>
+                        <th><?php esc_html_e( 'Campaign', 'societypress' ); ?></th>
+                        <th><?php esc_html_e( "Ack'd", 'societypress' ); ?></th>
+                        <th><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if ( empty( $rows ) ) : ?>
-                        <tr><td colspan="8" style="text-align: center; padding: 20px;">No donations found.</td></tr>
+                        <tr><td colspan="8" style="text-align: center; padding: 20px;"><?php esc_html_e( 'No donations found.', 'societypress' ); ?></td></tr>
                     <?php else : ?>
                         <?php foreach ( $rows as $row ) : ?>
                             <tr>
@@ -44418,9 +44747,9 @@ function sp_render_donations_page(): void {
                                 </td>
                                 <td style="font-weight: 600;">
                                     <?php if ( $row->type === 'in_kind' ) : ?>
-                                        In-Kind
+                                        <?php esc_html_e( 'In-Kind', 'societypress' ); ?>
                                     <?php else : ?>
-                                        $<?php echo number_format( (float) $row->amount, 2 ); ?>
+                                        <?php echo esc_html( sp_format_currency( $row->amount ) ); ?>
                                     <?php endif; ?>
                                 </td>
                                 <td><?php echo esc_html( ucfirst( str_replace( '_', ' ', $row->type ) ) ); ?></td>
@@ -44433,11 +44762,14 @@ function sp_render_donations_page(): void {
                                     <?php endif; ?>
                                 </td>
                                 <td>
-                                    <a href="<?php echo admin_url( 'admin.php?page=sp-donation-edit&donation_id=' . $row->id ); ?>">Edit</a>
+                                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-donation-edit&donation_id=' . $row->id ) ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
                                     |
-                                    <a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=sp-donations&action=delete&donation_id=' . $row->id ), 'sp_delete_donation_' . $row->id ); ?>"
-                                       onclick="return confirm('Delete this donation record?');"
-                                       style="color: #b32d2e;">Delete</a>
+                                    <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-donations' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this donation record?', 'societypress' ) ); ?>');">
+                                        <?php wp_nonce_field( 'sp_delete_donation_' . $row->id ); ?>
+                                        <input type="hidden" name="action" value="delete">
+                                        <input type="hidden" name="donation_id" value="<?php echo (int) $row->id; ?>">
+                                        <button type="submit" class="sp-link-btn" style="background:none; border:none; color:#b32d2e; cursor:pointer; padding:0; font:inherit; text-decoration:underline;"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                                    </form>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -44448,8 +44780,8 @@ function sp_render_donations_page(): void {
             <?php if ( ! empty( $rows ) ) : ?>
                 <div style="margin-top: 12px;">
                     <button type="submit" name="sp_bulk_acknowledge" value="1" class="button"
-                            onclick="return confirm('Send acknowledgment emails to all selected donors?');">
-                        Send Acknowledgment Email
+                            onclick="return confirm('<?php echo esc_js( __( 'Send acknowledgment emails to all selected donors?', 'societypress' ) ); ?>');">
+                        <?php esc_html_e( 'Send Acknowledgment Email', 'societypress' ); ?>
                     </button>
                 </div>
             <?php endif; ?>
@@ -44569,7 +44901,7 @@ function sp_render_donation_edit_page(): void {
     ?>
     <div class="wrap sp-admin-wrap">
         <h1><?php echo $donation_id ? esc_html__( 'Edit Donation', 'societypress' ) : esc_html__( 'Record Donation', 'societypress' ); ?></h1>
-        <p><a href="<?php echo admin_url( 'admin.php?page=sp-donations' ); ?>">&larr; Back to Donations</a></p>
+        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-donations' ) ); ?>">&larr; Back to Donations</a></p>
 
         <form method="post" style="max-width: 600px;">
             <?php wp_nonce_field( 'sp_save_donation', 'sp_donation_nonce' ); ?>
@@ -44630,7 +44962,7 @@ function sp_render_donation_edit_page(): void {
                     <td><textarea name="in_kind_description" id="sp-d-inkind" rows="3" style="width: 100%;"><?php echo esc_textarea( $donation->in_kind_description ?? '' ); ?></textarea></td>
                 </tr>
                 <tr>
-                    <th><label for="sp-d-date">Date <span style="color: #d63638;">*</span></label></th>
+                    <th><label for="sp-d-date"><?php esc_html_e( 'Date', 'societypress' ); ?> <span style="color: #d63638;">*</span></label></th>
                     <td><input type="date" name="donation_date" id="sp-d-date" value="<?php echo esc_attr( $donation->date ?? date( 'Y-m-d' ) ); ?>" required></td>
                 </tr>
                 <tr>
@@ -44638,16 +44970,16 @@ function sp_render_donation_edit_page(): void {
                     <td><textarea name="note" id="sp-d-note" rows="3" style="width: 100%;"><?php echo esc_textarea( $donation->note ?? '' ); ?></textarea></td>
                 </tr>
                 <tr>
-                    <th>Options</th>
+                    <th><?php esc_html_e( 'Options', 'societypress' ); ?></th>
                     <td>
-                        <label><input type="checkbox" name="is_anonymous" value="1" <?php checked( $donation->is_anonymous ?? 0, 1 ); ?>> Anonymous donation</label>
+                        <label><input type="checkbox" name="is_anonymous" value="1" <?php checked( $donation->is_anonymous ?? 0, 1 ); ?>> <?php esc_html_e( 'Anonymous donation', 'societypress' ); ?></label>
                     </td>
                 </tr>
             </table>
 
             <p class="submit">
-                <button type="submit" class="button button-primary"><?php echo $donation_id ? 'Save Changes' : 'Record Donation'; ?></button>
-                <a href="<?php echo admin_url( 'admin.php?page=sp-donations' ); ?>" class="button">Cancel</a>
+                <button type="submit" class="button button-primary"><?php echo $donation_id ? esc_html__( 'Save Changes', 'societypress' ) : esc_html__( 'Record Donation', 'societypress' ); ?></button>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-donations' ) ); ?>" class="button"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
             </p>
         </form>
 
@@ -44671,12 +45003,59 @@ function sp_render_donation_edit_page(): void {
 }
 
 /**
+ * Replace donation-specific merge tags in a template string.
+ *
+ * WHY: Donation acknowledgment emails use a different set of merge tags than
+ *      the member-based emails (which use sp_replace_merge_tags). Donors may
+ *      not be members, so the tags map to donation fields: donor_name, amount,
+ *      campaign, date, etc. This follows the same pattern as sp_replace_merge_tags
+ *      but for donation context.
+ *
+ * @param string $content Template string containing {{merge_tags}}.
+ * @param object $donation Donation row from sp_donations (with campaign_name joined).
+ * @return string Content with tags replaced.
+ */
+function sp_replace_donation_merge_tags( string $content, object $donation ): string {
+    $settings = get_option( 'societypress_settings', [] );
+    $org_name = $settings['organization_name'] ?? get_bloginfo( 'name' );
+
+    // Format the amount — skip for in-kind donations where amount may be 0
+    $amount_display = ( $donation->type !== 'in_kind' && $donation->amount )
+        ? sp_format_currency( $donation->amount )
+        : '';
+
+    // Campaign line — show "Campaign: Name" if there's a campaign, empty otherwise.
+    // WHY: The template might wrap this in a <p> tag, so returning an empty string
+    // lets the admin remove the whole paragraph if they don't use campaigns.
+    $campaign_display = ! empty( $donation->campaign_name )
+        ? sprintf( __( 'Campaign: %s', 'societypress' ), $donation->campaign_name )
+        : '';
+
+    $tags = [
+        '{{donor_name}}'          => $donation->donor_name ?? '',
+        '{{donor_email}}'         => $donation->donor_email ?? '',
+        '{{amount}}'              => $amount_display,
+        '{{campaign}}'            => $campaign_display,
+        '{{donation_date}}'       => ! empty( $donation->date ) ? wp_date( 'F j, Y', strtotime( $donation->date ) ) : '',
+        '{{donation_type}}'       => ucfirst( str_replace( '_', ' ', $donation->type ?? '' ) ),
+        '{{in_kind_description}}' => $donation->in_kind_description ?? '',
+        '{{organization_name}}'   => $org_name,
+        '{{site_url}}'            => home_url(),
+        '{{admin_email}}'         => $settings['organization_email'] ?? get_option( 'admin_email' ),
+    ];
+
+    return str_replace( array_keys( $tags ), array_values( $tags ), $content );
+}
+
+/**
  * Send donation acknowledgment emails for selected donation IDs.
  *
  * WHY: The treasurer needs to send thank-you emails for tax-deductible
- *      donations. This function handles the batch: builds the email from
- *      the donation record, sends via wp_mail, logs to sp_email_log,
- *      and marks the donation as acknowledged.
+ *      donations. This function handles the batch: loads the email template
+ *      from settings (or falls back to the default), replaces merge tags,
+ *      sends via wp_mail, logs to sp_email_log, and marks the donation as
+ *      acknowledged. Uses the same template system as the other email types
+ *      so the admin can customize wording from Settings > Email Templates.
  *
  * @param array $donation_ids Array of donation row IDs.
  */
@@ -44684,8 +45063,16 @@ function sp_send_donation_acknowledgments( array $donation_ids ): void {
     global $wpdb;
     $prefix   = $wpdb->prefix . 'sp_';
     $settings = get_option( 'societypress_settings', [] );
-    $org_name = $settings['organization_name'] ?? get_bloginfo( 'name' );
     $headers  = sp_get_email_headers();
+
+    // Load the customized template, or fall back to the default.
+    // WHY: Same pattern as welcome/renewal/expired emails — the admin can
+    // customize subject and body from the Email Templates page, but if they
+    // haven't touched it, the sensible default kicks in.
+    $subject_template = $settings['donation_acknowledgment_subject']
+        ?? __( 'Thank You for Your Donation — {{organization_name}}', 'societypress' );
+    $body_template    = $settings['email_template_donation_acknowledgment']
+        ?? sp_get_default_email_template( 'donation_acknowledgment' );
 
     foreach ( $donation_ids as $did ) {
         $donation = $wpdb->get_row( $wpdb->prepare(
@@ -44699,30 +45086,14 @@ function sp_send_donation_acknowledgments( array $donation_ids ): void {
             continue; // Skip if no email or already acknowledged
         }
 
-        $subject = 'Thank You for Your Donation — ' . $org_name;
+        // Replace merge tags in both subject and body
+        $subject   = sp_replace_donation_merge_tags( $subject_template, $donation );
+        $body_html = sp_replace_donation_merge_tags( $body_template, $donation );
 
-        $body_html = '<p>Dear ' . esc_html( $donation->donor_name ) . ',</p>';
-        $body_html .= '<p>Thank you for your generous donation';
-
-        if ( $donation->type !== 'in_kind' ) {
-            $body_html .= ' of <strong>$' . number_format( (float) $donation->amount, 2 ) . '</strong>';
-        }
-
-        if ( $donation->campaign_name ) {
-            $body_html .= ' to our <strong>' . esc_html( $donation->campaign_name ) . '</strong> campaign';
-        }
-
-        $body_html .= ' on ' . date( 'F j, Y', strtotime( $donation->date ) ) . '.</p>';
-
-        if ( $donation->type === 'in_kind' && $donation->in_kind_description ) {
-            $body_html .= '<p>In-kind contribution: ' . esc_html( $donation->in_kind_description ) . '</p>';
-        }
-
-        $body_html .= '<p>Your support helps ' . esc_html( $org_name ) . ' continue its mission. '
-                    . 'Please keep this email for your tax records.</p>';
-        $body_html .= '<p>With gratitude,<br>' . esc_html( $org_name ) . '</p>';
-
-        $full_html = sp_build_email_html( 'Donation Acknowledgment', $body_html );
+        $full_html = sp_build_email_html(
+            __( 'Donation Acknowledgment', 'societypress' ),
+            $body_html
+        );
 
         $sent = wp_mail( $donation->donor_email, $subject, $full_html, $headers );
 
@@ -44761,11 +45132,11 @@ function sp_render_campaigns_page(): void {
     $prefix = $wpdb->prefix . 'sp_';
 
     // Handle delete
-    if ( isset( $_GET['action'] ) && $_GET['action'] === 'delete' && isset( $_GET['campaign_id'] ) ) {
-        check_admin_referer( 'sp_delete_campaign_' . $_GET['campaign_id'] );
+    if ( isset( $_POST['action'] ) && $_POST['action'] === 'delete' && isset( $_POST['campaign_id'] ) ) {
+        check_admin_referer( 'sp_delete_campaign_' . $_POST['campaign_id'] );
         // Don't delete donations — just unlink them
-        $wpdb->update( $prefix . 'donations', [ 'campaign_id' => null ], [ 'campaign_id' => (int) $_GET['campaign_id'] ] );
-        $wpdb->delete( $prefix . 'campaigns', [ 'id' => (int) $_GET['campaign_id'] ] );
+        $wpdb->update( $prefix . 'donations', [ 'campaign_id' => null ], [ 'campaign_id' => (int) $_POST['campaign_id'] ] );
+        $wpdb->delete( $prefix . 'campaigns', [ 'id' => (int) $_POST['campaign_id'] ] );
         wp_redirect( admin_url( 'admin.php?page=sp-campaigns&deleted=1' ) );
         exit;
     }
@@ -44783,7 +45154,7 @@ function sp_render_campaigns_page(): void {
     ?>
     <div class="wrap sp-admin-wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Campaigns', 'societypress' ); ?></h1>
-        <a href="<?php echo admin_url( 'admin.php?page=sp-campaign-edit' ); ?>" class="page-title-action">Add New</a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-campaign-edit' ) ); ?>" class="page-title-action">Add New</a>
 
         <?php if ( isset( $_GET['deleted'] ) ) : ?>
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Campaign deleted. Donations have been unlinked.', 'societypress' ); ?></p></div>
@@ -44795,18 +45166,18 @@ function sp_render_campaigns_page(): void {
         <table class="widefat striped" style="margin-top: 16px;">
             <thead>
                 <tr>
-                    <th>Campaign</th>
-                    <th>Goal</th>
-                    <th>Raised</th>
-                    <th>Progress</th>
-                    <th>Status</th>
-                    <th>Date Range</th>
-                    <th>Actions</th>
+                    <th><?php esc_html_e( 'Campaign', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Goal', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Raised', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Progress', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Date Range', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
                 </tr>
             </thead>
             <tbody>
                 <?php if ( empty( $campaigns ) ) : ?>
-                    <tr><td colspan="7" style="text-align: center; padding: 20px;">No campaigns yet. <a href="<?php echo admin_url( 'admin.php?page=sp-campaign-edit' ); ?>">Create one</a>.</td></tr>
+                    <tr><td colspan="7" style="text-align: center; padding: 20px;"><?php esc_html_e( 'No campaigns yet.', 'societypress' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-campaign-edit' ) ); ?>"><?php esc_html_e( 'Create one', 'societypress' ); ?></a>.</td></tr>
                 <?php else : ?>
                     <?php foreach ( $campaigns as $c ) : ?>
                         <?php
@@ -44817,13 +45188,13 @@ function sp_render_campaigns_page(): void {
                         ?>
                         <tr>
                             <td>
-                                <strong><a href="<?php echo admin_url( 'admin.php?page=sp-campaign-edit&campaign_id=' . $c->id ); ?>"><?php echo esc_html( $c->name ); ?></a></strong>
+                                <strong><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-campaign-edit&campaign_id=' . $c->id ) ); ?>"><?php echo esc_html( $c->name ); ?></a></strong>
                                 <?php if ( $c->description ) : ?>
                                     <br><span style="color: #646970; font-size: 12px;"><?php echo esc_html( wp_trim_words( $c->description, 15 ) ); ?></span>
                                 <?php endif; ?>
                             </td>
-                            <td><?php echo $goal > 0 ? '$' . number_format( $goal, 2 ) : '—'; ?></td>
-                            <td style="font-weight: 600; color: #00a32a;">$<?php echo number_format( $raised, 2 ); ?> <span style="font-weight: normal; color: #787c82;">(<?php echo (int) $c->donation_count; ?>)</span></td>
+                            <td><?php echo $goal > 0 ? esc_html( sp_format_currency( $goal ) ) : '—'; ?></td>
+                            <td style="font-weight: 600; color: #00a32a;"><?php echo esc_html( sp_format_currency( $raised ) ); ?> <span style="font-weight: normal; color: #787c82;">(<?php echo (int) $c->donation_count; ?>)</span></td>
                             <td style="width: 120px;">
                                 <?php if ( $goal > 0 ) : ?>
                                     <div style="background: #e5e7eb; border-radius: 4px; height: 16px; overflow: hidden;">
@@ -44850,13 +45221,16 @@ function sp_render_campaigns_page(): void {
                                 ?>
                             </td>
                             <td>
-                                <a href="<?php echo admin_url( 'admin.php?page=sp-campaign-edit&campaign_id=' . $c->id ); ?>">Edit</a>
+                                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-campaign-edit&campaign_id=' . $c->id ) ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
                                 |
-                                <a href="<?php echo admin_url( 'admin.php?page=sp-donations&campaign=' . $c->id ); ?>">Donations</a>
+                                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-donations&campaign=' . $c->id ) ); ?>"><?php esc_html_e( 'Donations', 'societypress' ); ?></a>
                                 |
-                                <a href="<?php echo wp_nonce_url( admin_url( 'admin.php?page=sp-campaigns&action=delete&campaign_id=' . $c->id ), 'sp_delete_campaign_' . $c->id ); ?>"
-                                   onclick="return confirm('Delete this campaign? Donations will be unlinked, not deleted.');"
-                                   style="color: #b32d2e;">Delete</a>
+                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-campaigns' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this campaign? Donations will be unlinked, not deleted.', 'societypress' ) ); ?>');">
+                                    <?php wp_nonce_field( 'sp_delete_campaign_' . $c->id ); ?>
+                                    <input type="hidden" name="action" value="delete">
+                                    <input type="hidden" name="campaign_id" value="<?php echo (int) $c->id; ?>">
+                                    <button type="submit" class="sp-link-btn" style="background:none; border:none; color:#b32d2e; cursor:pointer; padding:0; font:inherit; text-decoration:underline;"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                                </form>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -44925,7 +45299,7 @@ function sp_render_campaign_edit_page(): void {
     ?>
     <div class="wrap sp-admin-wrap">
         <h1><?php echo $campaign_id ? esc_html__( 'Edit Campaign', 'societypress' ) : esc_html__( 'Add New Campaign', 'societypress' ); ?></h1>
-        <p><a href="<?php echo admin_url( 'admin.php?page=sp-campaigns' ); ?>">&larr; Back to Campaigns</a></p>
+        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-campaigns' ) ); ?>">&larr; Back to Campaigns</a></p>
 
         <form method="post" style="max-width: 600px;">
             <?php wp_nonce_field( 'sp_save_campaign', 'sp_campaign_nonce' ); ?>
@@ -44964,8 +45338,8 @@ function sp_render_campaign_edit_page(): void {
             </table>
 
             <p class="submit">
-                <button type="submit" class="button button-primary"><?php echo $campaign_id ? 'Save Changes' : 'Create Campaign'; ?></button>
-                <a href="<?php echo admin_url( 'admin.php?page=sp-campaigns' ); ?>" class="button">Cancel</a>
+                <button type="submit" class="button button-primary"><?php echo $campaign_id ? esc_html__( 'Save Changes', 'societypress' ) : esc_html__( 'Create Campaign', 'societypress' ); ?></button>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-campaigns' ) ); ?>" class="button"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
             </p>
         </form>
     </div>
@@ -45488,7 +45862,7 @@ function sp_privacy_export_registration_data( string $email_address, int $page =
             [ 'name' => 'Registration Type', 'value' => $reg->user_id ? 'Member' : 'Guest' ],
             [ 'name' => 'Status',           'value' => ucfirst( $reg->status ) ],
             [ 'name' => 'Party Size',       'value' => (string) $reg->party_size ],
-            [ 'name' => 'Fee',              'value' => $reg->fee_amount > 0 ? '$' . number_format( $reg->fee_amount, 2 ) : 'Free' ],
+            [ 'name' => 'Fee',              'value' => $reg->fee_amount > 0 ? sp_format_currency( $reg->fee_amount ) : __( 'Free', 'societypress' ) ],
             [ 'name' => 'Payment Status',   'value' => ucfirst( $reg->payment_status ) ],
             [ 'name' => 'Registered At',    'value' => $reg->registered_at ],
         ];
@@ -45775,14 +46149,14 @@ function sp_privacy_export_volunteer_data( string $email_address, int $page = 1 
     foreach ( $roles as $role ) {
         $export_items[] = [
             'group_id'    => 'sp-volunteer-roles',
-            'group_label' => 'Volunteer Roles',
+            'group_label' => __( 'Volunteer Roles', 'societypress' ),
             'item_id'     => 'sp-volunteer-role-' . $role->id,
             'data'        => [
-                [ 'name' => 'Role', 'value' => $role->role_title ],
-                [ 'name' => 'Committee', 'value' => $role->committee ?: '(none)' ],
-                [ 'name' => 'Start Date', 'value' => $role->start_date ?: '(none)' ],
-                [ 'name' => 'End Date', 'value' => $role->end_date ?: 'Ongoing' ],
-                [ 'name' => 'Status', 'value' => ucfirst( $role->status ) ],
+                [ 'name' => __( 'Role', 'societypress' ), 'value' => $role->role_title ],
+                [ 'name' => __( 'Committee', 'societypress' ), 'value' => $role->committee ?: __( '(none)', 'societypress' ) ],
+                [ 'name' => __( 'Start Date', 'societypress' ), 'value' => $role->start_date ?: __( '(none)', 'societypress' ) ],
+                [ 'name' => __( 'End Date', 'societypress' ), 'value' => $role->end_date ?: __( 'Ongoing', 'societypress' ) ],
+                [ 'name' => __( 'Status', 'societypress' ), 'value' => ucfirst( $role->status ) ],
             ],
         ];
     }
@@ -45940,7 +46314,7 @@ function sp_privacy_export_donation_data( string $email_address, int $page = 1 )
         $data = [
             [ 'name' => 'Donor Name',   'value' => $don->donor_name ],
             [ 'name' => 'Donor Email',  'value' => $don->donor_email ?: '(none)' ],
-            [ 'name' => 'Amount',       'value' => '$' . number_format( (float) $don->amount, 2 ) ],
+            [ 'name' => 'Amount',       'value' => sp_format_currency( $don->amount ) ],
             [ 'name' => 'Type',         'value' => ucfirst( $don->type ) ],
             [ 'name' => 'Campaign',     'value' => $don->campaign_name ?: 'General/Unrestricted' ],
             [ 'name' => 'Date',         'value' => $don->date ],
@@ -46113,7 +46487,7 @@ function sp_ajax_library_item_detail(): void {
         'acq_code'            => $item->acq_code ?: '',
         'acq_date'            => $acq_date,
         'donor'               => $item->donor ?: '',
-        'item_value'          => $item->item_value ? '$' . number_format( (float) $item->item_value, 2 ) : '',
+        'item_value'          => $item->item_value ? sp_format_currency( $item->item_value ) : '',
         'item_condition'      => $item->item_condition ?: '',
         'available'           => (bool) $item->available,
         'librarian_notes'     => $item->librarian_notes ?: '',
@@ -46132,7 +46506,7 @@ function sp_ajax_library_item_detail(): void {
 add_action( 'wp_ajax_sp_export_library', 'sp_ajax_export_library' );
 function sp_ajax_export_library(): void {
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_die( 'Unauthorized.' );
+        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
     }
 
     global $wpdb;
@@ -46714,8 +47088,8 @@ function sp_render_newsletter_archive_page(): void {
     $prefix = $wpdb->prefix . 'sp_';
 
     // ========== HANDLE DELETE ==========
-    if ( ( $_GET['action'] ?? '' ) === 'delete' && ! empty( $_GET['newsletter_id'] ) ) {
-        $newsletter_id = absint( $_GET['newsletter_id'] );
+    if ( ( $_POST['action'] ?? '' ) === 'delete' && ! empty( $_POST['newsletter_id'] ) ) {
+        $newsletter_id = absint( $_POST['newsletter_id'] );
         check_admin_referer( 'sp_delete_newsletter_' . $newsletter_id );
         $wpdb->delete( $prefix . 'newsletters', [ 'id' => $newsletter_id ] );
         echo '<div class="notice notice-success"><p>' . esc_html__( 'Newsletter deleted.', 'societypress' ) . '</p></div>';
@@ -46745,13 +47119,13 @@ function sp_render_newsletter_archive_page(): void {
                 <input type="search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="Search newsletters…">
                 <input type="submit" class="button" value="Search">
                 <?php if ( $search ) : ?>
-                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-newsletter-archive' ) ); ?>" class="button">Clear</a>
+                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-newsletter-archive' ) ); ?>" class="button"><?php esc_html_e( 'Clear', 'societypress' ); ?></a>
                 <?php endif; ?>
             </p>
         </form>
 
         <?php if ( empty( $newsletters ) ) : ?>
-            <p>No newsletters yet. <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-newsletter-edit' ) ); ?>">Upload your first newsletter</a>.</p>
+            <p><?php esc_html_e( 'No newsletters yet.', 'societypress' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-newsletter-edit' ) ); ?>"><?php esc_html_e( 'Upload your first newsletter', 'societypress' ); ?></a>.</p>
         <?php else : ?>
             <div style="display:flex; flex-wrap:wrap; gap:20px; margin-top:20px;">
                 <?php foreach ( $newsletters as $nl ) :
@@ -46761,10 +47135,7 @@ function sp_render_newsletter_archive_page(): void {
                         : '';
 
                     $edit_url   = admin_url( 'admin.php?page=sp-newsletter-edit&newsletter_id=' . $nl->id );
-                    $delete_url = wp_nonce_url(
-                        admin_url( 'admin.php?page=sp-newsletter-archive&action=delete&newsletter_id=' . $nl->id ),
-                        'sp_delete_newsletter_' . $nl->id
-                    );
+                    // delete via POST form below
 
                     // Format the volume/issue line (e.g. "Vol. 3, No. 2")
                     $vol_issue = '';
@@ -46772,7 +47143,7 @@ function sp_render_newsletter_archive_page(): void {
                     if ( $nl->issue_number ) $vol_issue .= ( $vol_issue ? ', ' : '' ) . 'No.&nbsp;' . $nl->issue_number;
 
                     // Format the publication date
-                    $date_display = $nl->pub_date ? date( 'M j, Y', strtotime( $nl->pub_date ) ) : '';
+                    $date_display = $nl->pub_date ? wp_date( 'M j, Y', strtotime( $nl->pub_date ) ) : '';
                 ?>
                     <div style="width:220px; background:#fff; border:1px solid #ccd0d4; border-radius:8px; overflow:hidden;">
                         <!-- Cover image area -->
@@ -46799,14 +47170,19 @@ function sp_render_newsletter_archive_page(): void {
                                 <span style="color:#666; font-size:12px;"><?php echo $vol_issue; ?></span>
                             <?php endif; ?>
                             <?php if ( $nl->visibility === 'members_only' ) : ?>
-                                <span style="background:#fef0c7; color:#92400e; font-size:10px; padding:2px 6px; border-radius:3px; margin-left:4px;">Members Only</span>
+                                <span style="background:#fef0c7; color:#92400e; font-size:10px; padding:2px 6px; border-radius:3px; margin-left:4px;"><?php esc_html_e( 'Members Only', 'societypress' ); ?></span>
                             <?php endif; ?>
                             <?php if ( $nl->visibility === 'public' ) : ?>
                                 <span style="background:#d1fae5; color:#065f46; font-size:10px; padding:2px 6px; border-radius:3px; margin-left:4px;">Public</span>
                             <?php endif; ?>
                             <div style="margin-top:8px; font-size:12px;">
-                                <a href="<?php echo esc_url( $edit_url ); ?>">Edit</a> |
-                                <a href="<?php echo esc_url( $delete_url ); ?>" style="color:#b32d2e;" onclick="return confirm('Delete this newsletter?');">Delete</a>
+                                <a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> |
+                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-newsletter-archive' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this newsletter?', 'societypress' ) ); ?>');">
+                                    <?php wp_nonce_field( 'sp_delete_newsletter_' . $nl->id ); ?>
+                                    <input type="hidden" name="action" value="delete">
+                                    <input type="hidden" name="newsletter_id" value="<?php echo (int) $nl->id; ?>">
+                                    <button type="submit" class="sp-link-btn" style="background:none; border:none; color:#b32d2e; cursor:pointer; padding:0; font:inherit; text-decoration:underline;"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                                </form>
                             </div>
                         </div>
                     </div>
@@ -47288,7 +47664,7 @@ function sp_frontend_newsletter_archive(): void {
                     if ( $nl->issue_number ) $vol_issue .= ( $vol_issue ? ', ' : '' ) . 'No.&nbsp;' . $nl->issue_number;
 
                     // Format date
-                    $date_display = $nl->pub_date ? date( 'F Y', strtotime( $nl->pub_date ) ) : '';
+                    $date_display = $nl->pub_date ? wp_date( 'F Y', strtotime( $nl->pub_date ) ) : '';
 
                     // Download URL goes through our AJAX endpoint for access control
                     $download_url = admin_url( 'admin-ajax.php?action=sp_newsletter_download&newsletter_id=' . $nl->id );
@@ -48217,8 +48593,8 @@ function sp_render_record_collections_page(): void {
     $prefix = $wpdb->prefix . 'sp_';
 
     // Handle delete action
-    if ( isset( $_GET['action'] ) && $_GET['action'] === 'delete' && isset( $_GET['collection_id'] ) ) {
-        $del_id = absint( $_GET['collection_id'] );
+    if ( isset( $_POST['action'] ) && $_POST['action'] === 'delete' && isset( $_POST['collection_id'] ) ) {
+        $del_id = absint( $_POST['collection_id'] );
         check_admin_referer( 'sp_delete_collection_' . $del_id );
 
         // Delete all record values for records in this collection
@@ -48279,10 +48655,7 @@ function sp_render_record_collections_page(): void {
                         $edit_url   = admin_url( 'admin.php?page=sp-record-collection-edit&collection_id=' . $c->id );
                         $browse_url = admin_url( 'admin.php?page=sp-record-browse&collection_id=' . $c->id );
                         $import_url = admin_url( 'admin.php?page=sp-import-records&collection_id=' . $c->id );
-                        $delete_url = wp_nonce_url(
-                            admin_url( 'admin.php?page=sp-record-collections&action=delete&collection_id=' . $c->id ),
-                            'sp_delete_collection_' . $c->id
-                        );
+                        // delete via POST form below
                     ?>
                         <tr>
                             <td>
@@ -48313,7 +48686,12 @@ function sp_render_record_collections_page(): void {
                                 <a href="<?php echo esc_url( $browse_url ); ?>" class="button button-small"><?php esc_html_e( 'Browse', 'societypress' ); ?></a>
                                 <a href="<?php echo esc_url( $import_url ); ?>" class="button button-small"><?php esc_html_e( 'Import', 'societypress' ); ?></a>
                                 <a href="<?php echo esc_url( $edit_url ); ?>" class="button button-small"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
-                                <a href="<?php echo esc_url( $delete_url ); ?>" class="button button-small" style="color:#b32d2e;" onclick="return confirm('Delete this collection and ALL its records? This cannot be undone.');"><?php esc_html_e( 'Delete', 'societypress' ); ?></a>
+                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-collections' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this collection and ALL its records? This cannot be undone.', 'societypress' ) ); ?>');">
+                                    <?php wp_nonce_field( 'sp_delete_collection_' . $c->id ); ?>
+                                    <input type="hidden" name="action" value="delete">
+                                    <input type="hidden" name="collection_id" value="<?php echo (int) $c->id; ?>">
+                                    <button type="submit" class="button button-small" style="color:#b32d2e; cursor:pointer;"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                                </form>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -48471,31 +48849,62 @@ function sp_render_record_collection_edit_page(): void {
                 $collection_id = $wpdb->insert_id;
             }
 
-            // Save fields — rebuild from POST data
-            // WHY: Simpler than tracking adds/deletes/moves individually. We delete
-            //      all existing field defs and re-insert from the form. This is safe
-            //      because field_id references in sp_record_values use the field's
-            //      slug for matching during import, not the auto-increment ID.
-            $wpdb->delete( $prefix . 'record_collection_fields', [ 'collection_id' => $collection_id ] );
-
-            $field_names = $_POST['field_name'] ?? [];
-            $field_types = $_POST['field_type'] ?? [];
+            // Save fields — update in place to preserve auto-increment IDs.
+            //
+            // WHY: The old approach deleted ALL field rows and re-inserted, which gave
+            // every field a new auto-increment ID. But sp_record_values.field_id stores
+            // these IDs — so editing a collection's field schema after importing data
+            // would silently orphan all existing record values. This update-in-place
+            // approach preserves existing IDs: we UPDATE fields that already exist,
+            // INSERT new ones, and only DELETE fields that were actually removed.
+            $field_names      = $_POST['field_name'] ?? [];
+            $field_types_post = $_POST['field_type'] ?? [];
             $field_searchable = $_POST['field_searchable'] ?? [];
             $field_public     = $_POST['field_public'] ?? [];
+            $field_ids        = $_POST['field_id'] ?? [];
+
+            // Get existing field IDs for this collection
+            $existing_ids = $wpdb->get_col( $wpdb->prepare(
+                "SELECT id FROM {$prefix}record_collection_fields WHERE collection_id = %d",
+                $collection_id
+            ) );
+            $existing_ids = array_map( 'intval', $existing_ids );
+
+            $submitted_ids = [];
 
             foreach ( $field_names as $i => $fname ) {
                 $fname = sanitize_text_field( $fname );
                 if ( empty( $fname ) ) continue;
 
-                $wpdb->insert( $prefix . 'record_collection_fields', [
+                $fid  = (int) ( $field_ids[ $i ] ?? 0 );
+                $data = [
                     'collection_id' => $collection_id,
                     'field_name'    => $fname,
                     'field_slug'    => sanitize_title( $fname ),
-                    'field_type'    => sanitize_text_field( $field_types[ $i ] ?? 'text' ),
+                    'field_type'    => sanitize_text_field( $field_types_post[ $i ] ?? 'text' ),
                     'sort_order'    => (int) $i,
                     'searchable'    => isset( $field_searchable[ $i ] ) ? 1 : 0,
                     'is_public'     => isset( $field_public[ $i ] ) ? 1 : 0,
-                ] );
+                ];
+
+                if ( $fid && in_array( $fid, $existing_ids, true ) ) {
+                    // Existing field — update in place, preserving the ID
+                    $wpdb->update( $prefix . 'record_collection_fields', $data, [ 'id' => $fid ] );
+                    $submitted_ids[] = $fid;
+                } else {
+                    // New field — insert and track the new ID
+                    $wpdb->insert( $prefix . 'record_collection_fields', $data );
+                    $submitted_ids[] = (int) $wpdb->insert_id;
+                }
+            }
+
+            // Delete only fields that were removed from the form (not in submitted list)
+            $removed_ids = array_diff( $existing_ids, $submitted_ids );
+            if ( $removed_ids ) {
+                $id_list = implode( ',', array_map( 'intval', $removed_ids ) );
+                $wpdb->query( "DELETE FROM {$prefix}record_collection_fields WHERE id IN ({$id_list})" );
+                // Also clean up orphaned record values for removed fields
+                $wpdb->query( "DELETE FROM {$prefix}record_values WHERE field_id IN ({$id_list})" );
             }
 
             echo '<div class="notice notice-success"><p>' . esc_html__( 'Collection saved.', 'societypress' ) . '</p></div>';
@@ -48608,7 +49017,10 @@ function sp_render_record_collection_edit_page(): void {
                     ?>
                         <tr class="sp-field-row" draggable="true">
                             <td style="cursor:grab; text-align:center; color:#999;">&#9776;</td>
-                            <td><input type="text" name="field_name[<?php echo $i; ?>]" value="<?php echo esc_attr( $f->field_name ); ?>" class="regular-text" required></td>
+                            <td>
+                                <input type="hidden" name="field_id[<?php echo $i; ?>]" value="<?php echo (int) $f->id; ?>">
+                                <input type="text" name="field_name[<?php echo $i; ?>]" value="<?php echo esc_attr( $f->field_name ); ?>" class="regular-text" required>
+                            </td>
                             <td>
                                 <select name="field_type[<?php echo $i; ?>]">
                                     <?php foreach ( $field_types as $fv => $fl ) : ?>
@@ -48659,7 +49071,8 @@ function sp_render_record_collection_edit_page(): void {
             }
             tr.innerHTML =
                 '<td style="cursor:grab; text-align:center; color:#999;">&#9776;</td>' +
-                '<td><input type="text" name="field_name[' + fieldIdx + ']" value="' + (name || '') + '" class="regular-text" required></td>' +
+                '<td><input type="hidden" name="field_id[' + fieldIdx + ']" value="0">' +
+                '<input type="text" name="field_name[' + fieldIdx + ']" value="' + (name || '') + '" class="regular-text" required></td>' +
                 '<td><select name="field_type[' + fieldIdx + ']">' + typeOpts + '</select></td>' +
                 '<td style="text-align:center;"><input type="checkbox" name="field_searchable[' + fieldIdx + ']" value="1"' + (searchable ? ' checked' : '') + '></td>' +
                 '<td style="text-align:center;"><input type="checkbox" name="field_public[' + fieldIdx + ']" value="1"' + (isPublic ? ' checked' : '') + '></td>' +
@@ -48759,8 +49172,8 @@ function sp_render_record_browse_page(): void {
     }
 
     // Handle delete
-    if ( isset( $_GET['action'] ) && $_GET['action'] === 'delete' && isset( $_GET['record_id'] ) ) {
-        $del_id = absint( $_GET['record_id'] );
+    if ( isset( $_POST['action'] ) && $_POST['action'] === 'delete' && isset( $_POST['record_id'] ) ) {
+        $del_id = absint( $_POST['record_id'] );
         check_admin_referer( 'sp_delete_record_' . $del_id );
         $wpdb->delete( $prefix . 'record_values', [ 'record_id' => $del_id ] );
         $wpdb->delete( $prefix . 'records', [ 'id' => $del_id ] );
@@ -48846,10 +49259,7 @@ function sp_render_record_browse_page(): void {
                 <tbody>
                     <?php foreach ( $records as $rec ) :
                         $edit_url   = admin_url( 'admin.php?page=sp-record-edit&collection_id=' . $collection_id . '&record_id=' . $rec->id );
-                        $delete_url = wp_nonce_url(
-                            admin_url( 'admin.php?page=sp-record-browse&collection_id=' . $collection_id . '&action=delete&record_id=' . $rec->id ),
-                            'sp_delete_record_' . $rec->id
-                        );
+                        // delete via POST form
                     ?>
                         <tr>
                             <td><?php echo esc_html( $rec->id ); ?></td>
@@ -48858,7 +49268,12 @@ function sp_render_record_browse_page(): void {
                             <?php endforeach; ?>
                             <td>
                                 <a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> |
-                                <a href="<?php echo esc_url( $delete_url ); ?>" style="color:#b32d2e;" onclick="return confirm('Delete this record?');"><?php esc_html_e( 'Delete', 'societypress' ); ?></a>
+                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-browse&collection_id=' . $collection_id ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this record?', 'societypress' ) ); ?>');">
+                                    <?php wp_nonce_field( 'sp_delete_record_' . $rec->id ); ?>
+                                    <input type="hidden" name="action" value="delete">
+                                    <input type="hidden" name="record_id" value="<?php echo (int) $rec->id; ?>">
+                                    <button type="submit" class="sp-link-btn" style="background:none; border:none; color:#b32d2e; cursor:pointer; padding:0; font:inherit; text-decoration:underline;"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                                </form>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -50022,7 +50437,7 @@ function sp_render_store_frontend(): void {
                                 <?php if ( $desc ) : ?>
                                     <div class="sp-store-desc"><?php echo esc_html( $desc ); ?></div>
                                 <?php endif; ?>
-                                <div class="sp-store-price">$<?php echo esc_html( number_format( (float) $item->item_value, 2 ) ); ?></div>
+                                <div class="sp-store-price"><?php echo esc_html( sp_format_currency( $item->item_value ) ); ?></div>
                                 <div class="sp-store-actions">
                                     <input type="number" class="sp-store-qty" value="1" min="1" max="99" aria-label="<?php esc_attr_e( 'Quantity', 'societypress' ); ?>">
                                     <a href="#" class="sp-store-add-to-cart"><?php esc_html_e( 'Add to Cart', 'societypress' ); ?></a>
@@ -50551,10 +50966,10 @@ function sp_send_store_order_email( int $order_id ): void {
         $items_html .= sprintf(
             '<tr><td style="padding:6px 12px;border-bottom:1px solid #eee;">%s</td>'
             . '<td style="padding:6px 12px;border-bottom:1px solid #eee;text-align:center;">%d</td>'
-            . '<td style="padding:6px 12px;border-bottom:1px solid #eee;text-align:right;">$%s</td></tr>',
+            . '<td style="padding:6px 12px;border-bottom:1px solid #eee;text-align:right;">%s</td></tr>',
             esc_html( $item->title ),
             $item->quantity,
-            number_format( (float) $item->line_total, 2 )
+            esc_html( sp_format_currency( $item->line_total ) )
         );
     }
 
@@ -50568,7 +50983,7 @@ function sp_send_store_order_email( int $order_id ): void {
         . '<th style="padding:8px 12px;text-align:right;">%s</th>'
         . '</tr></thead><tbody>%s</tbody>'
         . '<tfoot><tr><td colspan="2" style="padding:8px 12px;text-align:right;font-weight:bold;">%s</td>'
-        . '<td style="padding:8px 12px;text-align:right;font-weight:bold;">$%s</td></tr></tfoot>'
+        . '<td style="padding:8px 12px;text-align:right;font-weight:bold;">%s</td></tr></tfoot>'
         . '</table>'
         . '<p>%s</p>',
         __( 'Thank you for your order! Here is your confirmation:', 'societypress' ),
@@ -50579,7 +50994,7 @@ function sp_send_store_order_email( int $order_id ): void {
         __( 'Total', 'societypress' ),
         $items_html,
         __( 'Total:', 'societypress' ),
-        number_format( (float) $order->total, 2 ),
+        esc_html( sp_format_currency( $order->total ) ),
         __( 'We will be in touch regarding pickup or delivery of your items.', 'societypress' )
     );
 
@@ -50748,6 +51163,13 @@ function sp_render_cart_page(): void {
         var container = document.getElementById('sp-cart-content');
         var checkingOut = false;
 
+        // Currency symbol and position from settings
+        var spCurrencySym = <?php echo wp_json_encode( sp_get_currency_symbol() ); ?>;
+        var spCurrencyPos = <?php echo wp_json_encode( sp_get_currency_position() ); ?>;
+        function spCartFmtCurrency(amount) {
+            return spCurrencyPos === 'before' ? spCurrencySym + amount : amount + spCurrencySym;
+        }
+
         function renderCart(data) {
             if (!data.items || data.items.length === 0) {
                 container.innerHTML =
@@ -50781,8 +51203,8 @@ function sp_render_cart_page(): void {
                     '<span class="sp-cart-qty-val">' + item.qty + '</span>' +
                     '<button class="sp-cart-qty-btn sp-cart-plus" type="button">+</button>' +
                     '</div></td>' +
-                    '<td data-label="<?php echo esc_js( __( 'Price', 'societypress' ) ); ?>" class="sp-cart-price">$' + item.unit_price.toFixed(2) + '</td>' +
-                    '<td data-label="<?php echo esc_js( __( 'Total', 'societypress' ) ); ?>" class="sp-cart-price">$' + item.line_total.toFixed(2) + '</td>' +
+                    '<td data-label="<?php echo esc_js( __( 'Price', 'societypress' ) ); ?>" class="sp-cart-price">' + spCartFmtCurrency(item.unit_price.toFixed(2)) + '</td>' +
+                    '<td data-label="<?php echo esc_js( __( 'Total', 'societypress' ) ); ?>" class="sp-cart-price">' + spCartFmtCurrency(item.line_total.toFixed(2)) + '</td>' +
                     '<td><a href="#" class="sp-cart-remove"><?php echo esc_js( __( 'Remove', 'societypress' ) ); ?></a></td>' +
                     '</tr>';
             });
@@ -50791,7 +51213,7 @@ function sp_render_cart_page(): void {
             html += '<div class="sp-cart-footer">' +
                 '<a href="' + storeUrl + '" class="sp-cart-continue">&larr; <?php echo esc_js( __( 'Continue Shopping', 'societypress' ) ); ?></a>' +
                 '<div class="sp-cart-actions">' +
-                '<div class="sp-cart-total"><span><?php echo esc_js( __( 'Total:', 'societypress' ) ); ?></span>$' + data.total.toFixed(2) + '</div>' +
+                '<div class="sp-cart-total"><span><?php echo esc_js( __( 'Total:', 'societypress' ) ); ?></span>' + spCartFmtCurrency(data.total.toFixed(2)) + '</div>' +
                 '<button class="sp-cart-checkout-btn" id="sp-checkout-btn"><?php echo esc_js( __( 'Proceed to Checkout', 'societypress' ) ); ?></button>' +
                 '</div></div>';
 
@@ -50973,7 +51395,7 @@ function sp_render_orders_page(): void {
 
         <!-- Status filter tabs -->
         <ul class="subsubsub" style="margin-bottom:10px;">
-            <li><a href="<?php echo admin_url( 'admin.php?page=sp-orders' ); ?>"<?php echo ! $status_filter ? ' class="current"' : ''; ?>>
+            <li><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-orders' ) ); ?>"<?php echo ! $status_filter ? ' class="current"' : ''; ?>>
                 <?php esc_html_e( 'All', 'societypress' ); ?> <span class="count">(<?php echo $total_count; ?>)</span>
             </a> |</li>
             <?php
@@ -50983,7 +51405,7 @@ function sp_render_orders_page(): void {
                 $cnt = $counts[ $s ] ?? 0;
                 if ( $cnt === 0 && $s !== 'paid' && $s !== 'pending' ) continue;
             ?>
-                <li><a href="<?php echo admin_url( 'admin.php?page=sp-orders&status=' . $s ); ?>"<?php echo $status_filter === $s ? ' class="current"' : ''; ?>>
+                <li><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-orders&status=' . $s ) ); ?>"<?php echo $status_filter === $s ? ' class="current"' : ''; ?>>
                     <?php echo esc_html( $status_labels[ $s ] ); ?> <span class="count">(<?php echo $cnt; ?>)</span>
                 </a><?php echo $s !== $last ? ' |' : ''; ?></li>
             <?php endforeach; ?>
@@ -51009,7 +51431,7 @@ function sp_render_orders_page(): void {
                     ?>
                         <tr>
                             <td>
-                                <a href="<?php echo admin_url( 'admin.php?page=sp-order-detail&order_id=' . $o->id ); ?>" style="font-weight:600;">
+                                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-order-detail&order_id=' . $o->id ) ); ?>" style="font-weight:600;">
                                     #<?php echo $o->id; ?>
                                 </a>
                             </td>
@@ -51020,7 +51442,7 @@ function sp_render_orders_page(): void {
                                 <?php endif; ?>
                             </td>
                             <td style="text-align:center;"><?php echo $o->item_count; ?></td>
-                            <td style="text-align:right;font-weight:600;">$<?php echo number_format( (float) $o->total, 2 ); ?></td>
+                            <td style="text-align:right;font-weight:600;"><?php echo esc_html( sp_format_currency( $o->total ) ); ?></td>
                             <td>
                                 <span style="display:inline-block;padding:2px 8px;border-radius:3px;font-size:12px;font-weight:600;color:#fff;background:<?php echo $color; ?>;">
                                     <?php echo esc_html( $status_labels[ $o->status ] ?? ucfirst( $o->status ) ); ?>
@@ -51105,7 +51527,7 @@ function sp_render_order_detail_page(): void {
     ?>
     <div class="wrap sp-admin-wrap">
         <h1><?php printf( esc_html__( 'Order #%d', 'societypress' ), $order_id ); ?></h1>
-        <p><a href="<?php echo admin_url( 'admin.php?page=sp-orders' ); ?>">&larr; <?php esc_html_e( 'Back to Orders', 'societypress' ); ?></a></p>
+        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-orders' ) ); ?>">&larr; <?php esc_html_e( 'Back to Orders', 'societypress' ); ?></a></p>
 
         <?php if ( $updated === '1' ) : ?>
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Order updated.', 'societypress' ); ?></p></div>
@@ -51123,8 +51545,8 @@ function sp_render_order_detail_page(): void {
                     <?php if ( $order->stripe_payment_intent ) : ?>
                         <tr><th><?php esc_html_e( 'Stripe PI', 'societypress' ); ?></th><td><code style="font-size:11px;"><?php echo esc_html( $order->stripe_payment_intent ); ?></code></td></tr>
                     <?php endif; ?>
-                    <tr><th><?php esc_html_e( 'Subtotal', 'societypress' ); ?></th><td>$<?php echo number_format( (float) $order->subtotal, 2 ); ?></td></tr>
-                    <tr><th><?php esc_html_e( 'Total', 'societypress' ); ?></th><td><strong>$<?php echo number_format( (float) $order->total, 2 ); ?></strong></td></tr>
+                    <tr><th><?php esc_html_e( 'Subtotal', 'societypress' ); ?></th><td><?php echo esc_html( sp_format_currency( $order->subtotal ) ); ?></td></tr>
+                    <tr><th><?php esc_html_e( 'Total', 'societypress' ); ?></th><td><strong><?php echo esc_html( sp_format_currency( $order->total ) ); ?></strong></td></tr>
                 </table>
             </div>
 
@@ -51139,7 +51561,7 @@ function sp_render_order_detail_page(): void {
                     <?php endif; ?>
                     <?php if ( $order->user_id ) : ?>
                         <tr><th><?php esc_html_e( 'Member', 'societypress' ); ?></th><td>
-                            <a href="<?php echo admin_url( 'admin.php?page=sp-member-edit&user_id=' . $order->user_id ); ?>">
+                            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-member-edit&user_id=' . $order->user_id ) ); ?>">
                                 <?php esc_html_e( 'View Member Record', 'societypress' ); ?> &rarr;
                             </a>
                         </td></tr>
@@ -51164,9 +51586,9 @@ function sp_render_order_detail_page(): void {
                     <?php foreach ( $items as $item ) : ?>
                         <tr>
                             <td><?php echo esc_html( $item->title ); ?></td>
-                            <td style="text-align:right;">$<?php echo number_format( (float) $item->unit_price, 2 ); ?></td>
+                            <td style="text-align:right;"><?php echo esc_html( sp_format_currency( $item->unit_price ) ); ?></td>
                             <td style="text-align:center;"><?php echo $item->quantity; ?></td>
-                            <td style="text-align:right;font-weight:600;">$<?php echo number_format( (float) $item->line_total, 2 ); ?></td>
+                            <td style="text-align:right;font-weight:600;"><?php echo esc_html( sp_format_currency( $item->line_total ) ); ?></td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -51284,12 +51706,12 @@ add_action( 'admin_init', function () {
 
 add_action( 'admin_init', function () {
     if ( ( $_GET['page'] ?? '' ) !== 'sp-documents' ) return;
-    if ( ( $_GET['action'] ?? '' ) !== 'delete' ) return;
+    if ( ( $_POST['action'] ?? '' ) !== 'delete' ) return;
 
-    $doc_id = (int) ( $_GET['id'] ?? 0 );
+    $doc_id = (int) ( $_POST['id'] ?? 0 );
     if ( ! $doc_id ) return;
 
-    if ( ! wp_verify_nonce( $_GET['_wpnonce'] ?? '', 'sp_delete_document_' . $doc_id ) ) {
+    if ( ! wp_verify_nonce( $_POST['_wpnonce'] ?? '', 'sp_delete_document_' . $doc_id ) ) {
         wp_die( __( 'Security check failed.', 'societypress' ) );
     }
 
@@ -51354,12 +51776,12 @@ add_action( 'admin_init', function () {
 
 add_action( 'admin_init', function () {
     if ( ( $_GET['page'] ?? '' ) !== 'sp-document-categories' ) return;
-    if ( ( $_GET['action'] ?? '' ) !== 'delete' ) return;
+    if ( ( $_POST['action'] ?? '' ) !== 'delete' ) return;
 
-    $cat_id = (int) ( $_GET['id'] ?? 0 );
+    $cat_id = (int) ( $_POST['id'] ?? 0 );
     if ( ! $cat_id ) return;
 
-    if ( ! wp_verify_nonce( $_GET['_wpnonce'] ?? '', 'sp_delete_doc_cat_' . $cat_id ) ) {
+    if ( ! wp_verify_nonce( $_POST['_wpnonce'] ?? '', 'sp_delete_doc_cat_' . $cat_id ) ) {
         wp_die( __( 'Security check failed.', 'societypress' ) );
     }
 
@@ -51478,7 +51900,7 @@ function sp_render_documents_page(): void {
                     <tr>
                         <td><strong><?php echo esc_html( $doc->title ); ?></strong></td>
                         <td><?php echo esc_html( $doc->category_name ?? '—' ); ?></td>
-                        <td><?php echo $doc->document_date ? esc_html( date( 'M j, Y', strtotime( $doc->document_date ) ) ) : '—'; ?></td>
+                        <td><?php echo $doc->document_date ? esc_html( wp_date( 'M j, Y', strtotime( $doc->document_date ) ) ) : '—'; ?></td>
                         <td><?php echo esc_html( strtoupper( pathinfo( $doc->file_name, PATHINFO_EXTENSION ) ) ?: '—' ); ?></td>
                         <td><?php echo $doc->file_size ? esc_html( size_format( $doc->file_size ) ) : '—'; ?></td>
                         <td>
@@ -51492,11 +51914,12 @@ function sp_render_documents_page(): void {
                         <td>
                             <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-document-edit&id=' . $doc->id ) ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
                             |
-                            <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=sp-documents&action=delete&id=' . $doc->id ), 'sp_delete_document_' . $doc->id ) ); ?>"
-                               style="color:#b32d2e;"
-                               onclick="return confirm('<?php esc_attr_e( 'Delete this document?', 'societypress' ); ?>');">
-                                <?php esc_html_e( 'Delete', 'societypress' ); ?>
-                            </a>
+                            <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-documents' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this document?', 'societypress' ) ); ?>');">
+                                <?php wp_nonce_field( 'sp_delete_document_' . $doc->id ); ?>
+                                <input type="hidden" name="action" value="delete">
+                                <input type="hidden" name="id" value="<?php echo (int) $doc->id; ?>">
+                                <button type="submit" class="sp-link-btn" style="background:none; border:none; color:#b32d2e; cursor:pointer; padding:0; font:inherit; text-decoration:underline;"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                            </form>
                         </td>
                     </tr>
                     <?php endforeach; ?>
@@ -51603,11 +52026,12 @@ function sp_render_document_categories_page(): void {
                                 <td>
                                     <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-document-categories&edit=' . $cat->id ) ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
                                     |
-                                    <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=sp-document-categories&action=delete&id=' . $cat->id ), 'sp_delete_doc_cat_' . $cat->id ) ); ?>"
-                                       style="color:#b32d2e;"
-                                       onclick="return confirm('<?php esc_attr_e( 'Delete this category? Documents in it will become uncategorized.', 'societypress' ); ?>');">
-                                        <?php esc_html_e( 'Delete', 'societypress' ); ?>
-                                    </a>
+                                    <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-document-categories' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this category? Documents in it will become uncategorized.', 'societypress' ) ); ?>');">
+                                        <?php wp_nonce_field( 'sp_delete_doc_cat_' . $cat->id ); ?>
+                                        <input type="hidden" name="action" value="delete">
+                                        <input type="hidden" name="id" value="<?php echo (int) $cat->id; ?>">
+                                        <button type="submit" class="sp-link-btn" style="background:none; border:none; color:#b32d2e; cursor:pointer; padding:0; font:inherit; text-decoration:underline;"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                                    </form>
                                 </td>
                             </tr>
                             <?php endforeach; ?>
@@ -52140,7 +52564,7 @@ function sp_render_document_bulk_upload_page(): void {
                 countSpan.textContent = '';
             } else {
                 preview.style.display = '';
-                countSpan.textContent = n + (n === 1 ? ' file selected' : ' files selected');
+                countSpan.textContent = n + (n === 1 ? ' <?php echo esc_js( __( 'file selected', 'societypress' ) ); ?>' : ' <?php echo esc_js( __( 'files selected', 'societypress' ) ); ?>');
             }
         }
 
@@ -52324,6 +52748,52 @@ function sp_frontend_documents(): void {
  * WHY extracted: Both categorized and uncategorized docs use the same markup.
  *      Keeps the main function cleaner.
  */
+/**
+ * AJAX handler for document downloads with access control.
+ *
+ * WHY: Direct file URLs (wp-content/uploads/...) bypass members-only restrictions — anyone
+ * with the URL can download a restricted document. By routing downloads through this handler,
+ * we enforce access control server-side. The raw upload URL is never exposed to the browser.
+ * This mirrors the pattern used by the newsletter download handler (sp_ajax_newsletter_download).
+ */
+add_action( 'wp_ajax_sp_document_download', 'sp_ajax_document_download' );
+add_action( 'wp_ajax_nopriv_sp_document_download', 'sp_ajax_document_download' );
+function sp_ajax_document_download(): void {
+    $doc_id = absint( $_GET['id'] ?? 0 );
+    if ( ! $doc_id ) {
+        wp_die( esc_html__( 'Invalid document.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    $doc    = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$prefix}documents WHERE id = %d",
+        $doc_id
+    ) );
+
+    if ( ! $doc ) {
+        wp_die( esc_html__( 'Document not found.', 'societypress' ) );
+    }
+
+    if ( $doc->access_level === 'members_only' ) {
+        if ( ! is_user_logged_in() ) {
+            wp_die( esc_html__( 'Please log in to download this document.', 'societypress' ) );
+        }
+        if ( ! current_user_can( 'manage_options' ) && function_exists( 'sp_is_member' ) && ! sp_is_member() ) {
+            wp_die( esc_html__( 'This document is available to members only.', 'societypress' ) );
+        }
+    }
+
+    $file_url = wp_get_attachment_url( $doc->file_id );
+    if ( ! $file_url ) {
+        wp_die( esc_html__( 'File not found.', 'societypress' ) );
+    }
+
+    wp_redirect( $file_url );
+    exit;
+}
+
+
 function sp_render_document_row( object $doc, bool $is_member, string $login_url, callable $type_icon ): void {
     $can_access = ( $doc->access_level === 'public' ) || $is_member;
 
@@ -52338,7 +52808,7 @@ function sp_render_document_row( object $doc, bool $is_member, string $login_url
 
     $meta_parts = [];
     if ( $doc->document_date ) {
-        $meta_parts[] = date( 'F j, Y', strtotime( $doc->document_date ) );
+        $meta_parts[] = wp_date( 'F j, Y', strtotime( $doc->document_date ) );
     }
     $ext = strtoupper( pathinfo( $doc->file_name, PATHINFO_EXTENSION ) );
     if ( $ext ) {
@@ -52359,7 +52829,10 @@ function sp_render_document_row( object $doc, bool $is_member, string $login_url
     // Action
     echo '<div class="sp-doc-action">';
     if ( $can_access ) {
-        echo '<a href="' . esc_url( $doc->file_url ) . '" class="sp-doc-download" target="_blank" rel="noopener">'
+        // WHY: Route through the AJAX handler so members-only access is enforced server-side.
+        // The raw file URL is never exposed to the browser for restricted documents.
+        $download_url = admin_url( 'admin-ajax.php?action=sp_document_download&id=' . (int) $doc->id );
+        echo '<a href="' . esc_url( $download_url ) . '" class="sp-doc-download" target="_blank" rel="noopener">'
              . esc_html__( 'Download', 'societypress' ) . '</a>';
     } else {
         echo '<span class="sp-doc-locked">&#128274; <a href="' . esc_url( $login_url ) . '">'

@@ -1,7 +1,7 @@
 # SocietyPress — Architecture Reference
 
-Last updated: March 8, 2026 (from full codebase audit)
-Plugin version: 0.30d | 43,745 lines | Single-file, function-based
+Last updated: March 18, 2026 (updated from full codebase audit)
+Plugin version: 0.38d | ~52,500 lines | Single-file, function-based
 
 ---
 
@@ -10,7 +10,7 @@ Plugin version: 0.30d | 43,745 lines | Single-file, function-based
 ```
 SocietyPress/
 ├── plugin/
-│   └── societypress.php          # The entire plugin (43,745 lines)
+│   └── societypress.php          # The entire plugin (~52,500 lines)
 ├── theme/
 │   └── societypress/             # Parent theme (CSS vars, fallback defaults)
 ├── theme-saghs/
@@ -32,10 +32,11 @@ SocietyPress/
 ## Constants
 
 ```php
-SOCIETYPRESS_VERSION     // '0.30d'
-SOCIETYPRESS_PLUGIN_DIR  // plugin_dir_path(__FILE__)
-SOCIETYPRESS_PLUGIN_URL  // plugin_dir_url(__FILE__)
-SOCIETYPRESS_PLUGIN_FILE // __FILE__
+SOCIETYPRESS_VERSION      // '0.37d' (current release)
+SOCIETYPRESS_PLUGIN_DIR   // plugin_dir_path(__FILE__)
+SOCIETYPRESS_PLUGIN_URL   // plugin_dir_url(__FILE__)
+SOCIETYPRESS_PLUGIN_FILE  // __FILE__
+SOCIETYPRESS_GITHUB_REPO  // 'charles-stricklin/SocietyPress'
 ```
 
 ---
@@ -44,25 +45,26 @@ SOCIETYPRESS_PLUGIN_FILE // __FILE__
 
 Single option: `get_option('societypress_settings', [])`
 
-68 keys across 7 tabs:
-1. **Website** — site_name, tagline, logo, favicon, lockdown toggle, login page
-2. **Organization** — org_name, org_address, org_phone, org_email, org_type, founded_year
-3. **Membership** — default_tier, auto_expire, grace_period, require_approval, genealogy service toggles (8)
-4. **Directory** — visibility, searchable fields, privacy defaults, show_surnames
+70+ keys across 8 tabs:
+1. **Website** — site_name, tagline, logo, favicon, lockdown toggle, login page, analytics_google_id, analytics_exclude_admins, breadcrumb settings
+2. **Organization** — org_name, org_address, org_phone, org_email, org_type, founded_year, store_acq_code, store_intro_text
+3. **Membership** — default_tier, auto_expire, grace_period, require_approval, genealogy service toggles (8), email template subjects
+4. **Directory** — visibility, searchable fields, privacy defaults, show_surnames, profile_changes_require_approval
 5. **Events** — default_capacity, allow_waitlist, reminder_days, calendar options
 6. **Privacy** — data_retention, cookie_notice, GDPR toggles
-7. **Design** — 7 color pickers, font_family, font_size, heading_font, content_width, sidebar_width, custom_css
+7. **Design** — 7 color pickers, font_family, font_size, heading_font, content_width, sidebar_width, custom_css, style presets
+8. **Modules** — enable/disable 12 feature modules (card grid with toggle switches, Enable All / Disable All)
 
 Settings sanitized via `sp_sanitize_settings()` callback registered with `register_setting()`.
 
 Additional standalone options:
 - `societypress_db_version` — tracks schema version for migrations
 - `sp_wizard_completed` — marks setup wizard as done
-- `sp_enabled_modules` — (planned) array of enabled module slugs
+- `sp_enabled_modules` — array of enabled module slugs (12 modules)
 
 ---
 
-## Database Tables (39)
+## Database Tables (43)
 
 All prefixed with `{$wpdb->prefix}sp_`.
 
@@ -143,6 +145,23 @@ All prefixed with `{$wpdb->prefix}sp_`.
 | `sp_records` | Individual record entries with `search_text` column | 0 |
 | `sp_record_values` | EAV value storage: record_id + field_id + value | 0 |
 
+### Documents (2 tables)
+| Table | Description | Row Count |
+|-------|-------------|-----------|
+| `sp_documents` | Document records with file metadata, access level, category | varies |
+| `sp_document_categories` | Document categories (Meeting Minutes, Society Documents, etc.) | varies |
+
+### Store (2 tables)
+| Table | Description | Row Count |
+|-------|-------------|-----------|
+| `sp_store_orders` | Order records with status, totals, Stripe session/payment IDs | varies |
+| `sp_store_order_items` | Line items per order (product, quantity, price) | varies |
+
+### Members — Additional (1 table)
+| Table | Description | Row Count |
+|-------|-------------|-----------|
+| `sp_pending_profile_changes` | Queued profile changes awaiting admin approval | varies |
+
 ### System (2 tables)
 | Table | Description | Row Count |
 |-------|-------------|-----------|
@@ -193,23 +212,29 @@ SocietyPress
 │   ├── Volunteer Opportunities
 │   ├── Volunteer Roster
 │   └── Volunteer Hours
+├── Documents ──────────────── Flyout
+│   ├── All Documents
+│   ├── Categories
+│   └── Add New
 ├── Communications ──────────── Flyout
 │   ├── Blast Email
 │   ├── Compose
+│   ├── Email Templates
 │   └── Email Log
 ├── Finances ────────────────── Flyout
 │   ├── Donations
 │   ├── Campaigns
+│   ├── Store Orders
 │   └── Reports
 ├── Pages
-├── Users
+├── Users (Access Control)
 ├── Help Requests
-└── Settings
+└── Settings (8 tabs + Modules)
 ```
 
 ---
 
-## AJAX Endpoints
+## AJAX Endpoints (46)
 
 All registered via `wp_ajax_` (and `wp_ajax_nopriv_` where noted).
 
@@ -217,21 +242,35 @@ All registered via `wp_ajax_` (and `wp_ajax_nopriv_` where noted).
 | Endpoint | Auth | Description |
 |----------|------|-------------|
 | `sp_member_detail` | logged-in | Returns member detail modal HTML for directory |
-| `sp_save_profile_field` | logged-in | Saves individual profile field from My Account |
-| `sp_upload_profile_photo` | logged-in | Handles profile photo upload |
+| `sp_save_account` | logged-in | AJAX save for My Account profile sections |
 | `sp_surname_contact` | logged-in | Sends contact email to a member researching a surname |
+| `sp_add_relationship` | admin | Adds a member-to-member relationship |
+| `sp_remove_relationship` | admin | Removes a member-to-member relationship |
+| `sp_join_group` | admin | Adds a member to a group |
+| `sp_leave_group` | admin | Removes a member from a group |
+| `sp_export_count` | admin | Returns count for CSV export with current filters |
 
 ### Events
 | Endpoint | Auth | Description |
 |----------|------|-------------|
-| `sp_event_register` | logged-in | Registers current user for an event |
-| `sp_event_cancel_registration` | logged-in | Cancels user's event registration |
-| `sp_event_waitlist_promote` | admin | Promotes a waitlisted registrant to confirmed |
+| `sp_register_for_event` | both | Registers user for an event (members + guests) |
+| `sp_cancel_registration` | logged-in | Cancels user's event registration |
+| `sp_admin_add_walkin` | admin | Records a walk-in attendee |
+| `sp_admin_cancel_registration` | admin | Admin cancels a registration |
+| `sp_admin_update_attendance` | admin | Updates attendance status for a registrant |
+| `sp_admin_bulk_attendance` | admin | Bulk attendance update |
+| `sp_export_registrations` | admin | CSV export of event registrations |
+| `sp_save_event_category` | admin | Creates/updates an event category |
+| `sp_delete_event_category` | admin | Deletes an event category |
+| `sp_save_membership_tier` | admin | Creates/updates a membership tier |
+| `sp_delete_membership_tier` | admin | Deletes a membership tier |
+| `sp_regenerate_occurrences` | admin | Regenerates recurring event occurrences |
+| `sp_detach_from_series` | admin | Detaches an event from its recurring series |
 
 ### Library
 | Endpoint | Auth | Description |
 |----------|------|-------------|
-| `sp_library_item_detail` | logged-in* | Returns expanded detail HTML for catalog row |
+| `sp_library_item_detail` | both | Returns expanded detail HTML for catalog row |
 | `sp_export_library` | admin | Streams CSV export of library items |
 | `sp_library_enrich_batch` | admin | Processes batch against Open Library API |
 
@@ -251,6 +290,7 @@ All registered via `wp_ajax_` (and `wp_ajax_nopriv_` where noted).
 | Endpoint | Auth | Description |
 |----------|------|-------------|
 | `sp_blast_recipient_count` | admin | Returns recipient count for blast compose preview |
+| `sp_get_default_template` | admin | Returns default email template content for reset |
 
 ### Search
 | Endpoint | Auth | Description |
@@ -260,15 +300,29 @@ All registered via `wp_ajax_` (and `wp_ajax_nopriv_` where noted).
 ### Store / Payments
 | Endpoint | Auth | Description |
 |----------|------|-------------|
-| `sp_stripe_create_intent` | public | Creates Stripe PaymentIntent for join form |
-| `sp_stripe_confirm_payment` | public | Confirms payment and activates member |
+| `sp_cart_add` | logged-in | Adds item to shopping cart |
+| `sp_cart_get` | logged-in | Returns current cart contents and count |
+| `sp_cart_update` | logged-in | Updates item quantity in cart |
+| `sp_cart_remove` | logged-in | Removes item from cart |
+| `sp_store_checkout` | logged-in | Creates Stripe Checkout Session for store purchase |
+| `sp_test_stripe_connection` | admin | Tests Stripe API key validity |
+| `sp_admin_refund_payment` | admin | Processes a payment refund |
 
-### Help
+### Documents
 | Endpoint | Auth | Description |
 |----------|------|-------------|
-| `sp_help_request_submit` | logged-in | Submits a help request from frontend |
+| `sp_document_download` | both | Access-controlled document download |
 
-*`sp_library_item_detail` is missing `nopriv` — see Known Issues #6
+### Admin / System
+| Endpoint | Auth | Description |
+|----------|------|-------------|
+| `sp_run_update` | admin | One-click plugin update from GitHub |
+| `sp_check_update` | admin | Checks for available plugin update |
+| `sp_update_parent_theme` | admin | One-click parent theme update |
+| `sp_install_theme` | admin | Installs a child theme from the gallery |
+| `sp_dismiss_login_ack` | admin | Dismisses login acknowledgment notice |
+| `sp_quick_edit_page` | admin | Quick-edits a page from the Pages admin |
+| `sp_builder_contact_form` | both | Processes contact form submissions from page builder |
 
 ---
 
@@ -281,33 +335,43 @@ All registered via `wp_ajax_` (and `wp_ajax_nopriv_` where noted).
 
 ---
 
-## Cron Jobs
+## Cron Jobs (5)
 
 | Hook | Schedule | Description |
 |------|----------|-------------|
 | `sp_renewal_reminder_cron` | daily | Sends 30/15/7-day renewal reminders, processes expired notices |
-| `sp_event_reminder_cron` | daily | Sends reminders for upcoming events |
-| `sp_email_log_cleanup` | daily | Purges old email log entries |
+| `sp_event_reminder_cron` | daily | Sends reminders for upcoming events (gated by `events` module) |
+| `sp_email_log_cleanup_cron` | daily | Purges old email log entries |
+| `sp_daily_maintenance` | daily | Prunes audit log entries |
 | `sp_blast_email_send_batch` | one-shot | Sends next batch of a blast email, reschedules if more remain |
+
+All crons are unscheduled on plugin deactivation (including `sp_email_log_cleanup_cron`, which was previously orphaned — fixed).
 
 ---
 
-## Frontend Page Templates
+## Frontend Page Templates (16)
 
 Registered via `theme_page_templates` filter, intercepted via `template_include`.
+Disabled module templates auto-hidden from Edit Page dropdown via `sp_template_module_map()`.
 
-| Template Slug | Description |
-|---------------|-------------|
-| `sp-builder` | Page Builder — renders widget stack |
-| `sp-members` | Member Directory (legacy, may overlap with builder widget) |
-| `sp-library` | Library Catalog (legacy, may overlap with builder widget) |
-| `sp-calendar` | Events Calendar (standalone) |
-| `sp-search` | Unified Search results page |
-| `sp-newsletter-archive` | Newsletter Archive grid |
-| `sp-my-account` | Member portal (My Account) |
-| `sp-join` | Join/signup form (may use shortcode instead) |
-| `sp-store` | Public storefront |
-| `sp-records` | Genealogical Records search (may use builder widget) |
+| Template Slug | Module | Description |
+|---------------|--------|-------------|
+| `sp-builder` | — | Page Builder — renders widget stack |
+| `sp-directory` | members | Membership Directory |
+| `sp-my-account` | members | Member portal (My Account) |
+| `sp-events` | events | Events listing |
+| `sp-calendar` | events | Events Calendar (standalone) |
+| `sp-library-catalog` | library | Library Catalog (OPAC-style) |
+| `sp-newsletter-archive` | newsletters | Newsletter Archive grid |
+| `sp-resources` | resources | Resource Links directory |
+| `sp-groups` | governance | Interest Groups |
+| `sp-store` | store | Public storefront |
+| `sp-cart` | store | Shopping cart page |
+| `sp-records` | records | Genealogical Records search |
+| `sp-documents` | documents | Document archive with category grouping |
+| `sp-help-requests` | help_requests | Research Help Requests |
+| `sp-search` | — | Unified Search results page |
+| `sp-privacy-policy` | — | Dynamic privacy policy based on site config |
 
 ---
 
@@ -343,10 +407,14 @@ Each widget type has two functions:
 
 ## Encryption
 
-- Algorithm: XChaCha20-Poly1305 via PHP `sodium_*` functions
+- Algorithm: XChaCha20-Poly1305 via PHP `sodium_*` functions (libsodium)
 - Key stored as WordPress option (generated on first use)
-- Currently used for: sensitive member contact fields (when encryption is enabled)
-- Functions: `sp_encrypt()`, `sp_decrypt()`, `sp_get_encryption_key()`
+- Applied to 7 sensitive member fields: cell, work_phone, alt_phone, fax, address_1, address_2, seasonal_address_1
+- Phone (home) and city/state left plaintext for directory search/sort
+- Helper functions: `sp_encrypt()`, `sp_decrypt()`, `sp_get_encryption_key()`, `sp_member_encrypt_fields()`, `sp_member_decrypt_row()`, `sp_member_decrypt_rows()`
+- Applied at all 9 write points and all 10 read points
+- One-time migration `sp_maybe_migrate_encrypt_contacts()` on activation (batched by 100, idempotent)
+- Graceful fallback: if decryption fails on plaintext data, value passes through unchanged
 
 ---
 
@@ -359,9 +427,9 @@ Each widget type has two functions:
 - Admin UI: searchable log with stat cards, detail view with sandboxed iframe
 
 ### Merge Tags
-Two separate systems (should be unified — see Known Issues #4):
-- **Transactional emails** (`sp_replace_merge_tags`): `{{first_name}}`, `{{last_name}}`, `{{organization_name}}`, `{{membership_tier}}`, `{{expiration_date}}`, etc.
-- **Blast emails** (`sp_blast_process_merge_tags`): `{first_name}`, `{last_name}`, `{organization_name}`, etc.
+Unified to `{{double_braces}}` syntax everywhere. Legacy `{single_braces}` fallback retained in blast emails for backward compatibility.
+- `sp_replace_merge_tags()`: `{{first_name}}`, `{{last_name}}`, `{{organization_name}}`, `{{membership_tier}}`, `{{expiration_date}}`, etc.
+- Blast emails also process `{{double_braces}}` via the same function, with `{single}` fallback
 
 ### Email Types
 - Welcome email (on member creation)
@@ -377,21 +445,21 @@ Two separate systems (should be unified — see Known Issues #4):
 
 ## GDPR / Privacy Compliance
 
-### Data Exporters (5)
-1. `societypress-members` — Personal data from member record
+### Data Exporters (6)
+1. `societypress-members` — Personal data from member record (decrypted for export)
 2. `societypress-registrations` — Event registration history
 3. `societypress-speakers` — Speaker profile data
 4. `societypress-volunteers` — Volunteer roles and hours
 5. `societypress-help-requests` — Help request submissions
+6. `societypress-donations` — Donation history
 
-### Data Erasers (5)
+### Data Erasers (6)
 1. `societypress-members` — Deletes member record
 2. `societypress-registrations` — Anonymizes registration records
 3. `societypress-speakers` — Anonymizes speaker records
 4. `societypress-volunteers` — Deletes volunteer data
 5. `societypress-help-requests` — Deletes help request records
-
-**Gap:** Donations (`sp_donations`) not covered. See Known Issues #5.
+6. `societypress-donations` — Anonymizes donor info, retains financial records
 
 ---
 
@@ -414,12 +482,15 @@ All frontend emails rendered via `sp_obfuscate_email()`:
 - Custom login page with society branding
 
 ### Activation
-- Creates all 39 tables via `dbDelta()`
+- Creates all 43 tables via `dbDelta()`
 - Seeds default settings (~40 keys)
 - Seeds default membership tiers
 - Schedules cron jobs
 - Sets `societypress_db_version`
+- Auto-creates 15 starter content pages (on fresh install only)
+- Runs encryption migration for contact fields (idempotent, batched)
+- Assigns privacy policy template to Privacy Policy page
 
 ### Deactivation
-- Unschedules cron jobs (except `sp_email_log_cleanup` — see Known Issues #21)
+- Unschedules all cron jobs (including `sp_email_log_cleanup_cron` — previously orphaned, now fixed)
 - Does NOT drop tables or delete options (data preservation)

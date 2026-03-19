@@ -11446,8 +11446,8 @@ function sp_render_member_edit_page(): void {
                 // Show Delete button only when editing someone else's record.
                 // WHY: Deleting yourself nukes your WP user account too, which
                 //      locks you out entirely. The only recovery is phpMyAdmin.
-                <?php // Delete button is in a separate POST form below ?>
-                <?php endif; ?>
+                // Delete button is in a separate POST form below.
+                ?>
             </p>
 
         </form>
@@ -34898,8 +34898,8 @@ class SP_Speakers_List_Table extends WP_List_Table {
 
     protected function column_active( $item ): string {
         return $item->active
-            ? '<span style="color: #00a32a; font-weight: 500;">Active</span>'
-            : '<span style="color: #787c82;"><?php esc_html_e( 'Inactive', 'societypress' ); ?></span>';
+            ? '<span style="color: #00a32a; font-weight: 500;">' . esc_html__( 'Active', 'societypress' ) . '</span>'
+            : '<span style="color: #787c82;">' . esc_html__( 'Inactive', 'societypress' ) . '</span>';
     }
 
     protected function column_default( $item, $column_name ): string {
@@ -39393,7 +39393,7 @@ function sp_frontend_library_catalog(): void {
     echo '<form method="get" style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">';
     echo '<input type="text" name="sp_lib_search" value="' . esc_attr( $search ) . '" placeholder="Search title, author, or call number..." style="flex:1; min-width:200px; padding:10px; border:1px solid #ccc; border-radius:6px; font-size:16px;">';
     echo '<select name="category" style="padding:10px; border:1px solid #ccc; border-radius:6px;">';
-    echo '<option value="0"><?php esc_html_e( 'All Categories', 'societypress' ); ?></option>';
+    echo '<option value="0">' . esc_html__( 'All Categories', 'societypress' ) . '</option>';
     foreach ( $categories as $cat ) {
         echo '<option value="' . $cat->id . '"' . selected( $cat_filter, $cat->id, false ) . '>' . esc_html( $cat->name ) . '</option>';
     }

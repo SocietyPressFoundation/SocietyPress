@@ -362,34 +362,34 @@ Principle: Every piece of data a society puts into SocietyPress can come back ou
   - WHY: This is the single feature that proves we mean it when we say "no lock-in." If a society can download their entire operation in one click, they know we're not holding them hostage. It also doubles as a complete backup.
 - [ ] Marketing: "Your data is yours" messaging on getsocietypress.org — front and center, not buried in a FAQ
 
-## One-Click Installer — Not Started (separate project)
+## One-Click Installer — COMPLETE (separate project)
 
 Single-file `install.php` that takes Harold from empty hosting to running SocietyPress in one step. Upload one file, fill out one form, done.
 
-- [ ] Server requirements check: PHP 8.0+, MySQL/MariaDB, ZipArchive, curl/allow_url_fopen, libsodium, writable directory
-- [ ] Download WordPress latest from wordpress.org/latest.zip
-- [ ] Download SocietyPress plugin + parent theme from GitHub latest release
-- [ ] Extract WordPress to web root
-- [ ] Collect DB credentials + site info via branded web form
-- [ ] Generate security keys (WordPress salt API)
-- [ ] Write wp-config.php
-- [ ] Run WordPress DB install programmatically
-- [ ] Install plugin to wp-content/plugins/, theme to wp-content/themes/
-- [ ] Activate plugin and theme via options table
-- [ ] Set permalink structure to /%postname%/
-- [ ] Self-delete after successful install (security — installer must not persist)
-- [ ] Redirect to SocietyPress setup wizard
-- [ ] Error handling: clear messages for every failure point (bad credentials, no ZipArchive, permissions, download failure)
-- [ ] Fallback: if outbound HTTP is blocked, offer manual upload instructions for the WordPress + SP ZIPs
-- [ ] Branding: SocietyPress logo, colors, professional look — this is Harold's first impression
-- [ ] Repo: separate file in SocietyPress repo (e.g., `installer/install.php`) or its own mini-repo, not part of the plugin itself
+- [x] Server requirements check: PHP 8.0+, MySQL/MariaDB, ZipArchive, curl/allow_url_fopen, libsodium, writable directory
+- [x] Download WordPress latest from wordpress.org/latest.zip
+- [x] Extract WordPress to web root
+- [x] Collect DB credentials + site info via branded web form
+- [x] Demo mode: detects config file outside web root, shows grayed-out coaching DB fields with real credentials via hidden inputs
+- [x] Generate security keys (WordPress salt API, with local fallback)
+- [x] Write wp-config.php
+- [x] Run WordPress install via bridge script (browser redirect to sp-bridge-install.php — avoids wp-settings.php bootstrap issues on restrictive hosts)
+- [x] Install SocietyPress plugin + parent theme + 4 child themes from bundle ZIP (local filesystem copy, HTTP download, GitHub fallback — 3-tier)
+- [x] Activate plugin and theme via mu-plugin (auto-fires on first admin load, self-destructs)
+- [x] Set permalink structure to /%postname%/
+- [x] Error handling: clear branded messages for every failure point
+- [x] Branding: SocietyPress logo, Inter font, gold/navy color scheme — professional first impression
+- [x] Repo: `installer/install.php` in SocietyPress repo, ships with `societypress-bundle.zip` alongside
+- [ ] Self-delete after successful install (currently kept for demo resets — production version should auto-delete)
+- [ ] Reset script for demo site (one-click wipe and rebuild)
 
-## Demo Installation — Not Started
+## Demo Installation — LIVE
 
-- [ ] Standalone demo site (separate from example.org production)
-  - Fake society with sample members, events, records, newsletters
-  - Read-only or resettable so evaluators can explore without breaking anything
-  - White paper offers this twice — needs to actually exist before the paper circulates
+- [x] Demo site running at https://demo.getsocietypress.org
+- [x] SocietyPress 0.38d active, parent theme active, 4 child themes installed, 57 tables
+- [x] Installed via the one-click installer (proving it works end-to-end)
+- [ ] Sample data: fake society with members, events, records, newsletters
+- [ ] Reset mechanism for evaluators to rebuild from scratch
 
 ## ENS Migration — Not Started
 

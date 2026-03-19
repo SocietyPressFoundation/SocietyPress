@@ -663,41 +663,128 @@ function sp_installer_process(): void {
     }
     $log[] = 'Configuration file written.';
 
-    // ---- 6. Run WordPress installation ----
-    $log[] = 'Installing WordPress...';
+    // ---- 6. Prepare for WordPress installation ----
+    // WHY: We can't bootstrap wp-settings.php on this host (proc_open disabled,
+    // and WordPress's DB error handler calls die() which can't be caught). Instead,
+    // we let WordPress install itself via its own /wp-admin/install.php, and we
+    // plant a must-use plugin that auto-activates SocietyPress + theme on first load.
+    $log[] = 'Preparing WordPress installation...';
 
-    // WHY: We define ABSPATH and load wp-admin/install.php's core function
-    // directly rather than making an HTTP request to ourselves. This avoids
-    // issues with firewalls, self-referencing URLs, and HTTP vs HTTPS mismatches.
-    define( 'ABSPATH', $install_dir . '/' );
-    define( 'WPINC', 'wp-includes' );
+    // Create the mu-plugin that fires once after WP installs
+    $mu_dir = $install_dir . '/wp-content/mu-plugins';
+    @mkdir( $mu_dir, 0755, true );
 
-    // Suppress WordPress startup output
-    ob_start();
-
-    // Load WordPress core
-    require_once ABSPATH . 'wp-settings.php';
-
-    // Run the install
-    if ( ! function_exists( 'wp_install' ) ) {
-        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+    $mu_plugin = <<<'MUPLUGIN'
+<?php
+/**
+ * SocietyPress Auto-Activator (must-use plugin)
+ *
+ * WHY: The installer can't bootstrap WordPress to activate the plugin and theme
+ * programmatically. This mu-plugin runs on the first admin page load after
+ * WordPress installs itself, activates SocietyPress + the parent theme, sets
+ * permalinks, and then deletes itself.
+ */
+add_action( 'admin_init', function () {
+    // Only run once — if SocietyPress is already active, bail
+    $active = get_option( 'active_plugins', [] );
+    if ( in_array( 'societypress/societypress.php', $active, true ) ) {
+        // Clean up: delete this mu-plugin
+        @unlink( __FILE__ );
+        return;
     }
 
-    $result = wp_install( $site_title, $admin_user, $admin_email, true, '', $admin_pass );
+    // Activate SocietyPress plugin
+    $active[] = 'societypress/societypress.php';
+    update_option( 'active_plugins', $active );
 
-    ob_end_clean();
+    // Activate parent theme
+    switch_theme( 'societypress' );
 
-    if ( is_wp_error( $result ) ) {
-        sp_installer_die( 'WordPress Install Failed', 'Error: ' . htmlspecialchars( $result->get_error_message() ) );
-    }
-    $log[] = 'WordPress installed.';
-
-    // ---- 7. Set permalinks ----
-    $log[] = 'Configuring permalinks...';
+    // Set permalinks
     global $wp_rewrite;
     $wp_rewrite->set_permalink_structure( '/%postname%/' );
     $wp_rewrite->flush_rules( true );
-    $log[] = 'Permalinks configured.';
+
+    // Self-destruct
+    @unlink( __FILE__ );
+
+    // Redirect to trigger SocietyPress activation + setup wizard
+    wp_safe_redirect( admin_url( 'index.php' ) );
+    exit;
+}, 1 );
+MUPLUGIN;
+
+    file_put_contents( $mu_dir . '/sp-auto-activate.php', $mu_plugin );
+    $log[] = 'Auto-activator planted.';
+
+    // ---- 7. Create a bridge script that runs WordPress's install with our data ----
+    // WHY: We already collected the society name, admin email, username, and password
+    // in our form. Redirecting to wp-admin/install.php makes the user enter it all
+    // again — terrible UX. Instead, we create a temporary PHP script that loads
+    // WordPress and runs wp_install() with the values we already have. The user
+    // never sees WordPress's install screen.
+    $log[] = 'Creating install bridge...';
+
+    $bridge_script = $install_dir . '/sp-bridge-install.php';
+    $bridge_code = '<?php' . "\n"
+        . '/**' . "\n"
+        . ' * Temporary bridge script — runs wp_install() with pre-collected data,' . "\n"
+        . ' * sets up permalinks, and self-destructs. The user\'s browser is redirected' . "\n"
+        . ' * here by the SocietyPress installer so WordPress installs in a normal' . "\n"
+        . ' * HTTP request context (avoiding bootstrap issues).' . "\n"
+        . ' */' . "\n"
+        . 'define( "WP_INSTALLING", true );' . "\n"
+        . 'require_once __DIR__ . "/wp-load.php";' . "\n"
+        . 'require_once ABSPATH . "wp-admin/includes/upgrade.php";' . "\n"
+        . "\n"
+        . '// Run the WordPress installation with data from the SocietyPress installer' . "\n"
+        . '$result = wp_install(' . "\n"
+        . '    ' . var_export( $site_title, true ) . ',' . "\n"
+        . '    ' . var_export( $admin_user, true ) . ',' . "\n"
+        . '    ' . var_export( $admin_email, true ) . ',' . "\n"
+        . '    true,' . "\n"
+        . '    "",' . "\n"
+        . '    ' . var_export( $admin_pass, true ) . "\n"
+        . ');' . "\n"
+        . "\n"
+        . 'if ( is_wp_error( $result ) ) {' . "\n"
+        . '    wp_die( "Installation failed: " . $result->get_error_message() );' . "\n"
+        . '}' . "\n"
+        . "\n"
+        . '// Set permalinks' . "\n"
+        . 'global $wp_rewrite;' . "\n"
+        . '$wp_rewrite->set_permalink_structure( "/%postname%/" );' . "\n"
+        . '$wp_rewrite->flush_rules( true );' . "\n"
+        . "\n"
+        . '// Self-destruct' . "\n"
+        . '@unlink( __FILE__ );' . "\n"
+        . "\n"
+        . '// Redirect to login — the mu-plugin will activate SocietyPress on first admin load' . "\n"
+        . 'wp_redirect( wp_login_url( admin_url() ) );' . "\n"
+        . 'exit;' . "\n";
+
+    file_put_contents( $bridge_script, $bridge_code );
+    $log[] = 'Bridge script created.';
+
+    // Remove our .htaccess so the bridge script is reachable via HTTP
+    $our_htaccess = $install_dir . '/.htaccess';
+    $htaccess_bak = $install_dir . '/.htaccess.sp-bak';
+    if ( file_exists( $our_htaccess ) ) {
+        rename( $our_htaccess, $htaccess_bak );
+    }
+
+    // ---- 8. Redirect the user's browser to the bridge script ----
+    // WHY: Server-to-self HTTP requests fail on this host. Instead, we redirect
+    // the user's browser to the bridge script. It loads WordPress in a normal
+    // HTTP request context (just like wp-admin/install.php would), runs wp_install()
+    // with the data we already collected, self-destructs, and redirects to login.
+    // The user sees a brief "Installing..." flash, then the login page.
+    $log[] = 'Redirecting to WordPress installation...';
+
+    $_SESSION['sp_install_log'] = $log;
+
+    header( 'Location: /sp-bridge-install.php' );
+    exit;
 
     // ---- 8. Download and install SocietyPress ----
     // WHY: We try our own bundle URL first (hosted on getsocietypress.org) because
@@ -774,7 +861,7 @@ function sp_installer_process(): void {
 
             // Plugin: societypress/* → plugins/societypress/*
             if ( strpos( $name, 'societypress/' ) === 0 && strpos( $name, 'themes/' ) !== 0 ) {
-                $target = WP_CONTENT_DIR . '/plugins/' . $name;
+                $target = $install_dir . '/wp-content' . '/plugins/' . $name;
                 if ( substr( $name, -1 ) === '/' ) {
                     @mkdir( $target, 0755, true );
                 } else {
@@ -785,7 +872,7 @@ function sp_installer_process(): void {
 
             // Themes: themes/* → themes/*
             if ( strpos( $name, 'themes/' ) === 0 ) {
-                $target = WP_CONTENT_DIR . '/' . $name;
+                $target = $install_dir . '/wp-content' . '/' . $name;
                 if ( substr( $name, -1 ) === '/' ) {
                     @mkdir( $target, 0755, true );
                 } else {
@@ -796,7 +883,7 @@ function sp_installer_process(): void {
         }
     } elseif ( $top_dir ) {
         // GitHub format: extract with path rewriting
-        $plugin_dir = WP_CONTENT_DIR . '/plugins/societypress/';
+        $plugin_dir = $install_dir . '/wp-content' . '/plugins/societypress/';
         @mkdir( $plugin_dir, 0755, true );
 
         $child_themes = [ 'heritage', 'coastline', 'prairie', 'ledger' ];
@@ -817,7 +904,7 @@ function sp_installer_process(): void {
             if ( strpos( $name, "{$top_dir}/theme/" ) === 0 && strpos( $name, "{$top_dir}/theme-" ) !== 0 ) {
                 $rel = substr( $name, strlen( "{$top_dir}/theme/" ) );
                 if ( $rel === '' || strpos( $rel, 'saghs/' ) === 0 ) continue;
-                $target = WP_CONTENT_DIR . '/themes/societypress/' . $rel;
+                $target = $install_dir . '/wp-content' . '/themes/societypress/' . $rel;
                 if ( substr( $name, -1 ) === '/' ) { @mkdir( $target, 0755, true ); }
                 else { @mkdir( dirname( $target ), 0755, true ); file_put_contents( $target, $zip->getFromIndex( $i ) ); }
             }
@@ -827,7 +914,7 @@ function sp_installer_process(): void {
                 if ( strpos( $name, "{$top_dir}/theme-{$ct}/" ) === 0 ) {
                     $rel = substr( $name, strlen( "{$top_dir}/theme-{$ct}/" ) );
                     if ( $rel === '' ) continue;
-                    $target = WP_CONTENT_DIR . "/themes/{$ct}/" . $rel;
+                    $target = $install_dir . '/wp-content' . "/themes/{$ct}/" . $rel;
                     if ( substr( $name, -1 ) === '/' ) { @mkdir( $target, 0755, true ); }
                     else { @mkdir( dirname( $target ), 0755, true ); file_put_contents( $target, $zip->getFromIndex( $i ) ); }
                 }
@@ -843,40 +930,12 @@ function sp_installer_process(): void {
     @unlink( $sp_zip_path );
     $log[] = 'SocietyPress plugin and themes installed.';
 
-    // ---- 10. Activate plugin and theme ----
-    $log[] = 'Activating SocietyPress...';
-
-    // Activate the plugin
-    $active_plugins = get_option( 'active_plugins', [] );
-    $sp_plugin_file = 'societypress/societypress.php';
-    if ( ! in_array( $sp_plugin_file, $active_plugins, true ) ) {
-        $active_plugins[] = $sp_plugin_file;
-        update_option( 'active_plugins', $active_plugins );
-    }
-
-    // Activate the theme
-    update_option( 'template', 'societypress' );
-    update_option( 'stylesheet', 'societypress' );
-
-    $log[] = 'SocietyPress activated.';
-
-    // ---- 11. Self-destruct ----
-    // WHY: An installer script left on a production server is a critical
-    // security vulnerability. Anyone who finds it could reinstall WordPress
-    // and take over the site. Delete it immediately.
-    $log[] = 'Cleaning up installer...';
-    @unlink( __FILE__ );
-    $log[] = 'Installer removed.';
-
-    // ---- 12. Store completion data for the success page ----
-    $_SESSION['sp_install_complete'] = true;
-    $_SESSION['sp_install_log']      = $log;
-    $_SESSION['sp_admin_url']        = site_url( '/wp-admin/' );
-    $_SESSION['sp_site_url']         = site_url( '/' );
-
-    // Redirect to the success page
-    header( 'Location: ' . site_url( '/wp-admin/index.php' ) );
-    exit;
+    // Steps 10-12 are no longer reached — step 6 redirects to WordPress's
+    // own installer, which handles DB setup + admin user creation. The mu-plugin
+    // planted in step 6 auto-activates SocietyPress on first admin page load.
+    //
+    // This code only runs if step 6 somehow doesn't redirect (shouldn't happen).
+    sp_installer_die( 'Unexpected State', 'The installer should have redirected to WordPress setup. Please visit <a href="/wp-admin/install.php">/wp-admin/install.php</a> to continue.' );
 }
 
 
@@ -1003,6 +1062,43 @@ function sp_installer_download_string( string $url ): ?string {
 
     if ( ini_get( 'allow_url_fopen' ) ) {
         $result = @file_get_contents( $url );
+        if ( $result ) return $result;
+    }
+
+    return null;
+}
+
+/**
+ * POST to a URL and return the response body as a string.
+ * Used to submit the WordPress install form programmatically.
+ */
+function sp_installer_download_string_post( string $url, array $data ): ?string {
+    if ( function_exists( 'curl_init' ) ) {
+        $ch = curl_init( $url );
+        curl_setopt_array( $ch, [
+            CURLOPT_RETURNTRANSFER  => true,
+            CURLOPT_FOLLOWLOCATION  => true,
+            CURLOPT_POST            => true,
+            CURLOPT_POSTFIELDS      => http_build_query( $data ),
+            CURLOPT_TIMEOUT         => 60,
+            CURLOPT_SSL_VERIFYPEER  => true,
+            CURLOPT_USERAGENT       => 'SocietyPress-Installer/1.0',
+        ] );
+        $result = curl_exec( $ch );
+        curl_close( $ch );
+        if ( $result ) return $result;
+    }
+
+    if ( ini_get( 'allow_url_fopen' ) ) {
+        $ctx = stream_context_create( [
+            'http' => [
+                'method'  => 'POST',
+                'header'  => 'Content-Type: application/x-www-form-urlencoded',
+                'content' => http_build_query( $data ),
+                'timeout' => 60,
+            ],
+        ] );
+        $result = @file_get_contents( $url, false, $ctx );
         if ( $result ) return $result;
     }
 

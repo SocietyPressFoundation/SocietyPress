@@ -1,0 +1,93 @@
+/*
+Theme Name: Heritage
+Theme URI: https://getsocietypress.org/themes/heritage
+Author: Stricklin Development
+Author URI: https://stricklindevelopment.com/
+Description: A warm, traditional theme inspired by old library stacks and leather-bound journals.
+             Rich browns, soft cream, and antique gold create a sense of history and permanence.
+             Pairs beautifully with genealogical and historical societies that want to feel
+             established and scholarly.
+Version: 1.0.0
+Template: societypress
+Requires at least: 6.0
+Tested up to: 6.7
+Requires PHP: 8.0
+License: GPL-2.0-or-later
+Text Domain: heritage
+Tags: genealogy, historical-society, traditional, warm, serif
+*/
+
+/* ============================================================================
+   HERITAGE COLOR PALETTE & FONT
+   WHY: Override the parent theme's CSS custom properties to apply the Heritage
+   look without touching any template files. The parent theme and all plugin
+   widgets read from --sp-* vars, so changing them here cascades everywhere.
+   ============================================================================ */
+
+:root {
+    /* Heritage brand colors */
+    --heritage-brown:     #3E2723;
+    --heritage-cream:     #FDF6EC;
+    --heritage-gold:      #B8860B;
+    --heritage-tan:       #D4C5A9;
+    --heritage-text:      #2C1810;
+    --heritage-muted:     #8B7355;
+
+    /* Override SocietyPress design vars */
+    --sp-color-primary:       #3E2723;
+    --sp-color-primary-hover: #B8860B;
+    --sp-color-accent:        #B8860B;
+    --sp-color-secondary:     #D4C5A9;
+    --sp-color-background:    #FDF6EC;
+    --sp-color-text:          #2C1810;
+    --sp-color-text-muted:    #8B7355;
+    --sp-color-border:        #D4C5A9;
+    --sp-color-header-bg:     #3E2723;
+    --sp-color-header-text:   #FDF6EC;
+    --sp-color-footer-bg:     #3E2723;
+    --sp-color-footer-text:   #FDF6EC;
+
+    /* WHY Merriweather: A warm, readable serif that says "library" without
+       feeling stuffy. Excellent at body sizes for older readers. */
+    --sp-font-body:    'Merriweather', Georgia, 'Times New Roman', serif;
+    --sp-font-heading: 'Merriweather', Georgia, 'Times New Roman', serif;
+}
+
+/* ============================================================================
+   HERITAGE-SPECIFIC TWEAKS
+   WHY: Minimal overrides beyond the color/font vars. The parent theme handles
+   layout and structure — we just refine the feel.
+   ============================================================================ */
+
+/* Soften the background on the main content area */
+body {
+    background-color: var(--heritage-cream);
+}
+
+/* Links use the gold accent */
+a {
+    color: var(--heritage-gold);
+}
+a:hover {
+    color: var(--heritage-brown);
+}
+
+/* Buttons get the warm brown treatment */
+.sp-btn,
+button.sp-btn,
+input[type="submit"] {
+    background-color: var(--heritage-brown);
+    border-color: var(--heritage-brown);
+}
+.sp-btn:hover,
+button.sp-btn:hover,
+input[type="submit"]:hover {
+    background-color: var(--heritage-gold);
+    border-color: var(--heritage-gold);
+}
+
+/* Subtle border styling — warmer than the default gray */
+hr,
+.sp-divider {
+    border-color: var(--heritage-tan);
+}

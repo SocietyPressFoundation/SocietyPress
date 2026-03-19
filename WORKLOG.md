@@ -1,5 +1,75 @@
 # SocietyPress — WORKLOG
 
+## v0.38d — 2026-03-18
+
+### Comprehensive Code Review & Fix Session
+Full 52,000-line code review with parallel agent analysis, followed by systematic fix pass.
+
+**Critical Bugs Fixed:**
+- DB version never saved after upgrade — dbDelta and all seeding ran on every admin page load
+- Record collection field ID orphaning — editing field schema broke all existing record data
+- Incomplete cascade delete — extracted `sp_cascade_delete_member_data()` covering 16 related tables
+
+**Security Fixed:**
+- Document downloads bypass members-only access — added `sp_ajax_document_download()` AJAX handler
+- Guest registration cancel ownership gap — null user_id check
+- Missing nonce on blast recipient count AJAX
+- Hardcoded the society email (President@upstream-society.org) → pulls from org_email setting
+- Unescaped `get_the_title()` XSS
+
+**Code Quality (12 fixes):**
+- ~30 `date()` → `wp_date()` for timezone-correct display
+- ~40 `admin_url()` wrapped in `esc_url()`
+- Stripe refund handles 'pending' status
+- ICS line folding uses `mb_strlen`/`mb_substr` for multibyte safety
+- `preferred_name` fallback prevents PHP 8.x notice
+- `wp_enqueue_media()` moved before output in speaker edit
+- N+1 query eliminated on frontend event listing (batch registration count query)
+- Library stats transients invalidated on write operations
+- Email template uses brand colors from Design settings
+- Dashicons only loaded for logged-in users (saves 46KB for visitors)
+- Merge tag documentation unified to `{{double_braces}}`
+- Blank template moved from `/tmp/` to `wp_upload_dir()`
+
+**i18n:**
+- Comprehensive pass: ~500+ strings wrapped across 4 agent passes
+- Text domain `societypress` now appears 2,564+ times (~95% coverage)
+
+**Localization:**
+- Currency setting: `sp_format_currency()` helper + `currency_symbol`/`currency_position` settings
+- Replaced all 44 hardcoded `$` currency instances (PHP + JS)
+- Fixed pre-existing bug: `store_acq_code` and `store_intro_text` settings weren't saving
+
+**Structural Improvements:**
+- 25 GET-based delete handlers converted to POST forms (groups, pages, payments, events, speakers, albums, etc.)
+- Font-family map extracted to `sp_get_font_family_css()` / `sp_get_font_family_options()` (was defined 3x)
+- Member statuses extracted to `sp_get_member_statuses()` (was defined independently in multiple places)
+- Library catalog page template unified to use OPAC-style widget (deprecated basic 85-line version)
+- Donation acknowledgment email wired into template editor (4th tab, merge tags, no more hardcoded English)
+
+**New: Competitive Matrix**
+- `Docs/COMPETITIVE-MATRIX.md` — markdown comparison vs Blue Crab/ENS, Wild Apricot, ClubExpress
+- `Docs/competitive-matrix.html` — styled HTML graphic with SocietyPress branding
+
+**New: One-Click Installer**
+- `installer/install.php` — single-file installer: requirements check → config form → downloads WordPress + SocietyPress → configures → activates → self-deletes → redirects to setup wizard
+
+**New: 4 Demo Child Themes**
+- Heritage (brown/cream/gold, Merriweather serif)
+- Coastline (navy/white/sky blue, Inter sans)
+- Prairie (forest green/wheat/sage, Lora serif)
+- Ledger (charcoal/ivory/burgundy, Source Sans 3)
+
+**Documentation Updated:**
+- FEATURES.md, ARCHITECTURE.md, PROJECT-PROMPT.md brought up to v0.38d
+- KNOWN-ISSUES.md rewritten (43 items tracked, 41 fixed, 2 deferred)
+- TO-DO.md updated: voting/elections, PWA, bbPress, data portability, localization, installer, demo themes
+
+## v0.37d — 2026-03-15
+
+### Google Analytics, Couples, Roles, Update System, Privacy Policy
+(see git log for details)
+
 ## v0.36d — 2026-03-14
 
 ### Documents Module — Bulk Upload

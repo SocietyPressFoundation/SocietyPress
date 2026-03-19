@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SocietyPress — Competitive Comparison</title>
+<style>
+  /* WHY: Self-contained single-file graphic — no external deps needed.
+     Uses Inter to match the getsocietypress.org brand. */
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f8f9fb;
+    color: #1A1A1A;
+    line-height: 1.5;
+    padding: 40px 20px;
+  }
+
+  .matrix-container {
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  /* ---- Header ---- */
+  .matrix-header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+  .matrix-header h1 {
+    font-size: 32px;
+    font-weight: 800;
+    color: #0D1F3C;
+    margin-bottom: 8px;
+    letter-spacing: -0.5px;
+  }
+  .matrix-header p {
+    font-size: 16px;
+    color: #6B7280;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+
+  /* ---- Highlight banner ---- */
+  .cost-banner {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 48px;
+  }
+  .cost-card {
+    background: #fff;
+    border: 1px solid #E5E7EB;
+    border-radius: 12px;
+    padding: 24px 20px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .cost-card.highlight {
+    border-color: #C9973A;
+    box-shadow: 0 0 0 2px rgba(201, 151, 58, 0.15);
+  }
+  .cost-card.highlight::before {
+    content: 'BEST VALUE';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    background: #C9973A;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    padding: 4px 0;
+  }
+  .cost-card.highlight .cost-name { margin-top: 12px; }
+  .cost-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #0D1F3C;
+    margin-bottom: 4px;
+  }
+  .cost-price {
+    font-size: 36px;
+    font-weight: 800;
+    color: #0D1F3C;
+    line-height: 1.1;
+  }
+  .cost-card.highlight .cost-price { color: #C9973A; }
+  .cost-note {
+    font-size: 12px;
+    color: #6B7280;
+    margin-top: 4px;
+  }
+
+  /* ---- Section headers ---- */
+  .section-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #0D1F3C;
+    margin: 40px 0 16px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #C9973A;
+    display: inline-block;
+  }
+
+  /* ---- Comparison table ---- */
+  .matrix-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: #fff;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid #E5E7EB;
+    margin-bottom: 32px;
+    font-size: 14px;
+  }
+  .matrix-table thead th {
+    background: #0D1F3C;
+    color: #fff;
+    font-weight: 600;
+    padding: 14px 16px;
+    text-align: center;
+    font-size: 13px;
+    letter-spacing: 0.3px;
+  }
+  .matrix-table thead th:first-child {
+    text-align: left;
+    width: 260px;
+  }
+  /* Highlight the SocietyPress column header */
+  .matrix-table thead th.sp-col {
+    background: #C9973A;
+    color: #fff;
+  }
+  .matrix-table tbody td {
+    padding: 10px 16px;
+    text-align: center;
+    border-bottom: 1px solid #F3F4F6;
+    vertical-align: middle;
+  }
+  .matrix-table tbody td:first-child {
+    text-align: left;
+    font-weight: 500;
+    color: #374151;
+  }
+  .matrix-table tbody tr:last-child td {
+    border-bottom: none;
+  }
+  .matrix-table tbody tr:hover {
+    background: #FAFBFC;
+  }
+  /* Highlight SocietyPress column cells */
+  .matrix-table tbody td.sp-col {
+    background: rgba(201, 151, 58, 0.04);
+    font-weight: 600;
+  }
+
+  /* ---- Check/X/partial icons ---- */
+  .y { color: #16A34A; font-weight: 700; }         /* yes — green check */
+  .n { color: #DC2626; }                             /* no — red X */
+  .p { color: #D97706; font-size: 13px; }           /* partial — amber */
+  .sp-col.y { color: #16A34A; }
+
+  /* ---- Category row (gray bar) ---- */
+  .matrix-table tbody tr.cat-row td {
+    background: #F9FAFB;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: #6B7280;
+    padding: 8px 16px;
+    border-bottom: 1px solid #E5E7EB;
+  }
+
+  /* ---- Bottom line callout ---- */
+  .bottom-line {
+    background: #0D1F3C;
+    color: #fff;
+    border-radius: 12px;
+    padding: 32px 40px;
+    text-align: center;
+    margin-top: 48px;
+  }
+  .bottom-line h2 {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 12px;
+  }
+  .bottom-line p {
+    font-size: 15px;
+    color: rgba(255,255,255,0.8);
+    max-width: 700px;
+    margin: 0 auto;
+    line-height: 1.6;
+  }
+  .bottom-line .accent { color: #C9973A; font-weight: 600; }
+
+  /* ---- Footer note ---- */
+  .matrix-footer {
+    text-align: center;
+    margin-top: 24px;
+    font-size: 12px;
+    color: #9CA3AF;
+  }
+
+  /* ---- Responsive ---- */
+  @media (max-width: 768px) {
+    .cost-banner { grid-template-columns: repeat(2, 1fr); }
+    .matrix-table { font-size: 12px; }
+    .matrix-table thead th,
+    .matrix-table tbody td { padding: 8px 10px; }
+    .matrix-table thead th:first-child { width: 140px; }
+    .bottom-line { padding: 24px 20px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="matrix-container">
+
+  <!-- Header -->
+  <div class="matrix-header">
+    <h1>How Does SocietyPress Compare?</h1>
+    <p>The only free, open-source platform built specifically for genealogical societies.</p>
+  </div>
+
+  <!-- 5-Year Cost Banner -->
+  <div class="cost-banner">
+    <div class="cost-card highlight">
+      <div class="cost-name">SocietyPress</div>
+      <div class="cost-price">~$300</div>
+      <div class="cost-note">5-year total (hosting only)</div>
+    </div>
+    <div class="cost-card">
+      <div class="cost-name">EasyNetSites</div>
+      <div class="cost-price">~$3,800</div>
+      <div class="cost-note">5-year total (400 members)</div>
+    </div>
+    <div class="cost-card">
+      <div class="cost-name">Wild Apricot</div>
+      <div class="cost-price">~$6,000</div>
+      <div class="cost-note">5-year total (400 members)</div>
+    </div>
+    <div class="cost-card">
+      <div class="cost-name">ClubExpress</div>
+      <div class="cost-price">~$9,500</div>
+      <div class="cost-note">5-year total (400 members)</div>
+    </div>
+  </div>
+
+  <!-- Feature Matrix -->
+  <table class="matrix-table">
+    <thead>
+      <tr>
+        <th>Feature</th>
+        <th class="sp-col">SocietyPress</th>
+        <th>EasyNetSites</th>
+        <th>Wild Apricot</th>
+        <th>ClubExpress</th>
+      </tr>
+    </thead>
+    <tbody>
+
+      <!-- Platform -->
+      <tr class="cat-row"><td colspan="5">Platform</td></tr>
+      <tr>
+        <td>Built for genealogy societies</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+      </tr>
+      <tr>
+        <td>Free / open source</td>
+        <td class="sp-col y">&#10003; GPL</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+      </tr>
+      <tr>
+        <td>Self-hosted (you own your data)</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+      </tr>
+      <tr>
+        <td>Built on WordPress</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="y">&#10003;</td>
+        <td class="n">Proprietary</td>
+        <td class="n">ASP.NET</td>
+      </tr>
+      <tr>
+        <td>Vendor lock-in risk</td>
+        <td class="sp-col y">None</td>
+        <td class="n">Yes</td>
+        <td class="n">Yes</td>
+        <td class="n">Yes</td>
+      </tr>
+
+      <!-- Membership -->
+      <tr class="cat-row"><td colspan="5">Membership</td></tr>
+      <tr>
+        <td>Member database &amp; tiers</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+      </tr>
+      <tr>
+        <td>Dues tracking &amp; auto reminders</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+      </tr>
+      <tr>
+        <td>Joint / household memberships</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+      </tr>
+      <tr>
+        <td>Member self-service portal</td>
+        <td class="sp-col y">&#10003; Full</td>
+        <td class="p">Limited</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+      </tr>
+      <tr>
+        <td>Searchable member directory</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+      </tr>
+      <tr>
+        <td>CSV import / export</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+      </tr>
+      <tr>
+        <td>Contact data encryption at rest</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+      </tr>
+      <tr>
+        <td>GDPR export &amp; erasure tools</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="y">&#10003;</td>
+        <td class="n">&#10005;</td>
+      </tr>
+
+      <!-- Genealogy-Specific -->
+      <tr class="cat-row"><td colspan="5">Genealogy-Specific</td></tr>
+      <tr>
+        <td>Surname research registry</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+      </tr>
+      <tr>
+        <td>Library / archive catalog</td>
+        <td class="sp-col y">&#10003; OPAC-style</td>
+        <td class="p">Basic</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+      </tr>
+      <tr>
+        <td>Genealogical records database</td>
+        <td class="sp-col y">&#10003; 13 types</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+      </tr>
+      <tr>
+        <td>Cemetery &amp; obituary records</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+      </tr>
+      <tr>
+        <td>Research area tracking</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+      </tr>
+      <tr>
+        <td>Member relationships</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+      </tr>
+      <tr>
+        <td>Genealogy service links (8 services)</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+      </tr>
+      <tr>
+        <td>Research help / query desk</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+      </tr>
+
+      <!-- Events -->
+      <tr class="cat-row"><td colspan="5">Events</td></tr>
+      <tr>
+        <td>Event management &amp; registration</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+      </tr>
+      <tr>
+        <td>Waitlist with auto-promotion</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+      </tr>
+      <tr>
+        <td>Recurring events</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+      </tr>
+      <tr>
+        <td>Speakers with bios &amp; photos</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+      </tr>
+      <tr>
+        <td>Dual pricing (member / non-member)</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+      </tr>
+      <tr>
+        <td>Walk-in &amp; attendance tracking</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+      </tr>
+
+      <!-- Communications -->
+      <tr class="cat-row"><td colspan="5">Communications</td></tr>
+      <tr>
+        <td>Blast / mass email</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+      </tr>
+      <tr>
+        <td>Email template editor</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+      </tr>
+      <tr>
+        <td>Full email log &amp; delivery tracking</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+      </tr>
+      <tr>
+        <td>Newsletter archive (PDF)</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+      </tr>
+      <tr>
+        <td>Forums</td>
+        <td class="sp-col y">&#10003; bbPress compatible</td>
+        <td class="y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="y">&#10003;</td>
+      </tr>
+
+      <!-- Website & Content -->
+      <tr class="cat-row"><td colspan="5">Website &amp; Content</td></tr>
+      <tr>
+        <td>Website builder / page builder</td>
+        <td class="sp-col y">&#10003; 19 widgets</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+      </tr>
+      <tr>
+        <td>Document library</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="p">5MB limit</td>
+        <td class="n">&#10005;</td>
+        <td class="y">&#10003;</td>
+      </tr>
+      <tr>
+        <td>Photo gallery</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+        <td class="y">&#10003;</td>
+      </tr>
+      <tr>
+        <td>Unified cross-module search</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+        <td class="y">&#10003;</td>
+      </tr>
+
+      <!-- Governance & Volunteers -->
+      <tr class="cat-row"><td colspan="5">Governance &amp; Volunteers</td></tr>
+      <tr>
+        <td>Committee management</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="y">&#10003;</td>
+      </tr>
+      <tr>
+        <td>Officer positions &amp; terms</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="y">&#10003;</td>
+      </tr>
+      <tr>
+        <td>Volunteer opportunities &amp; signup</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+      </tr>
+      <tr>
+        <td>Volunteer hours tracking</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+      </tr>
+      <tr>
+        <td>Voting / elections</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="y">&#10003;</td>
+      </tr>
+
+      <!-- Finances -->
+      <tr class="cat-row"><td colspan="5">Finances &amp; Store</td></tr>
+      <tr>
+        <td>Online payments</td>
+        <td class="sp-col y">Stripe</td>
+        <td class="y">PayPal</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+      </tr>
+      <tr>
+        <td>Online store</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+      </tr>
+      <tr>
+        <td>Donation campaigns</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+      </tr>
+      <tr>
+        <td>Financial reports</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+      </tr>
+
+      <!-- Admin -->
+      <tr class="cat-row"><td colspan="5">Administration</td></tr>
+      <tr>
+        <td>Role-based permissions</td>
+        <td class="sp-col y">&#10003; 10 areas</td>
+        <td class="p">Basic</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+      </tr>
+      <tr>
+        <td>Audit log</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+        <td class="n">&#10005;</td>
+      </tr>
+      <tr>
+        <td>Setup wizard</td>
+        <td class="sp-col y">&#10003;</td>
+        <td class="n">&#10005;</td>
+        <td class="y">&#10003;</td>
+        <td class="y">&#10003;</td>
+      </tr>
+      <tr>
+        <td>Mobile app</td>
+        <td class="sp-col y">&#10003; PWA</td>
+        <td class="n">&#10005;</td>
+        <td class="y">&#10003;</td>
+        <td class="n">&#10005;</td>
+      </tr>
+
+    </tbody>
+  </table>
+
+  <!-- Bottom Line -->
+  <div class="bottom-line">
+    <h2>The only free, purpose-built platform for genealogical societies</h2>
+    <p>
+      SocietyPress delivers <span class="accent">deeper genealogy features</span> than EasyNetSites,
+      <span class="accent">more specialized tools</span> than Wild Apricot or ClubExpress,
+      and costs <span class="accent">nothing</span> — because society volunteers shouldn't have to
+      choose between running their organization and paying for the software to do it.
+    </p>
+  </div>
+
+  <p class="matrix-footer">
+    Feature data sourced from vendor websites as of March 2026.
+    Pricing based on a 400-member society. SocietyPress hosting estimate assumes standard shared hosting.
+  </p>
+
+</div>
+
+</body>
+</html>

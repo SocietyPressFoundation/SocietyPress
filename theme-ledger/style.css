@@ -1,0 +1,92 @@
+/*
+Theme Name: Ledger
+Theme URI: https://getsocietypress.org/themes/ledger
+Author: Stricklin Development
+Author URI: https://stricklindevelopment.com/
+Description: A formal, archival theme with sharp contrasts and buttoned-up elegance.
+             Charcoal and ivory with a deep burgundy accent evoke courthouses, ledger books,
+             and official records. For societies that want to project authority and permanence.
+Version: 1.0.0
+Template: societypress
+Requires at least: 6.0
+Tested up to: 6.7
+Requires PHP: 8.0
+License: GPL-2.0-or-later
+Text Domain: ledger
+Tags: genealogy, historical-society, formal, archival, professional, sans-serif
+*/
+
+/* ============================================================================
+   LEDGER COLOR PALETTE & FONT
+   ============================================================================ */
+
+:root {
+    /* Ledger brand colors */
+    --ledger-charcoal:  #2C2C2C;
+    --ledger-ivory:     #F8F5F0;
+    --ledger-burgundy:  #7B2D3B;
+    --ledger-steel:     #6B6B6B;
+    --ledger-silver:    #D4D0CB;
+    --ledger-text:      #1A1A1A;
+    --ledger-muted:     #808080;
+
+    /* Override SocietyPress design vars */
+    --sp-color-primary:       #2C2C2C;
+    --sp-color-primary-hover: #7B2D3B;
+    --sp-color-accent:        #7B2D3B;
+    --sp-color-secondary:     #F8F5F0;
+    --sp-color-background:    #FFFFFF;
+    --sp-color-text:          #1A1A1A;
+    --sp-color-text-muted:    #808080;
+    --sp-color-border:        #D4D0CB;
+    --sp-color-header-bg:     #2C2C2C;
+    --sp-color-header-text:   #F8F5F0;
+    --sp-color-footer-bg:     #2C2C2C;
+    --sp-color-footer-text:   #F8F5F0;
+
+    /* WHY Source Sans 3: A professional sans-serif designed by Paul Hunt for Adobe.
+       Clean and authoritative without being cold. Excellent readability at all sizes
+       with a slightly humanist character that softens the formal palette. */
+    --sp-font-body:    'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --sp-font-heading: 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* ============================================================================
+   LEDGER-SPECIFIC TWEAKS
+   ============================================================================ */
+
+body {
+    background-color: #FFFFFF;
+}
+
+a {
+    color: var(--ledger-burgundy);
+}
+a:hover {
+    color: var(--ledger-charcoal);
+}
+
+.sp-btn,
+button.sp-btn,
+input[type="submit"] {
+    background-color: var(--ledger-charcoal);
+    border-color: var(--ledger-charcoal);
+}
+.sp-btn:hover,
+button.sp-btn:hover,
+input[type="submit"]:hover {
+    background-color: var(--ledger-burgundy);
+    border-color: var(--ledger-burgundy);
+}
+
+/* Crisp, thin borders for that archival precision */
+hr,
+.sp-divider {
+    border-color: var(--ledger-silver);
+    border-width: 1px;
+}
+
+/* Tighten heading letter spacing for a more formal feel */
+h1, h2, h3, h4, h5, h6 {
+    letter-spacing: -0.01em;
+}

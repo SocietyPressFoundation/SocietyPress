@@ -1,0 +1,87 @@
+/*
+Theme Name: Coastline
+Theme URI: https://getsocietypress.org/themes/coastline
+Author: Stricklin Development
+Author URI: https://stricklindevelopment.com/
+Description: A clean, modern theme with an airy coastal feel. Navy and white with soft blue
+             accents create a professional, approachable look. Perfect for societies that want
+             to feel contemporary and welcoming without sacrificing credibility.
+Version: 1.0.0
+Template: societypress
+Requires at least: 6.0
+Tested up to: 6.7
+Requires PHP: 8.0
+License: GPL-2.0-or-later
+Text Domain: coastline
+Tags: genealogy, historical-society, modern, clean, coastal, sans-serif
+*/
+
+/* ============================================================================
+   COASTLINE COLOR PALETTE & FONT
+   ============================================================================ */
+
+:root {
+    /* Coastline brand colors */
+    --coast-navy:      #1B3A5C;
+    --coast-white:     #FFFFFF;
+    --coast-sky:       #5B9BD5;
+    --coast-light:     #EFF6FC;
+    --coast-sand:      #F5F0EB;
+    --coast-text:      #1A2A3A;
+    --coast-muted:     #6B7D8E;
+
+    /* Override SocietyPress design vars */
+    --sp-color-primary:       #1B3A5C;
+    --sp-color-primary-hover: #5B9BD5;
+    --sp-color-accent:        #5B9BD5;
+    --sp-color-secondary:     #EFF6FC;
+    --sp-color-background:    #FFFFFF;
+    --sp-color-text:          #1A2A3A;
+    --sp-color-text-muted:    #6B7D8E;
+    --sp-color-border:        #D6E4F0;
+    --sp-color-header-bg:     #1B3A5C;
+    --sp-color-header-text:   #FFFFFF;
+    --sp-color-footer-bg:     #1B3A5C;
+    --sp-color-footer-text:   #FFFFFF;
+
+    /* WHY Inter: The cleanest sans-serif available. Designed for screens, highly
+       legible at all sizes, and feels modern without being trendy. */
+    --sp-font-body:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --sp-font-heading: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* ============================================================================
+   COASTLINE-SPECIFIC TWEAKS
+   ============================================================================ */
+
+body {
+    background-color: var(--coast-white);
+}
+
+a {
+    color: var(--coast-sky);
+}
+a:hover {
+    color: var(--coast-navy);
+}
+
+.sp-btn,
+button.sp-btn,
+input[type="submit"] {
+    background-color: var(--coast-navy);
+    border-color: var(--coast-navy);
+    border-radius: 6px;
+}
+.sp-btn:hover,
+button.sp-btn:hover,
+input[type="submit"]:hover {
+    background-color: var(--coast-sky);
+    border-color: var(--coast-sky);
+}
+
+/* Slightly rounded cards for that modern feel */
+.sp-card,
+.sp-event-card,
+.sp-widget-card {
+    border-radius: 8px;
+}

@@ -1,108 +1,152 @@
 # SocietyPress — Known Issues & Technical Debt
 
-Compiled from full codebase audit, March 8, 2026.
-Plugin version at time of audit: 0.30d (43,745 lines).
+Originally compiled from full codebase audit, March 8, 2026 (v0.30d).
+Updated March 18, 2026 after comprehensive code review and fix session (v0.38d).
 
 ---
 
-## Critical
+## Critical — All Fixed
 
-### 1. Version Mismatch — FIXED
-- **Location:** Plugin header (line ~8) and constant `SOCIETYPRESS_VERSION` (line ~30)
-- **Impact:** WordPress showed wrong version in Plugins list; update checks used header version
-- **Fix:** Updated plugin header to `0.30d` to match the constant
+### 1. Version Mismatch — FIXED (v0.30d)
+- **Fix:** Updated plugin header to match the constant.
 
-### 2. Attendance Count NULL Bug — FIXED
-- **Location:** Annual report (around line 32880)
-- **Impact:** The `attended` column in `sp_event_registrations` allows NULL (not yet marked), 1 (attended), 0 (no-show). The annual report had no attendance stat at all — it only counted confirmed registrations, not who actually showed up.
-- **Fix:** Added a proper attendance query (`WHERE attended = 1`) and "Attended" stat card to the annual report. The original `sp_event_attendance_count()` function referenced here never existed.
+### 2. Attendance Count NULL Bug — FIXED (v0.30d)
+- **Fix:** Added proper attendance query (`WHERE attended = 1`) and "Attended" stat card to annual report.
 
-### 3. Join Form Creates Member Before Payment — FIXED
-- **Location:** `[societypress_join]` shortcode handler (around line 27500) and `sp_send_welcome_email()` (around line 37080)
-- **Impact:** A member record was created as 'pending' (correct) but the welcome email fired immediately, before any payment or admin approval.
-- **Fix:** Added a `pending` status guard in `sp_send_welcome_email()` — pending members no longer receive the welcome email. Added a pending→active transition check in the member save handler that sends the welcome email when an admin approves the member. Also added welcome email for admin-created members who start as active.
+### 3. Join Form Creates Member Before Payment — FIXED (v0.30d)
+- **Fix:** Added pending status guard in `sp_send_welcome_email()`. Welcome email fires on admin approval, not form submission.
+
+### 4. DB Version Never Saved After Upgrade — FIXED (v0.38d)
+- **Location:** `admin_init` upgrade hook (line ~2058)
+- **Impact:** `sp_create_tables()` and all 6 seeding functions ran on every admin page load — silent performance killer.
+- **Fix:** Added `update_option( 'societypress_db_version', SOCIETYPRESS_VERSION )` after upgrade completes.
+
+### 5. Record Collection Field ID Orphaning — FIXED (v0.38d)
+- **Location:** Collection edit save handler (line ~48596)
+- **Impact:** Editing a collection's field schema deleted all fields and re-inserted with new auto-increment IDs, orphaning all `sp_record_values.field_id` references. Editing fields after importing data silently broke all existing records.
+- **Fix:** Replaced delete-all + re-insert with update-in-place pattern. Existing fields are updated by ID, new fields inserted, only removed fields deleted. Hidden `field_id[]` input added to form to round-trip IDs.
+
+### 6. Incomplete Cascade Delete on Member Removal — FIXED (v0.38d)
+- **Location:** 3 delete handlers (single, bulk, "Delete All Others") around line 9023
+- **Impact:** Only 4 of 16+ related tables were cleaned up, leaving orphaned rows in event registrations, volunteer data, research areas, donations, orders, etc.
+- **Fix:** Extracted `sp_cascade_delete_member_data()` helper that cleans up all 16 related tables. All 3 delete paths now call it.
 
 ---
 
-## Should Fix
+## Security — All Fixed
 
-### 4. Merge Tag Syntax Split — FIXED
-- **Location:** `sp_blast_process_merge_tags()` (line ~38240)
-- **Fix:** Unified blast emails to `{{double_braces}}` syntax, with legacy `{single_braces}` fallback for existing saved templates. Also removed duplicate `{{organization_name}}` key in `sp_replace_merge_tags()`.
+### 7. Document Download Bypasses Access Control — FIXED (v0.38d)
+- **Impact:** Frontend document links went directly to `wp_get_attachment_url()`. Anyone with the URL could download members-only documents.
+- **Fix:** Added `sp_ajax_document_download()` AJAX handler with access control. Frontend links now route through the handler.
 
-### 5. GDPR Gap — Donations — FIXED
-- **Location:** Privacy exporters/erasers
-- **Fix:** Added 6th exporter (`sp_privacy_export_donation_data`) and 6th eraser (`sp_privacy_erase_donation_data`). Exports donor name/email/amount/campaign; eraser anonymizes donor info while retaining financial records for tax reporting.
+### 8. Guest Registration Cancel Ownership Gap — FIXED (v0.38d)
+- **Impact:** Any logged-in member could cancel a guest's event registration by knowing the ID.
+- **Fix:** Added null user_id check — only admins can cancel guest registrations.
 
-### 6. Library Item Detail AJAX — FIXED
-- **Fix:** Added `wp_ajax_nopriv_sp_library_item_detail` action so catalog expand works for non-logged-in users when the widget is public.
+### 9. Missing Nonce on Blast Recipient Count — FIXED (v0.38d)
+- **Fix:** Added `check_ajax_referer()` to `sp_ajax_blast_recipient_count()`.
 
-### 7. jQuery Usage Violations — DEFERRED
-- **Location:** Contact form widget frontend (line ~19413), album edit page (line ~32717), page builder admin (line ~18592)
-- **Impact:** Project policy is vanilla JS only. These use jQuery. The page builder admin is hundreds of lines of jQuery — substantial rewrite.
-- **Status:** Deferred — requires significant effort, low user-facing impact since jQuery is always available in WP admin.
+### 10. Hardcoded the society Email in Plugin — FIXED (v0.38d)
+- **Impact:** `President@upstream-society.org` hardcoded in post-login acknowledgment modal.
+- **Fix:** Replaced with `$settings['org_email']` from settings.
 
-### 8. Deprecated `get_page_by_title()` — FIXED
-- **Fix:** Replaced all 3 instances with `new WP_Query()` using `title` parameter.
+### 11. Unescaped get_the_title() XSS — FIXED (v0.38d)
+- **Fix:** Wrapped in `esc_html()` at line ~23608 and verified other instances.
 
-### 9. `auto_update_plugin` Filter Scope — FIXED
-- **Fix:** Replaced `__return_true` with scoped callbacks that only affect SocietyPress plugin/theme, leaving other plugins' auto-update behavior alone.
+---
 
-### 10. Event Delete / Time Slots — WAS ALREADY FIXED
-- Both single and bulk delete paths already call `sp_slots_delete_by_event()`. The audit missed this.
+## Should Fix — Resolved
 
-### 11. Rate Limiting on Join Form — FIXED
-- **Fix:** Added transient-based rate limiting: 3 submissions per IP per hour. Silently blocks after threshold.
+### 12. Merge Tag Syntax Split — FIXED (v0.30d)
+### 13. GDPR Gap — Donations — FIXED (v0.30d)
+### 14. Library Item Detail AJAX — FIXED (v0.30d)
+### 15. Deprecated get_page_by_title() — FIXED (v0.30d)
+### 16. auto_update_plugin Filter Scope — FIXED (v0.30d)
+### 17. Rate Limiting on Join Form — FIXED (v0.30d)
+### 18. Help Request Notifications — FIXED (v0.30d)
 
-### 12. Server Path Exposure in Event Import — DEFERRED
+---
+
+## Code Quality — Fixed in v0.38d
+
+### 19. date() Used Instead of wp_date() — FIXED
+- **Impact:** ~20 instances used PHP `date()` for display, ignoring site timezone.
+- **Fix:** Replaced all display-context `date()` calls with `wp_date()`.
+
+### 20. admin_url() Without esc_url() — FIXED
+- **Impact:** ~40+ unescaped `admin_url()` calls in HTML output contexts.
+- **Fix:** Wrapped all in `esc_url()`.
+
+### 21. Stripe Refund Doesn't Handle Pending Status — FIXED
+- **Fix:** Changed to accept both 'succeeded' and 'pending', with distinct messages.
+
+### 22. ICS Line Folding Breaks Multibyte Characters — FIXED
+- **Fix:** Replaced `strlen()`/`substr()` with `mb_strlen()`/`mb_substr()`.
+
+### 23. preferred_name Fallback PHP 8.x Notice — FIXED
+- **Fix:** Added null coalescing before the ternary operator.
+
+### 24. wp_enqueue_media() Called After Output — FIXED
+- **Fix:** Moved to top of `sp_render_speaker_edit_page()`.
+
+### 25. N+1 Query on Frontend Event Listing — FIXED
+- **Fix:** Added batch query for registration counts before the card loop.
+
+### 26. Library Stats Transient Never Invalidated — FIXED
+- **Fix:** Added `delete_transient()` calls after item create/update/delete/import.
+
+### 27. Email Template Hardcodes WP-Blue — FIXED
+- **Fix:** `sp_build_email_html()` now uses `design_color_primary` from settings.
+
+### 28. Dashicons Loaded for All Visitors — FIXED
+- **Fix:** Wrapped in `is_user_logged_in()` check.
+
+### 29. Merge Tag Documentation Inconsistency — FIXED
+- **Fix:** Blast compose page now documents `{{double_braces}}` matching the template editor.
+
+### 30. Blank Template /tmp/ Race Condition — FIXED
+- **Fix:** Changed from `sys_get_temp_dir()` to `wp_upload_dir()['basedir']`.
+
+### 31. N+1 Query in Events Admin List Table — FIXED (v0.30d)
+### 32. Missing Deactivation Cleanup for Email Log Cron — FIXED (v0.30d)
+### 33. Wizard Lifetime Settings Key Mismatch — FIXED (v0.30d)
+### 34. Breadcrumb Settings Without UI — FIXED (v0.30d)
+### 35. Hardcoded the society References in Store — FIXED (v0.30d)
+### 36. Blank Page Template Created at Runtime — FIXED (v0.30d)
+
+---
+
+## i18n — FIXED (v0.38d)
+
+Comprehensive i18n pass completed March 18, 2026. ~500+ strings wrapped across the entire plugin. Text domain `societypress` now appears 2,564+ times. Coverage estimated at ~95%.
+
+---
+
+## Still Deferred
+
+### 37. jQuery Usage Violations
+- **Location:** Contact form widget frontend, album edit page, page builder admin
+- **Status:** Deferred — substantial rewrite, low user impact since jQuery is always available in WP admin.
+
+### 38. Server Path Exposure in Import Flows
 - **Location:** 5 import flows expose server temp file paths in hidden form fields
-- **Status:** Requires refactoring all import flows to use transient keys. Admin-only pages, low risk. Deferred.
-
-### 13. Help Request Notifications — FIXED
-- **Fix:** Changed from emailing ALL active members to only emailing administrators (users with `manage_options` capability). Setting still controls whether notifications are sent at all.
+- **Status:** Deferred — admin-only pages, nonce-protected, low risk. Requires refactoring all import flows to use transient-based temp file tracking.
 
 ---
 
-## Cosmetic / Low Priority
+## In Progress (v0.38d agents running)
 
-### 14. Duplicate `Deceased` Key in CSV Import Map — FIXED
-- **Fix:** Removed the duplicate `__meta` mapping. The `'deceased'` field mapping (for status logic) now works correctly without being overwritten.
+### 39. Hardcoded USD Currency Symbol
+- Being replaced with configurable `sp_format_currency()` helper + settings.
 
-### 15. Duplicate `{{organization_name}}` Merge Tag — FIXED
-- **Fix:** Removed the duplicate entry in `sp_replace_merge_tags()`.
+### 40. GET-Based Destructive Actions
+- Group/page/payment deletes being converted from GET links to POST forms.
 
-### 16. Orphaned Import Temp Files — WAS ALREADY FIXED
-- All 5 CSV import flows (members, events, library, resource links, records) already call `@unlink( $temp_file )` after processing completes. The audit missed this. Only edge case: abandoned imports (preview but never execute) — temp files linger until the OS cleans them.
+### 41. Duplicate Code (Font Map, Status Lists)
+- Being extracted to `sp_get_font_family_css()` and `sp_get_member_statuses()` helpers.
 
-### 17. Breadcrumb Settings Without UI — FIXED
-- **Fix:** Added breadcrumb controls to Settings → Website: enable/disable checkbox, home label text field, separator character field. Added sanitizer entries and page-key registration so they save correctly. Updated `sp_breadcrumbs()` default separator to match the settings UI default (literal `›` instead of `&rsaquo;`).
+### 42. Dual Library Catalog Implementations
+- Page template being unified to use the superior OPAC-style widget.
 
-### 18. Hardcoded the society References in Store — FIXED
-- **Fix:** Replaced hardcoded `acq_code = 'Society Publication'` with configurable `store_acq_code` setting (Settings → Organization → Store). Store intro text also configurable via `store_intro_text` setting. Blank acq_code shows all priced library items.
-
-### 19. Blank Page Template Created at Runtime — FIXED
-- **Fix:** Replaced `init`-hook `file_put_contents()` in the plugin directory with `sp_get_blank_template_path()` that uses `sys_get_temp_dir()` and only creates the file lazily when actually needed by `template_include`. Plugin no longer writes to its own directory at runtime.
-
-### 20. N+1 Query in Events List Table — FIXED
-- **Fix:** Main query in `prepare_items()` now JOINs the categories table and uses a subquery for registration counts. `column_category()` and `column_registrations()` use pre-fetched data instead of per-row queries. Eliminates ~2N extra queries per page load.
-
-### 21. Missing Deactivation Cleanup for Email Log Cron — FIXED
-- **Fix:** Added `wp_clear_scheduled_hook('sp_email_log_cleanup_cron')` to the existing deactivation hook.
-
-### 22. Wizard Lifetime Settings Key Mismatch — FIXED
-- **Fix:** Added `'lifetime'` to the allowed values in the `membership_period_type` sanitizer (was only `annual`/`rolling`). Also added "Lifetime" radio option to the Membership settings page to match the wizard's dropdown.
-
----
-
-## i18n Gaps
-
-These sections have user-facing strings NOT wrapped in WordPress i18n functions:
-
-- Volunteer system (admin + frontend): opportunity management, signup messages, hours logging
-- Store frontend: "Add to Cart", "Publications", "Browse our collection"
-- Resource links admin: "No resources yet.", "Category saved.", "Category deleted."
-- Many admin notice/success messages throughout the plugin
-- Event import page strings
-- Various error messages in AJAX handlers
-
-**Plan:** Retroactive i18n pass on all strings before beta release.
+### 43. Donation Acknowledgment Email Not Customizable
+- Being wired into the existing email template editor system.

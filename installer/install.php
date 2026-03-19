@@ -46,8 +46,34 @@ if ( file_exists( __DIR__ . '/wp-config.php' ) && file_exists( __DIR__ . '/wp-in
 
 // Where to download WordPress and SocietyPress from
 define( 'SP_INSTALLER_WP_URL',     'https://wordpress.org/latest.zip' );
+define( 'SP_INSTALLER_BUNDLE_URL', 'https://getsocietypress.org/downloads/societypress-latest.zip' );
 define( 'SP_INSTALLER_GITHUB_REPO', 'charles-stricklin/SocietyPress' );
 define( 'SP_INSTALLER_SALT_URL',    'https://api.wordpress.org/secret-key/1.1/salt/' );
+
+// Demo mode: if a config file exists outside the web root, load it.
+// WHY: On the demo site, DB credentials are pre-configured so visitors don't need
+// to know them. The config file lives outside public_html so it's never web-accessible.
+// When this file exists, the installer hides the DB fields and shows "Pre-configured."
+// On a real install (no config file), the full DB form is shown.
+// WHY: We check multiple common paths because different hosts put the home
+// directory in different places, and $_SERVER['HOME'] isn't always set.
+$sp_demo_config = '';
+$sp_demo_candidates = [
+    dirname( $_SERVER['DOCUMENT_ROOT'] ) . '/private/sp-demo-config.php',
+    ( $_SERVER['HOME'] ?? '' ) . '/private/sp-demo-config.php',
+    '/home/' . ( $_SERVER['USER'] ?? get_current_user() ) . '/private/sp-demo-config.php',
+    dirname( dirname( $_SERVER['DOCUMENT_ROOT'] ) ) . '/private/sp-demo-config.php',
+];
+foreach ( $sp_demo_candidates as $candidate ) {
+    if ( $candidate && file_exists( $candidate ) ) {
+        $sp_demo_config = $candidate;
+        break;
+    }
+}
+define( 'SP_INSTALLER_DEMO_MODE', ! empty( $sp_demo_config ) );
+if ( SP_INSTALLER_DEMO_MODE ) {
+    require_once $sp_demo_config;
+}
 
 // Minimum requirements
 define( 'SP_INSTALLER_MIN_PHP',     '8.0.0' );
@@ -237,11 +263,20 @@ function sp_installer_show_form(): void {
 
     sp_installer_render_page( 'Configure Your Site', function () use ( $nonce ) {
         ?>
-        <p style="margin-bottom: 24px; color: #6B7280;">
-            You'll need your database credentials from your hosting provider. If you're not sure
-            where to find them, check your hosting control panel (cPanel, Plesk, etc.) under
-            "MySQL Databases" or "Database Management."
-        </p>
+        <?php if ( SP_INSTALLER_DEMO_MODE ) : ?>
+            <p style="margin-bottom: 24px; color: #6B7280;">
+                This is what the SocietyPress installer looks like. The database fields below show
+                example values — on your own hosting, you'd fill in the real credentials from your
+                hosting provider. For this demo, just scroll down, enter a society name and password,
+                and click Install.
+            </p>
+        <?php else : ?>
+            <p style="margin-bottom: 24px; color: #6B7280;">
+                You'll need your database credentials from your hosting provider. If you're not sure
+                where to find them, check your hosting control panel (cPanel, Plesk, etc.) under
+                "MySQL Databases" or "Database Management."
+            </p>
+        <?php endif; ?>
 
         <form method="post" action="?step=configure" id="sp-install-form">
             <input type="hidden" name="sp_install_nonce" value="<?php echo htmlspecialchars( $nonce ); ?>">
@@ -250,49 +285,115 @@ function sp_installer_show_form(): void {
             <h2 style="font-size: 18px; font-weight: 700; color: #0D1F3C; margin: 32px 0 16px; padding-bottom: 8px; border-bottom: 2px solid #C9973A;">
                 Database Connection
             </h2>
-            <p style="color: #6B7280; font-size: 13px; margin-bottom: 16px;">
-                Your hosting provider gave you these when you created a MySQL database.
-            </p>
 
-            <table class="sp-form-table">
-                <tr>
-                    <th><label for="db_name">Database Name</label></th>
-                    <td>
-                        <input type="text" id="db_name" name="db_name" required
-                               placeholder="e.g., society_db" autocomplete="off">
-                        <p class="desc">The name of the database you created for this site.</p>
-                    </td>
-                </tr>
-                <tr>
-                    <th><label for="db_user">Database Username</label></th>
-                    <td>
-                        <input type="text" id="db_user" name="db_user" required
-                               placeholder="e.g., society_user" autocomplete="off">
-                    </td>
-                </tr>
-                <tr>
-                    <th><label for="db_pass">Database Password</label></th>
-                    <td>
-                        <input type="password" id="db_pass" name="db_pass"
-                               placeholder="Your database password" autocomplete="new-password">
-                    </td>
-                </tr>
-                <tr>
-                    <th><label for="db_host">Database Host</label></th>
-                    <td>
-                        <input type="text" id="db_host" name="db_host" value="localhost">
-                        <p class="desc">Almost always "localhost." Only change this if your host tells you to.</p>
-                    </td>
-                </tr>
-                <tr>
-                    <th><label for="db_prefix">Table Prefix</label></th>
-                    <td>
-                        <input type="text" id="db_prefix" name="db_prefix" value="wp_"
-                               pattern="[a-zA-Z_][a-zA-Z0-9_]*" maxlength="20">
-                        <p class="desc">Leave as "wp_" unless you have a reason to change it.</p>
-                    </td>
-                </tr>
-            </table>
+            <?php if ( SP_INSTALLER_DEMO_MODE ) : ?>
+                <!-- Demo mode: show realistic example fields (disabled) with coaching text.
+                     Real credentials are submitted via hidden inputs underneath. Howard sees
+                     what he'll encounter on his own hosting, with explanations. -->
+                <input type="hidden" name="db_name" value="<?php echo htmlspecialchars( SP_DEMO_DB_NAME ); ?>">
+                <input type="hidden" name="db_user" value="<?php echo htmlspecialchars( SP_DEMO_DB_USER ); ?>">
+                <input type="hidden" name="db_pass" value="<?php echo htmlspecialchars( SP_DEMO_DB_PASS ); ?>">
+                <input type="hidden" name="db_host" value="<?php echo htmlspecialchars( SP_DEMO_DB_HOST ); ?>">
+                <input type="hidden" name="db_prefix" value="wp_">
+
+                <p style="color: #6B7280; font-size: 13px; margin-bottom: 16px;">
+                    When you install on your own hosting, you'll fill in the database credentials
+                    your hosting provider gives you. Here's what that looks like:
+                </p>
+
+                <table class="sp-form-table">
+                    <tr>
+                        <th><label>Database Name</label></th>
+                        <td>
+                            <input type="text" value="elmcounty_societypress" disabled readonly tabindex="-1"
+                                   style="background: #F3F4F6; color: #9CA3AF; border: 1px dashed #D1D5DB; cursor: not-allowed; opacity: 0.7;">
+                            <p class="desc">&larr; Your hosting provider gives you this when you create a MySQL database.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label>Database Username</label></th>
+                        <td>
+                            <input type="text" value="elmcounty_spadmin" disabled readonly tabindex="-1"
+                                   style="background: #F3F4F6; color: #9CA3AF; border: 1px dashed #D1D5DB; cursor: not-allowed; opacity: 0.7;">
+                            <p class="desc">&larr; Created at the same time as the database.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label>Database Password</label></th>
+                        <td>
+                            <input type="password" value="fake-password-example" disabled readonly tabindex="-1"
+                                   style="background: #F3F4F6; color: #9CA3AF; border: 1px dashed #D1D5DB; cursor: not-allowed; opacity: 0.7;">
+                            <p class="desc">&larr; The password you set when creating the database user.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label>Database Host</label></th>
+                        <td>
+                            <input type="text" value="localhost" disabled readonly tabindex="-1"
+                                   style="background: #F3F4F6; color: #9CA3AF; border: 1px dashed #D1D5DB; cursor: not-allowed; opacity: 0.7;">
+                            <p class="desc">&larr; Almost always "localhost." Only change if your host tells you to.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label>Table Prefix</label></th>
+                        <td>
+                            <input type="text" value="wp_" disabled readonly tabindex="-1"
+                                   style="background: #F3F4F6; color: #9CA3AF; border: 1px dashed #D1D5DB; cursor: not-allowed; opacity: 0.7;">
+                            <p class="desc">&larr; Leave as "wp_" unless you have a reason to change it.</p>
+                        </td>
+                    </tr>
+                </table>
+
+                <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 8px; padding: 12px 16px; margin: 16px 0 8px; font-size: 13px; color: #1E40AF;">
+                    &#9432; For this demo, the database is pre-configured. Just fill in your society details below and click Install.
+                </div>
+
+            <?php else : ?>
+                <!-- Production mode: full DB configuration form -->
+                <p style="color: #6B7280; font-size: 13px; margin-bottom: 16px;">
+                    Your hosting provider gave you these when you created a MySQL database.
+                </p>
+
+                <table class="sp-form-table">
+                    <tr>
+                        <th><label for="db_name">Database Name</label></th>
+                        <td>
+                            <input type="text" id="db_name" name="db_name" required
+                                   placeholder="e.g., society_db" autocomplete="off">
+                            <p class="desc">The name of the database you created for this site.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="db_user">Database Username</label></th>
+                        <td>
+                            <input type="text" id="db_user" name="db_user" required
+                                   placeholder="e.g., society_user" autocomplete="off">
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="db_pass">Database Password</label></th>
+                        <td>
+                            <input type="password" id="db_pass" name="db_pass"
+                                   placeholder="Your database password" autocomplete="new-password">
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="db_host">Database Host</label></th>
+                        <td>
+                            <input type="text" id="db_host" name="db_host" value="localhost">
+                            <p class="desc">Almost always "localhost." Only change this if your host tells you to.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="db_prefix">Table Prefix</label></th>
+                        <td>
+                            <input type="text" id="db_prefix" name="db_prefix" value="wp_"
+                                   pattern="[a-zA-Z_][a-zA-Z0-9_]*" maxlength="20">
+                            <p class="desc">Leave as "wp_" unless you have a reason to change it.</p>
+                        </td>
+                    </tr>
+                </table>
+            <?php endif; ?>
 
             <!-- Site Settings -->
             <h2 style="font-size: 18px; font-weight: 700; color: #0D1F3C; margin: 32px 0 16px; padding-bottom: 8px; border-bottom: 2px solid #C9973A;">
@@ -599,20 +700,29 @@ function sp_installer_process(): void {
     $log[] = 'Permalinks configured.';
 
     // ---- 8. Download and install SocietyPress ----
+    // WHY: We try our own bundle URL first (hosted on getsocietypress.org) because
+    // it's a direct download with no redirects. GitHub's archive URLs require redirect
+    // following and sometimes fail on locked-down shared hosts. The bundle contains
+    // the plugin + parent theme + all child themes in a simple flat structure.
     $log[] = 'Downloading SocietyPress...';
 
-    $gh_url = sp_installer_get_github_release_url();
-    if ( ! $gh_url ) {
-        // Fallback: try the main branch zipball
-        $gh_url = 'https://github.com/' . SP_INSTALLER_GITHUB_REPO . '/archive/refs/heads/main.zip';
+    $sp_zip_path = $install_dir . '/societypress-latest.zip';
+    $sp_downloaded = sp_installer_download( SP_INSTALLER_BUNDLE_URL, $sp_zip_path );
+
+    if ( ! $sp_downloaded ) {
+        // Fallback: try GitHub
+        $log[] = 'Bundle download failed, trying GitHub...';
+        $gh_url = sp_installer_get_github_release_url();
+        if ( ! $gh_url ) {
+            $gh_url = 'https://github.com/' . SP_INSTALLER_GITHUB_REPO . '/archive/refs/heads/main.zip';
+        }
+        $sp_downloaded = sp_installer_download( $gh_url, $sp_zip_path );
     }
 
-    $sp_zip_path = $install_dir . '/societypress-latest.zip';
-    $sp_downloaded = sp_installer_download( $gh_url, $sp_zip_path );
     if ( ! $sp_downloaded ) {
         sp_installer_die(
             'SocietyPress Download Failed',
-            'WordPress was installed successfully, but we could not download SocietyPress from GitHub. '
+            'WordPress was installed successfully, but we could not download SocietyPress. '
             . 'You can install it manually: download the plugin from '
             . '<a href="https://github.com/' . htmlspecialchars( SP_INSTALLER_GITHUB_REPO ) . '/releases">GitHub</a> '
             . 'and upload it through your WordPress admin panel.'
@@ -620,8 +730,8 @@ function sp_installer_process(): void {
     }
     $log[] = 'SocietyPress downloaded.';
 
-    // ---- 9. Extract SocietyPress plugin and theme ----
-    $log[] = 'Installing SocietyPress plugin and theme...';
+    // ---- 9. Extract SocietyPress plugin and themes ----
+    $log[] = 'Installing SocietyPress plugin and themes...';
 
     $zip = new ZipArchive();
     if ( $zip->open( $sp_zip_path ) !== true ) {
@@ -629,62 +739,109 @@ function sp_installer_process(): void {
         sp_installer_die( 'Extract Failed', 'Could not open the SocietyPress ZIP file.' );
     }
 
-    // GitHub ZIPs have a top-level directory like "SocietyPress-main/" — we
-    // need to find it and extract the plugin/ and theme/ subdirectories
-    $top_dir = '';
+    // The bundle ZIP has a flat structure:
+    //   societypress/societypress.php  → wp-content/plugins/societypress/
+    //   themes/societypress/           → wp-content/themes/societypress/
+    //   themes/heritage/               → wp-content/themes/heritage/
+    //   themes/coastline/              → wp-content/themes/coastline/
+    //   themes/prairie/                → wp-content/themes/prairie/
+    //   themes/ledger/                 → wp-content/themes/ledger/
+    //
+    // If we got a GitHub ZIP instead (fallback), it has:
+    //   SocietyPress-main/plugin/      → wp-content/plugins/societypress/
+    //   SocietyPress-main/theme/       → wp-content/themes/societypress/
+    //   SocietyPress-main/theme-NAME/  → wp-content/themes/NAME/
+
+    // Detect which format we got
+    $is_bundle = false;
+    $top_dir   = '';
     for ( $i = 0; $i < $zip->numFiles; $i++ ) {
         $name = $zip->getNameIndex( $i );
+        if ( strpos( $name, 'societypress/societypress.php' ) === 0 ) {
+            $is_bundle = true;
+            break;
+        }
         if ( preg_match( '#^([^/]+)/plugin/#', $name, $m ) ) {
             $top_dir = $m[1];
             break;
         }
     }
 
-    if ( ! $top_dir ) {
+    if ( $is_bundle ) {
+        // Bundle format: extract directly
+        for ( $i = 0; $i < $zip->numFiles; $i++ ) {
+            $name = $zip->getNameIndex( $i );
+
+            // Plugin: societypress/* → plugins/societypress/*
+            if ( strpos( $name, 'societypress/' ) === 0 && strpos( $name, 'themes/' ) !== 0 ) {
+                $target = WP_CONTENT_DIR . '/plugins/' . $name;
+                if ( substr( $name, -1 ) === '/' ) {
+                    @mkdir( $target, 0755, true );
+                } else {
+                    @mkdir( dirname( $target ), 0755, true );
+                    file_put_contents( $target, $zip->getFromIndex( $i ) );
+                }
+            }
+
+            // Themes: themes/* → themes/*
+            if ( strpos( $name, 'themes/' ) === 0 ) {
+                $target = WP_CONTENT_DIR . '/' . $name;
+                if ( substr( $name, -1 ) === '/' ) {
+                    @mkdir( $target, 0755, true );
+                } else {
+                    @mkdir( dirname( $target ), 0755, true );
+                    file_put_contents( $target, $zip->getFromIndex( $i ) );
+                }
+            }
+        }
+    } elseif ( $top_dir ) {
+        // GitHub format: extract with path rewriting
+        $plugin_dir = WP_CONTENT_DIR . '/plugins/societypress/';
+        @mkdir( $plugin_dir, 0755, true );
+
+        $child_themes = [ 'heritage', 'coastline', 'prairie', 'ledger' ];
+
+        for ( $i = 0; $i < $zip->numFiles; $i++ ) {
+            $name = $zip->getNameIndex( $i );
+
+            // Plugin
+            if ( strpos( $name, "{$top_dir}/plugin/" ) === 0 ) {
+                $rel = substr( $name, strlen( "{$top_dir}/plugin/" ) );
+                if ( $rel === '' ) continue;
+                $target = $plugin_dir . $rel;
+                if ( substr( $name, -1 ) === '/' ) { @mkdir( $target, 0755, true ); }
+                else { @mkdir( dirname( $target ), 0755, true ); file_put_contents( $target, $zip->getFromIndex( $i ) ); }
+            }
+
+            // Parent theme
+            if ( strpos( $name, "{$top_dir}/theme/" ) === 0 && strpos( $name, "{$top_dir}/theme-" ) !== 0 ) {
+                $rel = substr( $name, strlen( "{$top_dir}/theme/" ) );
+                if ( $rel === '' || strpos( $rel, 'society/' ) === 0 ) continue;
+                $target = WP_CONTENT_DIR . '/themes/societypress/' . $rel;
+                if ( substr( $name, -1 ) === '/' ) { @mkdir( $target, 0755, true ); }
+                else { @mkdir( dirname( $target ), 0755, true ); file_put_contents( $target, $zip->getFromIndex( $i ) ); }
+            }
+
+            // Child themes
+            foreach ( $child_themes as $ct ) {
+                if ( strpos( $name, "{$top_dir}/theme-{$ct}/" ) === 0 ) {
+                    $rel = substr( $name, strlen( "{$top_dir}/theme-{$ct}/" ) );
+                    if ( $rel === '' ) continue;
+                    $target = WP_CONTENT_DIR . "/themes/{$ct}/" . $rel;
+                    if ( substr( $name, -1 ) === '/' ) { @mkdir( $target, 0755, true ); }
+                    else { @mkdir( dirname( $target ), 0755, true ); file_put_contents( $target, $zip->getFromIndex( $i ) ); }
+                }
+            }
+        }
+    } else {
         $zip->close();
         @unlink( $sp_zip_path );
-        sp_installer_die( 'Extract Failed', 'Could not find SocietyPress plugin in the downloaded archive.' );
-    }
-
-    $plugin_dir = WP_CONTENT_DIR . '/plugins/societypress/';
-    $theme_dir  = WP_CONTENT_DIR . '/themes/societypress/';
-    @mkdir( $plugin_dir, 0755, true );
-    @mkdir( $theme_dir, 0755, true );
-
-    // Extract plugin/ and theme/societypress/ from the archive
-    for ( $i = 0; $i < $zip->numFiles; $i++ ) {
-        $name = $zip->getNameIndex( $i );
-
-        // Plugin files: SocietyPress-main/plugin/... → wp-content/plugins/societypress/...
-        if ( strpos( $name, "{$top_dir}/plugin/" ) === 0 ) {
-            $rel = substr( $name, strlen( "{$top_dir}/plugin/" ) );
-            if ( $rel === '' ) continue;
-            $target = $plugin_dir . $rel;
-            if ( substr( $name, -1 ) === '/' ) {
-                @mkdir( $target, 0755, true );
-            } else {
-                @mkdir( dirname( $target ), 0755, true );
-                file_put_contents( $target, $zip->getFromIndex( $i ) );
-            }
-        }
-
-        // Theme files: SocietyPress-main/theme/societypress/... → wp-content/themes/societypress/...
-        if ( strpos( $name, "{$top_dir}/theme/societypress/" ) === 0 ) {
-            $rel = substr( $name, strlen( "{$top_dir}/theme/societypress/" ) );
-            if ( $rel === '' ) continue;
-            $target = $theme_dir . $rel;
-            if ( substr( $name, -1 ) === '/' ) {
-                @mkdir( $target, 0755, true );
-            } else {
-                @mkdir( dirname( $target ), 0755, true );
-                file_put_contents( $target, $zip->getFromIndex( $i ) );
-            }
-        }
+        sp_installer_die( 'Extract Failed', 'Could not find SocietyPress in the downloaded archive.' );
     }
 
     $zip->close();
     @unlink( $sp_zip_path );
-    $log[] = 'SocietyPress plugin and theme installed.';
+    $log[] = 'SocietyPress plugin and themes installed.';
 
     // ---- 10. Activate plugin and theme ----
     $log[] = 'Activating SocietyPress...';

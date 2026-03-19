@@ -7640,7 +7640,7 @@ add_action( 'wp_ajax_sp_check_update', function () {
  *      A function avoids the naming collision entirely.
  */
 function sp_latest_parent_theme_version(): string {
-    return '1.0.5';
+    return '1.0.4';
 }
 
 /**
@@ -7913,10 +7913,10 @@ function sp_render_dashboard_page(): void {
 
     // ---- Upcoming events (next 5) ----
     $upcoming_events = $wpdb->get_results( $wpdb->prepare(
-        "SELECT id, title, slug, start_date, start_time, location_name
+        "SELECT id, title, slug, event_date, start_time, location_name
          FROM {$prefix}events
-         WHERE start_date >= %s AND status = 'published'
-         ORDER BY start_date ASC, start_time ASC
+         WHERE event_date >= %s AND status = 'published'
+         ORDER BY event_date ASC, start_time ASC
          LIMIT 5",
         $today
     ) );
@@ -8432,7 +8432,7 @@ function sp_render_dashboard_page(): void {
                         </thead>
                         <tbody>
                             <?php foreach ( $upcoming_events as $evt ) :
-                                $date_display = wp_date( 'M j', strtotime( $evt->start_date ) );
+                                $date_display = wp_date( 'M j', strtotime( $evt->event_date ) );
                                 $edit_url     = admin_url( 'admin.php?page=sp-event-edit&event_id=' . $evt->id );
                             ?>
                                 <tr>

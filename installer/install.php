@@ -773,20 +773,10 @@ MUPLUGIN;
         rename( $our_htaccess, $htaccess_bak );
     }
 
-    // ---- 8. Redirect the user's browser to the bridge script ----
-    // WHY: Server-to-self HTTP requests fail on this host. Instead, we redirect
-    // the user's browser to the bridge script. It loads WordPress in a normal
-    // HTTP request context (just like wp-admin/install.php would), runs wp_install()
-    // with the data we already collected, self-destructs, and redirects to login.
-    // The user sees a brief "Installing..." flash, then the login page.
-    $log[] = 'Redirecting to WordPress installation...';
-
-    $_SESSION['sp_install_log'] = $log;
-
-    header( 'Location: /sp-bridge-install.php' );
-    exit;
-
     // ---- 8. Download and install SocietyPress ----
+    // WHY: We extract SocietyPress BEFORE redirecting to the WordPress installer
+    // bridge script. The mu-plugin needs the plugin and theme files to already
+    // be in place when it fires on first admin page load.
     // WHY: We try our own bundle URL first (hosted on getsocietypress.org) because
     // it's a direct download with no redirects. GitHub's archive URLs require redirect
     // following and sometimes fail on locked-down shared hosts. The bundle contains
@@ -794,10 +784,27 @@ MUPLUGIN;
     $log[] = 'Downloading SocietyPress...';
 
     $sp_zip_path = $install_dir . '/societypress-latest.zip';
-    $sp_downloaded = sp_installer_download( SP_INSTALLER_BUNDLE_URL, $sp_zip_path );
+    $sp_downloaded = false;
 
+    // Try 1: Bundle ZIP in the same directory as this installer
+    // WHY: The most reliable approach. If the admin uploaded societypress-bundle.zip
+    // alongside install.php, we just use it. No HTTP, no path guessing.
+    $local_bundle = $install_dir . '/societypress-bundle.zip';
+    if ( file_exists( $local_bundle ) ) {
+        $sp_downloaded = copy( $local_bundle, $sp_zip_path );
+        if ( $sp_downloaded ) {
+            $log[] = 'SocietyPress bundle found alongside installer.';
+        }
+    }
+
+    // Try 2: Download from our server via HTTP
     if ( ! $sp_downloaded ) {
-        // Fallback: try GitHub
+        $log[] = 'Local copy not found, trying HTTP download...';
+        $sp_downloaded = sp_installer_download( SP_INSTALLER_BUNDLE_URL, $sp_zip_path );
+    }
+
+    // Try 3: GitHub fallback
+    if ( ! $sp_downloaded ) {
         $log[] = 'Bundle download failed, trying GitHub...';
         $gh_url = sp_installer_get_github_release_url();
         if ( ! $gh_url ) {
@@ -815,7 +822,9 @@ MUPLUGIN;
             . 'and upload it through your WordPress admin panel.'
         );
     }
-    $log[] = 'SocietyPress downloaded.';
+    if ( ! isset( $log[ count( $log ) - 1 ] ) || strpos( $log[ count( $log ) - 1 ], 'copied' ) === false ) {
+        $log[] = 'SocietyPress downloaded.';
+    }
 
     // ---- 9. Extract SocietyPress plugin and themes ----
     $log[] = 'Installing SocietyPress plugin and themes...';
@@ -930,12 +939,16 @@ MUPLUGIN;
     @unlink( $sp_zip_path );
     $log[] = 'SocietyPress plugin and themes installed.';
 
-    // Steps 10-12 are no longer reached — step 6 redirects to WordPress's
-    // own installer, which handles DB setup + admin user creation. The mu-plugin
-    // planted in step 6 auto-activates SocietyPress on first admin page load.
-    //
-    // This code only runs if step 6 somehow doesn't redirect (shouldn't happen).
-    sp_installer_die( 'Unexpected State', 'The installer should have redirected to WordPress setup. Please visit <a href="/wp-admin/install.php">/wp-admin/install.php</a> to continue.' );
+    // ---- 10. Redirect to the bridge script to finish WordPress install ----
+    // WHY: Server-to-self HTTP requests fail on this host. We redirect the user's
+    // browser to the bridge script, which loads WordPress in a normal HTTP context,
+    // runs wp_install(), sets up permalinks, self-destructs, and redirects to login.
+    // The mu-plugin (planted in step 7) activates SocietyPress on first admin load.
+    $log[] = 'Redirecting to WordPress installation...';
+    $_SESSION['sp_install_log'] = $log;
+
+    header( 'Location: /sp-bridge-install.php' );
+    exit;
 }
 
 

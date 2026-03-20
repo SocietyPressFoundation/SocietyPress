@@ -699,19 +699,28 @@ function sp_create_tables(): void {
     //      the same surname can find each other — that's the whole point
     //      of a genealogical society.
     // ========================================================================
+    // WHY: soundex_code and metaphone_code enable "sounds like" surname matching.
+    // Genealogists constantly deal with spelling variations (Stricklin/Strickland/Stricklen).
+    // These codes are computed automatically on insert — the member never sees them.
+    // Soundex is included because genealogists already know it (it's on Census records).
+    // Metaphone is better for non-Anglo names (Garcia/Garza, Mueller/Muller).
     dbDelta( "CREATE TABLE {$prefix}member_surnames (
-        id          BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-        user_id     BIGINT(20) UNSIGNED NOT NULL,
-        surname     VARCHAR(100)        NOT NULL,
-        county      VARCHAR(100)        NULL,
-        state       VARCHAR(100)        NULL,
-        country     VARCHAR(100)        NULL,
-        year_from   INT                 NULL,
-        year_to     INT                 NULL,
-        note        TEXT                NULL,
+        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        user_id         BIGINT(20) UNSIGNED NOT NULL,
+        surname         VARCHAR(100)        NOT NULL,
+        county          VARCHAR(100)        NULL,
+        state           VARCHAR(100)        NULL,
+        country         VARCHAR(100)        NULL,
+        year_from       INT                 NULL,
+        year_to         INT                 NULL,
+        note            TEXT                NULL,
+        soundex_code    VARCHAR(10)         NULL,
+        metaphone_code  VARCHAR(20)         NULL,
         PRIMARY KEY (id),
         KEY user_id (user_id),
-        KEY surname (surname)
+        KEY surname (surname),
+        KEY soundex_code (soundex_code),
+        KEY metaphone_code (metaphone_code)
     ) {$charset_collate};" );
 
     // ========================================================================
@@ -2066,6 +2075,9 @@ add_action( 'admin_init', function () {
         sp_maybe_seed_resource_categories();
         sp_maybe_seed_library_categories();
         sp_maybe_seed_document_categories();
+
+        // Backfill phonetic codes for any surnames added before this feature existed
+        sp_maybe_backfill_surname_phonetics();
 
         // WHY: Without saving the new version, the upgrade check fires on every admin
         // page load, re-running dbDelta on 43 tables and all seeding functions. This was
@@ -4315,6 +4327,50 @@ function sp_get_member_statuses(): array {
 }
 
 
+/**
+ * Compute phonetic codes for a surname.
+ *
+ * WHY: Genealogists constantly deal with surname spelling variations across
+ * census records, immigration documents, and family branches. Soundex is the
+ * classic algorithm (used on US Census records since 1880). Metaphone is more
+ * accurate for non-Anglo names common in Texas genealogy (Garcia/Garza,
+ * Mueller/Muller). Storing both lets us offer "sounds like" matching that
+ * connects members researching the same family under different spellings.
+ *
+ * @param string $surname The surname to encode.
+ * @return array { soundex: string, metaphone: string }
+ */
+function sp_surname_phonetic_codes( string $surname ): array {
+    return [
+        'soundex'   => soundex( $surname ),
+        'metaphone' => metaphone( $surname ),
+    ];
+}
+
+/**
+ * Backfill phonetic codes for all existing surnames that don't have them.
+ *
+ * WHY: Surnames added before this feature was built have NULL soundex/metaphone
+ * columns. This runs once on upgrade (via the admin_init version check) and
+ * fills them in. It's idempotent — only touches rows with NULL codes.
+ */
+function sp_maybe_backfill_surname_phonetics(): void {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_member_surnames';
+
+    $rows = $wpdb->get_results(
+        "SELECT id, surname FROM {$table} WHERE soundex_code IS NULL OR metaphone_code IS NULL"
+    );
+
+    foreach ( $rows as $row ) {
+        $wpdb->update( $table, [
+            'soundex_code'   => soundex( $row->surname ),
+            'metaphone_code' => metaphone( $row->surname ),
+        ], [ 'id' => $row->id ] );
+    }
+}
+
+
 // ============================================================================
 // FRONTEND: DESIGN SYSTEM — CSS CUSTOM PROPERTIES
 // ============================================================================
@@ -5114,14 +5170,16 @@ function sp_handle_account_forms() {
         $note      = sanitize_textarea_field( $_POST['new_surname_note'] ?? '' );
         if ( $surname ) {
             $wpdb->insert( $wpdb->prefix . 'sp_member_surnames', [
-                'user_id'   => $user->ID,
-                'surname'   => $surname,
-                'county'    => $county ?: null,
-                'state'     => $state ?: null,
-                'country'   => $country ?: null,
-                'year_from' => $year_from ?: null,
-                'year_to'   => $year_to ?: null,
-                'note'      => $note ?: null,
+                'user_id'        => $user->ID,
+                'surname'        => $surname,
+                'county'         => $county ?: null,
+                'state'          => $state ?: null,
+                'country'        => $country ?: null,
+                'year_from'      => $year_from ?: null,
+                'year_to'        => $year_to ?: null,
+                'note'           => $note ?: null,
+                'soundex_code'   => soundex( $surname ),
+                'metaphone_code' => metaphone( $surname ),
             ] );
         }
         wp_redirect( add_query_arg( 'sp-updated', 'surnames', $account_url . '#surnames' ) );
@@ -9923,13 +9981,15 @@ add_action( 'admin_init', function () {
                 continue; // Skip blank rows
             }
             $wpdb->insert( $prefix . 'member_surnames', [
-                'user_id'   => $user_id,
-                'surname'   => $surname,
-                'county'    => sanitize_text_field( $counties[ $i ] ?? '' ) ?: null,
-                'state'     => sanitize_text_field( $states[ $i ] ?? '' ) ?: null,
-                'country'   => sanitize_text_field( $countries[ $i ] ?? '' ) ?: null,
-                'year_from' => absint( $year_froms[ $i ] ?? 0 ) ?: null,
-                'year_to'   => absint( $year_tos[ $i ] ?? 0 ) ?: null,
+                'user_id'        => $user_id,
+                'surname'        => $surname,
+                'county'         => sanitize_text_field( $counties[ $i ] ?? '' ) ?: null,
+                'state'          => sanitize_text_field( $states[ $i ] ?? '' ) ?: null,
+                'country'        => sanitize_text_field( $countries[ $i ] ?? '' ) ?: null,
+                'year_from'      => absint( $year_froms[ $i ] ?? 0 ) ?: null,
+                'year_to'        => absint( $year_tos[ $i ] ?? 0 ) ?: null,
+                'soundex_code'   => soundex( $surname ),
+                'metaphone_code' => metaphone( $surname ),
             ] );
         }
     }
@@ -11299,10 +11359,8 @@ function sp_render_member_edit_page(): void {
                 </div>
             </div>
 
-            <?php if ( $is_edit ) : ?>
-
             <!-- ============================================================ -->
-            <!-- SECTION: Admin Notes (only on edit, not add new) -->
+            <!-- SECTION: Admin Notes -->
             <!-- ============================================================ -->
             <div class="sp-section">
                 <h2><?php esc_html_e( 'Admin Notes', 'societypress' ); ?></h2>
@@ -11338,7 +11396,7 @@ function sp_render_member_edit_page(): void {
             </div>
 
             <!-- ============================================================ -->
-            <!-- SECTION: Payment History (only on edit, not add new) -->
+            <!-- SECTION: Payment History -->
             <!-- ============================================================ -->
             <div class="sp-section">
                 <h2><?php esc_html_e( 'Payment History', 'societypress' ); ?></h2>
@@ -11428,8 +11486,6 @@ function sp_render_member_edit_page(): void {
 
                 </div>
             </div>
-
-            <?php endif; // $is_edit ?>
 
             <!-- ============================================================ -->
             <!-- SAVE BUTTON -->
@@ -12611,6 +12667,26 @@ function sp_render_import_page(): void {
     <div class="wrap">
         <h1><?php esc_html_e( 'Import Members', 'societypress' ); ?></h1>
 
+        <?php
+        // ---- Gate: admin must have a member record before importing ----
+        // WHY: The admin should add themselves as the first member before importing
+        // everyone else. This ensures they have a member record linked to their WP
+        // account, which is needed for My Account, directory, and other member features.
+        // Without this, the admin is invisible in their own system.
+        if ( ! sp_user_has_member_record( get_current_user_id() ) ) :
+            $add_self_url = admin_url( 'admin.php?page=sp-member-edit&link_to_self=1' );
+        ?>
+            <div class="notice notice-warning" style="padding: 16px; border-left-color: #C9973A;">
+                <h3 style="margin: 0 0 8px;"><?php esc_html_e( 'Add yourself first', 'societypress' ); ?></h3>
+                <p style="margin: 0 0 12px;">
+                    <?php esc_html_e( 'Before importing members, you need to add yourself as the first member of your society. This links your administrator account to a member record so you appear in the directory, can use My Account, and are included in reports.', 'societypress' ); ?>
+                </p>
+                <a href="<?php echo esc_url( $add_self_url ); ?>" class="button button-primary">
+                    <?php esc_html_e( 'Add Yourself as a Member', 'societypress' ); ?>
+                </a>
+            </div>
+        <?php return; endif; ?>
+
         <?php // ============================================================ ?>
         <?php // RESULTS — shown after Step 2 completes                        ?>
         <?php // ============================================================ ?>
@@ -12952,6 +13028,36 @@ function sp_render_import_page(): void {
         <?php // STEP 1 FORM — Upload CSV file                                ?>
         <?php // ============================================================ ?>
         <?php else : ?>
+
+            <?php
+            // WHY: If the admin just added themselves and this is a fresh install with only
+            // 1 member, show a welcome message acknowledging that step and encouraging
+            // the import. This makes the onboarding flow feel intentional, not accidental.
+            global $wpdb;
+            $sp_member_count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}sp_members" );
+            if ( $sp_member_count <= 1 ) : ?>
+                <div class="notice notice-success" style="padding: 16px; border-left-color: #00a32a; margin-top: 20px;">
+                    <h3 style="margin: 0 0 8px;">&#10003; <?php esc_html_e( "You're all set!", 'societypress' ); ?></h3>
+                    <p style="margin: 0 0 8px;">
+                        <?php esc_html_e( "Now you can import your society's existing membership data. Upload a CSV export from your current system — SocietyPress will map the columns automatically.", 'societypress' ); ?>
+                    </p>
+                    <?php
+                    // WHY: Only show the sample data link if load-sample-data.php exists
+                    // in the web root. Real installs won't have it — only the demo site does.
+                    if ( file_exists( ABSPATH . 'load-sample-data.php' ) ) : ?>
+                    <p style="margin: 0; font-size: 13px; color: #6B7280;">
+                        <?php
+                        printf(
+                            /* translators: %s: link to sample data */
+                            __( 'Just exploring? %s to see what a populated society looks like. You can clear it anytime.', 'societypress' ),
+                            '<a href="' . esc_url( home_url( '/load-sample-data.php' ) ) . '">' . esc_html__( 'Load 2,500 sample members', 'societypress' ) . '</a>'
+                        );
+                        ?>
+                    </p>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
+
             <div style="max-width: 700px; background: #fff; border: 1px solid #c3c4c7; border-radius: 4px; margin-top: 20px; padding: 0;">
                 <h2 style="margin: 0; padding: 12px 20px; border-bottom: 1px solid #c3c4c7; font-size: 14px; font-weight: 600; background: #f6f7f7;"><?php esc_html_e( 'Import Members', 'societypress' ); ?></h2>
                 <div style="padding: 20px;">

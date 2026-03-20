@@ -93,7 +93,10 @@ if ( isset( $_POST['sp_batch_action'] ) && $_POST['sp_batch_action'] === 'import
         $tier_map[ strtolower( trim( $t->name ) ) ] = (int) $t->id;
     }
 
-    $imported = 0;
+    $imported  = 0;
+    $skipped   = 0;
+    $errors    = 0;
+    $error_log = [];
 
     foreach ( $batch as $line ) {
         if ( empty( trim( $line ) ) ) continue;
@@ -132,51 +135,62 @@ if ( isset( $_POST['sp_batch_action'] ) && $_POST['sp_batch_action'] === 'import
 
         $tier_id = $tier_map[ strtolower( $plan_name ) ] ?? ( $tier_map['individual'] ?? 1 );
 
-        // Find or create the WordPress user
-        // WHY: If a previous partial import created the user but not the member record,
-        // we reuse the existing user instead of failing on duplicate username/email.
+        // Find or create the WordPress user.
+        //
+        // WHY: WordPress requires unique emails per user account, but real genealogy
+        // societies have spouses, parents, and children sharing the same email. We can't
+        // reject members for having the same email. Solution: each member always gets
+        // their own WP user account. If the email is already taken by another user, we
+        // generate a unique internal email for the WP account (member won't see it) and
+        // store the real shared email in sp_members.alt_email or notes.
         $user_id = null;
+        $row_num = $offset + array_search( $line, $batch ) + 1;
 
-        // Check by email first (most reliable match)
-        if ( $email && email_exists( $email ) ) {
-            $user_id = email_exists( $email );
+        // Build username
+        $username = sanitize_user( strtolower( $first_name . '.' . $last_name ) );
+        $username = preg_replace( '/[^a-z0-9._-]/', '', $username );
+        if ( empty( $username ) ) $username = 'member';
+
+        $base_username = $username;
+        $counter = 1;
+        while ( username_exists( $username ) ) {
+            $username = $base_username . $counter;
+            $counter++;
         }
 
-        // Check by username pattern if no email match
-        if ( ! $user_id ) {
-            $username = sanitize_user( strtolower( $first_name . '.' . $last_name ) );
-            $username = preg_replace( '/[^a-z0-9._-]/', '', $username );
-
-            $existing_user = get_user_by( 'login', $username );
-            if ( $existing_user ) {
-                $user_id = $existing_user->ID;
-            } else {
-                $base_username = $username;
-                $counter = 1;
-                while ( username_exists( $username ) ) {
-                    $username = $base_username . $counter;
-                    $counter++;
-                }
-
-                $user_email = $email ?: $username . '@placeholder.invalid';
-                $user_id = wp_insert_user( [
-                    'user_login' => $username,
-                    'user_email' => $user_email,
-                    'user_pass'  => wp_generate_password( 24 ),
-                    'first_name' => $first_name,
-                    'last_name'  => $last_name,
-                    'role'       => 'subscriber',
-                ] );
-            }
+        // Determine the WP user email — unique per account
+        $wp_email = $email;
+        if ( empty( $wp_email ) ) {
+            $wp_email = $username . '@placeholder.invalid';
+        } elseif ( email_exists( $wp_email ) ) {
+            // Email is shared with another member — create a unique internal email
+            // The real email is preserved in the member record via alt_email
+            $wp_email = $username . '@members.internal';
         }
 
-        if ( ! $user_id || is_wp_error( $user_id ) ) continue;
+        $user_id = wp_insert_user( [
+            'user_login' => $username,
+            'user_email' => $wp_email,
+            'user_pass'  => wp_generate_password( 24 ),
+            'first_name' => $first_name,
+            'last_name'  => $last_name,
+            'role'       => 'subscriber',
+        ] );
+
+        if ( is_wp_error( $user_id ) ) {
+            $errors++;
+            $error_log[] = sprintf( 'Row %d: %s %s — %s', $row_num, $first_name, $last_name, $user_id->get_error_message() );
+            continue;
+        }
 
         // Skip if this user already has a member record (prevents duplicates on re-run)
         $exists = $wpdb->get_var( $wpdb->prepare(
             "SELECT COUNT(*) FROM {$prefix}members WHERE user_id = %d", $user_id
         ) );
-        if ( $exists ) continue;
+        if ( $exists ) {
+            $skipped++;
+            continue;
+        }
 
         // WHY: email lives on the WordPress user (wp_users.user_email), not on sp_members.
         // Column names: postal_code (not zip), date_of_birth (not birthday), no marital_status.
@@ -242,10 +256,13 @@ if ( isset( $_POST['sp_batch_action'] ) && $_POST['sp_batch_action'] === 'import
 
     $new_offset = $offset + $batch_size;
     wp_send_json_success( [
-        'imported' => $imported,
-        'offset'   => $new_offset,
-        'total'    => $total,
-        'done'     => $new_offset >= $total,
+        'imported'  => $imported,
+        'skipped'   => $skipped,
+        'errors'    => $errors,
+        'error_log' => $error_log,
+        'offset'    => $new_offset,
+        'total'     => $total,
+        'done'      => $new_offset >= $total,
     ] );
 }
 
@@ -505,7 +522,13 @@ $nonce = wp_create_nonce( 'sp_sample_data_nonce' );
             <div class="sp-done" id="sp-done">
                 <div class="sp-done-icon">&#127881;</div>
                 <h3 id="sp-done-title">Import Complete!</h3>
-                <p id="sp-done-text"></p>
+                <p id="sp-done-text" style="white-space: pre-line;"></p>
+                <div id="sp-error-log" style="display: none; margin-top: 16px; text-align: left;">
+                    <details style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 12px 16px;">
+                        <summary style="cursor: pointer; font-weight: 600; color: #991B1B;">Error Details</summary>
+                        <pre style="margin-top: 8px; font-size: 12px; color: #374151; white-space: pre-wrap; max-height: 200px; overflow-y: auto;"></pre>
+                    </details>
+                </div>
                 <div style="margin-top: 20px;">
                     <a href="<?php echo esc_url( admin_url( 'admin.php?page=societypress' ) ); ?>" class="sp-btn sp-btn-load">
                         Go to Dashboard
@@ -522,6 +545,9 @@ $nonce = wp_create_nonce( 'sp_sample_data_nonce' );
     var BATCH_SIZE = 50;
     var SCRIPT_URL = '<?php echo esc_js( home_url( '/load-sample-data.php' ) ); ?>';
     var totalImported = 0;
+    var totalSkipped  = 0;
+    var totalErrors   = 0;
+    var allErrors     = [];
 
     function loadData() {
         document.getElementById('sp-initial').style.display = 'none';
@@ -546,15 +572,33 @@ $nonce = wp_create_nonce( 'sp_sample_data_nonce' );
                 }
 
                 totalImported += resp.data.imported;
-                var pct = Math.min(100, Math.round((totalImported / TOTAL_ROWS) * 100));
+                totalSkipped  += resp.data.skipped || 0;
+                totalErrors   += resp.data.errors || 0;
+                if (resp.data.error_log) allErrors = allErrors.concat(resp.data.error_log);
+
+                var processed = totalImported + totalSkipped + totalErrors;
+                var pct = Math.min(100, Math.round((processed / TOTAL_ROWS) * 100));
 
                 document.getElementById('sp-bar').style.width = pct + '%';
                 document.getElementById('sp-bar-text').textContent = pct + '%';
                 document.getElementById('sp-detail').textContent =
-                    totalImported.toLocaleString() + ' of ' + TOTAL_ROWS.toLocaleString() + ' members imported...';
+                    totalImported.toLocaleString() + ' imported, ' +
+                    (totalSkipped > 0 ? totalSkipped + ' skipped, ' : '') +
+                    (totalErrors > 0 ? totalErrors + ' errors, ' : '') +
+                    'of ' + TOTAL_ROWS.toLocaleString() + ' rows...';
 
                 if (resp.data.done) {
-                    showDone(totalImported + ' members imported successfully.');
+                    var msg = totalImported.toLocaleString() + ' members imported successfully.';
+                    if (totalSkipped > 0) msg += '\n' + totalSkipped + ' skipped (already existed).';
+                    if (totalErrors > 0) msg += '\n' + totalErrors + ' failed (see details below).';
+                    showDone(msg);
+
+                    // Show error log if any
+                    if (allErrors.length > 0) {
+                        var logEl = document.getElementById('sp-error-log');
+                        logEl.style.display = 'block';
+                        logEl.querySelector('pre').textContent = allErrors.join('\n');
+                    }
                 } else {
                     sendBatch(resp.data.offset);
                 }

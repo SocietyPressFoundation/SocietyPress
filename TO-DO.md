@@ -224,6 +224,14 @@ See `Docs/KNOWN-ISSUES.md` for the full list (43 items tracked, 41 fixed, 2 defe
 
 ## Membership — Remaining
 
+- [ ] Member photo improvements:
+  - [ ] Add photo upload field to admin member edit form — Harold can photograph members at meetings
+  - [ ] Use `capture="user"` attribute on file inputs (both admin + My Account) — opens front camera on mobile devices, falls back to file picker on desktop
+  - [ ] Prompt new members to add a photo on My Account after signup ("Your profile is missing a photo")
+- [ ] Surname "sounds like" matching in directory and My Account:
+  - [ ] "Include similar spellings" toggle on surname search — uses soundex_code/metaphone_code columns
+  - [ ] "Others researching similar surnames" note under each surname in My Account
+  - [ ] Frontend surname search page shows "Also showing similar spellings" section
 - [ ] Member portal polish:
   - [x] Optional admin approval for profile changes — new `sp_pending_profile_changes` table, `profile_changes_require_approval` setting in Directory settings, queues Personal Info/Contact/Address changes for review when enabled. Admin review page (`sp-pending-changes`) with side-by-side diff, approve/reject with optional notes, email notifications both ways (admin on submit, member on decision). Preferences/privacy/interests/genealogy save immediately. Count badge in Members flyout menu.
   - [x] AJAX save for 6 text/checkbox sections (profile, contact, address, preferences, privacy, interests) — inline success/error messages, no page reload, old POST handlers remain as no-JS fallback. Photo and password forms still use traditional POST.
@@ -401,7 +409,16 @@ Single-file `install.php` that takes Harold from empty hosting to running Societ
 
 ## getsocietypress.org — On Hold
 
-- [ ] Documentation pages (waiting until SP features are more complete)
+- [ ] Getting Started guide — illustrated walkthrough for non-technical admins:
+  1. Choose hosting (visual guide for top 3 hosts: Bluehost, SiteGround, DreamHost)
+  2. Create a MySQL database (screenshots from cPanel)
+  3. Upload install.php + societypress-bundle.zip
+  4. Run the installer (what each field means)
+  5. Setup wizard (org info, membership, modules, design)
+  6. Add yourself as the first member (why this matters)
+  7. Import your membership list — or load sample data to explore first
+  8. "After adding yourself as the first member, go to Import Members to import your membership list. If you'd prefer to explore with sample data first, we've prepared 2,500 realistic fake members you can load and clear anytime."
+- [ ] Documentation pages (feature-by-feature guides, waiting until SP features more stable)
 - [ ] Feedback form (structured: bug report / feature request / general question) — future companion plugin
 
 ## Voting & Elections — Not Started

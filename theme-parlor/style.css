@@ -1,0 +1,101 @@
+/*
+Theme Name: Parlor
+Theme URI: https://getsocietypress.org/themes/parlor
+Author: Stricklin Development
+Author URI: https://stricklindevelopment.com/
+Description: An elegant, refined theme inspired by Victorian parlor rooms and fine stationery.
+             Deep plum, warm ivory, and rose gold create a sense of grace and sophistication.
+             Ideal for societies with a literary or artistic heritage, or any group that wants
+             to feel polished and inviting without being stuffy.
+Version: 1.0.0
+Template: societypress
+Requires at least: 6.0
+Tested up to: 6.7
+Requires PHP: 8.0
+License: GPL-2.0-or-later
+Text Domain: parlor
+Tags: genealogy, historical-society, elegant, refined, serif, victorian
+*/
+
+/* ============================================================================
+   PARLOR COLOR PALETTE & FONT
+   WHY: Override the parent theme's CSS custom properties to apply the Parlor
+   look without touching any template files. The parent theme and all plugin
+   widgets read from --sp-* vars, so changing them here cascades everywhere.
+   ============================================================================ */
+
+:root {
+    /* Parlor brand colors */
+    --parlor-plum:      #3C1053;
+    --parlor-ivory:     #FFF8F0;
+    --parlor-rose:      #B76E79;
+    --parlor-blush:     #E8C4C4;
+    --parlor-mauve:     #8B6F8B;
+    --parlor-text:      #2A1F2D;
+    --parlor-muted:     #7A6B7A;
+
+    /* Override SocietyPress design vars */
+    --sp-color-primary:       #3C1053;
+    --sp-color-primary-hover: #B76E79;
+    --sp-color-accent:        #B76E79;
+    --sp-color-secondary:     #E8C4C4;
+    --sp-color-background:    #FFF8F0;
+    --sp-color-text:          #2A1F2D;
+    --sp-color-text-muted:    #7A6B7A;
+    --sp-color-border:        #E8C4C4;
+    --sp-color-header-bg:     #3C1053;
+    --sp-color-header-text:   #FFF8F0;
+    --sp-color-footer-bg:     #3C1053;
+    --sp-color-footer-text:   #FFF8F0;
+
+    /* WHY EB Garamond: An elegant, old-style serif that evokes fine printing
+       and literary tradition. Beautiful at display sizes and comfortable for
+       body text. The slight calligraphic character feels refined without
+       sacrificing readability. */
+    --sp-font-body:    'EB Garamond', Georgia, 'Times New Roman', serif;
+    --sp-font-heading: 'EB Garamond', Georgia, 'Times New Roman', serif;
+}
+
+/* ============================================================================
+   PARLOR-SPECIFIC TWEAKS
+   WHY: Minimal overrides beyond the color/font vars. The parent theme handles
+   layout and structure — we just refine the feel.
+   ============================================================================ */
+
+/* Warm ivory background throughout */
+body {
+    background-color: var(--parlor-ivory);
+}
+
+/* Links use the rose gold accent */
+a {
+    color: var(--parlor-rose);
+}
+a:hover {
+    color: var(--parlor-plum);
+}
+
+/* Buttons get the plum treatment */
+.sp-btn,
+button.sp-btn,
+input[type="submit"] {
+    background-color: var(--parlor-plum);
+    border-color: var(--parlor-plum);
+}
+.sp-btn:hover,
+button.sp-btn:hover,
+input[type="submit"]:hover {
+    background-color: var(--parlor-rose);
+    border-color: var(--parlor-rose);
+}
+
+/* Soft, elegant dividers */
+hr,
+.sp-divider {
+    border-color: var(--parlor-blush);
+}
+
+/* Slightly larger heading weight for the thin Garamond to feel substantial */
+h1, h2, h3 {
+    font-weight: 600;
+}

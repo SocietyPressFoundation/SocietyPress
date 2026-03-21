@@ -175,6 +175,31 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 
 (Nothing actively in flight)
 
+### Completed This Session (v0.39d — 2026-03-20)
+
+**Child Themes & Theme Builder:**
+- [x] 5 default child themes: Heritage, Coastline, Prairie, Ledger, Parlor — each with distinct palette, Google Font, and personality
+- [x] Fixed all child theme functions.php to properly enqueue child stylesheets (CSS wasn't loading before)
+- [x] Theme registry updated with all 5 themes + SAGHS
+- [x] Custom Theme Builder: "Create Your Own Theme" card in gallery, modal with 7 color pickers + 2 font selectors + live preview, AJAX create/update/delete, generates real WordPress child themes on disk, re-editable
+- [x] "Match My Current Site" color extractor: paste a URL, we fetch the page, parse CSS (inline + external stylesheets), extract colors by context (header, footer, links, headings, buttons), detect fonts from Google Fonts links, pre-populate the builder
+- [x] Theme preview system: "Preview" button on each theme card opens real homepage rendered with that theme, purple preview banner with "Activate" and "Back to Themes", admin bar hidden during preview
+
+**Governance — Leadership & Committees:**
+- [x] New `sp_render_leadership_page()` — proper two-section page (Officers & Board card grid + Committees grouped by name with collapsible sections)
+- [x] Added `role_type` column to `sp_volunteer_roles` table (officer/committee/volunteer) with auto-migration
+- [x] Volunteer Roster split to separate menu item (`sp-volunteer-roster`)
+- [x] Volunteer list table filtered to only show volunteer-type roles
+
+**Bug Fixes:**
+- [x] Duplicate "Log Out" in admin user dropdown — removed redundant `sp-logout` node
+- [x] `\n` not rendering as line breaks in confirm dialogs — switched from single to double-quoted PHP strings
+- [x] `!important` breaking CSS color extraction — stripped before normalization
+
+**Infrastructure:**
+- [x] Demo site (demo.getsocietypress.org) cloned from kndgs.org — full database + uploads + themes
+- [x] kndgs.org being retired — demo.getsocietypress.org is now the primary dev/test site
+
 ---
 
 ## Known Bugs & Technical Debt

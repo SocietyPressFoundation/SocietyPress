@@ -1,5 +1,48 @@
 # SocietyPress — WORKLOG
 
+## v0.39d — 2026-03-20
+
+### Child Themes, Custom Theme Builder & Governance Overhaul
+
+**5 Default Child Themes:**
+- Heritage (warm brown/cream/gold, Merriweather), Coastline (navy/white/sky blue, Inter), Prairie (sage green/cream/clay, Lora), Ledger (charcoal/ivory/burgundy, Source Sans 3), Parlor (plum/ivory/rose gold, EB Garamond)
+- Fixed all child theme functions.php — child stylesheets weren't being enqueued (`:root` overrides never loaded)
+- Theme registry updated with all 6 entries (SAGHS + 5 new)
+
+**Custom Theme Builder:**
+- "Create Your Own Theme" card with purple gradient in the gallery
+- Modal: theme name, 7 color pickers with hex text fields, 2 font selectors, live preview swatch
+- AJAX create/update/delete — generates real WordPress child themes on disk
+- Custom themes tracked in `sp_custom_themes` option for re-editing
+- "Custom" badge, Edit/Delete buttons on custom theme cards
+
+**"Match My Current Site" Color Extractor:**
+- Paste a URL → fetch page → parse inline CSS, external stylesheets (skip frameworks), Google Fonts links, meta theme-color
+- Extract colors by context (header, footer, links, headings, buttons) with CSS cascade awareness
+- Detect fonts from Google Fonts URLs, map to available font options
+- Confidence scoring (high/medium/low) based on signal count
+- Fixed `!important` breaking color normalization, cascade-ordered CSS chunks (external first, inline last)
+
+**Theme Preview System:**
+- "Preview" button on every non-active theme card
+- Opens real homepage rendered with the selected theme via `stylesheet`/`template` filter hooks
+- Purple preview banner: "Previewing: [Name]" with Activate and Back to Themes buttons
+- Admin bar hidden during preview, body margin-top for banner clearance
+
+**Governance — Leadership & Committees:**
+- New `sp_render_leadership_page()` with two sections: Officers & Board (card grid) + Committees (grouped collapsible sections)
+- Added `role_type` column to `sp_volunteer_roles` (officer/committee/volunteer) with auto-migration
+- Volunteer Roster split to separate `sp-volunteer-roster` menu item
+- SP_Volunteers_List_Table filtered to volunteer-type roles only
+
+**Bug Fixes:**
+- Duplicate "Log Out" in admin user dropdown
+- `\n` literal in confirm dialogs (single-quoted PHP string)
+
+**Infrastructure:**
+- Demo site cloned from kndgs.org (database + uploads + themes)
+- kndgs.org being retired — demo.getsocietypress.org is primary dev site
+
 ## v0.38d — 2026-03-18
 
 ### Comprehensive Code Review & Fix Session

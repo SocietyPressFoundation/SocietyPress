@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '0.38d' );
+define( 'SOCIETYPRESS_VERSION', '0.39d' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -1036,6 +1036,7 @@ function sp_create_tables(): void {
         user_id         BIGINT(20) UNSIGNED NOT NULL,
         role_title      VARCHAR(200)        NOT NULL,
         committee       VARCHAR(200)        NULL,
+        role_type       VARCHAR(20)         NOT NULL DEFAULT 'volunteer',
         start_date      DATE                NULL,
         end_date        DATE                NULL,
         status          VARCHAR(20)         NOT NULL DEFAULT 'active',
@@ -1043,7 +1044,8 @@ function sp_create_tables(): void {
         updated_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         KEY user_id (user_id),
-        KEY status (status)
+        KEY status (status),
+        KEY role_type (role_type)
     ) {$charset_collate};" );
 
     // ========================================================================
@@ -2086,6 +2088,34 @@ add_action( 'admin_init', function () {
     }
 });
 
+// ============================================================================
+// MIGRATION: Add role_type column to sp_volunteer_roles for existing installs
+//
+// WHY: The role_type column distinguishes officers, committee assignments, and
+//      general volunteers in the same table. Sites that were running before this
+//      column existed won't have it — dbDelta sometimes fails to add columns to
+//      existing tables, so we do an explicit check-and-add here. The check
+//      (SHOW COLUMNS) is cheap and only runs once per admin page load; the ALTER
+//      only fires if the column is genuinely missing. Existing rows default to
+//      'volunteer' so they continue to appear on the Volunteer Roster page.
+// ============================================================================
+add_action( 'admin_init', function () {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_volunteer_roles';
+
+    // Bail early if the table doesn't exist yet (fresh install — sp_create_tables
+    // will handle it via the CREATE TABLE statement that already includes role_type).
+    if ( $wpdb->get_var( "SHOW TABLES LIKE '{$table}'" ) !== $table ) {
+        return;
+    }
+
+    $col = $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE 'role_type'" );
+    if ( empty( $col ) ) {
+        $wpdb->query( "ALTER TABLE {$table} ADD COLUMN role_type VARCHAR(20) NOT NULL DEFAULT 'volunteer' AFTER committee" );
+        $wpdb->query( "ALTER TABLE {$table} ADD KEY role_type (role_type)" );
+    }
+} );
+
 
 // ============================================================================
 // DEACTIVATION (placeholder — nothing to clean up yet)
@@ -2559,7 +2589,7 @@ function sp_get_modules(): array {
             'name'        => __( 'Committees & Leadership', 'societypress' ),
             'description' => __( 'Track officer positions, committee assignments, and manage volunteer opportunities and hours.', 'societypress' ),
             'icon'        => 'dashicons-groups',
-            'menu_slugs'  => [ 'sp-governance', 'sp-volunteer-hours', 'sp-volunteer-opportunities', 'sp-volunteer-opportunity-edit' ],
+            'menu_slugs'  => [ 'sp-governance', 'sp-volunteer-roster', 'sp-volunteer-hours', 'sp-volunteer-opportunities', 'sp-volunteer-opportunity-edit' ],
         ],
         'store' => [
             'name'        => __( 'Online Store', 'societypress' ),
@@ -3282,6 +3312,18 @@ add_action( 'admin_menu', function () {
         'Leadership & Committees',
         'manage_options',
         'sp-governance',
+        'sp_render_leadership_page'
+    );
+
+    // WHY: The volunteer roster is now a separate page from Leadership & Committees.
+    // Officers and committee members are managed on the Leadership page; day-to-day
+    // volunteer role assignments live here on their own dedicated roster page.
+    add_submenu_page(
+        'societypress',
+        'Volunteer Roster — SocietyPress',
+        'Volunteer Roster',
+        'manage_options',
+        'sp-volunteer-roster',
         'sp_render_volunteers_page'
     );
 
@@ -3976,6 +4018,7 @@ function sp_get_menu_capability_map(): array {
 
         // Governance / Volunteers
         'sp-governance'            => 'sp_manage_governance',
+        'sp-volunteer-roster'      => 'sp_manage_governance',
         'sp-volunteer-hours'       => 'sp_manage_governance',
         'sp-volunteer-opportunities' => 'sp_manage_governance',
         'sp-volunteer-opportunity-edit' => 'sp_manage_governance',
@@ -6345,7 +6388,7 @@ var spMenuConfig = {
             id:    'governance',
             label: 'Governance',
             icon:  'dashicons-building',
-            items: ['sp-governance', 'sp-volunteer-hours', 'sp-volunteer-opportunities']
+            items: ['sp-governance', 'sp-volunteer-roster', 'sp-volunteer-hours', 'sp-volunteer-opportunities']
         },
         {
             id:    'gallery',
@@ -7268,16 +7311,10 @@ add_action( 'wp_before_admin_bar_render', function () {
     $wp_admin_bar->remove_node( 'new-user' );    // + New → User
     $wp_admin_bar->remove_node( 'updates' );     // Updates notification badge
 
-    // Add "Log Out" to the user dropdown (the avatar + name flyout).
-    // WHY: We removed the default "my-account" flyout items in a previous
-    //      cleanup, so there was no way to log out. This adds it back as
-    //      an item in that dropdown, right below Dashboard.
-    $wp_admin_bar->add_node( [
-        'parent' => 'user-actions',
-        'id'     => 'sp-logout',
-        'title'  => __( 'Log Out', 'societypress' ),
-        'href'   => wp_logout_url(),
-    ] );
+    // NOTE: WordPress already adds a "Log Out" link (id: 'logout') to the
+    // user-actions group. A previous version of this code added a duplicate
+    // 'sp-logout' node because we thought the default was removed — it wasn't.
+    // No need to add anything here; the built-in logout link is sufficient.
 });
 
 
@@ -9498,7 +9535,7 @@ function sp_render_members_page(): void {
         ) );
         if ( $others_count > 0 ) :
         ?>
-            <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-members' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( sprintf( __( 'This will permanently delete all %d other members and their accounts.\n\nYour own account will NOT be touched.\n\nAre you sure?', 'societypress' ), $others_count ) ); ?>');">
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-members' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( sprintf( __( "This will permanently delete all %d other members and their accounts.\n\nYour own account will NOT be touched.\n\nAre you sure?", 'societypress' ), $others_count ) ); ?>');">
                 <?php wp_nonce_field( 'sp_delete_all_others' ); ?>
                 <input type="hidden" name="action" value="delete_all_others">
                 <button type="submit" class="page-title-action" style="color:#b32d2e; border-color:#b32d2e; cursor:pointer; background:none;"><?php esc_html_e( 'Delete All Others', 'societypress' ); ?></button>
@@ -18453,6 +18490,206 @@ function sp_render_settings_privacy_page(): void {
  *      changes instantly in the iframe before committing with Save.
  */
 // ============================================================================
+// THEME PREVIEW — Preview any SocietyPress theme without activating it
+// ============================================================================
+//
+// WHY: Harold shouldn't have to blindly activate a theme to see what his site
+//      looks like with it. The "Preview" button in the theme gallery opens his
+//      actual homepage rendered with the selected theme. Behind the scenes, we
+//      intercept WordPress's theme resolution for that one request and serve
+//      the page with the preview theme instead. Only logged-in admins can
+//      trigger this — regular visitors always see the real active theme.
+//
+// HOW: WordPress calls get_stylesheet() and get_template() to determine which
+//      theme to load. Both functions apply filters ('stylesheet' and 'template')
+//      that we hook into. When ?sp_preview_theme=heritage is in the URL, we
+//      return the preview slug instead of the active theme. WordPress then
+//      loads that theme's templates, stylesheets, and functions.php as if it
+//      were the active theme — but only for this one request.
+
+/**
+ * Determine if this is a valid theme preview request.
+ *
+ * WHY: Called by both the stylesheet and template filters. Uses a static cache
+ *      so we only do the expensive checks (current_user_can, wp_get_theme)
+ *      once per request, and a $checked flag prevents infinite recursion if
+ *      any of those calls internally trigger get_stylesheet()/get_template().
+ *
+ * @return string|null The preview theme slug, or null if not a preview request.
+ */
+function sp_preview_get_slug(): ?string {
+    static $slug    = null;
+    static $checked = false;
+
+    // Return cached result on subsequent calls (also prevents recursion)
+    if ( $checked ) return $slug;
+    $checked = true;
+
+    // Only preview on the frontend, never in admin
+    if ( is_admin() ) return null;
+    if ( ! isset( $_GET['sp_preview_theme'] ) ) return null;
+
+    $candidate = sanitize_text_field( $_GET['sp_preview_theme'] );
+    if ( empty( $candidate ) ) return null;
+
+    // Only admins can preview themes
+    if ( ! current_user_can( 'manage_options' ) ) return null;
+
+    // Previewing the parent theme itself
+    if ( $candidate === 'societypress' ) {
+        $slug = $candidate;
+        return $slug;
+    }
+
+    // Verify the theme exists and is a SocietyPress child theme
+    $theme = wp_get_theme( $candidate );
+    if ( $theme->exists() && $theme->get( 'Template' ) === 'societypress' ) {
+        $slug = $candidate;
+        return $slug;
+    }
+
+    return null;
+}
+
+/**
+ * Filter the active stylesheet (child theme) for preview requests.
+ */
+add_filter( 'stylesheet', function ( $stylesheet ) {
+    $preview = sp_preview_get_slug();
+    return $preview !== null ? $preview : $stylesheet;
+} );
+
+/**
+ * Filter the active template (parent theme) for preview requests.
+ *
+ * WHY: All SocietyPress child themes declare Template: societypress, so the
+ *      parent template is always 'societypress'. For previewing the parent
+ *      theme itself, the template is also 'societypress'.
+ */
+add_filter( 'template', function ( $template ) {
+    $preview = sp_preview_get_slug();
+    return $preview !== null ? 'societypress' : $template;
+} );
+
+/**
+ * Show a preview banner at the top of the page during theme preview.
+ *
+ * WHY: Harold needs to know he's looking at a preview (not the live site) and
+ *      have quick actions available: activate the theme or go back to the
+ *      gallery. The banner sits in a fixed position at the top so it's always
+ *      visible even when scrolling.
+ */
+add_action( 'wp_head', function () {
+    $preview = sp_preview_get_slug();
+    if ( $preview === null ) return;
+
+    $theme = wp_get_theme( $preview );
+    $name  = $theme->exists() ? $theme->get( 'Name' ) : $preview;
+
+    // Build the activate URL (POST form submitted via JS)
+    $activate_nonce = wp_create_nonce( 'sp_switch_theme' );
+    $themes_url     = admin_url( 'admin.php?page=sp-themes' );
+    ?>
+    <style id="sp-preview-banner-style">
+        /* WHY fixed positioning: The banner must stay visible as Harold scrolls
+           through the page to evaluate the theme. z-index 999999 ensures it
+           sits above everything including admin bars and sticky headers. */
+        #sp-preview-banner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 999999;
+            background: linear-gradient(135deg, #8B5CF6, #7C3AED);
+            color: #fff;
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 14px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        #sp-preview-banner a,
+        #sp-preview-banner button {
+            color: #fff;
+            text-decoration: none;
+            padding: 6px 16px;
+            border-radius: 5px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: background 0.15s;
+        }
+        #sp-preview-banner .sp-preview-activate {
+            background: rgba(255,255,255,0.25);
+        }
+        #sp-preview-banner .sp-preview-activate:hover {
+            background: rgba(255,255,255,0.4);
+        }
+        #sp-preview-banner .sp-preview-back {
+            background: rgba(0,0,0,0.2);
+        }
+        #sp-preview-banner .sp-preview-back:hover {
+            background: rgba(0,0,0,0.35);
+        }
+        /* Push the page content down so the banner doesn't overlap it */
+        body { margin-top: 44px !important; }
+    </style>
+    <?php
+}, 999 ); // Priority 999 so it outputs after other wp_head items
+
+add_action( 'wp_body_open', function () {
+    $preview = sp_preview_get_slug();
+    if ( $preview === null ) return;
+
+    $theme = wp_get_theme( $preview );
+    $name  = $theme->exists() ? $theme->get( 'Name' ) : $preview;
+
+    $activate_nonce = wp_create_nonce( 'sp_switch_theme' );
+    $themes_url     = admin_url( 'admin.php?page=sp-themes' );
+    ?>
+    <div id="sp-preview-banner">
+        <span>
+            <?php
+            printf(
+                /* translators: %s: theme name */
+                esc_html__( 'Previewing: %s', 'societypress' ),
+                '<strong>' . esc_html( $name ) . '</strong>'
+            );
+            ?>
+        </span>
+        <span style="display:flex; gap:8px;">
+            <form method="post" action="<?php echo esc_url( $themes_url ); ?>" style="margin:0; display:inline;">
+                <input type="hidden" name="_sp_theme_nonce" value="<?php echo esc_attr( $activate_nonce ); ?>">
+                <input type="hidden" name="sp_activate_theme" value="<?php echo esc_attr( $preview ); ?>">
+                <button type="submit" class="sp-preview-activate">
+                    <?php esc_html_e( 'Activate This Theme', 'societypress' ); ?>
+                </button>
+            </form>
+            <a href="<?php echo esc_url( $themes_url ); ?>" class="sp-preview-back">
+                <?php esc_html_e( 'Back to Themes', 'societypress' ); ?>
+            </a>
+        </span>
+    </div>
+    <?php
+} );
+
+/**
+ * Disable the WP admin bar during theme preview.
+ *
+ * WHY: The admin bar takes up space at the top and competes with our preview
+ *      banner. During preview we want Harold focused on the theme, not admin
+ *      navigation. The banner provides all the actions he needs.
+ */
+add_filter( 'show_admin_bar', function ( $show ) {
+    if ( sp_preview_get_slug() !== null ) return false;
+    return $show;
+} );
+
+
+// ============================================================================
 // THEME CHOOSER — Browse and activate SocietyPress child themes
 // ============================================================================
 //
@@ -18516,22 +18753,50 @@ function sp_get_theme_registry(): array {
             'slug'        => 'saghs',
             'name'        => 'SAGHS',
             'version'     => '0.04d',
-            'description' => 'San Antonio Genealogical & Historical Society — burgundy and cream palette with brand-specific header, dual search forms, and social media icons.',
+            'description' => __( 'San Antonio Genealogical & Historical Society — burgundy and cream palette with brand-specific header, dual search forms, and social media icons.', 'societypress' ),
             'colors'      => [ '#632220', '#fbebd2', '#7f7166', '#ba5f36' ],
             'repo_path'   => 'theme-saghs',
         ],
-        // Future child themes go here. When you add a new theme to the
-        // GitHub repo, add an entry here and bump the plugin version.
-        // Harold will see it in the gallery after updating.
-        //
-        // 'heritage' => [
-        //     'slug'        => 'heritage',
-        //     'name'        => 'Heritage',
-        //     'version'     => '1.0.0',
-        //     'description' => 'A warm, traditional look inspired by historical document aesthetics.',
-        //     'colors'      => [ '#3b2f2f', '#f5f0e8', '#8b7355', '#c4a35a' ],
-        //     'repo_path'   => 'theme-heritage',
-        // ],
+        'heritage' => [
+            'slug'        => 'heritage',
+            'name'        => 'Heritage',
+            'version'     => '1.0.0',
+            'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
+            'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
+            'repo_path'   => 'theme-heritage',
+        ],
+        'coastline' => [
+            'slug'        => 'coastline',
+            'name'        => 'Coastline',
+            'version'     => '1.0.0',
+            'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
+            'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
+            'repo_path'   => 'theme-coastline',
+        ],
+        'prairie' => [
+            'slug'        => 'prairie',
+            'name'        => 'Prairie',
+            'version'     => '1.0.0',
+            'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
+            'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
+            'repo_path'   => 'theme-prairie',
+        ],
+        'ledger' => [
+            'slug'        => 'ledger',
+            'name'        => 'Ledger',
+            'version'     => '1.0.0',
+            'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
+            'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
+            'repo_path'   => 'theme-ledger',
+        ],
+        'parlor' => [
+            'slug'        => 'parlor',
+            'name'        => 'Parlor',
+            'version'     => '1.0.0',
+            'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
+            'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
+            'repo_path'   => 'theme-parlor',
+        ],
     ];
 }
 
@@ -18641,6 +18906,1040 @@ add_action( 'wp_ajax_sp_install_theme', function () {
     ] );
 } );
 
+
+// ============================================================================
+// CUSTOM THEME BUILDER — Create, edit, and delete custom child themes
+// ============================================================================
+//
+// WHY: Harold might want a look that doesn't match any of the pre-built themes.
+//      Instead of forcing him to learn CSS, we let him pick colors and fonts in
+//      a visual builder, then we generate a proper WordPress child theme on disk.
+//      The result is a real child theme that any WordPress developer could later
+//      open and extend — but Harold never needs to know that.
+//
+// STORAGE: Custom theme metadata lives in the 'sp_custom_themes' option — an
+//      associative array keyed by theme slug. Each entry stores the builder
+//      values (colors, fonts, name) so we can re-populate the editor when
+//      Harold wants to make changes later.
+
+/**
+ * Get the Google Fonts URL map for the custom theme builder.
+ *
+ * WHY: When generating a custom child theme's functions.php, we need to know
+ *      which fonts require a Google Fonts <link> tag and what the URL parameter
+ *      looks like. System fonts (system, georgia, palatino) don't need this.
+ *
+ * @return array<string, string> Font key => Google Fonts family parameter.
+ */
+function sp_get_google_font_urls(): array {
+    return [
+        'inter'        => 'Inter:wght@300;400;500;600;700;800',
+        'garamond'     => 'EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400',
+        'merriweather' => 'Merriweather:ital,wght@0,300;0,400;0,700;0,900;1,400',
+        'lora'         => 'Lora:ital,wght@0,400;0,500;0,600;0,700;1,400',
+        'roboto'       => 'Roboto:wght@300;400;500;700',
+        'open-sans'    => 'Open+Sans:wght@300;400;500;600;700',
+        'source-sans'  => 'Source+Sans+3:ital,wght@0,300;0,400;0,600;0,700;1,400',
+        'nunito'       => 'Nunito:wght@300;400;500;600;700',
+        'lato'         => 'Lato:wght@300;400;700',
+    ];
+}
+
+/**
+ * Get the saved custom themes array.
+ *
+ * @return array Associative array keyed by theme slug.
+ */
+function sp_get_custom_themes(): array {
+    return get_option( 'sp_custom_themes', [] );
+}
+
+/**
+ * Generate the style.css content for a custom child theme.
+ *
+ * WHY: This creates a proper WordPress child theme stylesheet header (so WP
+ *      recognizes it as a child of societypress) plus :root overrides that
+ *      set the theme's colors and fonts. The child CSS loads after the parent
+ *      and after the plugin's inline <style>, so these :root values win.
+ *
+ * @param string $name         Theme display name.
+ * @param string $slug         Theme directory slug.
+ * @param array  $colors       Associative array of color keys => hex values.
+ * @param string $font_body    Font key for body text.
+ * @param string $font_heading Font key for headings.
+ * @return string Complete style.css file content.
+ */
+function sp_generate_custom_theme_css( string $name, string $slug, array $colors, string $font_body, string $font_heading ): string {
+    $font_map    = sp_get_font_family_options();
+    $body_family = $font_map[ $font_body ] ?? $font_map['system'];
+
+    // "inherit" means "same as body font"
+    if ( $font_heading === 'inherit' || $font_heading === $font_body ) {
+        $heading_family = $body_family;
+    } else {
+        $heading_family = $font_map[ $font_heading ] ?? 'inherit';
+    }
+
+    $esc_name = str_replace( [ '/', '*' ], '', $name ); // Prevent CSS comment injection
+
+    $css = "/*\n";
+    $css .= "Theme Name: {$esc_name}\n";
+    $css .= "Theme URI: https://getsocietypress.org\n";
+    $css .= "Author: Custom Theme Builder\n";
+    $css .= "Author URI: https://getsocietypress.org\n";
+    $css .= "Description: Custom theme created with the SocietyPress Theme Builder.\n";
+    $css .= "Version: 1.0.0\n";
+    $css .= "Template: societypress\n";
+    $css .= "Requires at least: 6.0\n";
+    $css .= "Tested up to: 6.7\n";
+    $css .= "Requires PHP: 8.0\n";
+    $css .= "License: GPL-2.0-or-later\n";
+    $css .= "Text Domain: {$slug}\n";
+    $css .= "*/\n\n";
+
+    $css .= "/* ============================================================================\n";
+    $css .= "   CUSTOM THEME — Generated by SocietyPress Theme Builder\n";
+    $css .= "   WHY: These :root overrides set the colors and fonts chosen in the builder.\n";
+    $css .= "   The parent theme and all plugin widgets read --sp-* variables, so changing\n";
+    $css .= "   them here cascades everywhere without touching template files.\n";
+    $css .= "   ============================================================================ */\n\n";
+
+    $css .= ":root {\n";
+    $css .= "    --sp-color-primary:       {$colors['primary']};\n";
+    $css .= "    --sp-color-primary-hover: {$colors['primary_hover']};\n";
+    $css .= "    --sp-color-accent:        {$colors['accent']};\n";
+    $css .= "    --sp-color-header-bg:     {$colors['header_bg']};\n";
+    $css .= "    --sp-color-header-text:   {$colors['header_text']};\n";
+    $css .= "    --sp-color-footer-bg:     {$colors['footer_bg']};\n";
+    $css .= "    --sp-color-footer-text:   {$colors['footer_text']};\n";
+    $css .= "    --sp-font-body:    {$body_family};\n";
+    $css .= "    --sp-font-heading: {$heading_family};\n";
+    $css .= "}\n\n";
+
+    $css .= "/* Link colors derived from the palette */\n";
+    $css .= "a { color: {$colors['accent']}; }\n";
+    $css .= "a:hover { color: {$colors['primary']}; }\n\n";
+
+    $css .= "/* Button colors */\n";
+    $css .= ".sp-btn,\n";
+    $css .= "button.sp-btn,\n";
+    $css .= "input[type=\"submit\"] {\n";
+    $css .= "    background-color: {$colors['primary']};\n";
+    $css .= "    border-color: {$colors['primary']};\n";
+    $css .= "}\n";
+    $css .= ".sp-btn:hover,\n";
+    $css .= "button.sp-btn:hover,\n";
+    $css .= "input[type=\"submit\"]:hover {\n";
+    $css .= "    background-color: {$colors['primary_hover']};\n";
+    $css .= "    border-color: {$colors['primary_hover']};\n";
+    $css .= "}\n";
+
+    return $css;
+}
+
+/**
+ * Generate the functions.php content for a custom child theme.
+ *
+ * WHY: Every child theme needs a functions.php that enqueues the parent
+ *      stylesheet (so the base layout loads) and the child stylesheet (so
+ *      our :root overrides take effect). If the chosen fonts are Google Fonts,
+ *      we also need to load them via a <link> tag.
+ *
+ * @param string $slug         Theme slug (used for handle prefixes).
+ * @param string $name         Theme display name (for the file header comment).
+ * @param string $font_body    Font key for body text.
+ * @param string $font_heading Font key for headings.
+ * @return string Complete functions.php file content.
+ */
+function sp_generate_custom_theme_functions( string $slug, string $name, string $font_body, string $font_heading ): string {
+    $google_font_urls = sp_get_google_font_urls();
+    $esc_name = str_replace( "'", "\\'", $name );
+
+    // Determine which Google Fonts need loading
+    $families = [];
+    if ( isset( $google_font_urls[ $font_body ] ) ) {
+        $families[] = $google_font_urls[ $font_body ];
+    }
+    if ( $font_heading !== 'inherit' && $font_heading !== $font_body && isset( $google_font_urls[ $font_heading ] ) ) {
+        $families[] = $google_font_urls[ $font_heading ];
+    }
+
+    $php = "<?php\n";
+    $php .= "/**\n";
+    $php .= " * {$esc_name} — Custom Child Theme Functions\n";
+    $php .= " *\n";
+    $php .= " * Generated by the SocietyPress Theme Builder. This file:\n";
+    $php .= " * 1. Loads any required Google Fonts\n";
+    $php .= " * 2. Enqueues the child stylesheet after the parent so our :root overrides win\n";
+    $php .= " *\n";
+    $php .= " * @package {$slug}\n";
+    $php .= " */\n\n";
+    $php .= "if ( ! defined( 'ABSPATH' ) ) {\n";
+    $php .= "    exit;\n";
+    $php .= "}\n\n";
+
+    $const = strtoupper( str_replace( '-', '_', $slug ) ) . '_THEME_VERSION';
+    $php .= "define( '{$const}', '1.0.0' );\n\n";
+
+    $php .= "add_action( 'wp_enqueue_scripts', function () {\n\n";
+
+    // Google Fonts loading (if needed)
+    if ( ! empty( $families ) ) {
+        $font_url = 'https://fonts.googleapis.com/css2?family=' . implode( '&family=', $families ) . '&display=swap';
+        $php .= "    // Google Fonts — loaded before stylesheets so the font is available\n";
+        $php .= "    wp_enqueue_style(\n";
+        $php .= "        '{$slug}-google-fonts',\n";
+        $php .= "        '{$font_url}',\n";
+        $php .= "        [],\n";
+        $php .= "        null\n";
+        $php .= "    );\n\n";
+
+        $deps = "[ 'societypress-style', '{$slug}-google-fonts' ]";
+    } else {
+        $deps = "[ 'societypress-style' ]";
+    }
+
+    $php .= "    // Child stylesheet — loads after parent so our :root overrides win\n";
+    $php .= "    wp_enqueue_style(\n";
+    $php .= "        '{$slug}-style',\n";
+    $php .= "        get_stylesheet_uri(),\n";
+    $php .= "        {$deps},\n";
+    $php .= "        {$const}\n";
+    $php .= "    );\n";
+    $php .= "} );\n";
+
+    return $php;
+}
+
+/**
+ * AJAX: Create a new custom child theme.
+ *
+ * WHY: Harold clicks "Create" in the theme builder modal. We validate his
+ *      inputs, generate a slug, write the theme files to wp-content/themes/,
+ *      save the builder values so he can edit later, and return success.
+ */
+add_action( 'wp_ajax_sp_create_custom_theme', function () {
+    if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_custom_theme_nonce' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ] );
+    }
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ] );
+    }
+
+    $name = sanitize_text_field( trim( $_POST['theme_name'] ?? '' ) );
+    if ( empty( $name ) ) {
+        wp_send_json_error( [ 'message' => __( 'Please enter a theme name.', 'societypress' ) ] );
+    }
+
+    // Generate a slug from the name — lowercase, hyphens, max 40 chars
+    $slug = sanitize_title( $name );
+    $slug = substr( $slug, 0, 40 );
+
+    // Prevent collisions with parent theme, registry themes, or existing custom themes
+    $registry = sp_get_theme_registry();
+    $reserved = array_merge( [ 'societypress' ], array_keys( $registry ) );
+    if ( in_array( $slug, $reserved, true ) ) {
+        wp_send_json_error( [ 'message' => __( 'That name is too similar to a built-in theme. Please choose a different name.', 'societypress' ) ] );
+    }
+
+    // Check if slug already exists (installed theme or custom theme)
+    $existing_theme = wp_get_theme( $slug );
+    if ( $existing_theme->exists() ) {
+        wp_send_json_error( [ 'message' => __( 'A theme with that name already exists. Please choose a different name.', 'societypress' ) ] );
+    }
+
+    // Sanitize colors — all must be valid hex colors
+    $color_keys = [ 'primary', 'primary_hover', 'accent', 'header_bg', 'header_text', 'footer_bg', 'footer_text' ];
+    $colors = [];
+    foreach ( $color_keys as $key ) {
+        $val = sanitize_hex_color( $_POST[ 'color_' . $key ] ?? '' );
+        if ( ! $val ) {
+            wp_send_json_error( [ 'message' => sprintf( __( 'Invalid color for %s.', 'societypress' ), $key ) ] );
+        }
+        $colors[ $key ] = $val;
+    }
+
+    // Sanitize font selections
+    $valid_fonts = array_keys( sp_get_font_family_options() );
+    $font_body    = sanitize_text_field( $_POST['font_body'] ?? 'system' );
+    $font_heading = sanitize_text_field( $_POST['font_heading'] ?? 'inherit' );
+    if ( ! in_array( $font_body, $valid_fonts, true ) ) $font_body = 'system';
+    if ( $font_heading !== 'inherit' && ! in_array( $font_heading, $valid_fonts, true ) ) $font_heading = 'inherit';
+
+    // Generate the theme files
+    $css_content = sp_generate_custom_theme_css( $name, $slug, $colors, $font_body, $font_heading );
+    $php_content = sp_generate_custom_theme_functions( $slug, $name, $font_body, $font_heading );
+
+    // Write to wp-content/themes/{slug}/
+    $theme_dir = get_theme_root() . '/' . $slug;
+    if ( ! wp_mkdir_p( $theme_dir ) ) {
+        wp_send_json_error( [ 'message' => __( 'Could not create theme directory. Check file permissions.', 'societypress' ) ] );
+    }
+
+    $css_written = file_put_contents( $theme_dir . '/style.css', $css_content );
+    $php_written = file_put_contents( $theme_dir . '/functions.php', $php_content );
+
+    if ( $css_written === false || $php_written === false ) {
+        wp_send_json_error( [ 'message' => __( 'Could not write theme files. Check file permissions.', 'societypress' ) ] );
+    }
+
+    // Save the builder values so Harold can edit later
+    $custom_themes = sp_get_custom_themes();
+    $custom_themes[ $slug ] = [
+        'name'         => $name,
+        'slug'         => $slug,
+        'colors'       => $colors,
+        'font_body'    => $font_body,
+        'font_heading' => $font_heading,
+        'created'      => current_time( 'mysql' ),
+        'updated'      => current_time( 'mysql' ),
+    ];
+    update_option( 'sp_custom_themes', $custom_themes );
+
+    sp_audit(
+        'custom_theme_created',
+        sprintf( 'Custom child theme "%s" (%s) created via Theme Builder', $name, $slug ),
+        'settings'
+    );
+
+    wp_send_json_success( [
+        'message' => sprintf( __( '"%s" has been created! You can now activate it.', 'societypress' ), $name ),
+        'slug'    => $slug,
+    ] );
+} );
+
+/**
+ * AJAX: Update an existing custom child theme.
+ *
+ * WHY: Harold re-opens the builder for a custom theme he already created,
+ *      tweaks a color or font, and clicks Save. We regenerate the theme files
+ *      with the new values and update the saved metadata.
+ */
+add_action( 'wp_ajax_sp_update_custom_theme', function () {
+    if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_custom_theme_nonce' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ] );
+    }
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ] );
+    }
+
+    $slug = sanitize_text_field( $_POST['theme_slug'] ?? '' );
+    $custom_themes = sp_get_custom_themes();
+
+    if ( ! isset( $custom_themes[ $slug ] ) ) {
+        wp_send_json_error( [ 'message' => __( 'Theme not found.', 'societypress' ) ] );
+    }
+
+    $name = $custom_themes[ $slug ]['name']; // Name can't change (it's the identity)
+
+    // Sanitize colors
+    $color_keys = [ 'primary', 'primary_hover', 'accent', 'header_bg', 'header_text', 'footer_bg', 'footer_text' ];
+    $colors = [];
+    foreach ( $color_keys as $key ) {
+        $val = sanitize_hex_color( $_POST[ 'color_' . $key ] ?? '' );
+        if ( ! $val ) {
+            wp_send_json_error( [ 'message' => sprintf( __( 'Invalid color for %s.', 'societypress' ), $key ) ] );
+        }
+        $colors[ $key ] = $val;
+    }
+
+    // Sanitize fonts
+    $valid_fonts = array_keys( sp_get_font_family_options() );
+    $font_body    = sanitize_text_field( $_POST['font_body'] ?? 'system' );
+    $font_heading = sanitize_text_field( $_POST['font_heading'] ?? 'inherit' );
+    if ( ! in_array( $font_body, $valid_fonts, true ) ) $font_body = 'system';
+    if ( $font_heading !== 'inherit' && ! in_array( $font_heading, $valid_fonts, true ) ) $font_heading = 'inherit';
+
+    // Regenerate theme files
+    $css_content = sp_generate_custom_theme_css( $name, $slug, $colors, $font_body, $font_heading );
+    $php_content = sp_generate_custom_theme_functions( $slug, $name, $font_body, $font_heading );
+
+    $theme_dir = get_theme_root() . '/' . $slug;
+    file_put_contents( $theme_dir . '/style.css', $css_content );
+    file_put_contents( $theme_dir . '/functions.php', $php_content );
+
+    // Update saved metadata
+    $custom_themes[ $slug ]['colors']       = $colors;
+    $custom_themes[ $slug ]['font_body']    = $font_body;
+    $custom_themes[ $slug ]['font_heading'] = $font_heading;
+    $custom_themes[ $slug ]['updated']      = current_time( 'mysql' );
+    update_option( 'sp_custom_themes', $custom_themes );
+
+    sp_audit(
+        'custom_theme_updated',
+        sprintf( 'Custom child theme "%s" (%s) updated via Theme Builder', $name, $slug ),
+        'settings'
+    );
+
+    wp_send_json_success( [
+        'message' => sprintf( __( '"%s" has been updated.', 'societypress' ), $name ),
+    ] );
+} );
+
+/**
+ * AJAX: Delete a custom child theme.
+ *
+ * WHY: Harold no longer wants a custom theme he created. We delete the theme
+ *      directory and remove it from our metadata. If the theme is currently
+ *      active, we switch to the parent theme first.
+ */
+add_action( 'wp_ajax_sp_delete_custom_theme', function () {
+    if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_custom_theme_nonce' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ] );
+    }
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ] );
+    }
+
+    $slug = sanitize_text_field( $_POST['theme_slug'] ?? '' );
+    $custom_themes = sp_get_custom_themes();
+
+    if ( ! isset( $custom_themes[ $slug ] ) ) {
+        wp_send_json_error( [ 'message' => __( 'Theme not found.', 'societypress' ) ] );
+    }
+
+    $name = $custom_themes[ $slug ]['name'];
+
+    // If this theme is currently active, switch back to parent first
+    if ( get_stylesheet() === $slug ) {
+        switch_theme( 'societypress' );
+    }
+
+    // Delete the theme directory
+    $theme_dir = get_theme_root() . '/' . $slug;
+    if ( is_dir( $theme_dir ) ) {
+        // Use WP_Filesystem for safe deletion
+        global $wp_filesystem;
+        if ( ! function_exists( 'WP_Filesystem' ) ) {
+            require_once ABSPATH . 'wp-admin/includes/file.php';
+        }
+        WP_Filesystem();
+        $wp_filesystem->delete( $theme_dir, true );
+    }
+
+    // Remove from saved metadata
+    unset( $custom_themes[ $slug ] );
+    update_option( 'sp_custom_themes', $custom_themes );
+
+    sp_audit(
+        'custom_theme_deleted',
+        sprintf( 'Custom child theme "%s" (%s) deleted', $name, $slug ),
+        'settings'
+    );
+
+    wp_send_json_success( [
+        'message' => sprintf( __( '"%s" has been deleted.', 'societypress' ), $name ),
+    ] );
+} );
+
+// ============================================================================
+// SITE COLOR/FONT EXTRACTOR — "Match My Current Site"
+// ============================================================================
+//
+// WHY: When a society migrates to SocietyPress, they already have an established
+//      visual identity. Rather than making Harold manually eyedrop every color
+//      from his old site, we can fetch the page and extract the dominant colors
+//      and fonts automatically. This pre-populates the custom theme builder so
+//      Harold gets an 80% match with one click — then fine-tunes from there.
+//
+// HOW: We fetch the target URL, parse the HTML for:
+//      1. <meta name="theme-color"> (quickest signal for primary color)
+//      2. <style> blocks (inline CSS with color/font declarations)
+//      3. First external stylesheet (the main theme CSS)
+//      4. Google Fonts <link> tags (font detection)
+//      5. CSS custom properties in :root
+//      Then we use heuristics to map the extracted values to our 7 color fields
+//      and 2 font selectors.
+
+/**
+ * Convert an RGB/RGBA color string to hex.
+ *
+ * @param string $rgb  e.g. "rgb(30, 58, 95)" or "rgba(30, 58, 95, 0.9)"
+ * @return string|null Hex color like "#1e3a5f", or null if unparseable.
+ */
+function sp_rgb_to_hex( string $rgb ): ?string {
+    if ( preg_match( '/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/', $rgb, $m ) ) {
+        return sprintf( '#%02x%02x%02x', (int) $m[1], (int) $m[2], (int) $m[3] );
+    }
+    return null;
+}
+
+/**
+ * Normalize a CSS color value to a 6-digit hex string.
+ *
+ * WHY: CSS colors come in many formats — #abc, #aabbcc, rgb(), rgba(),
+ *      named colors. We need a consistent format for our color fields.
+ *
+ * @param string $color Raw CSS color value.
+ * @return string|null Normalized hex like "#1e3a5f", or null if unrecognizable.
+ */
+function sp_normalize_color( string $color ): ?string {
+    $color = strtolower( trim( $color ) );
+
+    // Strip !important, trailing semicolons, and whitespace — CSS values from
+    // real sites are messy. "#fbebd2!important" is extremely common.
+    $color = preg_replace( '/\s*!important\s*/', '', $color );
+    $color = rtrim( $color, "; \t\n\r" );
+
+    // Already a 6-digit hex
+    if ( preg_match( '/^#[0-9a-f]{6}$/', $color ) ) {
+        return $color;
+    }
+
+    // 3-digit hex shorthand → expand
+    if ( preg_match( '/^#([0-9a-f])([0-9a-f])([0-9a-f])$/', $color, $m ) ) {
+        return '#' . $m[1] . $m[1] . $m[2] . $m[2] . $m[3] . $m[3];
+    }
+
+    // 8-digit hex (with alpha) → drop the alpha
+    if ( preg_match( '/^#([0-9a-f]{6})[0-9a-f]{2}$/', $color, $m ) ) {
+        return '#' . $m[1];
+    }
+
+    // rgb() / rgba()
+    if ( strpos( $color, 'rgb' ) === 0 ) {
+        return sp_rgb_to_hex( $color );
+    }
+
+    // Common named colors used by websites
+    $named = [
+        'white' => '#ffffff', 'black' => '#000000', 'red' => '#ff0000',
+        'blue' => '#0000ff', 'green' => '#008000', 'navy' => '#000080',
+        'darkblue' => '#00008b', 'darkgreen' => '#006400', 'maroon' => '#800000',
+        'gray' => '#808080', 'grey' => '#808080', 'silver' => '#c0c0c0',
+        'darkgray' => '#a9a9a9', 'darkgrey' => '#a9a9a9',
+    ];
+    if ( isset( $named[ $color ] ) ) {
+        return $named[ $color ];
+    }
+
+    return null;
+}
+
+/**
+ * Calculate the relative luminance of a hex color.
+ *
+ * WHY: We need to distinguish "light" colors from "dark" colors to figure out
+ *      which are backgrounds vs. text, headers vs. footers. The WCAG luminance
+ *      formula gives a 0–1 value where 0 = black and 1 = white.
+ *
+ * @param string $hex 6-digit hex color.
+ * @return float Luminance between 0 and 1.
+ */
+function sp_color_luminance( string $hex ): float {
+    $hex = ltrim( $hex, '#' );
+    $r = hexdec( substr( $hex, 0, 2 ) ) / 255;
+    $g = hexdec( substr( $hex, 2, 2 ) ) / 255;
+    $b = hexdec( substr( $hex, 4, 2 ) ) / 255;
+
+    // sRGB linearization
+    $r = ( $r <= 0.03928 ) ? $r / 12.92 : pow( ( $r + 0.055 ) / 1.055, 2.4 );
+    $g = ( $g <= 0.03928 ) ? $g / 12.92 : pow( ( $g + 0.055 ) / 1.055, 2.4 );
+    $b = ( $b <= 0.03928 ) ? $b / 12.92 : pow( ( $b + 0.055 ) / 1.055, 2.4 );
+
+    return 0.2126 * $r + 0.7152 * $g + 0.0722 * $b;
+}
+
+/**
+ * Extract colors and fonts from a website's HTML and CSS.
+ *
+ * WHY: This is the core extraction engine. It parses the HTML for various
+ *      color and font signals, then uses heuristics to assign them to our
+ *      7 color slots and 2 font slots.
+ *
+ * @param string $html     The fetched HTML content.
+ * @param string $base_url The base URL for resolving relative stylesheet paths.
+ * @return array [ 'colors' => [...], 'fonts' => [...], 'confidence' => 'high'|'medium'|'low' ]
+ */
+function sp_extract_site_design( string $html, string $base_url ): array {
+    $colors_by_context = [
+        'header_bg'   => [],
+        'header_text' => [],
+        'footer_bg'   => [],
+        'footer_text' => [],
+        'body_bg'     => [],
+        'body_text'   => [],
+        'link'        => [],
+        'heading'     => [],
+        'button_bg'   => [],
+        'all'         => [],
+    ];
+    $fonts_found = [];
+    $css_chunks  = [];
+
+    // --- Step 1: Parse the HTML with DOMDocument ---
+    libxml_use_internal_errors( true );
+    $doc = new DOMDocument();
+    $doc->loadHTML( '<?xml encoding="UTF-8">' . $html, LIBXML_NOWARNING | LIBXML_NOERROR );
+    libxml_clear_errors();
+
+    // --- Step 2: Extract <meta name="theme-color"> ---
+    // WHY: Many modern sites declare their brand color here. It's the single
+    //      highest-confidence signal for the primary color.
+    $metas = $doc->getElementsByTagName( 'meta' );
+    foreach ( $metas as $meta ) {
+        if ( strtolower( $meta->getAttribute( 'name' ) ) === 'theme-color' ) {
+            $tc = sp_normalize_color( $meta->getAttribute( 'content' ) );
+            if ( $tc ) {
+                $colors_by_context['header_bg'][] = $tc;
+                $colors_by_context['all'][]       = $tc;
+            }
+        }
+    }
+
+    // --- Step 3: Extract inline <style> blocks ---
+    // WHY we save these separately and add them LAST: In CSS cascade order,
+    // inline <style> blocks in the HTML override external stylesheets because
+    // they appear later in the document. Sites like ENS use a generic template
+    // CSS (e.g., tooplate.css with #2a2a2a everywhere) and then override with
+    // inline styles for their specific branding (#632220, #fbebd2, etc.).
+    // By putting inline CSS last in our chunks array, the context pattern
+    // matcher picks up the site-specific overrides as the final (winning) match.
+    $inline_css_chunks = [];
+    $styles = $doc->getElementsByTagName( 'style' );
+    foreach ( $styles as $style ) {
+        $inline_css_chunks[] = $style->textContent;
+    }
+
+    // --- Step 4: Find Google Fonts <link> for font detection ---
+    // WHY: If the site loads fonts from Google Fonts, the URL tells us exactly
+    //      which fonts they use. Much more reliable than parsing CSS font-family.
+    $links = $doc->getElementsByTagName( 'link' );
+    $stylesheet_urls = [];
+    foreach ( $links as $link ) {
+        $href = $link->getAttribute( 'href' );
+        $rel  = strtolower( $link->getAttribute( 'rel' ) );
+
+        if ( $rel === 'stylesheet' && strpos( $href, 'fonts.googleapis.com' ) !== false ) {
+            // Extract font names from Google Fonts URL
+            if ( preg_match_all( '/family=([^&:]+)/', $href, $fm ) ) {
+                foreach ( $fm[1] as $font_name ) {
+                    $font_name = urldecode( str_replace( '+', ' ', $font_name ) );
+                    $fonts_found[] = $font_name;
+                }
+            }
+        } elseif ( $rel === 'stylesheet' && ! empty( $href ) ) {
+            // Collect external stylesheet URLs (we'll fetch the first one)
+            $stylesheet_urls[] = $href;
+        }
+    }
+
+    // --- Step 5: Fetch external stylesheets (skip known frameworks) ---
+    // WHY: The site's actual brand colors live in the theme CSS, not in
+    //      Bootstrap, Font Awesome, or other vendor stylesheets. We skip
+    //      known framework URLs and fetch up to 3 remaining stylesheets
+    //      to maximize our chances of finding the real design tokens.
+    $skip_patterns = [
+        'bootstrap', 'font-awesome', 'fontawesome', 'normalize', 'reset',
+        'owl-carousel', 'owlcarousel', 'fancybox', 'slick', 'swiper',
+        'animate', 'jquery', 'cdn.jsdelivr', 'cdnjs.cloudflare',
+        'wp-includes', 'wp-content/plugins', 'ckeditor', 'laraberg',
+    ];
+
+    $fetched_count = 0;
+    foreach ( $stylesheet_urls as $css_url ) {
+        if ( $fetched_count >= 3 ) break;
+
+        // Skip known framework/vendor CSS
+        $skip = false;
+        $url_lower = strtolower( $css_url );
+        foreach ( $skip_patterns as $pattern ) {
+            if ( strpos( $url_lower, $pattern ) !== false ) {
+                $skip = true;
+                break;
+            }
+        }
+        if ( $skip ) continue;
+
+        // Resolve relative URLs
+        if ( strpos( $css_url, '//' ) === false ) {
+            $parsed = wp_parse_url( $base_url );
+            $origin = $parsed['scheme'] . '://' . $parsed['host'];
+            $css_url = ( $css_url[0] === '/' ) ? $origin . $css_url : $base_url . '/' . $css_url;
+        } elseif ( strpos( $css_url, '//' ) === 0 ) {
+            $parsed  = wp_parse_url( $base_url );
+            $css_url = $parsed['scheme'] . ':' . $css_url;
+        }
+
+        $css_resp = wp_remote_get( $css_url, [
+            'timeout'    => 10,
+            'headers'    => [ 'User-Agent' => 'SocietyPress/' . SOCIETYPRESS_VERSION . ' (theme-builder)' ],
+            'sslverify'  => false,
+        ] );
+
+        if ( ! is_wp_error( $css_resp ) && wp_remote_retrieve_response_code( $css_resp ) === 200 ) {
+            $css_body = wp_remote_retrieve_body( $css_resp );
+            if ( strlen( $css_body ) > 10 ) { // Skip empty/near-empty files
+                $css_chunks[] = substr( $css_body, 0, 200000 );
+                $fetched_count++;
+            }
+        }
+    }
+
+    // --- Step 6: Parse all CSS chunks for colors and fonts ---
+    // Add inline CSS AFTER external CSS so it comes last in the cascade.
+    // When our context patterns match multiple declarations for the same
+    // selector (e.g., h1 { color: #2a2a2a } from tooplate AND
+    // h1 { color: #7f7166!important } from the inline override), the
+    // last match is the one that would actually take effect in the browser.
+    $css_chunks = array_merge( $css_chunks, $inline_css_chunks );
+    $all_css = implode( "\n", $css_chunks );
+
+    // Extract :root custom properties (highest confidence — the site designer
+    // explicitly defined these as their design tokens)
+    if ( preg_match( '/:root\s*\{([^}]+)\}/s', $all_css, $root_match ) ) {
+        $root_css = $root_match[1];
+
+        // Look for color-like custom properties
+        if ( preg_match_all( '/--([\w-]*)(?:primary|brand|main|accent|heading)[^:]*:\s*([^;]+)/i', $root_css, $cm ) ) {
+            foreach ( $cm[2] as $i => $val ) {
+                $hex = sp_normalize_color( trim( $val ) );
+                if ( $hex ) {
+                    $prop_name = strtolower( $cm[1][$i] . $cm[0][$i] );
+                    if ( strpos( $prop_name, 'accent' ) !== false || strpos( $prop_name, 'secondary' ) !== false ) {
+                        $colors_by_context['link'][] = $hex;
+                    } else {
+                        $colors_by_context['heading'][] = $hex;
+                    }
+                    $colors_by_context['all'][] = $hex;
+                }
+            }
+        }
+
+        // Look for all color custom properties in :root
+        if ( preg_match_all( '/--[\w-]+:\s*(#[0-9a-fA-F]{3,8}|rgb[a]?\([^)]+\))/i', $root_css, $cm ) ) {
+            foreach ( $cm[1] as $val ) {
+                $hex = sp_normalize_color( trim( $val ) );
+                if ( $hex ) {
+                    $colors_by_context['all'][] = $hex;
+                }
+            }
+        }
+    }
+
+    // Extract colors from context-specific selectors.
+    // WHY the capture group uses ([^;}\n]+): We need to grab the full value
+    // including spaces (for rgb() values) and !important suffixes. The
+    // sp_normalize_color function handles stripping !important and normalizing.
+    $context_patterns = [
+        'header_bg'   => '/(?:header|\.header|#header|\.site-header|\.main-nav|nav|\.nav|\.navbar|\.top-bar)[^{]*\{[^}]*background(?:-color)?\s*:\s*([^;}\n]+)/si',
+        'header_text' => '/(?:header|\.header|#header|\.site-header|\.main-nav|nav|\.nav|\.navbar|\.top-bar)[^{]*\{[^}]*(?<!background-)color\s*:\s*([^;}\n]+)/si',
+        'footer_bg'   => '/(?:footer|\.footer|#footer|\.site-footer|\.footer-main)[^{]*\{[^}]*background(?:-color)?\s*:\s*([^;}\n]+)/si',
+        'footer_text' => '/(?:footer|\.footer|#footer|\.site-footer|\.footer-main)[^{,]*(?:,\s*footer[^{]*)?\{[^}]*(?<!background-)color\s*:\s*([^;}\n]+)/si',
+        'body_bg'     => '/body[^{]*\{[^}]*background(?:-color)?\s*:\s*([^;}\n]+)/si',
+        'body_text'   => '/body[^{]*\{[^}]*(?<!background-)color\s*:\s*([^;}\n]+)/si',
+        'link'        => '/(?:^|\s|,)a(?:\s|,|\{|:)[^{]*\{[^}]*(?<!background-)color\s*:\s*([^;}\n]+)/si',
+        'heading'     => '/h[1-6][^{]*\{[^}]*(?<!background-)color\s*:\s*([^;}\n]+)/si',
+        'button_bg'   => '/(?:\.btn|\.button|\.main-dark-button|button|input\[type.?=.?submit)[^{]*\{[^}]*background(?:-color)?\s*:\s*([^;}\n]+)/si',
+    ];
+
+    foreach ( $context_patterns as $context => $pattern ) {
+        if ( preg_match_all( $pattern, $all_css, $cm ) ) {
+            foreach ( $cm[1] as $val ) {
+                // Skip 'inherit', 'transparent', 'initial', var() references
+                if ( preg_match( '/^(inherit|transparent|initial|none|var\()/i', $val ) ) continue;
+                $hex = sp_normalize_color( trim( $val ) );
+                if ( $hex ) {
+                    $colors_by_context[ $context ][] = $hex;
+                    $colors_by_context['all'][]      = $hex;
+                }
+            }
+        }
+    }
+
+    // --- Step 6b: Broad sweep for ALL hex colors in the CSS ---
+    // WHY: Context-specific patterns only catch colors in selectors we
+    //      recognize (header, footer, body, a, h1-h6, btn). Sites use
+    //      endless class names we can't predict. This broad sweep catches
+    //      every hex color in the CSS, giving us a frequency-ranked palette
+    //      of the site's actual colors for better fallback mapping.
+    if ( preg_match_all( '/#[0-9a-fA-F]{3,8}\b/', $all_css, $all_hex ) ) {
+        foreach ( $all_hex[0] as $raw ) {
+            $hex = sp_normalize_color( $raw );
+            if ( $hex ) {
+                $colors_by_context['all'][] = $hex;
+            }
+        }
+    }
+    // Also catch rgb/rgba values
+    if ( preg_match_all( '/rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+[^)]*\)/', $all_css, $all_rgb ) ) {
+        foreach ( $all_rgb[0] as $raw ) {
+            $hex = sp_normalize_color( $raw );
+            if ( $hex ) {
+                $colors_by_context['all'][] = $hex;
+            }
+        }
+    }
+
+    // Extract font-family declarations
+    if ( preg_match_all( '/font-family\s*:\s*([^;]+)/i', $all_css, $fm ) ) {
+        foreach ( $fm[1] as $font_val ) {
+            // Get the first font in the stack (the primary one)
+            $font_val = trim( $font_val, " \t\n\r\0\x0B\"'" );
+            $parts    = array_map( 'trim', explode( ',', $font_val ) );
+            if ( ! empty( $parts[0] ) ) {
+                $name = trim( $parts[0], "\"' " );
+                // Skip generic families and system stacks
+                if ( ! in_array( strtolower( $name ), [ 'serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui', '-apple-system', 'blinkmacsystemfont', 'segoe ui', 'inherit' ], true ) ) {
+                    $fonts_found[] = $name;
+                }
+            }
+        }
+    }
+
+    // --- Step 7: Assemble the best color for each field ---
+
+    // Helper: pick the best color from a context array.
+    // WHY LAST wins: CSS cascade means the last declaration for a property
+    // takes effect. Since we ordered our CSS chunks with external CSS first
+    // and inline overrides last, the last match in each context array is
+    // the one that would actually render in the browser.
+    $pick_best = function ( array $colors, array $exclude = [] ) {
+        if ( empty( $colors ) ) return null;
+
+        // Default excludes: pure white, black, very near-white/black
+        $default_exclude = [ '#ffffff', '#000000', '#fff', '#000', '#fefefe', '#010101' ];
+        $exclude = array_merge( $default_exclude, $exclude );
+
+        $filtered = array_filter( $colors, function ( $c ) use ( $exclude ) {
+            return ! in_array( $c, $exclude, true );
+        } );
+        if ( empty( $filtered ) ) $filtered = $colors;
+
+        // Return the LAST non-excluded color (cascade winner)
+        return end( $filtered ) ?: reset( $filtered );
+    };
+
+    // Build a frequency-ranked palette from ALL colors found.
+    // WHY: Sites like SAGHS ENS don't use `:root` variables or semantic class
+    // names we can predict. Their brand colors (#632220, #fbebd2, #7f7166,
+    // #ba5f36) appear scattered across the CSS. By ranking all colors by
+    // frequency, the brand palette naturally rises to the top.
+    $all_color_counts = array_count_values( $colors_by_context['all'] );
+    arsort( $all_color_counts );
+
+    // Remove near-white and near-black from the ranked palette
+    $brand_palette = [];
+    foreach ( $all_color_counts as $color => $count ) {
+        $lum = sp_color_luminance( $color );
+        // Skip very light (>0.85) and very dark (<0.05) — these are usually
+        // background whites and text blacks, not brand colors.
+        if ( $lum > 0.85 || $lum < 0.05 ) continue;
+        $brand_palette[] = $color;
+    }
+
+    // Get the raw context picks
+    $header_bg   = $pick_best( $colors_by_context['header_bg'] );
+    $header_text = $pick_best( $colors_by_context['header_text'] );
+    $footer_bg   = $pick_best( $colors_by_context['footer_bg'] );
+    $footer_text = $pick_best( $colors_by_context['footer_text'] );
+    $link_color  = $pick_best( $colors_by_context['link'] );
+    $heading_col = $pick_best( $colors_by_context['heading'] );
+    $button_bg   = $pick_best( $colors_by_context['button_bg'] );
+    $body_text   = $pick_best( $colors_by_context['body_text'] );
+
+    // Categorize palette colors by luminance
+    $dark_palette = [];
+    $mid_palette  = [];
+    $light_palette = [];
+    foreach ( $brand_palette as $c ) {
+        $lum = sp_color_luminance( $c );
+        if ( $lum < 0.15 ) {
+            $dark_palette[] = $c;
+        } elseif ( $lum < 0.5 ) {
+            $mid_palette[] = $c;
+        } else {
+            $light_palette[] = $c;
+        }
+    }
+
+    // PRIMARY: heading color > darkest brand color > header_bg > fallback
+    // WHY heading first: headings are the most visible brand element.
+    $primary = $heading_col ?? ( $dark_palette[0] ?? null ) ?? $header_bg ?? '#1e3a5f';
+
+    // ACCENT: link color > first mid-range palette color != primary > fallback
+    $accent = $link_color;
+    if ( ! $accent || $accent === $primary ) {
+        foreach ( $mid_palette as $mc ) {
+            if ( $mc !== $primary ) { $accent = $mc; break; }
+        }
+    }
+    if ( ! $accent ) $accent = $brand_palette[1] ?? '#667eea';
+
+    // PRIMARY HOVER: button bg > second palette color > accent
+    $primary_hover = $button_bg;
+    if ( ! $primary_hover || $primary_hover === $primary ) {
+        // Find a palette color that's different from both primary and accent
+        foreach ( $brand_palette as $pc ) {
+            if ( $pc !== $primary && $pc !== $accent ) {
+                $primary_hover = $pc;
+                break;
+            }
+        }
+    }
+    if ( ! $primary_hover ) $primary_hover = $accent;
+
+    // HEADER: use extracted, or primary for bg
+    $final_header_bg = $header_bg ?? $primary;
+    // Smart text color: if header bg is dark, use white; if light, use dark
+    $final_header_text = $header_text ?? ( sp_color_luminance( $final_header_bg ) < 0.4 ? '#ffffff' : '#1a1a1a' );
+
+    // FOOTER: use extracted, or try to match the site's footer
+    $final_footer_bg = $footer_bg ?? $final_header_bg;
+    // Check if footer bg is from a light palette (cream, etc.)
+    $final_footer_text = $footer_text ?? ( sp_color_luminance( $final_footer_bg ) < 0.4 ? '#ffffff' : '#1a1a1a' );
+
+    // --- Step 8: Map extracted fonts to our font keys ---
+    $font_key_map = [
+        'inter'          => 'inter',
+        'eb garamond'    => 'garamond',
+        'garamond'       => 'garamond',
+        'merriweather'   => 'merriweather',
+        'lora'           => 'lora',
+        'roboto'         => 'roboto',
+        'open sans'      => 'open-sans',
+        'source sans'    => 'source-sans',
+        'source sans 3'  => 'source-sans',
+        'source sans pro'=> 'source-sans',
+        'nunito'         => 'nunito',
+        'nunito sans'    => 'nunito',
+        'lato'           => 'lato',
+        'georgia'        => 'georgia',
+        'palatino'       => 'palatino',
+        'palatino linotype' => 'palatino',
+        'poppins'        => 'system', // Not in our list, fall back to system
+        'montserrat'     => 'system',
+        'raleway'        => 'system',
+        'arial'          => 'system',
+        'helvetica'      => 'system',
+    ];
+
+    // Deduplicate fonts, keep order (first = most prominent)
+    $fonts_found = array_values( array_unique( $fonts_found ) );
+    $body_font   = 'system';
+    $heading_font = 'inherit';
+
+    if ( ! empty( $fonts_found ) ) {
+        // First font is likely the body font, second (if different) is heading
+        $mapped_body = $font_key_map[ strtolower( $fonts_found[0] ) ] ?? null;
+        if ( $mapped_body ) $body_font = $mapped_body;
+
+        if ( isset( $fonts_found[1] ) ) {
+            $mapped_heading = $font_key_map[ strtolower( $fonts_found[1] ) ] ?? null;
+            if ( $mapped_heading && $mapped_heading !== $body_font ) {
+                $heading_font = $mapped_heading;
+            }
+        }
+    }
+
+    // Determine confidence level based on how much we found
+    $signals = 0;
+    if ( $header_bg ) $signals++;
+    if ( $link_color ) $signals++;
+    if ( $heading_col ) $signals++;
+    if ( $footer_bg ) $signals++;
+    if ( ! empty( $fonts_found ) ) $signals++;
+
+    $confidence = ( $signals >= 4 ) ? 'high' : ( ( $signals >= 2 ) ? 'medium' : 'low' );
+
+    return [
+        'colors' => [
+            'primary'       => $primary,
+            'primary_hover' => $primary_hover,
+            'accent'        => $accent,
+            'header_bg'     => $final_header_bg,
+            'header_text'   => $final_header_text,
+            'footer_bg'     => $final_footer_bg,
+            'footer_text'   => $final_footer_text,
+        ],
+        'fonts' => [
+            'body'    => $body_font,
+            'heading' => $heading_font,
+        ],
+        'confidence'  => $confidence,
+        'fonts_found' => array_slice( $fonts_found, 0, 5 ), // For display
+    ];
+}
+
+/**
+ * AJAX: Extract colors and fonts from a URL.
+ *
+ * WHY: Harold pastes his current website URL, we fetch it, analyze the CSS,
+ *      and return colors/fonts that pre-populate the theme builder.
+ */
+add_action( 'wp_ajax_sp_extract_site_colors', function () {
+    if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_custom_theme_nonce' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ] );
+    }
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ] );
+    }
+
+    $url = esc_url_raw( trim( $_POST['site_url'] ?? '' ) );
+    if ( empty( $url ) || ! filter_var( $url, FILTER_VALIDATE_URL ) ) {
+        wp_send_json_error( [ 'message' => __( 'Please enter a valid URL (e.g., https://example.org).', 'societypress' ) ] );
+    }
+
+    // Only allow http/https
+    $scheme = wp_parse_url( $url, PHP_URL_SCHEME );
+    if ( ! in_array( $scheme, [ 'http', 'https' ], true ) ) {
+        wp_send_json_error( [ 'message' => __( 'Only http and https URLs are supported.', 'societypress' ) ] );
+    }
+
+    // Fetch the page
+    $response = wp_remote_get( $url, [
+        'timeout'   => 15,
+        'headers'   => [ 'User-Agent' => 'SocietyPress/' . SOCIETYPRESS_VERSION . ' (theme-builder color extraction)' ],
+        'sslverify' => false, // Many society sites have expired or self-signed certs
+    ] );
+
+    if ( is_wp_error( $response ) ) {
+        wp_send_json_error( [
+            'message' => sprintf(
+                __( 'Could not reach that website: %s', 'societypress' ),
+                $response->get_error_message()
+            ),
+        ] );
+    }
+
+    $code = wp_remote_retrieve_response_code( $response );
+    if ( $code !== 200 ) {
+        wp_send_json_error( [
+            'message' => sprintf(
+                __( 'The website returned an error (HTTP %d). Make sure the URL is correct.', 'societypress' ),
+                $code
+            ),
+        ] );
+    }
+
+    $html = wp_remote_retrieve_body( $response );
+    if ( empty( $html ) ) {
+        wp_send_json_error( [ 'message' => __( 'The page returned empty content.', 'societypress' ) ] );
+    }
+
+    // Limit HTML to 500KB to prevent memory issues
+    $html = substr( $html, 0, 500000 );
+
+    // Extract the design
+    $result = sp_extract_site_design( $html, $url );
+
+    // Build the response message based on confidence
+    $confidence_msgs = [
+        'high'   => __( 'Found strong color and font signals — this should be a close match.', 'societypress' ),
+        'medium' => __( 'Found some colors and fonts. You may want to fine-tune a few values.', 'societypress' ),
+        'low'    => __( 'Only found basic color information. The site may use techniques we can\'t easily parse. Adjust as needed.', 'societypress' ),
+    ];
+
+    wp_send_json_success( [
+        'colors'      => $result['colors'],
+        'fonts'       => $result['fonts'],
+        'confidence'  => $result['confidence'],
+        'message'     => $confidence_msgs[ $result['confidence'] ] ?? $confidence_msgs['low'],
+        'fonts_found' => $result['fonts_found'],
+    ] );
+} );
+
+
 /**
  * Render the Theme Gallery page.
  *
@@ -18677,6 +19976,9 @@ function sp_render_themes_page(): void {
     // Get the registry of all available child themes
     $registry = sp_get_theme_registry();
 
+    // Get custom themes metadata (for Edit/Delete buttons and builder pre-population)
+    $custom_themes = sp_get_custom_themes();
+
     // Determine which registry themes are not yet installed
     $not_installed = [];
     foreach ( $registry as $reg_slug => $reg_info ) {
@@ -18689,6 +19991,24 @@ function sp_render_themes_page(): void {
     $activated = isset( $_GET['activated'] ) ? sanitize_text_field( $_GET['activated'] ) : '';
 
     $install_nonce = wp_create_nonce( 'sp_install_theme_nonce' );
+    $custom_nonce  = wp_create_nonce( 'sp_custom_theme_nonce' );
+
+    // Font options for the builder (same as Design settings)
+    $font_options = [
+        'system'       => __( 'System Default', 'societypress' ),
+        'inter'        => 'Inter',
+        'georgia'      => 'Georgia',
+        'palatino'     => 'Palatino',
+        'garamond'     => 'EB Garamond',
+        'merriweather' => 'Merriweather',
+        'lora'         => 'Lora',
+        'roboto'       => 'Roboto',
+        'open-sans'    => 'Open Sans',
+        'source-sans'  => 'Source Sans 3',
+        'nunito'       => 'Nunito',
+        'lato'         => 'Lato',
+    ];
+    $heading_font_options = [ 'inherit' => __( 'Same as Body Font', 'societypress' ) ] + $font_options;
     ?>
     <div class="wrap">
         <h1><?php esc_html_e( 'Themes', 'societypress' ); ?></h1>
@@ -18709,13 +20029,14 @@ function sp_render_themes_page(): void {
         <!-- ============================================================ -->
         <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:24px;">
             <?php foreach ( $sp_themes as $slug => $theme ) :
-                $is_active   = ( $slug === $current_slug );
-                $name        = $theme->get( 'Name' );
-                $description = $theme->get( 'Description' );
-                $version     = $theme->get( 'Version' );
-                $author      = $theme->get( 'Author' );
-                $screenshot  = $theme->get_screenshot();
-                $is_parent   = ( $slug === 'societypress' );
+                $is_active      = ( $slug === $current_slug );
+                $name           = $theme->get( 'Name' );
+                $description    = $theme->get( 'Description' );
+                $version        = $theme->get( 'Version' );
+                $author         = $theme->get( 'Author' );
+                $screenshot     = $theme->get_screenshot();
+                $is_parent      = ( $slug === 'societypress' );
+                $is_custom      = isset( $custom_themes[ $slug ] );
 
                 // Check if a registry update is available for this installed theme
                 $update_available = false;
@@ -18725,13 +20046,24 @@ function sp_render_themes_page(): void {
                         $update_available = true;
                     }
                 }
+
+                // For custom themes without screenshots, build a color swatch preview
+                $custom_colors = $is_custom ? ( $custom_themes[ $slug ]['colors'] ?? [] ) : [];
             ?>
                 <div style="background:#fff; border:1px solid <?php echo $is_active ? 'var(--sp-color-primary, #1e3a5f)' : '#ddd'; ?>; border-radius:8px; overflow:hidden; position:relative; <?php echo $is_active ? 'box-shadow:0 0 0 2px var(--sp-color-primary, #1e3a5f);' : ''; ?>">
 
-                    <!-- Screenshot or placeholder -->
+                    <!-- Screenshot / color swatch / placeholder -->
                     <div style="width:100%; height:200px; background:#f0f0f0; display:flex; align-items:center; justify-content:center; overflow:hidden;">
                         <?php if ( $screenshot ) : ?>
                             <img src="<?php echo esc_url( $screenshot ); ?>" alt="<?php echo esc_attr( $name ); ?>" style="width:100%; height:100%; object-fit:cover;">
+                        <?php elseif ( $is_custom && ! empty( $custom_colors ) ) : ?>
+                            <!-- Color swatch preview for custom themes -->
+                            <div style="width:100%; height:100%; display:flex; align-items:stretch;">
+                                <div style="flex:2; background:<?php echo esc_attr( $custom_colors['primary'] ?? '#333' ); ?>;"></div>
+                                <div style="flex:2; background:<?php echo esc_attr( $custom_colors['header_bg'] ?? '#333' ); ?>;"></div>
+                                <div style="flex:1; background:<?php echo esc_attr( $custom_colors['accent'] ?? '#666' ); ?>;"></div>
+                                <div style="flex:1; background:<?php echo esc_attr( $custom_colors['primary_hover'] ?? '#999' ); ?>;"></div>
+                            </div>
                         <?php else : ?>
                             <div style="text-align:center; color:#999;">
                                 <span class="dashicons dashicons-format-image" style="font-size:48px; width:48px; height:48px;"></span>
@@ -18740,10 +20072,14 @@ function sp_render_themes_page(): void {
                         <?php endif; ?>
                     </div>
 
-                    <!-- Active badge -->
+                    <!-- Badge: Active, Custom, or nothing -->
                     <?php if ( $is_active ) : ?>
                         <div style="position:absolute; top:12px; right:12px; background:var(--sp-color-primary, #1e3a5f); color:#fff; font-size:0.75rem; font-weight:600; padding:4px 10px; border-radius:12px;">
                             <?php esc_html_e( 'Active', 'societypress' ); ?>
+                        </div>
+                    <?php elseif ( $is_custom ) : ?>
+                        <div style="position:absolute; top:12px; right:12px; background:#8B5CF6; color:#fff; font-size:0.75rem; font-weight:600; padding:4px 10px; border-radius:12px;">
+                            <?php esc_html_e( 'Custom', 'societypress' ); ?>
                         </div>
                     <?php endif; ?>
 
@@ -18778,6 +20114,11 @@ function sp_render_themes_page(): void {
                                         <?php esc_html_e( 'Activate', 'societypress' ); ?>
                                     </button>
                                 </form>
+                                <a href="<?php echo esc_url( home_url( '/?sp_preview_theme=' . urlencode( $slug ) ) ); ?>"
+                                   target="_blank" class="button"
+                                   title="<?php esc_attr_e( 'Preview this theme on your site', 'societypress' ); ?>">
+                                    <?php esc_html_e( 'Preview', 'societypress' ); ?>
+                                </a>
                             <?php endif; ?>
 
                             <?php if ( $update_available ) : ?>
@@ -18786,6 +20127,24 @@ function sp_render_themes_page(): void {
                                         data-version="<?php echo esc_attr( $reg_version ); ?>"
                                         style="color:#d63638; border-color:#d63638;">
                                     <?php printf( esc_html__( 'Update to %s', 'societypress' ), esc_html( $reg_version ) ); ?>
+                                </button>
+                            <?php endif; ?>
+
+                            <?php
+                            // Edit and Delete buttons for custom themes
+                            // WHY: Custom themes are editable because Harold created them.
+                            // Registry themes are NOT editable because updates would overwrite changes.
+                            if ( $is_custom ) : ?>
+                                <button type="button" class="button sp-custom-edit-btn"
+                                        data-slug="<?php echo esc_attr( $slug ); ?>"
+                                        data-config="<?php echo esc_attr( wp_json_encode( $custom_themes[ $slug ] ) ); ?>">
+                                    <?php esc_html_e( 'Edit', 'societypress' ); ?>
+                                </button>
+                                <button type="button" class="button sp-custom-delete-btn"
+                                        data-slug="<?php echo esc_attr( $slug ); ?>"
+                                        data-name="<?php echo esc_attr( $name ); ?>"
+                                        style="color:#d63638; border-color:#d63638;">
+                                    <?php esc_html_e( 'Delete', 'societypress' ); ?>
                                 </button>
                             <?php endif; ?>
                         </div>
@@ -18805,7 +20164,6 @@ function sp_render_themes_page(): void {
                     <!-- Color swatch preview (since we don't have a screenshot for uninstalled themes) -->
                     <div style="width:100%; height:200px; display:flex; align-items:stretch;">
                         <?php if ( ! empty( $reg['colors'] ) ) :
-                            $count = count( $reg['colors'] );
                             foreach ( $reg['colors'] as $color ) : ?>
                                 <div style="flex:1; background:<?php echo esc_attr( $color ); ?>;"></div>
                             <?php endforeach;
@@ -18845,15 +20203,237 @@ function sp_render_themes_page(): void {
                     </div>
                 </div>
             <?php endforeach; ?>
+
+            <!-- ============================================================ -->
+            <!-- CREATE YOUR OWN THEME — Builder trigger card                 -->
+            <!-- WHY: This is the entry point to the custom theme builder.    -->
+            <!--      It sits at the end of the grid as a clear call-to-action-->
+            <!--      so Harold sees the pre-built options first, then has    -->
+            <!--      the power to create his own if none fit.                -->
+            <!-- ============================================================ -->
+            <div id="sp-create-theme-card"
+                 style="background:#fff; border:2px dashed #8B5CF6; border-radius:8px; overflow:hidden; cursor:pointer; transition:border-color 0.15s, box-shadow 0.15s;"
+                 onmouseover="this.style.borderColor='#7C3AED'; this.style.boxShadow='0 2px 8px rgba(139,92,246,0.15)';"
+                 onmouseout="this.style.borderColor='#8B5CF6'; this.style.boxShadow='none';">
+
+                <div style="width:100%; height:200px; background:linear-gradient(135deg, #8B5CF6 0%, #A78BFA 50%, #C4B5FD 100%); display:flex; align-items:center; justify-content:center;">
+                    <span class="dashicons dashicons-plus-alt2" style="font-size:64px; width:64px; height:64px; color:#fff;"></span>
+                </div>
+
+                <div style="padding:16px 20px;">
+                    <h3 style="margin:0 0 4px; font-size:1.1rem;">
+                        <?php esc_html_e( 'Create Your Own Theme', 'societypress' ); ?>
+                    </h3>
+                    <p style="font-size:0.85rem; color:#555; line-height:1.5; margin:0 0 16px;">
+                        <?php esc_html_e( 'Pick your own colors and fonts to create a unique look for your society.', 'societypress' ); ?>
+                    </p>
+                    <button type="button" class="button" id="sp-open-theme-builder"
+                            style="background:#8B5CF6; color:#fff; border-color:#7C3AED;">
+                        <?php esc_html_e( 'Start Building', 'societypress' ); ?>
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- Theme install/update AJAX handler -->
+    <!-- ================================================================== -->
+    <!-- THEME BUILDER MODAL                                                -->
+    <!-- WHY: A modal keeps Harold on the same page and focused on the task.-->
+    <!--      The live preview swatch updates as he picks colors so he can  -->
+    <!--      see the result before committing.                             -->
+    <!-- ================================================================== -->
+    <div id="sp-theme-builder-modal" style="display:none; position:fixed; inset:0; z-index:100000; background:rgba(0,0,0,0.6); overflow-y:auto;">
+        <div style="max-width:720px; margin:40px auto; background:#fff; border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,0.3); position:relative;">
+
+            <!-- Modal header -->
+            <div style="padding:20px 24px; border-bottom:1px solid #e5e7eb; display:flex; align-items:center; justify-content:space-between;">
+                <h2 id="sp-builder-title" style="margin:0; font-size:1.3rem;">
+                    <?php esc_html_e( 'Create Your Own Theme', 'societypress' ); ?>
+                </h2>
+                <button type="button" id="sp-builder-close"
+                        style="background:none; border:none; font-size:24px; cursor:pointer; color:#999; padding:0; line-height:1;"
+                        aria-label="<?php esc_attr_e( 'Close', 'societypress' ); ?>">&times;</button>
+            </div>
+
+            <!-- Modal body -->
+            <div style="padding:24px;">
+
+                <!-- Theme name (only shown for new themes) -->
+                <div id="sp-builder-name-section" style="margin-bottom:24px;">
+                    <label for="sp-builder-name" style="display:block; font-weight:600; margin-bottom:6px;">
+                        <?php esc_html_e( 'Theme Name', 'societypress' ); ?>
+                    </label>
+                    <input type="text" id="sp-builder-name" placeholder="<?php esc_attr_e( 'e.g., Sunflower Society', 'societypress' ); ?>"
+                           style="width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;"
+                           maxlength="60">
+                    <p style="font-size:0.8rem; color:#888; margin:4px 0 0;">
+                        <?php esc_html_e( 'This will be the name shown in the theme gallery.', 'societypress' ); ?>
+                    </p>
+                </div>
+
+                <!-- Match My Current Site (optional URL extraction) -->
+                <!-- WHY: When migrating to SocietyPress, Harold already has a website
+                     with established branding. Rather than making him eyedrop every color,
+                     we can fetch his old site and extract the palette + fonts automatically.
+                     This gets him 80% of the way there with one click. -->
+                <div id="sp-builder-extract-section" style="margin-bottom:24px; padding:16px; background:#f8f5ff; border:1px solid #e0d4f5; border-radius:8px;">
+                    <label for="sp-builder-extract-url" style="display:block; font-weight:600; margin-bottom:6px;">
+                        <?php esc_html_e( 'Match My Current Site (Optional)', 'societypress' ); ?>
+                    </label>
+                    <div style="display:flex; gap:8px; align-items:flex-start;">
+                        <input type="url" id="sp-builder-extract-url"
+                               placeholder="<?php esc_attr_e( 'https://your-current-society-website.org', 'societypress' ); ?>"
+                               style="flex:1; padding:8px 12px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;">
+                        <button type="button" id="sp-builder-extract-btn" class="button"
+                                style="padding:8px 16px; white-space:nowrap;">
+                            <?php esc_html_e( 'Extract Colors', 'societypress' ); ?>
+                        </button>
+                    </div>
+                    <p style="font-size:0.8rem; color:#666; margin:4px 0 0;">
+                        <?php esc_html_e( 'Paste your current website URL to automatically detect its colors and fonts.', 'societypress' ); ?>
+                    </p>
+                    <div id="sp-extract-status" style="display:none; margin-top:8px; padding:8px 12px; border-radius:6px; font-size:13px;"></div>
+                </div>
+
+                <!-- Live preview swatch -->
+                <!-- WHY: Harold needs to see what his choices look like before committing.
+                     This mini-preview shows header, content, and footer zones with the
+                     chosen colors and fonts so he can evaluate at a glance. -->
+                <div style="margin-bottom:24px;">
+                    <label style="display:block; font-weight:600; margin-bottom:6px;">
+                        <?php esc_html_e( 'Preview', 'societypress' ); ?>
+                    </label>
+                    <div id="sp-builder-preview" style="border:1px solid #d1d5db; border-radius:8px; overflow:hidden;">
+                        <!-- Header zone -->
+                        <div id="sp-preview-header" style="padding:12px 16px; display:flex; align-items:center; justify-content:space-between;">
+                            <span id="sp-preview-header-text" style="font-weight:600; font-size:14px;"><?php esc_html_e( 'Your Society Name', 'societypress' ); ?></span>
+                            <span style="font-size:12px; opacity:0.8;"><?php esc_html_e( 'Home &nbsp; About &nbsp; Members', 'societypress' ); ?></span>
+                        </div>
+                        <!-- Content zone -->
+                        <div id="sp-preview-content" style="padding:16px; background:#fff; min-height:80px;">
+                            <h3 id="sp-preview-heading" style="margin:0 0 8px; font-size:16px;"><?php esc_html_e( 'Welcome to Our Society', 'societypress' ); ?></h3>
+                            <p id="sp-preview-body" style="margin:0 0 12px; font-size:13px; color:#555; line-height:1.5;">
+                                <?php esc_html_e( 'This is how your body text will look with the chosen font and colors.', 'societypress' ); ?>
+                            </p>
+                            <span id="sp-preview-link" style="font-size:13px; text-decoration:underline;"><?php esc_html_e( 'Sample link', 'societypress' ); ?></span>
+                            &nbsp;&nbsp;
+                            <span id="sp-preview-button" style="display:inline-block; padding:4px 14px; border-radius:4px; font-size:12px; font-weight:600; color:#fff;"><?php esc_html_e( 'Button', 'societypress' ); ?></span>
+                        </div>
+                        <!-- Footer zone -->
+                        <div id="sp-preview-footer" style="padding:10px 16px; font-size:12px;">
+                            <span id="sp-preview-footer-text">&copy; 2026 <?php esc_html_e( 'Your Society', 'societypress' ); ?></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Color pickers -->
+                <div style="margin-bottom:24px;">
+                    <label style="display:block; font-weight:600; margin-bottom:10px;">
+                        <?php esc_html_e( 'Colors', 'societypress' ); ?>
+                    </label>
+                    <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:12px;">
+                        <?php
+                        $color_fields = [
+                            'primary'       => [ __( 'Primary', 'societypress' ),       '#1e3a5f', __( 'Main brand color — headings, header, buttons', 'societypress' ) ],
+                            'primary_hover' => [ __( 'Button Hover', 'societypress' ),  '#2c5282', __( 'Buttons on hover and active links', 'societypress' ) ],
+                            'accent'        => [ __( 'Accent', 'societypress' ),        '#667eea', __( 'Links, highlights, and decorative elements', 'societypress' ) ],
+                            'header_bg'     => [ __( 'Header Background', 'societypress' ), '#1e3a5f', __( 'Top navigation bar background', 'societypress' ) ],
+                            'header_text'   => [ __( 'Header Text', 'societypress' ),   '#ffffff', __( 'Text and links in the header', 'societypress' ) ],
+                            'footer_bg'     => [ __( 'Footer Background', 'societypress' ), '#1e3a5f', __( 'Bottom footer area background', 'societypress' ) ],
+                            'footer_text'   => [ __( 'Footer Text', 'societypress' ),   '#ffffff', __( 'Text and links in the footer', 'societypress' ) ],
+                        ];
+                        foreach ( $color_fields as $key => [ $label, $default, $desc ] ) : ?>
+                            <div>
+                                <label for="sp-builder-color-<?php echo esc_attr( $key ); ?>" style="display:block; font-size:13px; font-weight:500; margin-bottom:4px;">
+                                    <?php echo esc_html( $label ); ?>
+                                </label>
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <input type="color" id="sp-builder-color-<?php echo esc_attr( $key ); ?>"
+                                           class="sp-builder-color"
+                                           data-key="<?php echo esc_attr( $key ); ?>"
+                                           value="<?php echo esc_attr( $default ); ?>"
+                                           style="width:40px; height:32px; border:1px solid #d1d5db; border-radius:4px; cursor:pointer; padding:2px;">
+                                    <input type="text" class="sp-builder-color-hex"
+                                           data-key="<?php echo esc_attr( $key ); ?>"
+                                           value="<?php echo esc_attr( $default ); ?>"
+                                           style="width:80px; padding:4px 8px; border:1px solid #d1d5db; border-radius:4px; font-size:12px; font-family:monospace;"
+                                           maxlength="7" pattern="#[0-9a-fA-F]{6}">
+                                </div>
+                                <p style="font-size:0.7rem; color:#999; margin:2px 0 0;"><?php echo esc_html( $desc ); ?></p>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+
+                <!-- Font selectors -->
+                <div style="margin-bottom:24px;">
+                    <label style="display:block; font-weight:600; margin-bottom:10px;">
+                        <?php esc_html_e( 'Fonts', 'societypress' ); ?>
+                    </label>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                        <div>
+                            <label for="sp-builder-font-body" style="display:block; font-size:13px; font-weight:500; margin-bottom:4px;">
+                                <?php esc_html_e( 'Body Font', 'societypress' ); ?>
+                            </label>
+                            <select id="sp-builder-font-body" style="width:100%; padding:6px 10px; border:1px solid #d1d5db; border-radius:6px;">
+                                <?php foreach ( $font_options as $key => $label ) : ?>
+                                    <option value="<?php echo esc_attr( $key ); ?>"><?php echo esc_html( $label ); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="sp-builder-font-heading" style="display:block; font-size:13px; font-weight:500; margin-bottom:4px;">
+                                <?php esc_html_e( 'Heading Font', 'societypress' ); ?>
+                            </label>
+                            <select id="sp-builder-font-heading" style="width:100%; padding:6px 10px; border:1px solid #d1d5db; border-radius:6px;">
+                                <?php foreach ( $heading_font_options as $key => $label ) : ?>
+                                    <option value="<?php echo esc_attr( $key ); ?>"><?php echo esc_html( $label ); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Status message -->
+                <div id="sp-builder-status" style="display:none; padding:10px 14px; border-radius:6px; margin-bottom:16px; font-size:13px;"></div>
+
+                <!-- Action buttons -->
+                <div style="display:flex; gap:12px; justify-content:flex-end; padding-top:16px; border-top:1px solid #e5e7eb;">
+                    <button type="button" id="sp-builder-cancel" class="button">
+                        <?php esc_html_e( 'Cancel', 'societypress' ); ?>
+                    </button>
+                    <button type="button" id="sp-builder-save" class="button button-primary"
+                            style="background:#8B5CF6; border-color:#7C3AED;">
+                        <?php esc_html_e( 'Create Theme', 'societypress' ); ?>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Hidden fields for edit mode -->
+            <input type="hidden" id="sp-builder-mode" value="create">
+            <input type="hidden" id="sp-builder-edit-slug" value="">
+        </div>
+    </div>
+
+    <!-- ================================================================== -->
+    <!-- JAVASCRIPT: Theme gallery + builder interactions                    -->
+    <!-- ================================================================== -->
     <script>
     (function() {
         'use strict';
-        var ajaxUrl = ajaxurl;
-        var nonce   = <?php echo wp_json_encode( $install_nonce ); ?>;
+
+        var ajaxUrl     = ajaxurl;
+        var installNonce = <?php echo wp_json_encode( $install_nonce ); ?>;
+        var customNonce  = <?php echo wp_json_encode( $custom_nonce ); ?>;
+
+        // ---- Font family map (mirrors PHP sp_get_font_family_options) ----
+        // WHY: We need this in JS to update the live preview when Harold
+        // changes the font selector. Keeping it in sync with the PHP map.
+        var fontFamilies = <?php echo wp_json_encode( sp_get_font_family_options() ); ?>;
+
+        // ==================================================================
+        // THEME INSTALL / UPDATE (existing functionality)
+        // ==================================================================
 
         function handleThemeAction(btn, slug, actionLabel) {
             btn.disabled    = true;
@@ -18862,7 +20442,7 @@ function sp_render_themes_page(): void {
 
             var data = new FormData();
             data.append('action', 'sp_install_theme');
-            data.append('nonce', nonce);
+            data.append('nonce', installNonce);
             data.append('theme_slug', slug);
 
             fetch(ajaxUrl, { method: 'POST', body: data })
@@ -18873,7 +20453,6 @@ function sp_render_themes_page(): void {
                             statusEl.style.color = '#00a32a';
                             statusEl.textContent = r.data.message;
                         }
-                        // Reload to show the newly installed theme as an installed card
                         setTimeout(function() { location.reload(); }, 1000);
                     } else {
                         btn.disabled = false;
@@ -18894,24 +20473,411 @@ function sp_render_themes_page(): void {
                 });
         }
 
-        // Install buttons
         document.querySelectorAll('.sp-theme-install-btn').forEach(function(btn) {
             btn.addEventListener('click', function() {
-                var slug = this.getAttribute('data-slug');
-                var name = this.getAttribute('data-name');
                 if (!confirm(<?php echo wp_json_encode( __( 'Install this theme?', 'societypress' ) ); ?>)) return;
-                handleThemeAction(this, slug, <?php echo wp_json_encode( __( 'Installing', 'societypress' ) ); ?>);
+                handleThemeAction(this, this.getAttribute('data-slug'), <?php echo wp_json_encode( __( 'Installing', 'societypress' ) ); ?>);
             });
         });
 
-        // Update buttons
         document.querySelectorAll('.sp-theme-update-btn').forEach(function(btn) {
             btn.addEventListener('click', function() {
-                var slug = this.getAttribute('data-slug');
                 if (!confirm(<?php echo wp_json_encode( __( 'Update this theme? Your customizations in style.css and functions.php will be overwritten.', 'societypress' ) ); ?>)) return;
-                handleThemeAction(this, slug, <?php echo wp_json_encode( __( 'Updating', 'societypress' ) ); ?>);
+                handleThemeAction(this, this.getAttribute('data-slug'), <?php echo wp_json_encode( __( 'Updating', 'societypress' ) ); ?>);
             });
         });
+
+        // ==================================================================
+        // CUSTOM THEME BUILDER
+        // ==================================================================
+
+        var modal       = document.getElementById('sp-theme-builder-modal');
+        var titleEl     = document.getElementById('sp-builder-title');
+        var nameSection = document.getElementById('sp-builder-name-section');
+        var nameInput   = document.getElementById('sp-builder-name');
+        var modeInput   = document.getElementById('sp-builder-mode');
+        var editSlug    = document.getElementById('sp-builder-edit-slug');
+        var saveBtn     = document.getElementById('sp-builder-save');
+        var statusDiv   = document.getElementById('sp-builder-status');
+
+        // Default colors (matches the parent theme defaults)
+        var defaultColors = {
+            primary:       '#1e3a5f',
+            primary_hover: '#2c5282',
+            accent:        '#667eea',
+            header_bg:     '#1e3a5f',
+            header_text:   '#ffffff',
+            footer_bg:     '#1e3a5f',
+            footer_text:   '#ffffff'
+        };
+
+        // ---- Open modal for NEW theme ----
+        function openBuilderNew() {
+            modeInput.value  = 'create';
+            editSlug.value   = '';
+            titleEl.textContent = <?php echo wp_json_encode( __( 'Create Your Own Theme', 'societypress' ) ); ?>;
+            saveBtn.textContent = <?php echo wp_json_encode( __( 'Create Theme', 'societypress' ) ); ?>;
+            nameSection.style.display = '';
+            nameInput.value = '';
+            statusDiv.style.display = 'none';
+
+            // Reset to default colors
+            for (var key in defaultColors) {
+                setColorField(key, defaultColors[key]);
+            }
+
+            // Reset fonts
+            document.getElementById('sp-builder-font-body').value = 'system';
+            document.getElementById('sp-builder-font-heading').value = 'inherit';
+
+            updatePreview();
+            modal.style.display = '';
+            document.body.style.overflow = 'hidden';
+        }
+
+        // ---- Open modal for EDITING an existing custom theme ----
+        function openBuilderEdit(slug, config) {
+            modeInput.value  = 'edit';
+            editSlug.value   = slug;
+            titleEl.textContent = <?php echo wp_json_encode( __( 'Edit Theme:', 'societypress' ) ); ?> + ' ' + config.name;
+            saveBtn.textContent = <?php echo wp_json_encode( __( 'Save Changes', 'societypress' ) ); ?>;
+            nameSection.style.display = 'none'; // Can't rename
+            statusDiv.style.display = 'none';
+
+            // Populate colors from saved config
+            if (config.colors) {
+                for (var key in config.colors) {
+                    setColorField(key, config.colors[key]);
+                }
+            }
+
+            // Populate fonts
+            document.getElementById('sp-builder-font-body').value = config.font_body || 'system';
+            document.getElementById('sp-builder-font-heading').value = config.font_heading || 'inherit';
+
+            updatePreview();
+            modal.style.display = '';
+            document.body.style.overflow = 'hidden';
+        }
+
+        // ---- Close modal ----
+        function closeBuilder() {
+            modal.style.display = 'none';
+            document.body.style.overflow = '';
+        }
+
+        // ---- Set a color field (both the <input type="color"> and the hex text) ----
+        function setColorField(key, value) {
+            var colorInput = document.getElementById('sp-builder-color-' + key);
+            var hexInput   = document.querySelector('.sp-builder-color-hex[data-key="' + key + '"]');
+            if (colorInput) colorInput.value = value;
+            if (hexInput) hexInput.value = value;
+        }
+
+        // ---- Get current color values from the form ----
+        function getColors() {
+            var colors = {};
+            document.querySelectorAll('.sp-builder-color').forEach(function(el) {
+                colors[el.getAttribute('data-key')] = el.value;
+            });
+            return colors;
+        }
+
+        // ---- Update the live preview swatch ----
+        function updatePreview() {
+            var colors = getColors();
+            var bodyFont = document.getElementById('sp-builder-font-body').value;
+            var headingFont = document.getElementById('sp-builder-font-heading').value;
+
+            var bodyFamily = fontFamilies[bodyFont] || fontFamilies['system'];
+            var headingFamily = (headingFont === 'inherit' || headingFont === bodyFont)
+                ? bodyFamily
+                : (fontFamilies[headingFont] || 'inherit');
+
+            // Header
+            var header = document.getElementById('sp-preview-header');
+            header.style.backgroundColor = colors.header_bg;
+            header.style.color = colors.header_text;
+            document.getElementById('sp-preview-header-text').style.fontFamily = headingFamily;
+
+            // Content
+            var content = document.getElementById('sp-preview-content');
+            content.style.fontFamily = bodyFamily;
+
+            var heading = document.getElementById('sp-preview-heading');
+            heading.style.color = colors.primary;
+            heading.style.fontFamily = headingFamily;
+
+            document.getElementById('sp-preview-link').style.color = colors.accent;
+
+            var button = document.getElementById('sp-preview-button');
+            button.style.backgroundColor = colors.primary;
+            button.style.color = colors.header_text; // Use light text on the button
+
+            // Footer
+            var footer = document.getElementById('sp-preview-footer');
+            footer.style.backgroundColor = colors.footer_bg;
+            footer.style.color = colors.footer_text;
+        }
+
+        // ---- Show status message ----
+        function showStatus(message, isError) {
+            statusDiv.textContent = message;
+            statusDiv.style.display = '';
+            statusDiv.style.background = isError ? '#fee2e2' : '#d1fae5';
+            statusDiv.style.color = isError ? '#991b1b' : '#065f46';
+            statusDiv.style.border = '1px solid ' + (isError ? '#fca5a5' : '#6ee7b7');
+        }
+
+        // ---- Save (create or update) ----
+        function handleSave() {
+            var mode = modeInput.value;
+            var colors = getColors();
+
+            saveBtn.disabled = true;
+            saveBtn.textContent = (mode === 'create')
+                ? <?php echo wp_json_encode( __( 'Creating...', 'societypress' ) ); ?>
+                : <?php echo wp_json_encode( __( 'Saving...', 'societypress' ) ); ?>;
+
+            var data = new FormData();
+            data.append('nonce', customNonce);
+
+            if (mode === 'create') {
+                var themeName = nameInput.value.trim();
+                if (!themeName) {
+                    showStatus(<?php echo wp_json_encode( __( 'Please enter a theme name.', 'societypress' ) ); ?>, true);
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = <?php echo wp_json_encode( __( 'Create Theme', 'societypress' ) ); ?>;
+                    return;
+                }
+                data.append('action', 'sp_create_custom_theme');
+                data.append('theme_name', themeName);
+            } else {
+                data.append('action', 'sp_update_custom_theme');
+                data.append('theme_slug', editSlug.value);
+            }
+
+            // Append all colors
+            for (var key in colors) {
+                data.append('color_' + key, colors[key]);
+            }
+
+            // Append fonts
+            data.append('font_body', document.getElementById('sp-builder-font-body').value);
+            data.append('font_heading', document.getElementById('sp-builder-font-heading').value);
+
+            fetch(ajaxUrl, { method: 'POST', body: data })
+                .then(function(r) { return r.json(); })
+                .then(function(r) {
+                    if (r.success) {
+                        showStatus(r.data.message, false);
+                        setTimeout(function() { location.reload(); }, 1200);
+                    } else {
+                        showStatus(r.data.message || <?php echo wp_json_encode( __( 'Something went wrong.', 'societypress' ) ); ?>, true);
+                        saveBtn.disabled = false;
+                        saveBtn.textContent = (mode === 'create')
+                            ? <?php echo wp_json_encode( __( 'Create Theme', 'societypress' ) ); ?>
+                            : <?php echo wp_json_encode( __( 'Save Changes', 'societypress' ) ); ?>;
+                    }
+                })
+                .catch(function() {
+                    showStatus(<?php echo wp_json_encode( __( 'Network error. Please try again.', 'societypress' ) ); ?>, true);
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = (mode === 'create')
+                        ? <?php echo wp_json_encode( __( 'Create Theme', 'societypress' ) ); ?>
+                        : <?php echo wp_json_encode( __( 'Save Changes', 'societypress' ) ); ?>;
+                });
+        }
+
+        // ---- Delete custom theme ----
+        function handleDelete(slug, name) {
+            if (!confirm(<?php echo wp_json_encode( __( 'Delete this custom theme? This cannot be undone.', 'societypress' ) ); ?>)) return;
+
+            var data = new FormData();
+            data.append('action', 'sp_delete_custom_theme');
+            data.append('nonce', customNonce);
+            data.append('theme_slug', slug);
+
+            fetch(ajaxUrl, { method: 'POST', body: data })
+                .then(function(r) { return r.json(); })
+                .then(function(r) {
+                    if (r.success) {
+                        location.reload();
+                    } else {
+                        alert(r.data.message || <?php echo wp_json_encode( __( 'Could not delete theme.', 'societypress' ) ); ?>);
+                    }
+                })
+                .catch(function() {
+                    alert(<?php echo wp_json_encode( __( 'Network error.', 'societypress' ) ); ?>);
+                });
+        }
+
+        // ==================================================================
+        // EVENT LISTENERS
+        // ==================================================================
+
+        // Open builder — from the "Create Your Own Theme" card or its button
+        var createCard = document.getElementById('sp-create-theme-card');
+        var openBtn    = document.getElementById('sp-open-theme-builder');
+
+        createCard.addEventListener('click', function(e) {
+            // Don't double-fire if they clicked the button inside the card
+            if (e.target === openBtn || openBtn.contains(e.target)) return;
+            openBuilderNew();
+        });
+        openBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            openBuilderNew();
+        });
+
+        // Close builder
+        document.getElementById('sp-builder-close').addEventListener('click', closeBuilder);
+        document.getElementById('sp-builder-cancel').addEventListener('click', closeBuilder);
+        modal.addEventListener('click', function(e) {
+            // Close on backdrop click (but not on the modal content itself)
+            if (e.target === modal) closeBuilder();
+        });
+
+        // Escape key closes modal
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && modal.style.display !== 'none') closeBuilder();
+        });
+
+        // Save button
+        saveBtn.addEventListener('click', handleSave);
+
+        // Color picker → hex text sync + preview update
+        document.querySelectorAll('.sp-builder-color').forEach(function(el) {
+            el.addEventListener('input', function() {
+                var key = this.getAttribute('data-key');
+                var hexInput = document.querySelector('.sp-builder-color-hex[data-key="' + key + '"]');
+                if (hexInput) hexInput.value = this.value;
+                updatePreview();
+            });
+        });
+
+        // Hex text → color picker sync + preview update
+        document.querySelectorAll('.sp-builder-color-hex').forEach(function(el) {
+            el.addEventListener('input', function() {
+                var key = this.getAttribute('data-key');
+                var val = this.value;
+                // Only sync to color picker if it's a valid hex
+                if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+                    var colorInput = document.getElementById('sp-builder-color-' + key);
+                    if (colorInput) colorInput.value = val;
+                    updatePreview();
+                }
+            });
+        });
+
+        // Font selectors → preview update
+        document.getElementById('sp-builder-font-body').addEventListener('change', updatePreview);
+        document.getElementById('sp-builder-font-heading').addEventListener('change', updatePreview);
+
+        // ==================================================================
+        // "MATCH MY CURRENT SITE" — URL COLOR/FONT EXTRACTION
+        // ==================================================================
+
+        var extractBtn    = document.getElementById('sp-builder-extract-btn');
+        var extractUrl    = document.getElementById('sp-builder-extract-url');
+        var extractStatus = document.getElementById('sp-extract-status');
+
+        function showExtractStatus(message, isError) {
+            extractStatus.textContent = message;
+            extractStatus.style.display = '';
+            extractStatus.style.background = isError ? '#fee2e2' : '#d1fae5';
+            extractStatus.style.color = isError ? '#991b1b' : '#065f46';
+            extractStatus.style.border = '1px solid ' + (isError ? '#fca5a5' : '#6ee7b7');
+        }
+
+        extractBtn.addEventListener('click', function() {
+            var url = extractUrl.value.trim();
+            if (!url) {
+                showExtractStatus(<?php echo wp_json_encode( __( 'Please enter a URL.', 'societypress' ) ); ?>, true);
+                return;
+            }
+
+            // Basic URL validation
+            if (!/^https?:\/\/.+/i.test(url)) {
+                showExtractStatus(<?php echo wp_json_encode( __( 'Please enter a full URL starting with http:// or https://', 'societypress' ) ); ?>, true);
+                return;
+            }
+
+            extractBtn.disabled = true;
+            extractBtn.textContent = <?php echo wp_json_encode( __( 'Analyzing...', 'societypress' ) ); ?>;
+            extractStatus.style.display = 'none';
+
+            var data = new FormData();
+            data.append('action', 'sp_extract_site_colors');
+            data.append('nonce', customNonce);
+            data.append('site_url', url);
+
+            fetch(ajaxUrl, { method: 'POST', body: data })
+                .then(function(r) { return r.json(); })
+                .then(function(r) {
+                    extractBtn.disabled = false;
+                    extractBtn.textContent = <?php echo wp_json_encode( __( 'Extract Colors', 'societypress' ) ); ?>;
+
+                    if (r.success) {
+                        // Populate the color fields
+                        var colors = r.data.colors;
+                        for (var key in colors) {
+                            setColorField(key, colors[key]);
+                        }
+
+                        // Populate the font fields
+                        if (r.data.fonts) {
+                            if (r.data.fonts.body) {
+                                document.getElementById('sp-builder-font-body').value = r.data.fonts.body;
+                            }
+                            if (r.data.fonts.heading) {
+                                document.getElementById('sp-builder-font-heading').value = r.data.fonts.heading;
+                            }
+                        }
+
+                        updatePreview();
+
+                        // Show success with confidence info
+                        var msg = r.data.message || <?php echo wp_json_encode( __( 'Colors extracted!', 'societypress' ) ); ?>;
+                        if (r.data.fonts_found && r.data.fonts_found.length > 0) {
+                            msg += ' ' + <?php echo wp_json_encode( __( 'Fonts detected:', 'societypress' ) ); ?> + ' ' + r.data.fonts_found.join(', ') + '.';
+                        }
+                        showExtractStatus(msg, false);
+                    } else {
+                        showExtractStatus(r.data.message || <?php echo wp_json_encode( __( 'Could not extract colors from that URL.', 'societypress' ) ); ?>, true);
+                    }
+                })
+                .catch(function() {
+                    extractBtn.disabled = false;
+                    extractBtn.textContent = <?php echo wp_json_encode( __( 'Extract Colors', 'societypress' ) ); ?>;
+                    showExtractStatus(<?php echo wp_json_encode( __( 'Network error. Please try again.', 'societypress' ) ); ?>, true);
+                });
+        });
+
+        // Also trigger extraction on Enter key in the URL field
+        extractUrl.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                extractBtn.click();
+            }
+        });
+
+        // Edit buttons on custom theme cards
+        document.querySelectorAll('.sp-custom-edit-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var slug   = this.getAttribute('data-slug');
+                var config = JSON.parse(this.getAttribute('data-config'));
+                openBuilderEdit(slug, config);
+            });
+        });
+
+        // Delete buttons on custom theme cards
+        document.querySelectorAll('.sp-custom-delete-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                handleDelete(this.getAttribute('data-slug'), this.getAttribute('data-name'));
+            });
+        });
+
     })();
     </script>
     <?php
@@ -41534,10 +43500,10 @@ class SP_Volunteers_List_Table extends WP_List_Table {
 
     protected function column_name( $item ): string {
         $name = esc_html( $item->first_name . ' ' . $item->last_name );
-        $edit_url = admin_url( 'admin.php?page=sp-governance&action=edit&role_id=' . $item->id );
+        $edit_url = admin_url( 'admin.php?page=sp-volunteer-roster&action=edit&role_id=' . $item->id );
         $actions = [
             'edit'   => sprintf( '<a href="%s">%s</a>', esc_url( $edit_url ), esc_html__( 'Edit', 'societypress' ) ),
-            'delete' => '<a href="#" style="color:#b32d2e;" onclick="if(confirm(\'' . esc_js( __( 'Delete this role assignment?', 'societypress' ) ) . '\')){var f=document.createElement(\'form\');f.method=\'post\';f.action=\'' . esc_url( admin_url( 'admin.php?page=sp-governance' ) ) . '\';var d=[[\'_wpnonce\',\'' . wp_create_nonce( 'sp_delete_volunteer_role_' . $item->id ) . '\'],[\'action\',\'delete\'],[\'role_id\',\'' . (int) $item->id . '\']];d.forEach(function(p){var i=document.createElement(\'input\');i.type=\'hidden\';i.name=p[0];i.value=p[1];f.appendChild(i);});document.body.appendChild(f);f.submit();}return false;">' . esc_html__( 'Delete', 'societypress' ) . '</a>',
+            'delete' => '<a href="#" style="color:#b32d2e;" onclick="if(confirm(\'' . esc_js( __( 'Delete this role assignment?', 'societypress' ) ) . '\')){var f=document.createElement(\'form\');f.method=\'post\';f.action=\'' . esc_url( admin_url( 'admin.php?page=sp-volunteer-roster' ) ) . '\';var d=[[\'_wpnonce\',\'' . wp_create_nonce( 'sp_delete_volunteer_role_' . $item->id ) . '\'],[\'action\',\'delete\'],[\'role_id\',\'' . (int) $item->id . '\']];d.forEach(function(p){var i=document.createElement(\'input\');i.type=\'hidden\';i.name=p[0];i.value=p[1];f.appendChild(i);});document.body.appendChild(f);f.submit();}return false;">' . esc_html__( 'Delete', 'societypress' ) . '</a>',
         ];
 
         return '<strong><a href="' . esc_url( $edit_url ) . '">' . $name . '</a></strong>' . $this->row_actions( $actions );
@@ -41582,10 +43548,13 @@ class SP_Volunteers_List_Table extends WP_List_Table {
         $order   = strtoupper( $_GET['order'] ?? 'ASC' ) === 'DESC' ? 'DESC' : 'ASC';
         $search  = isset( $_GET['s'] ) ? sanitize_text_field( $_GET['s'] ) : '';
 
-        $where = '';
+        // WHY: Filter to role_type = 'volunteer' (or empty/NULL for backwards compat).
+        // Officers and committee members now live on the Leadership & Committees page;
+        // this roster only shows day-to-day volunteer assignments.
+        $where = " AND (vr.role_type = 'volunteer' OR vr.role_type = '' OR vr.role_type IS NULL)";
         if ( $search ) {
             $like = '%' . $wpdb->esc_like( $search ) . '%';
-            $where = $wpdb->prepare(
+            $where .= $wpdb->prepare(
                 " AND (m.first_name LIKE %s OR m.last_name LIKE %s OR vr.role_title LIKE %s OR vr.committee LIKE %s)",
                 $like, $like, $like, $like
             );
@@ -42513,6 +44482,432 @@ function sp_render_volunteer_opportunity_edit_page(): void {
 
 
 // ============================================================================
+// LEADERSHIP & COMMITTEES — ADMIN PAGE
+//
+// WHY: Officers (president, treasurer, etc.) and committee assignments are
+//      governance-level roles, distinct from day-to-day volunteer work. This
+//      page gives the admin a clear, card-based view of who holds officer
+//      positions and which members serve on which committees. Data lives in
+//      sp_volunteer_roles with role_type = 'officer' or 'committee'.
+//      Volunteer roster assignments (role_type = 'volunteer') are on a
+//      separate page.
+// ============================================================================
+
+function sp_render_leadership_page(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // ------------------------------------------------------------------
+    // FORM HANDLING: Save / Update officer or committee assignment
+    // ------------------------------------------------------------------
+    if ( isset( $_POST['sp_save_leadership'] ) && check_admin_referer( 'sp_leadership_save' ) ) {
+        $role_id    = absint( $_POST['role_id'] ?? 0 );
+        $user_id    = absint( $_POST['user_id'] ?? 0 );
+        $role_title = sanitize_text_field( $_POST['role_title'] ?? '' );
+        $committee  = sanitize_text_field( $_POST['committee'] ?? '' );
+        $role_type  = sanitize_text_field( $_POST['role_type'] ?? 'officer' );
+        $start_date = sanitize_text_field( $_POST['start_date'] ?? '' );
+        $end_date   = sanitize_text_field( $_POST['end_date'] ?? '' );
+        $status     = sanitize_text_field( $_POST['status'] ?? 'active' );
+
+        // Validate role_type — only allow officer or committee on this page
+        if ( ! in_array( $role_type, [ 'officer', 'committee' ], true ) ) {
+            $role_type = 'officer';
+        }
+
+        if ( $user_id && $role_title ) {
+            $data = [
+                'user_id'    => $user_id,
+                'role_title' => $role_title,
+                'committee'  => $committee,
+                'role_type'  => $role_type,
+                'start_date' => $start_date ?: null,
+                'end_date'   => $end_date ?: null,
+                'status'     => $status,
+            ];
+
+            if ( $role_id ) {
+                $wpdb->update( $prefix . 'volunteer_roles', $data, [ 'id' => $role_id ] );
+                sp_audit( 'leadership_role_updated', sprintf( 'Leadership role "%s" updated for user #%d', $role_title, $user_id ), 'volunteer_role', $role_id );
+                echo '<div class="notice notice-success"><p>' . esc_html__( 'Role updated.', 'societypress' ) . '</p></div>';
+            } else {
+                $wpdb->insert( $prefix . 'volunteer_roles', $data );
+                $new_id = (int) $wpdb->insert_id;
+                sp_audit( 'leadership_role_created', sprintf( 'Leadership role "%s" created for user #%d', $role_title, $user_id ), 'volunteer_role', $new_id );
+                echo '<div class="notice notice-success"><p>' . esc_html__( 'Role added.', 'societypress' ) . '</p></div>';
+            }
+        } else {
+            echo '<div class="notice notice-error"><p>' . esc_html__( 'Please select a member and enter a position/role title.', 'societypress' ) . '</p></div>';
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // DELETE HANDLING: Remove an officer or committee assignment
+    // ------------------------------------------------------------------
+    if ( isset( $_POST['sp_delete_leadership'] ) && ! empty( $_POST['delete_role_id'] ) ) {
+        $del_id = absint( $_POST['delete_role_id'] );
+        check_admin_referer( 'sp_delete_leadership_role_' . $del_id );
+        $wpdb->delete( $prefix . 'volunteer_roles', [ 'id' => $del_id ] );
+        sp_audit( 'leadership_role_deleted', sprintf( 'Leadership role #%d deleted', $del_id ), 'volunteer_role', $del_id );
+        echo '<div class="notice notice-success"><p>' . esc_html__( 'Role deleted.', 'societypress' ) . '</p></div>';
+    }
+
+    // ------------------------------------------------------------------
+    // LOAD DATA: Active members for dropdowns, officers, committee roles
+    // ------------------------------------------------------------------
+    $members = $wpdb->get_results(
+        "SELECT user_id, first_name, last_name FROM {$prefix}members WHERE status = 'active' ORDER BY last_name ASC"
+    );
+
+    // Officers: role_type = 'officer', ordered by status (active first) then start_date
+    $officers = $wpdb->get_results(
+        "SELECT vr.*, m.first_name, m.last_name
+         FROM {$prefix}volunteer_roles vr
+         INNER JOIN {$prefix}members m ON vr.user_id = m.user_id
+         WHERE vr.role_type = 'officer'
+         ORDER BY FIELD(vr.status, 'active', 'inactive'), vr.start_date DESC"
+    );
+
+    // Committee assignments: role_type = 'committee', grouped by committee name
+    $committee_rows = $wpdb->get_results(
+        "SELECT vr.*, m.first_name, m.last_name
+         FROM {$prefix}volunteer_roles vr
+         INNER JOIN {$prefix}members m ON vr.user_id = m.user_id
+         WHERE vr.role_type = 'committee'
+         ORDER BY vr.committee ASC, FIELD(vr.status, 'active', 'inactive'), m.last_name ASC"
+    );
+
+    // Group committee rows by the committee field for display
+    $committees = [];
+    foreach ( $committee_rows as $row ) {
+        $key = $row->committee ?: __( '(Unassigned)', 'societypress' );
+        $committees[ $key ][] = $row;
+    }
+
+    // Check if we're editing an existing role (from an Edit link click)
+    $editing = null;
+    $editing_section = '';
+    if ( ( $_GET['action'] ?? '' ) === 'edit' && ! empty( $_GET['role_id'] ) ) {
+        $editing = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$prefix}volunteer_roles WHERE id = %d", absint( $_GET['role_id'] )
+        ) );
+        if ( $editing ) {
+            $editing_section = $editing->role_type === 'committee' ? 'committee' : 'officer';
+        }
+    }
+
+    // Badge color helper — used in both sections
+    $status_badge = function ( string $status ): string {
+        $colors = [
+            'active'   => [ 'bg' => '#00a32a22', 'text' => '#00a32a' ],
+            'inactive' => [ 'bg' => '#b32d2e22', 'text' => '#b32d2e' ],
+        ];
+        $c = $colors[ $status ] ?? [ 'bg' => '#78788222', 'text' => '#787882' ];
+        return '<span style="display:inline-block;padding:2px 8px;border-radius:3px;background:' . $c['bg'] . ';color:' . $c['text'] . ';font-size:12px;font-weight:600;">' . esc_html( ucfirst( $status ) ) . '</span>';
+    };
+
+    ?>
+    <div class="wrap">
+        <h1 class="wp-heading-inline"><?php esc_html_e( 'Leadership & Committees', 'societypress' ); ?></h1>
+        <hr class="wp-header-end">
+
+        <!-- ============================================================ -->
+        <!-- SECTION A: OFFICERS & BOARD                                  -->
+        <!-- WHY: A card grid gives a quick visual overview of who holds   -->
+        <!--      each officer position and their term dates. This is the  -->
+        <!--      first thing an admin checks when prepping board reports. -->
+        <!-- ============================================================ -->
+
+        <h2 style="margin-top:24px; border-bottom:2px solid #2271b1; padding-bottom:8px;">
+            <?php esc_html_e( 'Officers & Board', 'societypress' ); ?>
+        </h2>
+
+        <!-- Officer card grid -->
+        <?php if ( ! empty( $officers ) ) : ?>
+            <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:16px; margin:16px 0;">
+                <?php foreach ( $officers as $o ) :
+                    $name = esc_html( $o->first_name . ' ' . $o->last_name );
+                    $edit_url = admin_url( 'admin.php?page=sp-governance&action=edit&role_id=' . $o->id );
+                ?>
+                    <div style="background:#fff; border:1px solid #ccd0d4; border-radius:6px; padding:16px; position:relative;">
+                        <div style="font-size:15px; font-weight:700; color:#1d2327; margin-bottom:4px;">
+                            <?php echo esc_html( $o->role_title ); ?>
+                        </div>
+                        <div style="font-size:14px; color:#50575e; margin-bottom:8px;">
+                            <?php echo $name; ?>
+                        </div>
+                        <div style="font-size:12px; color:#787c82; margin-bottom:8px;">
+                            <?php
+                            // Show term dates — "Jan 1, 2025 – Dec 31, 2025" or "Jan 1, 2025 – Ongoing"
+                            $start = $o->start_date ? wp_date( 'M j, Y', strtotime( $o->start_date ) ) : '—';
+                            $end   = $o->end_date ? wp_date( 'M j, Y', strtotime( $o->end_date ) ) : __( 'Ongoing', 'societypress' );
+                            echo esc_html( $start . ' – ' . $end );
+                            ?>
+                        </div>
+                        <div style="margin-bottom:8px;">
+                            <?php echo $status_badge( $o->status ); ?>
+                        </div>
+                        <div style="font-size:12px;">
+                            <a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
+                            &nbsp;|&nbsp;
+                            <form method="post" style="display:inline;">
+                                <?php wp_nonce_field( 'sp_delete_leadership_role_' . $o->id ); ?>
+                                <input type="hidden" name="delete_role_id" value="<?php echo (int) $o->id; ?>">
+                                <button type="submit" name="sp_delete_leadership" value="1" style="background:none; border:none; color:#b32d2e; cursor:pointer; font-size:12px; padding:0; text-decoration:underline;" onclick="return confirm('<?php echo esc_js( __( 'Delete this officer position?', 'societypress' ) ); ?>');">
+                                    <?php esc_html_e( 'Delete', 'societypress' ); ?>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php else : ?>
+            <p style="color:#787c82; font-style:italic; margin:16px 0;">
+                <?php esc_html_e( 'No officers or board members have been added yet.', 'societypress' ); ?>
+            </p>
+        <?php endif; ?>
+
+        <!-- Add Officer button / inline form -->
+        <div style="margin:16px 0;">
+            <button type="button" id="sp-toggle-officer-form" class="button button-primary" onclick="document.getElementById('sp-officer-form').style.display = document.getElementById('sp-officer-form').style.display === 'none' ? 'block' : 'none';">
+                <?php esc_html_e( 'Add Officer', 'societypress' ); ?>
+            </button>
+        </div>
+
+        <div id="sp-officer-form" style="display:<?php echo ( $editing_section === 'officer' ) ? 'block' : 'none'; ?>; background:#fff; border:1px solid #ccd0d4; border-radius:4px; padding:20px; margin:0 0 24px 0;">
+            <h3 style="margin-top:0;">
+                <?php echo ( $editing_section === 'officer' ) ? esc_html__( 'Edit Officer', 'societypress' ) : esc_html__( 'Add Officer', 'societypress' ); ?>
+            </h3>
+            <form method="post">
+                <?php wp_nonce_field( 'sp_leadership_save' ); ?>
+                <input type="hidden" name="role_id" value="<?php echo ( $editing_section === 'officer' && $editing ) ? (int) $editing->id : 0; ?>">
+                <input type="hidden" name="role_type" value="officer">
+
+                <table class="form-table">
+                    <tr>
+                        <th><label for="officer_user_id"><?php esc_html_e( 'Member', 'societypress' ); ?></label></th>
+                        <td>
+                            <select name="user_id" id="officer_user_id" required style="min-width:250px;">
+                                <option value=""><?php echo '— ' . esc_html__( 'Select Member', 'societypress' ) . ' —'; ?></option>
+                                <?php foreach ( $members as $m ) : ?>
+                                    <option value="<?php echo (int) $m->user_id; ?>" <?php selected( ( $editing_section === 'officer' ? ( $editing->user_id ?? 0 ) : 0 ), $m->user_id ); ?>>
+                                        <?php echo esc_html( $m->last_name . ', ' . $m->first_name ); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="officer_role_title"><?php esc_html_e( 'Position Title', 'societypress' ); ?></label></th>
+                        <td>
+                            <input type="text" name="role_title" id="officer_role_title"
+                                   value="<?php echo esc_attr( $editing_section === 'officer' ? ( $editing->role_title ?? '' ) : '' ); ?>"
+                                   class="regular-text" required
+                                   placeholder="<?php esc_attr_e( 'e.g., President, Vice President, Treasurer', 'societypress' ); ?>">
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="officer_start_date"><?php esc_html_e( 'Start Date', 'societypress' ); ?></label></th>
+                        <td>
+                            <input type="date" name="start_date" id="officer_start_date"
+                                   value="<?php echo esc_attr( $editing_section === 'officer' ? ( $editing->start_date ?? '' ) : '' ); ?>">
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="officer_end_date"><?php esc_html_e( 'End Date', 'societypress' ); ?></label></th>
+                        <td>
+                            <input type="date" name="end_date" id="officer_end_date"
+                                   value="<?php echo esc_attr( $editing_section === 'officer' ? ( $editing->end_date ?? '' ) : '' ); ?>">
+                            <span class="description"><?php esc_html_e( 'Leave blank for ongoing positions.', 'societypress' ); ?></span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="officer_status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
+                        <td>
+                            <select name="status" id="officer_status">
+                                <option value="active" <?php selected( $editing_section === 'officer' ? ( $editing->status ?? 'active' ) : 'active', 'active' ); ?>><?php esc_html_e( 'Active', 'societypress' ); ?></option>
+                                <option value="inactive" <?php selected( $editing_section === 'officer' ? ( $editing->status ?? '' ) : '', 'inactive' ); ?>><?php esc_html_e( 'Inactive', 'societypress' ); ?></option>
+                            </select>
+                        </td>
+                    </tr>
+                </table>
+                <p class="submit">
+                    <input type="submit" name="sp_save_leadership" class="button button-primary"
+                           value="<?php echo ( $editing_section === 'officer' ) ? esc_attr__( 'Update Officer', 'societypress' ) : esc_attr__( 'Add Officer', 'societypress' ); ?>">
+                    <?php if ( $editing_section === 'officer' ) : ?>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-governance' ) ); ?>" class="button"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
+                    <?php endif; ?>
+                </p>
+            </form>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- SECTION B: COMMITTEES                                        -->
+        <!-- WHY: Committees are grouped by committee name. Each group is  -->
+        <!--      a collapsible section so the page doesn't get unwieldy   -->
+        <!--      when there are many committees. The admin can quickly    -->
+        <!--      see who's on which committee and add new assignments.    -->
+        <!-- ============================================================ -->
+
+        <h2 style="margin-top:32px; border-bottom:2px solid #2271b1; padding-bottom:8px;">
+            <?php esc_html_e( 'Committees', 'societypress' ); ?>
+        </h2>
+
+        <?php if ( ! empty( $committees ) ) : ?>
+            <?php foreach ( $committees as $committee_name => $members_list ) : ?>
+                <div style="background:#fff; border:1px solid #ccd0d4; border-radius:4px; margin:12px 0;">
+                    <!-- Collapsible committee header -->
+                    <div style="padding:12px 16px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e5e7eb;"
+                         onclick="var body = this.nextElementSibling; var arrow = this.querySelector('.sp-arrow'); body.style.display = body.style.display === 'none' ? 'block' : 'none'; arrow.textContent = body.style.display === 'none' ? '\u25B6' : '\u25BC';">
+                        <div style="font-size:15px; font-weight:600; color:#1d2327;">
+                            <span class="sp-arrow" style="display:inline-block; width:16px; font-size:12px;">&#9660;</span>
+                            <?php echo esc_html( $committee_name ); ?>
+                            <span style="font-weight:400; color:#787c82; font-size:13px; margin-left:8px;">
+                                <?php echo esc_html( sprintf(
+                                    /* translators: %d is the number of members in a committee */
+                                    _n( '%d member', '%d members', count( $members_list ), 'societypress' ),
+                                    count( $members_list )
+                                ) ); ?>
+                            </span>
+                        </div>
+                    </div>
+                    <!-- Committee member list -->
+                    <div style="display:block;">
+                        <table class="wp-list-table widefat fixed striped" style="border:none; box-shadow:none;">
+                            <thead>
+                                <tr>
+                                    <th style="width:30%;"><?php esc_html_e( 'Name', 'societypress' ); ?></th>
+                                    <th style="width:20%;"><?php esc_html_e( 'Role', 'societypress' ); ?></th>
+                                    <th style="width:20%;"><?php esc_html_e( 'Term', 'societypress' ); ?></th>
+                                    <th style="width:15%;"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                                    <th style="width:15%;"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ( $members_list as $cm ) :
+                                    $cm_name  = esc_html( $cm->first_name . ' ' . $cm->last_name );
+                                    $cm_start = $cm->start_date ? wp_date( 'M j, Y', strtotime( $cm->start_date ) ) : '—';
+                                    $cm_end   = $cm->end_date ? wp_date( 'M j, Y', strtotime( $cm->end_date ) ) : __( 'Ongoing', 'societypress' );
+                                    $cm_edit  = admin_url( 'admin.php?page=sp-governance&action=edit&role_id=' . $cm->id );
+                                ?>
+                                    <tr>
+                                        <td><?php echo $cm_name; ?></td>
+                                        <td><?php echo esc_html( $cm->role_title ); ?></td>
+                                        <td><?php echo esc_html( $cm_start . ' – ' . $cm_end ); ?></td>
+                                        <td><?php echo $status_badge( $cm->status ); ?></td>
+                                        <td style="font-size:12px;">
+                                            <a href="<?php echo esc_url( $cm_edit ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
+                                            &nbsp;|&nbsp;
+                                            <form method="post" style="display:inline;">
+                                                <?php wp_nonce_field( 'sp_delete_leadership_role_' . $cm->id ); ?>
+                                                <input type="hidden" name="delete_role_id" value="<?php echo (int) $cm->id; ?>">
+                                                <button type="submit" name="sp_delete_leadership" value="1" style="background:none; border:none; color:#b32d2e; cursor:pointer; font-size:12px; padding:0; text-decoration:underline;" onclick="return confirm('<?php echo esc_js( __( 'Remove this committee assignment?', 'societypress' ) ); ?>');">
+                                                    <?php esc_html_e( 'Delete', 'societypress' ); ?>
+                                                </button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        <?php else : ?>
+            <p style="color:#787c82; font-style:italic; margin:16px 0;">
+                <?php esc_html_e( 'No committee assignments have been added yet.', 'societypress' ); ?>
+            </p>
+        <?php endif; ?>
+
+        <!-- Add Committee Assignment button / inline form -->
+        <div style="margin:16px 0;">
+            <button type="button" id="sp-toggle-committee-form" class="button button-primary" onclick="document.getElementById('sp-committee-form').style.display = document.getElementById('sp-committee-form').style.display === 'none' ? 'block' : 'none';">
+                <?php esc_html_e( 'Add Committee Assignment', 'societypress' ); ?>
+            </button>
+        </div>
+
+        <div id="sp-committee-form" style="display:<?php echo ( $editing_section === 'committee' ) ? 'block' : 'none'; ?>; background:#fff; border:1px solid #ccd0d4; border-radius:4px; padding:20px; margin:0 0 24px 0;">
+            <h3 style="margin-top:0;">
+                <?php echo ( $editing_section === 'committee' ) ? esc_html__( 'Edit Committee Assignment', 'societypress' ) : esc_html__( 'Add Committee Assignment', 'societypress' ); ?>
+            </h3>
+            <form method="post">
+                <?php wp_nonce_field( 'sp_leadership_save' ); ?>
+                <input type="hidden" name="role_id" value="<?php echo ( $editing_section === 'committee' && $editing ) ? (int) $editing->id : 0; ?>">
+                <input type="hidden" name="role_type" value="committee">
+
+                <table class="form-table">
+                    <tr>
+                        <th><label for="committee_user_id"><?php esc_html_e( 'Member', 'societypress' ); ?></label></th>
+                        <td>
+                            <select name="user_id" id="committee_user_id" required style="min-width:250px;">
+                                <option value=""><?php echo '— ' . esc_html__( 'Select Member', 'societypress' ) . ' —'; ?></option>
+                                <?php foreach ( $members as $m ) : ?>
+                                    <option value="<?php echo (int) $m->user_id; ?>" <?php selected( ( $editing_section === 'committee' ? ( $editing->user_id ?? 0 ) : 0 ), $m->user_id ); ?>>
+                                        <?php echo esc_html( $m->last_name . ', ' . $m->first_name ); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="committee_name_input"><?php esc_html_e( 'Committee Name', 'societypress' ); ?></label></th>
+                        <td>
+                            <input type="text" name="committee" id="committee_name_input"
+                                   value="<?php echo esc_attr( $editing_section === 'committee' ? ( $editing->committee ?? '' ) : '' ); ?>"
+                                   class="regular-text" required
+                                   placeholder="<?php esc_attr_e( 'e.g., Programs Committee', 'societypress' ); ?>">
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="committee_role_title"><?php esc_html_e( 'Role in Committee', 'societypress' ); ?></label></th>
+                        <td>
+                            <input type="text" name="role_title" id="committee_role_title"
+                                   value="<?php echo esc_attr( $editing_section === 'committee' ? ( $editing->role_title ?? '' ) : '' ); ?>"
+                                   class="regular-text" required
+                                   placeholder="<?php esc_attr_e( 'e.g., Chair, Vice-Chair, Member', 'societypress' ); ?>">
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="committee_start_date"><?php esc_html_e( 'Start Date', 'societypress' ); ?></label></th>
+                        <td>
+                            <input type="date" name="start_date" id="committee_start_date"
+                                   value="<?php echo esc_attr( $editing_section === 'committee' ? ( $editing->start_date ?? '' ) : '' ); ?>">
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="committee_end_date"><?php esc_html_e( 'End Date', 'societypress' ); ?></label></th>
+                        <td>
+                            <input type="date" name="end_date" id="committee_end_date"
+                                   value="<?php echo esc_attr( $editing_section === 'committee' ? ( $editing->end_date ?? '' ) : '' ); ?>">
+                            <span class="description"><?php esc_html_e( 'Leave blank for ongoing assignments.', 'societypress' ); ?></span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="committee_status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
+                        <td>
+                            <select name="status" id="committee_status">
+                                <option value="active" <?php selected( $editing_section === 'committee' ? ( $editing->status ?? 'active' ) : 'active', 'active' ); ?>><?php esc_html_e( 'Active', 'societypress' ); ?></option>
+                                <option value="inactive" <?php selected( $editing_section === 'committee' ? ( $editing->status ?? '' ) : '', 'inactive' ); ?>><?php esc_html_e( 'Inactive', 'societypress' ); ?></option>
+                            </select>
+                        </td>
+                    </tr>
+                </table>
+                <p class="submit">
+                    <input type="submit" name="sp_save_leadership" class="button button-primary"
+                           value="<?php echo ( $editing_section === 'committee' ) ? esc_attr__( 'Update Assignment', 'societypress' ) : esc_attr__( 'Add Assignment', 'societypress' ); ?>">
+                    <?php if ( $editing_section === 'committee' ) : ?>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-governance' ) ); ?>" class="button"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
+                    <?php endif; ?>
+                </p>
+            </form>
+        </div>
+
+    </div>
+    <?php
+}
+
+
+// ============================================================================
 // VOLUNTEERS — ADMIN PAGE (existing roles roster)
 // ============================================================================
 
@@ -42526,6 +44921,7 @@ function sp_render_volunteers_page(): void {
         $user_id    = absint( $_POST['user_id'] ?? 0 );
         $role_title = sanitize_text_field( $_POST['role_title'] ?? '' );
         $committee  = sanitize_text_field( $_POST['committee'] ?? '' );
+        $role_type  = sanitize_text_field( $_POST['role_type'] ?? 'volunteer' );
         $start_date = sanitize_text_field( $_POST['start_date'] ?? '' );
         $end_date   = sanitize_text_field( $_POST['end_date'] ?? '' );
         $status     = sanitize_text_field( $_POST['status'] ?? 'active' );
@@ -42535,6 +44931,7 @@ function sp_render_volunteers_page(): void {
                 'user_id'    => $user_id,
                 'role_title' => $role_title,
                 'committee'  => $committee,
+                'role_type'  => $role_type,
                 'start_date' => $start_date ?: null,
                 'end_date'   => $end_date ?: null,
                 'status'     => $status,
@@ -42581,6 +44978,7 @@ function sp_render_volunteers_page(): void {
             <form method="post">
                 <?php wp_nonce_field( 'sp_volunteer_role_save' ); ?>
                 <input type="hidden" name="role_id" value="<?php echo $editing ? $editing->id : 0; ?>">
+                <input type="hidden" name="role_type" value="volunteer">
 
                 <table class="form-table">
                     <tr>
@@ -42625,7 +45023,7 @@ function sp_render_volunteers_page(): void {
                 <p class="submit">
                     <input type="submit" name="sp_save_volunteer_role" class="button button-primary" value="<?php echo $editing ? esc_attr__( 'Update Role', 'societypress' ) : esc_attr__( 'Add Role', 'societypress' ); ?>">
                     <?php if ( $editing ) : ?>
-                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-governance' ) ); ?>" class="button"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-volunteer-roster' ) ); ?>" class="button"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
                     <?php endif; ?>
                 </p>
             </form>
@@ -42633,7 +45031,7 @@ function sp_render_volunteers_page(): void {
 
         <!-- Volunteer roster table -->
         <form method="get">
-            <input type="hidden" name="page" value="sp-governance">
+            <input type="hidden" name="page" value="sp-volunteer-roster">
             <?php
             $table->search_box( __( 'Search Volunteers', 'societypress' ), 'volunteer_search' );
             $table->display();

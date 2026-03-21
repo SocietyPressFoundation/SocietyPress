@@ -175,7 +175,19 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 
 (Nothing actively in flight)
 
-### Completed This Session (v0.39d — 2026-03-20)
+### Completed This Session (v0.40d — 2026-03-21)
+
+**Leadership & Committees — Member Search:**
+- [x] Server-side member search in officer and committee assignment forms — no more 2,500-name dropdown
+- [x] Each form has its own "Find Member" search (GET form): type a name, click Search, page reloads with filtered dropdown
+- [x] Dropdowns start empty ("Search for a member first") until a search is performed
+- [x] Search matches first name, last name, or "Last, First" format via SQL LIKE
+- [x] Clear button resets search; forms auto-open when search is active
+- [x] Editing existing roles pre-loads the assigned member without requiring a search
+- [x] Deduplicated members by user_id in search results
+- [x] Added `leadership-search.js` as a properly enqueued admin script (wp_enqueue_script + wp_localize_script) for future JS enhancement
+
+### Completed Previous Session (v0.39d — 2026-03-20)
 
 **Child Themes & Theme Builder:**
 - [x] 5 default child themes: Heritage, Coastline, Prairie, Ledger, Parlor — each with distinct palette, Google Font, and personality

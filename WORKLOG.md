@@ -1,5 +1,18 @@
 # SocietyPress — WORKLOG
 
+## v0.40d — 2026-03-21
+
+### Leadership & Committees — Member Search
+
+**Server-Side Member Search in Forms:**
+- Officer and committee assignment forms now have their own "Find Member" search — type a name, click Search, page reloads with only matching members in the dropdown
+- Dropdowns start empty ("Search for a member first") — no more 2,500-name dropdown to scroll through
+- Separate GET parameters per form (`officer_search`, `committee_search`) so each works independently
+- SQL LIKE search matches first_name, last_name, or "Last, First" concatenation
+- Forms auto-open when their search is active; Clear button resets everything
+- Editing existing roles pre-loads the assigned member without a search
+- Added `assets/js/leadership-search.js` as a properly enqueued admin script for future client-side enhancement
+
 ## v0.39d — 2026-03-20
 
 ### Child Themes, Custom Theme Builder & Governance Overhaul

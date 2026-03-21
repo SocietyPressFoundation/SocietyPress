@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '0.39d' );
+define( 'SOCIETYPRESS_VERSION', '0.40d' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -22140,6 +22140,75 @@ add_action( 'admin_enqueue_scripts', function ( $hook ) {
     // Must be enqueued before the page renders or wp.media will be undefined.
     wp_enqueue_media();
 });
+
+// WHY: The Leadership & Committees page needs a search/filter script so
+//      admins can find specific members quickly among potentially thousands
+//      of entries. Loaded as a proper enqueued script (not inline) because
+//      wp_localize_script is the reliable way to pass PHP data to JS.
+add_action( 'admin_enqueue_scripts', function ( $hook ) {
+    // Only load on the Leadership & Committees page
+    if ( strpos( $hook, 'sp-governance' ) === false ) {
+        return;
+    }
+
+    wp_enqueue_script(
+        'sp-leadership-search',
+        plugin_dir_url( SOCIETYPRESS_PLUGIN_FILE ) . 'assets/js/leadership-search.js',
+        [],
+        SOCIETYPRESS_VERSION,
+        true // load in footer
+    );
+
+    // Build member data for the search — done here so the JS file has
+    // access to the full member list via spLeadershipData.members
+    global $wpdb;
+    $prefix  = $wpdb->prefix . 'sp_';
+    $members = $wpdb->get_results(
+        "SELECT user_id, first_name, last_name FROM {$prefix}members WHERE status = 'active' ORDER BY last_name ASC"
+    );
+
+    // Current leadership roles — so search results can show existing assignments
+    $officers = $wpdb->get_results(
+        "SELECT user_id, role_title FROM {$prefix}volunteer_roles WHERE role_type = 'officer' AND status = 'active'"
+    );
+    $committees = $wpdb->get_results(
+        "SELECT user_id, role_title, committee FROM {$prefix}volunteer_roles WHERE role_type = 'committee' AND status = 'active'"
+    );
+
+    $role_lookup = [];
+    foreach ( $officers as $o ) {
+        $role_lookup[ (int) $o->user_id ][] = $o->role_title . ' (' . __( 'Officer', 'societypress' ) . ')';
+    }
+    foreach ( $committees as $c ) {
+        $label = $c->role_title;
+        if ( $c->committee ) {
+            $label .= ' — ' . $c->committee;
+        }
+        $role_lookup[ (int) $c->user_id ][] = $label . ' (' . __( 'Committee', 'societypress' ) . ')';
+    }
+
+    $members_data = [];
+    $seen         = [];
+    foreach ( $members as $m ) {
+        $uid = (int) $m->user_id;
+        if ( isset( $seen[ $uid ] ) ) continue;
+        $seen[ $uid ] = true;
+        $members_data[] = [
+            'id'    => $uid,
+            'name'  => $m->last_name . ', ' . $m->first_name,
+            'roles' => $role_lookup[ $uid ] ?? [],
+        ];
+    }
+
+    wp_localize_script( 'sp-leadership-search', 'spLeadershipData', [
+        'members' => $members_data,
+        'i18n'    => [
+            'noResults'    => __( 'No members found.', 'societypress' ),
+            'addOfficer'   => __( 'Add as Officer', 'societypress' ),
+            'addCommittee' => __( 'Add to Committee', 'societypress' ),
+        ],
+    ] );
+} );
 
 
 // ============================================================================
@@ -44555,9 +44624,65 @@ function sp_render_leadership_page(): void {
     // ------------------------------------------------------------------
     // LOAD DATA: Active members for dropdowns, officers, committee roles
     // ------------------------------------------------------------------
-    $members = $wpdb->get_results(
-        "SELECT user_id, first_name, last_name FROM {$prefix}members WHERE status = 'active' ORDER BY last_name ASC"
-    );
+
+    // WHY: Server-side member search — when the admin types a name and
+    // clicks "Filter", the page reloads with only matching members in
+    // the dropdown. This avoids any dependency on JavaScript for search.
+    $member_search = sanitize_text_field( $_GET['member_search'] ?? '' );
+
+    // WHY: Each form (officer / committee) has its own member search.
+    // Dropdowns start empty — the admin searches within the form they're
+    // using, and only matching members appear in that dropdown.
+    $officer_search   = sanitize_text_field( $_GET['officer_search'] ?? '' );
+    $committee_search = sanitize_text_field( $_GET['committee_search'] ?? '' );
+
+    // Build filtered member lists per form
+    $officer_members   = [];
+    $committee_members = [];
+
+    if ( $officer_search ) {
+        $like = '%' . $wpdb->esc_like( $officer_search ) . '%';
+        $officer_members = $wpdb->get_results( $wpdb->prepare(
+            "SELECT user_id, first_name, last_name FROM {$prefix}members
+             WHERE status = 'active'
+               AND (first_name LIKE %s OR last_name LIKE %s OR CONCAT(last_name, ', ', first_name) LIKE %s)
+             ORDER BY last_name ASC",
+            $like, $like, $like
+        ) );
+    }
+
+    if ( $committee_search ) {
+        $like = '%' . $wpdb->esc_like( $committee_search ) . '%';
+        $committee_members = $wpdb->get_results( $wpdb->prepare(
+            "SELECT user_id, first_name, last_name FROM {$prefix}members
+             WHERE status = 'active'
+               AND (first_name LIKE %s OR last_name LIKE %s OR CONCAT(last_name, ', ', first_name) LIKE %s)
+             ORDER BY last_name ASC",
+            $like, $like, $like
+        ) );
+    }
+
+    // WHY: When editing an existing role, we need the assigned member in
+    // the dropdown even without a search.
+    $editing = null;
+    $editing_section = '';
+    if ( ( $_GET['action'] ?? '' ) === 'edit' && ! empty( $_GET['role_id'] ) ) {
+        $editing = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$prefix}volunteer_roles WHERE id = %d", absint( $_GET['role_id'] )
+        ) );
+        if ( $editing ) {
+            $editing_section = $editing->role_type === 'committee' ? 'committee' : 'officer';
+            $edit_member = $wpdb->get_results( $wpdb->prepare(
+                "SELECT user_id, first_name, last_name FROM {$prefix}members WHERE user_id = %d",
+                $editing->user_id
+            ) );
+            if ( $editing_section === 'officer' && empty( $officer_members ) ) {
+                $officer_members = $edit_member;
+            } elseif ( $editing_section === 'committee' && empty( $committee_members ) ) {
+                $committee_members = $edit_member;
+            }
+        }
+    }
 
     // Officers: role_type = 'officer', ordered by status (active first) then start_date
     $officers = $wpdb->get_results(
@@ -44584,18 +44709,6 @@ function sp_render_leadership_page(): void {
         $committees[ $key ][] = $row;
     }
 
-    // Check if we're editing an existing role (from an Edit link click)
-    $editing = null;
-    $editing_section = '';
-    if ( ( $_GET['action'] ?? '' ) === 'edit' && ! empty( $_GET['role_id'] ) ) {
-        $editing = $wpdb->get_row( $wpdb->prepare(
-            "SELECT * FROM {$prefix}volunteer_roles WHERE id = %d", absint( $_GET['role_id'] )
-        ) );
-        if ( $editing ) {
-            $editing_section = $editing->role_type === 'committee' ? 'committee' : 'officer';
-        }
-    }
-
     // Badge color helper — used in both sections
     $status_badge = function ( string $status ): string {
         $colors = [
@@ -44611,6 +44724,11 @@ function sp_render_leadership_page(): void {
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Leadership & Committees', 'societypress' ); ?></h1>
         <hr class="wp-header-end">
 
+        <?php
+        // Member search is now handled per-form (officer / committee),
+        // each with its own inline search field. No page-level search needed.
+        ?>
+
         <!-- ============================================================ -->
         <!-- SECTION A: OFFICERS & BOARD                                  -->
         <!-- WHY: A card grid gives a quick visual overview of who holds   -->
@@ -44624,12 +44742,12 @@ function sp_render_leadership_page(): void {
 
         <!-- Officer card grid -->
         <?php if ( ! empty( $officers ) ) : ?>
-            <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:16px; margin:16px 0;">
+            <div id="sp-officer-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:16px; margin:16px 0;">
                 <?php foreach ( $officers as $o ) :
                     $name = esc_html( $o->first_name . ' ' . $o->last_name );
                     $edit_url = admin_url( 'admin.php?page=sp-governance&action=edit&role_id=' . $o->id );
                 ?>
-                    <div style="background:#fff; border:1px solid #ccd0d4; border-radius:6px; padding:16px; position:relative;">
+                    <div class="sp-officer-card" style="background:#fff; border:1px solid #ccd0d4; border-radius:6px; padding:16px; position:relative;">
                         <div style="font-size:15px; font-weight:700; color:#1d2327; margin-bottom:4px;">
                             <?php echo esc_html( $o->role_title ); ?>
                         </div>
@@ -44674,10 +44792,38 @@ function sp_render_leadership_page(): void {
             </button>
         </div>
 
-        <div id="sp-officer-form" style="display:<?php echo ( $editing_section === 'officer' ) ? 'block' : 'none'; ?>; background:#fff; border:1px solid #ccd0d4; border-radius:4px; padding:20px; margin:0 0 24px 0;">
+        <div id="sp-officer-form" style="display:<?php echo ( $editing_section === 'officer' || $officer_search ) ? 'block' : 'none'; ?>; background:#fff; border:1px solid #ccd0d4; border-radius:4px; padding:20px; margin:0 0 24px 0;">
             <h3 style="margin-top:0;">
                 <?php echo ( $editing_section === 'officer' ) ? esc_html__( 'Edit Officer', 'societypress' ) : esc_html__( 'Add Officer', 'societypress' ); ?>
             </h3>
+
+            <!-- Step 1: Search for a member (GET form — reloads page with results) -->
+            <form method="get" action="<?php echo esc_url( admin_url( 'admin.php' ) ); ?>" style="margin-bottom:16px;">
+                <input type="hidden" name="page" value="sp-governance">
+                <label style="font-weight:600; display:block; margin-bottom:6px;"><?php esc_html_e( 'Find Member', 'societypress' ); ?></label>
+                <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                    <input type="search" name="officer_search"
+                           value="<?php echo esc_attr( $officer_search ); ?>"
+                           placeholder="<?php esc_attr_e( 'Type a name, then click Search', 'societypress' ); ?>"
+                           style="min-width:220px; padding:4px 8px; border:1px solid #8c8f94; border-radius:3px;">
+                    <button type="submit" class="button"><?php esc_html_e( 'Search', 'societypress' ); ?></button>
+                    <?php if ( $officer_search ) : ?>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-governance' ) ); ?>" class="button" style="text-decoration:none;"><?php esc_html_e( 'Clear', 'societypress' ); ?></a>
+                    <?php endif; ?>
+                </div>
+                <?php if ( $officer_search ) : ?>
+                    <div style="margin-top:6px; font-size:13px; color:#50575e;">
+                        <?php echo esc_html( sprintf(
+                            /* translators: %1$d is the number of matching members, %2$s is the search term */
+                            __( '%1$d members matching "%2$s"', 'societypress' ),
+                            count( $officer_members ),
+                            $officer_search
+                        ) ); ?>
+                    </div>
+                <?php endif; ?>
+            </form>
+
+            <!-- Step 2: Assign the role (POST form) -->
             <form method="post">
                 <?php wp_nonce_field( 'sp_leadership_save' ); ?>
                 <input type="hidden" name="role_id" value="<?php echo ( $editing_section === 'officer' && $editing ) ? (int) $editing->id : 0; ?>">
@@ -44688,12 +44834,16 @@ function sp_render_leadership_page(): void {
                         <th><label for="officer_user_id"><?php esc_html_e( 'Member', 'societypress' ); ?></label></th>
                         <td>
                             <select name="user_id" id="officer_user_id" required style="min-width:250px;">
-                                <option value=""><?php echo '— ' . esc_html__( 'Select Member', 'societypress' ) . ' —'; ?></option>
-                                <?php foreach ( $members as $m ) : ?>
-                                    <option value="<?php echo (int) $m->user_id; ?>" <?php selected( ( $editing_section === 'officer' ? ( $editing->user_id ?? 0 ) : 0 ), $m->user_id ); ?>>
-                                        <?php echo esc_html( $m->last_name . ', ' . $m->first_name ); ?>
-                                    </option>
-                                <?php endforeach; ?>
+                                <?php if ( empty( $officer_members ) ) : ?>
+                                    <option value=""><?php echo '— ' . esc_html__( 'Search for a member first', 'societypress' ) . ' —'; ?></option>
+                                <?php else : ?>
+                                    <option value=""><?php echo '— ' . esc_html__( 'Select Member', 'societypress' ) . ' —'; ?></option>
+                                    <?php foreach ( $officer_members as $m ) : ?>
+                                        <option value="<?php echo (int) $m->user_id; ?>" <?php selected( ( $editing_section === 'officer' ? ( $editing->user_id ?? 0 ) : 0 ), $m->user_id ); ?>>
+                                            <?php echo esc_html( $m->last_name . ', ' . $m->first_name ); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
                             </select>
                         </td>
                     </tr>
@@ -44755,11 +44905,11 @@ function sp_render_leadership_page(): void {
 
         <?php if ( ! empty( $committees ) ) : ?>
             <?php foreach ( $committees as $committee_name => $members_list ) : ?>
-                <div style="background:#fff; border:1px solid #ccd0d4; border-radius:4px; margin:12px 0;">
+                <div class="sp-committee-group" style="background:#fff; border:1px solid #ccd0d4; border-radius:4px; margin:12px 0;">
                     <!-- Collapsible committee header -->
                     <div style="padding:12px 16px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e5e7eb;"
                          onclick="var body = this.nextElementSibling; var arrow = this.querySelector('.sp-arrow'); body.style.display = body.style.display === 'none' ? 'block' : 'none'; arrow.textContent = body.style.display === 'none' ? '\u25B6' : '\u25BC';">
-                        <div style="font-size:15px; font-weight:600; color:#1d2327;">
+                        <div data-sp-committee-name="<?php echo esc_attr( $committee_name ); ?>" style="font-size:15px; font-weight:600; color:#1d2327;">
                             <span class="sp-arrow" style="display:inline-block; width:16px; font-size:12px;">&#9660;</span>
                             <?php echo esc_html( $committee_name ); ?>
                             <span style="font-weight:400; color:#787c82; font-size:13px; margin-left:8px;">
@@ -44790,7 +44940,7 @@ function sp_render_leadership_page(): void {
                                     $cm_end   = $cm->end_date ? wp_date( 'M j, Y', strtotime( $cm->end_date ) ) : __( 'Ongoing', 'societypress' );
                                     $cm_edit  = admin_url( 'admin.php?page=sp-governance&action=edit&role_id=' . $cm->id );
                                 ?>
-                                    <tr>
+                                    <tr class="sp-committee-row">
                                         <td><?php echo $cm_name; ?></td>
                                         <td><?php echo esc_html( $cm->role_title ); ?></td>
                                         <td><?php echo esc_html( $cm_start . ' – ' . $cm_end ); ?></td>
@@ -44826,10 +44976,38 @@ function sp_render_leadership_page(): void {
             </button>
         </div>
 
-        <div id="sp-committee-form" style="display:<?php echo ( $editing_section === 'committee' ) ? 'block' : 'none'; ?>; background:#fff; border:1px solid #ccd0d4; border-radius:4px; padding:20px; margin:0 0 24px 0;">
+        <div id="sp-committee-form" style="display:<?php echo ( $editing_section === 'committee' || $committee_search ) ? 'block' : 'none'; ?>; background:#fff; border:1px solid #ccd0d4; border-radius:4px; padding:20px; margin:0 0 24px 0;">
             <h3 style="margin-top:0;">
                 <?php echo ( $editing_section === 'committee' ) ? esc_html__( 'Edit Committee Assignment', 'societypress' ) : esc_html__( 'Add Committee Assignment', 'societypress' ); ?>
             </h3>
+
+            <!-- Step 1: Search for a member (GET form — reloads page with results) -->
+            <form method="get" action="<?php echo esc_url( admin_url( 'admin.php' ) ); ?>" style="margin-bottom:16px;">
+                <input type="hidden" name="page" value="sp-governance">
+                <label style="font-weight:600; display:block; margin-bottom:6px;"><?php esc_html_e( 'Find Member', 'societypress' ); ?></label>
+                <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                    <input type="search" name="committee_search"
+                           value="<?php echo esc_attr( $committee_search ); ?>"
+                           placeholder="<?php esc_attr_e( 'Type a name, then click Search', 'societypress' ); ?>"
+                           style="min-width:220px; padding:4px 8px; border:1px solid #8c8f94; border-radius:3px;">
+                    <button type="submit" class="button"><?php esc_html_e( 'Search', 'societypress' ); ?></button>
+                    <?php if ( $committee_search ) : ?>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-governance' ) ); ?>" class="button" style="text-decoration:none;"><?php esc_html_e( 'Clear', 'societypress' ); ?></a>
+                    <?php endif; ?>
+                </div>
+                <?php if ( $committee_search ) : ?>
+                    <div style="margin-top:6px; font-size:13px; color:#50575e;">
+                        <?php echo esc_html( sprintf(
+                            /* translators: %1$d is the number of matching members, %2$s is the search term */
+                            __( '%1$d members matching "%2$s"', 'societypress' ),
+                            count( $committee_members ),
+                            $committee_search
+                        ) ); ?>
+                    </div>
+                <?php endif; ?>
+            </form>
+
+            <!-- Step 2: Assign the role (POST form) -->
             <form method="post">
                 <?php wp_nonce_field( 'sp_leadership_save' ); ?>
                 <input type="hidden" name="role_id" value="<?php echo ( $editing_section === 'committee' && $editing ) ? (int) $editing->id : 0; ?>">
@@ -44840,12 +45018,16 @@ function sp_render_leadership_page(): void {
                         <th><label for="committee_user_id"><?php esc_html_e( 'Member', 'societypress' ); ?></label></th>
                         <td>
                             <select name="user_id" id="committee_user_id" required style="min-width:250px;">
-                                <option value=""><?php echo '— ' . esc_html__( 'Select Member', 'societypress' ) . ' —'; ?></option>
-                                <?php foreach ( $members as $m ) : ?>
-                                    <option value="<?php echo (int) $m->user_id; ?>" <?php selected( ( $editing_section === 'committee' ? ( $editing->user_id ?? 0 ) : 0 ), $m->user_id ); ?>>
-                                        <?php echo esc_html( $m->last_name . ', ' . $m->first_name ); ?>
-                                    </option>
-                                <?php endforeach; ?>
+                                <?php if ( empty( $committee_members ) ) : ?>
+                                    <option value=""><?php echo '— ' . esc_html__( 'Search for a member first', 'societypress' ) . ' —'; ?></option>
+                                <?php else : ?>
+                                    <option value=""><?php echo '— ' . esc_html__( 'Select Member', 'societypress' ) . ' —'; ?></option>
+                                    <?php foreach ( $committee_members as $m ) : ?>
+                                        <option value="<?php echo (int) $m->user_id; ?>" <?php selected( ( $editing_section === 'committee' ? ( $editing->user_id ?? 0 ) : 0 ), $m->user_id ); ?>>
+                                            <?php echo esc_html( $m->last_name . ', ' . $m->first_name ); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
                             </select>
                         </td>
                     </tr>

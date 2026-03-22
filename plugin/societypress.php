@@ -872,6 +872,10 @@ function sp_create_tables(): void {
         recurrence_parent_id  BIGINT(20) UNSIGNED NULL,
         recurrence_rule       VARCHAR(100)        NULL,
         recurrence_end_date   DATE                NULL,
+        external_url          VARCHAR(500)        NULL,
+        external_source       VARCHAR(20)         NULL DEFAULT NULL,
+        external_uid          VARCHAR(255)        NULL DEFAULT NULL,
+        feed_id               BIGINT(20) UNSIGNED NULL DEFAULT NULL,
         created_by            BIGINT(20) UNSIGNED NULL,
         created_at            DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at            DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -880,7 +884,10 @@ function sp_create_tables(): void {
         KEY category_id (category_id),
         KEY status (status),
         KEY slug (slug),
-        KEY recurrence_parent_id (recurrence_parent_id)
+        KEY recurrence_parent_id (recurrence_parent_id),
+        KEY external_source (external_source),
+        KEY external_uid (external_uid),
+        KEY feed_id (feed_id)
     ) {$charset_collate};" );
 
     // ========================================================================
@@ -1827,6 +1834,33 @@ function sp_create_tables(): void {
     ) {$charset_collate};" );
 
 
+    // ========================================================================
+    // sp_ical_feeds — External iCal calendar subscriptions
+    //
+    // WHY: Societies often want to display events from partner organizations,
+    //      regional genealogy groups, or national conferences alongside their
+    //      own events. Rather than manually re-entering those events, Harold
+    //      can subscribe to an iCal feed URL and SocietyPress will automatically
+    //      import and sync the events on a configurable schedule.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}ical_feeds (
+        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        label           VARCHAR(255)        NOT NULL,
+        url             VARCHAR(2000)       NOT NULL,
+        category_id     BIGINT(20) UNSIGNED NULL,
+        sync_interval   INT UNSIGNED        NOT NULL DEFAULT 6,
+        is_active       TINYINT(1)          NOT NULL DEFAULT 1,
+        last_synced_at  DATETIME            NULL,
+        last_status     VARCHAR(20)         NOT NULL DEFAULT 'pending',
+        last_error      TEXT                NULL,
+        event_count     INT UNSIGNED        NOT NULL DEFAULT 0,
+        created_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY is_active (is_active)
+    ) {$charset_collate};" );
+
+
     // Store the schema version so we can run migrations in future updates
     // without re-running the full dbDelta on every page load.
     update_option( 'societypress_db_version', '0.26d' );
@@ -2118,7 +2152,54 @@ add_action( 'admin_init', function () {
 
 
 // ============================================================================
-// DEACTIVATION (placeholder — nothing to clean up yet)
+// MIGRATION: Add external event columns to sp_events for existing installs
+//
+// WHY: External events (manual URLs and iCal imports) need four new columns in
+//      sp_events. dbDelta sometimes fails to add columns to existing tables, so
+//      we do an explicit check-and-add. The check (SHOW COLUMNS) is cheap —
+//      the ALTER only fires if the columns are genuinely missing.
+// ============================================================================
+add_action( 'admin_init', function () {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_events';
+
+    // Bail early if the table doesn't exist yet (fresh install — sp_create_tables
+    // will handle it via the CREATE TABLE statement that already includes these columns).
+    if ( $wpdb->get_var( "SHOW TABLES LIKE '{$table}'" ) !== $table ) {
+        return;
+    }
+
+    // external_url — holds the URL for manual external events and iCal imports
+    $col = $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE 'external_url'" );
+    if ( empty( $col ) ) {
+        $wpdb->query( "ALTER TABLE {$table} ADD COLUMN external_url VARCHAR(500) NULL AFTER recurrence_end_date" );
+    }
+
+    // external_source — 'manual' for hand-entered URLs, 'ical_feed' for imported events
+    $col = $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE 'external_source'" );
+    if ( empty( $col ) ) {
+        $wpdb->query( "ALTER TABLE {$table} ADD COLUMN external_source VARCHAR(20) NULL DEFAULT NULL AFTER external_url" );
+        $wpdb->query( "ALTER TABLE {$table} ADD KEY external_source (external_source)" );
+    }
+
+    // external_uid — the UID from the iCal VEVENT, used for deduplication on sync
+    $col = $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE 'external_uid'" );
+    if ( empty( $col ) ) {
+        $wpdb->query( "ALTER TABLE {$table} ADD COLUMN external_uid VARCHAR(255) NULL DEFAULT NULL AFTER external_source" );
+        $wpdb->query( "ALTER TABLE {$table} ADD KEY external_uid (external_uid)" );
+    }
+
+    // feed_id — FK to sp_ical_feeds, links imported events to their source feed
+    $col = $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE 'feed_id'" );
+    if ( empty( $col ) ) {
+        $wpdb->query( "ALTER TABLE {$table} ADD COLUMN feed_id BIGINT(20) UNSIGNED NULL DEFAULT NULL AFTER external_uid" );
+        $wpdb->query( "ALTER TABLE {$table} ADD KEY feed_id (feed_id)" );
+    }
+} );
+
+
+// ============================================================================
+// DEACTIVATION — Clean up cron jobs on plugin deactivation
 // ============================================================================
 
 register_deactivation_hook( __FILE__, function () {
@@ -2127,6 +2208,7 @@ register_deactivation_hook( __FILE__, function () {
     // removes the timer, not the data.
     wp_clear_scheduled_hook( 'sp_renewal_reminder_cron' );
     wp_clear_scheduled_hook( 'sp_email_log_cleanup_cron' );
+    wp_clear_scheduled_hook( 'sp_ical_feed_sync_cron' );
 });
 
 // ============================================================================
@@ -2565,7 +2647,7 @@ function sp_get_modules(): array {
             'name'        => __( 'Events & Calendar', 'societypress' ),
             'description' => __( 'Create events, manage registrations, and display a calendar on your website. Includes speaker management and recurring events.', 'societypress' ),
             'icon'        => 'dashicons-calendar-alt',
-            'menu_slugs'  => [ 'sp-events', 'sp-event-categories', 'sp-import-events', 'sp-speakers', 'sp-event-edit', 'sp-speaker-edit' ],
+            'menu_slugs'  => [ 'sp-events', 'sp-event-categories', 'sp-import-events', 'sp-speakers', 'sp-event-edit', 'sp-speaker-edit', 'sp-external-calendars' ],
         ],
         'library' => [
             'name'        => __( 'Library Catalog', 'societypress' ),
@@ -3278,6 +3360,19 @@ add_action( 'admin_menu', function () {
         'manage_options',
         'sp-speakers',
         'sp_render_speakers_page'
+    );
+
+    // External Calendars — iCal feed subscriptions
+    // WHY: Societies often partner with other organizations. Rather than
+    //      manually re-entering events from those groups, Harold can subscribe
+    //      to their iCal feeds and events appear automatically.
+    add_submenu_page(
+        'societypress',
+        __( 'External Calendars', 'societypress' ) . ' — SocietyPress',
+        __( 'External Calendars', 'societypress' ),
+        'manage_options',
+        'sp-external-calendars',
+        'sp_render_external_calendars_page'
     );
 
     // Event Edit — hidden (no sidebar link, accessed via row actions)
@@ -4015,6 +4110,7 @@ function sp_get_menu_capability_map(): array {
         'sp-speakers'              => 'sp_manage_events',
         'sp-event-edit'            => 'sp_manage_events',
         'sp-speaker-edit'          => 'sp_manage_events',
+        'sp-external-calendars'    => 'sp_manage_events',
 
         // Governance / Volunteers
         'sp-governance'            => 'sp_manage_governance',
@@ -6389,7 +6485,7 @@ var spMenuConfig = {
             id:    'events',
             label: 'Events',
             icon:  'dashicons-calendar-alt',
-            items: ['sp-events', 'sp-event-categories', 'sp-speakers', 'sp-import-events']
+            items: ['sp-events', 'sp-event-categories', 'sp-speakers', 'sp-import-events', 'sp-external-calendars']
         },
         {
             id:    'governance',
@@ -27145,6 +27241,16 @@ class SP_Events_List_Table extends WP_List_Table {
         $edit_url = admin_url( 'admin.php?page=sp-event-edit&event_id=' . $item->id );
         $title    = '<strong><a href="' . esc_url( $edit_url ) . '">' . esc_html( $item->title ) . '</a></strong>';
 
+        // External/imported event indicators — Harold can see at a glance which
+        // events come from outside sources without opening each one.
+        if ( ! empty( $item->external_source ) ) {
+            if ( $item->external_source === 'ical_feed' ) {
+                $title .= ' <span style="background: #dbe9f4; color: #2271b1; padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 500; vertical-align: middle;" title="' . esc_attr__( 'Imported from iCal feed', 'societypress' ) . '">&#128279; ' . esc_html__( 'iCal', 'societypress' ) . '</span>';
+            } elseif ( $item->external_source === 'manual' ) {
+                $title .= ' <span style="background: #fef0e5; color: #b35a00; padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 500; vertical-align: middle;" title="' . esc_attr__( 'Links to external website', 'societypress' ) . '">&#8599; ' . esc_html__( 'External', 'societypress' ) . '</span>';
+            }
+        }
+
         // Build row actions
         $actions = [
             'edit' => sprintf( '<a href="%s">%s</a>', esc_url( $edit_url ), esc_html__( 'Edit', 'societypress' ) ),
@@ -27768,7 +27874,29 @@ add_action( 'admin_init', function () {
         'contact_name'         => sanitize_text_field( $_POST['event_contact_name'] ?? '' ),
         'contact_email'        => sanitize_email( $_POST['event_contact_email'] ?? '' ),
         'contact_phone'        => sanitize_text_field( $_POST['event_contact_phone'] ?? '' ),
+        // External URL — links this event to an outside website instead of showing
+        // a SocietyPress detail page. When set manually, external_source = 'manual'.
+        // iCal-imported events use 'ical_feed' and are managed by the sync process —
+        // we DON'T overwrite their external_source when saving via the form.
+        'external_url'         => ! empty( $_POST['event_external_url'] ) ? esc_url_raw( $_POST['event_external_url'] ) : null,
     ];
+
+    // Determine external_source — preserve 'ical_feed' for events still attached
+    // to a feed (editing them in the admin doesn't detach them automatically).
+    if ( $event_id > 0 ) {
+        $existing_source = $wpdb->get_var( $wpdb->prepare(
+            "SELECT external_source FROM {$events_table} WHERE id = %d",
+            $event_id
+        ) );
+        if ( $existing_source === 'ical_feed' ) {
+            // Don't change external_source — it's managed by the sync process.
+            // Harold can use "Detach from Feed" if he wants to take ownership.
+        } else {
+            $data['external_source'] = ! empty( $_POST['event_external_url'] ) ? 'manual' : null;
+        }
+    } else {
+        $data['external_source'] = ! empty( $_POST['event_external_url'] ) ? 'manual' : null;
+    }
 
     if ( $event_id > 0 ) {
         // Capture old event data BEFORE updating — we need to compare fields
@@ -27990,6 +28118,35 @@ function sp_render_event_edit_page(): void {
         <?php if ( isset( $_GET['duplicated'] ) ) : ?>
             <div class="notice notice-info is-dismissible">
                 <p>Event duplicated. Update the details below and save.</p>
+            </div>
+        <?php endif; ?>
+
+        <?php
+        // iCal-imported event notice — warn Harold that manual edits will be
+        // overwritten the next time the feed syncs. The "Detach from Feed"
+        // button severs the link so the event becomes a standalone local event.
+        if ( $event && $event->external_source === 'ical_feed' && ! empty( $event->feed_id ) ) :
+            $feed_label = $wpdb->get_var( $wpdb->prepare(
+                "SELECT label FROM {$wpdb->prefix}sp_ical_feeds WHERE id = %d",
+                $event->feed_id
+            ) );
+        ?>
+            <div class="notice notice-warning" style="display: flex; align-items: center; gap: 12px;">
+                <p style="flex: 1; margin: 8px 0;">
+                    <strong><?php esc_html_e( 'Imported from iCal Feed', 'societypress' ); ?></strong><br>
+                    <?php
+                    printf(
+                        /* translators: %s: feed label */
+                        esc_html__( 'This event was imported from "%s". Any manual changes will be overwritten on the next sync.', 'societypress' ),
+                        esc_html( $feed_label ?: '#' . $event->feed_id )
+                    );
+                    ?>
+                </p>
+                <button type="button" class="button" id="sp-detach-from-feed"
+                        data-event-id="<?php echo esc_attr( $event->id ); ?>"
+                        data-nonce="<?php echo esc_attr( wp_create_nonce( 'sp_detach_event_' . $event->id ) ); ?>">
+                    <?php esc_html_e( 'Detach from Feed', 'societypress' ); ?>
+                </button>
             </div>
         <?php endif; ?>
 
@@ -28636,6 +28793,34 @@ function sp_render_event_edit_page(): void {
                     </td>
                 </tr>
 
+                <!-- ============================================================ -->
+                <!-- SECTION 8: External Link                                      -->
+                <!-- WHY: Some events happen on another organization's site — a    -->
+                <!--      regional conference, a partner society's workshop, etc.   -->
+                <!--      Rather than duplicating all the details, Harold can set   -->
+                <!--      an external URL. Calendar and listing links then point    -->
+                <!--      visitors to the original event page instead of showing    -->
+                <!--      a SocietyPress detail page.                               -->
+                <!-- ============================================================ -->
+
+                <tr>
+                    <td colspan="2" style="padding: 0;">
+                        <h2 style="margin: 30px 0 0 0; padding-bottom: 8px; border-bottom: 1px solid #c3c4c7;"><?php esc_html_e( 'External Link', 'societypress' ); ?></h2>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th scope="row"><label for="event_external_url"><?php esc_html_e( 'External URL', 'societypress' ); ?></label></th>
+                    <td>
+                        <input type="url" id="event_external_url" name="event_external_url"
+                               value="<?php echo esc_attr( $val( 'external_url' ) ); ?>"
+                               class="large-text" placeholder="https://example.org/their-event-page">
+                        <p class="description">
+                            <?php esc_html_e( 'If set, this event links to an external website instead of showing a detail page on this site.', 'societypress' ); ?>
+                        </p>
+                    </td>
+                </tr>
+
             </table>
 
             <?php submit_button( $event ? 'Update Event' : 'Create Event' ); ?>
@@ -28900,6 +29085,36 @@ function sp_render_event_edit_page(): void {
                         } else {
                             alert(data.data || 'Could not detach.');
                             detachBtn.disabled = false;
+                        }
+                    });
+            });
+        }
+
+        // ---- Detach from iCal feed (AJAX) ----
+        // WHY: When an event was imported from an iCal feed, Harold may want to
+        //      edit it without future syncs overwriting his changes. This button
+        //      clears the feed_id and external_source so the event becomes standalone.
+        var detachFeedBtn = document.getElementById('sp-detach-from-feed');
+        if (detachFeedBtn) {
+            detachFeedBtn.addEventListener('click', function() {
+                if (!confirm('<?php echo esc_js( __( 'Detach this event from its iCal feed? It will become a standalone event and won\'t be updated by future syncs.', 'societypress' ) ); ?>')) return;
+                detachFeedBtn.disabled = true;
+                detachFeedBtn.textContent = '<?php echo esc_js( __( 'Detaching...', 'societypress' ) ); ?>';
+
+                var fd = new FormData();
+                fd.append('action', 'sp_detach_event_from_feed');
+                fd.append('event_id', detachFeedBtn.getAttribute('data-event-id'));
+                fd.append('_wpnonce', detachFeedBtn.getAttribute('data-nonce'));
+
+                fetch('<?php echo admin_url( "admin-ajax.php" ); ?>', { method: 'POST', body: fd, credentials: 'same-origin' })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.success) {
+                            location.reload();
+                        } else {
+                            alert(data.data || '<?php echo esc_js( __( 'Could not detach.', 'societypress' ) ); ?>');
+                            detachFeedBtn.disabled = false;
+                            detachFeedBtn.textContent = '<?php echo esc_js( __( 'Detach from Feed', 'societypress' ) ); ?>';
                         }
                     });
             });
@@ -31510,7 +31725,7 @@ function sp_render_calendar_grid( int $category_id = 0, string $base_url = '', a
     }
 
     $cal_sql = "SELECT e.id, e.title, e.slug, e.event_date, e.start_time,
-                       e.notice_only,
+                       e.notice_only, e.external_url,
                        c.name AS category_name, c.color AS category_color
                 FROM {$events_table} e
                 LEFT JOIN {$cats_table} c ON e.category_id = c.id
@@ -31586,18 +31801,28 @@ function sp_render_calendar_grid( int $category_id = 0, string $base_url = '', a
                                 // Notice-only events never link to a detail page —
                                 // they're informational entries (holidays, board meetings, etc.)
                                 $is_notice = ! empty( $ce->notice_only );
-                                $detail_url = ( ! $is_notice && $events_page_url )
-                                    ? add_query_arg( 'sp_event', $ce->slug, $events_page_url )
-                                    : '';
+                                // External events link to the external URL instead of the
+                                // internal detail page — the event lives on another site.
+                                $is_external = ! empty( $ce->external_url );
+                                if ( $is_external ) {
+                                    $detail_url = $ce->external_url;
+                                } elseif ( ! $is_notice && $events_page_url ) {
+                                    $detail_url = add_query_arg( 'sp_event', $ce->slug, $events_page_url );
+                                } else {
+                                    $detail_url = '';
+                                }
                                 $color = $ce->category_color ?: '#2271b1';
                                 $notice_class = $is_notice ? ' sp-cal-event--notice' : '';
+                                $external_class = $is_external ? ' sp-cal-event--external' : '';
+                                // External links open in a new tab so users don't leave the calendar
+                                $link_target = $is_external ? ' target="_blank" rel="noopener"' : '';
                             ?>
                                 <?php if ( $detail_url ) : ?>
                                 <a href="<?php echo esc_url( $detail_url ); ?>"
-                                   class="sp-cal-event<?php echo $notice_class; ?>"
+                                   class="sp-cal-event<?php echo $notice_class . $external_class; ?>"
                                    style="background: <?php echo esc_attr( $color ); ?>;"
-                                   title="<?php echo esc_attr( $ce->title ); ?>">
-                                    <span class="sp-cal-event-title"><?php echo esc_html( $ce->title ); ?></span>
+                                   title="<?php echo esc_attr( $ce->title ); ?>"<?php echo $link_target; ?>>
+                                    <span class="sp-cal-event-title"><?php echo esc_html( $ce->title ); ?><?php if ( $is_external ) echo ' &#8599;'; ?></span>
                                     <?php if ( $ce->start_time ) : ?>
                                         <span class="sp-cal-event-time"><?php echo esc_html( wp_date( 'g:iA', strtotime( $ce->start_time ) ) ); ?></span>
                                     <?php endif; ?>
@@ -32177,7 +32402,14 @@ function sp_render_events_listing( array $settings ): void {
         ?>
         <div class="sp-events-list">
             <?php foreach ( $events as $ev ) :
-                $detail_url = add_query_arg( 'sp_event', $ev->slug, $base_url );
+                // External events link directly to the external URL and open in a new tab.
+                // Internal events link to the SocietyPress detail page as usual.
+                $is_external = ! empty( $ev->external_url );
+                $detail_url  = $is_external
+                    ? $ev->external_url
+                    : add_query_arg( 'sp_event', $ev->slug, $base_url );
+                $link_target = $is_external ? ' target="_blank" rel="noopener"' : '';
+
                 $date_ts    = strtotime( $ev->event_date );
                 $day_num    = wp_date( 'j', $date_ts );
                 $day_name   = wp_date( 'D', $date_ts );
@@ -32218,7 +32450,7 @@ function sp_render_events_listing( array $settings ): void {
                 }
             ?>
                 <article class="sp-event-card">
-                    <a href="<?php echo esc_url( $detail_url ); ?>" class="sp-event-card-link">
+                    <a href="<?php echo esc_url( $detail_url ); ?>" class="sp-event-card-link"<?php echo $link_target; ?>>
 
                         <!-- Date block -->
                         <div class="sp-event-date-block">
@@ -32286,6 +32518,10 @@ function sp_render_events_listing( array $settings ): void {
 
                                 <?php if ( $ev->visibility === 'members_only' ) : ?>
                                     <span class="sp-event-badge sp-badge-members"><?php esc_html_e( 'Members Only', 'societypress' ); ?></span>
+                                <?php endif; ?>
+
+                                <?php if ( $is_external ) : ?>
+                                    <span class="sp-event-badge sp-badge-external"><?php esc_html_e( 'External', 'societypress' ); ?> &#8599;</span>
                                 <?php endif; ?>
                             </div>
                         </div>
@@ -32384,6 +32620,69 @@ function sp_render_event_detail( string $slug, array $settings ): void {
         echo '<p>The event you\'re looking for doesn\'t exist or has been removed.</p>';
         echo '<p><a href="' . esc_url( get_permalink() ) . '">&larr; Back to Events</a></p>';
         echo '</div>';
+        return;
+    }
+
+    // External events show a minimal card with key info and a prominent link
+    // to the external event page. We don't redirect because showing the title,
+    // date, and description is useful context — the user can click through when ready.
+    if ( ! empty( $event->external_url ) ) {
+        $ext_date_display = date_i18n( 'l, F j, Y', strtotime( $event->event_date ) );
+        $ext_time_display = '';
+        if ( ! empty( $event->start_time ) ) {
+            $ext_time_display = wp_date( 'g:i A', strtotime( $event->start_time ) );
+            if ( ! empty( $event->end_time ) ) {
+                $ext_time_display .= ' – ' . wp_date( 'g:i A', strtotime( $event->end_time ) );
+            }
+        }
+        ?>
+        <div class="sp-event-back">
+            <a href="<?php echo esc_url( get_permalink() ); ?>">&larr; <?php esc_html_e( 'Back to Events', 'societypress' ); ?></a>
+        </div>
+
+        <article class="sp-event-external-card">
+            <div class="sp-event-external-badge"><?php esc_html_e( 'External Event', 'societypress' ); ?></div>
+
+            <h1 class="sp-event-detail-title"><?php echo esc_html( $event->title ); ?></h1>
+
+            <?php if ( ! empty( $event->category_name ) ) : ?>
+                <span class="sp-event-badge" style="background: <?php echo esc_attr( $event->category_color ?: '#2271b1' ); ?>; margin-bottom: 16px; display: inline-block;">
+                    <?php echo esc_html( $event->category_name ); ?>
+                </span>
+            <?php endif; ?>
+
+            <div class="sp-event-key-details" style="margin-bottom: 20px;">
+                <div class="sp-event-detail-item">
+                    <span class="sp-detail-icon">&#128197;</span>
+                    <div>
+                        <strong><?php echo esc_html( $ext_date_display ); ?></strong>
+                        <?php if ( $ext_time_display ) : ?>
+                            <br><span class="sp-detail-secondary"><?php echo esc_html( $ext_time_display ); ?></span>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <?php if ( ! empty( $event->location_name ) ) : ?>
+                <div class="sp-event-detail-item">
+                    <span class="sp-detail-icon">&#128205;</span>
+                    <div><strong><?php echo esc_html( $event->location_name ); ?></strong></div>
+                </div>
+                <?php endif; ?>
+            </div>
+
+            <?php if ( ! empty( $event->description ) ) : ?>
+                <div class="sp-event-description" style="margin-bottom: 24px;">
+                    <?php echo wp_kses_post( $event->description ); ?>
+                </div>
+            <?php endif; ?>
+
+            <a href="<?php echo esc_url( $event->external_url ); ?>"
+               class="sp-external-event-btn"
+               target="_blank" rel="noopener">
+                <?php esc_html_e( 'Visit Event Page', 'societypress' ); ?> &rarr;
+            </a>
+        </article>
+        <?php
         return;
     }
 
@@ -33274,6 +33573,7 @@ function sp_events_frontend_styles(): void {
         }
         .sp-badge-postponed { background: #dba617; }
         .sp-badge-members { background: #787c82; }
+        .sp-badge-external { background: #2271b1; }
         .sp-event-price {
             font-size: 13px;
             font-weight: 600;
@@ -33380,6 +33680,8 @@ function sp_events_frontend_styles(): void {
         /* Notice-only events: no pointer, slightly transparent to signal "informational" */
         .sp-cal-event--notice { opacity: 0.75; cursor: default; }
         .sp-cal-event--notice:hover { opacity: 0.75; }
+        /* External events: subtle dashed border so Harold can distinguish at a glance */
+        .sp-cal-event--external { border: 1px dashed rgba(255,255,255,0.5); }
         .sp-cal-event-title { font-weight: 500; }
         .sp-cal-event-time {
             font-size: 10px;
@@ -33906,6 +34208,44 @@ function sp_events_frontend_styles(): void {
             text-align: center;
             padding: 40px 20px;
             color: #787c82;
+        }
+
+        /* External event detail card — shown when an event lives on another site */
+        .sp-event-external-card {
+            max-width: 700px;
+            margin: 0 auto 40px;
+            padding: 32px;
+            background: #fff;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+        .sp-event-external-badge {
+            display: inline-block;
+            background: #2271b1;
+            color: #fff;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 3px 10px;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .sp-external-event-btn {
+            display: inline-block;
+            padding: 14px 28px;
+            background: var(--sp-color-primary, #2271b1);
+            color: #fff;
+            text-decoration: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+        .sp-external-event-btn:hover {
+            opacity: 0.9;
+            color: #fff;
         }
 
         /* ================================================================ */
@@ -38232,9 +38572,15 @@ function sp_render_builder_widget_upcoming_events( array $s ): void {
             $weekday   = wp_date( 'D', $ts );
             $full_date = wp_date( 'l, F j, Y', $ts );
 
-            // Build detail page URL if events page exists
-            $detail_url = '';
-            if ( $events_page_url && ! empty( $event->slug ) ) {
+            // Build detail page URL — external events link directly to the
+            // external site, internal events link to the SocietyPress detail page.
+            $is_external = ! empty( $event->external_url );
+            $detail_url  = '';
+            $link_target = '';
+            if ( $is_external ) {
+                $detail_url  = $event->external_url;
+                $link_target = ' target="_blank" rel="noopener"';
+            } elseif ( $events_page_url && ! empty( $event->slug ) ) {
                 $detail_url = add_query_arg( 'sp_event', $event->slug, $events_page_url );
             }
 
@@ -38254,7 +38600,9 @@ function sp_render_builder_widget_upcoming_events( array $s ): void {
             // Title — linked to detail page if available
             echo '<h4 class="sp-ue-title">';
             if ( $detail_url ) {
-                echo '<a href="' . esc_url( $detail_url ) . '">' . esc_html( $event->title ) . '</a>';
+                echo '<a href="' . esc_url( $detail_url ) . '"' . $link_target . '>' . esc_html( $event->title );
+                if ( $is_external ) echo ' &#8599;';
+                echo '</a>';
             } else {
                 echo esc_html( $event->title );
             }
@@ -38475,6 +38823,8 @@ function sp_events_calendar_styles(): void {
         /* Notice-only events: no pointer, slightly transparent to signal "informational" */
         .sp-cal-event--notice { opacity: 0.75; cursor: default; }
         .sp-cal-event--notice:hover { opacity: 0.75; }
+        /* External events: subtle dashed border so Harold can distinguish at a glance */
+        .sp-cal-event--external { border: 1px dashed rgba(255,255,255,0.5); }
         .sp-cal-event-title { font-weight: 500; }
         .sp-cal-event-time {
             font-size: 10px;
@@ -39242,18 +39592,23 @@ add_action( 'template_redirect', function () {
         $lines[] = sp_ical_fold_line( 'DESCRIPTION:' . sp_ical_escape_text( $description ) );
     }
 
-    // Add URL to the event detail page if we can build one
+    // Add URL — use external_url if set (the event lives on another site),
+    // otherwise link to the SocietyPress event detail page.
     // WHY: Some calendar apps (Google Calendar, Apple Calendar) show a clickable
     //      "More Info" link when URL is present — drives people back to the site.
-    $events_page_id = $wpdb->get_var(
-        "SELECT p.ID FROM {$wpdb->posts} p
-         INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
-         WHERE pm.meta_key = '_wp_page_template' AND pm.meta_value = 'sp-events'
-         AND p.post_status = 'publish' LIMIT 1"
-    );
-    if ( $events_page_id ) {
-        $event_url = add_query_arg( 'sp_event', $event->slug, get_permalink( $events_page_id ) );
-        $lines[]   = sp_ical_fold_line( 'URL:' . $event_url );
+    if ( ! empty( $event->external_url ) ) {
+        $lines[] = sp_ical_fold_line( 'URL:' . $event->external_url );
+    } else {
+        $events_page_id = $wpdb->get_var(
+            "SELECT p.ID FROM {$wpdb->posts} p
+             INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
+             WHERE pm.meta_key = '_wp_page_template' AND pm.meta_value = 'sp-events'
+             AND p.post_status = 'publish' LIMIT 1"
+        );
+        if ( $events_page_id ) {
+            $event_url = add_query_arg( 'sp_event', $event->slug, get_permalink( $events_page_id ) );
+            $lines[]   = sp_ical_fold_line( 'URL:' . $event_url );
+        }
     }
 
     $lines[] = 'END:VEVENT';
@@ -39421,8 +39776,11 @@ add_action( 'template_redirect', function () {
             $output .= sp_ical_fold_line( "DESCRIPTION:" . sp_ical_escape_text( $description ) ) . "\r\n";
         }
 
-        // Link back to the event detail page
-        if ( $events_page_id && ! empty( $event->slug ) ) {
+        // Link — use external_url if set (manual or imported events that live on
+        // another site), otherwise link to the SocietyPress event detail page.
+        if ( ! empty( $event->external_url ) ) {
+            $output .= sp_ical_fold_line( "URL:" . $event->external_url ) . "\r\n";
+        } elseif ( $events_page_id && ! empty( $event->slug ) ) {
             $event_url = add_query_arg( 'sp_event', $event->slug, get_permalink( $events_page_id ) );
             $output .= sp_ical_fold_line( "URL:" . $event_url ) . "\r\n";
         }
@@ -56518,3 +56876,1102 @@ function sp_render_document_row( object $doc, bool $is_member, string $login_url
 
     echo '</div>';
 }
+
+
+// ============================================================================
+// EXTERNAL EVENTS — iCAL PARSER
+// ============================================================================
+//
+// WHY: SocietyPress needs to import events from external iCal feeds without
+//      depending on a third-party library. This is a pure PHP parser that
+//      handles the common iCal patterns used by Google Calendar, Apple Calendar,
+//      Outlook, and other standard calendar services.
+//
+// v1 LIMITATION: Recurring events (RRULE) are skipped — we log a warning and
+//      move on. Expanding recurrence rules is complex (timezones, exceptions,
+//      overrides) and will be tackled in a future version.
+// ============================================================================
+
+/**
+ * Parse an iCal feed string into an array of event data.
+ *
+ * Handles:
+ *   - Line unfolding (CRLF + space/tab continuation per RFC 5545 §3.1)
+ *   - VEVENT block extraction
+ *   - Common properties: UID, SUMMARY, DESCRIPTION, DTSTART, DTEND, LOCATION, URL, STATUS
+ *   - Timezone conversion: DTSTART with TZID parameter, UTC (Z suffix), DATE-only (all-day), bare datetime
+ *   - iCal text unescaping (reverse of sp_ical_escape_text)
+ *
+ * @param  string $ical_content  Raw iCal feed content.
+ * @return array  Array of parsed event arrays, each containing:
+ *                  uid, title, description, event_date, start_time, end_time,
+ *                  location, url, status
+ */
+function sp_parse_ical_feed( string $ical_content ): array {
+    $events = [];
+
+    // ---- Step 1: Line unfolding ----
+    // RFC 5545 §3.1: Long lines are folded by inserting CRLF followed by a
+    // single whitespace character (space or tab). We reverse that here.
+    $ical_content = str_replace( "\r\n", "\n", $ical_content ); // normalize line endings
+    $ical_content = str_replace( "\r", "\n", $ical_content );
+    $ical_content = preg_replace( '/\n[ \t]/', '', $ical_content ); // unfold
+
+    // ---- Step 2: Extract VEVENT blocks ----
+    if ( ! preg_match_all( '/BEGIN:VEVENT\n(.*?)END:VEVENT/s', $ical_content, $matches ) ) {
+        return $events;
+    }
+
+    $site_tz = wp_timezone();
+
+    foreach ( $matches[1] as $vevent_block ) {
+        $props = [];
+        $lines = explode( "\n", trim( $vevent_block ) );
+
+        // Parse each property line
+        foreach ( $lines as $line ) {
+            if ( empty( $line ) ) continue;
+
+            // Properties can have parameters before the colon, e.g.:
+            //   DTSTART;TZID=America/Chicago:20260401T100000
+            //   DTSTART;VALUE=DATE:20260401
+            // Split on the FIRST colon that's not inside a parameter value
+            $colon_pos = strpos( $line, ':' );
+            if ( $colon_pos === false ) continue;
+
+            $key_part  = substr( $line, 0, $colon_pos );
+            $value     = substr( $line, $colon_pos + 1 );
+
+            // Extract the base property name and any parameters
+            $semicolon_pos = strpos( $key_part, ';' );
+            if ( $semicolon_pos !== false ) {
+                $prop_name = strtoupper( substr( $key_part, 0, $semicolon_pos ) );
+                $param_str = substr( $key_part, $semicolon_pos + 1 );
+            } else {
+                $prop_name = strtoupper( $key_part );
+                $param_str = '';
+            }
+
+            // Store with params for later processing (DTSTART needs TZID)
+            $props[ $prop_name ] = [
+                'value'  => $value,
+                'params' => $param_str,
+            ];
+        }
+
+        // ---- Skip events with RRULE (v1 limitation) ----
+        if ( isset( $props['RRULE'] ) ) {
+            $uid_val = $props['UID']['value'] ?? 'unknown';
+            if ( function_exists( 'error_log' ) ) {
+                error_log( sprintf(
+                    '[SocietyPress] iCal import: Skipping recurring event UID=%s (RRULE not supported in v1)',
+                    $uid_val
+                ) );
+            }
+            continue;
+        }
+
+        // ---- Extract simple text properties ----
+        $uid         = $props['UID']['value'] ?? '';
+        $title       = sp_ical_unescape_text( $props['SUMMARY']['value'] ?? '' );
+        $description = sp_ical_unescape_text( $props['DESCRIPTION']['value'] ?? '' );
+        $location    = sp_ical_unescape_text( $props['LOCATION']['value'] ?? '' );
+        $url         = $props['URL']['value'] ?? '';
+        $status      = strtolower( $props['STATUS']['value'] ?? 'confirmed' );
+
+        if ( empty( $uid ) || empty( $title ) ) continue;
+
+        // ---- Parse DTSTART ----
+        $dt_start = sp_ical_parse_datetime( $props['DTSTART'] ?? null, $site_tz );
+        if ( ! $dt_start ) continue; // can't import an event without a date
+
+        // ---- Parse DTEND (optional — falls back to DTSTART) ----
+        $dt_end = sp_ical_parse_datetime( $props['DTEND'] ?? null, $site_tz );
+
+        // Build the event data array
+        $event_data = [
+            'uid'         => $uid,
+            'title'       => $title,
+            'description' => $description,
+            'event_date'  => $dt_start['date'],
+            'start_time'  => $dt_start['time'], // null for all-day events
+            'end_time'    => $dt_end ? $dt_end['time'] : null,
+            'location'    => $location,
+            'url'         => $url,
+            'status'      => $status,
+        ];
+
+        $events[] = $event_data;
+    }
+
+    return $events;
+}
+
+
+/**
+ * Parse an iCal datetime property into date and time components.
+ *
+ * Handles four formats:
+ *   1. DATE-only (VALUE=DATE): 20260401 → date only, no time
+ *   2. UTC datetime (Z suffix): 20260401T150000Z → convert from UTC to site TZ
+ *   3. TZID datetime: TZID=America/Chicago:20260401T100000 → convert from that TZ
+ *   4. Bare datetime (floating): 20260401T100000 → assume site timezone
+ *
+ * @param  array|null      $prop    The property array with 'value' and 'params'.
+ * @param  DateTimeZone    $site_tz The site's configured timezone.
+ * @return array|null      ['date' => 'Y-m-d', 'time' => 'H:i:s'|null] or null on failure.
+ */
+function sp_ical_parse_datetime( ?array $prop, DateTimeZone $site_tz ): ?array {
+    if ( ! $prop || empty( $prop['value'] ) ) return null;
+
+    $value  = trim( $prop['value'] );
+    $params = $prop['params'] ?? '';
+
+    // ---- Format 1: DATE-only (VALUE=DATE) ----
+    // 8 digits, no 'T' — all-day event
+    if ( preg_match( '/^(\d{4})(\d{2})(\d{2})$/', $value, $m ) ) {
+        return [
+            'date' => "{$m[1]}-{$m[2]}-{$m[3]}",
+            'time' => null,
+        ];
+    }
+
+    // ---- Format 2: UTC datetime (Z suffix) ----
+    if ( preg_match( '/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/', $value, $m ) ) {
+        try {
+            $dt = new DateTime( "{$m[1]}-{$m[2]}-{$m[3]} {$m[4]}:{$m[5]}:{$m[6]}", new DateTimeZone( 'UTC' ) );
+            $dt->setTimezone( $site_tz );
+            return [
+                'date' => $dt->format( 'Y-m-d' ),
+                'time' => $dt->format( 'H:i:s' ),
+            ];
+        } catch ( Exception $e ) {
+            return null;
+        }
+    }
+
+    // ---- Format 3 & 4: Datetime with or without TZID ----
+    if ( preg_match( '/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})$/', $value, $m ) ) {
+        $date_str = "{$m[1]}-{$m[2]}-{$m[3]} {$m[4]}:{$m[5]}:{$m[6]}";
+
+        // Extract TZID from parameters if present
+        $source_tz = $site_tz; // default: assume site timezone (floating)
+        if ( preg_match( '/TZID=([^;:]+)/i', $params, $tz_match ) ) {
+            try {
+                $source_tz = new DateTimeZone( $tz_match[1] );
+            } catch ( Exception $e ) {
+                // Invalid timezone — fall back to site timezone
+                $source_tz = $site_tz;
+            }
+        }
+
+        try {
+            $dt = new DateTime( $date_str, $source_tz );
+            // Convert to site timezone if the source was different
+            if ( $source_tz->getName() !== $site_tz->getName() ) {
+                $dt->setTimezone( $site_tz );
+            }
+            return [
+                'date' => $dt->format( 'Y-m-d' ),
+                'time' => $dt->format( 'H:i:s' ),
+            ];
+        } catch ( Exception $e ) {
+            return null;
+        }
+    }
+
+    return null;
+}
+
+
+/**
+ * Unescape iCal text — reverse of sp_ical_escape_text().
+ *
+ * iCal escapes backslash, semicolon, and comma. Newlines are encoded as
+ * literal \n (backslash-n). We reverse all of these.
+ *
+ * @param  string $text Escaped iCal text.
+ * @return string Unescaped plain text.
+ */
+function sp_ical_unescape_text( string $text ): string {
+    $text = str_replace( '\\n', "\n", $text );
+    $text = str_replace( '\\N', "\n", $text ); // some feeds use uppercase
+    $text = str_replace( '\\,', ',', $text );
+    $text = str_replace( '\\;', ';', $text );
+    $text = str_replace( '\\\\', '\\', $text );
+    return $text;
+}
+
+
+// ============================================================================
+// EXTERNAL EVENTS — iCAL FEED SYNC
+// ============================================================================
+//
+// WHY: This function does the heavy lifting of keeping imported events in sync
+//      with their source feed. It fetches the feed, parses it, and reconciles
+//      the results against existing imported events — adding new ones, updating
+//      changed ones, and deleting ones that disappeared from the feed.
+// ============================================================================
+
+/**
+ * Synchronize a single iCal feed — fetch, parse, and reconcile events.
+ *
+ * @param  int   $feed_id  The sp_ical_feeds.id to sync.
+ * @return array Stats: ['added' => N, 'updated' => N, 'deleted' => N, 'error' => '']
+ */
+function sp_sync_ical_feed( int $feed_id ): array {
+    global $wpdb;
+
+    $feeds_table  = $wpdb->prefix . 'sp_ical_feeds';
+    $events_table = $wpdb->prefix . 'sp_events';
+
+    $stats = [ 'added' => 0, 'updated' => 0, 'deleted' => 0, 'error' => '' ];
+
+    // ---- 1. Load feed record ----
+    $feed = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$feeds_table} WHERE id = %d",
+        $feed_id
+    ) );
+
+    if ( ! $feed ) {
+        $stats['error'] = __( 'Feed not found.', 'societypress' );
+        return $stats;
+    }
+
+    // ---- 2. Fetch the URL ----
+    // WHY: 30-second timeout is generous but necessary — some calendar servers
+    //      are slow, especially free-tier ones used by smaller organizations.
+    $response = wp_remote_get( $feed->url, [
+        'timeout'    => 30,
+        'user-agent' => 'SocietyPress/' . SOCIETYPRESS_VERSION . ' (iCal Feed Sync)',
+    ] );
+
+    if ( is_wp_error( $response ) ) {
+        $error_msg = $response->get_error_message();
+        $wpdb->update( $feeds_table, [
+            'last_synced_at' => current_time( 'mysql' ),
+            'last_status'    => 'error',
+            'last_error'     => $error_msg,
+        ], [ 'id' => $feed_id ] );
+        $stats['error'] = $error_msg;
+        return $stats;
+    }
+
+    $status_code = wp_remote_retrieve_response_code( $response );
+    if ( $status_code !== 200 ) {
+        $error_msg = sprintf( __( 'HTTP %d response from feed URL.', 'societypress' ), $status_code );
+        $wpdb->update( $feeds_table, [
+            'last_synced_at' => current_time( 'mysql' ),
+            'last_status'    => 'error',
+            'last_error'     => $error_msg,
+        ], [ 'id' => $feed_id ] );
+        $stats['error'] = $error_msg;
+        return $stats;
+    }
+
+    $body = wp_remote_retrieve_body( $response );
+
+    // ---- 3. Validate — must contain VCALENDAR ----
+    if ( stripos( $body, 'BEGIN:VCALENDAR' ) === false ) {
+        $error_msg = __( 'Response is not a valid iCal feed (no VCALENDAR found).', 'societypress' );
+        $wpdb->update( $feeds_table, [
+            'last_synced_at' => current_time( 'mysql' ),
+            'last_status'    => 'error',
+            'last_error'     => $error_msg,
+        ], [ 'id' => $feed_id ] );
+        $stats['error'] = $error_msg;
+        return $stats;
+    }
+
+    // ---- 4. Parse the feed ----
+    $parsed_events = sp_parse_ical_feed( $body );
+
+    // ---- 5. Get existing events for this feed ----
+    $existing = $wpdb->get_results( $wpdb->prepare(
+        "SELECT id, external_uid, title, description, event_date, start_time, end_time,
+                location_name, external_url, status
+         FROM {$events_table}
+         WHERE feed_id = %d AND external_source = 'ical_feed'",
+        $feed_id
+    ) );
+
+    // Build a lookup by external_uid for fast matching
+    $existing_by_uid = [];
+    foreach ( $existing as $ex ) {
+        $existing_by_uid[ $ex->external_uid ] = $ex;
+    }
+
+    // Track which UIDs are still in the feed (for deletion detection)
+    $seen_uids = [];
+
+    // ---- 6. INSERT new / UPDATE changed ----
+    foreach ( $parsed_events as $pe ) {
+        $seen_uids[] = $pe['uid'];
+
+        // Map iCal status to SocietyPress status
+        $sp_status = 'scheduled';
+        if ( $pe['status'] === 'cancelled' ) {
+            $sp_status = 'cancelled';
+        } elseif ( $pe['status'] === 'tentative' ) {
+            $sp_status = 'postponed';
+        }
+
+        $event_data = [
+            'title'                => mb_substr( sanitize_text_field( $pe['title'] ), 0, 255 ),
+            'description'          => wp_kses_post( $pe['description'] ),
+            'event_date'           => $pe['event_date'],
+            'start_time'           => $pe['start_time'],
+            'end_time'             => $pe['end_time'],
+            'location_name'        => mb_substr( sanitize_text_field( $pe['location'] ), 0, 255 ),
+            'external_url'         => ! empty( $pe['url'] ) ? esc_url_raw( $pe['url'] ) : null,
+            'external_source'      => 'ical_feed',
+            'external_uid'         => $pe['uid'],
+            'feed_id'              => $feed_id,
+            'status'               => $sp_status,
+            'visibility'           => 'public',
+            'registration_enabled' => 0,
+            'notice_only'          => 0,
+            'category_id'          => $feed->category_id ?: null,
+        ];
+
+        if ( isset( $existing_by_uid[ $pe['uid'] ] ) ) {
+            // ---- UPDATE: Check if anything actually changed ----
+            $ex = $existing_by_uid[ $pe['uid'] ];
+            $changed = (
+                $ex->title !== $event_data['title'] ||
+                $ex->description !== $event_data['description'] ||
+                $ex->event_date !== $event_data['event_date'] ||
+                $ex->start_time !== $event_data['start_time'] ||
+                $ex->end_time !== $event_data['end_time'] ||
+                $ex->location_name !== $event_data['location_name'] ||
+                $ex->external_url !== $event_data['external_url'] ||
+                $ex->status !== $event_data['status']
+            );
+
+            if ( $changed ) {
+                $wpdb->update( $events_table, $event_data, [ 'id' => $ex->id ] );
+                $stats['updated']++;
+            }
+        } else {
+            // ---- INSERT: New event from the feed ----
+            // Generate a unique slug from the title
+            $slug = sanitize_title( $pe['title'] );
+            $slug_check = $wpdb->get_var( $wpdb->prepare(
+                "SELECT id FROM {$events_table} WHERE slug = %s",
+                $slug
+            ) );
+            if ( $slug_check ) {
+                $slug .= '-' . wp_generate_password( 6, false, false );
+            }
+
+            $event_data['slug']       = $slug;
+            $event_data['created_by'] = 0; // system-created
+            $wpdb->insert( $events_table, $event_data );
+            $stats['added']++;
+        }
+    }
+
+    // ---- 7. DELETE events whose UID was removed from the feed ----
+    // WHY: If an event disappears from the upstream feed, it should disappear
+    //      from our calendar too. We only delete events that are still linked
+    //      to this feed (external_source = 'ical_feed') — detached events are safe.
+    foreach ( $existing as $ex ) {
+        if ( ! in_array( $ex->external_uid, $seen_uids, true ) ) {
+            $wpdb->delete( $events_table, [
+                'id'              => $ex->id,
+                'feed_id'         => $feed_id,
+                'external_source' => 'ical_feed',
+            ] );
+            $stats['deleted']++;
+        }
+    }
+
+    // ---- 8. Update the feed record ----
+    $event_count = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$events_table} WHERE feed_id = %d AND external_source = 'ical_feed'",
+        $feed_id
+    ) );
+
+    $wpdb->update( $feeds_table, [
+        'last_synced_at' => current_time( 'mysql' ),
+        'last_status'    => 'success',
+        'last_error'     => null,
+        'event_count'    => $event_count,
+    ], [ 'id' => $feed_id ] );
+
+    // ---- 9. Invalidate iCal feed transient caches ----
+    // WHY: Our outgoing iCal subscription feed includes all events. When we
+    //      import or update external events, subscribers need to see them.
+    delete_transient( 'sp_ical_feed_public' );
+    delete_transient( 'sp_ical_feed_members' );
+
+    return $stats;
+}
+
+
+// ============================================================================
+// EXTERNAL EVENTS — CRON JOB (hourly check for feeds that need syncing)
+// ============================================================================
+//
+// WHY: We run a single hourly cron event and check each feed's sync_interval
+//      and last_synced_at to decide which feeds need syncing. This is simpler
+//      than scheduling individual cron events per feed (which would require
+//      cleanup on feed deletion, interval changes, etc.).
+// ============================================================================
+
+add_action( 'init', function () {
+    if ( ! wp_next_scheduled( 'sp_ical_feed_sync_cron' ) ) {
+        wp_schedule_event( time(), 'hourly', 'sp_ical_feed_sync_cron' );
+    }
+} );
+
+add_action( 'sp_ical_feed_sync_cron', function () {
+    // Gate on events module being enabled — no point syncing feeds if events
+    // are turned off. Also cleans up the cron if the module was disabled.
+    if ( ! sp_module_enabled( 'events' ) ) {
+        wp_clear_scheduled_hook( 'sp_ical_feed_sync_cron' );
+        return;
+    }
+
+    global $wpdb;
+    $feeds_table = $wpdb->prefix . 'sp_ical_feeds';
+
+    // Fetch all active feeds
+    $feeds = $wpdb->get_results(
+        "SELECT id, sync_interval, last_synced_at FROM {$feeds_table} WHERE is_active = 1"
+    );
+
+    if ( empty( $feeds ) ) return;
+
+    foreach ( $feeds as $feed ) {
+        // Check if enough time has elapsed since the last sync
+        // sync_interval is in hours; we compare against now.
+        if ( $feed->last_synced_at ) {
+            $last_sync_ts  = strtotime( $feed->last_synced_at );
+            $interval_secs = $feed->sync_interval * HOUR_IN_SECONDS;
+            if ( ( time() - $last_sync_ts ) < $interval_secs ) {
+                continue; // not time yet
+            }
+        }
+
+        // Run the sync — errors are logged in the feed record
+        sp_sync_ical_feed( (int) $feed->id );
+    }
+} );
+
+
+// ============================================================================
+// EXTERNAL CALENDARS — ADMIN PAGE RENDERER
+// ============================================================================
+//
+// WHY: Harold needs a central place to manage external calendar subscriptions.
+//      This page shows all subscribed feeds with their sync status, lets him
+//      add new feeds, and provides row actions for syncing, pausing, and deleting.
+// ============================================================================
+
+function sp_render_external_calendars_page(): void {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $feeds_table = $wpdb->prefix . 'sp_ical_feeds';
+    $cats_table  = $wpdb->prefix . 'sp_event_categories';
+    $message     = '';
+    $error       = '';
+
+    // ---- Handle form submissions ----
+
+    // Add new feed
+    if ( isset( $_POST['sp_add_ical_feed_nonce'] ) && wp_verify_nonce( $_POST['sp_add_ical_feed_nonce'], 'sp_add_ical_feed' ) ) {
+        $label = sanitize_text_field( $_POST['feed_label'] ?? '' );
+        $url   = esc_url_raw( $_POST['feed_url'] ?? '' );
+
+        if ( empty( $label ) || empty( $url ) ) {
+            $error = __( 'Label and URL are required.', 'societypress' );
+        } else {
+            $wpdb->insert( $feeds_table, [
+                'label'         => $label,
+                'url'           => $url,
+                'category_id'   => ! empty( $_POST['feed_category_id'] ) ? (int) $_POST['feed_category_id'] : null,
+                'sync_interval' => max( 1, (int) ( $_POST['feed_sync_interval'] ?? 6 ) ),
+                'is_active'     => 1,
+                'last_status'   => 'pending',
+            ] );
+
+            $new_feed_id = $wpdb->insert_id;
+            if ( $new_feed_id ) {
+                // Run initial sync immediately so Harold sees events right away
+                $sync_result = sp_sync_ical_feed( $new_feed_id );
+                if ( ! empty( $sync_result['error'] ) ) {
+                    $error = sprintf(
+                        __( 'Feed added but initial sync failed: %s', 'societypress' ),
+                        $sync_result['error']
+                    );
+                } else {
+                    $message = sprintf(
+                        __( 'Feed added and synced: %d events imported.', 'societypress' ),
+                        $sync_result['added']
+                    );
+                }
+                sp_audit( 'ical_feed_added', "iCal feed added: {$label}", 'ical_feed', $new_feed_id );
+            }
+        }
+    }
+
+    // Update existing feed
+    if ( isset( $_POST['sp_update_ical_feed_nonce'] ) && wp_verify_nonce( $_POST['sp_update_ical_feed_nonce'], 'sp_update_ical_feed' ) ) {
+        $edit_id = (int) ( $_POST['edit_feed_id'] ?? 0 );
+        $label   = sanitize_text_field( $_POST['feed_label'] ?? '' );
+        $url     = esc_url_raw( $_POST['feed_url'] ?? '' );
+
+        if ( $edit_id > 0 && ! empty( $label ) && ! empty( $url ) ) {
+            $wpdb->update( $feeds_table, [
+                'label'         => $label,
+                'url'           => $url,
+                'category_id'   => ! empty( $_POST['feed_category_id'] ) ? (int) $_POST['feed_category_id'] : null,
+                'sync_interval' => max( 1, (int) ( $_POST['feed_sync_interval'] ?? 6 ) ),
+            ], [ 'id' => $edit_id ] );
+
+            $message = __( 'Feed updated.', 'societypress' );
+            sp_audit( 'ical_feed_updated', "iCal feed updated: {$label}", 'ical_feed', $edit_id );
+        }
+    }
+
+    // ---- Fetch data for display ----
+    $feeds      = $wpdb->get_results( "SELECT * FROM {$feeds_table} ORDER BY created_at DESC" );
+    $categories = $wpdb->get_results(
+        "SELECT id, name FROM {$cats_table} WHERE active = 1 ORDER BY sort_order"
+    );
+
+    // Are we editing an existing feed?
+    $editing_feed = null;
+    if ( isset( $_GET['edit_feed'] ) ) {
+        $edit_id = (int) $_GET['edit_feed'];
+        $editing_feed = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$feeds_table} WHERE id = %d",
+            $edit_id
+        ) );
+    }
+
+    ?>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'External Calendars', 'societypress' ); ?></h1>
+        <p class="description">
+            <?php esc_html_e( 'Subscribe to iCal feeds from partner organizations, regional groups, or national conferences. Events will be automatically imported and kept in sync.', 'societypress' ); ?>
+        </p>
+
+        <?php if ( $message ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php echo esc_html( $message ); ?></p></div>
+        <?php endif; ?>
+        <?php if ( $error ) : ?>
+            <div class="notice notice-error is-dismissible"><p><?php echo esc_html( $error ); ?></p></div>
+        <?php endif; ?>
+
+        <!-- ============================================================ -->
+        <!-- Add / Edit Feed Form                                          -->
+        <!-- ============================================================ -->
+        <div class="sp-admin-card" style="margin: 20px 0; padding: 20px; background: #fff; border: 1px solid #c3c4c7; border-radius: 4px;">
+            <h2 style="margin-top: 0;">
+                <?php echo $editing_feed
+                    ? esc_html__( 'Edit External Calendar', 'societypress' )
+                    : esc_html__( 'Add External Calendar', 'societypress' ); ?>
+            </h2>
+
+            <form method="post">
+                <?php if ( $editing_feed ) : ?>
+                    <?php wp_nonce_field( 'sp_update_ical_feed', 'sp_update_ical_feed_nonce' ); ?>
+                    <input type="hidden" name="edit_feed_id" value="<?php echo esc_attr( $editing_feed->id ); ?>">
+                <?php else : ?>
+                    <?php wp_nonce_field( 'sp_add_ical_feed', 'sp_add_ical_feed_nonce' ); ?>
+                <?php endif; ?>
+
+                <table class="form-table" role="presentation">
+                    <tr>
+                        <th scope="row"><label for="feed_label"><?php esc_html_e( 'Label', 'societypress' ); ?> <span style="color: #d63638;">*</span></label></th>
+                        <td>
+                            <input type="text" id="feed_label" name="feed_label"
+                                   value="<?php echo esc_attr( $editing_feed->label ?? '' ); ?>"
+                                   class="regular-text" required
+                                   placeholder="<?php echo esc_attr__( 'e.g., State Genealogical Society', 'societypress' ); ?>">
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <th scope="row"><label for="feed_url"><?php esc_html_e( 'iCal Feed URL', 'societypress' ); ?> <span style="color: #d63638;">*</span></label></th>
+                        <td>
+                            <input type="url" id="feed_url" name="feed_url"
+                                   value="<?php echo esc_attr( $editing_feed->url ?? '' ); ?>"
+                                   class="large-text" required
+                                   placeholder="https://calendar.google.com/calendar/ical/...">
+                            <p class="description">
+                                <?php esc_html_e( 'The .ics or iCal subscription URL from the external calendar.', 'societypress' ); ?>
+                            </p>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <th scope="row"><label for="feed_category_id"><?php esc_html_e( 'Assign to Category', 'societypress' ); ?></label></th>
+                        <td>
+                            <select id="feed_category_id" name="feed_category_id">
+                                <option value=""><?php esc_html_e( '— None —', 'societypress' ); ?></option>
+                                <?php foreach ( $categories as $cat ) : ?>
+                                    <option value="<?php echo esc_attr( $cat->id ); ?>"
+                                        <?php selected( $editing_feed->category_id ?? '', $cat->id ); ?>>
+                                        <?php echo esc_html( $cat->name ); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <p class="description">
+                                <?php esc_html_e( 'All events from this feed will be assigned to this category.', 'societypress' ); ?>
+                            </p>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <th scope="row"><label for="feed_sync_interval"><?php esc_html_e( 'Sync Every', 'societypress' ); ?></label></th>
+                        <td>
+                            <?php
+                            $intervals = [
+                                1  => __( '1 hour', 'societypress' ),
+                                3  => __( '3 hours', 'societypress' ),
+                                6  => __( '6 hours', 'societypress' ),
+                                12 => __( '12 hours', 'societypress' ),
+                                24 => __( '24 hours', 'societypress' ),
+                            ];
+                            $current_interval = $editing_feed->sync_interval ?? 6;
+                            ?>
+                            <select id="feed_sync_interval" name="feed_sync_interval">
+                                <?php foreach ( $intervals as $ival => $ilabel ) : ?>
+                                    <option value="<?php echo esc_attr( $ival ); ?>"
+                                        <?php selected( $current_interval, $ival ); ?>>
+                                        <?php echo esc_html( $ilabel ); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </td>
+                    </tr>
+                </table>
+
+                <?php
+                submit_button(
+                    $editing_feed ? __( 'Update Feed', 'societypress' ) : __( 'Add Feed', 'societypress' ),
+                    'primary',
+                    'submit',
+                    true
+                );
+                ?>
+
+                <?php if ( $editing_feed ) : ?>
+                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-external-calendars' ) ); ?>"
+                       class="button" style="margin-left: 8px;">
+                        <?php esc_html_e( 'Cancel', 'societypress' ); ?>
+                    </a>
+                <?php endif; ?>
+            </form>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- Subscribed Feeds Table                                        -->
+        <!-- ============================================================ -->
+        <?php if ( ! empty( $feeds ) ) : ?>
+        <table class="wp-list-table widefat fixed striped" style="margin-top: 20px;">
+            <thead>
+                <tr>
+                    <th style="width: 20%;"><?php esc_html_e( 'Label', 'societypress' ); ?></th>
+                    <th style="width: 25%;"><?php esc_html_e( 'URL', 'societypress' ); ?></th>
+                    <th style="width: 12%;"><?php esc_html_e( 'Category', 'societypress' ); ?></th>
+                    <th style="width: 8%;"><?php esc_html_e( 'Interval', 'societypress' ); ?></th>
+                    <th style="width: 10%;"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                    <th style="width: 12%;"><?php esc_html_e( 'Last Sync', 'societypress' ); ?></th>
+                    <th style="width: 5%;"><?php esc_html_e( 'Events', 'societypress' ); ?></th>
+                    <th style="width: 8%;"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ( $feeds as $feed ) :
+                    // Look up category name
+                    $cat_name = '';
+                    if ( $feed->category_id ) {
+                        foreach ( $categories as $cat ) {
+                            if ( (int) $cat->id === (int) $feed->category_id ) {
+                                $cat_name = $cat->name;
+                                break;
+                            }
+                        }
+                    }
+
+                    // Status badge
+                    $status_colors = [
+                        'success' => '#00a32a',
+                        'error'   => '#d63638',
+                        'pending' => '#dba617',
+                    ];
+                    $status_color = $status_colors[ $feed->last_status ] ?? '#787c82';
+                    $status_label = ucfirst( $feed->last_status );
+                    if ( ! $feed->is_active ) {
+                        $status_color = '#787c82';
+                        $status_label = __( 'Paused', 'societypress' );
+                    }
+                ?>
+                <tr id="sp-feed-row-<?php echo esc_attr( $feed->id ); ?>"
+                    <?php echo ! $feed->is_active ? 'style="opacity: 0.6;"' : ''; ?>>
+                    <td>
+                        <strong>
+                            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-external-calendars&edit_feed=' . $feed->id ) ); ?>">
+                                <?php echo esc_html( $feed->label ); ?>
+                            </a>
+                        </strong>
+                    </td>
+                    <td>
+                        <code style="font-size: 11px; word-break: break-all;"><?php echo esc_html( mb_strimwidth( $feed->url, 0, 60, '...' ) ); ?></code>
+                    </td>
+                    <td><?php echo $cat_name ? esc_html( $cat_name ) : '<span style="color:#999;">—</span>'; ?></td>
+                    <td>
+                        <?php
+                        printf(
+                            /* translators: %d: number of hours */
+                            esc_html( _n( '%d hr', '%d hrs', $feed->sync_interval, 'societypress' ) ),
+                            $feed->sync_interval
+                        );
+                        ?>
+                    </td>
+                    <td>
+                        <span style="color: <?php echo esc_attr( $status_color ); ?>; font-weight: 600;">
+                            <?php echo esc_html( $status_label ); ?>
+                        </span>
+                        <?php if ( $feed->last_status === 'error' && $feed->last_error ) : ?>
+                            <br><small style="color: #d63638;" title="<?php echo esc_attr( $feed->last_error ); ?>">
+                                <?php echo esc_html( mb_strimwidth( $feed->last_error, 0, 40, '...' ) ); ?>
+                            </small>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <?php if ( $feed->last_synced_at ) : ?>
+                            <span title="<?php echo esc_attr( $feed->last_synced_at ); ?>">
+                                <?php echo esc_html( human_time_diff( strtotime( $feed->last_synced_at ), current_time( 'timestamp' ) ) ); ?>
+                                <?php esc_html_e( 'ago', 'societypress' ); ?>
+                            </span>
+                        <?php else : ?>
+                            <span style="color:#999;"><?php esc_html_e( 'Never', 'societypress' ); ?></span>
+                        <?php endif; ?>
+                    </td>
+                    <td style="text-align: center; font-weight: 600;">
+                        <?php echo (int) $feed->event_count; ?>
+                    </td>
+                    <td>
+                        <button type="button" class="button button-small sp-ical-sync-now"
+                                data-feed-id="<?php echo esc_attr( $feed->id ); ?>"
+                                data-nonce="<?php echo esc_attr( wp_create_nonce( 'sp_ical_feed_sync' ) ); ?>"
+                                title="<?php esc_attr_e( 'Sync Now', 'societypress' ); ?>">
+                            &#8635;
+                        </button>
+
+                        <button type="button" class="button button-small sp-ical-toggle"
+                                data-feed-id="<?php echo esc_attr( $feed->id ); ?>"
+                                data-nonce="<?php echo esc_attr( wp_create_nonce( 'sp_ical_feed_toggle' ) ); ?>"
+                                title="<?php echo $feed->is_active ? esc_attr__( 'Pause', 'societypress' ) : esc_attr__( 'Resume', 'societypress' ); ?>">
+                            <?php echo $feed->is_active ? '&#9208;' : '&#9654;'; ?>
+                        </button>
+
+                        <button type="button" class="button button-small sp-ical-delete"
+                                data-feed-id="<?php echo esc_attr( $feed->id ); ?>"
+                                data-nonce="<?php echo esc_attr( wp_create_nonce( 'sp_ical_feed_delete' ) ); ?>"
+                                data-label="<?php echo esc_attr( $feed->label ); ?>"
+                                title="<?php esc_attr_e( 'Delete', 'societypress' ); ?>"
+                                style="color: #b32d2e;">
+                            &times;
+                        </button>
+
+                        <span class="sp-ical-status" id="sp-ical-status-<?php echo esc_attr( $feed->id ); ?>"
+                              style="display: inline-block; margin-left: 4px; font-size: 12px;"></span>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php else : ?>
+            <p style="color: #787c82; padding: 20px 0;">
+                <?php esc_html_e( 'No external calendars subscribed yet. Add one above to get started.', 'societypress' ); ?>
+            </p>
+        <?php endif; ?>
+    </div>
+
+    <!-- External Calendars Admin JS -->
+    <script>
+    (function() {
+        'use strict';
+
+        var ajaxUrl = '<?php echo esc_js( admin_url( 'admin-ajax.php' ) ); ?>';
+
+        // ---- Sync Now button ----
+        document.querySelectorAll('.sp-ical-sync-now').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var feedId = this.getAttribute('data-feed-id');
+                var nonce  = this.getAttribute('data-nonce');
+                var statusEl = document.getElementById('sp-ical-status-' + feedId);
+
+                btn.disabled = true;
+                btn.textContent = '...';
+                if (statusEl) statusEl.textContent = '<?php echo esc_js( __( 'Syncing...', 'societypress' ) ); ?>';
+
+                var formData = new FormData();
+                formData.append('action', 'sp_sync_ical_feed_now');
+                formData.append('feed_id', feedId);
+                formData.append('_wpnonce', nonce);
+
+                fetch(ajaxUrl, { method: 'POST', body: formData })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.success) {
+                            if (statusEl) statusEl.textContent = data.data.message;
+                            // Reload to show updated data after a brief delay
+                            setTimeout(function() { location.reload(); }, 1500);
+                        } else {
+                            if (statusEl) {
+                                statusEl.textContent = data.data || '<?php echo esc_js( __( 'Sync failed.', 'societypress' ) ); ?>';
+                                statusEl.style.color = '#d63638';
+                            }
+                            btn.disabled = false;
+                            btn.innerHTML = '&#8635;';
+                        }
+                    })
+                    .catch(function() {
+                        if (statusEl) statusEl.textContent = '<?php echo esc_js( __( 'Network error.', 'societypress' ) ); ?>';
+                        btn.disabled = false;
+                        btn.innerHTML = '&#8635;';
+                    });
+            });
+        });
+
+        // ---- Toggle (Pause/Resume) button ----
+        document.querySelectorAll('.sp-ical-toggle').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var feedId = this.getAttribute('data-feed-id');
+                var nonce  = this.getAttribute('data-nonce');
+
+                var formData = new FormData();
+                formData.append('action', 'sp_toggle_ical_feed');
+                formData.append('feed_id', feedId);
+                formData.append('_wpnonce', nonce);
+
+                fetch(ajaxUrl, { method: 'POST', body: formData })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.success) {
+                            location.reload();
+                        }
+                    });
+            });
+        });
+
+        // ---- Delete button ----
+        document.querySelectorAll('.sp-ical-delete').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var feedId = this.getAttribute('data-feed-id');
+                var nonce  = this.getAttribute('data-nonce');
+                var label  = this.getAttribute('data-label');
+
+                if (!confirm('<?php echo esc_js( __( 'Delete this feed and all its imported events?', 'societypress' ) ); ?>\n\n' + label)) {
+                    return;
+                }
+
+                var formData = new FormData();
+                formData.append('action', 'sp_delete_ical_feed');
+                formData.append('feed_id', feedId);
+                formData.append('_wpnonce', nonce);
+
+                fetch(ajaxUrl, { method: 'POST', body: formData })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.success) {
+                            var row = document.getElementById('sp-feed-row-' + feedId);
+                            if (row) row.remove();
+                        }
+                    });
+            });
+        });
+    })();
+    </script>
+    <?php
+}
+
+
+// ============================================================================
+// EXTERNAL EVENTS — AJAX HANDLERS
+// ============================================================================
+//
+// WHY: The External Calendars admin page uses AJAX for sync, toggle, and delete
+//      actions so Harold gets immediate feedback without full page reloads.
+//      The Detach from Feed button on the event edit form also uses AJAX.
+// ============================================================================
+
+/**
+ * AJAX: Sync Now — manually trigger a feed sync.
+ */
+add_action( 'wp_ajax_sp_sync_ical_feed_now', function () {
+    check_ajax_referer( 'sp_ical_feed_sync' );
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
+    }
+
+    $feed_id = (int) ( $_POST['feed_id'] ?? 0 );
+    if ( $feed_id <= 0 ) {
+        wp_send_json_error( __( 'Invalid feed ID.', 'societypress' ) );
+    }
+
+    $result = sp_sync_ical_feed( $feed_id );
+
+    if ( ! empty( $result['error'] ) ) {
+        wp_send_json_error( $result['error'] );
+    }
+
+    $message = sprintf(
+        __( 'Synced: %d added, %d updated, %d removed.', 'societypress' ),
+        $result['added'],
+        $result['updated'],
+        $result['deleted']
+    );
+
+    wp_send_json_success( [ 'message' => $message, 'stats' => $result ] );
+} );
+
+
+/**
+ * AJAX: Delete — remove a feed and all its imported events.
+ */
+add_action( 'wp_ajax_sp_delete_ical_feed', function () {
+    check_ajax_referer( 'sp_ical_feed_delete' );
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $feed_id = (int) ( $_POST['feed_id'] ?? 0 );
+    if ( $feed_id <= 0 ) {
+        wp_send_json_error( __( 'Invalid feed ID.', 'societypress' ) );
+    }
+
+    $feeds_table  = $wpdb->prefix . 'sp_ical_feeds';
+    $events_table = $wpdb->prefix . 'sp_events';
+
+    // Get feed label for audit log
+    $feed_label = $wpdb->get_var( $wpdb->prepare(
+        "SELECT label FROM {$feeds_table} WHERE id = %d",
+        $feed_id
+    ) );
+
+    // Delete all events imported from this feed
+    $deleted_count = $wpdb->query( $wpdb->prepare(
+        "DELETE FROM {$events_table} WHERE feed_id = %d AND external_source = 'ical_feed'",
+        $feed_id
+    ) );
+
+    // Delete the feed record
+    $wpdb->delete( $feeds_table, [ 'id' => $feed_id ] );
+
+    // Invalidate caches
+    delete_transient( 'sp_ical_feed_public' );
+    delete_transient( 'sp_ical_feed_members' );
+
+    sp_audit( 'ical_feed_deleted', "iCal feed deleted: {$feed_label} ({$deleted_count} events removed)", 'ical_feed', $feed_id );
+
+    wp_send_json_success( [
+        'message' => sprintf(
+            __( 'Feed deleted. %d imported events removed.', 'societypress' ),
+            $deleted_count
+        ),
+    ] );
+} );
+
+
+/**
+ * AJAX: Toggle — pause or resume a feed.
+ */
+add_action( 'wp_ajax_sp_toggle_ical_feed', function () {
+    check_ajax_referer( 'sp_ical_feed_toggle' );
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $feed_id = (int) ( $_POST['feed_id'] ?? 0 );
+    if ( $feed_id <= 0 ) {
+        wp_send_json_error( __( 'Invalid feed ID.', 'societypress' ) );
+    }
+
+    $feeds_table = $wpdb->prefix . 'sp_ical_feeds';
+
+    // Toggle the is_active flag
+    $current = $wpdb->get_var( $wpdb->prepare(
+        "SELECT is_active FROM {$feeds_table} WHERE id = %d",
+        $feed_id
+    ) );
+
+    if ( $current === null ) {
+        wp_send_json_error( __( 'Feed not found.', 'societypress' ) );
+    }
+
+    $new_status = $current ? 0 : 1;
+    $wpdb->update( $feeds_table, [ 'is_active' => $new_status ], [ 'id' => $feed_id ] );
+
+    $label = $new_status ? __( 'Resumed', 'societypress' ) : __( 'Paused', 'societypress' );
+    wp_send_json_success( [ 'is_active' => $new_status, 'message' => $label ] );
+} );
+
+
+/**
+ * AJAX: Detach from Feed — sever the link between an imported event and its feed.
+ *
+ * WHY: When Harold wants to customize an imported event without it being
+ *      overwritten on the next sync, he can "detach" it. This clears the
+ *      feed_id and external_source so the sync process ignores it.
+ */
+add_action( 'wp_ajax_sp_detach_event_from_feed', function () {
+    $event_id = (int) ( $_POST['event_id'] ?? 0 );
+    if ( $event_id <= 0 ) {
+        wp_send_json_error( __( 'Invalid event ID.', 'societypress' ) );
+    }
+
+    // Verify a per-event nonce for security
+    if ( ! check_ajax_referer( 'sp_detach_event_' . $event_id, '_wpnonce', false ) ) {
+        wp_send_json_error( __( 'Security check failed.', 'societypress' ) );
+    }
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $events_table = $wpdb->prefix . 'sp_events';
+    $feeds_table  = $wpdb->prefix . 'sp_ical_feeds';
+
+    // Capture the feed_id BEFORE clearing it so we can update the feed's event count
+    $old_feed_id = $wpdb->get_var( $wpdb->prepare(
+        "SELECT feed_id FROM {$events_table} WHERE id = %d",
+        $event_id
+    ) );
+
+    // Clear the feed link — the event becomes standalone
+    $wpdb->update( $events_table, [
+        'external_source' => ! empty( $_POST['keep_url'] ) ? 'manual' : null,
+        'external_uid'    => null,
+        'feed_id'         => null,
+    ], [ 'id' => $event_id ] );
+
+    // Update the old feed's event count to reflect the detachment
+    if ( $old_feed_id ) {
+        $new_count = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$events_table} WHERE feed_id = %d AND external_source = 'ical_feed'",
+            $old_feed_id
+        ) );
+        $wpdb->update( $feeds_table, [ 'event_count' => $new_count ], [ 'id' => $old_feed_id ] );
+    }
+
+    sp_audit( 'event_detached', "Event detached from iCal feed", 'event', $event_id );
+
+    wp_send_json_success( [ 'message' => __( 'Event detached from feed. It is now a standalone event.', 'societypress' ) ] );
+} );

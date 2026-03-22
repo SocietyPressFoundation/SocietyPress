@@ -291,6 +291,7 @@ See `Docs/KNOWN-ISSUES.md` for the full list (43 items tracked, 41 fixed, 2 defe
 - [x] Time slots: individual capacity limits per slot — already implemented (`sp_slot_get_remaining_capacity()`, enforced in registration AJAX)
 - [x] Waitlist: auto-promotion when cancellation occurs — already implemented (`sp_promote_waitlist()` called from cancel handler)
 - [x] Payment tracking: fee amounts and payment status per registration — already implemented (fee_amount, payment_status, payment_method, payment_date columns + Stripe flow)
+- [ ] Calendar subscription feed: iCal/webcal URL that calendar apps (Google Calendar, Apple Calendar, Outlook) can subscribe to and auto-update. Lets members stay current on society events without manually downloading .ics files. Public events feed at minimum; optionally a members-only feed with registration-gated events.
 - [ ] Calendar bug: current month renders full-width, other months render narrower — same HTML/CSS from server, likely browser rendering/caching. Needs DevTools inspection.
 - [x] Add to calendar: .ics download on event detail page (key details section) and My Account upcoming events. RFC 5545 compliant, handles timed + all-day events, UTC conversion, line folding.
 - [x] Event change notifications: already implemented — save handler detects date/time/location/cancellation changes, `sp_send_event_update_emails()` and `sp_send_event_cancellation_emails()` send HTML emails to all registrants

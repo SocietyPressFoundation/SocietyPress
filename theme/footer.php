@@ -11,7 +11,7 @@
 ?>
 
     <footer class="site-footer">
-        <p>&copy; <?php echo date( 'Y' ); ?> <?php bloginfo( 'name' ); ?>. All rights reserved.</p>
+        <p>&copy; <?php echo wp_date( 'Y' ); ?> <?php bloginfo( 'name' ); ?>. All rights reserved.</p>
     </footer>
 
 </div><!-- .site -->

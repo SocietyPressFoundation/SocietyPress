@@ -84,7 +84,7 @@
                 <span><a href="mailto:askus@upstream-society.org">askus@upstream-society.org</a></span>
             </div>
             <div class="society-footer-copyright">
-                <span>Copyright &copy; <?php echo date( 'Y' ); ?> by <?php bloginfo( 'name' ); ?>.</span>
+                <span>Copyright &copy; <?php echo wp_date( 'Y' ); ?> by <?php bloginfo( 'name' ); ?>.</span>
                 <span>All Rights Reserved.</span>
                 <span>Powered by <a href="https://getsocietypress.org">SocietyPress</a></span>
             </div>

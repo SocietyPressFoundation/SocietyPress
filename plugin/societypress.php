@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     0.38d
+ * Version:     0.40d
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -5196,7 +5196,6 @@ function sp_handle_account_forms() {
     }
 
     // ---- Research Surnames: Add ----
-    // ---- Research Surnames: Add ----
     // WHY: The real schema uses county/state/country/year_from/year_to,
     // not a single 'location' column. This matches the admin surname form.
     if ( $action === 'add_surname' ) {
@@ -5569,7 +5568,15 @@ function sp_render_pending_changes_page(): void {
         $filter = 'pending';
     }
 
-    $where = $filter === 'all' ? "WHERE c.status != 'superseded'" : $wpdb->prepare( "WHERE c.status = %s", $filter );
+    // WHY: The 'all' branch uses a hardcoded literal string — no user input is
+    //      interpolated, so it is safe from SQL injection. The non-'all' branch
+    //      uses prepare() because $filter comes from user input (validated against
+    //      $valid_statuses above, but prepare() adds defense-in-depth).
+    if ( $filter === 'all' ) {
+        $where = "WHERE c.status != 'superseded'";
+    } else {
+        $where = $wpdb->prepare( "WHERE c.status = %s", $filter );
+    }
     $changes = $wpdb->get_results(
         "SELECT c.*, m.first_name, m.last_name, m.organization_name, m.member_type,
                 u.user_email, u.display_name
@@ -7908,7 +7915,7 @@ add_action( 'wp_ajax_sp_update_parent_theme', function () {
         $wp_filesystem->delete( $tmp_dir, true );
     }
     $unzip_result = unzip_file( $tmp_file, $tmp_dir );
-    @unlink( $tmp_file );
+    wp_delete_file( $tmp_file );
 
     if ( is_wp_error( $unzip_result ) ) {
         $wp_filesystem->delete( $tmp_dir, true );
@@ -12533,6 +12540,10 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
  *     catches the case where someone uploads the wrong file entirely.
  */
 function sp_render_import_page(): void {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You do not have permission to access this page.', 'societypress' ) );
+    }
+
     $results  = null;
     $preview  = null;
 
@@ -12542,8 +12553,16 @@ function sp_render_import_page(): void {
     if ( isset( $_POST['sp_import_action'] ) && $_POST['sp_import_action'] === 'run_import' ) {
         check_admin_referer( 'sp_import_members' );
 
-        // The temp file path was stored in a hidden field from Step 1
-        $temp_file = sanitize_text_field( $_POST['sp_import_temp_file'] ?? '' );
+        // The temp file basename was stored in a hidden field from Step 1.
+        // WHY basename only: We never expose full server paths in HTML. Reconstruct
+        //      the full path here and validate it's inside our temp directory.
+        $token = sanitize_file_name( $_POST['sp_import_temp_file'] ?? '' );
+        $upload_dir = wp_upload_dir();
+        $temp_dir   = $upload_dir['basedir'] . '/sp-import-temp/';
+        $temp_file  = realpath( $temp_dir . $token );
+        if ( ! $temp_file || strpos( $temp_file, realpath( $temp_dir ) ) !== 0 ) {
+            $temp_file = '';
+        }
 
         // Parse the field mapping — the admin's chosen assignment for each CSV column.
         // WHY: The admin reviewed the mapping dropdowns and may have reassigned,
@@ -12561,7 +12580,7 @@ function sp_render_import_page(): void {
         if ( ! empty( $temp_file ) && file_exists( $temp_file ) ) {
             $results = sp_process_import( $temp_file, $import_field_map );
             // Clean up the temp file after import
-            @unlink( $temp_file );
+            wp_delete_file( $temp_file );
         } else {
             $results = [
                 'imported' => 0, 'skipped' => 0,
@@ -12620,7 +12639,7 @@ function sp_render_import_page(): void {
                     'temp_file'   => $temp_file,
                 ];
             } else {
-                @unlink( $temp_file );
+                wp_delete_file( $temp_file );
             }
             fclose( $handle );
         }
@@ -12914,7 +12933,7 @@ function sp_render_import_page(): void {
                         <?php wp_nonce_field( 'sp_import_members' ); ?>
                         <input type="hidden" name="sp_import_action" value="run_import">
                         <input type="hidden" name="sp_import_temp_file"
-                               value="<?php echo esc_attr( $preview['temp_file'] ); ?>">
+                               value="<?php echo esc_attr( basename( $preview['temp_file'] ) ); ?>">
 
                     <!-- Field mapping table -->
                     <table class="widefat striped" style="margin-top: 16px;">
@@ -13661,7 +13680,7 @@ add_action( 'wp_ajax_sp_export_count', function () {
     check_ajax_referer( 'sp_export_count' );
 
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_send_json_error( 'Unauthorized', 403 );
+        wp_send_json_error( __( 'Unauthorized', 'societypress' ), 403 );
     }
 
     global $wpdb;
@@ -16040,7 +16059,7 @@ function sp_ajax_add_relationship(): void {
     check_ajax_referer( 'sp_relationship_nonce', 'nonce' );
 
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_send_json_error( [ 'message' => 'Permission denied.' ] );
+        wp_send_json_error( [ 'message' => __( 'Permission denied.', 'societypress' ) ] );
     }
 
     $user_a = (int) ( $_POST['user_a'] ?? 0 );
@@ -16049,17 +16068,17 @@ function sp_ajax_add_relationship(): void {
     $note   = sanitize_text_field( $_POST['note'] ?? '' );
 
     if ( ! $user_a || ! $user_b ) {
-        wp_send_json_error( [ 'message' => 'Both members are required.' ] );
+        wp_send_json_error( [ 'message' => __( 'Both members are required.', 'societypress' ) ] );
     }
     if ( $user_a === $user_b ) {
-        wp_send_json_error( [ 'message' => 'Cannot create a relationship with the same person.' ] );
+        wp_send_json_error( [ 'message' => __( 'Cannot create a relationship with the same person.', 'societypress' ) ] );
     }
 
     $id = sp_add_member_relationship( $user_a, $user_b, $type, $note );
     if ( $id ) {
-        wp_send_json_success( [ 'id' => $id, 'message' => 'Relationship added.' ] );
+        wp_send_json_success( [ 'id' => $id, 'message' => __( 'Relationship added.', 'societypress' ) ] );
     } else {
-        wp_send_json_error( [ 'message' => 'Failed to add relationship.' ] );
+        wp_send_json_error( [ 'message' => __( 'Failed to add relationship.', 'societypress' ) ] );
     }
 }
 add_action( 'wp_ajax_sp_add_relationship', 'sp_ajax_add_relationship' );
@@ -16071,14 +16090,14 @@ function sp_ajax_remove_relationship(): void {
     check_ajax_referer( 'sp_relationship_nonce', 'nonce' );
 
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_send_json_error( [ 'message' => 'Permission denied.' ] );
+        wp_send_json_error( [ 'message' => __( 'Permission denied.', 'societypress' ) ] );
     }
 
     $rel_id = (int) ( $_POST['rel_id'] ?? 0 );
     if ( sp_remove_member_relationship( $rel_id ) ) {
-        wp_send_json_success( [ 'message' => 'Relationship removed.' ] );
+        wp_send_json_success( [ 'message' => __( 'Relationship removed.', 'societypress' ) ] );
     } else {
-        wp_send_json_error( [ 'message' => 'Failed to remove relationship.' ] );
+        wp_send_json_error( [ 'message' => __( 'Failed to remove relationship.', 'societypress' ) ] );
     }
 }
 add_action( 'wp_ajax_sp_remove_relationship', 'sp_ajax_remove_relationship' );
@@ -17333,7 +17352,7 @@ function sp_handle_quick_edit_page(): void {
     check_ajax_referer( 'sp_quick_edit_page' );
 
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_send_json_error( 'Permission denied.' );
+        wp_send_json_error( __( 'Permission denied.', 'societypress' ) );
     }
 
     $post_id  = (int) ( $_POST['post_id'] ?? 0 );
@@ -17343,11 +17362,11 @@ function sp_handle_quick_edit_page(): void {
     $template = sanitize_text_field( $_POST['template'] ?? '' );
 
     if ( ! $post_id || ! get_post( $post_id ) ) {
-        wp_send_json_error( 'Page not found.' );
+        wp_send_json_error( __( 'Page not found.', 'societypress' ) );
     }
 
     if ( empty( $title ) ) {
-        wp_send_json_error( 'Title cannot be empty.' );
+        wp_send_json_error( __( 'Title cannot be empty.', 'societypress' ) );
     }
 
     // Validate template slug
@@ -18853,7 +18872,7 @@ add_action( 'wp_ajax_sp_install_theme', function () {
     }
 
     $unzip_result = unzip_file( $tmp_file, $tmp_dir );
-    @unlink( $tmp_file ); // Clean up the zip
+    wp_delete_file( $tmp_file ); // Clean up the zip
 
     if ( is_wp_error( $unzip_result ) ) {
         $wp_filesystem->delete( $tmp_dir, true );
@@ -26280,11 +26299,11 @@ function sp_render_builder_widget_membership_tiers( array $s ): void {
             echo '<div style="font-size:24px; font-weight:700; color:var(--sp-color-primary);">' . ( $price > 0 ? esc_html( sp_format_currency( $price ) ) : esc_html__( 'Free', 'societypress' ) ) . '</div>';
             if ( $price > 0 && $tier->duration_months ) {
                 $d = intval( $tier->duration_months );
-                echo '<div style="font-size:14px; color:#666;">' . ( $d === 12 ? 'per year' : "per {$d} months" ) . '</div>';
+                echo '<div style="font-size:14px; color:#666;">' . ( $d === 12 ? esc_html__( 'per year', 'societypress' ) : esc_html( sprintf( __( 'per %d months', 'societypress' ), $d ) ) ) . '</div>';
             }
         }
         if ( ! $tier->active ) {
-            echo '<div style="margin-top:8px; font-size:12px; color:#999; font-style:italic;">Not currently available</div>';
+            echo '<div style="margin-top:8px; font-size:12px; color:#999; font-style:italic;">' . esc_html__( 'Not currently available', 'societypress' ) . '</div>';
         }
         echo '</div>';
     }
@@ -26519,10 +26538,10 @@ add_action( 'wp_ajax_nopriv_sp_builder_contact_form', 'sp_handle_builder_contact
 
 function sp_handle_builder_contact_form(): void {
     if ( ! check_ajax_referer( 'sp_builder_contact', 'sp_builder_contact_nonce', false ) ) {
-        wp_send_json_error( [ 'message' => 'Security check failed. Please refresh and try again.' ] );
+        wp_send_json_error( [ 'message' => __( 'Security check failed. Please refresh and try again.', 'societypress' ) ] );
     }
     if ( ! empty( $_POST['sp_website_url'] ) ) {
-        wp_send_json_success( [ 'message' => 'Thank you for your message!' ] );
+        wp_send_json_success( [ 'message' => __( 'Thank you for your message!', 'societypress' ) ] );
     }
 
     $name    = sanitize_text_field( $_POST['sp_contact_name'] ?? '' );
@@ -26530,10 +26549,10 @@ function sp_handle_builder_contact_form(): void {
     $message = sanitize_textarea_field( $_POST['sp_contact_message'] ?? '' );
 
     if ( ! $name || ! $email || ! $message ) {
-        wp_send_json_error( [ 'message' => 'Please fill in all required fields.' ] );
+        wp_send_json_error( [ 'message' => __( 'Please fill in all required fields.', 'societypress' ) ] );
     }
     if ( ! is_email( $email ) ) {
-        wp_send_json_error( [ 'message' => 'Please enter a valid email address.' ] );
+        wp_send_json_error( [ 'message' => __( 'Please enter a valid email address.', 'societypress' ) ] );
     }
 
     $settings  = get_option( 'societypress_settings', [] );
@@ -26548,9 +26567,9 @@ function sp_handle_builder_contact_form(): void {
     );
 
     if ( $sent ) {
-        wp_send_json_success( [ 'message' => 'Thank you for your message! We will get back to you soon.' ] );
+        wp_send_json_success( [ 'message' => __( 'Thank you for your message! We will get back to you soon.', 'societypress' ) ] );
     } else {
-        wp_send_json_error( [ 'message' => 'There was a problem sending your message. Please try again later.' ] );
+        wp_send_json_error( [ 'message' => __( 'There was a problem sending your message. Please try again later.', 'societypress' ) ] );
     }
 }
 
@@ -29221,10 +29240,10 @@ function sp_render_event_categories_page(): void {
 add_action( 'wp_ajax_sp_save_event_category', function () {
     // Security checks
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_event_category_nonce' ) ) {
-        wp_send_json_error( [ 'message' => 'Security check failed.' ] );
+        wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ] );
     }
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+        wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ] );
     }
 
     global $wpdb;
@@ -29237,7 +29256,7 @@ add_action( 'wp_ajax_sp_save_event_category', function () {
     $active      = isset( $_POST['active'] ) ? (int) $_POST['active'] : 1;
 
     if ( empty( $name ) ) {
-        wp_send_json_error( [ 'message' => 'Category name is required.' ] );
+        wp_send_json_error( [ 'message' => __( 'Category name is required.', 'societypress' ) ] );
     }
 
     // Generate slug from name
@@ -29281,17 +29300,17 @@ add_action( 'wp_ajax_sp_save_event_category', function () {
  */
 add_action( 'wp_ajax_sp_delete_event_category', function () {
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_event_category_nonce' ) ) {
-        wp_send_json_error( [ 'message' => 'Security check failed.' ] );
+        wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ] );
     }
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+        wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ] );
     }
 
     global $wpdb;
 
     $category_id = (int) ( $_POST['category_id'] ?? 0 );
     if ( $category_id <= 0 ) {
-        wp_send_json_error( [ 'message' => 'Invalid category.' ] );
+        wp_send_json_error( [ 'message' => __( 'Invalid category.', 'societypress' ) ] );
     }
 
     // Check if any events use this category
@@ -29302,7 +29321,8 @@ add_action( 'wp_ajax_sp_delete_event_category', function () {
 
     if ( $event_count > 0 ) {
         wp_send_json_error( [
-            'message' => "Can't delete — {$event_count} event(s) use this category. Remove the category from those events first."
+            /* translators: %d is the number of events using this category */
+            'message' => sprintf( __( "Can't delete — %d event(s) use this category. Remove the category from those events first.", 'societypress' ), $event_count )
         ] );
     }
 
@@ -29755,10 +29775,10 @@ function sp_render_member_tiers_page(): void {
 add_action( 'wp_ajax_sp_save_membership_tier', function () {
     // Security checks
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_membership_tier_nonce' ) ) {
-        wp_send_json_error( [ 'message' => 'Security check failed.' ] );
+        wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ] );
     }
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+        wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ] );
     }
 
     global $wpdb;
@@ -29774,7 +29794,7 @@ add_action( 'wp_ajax_sp_save_membership_tier', function () {
     $allows_joint    = ( $_POST['allows_joint'] ?? '0' ) === '1' ? 1 : 0;
 
     if ( empty( $name ) ) {
-        wp_send_json_error( [ 'message' => 'Plan name is required.' ] );
+        wp_send_json_error( [ 'message' => __( 'Plan name is required.', 'societypress' ) ] );
     }
 
     // Check for duplicate name (different row)
@@ -29783,7 +29803,7 @@ add_action( 'wp_ajax_sp_save_membership_tier', function () {
         $name, $tier_id
     ) );
     if ( $existing ) {
-        wp_send_json_error( [ 'message' => 'A plan with that name already exists.' ] );
+        wp_send_json_error( [ 'message' => __( 'A plan with that name already exists.', 'societypress' ) ] );
     }
 
     $data = [
@@ -29838,17 +29858,17 @@ add_action( 'wp_ajax_sp_save_membership_tier', function () {
  */
 add_action( 'wp_ajax_sp_delete_membership_tier', function () {
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_membership_tier_nonce' ) ) {
-        wp_send_json_error( [ 'message' => 'Security check failed.' ] );
+        wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ] );
     }
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+        wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ] );
     }
 
     global $wpdb;
 
     $tier_id = (int) ( $_POST['tier_id'] ?? 0 );
     if ( $tier_id <= 0 ) {
-        wp_send_json_error( [ 'message' => 'Invalid plan.' ] );
+        wp_send_json_error( [ 'message' => __( 'Invalid plan.', 'societypress' ) ] );
     }
 
     // Check if any members use this tier
@@ -29859,7 +29879,8 @@ add_action( 'wp_ajax_sp_delete_membership_tier', function () {
 
     if ( $member_count > 0 ) {
         wp_send_json_error( [
-            'message' => "Can't delete — {$member_count} member(s) are on this plan. Reassign them to a different plan first."
+            /* translators: %d is the number of members on this tier */
+            'message' => sprintf( __( "Can't delete — %d member(s) are on this plan. Reassign them to a different plan first.", 'societypress' ), $member_count )
         ] );
     }
 
@@ -30823,7 +30844,14 @@ function sp_render_import_events_page(): void {
     if ( isset( $_POST['sp_event_import_action'] ) && $_POST['sp_event_import_action'] === 'run_import' ) {
         check_admin_referer( 'sp_import_events' );
 
-        $temp_file = sanitize_text_field( $_POST['sp_import_temp_file'] ?? '' );
+        // Reconstruct full path from basename token — never trust full paths from HTML
+        $token     = sanitize_file_name( $_POST['sp_import_temp_file'] ?? '' );
+        $upload_dir = wp_upload_dir();
+        $temp_dir   = $upload_dir['basedir'] . '/sp-import-temp/';
+        $temp_file  = realpath( $temp_dir . $token );
+        if ( ! $temp_file || strpos( $temp_file, realpath( $temp_dir ) ) !== 0 ) {
+            $temp_file = '';
+        }
 
         // Parse the field mapping from the preview form
         $raw_map = isset( $_POST['sp_field_map'] ) && is_array( $_POST['sp_field_map'] )
@@ -30836,7 +30864,7 @@ function sp_render_import_events_page(): void {
 
         if ( ! empty( $temp_file ) && file_exists( $temp_file ) ) {
             $results = sp_process_event_import( $temp_file, $import_field_map );
-            @unlink( $temp_file );
+            wp_delete_file( $temp_file );
         } else {
             $results = [
                 'imported'           => 0,
@@ -30882,7 +30910,7 @@ function sp_render_import_events_page(): void {
                     'temp_file'   => $temp_file,
                 ];
             } else {
-                @unlink( $temp_file );
+                wp_delete_file( $temp_file );
             }
         }
     }
@@ -31041,7 +31069,7 @@ function sp_render_import_events_page(): void {
                     <?php wp_nonce_field( 'sp_import_events' ); ?>
                     <input type="hidden" name="sp_event_import_action" value="run_import">
                     <input type="hidden" name="sp_import_temp_file"
-                           value="<?php echo esc_attr( $preview['temp_file'] ); ?>">
+                           value="<?php echo esc_attr( basename( $preview['temp_file'] ) ); ?>">
 
                     <!-- Column mapping table -->
                     <table class="widefat" style="margin-bottom: 20px;">
@@ -34051,20 +34079,20 @@ function sp_ajax_register_for_event(): void {
     ) );
 
     if ( ! $event ) {
-        wp_send_json_error( 'Event not found.' );
+        wp_send_json_error( __( 'Event not found.', 'societypress' ) );
     }
 
     if ( ! $event->registration_enabled ) {
-        wp_send_json_error( 'Registration is not enabled for this event.' );
+        wp_send_json_error( __( 'Registration is not enabled for this event.', 'societypress' ) );
     }
 
     if ( $event->status !== 'scheduled' ) {
-        wp_send_json_error( 'This event is no longer accepting registrations.' );
+        wp_send_json_error( __( 'This event is no longer accepting registrations.', 'societypress' ) );
     }
 
     // Don't allow registration for events that have already happened
     if ( $event->event_date < current_time( 'Y-m-d' ) ) {
-        wp_send_json_error( 'This event has already taken place.' );
+        wp_send_json_error( __( 'This event has already taken place.', 'societypress' ) );
     }
 
     // If a slot_id was provided, validate it belongs to this event and is active
@@ -34073,13 +34101,13 @@ function sp_ajax_register_for_event(): void {
     if ( $slot_id ) {
         $slot = sp_slot_get( $slot_id );
         if ( ! $slot || (int) $slot->event_id !== $event_id || ! $slot->is_active ) {
-            wp_send_json_error( 'Invalid time slot selected.' );
+            wp_send_json_error( __( 'Invalid time slot selected.', 'societypress' ) );
         }
     }
 
     // Guest registration must be explicitly enabled per-event
     if ( $is_guest && ! $event->guest_registration ) {
-        wp_send_json_error( 'Please log in to register for this event.' );
+        wp_send_json_error( __( 'Please log in to register for this event.', 'societypress' ) );
     }
 
     // Validate and sanitize guest fields
@@ -34092,7 +34120,7 @@ function sp_ajax_register_for_event(): void {
         $guest_phone = sanitize_text_field( $_POST['guest_phone'] ?? '' );
 
         if ( empty( $guest_name ) || empty( $guest_email ) ) {
-            wp_send_json_error( 'Please provide your name and email address.' );
+            wp_send_json_error( __( 'Please provide your name and email address.', 'societypress' ) );
         }
 
         // Prevent duplicate guest registration by email for the same event+slot
@@ -34106,7 +34134,7 @@ function sp_ajax_register_for_event(): void {
                 $event_id, $slot_id, $guest_email
             ) );
             if ( $existing_guest ) {
-                wp_send_json_error( 'This email address is already registered for this time slot.' );
+                wp_send_json_error( __( 'This email address is already registered for this time slot.', 'societypress' ) );
             }
         } else {
             $existing_guest = $wpdb->get_var( $wpdb->prepare(
@@ -34115,7 +34143,7 @@ function sp_ajax_register_for_event(): void {
                 $event_id, $guest_email
             ) );
             if ( $existing_guest ) {
-                wp_send_json_error( 'This email address is already registered for this event.' );
+                wp_send_json_error( __( 'This email address is already registered for this event.', 'societypress' ) );
             }
         }
     } else {
@@ -34129,7 +34157,7 @@ function sp_ajax_register_for_event(): void {
                 $event_id, $slot_id, get_current_user_id()
             ) );
             if ( $existing_member ) {
-                wp_send_json_error( 'You are already registered for this time slot.' );
+                wp_send_json_error( __( 'You are already registered for this time slot.', 'societypress' ) );
             }
         } else {
             $existing_member = $wpdb->get_var( $wpdb->prepare(
@@ -34138,7 +34166,7 @@ function sp_ajax_register_for_event(): void {
                 $event_id, get_current_user_id()
             ) );
             if ( $existing_member ) {
-                wp_send_json_error( 'You are already registered for this event.' );
+                wp_send_json_error( __( 'You are already registered for this event.', 'societypress' ) );
             }
         }
     }
@@ -34221,7 +34249,7 @@ function sp_ajax_register_for_event(): void {
     $registration_id = $wpdb->insert_id;
 
     if ( ! $registration_id ) {
-        wp_send_json_error( 'Could not complete registration. Please try again.' );
+        wp_send_json_error( __( 'Could not complete registration. Please try again.', 'societypress' ) );
     }
 
     // Audit: log the registration so Harold can see who signed up and when.
@@ -34248,7 +34276,7 @@ function sp_ajax_register_for_event(): void {
         if ( ! sp_stripe_is_configured( $sp_settings ) ) {
             // Clean up the registration since we can't complete payment
             $wpdb->delete( $reg_table, [ 'id' => $registration_id ] );
-            wp_send_json_error( 'Online payments are not configured. Please contact the site administrator.' );
+            wp_send_json_error( __( 'Online payments are not configured. Please contact the site administrator.', 'societypress' ) );
         }
 
         $checkout_url = sp_create_stripe_checkout_session( $event, $registration_id, $fee_amount, $sp_settings );
@@ -34325,7 +34353,7 @@ function sp_ajax_cancel_registration(): void {
     $event_id        = (int) ( $_POST['event_id'] ?? 0 );
 
     if ( ! $registration_id || ! $event_id ) {
-        wp_send_json_error( 'Invalid registration.' );
+        wp_send_json_error( __( 'Invalid registration.', 'societypress' ) );
     }
 
     // Fetch the registration to verify ownership
@@ -34335,12 +34363,12 @@ function sp_ajax_cancel_registration(): void {
     ) );
 
     if ( ! $reg ) {
-        wp_send_json_error( 'Registration not found.' );
+        wp_send_json_error( __( 'Registration not found.', 'societypress' ) );
     }
 
     // Security: only the registration owner can cancel their own
     if ( $reg->user_id && (int) $reg->user_id !== get_current_user_id() ) {
-        wp_send_json_error( 'You can only cancel your own registration.' );
+        wp_send_json_error( __( 'You can only cancel your own registration.', 'societypress' ) );
     }
 
     // WHY: Guest registrations have user_id = NULL. Without this check, any logged-in
@@ -35058,10 +35086,10 @@ add_action( 'wp_ajax_sp_admin_add_walkin', 'sp_ajax_admin_add_walkin' );
 
 function sp_ajax_admin_add_walkin(): void {
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_send_json_error( 'Unauthorized.' );
+        wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
     }
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_admin_registration' ) ) {
-        wp_send_json_error( 'Security check failed.' );
+        wp_send_json_error( __( 'Security check failed.', 'societypress' ) );
     }
 
     global $wpdb;
@@ -35071,7 +35099,7 @@ function sp_ajax_admin_add_walkin(): void {
     $guest_name = sanitize_text_field( $_POST['guest_name'] ?? '' );
 
     if ( ! $event_id || ! $guest_name ) {
-        wp_send_json_error( 'Event ID and name are required.' );
+        wp_send_json_error( __( 'Event ID and name are required.', 'societypress' ) );
     }
 
     $slot_id = ! empty( $_POST['slot_id'] ) ? (int) $_POST['slot_id'] : null;
@@ -35094,7 +35122,7 @@ function sp_ajax_admin_add_walkin(): void {
     if ( $wpdb->insert_id ) {
         wp_send_json_success( [ 'registration_id' => $wpdb->insert_id ] );
     } else {
-        wp_send_json_error( 'Could not add registration.' );
+        wp_send_json_error( __( 'Could not add registration.', 'societypress' ) );
     }
 }
 
@@ -35110,10 +35138,10 @@ add_action( 'wp_ajax_sp_admin_cancel_registration', 'sp_ajax_admin_cancel_regist
 
 function sp_ajax_admin_cancel_registration(): void {
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_send_json_error( 'Unauthorized.' );
+        wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
     }
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_admin_registration' ) ) {
-        wp_send_json_error( 'Security check failed.' );
+        wp_send_json_error( __( 'Security check failed.', 'societypress' ) );
     }
 
     global $wpdb;
@@ -35123,7 +35151,7 @@ function sp_ajax_admin_cancel_registration(): void {
     $event_id        = (int) ( $_POST['event_id'] ?? 0 );
 
     if ( ! $registration_id ) {
-        wp_send_json_error( 'Invalid registration.' );
+        wp_send_json_error( __( 'Invalid registration.', 'societypress' ) );
     }
 
     // Get current status before cancelling (needed for waitlist promotion)
@@ -35164,10 +35192,10 @@ add_action( 'wp_ajax_sp_admin_update_attendance', 'sp_ajax_admin_update_attendan
 
 function sp_ajax_admin_update_attendance(): void {
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_send_json_error( 'Unauthorized.' );
+        wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
     }
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_admin_registration' ) ) {
-        wp_send_json_error( 'Security check failed.' );
+        wp_send_json_error( __( 'Security check failed.', 'societypress' ) );
     }
 
     global $wpdb;
@@ -35176,7 +35204,7 @@ function sp_ajax_admin_update_attendance(): void {
     $attended        = $_POST['attended'] ?? '';
 
     if ( ! $registration_id ) {
-        wp_send_json_error( 'Invalid registration.' );
+        wp_send_json_error( __( 'Invalid registration.', 'societypress' ) );
     }
 
     // attended: '' = null (not yet recorded), '1' = attended, '0' = no-show
@@ -35204,10 +35232,10 @@ add_action( 'wp_ajax_sp_admin_bulk_attendance', 'sp_ajax_admin_bulk_attendance' 
 
 function sp_ajax_admin_bulk_attendance(): void {
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_send_json_error( 'Unauthorized.' );
+        wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
     }
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_admin_registration' ) ) {
-        wp_send_json_error( 'Security check failed.' );
+        wp_send_json_error( __( 'Security check failed.', 'societypress' ) );
     }
 
     global $wpdb;
@@ -35216,7 +35244,7 @@ function sp_ajax_admin_bulk_attendance(): void {
     $attended  = (int) ( $_POST['attended'] ?? 1 );
 
     if ( ! $event_id ) {
-        wp_send_json_error( 'Invalid event.' );
+        wp_send_json_error( __( 'Invalid event.', 'societypress' ) );
     }
 
     // Only update rows that haven't been marked yet (attended IS NULL)
@@ -38644,11 +38672,11 @@ add_action( 'wp_ajax_sp_test_stripe_connection', function () {
  */
 add_action( 'wp_ajax_sp_admin_refund_payment', function () {
     if ( ! check_ajax_referer( 'sp_admin_registration', 'nonce', false ) ) {
-        wp_send_json_error( 'Security check failed.' );
+        wp_send_json_error( __( 'Security check failed.', 'societypress' ) );
     }
 
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_send_json_error( 'Permission denied.' );
+        wp_send_json_error( __( 'Permission denied.', 'societypress' ) );
     }
 
     global $wpdb;
@@ -38656,7 +38684,7 @@ add_action( 'wp_ajax_sp_admin_refund_payment', function () {
 
     $registration_id = (int) ( $_POST['registration_id'] ?? 0 );
     if ( ! $registration_id ) {
-        wp_send_json_error( 'Invalid registration.' );
+        wp_send_json_error( __( 'Invalid registration.', 'societypress' ) );
     }
 
     $reg = $wpdb->get_row( $wpdb->prepare(
@@ -38664,11 +38692,11 @@ add_action( 'wp_ajax_sp_admin_refund_payment', function () {
     ) );
 
     if ( ! $reg ) {
-        wp_send_json_error( 'Registration not found.' );
+        wp_send_json_error( __( 'Registration not found.', 'societypress' ) );
     }
 
     if ( $reg->payment_status !== 'paid' || $reg->payment_method !== 'stripe' ) {
-        wp_send_json_error( 'This registration was not paid via Stripe.' );
+        wp_send_json_error( __( 'This registration was not paid via Stripe.', 'societypress' ) );
     }
 
     // Extract the Stripe PaymentIntent ID from the notes field
@@ -38681,14 +38709,14 @@ add_action( 'wp_ajax_sp_admin_refund_payment', function () {
     }
 
     if ( empty( $payment_intent ) ) {
-        wp_send_json_error( 'Could not find payment reference. Please refund manually in Stripe dashboard.' );
+        wp_send_json_error( __( 'Could not find payment reference. Please refund manually in Stripe dashboard.', 'societypress' ) );
     }
 
     $settings   = get_option( 'societypress_settings', [] );
     $secret_key = sp_stripe_get_secret_key( $settings );
 
     if ( empty( $secret_key ) ) {
-        wp_send_json_error( 'Stripe is not configured.' );
+        wp_send_json_error( __( 'Stripe is not configured.', 'societypress' ) );
     }
 
     // Call Stripe's Refund API
@@ -38704,7 +38732,7 @@ add_action( 'wp_ajax_sp_admin_refund_payment', function () {
     ] );
 
     if ( is_wp_error( $response ) ) {
-        wp_send_json_error( 'Could not connect to Stripe. Please try again.' );
+        wp_send_json_error( __( 'Could not connect to Stripe. Please try again.', 'societypress' ) );
     }
 
     $body = json_decode( wp_remote_retrieve_body( $response ), true );
@@ -40303,7 +40331,7 @@ function sp_handle_surname_contact(): void {
     );
 
     if ( $sent ) {
-        wp_send_json_success( [ 'message' => 'Your message has been sent! The researcher can reply directly to your email.' ] );
+        wp_send_json_success( [ 'message' => __( 'Your message has been sent! The researcher can reply directly to your email.', 'societypress' ) ] );
     } else {
         wp_send_json_error( __( 'There was a problem sending your message. Please try again later.', 'societypress' ) );
     }
@@ -40663,31 +40691,31 @@ function sp_render_reports_page(): void {
         <!-- Quick stats grid -->
         <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:16px; margin:20px 0;">
             <div style="background:#fff; border:1px solid #ccd0d4; border-radius:8px; padding:20px; text-align:center;">
-                <div style="font-size:32px; font-weight:700; color:var(--sp-color-primary);"><?php echo $active_members; ?></div>
+                <div style="font-size:32px; font-weight:700; color:var(--sp-color-primary);"><?php echo absint( $active_members ); ?></div>
                 <div style="color:#666; font-size:13px;">Active Members</div>
-                <div style="color:#999; font-size:12px;"><?php echo $total_members; ?> total</div>
+                <div style="color:#999; font-size:12px;"><?php echo absint( $total_members ); ?> total</div>
             </div>
             <div style="background:#fff; border:1px solid #ccd0d4; border-radius:8px; padding:20px; text-align:center;">
-                <div style="font-size:32px; font-weight:700; color:var(--sp-color-primary);"><?php echo $total_events; ?></div>
+                <div style="font-size:32px; font-weight:700; color:var(--sp-color-primary);"><?php echo absint( $total_events ); ?></div>
                 <div style="color:#666; font-size:13px;">Events This Year</div>
             </div>
             <div style="background:#fff; border:1px solid #ccd0d4; border-radius:8px; padding:20px; text-align:center;">
-                <div style="font-size:32px; font-weight:700; color:var(--sp-color-primary);"><?php echo number_format( $volunteer_hours, 1 ); ?></div>
+                <div style="font-size:32px; font-weight:700; color:var(--sp-color-primary);"><?php echo esc_html( number_format( $volunteer_hours, 1 ) ); ?></div>
                 <div style="color:#666; font-size:13px;">Volunteer Hours</div>
                 <div style="color:#999; font-size:12px;">This year</div>
             </div>
             <div style="background:#fff; border:1px solid #ccd0d4; border-radius:8px; padding:20px; text-align:center;">
-                <div style="font-size:32px; font-weight:700; color:var(--sp-color-primary);"><?php echo $library_items; ?></div>
+                <div style="font-size:32px; font-weight:700; color:var(--sp-color-primary);"><?php echo absint( $library_items ); ?></div>
                 <div style="color:#666; font-size:13px;">Library Items</div>
             </div>
             <div style="background:#fff; border:1px solid #ccd0d4; border-radius:8px; padding:20px; text-align:center;">
-                <div style="font-size:32px; font-weight:700; color:var(--sp-color-primary);"><?php echo $help_requests; ?></div>
+                <div style="font-size:32px; font-weight:700; color:var(--sp-color-primary);"><?php echo absint( $help_requests ); ?></div>
                 <div style="color:#666; font-size:13px;">Open Help Requests</div>
             </div>
             <div style="background:#fff; border:1px solid #ccd0d4; border-radius:8px; padding:20px; text-align:center;">
                 <div style="font-size:32px; font-weight:700; color:#00a32a;"><?php echo esc_html( sp_format_currency( $donations_year ) ); ?></div>
                 <div style="color:#666; font-size:13px;">Donations This Year</div>
-                <div style="color:#999; font-size:12px;"><?php echo $donor_count; ?> donors</div>
+                <div style="color:#999; font-size:12px;"><?php echo absint( $donor_count ); ?> donors</div>
             </div>
             <?php if ( $top_campaign ) : ?>
             <div style="background:#fff; border:1px solid #ccd0d4; border-radius:8px; padding:20px; text-align:center;">
@@ -40716,7 +40744,7 @@ function sp_render_annual_report_page(): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
-    $year       = absint( $_GET['year'] ?? date( 'Y' ) );
+    $year       = absint( $_GET['year'] ?? wp_date( 'Y' ) );
     $start_date = $year . '-01-01';
     $end_date   = $year . '-12-31';
     $prev_year  = $year - 1;
@@ -40794,7 +40822,7 @@ function sp_render_annual_report_page(): void {
             <h1 style="margin:0;"><?php echo esc_html( sprintf( __( 'Annual Report — %s', 'societypress' ), $year ) ); ?></h1>
             <div>
                 <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-annual-report&year=' . $prev_year ) ); ?>" class="button">&larr; <?php echo $prev_year; ?></a>
-                <?php if ( $year < (int) date( 'Y' ) ) : ?>
+                <?php if ( $year < (int) wp_date( 'Y' ) ) : ?>
                     <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-annual-report&year=' . ( $year + 1 ) ) ); ?>" class="button"><?php echo $year + 1; ?> &rarr;</a>
                 <?php endif; ?>
                 <button type="button" onclick="window.print();" class="button button-primary" style="margin-left:8px;">Print Report</button>
@@ -40804,13 +40832,13 @@ function sp_render_annual_report_page(): void {
 
         <!-- Summary Cards -->
         <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:12px; margin-bottom:32px;">
-            <div class="sp-stat-card"><div class="sp-stat-value"><?php echo $active_members; ?></div><div class="sp-stat-label">Active Members</div></div>
-            <div class="sp-stat-card"><div class="sp-stat-value"><?php echo $new_this_year; ?></div><div class="sp-stat-label">New Members</div></div>
-            <div class="sp-stat-card"><div class="sp-stat-value"><?php echo $expired_this_year; ?></div><div class="sp-stat-label">Expired/Lapsed</div></div>
-            <div class="sp-stat-card"><div class="sp-stat-value"><?php echo $events_count; ?></div><div class="sp-stat-label">Events</div></div>
-            <div class="sp-stat-card"><div class="sp-stat-value"><?php echo $total_registrations; ?></div><div class="sp-stat-label">Registrations</div></div>
-            <div class="sp-stat-card"><div class="sp-stat-value"><?php echo $total_attendance; ?></div><div class="sp-stat-label">Attended</div></div>
-            <div class="sp-stat-card"><div class="sp-stat-value"><?php echo number_format( $vol_hours, 0 ); ?></div><div class="sp-stat-label">Volunteer Hours</div></div>
+            <div class="sp-stat-card"><div class="sp-stat-value"><?php echo absint( $active_members ); ?></div><div class="sp-stat-label">Active Members</div></div>
+            <div class="sp-stat-card"><div class="sp-stat-value"><?php echo absint( $new_this_year ); ?></div><div class="sp-stat-label">New Members</div></div>
+            <div class="sp-stat-card"><div class="sp-stat-value"><?php echo absint( $expired_this_year ); ?></div><div class="sp-stat-label">Expired/Lapsed</div></div>
+            <div class="sp-stat-card"><div class="sp-stat-value"><?php echo absint( $events_count ); ?></div><div class="sp-stat-label">Events</div></div>
+            <div class="sp-stat-card"><div class="sp-stat-value"><?php echo absint( $total_registrations ); ?></div><div class="sp-stat-label">Registrations</div></div>
+            <div class="sp-stat-card"><div class="sp-stat-value"><?php echo absint( $total_attendance ); ?></div><div class="sp-stat-label">Attended</div></div>
+            <div class="sp-stat-card"><div class="sp-stat-value"><?php echo esc_html( number_format( $vol_hours, 0 ) ); ?></div><div class="sp-stat-label">Volunteer Hours</div></div>
         </div>
 
         <!-- Membership Breakdown -->
@@ -40895,19 +40923,19 @@ function sp_render_annual_report_page(): void {
     <script>
     // "Copy as Text" button — copies a plain text summary for pasting into emails
     document.getElementById('sp-copy-report-btn')?.addEventListener('click', function() {
-        var text = 'Annual Report — <?php echo $year; ?>\n\n'
+        var text = 'Annual Report — <?php echo esc_js( (string) $year ); ?>\n\n'
             + 'MEMBERSHIP\n'
-            + '  Active Members: <?php echo $active_members; ?>\n'
-            + '  New This Year: <?php echo $new_this_year; ?>\n'
-            + '  Expired/Lapsed: <?php echo $expired_this_year; ?>\n'
-            + '  Total: <?php echo $total_members; ?>\n\n'
+            + '  Active Members: <?php echo esc_js( (string) $active_members ); ?>\n'
+            + '  New This Year: <?php echo esc_js( (string) $new_this_year ); ?>\n'
+            + '  Expired/Lapsed: <?php echo esc_js( (string) $expired_this_year ); ?>\n'
+            + '  Total: <?php echo esc_js( (string) $total_members ); ?>\n\n'
             + 'EVENTS\n'
-            + '  Events Held: <?php echo $events_count; ?>\n'
-            + '  Total Registrations: <?php echo $total_registrations; ?>\n'
-            + '  Actual Attendance: <?php echo $total_attendance; ?>\n\n'
+            + '  Events Held: <?php echo esc_js( (string) $events_count ); ?>\n'
+            + '  Total Registrations: <?php echo esc_js( (string) $total_registrations ); ?>\n'
+            + '  Actual Attendance: <?php echo esc_js( (string) $total_attendance ); ?>\n\n'
             + 'VOLUNTEERS\n'
-            + '  Active Volunteers: <?php echo $vol_count; ?>\n'
-            + '  Total Hours: <?php echo number_format( $vol_hours, 1 ); ?>\n';
+            + '  Active Volunteers: <?php echo esc_js( (string) $vol_count ); ?>\n'
+            + '  Total Hours: <?php echo esc_js( number_format( $vol_hours, 1 ) ); ?>\n';
 
         navigator.clipboard.writeText(text).then(function() {
             var btn = document.getElementById('sp-copy-report-btn');
@@ -42460,7 +42488,14 @@ function sp_render_library_import_page(): void {
     if ( isset( $_POST['sp_import_action'] ) && $_POST['sp_import_action'] === 'run_import' ) {
         check_admin_referer( 'sp_import_library' );
 
-        $temp_file = sanitize_text_field( $_POST['sp_import_temp_file'] ?? '' );
+        // Reconstruct full path from basename token — never trust full paths from HTML
+        $token     = sanitize_file_name( $_POST['sp_import_temp_file'] ?? '' );
+        $upload_dir = wp_upload_dir();
+        $temp_dir   = $upload_dir['basedir'] . '/sp-import-temp/';
+        $temp_file  = realpath( $temp_dir . $token );
+        if ( ! $temp_file || strpos( $temp_file, realpath( $temp_dir ) ) !== 0 ) {
+            $temp_file = '';
+        }
 
         $raw_map = isset( $_POST['sp_field_map'] ) && is_array( $_POST['sp_field_map'] )
                  ? $_POST['sp_field_map']
@@ -42472,7 +42507,7 @@ function sp_render_library_import_page(): void {
 
         if ( ! empty( $temp_file ) && file_exists( $temp_file ) ) {
             $results = sp_process_library_import( $temp_file, $import_field_map );
-            @unlink( $temp_file );
+            wp_delete_file( $temp_file );
         } else {
             $results = [
                 'imported' => 0, 'skipped' => 0,
@@ -42522,7 +42557,7 @@ function sp_render_library_import_page(): void {
                     'temp_file'   => $temp_file,
                 ];
             } else {
-                @unlink( $temp_file );
+                wp_delete_file( $temp_file );
             }
             fclose( $handle );
         }
@@ -42666,7 +42701,7 @@ function sp_render_library_import_page(): void {
                 <form method="post">
                     <?php wp_nonce_field( 'sp_import_library' ); ?>
                     <input type="hidden" name="sp_import_action" value="run_import">
-                    <input type="hidden" name="sp_import_temp_file" value="<?php echo esc_attr( $preview['temp_file'] ); ?>">
+                    <input type="hidden" name="sp_import_temp_file" value="<?php echo esc_attr( basename( $preview['temp_file'] ) ); ?>">
 
                     <table class="wp-list-table widefat striped" style="margin:16px 0;">
                         <thead>
@@ -43266,7 +43301,14 @@ function sp_render_links_import_page(): void {
     if ( isset( $_POST['sp_import_action'] ) && $_POST['sp_import_action'] === 'run_import' ) {
         check_admin_referer( 'sp_import_links' );
 
-        $temp_file = sanitize_text_field( $_POST['sp_import_temp_file'] ?? '' );
+        // Reconstruct full path from basename token — never trust full paths from HTML
+        $token     = sanitize_file_name( $_POST['sp_import_temp_file'] ?? '' );
+        $upload_dir = wp_upload_dir();
+        $temp_dir   = $upload_dir['basedir'] . '/sp-import-temp/';
+        $temp_file  = realpath( $temp_dir . $token );
+        if ( ! $temp_file || strpos( $temp_file, realpath( $temp_dir ) ) !== 0 ) {
+            $temp_file = '';
+        }
 
         $raw_map = isset( $_POST['sp_field_map'] ) && is_array( $_POST['sp_field_map'] )
                  ? $_POST['sp_field_map']
@@ -43278,7 +43320,7 @@ function sp_render_links_import_page(): void {
 
         if ( ! empty( $temp_file ) && file_exists( $temp_file ) ) {
             $results = sp_process_links_import( $temp_file, $import_field_map );
-            @unlink( $temp_file );
+            wp_delete_file( $temp_file );
         } else {
             $results = [
                 'imported' => 0, 'skipped' => 0, 'categories_created' => 0,
@@ -43328,7 +43370,7 @@ function sp_render_links_import_page(): void {
                     'temp_file'   => $temp_file,
                 ];
             } else {
-                @unlink( $temp_file );
+                wp_delete_file( $temp_file );
             }
             fclose( $handle );
         }
@@ -43427,7 +43469,7 @@ function sp_render_links_import_page(): void {
                 <form method="post">
                     <?php wp_nonce_field( 'sp_import_links' ); ?>
                     <input type="hidden" name="sp_import_action" value="run_import">
-                    <input type="hidden" name="sp_import_temp_file" value="<?php echo esc_attr( $preview['temp_file'] ); ?>">
+                    <input type="hidden" name="sp_import_temp_file" value="<?php echo esc_attr( basename( $preview['temp_file'] ) ); ?>">
 
                     <table class="widefat striped" style="margin-top:12px;">
                         <thead>
@@ -43922,6 +43964,10 @@ add_action( 'wp_ajax_sp_volunteer_signup', function () {
 
 // ---- AJAX: Cancel volunteer signup ----
 add_action( 'wp_ajax_sp_volunteer_cancel', function () {
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => __( 'You must be logged in.', 'societypress' ) ] );
+    }
+
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_volunteer_opp' ) ) {
         wp_send_json_error( __( 'Security check failed.', 'societypress' ) );
     }
@@ -46079,7 +46125,7 @@ add_action( 'wp_ajax_sp_get_default_template', function() {
     check_ajax_referer( 'sp_default_template' );
 
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_send_json_error( 'Unauthorized', 403 );
+        wp_send_json_error( __( 'Unauthorized', 'societypress' ), 403 );
     }
 
     $type = sanitize_key( $_POST['type'] ?? '' );
@@ -46092,7 +46138,7 @@ add_action( 'wp_ajax_sp_get_default_template', function() {
     ];
 
     if ( ! isset( $default_subjects[ $type ] ) ) {
-        wp_send_json_error( 'Invalid type', 400 );
+        wp_send_json_error( __( 'Invalid type', 'societypress' ), 400 );
     }
 
     wp_send_json_success( [
@@ -47176,7 +47222,7 @@ add_action( 'sp_blast_email_send_batch', 'sp_blast_email_send_batch', 10, 2 );
  */
 function sp_ajax_blast_recipient_count(): void {
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_send_json_error( 'Unauthorized' );
+        wp_send_json_error( __( 'Unauthorized', 'societypress' ) );
     }
 
     // WHY: CSRF protection — this endpoint returns member counts, which is information
@@ -49092,7 +49138,7 @@ add_action( 'wp_ajax_nopriv_sp_library_item_detail', 'sp_ajax_library_item_detai
 function sp_ajax_library_item_detail(): void {
     $item_id = absint( $_GET['item_id'] ?? 0 );
     if ( ! $item_id ) {
-        wp_send_json_error( 'Missing item ID.' );
+        wp_send_json_error( __( 'Missing item ID.', 'societypress' ) );
     }
 
     global $wpdb;
@@ -49106,7 +49152,7 @@ function sp_ajax_library_item_detail(): void {
     ) );
 
     if ( ! $item ) {
-        wp_send_json_error( 'Item not found.' );
+        wp_send_json_error( __( 'Item not found.', 'societypress' ) );
     }
 
     // Build a clean publication date string from year/month/day parts
@@ -49542,7 +49588,7 @@ function sp_ajax_library_enrich_batch(): void {
     check_ajax_referer( 'sp_library_enrich' );
 
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_send_json_error( 'Unauthorized.' );
+        wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
     }
 
     global $wpdb;
@@ -49567,9 +49613,13 @@ function sp_ajax_library_enrich_batch(): void {
     $where_sql = implode( ' AND ', $where );
 
     // Get total remaining for progress tracking
-    $total_remaining = (int) $wpdb->get_var(
-        "SELECT COUNT(*) FROM {$prefix}library_items WHERE {$where_sql}"
-    );
+    // WHY prepare() with %d dummy: $where_sql is built entirely from hardcoded
+    //      literals (no user input), but we run it through prepare() to match
+    //      the companion query pattern below and satisfy static analysis tools.
+    $total_remaining = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$prefix}library_items WHERE {$where_sql} AND 1 = %d",
+        1
+    ) );
 
     // Fetch the next batch — prioritize items with LCCNs (higher match rate)
     $items = $wpdb->get_results( $wpdb->prepare(
@@ -50137,22 +50187,22 @@ function sp_ajax_generate_newsletter_cover(): void {
     check_ajax_referer( 'sp_newsletter_cover' );
 
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_send_json_error( 'Permission denied.' );
+        wp_send_json_error( __( 'Permission denied.', 'societypress' ) );
     }
 
     $pdf_id = absint( $_POST['pdf_id'] ?? 0 );
     if ( ! $pdf_id ) {
-        wp_send_json_error( 'Missing PDF ID.' );
+        wp_send_json_error( __( 'Missing PDF ID.', 'societypress' ) );
     }
 
     $pdf_path = get_attached_file( $pdf_id );
     if ( ! $pdf_path || ! file_exists( $pdf_path ) ) {
-        wp_send_json_error( 'PDF file not found.' );
+        wp_send_json_error( __( 'PDF file not found.', 'societypress' ) );
     }
 
     // Check that Imagick is available and can handle PDFs
     if ( ! class_exists( 'Imagick' ) ) {
-        wp_send_json_error( 'Imagick extension not available. Upload a cover image manually.' );
+        wp_send_json_error( __( 'Imagick extension not available. Upload a cover image manually.', 'societypress' ) );
     }
 
     try {
@@ -50195,7 +50245,7 @@ function sp_ajax_generate_newsletter_cover(): void {
         ], $filepath );
 
         if ( is_wp_error( $attachment_id ) ) {
-            wp_send_json_error( 'Failed to register cover image attachment.' );
+            wp_send_json_error( __( 'Failed to register cover image attachment.', 'societypress' ) );
         }
 
         // Generate standard WP image sizes (thumbnail, medium, etc.)
@@ -50209,7 +50259,8 @@ function sp_ajax_generate_newsletter_cover(): void {
         ] );
 
     } catch ( Exception $e ) {
-        wp_send_json_error( 'Imagick error: ' . $e->getMessage() . '. Upload a cover image manually.' );
+        /* translators: %s is the error message from Imagick */
+        wp_send_json_error( sprintf( __( 'Imagick error: %s. Upload a cover image manually.', 'societypress' ), $e->getMessage() ) );
     }
 }
 
@@ -50229,7 +50280,7 @@ add_action( 'wp_ajax_nopriv_sp_newsletter_download', 'sp_ajax_newsletter_downloa
 function sp_ajax_newsletter_download(): void {
     $newsletter_id = absint( $_GET['newsletter_id'] ?? 0 );
     if ( ! $newsletter_id ) {
-        wp_die( 'Invalid newsletter.' );
+        wp_die( esc_html__( 'Invalid newsletter.', 'societypress' ) );
     }
 
     global $wpdb;
@@ -50239,7 +50290,7 @@ function sp_ajax_newsletter_download(): void {
     ) );
 
     if ( ! $nl || ! $nl->file_id ) {
-        wp_die( 'Newsletter not found.' );
+        wp_die( esc_html__( 'Newsletter not found.', 'societypress' ) );
     }
 
     // Members-only newsletters require login
@@ -50250,7 +50301,7 @@ function sp_ajax_newsletter_download(): void {
 
     $file_path = get_attached_file( $nl->file_id );
     if ( ! $file_path || ! file_exists( $file_path ) ) {
-        wp_die( 'PDF file not found on server.' );
+        wp_die( esc_html__( 'This newsletter is not currently available.', 'societypress' ) );
     }
 
     // Serve the file with proper headers for download
@@ -51226,10 +51277,21 @@ add_action( 'wp_ajax_nopriv_sp_unified_search', 'sp_unified_search' );
  * AJAX handler for unified search — returns JSON grouped by module.
  */
 function sp_unified_search(): void {
+    // Rate-limit unauthenticated requests to prevent abuse (30 requests/minute per IP)
+    if ( ! is_user_logged_in() ) {
+        $ip  = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        $key = 'sp_search_rate_' . md5( $ip );
+        $hits = (int) get_transient( $key );
+        if ( $hits > 30 ) {
+            wp_send_json_error( [ 'message' => __( 'Too many requests. Please try again shortly.', 'societypress' ) ] );
+        }
+        set_transient( $key, $hits + 1, 60 );
+    }
+
     $query = isset( $_GET['sp_q'] ) ? sanitize_text_field( trim( $_GET['sp_q'] ) ) : '';
 
     if ( strlen( $query ) < 2 ) {
-        wp_send_json_error( [ 'message' => 'Query must be at least 2 characters.' ] );
+        wp_send_json_error( [ 'message' => __( 'Query must be at least 2 characters.', 'societypress' ) ] );
     }
 
     $results = sp_do_unified_search( $query, 5 );
@@ -52132,8 +52194,16 @@ function sp_render_record_import_page(): void {
     // STEP 2: Process the import
     if ( isset( $_POST['sp_process_record_import'] ) && check_admin_referer( 'sp_record_import' ) ) {
         $collection_id = absint( $_POST['collection_id'] );
-        $temp_file     = sanitize_text_field( $_POST['temp_file'] ?? '' );
         $field_map     = $_POST['field_map'] ?? [];
+
+        // Reconstruct full path from basename token — never trust full paths from HTML
+        $token      = sanitize_file_name( $_POST['temp_file'] ?? '' );
+        $upload_dir = wp_upload_dir();
+        $temp_dir   = $upload_dir['basedir'] . '/sp-import-temp/';
+        $temp_file  = realpath( $temp_dir . $token );
+        if ( ! $temp_file || strpos( $temp_file, realpath( $temp_dir ) ) !== 0 ) {
+            $temp_file = '';
+        }
 
         if ( ! $collection_id || ! $temp_file || ! file_exists( $temp_file ) ) {
             echo '<div class="notice notice-error"><p>' . esc_html__( 'Missing data. Please try again.', 'societypress' ) . '</p></div>';
@@ -52166,7 +52236,7 @@ function sp_render_record_import_page(): void {
                 echo '</p></div>';
             }
 
-            @unlink( $temp_file );
+            wp_delete_file( $temp_file );
         }
     }
 
@@ -52187,8 +52257,16 @@ function sp_render_record_import_page(): void {
                 $collection_id
             ) );
 
-            // Move uploaded file to temp location
-            $temp_file = wp_tempnam( 'sp_record_import_' );
+            // Move uploaded file to temp location inside sp-import-temp
+            // WHY: Using the same temp directory as other imports for consistency,
+            //      and so the basename-only path reconstruction works the same way.
+            $upload_dir = wp_upload_dir();
+            $temp_dir   = $upload_dir['basedir'] . '/sp-import-temp';
+            if ( ! is_dir( $temp_dir ) ) {
+                wp_mkdir_p( $temp_dir );
+                file_put_contents( $temp_dir . '/.htaccess', 'Deny from all' );
+            }
+            $temp_file = $temp_dir . '/record-import-' . wp_generate_password( 12, false ) . '.csv';
             move_uploaded_file( $_FILES['csv_file']['tmp_name'], $temp_file );
 
             // Read headers + sample rows
@@ -52224,7 +52302,7 @@ function sp_render_record_import_page(): void {
                 <form method="post" style="max-width:1000px;">
                     <?php wp_nonce_field( 'sp_record_import' ); ?>
                     <input type="hidden" name="collection_id" value="<?php echo esc_attr( $collection_id ); ?>">
-                    <input type="hidden" name="temp_file" value="<?php echo esc_attr( $temp_file ); ?>">
+                    <input type="hidden" name="temp_file" value="<?php echo esc_attr( basename( $temp_file ) ); ?>">
 
                     <table class="wp-list-table widefat" style="margin:16px 0;">
                         <thead>

@@ -725,6 +725,14 @@ MUPLUGIN;
     // never sees WordPress's install screen.
     $log[] = 'Creating install bridge...';
 
+    // Generate a one-time secret token for this bridge invocation.
+    // WHY: The bridge script is publicly reachable for the brief window between
+    // it being written and the browser hitting it. A random token in the URL
+    // ensures only the user whose browser was redirected here can trigger it —
+    // a crawler or scanner that hits /sp-bridge-install.php without the token
+    // gets a 403 instead of running wp_install().
+    $bridge_token = bin2hex( random_bytes( 16 ) );
+
     $bridge_script = $install_dir . '/sp-bridge-install.php';
     $bridge_code = '<?php' . "\n"
         . '/**' . "\n"
@@ -733,10 +741,22 @@ MUPLUGIN;
         . ' * here by the SocietyPress installer so WordPress installs in a normal' . "\n"
         . ' * HTTP request context (avoiding bootstrap issues).' . "\n"
         . ' */' . "\n"
+        . "\n"
+        . '// Token guard — only the redirect from the SocietyPress installer carries' . "\n"
+        . '// the correct token. Anything else (crawlers, scanners, direct visits) gets' . "\n"
+        . '// a 403 before WordPress is loaded or wp_install() is touched.' . "\n"
+        . 'if ( ! isset( $_GET[\'token\'] ) || $_GET[\'token\'] !== ' . var_export( $bridge_token, true ) . ' ) {' . "\n"
+        . '    http_response_code( 403 );' . "\n"
+        . '    die( \'Unauthorized\' );' . "\n"
+        . '}' . "\n"
+        . "\n"
         . 'define( "WP_INSTALLING", true );' . "\n"
         . 'require_once __DIR__ . "/wp-load.php";' . "\n"
         . 'require_once ABSPATH . "wp-admin/includes/upgrade.php";' . "\n"
         . "\n"
+        . '// var_export() produces valid PHP string literals with proper escaping of quotes' . "\n"
+        . '// and special characters, making it safe for embedding user input into generated PHP.' . "\n"
+        . '// This is intentional — do not replace with string concatenation.' . "\n"
         . '// Run the WordPress installation with data from the SocietyPress installer' . "\n"
         . '$result = wp_install(' . "\n"
         . '    ' . var_export( $site_title, true ) . ',' . "\n"
@@ -947,7 +967,12 @@ MUPLUGIN;
     $log[] = 'Redirecting to WordPress installation...';
     $_SESSION['sp_install_log'] = $log;
 
-    header( 'Location: /sp-bridge-install.php' );
+    // WHY rtrim($base): SCRIPT_NAME includes the filename (e.g. /subdir/install.php),
+    // so dirname() gives us /subdir. rtrim() guards against a trailing slash on root
+    // installs where dirname('/install.php') would return '/'.
+    // The token is appended so only this redirect can trigger the bridge script.
+    $base = dirname( $_SERVER['SCRIPT_NAME'] );
+    header( 'Location: ' . rtrim( $base, '/' ) . '/sp-bridge-install.php?token=' . urlencode( $bridge_token ) );
     exit;
 }
 

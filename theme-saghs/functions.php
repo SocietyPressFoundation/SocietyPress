@@ -61,7 +61,12 @@ add_action( 'wp_enqueue_scripts', function () {
         'societypress-parent-style',
         get_template_directory_uri() . '/style.css',
         [ 'society-google-fonts' ],
-        SOCIETYPRESS_THEME_VERSION
+        // WHY wp_get_theme() instead of SOCIETYPRESS_THEME_VERSION constant:
+        // Child themes load before parent themes in WordPress's bootstrap order.
+        // If we reference the parent constant here, it may not be defined yet,
+        // causing a fatal error. Reading the version from the theme's stylesheet
+        // header is always safe regardless of load order.
+        wp_get_theme( 'societypress' )->get( 'Version' )
     );
 
     // Child stylesheet — loads after parent so our overrides take effect.

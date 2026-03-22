@@ -175,7 +175,43 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 
 (Nothing actively in flight)
 
-### Completed This Session (v0.40d — 2026-03-21)
+### Completed This Session (v0.41d — 2026-03-22)
+
+**Code Review — 28 Issues Fixed:**
+- [x] Plugin header/constant version mismatch (C-1)
+- [x] Import temp file path traversal — now stores basename only, validates with realpath (C-2)
+- [x] sp_unified_search rate-limiting for unauthenticated users (C-3)
+- [x] Annual Report JS escaping with esc_js() (C-4)
+- [x] Removed OOP prototype files — societypress-core.php, admin/, includes/ (C-5)
+- [x] Newsletter wp_die() messages i18n-wrapped, server path leak removed (C-6)
+- [x] 58 AJAX error/success strings i18n-wrapped (W-1)
+- [x] Theme output escaping, date('Y') → wp_date('Y'), SQL hardening (W-2/3/6/7/8)
+- [x] GPL license alignment across themes (W-14)
+- [x] Installer bridge script token auth + relative redirect (W-15/16)
+- [x] @unlink → wp_delete_file, absint() on integer echoes, capability checks (S-2/3/8/9)
+- [x] getsocietypress.org: download page v0.40d, features page stats corrected (12/43/19), nav walker CSS classes (W-10/11/S-5)
+
+**Calendar Subscription Feed:**
+- [x] iCal/webcal feed URLs — public (?sp_ical_feed=public) and token-authenticated members-only
+- [x] Shared iCal helpers extracted from existing .ics download (sp_ical_fold_line, sp_ical_escape_text, sp_ical_build_dt_lines, sp_ical_build_location, sp_ical_build_description)
+- [x] Subscribe UI on events listing, calendar page, and event detail — webcal:// one-click + copy URL + members-only feed
+- [x] Per-user tokens in user_meta with AJAX regeneration
+- [x] 1-hour transient cache invalidated on event create/update/delete
+- [x] Settings toggle under Events settings (events_ical_feed_enabled)
+
+**External Events — Manual + iCal Import:**
+- [x] external_url field on events — links to external site instead of internal detail page
+- [x] Visual indicators: dashed border + arrow on calendar pills, "External" badge on listing, minimal card on detail page
+- [x] New sp_ical_feeds table for managing subscribed iCal feeds
+- [x] External Calendars admin page under Events — add/edit/delete/sync feeds
+- [x] Pure PHP iCal parser: line unfolding, VEVENT extraction, TZID/UTC/DATE timezone handling
+- [x] sp_sync_ical_feed() — insert/update/delete sync matched by external_uid + feed_id
+- [x] Hourly cron with per-feed configurable interval (1-24h)
+- [x] Sync Now, Pause/Resume, Delete actions with AJAX
+- [x] Imported events read-only with "Detach from Feed" option
+- [x] Page builder Upcoming Events widget handles external URLs
+
+### Completed Previous Session (v0.40d — 2026-03-21)
 
 **Leadership & Committees — Member Search:**
 - [x] Server-side member search in officer and committee assignment forms — no more 2,500-name dropdown
@@ -252,7 +288,7 @@ See `Docs/KNOWN-ISSUES.md` for the full list (43 items tracked, 41 fixed, 2 defe
 
 **Deferred:**
 - [ ] jQuery → vanilla JS rewrite (contact form widget, album edit, page builder admin) — substantial effort, low user impact
-- [ ] Server path exposure in 5 import flows — admin-only, nonce-protected, low risk
+- [x] Server path exposure in 5 import flows — FIXED: hidden fields now store basename only, readback validates with realpath + directory containment check
 
 **i18n:**
 - [x] Comprehensive i18n pass (v0.38d): ~500+ strings wrapped across 4 agent passes, text domain appears 2,564+ times, estimated ~95% coverage
@@ -291,7 +327,8 @@ See `Docs/KNOWN-ISSUES.md` for the full list (43 items tracked, 41 fixed, 2 defe
 - [x] Time slots: individual capacity limits per slot — already implemented (`sp_slot_get_remaining_capacity()`, enforced in registration AJAX)
 - [x] Waitlist: auto-promotion when cancellation occurs — already implemented (`sp_promote_waitlist()` called from cancel handler)
 - [x] Payment tracking: fee amounts and payment status per registration — already implemented (fee_amount, payment_status, payment_method, payment_date columns + Stripe flow)
-- [ ] Calendar subscription feed: iCal/webcal URL that calendar apps (Google Calendar, Apple Calendar, Outlook) can subscribe to and auto-update. Lets members stay current on society events without manually downloading .ics files. Public events feed at minimum; optionally a members-only feed with registration-gated events.
+- [x] Calendar subscription feed: iCal/webcal URLs for Google Calendar, Apple Calendar, Outlook. Public + token-authenticated members-only feeds. Subscribe UI on events listing, calendar, and detail pages. 1-hour transient cache, invalidated on event changes.
+- [x] External events: manual external_url field + automatic iCal feed import. External Calendars admin page, pure PHP iCal parser, hourly cron sync, visual indicators on calendar/listing/detail.
 - [ ] Calendar bug: current month renders full-width, other months render narrower — same HTML/CSS from server, likely browser rendering/caching. Needs DevTools inspection.
 - [x] Add to calendar: .ics download on event detail page (key details section) and My Account upcoming events. RFC 5545 compliant, handles timed + all-day events, UTC conversion, line folding.
 - [x] Event change notifications: already implemented — save handler detects date/time/location/cancellation changes, `sp_send_event_update_emails()` and `sp_send_event_cancellation_emails()` send HTML emails to all registrants

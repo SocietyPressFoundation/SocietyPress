@@ -15439,6 +15439,7 @@ function sp_sanitize_settings( array $input ): array {
                                                    ? (int) $input['events_per_page'] : 12,
         'events_calendar_start_day'   => fn() => in_array( (int) ( $input['events_calendar_start_day'] ?? 0 ), [ 0, 1 ], true )
                                                    ? (int) $input['events_calendar_start_day'] : 0,
+        'events_ical_feed_enabled'    => fn() => ! empty( $input['events_ical_feed_enabled'] ) ? 1 : 0,
         'events_reminder_1_day'       => fn() => ! empty( $input['events_reminder_1_day'] ) ? 1 : 0,
         'events_reminder_3_days'      => fn() => ! empty( $input['events_reminder_3_days'] ) ? 1 : 0,
         'events_reminder_1_week'      => fn() => ! empty( $input['events_reminder_1_week'] ) ? 1 : 0,
@@ -15553,12 +15554,13 @@ function sp_sanitize_settings( array $input ): array {
         $page_keys = array_merge( $page_keys, [
             'events_default_visibility', 'events_default_registration',
             'events_guest_registration', 'events_per_page',
-            'events_calendar_start_day', 'events_reminder_1_day',
-            'events_reminder_3_days', 'events_reminder_1_week',
-            'events_confirmation_subject', 'events_reminder_subject',
-            'stripe_test_mode', 'stripe_test_publishable_key',
-            'stripe_test_secret_key', 'stripe_live_publishable_key',
-            'stripe_live_secret_key', 'stripe_currency',
+            'events_calendar_start_day', 'events_ical_feed_enabled',
+            'events_reminder_1_day', 'events_reminder_3_days',
+            'events_reminder_1_week', 'events_confirmation_subject',
+            'events_reminder_subject', 'stripe_test_mode',
+            'stripe_test_publishable_key', 'stripe_test_secret_key',
+            'stripe_live_publishable_key', 'stripe_live_secret_key',
+            'stripe_currency',
         ]);
     }
 
@@ -27515,6 +27517,10 @@ add_action( 'admin_init', function () {
 
         sp_audit( 'event_deleted', "Event deleted: " . ( $del_title ?: "#{$event_id}" ), 'event', $event_id );
 
+        // Invalidate iCal feed caches so subscription feeds reflect the deletion
+        delete_transient( 'sp_ical_feed_public' );
+        delete_transient( 'sp_ical_feed_members' );
+
         wp_redirect( admin_url( 'admin.php?page=sp-events&deleted=1' ) );
         exit;
     }
@@ -27548,6 +27554,10 @@ add_action( 'admin_init', function () {
 
             sp_audit( 'event_deleted', 'Event deleted: ' . ( $titles_map[ $event_id ] ?? "#{$event_id}" ), 'event', $event_id );
         }
+
+        // Invalidate iCal feed caches so subscription feeds reflect the deletions
+        delete_transient( 'sp_ical_feed_public' );
+        delete_transient( 'sp_ical_feed_members' );
 
         wp_redirect( admin_url( 'admin.php?page=sp-events&deleted=' . count( $ids ) ) );
         exit;
@@ -27619,6 +27629,10 @@ add_action( 'admin_init', function () {
             [ '%s' ],
             [ '%d' ]
         );
+
+        // Invalidate iCal feed caches — cancelled events are excluded from feeds
+        delete_transient( 'sp_ical_feed_public' );
+        delete_transient( 'sp_ical_feed_members' );
 
         wp_redirect( admin_url( 'admin.php?page=sp-events&cancelled=1' ) );
         exit;
@@ -27891,6 +27905,12 @@ add_action( 'admin_init', function () {
     } else {
         sp_audit( 'event_created', "Event created: {$event_title}", 'event', $event_id );
     }
+
+    // Invalidate iCal feed caches so subscription feeds reflect the change
+    // WHY: Without this, calendar apps would get stale data for up to 1 hour
+    //      after an event is created or modified.
+    delete_transient( 'sp_ical_feed_public' );
+    delete_transient( 'sp_ical_feed_members' );
 
     wp_redirect( admin_url( 'admin.php?page=sp-events&saved=1' ) );
     exit;
@@ -30018,6 +30038,29 @@ add_action( 'admin_init', function () {
         'sp_events_section'
     );
 
+    // --- Calendar Subscription Feed ---
+    // WHY: Some societies may want to disable the public iCal feed if they
+    //      don't want their event schedule syndicated or scraped. Enabled by
+    //      default because most societies will benefit from it.
+    add_settings_field(
+        'events_ical_feed_enabled',
+        __( 'Calendar Subscription Feed', 'societypress' ),
+        function () {
+            $settings = get_option( 'societypress_settings', [] );
+            $current  = $settings['events_ical_feed_enabled'] ?? 1;
+            ?>
+            <label>
+                <input type="checkbox" name="societypress_settings[events_ical_feed_enabled]" value="1"
+                    <?php checked( $current, 1 ); ?>>
+                <?php esc_html_e( 'Enable calendar subscription feed', 'societypress' ); ?>
+            </label>
+            <p class="description"><?php esc_html_e( 'Allow visitors and members to subscribe to your events calendar in Google Calendar, Apple Calendar, Outlook, and other apps.', 'societypress' ); ?></p>
+            <?php
+        },
+        'sp-settings-events',
+        'sp_events_section'
+    );
+
     // --- Reminder Timing ---
     add_settings_field(
         'events_reminders',
@@ -31236,6 +31279,10 @@ add_filter( 'theme_page_templates', function ( $templates ) {
  */
 add_filter( 'query_vars', function ( $vars ) {
     $vars[] = 'sp_event';
+    // WHY: sp_ical_feed is used by the calendar subscription feed handler.
+    //      Without registering it, WordPress strips it from the URL and the
+    //      feed handler never fires.
+    $vars[] = 'sp_ical_feed';
     return $vars;
 });
 
@@ -31365,7 +31412,13 @@ add_filter( 'template_include', function ( $template ) {
             echo '<a href="' . esc_url( $base_url ) . '" style="font-size:14px; color:#666; text-decoration:none;">'
                  . esc_html__( 'Clear', 'societypress' ) . '</a>';
         }
+        // Add subscribe dropdown inline with the filter form
+        sp_render_subscribe_dropdown( 'calendar' );
+
         echo '</form>';
+    } else {
+        // No categories, but still show the subscribe button
+        sp_render_subscribe_dropdown( 'calendar' );
     }
 
     // Extra args to preserve in calendar nav links
@@ -31598,6 +31651,260 @@ function sp_render_calendar_grid( int $category_id = 0, string $base_url = '', a
 
 
 // ============================================================================
+// EVENTS — SUBSCRIBE TO CALENDAR UI (shared renderer)
+// ============================================================================
+
+/**
+ * Render the "Subscribe to Calendar" dropdown button.
+ *
+ * WHY: This widget appears on the events listing, calendar page, and event
+ *      detail pages. Rather than duplicating the HTML in three places, we
+ *      centralize it here. The dropdown shows a webcal:// one-click subscribe
+ *      link, a copyable URL for Google Calendar (which doesn't support webcal),
+ *      and — if the user is logged in — a members-only feed URL that includes
+ *      their personal token.
+ *
+ * @param string $context   Where this is being rendered: 'listing', 'calendar', or 'detail'.
+ *                          Controls minor layout variations.
+ */
+function sp_render_subscribe_dropdown( string $context = 'listing' ): void {
+    $settings = get_option( 'societypress_settings', [] );
+
+    // Don't render anything if the feed is disabled (defaults to enabled)
+    if ( empty( $settings['events_ical_feed_enabled'] ?? 1 ) ) return;
+
+    // Output shared CSS/JS once, even if this function is called multiple times
+    // WHY: This function can appear on the events listing, calendar page, and
+    //      event detail page. Using a static flag prevents duplicate style/script
+    //      blocks when multiple instances exist on the same page.
+    static $assets_output = false;
+    if ( ! $assets_output ) {
+        $assets_output = true;
+        add_action( 'wp_footer', 'sp_ical_subscribe_scripts', 99 );
+    }
+
+    // Build the public feed URLs
+    $public_url    = home_url( '?sp_ical_feed=public' );
+    $webcal_url    = str_replace( [ 'https://', 'http://' ], 'webcal://', $public_url );
+    $members_url   = '';
+    $members_webcal = '';
+    $nonce         = '';
+
+    // If the user is logged in, build their personalized members-only feed URL
+    if ( is_user_logged_in() ) {
+        $token          = sp_get_or_create_ical_token( get_current_user_id() );
+        $members_url    = home_url( '?sp_ical_feed=' . $token );
+        $members_webcal = str_replace( [ 'https://', 'http://' ], 'webcal://', $members_url );
+        $nonce          = wp_create_nonce( 'sp_ical_token' );
+    }
+
+    // Unique ID suffix so multiple instances on one page don't clash
+    $uid = 'sp-ical-' . $context;
+
+    ?>
+    <div class="sp-ical-subscribe-wrap" id="<?php echo esc_attr( $uid ); ?>">
+        <button type="button" class="sp-ical-subscribe-btn" aria-expanded="false"
+                aria-controls="<?php echo esc_attr( $uid ); ?>-dropdown">
+            <span class="sp-ical-icon">&#128197;</span>
+            <?php esc_html_e( 'Subscribe', 'societypress' ); ?>
+            <span class="sp-ical-caret">&#9660;</span>
+        </button>
+
+        <div class="sp-ical-dropdown" id="<?php echo esc_attr( $uid ); ?>-dropdown" style="display:none;">
+            <!-- Public feed -->
+            <div class="sp-ical-section">
+                <div class="sp-ical-section-label"><?php esc_html_e( 'Public Events', 'societypress' ); ?></div>
+                <a href="<?php echo esc_url( $webcal_url ); ?>" class="sp-ical-action-link">
+                    <?php esc_html_e( 'Subscribe in Calendar App', 'societypress' ); ?>
+                </a>
+                <div class="sp-ical-copy-row">
+                    <input type="text" readonly value="<?php echo esc_url( $public_url ); ?>"
+                           class="sp-ical-url-input" aria-label="<?php esc_attr_e( 'Public calendar feed URL', 'societypress' ); ?>">
+                    <button type="button" class="sp-ical-copy-btn" data-url="<?php echo esc_url( $public_url ); ?>">
+                        <?php esc_html_e( 'Copy', 'societypress' ); ?>
+                    </button>
+                </div>
+                <div class="sp-ical-hint"><?php esc_html_e( 'For Google Calendar, copy the URL and paste it under "Other calendars > From URL."', 'societypress' ); ?></div>
+            </div>
+
+            <?php if ( $members_url ) : ?>
+            <!-- Members-only feed — only shown to logged-in users -->
+            <div class="sp-ical-section sp-ical-members-section">
+                <div class="sp-ical-section-label"><?php esc_html_e( 'All Events (Including Members-Only)', 'societypress' ); ?></div>
+                <a href="<?php echo esc_url( $members_webcal ); ?>" class="sp-ical-action-link">
+                    <?php esc_html_e( 'Subscribe in Calendar App', 'societypress' ); ?>
+                </a>
+                <div class="sp-ical-copy-row">
+                    <input type="text" readonly value="<?php echo esc_url( $members_url ); ?>"
+                           class="sp-ical-url-input sp-ical-members-url"
+                           aria-label="<?php esc_attr_e( 'Members-only calendar feed URL', 'societypress' ); ?>">
+                    <button type="button" class="sp-ical-copy-btn" data-url="<?php echo esc_url( $members_url ); ?>">
+                        <?php esc_html_e( 'Copy', 'societypress' ); ?>
+                    </button>
+                </div>
+                <div class="sp-ical-hint"><?php esc_html_e( 'This URL is personal to you. Do not share it.', 'societypress' ); ?></div>
+                <button type="button" class="sp-ical-regen-btn"
+                        data-nonce="<?php echo esc_attr( $nonce ); ?>"
+                        data-ajax-url="<?php echo esc_url( admin_url( 'admin-ajax.php' ) ); ?>">
+                    <?php esc_html_e( 'Regenerate URL', 'societypress' ); ?>
+                </button>
+            </div>
+            <?php endif; ?>
+        </div>
+    </div>
+    <?php
+}
+
+
+// ============================================================================
+// EVENTS — SUBSCRIBE UI: FOOTER SCRIPTS
+// ============================================================================
+
+/**
+ * Output vanilla JS for the subscribe dropdown behavior.
+ *
+ * WHY: This runs in wp_footer so all the dropdown HTML has been rendered.
+ *      Handles toggle open/close, click-away, copy-to-clipboard with feedback,
+ *      and AJAX token regeneration for member feeds.
+ */
+function sp_ical_subscribe_scripts(): void {
+    ?>
+    <script id="sp-ical-subscribe-js">
+    (function() {
+        'use strict';
+
+        // ---- Toggle dropdown open/close ----
+        // WHY: Each subscribe button toggles its own dropdown. We use event
+        //      delegation on the document so dynamically-added buttons work too.
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest('.sp-ical-subscribe-btn');
+            if (btn) {
+                e.preventDefault();
+                e.stopPropagation();
+                var wrap     = btn.closest('.sp-ical-subscribe-wrap');
+                var dropdown = wrap.querySelector('.sp-ical-dropdown');
+                var isOpen   = dropdown.style.display !== 'none';
+
+                // Close all other open dropdowns first
+                document.querySelectorAll('.sp-ical-dropdown').forEach(function(dd) {
+                    dd.style.display = 'none';
+                    var ddBtn = dd.closest('.sp-ical-subscribe-wrap').querySelector('.sp-ical-subscribe-btn');
+                    if (ddBtn) ddBtn.setAttribute('aria-expanded', 'false');
+                });
+
+                if (!isOpen) {
+                    dropdown.style.display = 'block';
+                    btn.setAttribute('aria-expanded', 'true');
+                }
+                return;
+            }
+
+            // ---- Copy URL to clipboard ----
+            var copyBtn = e.target.closest('.sp-ical-copy-btn');
+            if (copyBtn) {
+                e.preventDefault();
+                var url = copyBtn.getAttribute('data-url');
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(url).then(function() {
+                        spIcalShowCopied(copyBtn);
+                    });
+                } else {
+                    // Fallback for older browsers — use a temporary textarea
+                    var ta = document.createElement('textarea');
+                    ta.value = url;
+                    ta.style.position = 'fixed';
+                    ta.style.opacity = '0';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(ta);
+                    spIcalShowCopied(copyBtn);
+                }
+                return;
+            }
+
+            // ---- Regenerate token ----
+            var regenBtn = e.target.closest('.sp-ical-regen-btn');
+            if (regenBtn) {
+                e.preventDefault();
+                var nonce   = regenBtn.getAttribute('data-nonce');
+                var ajaxUrl = regenBtn.getAttribute('data-ajax-url');
+                var section = regenBtn.closest('.sp-ical-members-section');
+
+                regenBtn.disabled = true;
+                regenBtn.textContent = '<?php echo esc_js( __( 'Regenerating...', 'societypress' ) ); ?>';
+
+                var fd = new FormData();
+                fd.append('action', 'sp_regenerate_ical_token');
+                fd.append('nonce', nonce);
+
+                fetch(ajaxUrl, { method: 'POST', body: fd, credentials: 'same-origin' })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.success) {
+                            // Update ALL member URL inputs on the page (there may be
+                            // multiple subscribe dropdowns)
+                            document.querySelectorAll('.sp-ical-members-url').forEach(function(input) {
+                                input.value = data.data.url;
+                            });
+                            // Update the copy button data-url attribute
+                            if (section) {
+                                var copyBtnInner = section.querySelector('.sp-ical-copy-btn');
+                                if (copyBtnInner) copyBtnInner.setAttribute('data-url', data.data.url);
+                            }
+                            // Update webcal link
+                            if (section) {
+                                var webcalLink = section.querySelector('.sp-ical-action-link');
+                                if (webcalLink) {
+                                    webcalLink.href = data.data.url.replace(/^https?:\/\//, 'webcal://');
+                                }
+                            }
+                            regenBtn.textContent = '<?php echo esc_js( __( 'Done! URL updated.', 'societypress' ) ); ?>';
+                            setTimeout(function() {
+                                regenBtn.textContent = '<?php echo esc_js( __( 'Regenerate URL', 'societypress' ) ); ?>';
+                                regenBtn.disabled = false;
+                            }, 3000);
+                        } else {
+                            regenBtn.textContent = '<?php echo esc_js( __( 'Error — try again', 'societypress' ) ); ?>';
+                            regenBtn.disabled = false;
+                        }
+                    })
+                    .catch(function() {
+                        regenBtn.textContent = '<?php echo esc_js( __( 'Error — try again', 'societypress' ) ); ?>';
+                        regenBtn.disabled = false;
+                    });
+                return;
+            }
+
+            // ---- Click-away to close all dropdowns ----
+            // WHY: If the click wasn't on a subscribe button, copy button, or regen
+            //      button, and it wasn't inside a dropdown, close everything.
+            if (!e.target.closest('.sp-ical-dropdown')) {
+                document.querySelectorAll('.sp-ical-dropdown').forEach(function(dd) {
+                    dd.style.display = 'none';
+                    var ddBtn = dd.closest('.sp-ical-subscribe-wrap').querySelector('.sp-ical-subscribe-btn');
+                    if (ddBtn) ddBtn.setAttribute('aria-expanded', 'false');
+                });
+            }
+        });
+
+        // Show "Copied!" feedback on a copy button, then revert
+        function spIcalShowCopied(btn) {
+            var original = btn.textContent;
+            btn.textContent = '<?php echo esc_js( __( 'Copied!', 'societypress' ) ); ?>';
+            btn.classList.add('sp-ical-copied');
+            setTimeout(function() {
+                btn.textContent = original;
+                btn.classList.remove('sp-ical-copied');
+            }, 2000);
+        }
+    })();
+    </script>
+    <?php
+}
+
+
+// ============================================================================
 // EVENTS — FRONTEND LISTING (List View + Calendar View)
 // ============================================================================
 
@@ -31785,16 +32092,19 @@ function sp_render_events_listing( array $settings ): void {
                 <?php endif; ?>
             </div>
 
-            <!-- View Toggle: List / Calendar -->
-            <div class="sp-events-view-toggle">
-                <a href="<?php echo esc_url( add_query_arg( array_merge( $page_args, [ 'sp_view' => 'list' ] ), $base_url ) ); ?>"
-                   class="sp-view-btn <?php echo $view === 'list' ? 'sp-view-active' : ''; ?>">
-                    <span class="sp-view-icon">&#9776;</span> <?php esc_html_e( 'List', 'societypress' ); ?>
-                </a>
-                <a href="<?php echo esc_url( add_query_arg( array_merge( $page_args, [ 'sp_view' => 'calendar' ] ), $base_url ) ); ?>"
-                   class="sp-view-btn <?php echo $view === 'calendar' ? 'sp-view-active' : ''; ?>">
-                    <span class="sp-view-icon">&#9638;</span> <?php esc_html_e( 'Calendar', 'societypress' ); ?>
-                </a>
+            <!-- View Toggle: List / Calendar + Subscribe -->
+            <div class="sp-events-toolbar">
+                <div class="sp-events-view-toggle">
+                    <a href="<?php echo esc_url( add_query_arg( array_merge( $page_args, [ 'sp_view' => 'list' ] ), $base_url ) ); ?>"
+                       class="sp-view-btn <?php echo $view === 'list' ? 'sp-view-active' : ''; ?>">
+                        <span class="sp-view-icon">&#9776;</span> <?php esc_html_e( 'List', 'societypress' ); ?>
+                    </a>
+                    <a href="<?php echo esc_url( add_query_arg( array_merge( $page_args, [ 'sp_view' => 'calendar' ] ), $base_url ) ); ?>"
+                       class="sp-view-btn <?php echo $view === 'calendar' ? 'sp-view-active' : ''; ?>">
+                        <span class="sp-view-icon">&#9638;</span> <?php esc_html_e( 'Calendar', 'societypress' ); ?>
+                    </a>
+                </div>
+                <?php sp_render_subscribe_dropdown( 'listing' ); ?>
             </div>
         </form>
     </div>
@@ -32280,6 +32590,17 @@ function sp_render_event_detail( string $slug, array $settings ): void {
                        title="<?php esc_attr_e( 'Download .ics file to add this event to your calendar', 'societypress' ); ?>">
                         <?php esc_html_e( 'Add to Calendar', 'societypress' ); ?>
                     </a>
+                    <?php
+                    // "Subscribe to All Events" link — opens the subscribe dropdown
+                    // WHY: After adding a single event, some members want to subscribe
+                    //      to ALL events so they auto-sync. We surface the option here
+                    //      while they're in a "calendar management" mindset.
+                    $feed_settings = get_option( 'societypress_settings', [] );
+                    if ( ! empty( $feed_settings['events_ical_feed_enabled'] ?? 1 ) ) :
+                    ?>
+                        <span class="sp-detail-separator">&middot;</span>
+                        <?php sp_render_subscribe_dropdown( 'detail' ); ?>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -33214,6 +33535,27 @@ function sp_events_frontend_styles(): void {
         }
         .sp-add-to-cal-link:hover { text-decoration: underline; }
 
+        /* Separator between "Add to Calendar" and "Subscribe" */
+        .sp-detail-separator {
+            margin: 0 8px;
+            color: #999;
+            font-size: 14px;
+        }
+        /* On the detail page, the subscribe dropdown should align inline */
+        .sp-event-add-to-cal .sp-ical-subscribe-wrap {
+            display: inline-block;
+            vertical-align: middle;
+        }
+        .sp-event-add-to-cal .sp-ical-subscribe-btn {
+            padding: 4px 12px;
+            font-size: 13px;
+            border-width: 1px;
+        }
+        .sp-event-add-to-cal .sp-ical-dropdown {
+            left: 0;
+            right: auto;
+        }
+
         /* Description */
         .sp-event-description {
             margin-bottom: 24px;
@@ -33580,9 +33922,156 @@ function sp_events_frontend_styles(): void {
         }
 
         /* ================================================================ */
+        /* TOOLBAR — View toggle + Subscribe button alignment                */
+        /* ================================================================ */
+        .sp-events-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        /* ================================================================ */
+        /* SUBSCRIBE TO CALENDAR — Dropdown UI                               */
+        /* ================================================================ */
+        .sp-ical-subscribe-wrap {
+            position: relative;
+            display: inline-block;
+        }
+        .sp-ical-subscribe-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--sp-color-primary, #1e3a5f);
+            background: transparent;
+            border: 2px solid var(--sp-color-primary, #1e3a5f);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+            white-space: nowrap;
+        }
+        .sp-ical-subscribe-btn:hover {
+            background: var(--sp-color-primary, #1e3a5f);
+            color: #fff;
+        }
+        .sp-ical-icon { font-size: 16px; }
+        .sp-ical-caret { font-size: 10px; transition: transform 0.2s; }
+        .sp-ical-subscribe-btn[aria-expanded="true"] .sp-ical-caret {
+            transform: rotate(180deg);
+        }
+
+        .sp-ical-dropdown {
+            position: absolute;
+            right: 0;
+            top: calc(100% + 6px);
+            width: 360px;
+            max-width: 90vw;
+            background: #fff;
+            border: 1px solid var(--sp-color-border, #e5e7eb);
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+            padding: 16px;
+            z-index: 100;
+        }
+        .sp-ical-section {
+            margin-bottom: 16px;
+        }
+        .sp-ical-section:last-child { margin-bottom: 0; }
+        .sp-ical-members-section {
+            padding-top: 16px;
+            border-top: 1px solid var(--sp-color-border, #e5e7eb);
+        }
+        .sp-ical-section-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--sp-color-text, #1d2327);
+            margin-bottom: 8px;
+        }
+        .sp-ical-action-link {
+            display: inline-block;
+            font-size: 14px;
+            color: var(--sp-color-primary, #1e3a5f);
+            text-decoration: none;
+            margin-bottom: 8px;
+        }
+        .sp-ical-action-link:hover {
+            text-decoration: underline;
+        }
+        .sp-ical-copy-row {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 6px;
+        }
+        .sp-ical-url-input {
+            flex: 1;
+            padding: 6px 8px;
+            font-size: 12px;
+            border: 1px solid var(--sp-color-border, #ddd);
+            border-radius: 4px;
+            background: #f9f9f9;
+            color: #666;
+            min-width: 0;
+        }
+        .sp-ical-copy-btn {
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 500;
+            color: #fff;
+            background: var(--sp-color-primary, #1e3a5f);
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.2s;
+        }
+        .sp-ical-copy-btn:hover {
+            background: var(--sp-color-primary-hover, #2c5282);
+        }
+        .sp-ical-copy-btn.sp-ical-copied {
+            background: #00a32a;
+        }
+        .sp-ical-hint {
+            font-size: 11px;
+            color: #888;
+            line-height: 1.4;
+            margin-bottom: 6px;
+        }
+        .sp-ical-regen-btn {
+            display: inline-block;
+            font-size: 12px;
+            color: #d63638;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 2px 0;
+            text-decoration: underline;
+        }
+        .sp-ical-regen-btn:hover { color: #b71c1c; }
+
+        /* ================================================================ */
         /* RESPONSIVE — Mobile layout                                        */
         /* ================================================================ */
         @media screen and (max-width: 768px) {
+            .sp-events-toolbar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .sp-ical-subscribe-wrap {
+                width: 100%;
+            }
+            .sp-ical-subscribe-btn {
+                width: 100%;
+                justify-content: center;
+            }
+            .sp-ical-dropdown {
+                right: auto;
+                left: 0;
+                width: 100%;
+            }
             .sp-events-filter-row {
                 flex-direction: column;
             }
@@ -38058,6 +38547,125 @@ function sp_events_calendar_styles(): void {
             .sp-cal-header { padding: 6px 2px; font-size: 11px; }
             .sp-cal-has-events { cursor: pointer; }
         }
+
+        /* ================================================================ */
+        /* SUBSCRIBE TO CALENDAR — Dropdown UI (for standalone calendar)     */
+        /* WHY: Same styles as in sp_events_frontend_styles(), duplicated    */
+        /*      here because the standalone calendar page uses its own       */
+        /*      separate stylesheet and doesn't load the events listing CSS. */
+        /* ================================================================ */
+        .sp-ical-subscribe-wrap {
+            position: relative;
+            display: inline-block;
+        }
+        .sp-ical-subscribe-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--sp-color-primary, #1e3a5f);
+            background: transparent;
+            border: 2px solid var(--sp-color-primary, #1e3a5f);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+            white-space: nowrap;
+        }
+        .sp-ical-subscribe-btn:hover {
+            background: var(--sp-color-primary, #1e3a5f);
+            color: #fff;
+        }
+        .sp-ical-icon { font-size: 16px; }
+        .sp-ical-caret { font-size: 10px; transition: transform 0.2s; }
+        .sp-ical-subscribe-btn[aria-expanded="true"] .sp-ical-caret {
+            transform: rotate(180deg);
+        }
+        .sp-ical-dropdown {
+            position: absolute;
+            right: 0;
+            top: calc(100% + 6px);
+            width: 360px;
+            max-width: 90vw;
+            background: #fff;
+            border: 1px solid var(--sp-color-border, #e5e7eb);
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+            padding: 16px;
+            z-index: 100;
+        }
+        .sp-ical-section { margin-bottom: 16px; }
+        .sp-ical-section:last-child { margin-bottom: 0; }
+        .sp-ical-members-section {
+            padding-top: 16px;
+            border-top: 1px solid var(--sp-color-border, #e5e7eb);
+        }
+        .sp-ical-section-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--sp-color-text, #1d2327);
+            margin-bottom: 8px;
+        }
+        .sp-ical-action-link {
+            display: inline-block;
+            font-size: 14px;
+            color: var(--sp-color-primary, #1e3a5f);
+            text-decoration: none;
+            margin-bottom: 8px;
+        }
+        .sp-ical-action-link:hover { text-decoration: underline; }
+        .sp-ical-copy-row {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 6px;
+        }
+        .sp-ical-url-input {
+            flex: 1;
+            padding: 6px 8px;
+            font-size: 12px;
+            border: 1px solid var(--sp-color-border, #ddd);
+            border-radius: 4px;
+            background: #f9f9f9;
+            color: #666;
+            min-width: 0;
+        }
+        .sp-ical-copy-btn {
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 500;
+            color: #fff;
+            background: var(--sp-color-primary, #1e3a5f);
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.2s;
+        }
+        .sp-ical-copy-btn:hover { background: var(--sp-color-primary-hover, #2c5282); }
+        .sp-ical-copy-btn.sp-ical-copied { background: #00a32a; }
+        .sp-ical-hint {
+            font-size: 11px;
+            color: #888;
+            line-height: 1.4;
+            margin-bottom: 6px;
+        }
+        .sp-ical-regen-btn {
+            display: inline-block;
+            font-size: 12px;
+            color: #d63638;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 2px 0;
+            text-decoration: underline;
+        }
+        .sp-ical-regen-btn:hover { color: #b71c1c; }
+        @media (max-width: 768px) {
+            .sp-ical-subscribe-wrap { width: 100%; }
+            .sp-ical-subscribe-btn { width: 100%; justify-content: center; }
+            .sp-ical-dropdown { right: auto; left: 0; width: 100%; }
+        }
     </style>
     <?php
 }
@@ -38400,6 +39008,164 @@ add_action( 'template_redirect', function () {
 
 
 // ============================================================================
+// EVENTS — iCAL HELPERS (shared between .ics download + subscription feed)
+// ============================================================================
+//
+// WHY: Both the single-event .ics download and the calendar subscription feed
+//      need to produce identical, RFC 5545-compliant output. Extracting these
+//      helpers into standalone functions avoids duplication and ensures any
+//      future fix to iCal formatting applies everywhere at once.
+// ============================================================================
+
+/**
+ * RFC 5545 line folding — lines must not exceed 75 octets.
+ *
+ * WHY: Some calendar apps (notably Outlook) strictly enforce this limit.
+ *      We fold long lines by inserting CRLF + space at the 75-byte boundary.
+ *      mb_strlen/mb_substr with UTF-8 encoding prevent splitting multibyte
+ *      characters (e.g., accented names, CJK) mid-byte, which would produce
+ *      invalid UTF-8 and corrupt text in calendar apps.
+ *
+ * @param string $line A single iCal content line (property + value).
+ * @return string The line folded to comply with the 75-octet rule.
+ */
+function sp_ical_fold_line( string $line ): string {
+    if ( mb_strlen( $line, 'UTF-8' ) <= 75 ) return $line;
+    $folded = '';
+    while ( mb_strlen( $line, 'UTF-8' ) > 75 ) {
+        if ( $folded === '' ) {
+            $folded .= mb_substr( $line, 0, 75, 'UTF-8' );
+            $line    = mb_substr( $line, 75, null, 'UTF-8' );
+        } else {
+            // Continuation lines start with a space (counts toward the 75)
+            $folded .= "\r\n " . mb_substr( $line, 0, 74, 'UTF-8' );
+            $line    = mb_substr( $line, 74, null, 'UTF-8' );
+        }
+    }
+    if ( $line !== '' ) {
+        $folded .= "\r\n " . $line;
+    }
+    return $folded;
+}
+
+/**
+ * Escape iCal text values per RFC 5545 §3.3.11.
+ *
+ * WHY: Semicolons, commas, and backslashes have special meaning in iCal
+ *      property values. Without escaping, an event titled "Meet & Greet,
+ *      January 5" would break parsing in strict calendar clients.
+ *
+ * @param string $text Raw text to escape.
+ * @return string Text safe for use in iCal property values.
+ */
+function sp_ical_escape_text( string $text ): string {
+    $text = str_replace( '\\', '\\\\', $text );
+    $text = str_replace( ';', '\\;', $text );
+    $text = str_replace( ',', '\\,', $text );
+    return $text;
+}
+
+/**
+ * Build DTSTART and DTEND lines for an event.
+ *
+ * WHY: If the event has a start_time, we create a timed event in UTC.
+ *      If no time is set, it's treated as an all-day event (DATE format).
+ *      All-day DTEND is the day AFTER the event (exclusive end per RFC 5545).
+ *
+ * @param object $event Event row from the database.
+ * @return array Associative array with 'dtstart' and 'dtend' iCal lines.
+ */
+function sp_ical_build_dt_lines( object $event ): array {
+    $event_date = $event->event_date; // YYYY-MM-DD
+    $tz         = wp_timezone();
+
+    if ( ! empty( $event->start_time ) ) {
+        // Timed event — convert site-local time to UTC for the .ics
+        $start_dt = new DateTime( $event_date . ' ' . $event->start_time, $tz );
+        $start_dt->setTimezone( new DateTimeZone( 'UTC' ) );
+
+        if ( ! empty( $event->end_time ) ) {
+            $end_dt = new DateTime( $event_date . ' ' . $event->end_time, $tz );
+            $end_dt->setTimezone( new DateTimeZone( 'UTC' ) );
+        } else {
+            // No end time — default to 1 hour after start
+            $end_dt = clone $start_dt;
+            $end_dt->modify( '+1 hour' );
+        }
+
+        return [
+            'dtstart' => 'DTSTART:' . $start_dt->format( 'Ymd\THis\Z' ),
+            'dtend'   => 'DTEND:' . $end_dt->format( 'Ymd\THis\Z' ),
+        ];
+    }
+
+    // All-day event — use DATE format (no time component)
+    $date_val = str_replace( '-', '', $event_date );
+    $next_day = date( 'Ymd', strtotime( $event_date . ' +1 day' ) );
+
+    return [
+        'dtstart' => 'DTSTART;VALUE=DATE:' . $date_val,
+        'dtend'   => 'DTEND;VALUE=DATE:' . $next_day,
+    ];
+}
+
+/**
+ * Build a combined LOCATION string for an event.
+ *
+ * WHY: Calendar apps display a single location field. Combining venue name,
+ *      address, and virtual URL into one comma-separated string gives users
+ *      maximum context in their calendar app without needing to open the event.
+ *
+ * @param object $event Event row from the database.
+ * @return string Combined location string (may be empty).
+ */
+function sp_ical_build_location( object $event ): string {
+    $parts = [];
+    if ( ! empty( $event->location_name ) ) {
+        $parts[] = $event->location_name;
+    }
+    if ( ! empty( $event->location_address ) ) {
+        $parts[] = $event->location_address;
+    }
+    if ( $event->is_virtual && ! empty( $event->virtual_url ) ) {
+        $parts[] = $event->virtual_url;
+    }
+    return implode( ', ', $parts );
+}
+
+/**
+ * Build a plain-text DESCRIPTION for an event's iCal entry.
+ *
+ * WHY: iCal DESCRIPTION is plain text — HTML tags would render as literal
+ *      text in calendar apps. We strip tags, normalize line breaks, and
+ *      append the virtual meeting URL so members can join directly from
+ *      their calendar without navigating back to the website.
+ *
+ * @param object $event Event row from the database.
+ * @return string Plain-text description with iCal-escaped newlines.
+ */
+function sp_ical_build_description( object $event ): string {
+    $description = '';
+    if ( ! empty( $event->description ) ) {
+        $description = wp_strip_all_tags( $event->description );
+        // Normalize line breaks to \n, then escape for iCal
+        $description = str_replace( [ "\r\n", "\r" ], "\n", $description );
+        $description = str_replace( "\n", "\\n", $description );
+    }
+
+    // Add virtual meeting URL to description if available
+    if ( $event->is_virtual && ! empty( $event->virtual_url ) ) {
+        if ( $description ) {
+            $description .= "\\n\\n";
+        }
+        $description .= __( 'Join online:', 'societypress' ) . ' ' . $event->virtual_url;
+    }
+
+    return $description;
+}
+
+
+// ============================================================================
 // EVENTS — ADD TO CALENDAR (.ICS DOWNLOAD)
 // ============================================================================
 
@@ -38418,6 +39184,9 @@ add_action( 'template_redirect', function () {
  * - DESCRIPTION is plain text (HTML stripped), CRLF line breaks per spec
  * - LOCATION combines venue name + address for maximum calendar app compatibility
  * - Lines longer than 75 octets are folded per RFC 5545 §3.1
+ *
+ * Now uses the shared sp_ical_* helper functions defined above, so formatting
+ * stays in sync with the calendar subscription feed.
  */
 add_action( 'template_redirect', function () {
     if ( ! isset( $_GET['sp_ics'] ) ) return;
@@ -38440,112 +39209,18 @@ add_action( 'template_redirect', function () {
         wp_die( __( 'You must be logged in to download this event.', 'societypress' ), 403 );
     }
 
-    // Build DTSTART and DTEND
-    // WHY: If the event has a start_time, we create a timed event in UTC.
-    //      If no time is set, it's treated as an all-day event (DATE format).
-    $event_date = $event->event_date; // YYYY-MM-DD
-    $tz         = wp_timezone();
-
-    if ( ! empty( $event->start_time ) ) {
-        // Timed event — convert site-local time to UTC for the .ics
-        $start_dt = new DateTime( $event_date . ' ' . $event->start_time, $tz );
-        $start_dt->setTimezone( new DateTimeZone( 'UTC' ) );
-        $dtstart  = $start_dt->format( 'Ymd\THis\Z' );
-
-        if ( ! empty( $event->end_time ) ) {
-            $end_dt = new DateTime( $event_date . ' ' . $event->end_time, $tz );
-            $end_dt->setTimezone( new DateTimeZone( 'UTC' ) );
-            $dtend  = $end_dt->format( 'Ymd\THis\Z' );
-        } else {
-            // No end time — default to 1 hour after start
-            $end_dt = clone $start_dt;
-            $end_dt->modify( '+1 hour' );
-            $dtend  = $end_dt->format( 'Ymd\THis\Z' );
-        }
-
-        $dtstart_line = 'DTSTART:' . $dtstart;
-        $dtend_line   = 'DTEND:' . $dtend;
-    } else {
-        // All-day event — use DATE format (no time component)
-        $date_val     = str_replace( '-', '', $event_date );
-        $dtstart_line = 'DTSTART;VALUE=DATE:' . $date_val;
-        // All-day events: DTEND is the day AFTER (exclusive end per RFC 5545)
-        $next_day     = date( 'Ymd', strtotime( $event_date . ' +1 day' ) );
-        $dtend_line   = 'DTEND;VALUE=DATE:' . $next_day;
-    }
-
-    // Build LOCATION — combine venue name and address for maximum usefulness
-    $location_parts = [];
-    if ( ! empty( $event->location_name ) ) {
-        $location_parts[] = $event->location_name;
-    }
-    if ( ! empty( $event->location_address ) ) {
-        $location_parts[] = $event->location_address;
-    }
-    if ( $event->is_virtual && ! empty( $event->virtual_url ) ) {
-        $location_parts[] = $event->virtual_url;
-    }
-    $location = implode( ', ', $location_parts );
-
-    // Build DESCRIPTION — plain text, HTML stripped
-    $description = '';
-    if ( ! empty( $event->description ) ) {
-        $description = wp_strip_all_tags( $event->description );
-        // Normalize line breaks to \n, then escape for iCal
-        $description = str_replace( [ "\r\n", "\r" ], "\n", $description );
-        $description = str_replace( "\n", "\\n", $description );
-    }
-
-    // Add virtual meeting URL to description if available
-    if ( $event->is_virtual && ! empty( $event->virtual_url ) ) {
-        if ( $description ) {
-            $description .= "\\n\\n";
-        }
-        $description .= __( 'Join online:', 'societypress' ) . ' ' . $event->virtual_url;
-    }
+    // Build date/time, location, and description using shared helpers
+    $dt          = sp_ical_build_dt_lines( $event );
+    $location    = sp_ical_build_location( $event );
+    $description = sp_ical_build_description( $event );
 
     // Unique ID per event — required by RFC 5545
     // WHY: Calendar apps use UID to detect updates vs new events. Using the
     //      site URL + event ID guarantees uniqueness across installations.
-    $uid = 'sp-event-' . $event->id . '@' . wp_parse_url( home_url(), PHP_URL_HOST );
-
-    // Timestamp for DTSTAMP (when this .ics was generated, UTC)
+    $uid     = 'sp-event-' . $event->id . '@' . wp_parse_url( home_url(), PHP_URL_HOST );
     $dtstamp = gmdate( 'Ymd\THis\Z' );
 
-    // RFC 5545 line folding — lines must not exceed 75 octets
-    // WHY: Some calendar apps (notably Outlook) strictly enforce this limit.
-    //      We fold long lines by inserting CRLF + space at the 75-byte boundary.
-    // WHY: mb_strlen/mb_substr with UTF-8 encoding prevent splitting multibyte
-    //      characters (e.g., accented names, CJK) mid-byte, which would produce
-    //      invalid UTF-8 and corrupt text in calendar apps.
-    $ics_fold = function ( string $line ) : string {
-        if ( mb_strlen( $line, 'UTF-8' ) <= 75 ) return $line;
-        $folded = '';
-        while ( mb_strlen( $line, 'UTF-8' ) > 75 ) {
-            if ( $folded === '' ) {
-                $folded .= mb_substr( $line, 0, 75, 'UTF-8' );
-                $line    = mb_substr( $line, 75, null, 'UTF-8' );
-            } else {
-                // Continuation lines start with a space (counts toward the 75)
-                $folded .= "\r\n " . mb_substr( $line, 0, 74, 'UTF-8' );
-                $line    = mb_substr( $line, 74, null, 'UTF-8' );
-            }
-        }
-        if ( $line !== '' ) {
-            $folded .= "\r\n " . $line;
-        }
-        return $folded;
-    };
-
-    // Escape iCal text values per RFC 5545 §3.3.11
-    $ics_escape = function ( string $text ) : string {
-        $text = str_replace( '\\', '\\\\', $text );
-        $text = str_replace( ';', '\\;', $text );
-        $text = str_replace( ',', '\\,', $text );
-        return $text;
-    };
-
-    // Build the iCal content
+    // Build the iCal content using shared helpers
     $lines = [
         'BEGIN:VCALENDAR',
         'VERSION:2.0',
@@ -38553,18 +39228,18 @@ add_action( 'template_redirect', function () {
         'CALSCALE:GREGORIAN',
         'METHOD:PUBLISH',
         'BEGIN:VEVENT',
-        $ics_fold( 'UID:' . $uid ),
+        sp_ical_fold_line( 'UID:' . $uid ),
         'DTSTAMP:' . $dtstamp,
-        $ics_fold( $dtstart_line ),
-        $ics_fold( $dtend_line ),
-        $ics_fold( 'SUMMARY:' . $ics_escape( $event->title ) ),
+        sp_ical_fold_line( $dt['dtstart'] ),
+        sp_ical_fold_line( $dt['dtend'] ),
+        sp_ical_fold_line( 'SUMMARY:' . sp_ical_escape_text( $event->title ) ),
     ];
 
     if ( $location ) {
-        $lines[] = $ics_fold( 'LOCATION:' . $ics_escape( $location ) );
+        $lines[] = sp_ical_fold_line( 'LOCATION:' . sp_ical_escape_text( $location ) );
     }
     if ( $description ) {
-        $lines[] = $ics_fold( 'DESCRIPTION:' . $ics_escape( $description ) );
+        $lines[] = sp_ical_fold_line( 'DESCRIPTION:' . sp_ical_escape_text( $description ) );
     }
 
     // Add URL to the event detail page if we can build one
@@ -38578,7 +39253,7 @@ add_action( 'template_redirect', function () {
     );
     if ( $events_page_id ) {
         $event_url = add_query_arg( 'sp_event', $event->slug, get_permalink( $events_page_id ) );
-        $lines[]   = $ics_fold( 'URL:' . $event_url );
+        $lines[]   = sp_ical_fold_line( 'URL:' . $event_url );
     }
 
     $lines[] = 'END:VEVENT';
@@ -38598,6 +39273,243 @@ add_action( 'template_redirect', function () {
     header( 'Cache-Control: no-cache, no-store, must-revalidate' );
     echo $ics_content;
     exit;
+} );
+
+
+// ============================================================================
+// EVENTS — iCAL CALENDAR SUBSCRIPTION FEED
+// ============================================================================
+
+/**
+ * Serve an iCal feed that calendar apps (Google Calendar, Apple Calendar,
+ * Outlook) can subscribe to for automatic event updates.
+ *
+ * Two modes:
+ *   - Public: ?sp_ical_feed=public — only public-visibility events
+ *   - Members-only: ?sp_ical_feed=TOKEN — includes members-only events
+ *
+ * WHY: Unlike the single-event .ics download (which adds one event), a
+ *      subscription feed lets calendar apps poll this URL periodically and
+ *      automatically show new/changed/removed events. This is the standard
+ *      way calendar apps stay synced — Google Calendar, Apple Calendar, and
+ *      Outlook all support it natively.
+ *
+ * We cache the output as a transient for 1 hour and invalidate whenever
+ * events are created, updated, or deleted (see cache invalidation calls
+ * in the save/delete handlers).
+ *
+ * Priority 5 so this runs early on template_redirect, before template loading.
+ */
+add_action( 'template_redirect', function () {
+    if ( ! isset( $_GET['sp_ical_feed'] ) ) return;
+
+    $feed_param = sanitize_text_field( $_GET['sp_ical_feed'] );
+    if ( ! $feed_param ) return;
+
+    // Bail if the events module is disabled
+    if ( ! sp_module_enabled( 'events' ) ) return;
+
+    // Bail with 404 if the admin has turned off the iCal feed
+    // WHY: We default to enabled (1) so the feed works out of the box on new
+    //      installations before the admin has visited the Events settings page.
+    $settings = get_option( 'societypress_settings', [] );
+    if ( empty( $settings['events_ical_feed_enabled'] ?? 1 ) ) {
+        status_header( 404 );
+        exit;
+    }
+
+    global $wpdb;
+    $prefix             = $wpdb->prefix . 'sp_';
+    $include_members_only = false;
+    $transient_key      = 'sp_ical_feed_public';
+
+    if ( $feed_param !== 'public' ) {
+        // Authenticated feed — look up the token in user_meta.
+        // WHY: Calendar apps can't send WordPress auth cookies, so each member
+        //      gets an opaque token in their feed URL. We validate it here by
+        //      checking if any user has this token stored as sp_ical_token.
+        $users = get_users( [
+            'meta_key'   => 'sp_ical_token',
+            'meta_value' => $feed_param,
+            'number'     => 1,
+            'fields'     => 'ID',
+        ] );
+        if ( empty( $users ) ) {
+            status_header( 403 );
+            wp_die( esc_html__( 'Invalid calendar feed URL.', 'societypress' ) );
+        }
+        $include_members_only = true;
+        $transient_key        = 'sp_ical_feed_members';
+    }
+
+    // Check transient cache — avoid regenerating the feed on every poll
+    $cached = get_transient( $transient_key );
+    if ( $cached !== false ) {
+        header( 'Content-Type: text/calendar; charset=utf-8' );
+        header( 'Cache-Control: public, max-age=3600' );
+        echo $cached;
+        exit;
+    }
+
+    // Query events: next 12 months + past 30 days
+    // WHY: Past 30 days ensures recently-passed events still show in the
+    //      calendar (some members check "what was that event last week?").
+    //      12 months forward covers the typical planning horizon.
+    $date_start = wp_date( 'Y-m-d', strtotime( '-30 days' ) );
+    $date_end   = wp_date( 'Y-m-d', strtotime( '+12 months' ) );
+
+    $visibility_sql = $include_members_only
+        ? ""
+        : " AND e.visibility = 'public'";
+
+    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $visibility_sql is static
+    $events = $wpdb->get_results( $wpdb->prepare(
+        "SELECT e.* FROM {$prefix}events e
+         WHERE e.status != 'cancelled'
+         AND (e.notice_only = 0 OR e.notice_only IS NULL)
+         AND e.event_date >= %s
+         AND e.event_date <= %s
+         {$visibility_sql}
+         ORDER BY e.event_date ASC",
+        $date_start,
+        $date_end
+    ) );
+
+    // Build the VCALENDAR wrapper
+    $site_name = get_bloginfo( 'name' );
+    $cal_name  = $include_members_only
+        ? $site_name . ' ' . __( 'Events (Members)', 'societypress' )
+        : $site_name . ' ' . __( 'Events', 'societypress' );
+
+    $output  = "BEGIN:VCALENDAR\r\n";
+    $output .= "VERSION:2.0\r\n";
+    $output .= "PRODID:-//SocietyPress//Events//EN\r\n";
+    $output .= "CALSCALE:GREGORIAN\r\n";
+    $output .= "METHOD:PUBLISH\r\n";
+    $output .= sp_ical_fold_line( "X-WR-CALNAME:" . sp_ical_escape_text( $cal_name ) ) . "\r\n";
+    // REFRESH-INTERVAL tells compliant calendar apps to re-fetch every hour
+    $output .= "REFRESH-INTERVAL;VALUE=DURATION:PT1H\r\n";
+    // X-PUBLISHED-TTL is the legacy equivalent for older apps (Outlook, etc.)
+    $output .= "X-PUBLISHED-TTL:PT1H\r\n";
+
+    $host = wp_parse_url( home_url(), PHP_URL_HOST );
+
+    // Look up the events page once for building event URLs
+    $events_page_id = $wpdb->get_var(
+        "SELECT p.ID FROM {$wpdb->posts} p
+         INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
+         WHERE pm.meta_key = '_wp_page_template' AND pm.meta_value = 'sp-events'
+         AND p.post_status = 'publish' LIMIT 1"
+    );
+
+    foreach ( $events as $event ) {
+        $dt          = sp_ical_build_dt_lines( $event );
+        $location    = sp_ical_build_location( $event );
+        $description = sp_ical_build_description( $event );
+
+        $output .= "BEGIN:VEVENT\r\n";
+        $output .= sp_ical_fold_line( "UID:sp-event-{$event->id}@{$host}" ) . "\r\n";
+        $output .= "DTSTAMP:" . gmdate( 'Ymd\THis\Z' ) . "\r\n";
+        $output .= sp_ical_fold_line( $dt['dtstart'] ) . "\r\n";
+        $output .= sp_ical_fold_line( $dt['dtend'] ) . "\r\n";
+        $output .= sp_ical_fold_line( "SUMMARY:" . sp_ical_escape_text( $event->title ) ) . "\r\n";
+
+        if ( $location ) {
+            $output .= sp_ical_fold_line( "LOCATION:" . sp_ical_escape_text( $location ) ) . "\r\n";
+        }
+        if ( $description ) {
+            $output .= sp_ical_fold_line( "DESCRIPTION:" . sp_ical_escape_text( $description ) ) . "\r\n";
+        }
+
+        // Link back to the event detail page
+        if ( $events_page_id && ! empty( $event->slug ) ) {
+            $event_url = add_query_arg( 'sp_event', $event->slug, get_permalink( $events_page_id ) );
+            $output .= sp_ical_fold_line( "URL:" . $event_url ) . "\r\n";
+        }
+
+        $output .= "END:VEVENT\r\n";
+    }
+
+    $output .= "END:VCALENDAR\r\n";
+
+    // Cache for 1 hour — calendar apps will get stale data at most 1 hour
+    set_transient( $transient_key, $output, HOUR_IN_SECONDS );
+
+    // Serve the feed
+    header( 'Content-Type: text/calendar; charset=utf-8' );
+    header( 'Cache-Control: public, max-age=3600' );
+    echo $output;
+    exit;
+}, 5 );
+
+
+// ============================================================================
+// EVENTS — iCAL TOKEN MANAGEMENT
+// ============================================================================
+//
+// WHY: Calendar apps can't send WordPress cookies, so members need a unique,
+//      opaque token in their feed URL. These functions handle creating, reading,
+//      and regenerating that token. Regeneration is exposed via AJAX so members
+//      can revoke old URLs if they're compromised or shared accidentally.
+// ============================================================================
+
+/**
+ * Get or create a per-user iCal feed token.
+ *
+ * WHY: We lazily create the token the first time a member views their feed URL.
+ *      This avoids creating tokens for members who never use the feature.
+ *
+ * @param int $user_id WordPress user ID.
+ * @return string The 32-character alphanumeric token.
+ */
+function sp_get_or_create_ical_token( int $user_id ): string {
+    $token = get_user_meta( $user_id, 'sp_ical_token', true );
+    if ( ! $token ) {
+        // wp_generate_password with $special_chars=false, $extra_special_chars=true
+        // gives us a URL-safe alphanumeric string that's unpredictable enough
+        // to serve as a bearer token for a calendar feed.
+        $token = wp_generate_password( 32, false, false );
+        update_user_meta( $user_id, 'sp_ical_token', $token );
+    }
+    return $token;
+}
+
+/**
+ * Regenerate a user's iCal feed token, invalidating the old URL.
+ *
+ * WHY: If a member accidentally shares their feed URL (which contains their
+ *      token), they can regenerate it. The old URL stops working immediately,
+ *      and they get a fresh one to paste into their calendar app.
+ *
+ * @param int $user_id WordPress user ID.
+ * @return string The new 32-character token.
+ */
+function sp_regenerate_ical_token( int $user_id ): string {
+    $token = wp_generate_password( 32, false, false );
+    update_user_meta( $user_id, 'sp_ical_token', $token );
+    return $token;
+}
+
+/**
+ * AJAX: Regenerate the current user's iCal feed token.
+ *
+ * WHY: Called from the subscribe dropdown when a member clicks "Regenerate URL."
+ *      Returns the new URL so JS can update the display without a page reload.
+ */
+add_action( 'wp_ajax_sp_regenerate_ical_token', function () {
+    check_ajax_referer( 'sp_ical_token', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => __( 'You must be logged in.', 'societypress' ) ] );
+    }
+
+    $token = sp_regenerate_ical_token( get_current_user_id() );
+    $url   = home_url( '?sp_ical_feed=' . $token );
+
+    wp_send_json_success( [
+        'url'     => $url,
+        'message' => __( 'Feed URL regenerated. Update your calendar app with the new URL.', 'societypress' ),
+    ] );
 } );
 
 

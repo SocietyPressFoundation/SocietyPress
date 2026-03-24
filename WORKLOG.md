@@ -1,4 +1,158 @@
 # SocietyPress — WORKLOG
+## v0.43d — 2026-03-24
+
+### Inline Styles → CSS Classes Migration (Major Pass)
+
+Systematic extraction of inline `style=` attributes from PHP template output into named, commented CSS classes. Each function now has a scoped `<style>` block at the top of its HTML output with prefixed class names (e.g., `sp-themes-`, `sp-export-`, `sp-leadership-`).
+
+**Scale:** 1,722 → 753 inline styles remaining (~970 extracted across 30+ functions, ~56% reduction)
+
+**Functions fully or substantially migrated:**
+- sp_render_themes_page (90 → ~7 dynamic)
+- sp_render_leadership_page (46 extracted, 3 kept)
+- sp_render_dashboard_page (35 extracted, 1 dynamic PHP margin)
+- sp_render_settings_design_page (37 extracted, 4 dynamic swatches)
+- sp_render_import_page (40 extracted, 1 JS toggle)
+- sp_render_export_page (22 extracted)
+- sp_render_builder_widget_surname_lookup (32 extracted, 2 JS toggles)
+- sp_frontend_help_requests (26 extracted, 7 kept — 6 email inline styles, 1 dynamic color)
+- sp_builder_fields_hero_slider (31 extracted, 0 kept)
+- sp_render_volunteer_opportunities_frontend (24 extracted, 5 dynamic PHP colors)
+- sp_render_member_edit_page (25 extracted, 4 JS toggles)
+- sp_render_event_registrations_section (26 extracted, 4 dynamic badges + JS toggles)
+- sp_render_annual_report_page (20 extracted, 3 dynamic chart dimensions)
+- sp_render_reports_page (27 extracted, 0 kept)
+- sp_render_library_catalog_page (17 extracted, 0 kept + 3 bonus i18n wraps)
+- sp_render_email_log_page (22 extracted, 1 dynamic badge)
+- sp_render_privacy_policy_content (25 extracted, 0 kept)
+- sp_render_library_enrich_page (18 extracted, 3 JS toggles)
+- sp_render_event_categories_page (18 extracted, 6 dynamic + JS toggles)
+- sp_render_external_calendars_page (20 extracted, 1 dynamic status color)
+- sp_render_user_access_page (21 extracted, 0 kept)
+- sp_render_import_events_page (15 extracted, 0 kept)
+- sp_frontend_library_catalog (21 extracted, 0 kept)
+- sp_render_builder_widget_photo_gallery (18 extracted, 3 dynamic widths + display:none)
+- sp_render_volunteer_hours_page (19 extracted, 0 kept)
+- sp_render_order_detail_page (17 extracted, 0 kept)
+- sp_render_library_item_edit_page (18 extracted, 0 kept)
+- sp_render_newsletter_archive_page (17 extracted, 0 kept)
+- sp_render_email_log_detail (16 extracted, 1 dynamic badge)
+- sp_render_record_collections_page (15 extracted, 0 kept)
+- sp_render_record_collection_edit_page (11 extracted, 4 JS innerHTML)
+- sp_render_newsletter_edit_page (10 extracted, 3 JS toggles)
+- sp_render_donations_page (12 extracted, 0 kept)
+- sp_render_document_bulk_upload_page (10 extracted, 5 JS innerHTML)
+- sp_render_blast_email_compose_page (14 extracted, 2 dynamic PHP)
+- sp_render_event_detail (11 extracted, 4 dynamic PHP)
+- sp_render_builder_widget_member_stats (15 extracted, 0 kept)
+- sp_render_album_edit_page (14 extracted, 1 JS toggle)
+- Settings functions (3 extracted, 13 dynamic)
+
+**Remaining 753 inline styles are:**
+- Dynamic PHP variable values (colors, widths, display toggles based on DB state)
+- JavaScript display:none toggles
+- Styles inside JS innerHTML/template strings
+- ~30 smaller functions (10-14 each) for future passes
+
+**No functionality changes. PHP lint clean throughout. Plugin grew from ~58,000 to ~61,700 lines (CSS class blocks account for the growth).**
+
+---
+
+## v0.42d — 2026-03-23
+
+### i18n Cleanup
+
+- Generated .pot translation template (plugin/languages/societypress.pot) — zero warnings
+- Added ~80 translator comments (/* translators: */ format) across plugin for all placeholder strings
+- Numbered all multi-placeholder strings (%s → %1$s, %2$s) so translators can reorder for their language
+- Split dual-context "Edit Member: %s" into _x() with distinct contexts (organization vs individual)
+
+### Accessibility / UX Pass
+
+Full UX review via @ux-reviewer agent — 25 findings, 22 fixed this session.
+
+**High impact:**
+- Skip navigation link (WCAG 2.4.1) — parent theme + SAGHS headers + all 6 content templates
+- Conditional h1/p site title — h1 only on front page, p elsewhere (WCAG 2.4.6)
+- Mobile hamburger menu for parent theme — was wrapping/stacking below 768px, now proper toggle
+- User dropdown click/tap toggle for touch devices (JS enhancement over CSS :hover)
+- Custom confirmation modal (spConfirm) replacing browser confirm() on 4 most destructive member actions
+- Admin sidebar visual separators between menu groups (CSS-only, uses existing data-group attrs)
+- Inline form errors on member edit — field-level aria-describedby, red border, auto-focus
+
+**Medium impact:**
+- Setup wizard step labels + aria-current for screen readers
+- Module toggle switches aria-labelledby associations
+- Blast email filter tabs aria-current="page"
+- Join form: tier radio type cast fix, "Join Now" button label, state field placeholder + hint
+- Dashboard + member list status icons (Unicode symbols for colorblind users)
+- Membership plans inline editing focus management + aria-live announcements
+- Design settings "Jump to" anchor navigation
+- Logo preview alt text, event image button context, table scope="col"
+- Empty state actionable guidance (library, resources, donations)
+- Search input focus ring contrast on dark header
+
+### Dashboard Inline Styles Refactor
+
+First section of inline-styles-to-CSS migration. Extracted all 42 inline style= attributes from sp_render_dashboard_page() into named CSS classes in the existing style block. Only 2 dynamic PHP margin values remain. ~1,660 inline styles remain across other admin functions.
+
+### TO-DO Updates
+
+- Added database backup system (manual download + server storage + email delivery with size guard)
+- Marked .pot file generation done
+
+---
+
+
+## v0.41d — 2026-03-22
+
+### Code Review — 28 Issues Fixed
+
+Full code review via custom @code-reviewer agent. 6 critical, 16 warnings, 10 suggestions — 28 fixed, 4 deferred.
+
+**Critical fixes:**
+- Plugin header/constant version mismatch synced
+- Import temp file path traversal closed — hidden fields store basename only, readback validates with realpath + directory containment
+- sp_unified_search rate-limiting (30 req/min per IP) for unauthenticated users
+- Annual Report JS echoes wrapped with esc_js()
+- OOP prototype files removed (societypress-core.php, admin/, includes/)
+- Newsletter wp_die() messages i18n-wrapped, server path leak replaced with user-friendly text
+
+**Warning fixes:**
+- 58 AJAX error/success strings i18n-wrapped
+- Theme output escaping, date('Y') → wp_date('Y'), SQL hardening
+- GPL license alignment across themes, theme version sync
+- Installer bridge script token auth + relative redirect
+- getsocietypress.org download page updated to v0.40d, features page stats corrected (12/43/19), nav walker CSS classes fixed
+
+**Suggestion fixes:**
+- @unlink → wp_delete_file (11 instances), absint() on integer echoes, capability checks, duplicate comment removed
+
+### Calendar Subscription Feed
+
+- Public feed (?sp_ical_feed=public) and token-authenticated members-only feed (?sp_ical_feed=TOKEN)
+- Shared iCal helpers extracted from existing .ics download — both features use identical RFC 5545-compliant output
+- Subscribe dropdown UI on events listing, calendar page, and event detail — webcal:// one-click subscribe + copy URL for Google Calendar
+- Per-user tokens stored in user_meta with AJAX regeneration and Regenerate URL button
+- 1-hour transient cache invalidated on event create/update/delete/cancel
+- Settings toggle: events_ical_feed_enabled (default: on)
+
+### External Events — Manual + iCal Feed Import
+
+**Manual external events:**
+- external_url field on event edit form — when set, event links to external site instead of internal detail page
+- Visual indicators: dashed border + arrow (↗) on calendar pills, External badge on listing, minimal card with Visit Event Page button on detail
+- external_source column tracks origin: null (normal), 'manual' (hand-entered URL), 'ical_feed' (imported)
+
+**iCal feed import:**
+- New sp_ical_feeds table (11 columns) for managing subscribed feeds
+- External Calendars admin page under Events — add/edit/delete feeds with label, URL, category, sync interval
+- Pure PHP iCal parser: RFC 5545 line unfolding, VEVENT block extraction, TZID/UTC/DATE timezone handling, text unescaping
+- sp_sync_ical_feed() — fetches feed, parses events, INSERT new / UPDATE changed / DELETE removed (matched by external_uid + feed_id)
+- Hourly cron (sp_ical_feed_sync_cron) checks each feed's interval and last_synced_at
+- Sync Now, Pause/Resume, Delete actions via AJAX with admin UI feedback
+- Imported events are read-only with Detach from Feed option to convert to editable manual events
+- Page builder Upcoming Events widget handles external URLs with target=_blank
 
 ## v0.40d — 2026-03-21
 

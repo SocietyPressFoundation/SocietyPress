@@ -30,7 +30,7 @@
 get_header();
 ?>
 
-<main class="saghs-front-page">
+<main id="main-content" class="saghs-front-page">
 
     <?php
     // =========================================================================

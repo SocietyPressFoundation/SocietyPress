@@ -402,7 +402,7 @@ Existing wizard (4 steps): Org Info → Membership → Feature Selection → App
 - [x] Fixed all date() → wp_date() for timezone-correct display (~30 instances)
 - [x] Fixed all admin_url() → esc_url(admin_url()) (~40+ instances)
 - [x] Currency setting: `sp_format_currency()` helper + `currency_symbol`/`currency_position` settings (v0.38d, in progress)
-- [ ] Generate `.pot` file: `wp i18n make-pot plugin/ plugin/languages/societypress.pot`
+- [x] Generate `.pot` file: `wp i18n make-pot plugin/ plugin/languages/societypress.pot`
   - Master translation template — translators load this in Poedit/GlotPress/Loco Translate
   - Produces `.po` (human-editable) and `.mo` (compiled) files per language
   - Should be regenerated on every release
@@ -419,6 +419,16 @@ Existing wizard (4 steps): Org Info → Membership → Feature Selection → App
 - [x] Admin dashboard: activity feed — recent 15 audit log entries with categorized icons (member/event/settings/email/volunteer), relative timestamps, user attribution. Full-width panel below the existing two-column dashboard layout.
 - [x] Audit logging: expanded to cover member CRUD + bulk delete + "Delete All Others", settings saves, event CRUD + bulk delete, event registration + cancellation, group assignment, blast email send, volunteer role CRUD
 - [x] Governance menu: already exists as `sp-governance` page with volunteer roles (officer positions, committee assignments). Renamed menu label from "Volunteers" to "Leadership & Committees" for clarity.
+- [ ] Database backup system:
+  - [ ] Manual "Back Up Now" button on Settings page — one click, generates a full SQL dump of all SP tables
+  - [ ] Storage options: browser download (`.sql` file saves to Harold's machine) or save to server (stored in the protected backups directory for later retrieval)
+  - [ ] Optional automated monthly backup via WP cron — toggle + day-of-month selector in Settings
+  - [ ] Backups stored in `wp-content/uploads/societypress-backups/` with `.htaccess` protection
+  - [ ] Retention setting: keep last N backups (default 3), auto-delete older ones
+  - [ ] Admin notification email when automated backup completes (or fails)
+  - [ ] Email backup delivery: option to attach the SQL dump to the notification email so a copy lands off-server automatically — no cloud API keys, no OAuth, uses infrastructure Harold already has
+  - [ ] Size guard: if the dump exceeds a reasonable attachment limit (~10MB), email a download link instead of an attachment (link expires after 48 hours)
+  - [ ] WHY: Harold's hosting provider might do backups, but societies shouldn't have to trust that. A one-click backup they control — and can download — means they're never one bad server day away from losing everything. The email option gets a copy off the server without requiring Harold to set up cloud storage credentials.
 
 ## Data Portability — Not Started
 

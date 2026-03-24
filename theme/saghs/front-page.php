@@ -30,7 +30,7 @@
 get_header();
 ?>
 
-<main class="society-front-page">
+<main id="main-content" class="society-front-page">
 
     <?php
     // =========================================================================

@@ -53,6 +53,44 @@ body {
 }
 
 /* ============================================================================
+   ACCESSIBILITY — SKIP NAVIGATION
+   WHY: Keyboard and screen reader users need a way to bypass the header and
+   nav and jump straight to the page content. Without this, they have to Tab
+   through every nav link on every page load. This is a WCAG 2.1 Level A
+   requirement (Success Criterion 2.4.1 — Bypass Blocks).
+
+   The link is visually hidden off-screen until it receives keyboard focus,
+   at which point it slides into view at the top of the page.
+   ============================================================================ */
+
+.skip-to-main {
+    position: absolute;
+    left: -9999px;
+    top: auto;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    z-index: 100000;
+    background: var(--sp-color-primary, #1e3a5f);
+    color: #fff;
+    padding: 12px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    border-bottom-right-radius: 4px;
+}
+
+.skip-to-main:focus {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: auto;
+    height: auto;
+    outline: 2px solid #fff;
+    outline-offset: -2px;
+}
+
+/* ============================================================================
    TYPOGRAPHY
    WHY: Clear hierarchy helps users scan pages quickly. Generous spacing
    between elements prevents that "wall of text" feeling.
@@ -258,6 +296,52 @@ img {
 }
 
 /* ============================================================================
+   HAMBURGER MENU BUTTON (MOBILE)
+   WHY: On screens below 768px the horizontal nav won't fit. We hide the nav
+   and show a hamburger icon instead. The button is always in the DOM but
+   hidden on desktop via display:none. Below 768px, CSS shows it and JS
+   toggles the sp-nav-open class to reveal/hide the mobile nav panel.
+   ============================================================================ */
+
+.sp-hamburger {
+    display: none; /* Hidden on desktop — only visible below 768px */
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 8px;
+    z-index: 1001;
+}
+
+/* Three horizontal bars that form the hamburger icon. Bar height (3px) and
+   margin (5px) determine the icon's total height. The transition properties
+   enable the smooth X animation when the menu opens. */
+.sp-hamburger-bar {
+    display: block;
+    width: 26px;
+    height: 3px;
+    background: var(--sp-color-header-text, #fff);
+    margin: 5px 0;
+    border-radius: 2px;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+/* X animation when menu is open — the top bar rotates down, the middle bar
+   fades out, and the bottom bar rotates up. The translateY values (8px) are
+   calculated from bar height (3px) + margin (5px) = 8px offset to bring the
+   top and bottom bars to the center position before rotating. */
+.sp-hamburger.is-active .sp-hamburger-bar:nth-child(1) {
+    transform: translateY(8px) rotate(45deg);
+}
+
+.sp-hamburger.is-active .sp-hamburger-bar:nth-child(2) {
+    opacity: 0;
+}
+
+.sp-hamburger.is-active .sp-hamburger-bar:nth-child(3) {
+    transform: translateY(-8px) rotate(-45deg);
+}
+
+/* ============================================================================
    HEADER TOP BAR
    WHY: A slim utility strip above the main header row. Social media icons
    sit here, flush-right. Keeps them visible without crowding the nav,
@@ -387,8 +471,12 @@ img {
     color: rgba(255, 255, 255, 0.6);
 }
 
+/* WHY solid white: The previous rgba(255,255,255,0.7) border and subtle
+   background shift didn't meet the 3:1 minimum contrast ratio for focus
+   indicators against the dark header. Solid white ring is unmistakable. */
 .sp-header-search input[type="text"]:focus {
-    border-color: rgba(255, 255, 255, 0.7);
+    box-shadow: 0 0 0 2px #fff;
+    border-color: #fff;
     background: rgba(255, 255, 255, 0.2);
 }
 
@@ -512,7 +600,8 @@ img {
     Both keep the dropdown open while the user is interacting with it.
 */
 .sp-user-menu:hover .sp-user-dropdown,
-.sp-user-menu:focus-within .sp-user-dropdown {
+.sp-user-menu:focus-within .sp-user-dropdown,
+.sp-user-menu.sp-user-open .sp-user-dropdown {
     visibility: visible;
     opacity: 1;
     transform: translateY(0);
@@ -520,7 +609,8 @@ img {
 
 /* Update aria-expanded visually when dropdown is showing */
 .sp-user-menu:hover .sp-user-trigger,
-.sp-user-menu:focus-within .sp-user-trigger {
+.sp-user-menu:focus-within .sp-user-trigger,
+.sp-user-menu.sp-user-open .sp-user-trigger {
     background: rgba(255, 255, 255, 0.25);
 }
 
@@ -1153,22 +1243,76 @@ input[type="date"]:focus {
         font-size: 16px;
     }
 
+    /* === HAMBURGER + MOBILE NAV COLLAPSE ===
+       WHY: The full horizontal nav wraps or overflows on narrow screens.
+       We hide the nav behind a hamburger toggle that reveals a full-width
+       dropdown panel below the header. The search toggle and user menu
+       remain visible outside the hamburger panel — they're separate elements
+       in .header-nav-area and don't get hidden. */
+
     .header-inner {
-        flex-direction: column;
+        /* WHY relative: The mobile nav panel is absolutely positioned relative
+           to the header-inner so it drops below it cleanly. */
+        position: relative;
         padding: 16px 0;
-        gap: 12px;
     }
 
+    /* Show the hamburger button */
+    .sp-hamburger {
+        display: block;
+    }
+
+    /* Nav area stays horizontal on mobile — hamburger, search toggle, and
+       user menu sit in a row. The nav itself drops below as a panel. */
     .header-nav-area {
-        flex-direction: column;
-        gap: 8px;
         width: 100%;
-        align-items: center;
+        /* WHY static: The mobile nav panel positions itself relative to
+           header-inner, not header-nav-area. Static lets the panel break
+           out of this flex container. */
+        position: static;
     }
 
-    .main-navigation ul {
-        flex-wrap: wrap;
-        justify-content: center;
+    /* Hide the nav by default on mobile — revealed when sp-nav-open is added */
+    .main-navigation {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: var(--sp-color-nav-bg, var(--sp-color-header-bg, #1e3a5f));
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+        z-index: 999;
+        border-top: 3px solid var(--sp-color-accent, rgba(255, 255, 255, 0.2));
+    }
+
+    /* Show the nav panel when JS adds sp-nav-open */
+    .main-navigation.sp-nav-open {
+        display: block;
+    }
+
+    /* Stack nav links vertically in the mobile panel */
+    .main-navigation > ul {
+        flex-direction: column;
+        gap: 0;
+    }
+
+    .main-navigation > ul > li {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .main-navigation > ul > li:last-child {
+        border-bottom: none;
+    }
+
+    .main-navigation a {
+        padding: 14px 20px;
+        font-size: 1rem;
+        border-radius: 0;
+    }
+
+    .main-navigation a:hover,
+    .main-navigation .current-menu-item a {
+        background: rgba(255, 255, 255, 0.1);
     }
 
     /* On mobile, hide the name and just show the avatar to save space */
@@ -1188,7 +1332,8 @@ input[type="date"]:focus {
     }
 
     .sp-user-menu:hover .sp-user-dropdown,
-    .sp-user-menu:focus-within .sp-user-dropdown {
+    .sp-user-menu:focus-within .sp-user-dropdown,
+    .sp-user-menu.sp-user-open .sp-user-dropdown {
         transform: translateX(-50%) translateY(0);
     }
 

@@ -19,6 +19,12 @@
 <body <?php body_class(); ?>>
 <?php wp_body_open(); ?>
 
+<!-- Skip link: lets keyboard and screen reader users jump straight to the
+     page content without tabbing through the entire header and nav. This is
+     a WCAG 2.1 Level A requirement (Success Criterion 2.4.1). The link is
+     visually hidden until it receives focus via Tab. -->
+<a href="#main-content" class="skip-to-main"><?php esc_html_e( 'Skip to main content', 'societypress' ); ?></a>
+
 <div class="site">
     <header class="site-header">
 
@@ -40,11 +46,18 @@
 
                 <?php if ( $show_header_title ) : ?>
                 <div>
-                    <h1 class="site-title">
+                    <?php
+                    // WHY conditional heading: Only the front page should have
+                    // the site name as <h1>. On all other pages, the page's own
+                    // title is the <h1>. Having two <h1> elements breaks the
+                    // heading hierarchy for screen reader users (WCAG 2.4.6).
+                    $title_tag = is_front_page() ? 'h1' : 'p';
+                    ?>
+                    <<?php echo $title_tag; ?> class="site-title">
                         <a href="<?php echo esc_url( home_url( '/' ) ); ?>">
                             <?php bloginfo( 'name' ); ?>
                         </a>
-                    </h1>
+                    </<?php echo $title_tag; ?>>
                     <?php
                     $description = get_bloginfo( 'description', 'display' );
                     if ( $description ) :
@@ -56,12 +69,24 @@
             </div>
 
             <!--
-                WHY the nav and user menu are wrapped together: They sit side
-                by side in the header — the nav menu on the left, the user
-                account dropdown on the right. Wrapping them lets us use
-                flexbox to align them as a unit.
+                WHY the nav area wraps hamburger + nav + user menu: On desktop,
+                the nav and user menu sit side by side. On mobile, the hamburger
+                replaces the nav, and the search toggle and user menu stay
+                visible. Wrapping them lets flexbox handle the alignment.
             -->
             <div class="header-nav-area">
+
+                <!-- Hamburger toggle — visible on mobile only (CSS hides on desktop).
+                     WHY three bars: The three-bar hamburger icon is universally
+                     recognized as "menu." JS toggles sp-nav-open on the nav and
+                     is-active on this button, which CSS uses to animate the bars
+                     into an X and reveal the mobile nav panel. -->
+                <button class="sp-hamburger" aria-label="<?php esc_attr_e( 'Toggle navigation menu', 'societypress' ); ?>" aria-expanded="false">
+                    <span class="sp-hamburger-bar"></span>
+                    <span class="sp-hamburger-bar"></span>
+                    <span class="sp-hamburger-bar"></span>
+                </button>
+
                 <!-- Primary navigation menu -->
                 <?php if ( has_nav_menu( 'primary' ) ) : ?>
                 <nav class="main-navigation" aria-label="Primary navigation">

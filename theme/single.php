@@ -12,7 +12,7 @@
 get_header();
 ?>
 
-<div class="site-content">
+<div id="main-content" class="site-content">
     <div class="content-area-with-sidebar">
 
         <main class="main-content">

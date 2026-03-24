@@ -1,0 +1,9239 @@
+# Copyright (C) 2026 Stricklin Development
+# This file is distributed under the GPL-2.0-or-later.
+msgid ""
+msgstr ""
+"Project-Id-Version: SocietyPress 0.41d\n"
+"Report-Msgid-Bugs-To: https://github.com/charles-stricklin/SocietyPress/issues\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2026-03-24T06:32:43+04:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.12.0\n"
+"X-Domain: societypress\n"
+
+#. Plugin Name of the plugin
+#: societypress.php
+#: societypress.php:8759
+msgid "SocietyPress"
+msgstr ""
+
+#. Plugin URI of the plugin
+#: societypress.php
+msgid "https://getsocietypress.org"
+msgstr ""
+
+#. Description of the plugin
+#: societypress.php
+msgid "Membership management for genealogical and historical societies."
+msgstr ""
+
+#. Author of the plugin
+#: societypress.php
+msgid "Stricklin Development"
+msgstr ""
+
+#. Author URI of the plugin
+#: societypress.php
+msgid "https://stricklindevelopment.com/"
+msgstr ""
+
+#: societypress.php:490
+msgid "Primary Menu"
+msgstr ""
+
+#: societypress.php:497
+#: societypress.php:10860
+msgid "Home"
+msgstr ""
+
+#: societypress.php:498
+msgid "About"
+msgstr ""
+
+#: societypress.php:499
+#: societypress.php:2910
+#: societypress.php:8610
+#: societypress.php:17231
+#: societypress.php:27800
+#: societypress.php:30188
+#: societypress.php:37868
+#: societypress.php:39778
+#: societypress.php:52048
+#: societypress.php:57668
+msgid "Events"
+msgstr ""
+
+#: societypress.php:500
+#: societypress.php:2916
+#: societypress.php:11707
+#: societypress.php:52079
+msgid "Library"
+msgstr ""
+
+#: societypress.php:501
+#: societypress.php:52183
+msgid "Newsletters"
+msgstr ""
+
+#: societypress.php:502
+msgid "Join"
+msgstr ""
+
+#: societypress.php:503
+msgid "Directory"
+msgstr ""
+
+#: societypress.php:504
+#: societypress.php:5020
+msgid "My Account"
+msgstr ""
+
+#: societypress.php:505
+msgid "Contact"
+msgstr ""
+
+#: societypress.php:2647
+msgid "Events & Calendar"
+msgstr ""
+
+#: societypress.php:2648
+msgid "Create events, manage registrations, and display a calendar on your website. Includes speaker management and recurring events."
+msgstr ""
+
+#: societypress.php:2653
+#: societypress.php:17233
+#: societypress.php:40870
+#: societypress.php:43025
+msgid "Library Catalog"
+msgstr ""
+
+#: societypress.php:2654
+msgid "Manage your society's book and media collection. Members can browse and search the catalog online."
+msgstr ""
+
+#: societypress.php:2659
+#: societypress.php:17238
+#: societypress.php:51187
+msgid "Newsletter Archive"
+msgstr ""
+
+#: societypress.php:2660
+msgid "Upload past newsletters as PDFs so members can browse and download them from the website."
+msgstr ""
+
+#: societypress.php:2665
+#: societypress.php:42773
+#: societypress.php:44220
+#: societypress.php:52112
+msgid "Resource Links"
+msgstr ""
+
+#: societypress.php:2666
+msgid "Maintain a directory of useful external websites and resources for your members."
+msgstr ""
+
+#: societypress.php:2671
+msgid "Committees & Leadership"
+msgstr ""
+
+#: societypress.php:2672
+msgid "Track officer positions, committee assignments, and manage volunteer opportunities and hours."
+msgstr ""
+
+#: societypress.php:2677
+msgid "Online Store"
+msgstr ""
+
+#: societypress.php:2678
+msgid "Sell publications and other items through your website with a shopping cart and Stripe checkout."
+msgstr ""
+
+#: societypress.php:2683
+#: societypress.php:2934
+msgid "Genealogical Records"
+msgstr ""
+
+#: societypress.php:2684
+msgid "Build searchable databases of cemetery records, census data, church records, and other genealogical collections."
+msgstr ""
+
+#: societypress.php:2689
+msgid "Donations & Campaigns"
+msgstr ""
+
+#: societypress.php:2690
+msgid "Accept donations, run fundraising campaigns with progress bars, and track giving history."
+msgstr ""
+
+#: societypress.php:2695
+#: societypress.php:11453
+#: societypress.php:47862
+msgid "Blast Email"
+msgstr ""
+
+#: societypress.php:2696
+msgid "Send mass emails to all members or specific groups. Includes delivery tracking and opt-out management."
+msgstr ""
+
+#: societypress.php:2701
+#: societypress.php:41688
+msgid "Photo Gallery"
+msgstr ""
+
+#: societypress.php:2702
+msgid "Create photo albums to showcase society events, meetings, and member activities."
+msgstr ""
+
+#: societypress.php:2707
+msgid "Research Help"
+msgstr ""
+
+#: societypress.php:2708
+msgid "Let members submit research help requests that other members can respond to."
+msgstr ""
+
+#: societypress.php:2713
+#: societypress.php:3590
+#: societypress.php:3591
+#: societypress.php:17241
+#: societypress.php:55959
+#: societypress.php:56123
+msgid "Documents"
+msgstr ""
+
+#: societypress.php:2714
+msgid "Upload and manage society documents like meeting minutes, bylaws, and policies. Control member-only access per document."
+msgstr ""
+
+#: societypress.php:2851
+msgid "Feature Not Available"
+msgstr ""
+
+#: societypress.php:2853
+msgid "This feature is not currently enabled. Please contact the site administrator if you believe this is an error."
+msgstr ""
+
+#: societypress.php:2904
+#: societypress.php:8607
+#: societypress.php:9626
+#: societypress.php:11697
+#: societypress.php:12881
+#: societypress.php:16693
+#: societypress.php:32539
+#: societypress.php:38684
+#: societypress.php:52149
+#: societypress.php:52763
+#: societypress.php:56019
+msgid "Members"
+msgstr ""
+
+#: societypress.php:2907
+msgid "View and manage all members, import/export, groups, and membership plans."
+msgstr ""
+
+#: societypress.php:2913
+msgid "Create and manage events, categories, speakers, registrations, and the calendar."
+msgstr ""
+
+#: societypress.php:2919
+msgid "Manage the library catalog, import items, and run enrichment."
+msgstr ""
+
+#: societypress.php:2922
+#: societypress.php:11712
+#: societypress.php:18119
+msgid "Finances"
+msgstr ""
+
+#: societypress.php:2925
+msgid "Donations, campaigns, store orders, and financial reports."
+msgstr ""
+
+#: societypress.php:2928
+msgid "Communications"
+msgstr ""
+
+#: societypress.php:2931
+msgid "Blast email, newsletters, email log, and email templates."
+msgstr ""
+
+#: societypress.php:2937
+msgid "Manage genealogical record collections, import records, and configure search."
+msgstr ""
+
+#: societypress.php:2940
+msgid "Leadership & Volunteers"
+msgstr ""
+
+#: societypress.php:2943
+msgid "Officer positions, committees, volunteer opportunities, and hours tracking."
+msgstr ""
+
+#: societypress.php:2946
+msgid "Content & Pages"
+msgstr ""
+
+#: societypress.php:2949
+msgid "Pages, media library, resources, documents, gallery, and the page builder."
+msgstr ""
+
+#: societypress.php:2952
+msgid "Settings & Design"
+msgstr ""
+
+#: societypress.php:2955
+msgid "All plugin settings, design system, modules, and user access management."
+msgstr ""
+
+#: societypress.php:2958
+#: societypress.php:11717
+#: societypress.php:42002
+msgid "Reports"
+msgstr ""
+
+#: societypress.php:2961
+msgid "View membership reports, event statistics, and financial summaries."
+msgstr ""
+
+#: societypress.php:2978
+msgid "Webmaster"
+msgstr ""
+
+#: societypress.php:2979
+msgid "Full access to everything — equivalent to a site administrator."
+msgstr ""
+
+#: societypress.php:2983
+msgid "Membership Manager"
+msgstr ""
+
+#: societypress.php:2984
+msgid "Manages members, imports, tiers, groups, and membership reports."
+msgstr ""
+
+#: societypress.php:2988
+msgid "Treasurer"
+msgstr ""
+
+#: societypress.php:2989
+msgid "Handles donations, store orders, and financial reports."
+msgstr ""
+
+#: societypress.php:2993
+msgid "Event Coordinator"
+msgstr ""
+
+#: societypress.php:2994
+msgid "Creates and manages events, speakers, and registrations."
+msgstr ""
+
+#: societypress.php:2998
+msgid "Librarian"
+msgstr ""
+
+#: societypress.php:2999
+msgid "Manages the library catalog, imports, and enrichment."
+msgstr ""
+
+#: societypress.php:3003
+msgid "Communications Director"
+msgstr ""
+
+#: societypress.php:3004
+msgid "Sends blast emails, manages newsletters and email templates."
+msgstr ""
+
+#: societypress.php:3008
+msgid "Records Manager"
+msgstr ""
+
+#: societypress.php:3009
+msgid "Manages genealogical record collections and imports."
+msgstr ""
+
+#: societypress.php:3013
+msgid "Content Editor"
+msgstr ""
+
+#: societypress.php:3014
+msgid "Manages pages, resources, documents, gallery, and media."
+msgstr ""
+
+#: societypress.php:3307
+msgid "Pending Changes"
+msgstr ""
+
+#: societypress.php:3316
+msgid "Pending Profile Changes — SocietyPress"
+msgstr ""
+
+#: societypress.php:3371
+#: societypress.php:3372
+#: societypress.php:57540
+msgid "External Calendars"
+msgstr ""
+
+#: societypress.php:3599
+#: societypress.php:3600
+#: societypress.php:56072
+msgid "Document Categories"
+msgstr ""
+
+#: societypress.php:3609
+#: societypress.php:3610
+#: societypress.php:56183
+msgid "Edit Document"
+msgstr ""
+
+#: societypress.php:3619
+#: societypress.php:3620
+#: societypress.php:56440
+msgid "Bulk Upload Documents"
+msgstr ""
+
+#: societypress.php:3968
+#: societypress.php:3969
+msgid "Privacy Policy Builder"
+msgstr ""
+
+#: societypress.php:3998
+msgid "User Access — SocietyPress"
+msgstr ""
+
+#: societypress.php:3999
+#: societypress.php:22086
+msgid "User Access"
+msgstr ""
+
+#. translators: %s: product name (SocietyPress)
+#: societypress.php:4331
+#, php-format
+msgid "Powered by %s"
+msgstr ""
+
+#: societypress.php:4459
+#: societypress.php:8588
+#: societypress.php:13958
+#: societypress.php:16715
+#: societypress.php:16870
+#: societypress.php:20225
+#: societypress.php:22902
+#: societypress.php:37869
+#: societypress.php:37939
+#: societypress.php:43534
+#: societypress.php:43541
+#: societypress.php:44259
+#: societypress.php:44283
+#: societypress.php:44381
+#: societypress.php:44395
+#: societypress.php:46253
+#: societypress.php:46446
+#: societypress.php:46574
+#: societypress.php:52768
+msgid "Active"
+msgstr ""
+
+#: societypress.php:4460
+#: societypress.php:8596
+#: societypress.php:13960
+msgid "Expired"
+msgstr ""
+
+#: societypress.php:4461
+#: societypress.php:13959
+msgid "Lapsed"
+msgstr ""
+
+#: societypress.php:4462
+#: societypress.php:13961
+msgid "Grace Period"
+msgstr ""
+
+#: societypress.php:4463
+#: societypress.php:5747
+#: societypress.php:55481
+#: societypress.php:55629
+msgid "Pending"
+msgstr ""
+
+#: societypress.php:4464
+#: societypress.php:13963
+#: societypress.php:16717
+#: societypress.php:16871
+#: societypress.php:22903
+#: societypress.php:37940
+#: societypress.php:46254
+#: societypress.php:46447
+#: societypress.php:46575
+msgid "Inactive"
+msgstr ""
+
+#: societypress.php:4465
+#: societypress.php:13962
+msgid "Deceased"
+msgstr ""
+
+#: societypress.php:4955
+#: societypress.php:6885
+msgid "Log In"
+msgstr ""
+
+#: societypress.php:4993
+msgid "Shopping cart"
+msgstr ""
+
+#: societypress.php:5006
+#: societypress.php:8171
+msgid "Dashboard"
+msgstr ""
+
+#: societypress.php:5009
+#: societypress.php:5023
+msgid "Log Out"
+msgstr ""
+
+#: societypress.php:5500
+#: societypress.php:5625
+#: societypress.php:5773
+#: societypress.php:10739
+#: societypress.php:36521
+msgid "Personal Information"
+msgstr ""
+
+#: societypress.php:5501
+#: societypress.php:5626
+#: societypress.php:5774
+#: societypress.php:10824
+#: societypress.php:36543
+msgid "Contact Information"
+msgstr ""
+
+#: societypress.php:5502
+#: societypress.php:5627
+#: societypress.php:5775
+#: societypress.php:5793
+#: societypress.php:11037
+#: societypress.php:14737
+#: societypress.php:28354
+msgid "Address"
+msgstr ""
+
+#. translators: %s: site name
+#: societypress.php:5507
+#, php-format
+msgid "[%s] Profile Change Pending Review"
+msgstr ""
+
+#. translators: %1$s: member name, %2$s: section label (e.g. "Contact Information"), %3$s: review URL
+#: societypress.php:5510
+#, php-format
+msgid ""
+"%1$s has submitted changes to their %2$s.\n"
+"\n"
+"Review and approve or reject:\n"
+"%3$s"
+msgstr ""
+
+#: societypress.php:5631
+msgid "approved"
+msgstr ""
+
+#: societypress.php:5632
+#: societypress.php:5660
+msgid "rejected"
+msgstr ""
+
+#. translators: %1$s: site name, %2$s: decision status (approved/rejected)
+#: societypress.php:5636
+#, php-format
+msgid "[%1$s] Your profile changes have been %2$s"
+msgstr ""
+
+#. translators: %1$s: section label (e.g. "Contact Information"), %2$s: decision status (approved/rejected)
+#: societypress.php:5641
+#, php-format
+msgid "Your changes to %1$s have been %2$s by an administrator."
+msgstr ""
+
+#: societypress.php:5645
+msgid "Note from admin:"
+msgstr ""
+
+#: societypress.php:5648
+msgid "Your profile has been updated with the new information."
+msgstr ""
+
+#: societypress.php:5650
+msgid "Your profile has not been changed. You can submit new changes from your account page."
+msgstr ""
+
+#. translators: %s: decision result (e.g. "approved and applied" or "rejected")
+#: societypress.php:5659
+#, php-format
+msgid "Change request %s."
+msgstr ""
+
+#: societypress.php:5660
+msgid "approved and applied"
+msgstr ""
+
+#: societypress.php:5699
+msgid "Pending Profile Changes"
+msgstr ""
+
+#: societypress.php:5748
+msgid "Approved"
+msgstr ""
+
+#: societypress.php:5749
+msgid "Rejected"
+msgstr ""
+
+#: societypress.php:5750
+#: societypress.php:22974
+#: societypress.php:27479
+#: societypress.php:42394
+#: societypress.php:55508
+msgid "All"
+msgstr ""
+
+#: societypress.php:5767
+msgid "No change requests found."
+msgstr ""
+
+#: societypress.php:5780
+#: societypress.php:10744
+msgid "Prefix"
+msgstr ""
+
+#: societypress.php:5781
+#: societypress.php:10762
+#: societypress.php:36524
+#: societypress.php:36584
+msgid "First Name"
+msgstr ""
+
+#: societypress.php:5782
+#: societypress.php:10768
+#: societypress.php:36535
+#: societypress.php:36595
+msgid "Preferred Name"
+msgstr ""
+
+#: societypress.php:5783
+#: societypress.php:10775
+msgid "Middle Name"
+msgstr ""
+
+#: societypress.php:5784
+#: societypress.php:10781
+#: societypress.php:36529
+#: societypress.php:36589
+msgid "Last Name"
+msgstr ""
+
+#: societypress.php:5785
+#: societypress.php:10787
+msgid "Maiden Name"
+msgstr ""
+
+#: societypress.php:5786
+#: societypress.php:10793
+msgid "Suffix"
+msgstr ""
+
+#: societypress.php:5787
+#: societypress.php:10811
+msgid "Date of Birth"
+msgstr ""
+
+#: societypress.php:5788
+#: societypress.php:8899
+#: societypress.php:15231
+#: societypress.php:16885
+#: societypress.php:23030
+#: societypress.php:23128
+#: societypress.php:28814
+#: societypress.php:35545
+#: societypress.php:36601
+#: societypress.php:37867
+#: societypress.php:38111
+#: societypress.php:55668
+msgid "Email"
+msgstr ""
+
+#: societypress.php:5789
+#: societypress.php:8900
+#: societypress.php:10843
+#: societypress.php:15230
+#: societypress.php:23025
+#: societypress.php:23113
+#: societypress.php:28823
+#: societypress.php:35549
+#: societypress.php:36551
+#: societypress.php:36606
+#: societypress.php:38115
+#: societypress.php:55670
+msgid "Phone"
+msgstr ""
+
+#: societypress.php:5790
+#: societypress.php:10850
+msgid "Cell Phone"
+msgstr ""
+
+#: societypress.php:5791
+#: societypress.php:10857
+msgid "Preferred Phone"
+msgstr ""
+
+#: societypress.php:5792
+#: societypress.php:8751
+#: societypress.php:10836
+#: societypress.php:15232
+#: societypress.php:23035
+#: societypress.php:23142
+#: societypress.php:36492
+#: societypress.php:38119
+msgid "Website"
+msgstr ""
+
+#: societypress.php:5794
+#: societypress.php:10873
+msgid "Address Line 2"
+msgstr ""
+
+#: societypress.php:5795
+#: societypress.php:10880
+#: societypress.php:11043
+#: societypress.php:36628
+msgid "City"
+msgstr ""
+
+#: societypress.php:5796
+#: societypress.php:11339
+#: societypress.php:36633
+#: societypress.php:41296
+#: societypress.php:43392
+#: societypress.php:43909
+msgid "State"
+msgstr ""
+
+#: societypress.php:5797
+msgid "ZIP/Postal Code"
+msgstr ""
+
+#: societypress.php:5798
+#: societypress.php:10931
+#: societypress.php:11061
+#: societypress.php:11340
+msgid "Country"
+msgstr ""
+
+#: societypress.php:5799
+msgid "Seasonal Address?"
+msgstr ""
+
+#: societypress.php:5800
+msgid "Seasonal From"
+msgstr ""
+
+#: societypress.php:5801
+msgid "Seasonal To"
+msgstr ""
+
+#: societypress.php:5802
+#: societypress.php:10980
+msgid "Seasonal Address"
+msgstr ""
+
+#: societypress.php:5803
+msgid "Seasonal City"
+msgstr ""
+
+#: societypress.php:5804
+msgid "Seasonal State"
+msgstr ""
+
+#: societypress.php:5805
+msgid "Seasonal ZIP"
+msgstr ""
+
+#: societypress.php:5806
+msgid "Seasonal Country"
+msgstr ""
+
+#: societypress.php:5814
+msgid "Unknown"
+msgstr ""
+
+#: societypress.php:5844
+msgid "Field"
+msgstr ""
+
+#: societypress.php:5845
+msgid "Current Value"
+msgstr ""
+
+#: societypress.php:5846
+msgid "Requested Change"
+msgstr ""
+
+#: societypress.php:5857
+#: societypress.php:5858
+#: societypress.php:43553
+#: societypress.php:44411
+msgid "Yes"
+msgstr ""
+
+#: societypress.php:5857
+#: societypress.php:5858
+#: societypress.php:43553
+#: societypress.php:44411
+msgid "No"
+msgstr ""
+
+#: societypress.php:5867
+msgid "CHANGED"
+msgstr ""
+
+#: societypress.php:5880
+msgid "Optional note to member…"
+msgstr ""
+
+#: societypress.php:5882
+msgid "Approve"
+msgstr ""
+
+#: societypress.php:5884
+msgid "Reject this change request?"
+msgstr ""
+
+#: societypress.php:5885
+msgid "Reject"
+msgstr ""
+
+#: societypress.php:5891
+msgid "Admin note:"
+msgstr ""
+
+#: societypress.php:5926
+#: societypress.php:5962
+#: societypress.php:6011
+#: societypress.php:6050
+#: societypress.php:6070
+#: societypress.php:6090
+#: societypress.php:6106
+msgid "Security check failed. Please reload the page."
+msgstr ""
+
+#: societypress.php:5946
+#: societypress.php:5992
+#: societypress.php:6037
+msgid "Your changes have been submitted for admin review."
+msgstr ""
+
+#: societypress.php:5956
+msgid "Personal information saved."
+msgstr ""
+
+#: societypress.php:5974
+#: societypress.php:26688
+#: societypress.php:41599
+msgid "Please enter a valid email address."
+msgstr ""
+
+#: societypress.php:5978
+msgid "That email address is already in use."
+msgstr ""
+
+#: societypress.php:6005
+msgid "Contact information saved."
+msgstr ""
+
+#: societypress.php:6014
+#: societypress.php:6053
+#: societypress.php:6073
+#: societypress.php:6093
+msgid "Member record not found."
+msgstr ""
+
+#: societypress.php:6044
+msgid "Address saved."
+msgstr ""
+
+#: societypress.php:6064
+msgid "Preferences saved."
+msgstr ""
+
+#: societypress.php:6084
+msgid "Privacy settings saved."
+msgstr ""
+
+#: societypress.php:6100
+msgid "Interests and skills saved."
+msgstr ""
+
+#: societypress.php:6113
+msgid "Genealogy profiles saved."
+msgstr ""
+
+#: societypress.php:6116
+msgid "Unknown action."
+msgstr ""
+
+#: societypress.php:6883
+#: societypress.php:22502
+#: societypress.php:30205
+#: societypress.php:32558
+#: societypress.php:32744
+#: societypress.php:32867
+#: societypress.php:41717
+#: societypress.php:51249
+#: societypress.php:51373
+#: societypress.php:52419
+#: societypress.php:55988
+#: societypress.php:56243
+#: societypress.php:56464
+msgid "Members Only"
+msgstr ""
+
+#: societypress.php:6884
+msgid "This page is available to members only. Please log in to view this content."
+msgstr ""
+
+#: societypress.php:7169
+msgid "If you have any membership questions, please contact the Membership Chair at "
+msgstr ""
+
+#: societypress.php:7171
+msgid "If you have any membership questions, please contact the Membership Chair."
+msgstr ""
+
+#: societypress.php:7325
+msgid "If you have any questions, please contact us at "
+msgstr ""
+
+#: societypress.php:7726
+#: societypress.php:7790
+#: societypress.php:7990
+#: societypress.php:9806
+#: societypress.php:13341
+#: societypress.php:17746
+#: societypress.php:18853
+#: societypress.php:18952
+#: societypress.php:19263
+#: societypress.php:19362
+#: societypress.php:19432
+#: societypress.php:20017
+#: societypress.php:27855
+#: societypress.php:29513
+#: societypress.php:29573
+#: societypress.php:30048
+#: societypress.php:30131
+#: societypress.php:35960
+#: societypress.php:36012
+#: societypress.php:36066
+#: societypress.php:36106
+#: societypress.php:36145
+#: societypress.php:38011
+#: societypress.php:38240
+#: societypress.php:38415
+#: societypress.php:39929
+#: societypress.php:39986
+#: societypress.php:45224
+#: societypress.php:45297
+#: societypress.php:55766
+#: societypress.php:55825
+#: societypress.php:55848
+#: societypress.php:55895
+#: societypress.php:56341
+#: societypress.php:58024
+msgid "Security check failed."
+msgstr ""
+
+#: societypress.php:7729
+#: societypress.php:7793
+#: societypress.php:7993
+#: societypress.php:9803
+#: societypress.php:18955
+#: societypress.php:19266
+#: societypress.php:19365
+#: societypress.php:19435
+#: societypress.php:20020
+#: societypress.php:27858
+#: societypress.php:29516
+#: societypress.php:29576
+#: societypress.php:30051
+#: societypress.php:30134
+#: societypress.php:35957
+#: societypress.php:36009
+#: societypress.php:36063
+#: societypress.php:36103
+#: societypress.php:36142
+#: societypress.php:38014
+#: societypress.php:38237
+#: societypress.php:38412
+#: societypress.php:50581
+#: societypress.php:50931
+#: societypress.php:57453
+#: societypress.php:57897
+#: societypress.php:57930
+#: societypress.php:57980
+#: societypress.php:58028
+msgid "Unauthorized."
+msgstr ""
+
+#: societypress.php:7734
+msgid "No update available."
+msgstr ""
+
+#: societypress.php:7766
+#: societypress.php:8250
+msgid "Update failed."
+msgstr ""
+
+#. translators: %s: version number
+#: societypress.php:7777
+#, php-format
+msgid "Updated to version %s. Reloading..."
+msgstr ""
+
+#. translators: %s: version number
+#: societypress.php:7813
+#, php-format
+msgid "You are running the latest version (%s)."
+msgstr ""
+
+#: societypress.php:7998
+msgid "Parent theme is already up to date."
+msgstr ""
+
+#: societypress.php:8003
+msgid "Could not reach GitHub."
+msgstr ""
+
+#: societypress.php:8043
+msgid "Theme directory not found in the release archive."
+msgstr ""
+
+#. translators: %s: version number
+#: societypress.php:8067
+#, php-format
+msgid "Theme updated to version %s. Reloading..."
+msgstr ""
+
+#. translators: %s: version number
+#: societypress.php:8195
+#, php-format
+msgid "SocietyPress %s is available"
+msgstr ""
+
+#. translators: %s: current version number
+#: societypress.php:8200
+#, php-format
+msgid "you have %s"
+msgstr ""
+
+#: societypress.php:8205
+msgid "View release notes"
+msgstr ""
+
+#: societypress.php:8211
+msgid "Update Now"
+msgstr ""
+
+#: societypress.php:8226
+msgid "Update SocietyPress now? The site will be briefly unavailable during the update."
+msgstr ""
+
+#: societypress.php:8229
+#: societypress.php:8338
+#: societypress.php:8376
+msgid "Updating..."
+msgstr ""
+
+#: societypress.php:8252
+#: societypress.php:8259
+#: societypress.php:8356
+#: societypress.php:8363
+#: societypress.php:8400
+#: societypress.php:8409
+msgid "Retry"
+msgstr ""
+
+#: societypress.php:8257
+#: societypress.php:18002
+#: societypress.php:20832
+#: societypress.php:21001
+#: societypress.php:29444
+#: societypress.php:29482
+#: societypress.php:29979
+#: societypress.php:30017
+msgid "Network error. Please try again."
+msgstr ""
+
+#: societypress.php:8283
+msgid "Theme Updates Available"
+msgstr ""
+
+#. translators: %1$s: installed version number, %2$s: available version number
+#: societypress.php:8291
+#, php-format
+msgid "SocietyPress parent theme: %1$s → %2$s"
+msgstr ""
+
+#: societypress.php:8298
+msgid "Update Theme"
+msgstr ""
+
+#. translators: %1$s: theme name, %2$s: installed version number, %3$s: available version number
+#: societypress.php:8310
+#, php-format
+msgid "%1$s child theme: %2$s → %3$s"
+msgstr ""
+
+#: societypress.php:8319
+#: societypress.php:17355
+#: societypress.php:17445
+#: societypress.php:17451
+#: societypress.php:43535
+#: societypress.php:44384
+msgid "Update"
+msgstr ""
+
+#: societypress.php:8336
+msgid "Update the parent theme now?"
+msgstr ""
+
+#: societypress.php:8361
+#: societypress.php:8406
+#: societypress.php:17449
+#: societypress.php:20619
+#: societypress.php:20859
+#: societypress.php:57821
+msgid "Network error."
+msgstr ""
+
+#: societypress.php:8373
+msgid "Update this child theme?"
+msgstr ""
+
+#: societypress.php:8584
+msgid "Total Members"
+msgstr ""
+
+#: societypress.php:8592
+msgid "Expiring Soon"
+msgstr ""
+
+#: societypress.php:8600
+msgid "New (30 Days)"
+msgstr ""
+
+#: societypress.php:8613
+#: societypress.php:17283
+#: societypress.php:52231
+msgid "Pages"
+msgstr ""
+
+#: societypress.php:8616
+msgid "Settings"
+msgstr ""
+
+#: societypress.php:8619
+msgid "View Site"
+msgstr ""
+
+#: societypress.php:8629
+msgid "Upcoming Events"
+msgstr ""
+
+#: societypress.php:8631
+#: societypress.php:8666
+#: societypress.php:8710
+msgid "View All →"
+msgstr ""
+
+#: societypress.php:8638
+#: societypress.php:11565
+#: societypress.php:11629
+#: societypress.php:17038
+#: societypress.php:18203
+#: societypress.php:18370
+#: societypress.php:42400
+#: societypress.php:45049
+#: societypress.php:45689
+#: societypress.php:45836
+#: societypress.php:46696
+#: societypress.php:47613
+#: societypress.php:47896
+#: societypress.php:48785
+#: societypress.php:49029
+#: societypress.php:53017
+#: societypress.php:55531
+#: societypress.php:55653
+#: societypress.php:55998
+#: societypress.php:56492
+msgid "Date"
+msgstr ""
+
+#: societypress.php:8639
+msgid "Event"
+msgstr ""
+
+#: societypress.php:8640
+#: societypress.php:23020
+#: societypress.php:23101
+#: societypress.php:27232
+#: societypress.php:28340
+#: societypress.php:45849
+#: societypress.php:53060
+msgid "Location"
+msgstr ""
+
+#: societypress.php:8657
+msgid "No upcoming events."
+msgstr ""
+
+#: societypress.php:8664
+msgid "Expiring Within 30 Days"
+msgstr ""
+
+#: societypress.php:8673
+#: societypress.php:8717
+#: societypress.php:18204
+#: societypress.php:18327
+#: societypress.php:46209
+#: societypress.php:46393
+#: societypress.php:46542
+#: societypress.php:46675
+#: societypress.php:48986
+#: societypress.php:55673
+msgid "Member"
+msgstr ""
+
+#: societypress.php:8674
+msgid "Expires"
+msgstr ""
+
+#: societypress.php:8692
+msgid "today"
+msgstr ""
+
+#. translators: %d: number of days remaining
+#: societypress.php:8692
+#, php-format
+msgid "%dd"
+msgstr ""
+
+#: societypress.php:8701
+msgid "No members expiring in the next 30 days."
+msgstr ""
+
+#: societypress.php:8708
+msgid "Recent Members"
+msgstr ""
+
+#: societypress.php:8718
+#: societypress.php:16885
+msgid "Joined"
+msgstr ""
+
+#: societypress.php:8739
+msgid "No members yet."
+msgstr ""
+
+#: societypress.php:8746
+msgid "Site Information"
+msgstr ""
+
+#. translators: %s: version number
+#: societypress.php:8760
+#: societypress.php:20242
+#: societypress.php:20336
+#, php-format
+msgid "Version %s"
+msgstr ""
+
+#: societypress.php:8763
+msgid "PHP"
+msgstr ""
+
+#: societypress.php:8767
+msgid "WordPress"
+msgstr ""
+
+#: societypress.php:8782
+msgid "Recent Activity"
+msgstr ""
+
+#: societypress.php:8811
+msgid "just now"
+msgstr ""
+
+#. translators: %d: number of minutes
+#: societypress.php:8815
+#, php-format
+msgid "%d minute ago"
+msgid_plural "%d minutes ago"
+msgstr[0] ""
+msgstr[1] ""
+
+#. translators: %d: number of hours
+#: societypress.php:8819
+#, php-format
+msgid "%d hour ago"
+msgid_plural "%d hours ago"
+msgstr[0] ""
+msgstr[1] ""
+
+#. translators: %d: number of days
+#: societypress.php:8823
+#, php-format
+msgid "%d day ago"
+msgid_plural "%d days ago"
+msgstr[0] ""
+msgstr[1] ""
+
+#: societypress.php:8828
+msgid "System"
+msgstr ""
+
+#: societypress.php:8845
+msgid "No activity recorded yet."
+msgstr ""
+
+#: societypress.php:8898
+#: societypress.php:16692
+#: societypress.php:16885
+#: societypress.php:23016
+#: societypress.php:23098
+#: societypress.php:28805
+#: societypress.php:29201
+#: societypress.php:29650
+#: societypress.php:35541
+#: societypress.php:37865
+#: societypress.php:43530
+#: societypress.php:43541
+#: societypress.php:44373
+#: societypress.php:44395
+#: societypress.php:45906
+#: societypress.php:46304
+#: societypress.php:53030
+#: societypress.php:55667
+#: societypress.php:56095
+#: societypress.php:56121
+msgid "Name"
+msgstr ""
+
+#: societypress.php:8901
+msgid "Plan"
+msgstr ""
+
+#: societypress.php:8902
+#: societypress.php:10465
+#: societypress.php:13954
+#: societypress.php:16695
+#: societypress.php:16867
+#: societypress.php:17037
+#: societypress.php:17348
+#: societypress.php:17653
+#: societypress.php:22900
+#: societypress.php:27235
+#: societypress.php:28231
+#: societypress.php:38146
+#: societypress.php:41107
+#: societypress.php:41139
+#: societypress.php:41298
+#: societypress.php:42400
+#: societypress.php:44916
+#: societypress.php:45691
+#: societypress.php:45875
+#: societypress.php:45906
+#: societypress.php:46250
+#: societypress.php:46307
+#: societypress.php:46443
+#: societypress.php:46571
+#: societypress.php:47609
+#: societypress.php:47895
+#: societypress.php:49238
+#: societypress.php:49394
+#: societypress.php:50231
+#: societypress.php:52737
+#: societypress.php:53074
+#: societypress.php:55530
+#: societypress.php:55652
+#: societypress.php:55715
+#: societypress.php:56002
+#: societypress.php:56249
+#: societypress.php:56470
+#: societypress.php:57666
+msgid "Status"
+msgstr ""
+
+#: societypress.php:8903
+msgid "Expiration"
+msgstr ""
+
+#: societypress.php:8928
+msgid "Assign to Group"
+msgstr ""
+
+#: societypress.php:8929
+#: societypress.php:8976
+#: societypress.php:16727
+#: societypress.php:17057
+#: societypress.php:17104
+#: societypress.php:18239
+#: societypress.php:20295
+#: societypress.php:27255
+#: societypress.php:27316
+#: societypress.php:37910
+#: societypress.php:41725
+#: societypress.php:42354
+#: societypress.php:42414
+#: societypress.php:43168
+#: societypress.php:43549
+#: societypress.php:44301
+#: societypress.php:44406
+#: societypress.php:44930
+#: societypress.php:44942
+#: societypress.php:45062
+#: societypress.php:45072
+#: societypress.php:45724
+#: societypress.php:46150
+#: societypress.php:46330
+#: societypress.php:47956
+#: societypress.php:48835
+#: societypress.php:49297
+#: societypress.php:51260
+#: societypress.php:52781
+#: societypress.php:53363
+#: societypress.php:56032
+#: societypress.php:56145
+#: societypress.php:57762
+msgid "Delete"
+msgstr ""
+
+#: societypress.php:8967
+#: societypress.php:16721
+#: societypress.php:17083
+#: societypress.php:20289
+#: societypress.php:22203
+#: societypress.php:27291
+#: societypress.php:37909
+#: societypress.php:41720
+#: societypress.php:43167
+#: societypress.php:43549
+#: societypress.php:44300
+#: societypress.php:44405
+#: societypress.php:44941
+#: societypress.php:45718
+#: societypress.php:46144
+#: societypress.php:46324
+#: societypress.php:47948
+#: societypress.php:48829
+#: societypress.php:49289
+#: societypress.php:51255
+#: societypress.php:52776
+#: societypress.php:53358
+#: societypress.php:56026
+#: societypress.php:56139
+msgid "Edit"
+msgstr ""
+
+#: societypress.php:8976
+msgid "Are you sure you want to delete this member?"
+msgstr ""
+
+#: societypress.php:9090
+#: societypress.php:13957
+#: societypress.php:27464
+msgid "All Statuses"
+msgstr ""
+
+#: societypress.php:9154
+#: societypress.php:16371
+#: societypress.php:18192
+#: societypress.php:27492
+#: societypress.php:31661
+#: societypress.php:32350
+#: societypress.php:47592
+#: societypress.php:48771
+#: societypress.php:55990
+msgid "Filter"
+msgstr ""
+
+#: societypress.php:9628
+#: societypress.php:16680
+#: societypress.php:17285
+#: societypress.php:45673
+#: societypress.php:55960
+msgid "Add New"
+msgstr ""
+
+#. translators: %d: number of members to be deleted
+#: societypress.php:9657
+#, php-format
+msgid ""
+"This will permanently delete all %d other members and their accounts.\n"
+"\n"
+"Your own account will NOT be touched.\n"
+"\n"
+"Are you sure?"
+msgstr ""
+
+#: societypress.php:9660
+msgid "Delete All Others"
+msgstr ""
+
+#: societypress.php:9676
+msgid "No members yet!"
+msgstr ""
+
+#: societypress.php:9678
+msgid "Add Yourself as Your First Member"
+msgstr ""
+
+#: societypress.php:9685
+msgid "You can't delete your own member record. Removing yourself would lock you out of the system."
+msgstr ""
+
+#: societypress.php:9692
+msgid "Delete cancelled — could not verify your identity. Please log out, log back in, and try again."
+msgstr ""
+
+#. translators: %d: number of members deleted
+#: societypress.php:9703
+#, php-format
+msgid "%d member deleted."
+msgid_plural "%d members deleted."
+msgstr[0] ""
+msgstr[1] ""
+
+#: societypress.php:9710
+msgid "Member saved."
+msgstr ""
+
+#. translators: %d: number of members added to group
+#: societypress.php:9718
+#, php-format
+msgid "%d member added to group."
+msgid_plural "%d members added to group."
+msgstr[0] ""
+msgstr[1] ""
+
+#: societypress.php:9738
+msgid "Assign to:"
+msgstr ""
+
+#: societypress.php:9740
+msgid "Select Group"
+msgstr ""
+
+#: societypress.php:10255
+#: societypress.php:23777
+msgid "Member not found."
+msgstr ""
+
+#: societypress.php:10256
+#: societypress.php:10305
+msgid "Back to Members"
+msgstr ""
+
+#. translators: %s: organization name
+#: societypress.php:10293
+#, php-format
+msgctxt "organization member"
+msgid "Edit Member: %s"
+msgstr ""
+
+#. translators: %s: member full name
+#: societypress.php:10296
+#, php-format
+msgctxt "individual member"
+msgid "Edit Member: %s"
+msgstr ""
+
+#: societypress.php:10298
+msgid "Add New Member"
+msgstr ""
+
+#: societypress.php:10317
+msgid "Member saved successfully."
+msgstr ""
+
+#: societypress.php:10460
+#: societypress.php:15945
+#: societypress.php:22926
+#: societypress.php:42161
+msgid "Membership"
+msgstr ""
+
+#: societypress.php:10484
+msgid "Membership Plan"
+msgstr ""
+
+#: societypress.php:10486
+#: societypress.php:18358
+#: societypress.php:28217
+#: societypress.php:44247
+#: societypress.php:45865
+#: societypress.php:56209
+#: societypress.php:56453
+#: societypress.php:57598
+msgid "— None —"
+msgstr ""
+
+#: societypress.php:10495
+msgid "No plans created yet."
+msgstr ""
+
+#: societypress.php:10496
+msgid "Set up membership plans"
+msgstr ""
+
+#: societypress.php:10496
+msgid "under Members &rarr; Membership Plans."
+msgstr ""
+
+#: societypress.php:10501
+msgid "Site Role"
+msgstr ""
+
+#: societypress.php:10531
+msgid "You cannot change your own role."
+msgstr ""
+
+#: societypress.php:10564
+msgid "Join Date"
+msgstr ""
+
+#: societypress.php:10567
+msgid "Defaults to today for new members."
+msgstr ""
+
+#: societypress.php:10571
+msgid "Expiration Date"
+msgstr ""
+
+#: societypress.php:10574
+msgid "Pre-filled based on your membership period settings. Leave blank for lifetime members."
+msgstr ""
+
+#: societypress.php:10578
+msgid "Member Number"
+msgstr ""
+
+#: societypress.php:10581
+#: societypress.php:10634
+msgid "Optional"
+msgstr ""
+
+#: societypress.php:10585
+msgid "Household ID"
+msgstr ""
+
+#: societypress.php:10588
+msgid "0 = none"
+msgstr ""
+
+#: societypress.php:10589
+msgid "Members with the same household ID are linked as a household."
+msgstr ""
+
+#: societypress.php:10602
+msgid "Joint Membership (couple/household)"
+msgstr ""
+
+#: societypress.php:10604
+msgid "Check this to add a second person who shares this membership. Both names will appear in the directory."
+msgstr ""
+
+#: societypress.php:10609
+msgid "Joint Member First Name"
+msgstr ""
+
+#: societypress.php:10614
+msgid "Joint Member Last Name"
+msgstr ""
+
+#: societypress.php:10619
+msgid "Joint Member Preferred Name"
+msgstr ""
+
+#: societypress.php:10622
+msgid "Optional — if different from first name"
+msgstr ""
+
+#: societypress.php:10625
+msgid "Joint Member Email"
+msgstr ""
+
+#: societypress.php:10628
+msgid "Optional — separate email for the second person"
+msgstr ""
+
+#: societypress.php:10631
+msgid "Joint Member Phone"
+msgstr ""
+
+#: societypress.php:10663
+msgid "Member Type"
+msgstr ""
+
+#: societypress.php:10667
+msgid "Type of Member"
+msgstr ""
+
+#: societypress.php:10673
+msgid "Individual"
+msgstr ""
+
+#: societypress.php:10679
+#: societypress.php:52530
+msgid "Organization"
+msgstr ""
+
+#: societypress.php:10682
+msgid "Organizations include libraries, genealogical societies, and other institutions."
+msgstr ""
+
+#: societypress.php:10688
+#: societypress.php:14724
+msgid "Organization Name"
+msgstr ""
+
+#: societypress.php:10691
+msgid "e.g. City Public Library"
+msgstr ""
+
+#: societypress.php:10771
+msgid "If different from first name"
+msgstr ""
+
+#: societypress.php:10829
+#: societypress.php:36545
+msgid "Email Address"
+msgstr ""
+
+#: societypress.php:10832
+msgid "This is also the email they use to log in."
+msgstr ""
+
+#: societypress.php:10861
+#: societypress.php:36556
+msgid "Cell"
+msgstr ""
+
+#: societypress.php:10862
+msgid "Work"
+msgstr ""
+
+#: societypress.php:10867
+msgid "Address Line 1"
+msgstr ""
+
+#: societypress.php:10876
+msgid "Apt, Suite, Unit, etc."
+msgstr ""
+
+#: societypress.php:10951
+#: societypress.php:11049
+msgid "State / Province"
+msgstr ""
+
+#: societypress.php:10954
+#: societypress.php:11190
+#: societypress.php:46677
+msgid "— Select —"
+msgstr ""
+
+#: societypress.php:10967
+#: societypress.php:11055
+msgid "Postal Code"
+msgstr ""
+
+#: societypress.php:10983
+msgid "For members who spend part of the year at a different address (snowbirds). Check the box to enable, then fill in the alternate address and the months it applies."
+msgstr ""
+
+#: societypress.php:10990
+msgid "This member has a seasonal address"
+msgstr ""
+
+#: societypress.php:10997
+msgid "From (Month)"
+msgstr ""
+
+#: societypress.php:11020
+msgid "To (Month)"
+msgstr ""
+
+#: societypress.php:11329
+msgid "Research Surnames"
+msgstr ""
+
+#: societypress.php:11332
+msgid "Surnames this member is researching. Other members researching the same surnames can find each other — that's what makes a genealogical society tick."
+msgstr ""
+
+#: societypress.php:11337
+#: societypress.php:43396
+#: societypress.php:43910
+msgid "Surname"
+msgstr ""
+
+#: societypress.php:11338
+#: societypress.php:41295
+#: societypress.php:43388
+#: societypress.php:43908
+msgid "County"
+msgstr ""
+
+#: societypress.php:11341
+msgid "Year From"
+msgstr ""
+
+#: societypress.php:11342
+msgid "Year To"
+msgstr ""
+
+#: societypress.php:11388
+msgid "Add Surname"
+msgstr ""
+
+#: societypress.php:11422
+msgid "Preferences"
+msgstr ""
+
+#: societypress.php:11427
+msgid "Email Notifications"
+msgstr ""
+
+#: societypress.php:11432
+msgid "General notices"
+msgstr ""
+
+#: societypress.php:11437
+msgid "Event announcements"
+msgstr ""
+
+#: societypress.php:11442
+msgid "Newsletter notifications"
+msgstr ""
+
+#: societypress.php:11447
+msgid "Surname match alerts"
+msgstr ""
+
+#: societypress.php:11458
+msgid "Opted out of blast emails"
+msgstr ""
+
+#: societypress.php:11461
+msgid "When checked, this member will not receive blast emails."
+msgstr ""
+
+#: societypress.php:11465
+msgid "Directory Visibility"
+msgstr ""
+
+#: societypress.php:11467
+msgid "Controls what other members can see in the member directory."
+msgstr ""
+
+#: societypress.php:11473
+msgid "Show name"
+msgstr ""
+
+#: societypress.php:11478
+#: societypress.php:24891
+msgid "Show email"
+msgstr ""
+
+#: societypress.php:11483
+#: societypress.php:24890
+msgid "Show phone"
+msgstr ""
+
+#: societypress.php:11488
+#: societypress.php:24889
+msgid "Show address"
+msgstr ""
+
+#: societypress.php:11493
+msgid "Show website"
+msgstr ""
+
+#: societypress.php:11498
+msgid "Show photo"
+msgstr ""
+
+#: societypress.php:11504
+msgid "Mailing"
+msgstr ""
+
+#: societypress.php:11509
+msgid "Receives print newsletter by mail"
+msgstr ""
+
+#: societypress.php:11522
+msgid "Admin Notes"
+msgstr ""
+
+#: societypress.php:11539
+msgid "No notes yet."
+msgstr ""
+
+#: societypress.php:11544
+msgid "Add a Note"
+msgstr ""
+
+#: societypress.php:11548
+msgid "Type a note about this member..."
+msgstr ""
+
+#: societypress.php:11558
+msgid "Payment History"
+msgstr ""
+
+#: societypress.php:11566
+#: societypress.php:18205
+#: societypress.php:18340
+#: societypress.php:48787
+#: societypress.php:49011
+msgid "Amount"
+msgstr ""
+
+#: societypress.php:11567
+#: societypress.php:11607
+#: societypress.php:18162
+#: societypress.php:18206
+#: societypress.php:18344
+#: societypress.php:23040
+#: societypress.php:23162
+#: societypress.php:41063
+#: societypress.php:41094
+#: societypress.php:41130
+#: societypress.php:45687
+#: societypress.php:45811
+#: societypress.php:47610
+#: societypress.php:48750
+#: societypress.php:48788
+#: societypress.php:49015
+#: societypress.php:52734
+#: societypress.php:53093
+#: societypress.php:55999
+#: societypress.php:56493
+msgid "Type"
+msgstr ""
+
+#: societypress.php:11568
+#: societypress.php:11617
+#: societypress.php:18171
+#: societypress.php:18207
+#: societypress.php:18355
+msgid "Method"
+msgstr ""
+
+#: societypress.php:11569
+#: societypress.php:11635
+#: societypress.php:18208
+#: societypress.php:18374
+#: societypress.php:49033
+msgid "Note"
+msgstr ""
+
+#: societypress.php:11570
+#: societypress.php:18209
+msgid "Recorded By"
+msgstr ""
+
+#: societypress.php:11590
+msgid "No payments recorded yet."
+msgstr ""
+
+#: societypress.php:11596
+msgid "Record a Payment"
+msgstr ""
+
+#: societypress.php:11601
+msgid "Amount ($)"
+msgstr ""
+
+#: societypress.php:11609
+#: societypress.php:18149
+#: societypress.php:18347
+msgid "Dues"
+msgstr ""
+
+#: societypress.php:11610
+#: societypress.php:18348
+msgid "Donation"
+msgstr ""
+
+#: societypress.php:11611
+#: societypress.php:18349
+msgid "Event Fee"
+msgstr ""
+
+#: societypress.php:11612
+#: societypress.php:11624
+#: societypress.php:18350
+#: societypress.php:18365
+msgid "Other"
+msgstr ""
+
+#: societypress.php:11620
+#: societypress.php:18359
+msgid "Check"
+msgstr ""
+
+#: societypress.php:11621
+#: societypress.php:18360
+msgid "Cash"
+msgstr ""
+
+#: societypress.php:11622
+msgid "Credit Card"
+msgstr ""
+
+#: societypress.php:11623
+#: societypress.php:18363
+msgid "PayPal"
+msgstr ""
+
+#: societypress.php:11637
+msgid "Optional — e.g., Check #1234"
+msgstr ""
+
+#: societypress.php:11651
+msgid "Save Member"
+msgstr ""
+
+#: societypress.php:11651
+#: societypress.php:16900
+msgid "Add Member"
+msgstr ""
+
+#: societypress.php:11667
+msgid "Are you sure you want to permanently delete this member? This cannot be undone."
+msgstr ""
+
+#: societypress.php:11671
+msgid "Delete Member"
+msgstr ""
+
+#: societypress.php:11699
+msgid "Manage your society's membership — track members, membership levels, surnames being researched, and handle imports and exports."
+msgstr ""
+
+#: societypress.php:11702
+msgid "Governance"
+msgstr ""
+
+#: societypress.php:11704
+msgid "Board of directors, committees, volunteer coordination and scheduling, and important documents like bylaws and meeting minutes."
+msgstr ""
+
+#: societypress.php:11709
+msgid "Your research library collection, incoming research queries, publications, and newsletter archives."
+msgstr ""
+
+#: societypress.php:11714
+msgid "Dues collection, donation tracking, and financial reports for your treasurer."
+msgstr ""
+
+#: societypress.php:11719
+msgid "Membership reports, volunteer lists, renewal tracking, surname research queries, and statistics."
+msgstr ""
+
+#: societypress.php:11724
+#: societypress.php:11738
+msgid "Coming Soon"
+msgstr ""
+
+#: societypress.php:11726
+msgid "This section is under development."
+msgstr ""
+
+#: societypress.php:11743
+msgid "This feature is being built. It will appear here in a future update."
+msgstr ""
+
+#: societypress.php:12656
+msgid "You do not have permission to access this page."
+msgstr ""
+
+#: societypress.php:12699
+#: societypress.php:43829
+#: societypress.php:44652
+msgid "The uploaded file has expired. Please upload again."
+msgstr ""
+
+#: societypress.php:12836
+#: societypress.php:13231
+msgid "Import Members"
+msgstr ""
+
+#: societypress.php:12848
+msgid "Add yourself first"
+msgstr ""
+
+#: societypress.php:12850
+msgid "Before importing members, you need to add yourself as the first member of your society. This links your administrator account to a member record so you appear in the directory, can use My Account, and are included in reports."
+msgstr ""
+
+#: societypress.php:12853
+msgid "Add Yourself as a Member"
+msgstr ""
+
+#. translators: %d: number of members imported
+#: societypress.php:12866
+#, php-format
+msgid "%d members imported successfully."
+msgstr ""
+
+#. translators: %s: comma-separated list of membership plan names
+#: societypress.php:12875
+#, php-format
+msgid "Created membership plans: %s"
+msgstr ""
+
+#. translators: %s: link to Members admin page
+#: societypress.php:12880
+#, php-format
+msgid "These were imported with $0 pricing — update them under %s to set the correct dues amounts."
+msgstr ""
+
+#. translators: %d: number of rows skipped
+#: societypress.php:12891
+#, php-format
+msgid "%d rows skipped (duplicates or errors)."
+msgstr ""
+
+#: societypress.php:12898
+#: societypress.php:31332
+msgid "Details:"
+msgstr ""
+
+#: societypress.php:12917
+msgid "Review Field Mapping"
+msgstr ""
+
+#: societypress.php:13054
+#: societypress.php:44031
+#: societypress.php:44802
+#: societypress.php:53652
+msgid "CSV Column"
+msgstr ""
+
+#: societypress.php:13055
+#: societypress.php:31372
+msgid "Maps To"
+msgstr ""
+
+#: societypress.php:13056
+msgid "Sample Value"
+msgstr ""
+
+#. translators: %d: number of members to import
+#: societypress.php:13184
+#, php-format
+msgid "Ready to import %d members?"
+msgstr ""
+
+#: societypress.php:13185
+msgid "This will create login accounts for each member (no welcome emails are sent). Duplicates are automatically skipped."
+msgstr ""
+
+#: societypress.php:13190
+#: societypress.php:16917
+#: societypress.php:17356
+#: societypress.php:18381
+#: societypress.php:20551
+#: societypress.php:22147
+#: societypress.php:27311
+#: societypress.php:31419
+#: societypress.php:42630
+#: societypress.php:43536
+#: societypress.php:44099
+#: societypress.php:44270
+#: societypress.php:44386
+#: societypress.php:44841
+#: societypress.php:45527
+#: societypress.php:46263
+#: societypress.php:46456
+#: societypress.php:46583
+#: societypress.php:48279
+#: societypress.php:49046
+#: societypress.php:49407
+#: societypress.php:56265
+#: societypress.php:56504
+#: societypress.php:57649
+msgid "Cancel"
+msgstr ""
+
+#: societypress.php:13209
+msgid "You're all set!"
+msgstr ""
+
+#: societypress.php:13211
+msgid "Now you can import your society's existing membership data. Upload a CSV export from your current system — SocietyPress will map the columns automatically."
+msgstr ""
+
+#. translators: %s: link to sample data
+#: societypress.php:13221
+#, php-format
+msgid "Just exploring? %s to see what a populated society looks like. You can clear it anytime."
+msgstr ""
+
+#: societypress.php:13222
+msgid "Load 2,500 sample members"
+msgstr ""
+
+#: societypress.php:13234
+msgid "Upload a membership export CSV to import all members, membership plans, payment records, and admin notes."
+msgstr ""
+
+#: societypress.php:13237
+msgid "How to prepare your import file:"
+msgstr ""
+
+#: societypress.php:13239
+msgid "Export your membership data from your current system as CSV"
+msgstr ""
+
+#: societypress.php:13240
+msgid "Make sure the export includes <strong>all fields</strong>"
+msgstr ""
+
+#: societypress.php:13241
+msgid "Upload the CSV file below"
+msgstr ""
+
+#: societypress.php:13250
+#: societypress.php:44120
+#: societypress.php:44864
+#: societypress.php:53722
+msgid "CSV File"
+msgstr ""
+
+#: societypress.php:13255
+msgid "Accepts CSV format. Compatible with most membership platform exports."
+msgstr ""
+
+#: societypress.php:13276
+msgid "Importing Members…"
+msgstr ""
+
+#: societypress.php:13796
+#: societypress.php:47457
+#: societypress.php:48557
+msgid "Unauthorized"
+msgstr ""
+
+#: societypress.php:13928
+msgid "Export Members"
+msgstr ""
+
+#: societypress.php:13931
+msgid "members match your filters. Adjust the filters below to narrow your export, or leave them blank to export everyone."
+msgstr ""
+
+#: societypress.php:13948
+msgid "Filters"
+msgstr ""
+
+#: societypress.php:13968
+#: societypress.php:15233
+msgid "Membership Type"
+msgstr ""
+
+#: societypress.php:13971
+#: societypress.php:18164
+#: societypress.php:22928
+#: societypress.php:40954
+#: societypress.php:45413
+msgid "All Types"
+msgstr ""
+
+#: societypress.php:13981
+msgid "Join Date Range"
+msgstr ""
+
+#: societypress.php:13984
+#: societypress.php:13992
+msgid "to"
+msgstr ""
+
+#: societypress.php:13989
+msgid "Expiration Date Range"
+msgstr ""
+
+#: societypress.php:14007
+msgid "Columns to Export"
+msgstr ""
+
+#: societypress.php:14009
+msgid "Leave all unchecked to export everything."
+msgstr ""
+
+#: societypress.php:14016
+msgid "Select All"
+msgstr ""
+
+#: societypress.php:14018
+msgid "Select None"
+msgstr ""
+
+#: societypress.php:14265
+msgid "Your Website"
+msgstr ""
+
+#: societypress.php:14267
+msgid "Basic settings for your website."
+msgstr ""
+
+#: societypress.php:14275
+msgid "Site Title"
+msgstr ""
+
+#: societypress.php:14281
+msgid "The name of your website, shown in the browser tab and site header."
+msgstr ""
+
+#: societypress.php:14290
+msgid "Tagline"
+msgstr ""
+
+#: societypress.php:14296
+msgid "A short phrase describing your organization (appears below the site title)."
+msgstr ""
+
+#: societypress.php:14305
+msgid "Admin Email"
+msgstr ""
+
+#: societypress.php:14311
+msgid "Password resets and system notifications are sent to this address."
+msgstr ""
+
+#: societypress.php:14327
+msgid "Timezone"
+msgstr ""
+
+#: societypress.php:14378
+msgid "— Select your timezone —"
+msgstr ""
+
+#: societypress.php:14391
+msgid "Choose the timezone where your organization is located."
+msgstr ""
+
+#: societypress.php:14404
+msgid "Date Format"
+msgstr ""
+
+#: societypress.php:14445
+msgid "Time Format"
+msgstr ""
+
+#: societypress.php:14476
+msgid "Homepage"
+msgstr ""
+
+#: societypress.php:14496
+#: societypress.php:15178
+msgid "— Select a page —"
+msgstr ""
+
+#: societypress.php:14500
+msgid "Choose which page visitors see when they go to your website's address."
+msgstr ""
+
+#. translators: %s: URL to create a new page
+#: societypress.php:14505
+#, php-format
+msgid "No pages have been created yet. <a href=\"%s\">Create your first page</a>, then come back here to set it as your homepage."
+msgstr ""
+
+#: societypress.php:14518
+msgid "Search Engines"
+msgstr ""
+
+#: societypress.php:14528
+msgid "Discourage search engines from showing this site in results"
+msgstr ""
+
+#: societypress.php:14531
+msgid "Check this while you're still building your site. Uncheck it when you're ready for the world to find you."
+msgstr ""
+
+#: societypress.php:14540
+#: societypress.php:53878
+msgid "Require Login"
+msgstr ""
+
+#: societypress.php:14548
+msgid "Require visitors to log in before they can see any page"
+msgstr ""
+
+#: societypress.php:14551
+msgid "When checked, anonymous visitors are sent to the login page. Useful while building your site or for members-only organizations."
+msgstr ""
+
+#: societypress.php:14560
+msgid "Admin Toolbar"
+msgstr ""
+
+#: societypress.php:14568
+msgid "Show the admin toolbar when viewing the site"
+msgstr ""
+
+#: societypress.php:14571
+msgid "The toolbar across the top of the page with quick links back to the admin area. Only visible to administrators."
+msgstr ""
+
+#: societypress.php:14583
+msgid "Social Media"
+msgstr ""
+
+#: societypress.php:14610
+msgid "Enter the full URL for each platform your society uses. Leave blank to hide. Icons appear in the site header."
+msgstr ""
+
+#: societypress.php:14622
+msgid "Breadcrumbs"
+msgstr ""
+
+#: societypress.php:14635
+msgid "Automatically show breadcrumb navigation above page content"
+msgstr ""
+
+#: societypress.php:14638
+msgid "Breadcrumbs show a trail like \"Home › Events › Annual Picnic\" to help visitors navigate."
+msgstr ""
+
+#: societypress.php:14648
+msgid "Home label"
+msgstr ""
+
+#: societypress.php:14657
+msgid "Separator"
+msgstr ""
+
+#: societypress.php:14661
+msgid "Character between crumbs (default: ›)"
+msgstr ""
+
+#: societypress.php:14675
+msgid "Google Analytics"
+msgstr ""
+
+#: societypress.php:14687
+msgid "Your Google Analytics 4 Measurement ID (starts with G-). Leave blank to disable tracking."
+msgstr ""
+
+#: societypress.php:14696
+msgid "Exclude logged-in administrators from tracking"
+msgstr ""
+
+#: societypress.php:14699
+msgid "When checked, page views by site admins won't appear in your analytics."
+msgstr ""
+
+#: societypress.php:14714
+msgid "Organization Information"
+msgstr ""
+
+#: societypress.php:14716
+msgid "Your organization's contact information. This can be displayed on your website."
+msgstr ""
+
+#: societypress.php:14750
+#: societypress.php:15931
+msgid "Phone Number"
+msgstr ""
+
+#: societypress.php:14764
+#: societypress.php:15920
+msgid "Contact Email"
+msgstr ""
+
+#: societypress.php:14782
+msgid "Community Forum URL"
+msgstr ""
+
+#: societypress.php:14790
+msgid "Link to your community discussion forum (Facebook group, Google Group, etc.). Used by the Community Link page builder widget. Leave empty to hide the widget from visitors."
+msgstr ""
+
+#: societypress.php:14802
+msgid "Research Help Notifications"
+msgstr ""
+
+#: societypress.php:14808
+msgid "Email all opted-in members when a new research help request is posted"
+msgstr ""
+
+#: societypress.php:14811
+msgid "Only members who have \"General Notices\" email preference enabled will receive these notifications."
+msgstr ""
+
+#: societypress.php:14823
+msgid "Currency Symbol"
+msgstr ""
+
+#: societypress.php:14831
+msgid "The symbol shown next to monetary amounts (e.g., $, €, £, ¥)."
+msgstr ""
+
+#: societypress.php:14842
+msgid "Currency Position"
+msgstr ""
+
+#: societypress.php:14848
+msgid "Before amount ($25.00)"
+msgstr ""
+
+#: societypress.php:14849
+msgid "After amount (25.00€)"
+msgstr ""
+
+#: societypress.php:14851
+msgid "Whether the currency symbol appears before or after the number."
+msgstr ""
+
+#: societypress.php:14866
+msgid "Store"
+msgstr ""
+
+#: societypress.php:14868
+msgid "Configure the publications store. Products are pulled from your library catalog — any item with a price becomes a store product."
+msgstr ""
+
+#: societypress.php:14875
+msgid "Product Source (acq_code)"
+msgstr ""
+
+#: societypress.php:14885
+msgid "Leave blank to show all priced items"
+msgstr ""
+
+#: societypress.php:14894
+msgid "Filter store products to this acquisition code from your library catalog. Leave blank to include all items with a price."
+msgstr ""
+
+#: societypress.php:14902
+msgid "Store Introduction"
+msgstr ""
+
+#: societypress.php:14908
+msgid "A short paragraph about your publications (optional)"
+msgstr ""
+
+#: societypress.php:14911
+msgid "Shown above the product grid. Leave blank for a default message using your organization name."
+msgstr ""
+
+#: societypress.php:14928
+#: societypress.php:14941
+#: societypress.php:15949
+msgid "Membership Period"
+msgstr ""
+
+#: societypress.php:14930
+msgid "How your organization calculates membership duration and expiration dates. These settings are used to pre-fill expiration dates when adding new members."
+msgstr ""
+
+#: societypress.php:14947
+msgid "Annual — fixed period (fiscal or calendar year)"
+msgstr ""
+
+#: societypress.php:14948
+msgid "Rolling — 12 months from the date dues are paid"
+msgstr ""
+
+#: societypress.php:14949
+msgid "Lifetime — memberships never expire"
+msgstr ""
+
+#: societypress.php:14973
+msgid "Period Starts"
+msgstr ""
+
+#: societypress.php:14995
+msgid "The month your membership year begins. For calendar-year societies, choose January. Only applies to Annual period type."
+msgstr ""
+
+#: societypress.php:15009
+msgid "Late-Join Credit"
+msgstr ""
+
+#: societypress.php:15016
+#: societypress.php:15039
+msgid "months"
+msgstr ""
+
+#: societypress.php:15019
+msgid "If a new member joins within this many months of the period ending, their dues are credited to the next period. Only applies to Annual period type."
+msgstr ""
+
+#: societypress.php:15032
+msgid "Renewal Grace Period"
+msgstr ""
+
+#: societypress.php:15042
+msgid "How long after the new period starts before unpaid members are considered lapsed. Only applies to Annual period type."
+msgstr ""
+
+#: societypress.php:15054
+msgid "Renewal Reminders"
+msgstr ""
+
+#: societypress.php:15056
+msgid "Automatically email members before their membership expires. A daily check runs behind the scenes — each member receives each reminder only once."
+msgstr ""
+
+#: societypress.php:15063
+msgid "Send Reminders"
+msgstr ""
+
+#: societypress.php:15067
+msgid "30 days before expiration"
+msgstr ""
+
+#: societypress.php:15068
+msgid "15 days before expiration"
+msgstr ""
+
+#: societypress.php:15069
+msgid "7 days before expiration"
+msgstr ""
+
+#: societypress.php:15089
+#: societypress.php:15137
+msgid "Email Subject"
+msgstr ""
+
+#: societypress.php:15097
+msgid "Subject line for renewal reminder emails."
+msgstr ""
+
+#: societypress.php:15112
+msgid "Send a one-time email the day after a member's membership expires. This is in addition to the pre-expiration renewal reminders above."
+msgstr ""
+
+#: societypress.php:15120
+msgid "Enable"
+msgstr ""
+
+#: societypress.php:15128
+msgid "Send an email when a membership expires"
+msgstr ""
+
+#: societypress.php:15145
+msgid "Merge tags: {{first_name}}, {{last_name}}, {{organization_name}}"
+msgstr ""
+
+#: societypress.php:15158
+msgid "Privacy"
+msgstr ""
+
+#: societypress.php:15160
+msgid "If you have a Privacy Policy page, select it here."
+msgstr ""
+
+#: societypress.php:15168
+msgid "Privacy Policy Page"
+msgstr ""
+
+#: societypress.php:15182
+msgid "This helps your site comply with privacy regulations."
+msgstr ""
+
+#: societypress.php:15184
+msgid "No pages have been created yet. You can set a privacy policy page after you've created some pages."
+msgstr ""
+
+#: societypress.php:15209
+msgid "Member Directory"
+msgstr ""
+
+#: societypress.php:15211
+msgid "Choose which fields appear on the public membership directory page. Individual members can opt out of showing their own information through the Directory Visibility settings on their profile."
+msgstr ""
+
+#: societypress.php:15222
+msgid "Visible Columns"
+msgstr ""
+
+#: societypress.php:15229
+msgid "City / State"
+msgstr ""
+
+#: societypress.php:15229
+msgid "Show city and state"
+msgstr ""
+
+#: societypress.php:15230
+msgid "Show phone number"
+msgstr ""
+
+#: societypress.php:15231
+msgid "Show email address"
+msgstr ""
+
+#: societypress.php:15232
+msgid "Show personal website"
+msgstr ""
+
+#: societypress.php:15233
+msgid "Show membership tier (e.g., Single, Joint, Life)"
+msgstr ""
+
+#: societypress.php:15234
+#: societypress.php:23045
+#: societypress.php:23168
+msgid "Member Since"
+msgstr ""
+
+#: societypress.php:15234
+msgid "Show the date they joined"
+msgstr ""
+
+#: societypress.php:15235
+msgid "Surnames Researched"
+msgstr ""
+
+#: societypress.php:15235
+msgid "Show surnames the member is researching — this is the key feature that connects researchers"
+msgstr ""
+
+#: societypress.php:15239
+msgid "Name is always displayed."
+msgstr ""
+
+#: societypress.php:15264
+msgid "Results Per Page"
+msgstr ""
+
+#: societypress.php:15281
+msgid "How many members to show per page in the public directory."
+msgstr ""
+
+#: societypress.php:15297
+msgid "Profile Change Approval"
+msgstr ""
+
+#: societypress.php:15304
+msgid "Require admin approval for member profile changes"
+msgstr ""
+
+#: societypress.php:15307
+msgid "When enabled, changes to Personal Info, Contact Information, and Address sections must be approved by an admin before taking effect. Other sections (preferences, privacy, interests) save immediately."
+msgstr ""
+
+#: societypress.php:15888
+msgid "Welcome to SocietyPress"
+msgstr ""
+
+#: societypress.php:15910
+msgid "Your Organization"
+msgstr ""
+
+#: societypress.php:15914
+msgid "Society Name"
+msgstr ""
+
+#: societypress.php:15926
+#: societypress.php:36615
+msgid "Mailing Address"
+msgstr ""
+
+#: societypress.php:15959
+msgid "Fiscal Year Start Month"
+msgstr ""
+
+#: societypress.php:15979
+msgid "Choose Your Features"
+msgstr ""
+
+#: societypress.php:15980
+msgid "Pick the features your society needs. You can always change this later from Settings."
+msgstr ""
+
+#: societypress.php:16016
+msgid "Members & Finances are always available. Everything else is optional."
+msgstr ""
+
+#: societypress.php:16020
+#: societypress.php:16058
+msgid "Back"
+msgstr ""
+
+#: societypress.php:16021
+msgid "Continue"
+msgstr ""
+
+#: societypress.php:16026
+msgid "Finishing Touches"
+msgstr ""
+
+#: societypress.php:16031
+#: societypress.php:21284
+msgid "Primary Color"
+msgstr ""
+
+#: societypress.php:16036
+#: societypress.php:21300
+msgid "Accent Color"
+msgstr ""
+
+#: societypress.php:16043
+msgid "Email \"From\" Name"
+msgstr ""
+
+#: societypress.php:16050
+msgid "Email \"From\" Address"
+msgstr ""
+
+#: societypress.php:16059
+msgid "Finish Setup"
+msgstr ""
+
+#: societypress.php:16177
+#: societypress.php:16208
+#: societypress.php:17472
+#: societypress.php:39933
+#: societypress.php:39990
+#: societypress.php:51530
+msgid "Permission denied."
+msgstr ""
+
+#: societypress.php:16186
+msgid "Both members are required."
+msgstr ""
+
+#: societypress.php:16189
+msgid "Cannot create a relationship with the same person."
+msgstr ""
+
+#: societypress.php:16194
+msgid "Relationship added."
+msgstr ""
+
+#: societypress.php:16196
+msgid "Failed to add relationship."
+msgstr ""
+
+#: societypress.php:16213
+msgid "Relationship removed."
+msgstr ""
+
+#: societypress.php:16215
+msgid "Failed to remove relationship."
+msgstr ""
+
+#: societypress.php:16344
+msgid "Audit Log"
+msgstr ""
+
+#: societypress.php:16358
+#: societypress.php:16383
+msgid "Action"
+msgstr ""
+
+#: societypress.php:16367
+#: societypress.php:18188
+#: societypress.php:22889
+#: societypress.php:40938
+#: societypress.php:42785
+#: societypress.php:46184
+#: societypress.php:46368
+#: societypress.php:48767
+#: societypress.php:52257
+#: societypress.php:52270
+#: societypress.php:53328
+#: societypress.php:54046
+msgid "Search"
+msgstr ""
+
+#: societypress.php:16373
+#: societypress.php:18194
+#: societypress.php:31665
+#: societypress.php:32353
+#: societypress.php:42804
+#: societypress.php:43137
+#: societypress.php:46186
+#: societypress.php:46370
+#: societypress.php:47595
+#: societypress.php:48773
+#: societypress.php:51198
+#: societypress.php:53330
+msgid "Clear"
+msgstr ""
+
+#: societypress.php:16381
+msgid "Date/Time"
+msgstr ""
+
+#: societypress.php:16382
+#: societypress.php:22178
+msgid "User"
+msgstr ""
+
+#: societypress.php:16384
+#: societypress.php:16846
+#: societypress.php:25188
+#: societypress.php:28248
+#: societypress.php:41329
+#: societypress.php:41811
+#: societypress.php:43302
+#: societypress.php:44240
+#: societypress.php:45832
+#: societypress.php:49378
+#: societypress.php:51352
+#: societypress.php:53047
+#: societypress.php:56099
+#: societypress.php:56202
+msgid "Description"
+msgstr ""
+
+#: societypress.php:16385
+msgid "Object"
+msgstr ""
+
+#: societypress.php:16386
+msgid "IP"
+msgstr ""
+
+#: societypress.php:16391
+msgid "No log entries found."
+msgstr ""
+
+#: societypress.php:16679
+msgid "Groups"
+msgstr ""
+
+#: societypress.php:16683
+msgid "Group deleted."
+msgstr ""
+
+#: societypress.php:16686
+msgid "Group saved."
+msgstr ""
+
+#: societypress.php:16694
+msgid "Leader"
+msgstr ""
+
+#: societypress.php:16696
+#: societypress.php:18210
+#: societypress.php:22181
+#: societypress.php:45692
+#: societypress.php:46308
+#: societypress.php:47897
+#: societypress.php:48791
+#: societypress.php:49240
+#: societypress.php:52738
+#: societypress.php:53344
+#: societypress.php:56003
+#: societypress.php:56125
+#: societypress.php:57669
+msgid "Actions"
+msgstr ""
+
+#: societypress.php:16701
+msgid "No groups yet."
+msgstr ""
+
+#: societypress.php:16701
+#: societypress.php:49245
+msgid "Create one"
+msgstr ""
+
+#: societypress.php:16723
+msgid "Delete this group and remove all members from it?"
+msgstr ""
+
+#: societypress.php:16754
+msgid "Group Not Found"
+msgstr ""
+
+#: societypress.php:16773
+msgid "Group name is required."
+msgstr ""
+
+#: societypress.php:16834
+msgid "Edit Group"
+msgstr ""
+
+#: societypress.php:16834
+msgid "Add New Group"
+msgstr ""
+
+#: societypress.php:16835
+msgid "Back to Groups"
+msgstr ""
+
+#: societypress.php:16842
+msgid "Group Name"
+msgstr ""
+
+#: societypress.php:16850
+msgid "Group Leader"
+msgstr ""
+
+#: societypress.php:16863
+msgid "Meeting Info"
+msgstr ""
+
+#: societypress.php:16876
+#: societypress.php:29216
+#: societypress.php:29676
+#: societypress.php:41838
+#: societypress.php:43532
+#: societypress.php:44263
+#: societypress.php:44377
+#: societypress.php:56103
+#: societypress.php:56258
+msgid "Sort Order"
+msgstr ""
+
+#. translators: %d: number of current members
+#: societypress.php:16883
+#, php-format
+msgid "Current Members (%d)"
+msgstr ""
+
+#: societypress.php:16885
+#: societypress.php:16892
+#: societypress.php:21224
+#: societypress.php:21229
+#: societypress.php:55317
+#: societypress.php:56236
+msgid "Remove"
+msgstr ""
+
+#: societypress.php:16916
+#: societypress.php:20691
+#: societypress.php:20828
+#: societypress.php:20836
+#: societypress.php:49045
+#: societypress.php:49406
+msgid "Save Changes"
+msgstr ""
+
+#: societypress.php:16916
+msgid "Create Group"
+msgstr ""
+
+#: societypress.php:16931
+#: societypress.php:16976
+#: societypress.php:39902
+#: societypress.php:45293
+msgid "You must be logged in."
+msgstr ""
+
+#: societypress.php:16940
+msgid "Invalid group."
+msgstr ""
+
+#: societypress.php:16947
+msgid "Group not found or inactive."
+msgstr ""
+
+#: societypress.php:16955
+msgid "You are already in this group."
+msgstr ""
+
+#. translators: %s: organization name
+#: societypress.php:16965
+#, php-format
+msgid "You have joined %s!"
+msgstr ""
+
+#: societypress.php:16989
+msgid "You have left the group."
+msgstr ""
+
+#: societypress.php:17035
+#: societypress.php:17335
+#: societypress.php:17565
+#: societypress.php:27230
+#: societypress.php:37866
+#: societypress.php:40908
+#: societypress.php:41092
+#: societypress.php:41122
+#: societypress.php:41283
+#: societypress.php:42400
+#: societypress.php:43294
+#: societypress.php:43886
+#: societypress.php:44232
+#: societypress.php:44280
+#: societypress.php:45686
+#: societypress.php:45807
+#: societypress.php:51348
+#: societypress.php:55996
+#: societypress.php:56198
+#: societypress.php:56491
+msgid "Title"
+msgstr ""
+
+#: societypress.php:17036
+#: societypress.php:17339
+#: societypress.php:17579
+msgid "Page Type"
+msgstr ""
+
+#: societypress.php:17077
+msgid "(no title)"
+msgstr ""
+
+#: societypress.php:17090
+msgid "Quick Edit"
+msgstr ""
+
+#: societypress.php:17099
+#: societypress.php:42413
+#: societypress.php:47950
+msgid "View"
+msgstr ""
+
+#: societypress.php:17104
+#: societypress.php:17700
+msgid "Are you sure you want to delete this page?"
+msgstr ""
+
+#: societypress.php:17126
+#: societypress.php:17341
+msgid "Standard Page"
+msgstr ""
+
+#: societypress.php:17134
+#: societypress.php:17350
+#: societypress.php:41287
+#: societypress.php:56024
+#: societypress.php:56252
+#: societypress.php:56473
+msgid "Published"
+msgstr ""
+
+#: societypress.php:17136
+#: societypress.php:17351
+#: societypress.php:52770
+#: societypress.php:56024
+#: societypress.php:56253
+#: societypress.php:56474
+msgid "Draft"
+msgstr ""
+
+#: societypress.php:17214
+msgid "No pages found."
+msgstr ""
+
+#: societypress.php:17216
+msgid "Create your first page"
+msgstr ""
+
+#: societypress.php:17232
+#: societypress.php:22464
+msgid "Membership Directory"
+msgstr ""
+
+#: societypress.php:17234
+msgid "Interest Groups"
+msgstr ""
+
+#: societypress.php:17235
+#: societypress.php:42391
+msgid "Research Help Requests"
+msgstr ""
+
+#: societypress.php:17236
+msgid "Resource Links Directory"
+msgstr ""
+
+#: societypress.php:17237
+#: societypress.php:17606
+msgid "Page Builder"
+msgstr ""
+
+#: societypress.php:17239
+msgid "Site Search"
+msgstr ""
+
+#: societypress.php:17240
+#: societypress.php:31590
+#: societypress.php:32366
+msgid "Calendar"
+msgstr ""
+
+#. translators: %d: number of pages deleted
+#: societypress.php:17298
+#, php-format
+msgid "%d page deleted."
+msgid_plural "%d pages deleted."
+msgstr[0] ""
+msgstr[1] ""
+
+#: societypress.php:17305
+msgid "Page saved."
+msgstr ""
+
+#: societypress.php:17313
+msgid "Show paginated"
+msgstr ""
+
+#: societypress.php:17315
+msgid "Show all pages"
+msgstr ""
+
+#: societypress.php:17426
+#: societypress.php:20788
+msgid "Saving..."
+msgstr ""
+
+#: societypress.php:17443
+msgid "Error saving."
+msgstr ""
+
+#: societypress.php:17482
+msgid "Page not found."
+msgstr ""
+
+#: societypress.php:17486
+msgid "Title cannot be empty."
+msgstr ""
+
+#: societypress.php:17553
+msgid "Edit Page"
+msgstr ""
+
+#: societypress.php:17553
+msgid "Add New Page"
+msgstr ""
+
+#: societypress.php:17621
+msgid "Save this page first, then edit it to add widgets."
+msgstr ""
+
+#: societypress.php:17629
+#: societypress.php:24803
+msgid "Content"
+msgstr ""
+
+#: societypress.php:17671
+#: societypress.php:52736
+#: societypress.php:56001
+msgid "Access"
+msgstr ""
+
+#: societypress.php:17676
+msgid "Restrict to Members Only"
+msgstr ""
+
+#: societypress.php:17678
+msgid "When checked, visitors who are not logged in will see a login prompt instead of the page content."
+msgstr ""
+
+#: societypress.php:17704
+msgid "Delete Page"
+msgstr ""
+
+#: societypress.php:17751
+msgid "You do not have permission to manage pages."
+msgstr ""
+
+#. translators: %s: error message
+#: societypress.php:17801
+#, php-format
+msgid "Error saving page: %s"
+msgstr ""
+
+#: societypress.php:18120
+#: societypress.php:18319
+#: societypress.php:18380
+msgid "Record Payment"
+msgstr ""
+
+#: societypress.php:18123
+msgid "Payment deleted."
+msgstr ""
+
+#: societypress.php:18141
+msgid "Transactions"
+msgstr ""
+
+#: societypress.php:18145
+msgid "Total Amount"
+msgstr ""
+
+#: societypress.php:18153
+#: societypress.php:48700
+#: societypress.php:49291
+#: societypress.php:49600
+msgid "Donations"
+msgstr ""
+
+#: societypress.php:18173
+msgid "All Methods"
+msgstr ""
+
+#: societypress.php:18180
+#: societypress.php:48759
+msgid "From"
+msgstr ""
+
+#: societypress.php:18184
+#: societypress.php:48763
+msgid "To"
+msgstr ""
+
+#: societypress.php:18189
+msgid "Name or note..."
+msgstr ""
+
+#: societypress.php:18215
+msgid "No transactions found."
+msgstr ""
+
+#: societypress.php:18235
+msgid "Delete this payment record?"
+msgstr ""
+
+#. translators: %s: number of items
+#: societypress.php:18252
+#, php-format
+msgid "%s item"
+msgid_plural "%s items"
+msgstr[0] ""
+msgstr[1] ""
+
+#: societypress.php:18291
+msgid "Please select a member and enter a valid amount."
+msgstr ""
+
+#: societypress.php:18320
+msgid "Back to Finances"
+msgstr ""
+
+#: societypress.php:18330
+#: societypress.php:46215
+#: societypress.php:46399
+#: societypress.php:46545
+msgid "Select Member"
+msgstr ""
+
+#: societypress.php:18341
+msgid "USD"
+msgstr ""
+
+#: societypress.php:18361
+msgid "Credit/Debit Card"
+msgstr ""
+
+#: societypress.php:18362
+msgid "Stripe"
+msgstr ""
+
+#: societypress.php:18364
+msgid "Bank Transfer"
+msgstr ""
+
+#: societypress.php:18402
+msgid "Settings: Website"
+msgstr ""
+
+#: societypress.php:18406
+#: societypress.php:18436
+#: societypress.php:18516
+#: societypress.php:18546
+#: societypress.php:18576
+#: societypress.php:18606
+#: societypress.php:21042
+msgid "Settings saved."
+msgstr ""
+
+#: societypress.php:18414
+#: societypress.php:18444
+#: societypress.php:18524
+#: societypress.php:18554
+#: societypress.php:18584
+#: societypress.php:18614
+#: societypress.php:21460
+msgid "Save Settings"
+msgstr ""
+
+#: societypress.php:18432
+msgid "Settings: Organization"
+msgstr ""
+
+#: societypress.php:18512
+msgid "Settings: Membership"
+msgstr ""
+
+#: societypress.php:18542
+msgid "Settings: Directory"
+msgstr ""
+
+#: societypress.php:18572
+msgid "Settings: Events"
+msgstr ""
+
+#: societypress.php:18602
+msgid "Settings: Privacy"
+msgstr ""
+
+#. translators: %s: theme name
+#: societypress.php:18796
+#, php-format
+msgid "Previewing: %s"
+msgstr ""
+
+#: societypress.php:18806
+msgid "Activate This Theme"
+msgstr ""
+
+#: societypress.php:18810
+msgid "Back to Themes"
+msgstr ""
+
+#: societypress.php:18894
+msgid "the society — burgundy and cream palette with brand-specific header, dual search forms, and social media icons."
+msgstr ""
+
+#: societypress.php:18902
+msgid "Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold."
+msgstr ""
+
+#: societypress.php:18910
+msgid "Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming."
+msgstr ""
+
+#: societypress.php:18918
+msgid "Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places."
+msgstr ""
+
+#: societypress.php:18926
+msgid "Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records."
+msgstr ""
+
+#: societypress.php:18934
+msgid "Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold."
+msgstr ""
+
+#: societypress.php:18962
+msgid "Unknown theme."
+msgstr ""
+
+#: societypress.php:18971
+msgid "Could not reach GitHub. Try again later."
+msgstr ""
+
+#. translators: %s: theme directory name
+#: societypress.php:19019
+#, php-format
+msgid "Theme directory \"%s\" not found in the release archive."
+msgstr ""
+
+#. translators: %s: theme name
+#: societypress.php:19045
+#, php-format
+msgid "%s has been installed."
+msgstr ""
+
+#: societypress.php:19271
+#: societypress.php:20796
+msgid "Please enter a theme name."
+msgstr ""
+
+#: societypress.php:19282
+msgid "That name is too similar to a built-in theme. Please choose a different name."
+msgstr ""
+
+#: societypress.php:19288
+msgid "A theme with that name already exists. Please choose a different name."
+msgstr ""
+
+#. translators: %s: color field name
+#: societypress.php:19298
+#: societypress.php:19384
+#, php-format
+msgid "Invalid color for %s."
+msgstr ""
+
+#: societypress.php:19317
+msgid "Could not create theme directory. Check file permissions."
+msgstr ""
+
+#: societypress.php:19324
+msgid "Could not write theme files. Check file permissions."
+msgstr ""
+
+#. translators: %s: theme name
+#: societypress.php:19348
+#, php-format
+msgid "\"%s\" has been created! You can now activate it."
+msgstr ""
+
+#: societypress.php:19372
+#: societypress.php:19442
+msgid "Theme not found."
+msgstr ""
+
+#. translators: %s: theme name
+#: societypress.php:19419
+#, php-format
+msgid "\"%s\" has been updated."
+msgstr ""
+
+#. translators: %s: theme name
+#: societypress.php:19476
+#, php-format
+msgid "\"%s\" has been deleted."
+msgstr ""
+
+#: societypress.php:20025
+msgid "Please enter a valid URL (e.g., https://example.org)."
+msgstr ""
+
+#: societypress.php:20031
+msgid "Only http and https URLs are supported."
+msgstr ""
+
+#. translators: %s: error message
+#: societypress.php:20045
+#, php-format
+msgid "Could not reach that website: %s"
+msgstr ""
+
+#. translators: %d: HTTP status code
+#: societypress.php:20056
+#, php-format
+msgid "The website returned an error (HTTP %d). Make sure the URL is correct."
+msgstr ""
+
+#: societypress.php:20064
+msgid "The page returned empty content."
+msgstr ""
+
+#: societypress.php:20075
+msgid "Found strong color and font signals — this should be a close match."
+msgstr ""
+
+#: societypress.php:20076
+msgid "Found some colors and fonts. You may want to fine-tune a few values."
+msgstr ""
+
+#: societypress.php:20077
+msgid "Only found basic color information. The site may use techniques we can't easily parse. Adjust as needed."
+msgstr ""
+
+#: societypress.php:20145
+msgid "System Default"
+msgstr ""
+
+#: societypress.php:20158
+msgid "Same as Body Font"
+msgstr ""
+
+#: societypress.php:20161
+msgid "Themes"
+msgstr ""
+
+#: societypress.php:20163
+msgid "Choose a theme for your society website. Each theme changes the look and layout of your site. Your content, members, and settings stay the same."
+msgstr ""
+
+#: societypress.php:20170
+msgid "has been activated."
+msgstr ""
+
+#: societypress.php:20217
+msgid "No preview available"
+msgstr ""
+
+#: societypress.php:20229
+#: societypress.php:21404
+#: societypress.php:22188
+msgid "Custom"
+msgstr ""
+
+#: societypress.php:20238
+msgid "Default"
+msgstr ""
+
+#: societypress.php:20254
+msgid "Currently Active"
+msgstr ""
+
+#: societypress.php:20261
+msgid "Activate"
+msgstr ""
+
+#: societypress.php:20266
+msgid "Preview this theme on your site"
+msgstr ""
+
+#: societypress.php:20267
+#: societypress.php:20452
+msgid "Preview"
+msgstr ""
+
+#. translators: %s: version number
+#: societypress.php:20277
+#, php-format
+msgid "Update to %s"
+msgstr ""
+
+#: societypress.php:20327
+#: societypress.php:41141
+#: societypress.php:41298
+#: societypress.php:43453
+msgid "Available"
+msgstr ""
+
+#: societypress.php:20347
+msgid "Install"
+msgstr ""
+
+#: societypress.php:20373
+#: societypress.php:20399
+#: societypress.php:20666
+msgid "Create Your Own Theme"
+msgstr ""
+
+#: societypress.php:20376
+msgid "Pick your own colors and fonts to create a unique look for your society."
+msgstr ""
+
+#: societypress.php:20380
+msgid "Start Building"
+msgstr ""
+
+#: societypress.php:20403
+msgid "Close"
+msgstr ""
+
+#: societypress.php:20412
+msgid "Theme Name"
+msgstr ""
+
+#: societypress.php:20414
+msgid "e.g., Sunflower Society"
+msgstr ""
+
+#: societypress.php:20418
+msgid "This will be the name shown in the theme gallery."
+msgstr ""
+
+#: societypress.php:20429
+msgid "Match My Current Site (Optional)"
+msgstr ""
+
+#: societypress.php:20433
+msgid "https://your-current-society-website.org"
+msgstr ""
+
+#: societypress.php:20437
+#: societypress.php:20967
+#: societypress.php:21000
+msgid "Extract Colors"
+msgstr ""
+
+#: societypress.php:20441
+msgid "Paste your current website URL to automatically detect its colors and fonts."
+msgstr ""
+
+#: societypress.php:20457
+msgid "Your Society Name"
+msgstr ""
+
+#: societypress.php:20458
+msgid "Home &nbsp; About &nbsp; Members"
+msgstr ""
+
+#: societypress.php:20462
+msgid "Welcome to Our Society"
+msgstr ""
+
+#: societypress.php:20464
+msgid "This is how your body text will look with the chosen font and colors."
+msgstr ""
+
+#: societypress.php:20466
+msgid "Sample link"
+msgstr ""
+
+#: societypress.php:20468
+msgid "Button"
+msgstr ""
+
+#: societypress.php:20472
+msgid "Your Society"
+msgstr ""
+
+#: societypress.php:20480
+#: societypress.php:21279
+msgid "Colors"
+msgstr ""
+
+#: societypress.php:20485
+msgid "Primary"
+msgstr ""
+
+#: societypress.php:20485
+msgid "Main brand color — headings, header, buttons"
+msgstr ""
+
+#: societypress.php:20486
+msgid "Button Hover"
+msgstr ""
+
+#: societypress.php:20486
+msgid "Buttons on hover and active links"
+msgstr ""
+
+#: societypress.php:20487
+msgid "Accent"
+msgstr ""
+
+#: societypress.php:20487
+msgid "Links, highlights, and decorative elements"
+msgstr ""
+
+#: societypress.php:20488
+#: societypress.php:21308
+msgid "Header Background"
+msgstr ""
+
+#: societypress.php:20488
+msgid "Top navigation bar background"
+msgstr ""
+
+#: societypress.php:20489
+#: societypress.php:21239
+#: societypress.php:21315
+msgid "Header Text"
+msgstr ""
+
+#: societypress.php:20489
+msgid "Text and links in the header"
+msgstr ""
+
+#: societypress.php:20490
+#: societypress.php:21322
+msgid "Footer Background"
+msgstr ""
+
+#: societypress.php:20490
+msgid "Bottom footer area background"
+msgstr ""
+
+#: societypress.php:20491
+#: societypress.php:21329
+msgid "Footer Text"
+msgstr ""
+
+#: societypress.php:20491
+msgid "Text and links in the footer"
+msgstr ""
+
+#: societypress.php:20519
+msgid "Fonts"
+msgstr ""
+
+#: societypress.php:20524
+#: societypress.php:21345
+msgid "Body Font"
+msgstr ""
+
+#: societypress.php:20534
+#: societypress.php:21356
+msgid "Heading Font"
+msgstr ""
+
+#: societypress.php:20555
+#: societypress.php:20667
+#: societypress.php:20798
+#: societypress.php:20827
+#: societypress.php:20835
+msgid "Create Theme"
+msgstr ""
+
+#: societypress.php:20610
+msgid "Installation failed."
+msgstr ""
+
+#: societypress.php:20626
+msgid "Install this theme?"
+msgstr ""
+
+#: societypress.php:20627
+msgid "Installing"
+msgstr ""
+
+#: societypress.php:20633
+msgid "Update this theme? Your customizations in style.css and functions.php will be overwritten."
+msgstr ""
+
+#: societypress.php:20634
+msgid "Updating"
+msgstr ""
+
+#: societypress.php:20690
+msgid "Edit Theme:"
+msgstr ""
+
+#: societypress.php:20787
+msgid "Creating..."
+msgstr ""
+
+#: societypress.php:20824
+#: societypress.php:45587
+msgid "Something went wrong."
+msgstr ""
+
+#: societypress.php:20842
+msgid "Delete this custom theme? This cannot be undone."
+msgstr ""
+
+#: societypress.php:20855
+msgid "Could not delete theme."
+msgstr ""
+
+#: societypress.php:20944
+msgid "Please enter a URL."
+msgstr ""
+
+#: societypress.php:20950
+msgid "Please enter a full URL starting with http:// or https://"
+msgstr ""
+
+#: societypress.php:20955
+msgid "Analyzing..."
+msgstr ""
+
+#: societypress.php:20989
+msgid "Colors extracted!"
+msgstr ""
+
+#: societypress.php:20991
+msgid "Fonts detected:"
+msgstr ""
+
+#: societypress.php:20995
+msgid "Could not extract colors from that URL."
+msgstr ""
+
+#: societypress.php:21038
+msgid "Settings: Design"
+msgstr ""
+
+#: societypress.php:21096
+msgid "Parchment"
+msgstr ""
+
+#: societypress.php:21097
+msgid "Warm, antiqued tones — feels like old documents."
+msgstr ""
+
+#: societypress.php:21105
+msgid "Slate"
+msgstr ""
+
+#: societypress.php:21106
+msgid "Modern and professional — clean grays with blue."
+msgstr ""
+
+#: societypress.php:21114
+msgid "Ledger"
+msgstr ""
+
+#: societypress.php:21115
+msgid "Deep navy and gold — classic, authoritative."
+msgstr ""
+
+#: societypress.php:21123
+msgid "Hearth"
+msgstr ""
+
+#: societypress.php:21124
+msgid "Rustic warmth — earthy reds and creams."
+msgstr ""
+
+#: societypress.php:21132
+msgid "Archive"
+msgstr ""
+
+#: societypress.php:21133
+msgid "Forest green and ivory — stately, library-inspired."
+msgstr ""
+
+#: societypress.php:21141
+msgid "Chronicle"
+msgstr ""
+
+#: societypress.php:21142
+msgid "Dark charcoal with warm amber — newspaper inspired."
+msgstr ""
+
+#: societypress.php:21156
+msgid "Style Presets"
+msgstr ""
+
+#: societypress.php:21158
+msgid "Pick a starting point. This fills in the colors and fonts below — you can still customize everything afterward."
+msgstr ""
+
+#: societypress.php:21192
+msgid "Logo"
+msgstr ""
+
+#: societypress.php:21197
+msgid "Site Logo"
+msgstr ""
+
+#: societypress.php:21219
+#: societypress.php:21510
+msgid "Change Logo"
+msgstr ""
+
+#: societypress.php:21219
+#: societypress.php:21522
+msgid "Upload Logo"
+msgstr ""
+
+#: societypress.php:21255
+msgid "Header Height"
+msgstr ""
+
+#: societypress.php:21288
+msgid "Used for headings, buttons, links, and borders throughout the site."
+msgstr ""
+
+#: societypress.php:21292
+msgid "Button Hover Color"
+msgstr ""
+
+#: societypress.php:21296
+msgid "The color buttons and links change to when hovered over."
+msgstr ""
+
+#: societypress.php:21304
+msgid "Used for input focus borders and other subtle highlights."
+msgstr ""
+
+#: societypress.php:21340
+msgid "Typography"
+msgstr ""
+
+#: societypress.php:21352
+msgid "The main font used for all body text on your website."
+msgstr ""
+
+#: societypress.php:21363
+msgid "Font for page titles and section headings. \"Same as Body Font\" is usually best."
+msgstr ""
+
+#: societypress.php:21367
+msgid "Text Size"
+msgstr ""
+
+#: societypress.php:21370
+msgid "Compact (16px)"
+msgstr ""
+
+#: societypress.php:21371
+msgid "Comfortable (18px) — Recommended"
+msgstr ""
+
+#: societypress.php:21372
+msgid "Large (20px)"
+msgstr ""
+
+#: societypress.php:21374
+msgid "Base text size. \"Comfortable\" works well for most audiences."
+msgstr ""
+
+#: societypress.php:21378
+msgid "Heading Size"
+msgstr ""
+
+#: societypress.php:21381
+msgid "Subtle — Smaller headings"
+msgstr ""
+
+#: societypress.php:21382
+msgid "Normal — Recommended"
+msgstr ""
+
+#: societypress.php:21383
+msgid "Bold — Larger headings"
+msgstr ""
+
+#: societypress.php:21385
+msgid "How prominent headings appear relative to body text."
+msgstr ""
+
+#: societypress.php:21393
+msgid "Layout"
+msgstr ""
+
+#: societypress.php:21394
+msgid "Control the width of your website's content area."
+msgstr ""
+
+#: societypress.php:21398
+msgid "Content Width"
+msgstr ""
+
+#: societypress.php:21401
+msgid "Narrow (900px) — Easy reading"
+msgstr ""
+
+#: societypress.php:21402
+msgid "Standard (1100px) — Recommended"
+msgstr ""
+
+#: societypress.php:21403
+msgid "Wide (1400px) — More space"
+msgstr ""
+
+#: societypress.php:21406
+msgid "How wide the main content area is. Narrower is easier to read; wider shows more content."
+msgstr ""
+
+#: societypress.php:21410
+msgid "Custom Width"
+msgstr ""
+
+#: societypress.php:21423
+msgid "Enter an exact width in pixels (600–2000)."
+msgstr ""
+
+#: societypress.php:21436
+msgid "Live Preview"
+msgstr ""
+
+#: societypress.php:21837
+msgid "Settings: Modules"
+msgstr ""
+
+#: societypress.php:21840
+msgid "Enable or disable feature modules for your society. Disabled modules are hidden from the admin menu and unavailable on the frontend. No data is deleted — re-enable a module anytime to restore it."
+msgstr ""
+
+#: societypress.php:21844
+msgid "Module settings saved."
+msgstr ""
+
+#: societypress.php:21975
+msgid "Members & Finances are always available — they are core to every society."
+msgstr ""
+
+#: societypress.php:21979
+msgid "Save Module Settings"
+msgstr ""
+
+#: societypress.php:21981
+msgid "Enable All"
+msgstr ""
+
+#: societypress.php:21984
+msgid "Disable All"
+msgstr ""
+
+#: societypress.php:22048
+msgid "User access updated."
+msgstr ""
+
+#: societypress.php:22061
+msgid "Access revoked."
+msgstr ""
+
+#: societypress.php:22087
+msgid "Grant non-administrator users access to specific sections of the admin panel. WordPress administrators always have full access."
+msgstr ""
+
+#. translators: %s: user display name
+#: societypress.php:22100
+#, php-format
+msgid "Editing Access for: %s"
+msgstr ""
+
+#: societypress.php:22112
+#: societypress.php:22179
+msgid "Role Template"
+msgstr ""
+
+#: societypress.php:22115
+msgid "— Custom (no template) —"
+msgstr ""
+
+#: societypress.php:22124
+msgid "Selecting a template pre-fills the checkboxes below. You can then customize."
+msgstr ""
+
+#: societypress.php:22129
+#: societypress.php:22180
+msgid "Access Areas"
+msgstr ""
+
+#: societypress.php:22145
+msgid "Save Access"
+msgstr ""
+
+#: societypress.php:22171
+msgid "Users with SocietyPress Access"
+msgstr ""
+
+#: societypress.php:22173
+msgid "No non-admin users have been granted SocietyPress access yet."
+msgstr ""
+
+#: societypress.php:22207
+msgid "Revoke all SocietyPress access for this user?"
+msgstr ""
+
+#: societypress.php:22208
+msgid "Revoke"
+msgstr ""
+
+#: societypress.php:22218
+msgid "Grant Access to a User"
+msgstr ""
+
+#: societypress.php:22219
+msgid "Search for a WordPress user to grant them SocietyPress admin access. WordPress administrators already have full access and don't need to be added here."
+msgstr ""
+
+#: societypress.php:22241
+msgid "— Select a user —"
+msgstr ""
+
+#: societypress.php:22248
+msgid "Edit Access"
+msgstr ""
+
+#: societypress.php:22252
+msgid "All available users are either administrators or already have SP access assigned."
+msgstr ""
+
+#: societypress.php:22330
+msgid "Officer"
+msgstr ""
+
+#: societypress.php:22337
+#: societypress.php:44913
+#: societypress.php:45047
+#: societypress.php:45688
+#: societypress.php:45821
+#: societypress.php:46559
+#: societypress.php:46688
+#: societypress.php:50228
+msgid "Committee"
+msgstr ""
+
+#: societypress.php:22356
+#: societypress.php:22994
+msgid "No members found."
+msgstr ""
+
+#: societypress.php:22357
+msgid "Add as Officer"
+msgstr ""
+
+#: societypress.php:22358
+msgid "Add to Committee"
+msgstr ""
+
+#. translators: %s: login link HTML
+#: societypress.php:22505
+#, php-format
+msgid "The membership directory is available to logged-in members. Please %s to view the directory."
+msgstr ""
+
+#: societypress.php:22506
+#: societypress.php:32748
+#: societypress.php:40126
+#: societypress.php:40268
+#: societypress.php:40292
+#: societypress.php:40481
+msgid "log in"
+msgstr ""
+
+#: societypress.php:22886
+msgid "Search by name, city, email, or surname…"
+msgstr ""
+
+#: societypress.php:22888
+msgid "Search the membership directory"
+msgstr ""
+
+#: societypress.php:22891
+msgid "Clear All"
+msgstr ""
+
+#: societypress.php:22904
+msgid "All Members"
+msgstr ""
+
+#: societypress.php:22911
+msgid "Group"
+msgstr ""
+
+#: societypress.php:22913
+msgid "All Groups"
+msgstr ""
+
+#: societypress.php:22940
+msgid "Surname Being Researched"
+msgstr ""
+
+#: societypress.php:22945
+msgid "e.g. Smith"
+msgstr ""
+
+#: societypress.php:22996
+msgid "1 member"
+msgstr ""
+
+#: societypress.php:22998
+msgid "members"
+msgstr ""
+
+#: societypress.php:23189
+msgid "Researching:"
+msgstr ""
+
+#: societypress.php:23226
+msgid "Groups:"
+msgstr ""
+
+#: societypress.php:23258
+msgid "Directory pagination"
+msgstr ""
+
+#: societypress.php:23261
+msgid "Previous"
+msgstr ""
+
+#: societypress.php:23300
+#: societypress.php:31809
+#: societypress.php:41176
+#: societypress.php:54133
+msgid "Next"
+msgstr ""
+
+#: societypress.php:23752
+msgid "Missing member ID."
+msgstr ""
+
+#: societypress.php:23757
+msgid "You must be logged in to view member profiles."
+msgstr ""
+
+#: societypress.php:23782
+msgid "This member has opted out of the directory."
+msgstr ""
+
+#: societypress.php:24834
+msgid "Displays the full searchable member directory. Uses existing directory settings."
+msgstr ""
+
+#: societypress.php:24837
+#: societypress.php:24857
+#: societypress.php:25224
+#: societypress.php:25307
+#: societypress.php:25349
+#: societypress.php:25393
+msgid "Require login to view"
+msgstr ""
+
+#: societypress.php:24841
+msgid "Results per page"
+msgstr ""
+
+#: societypress.php:24854
+msgid "Lets visitors search surnames being researched by members."
+msgstr ""
+
+#: societypress.php:24871
+msgid "Displays available membership levels from your tier settings."
+msgstr ""
+
+#: societypress.php:24872
+msgid "Show prices"
+msgstr ""
+
+#: societypress.php:24873
+msgid "Include inactive tiers"
+msgstr ""
+
+#: societypress.php:24888
+msgid "Shows organization contact info from your SocietyPress settings."
+msgstr ""
+
+#: societypress.php:24892
+msgid "Show hours"
+msgstr ""
+
+#: societypress.php:24905
+msgid "Displays membership statistics pulled live from the database."
+msgstr ""
+
+#: societypress.php:24906
+msgid "Show tier breakdown"
+msgstr ""
+
+#: societypress.php:24907
+msgid "Show status counts (active, expired, etc.)"
+msgstr ""
+
+#: societypress.php:24923
+msgid "Heading text"
+msgstr ""
+
+#: societypress.php:24927
+msgid "Subtitle (optional)"
+msgstr ""
+
+#: societypress.php:24932
+msgid "Level"
+msgstr ""
+
+#: societypress.php:24941
+#: societypress.php:24998
+#: societypress.php:25037
+msgid "Alignment"
+msgstr ""
+
+#: societypress.php:24943
+#: societypress.php:25000
+#: societypress.php:25039
+msgid "Left"
+msgstr ""
+
+#: societypress.php:24944
+#: societypress.php:25001
+#: societypress.php:25040
+msgid "Center"
+msgstr ""
+
+#: societypress.php:24945
+#: societypress.php:25002
+#: societypress.php:25041
+msgid "Right"
+msgstr ""
+
+#: societypress.php:24950
+msgid "Show divider line below heading"
+msgstr ""
+
+#: societypress.php:24972
+msgid "Image"
+msgstr ""
+
+#: societypress.php:24977
+#: societypress.php:28284
+msgid "Change Image"
+msgstr ""
+
+#: societypress.php:24977
+#: societypress.php:28284
+msgid "Select Image"
+msgstr ""
+
+#: societypress.php:24981
+msgid "Caption (optional)"
+msgstr ""
+
+#: societypress.php:24985
+msgid "Link URL (optional)"
+msgstr ""
+
+#: societypress.php:24990
+#: societypress.php:56000
+#: societypress.php:56494
+msgid "Size"
+msgstr ""
+
+#: societypress.php:24992
+#: societypress.php:25463
+msgid "Medium"
+msgstr ""
+
+#: societypress.php:24993
+#: societypress.php:25464
+msgid "Large"
+msgstr ""
+
+#: societypress.php:24994
+msgid "Full width"
+msgstr ""
+
+#: societypress.php:25020
+msgid "Button text"
+msgstr ""
+
+#: societypress.php:25024
+msgid "Link URL"
+msgstr ""
+
+#: societypress.php:25029
+msgid "Style"
+msgstr ""
+
+#: societypress.php:25031
+msgid "Primary (filled)"
+msgstr ""
+
+#: societypress.php:25032
+msgid "Secondary (gray)"
+msgstr ""
+
+#: societypress.php:25033
+#: societypress.php:25196
+msgid "Outline"
+msgstr ""
+
+#: societypress.php:25046
+msgid "Open in new window"
+msgstr ""
+
+#: societypress.php:25058
+msgid "Displays a simple name/email/message form. Submissions are emailed to the organization email from your SocietyPress settings."
+msgstr ""
+
+#: societypress.php:25059
+msgid "Introductory text (optional)"
+msgstr ""
+
+#: societypress.php:25086
+msgid "Displays a compact list of upcoming events pulled from your Events system."
+msgstr ""
+
+#: societypress.php:25088
+msgid "Number of events to show"
+msgstr ""
+
+#: societypress.php:25095
+#: societypress.php:25156
+#: societypress.php:25330
+#: societypress.php:25373
+msgid "Filter by category"
+msgstr ""
+
+#: societypress.php:25148
+msgid "Displays a monthly calendar grid with color-coded event pills, month navigation, and mobile day-tap."
+msgstr ""
+
+#: societypress.php:25150
+msgid "Heading (optional)"
+msgstr ""
+
+#: societypress.php:25153
+msgid "Events Calendar"
+msgstr ""
+
+#: societypress.php:25158
+#: societypress.php:27450
+#: societypress.php:31654
+#: societypress.php:32321
+#: societypress.php:42791
+#: societypress.php:42880
+#: societypress.php:55980
+msgid "All Categories"
+msgstr ""
+
+#: societypress.php:25183
+msgid "Links to the Community Forum URL set in Settings > Organization. If that URL is empty, this widget will be invisible to visitors."
+msgstr ""
+
+#: societypress.php:25184
+msgid "Button label"
+msgstr ""
+
+#: societypress.php:25192
+msgid "Button style"
+msgstr ""
+
+#: societypress.php:25213
+msgid "Displays recent posts from the \"Newsletter\" category. Create posts and assign them to the Newsletter category to populate this widget."
+msgstr ""
+
+#: societypress.php:25214
+msgid "Number of newsletters to show"
+msgstr ""
+
+#: societypress.php:25222
+msgid "Show excerpt"
+msgstr ""
+
+#: societypress.php:25223
+msgid "Show date"
+msgstr ""
+
+#: societypress.php:25240
+msgid "Displays volunteer statistics from the Governance > Volunteer Hours system."
+msgstr ""
+
+#: societypress.php:25241
+msgid "Show active volunteer count"
+msgstr ""
+
+#: societypress.php:25242
+msgid "Show total hours"
+msgstr ""
+
+#: societypress.php:25243
+msgid "Show top contributors"
+msgstr ""
+
+#: societypress.php:25246
+msgid "Time period"
+msgstr ""
+
+#: societypress.php:25248
+msgid "This year"
+msgstr ""
+
+#: societypress.php:25249
+msgid "All time"
+msgstr ""
+
+#: societypress.php:25272
+msgid "Displays photo albums from the Gallery section."
+msgstr ""
+
+#: societypress.php:25273
+msgid "Display mode"
+msgstr ""
+
+#: societypress.php:25280
+msgid "Album (for single mode)"
+msgstr ""
+
+#: societypress.php:25290
+msgid "Columns"
+msgstr ""
+
+#: societypress.php:25298
+msgid "Max items"
+msgstr ""
+
+#: societypress.php:25329
+msgid "Displays curated research resource links from Library > Resource Links."
+msgstr ""
+
+#: societypress.php:25339
+msgid "Max links to show"
+msgstr ""
+
+#: societypress.php:25347
+msgid "Show featured links only"
+msgstr ""
+
+#: societypress.php:25348
+msgid "Show descriptions"
+msgstr ""
+
+#: societypress.php:25372
+msgid "Displays a searchable, browsable library catalog with collection stats, tabbed search, browse-by-type cards, popular subjects, and a paginated results table with expandable detail rows."
+msgstr ""
+
+#: societypress.php:25382
+msgid "Items per page"
+msgstr ""
+
+#: societypress.php:25390
+msgid "Show landing page (stats, browse by type, popular subjects)"
+msgstr ""
+
+#: societypress.php:25391
+msgid "Show search box"
+msgstr ""
+
+#: societypress.php:25392
+msgid "Show available items only"
+msgstr ""
+
+#: societypress.php:25967
+msgid "Remove this widget?"
+msgstr ""
+
+#: societypress.php:26312
+msgid "Your Name"
+msgstr ""
+
+#: societypress.php:26316
+msgid "Your Email"
+msgstr ""
+
+#: societypress.php:26321
+msgid "Message"
+msgstr ""
+
+#: societypress.php:26431
+#: societypress.php:32550
+#: societypress.php:36509
+#: societypress.php:49937
+msgid "Free"
+msgstr ""
+
+#. translators: %d: number of months in billing cycle
+#: societypress.php:26435
+msgid "per year"
+msgstr ""
+
+#. translators: %d: number of months in billing cycle
+#: societypress.php:26435
+#, php-format
+msgid "per %d months"
+msgstr ""
+
+#: societypress.php:26439
+msgid "Not currently available"
+msgstr ""
+
+#: societypress.php:26674
+#: societypress.php:34932
+#: societypress.php:35214
+#: societypress.php:41581
+msgid "Security check failed. Please refresh and try again."
+msgstr ""
+
+#: societypress.php:26677
+msgid "Thank you for your message!"
+msgstr ""
+
+#: societypress.php:26685
+msgid "Please fill in all required fields."
+msgstr ""
+
+#: societypress.php:26703
+msgid "Thank you for your message! We will get back to you soon."
+msgstr ""
+
+#: societypress.php:26705
+#: societypress.php:41649
+msgid "There was a problem sending your message. Please try again later."
+msgstr ""
+
+#: societypress.php:27231
+msgid "Date / Time"
+msgstr ""
+
+#: societypress.php:27233
+#: societypress.php:28214
+#: societypress.php:41289
+#: societypress.php:43311
+#: societypress.php:44244
+#: societypress.php:44281
+#: societypress.php:55997
+#: societypress.php:56206
+#: societypress.php:56450
+#: societypress.php:57664
+msgid "Category"
+msgstr ""
+
+#: societypress.php:27234
+#: societypress.php:35501
+msgid "Registrations"
+msgstr ""
+
+#: societypress.php:27283
+msgid "Imported from iCal feed"
+msgstr ""
+
+#: societypress.php:27283
+msgid "iCal"
+msgstr ""
+
+#: societypress.php:27285
+msgid "Links to external website"
+msgstr ""
+
+#: societypress.php:27285
+#: societypress.php:32562
+msgid "External"
+msgstr ""
+
+#: societypress.php:27299
+msgid "Duplicate"
+msgstr ""
+
+#: societypress.php:27310
+msgid "Cancel this event?"
+msgstr ""
+
+#: societypress.php:27316
+msgid "Permanently delete this event?"
+msgstr ""
+
+#: societypress.php:27355
+msgid "Virtual"
+msgstr ""
+
+#: societypress.php:27477
+msgid "Upcoming"
+msgstr ""
+
+#: societypress.php:27478
+msgid "Past"
+msgstr ""
+
+#: societypress.php:27615
+#: societypress.php:32402
+msgid "No events found."
+msgstr ""
+
+#: societypress.php:27615
+msgid "Create your first event"
+msgstr ""
+
+#. translators: %d: number of events deleted
+#: societypress.php:27815
+#, php-format
+msgid "%d event deleted."
+msgid_plural "%d events deleted."
+msgstr[0] ""
+msgstr[1] ""
+
+#: societypress.php:27822
+msgid "Event cancelled."
+msgstr ""
+
+#: societypress.php:27825
+msgid "Event saved."
+msgstr ""
+
+#: societypress.php:28124
+msgid "Event Not Found"
+msgstr ""
+
+#: societypress.php:28124
+msgid "The requested event does not exist."
+msgstr ""
+
+#: societypress.php:28171
+msgid "Imported from iCal Feed"
+msgstr ""
+
+#. translators: %s: feed label
+#: societypress.php:28175
+#, php-format
+msgid "This event was imported from \"%s\". Any manual changes will be overwritten on the next sync."
+msgstr ""
+
+#: societypress.php:28183
+#: societypress.php:29152
+msgid "Detach from Feed"
+msgstr ""
+
+#: societypress.php:28200
+msgid "Basic Info"
+msgstr ""
+
+#: societypress.php:28226
+msgid "Manage Categories"
+msgstr ""
+
+#: societypress.php:28235
+msgid "Scheduled"
+msgstr ""
+
+#: societypress.php:28235
+#: societypress.php:45881
+msgid "Cancelled"
+msgstr ""
+
+#: societypress.php:28235
+#: societypress.php:32526
+msgid "Postponed"
+msgstr ""
+
+#: societypress.php:28235
+#: societypress.php:55484
+#: societypress.php:55632
+msgid "Completed"
+msgstr ""
+
+#: societypress.php:28270
+msgid "Featured Image"
+msgstr ""
+
+#: societypress.php:28305
+msgid "Date & Time"
+msgstr ""
+
+#: societypress.php:28318
+msgid "Start Time"
+msgstr ""
+
+#: societypress.php:28322
+msgid "Leave blank for all-day events."
+msgstr ""
+
+#: societypress.php:28327
+msgid "End Time"
+msgstr ""
+
+#: societypress.php:28345
+msgid "Venue Name"
+msgstr ""
+
+#: societypress.php:28363
+msgid "Virtual Event"
+msgstr ""
+
+#: societypress.php:28368
+msgid "This event has a virtual/online component"
+msgstr ""
+
+#: societypress.php:28374
+msgid "Meeting URL"
+msgstr ""
+
+#: societypress.php:28383
+msgid "Notice Only"
+msgstr ""
+
+#: societypress.php:28388
+msgid "Calendar notice only — no detail page or registration"
+msgstr ""
+
+#: societypress.php:28391
+msgid "For board meetings, holidays, office closures, etc. The event title and date appear on the calendar but there's nothing to click through to."
+msgstr ""
+
+#: societypress.php:28402
+msgid "Registration & Pricing"
+msgstr ""
+
+#: societypress.php:28407
+msgid "Registration"
+msgstr ""
+
+#: societypress.php:28412
+msgid "Enable online registration for this event"
+msgstr ""
+
+#: societypress.php:28420
+#: societypress.php:41829
+#: societypress.php:51370
+msgid "Visibility"
+msgstr ""
+
+#: societypress.php:28424
+#: societypress.php:30204
+msgid "Public — visible to everyone"
+msgstr ""
+
+#: societypress.php:28427
+msgid "Members Only — only logged-in members can see and register"
+msgstr ""
+
+#: societypress.php:28434
+msgid "Capacity Limit"
+msgstr ""
+
+#: societypress.php:28439
+msgid "Leave blank or 0 for unlimited."
+msgstr ""
+
+#: societypress.php:28444
+#: societypress.php:30236
+msgid "Guest Registration"
+msgstr ""
+
+#: societypress.php:28449
+msgid "Allow non-members to register"
+msgstr ""
+
+#: societypress.php:28455
+msgid "Member Price ($)"
+msgstr ""
+
+#: societypress.php:28465
+msgid "Non-Member Price ($)"
+msgstr ""
+
+#: societypress.php:28475
+msgid "Payment Mode"
+msgstr ""
+
+#: societypress.php:28480
+msgid "Free (no payment)"
+msgstr ""
+
+#: societypress.php:28481
+msgid "Pay at the door"
+msgstr ""
+
+#: societypress.php:28482
+msgid "Online payment (Stripe)"
+msgstr ""
+
+#: societypress.php:28483
+msgid "Online or at the door"
+msgstr ""
+
+#: societypress.php:28497
+msgid "Price Note"
+msgstr ""
+
+#: societypress.php:28520
+msgid "Time Slots"
+msgstr ""
+
+#: societypress.php:28520
+msgid "(optional)"
+msgstr ""
+
+#: societypress.php:28529
+msgid "Slots"
+msgstr ""
+
+#: societypress.php:28610
+#: societypress.php:37982
+msgid "Speakers"
+msgstr ""
+
+#: societypress.php:28615
+msgid "Assigned Speakers"
+msgstr ""
+
+#: societypress.php:28640
+#: societypress.php:28672
+msgid "Select Speaker"
+msgstr ""
+
+#: societypress.php:28649
+msgid "Speaker"
+msgstr ""
+
+#: societypress.php:28650
+msgid "Instructor"
+msgstr ""
+
+#: societypress.php:28651
+msgid "Moderator"
+msgstr ""
+
+#: societypress.php:28652
+msgid "Panelist"
+msgstr ""
+
+#: societypress.php:28659
+msgid "Add Speaker"
+msgstr ""
+
+#: societypress.php:28663
+msgid "No speakers in the system yet."
+msgstr ""
+
+#: societypress.php:28664
+msgid "Add one"
+msgstr ""
+
+#: societypress.php:28664
+msgid "first."
+msgstr ""
+
+#: societypress.php:28705
+msgid "Recurring Event"
+msgstr ""
+
+#: societypress.php:28710
+msgid "Recurrence"
+msgstr ""
+
+#: societypress.php:28713
+msgid "No recurrence (one-time event)"
+msgstr ""
+
+#: societypress.php:28715
+msgid "Weekly (same day each week)"
+msgstr ""
+
+#: societypress.php:28718
+msgid "Monthly (e.g., 2nd Saturday)"
+msgstr ""
+
+#: societypress.php:28721
+msgid "Monthly (same date each month)"
+msgstr ""
+
+#: societypress.php:28724
+msgid "The recurrence is calculated from the event date above."
+msgstr ""
+
+#: societypress.php:28729
+msgid "Repeat Until"
+msgstr ""
+
+#: societypress.php:28733
+msgid "Generate occurrences through this date. Leave blank for 12 months."
+msgstr ""
+
+#: societypress.php:28739
+msgid "Series Management"
+msgstr ""
+
+#: societypress.php:28752
+msgid "Regenerate Future Occurrences"
+msgstr ""
+
+#: societypress.php:28756
+msgid "Only creates new dates — existing or modified occurrences are left alone."
+msgstr ""
+
+#: societypress.php:28767
+msgid "Series"
+msgstr ""
+
+#: societypress.php:28771
+msgid "Part of Series"
+msgstr ""
+
+#: societypress.php:28800
+#: societypress.php:45862
+msgid "Contact Person"
+msgstr ""
+
+#: societypress.php:28843
+msgid "External Link"
+msgstr ""
+
+#: societypress.php:28848
+msgid "External URL"
+msgstr ""
+
+#: societypress.php:28854
+msgid "If set, this event links to an external website instead of showing a detail page on this site."
+msgstr ""
+
+#: societypress.php:29079
+msgid "Generate future occurrences? Existing events in the series will not be affected."
+msgstr ""
+
+#: societypress.php:29107
+msgid "Detach this event from its recurring series? This cannot be undone."
+msgstr ""
+
+#: societypress.php:29135
+msgid "Detach this event from its iCal feed? It will become a standalone event and won't be updated by future syncs."
+msgstr ""
+
+#: societypress.php:29137
+msgid "Detaching..."
+msgstr ""
+
+#: societypress.php:29150
+msgid "Could not detach."
+msgstr ""
+
+#: societypress.php:29188
+#: societypress.php:31315
+msgid "Event Categories"
+msgstr ""
+
+#: societypress.php:29208
+msgid "Color"
+msgstr ""
+
+#: societypress.php:29219
+msgid "Lower numbers appear first."
+msgstr ""
+
+#: societypress.php:29404
+#: societypress.php:29529
+msgid "Category name is required."
+msgstr ""
+
+#: societypress.php:29452
+msgid "Delete this category? This cannot be undone."
+msgstr ""
+
+#: societypress.php:29583
+msgid "Invalid category."
+msgstr ""
+
+#. translators: %d is the number of events using this category
+#: societypress.php:29595
+#, php-format
+msgid "Can't delete — %d event(s) use this category. Remove the category from those events first."
+msgstr ""
+
+#: societypress.php:29637
+msgid "Membership Plans"
+msgstr ""
+
+#: societypress.php:29657
+msgid "Annual Dues"
+msgstr ""
+
+#: societypress.php:29661
+msgid "Set to 0 for free/honorary plans."
+msgstr ""
+
+#: societypress.php:29665
+msgid "Duration (Months)"
+msgstr ""
+
+#: societypress.php:29672
+msgid "How many months before renewal is due."
+msgstr ""
+
+#: societypress.php:29683
+msgid "Joint Membership"
+msgstr ""
+
+#: societypress.php:29687
+msgid "This plan allows a second household member"
+msgstr ""
+
+#: societypress.php:29689
+msgid "Couples sharing one membership — both names appear in the directory and can attend events."
+msgstr ""
+
+#: societypress.php:29923
+#: societypress.php:30067
+msgid "Plan name is required."
+msgstr ""
+
+#: societypress.php:29987
+msgid "Delete this membership plan? This cannot be undone."
+msgstr ""
+
+#: societypress.php:30076
+msgid "A plan with that name already exists."
+msgstr ""
+
+#: societypress.php:30141
+msgid "Invalid plan."
+msgstr ""
+
+#. translators: %d is the number of members on this tier
+#: societypress.php:30153
+#, php-format
+msgid "Can't delete — %d member(s) are on this plan. Reassign them to a different plan first."
+msgstr ""
+
+#: societypress.php:30190
+msgid "Default settings for new events. Individual events can override these."
+msgstr ""
+
+#: societypress.php:30198
+msgid "Default Visibility"
+msgstr ""
+
+#: societypress.php:30207
+msgid "Default visibility for new events. Can be changed per event."
+msgstr ""
+
+#: societypress.php:30217
+msgid "Default Registration"
+msgstr ""
+
+#: societypress.php:30225
+msgid "Enable registration by default for new events"
+msgstr ""
+
+#: societypress.php:30244
+msgid "Allow non-members to register by default"
+msgstr ""
+
+#: societypress.php:30255
+msgid "Events Per Page"
+msgstr ""
+
+#: societypress.php:30265
+msgid "Number of events to show per page on the frontend listing."
+msgstr ""
+
+#: societypress.php:30275
+msgid "Calendar Start Day"
+msgstr ""
+
+#: societypress.php:30281
+msgid "Sunday"
+msgstr ""
+
+#: societypress.php:30282
+msgid "Monday"
+msgstr ""
+
+#: societypress.php:30284
+msgid "Which day the calendar grid starts on."
+msgstr ""
+
+#: societypress.php:30297
+msgid "Calendar Subscription Feed"
+msgstr ""
+
+#: societypress.php:30305
+msgid "Enable calendar subscription feed"
+msgstr ""
+
+#: societypress.php:30307
+msgid "Allow visitors and members to subscribe to your events calendar in Google Calendar, Apple Calendar, Outlook, and other apps."
+msgstr ""
+
+#: societypress.php:30317
+msgid "Event Reminders"
+msgstr ""
+
+#: societypress.php:30325
+msgid "1 day before the event"
+msgstr ""
+
+#: societypress.php:30330
+msgid "3 days before the event"
+msgstr ""
+
+#: societypress.php:30335
+msgid "1 week before the event"
+msgstr ""
+
+#: societypress.php:30338
+msgid "Send email reminders to registered attendees before each event."
+msgstr ""
+
+#: societypress.php:30348
+msgid "Confirmation Email Subject"
+msgstr ""
+
+#. translators: {event_title} is a merge tag — do not translate the tag itself
+#: societypress.php:30357
+msgid "Use {event_title} for the event name. Sent when someone registers."
+msgstr ""
+
+#: societypress.php:30368
+msgid "Reminder Email Subject"
+msgstr ""
+
+#. translators: {event_title} is a merge tag — do not translate the tag itself
+#: societypress.php:30377
+msgid "Use {event_title} for the event name. Sent before the event."
+msgstr ""
+
+#: societypress.php:30402
+msgid "Online Payments"
+msgstr ""
+
+#: societypress.php:30424
+msgid "Accept Online Payments with Stripe"
+msgstr ""
+
+#: societypress.php:30426
+msgid "Collect event registration fees online. Attendees pay on Stripe's secure checkout page — your site never handles credit card numbers."
+msgstr ""
+
+#: societypress.php:30437
+msgid "Connected (Test Mode)"
+msgstr ""
+
+#: societypress.php:30437
+msgid "Connected (Live)"
+msgstr ""
+
+#: societypress.php:30443
+msgid "Not Connected — follow the steps below to get started"
+msgstr ""
+
+#: societypress.php:30451
+msgid "Setup Instructions (if you need to change keys)"
+msgstr ""
+
+#: societypress.php:30451
+msgid "Setup Instructions (5 minutes)"
+msgstr ""
+
+#: societypress.php:30473
+msgid "Test Mode"
+msgstr ""
+
+#: societypress.php:30481
+msgid "Use test mode"
+msgstr ""
+
+#: societypress.php:30481
+msgid "no real charges will be made"
+msgstr ""
+
+#: societypress.php:30483
+msgid "Keep this checked until you're ready to accept real payments. Test mode uses separate API keys."
+msgstr ""
+
+#: societypress.php:30493
+msgid "Test API Keys"
+msgstr ""
+
+#: societypress.php:30501
+#: societypress.php:30534
+msgid "Publishable Key"
+msgstr ""
+
+#: societypress.php:30507
+#: societypress.php:30540
+msgid "Secret Key"
+msgstr ""
+
+#: societypress.php:30526
+msgid "Live API Keys"
+msgstr ""
+
+#: societypress.php:30559
+msgid "Currency"
+msgstr ""
+
+#: societypress.php:30585
+msgid "Verify Setup"
+msgstr ""
+
+#: societypress.php:30593
+msgid "Checks that your API keys are valid. Save your settings first, then click this button."
+msgstr ""
+
+#: societypress.php:31290
+msgid "Import Events"
+msgstr ""
+
+#. translators: %d: number of events imported
+#: societypress.php:31300
+#, php-format
+msgid "%d events imported successfully."
+msgstr ""
+
+#. translators: %s: comma-separated list of category names
+#: societypress.php:31309
+#, php-format
+msgid "Created new categories: %s"
+msgstr ""
+
+#. translators: %s: link to Event Categories page
+#: societypress.php:31314
+#, php-format
+msgid "You can customize their colors on the %s page."
+msgstr ""
+
+#. translators: %d: number of rows skipped
+#: societypress.php:31325
+#, php-format
+msgid "%d rows skipped."
+msgstr ""
+
+#: societypress.php:31345
+msgid "View Events"
+msgstr ""
+
+#: societypress.php:31355
+msgid "Preview & Column Mapping"
+msgstr ""
+
+#: societypress.php:31371
+msgid "File Column"
+msgstr ""
+
+#: societypress.php:31373
+msgid "Sample Values"
+msgstr ""
+
+#: societypress.php:31383
+msgid "— Skip this column —"
+msgstr ""
+
+#. translators: %d: number of events to import
+#: societypress.php:31417
+#, php-format
+msgid "Import %d Events"
+msgstr ""
+
+#: societypress.php:31430
+msgid "Upload Events"
+msgstr ""
+
+#: societypress.php:31441
+msgid "Import File"
+msgstr ""
+
+#: societypress.php:31466
+msgid "Column"
+msgstr ""
+
+#: societypress.php:31467
+msgid "Required"
+msgstr ""
+
+#: societypress.php:31468
+msgid "Example"
+msgstr ""
+
+#: societypress.php:31806
+#: societypress.php:41155
+#: societypress.php:54116
+msgid "Prev"
+msgstr ""
+
+#: societypress.php:31971
+msgid "Subscribe"
+msgstr ""
+
+#: societypress.php:31978
+msgid "Public Events"
+msgstr ""
+
+#: societypress.php:31980
+#: societypress.php:31997
+msgid "Subscribe in Calendar App"
+msgstr ""
+
+#: societypress.php:31984
+msgid "Public calendar feed URL"
+msgstr ""
+
+#: societypress.php:31986
+#: societypress.php:32004
+msgid "Copy"
+msgstr ""
+
+#: societypress.php:31989
+msgid "For Google Calendar, copy the URL and paste it under \"Other calendars > From URL.\""
+msgstr ""
+
+#: societypress.php:31995
+msgid "All Events (Including Members-Only)"
+msgstr ""
+
+#: societypress.php:32002
+msgid "Members-only calendar feed URL"
+msgstr ""
+
+#: societypress.php:32007
+msgid "This URL is personal to you. Do not share it."
+msgstr ""
+
+#: societypress.php:32011
+#: societypress.php:32126
+msgid "Regenerate URL"
+msgstr ""
+
+#: societypress.php:32097
+msgid "Regenerating..."
+msgstr ""
+
+#: societypress.php:32124
+msgid "Done! URL updated."
+msgstr ""
+
+#: societypress.php:32130
+#: societypress.php:32135
+msgid "Error — try again"
+msgstr ""
+
+#: societypress.php:32156
+msgid "Copied!"
+msgstr ""
+
+#: societypress.php:32316
+msgid "Search events..."
+msgstr ""
+
+#: societypress.php:32334
+msgid "Next 30 Days"
+msgstr ""
+
+#: societypress.php:32335
+msgid "Next 3 Months"
+msgstr ""
+
+#: societypress.php:32336
+msgid "Next 6 Months"
+msgstr ""
+
+#: societypress.php:32337
+msgid "Next 12 Months"
+msgstr ""
+
+#: societypress.php:32338
+msgid "All Upcoming"
+msgstr ""
+
+#: societypress.php:32339
+msgid "Past Events"
+msgstr ""
+
+#: societypress.php:32362
+msgid "List"
+msgstr ""
+
+#. translators: %s: search query
+#: societypress.php:32400
+#, php-format
+msgid "No events found matching \"%s\"."
+msgstr ""
+
+#: societypress.php:32406
+msgid "View all upcoming events"
+msgstr ""
+
+#: societypress.php:32540
+#: societypress.php:32547
+#: societypress.php:38685
+#: societypress.php:38693
+msgid "Non-Members"
+msgstr ""
+
+#: societypress.php:32546
+#: societypress.php:38692
+msgid "Free for Members"
+msgstr ""
+
+#: societypress.php:32678
+#: societypress.php:32736
+msgid "Back to Events"
+msgstr ""
+
+#: societypress.php:32682
+msgid "External Event"
+msgstr ""
+
+#: societypress.php:32720
+msgid "Visit Event Page"
+msgstr ""
+
+#: societypress.php:32735
+msgid "This is a calendar notice — no additional details or registration are available."
+msgstr ""
+
+#. translators: %s: login link HTML
+#: societypress.php:32747
+#, php-format
+msgid "This event is only visible to logged-in members. Please %s to view details."
+msgstr ""
+
+#: societypress.php:32928
+msgid "Download .ics file to add this event to your calendar"
+msgstr ""
+
+#: societypress.php:32929
+msgid "Add to Calendar"
+msgstr ""
+
+#: societypress.php:33181
+#: societypress.php:33281
+msgid "How many attending?"
+msgstr ""
+
+#: societypress.php:34774
+#: societypress.php:35819
+msgid "Cancel this registration?"
+msgstr ""
+
+#: societypress.php:34840
+msgid "Are you sure you want to cancel your registration?"
+msgstr ""
+
+#: societypress.php:34871
+#: societypress.php:35919
+msgid "Something went wrong. Please try again."
+msgstr ""
+
+#: societypress.php:34950
+#: societypress.php:39595
+msgid "Event not found."
+msgstr ""
+
+#: societypress.php:34954
+msgid "Registration is not enabled for this event."
+msgstr ""
+
+#: societypress.php:34958
+msgid "This event is no longer accepting registrations."
+msgstr ""
+
+#: societypress.php:34963
+msgid "This event has already taken place."
+msgstr ""
+
+#: societypress.php:34972
+msgid "Invalid time slot selected."
+msgstr ""
+
+#: societypress.php:34978
+msgid "Please log in to register for this event."
+msgstr ""
+
+#: societypress.php:34991
+msgid "Please provide your name and email address."
+msgstr ""
+
+#: societypress.php:35005
+msgid "This email address is already registered for this time slot."
+msgstr ""
+
+#: societypress.php:35014
+msgid "This email address is already registered for this event."
+msgstr ""
+
+#: societypress.php:35028
+msgid "You are already registered for this time slot."
+msgstr ""
+
+#: societypress.php:35037
+msgid "You are already registered for this event."
+msgstr ""
+
+#: societypress.php:35120
+msgid "Could not complete registration. Please try again."
+msgstr ""
+
+#: societypress.php:35147
+msgid "Online payments are not configured. Please contact the site administrator."
+msgstr ""
+
+#: societypress.php:35224
+#: societypress.php:36022
+#: societypress.php:36075
+#: societypress.php:39998
+msgid "Invalid registration."
+msgstr ""
+
+#: societypress.php:35234
+#: societypress.php:40006
+msgid "Registration not found."
+msgstr ""
+
+#: societypress.php:35239
+msgid "You can only cancel your own registration."
+msgstr ""
+
+#: societypress.php:35246
+msgid "You cannot cancel this registration."
+msgstr ""
+
+#: societypress.php:35554
+msgid "Time Slot"
+msgstr ""
+
+#: societypress.php:35573
+msgid "Party Size"
+msgstr ""
+
+#: societypress.php:35583
+msgid "Notes"
+msgstr ""
+
+#: societypress.php:35596
+msgid "No registrations yet."
+msgstr ""
+
+#: societypress.php:35866
+msgid "Mark all confirmed registrants as attended?"
+msgstr ""
+
+#: societypress.php:35881
+msgid "All confirmed registrants marked as attended."
+msgstr ""
+
+#: societypress.php:35895
+msgid "Issue a full refund for this payment? This cannot be undone."
+msgstr ""
+
+#: societypress.php:35970
+msgid "Event ID and name are required."
+msgstr ""
+
+#: societypress.php:35993
+msgid "Could not add registration."
+msgstr ""
+
+#: societypress.php:36115
+#: societypress.php:36154
+#: societypress.php:38422
+msgid "Invalid event."
+msgstr ""
+
+#: societypress.php:36403
+msgid "Welcome! Your membership application has been submitted. You will receive a confirmation email shortly."
+msgstr ""
+
+#. translators: %s: link to My Account page
+#: societypress.php:36422
+#, php-format
+msgid "You are already a member. %s."
+msgstr ""
+
+#. translators: %s: link to My Account page
+#: societypress.php:36422
+msgid "Go to My Account"
+msgstr ""
+
+#: societypress.php:36498
+msgid "Choose Your Membership Level"
+msgstr ""
+
+#: societypress.php:36507
+msgid "year"
+msgstr ""
+
+#: societypress.php:36535
+msgid "(what you'd like to be called)"
+msgstr ""
+
+#: societypress.php:36578
+msgid "Joint Member (Optional)"
+msgstr ""
+
+#: societypress.php:36580
+msgid "This membership plan allows a second household member. Fill in their details below, or leave blank for an individual membership."
+msgstr ""
+
+#: societypress.php:36595
+#: societypress.php:36601
+#: societypress.php:36606
+msgid "optional"
+msgstr ""
+
+#: societypress.php:36617
+msgid "Street Address"
+msgstr ""
+
+#: societypress.php:36622
+msgid "Apt / Suite / Unit"
+msgstr ""
+
+#: societypress.php:36638
+msgid "ZIP"
+msgstr ""
+
+#: societypress.php:36645
+msgid "Submit Application"
+msgstr ""
+
+#: societypress.php:37910
+msgid "Delete this speaker?"
+msgstr ""
+
+#. translators: %d: number of events the speaker is assigned to
+#: societypress.php:37967
+#, php-format
+msgid "Cannot delete — this speaker is assigned to %d event(s). Remove assignments first."
+msgstr ""
+
+#: societypress.php:37972
+msgid "Speaker deleted."
+msgstr ""
+
+#: societypress.php:38070
+msgid "Speaker Not Found"
+msgstr ""
+
+#: societypress.php:38085
+msgid "Speaker name is required."
+msgstr ""
+
+#: societypress.php:38098
+msgid "Title / Role"
+msgstr ""
+
+#: societypress.php:38104
+msgid "Bio"
+msgstr ""
+
+#: societypress.php:38107
+msgid "Brief biography shown on event detail pages."
+msgstr ""
+
+#: societypress.php:38123
+msgid "Photo"
+msgstr ""
+
+#: societypress.php:38201
+msgid "Select Photo"
+msgstr ""
+
+#: societypress.php:38252
+msgid "Event has no recurrence rule."
+msgstr ""
+
+#: societypress.php:38604
+msgid "No upcoming events scheduled."
+msgstr ""
+
+#: societypress.php:38706
+msgid "View All Events"
+msgstr ""
+
+#: societypress.php:39213
+#: societypress.php:40030
+msgid "Stripe is not configured."
+msgstr ""
+
+#. translators: %1$s: event title, %2$s: site name
+#: societypress.php:39274
+#, php-format
+msgid "Registration for %1$s — %2$s"
+msgstr ""
+
+#: societypress.php:39280
+#: societypress.php:54944
+msgid "Could not connect to payment processor. Please try again."
+msgstr ""
+
+#: societypress.php:39289
+msgid "Could not set up payment. Please try again or choose to pay at the door."
+msgstr ""
+
+#: societypress.php:39552
+msgid "Join online:"
+msgstr ""
+
+#: societypress.php:39600
+msgid "You must be logged in to download this event."
+msgstr ""
+
+#: societypress.php:39735
+msgid "Invalid calendar feed URL."
+msgstr ""
+
+#: societypress.php:39777
+msgid "Events (Members)"
+msgstr ""
+
+#: societypress.php:39910
+msgid "Feed URL regenerated. Update your calendar app with the new URL."
+msgstr ""
+
+#: societypress.php:39940
+msgid "No API keys found. Please enter your keys and save settings first."
+msgstr ""
+
+#: societypress.php:39954
+msgid "Could not reach Stripe. Please check your internet connection."
+msgstr ""
+
+#: societypress.php:39963
+msgid "Invalid API key. Please double-check your keys in Stripe dashboard."
+msgstr ""
+
+#. translators: %d: HTTP status code from Stripe API
+#: societypress.php:39966
+#, php-format
+msgid "Unexpected error (HTTP %d)"
+msgstr ""
+
+#: societypress.php:40010
+msgid "This registration was not paid via Stripe."
+msgstr ""
+
+#: societypress.php:40023
+msgid "Could not find payment reference. Please refund manually in Stripe dashboard."
+msgstr ""
+
+#: societypress.php:40046
+msgid "Could not connect to Stripe. Please try again."
+msgstr ""
+
+#: societypress.php:40067
+msgid "Refund initiated — processing with payment provider."
+msgstr ""
+
+#: societypress.php:40068
+msgid "Refund processed successfully."
+msgstr ""
+
+#: societypress.php:40091
+msgid "Join Our Community"
+msgstr ""
+
+#: societypress.php:40092
+msgid "Connect with fellow members in our online community."
+msgstr ""
+
+#: societypress.php:40099
+msgid "Community Forum URL not configured."
+msgstr ""
+
+#: societypress.php:40099
+msgid "Set it in Settings &rarr; Organization"
+msgstr ""
+
+#: societypress.php:40126
+#: societypress.php:40268
+#: societypress.php:40292
+#: societypress.php:40481
+msgid "Please"
+msgstr ""
+
+#: societypress.php:40126
+msgid "to view newsletters."
+msgstr ""
+
+#: societypress.php:40139
+msgid "Newsletter category not found. Try deactivating and reactivating the plugin."
+msgstr ""
+
+#: societypress.php:40154
+msgid "No newsletters published yet."
+msgstr ""
+
+#: societypress.php:40208
+#: societypress.php:46665
+msgid "Active Volunteers"
+msgstr ""
+
+#: societypress.php:40215
+msgid "This Year"
+msgstr ""
+
+#: societypress.php:40215
+msgid "This Month"
+msgstr ""
+
+#: societypress.php:40215
+msgid "All Time"
+msgstr ""
+
+#: societypress.php:40218
+#: societypress.php:45048
+#: societypress.php:46692
+msgid "Hours"
+msgstr ""
+
+#: societypress.php:40239
+msgid "Top Contributors"
+msgstr ""
+
+#: societypress.php:40268
+msgid "to view photos."
+msgstr ""
+
+#: societypress.php:40286
+msgid "Album not found."
+msgstr ""
+
+#: societypress.php:40292
+msgid "to view this album."
+msgstr ""
+
+#: societypress.php:40309
+msgid "No photos in this album yet."
+msgstr ""
+
+#: societypress.php:40347
+msgid "No photo albums yet."
+msgstr ""
+
+#. translators: %d: number of photos
+#: societypress.php:40371
+#, php-format
+msgid "%d photo"
+msgid_plural "%d photos"
+msgstr[0] ""
+msgstr[1] ""
+
+#. translators: %s: login URL
+#: societypress.php:40395
+#, php-format
+msgid "Please <a href=\"%s\">log in</a> to view resources."
+msgstr ""
+
+#: societypress.php:40425
+msgid "No resources available yet."
+msgstr ""
+
+#: societypress.php:40430
+msgid "Uncategorized"
+msgstr ""
+
+#: societypress.php:40443
+#: societypress.php:42819
+#: societypress.php:44257
+#: societypress.php:44282
+msgid "Featured"
+msgstr ""
+
+#: societypress.php:40481
+msgid "to browse the catalog."
+msgstr ""
+
+#: societypress.php:40871
+msgid "Search and browse our collection of books, periodicals, maps, and more. Click any title for full details."
+msgstr ""
+
+#: societypress.php:40877
+msgid "Total Items"
+msgstr ""
+
+#: societypress.php:40907
+#: societypress.php:41057
+msgid "Keyword"
+msgstr ""
+
+#: societypress.php:40909
+#: societypress.php:41093
+#: societypress.php:41129
+#: societypress.php:41284
+#: societypress.php:43298
+#: societypress.php:43887
+msgid "Author"
+msgstr ""
+
+#: societypress.php:40910
+#: societypress.php:41067
+#: societypress.php:47612
+#: societypress.php:47892
+#: societypress.php:48205
+msgid "Subject"
+msgstr ""
+
+#: societypress.php:40911
+#: societypress.php:41290
+#: societypress.php:43374
+#: societypress.php:43897
+msgid "Call Number"
+msgstr ""
+
+#: societypress.php:40914
+msgid "Search titles, authors, subjects, surnames, descriptions..."
+msgstr ""
+
+#: societypress.php:40915
+msgid "Search by title..."
+msgstr ""
+
+#: societypress.php:40916
+msgid "Search by author or editor..."
+msgstr ""
+
+#: societypress.php:40917
+msgid "Search by subject..."
+msgstr ""
+
+#: societypress.php:40918
+msgid "Search by call number or shelf location..."
+msgstr ""
+
+#: societypress.php:40963
+msgid "All Sources"
+msgstr ""
+
+#: societypress.php:40973
+msgid "Sort: Title"
+msgstr ""
+
+#: societypress.php:40974
+msgid "Sort: Author"
+msgstr ""
+
+#: societypress.php:40975
+msgid "Sort: Year Published"
+msgstr ""
+
+#: societypress.php:40976
+msgid "Sort: Call Number"
+msgstr ""
+
+#: societypress.php:40977
+msgid "Sort: Media Type"
+msgstr ""
+
+#: societypress.php:41001
+msgid "Browse by Collection"
+msgstr ""
+
+#: societypress.php:41025
+#: societypress.php:53374
+msgid "items"
+msgstr ""
+
+#: societypress.php:41031
+msgid "Popular Subjects"
+msgstr ""
+
+#: societypress.php:41053
+msgid "item"
+msgid_plural "items"
+msgstr[0] ""
+msgstr[1] ""
+
+#: societypress.php:41053
+msgid "found"
+msgstr ""
+
+#: societypress.php:41071
+msgid "Source"
+msgstr ""
+
+#: societypress.php:41075
+msgid "Clear all"
+msgstr ""
+
+#: societypress.php:41081
+msgid "No items match your search. Try broadening your filters."
+msgstr ""
+
+#: societypress.php:41095
+#: societypress.php:41137
+msgid "Call #"
+msgstr ""
+
+#: societypress.php:41096
+#: societypress.php:41138
+msgid "Year"
+msgstr ""
+
+#: societypress.php:41142
+#: societypress.php:41298
+msgid "Checked Out"
+msgstr ""
+
+#: societypress.php:41250
+msgid "Loading..."
+msgstr ""
+
+#: societypress.php:41260
+#: societypress.php:41340
+msgid "Unable to load details."
+msgstr ""
+
+#: societypress.php:41285
+#: societypress.php:43332
+#: societypress.php:43889
+msgid "Publisher"
+msgstr ""
+
+#: societypress.php:41286
+#: societypress.php:43336
+#: societypress.php:43890
+msgid "Publisher Location"
+msgstr ""
+
+#: societypress.php:41288
+#: societypress.php:43307
+msgid "Media Type"
+msgstr ""
+
+#: societypress.php:41291
+#: societypress.php:43348
+#: societypress.php:43896
+msgid "ISBN"
+msgstr ""
+
+#: societypress.php:41292
+#: societypress.php:43352
+#: societypress.php:43898
+msgid "LCCN"
+msgstr ""
+
+#: societypress.php:41293
+#: societypress.php:43378
+msgid "Shelf Location"
+msgstr ""
+
+#: societypress.php:41294
+#: societypress.php:43383
+msgid "Geographic Coverage"
+msgstr ""
+
+#: societypress.php:41297
+#: societypress.php:43442
+msgid "Condition"
+msgstr ""
+
+#: societypress.php:41299
+#: societypress.php:43403
+msgid "Acquisition"
+msgstr ""
+
+#: societypress.php:41300
+#: societypress.php:43429
+#: societypress.php:43906
+#: societypress.php:48786
+msgid "Donor"
+msgstr ""
+
+#: societypress.php:41301
+msgid "Value"
+msgstr ""
+
+#: societypress.php:41302
+#: societypress.php:43425
+msgid "Acquisition #"
+msgstr ""
+
+#: societypress.php:41303
+msgid "System ID"
+msgstr ""
+
+#: societypress.php:41307
+msgid "Subjects"
+msgstr ""
+
+#: societypress.php:41318
+msgid "Surnames"
+msgstr ""
+
+#: societypress.php:41385
+msgid "No slides configured."
+msgstr ""
+
+#: societypress.php:41584
+msgid "You must be logged in to contact a researcher."
+msgstr ""
+
+#: societypress.php:41596
+msgid "Please fill in all fields."
+msgstr ""
+
+#: societypress.php:41609
+msgid "Unable to contact this researcher at this time."
+msgstr ""
+
+#: societypress.php:41619
+msgid "This researcher has opted out of contact messages."
+msgstr ""
+
+#: societypress.php:41632
+msgid "Surname Research Inquiry"
+msgstr ""
+
+#: societypress.php:41647
+msgid "Your message has been sent! The researcher can reply directly to your email."
+msgstr ""
+
+#: societypress.php:41678
+msgid "Album deleted."
+msgstr ""
+
+#: societypress.php:41693
+msgid "No albums yet."
+msgstr ""
+
+#: societypress.php:41693
+msgid "Create your first album"
+msgstr ""
+
+#: societypress.php:41721
+msgid "Delete this album and all its photos?"
+msgstr ""
+
+#: societypress.php:41783
+msgid "Album saved."
+msgstr ""
+
+#: societypress.php:41799
+msgid "Edit Album"
+msgstr ""
+
+#: societypress.php:41799
+msgid "Add New Album"
+msgstr ""
+
+#: societypress.php:41807
+msgid "Album Title"
+msgstr ""
+
+#. translators: %s: year
+#: societypress.php:42137
+#, php-format
+msgid "Annual Report — %s"
+msgstr ""
+
+#: societypress.php:42188
+msgid "Events by Month"
+msgstr ""
+
+#: societypress.php:42207
+msgid "Volunteers"
+msgstr ""
+
+#: societypress.php:42295
+msgid "Request deleted."
+msgstr ""
+
+#: societypress.php:42300
+msgid "Request closed."
+msgstr ""
+
+#: societypress.php:42305
+msgid "Request reopened."
+msgstr ""
+
+#: societypress.php:42346
+msgid "Close Request"
+msgstr ""
+
+#: societypress.php:42348
+msgid "Reopen Request"
+msgstr ""
+
+#: societypress.php:42350
+msgid "Delete this request and all responses?"
+msgstr ""
+
+#: societypress.php:42395
+#: societypress.php:45878
+msgid "Open"
+msgstr ""
+
+#: societypress.php:42396
+#: societypress.php:45880
+msgid "Closed"
+msgstr ""
+
+#: societypress.php:42400
+msgid "Asked By"
+msgstr ""
+
+#: societypress.php:42400
+msgid "Responses"
+msgstr ""
+
+#: societypress.php:42403
+msgid "No requests found."
+msgstr ""
+
+#: societypress.php:42414
+#: societypress.php:43549
+#: societypress.php:44406
+msgid "Delete?"
+msgstr ""
+
+#: societypress.php:42622
+msgid "Question Title"
+msgstr ""
+
+#: societypress.php:42626
+msgid "Details"
+msgstr ""
+
+#: societypress.php:42629
+msgid "Submit Question"
+msgstr ""
+
+#: societypress.php:42709
+msgid "No questions yet. Be the first to ask!"
+msgstr ""
+
+#: societypress.php:42784
+msgid "Search resources…"
+msgstr ""
+
+#: societypress.php:42810
+msgid "No resources found."
+msgstr ""
+
+#: societypress.php:42927
+#: societypress.php:43157
+msgid "No items found."
+msgstr ""
+
+#: societypress.php:42957
+msgid "Item deleted."
+msgstr ""
+
+#: societypress.php:43168
+msgid "Delete this item?"
+msgstr ""
+
+#: societypress.php:43268
+msgid "Item updated."
+msgstr ""
+
+#: societypress.php:43272
+msgid "Item added."
+msgstr ""
+
+#: societypress.php:43284
+msgid "Edit Library Item"
+msgstr ""
+
+#: societypress.php:43284
+msgid "Add Library Item"
+msgstr ""
+
+#: societypress.php:43291
+msgid "Basic Information"
+msgstr ""
+
+#: societypress.php:43304
+msgid "Physical description: pages, index, illustrations, binding, etc."
+msgstr ""
+
+#: societypress.php:43322
+#: societypress.php:43911
+msgid "Subject Tags"
+msgstr ""
+
+#: societypress.php:43324
+msgid "Comma-separated subject tags."
+msgstr ""
+
+#: societypress.php:43329
+msgid "Publication"
+msgstr ""
+
+#: societypress.php:43340
+#: societypress.php:51357
+msgid "Publication Date"
+msgstr ""
+
+#: societypress.php:43354
+msgid "Library of Congress Control Number."
+msgstr ""
+
+#: societypress.php:43357
+#: societypress.php:43915
+msgid "Cover Image URL"
+msgstr ""
+
+#: societypress.php:43360
+msgid "URL to the book cover image. Can be populated automatically via Library Enrichment."
+msgstr ""
+
+#: societypress.php:43371
+msgid "Location & Classification"
+msgstr ""
+
+#: societypress.php:43380
+msgid "Physical section/room in the library."
+msgstr ""
+
+#: societypress.php:43385
+msgid "Region(s) this item covers."
+msgstr ""
+
+#: societypress.php:43398
+msgid "Family surname this item relates to."
+msgstr ""
+
+#: societypress.php:43406
+msgid "How Acquired"
+msgstr ""
+
+#: societypress.php:43417
+msgid "Acquisition Date"
+msgstr ""
+
+#: societypress.php:43433
+#: societypress.php:43907
+msgid "Value ($)"
+msgstr ""
+
+#: societypress.php:43439
+msgid "Status & Notes"
+msgstr ""
+
+#: societypress.php:43454
+msgid "Item can be checked out"
+msgstr ""
+
+#: societypress.php:43457
+msgid "Use Serials"
+msgstr ""
+
+#: societypress.php:43458
+msgid "Track as serial/periodical"
+msgstr ""
+
+#: societypress.php:43461
+#: societypress.php:43912
+msgid "Librarian Notes"
+msgstr ""
+
+#: societypress.php:43465
+msgid "Legacy System ID"
+msgstr ""
+
+#: societypress.php:43467
+msgid "Original catalog ID from a previous system. Used for import deduplication."
+msgstr ""
+
+#: societypress.php:43503
+#: societypress.php:44342
+#: societypress.php:56075
+msgid "Category saved."
+msgstr ""
+
+#: societypress.php:43513
+#: societypress.php:44353
+#: societypress.php:56078
+msgid "Category deleted."
+msgstr ""
+
+#: societypress.php:43523
+msgid "Library Categories"
+msgstr ""
+
+#: societypress.php:43526
+#: societypress.php:44368
+#: societypress.php:56085
+msgid "Edit Category"
+msgstr ""
+
+#: societypress.php:43526
+#: societypress.php:43535
+#: societypress.php:44368
+#: societypress.php:44384
+#: societypress.php:56085
+#: societypress.php:56108
+msgid "Add Category"
+msgstr ""
+
+#: societypress.php:43541
+#: societypress.php:44395
+#: societypress.php:56122
+msgid "Slug"
+msgstr ""
+
+#: societypress.php:43541
+#: societypress.php:44284
+#: societypress.php:44395
+#: societypress.php:55098
+#: societypress.php:55526
+#: societypress.php:56124
+msgid "Order"
+msgstr ""
+
+#: societypress.php:43885
+msgid "System ID (legacy catalog #)"
+msgstr ""
+
+#: societypress.php:43888
+msgid "Description / Physical Notes"
+msgstr ""
+
+#: societypress.php:43891
+msgid "Publication Year"
+msgstr ""
+
+#: societypress.php:43892
+msgid "Publication Month"
+msgstr ""
+
+#: societypress.php:43893
+msgid "Publication Day"
+msgstr ""
+
+#: societypress.php:43894
+msgid "Media Type (Book, Map, etc.)"
+msgstr ""
+
+#: societypress.php:43895
+msgid "Use Serials (0/1)"
+msgstr ""
+
+#: societypress.php:43899
+msgid "Shelf Location (section in library)"
+msgstr ""
+
+#: societypress.php:43900
+msgid "Geographic Coverage (region/state)"
+msgstr ""
+
+#: societypress.php:43901
+msgid "Acquisition Number"
+msgstr ""
+
+#: societypress.php:43902
+msgid "Acquisition Year"
+msgstr ""
+
+#: societypress.php:43903
+msgid "Acquisition Month"
+msgstr ""
+
+#: societypress.php:43904
+msgid "Acquisition Day"
+msgstr ""
+
+#: societypress.php:43905
+msgid "Acquisition Code (Gift, Purchase, etc.)"
+msgstr ""
+
+#: societypress.php:43913
+msgid "Updated By (name)"
+msgstr ""
+
+#: societypress.php:43914
+msgid "Last Updated Date"
+msgstr ""
+
+#: societypress.php:43957
+msgid "Import Library Catalog"
+msgstr ""
+
+#: societypress.php:43965
+#: societypress.php:44746
+msgid "Import complete."
+msgstr ""
+
+#. translators: %s: number of items imported
+#: societypress.php:43969
+#, php-format
+msgid "%s item imported."
+msgid_plural "%s items imported."
+msgstr[0] ""
+msgstr[1] ""
+
+#. translators: %s: number of items skipped
+#: societypress.php:43976
+#, php-format
+msgid "%s skipped (duplicates or missing title)."
+msgstr ""
+
+#: societypress.php:43982
+#: societypress.php:44758
+#: societypress.php:53573
+msgid "Errors:"
+msgstr ""
+
+#. translators: %s: total number of catalog items
+#: societypress.php:43998
+#, php-format
+msgid "Your catalog now has %s items."
+msgstr ""
+
+#: societypress.php:43999
+msgid "View Catalog"
+msgstr ""
+
+#: societypress.php:44010
+#: societypress.php:44783
+msgid "Map CSV Columns"
+msgstr ""
+
+#. translators: %1$s: number of data rows, %2$s: number of columns
+#: societypress.php:44015
+#, php-format
+msgid "We detected %1$s data rows and %2$s columns. Verify the mapping below, then click Run Import."
+msgstr ""
+
+#: societypress.php:44032
+#: societypress.php:53653
+msgid "Sample Data"
+msgstr ""
+
+#: societypress.php:44033
+#: societypress.php:44803
+msgid "Map To"
+msgstr ""
+
+#: societypress.php:44083
+#: societypress.php:44816
+msgid "— Skip —"
+msgstr ""
+
+#. translators: %s: number of rows to import
+#: societypress.php:44098
+#, php-format
+msgid "Run Import (%s rows)"
+msgstr ""
+
+#: societypress.php:44109
+msgid "Upload Library CSV"
+msgstr ""
+
+#: societypress.php:44111
+msgid "Upload a CSV file exported from your library catalog system. The importer will detect columns automatically and let you map them before importing."
+msgstr ""
+
+#. translators: %s: maximum upload size (e.g. "64 MB")
+#: societypress.php:44124
+#, php-format
+msgid "Maximum file size: %s"
+msgstr ""
+
+#: societypress.php:44130
+#: societypress.php:44873
+msgid "Upload & Preview"
+msgstr ""
+
+#. translators: %s: number of catalog items
+#: societypress.php:44142
+#, php-format
+msgid "Your catalog currently has %s items. Duplicate items (matched by System ID) will be skipped during import."
+msgstr ""
+
+#: societypress.php:44175
+msgid "Resource deleted."
+msgstr ""
+
+#: societypress.php:44194
+msgid "Resource updated."
+msgstr ""
+
+#: societypress.php:44197
+msgid "Resource added."
+msgstr ""
+
+#: societypress.php:44200
+msgid "Title and URL are required."
+msgstr ""
+
+#: societypress.php:44221
+msgid "Import CSV"
+msgstr ""
+
+#: societypress.php:44225
+msgid "Edit Resource"
+msgstr ""
+
+#: societypress.php:44225
+#: societypress.php:44268
+msgid "Add Resource"
+msgstr ""
+
+#: societypress.php:44236
+#: societypress.php:57663
+msgid "URL"
+msgstr ""
+
+#: societypress.php:44255
+#: societypress.php:49037
+msgid "Options"
+msgstr ""
+
+#: societypress.php:44268
+msgid "Update Resource"
+msgstr ""
+
+#: societypress.php:44289
+msgid "No resources yet."
+msgstr ""
+
+#: societypress.php:44301
+msgid "Delete this resource?"
+msgstr ""
+
+#: societypress.php:44363
+msgid "Resource Categories"
+msgstr ""
+
+#: societypress.php:44737
+msgid "Import Resource Links"
+msgstr ""
+
+#: societypress.php:44771
+msgid "You now have"
+msgstr ""
+
+#: societypress.php:44771
+msgid "resource links."
+msgstr ""
+
+#: societypress.php:44772
+msgid "View Resources →"
+msgstr ""
+
+#. translators: %d is the number of data rows found
+#: societypress.php:44788
+#, php-format
+msgid "Found %d data rows. Map each CSV column to a resource field, or leave as \"— Skip —\" to ignore it."
+msgstr ""
+
+#: societypress.php:44804
+msgid "Sample Data (first rows)"
+msgstr ""
+
+#: societypress.php:44840
+msgid "Run Import"
+msgstr ""
+
+#: societypress.php:44853
+msgid "Upload Links CSV"
+msgstr ""
+
+#: societypress.php:44855
+msgid "Upload a CSV file containing resource links. The importer will auto-detect columns from common export formats (EasyNetSites, etc.) and let you map them before importing."
+msgstr ""
+
+#: societypress.php:44867
+msgid "Maximum file size: 2 MB. Must be a .csv file."
+msgstr ""
+
+#: societypress.php:44911
+#: societypress.php:45045
+msgid "Volunteer"
+msgstr ""
+
+#: societypress.php:44912
+#: societypress.php:46305
+#: societypress.php:50227
+msgid "Role"
+msgstr ""
+
+#: societypress.php:44914
+#: societypress.php:46235
+#: societypress.php:46428
+#: societypress.php:46563
+#: societypress.php:49386
+#: societypress.php:50229
+msgid "Start Date"
+msgstr ""
+
+#: societypress.php:44915
+#: societypress.php:46242
+#: societypress.php:46435
+#: societypress.php:46567
+#: societypress.php:49390
+#: societypress.php:50230
+msgid "End Date"
+msgstr ""
+
+#: societypress.php:44942
+msgid "Delete this role assignment?"
+msgstr ""
+
+#: societypress.php:44953
+#: societypress.php:45397
+#: societypress.php:45416
+#: societypress.php:45698
+#: societypress.php:45816
+#: societypress.php:46136
+#: societypress.php:46315
+#: societypress.php:50230
+msgid "Ongoing"
+msgstr ""
+
+#: societypress.php:45046
+#: societypress.php:46684
+msgid "Activity"
+msgstr ""
+
+#: societypress.php:45072
+msgid "Delete this entry?"
+msgstr ""
+
+#: societypress.php:45228
+msgid "Please log in to volunteer."
+msgstr ""
+
+#: societypress.php:45240
+msgid "This opportunity is not available."
+msgstr ""
+
+#: societypress.php:45251
+msgid "You are already signed up for this opportunity."
+msgstr ""
+
+#: societypress.php:45311
+msgid "Signup not found."
+msgstr ""
+
+#: societypress.php:45397
+#: societypress.php:45414
+#: societypress.php:45698
+#: societypress.php:45814
+msgid "One-Time"
+msgstr ""
+
+#: societypress.php:45397
+#: societypress.php:45415
+#: societypress.php:45698
+#: societypress.php:45815
+msgid "Recurring"
+msgstr ""
+
+#: societypress.php:45406
+msgid "All Committees"
+msgstr ""
+
+#: societypress.php:45407
+#: societypress.php:45703
+msgid "Society-Wide"
+msgstr ""
+
+#: societypress.php:45423
+msgid "No volunteer opportunities available right now."
+msgstr ""
+
+#: societypress.php:45424
+msgid "Check back later or contact us to learn how you can help."
+msgstr ""
+
+#: societypress.php:45451
+msgid "Committee:"
+msgstr ""
+
+#: societypress.php:45457
+msgid "When:"
+msgstr ""
+
+#: societypress.php:45467
+msgid "Where:"
+msgstr ""
+
+#: societypress.php:45479
+msgid "Skills/Requirements:"
+msgstr ""
+
+#: societypress.php:45486
+msgid "Full"
+msgstr ""
+
+#. translators: %1$d: number of spots taken, %2$d: total capacity
+#: societypress.php:45489
+#, php-format
+msgid "%1$d/%2$d spots filled"
+msgstr ""
+
+#. translators: %d: number of volunteers signed up
+#: societypress.php:45495
+#, php-format
+msgid "%d volunteer signed up"
+msgid_plural "%d volunteers signed up"
+msgstr[0] ""
+msgstr[1] ""
+
+#. translators: %s: contact person name
+#: societypress.php:45502
+#, php-format
+msgid "Contact: %s"
+msgstr ""
+
+#: societypress.php:45513
+msgid "Log In to Volunteer"
+msgstr ""
+
+#: societypress.php:45516
+msgid "Members only"
+msgstr ""
+
+#: societypress.php:45521
+#: societypress.php:45906
+msgid "Signed Up"
+msgstr ""
+
+#: societypress.php:45521
+msgid "Waitlisted"
+msgstr ""
+
+#: societypress.php:45535
+msgid "Join Waitlist"
+msgstr ""
+
+#: societypress.php:45542
+msgid "Sign Up"
+msgstr ""
+
+#: societypress.php:45597
+msgid "Cancel your volunteer signup?"
+msgstr ""
+
+#: societypress.php:45656
+msgid "Opportunity deleted."
+msgstr ""
+
+#: societypress.php:45672
+msgid "Volunteer Opportunities"
+msgstr ""
+
+#: societypress.php:45676
+msgid "Post volunteer needs for your members to browse and sign up for."
+msgstr ""
+
+#: societypress.php:45680
+msgid "No opportunities yet."
+msgstr ""
+
+#: societypress.php:45680
+msgid "Create your first one."
+msgstr ""
+
+#: societypress.php:45690
+msgid "Signups"
+msgstr ""
+
+#: societypress.php:45720
+msgid "Delete this opportunity and all signups?"
+msgstr ""
+
+#: societypress.php:45769
+msgid "Opportunity updated."
+msgstr ""
+
+#: societypress.php:45774
+msgid "Opportunity created."
+msgstr ""
+
+#: societypress.php:45797
+msgid "Edit Opportunity"
+msgstr ""
+
+#: societypress.php:45797
+msgid "Add Volunteer Opportunity"
+msgstr ""
+
+#: societypress.php:45824
+msgid "Society-Wide (no committee)"
+msgstr ""
+
+#: societypress.php:45838
+msgid "For one-time opportunities. Leave blank for ongoing."
+msgstr ""
+
+#: societypress.php:45841
+msgid "Time"
+msgstr ""
+
+#: societypress.php:45853
+msgid "Capacity"
+msgstr ""
+
+#: societypress.php:45855
+msgid "Leave blank for unlimited."
+msgstr ""
+
+#: societypress.php:45858
+msgid "Skills/Requirements"
+msgstr ""
+
+#: societypress.php:45879
+msgid "Filled"
+msgstr ""
+
+#: societypress.php:45887
+msgid "Update Opportunity"
+msgstr ""
+
+#: societypress.php:45887
+msgid "Create Opportunity"
+msgstr ""
+
+#. translators: %d: number of signups
+#: societypress.php:45904
+#, php-format
+msgid "Signups (%d)"
+msgstr ""
+
+#: societypress.php:45976
+msgid "Role updated."
+msgstr ""
+
+#: societypress.php:45981
+msgid "Role added."
+msgstr ""
+
+#: societypress.php:45984
+msgid "Please select a member and enter a position/role title."
+msgstr ""
+
+#: societypress.php:45996
+msgid "Role deleted."
+msgstr ""
+
+#: societypress.php:46083
+msgid "(Unassigned)"
+msgstr ""
+
+#: societypress.php:46099
+msgid "Leadership & Committees"
+msgstr ""
+
+#: societypress.php:46115
+msgid "Officers & Board"
+msgstr ""
+
+#: societypress.php:46149
+msgid "Delete this officer position?"
+msgstr ""
+
+#: societypress.php:46159
+msgid "No officers or board members have been added yet."
+msgstr ""
+
+#: societypress.php:46166
+#: societypress.php:46172
+#: societypress.php:46261
+msgid "Add Officer"
+msgstr ""
+
+#: societypress.php:46172
+msgid "Edit Officer"
+msgstr ""
+
+#: societypress.php:46178
+#: societypress.php:46362
+msgid "Find Member"
+msgstr ""
+
+#: societypress.php:46182
+#: societypress.php:46366
+msgid "Type a name, then click Search"
+msgstr ""
+
+#. translators: %1$d is the number of matching members, %2$s is the search term
+#: societypress.php:46193
+#: societypress.php:46377
+#, php-format
+msgid "%1$d members matching \"%2$s\""
+msgstr ""
+
+#: societypress.php:46213
+#: societypress.php:46397
+msgid "Search for a member first"
+msgstr ""
+
+#: societypress.php:46226
+msgid "Position Title"
+msgstr ""
+
+#: societypress.php:46231
+msgid "e.g., President, Vice President, Treasurer"
+msgstr ""
+
+#: societypress.php:46246
+msgid "Leave blank for ongoing positions."
+msgstr ""
+
+#: societypress.php:46261
+msgid "Update Officer"
+msgstr ""
+
+#: societypress.php:46278
+msgid "Committees"
+msgstr ""
+
+#. translators: %d is the number of members in a committee
+#: societypress.php:46293
+#, php-format
+msgid "%d member"
+msgid_plural "%d members"
+msgstr[0] ""
+msgstr[1] ""
+
+#: societypress.php:46306
+msgid "Term"
+msgstr ""
+
+#: societypress.php:46329
+msgid "Remove this committee assignment?"
+msgstr ""
+
+#: societypress.php:46343
+msgid "No committee assignments have been added yet."
+msgstr ""
+
+#: societypress.php:46350
+#: societypress.php:46356
+msgid "Add Committee Assignment"
+msgstr ""
+
+#: societypress.php:46356
+msgid "Edit Committee Assignment"
+msgstr ""
+
+#: societypress.php:46410
+msgid "Committee Name"
+msgstr ""
+
+#: societypress.php:46415
+msgid "e.g., Programs Committee"
+msgstr ""
+
+#: societypress.php:46419
+msgid "Role in Committee"
+msgstr ""
+
+#: societypress.php:46424
+msgid "e.g., Chair, Vice-Chair, Member"
+msgstr ""
+
+#: societypress.php:46439
+msgid "Leave blank for ongoing assignments."
+msgstr ""
+
+#: societypress.php:46454
+msgid "Update Assignment"
+msgstr ""
+
+#: societypress.php:46454
+msgid "Add Assignment"
+msgstr ""
+
+#: societypress.php:46500
+msgid "Volunteer role updated."
+msgstr ""
+
+#: societypress.php:46505
+msgid "Volunteer role added."
+msgstr ""
+
+#: societypress.php:46508
+msgid "Please select a member and enter a role title."
+msgstr ""
+
+#: societypress.php:46529
+msgid "Volunteer Roster"
+msgstr ""
+
+#: societypress.php:46534
+msgid "Edit Role Assignment"
+msgstr ""
+
+#: societypress.php:46534
+msgid "Add Volunteer Role"
+msgstr ""
+
+#: societypress.php:46555
+msgid "Role Title"
+msgstr ""
+
+#: societypress.php:46568
+msgid "Leave blank for ongoing roles."
+msgstr ""
+
+#: societypress.php:46581
+msgid "Update Role"
+msgstr ""
+
+#: societypress.php:46581
+msgid "Add Role"
+msgstr ""
+
+#: societypress.php:46593
+msgid "Search Volunteers"
+msgstr ""
+
+#: societypress.php:46628
+msgid "Hours logged successfully."
+msgstr ""
+
+#: societypress.php:46630
+msgid "Please select a member and enter hours greater than 0."
+msgstr ""
+
+#: societypress.php:46651
+msgid "Volunteer Hours"
+msgstr ""
+
+#: societypress.php:46654
+msgid "Export CSV"
+msgstr ""
+
+#: societypress.php:46661
+msgid "Hours This Year"
+msgstr ""
+
+#: societypress.php:46671
+#: societypress.php:46700
+msgid "Log Hours"
+msgstr ""
+
+#: societypress.php:47181
+msgid "Email templates saved."
+msgstr ""
+
+#: societypress.php:47200
+msgid "Welcome Email"
+msgstr ""
+
+#: societypress.php:47202
+#: societypress.php:47463
+msgid "Welcome to {{organization_name}}!"
+msgstr ""
+
+#: societypress.php:47203
+msgid "Sent when a new member is approved or created with active status."
+msgstr ""
+
+#: societypress.php:47206
+msgid "Renewal Reminder"
+msgstr ""
+
+#: societypress.php:47208
+#: societypress.php:47464
+msgid "Your membership expires soon"
+msgstr ""
+
+#: societypress.php:47209
+msgid "Sent automatically at 30, 15, and 7 days before membership expiration (based on your settings)."
+msgstr ""
+
+#: societypress.php:47212
+msgid "Expiration Notice"
+msgstr ""
+
+#: societypress.php:47214
+#: societypress.php:47465
+msgid "Your membership has expired"
+msgstr ""
+
+#: societypress.php:47215
+msgid "Sent after a membership expires and the member's status changes to expired."
+msgstr ""
+
+#: societypress.php:47218
+#: societypress.php:49159
+msgid "Donation Acknowledgment"
+msgstr ""
+
+#: societypress.php:47220
+#: societypress.php:47466
+#: societypress.php:49138
+msgid "Thank You for Your Donation — {{organization_name}}"
+msgstr ""
+
+#: societypress.php:47221
+msgid "Sent to donors when the treasurer clicks \"Send Acknowledgment\" on one or more donations. Supports donation-specific merge tags."
+msgstr ""
+
+#: societypress.php:47236
+msgid "Email Templates"
+msgstr ""
+
+#: societypress.php:47237
+msgid "Customize the automated emails your site sends to members. Use merge tags to personalize each message."
+msgstr ""
+
+#: societypress.php:47266
+msgid "Subject Line"
+msgstr ""
+
+#: societypress.php:47277
+msgid "Merge tags work here too — e.g. {{preferred_name}}, {{organization_name}}."
+msgstr ""
+
+#: societypress.php:47284
+#: societypress.php:48255
+msgid "Email Body"
+msgstr ""
+
+#: societypress.php:47305
+msgid "Save Template"
+msgstr ""
+
+#: societypress.php:47307
+msgid "Reset to Default"
+msgstr ""
+
+#: societypress.php:47316
+msgid "Available Merge Tags"
+msgstr ""
+
+#: societypress.php:47319
+msgid "Click a tag to copy it, then paste into the subject or body."
+msgstr ""
+
+#: societypress.php:47330
+msgid "Donor name"
+msgstr ""
+
+#: societypress.php:47331
+msgid "Donor email"
+msgstr ""
+
+#: societypress.php:47332
+msgid "Donation amount (formatted)"
+msgstr ""
+
+#: societypress.php:47333
+msgid "Campaign name"
+msgstr ""
+
+#: societypress.php:47334
+msgid "Date of donation"
+msgstr ""
+
+#: societypress.php:47335
+msgid "Donation type (cash, check, etc.)"
+msgstr ""
+
+#: societypress.php:47336
+msgid "In-kind item description"
+msgstr ""
+
+#: societypress.php:47337
+#: societypress.php:47354
+msgid "Organization name"
+msgstr ""
+
+#: societypress.php:47338
+#: societypress.php:47355
+msgid "Website URL"
+msgstr ""
+
+#: societypress.php:47339
+#: societypress.php:47356
+msgid "Admin email address"
+msgstr ""
+
+#: societypress.php:47343
+msgid "First name"
+msgstr ""
+
+#: societypress.php:47344
+msgid "Last name"
+msgstr ""
+
+#: societypress.php:47345
+msgid "Full name"
+msgstr ""
+
+#: societypress.php:47346
+msgid "Preferred name (or first name)"
+msgstr ""
+
+#: societypress.php:47347
+msgid "Member email"
+msgstr ""
+
+#: societypress.php:47348
+msgid "Membership tier name"
+msgstr ""
+
+#: societypress.php:47349
+msgid "Membership status"
+msgstr ""
+
+#: societypress.php:47350
+msgid "Join date"
+msgstr ""
+
+#: societypress.php:47351
+msgid "Expiration date"
+msgstr ""
+
+#: societypress.php:47352
+msgid "Days until expiration"
+msgstr ""
+
+#: societypress.php:47353
+msgid "Days (shorthand)"
+msgstr ""
+
+#: societypress.php:47412
+msgid "Reset this template to the default? Your customizations will be lost."
+msgstr ""
+
+#: societypress.php:47470
+msgid "Invalid type"
+msgstr ""
+
+#: societypress.php:47539
+#: societypress.php:47695
+#: societypress.php:47714
+msgid "Email Log"
+msgstr ""
+
+#: societypress.php:47608
+msgid "ID"
+msgstr ""
+
+#: societypress.php:47611
+msgid "Recipient"
+msgstr ""
+
+#: societypress.php:47696
+msgid "Email log entry not found."
+msgstr ""
+
+#. translators: %d: entry number
+#: societypress.php:47716
+#, php-format
+msgid "Entry #%d"
+msgstr ""
+
+#: societypress.php:47866
+msgid "Blast email deleted."
+msgstr ""
+
+#: societypress.php:47869
+msgid "Blast email is being sent."
+msgstr ""
+
+#: societypress.php:47872
+msgid "Draft saved."
+msgstr ""
+
+#: societypress.php:47893
+msgid "Sender"
+msgstr ""
+
+#: societypress.php:47894
+#: societypress.php:48209
+msgid "Recipients"
+msgstr ""
+
+#: societypress.php:47902
+msgid "No blast emails yet."
+msgstr ""
+
+#: societypress.php:47902
+msgid "Compose one"
+msgstr ""
+
+#: societypress.php:47952
+msgid "Delete this blast email?"
+msgstr ""
+
+#: societypress.php:48006
+msgid "Blast Email Not Found"
+msgstr ""
+
+#. translators: %s: email subject line
+#: societypress.php:48036
+#, php-format
+msgid "Blast Email — %s"
+msgstr ""
+
+#: societypress.php:48083
+msgid "Cannot Edit"
+msgstr ""
+
+#: societypress.php:48196
+msgid "Edit Blast Email"
+msgstr ""
+
+#: societypress.php:48196
+msgid "Compose Blast Email"
+msgstr ""
+
+#. translators: %d: number of active members
+#: societypress.php:48215
+#, php-format
+msgid "All Active Members (%d)"
+msgstr ""
+
+#: societypress.php:48220
+msgid "By Group"
+msgstr ""
+
+#: societypress.php:48274
+msgid "Save Draft"
+msgstr ""
+
+#: societypress.php:48276
+msgid "Send this email to all selected recipients? This cannot be undone."
+msgstr ""
+
+#: societypress.php:48277
+msgid "Send Now"
+msgstr ""
+
+#: societypress.php:48704
+msgid "Donation deleted."
+msgstr ""
+
+#: societypress.php:48707
+msgid "Donation saved."
+msgstr ""
+
+#: societypress.php:48710
+msgid "Acknowledgment emails sent."
+msgstr ""
+
+#: societypress.php:48741
+#: societypress.php:48789
+#: societypress.php:48975
+#: societypress.php:49234
+msgid "Campaign"
+msgstr ""
+
+#: societypress.php:48790
+msgid "Ack'd"
+msgstr ""
+
+#: societypress.php:48796
+msgid "No donations found."
+msgstr ""
+
+#: societypress.php:48814
+msgid "In-Kind"
+msgstr ""
+
+#: societypress.php:48831
+msgid "Delete this donation record?"
+msgstr ""
+
+#: societypress.php:48847
+msgid "Send acknowledgment emails to all selected donors?"
+msgstr ""
+
+#: societypress.php:48848
+msgid "Send Acknowledgment Email"
+msgstr ""
+
+#: societypress.php:48967
+msgid "Edit Donation"
+msgstr ""
+
+#: societypress.php:48967
+#: societypress.php:49045
+msgid "Record Donation"
+msgstr ""
+
+#: societypress.php:49007
+msgid "Donor Email"
+msgstr ""
+
+#: societypress.php:49025
+msgid "In-Kind Description"
+msgstr ""
+
+#: societypress.php:49039
+msgid "Anonymous donation"
+msgstr ""
+
+#. translators: %s: campaign name
+#: societypress.php:49096
+#, php-format
+msgid "Campaign: %s"
+msgstr ""
+
+#: societypress.php:49221
+msgid "Campaigns"
+msgstr ""
+
+#: societypress.php:49225
+msgid "Campaign deleted. Donations have been unlinked."
+msgstr ""
+
+#: societypress.php:49228
+msgid "Campaign saved."
+msgstr ""
+
+#: societypress.php:49235
+msgid "Goal"
+msgstr ""
+
+#: societypress.php:49236
+msgid "Raised"
+msgstr ""
+
+#: societypress.php:49237
+msgid "Progress"
+msgstr ""
+
+#: societypress.php:49239
+#: societypress.php:53056
+msgid "Date Range"
+msgstr ""
+
+#: societypress.php:49245
+msgid "No campaigns yet."
+msgstr ""
+
+#: societypress.php:49293
+msgid "Delete this campaign? Donations will be unlinked, not deleted."
+msgstr ""
+
+#: societypress.php:49327
+msgid "Campaign Not Found"
+msgstr ""
+
+#: societypress.php:49338
+msgid "Campaign name is required."
+msgstr ""
+
+#: societypress.php:49366
+msgid "Edit Campaign"
+msgstr ""
+
+#: societypress.php:49366
+msgid "Add New Campaign"
+msgstr ""
+
+#: societypress.php:49382
+msgid "Goal Amount"
+msgstr ""
+
+#: societypress.php:49406
+msgid "Create Campaign"
+msgstr ""
+
+#: societypress.php:49445
+msgid "SocietyPress automatically generates a complete privacy policy for your Privacy Policy page using the <strong>Privacy Policy</strong> page template. No manual configuration is needed — the policy adapts to your current site settings."
+msgstr ""
+
+#: societypress.php:49458
+msgid "Privacy Policy"
+msgstr ""
+
+#. translators: %s: date string
+#: societypress.php:49523
+#, php-format
+msgid "Last updated: %s"
+msgstr ""
+
+#: societypress.php:49528
+msgid "Who We Are"
+msgstr ""
+
+#. translators: %1$s: organization name, %2$s: website URL
+#: societypress.php:49531
+#, php-format
+msgid "This website is operated by %1$s. Our website address is: %2$s"
+msgstr ""
+
+#. translators: %s: contact email address
+#: societypress.php:49537
+#, php-format
+msgid "For privacy-related inquiries, contact us at %s."
+msgstr ""
+
+#: societypress.php:49543
+msgid "What Personal Data We Collect and Why"
+msgstr ""
+
+#: societypress.php:49545
+msgid "Membership Information"
+msgstr ""
+
+#: societypress.php:49546
+msgid "When you join as a member, we collect:"
+msgstr ""
+
+#: societypress.php:49548
+msgid "Your name (first, last, and optionally preferred name, middle name, maiden name, prefix, and suffix)"
+msgstr ""
+
+#: societypress.php:49549
+msgid "Email address"
+msgstr ""
+
+#: societypress.php:49550
+msgid "Mailing address (and optionally a seasonal address)"
+msgstr ""
+
+#: societypress.php:49551
+msgid "Phone number(s) (home, cell, work)"
+msgstr ""
+
+#: societypress.php:49552
+msgid "Optional: date of birth, profile photo, personal website"
+msgstr ""
+
+#: societypress.php:49553
+msgid "If you have a joint (couple/household) membership: your partner's name, email, and phone number"
+msgstr ""
+
+#: societypress.php:49555
+msgid "We use this information to manage your membership, communicate with you about society activities, process renewals, and (if you opt in) display your information in the member directory."
+msgstr ""
+
+#: societypress.php:49556
+msgid "Sensitive contact information — including phone numbers and street addresses — is encrypted at rest using modern cryptographic methods. Even in the unlikely event of a database breach, these fields cannot be read without the encryption key."
+msgstr ""
+
+#: societypress.php:49557
+msgid "You control which of your personal details are visible to other members through the directory privacy settings on your account page."
+msgstr ""
+
+#: societypress.php:49559
+msgid "Genealogical Research Information"
+msgstr ""
+
+#: societypress.php:49560
+msgid "Members may optionally provide:"
+msgstr ""
+
+#: societypress.php:49562
+msgid "Surnames being researched, including geographic location and date ranges"
+msgstr ""
+
+#: societypress.php:49563
+msgid "Geographic research areas of interest"
+msgstr ""
+
+#: societypress.php:49564
+msgid "Links to profiles on external genealogy platforms (such as WikiTree, FamilySearch, Ancestry, and others)"
+msgstr ""
+
+#: societypress.php:49565
+msgid "Research interests and skills"
+msgstr ""
+
+#: societypress.php:49567
+msgid "This information is entirely optional and exists to help connect members with shared research interests. It is visible to other logged-in members through the membership directory."
+msgstr ""
+
+#: societypress.php:49570
+msgid "Event Registration"
+msgstr ""
+
+#: societypress.php:49571
+msgid "When you register for an event, we record your name and registration details. We use this to manage attendance, send confirmation and reminder emails, and track capacity. If you register as a guest (non-member), your information is stored separately from the membership database."
+msgstr ""
+
+#: societypress.php:49572
+msgid "You can view your upcoming and past event registrations, and cancel upcoming registrations, from your account page."
+msgstr ""
+
+#: societypress.php:49576
+msgid "Payments"
+msgstr ""
+
+#: societypress.php:49578
+msgid "membership dues"
+msgstr ""
+
+#: societypress.php:49579
+msgid "event fees"
+msgstr ""
+
+#: societypress.php:49580
+msgid "store purchases"
+msgstr ""
+
+#: societypress.php:49581
+msgid "donations"
+msgstr ""
+
+#. translators: %s: list of payment purposes (e.g. "membership dues, event registration, and store purchases")
+#: societypress.php:49584
+#, php-format
+msgid "We accept online payments for %s through Stripe. When you pay online:"
+msgstr ""
+
+#: societypress.php:49589
+msgid "Your payment is processed entirely by Stripe. We never see, store, or have access to your credit card number or bank account details."
+msgstr ""
+
+#: societypress.php:49590
+msgid "We store a record of the transaction amount, date, and Stripe reference ID for our bookkeeping records."
+msgstr ""
+
+#. translators: %1$s: opening link tag, %2$s: closing link tag
+#: societypress.php:49594
+#, php-format
+msgid "For more information about how Stripe handles your payment data, see %1$sStripe's Privacy Policy%2$s."
+msgstr ""
+
+#: societypress.php:49601
+msgid "If you make a donation, we record your name, donation amount, date, and method. You may choose to donate anonymously — your name will not be displayed publicly, but is retained in our records for acknowledgment and tax purposes. If you request data erasure, your donor identity will be anonymized while the financial record is retained as required for tax reporting."
+msgstr ""
+
+#: societypress.php:49605
+msgid "Volunteer Activity"
+msgstr ""
+
+#: societypress.php:49606
+msgid "If you sign up for volunteer opportunities, we record your participation, hours, and any skills you provide. This information is used to coordinate volunteer activities, track contributions, and recognize service."
+msgstr ""
+
+#: societypress.php:49609
+msgid "Contact Form"
+msgstr ""
+
+#: societypress.php:49610
+msgid "If you use a contact form on this site, the information you submit (name, email address, message) is sent via email to our organization. Contact form submissions are not stored in a database on this website."
+msgstr ""
+
+#: societypress.php:49612
+msgid "Profile Photos"
+msgstr ""
+
+#: societypress.php:49613
+msgid "If you upload a profile photo, avoid uploading images with embedded location data (EXIF GPS). Other members may be able to download images from the site and extract any location data from them."
+msgstr ""
+
+#: societypress.php:49618
+msgid "Cookies"
+msgstr ""
+
+#: societypress.php:49619
+msgid "Cookies are small text files stored on your device by your web browser. This site uses cookies for the following purposes:"
+msgstr ""
+
+#: societypress.php:49624
+msgid "Cookie"
+msgstr ""
+
+#: societypress.php:49625
+msgid "Purpose"
+msgstr ""
+
+#: societypress.php:49626
+msgid "Duration"
+msgstr ""
+
+#: societypress.php:49632
+msgid "Keeps you logged in after you enter your username and password."
+msgstr ""
+
+#: societypress.php:49633
+msgid "2 days (2 weeks with \"Remember Me\")"
+msgstr ""
+
+#: societypress.php:49637
+msgid "Checks whether your browser accepts cookies. Contains no personal data."
+msgstr ""
+
+#: societypress.php:49638
+msgid "Session (deleted when you close your browser)"
+msgstr ""
+
+#: societypress.php:49642
+msgid "Remembers your display preferences (e.g., screen layout choices)."
+msgstr ""
+
+#: societypress.php:49643
+msgid "1 year"
+msgstr ""
+
+#: societypress.php:49648
+msgid "Google Analytics — distinguishes unique visitors. Does not contain personal information."
+msgstr ""
+
+#: societypress.php:49649
+msgid "2 years"
+msgstr ""
+
+#: societypress.php:49653
+msgid "Google Analytics — distinguishes unique visitors within a session."
+msgstr ""
+
+#: societypress.php:49654
+#: societypress.php:57621
+msgid "24 hours"
+msgstr ""
+
+#: societypress.php:49661
+msgid "This site does not use tracking cookies, advertising cookies, or third-party analytics cookies."
+msgstr ""
+
+#: societypress.php:49667
+msgid "Email Communications"
+msgstr ""
+
+#: societypress.php:49668
+msgid "As a member, you may receive the following types of email from us:"
+msgstr ""
+
+#: societypress.php:49670
+msgid "Welcome message when your membership is activated"
+msgstr ""
+
+#: societypress.php:49671
+msgid "Membership renewal reminders and expiration notices"
+msgstr ""
+
+#: societypress.php:49673
+msgid "Event registration confirmations and reminders"
+msgstr ""
+
+#: societypress.php:49676
+msgid "Society news and announcements (mass emails)"
+msgstr ""
+
+#: societypress.php:49679
+msgid "You can control which categories of email you receive through the communication preferences on your account page, including opting out of mass emails entirely. Renewal and transaction-related emails cannot be opted out of, as they relate directly to your membership."
+msgstr ""
+
+#: societypress.php:49680
+msgid "All outgoing emails are logged internally for troubleshooting and administrative purposes."
+msgstr ""
+
+#: societypress.php:49685
+msgid "Embedded Content from Other Websites"
+msgstr ""
+
+#: societypress.php:49686
+msgid "Pages on this site may include embedded content (such as videos or maps) from other websites. Embedded content from other websites behaves in the same way as if you visited those websites directly. These websites may collect data about you, use cookies, embed additional third-party tracking, and monitor your interaction with the embedded content."
+msgstr ""
+
+#: societypress.php:49691
+msgid "Who We Share Your Data With"
+msgstr ""
+
+#: societypress.php:49692
+msgid "We do not sell, trade, or rent your personal information to anyone. Your data may be shared with the following parties for the purposes described:"
+msgstr ""
+
+#: societypress.php:49695
+msgid "Stripe (payment processor) — receives only the data necessary to process your payment. We never transmit your card number; Stripe collects it directly."
+msgstr ""
+
+#. translators: %1$s: opening link tag, %2$s: closing link tag
+#: societypress.php:49700
+#, php-format
+msgid "Google Analytics — receives anonymous, aggregated usage data (pages visited, visit duration). See %1$sGoogle's Privacy Policy%2$s."
+msgstr ""
+
+#: societypress.php:49704
+msgid "Other members — only the information you choose to make visible through your directory privacy settings. You control this entirely from your account page."
+msgstr ""
+
+#: societypress.php:49706
+msgid "If you request a password reset, your IP address will be included in the reset email for security purposes."
+msgstr ""
+
+#: societypress.php:49711
+msgid "How Long We Retain Your Data"
+msgstr ""
+
+#: societypress.php:49713
+msgid "Membership records: retained for the duration of your membership and for a reasonable period afterward for administrative continuity."
+msgstr ""
+
+#: societypress.php:49715
+msgid "Event registrations: retained indefinitely for historical reporting and attendance records."
+msgstr ""
+
+#: societypress.php:49718
+msgid "Financial records (payments, donations, purchases): retained as required for tax and accounting purposes. If you request data erasure, financial records are anonymized rather than deleted."
+msgstr ""
+
+#: societypress.php:49720
+msgid "Email logs: retained for administrative troubleshooting and are periodically cleaned up."
+msgstr ""
+
+#: societypress.php:49721
+msgid "Audit logs: retained for security and accountability purposes."
+msgstr ""
+
+#: societypress.php:49727
+msgid "What Rights You Have Over Your Data"
+msgstr ""
+
+#: societypress.php:49728
+msgid "If you have an account on this site, you have the right to:"
+msgstr ""
+
+#: societypress.php:49730
+msgid "View and update your personal information through your account page at any time."
+msgstr ""
+
+#: societypress.php:49731
+msgid "Control exactly which personal details are visible to other members in the directory."
+msgstr ""
+
+#: societypress.php:49732
+msgid "Choose which types of email communications you receive."
+msgstr ""
+
+#: societypress.php:49733
+msgid "Request a complete export of all personal data we hold about you."
+msgstr ""
+
+#: societypress.php:49734
+msgid "Request erasure of your personal data. This does not include data we are legally obligated to retain for tax, accounting, or security purposes."
+msgstr ""
+
+#. translators: %s: contact email address
+#: societypress.php:49738
+#, php-format
+msgid "To request a data export or erasure, contact us at %s. We will respond within 30 days."
+msgstr ""
+
+#: societypress.php:49745
+msgid "How We Protect Your Data"
+msgstr ""
+
+#: societypress.php:49746
+msgid "We take the security of your personal information seriously:"
+msgstr ""
+
+#: societypress.php:49748
+msgid "Sensitive contact information (phone numbers, street addresses) is encrypted at rest using modern cryptographic methods."
+msgstr ""
+
+#: societypress.php:49749
+msgid "All administrative actions are logged for accountability."
+msgstr ""
+
+#: societypress.php:49750
+msgid "Access to member data is restricted to authorized administrators."
+msgstr ""
+
+#: societypress.php:49751
+msgid "All pages on this site are served over HTTPS (encrypted connections)."
+msgstr ""
+
+#: societypress.php:49753
+msgid "Payment information is handled entirely by Stripe and never touches our servers."
+msgstr ""
+
+#: societypress.php:50224
+msgid "Volunteer Roles"
+msgstr ""
+
+#: societypress.php:50228
+#: societypress.php:50229
+msgid "(none)"
+msgstr ""
+
+#: societypress.php:50481
+msgid "Missing item ID."
+msgstr ""
+
+#: societypress.php:50495
+msgid "Item not found."
+msgstr ""
+
+#: societypress.php:50729
+msgid "Library Enrichment"
+msgstr ""
+
+#: societypress.php:50730
+msgid "Automatically fetch book cover images and ISBNs from Open Library. This queries their free, public API using LCCNs and title/author data from your catalog."
+msgstr ""
+
+#: societypress.php:50735
+msgid "Have Covers"
+msgstr ""
+
+#: societypress.php:50739
+msgid "Missing Covers"
+msgstr ""
+
+#: societypress.php:50743
+msgid "Have ISBNs"
+msgstr ""
+
+#: societypress.php:50747
+msgid "Have LCCNs"
+msgstr ""
+
+#: societypress.php:50752
+msgid "Run Enrichment"
+msgstr ""
+
+#: societypress.php:50754
+msgid "This will process items that don't yet have a cover image. Items with LCCNs are tried first (higher match rate), then title+author search for the rest. Open Library's API is free but rate-limited, so this runs in small batches."
+msgstr ""
+
+#: societypress.php:50760
+msgid "Only process items with LCCNs (faster, higher hit rate)"
+msgstr ""
+
+#: societypress.php:50764
+msgid "Skip items already attempted (no cover found previously)"
+msgstr ""
+
+#: societypress.php:50768
+msgid "Start Enrichment"
+msgstr ""
+
+#: societypress.php:50769
+msgid "Stop"
+msgstr ""
+
+#: societypress.php:51171
+msgid "Newsletter deleted."
+msgstr ""
+
+#: societypress.php:51204
+msgid "No newsletters yet."
+msgstr ""
+
+#: societypress.php:51204
+msgid "Upload your first newsletter"
+msgstr ""
+
+#: societypress.php:51256
+msgid "Delete this newsletter?"
+msgstr ""
+
+#: societypress.php:51340
+msgid "Edit Newsletter"
+msgstr ""
+
+#: societypress.php:51340
+msgid "Add New Newsletter"
+msgstr ""
+
+#: societypress.php:51354
+msgid "Optional summary shown on the frontend archive."
+msgstr ""
+
+#: societypress.php:51361
+msgid "Volume & Issue"
+msgstr ""
+
+#: societypress.php:51363
+msgid "Vol."
+msgstr ""
+
+#: societypress.php:51365
+msgid "No."
+msgstr ""
+
+#: societypress.php:51374
+#: societypress.php:52761
+#: societypress.php:53095
+#: societypress.php:55987
+#: societypress.php:56021
+#: societypress.php:56244
+#: societypress.php:56465
+msgid "Public"
+msgstr ""
+
+#: societypress.php:51535
+msgid "Missing PDF ID."
+msgstr ""
+
+#: societypress.php:51540
+msgid "PDF file not found."
+msgstr ""
+
+#: societypress.php:51545
+msgid "Imagick extension not available. Upload a cover image manually."
+msgstr ""
+
+#: societypress.php:51588
+msgid "Failed to register cover image attachment."
+msgstr ""
+
+#. translators: %s is the error message from Imagick
+#: societypress.php:51603
+#, php-format
+msgid "Imagick error: %s. Upload a cover image manually."
+msgstr ""
+
+#: societypress.php:51623
+msgid "Invalid newsletter."
+msgstr ""
+
+#: societypress.php:51633
+msgid "Newsletter not found."
+msgstr ""
+
+#: societypress.php:51644
+msgid "This newsletter is not currently available."
+msgstr ""
+
+#: societypress.php:52265
+msgid "Search events, library, members, newsletters…"
+msgstr ""
+
+#: societypress.php:52278
+msgid "Please enter at least 2 characters to search."
+msgstr ""
+
+#. translators: %s is the search query
+#: societypress.php:52290
+#, php-format
+msgid "No results found for \"%s\". Try a different search term."
+msgstr ""
+
+#. translators: %d is the total number of results
+#: societypress.php:52345
+#, php-format
+msgid "View all %d results →"
+msgstr ""
+
+#: societypress.php:52626
+msgid "Too many requests. Please try again shortly."
+msgstr ""
+
+#: societypress.php:52634
+msgid "Query must be at least 2 characters."
+msgstr ""
+
+#: societypress.php:52702
+msgid "Collection and all its records deleted."
+msgstr ""
+
+#: societypress.php:52717
+msgid "Record Collections"
+msgstr ""
+
+#: societypress.php:52718
+msgid "Add New Collection"
+msgstr ""
+
+#: societypress.php:52720
+msgid "Manage your society's transcribed genealogical record collections — cemetery indexes, census transcriptions, church records, and more."
+msgstr ""
+
+#: societypress.php:52725
+msgid "No collections yet"
+msgstr ""
+
+#: societypress.php:52726
+msgid "Create your first record collection to start importing transcribed genealogical records."
+msgstr ""
+
+#: societypress.php:52727
+#: societypress.php:53132
+msgid "Create Collection"
+msgstr ""
+
+#: societypress.php:52733
+#: societypress.php:53711
+#: societypress.php:54062
+#: societypress.php:54083
+msgid "Collection"
+msgstr ""
+
+#: societypress.php:52735
+msgid "Records"
+msgstr ""
+
+#: societypress.php:52774
+msgid "Browse"
+msgstr ""
+
+#: societypress.php:52775
+msgid "Import"
+msgstr ""
+
+#: societypress.php:52777
+msgid "Delete this collection and ALL its records? This cannot be undone."
+msgstr ""
+
+#: societypress.php:52802
+msgid "Cemetery / Burial Index"
+msgstr ""
+
+#: societypress.php:52803
+msgid "Census Transcription"
+msgstr ""
+
+#: societypress.php:52804
+msgid "Church Records"
+msgstr ""
+
+#: societypress.php:52805
+msgid "Obituary Index"
+msgstr ""
+
+#: societypress.php:52806
+msgid "Marriage Records"
+msgstr ""
+
+#: societypress.php:52807
+msgid "Vital Records"
+msgstr ""
+
+#: societypress.php:52808
+msgid "Military Records"
+msgstr ""
+
+#: societypress.php:52809
+msgid "Land / Deed Records"
+msgstr ""
+
+#: societypress.php:52810
+msgid "Probate / Estate Records"
+msgstr ""
+
+#: societypress.php:52811
+msgid "Immigration / Naturalization"
+msgstr ""
+
+#: societypress.php:52812
+msgid "Newspaper Abstracts"
+msgstr ""
+
+#: societypress.php:52813
+msgid "Tax Lists"
+msgstr ""
+
+#: societypress.php:52814
+msgid "General / Other"
+msgstr ""
+
+#: societypress.php:52998
+msgid "Collection saved."
+msgstr ""
+
+#: societypress.php:53014
+msgid "Text"
+msgstr ""
+
+#: societypress.php:53015
+msgid "Long Text"
+msgstr ""
+
+#: societypress.php:53016
+msgid "Number"
+msgstr ""
+
+#: societypress.php:53021
+msgid "Edit Collection"
+msgstr ""
+
+#: societypress.php:53021
+msgid "Add Collection"
+msgstr ""
+
+#: societypress.php:53022
+#: societypress.php:53321
+msgid "Back to Collections"
+msgstr ""
+
+#: societypress.php:53027
+msgid "Collection Details"
+msgstr ""
+
+#: societypress.php:53034
+msgid "Record Type"
+msgstr ""
+
+#: societypress.php:53042
+msgid "Selecting a type pre-populates default fields below. You can customize them after."
+msgstr ""
+
+#: societypress.php:53051
+msgid "Source Information"
+msgstr ""
+
+#: societypress.php:53053
+msgid "Where this data came from — e.g., \"Transcribed from original records at Sample County Courthouse, 2019–2021.\""
+msgstr ""
+
+#: societypress.php:53064
+#: societypress.php:56240
+#: societypress.php:56461
+msgid "Access Level"
+msgstr ""
+
+#: societypress.php:53067
+msgid "Public — anyone can search"
+msgstr ""
+
+#: societypress.php:53068
+msgid "Members only — login required"
+msgstr ""
+
+#: societypress.php:53070
+msgid "Individual fields can also be restricted to members even if the collection is public."
+msgstr ""
+
+#: societypress.php:53077
+msgid "Active — visible to users"
+msgstr ""
+
+#: societypress.php:53078
+msgid "Draft — hidden while setting up"
+msgstr ""
+
+#: societypress.php:53085
+msgid "Fields"
+msgstr ""
+
+#: societypress.php:53086
+msgid "Define the columns for this collection. Drag to reorder. Searchable fields are included in the frontend search. Non-public fields are hidden from non-members."
+msgstr ""
+
+#: societypress.php:53092
+msgid "Field Name"
+msgstr ""
+
+#: societypress.php:53094
+msgid "Searchable"
+msgstr ""
+
+#: societypress.php:53129
+msgid "+ Add Field"
+msgstr ""
+
+#: societypress.php:53132
+msgid "Update Collection"
+msgstr ""
+
+#: societypress.php:53249
+msgid "Browse Records"
+msgstr ""
+
+#: societypress.php:53250
+#: societypress.php:53406
+msgid "No collection specified."
+msgstr ""
+
+#: societypress.php:53250
+msgid "View Collections"
+msgstr ""
+
+#: societypress.php:53258
+#: societypress.php:53414
+msgid "Collection not found."
+msgstr ""
+
+#: societypress.php:53273
+msgid "Record deleted."
+msgstr ""
+
+#: societypress.php:53318
+msgid "records"
+msgstr ""
+
+#: societypress.php:53319
+#: societypress.php:53480
+#: societypress.php:53506
+msgid "Add Record"
+msgstr ""
+
+#: societypress.php:53327
+msgid "Search records..."
+msgstr ""
+
+#: societypress.php:53335
+msgid "No records found."
+msgstr ""
+
+#: societypress.php:53359
+msgid "Delete this record?"
+msgstr ""
+
+#: societypress.php:53465
+msgid "Record saved."
+msgstr ""
+
+#: societypress.php:53480
+msgid "Edit Record"
+msgstr ""
+
+#: societypress.php:53506
+msgid "Update Record"
+msgstr ""
+
+#: societypress.php:53549
+msgid "Missing data. Please try again."
+msgstr ""
+
+#. translators: %1$d: records imported, %2$d: records skipped, %3$d: number of errors
+#: societypress.php:53565
+#, php-format
+msgid "Import complete: %1$d records imported, %2$d skipped, %3$d errors."
+msgstr ""
+
+#: societypress.php:53589
+msgid "Please select a collection."
+msgstr ""
+
+#: societypress.php:53591
+msgid "Please select a CSV file."
+msgstr ""
+
+#: societypress.php:53640
+msgid "Import Records — Map Fields"
+msgstr ""
+
+#. translators: %s: collection name
+#: societypress.php:53642
+#, php-format
+msgid "Importing into: %s"
+msgstr ""
+
+#: societypress.php:53654
+msgid "Map To Field"
+msgstr ""
+
+#: societypress.php:53674
+msgid "Skip"
+msgstr ""
+
+#: societypress.php:53686
+#: societypress.php:53698
+msgid "Import Records"
+msgstr ""
+
+#: societypress.php:53699
+msgid "Import transcribed genealogical records from a CSV file into a collection. You'll map CSV columns to collection fields on the next step."
+msgstr ""
+
+#: societypress.php:53703
+msgid "You need to create a collection before importing records."
+msgstr ""
+
+#: societypress.php:53704
+msgid "Create one now"
+msgstr ""
+
+#: societypress.php:53714
+msgid "Select Collection"
+msgstr ""
+
+#: societypress.php:53727
+msgid "Upload & Map Fields"
+msgstr ""
+
+#: societypress.php:53869
+msgid "Genealogical Records Search"
+msgstr ""
+
+#: societypress.php:53870
+msgid "Searchable interface for transcribed genealogical records."
+msgstr ""
+
+#: societypress.php:53873
+msgid "Collection (optional)"
+msgstr ""
+
+#. translators: %s: login URL
+#: societypress.php:53905
+#, php-format
+msgid "Please <a href=\"%s\">log in</a> to search genealogical records."
+msgstr ""
+
+#: societypress.php:53929
+msgid "No record collections are available at this time."
+msgstr ""
+
+#: societypress.php:54034
+msgid "Search names, places, dates..."
+msgstr ""
+
+#: societypress.php:54038
+msgid "All Collections"
+msgstr ""
+
+#: societypress.php:54050
+msgid "records found"
+msgstr ""
+
+#: societypress.php:54053
+msgid "No records match your search. Try broadening your query."
+msgstr ""
+
+#: societypress.php:54072
+#: societypress.php:54103
+msgid "Summary"
+msgstr ""
+
+#. translators: %s: organization name
+#: societypress.php:54473
+#, php-format
+msgid "Browse publications and materials available from %s."
+msgstr ""
+
+#: societypress.php:54479
+msgid "Publications"
+msgstr ""
+
+#: societypress.php:54486
+msgid "Categories"
+msgstr ""
+
+#: societypress.php:54490
+msgid "All Publications"
+msgstr ""
+
+#: societypress.php:54508
+msgid "No publications found in this category."
+msgstr ""
+
+#: societypress.php:54511
+msgid "publications"
+msgstr ""
+
+#: societypress.php:54513
+msgid "in"
+msgstr ""
+
+#: societypress.php:54549
+#: societypress.php:55295
+msgid "Quantity"
+msgstr ""
+
+#: societypress.php:54550
+#: societypress.php:54624
+#: societypress.php:54629
+#: societypress.php:54634
+msgid "Add to Cart"
+msgstr ""
+
+#: societypress.php:54600
+msgid "Please log in to make purchases."
+msgstr ""
+
+#: societypress.php:54607
+msgid "Adding…"
+msgstr ""
+
+#: societypress.php:54621
+msgid "Added!"
+msgstr ""
+
+#: societypress.php:54628
+msgid "Could not add to cart."
+msgstr ""
+
+#: societypress.php:54717
+msgid "Invalid item."
+msgstr ""
+
+#: societypress.php:54727
+msgid "Item not found or not available for purchase."
+msgstr ""
+
+#: societypress.php:54748
+msgid "Added to cart."
+msgstr ""
+
+#: societypress.php:54814
+#: societypress.php:55287
+msgid "Your cart is empty."
+msgstr ""
+
+#: societypress.php:54823
+msgid "Payment processing is not configured. Please contact the site administrator."
+msgstr ""
+
+#: societypress.php:54856
+msgid "No valid items in your cart."
+msgstr ""
+
+#: societypress.php:54878
+msgid "Could not create order. Please try again."
+msgstr ""
+
+#: societypress.php:54954
+msgid "Could not set up payment. Please try again."
+msgstr ""
+
+#. translators: %1$s: site name, %2$d: order number
+#: societypress.php:55069
+#, php-format
+msgid "[%1$s] Order #%2$d Confirmation"
+msgstr ""
+
+#: societypress.php:55097
+msgid "Thank you for your order! Here is your confirmation:"
+msgstr ""
+
+#: societypress.php:55100
+#: societypress.php:55294
+#: societypress.php:55306
+#: societypress.php:55689
+msgid "Item"
+msgstr ""
+
+#: societypress.php:55101
+#: societypress.php:55310
+#: societypress.php:55691
+msgid "Qty"
+msgstr ""
+
+#: societypress.php:55102
+#: societypress.php:55297
+#: societypress.php:55316
+#: societypress.php:55529
+#: societypress.php:55659
+msgid "Total"
+msgstr ""
+
+#: societypress.php:55104
+#: societypress.php:55325
+msgid "Total:"
+msgstr ""
+
+#: societypress.php:55106
+msgid "We will be in touch regarding pickup or delivery of your items."
+msgstr ""
+
+#: societypress.php:55234
+msgid "Shopping Cart"
+msgstr ""
+
+#: societypress.php:55238
+msgid "Payment received!"
+msgstr ""
+
+#: societypress.php:55239
+msgid "Thank you for your purchase. A confirmation email has been sent to your address on file."
+msgstr ""
+
+#: societypress.php:55243
+msgid "Payment was cancelled. Your cart items are still saved — you can check out when ready."
+msgstr ""
+
+#. translators: %s: login URL
+#: societypress.php:55251
+#, php-format
+msgid "Please <a href=\"%s\">log in</a> to view your cart and make purchases."
+msgstr ""
+
+#: societypress.php:55258
+msgid "Loading cart…"
+msgstr ""
+
+#: societypress.php:55288
+#: societypress.php:55323
+msgid "Continue Shopping"
+msgstr ""
+
+#: societypress.php:55296
+#: societypress.php:55315
+msgid "Price"
+msgstr ""
+
+#: societypress.php:55326
+#: societypress.php:55405
+#: societypress.php:55411
+msgid "Proceed to Checkout"
+msgstr ""
+
+#: societypress.php:55390
+msgid "Processing…"
+msgstr ""
+
+#: societypress.php:55402
+msgid "Checkout failed. Please try again."
+msgstr ""
+
+#: societypress.php:55482
+#: societypress.php:55630
+msgid "Paid"
+msgstr ""
+
+#: societypress.php:55483
+#: societypress.php:55631
+msgid "Shipped"
+msgstr ""
+
+#: societypress.php:55485
+#: societypress.php:55633
+msgid "Refunded"
+msgstr ""
+
+#: societypress.php:55486
+#: societypress.php:55634
+msgid "Failed"
+msgstr ""
+
+#: societypress.php:55499
+msgid "Store Orders"
+msgstr ""
+
+#: societypress.php:55502
+#: societypress.php:55643
+msgid "Order updated."
+msgstr ""
+
+#: societypress.php:55527
+#: societypress.php:55665
+msgid "Customer"
+msgstr ""
+
+#: societypress.php:55528
+#: societypress.php:55685
+msgid "Items"
+msgstr ""
+
+#: societypress.php:55536
+msgid "No orders found."
+msgstr ""
+
+#: societypress.php:55584
+#: societypress.php:55618
+msgid "Order not found."
+msgstr ""
+
+#. translators: %d: order number
+#: societypress.php:55639
+#, php-format
+msgid "Order #%d"
+msgstr ""
+
+#: societypress.php:55640
+msgid "Back to Orders"
+msgstr ""
+
+#: societypress.php:55650
+msgid "Order Information"
+msgstr ""
+
+#: societypress.php:55654
+msgid "Payment"
+msgstr ""
+
+#: societypress.php:55656
+msgid "Stripe PI"
+msgstr ""
+
+#: societypress.php:55658
+msgid "Subtotal"
+msgstr ""
+
+#: societypress.php:55675
+msgid "View Member Record"
+msgstr ""
+
+#: societypress.php:55690
+msgid "Unit Price"
+msgstr ""
+
+#: societypress.php:55692
+msgid "Line Total"
+msgstr ""
+
+#: societypress.php:55710
+#: societypress.php:55731
+msgid "Update Order"
+msgstr ""
+
+#: societypress.php:55727
+msgid "Admin Note"
+msgstr ""
+
+#: societypress.php:55770
+#: societypress.php:56345
+msgid "You do not have permission to manage documents."
+msgstr ""
+
+#: societypress.php:55829
+msgid "You do not have permission to delete documents."
+msgstr ""
+
+#: societypress.php:55852
+msgid "You do not have permission to manage document categories."
+msgstr ""
+
+#: societypress.php:55899
+msgid "You do not have permission to delete categories."
+msgstr ""
+
+#: societypress.php:55961
+msgid "Bulk Upload"
+msgstr ""
+
+#: societypress.php:55965
+msgid "Document saved."
+msgstr ""
+
+#: societypress.php:55968
+msgid "Document deleted."
+msgstr ""
+
+#. translators: %d: number of documents uploaded
+#: societypress.php:55972
+#, php-format
+msgid "%d document uploaded."
+msgid_plural "%d documents uploaded."
+msgstr[0] ""
+msgstr[1] ""
+
+#: societypress.php:55978
+msgid "Search documents…"
+msgstr ""
+
+#: societypress.php:55986
+msgid "All Access Levels"
+msgstr ""
+
+#: societypress.php:56008
+msgid "No documents found."
+msgstr ""
+
+#: societypress.php:56028
+msgid "Delete this document?"
+msgstr ""
+
+#. translators: %d: number of documents
+#: societypress.php:56043
+#, php-format
+msgid "%d document(s)"
+msgstr ""
+
+#: societypress.php:56108
+msgid "Update Category"
+msgstr ""
+
+#: societypress.php:56111
+msgid "Cancel editing"
+msgstr ""
+
+#: societypress.php:56130
+msgid "No categories yet."
+msgstr ""
+
+#: societypress.php:56141
+msgid "Delete this category? Documents in it will become uncategorized."
+msgstr ""
+
+#: societypress.php:56183
+#: societypress.php:56264
+msgid "Add Document"
+msgstr ""
+
+#: societypress.php:56186
+msgid "Title and file are required."
+msgstr ""
+
+#: societypress.php:56217
+msgid "Document Date"
+msgstr ""
+
+#: societypress.php:56221
+msgid "File"
+msgstr ""
+
+#: societypress.php:56235
+msgid "Choose File"
+msgstr ""
+
+#: societypress.php:56264
+msgid "Update Document"
+msgstr ""
+
+#: societypress.php:56289
+msgid "Select Document"
+msgstr ""
+
+#: societypress.php:56290
+msgid "Use This File"
+msgstr ""
+
+#: societypress.php:56441
+msgid "Select multiple files from the Media Library, set shared options, review the titles and dates, then upload them all at once."
+msgstr ""
+
+#: societypress.php:56481
+msgid "Select Files from Media Library"
+msgstr ""
+
+#: societypress.php:56503
+msgid "Upload All Documents"
+msgstr ""
+
+#: societypress.php:56679
+msgid "file selected"
+msgstr ""
+
+#: societypress.php:56679
+msgid "files selected"
+msgstr ""
+
+#: societypress.php:56690
+msgid "Select Documents"
+msgstr ""
+
+#: societypress.php:56691
+msgid "Add Selected Files"
+msgstr ""
+
+#: societypress.php:56730
+msgid "Please select at least one file."
+msgstr ""
+
+#: societypress.php:56779
+msgid "No documents available at this time."
+msgstr ""
+
+#: societypress.php:56845
+msgid "Other Documents"
+msgstr ""
+
+#: societypress.php:56876
+msgid "Invalid document."
+msgstr ""
+
+#: societypress.php:56887
+msgid "Document not found."
+msgstr ""
+
+#: societypress.php:56892
+msgid "Please log in to download this document."
+msgstr ""
+
+#: societypress.php:56895
+msgid "This document is available to members only."
+msgstr ""
+
+#: societypress.php:56901
+msgid "File not found."
+msgstr ""
+
+#: societypress.php:56948
+msgid "Download"
+msgstr ""
+
+#: societypress.php:56951
+msgid "Log in to access"
+msgstr ""
+
+#: societypress.php:57215
+#: societypress.php:57998
+msgid "Feed not found."
+msgstr ""
+
+#. translators: %d: HTTP status code
+#: societypress.php:57241
+#, php-format
+msgid "HTTP %d response from feed URL."
+msgstr ""
+
+#: societypress.php:57255
+msgid "Response is not a valid iCal feed (no VCALENDAR found)."
+msgstr ""
+
+#: societypress.php:57470
+msgid "Label and URL are required."
+msgstr ""
+
+#. translators: %s: error message
+#: societypress.php:57488
+#, php-format
+msgid "Feed added but initial sync failed: %s"
+msgstr ""
+
+#. translators: %d: number of events imported
+#: societypress.php:57494
+#, php-format
+msgid "Feed added and synced: %d events imported."
+msgstr ""
+
+#: societypress.php:57517
+msgid "Feed updated."
+msgstr ""
+
+#: societypress.php:57542
+msgid "Subscribe to iCal feeds from partner organizations, regional groups, or national conferences. Events will be automatically imported and kept in sync."
+msgstr ""
+
+#: societypress.php:57558
+msgid "Edit External Calendar"
+msgstr ""
+
+#: societypress.php:57559
+msgid "Add External Calendar"
+msgstr ""
+
+#: societypress.php:57572
+#: societypress.php:57662
+msgid "Label"
+msgstr ""
+
+#: societypress.php:57577
+msgid "e.g., State Genealogical Society"
+msgstr ""
+
+#: societypress.php:57582
+msgid "iCal Feed URL"
+msgstr ""
+
+#: societypress.php:57589
+msgid "The .ics or iCal subscription URL from the external calendar."
+msgstr ""
+
+#: societypress.php:57595
+msgid "Assign to Category"
+msgstr ""
+
+#: societypress.php:57607
+msgid "All events from this feed will be assigned to this category."
+msgstr ""
+
+#: societypress.php:57613
+msgid "Sync Every"
+msgstr ""
+
+#: societypress.php:57617
+msgid "1 hour"
+msgstr ""
+
+#: societypress.php:57618
+msgid "3 hours"
+msgstr ""
+
+#: societypress.php:57619
+msgid "6 hours"
+msgstr ""
+
+#: societypress.php:57620
+msgid "12 hours"
+msgstr ""
+
+#: societypress.php:57639
+msgid "Update Feed"
+msgstr ""
+
+#: societypress.php:57639
+msgid "Add Feed"
+msgstr ""
+
+#: societypress.php:57665
+msgid "Interval"
+msgstr ""
+
+#: societypress.php:57667
+msgid "Last Sync"
+msgstr ""
+
+#: societypress.php:57695
+#: societypress.php:58004
+msgid "Paused"
+msgstr ""
+
+#. translators: %d: number of hours
+#: societypress.php:57715
+#, php-format
+msgid "%d hr"
+msgid_plural "%d hrs"
+msgstr[0] ""
+msgstr[1] ""
+
+#: societypress.php:57734
+msgid "ago"
+msgstr ""
+
+#: societypress.php:57737
+msgid "Never"
+msgstr ""
+
+#: societypress.php:57747
+msgid "Sync Now"
+msgstr ""
+
+#: societypress.php:57754
+msgid "Pause"
+msgstr ""
+
+#: societypress.php:57754
+msgid "Resume"
+msgstr ""
+
+#: societypress.php:57776
+msgid "No external calendars subscribed yet. Add one above to get started."
+msgstr ""
+
+#: societypress.php:57797
+msgid "Syncing..."
+msgstr ""
+
+#: societypress.php:57813
+msgid "Sync failed."
+msgstr ""
+
+#: societypress.php:57856
+msgid "Delete this feed and all its imported events?"
+msgstr ""
+
+#: societypress.php:57902
+#: societypress.php:57936
+#: societypress.php:57986
+msgid "Invalid feed ID."
+msgstr ""
+
+#. translators: %1$d: events added, %2$d: events updated, %3$d: events removed
+#: societypress.php:57913
+#, php-format
+msgid "Synced: %1$d added, %2$d updated, %3$d removed."
+msgstr ""
+
+#. translators: %d: number of events removed
+#: societypress.php:57966
+#, php-format
+msgid "Feed deleted. %d imported events removed."
+msgstr ""
+
+#: societypress.php:58004
+msgid "Resumed"
+msgstr ""
+
+#: societypress.php:58019
+msgid "Invalid event ID."
+msgstr ""
+
+#: societypress.php:58059
+msgid "Event detached from feed. It is now a standalone event."
+msgstr ""

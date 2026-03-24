@@ -258,7 +258,7 @@ function sp_m( $member, $field ) {
 }
 </style>
 
-<div class="site-content">
+<div id="main-content" class="site-content">
     <div class="content-area-full">
 
         <article class="sp-my-account">

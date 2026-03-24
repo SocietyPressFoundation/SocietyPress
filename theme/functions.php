@@ -98,6 +98,18 @@ add_action( 'wp_enqueue_scripts', function () {
         [],
         SOCIETYPRESS_THEME_VERSION
     );
+
+    // WHY theme.js: Handles the hamburger menu toggle on mobile screens.
+    // Loaded in the footer (true) so it doesn't block page rendering.
+    // Uses get_template_directory_uri() for the same reason as the stylesheet —
+    // child themes need the parent's JS to load regardless.
+    wp_enqueue_script(
+        'societypress-theme',
+        get_template_directory_uri() . '/js/theme.js',
+        [],
+        SOCIETYPRESS_THEME_VERSION,
+        true
+    );
 });
 
 

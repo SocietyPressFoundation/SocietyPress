@@ -12,7 +12,7 @@
 get_header();
 ?>
 
-<div class="site-content">
+<div id="main-content" class="site-content">
     <div class="content-area-full">
 
         <?php while ( have_posts() ) : the_post(); ?>

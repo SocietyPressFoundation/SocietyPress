@@ -173,9 +173,42 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 
 ## In Progress
 
-(Nothing actively in flight)
+- [ ] Inline styles refactor (#8): extracting `style=` attributes to CSS classes, section by section. Dashboard done (42 → 2). ~1,660 remaining across other admin functions.
 
-### Completed This Session (v0.41d — 2026-03-22)
+### Completed This Session (v0.42d — 2026-03-23)
+
+**i18n Cleanup:**
+- [x] Generated `.pot` translation template — zero warnings
+- [x] Added ~80 translator comments with ordered placeholders across plugin
+- [x] Numbered all multi-placeholder strings (`%s` → `%1$s`, `%2$s`) for translator reordering
+- [x] Split dual-context "Edit Member: %s" string into `_x()` with distinct contexts
+
+**Accessibility / UX Pass (25 issues from UX review, 22 fixed):**
+- [x] Skip navigation link (WCAG 2.4.1) — parent theme + the society + all 6 templates
+- [x] Conditional `<h1>`/`<p>` site title — `<h1>` only on front page (WCAG 2.4.6)
+- [x] Mobile hamburger menu for parent theme (was wrapping/stacking below 768px)
+- [x] User dropdown click/tap toggle for touch devices
+- [x] Custom confirmation modal (`spConfirm`) replacing `confirm()` on 4 most destructive actions
+- [x] Admin sidebar visual separators between menu groups
+- [x] Inline form errors on member edit (field-level `aria-describedby` + focus)
+- [x] Setup wizard step labels for screen readers
+- [x] Module toggle `aria-labelledby` associations
+- [x] Blast email filter tabs `aria-current`
+- [x] Join form: tier radio type cast, "Join Now" label, state field hint
+- [x] Dashboard + member list status icons (non-color indicators)
+- [x] Membership plans inline editing focus management + `aria-live`
+- [x] Design settings anchor navigation
+- [x] Logo preview alt text, event image button context, table `scope="col"`
+- [x] Empty state actionable guidance (library, resources, donations)
+- [x] Search input focus ring contrast fix
+- [x] Dashboard inline styles extracted to CSS classes (42 → 2)
+
+**Deferred UX items (3 remaining):**
+- [ ] Inline styles refactor for remaining admin functions (~1,660 attributes)
+- [ ] Custom confirm modal migration for remaining ~40 `confirm()` calls
+- [ ] Mobile hamburger for parent theme needs testing with real nav menus
+
+### Completed Previous Session (v0.41d — 2026-03-22)
 
 **Code Review — 28 Issues Fixed:**
 - [x] Plugin header/constant version mismatch (C-1)

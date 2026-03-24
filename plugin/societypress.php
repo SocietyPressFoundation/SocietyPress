@@ -8416,7 +8416,7 @@ function sp_render_dashboard_page(): void {
     <div class="wrap">
         <h1><?php echo esc_html__( 'Dashboard', 'societypress' ); ?></h1>
         <?php if ( $display_name ) : ?>
-            <p style="font-size: 14px; color: #666; margin-top: 4px;">
+            <p class="sp-dash-subtitle">
                 <?php echo esc_html( $display_name ); ?> &mdash; SocietyPress <?php echo esc_html( SOCIETYPRESS_VERSION ); ?>
             </p>
         <?php endif; ?>
@@ -8433,30 +8433,30 @@ function sp_render_dashboard_page(): void {
             ?>
 
             <?php if ( $sp_update ) : ?>
-            <div id="sp-update-banner" style="background:#f0f6fc; border:1px solid #72aee6; border-left:4px solid #2271b1; padding:14px 18px; margin:16px 0; border-radius:4px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+            <div id="sp-update-banner">
                 <div>
-                    <strong style="font-size:14px;">
+                    <strong class="sp-dash-update-heading">
                         <?php printf(
                             /* translators: %s: version number */
                             esc_html__( 'SocietyPress %s is available', 'societypress' ),
                             esc_html( $sp_update->version )
                         ); ?>
                     </strong>
-                    <span style="color:#50575e; margin-left:6px;">
+                    <span class="sp-dash-update-version">
                         (<?php /* translators: %s: current version number */ printf( esc_html__( 'you have %s', 'societypress' ), esc_html( SOCIETYPRESS_VERSION ) ); ?>)
                     </span>
                     <?php if ( ! empty( $sp_update->html_url ) ) : ?>
                         <br>
-                        <a href="<?php echo esc_url( $sp_update->html_url ); ?>" target="_blank" rel="noopener" style="font-size:13px;">
+                        <a href="<?php echo esc_url( $sp_update->html_url ); ?>" target="_blank" rel="noopener" class="sp-dash-update-link">
                             <?php esc_html_e( 'View release notes', 'societypress' ); ?> &rarr;
                         </a>
                     <?php endif; ?>
                 </div>
-                <div style="display:flex; gap:8px; align-items:center;">
-                    <button type="button" id="sp-update-btn" class="button button-primary" style="white-space:nowrap;">
+                <div class="sp-dash-update-actions">
+                    <button type="button" id="sp-update-btn" class="button button-primary">
                         <?php esc_html_e( 'Update Now', 'societypress' ); ?>
                     </button>
-                    <span id="sp-update-status" style="font-size:13px; color:#50575e;"></span>
+                    <span id="sp-update-status" class="sp-dash-update-status"></span>
                 </div>
             </div>
 
@@ -8523,15 +8523,15 @@ function sp_render_dashboard_page(): void {
             ?>
 
             <?php if ( $has_theme_updates ) : ?>
-            <div id="sp-theme-update-banner" style="background:#fcf9e8; border:1px solid #dba617; border-left:4px solid #dba617; padding:14px 18px; margin:12px 0; border-radius:4px;">
-                <strong style="font-size:14px; display:block; margin-bottom:8px;">
-                    <span class="dashicons dashicons-admin-appearance" style="margin-right:4px;"></span>
+            <div id="sp-theme-update-banner">
+                <strong class="sp-dash-theme-heading">
+                    <span class="dashicons dashicons-admin-appearance"></span>
                     <?php esc_html_e( 'Theme Updates Available', 'societypress' ); ?>
                 </strong>
 
                 <?php if ( $parent_theme_update ) : ?>
-                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:<?php echo ! empty( $child_theme_updates ) ? '10px' : '0'; ?>;">
-                    <span style="font-size:13px;">
+                <div class="sp-dash-theme-row" style="margin-bottom:<?php echo ! empty( $child_theme_updates ) ? '10px' : '0'; ?>;">
+                    <span class="sp-dash-theme-version">
                         <?php printf(
                             /* translators: %1$s: installed version number, %2$s: available version number */
                             esc_html__( 'SocietyPress parent theme: %1$s → %2$s', 'societypress' ),
@@ -8539,18 +8539,18 @@ function sp_render_dashboard_page(): void {
                             '<strong>' . esc_html( $parent_theme_update['available'] ) . '</strong>'
                         ); ?>
                     </span>
-                    <div style="display:flex; gap:8px; align-items:center;">
-                        <button type="button" id="sp-update-parent-theme-btn" class="button button-small" style="white-space:nowrap;">
+                    <div class="sp-dash-update-actions">
+                        <button type="button" id="sp-update-parent-theme-btn" class="button button-small">
                             <?php esc_html_e( 'Update Theme', 'societypress' ); ?>
                         </button>
-                        <span id="sp-parent-theme-status" style="font-size:12px; color:#50575e;"></span>
+                        <span id="sp-parent-theme-status" class="sp-dash-theme-status"></span>
                     </div>
                 </div>
                 <?php endif; ?>
 
                 <?php foreach ( $child_theme_updates as $ct_slug => $ct_info ) : ?>
-                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:4px;" data-child-slug="<?php echo esc_attr( $ct_slug ); ?>">
-                    <span style="font-size:13px;">
+                <div class="sp-dash-theme-row" style="margin-bottom:4px;" data-child-slug="<?php echo esc_attr( $ct_slug ); ?>">
+                    <span class="sp-dash-theme-version">
                         <?php printf(
                             /* translators: %1$s: theme name, %2$s: installed version number, %3$s: available version number */
                             esc_html__( '%1$s child theme: %2$s → %3$s', 'societypress' ),
@@ -8559,12 +8559,12 @@ function sp_render_dashboard_page(): void {
                             '<strong>' . esc_html( $ct_info['available'] ) . '</strong>'
                         ); ?>
                     </span>
-                    <div style="display:flex; gap:8px; align-items:center;">
+                    <div class="sp-dash-update-actions">
                         <button type="button" class="button button-small sp-update-child-btn"
-                                data-slug="<?php echo esc_attr( $ct_slug ); ?>" style="white-space:nowrap;">
+                                data-slug="<?php echo esc_attr( $ct_slug ); ?>">
                             <?php esc_html_e( 'Update', 'societypress' ); ?>
                         </button>
-                        <span class="sp-child-theme-status" data-slug="<?php echo esc_attr( $ct_slug ); ?>" style="font-size:12px; color:#50575e;"></span>
+                        <span class="sp-child-theme-status sp-dash-theme-status" data-slug="<?php echo esc_attr( $ct_slug ); ?>"></span>
                     </div>
                 </div>
                 <?php endforeach; ?>
@@ -8827,6 +8827,140 @@ function sp_render_dashboard_page(): void {
                 color: #999;
                 margin-top: 2px;
             }
+
+            /* ---- Inline-style extractions (dashboard cleanup) ---- */
+
+            /* Dashboard subtitle beneath the h1 */
+            .sp-dash-subtitle {
+                font-size: 14px;
+                color: #666;
+                margin-top: 4px;
+            }
+
+            /* Plugin update banner — layout and appearance */
+            #sp-update-banner {
+                background: #f0f6fc;
+                border: 1px solid #72aee6;
+                border-left: 4px solid #2271b1;
+                padding: 14px 18px;
+                margin: 16px 0;
+                border-radius: 4px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 12px;
+            }
+
+            /* Update banner heading */
+            .sp-dash-update-heading {
+                font-size: 14px;
+            }
+
+            /* Current-version note next to update heading */
+            .sp-dash-update-version {
+                color: #50575e;
+                margin-left: 6px;
+            }
+
+            /* Release notes link */
+            .sp-dash-update-link {
+                font-size: 13px;
+            }
+
+            /* Flex row for update button + status text (reused in theme banners) */
+            .sp-dash-update-actions {
+                display: flex;
+                gap: 8px;
+                align-items: center;
+            }
+
+            /* Prevent update/action buttons from wrapping text */
+            .sp-dash-update-actions .button {
+                white-space: nowrap;
+            }
+
+            /* Status text next to plugin update button */
+            .sp-dash-update-status {
+                font-size: 13px;
+                color: #50575e;
+            }
+
+            /* Theme update banner — layout and appearance */
+            #sp-theme-update-banner {
+                background: #fcf9e8;
+                border: 1px solid #dba617;
+                border-left: 4px solid #dba617;
+                padding: 14px 18px;
+                margin: 12px 0;
+                border-radius: 4px;
+            }
+
+            /* Theme banner heading */
+            .sp-dash-theme-heading {
+                font-size: 14px;
+                display: block;
+                margin-bottom: 8px;
+            }
+
+            /* Dashicon inside theme heading — spacing */
+            .sp-dash-theme-heading .dashicons {
+                margin-right: 4px;
+            }
+
+            /* Theme update row — parent or child theme line */
+            .sp-dash-theme-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+
+            /* Version text in theme update rows */
+            .sp-dash-theme-version {
+                font-size: 13px;
+            }
+
+            /* Status text next to theme update buttons */
+            .sp-dash-theme-status {
+                font-size: 12px;
+                color: #50575e;
+            }
+
+            /* Table cells — date column */
+            .sp-dash-cell-date {
+                white-space: nowrap;
+                font-weight: 600;
+            }
+
+            /* Table cells — muted/secondary text (location, join date) */
+            .sp-dash-cell-muted {
+                color: #646970;
+            }
+
+            /* Table cells — no-wrap (expiration dates, etc.) */
+            .sp-dash-cell-nowrap {
+                white-space: nowrap;
+            }
+
+            /* Urgency badge for members expiring very soon */
+            .sp-dash-urgency {
+                color: #d63638;
+                font-weight: 600;
+                font-size: 12px;
+                margin-left: 4px;
+            }
+
+            /* Label column in site info table */
+            .sp-dash-cell-label {
+                font-weight: 500;
+            }
+
+            /* Activity feed dashicons — consistent sizing */
+            .sp-dash-activity-icon .dashicons {
+                font-size: 14px;
+            }
         </style>
 
         <!-- Stat Cards -->
@@ -8903,9 +9037,9 @@ function sp_render_dashboard_page(): void {
                                 $edit_url     = admin_url( 'admin.php?page=sp-event-edit&event_id=' . $evt->id );
                             ?>
                                 <tr>
-                                    <td style="white-space: nowrap; font-weight: 600;"><?php echo esc_html( $date_display ); ?></td>
+                                    <td class="sp-dash-cell-date"><?php echo esc_html( $date_display ); ?></td>
                                     <td><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $evt->title ); ?></a></td>
-                                    <td style="color: #646970;"><?php echo esc_html( $evt->location_name ?: '—' ); ?></td>
+                                    <td class="sp-dash-cell-muted"><?php echo esc_html( $evt->location_name ?: '—' ); ?></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
@@ -8942,10 +9076,10 @@ function sp_render_dashboard_page(): void {
                             ?>
                                 <tr>
                                     <td><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $name ); ?></a></td>
-                                    <td style="white-space: nowrap;">
+                                    <td class="sp-dash-cell-nowrap">
                                         <?php echo esc_html( $exp_display ); ?>
                                         <?php if ( $days_left <= 7 ) : ?>
-                                            <span style="color: #d63638; font-weight: 600; font-size: 12px; margin-left: 4px;">
+                                            <span class="sp-dash-urgency">
                                                 (<?php echo $days_left === 0 ? esc_html__( 'today', 'societypress' ) : /* translators: %d: number of days remaining */ sprintf( esc_html__( '%dd', 'societypress' ), $days_left ); ?>)
                                             </span>
                                         <?php endif; ?>
@@ -8987,7 +9121,7 @@ function sp_render_dashboard_page(): void {
                             ?>
                                 <tr>
                                     <td><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $name ); ?></a></td>
-                                    <td style="color: #646970;"><?php echo esc_html( $join_display ); ?></td>
+                                    <td class="sp-dash-cell-muted"><?php echo esc_html( $join_display ); ?></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
@@ -9005,7 +9139,7 @@ function sp_render_dashboard_page(): void {
                 <table>
                     <tbody>
                         <tr>
-                            <td style="font-weight: 500;"><?php echo esc_html__( 'Website', 'societypress' ); ?></td>
+                            <td class="sp-dash-cell-label"><?php echo esc_html__( 'Website', 'societypress' ); ?></td>
                             <td>
                                 <a href="<?php echo esc_url( home_url( '/' ) ); ?>" target="_blank">
                                     <?php echo esc_html( home_url( '/' ) ); ?>
@@ -9013,15 +9147,15 @@ function sp_render_dashboard_page(): void {
                             </td>
                         </tr>
                         <tr>
-                            <td style="font-weight: 500;"><?php echo esc_html__( 'SocietyPress', 'societypress' ); ?></td>
+                            <td class="sp-dash-cell-label"><?php echo esc_html__( 'SocietyPress', 'societypress' ); ?></td>
                             <td><?php /* translators: %s: version number */ echo esc_html( sprintf( __( 'Version %s', 'societypress' ), SOCIETYPRESS_VERSION ) ); ?></td>
                         </tr>
                         <tr>
-                            <td style="font-weight: 500;"><?php echo esc_html__( 'PHP', 'societypress' ); ?></td>
+                            <td class="sp-dash-cell-label"><?php echo esc_html__( 'PHP', 'societypress' ); ?></td>
                             <td><?php echo esc_html( phpversion() ); ?></td>
                         </tr>
                         <tr>
-                            <td style="font-weight: 500;"><?php echo esc_html__( 'WordPress', 'societypress' ); ?></td>
+                            <td class="sp-dash-cell-label"><?php echo esc_html__( 'WordPress', 'societypress' ); ?></td>
                             <td><?php echo esc_html( get_bloginfo( 'version' ) ); ?></td>
                         </tr>
                     </tbody>
@@ -9044,22 +9178,22 @@ function sp_render_dashboard_page(): void {
                     // WHY: A colored icon per category lets Harold scan the feed fast —
                     //      green = member stuff, blue = events, orange = settings, etc.
                     $icon_class = 'other';
-                    $icon_char  = '<span class="dashicons dashicons-info-outline" style="font-size:14px;"></span>';
+                    $icon_char  = '<span class="dashicons dashicons-info-outline"></span>';
                     if ( str_starts_with( $act->action, 'member' ) || $act->action === 'group_members_added' || $act->action === 'members_bulk_deleted' ) {
                         $icon_class = 'member';
-                        $icon_char  = '<span class="dashicons dashicons-admin-users" style="font-size:14px;"></span>';
+                        $icon_char  = '<span class="dashicons dashicons-admin-users"></span>';
                     } elseif ( str_starts_with( $act->action, 'event' ) ) {
                         $icon_class = 'event';
-                        $icon_char  = '<span class="dashicons dashicons-calendar-alt" style="font-size:14px;"></span>';
+                        $icon_char  = '<span class="dashicons dashicons-calendar-alt"></span>';
                     } elseif ( str_starts_with( $act->action, 'settings' ) ) {
                         $icon_class = 'settings';
-                        $icon_char  = '<span class="dashicons dashicons-admin-generic" style="font-size:14px;"></span>';
+                        $icon_char  = '<span class="dashicons dashicons-admin-generic"></span>';
                     } elseif ( str_starts_with( $act->action, 'blast' ) || str_starts_with( $act->action, 'email' ) ) {
                         $icon_class = 'email';
-                        $icon_char  = '<span class="dashicons dashicons-email-alt" style="font-size:14px;"></span>';
+                        $icon_char  = '<span class="dashicons dashicons-email-alt"></span>';
                     } elseif ( str_starts_with( $act->action, 'volunteer' ) ) {
                         $icon_class = 'other';
-                        $icon_char  = '<span class="dashicons dashicons-heart" style="font-size:14px;"></span>';
+                        $icon_char  = '<span class="dashicons dashicons-heart"></span>';
                     }
 
                     // Relative time display: "2 hours ago" is more useful than "Mar 9, 2026 3:14 PM"

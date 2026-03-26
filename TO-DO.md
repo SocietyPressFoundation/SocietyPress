@@ -330,6 +330,17 @@ See `Docs/KNOWN-ISSUES.md` for the full list (43 items tracked, 41 fixed, 2 defe
 
 ## Membership — Remaining
 
+- [ ] Membership reports dashboard:
+  - [ ] Total members (all statuses) with trend sparkline
+  - [ ] Totals by tier (Individual, Joint, Family, Student, Honorary, Org, Lifetime)
+  - [ ] Active vs expired vs pending vs deceased breakdown
+  - [ ] Members added since a user-selected date (default: last 30/60/90 days/year)
+  - [ ] Members expiring within 30/60/90 days (renewal pipeline)
+  - [ ] Retention rate: renewed vs lapsed over a given period
+  - [ ] New member sources/trends by month (chart)
+  - [ ] Revenue summary: total dues collected by tier, by period
+  - [ ] Exportable: CSV download of any report view
+  - [ ] WHY: Every board meeting, someone asks "how many members do we have?" and "how are renewals going?" Harold shouldn't have to count rows in a spreadsheet. These reports answer the questions boards actually ask.
 - [ ] Member photo improvements:
   - [ ] Add photo upload field to admin member edit form — Harold can photograph members at meetings
   - [ ] Use `capture="user"` attribute on file inputs (both admin + My Account) — opens front camera on mobile devices, falls back to file picker on desktop
@@ -445,6 +456,16 @@ Existing wizard (4 steps): Org Info → Membership → Feature Selection → App
   - Replace hardcoded time formats with `get_option( 'time_format' )`
   - Internal/DB dates stay as `Y-m-d` — only display dates change
   - WHY: A German society expects "18. März 2026", not "March 18, 2026"
+
+## UX — Remaining
+
+- [ ] AJAX progress bars for long-running operations:
+  - [ ] Member import: batch in chunks of 50, update progress bar after each batch ("Importing... 250 of 1,500 (17%)")
+  - [ ] Library import: same pattern
+  - [ ] Event import: same pattern
+  - [ ] Record import: same pattern
+  - [ ] Bulk delete: same pattern
+  - [ ] WHY: A blank white screen for 2+ minutes while PHP churns through 1,500 records is a terrible experience. Harold needs to see that something is happening and know it hasn't crashed.
 
 ## Admin — Remaining
 

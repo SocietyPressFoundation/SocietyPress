@@ -1,4 +1,43 @@
 # SocietyPress — WORKLOG
+## v0.44d — 2026-03-26
+
+### Session: Sample Data, Importer Fixes, Infrastructure
+
+**Infrastructure:**
+- SSH config alias (`ssh skystra`) — eliminates long SSH commands
+- Local git clone at `~/Sites/SocietyPress/`
+- Deploy script (`deploy.sh`) — one command to push plugin/themes to server
+- Claude Code permissions configured for auto-approval of common operations
+
+**Importer Fixes (Major):**
+- 20+ ENS CSV fields that were dumped to custom meta now map to proper `sp_members` columns: contact, use_maiden, image_filename, toll_free_phone, international_phone, preferred_phone, alt_phone, alt_international_phone, alt_preferred_phone, alt_email, seasonal_address_2, membership_type, max_members, receive_print, acct_primary, login_count, last_login_date, last_updated_by, last_updated_date, ens_record_id
+- Membership Tie ID now maps to `household_id` (links related members as households)
+- Lifetime field now maps to `lifetime` column instead of hardcoded 0
+- Deceased field auto-maps correctly (label mismatch fixed)
+- Mapper UI dropdown now includes all fields with correct labels and auto-selection
+- Fixed member_type detection: individuals with a `File Name` value no longer flagged as organizations — now checks `Membership Type` column
+- `$member_data` insert array updated to write all new fields to database
+
+**Calendar Bug Fix:**
+- `.sp-events-wrap` was missing `max-width: var(--sp-content-width, 1100px)` — calendar view stretched to full viewport width on events listing page
+
+**Admin UI:**
+- "Import Membership List" button added to Members page header
+- SocietyPress top-level menu click now goes to Dashboard (JS was clearing the submenu entry, causing it to fall through to audit log)
+
+**Sample Data:**
+- Generated 1,500 fake member CSV in ENS format (930 Single, 435 Joint, 75 Exchange Org, 30 Subscription Org, 15 Life, 15 Sustaining)
+- ~90% Texas addresses (60% San Antonio metro), realistic age/gender distribution
+- 200 portrait photos downloaded from randomuser.me, renamed to `firstname-middlename-lastname-photo.jpg`, uploaded to server
+- 1,494 members imported successfully (6 skipped as duplicate name+email collisions in generated data)
+
+**Localization:**
+- Generated `societypress.pot` translation file (9,121 lines) via `wp i18n make-pot`
+
+**TO-DO Updates:**
+- Added Membership Reports section (totals, by-tier, retention, revenue, exportable)
+- Added UX section with AJAX progress bars for long-running operations
+
 ## v0.43d — 2026-03-24
 
 ### Inline Styles → CSS Classes Migration (Major Pass)

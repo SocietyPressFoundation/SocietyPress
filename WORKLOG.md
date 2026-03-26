@@ -1,4 +1,57 @@
 # SocietyPress — WORKLOG
+## v0.45d — 2026-03-26
+
+### Session 2: Membership Reports, AJAX Progress, Photos, Records, Gravatar Kill
+
+**Membership Reports Dashboard (new page):**
+- 8 stat cards (total, active, expired, pending, deceased, lifetime, new month, new year)
+- Membership by tier table (sortable columns)
+- Renewal pipeline (30/60/90 day buckets with expandable member lists)
+- Retention rate with visual bar
+- Members added over time (monthly CSS bar chart)
+- Revenue by month + by tier
+- Period filter (30 days, 90 days, this year, last year, all time)
+- CSV export + Print buttons
+
+**Dashboard Clickable Stats:**
+- All 5 dashboard stat cards now link to filtered member lists
+- Added sp_filter parameter support (new_30, expiring_30, deceased, lifetime)
+
+**AJAX Progress Bars:**
+- Member import: batched 50 at a time with live progress bar, no more blank white screen
+- Delete All Others: batched 25 at a time with progress bar
+- Both use fetch() with sequential batch requests, show errors inline
+
+**Photo System:**
+- CSV Image Filename column now auto-links photos during import
+- Photo upload naming changed to firstname-middlename-lastname-member.ext (from user-ID.ext)
+- 1,395 sample member photos generated and uploaded
+- Photo linking added to both sp_process_import() and sp_process_import_batch()
+
+**Gravatar Killed:**
+- Removed all Gravatar dependency — no external email leaking
+- Members without photos get locally-generated SVG initial avatars (colored circle + initials)
+- Deterministic colors from curated WCAG-compliant palette
+- Zero external HTTP requests for avatars
+
+**Records Import Overhaul:**
+- New "Create Collection from CSV" one-step workflow (Annie the librarian path)
+- Upload CSV → name the collection → pick type/access → auto-creates fields from headers → imports all rows
+- Original "Add to Existing Collection" flow preserved
+- Mode picker landing page with two clear options
+- 5 sample genealogical record CSVs generated (8,000 records total): marriages, cemetery, naturalization, deaths, city directory
+
+**i18n Pass (~327 strings):**
+- Frontend widgets: surname lookup, library catalog, events
+- Admin: filter dropdowns, event categories, membership tiers, donations, email log, audit log, help requests
+- Bulk arrays: export columns (42), import field mapping (81), page builder widget registry (38), widget field forms (11), field_map display labels (86)
+- 11 pluralization patterns converted to _n()
+
+**Bug Fixes:**
+- BOM + quote stripping on CSV headers (fgetcsv quote detection broken by BOM)
+- Import field_map / target_fields label mismatches (Deceased, Organization Name, etc.)
+- SocietyPress menu → Dashboard link (JS flyout was clearing the parent URL)
+
 ## v0.44d — 2026-03-26
 
 ### Session: Sample Data, Importer Fixes, Infrastructure

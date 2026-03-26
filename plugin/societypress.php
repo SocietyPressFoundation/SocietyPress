@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '0.43d' );
+define( 'SOCIETYPRESS_VERSION', '0.44d' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -3210,16 +3210,19 @@ add_action( 'admin_menu', function () {
     );
 
     // WordPress automatically creates a submenu entry that duplicates the parent.
-    // We nuke it in admin_head after the entire menu is built.
+    // WHY: Instead of removing it (which makes clicking "SocietyPress" fall through
+    //      to the first submenu item), we rename it to "Dashboard" so the top-level
+    //      click goes to the dashboard page as expected.
     add_action( 'admin_head', function () {
         global $submenu;
         if ( isset( $submenu['societypress'] ) ) {
-            foreach ( $submenu['societypress'] as $key => $item ) {
+            foreach ( $submenu['societypress'] as $key => &$item ) {
                 if ( $item[2] === 'societypress' ) {
-                    unset( $submenu['societypress'][ $key ] );
+                    $item[0] = __( 'Dashboard', 'societypress' );
                     break;
                 }
             }
+            unset( $item );
         }
     } );
 
@@ -6696,6 +6699,16 @@ var spMenuConfig = {
         // --- Clear the submenu and rebuild ---
         while (spSubmenu.firstChild) spSubmenu.removeChild(spSubmenu.firstChild);
 
+        // Fix the parent menu link to always point to the dashboard.
+        // WHY: WordPress sets the top-level <a> href to the first submenu item's URL.
+        //      After we rebuild the submenu with flyout groups, that first item is a
+        //      group header (#), not a real page. Without this fix, clicking
+        //      "SocietyPress" goes to the wrong page or a 404.
+        var parentLink = spMenuItem.querySelector('a.toplevel_page_societypress');
+        if (parentLink) {
+            parentLink.href = '<?php echo esc_url( admin_url( 'admin.php?page=societypress' ) ); ?>';
+        }
+
         config.groups.forEach(function(gc) {
             if (builtGroups[gc.id]) {
                 spSubmenu.appendChild(builtGroups[gc.id]);
@@ -9754,6 +9767,9 @@ function sp_render_members_page(): void {
                 <button type="submit" class="page-title-action" style="color:#b32d2e; border-color:#b32d2e; cursor:pointer; background:none;"><?php esc_html_e( 'Delete All Others', 'societypress' ); ?></button>
             </form>
         <?php endif; ?>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-import' ) ); ?>" class="page-title-action">
+            <?php esc_html_e( 'Import Membership List', 'societypress' ); ?>
+        </a>
         <hr class="wp-header-end">
 
         <?php
@@ -12103,33 +12119,36 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
         //      name for institutional members (libraries, societies). We map it
         //      to organization_name so the import detects and creates org records.
         'File Name'                 => 'organization_name',
-        // Remaining ENS columns — stored as custom meta so nothing is lost.
-        // Most are empty or uniform, but they're here if we ever need them.
-        'Contact'                   => '__meta',
-        'UseMaiden'                 => '__meta',
+        'Lifetime'                  => 'lifetime',
+        // ENS columns mapped to their proper sp_members database columns.
+        // WHY: These were originally stored as custom meta when the columns
+        //      didn't exist yet. The schema now has dedicated columns for all
+        //      of them, so we write directly instead of using the meta table.
+        'Contact'                   => 'contact',
+        'UseMaiden'                 => 'use_maiden',
         // 'Deceased' intentionally omitted — already mapped to 'deceased'
-        // field above (line ~7988) for status logic. Duplicate keys in PHP
-        // arrays silently overwrite, which broke the status mapping.
-        'Image Filename'            => '__meta',
-        'Toll Free Phone'           => '__meta',
-        'International Phone'       => '__meta',
-        'Preferred Phone'           => '__meta',
-        'Alt. Address 2'            => '__meta',
-        'Alt. Phone'                => '__meta',
-        'Alt. International Phone'  => '__meta',
-        'Alt. Preferred Phone'      => '__meta',
-        'Alt. Email'                => '__meta',
-        'Membership Type'           => '__meta',
-        'Max Members'               => '__meta',
-        'Mail Publication'          => '__meta',
-        'Mail Publications'         => '__meta',
-        'Acct. Primary'             => '__meta',
-        'Membership Tie ID'         => '__meta',
-        'Login Count'               => '__meta',
-        'Last Login Date'           => '__meta',
-        'Last Updated By'           => '__meta',
-        'Last Updated Date'         => '__meta',
-        'ENS Member Record ID'      => '__meta',
+        // field above for status logic. Duplicate keys in PHP arrays
+        // silently overwrite, which broke the status mapping.
+        'Image Filename'            => 'image_filename',
+        'Toll Free Phone'           => 'toll_free_phone',
+        'International Phone'       => 'international_phone',
+        'Preferred Phone'           => 'preferred_phone',
+        'Alt. Address 2'            => 'seasonal_address_2',
+        'Alt. Phone'                => 'alt_phone',
+        'Alt. International Phone'  => 'alt_international_phone',
+        'Alt. Preferred Phone'      => 'alt_preferred_phone',
+        'Alt. Email'                => 'alt_email',
+        'Membership Type'           => 'membership_type',
+        'Max Members'               => 'max_members',
+        'Mail Publication'          => 'receive_print',
+        'Mail Publications'         => 'receive_print',
+        'Acct. Primary'             => 'acct_primary',
+        'Login Count'               => 'login_count',
+        'Last Login Date'           => 'last_login_date',
+        'Last Updated By'           => 'last_updated_by',
+        'Last Updated Date'         => 'last_updated_date',
+        'ENS Member Record ID'      => 'ens_record_id',
+        'Membership Tie ID'         => 'household_id',
     ];
 
     // Use the admin's custom mapping, or fall back to auto-detection
@@ -12360,8 +12379,20 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
                 continue;
             }
         } elseif ( ! empty( $org_name ) ) {
-            // Has both individual name fields AND an org name — treat as org
-            $member_type = 'organization';
+            // Has both individual name fields AND an org name.
+            // WHY: In ENS exports, "File Name" contains the member's last name
+            //      for individuals, so org_name is populated for everyone. We
+            //      only treat it as an org if the Membership Type column
+            //      explicitly says "Organization". Otherwise the "File Name"
+            //      is just a duplicate of the last name and should be ignored.
+            $csv_membership_type = strtolower( trim( $get( $row, 'membership_type' ) ) );
+            if ( $csv_membership_type === 'organization' ) {
+                $member_type = 'organization';
+            } else {
+                // Individual with a File Name value — clear org_name so it
+                // doesn't get stored as an organization name.
+                $org_name = '';
+            }
         }
 
         // Skip only if this email + name combination already exists.
@@ -12639,6 +12670,7 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
         // ==============================================================
         $member_data = [
             'user_id'               => $user_id,
+            'household_id'          => ( (int) ( $get( $row, 'household_id' ) ?: 0 ) ) ?: null,
             'member_type'           => $member_type,
             'organization_name'     => ( $member_type === 'organization' ) ? $org_name : null,
             'member_number'         => sanitize_text_field( $get( $row, 'member_number' ) ) ?: null,
@@ -12675,7 +12707,7 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
             'seasonal_state'        => sanitize_text_field( $get( $row, 'seasonal_state' ) ) ?: null,
             'seasonal_postal_code'  => sanitize_text_field( $get( $row, 'seasonal_postal_code' ) ) ?: null,
             'seasonal_country'      => $normalize_country( $get( $row, 'seasonal_country' ) ),
-            'lifetime'              => 0, // Will be set from tier if applicable
+            'lifetime'              => $yes_no( $get( $row, 'lifetime' ) ),
             'volunteer'             => $yes_no( $get( $row, 'volunteer' ) ),
             'joint_member'          => $yes_no( $get( $row, 'joint_member' ) ),
             'joint_email'           => sanitize_email( $get( $row, 'joint_email' ) ) ?: null,
@@ -12684,6 +12716,25 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
             'interests'             => sanitize_text_field( $get( $row, 'interests' ) ) ?: null,
             'education'             => sanitize_text_field( $get( $row, 'education' ) ) ?: null,
             'label_name'            => sanitize_text_field( $get( $row, 'label_name' ) ) ?: null,
+            'contact'               => sanitize_text_field( $get( $row, 'contact' ) ) ?: null,
+            'use_maiden'            => sanitize_text_field( $get( $row, 'use_maiden' ) ) ?: 'Not Used',
+            'image_filename'        => sanitize_text_field( $get( $row, 'image_filename' ) ) ?: null,
+            'toll_free_phone'       => $clean_phone( $get( $row, 'toll_free_phone' ) ),
+            'international_phone'   => $clean_phone( $get( $row, 'international_phone' ) ),
+            'preferred_phone'       => sanitize_text_field( $get( $row, 'preferred_phone' ) ) ?: null,
+            'alt_phone'             => $clean_phone( $get( $row, 'alt_phone' ) ),
+            'alt_international_phone' => $clean_phone( $get( $row, 'alt_international_phone' ) ),
+            'alt_preferred_phone'   => sanitize_text_field( $get( $row, 'alt_preferred_phone' ) ) ?: 'Alt. Phone',
+            'alt_email'             => sanitize_email( $get( $row, 'alt_email' ) ) ?: null,
+            'seasonal_address_2'    => sanitize_text_field( $get( $row, 'seasonal_address_2' ) ) ?: null,
+            'membership_type'       => sanitize_text_field( $get( $row, 'membership_type' ) ) ?: null,
+            'max_members'           => max( 1, (int) ( $get( $row, 'max_members' ) ?: 1 ) ),
+            'acct_primary'          => $yes_no( $get( $row, 'acct_primary' ) ),
+            'login_count'           => (int) ( $get( $row, 'login_count' ) ?: 0 ),
+            'last_login_date'       => $parse_date( $get( $row, 'last_login_date' ) ) ?: null,
+            'last_updated_by'       => sanitize_text_field( $get( $row, 'last_updated_by' ) ) ?: null,
+            'last_updated_date'     => $parse_date( $get( $row, 'last_updated_date' ) ) ?: null,
+            'ens_record_id'         => (int) ( $get( $row, 'ens_record_id' ) ?: 0 ) ?: null,
             'login_username'        => $imported_login ?: null,
             'receive_print'         => $yes_no( $get( $row, 'pref_print' ) ),
             'pref_email_notices'    => $yes_no( $get( $row, 'pref_general_email' ) ),
@@ -12954,7 +13005,7 @@ function sp_render_import_page(): void {
         'Email'                 => 'Email Address',
         'Login'                 => 'Login / Username',
         'Member Active'         => 'Status (active / lapsed)',
-        'Deceased'              => 'Status (marks as inactive)',
+        'Deceased'              => 'Deceased Flag',
         'Member Join Date'      => 'Join Date',
         'Expiration Date'       => 'Expiration Date',
         'Birth Year'            => 'Date of Birth (year)',
@@ -13009,6 +13060,29 @@ function sp_render_import_page(): void {
         'Donation'              => 'Payment: Donation Amount',
         'Comment'               => 'Payment: Note',
         'Administrative Notes'  => 'Admin Notes',
+        'Contact'                  => 'Organization Contact',
+        'UseMaiden'                => 'Use Maiden Name Setting',
+        'Image Filename'           => 'Member Photo Filename',
+        'Toll Free Phone'          => 'Toll-Free Phone',
+        'International Phone'      => 'International Phone',
+        'Preferred Phone'          => 'Preferred Phone Type',
+        'Alt. Address 2'           => 'Seasonal Address Line 2',
+        'Alt. Phone'               => 'Alternate Phone',
+        'Alt. International Phone' => 'Alternate Intl. Phone',
+        'Alt. Preferred Phone'     => 'Alternate Preferred Phone',
+        'Alt. Email'               => 'Alternate Email',
+        'Membership Type'          => 'Membership Type (Person/Org)',
+        'Max Members'              => 'Max Members on Plan',
+        'Mail Publication'         => 'Receives Print Mail',
+        'Mail Publications'        => 'Receives Print Mail',
+        'Acct. Primary'            => 'Primary Account Holder',
+        'Lifetime'                 => 'Lifetime Member',
+        'Login Count'              => 'Login Count',
+        'Last Login Date'          => 'Last Login Date',
+        'Last Updated By'          => 'Last Updated By',
+        'Last Updated Date'        => 'Last Updated Date',
+        'ENS Member Record ID'     => 'ENS Record ID',
+        'Membership Tie ID'        => 'Household ID',
     ];
 
     ?>
@@ -13397,21 +13471,32 @@ function sp_render_import_page(): void {
                             'suffix'          => 'Suffix (Jr., III)',
                         ],
                         'Membership' => [
-                            'email'           => 'Email Address',
-                            'login'           => 'Login / Username',
-                            'status'          => 'Status (active / lapsed)',
-                            'deceased'        => 'Deceased Flag',
-                            'join_date'       => 'Join Date',
-                            'expiration_date' => 'Expiration Date',
-                            'tier'            => 'Membership Plan / Tier',
-                            'member_number'   => 'Member Number',
+                            'email'            => 'Email Address',
+                            'login'            => 'Login / Username',
+                            'status'           => 'Status (active / lapsed)',
+                            'deceased'         => 'Deceased Flag',
+                            'join_date'        => 'Join Date',
+                            'expiration_date'  => 'Expiration Date',
+                            'tier'             => 'Membership Plan / Tier',
+                            'member_number'    => 'Member Number',
+                            'membership_type'  => 'Membership Type (Person/Org)',
+                            'max_members'      => 'Max Members on Plan',
+                            'lifetime'         => 'Lifetime Member',
+                            'acct_primary'     => 'Primary Account Holder',
                         ],
                         'Contact' => [
-                            'phone'           => 'Phone',
-                            'cell'            => 'Cell Phone',
-                            'work_phone'      => 'Business / Work Phone',
-                            'fax'             => 'Fax',
-                            'website'         => 'Website',
+                            'phone'              => 'Phone',
+                            'cell'               => 'Cell Phone',
+                            'work_phone'         => 'Business / Work Phone',
+                            'fax'                => 'Fax',
+                            'toll_free_phone'    => 'Toll-Free Phone',
+                            'international_phone'=> 'International Phone',
+                            'preferred_phone'    => 'Preferred Phone Type',
+                            'alt_phone'          => 'Alternate Phone',
+                            'alt_international_phone' => 'Alternate Intl. Phone',
+                            'alt_preferred_phone'=> 'Alternate Preferred Phone',
+                            'alt_email'          => 'Alternate Email',
+                            'website'            => 'Website',
                         ],
                         'Address' => [
                             'address_1'       => 'Address Line 1',
@@ -13429,6 +13514,7 @@ function sp_render_import_page(): void {
                         'Seasonal Address' => [
                             'seasonal_flag'        => 'Has Seasonal Address (yes/no)',
                             'seasonal_address'     => 'Seasonal Address',
+                            'seasonal_address_2'   => 'Seasonal Address Line 2',
                             'seasonal_city'        => 'Seasonal City',
                             'seasonal_state'       => 'Seasonal State',
                             'seasonal_postal_code' => 'Seasonal Postal Code',
@@ -13472,9 +13558,19 @@ function sp_render_import_page(): void {
                             'joint_member'     => 'Joint Member (yes/no)',
                             'joint_email'      => 'Joint Member Email',
                             'joint_phone'      => 'Joint Member Phone',
+                            'household_id'     => 'Household ID',
                         ],
                         'Other' => [
-                            'admin_notes'      => 'Admin Notes',
+                            'admin_notes'        => 'Admin Notes',
+                            'contact'            => 'Organization Contact',
+                            'use_maiden'         => 'Use Maiden Name Setting',
+                            'image_filename'     => 'Member Photo Filename',
+                            'receive_print'      => 'Receives Print Mail',
+                            'login_count'        => 'Login Count',
+                            'last_login_date'    => 'Last Login Date',
+                            'last_updated_by'    => 'Last Updated By',
+                            'last_updated_date'  => 'Last Updated Date',
+                            'ens_record_id'      => 'ENS Record ID',
                         ],
                     ];
 
@@ -35192,6 +35288,7 @@ function sp_events_frontend_styles(): void {
     <style id="sp-events-frontend-css">
         /* ---- Wrapper ---- */
         .sp-events-wrap {
+            max-width: var(--sp-content-width, 1100px);
             margin: 40px auto;
             padding: 0 20px;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;

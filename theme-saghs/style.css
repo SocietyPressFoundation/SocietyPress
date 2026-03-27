@@ -7,7 +7,7 @@ Description: Child theme for the the society.
              Applies the society branding — burgundy/cream palette, Poppins font,
              hero slider, 3-level nav, and custom front-page layout — on top
              of the SocietyPress parent theme.
-Version: 0.04d
+Version: 0.08d
 Template: societypress
 Requires at least: 6.0
 Tested up to: 6.7
@@ -51,6 +51,11 @@ Text Domain: society
        and reads well at all sizes — important for an older demographic. */
     --sp-font-body:    'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     --sp-font-heading: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+
+    /* Content width — wider than the default 1100px to give the site more
+       room to breathe. The slider still goes edge-to-edge; everything else
+       (header, page content, footer) is constrained to 1400px centered. */
+    --sp-content-width: 960px;
 }
 
 
@@ -62,10 +67,10 @@ Text Domain: society
    ============================================================================ */
 
 body {
-    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    font-family: var(--sp-font-body, 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
     font-weight: 400;
-    font-size: 14px;
-    color: var(--society-dark);
+    font-size: var(--sp-font-size-base, 14px);
+    color: var(--sp-color-header-text, #1a1a1a);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
@@ -98,8 +103,8 @@ a:hover {
    ============================================================================ */
 
 .site-header {
-    background: var(--society-white);
-    color: var(--society-dark);
+    background: var(--sp-color-header-bg, #ffffff);
+    color: var(--sp-color-header-text, #1a1a1a);
     border-bottom: none;
     padding: 0 20px;
     position: fixed;
@@ -112,8 +117,10 @@ a:hover {
 /* WHY body padding-top: Since the header is fixed, we need to push the page
    content down so it doesn't hide behind the header. With 40px top/bottom
    padding and a 140px logo, the header renders ~220px tall. */
+/* WHY 120px: With the smaller 70px logo and reduced header padding,
+   the fixed header is now ~100px tall. Body padding clears it. */
 body {
-    padding-top: 220px;
+    padding-top: 160px;
 }
 
 /* Extra vertical padding gives the logo room to breathe.
@@ -133,7 +140,7 @@ body {
    padding lets the logo and user menu sit flush with the content boundary.
    The max-width + margin:auto still centers the header on wide viewports. */
 .site-header .header-inner {
-    padding: 40px 0;
+    padding: 36px 0;
     display: flex;
     align-items: center;
     max-width: var(--sp-content-width, 1400px);
@@ -174,10 +181,12 @@ body {
    WHY explicit height: The the society logo is an SVG with hardcoded width/height
    attributes (171x75). Browsers won't scale an SVG past its intrinsic size
    with max-height alone — we need an explicit height to force it larger. */
+/* WHY 70px: Matches the ENS reference site logo size. The previous 140px
+   made the header twice as tall as it needed to be. */
 .custom-logo {
-    height: 140px !important;
-    max-height: none !important;
-    width: auto !important;
+    height: var(--sp-logo-height, 85px);
+    max-height: none;
+    width: auto;
 }
 
 
@@ -196,6 +205,10 @@ body {
 .header-nav-area {
     flex: 1;
     min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0;
 }
 
 /* WHY flex:1 + justify-content center: The nav links should be visually
@@ -204,16 +217,14 @@ body {
    and the search/profile, then centering the ul within it achieves the
    centered look Charles wants. */
 .main-navigation {
-    flex: 1;
-    min-width: 0;
+    flex-shrink: 0;
 }
 
 /* WHY min-width on search: Without a floor, the flex layout crushes the
    search field to zero width when space is tight. 120px is enough for
    the placeholder text to be readable. */
 .sp-header-search-desktop {
-    min-width: 120px;
-    flex-shrink: 1;
+    display: none;
 }
 
 /* WHY flex-shrink:0 on user menu: The user avatar + name should never
@@ -222,8 +233,22 @@ body {
     flex-shrink: 0;
 }
 
+/* WHY: The user menu ("Charles") must match the nav font and size.
+   Without this, it inherits the body font which differs from the nav. */
+/* WHY: User nav links (Charles, Log In, Log Out) styled identically
+   to the main nav links so the header reads as one cohesive bar. */
+.sp-user-nav-link {
+    color: var(--sp-color-header-text, #1a1a1a);
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+.sp-user-nav-link:hover {
+    color: var(--sp-color-primary, #632220);
+}
+
+
 .main-navigation > ul {
-    justify-content: center;
+    justify-content: flex-end;
 }
 
 /* Top-level nav links — reference site uses small, light system fonts (~13px).
@@ -231,11 +256,11 @@ body {
    same nominal size. 13px Poppins ≈ 14px system visually. Weight 400 keeps
    it light and delicate like the reference. */
 .main-navigation a {
-    color: var(--society-dark);
+    color: var(--sp-color-header-text, #1a1a1a);
     font-family: 'Poppins', sans-serif;
     font-weight: 400;
-    font-size: 14px;
-    padding: 10px 12px;
+    font-size: 11px;
+    padding: 8px 10px;
     transition: color 0.2s ease, background 0.2s ease;
     /* WHY white-space: nowrap: Prevents individual nav links from wrapping
        mid-word at narrower desktop widths. "About Us" stays on one line
@@ -256,7 +281,7 @@ body {
     position: absolute;
     top: 100%;
     left: 0;
-    background: var(--society-white);
+    background: var(--sp-color-header-bg, #ffffff);
     min-width: 220px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
     border-top: 3px solid var(--society-burgundy);
@@ -487,7 +512,7 @@ body {
 }
 
 .society-hero-dot.is-active {
-    background: var(--society-white);
+    background: var(--sp-color-header-bg, #ffffff);
 }
 
 
@@ -513,7 +538,7 @@ body {
 }
 
 .society-section-white {
-    background: var(--society-white);
+    background: var(--sp-color-header-bg, #ffffff);
 }
 
 .society-section-heading {
@@ -617,7 +642,7 @@ body {
 .society-feature-card {
     text-align: center;
     padding: 30px 20px;
-    background: var(--society-white);
+    background: var(--sp-color-header-bg, #ffffff);
     border-radius: 8px;
 }
 
@@ -698,8 +723,8 @@ body {
 /* WHY white background instead of cream: The reference site uses a clean
    white footer, not cream. Cream is reserved for the page body. */
 .site-footer {
-    background: #fff;
-    color: var(--society-dark);
+    background: var(--sp-color-footer-bg, #fff);
+    color: var(--sp-color-header-text, #1a1a1a);
     padding: 0;
     text-align: left;
 }
@@ -727,14 +752,14 @@ body {
 
 .society-footer-col h3 {
     font-family: 'Poppins', sans-serif;
-    color: var(--society-dark);
+    color: var(--sp-color-header-text, #1a1a1a);
     font-size: 1.2rem;
     font-weight: 700;
     margin-bottom: 16px;
 }
 
 .society-footer-col p {
-    color: var(--society-dark);
+    color: var(--sp-color-header-text, #1a1a1a);
     line-height: 1.7;
     font-size: 0.9rem;
     margin-bottom: 10px;
@@ -792,7 +817,7 @@ body {
     justify-content: space-between;
     align-items: flex-start;
     font-size: 0.85rem;
-    color: var(--society-dark);
+    color: var(--sp-color-header-text, #1a1a1a);
 }
 
 .society-footer-contact-info {
@@ -802,7 +827,7 @@ body {
 }
 
 .society-footer-contact-info a {
-    color: var(--society-dark);
+    color: var(--sp-color-header-text, #1a1a1a);
     text-decoration: none;
 }
 
@@ -893,7 +918,7 @@ body {
 
 /* Match the "Log In" link to the nav items — same font, size, weight */
 .sp-user-login-link {
-    color: var(--society-dark);
+    color: var(--sp-color-header-text, #1a1a1a);
     font-family: 'Poppins', sans-serif;
     font-size: 13px;
     font-weight: 400;
@@ -905,7 +930,7 @@ body {
 }
 
 .sp-user-trigger {
-    color: var(--society-dark);
+    color: var(--sp-color-header-text, #1a1a1a);
     background: none;
     border: none;
     text-decoration: none;
@@ -1028,7 +1053,7 @@ body {
 .sp-header-search input[type="text"] {
     border: 1px solid rgba(0, 0, 0, 0.15);
     background: rgba(0, 0, 0, 0.04);
-    color: var(--society-dark);
+    color: var(--sp-color-header-text, #1a1a1a);
     font-family: 'Poppins', sans-serif;
     font-size: 13px;
 }
@@ -1098,7 +1123,7 @@ body {
         top: 100%;
         left: 0;
         right: 0;
-        background: var(--society-white);
+        background: var(--sp-color-header-bg, #ffffff);
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
         z-index: 999;
         border-top: 3px solid var(--society-burgundy);
@@ -1170,7 +1195,7 @@ body {
         width: 100%;
         padding: 10px 36px 10px 14px;
         border-radius: 6px;
-        font-size: 14px;
+        font-size: var(--sp-font-size-base, 14px);
     }
 
     /* Header layout adjustments */

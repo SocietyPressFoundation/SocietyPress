@@ -21,7 +21,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'the society_THEME_VERSION', '0.02d' );
+define( 'the society_THEME_VERSION', '0.08d' );
 
 
 // ============================================================================

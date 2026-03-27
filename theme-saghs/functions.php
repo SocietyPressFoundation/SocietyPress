@@ -21,7 +21,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'SAGHS_THEME_VERSION', '0.02d' );
+define( 'SAGHS_THEME_VERSION', '0.08d' );
 
 
 // ============================================================================

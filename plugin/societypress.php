@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '0.45d' );
+define( 'SOCIETYPRESS_VERSION', '0.46d' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -4538,11 +4538,19 @@ function sp_maybe_backfill_surname_phonetics(): void {
 // WHY priority 1: Must load in <head> before the theme stylesheet so the
 //      variables are defined before anything tries to use them.
 
-add_action( 'wp_head', function () {
-
+// Design settings CSS — extracted into a function so it can be attached
+// to a late-loading inline style that outputs AFTER all theme stylesheets.
+//
+// WHY this architecture: CSS custom properties on :root and direct property
+//      overrides (logo height, nav font, etc.) must appear AFTER both the
+//      parent and child theme stylesheets in the document. When two rules
+//      have the same specificity, the one that appears later wins. By using
+//      wp_add_inline_style() on a stylesheet that depends on the child theme,
+//      we guarantee Design settings always have the final word.
+function sp_get_design_override_css(): string {
     $settings = get_option( 'societypress_settings', [] );
 
-    // --- Color defaults (match the theme's original hardcoded values) ---
+    // --- Color defaults ---
     $primary       = $settings['design_color_primary']      ?? '#1e3a5f';
     $primary_hover = $settings['design_color_primary_hover'] ?? '#2c5282';
     $accent        = $settings['design_color_accent']        ?? '#667eea';
@@ -4551,9 +4559,7 @@ add_action( 'wp_head', function () {
     $footer_bg     = $settings['design_color_footer_bg']     ?? '#1e3a5f';
     $footer_text   = $settings['design_color_footer_text']   ?? '#ffffff';
 
-    // Use the canonical font map — no more inline duplicates
     $font_map = sp_get_font_family_options();
-
     $body_key    = $settings['design_font_body']    ?? 'system';
     $heading_key = $settings['design_font_heading']  ?? 'inherit';
     $font_body   = $font_map[ $body_key ] ?? $font_map['system'];
@@ -4565,18 +4571,20 @@ add_action( 'wp_head', function () {
     $scale_map = [ 'small' => '0.85', 'normal' => '1', 'large' => '1.15' ];
     $font_scale = $scale_map[ $settings['design_heading_scale'] ?? 'normal' ] ?? '1';
 
-    $width_key = $settings['design_content_width'] ?? 'standard';
-    if ( $width_key === 'custom' ) {
-        $content_width = max( 600, min( 2000, (int) ( $settings['design_content_width_px'] ?? 1100 ) ) ) . 'px';
-    } else {
-        $width_map = [ 'narrow' => '900px', 'standard' => '1100px', 'wide' => '1400px' ];
-        $content_width = $width_map[ $width_key ] ?? '1100px';
-    }
+    // Content width — always use the px value directly.
+    // WHY: The old dropdown (narrow/standard/wide/custom) was replaced with
+    //      a simple px input. Harold types the number he wants.
+    $content_width = max( 600, min( 2400, (int) ( $settings['design_content_width_px'] ?? 1100 ) ) ) . 'px';
 
-    $header_height = (int) ( $settings['design_header_height'] ?? 0 );
+    $header_height  = (int) ( $settings['design_header_height'] ?? 0 );
+    $logo_height    = (int) ( $settings['design_logo_height'] ?? 0 );
+    $header_padding = (int) ( $settings['design_header_padding'] ?? 0 );
+    $nav_font_size  = (int) ( $settings['design_nav_font_size'] ?? 0 );
+    $nav_font_weight = $settings['design_nav_font_weight'] ?? '';
+    $footer_link    = $settings['design_color_footer_link'] ?? '';
+    $show_social    = (int) ( $settings['design_show_social_icons'] ?? 1 );
 
-    echo '<style id="sp-design-vars">
-:root {
+    $css = ':root {
     --sp-color-primary: ' . esc_attr( $primary ) . ';
     --sp-color-primary-hover: ' . esc_attr( $primary_hover ) . ';
     --sp-color-accent: ' . esc_attr( $accent ) . ';
@@ -4588,13 +4596,62 @@ add_action( 'wp_head', function () {
     --sp-font-heading: ' . $font_heading . ';
     --sp-font-size-base: ' . esc_attr( $font_size ) . ';
     --sp-font-scale: ' . esc_attr( $font_scale ) . ';
-    --sp-content-width: ' . esc_attr( $content_width ) . ';
-}
-' . ( $header_height ? '.site-header .header-inner { height: ' . $header_height . 'px; align-items: center; }
-body { padding-top: ' . ( $header_height + 3 ) . 'px; }' : '' ) . '
-</style>' . "\n";
+    --sp-content-width: ' . esc_attr( $content_width ) . ';'
+    . ( $footer_link ? "
+    --sp-color-footer-link: " . esc_attr( $footer_link ) . ';' : '' )
+    . ( $logo_height ? "
+    --sp-logo-height: " . $logo_height . 'px;' : '' ) . '
+}';
 
-}, 1 );
+    // Direct property overrides — !important is safe here because this CSS
+    // loads AFTER all theme stylesheets, so !important + last source = guaranteed win.
+    if ( $header_height ) {
+        $css .= "
+.site-header .header-inner { height: {$header_height}px !important; align-items: center; }";
+        $css .= "
+body { padding-top: " . ( $header_height + 3 ) . 'px !important; }';
+    }
+    if ( $header_padding ) {
+        $css .= "
+.site-header .header-inner { padding-top: {$header_padding}px !important; padding-bottom: {$header_padding}px !important; }";
+    }
+    // Nav + user menu font-family — always matches the body font.
+    $css .= "\n.main-navigation a, .sp-user-nav-link { font-family: " . $font_body . " !important; }";
+
+    if ( $nav_font_size ) {
+        $css .= "
+.main-navigation a, .sp-user-nav-link { font-size: {$nav_font_size}px !important; }";
+    }
+    $nav_spacing = (int) ( $settings['design_nav_spacing'] ?? 0 );
+    if ( $nav_spacing ) {
+        $css .= "\n.main-navigation a { padding-left: {$nav_spacing}px !important; padding-right: {$nav_spacing}px !important; }";
+    }
+    if ( $nav_font_weight ) {
+        $css .= "
+.main-navigation a, .sp-user-nav-link { font-weight: " . esc_attr( $nav_font_weight ) . " !important; }";
+    }
+    if ( ! $show_social ) {
+        $css .= "
+.sp-social-icons { display: none !important; }";
+    }
+
+    return $css;
+}
+
+// Enqueue a dummy stylesheet that loads AFTER all theme stylesheets,
+// then attach the Design settings CSS to it via wp_add_inline_style().
+// WHY priority 999: Ensures this runs after all theme wp_enqueue_scripts
+//      callbacks, so the 'sp-design-overrides' handle registers after
+//      both parent and child theme stylesheets. WordPress outputs inline
+//      styles immediately after their associated <link> tag.
+add_action( 'wp_enqueue_scripts', function () {
+    // Register with no src (false) — just a handle for attaching inline CSS.
+    // Depends on the parent theme stylesheet so it loads after it.
+    // If a child theme is active, the child's stylesheet also loads before this.
+    wp_register_style( 'sp-design-overrides', false, [ 'societypress-parent-style' ], SOCIETYPRESS_VERSION );
+    wp_enqueue_style( 'sp-design-overrides' );
+    wp_add_inline_style( 'sp-design-overrides', sp_get_design_override_css() );
+}, 999 );
 
 
 // ============================================================================
@@ -4963,81 +5020,41 @@ add_filter( 'wp_nav_menu_objects', function ( array $items ): array {
 
 function sp_user_menu() {
     if ( ! is_user_logged_in() ) {
-        echo '<div class="sp-user-menu sp-user-menu--logged-out">';
-        echo '<a href="' . esc_url( wp_login_url( get_permalink() ) ) . '" class="sp-user-login-link">' . esc_html__( 'Log In', 'societypress' ) . '</a>';
-        echo '</div>';
+        // Logged out: simple "Log In" link styled like a nav item.
+        echo '<a href="' . esc_url( wp_login_url( get_permalink() ) ) . '" class="sp-user-nav-link">'
+             . esc_html__( 'Log In', 'societypress' ) . '</a>';
         return;
     }
 
     $user = wp_get_current_user();
 
-    // WHY preferred_name first: Charles wants the header to show what the
-    // member wants to be called — just the first name, saving horizontal
-    // space in the nav bar. preferred_name → first_name → display_name.
+    // Get the member's preferred short name for display.
+    // WHY preferred_name first: Shows what the member wants to be called.
     global $wpdb;
-    $sp_member    = $wpdb->get_row( $wpdb->prepare(
+    $sp_member = $wpdb->get_row( $wpdb->prepare(
         "SELECT preferred_name, first_name FROM {$wpdb->prefix}sp_members WHERE user_id = %d",
         $user->ID
     ) );
-    $short_name   = '';
+    $short_name = '';
     if ( $sp_member ) {
         $short_name = ! empty( $sp_member->preferred_name ) ? $sp_member->preferred_name : $sp_member->first_name;
     }
-    // WHY WP first_name fallback: Admins and users who don't have an
-    // sp_members row (e.g., the site owner) still need a short name.
-    // WordPress stores first_name in usermeta for all users.
     if ( empty( $short_name ) ) {
         $short_name = $user->first_name;
     }
     $display_name = esc_html( $short_name ?: $user->display_name );
-    $avatar       = get_avatar( $user->ID, 32, '', $display_name, [ 'class' => 'sp-user-avatar' ] );
-    $admin_url    = admin_url();
     $account_url  = sp_get_my_account_url();
     $logout_url   = wp_logout_url( home_url( '/' ) );
-    $is_admin     = current_user_can( 'manage_options' );
-    // Cart icon with badge — shows in the header-nav-area next to the user menu.
-    // WHY: A visible cart indicator lets members know they have items waiting.
-    // The badge count updates via AJAX when items are added from the store page.
-    $cart_count = sp_cart_total_items();
-    $cart_pages = get_pages( [ 'meta_key' => '_wp_page_template', 'meta_value' => 'sp-cart' ] );
-    $cart_url   = ! empty( $cart_pages ) ? get_permalink( $cart_pages[0]->ID ) : '#';
-    ?>
-    <a href="<?php echo esc_url( $cart_url ); ?>" class="sp-header-cart" aria-label="<?php esc_attr_e( 'Shopping cart', 'societypress' ); ?>" style="position:relative;display:inline-flex;align-items:center;margin-right:10px;color:inherit;text-decoration:none;">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"/></svg>
-        <span class="sp-cart-badge" style="position:absolute;top:-6px;right:-8px;background:#c00;color:#fff;font-size:10px;font-weight:700;min-width:16px;height:16px;border-radius:8px;display:<?php echo $cart_count > 0 ? 'inline-flex' : 'none'; ?>;align-items:center;justify-content:center;padding:0 4px;"><?php echo $cart_count; ?></span>
-    </a>
-    <div class="sp-user-menu">
-        <?php if ( $is_admin ) : ?>
-            <a href="<?php echo esc_url( $account_url ); ?>" class="sp-user-trigger" aria-haspopup="true">
-                <?php echo $avatar; ?>
-                <span class="sp-user-name"><?php echo $display_name; ?></span>
-                <span class="sp-user-caret" aria-hidden="true">&#9662;</span>
-            </a>
-            <div class="sp-user-dropdown" role="menu">
-                <a href="<?php echo esc_url( $admin_url ); ?>" class="sp-user-dropdown-item" role="menuitem">
-                    <span class="sp-user-dropdown-icon dashicons dashicons-dashboard"></span> <?php esc_html_e( 'Dashboard', 'societypress' ); ?>
-                </a>
-                <a href="<?php echo esc_url( $logout_url ); ?>" class="sp-user-dropdown-item" role="menuitem">
-                    <span class="sp-user-dropdown-icon dashicons dashicons-exit"></span> <?php esc_html_e( 'Log Out', 'societypress' ); ?>
-                </a>
-            </div>
-        <?php else : ?>
-            <a href="<?php echo esc_url( $account_url ); ?>" class="sp-user-trigger" aria-haspopup="true">
-                <?php echo $avatar; ?>
-                <span class="sp-user-name"><?php echo $display_name; ?></span>
-                <span class="sp-user-caret" aria-hidden="true">&#9662;</span>
-            </a>
-            <div class="sp-user-dropdown" role="menu">
-                <a href="<?php echo esc_url( $account_url ); ?>" class="sp-user-dropdown-item" role="menuitem">
-                    <span class="sp-user-dropdown-icon dashicons dashicons-admin-users"></span> <?php esc_html_e( 'My Account', 'societypress' ); ?>
-                </a>
-                <a href="<?php echo esc_url( $logout_url ); ?>" class="sp-user-dropdown-item" role="menuitem">
-                    <span class="sp-user-dropdown-icon dashicons dashicons-exit"></span> <?php esc_html_e( 'Log Out', 'societypress' ); ?>
-                </a>
-            </div>
-        <?php endif; ?>
-    </div>
-    <?php
+
+    // Logged in: name link + Log Out link, both styled like nav items.
+    // WHY no avatar, no dropdown: Charles wants these to look like regular
+    //      nav menu items — same font, size, weight, spacing. The avatar
+    //      and dropdown created a visual break from the nav. This approach
+    //      makes the header read as one cohesive navigation bar.
+    echo '<a href="' . esc_url( $account_url ) . '" class="sp-user-nav-link">'
+         . $display_name . '</a>';
+    echo '<a href="' . esc_url( $logout_url ) . '" class="sp-user-nav-link">'
+         . esc_html__( 'Log Out', 'societypress' ) . '</a>';
 }
 
 
@@ -17421,6 +17438,13 @@ function sp_sanitize_settings( array $input ): array {
         // WHY: Harold may need to match a specific design width (e.g., 975px).
         //      Clamped to 600–2000px to prevent unusable layouts.
         'design_content_width_px'     => fn() => max( 600, min( 2000, (int) ( $input['design_content_width_px'] ?? 1100 ) ) ),
+        'design_logo_height'          => fn() => max( 0, min( 300, (int) ( $input['design_logo_height'] ?? 0 ) ) ),
+        'design_header_padding'       => fn() => max( 0, min( 100, (int) ( $input['design_header_padding'] ?? 0 ) ) ),
+        'design_nav_font_size'        => fn() => max( 0, min( 72, (int) ( $input['design_nav_font_size'] ?? 0 ) ) ),
+        'design_nav_spacing'           => fn() => max( 0, min( 40, (int) ( $input['design_nav_spacing'] ?? 0 ) ) ),
+        'design_nav_font_weight'      => fn() => in_array( $input['design_nav_font_weight'] ?? '', [ '', '300', '400', '500', '600', '700' ], true ) ? ( $input['design_nav_font_weight'] ?? '' ) : '',
+        'design_color_footer_link'    => fn() => sanitize_hex_color( $input['design_color_footer_link'] ?? '' ) ?: '',
+        'design_show_social_icons'    => fn() => (int) ! empty( $input['design_show_social_icons'] ),
     ];
 
     // Only sanitize + update keys that were actually submitted in the form.
@@ -17500,6 +17524,9 @@ function sp_sanitize_settings( array $input ): array {
             'design_heading_scale', 'design_content_width',
             'design_logo_id', 'design_show_header_title',
             'design_header_height', 'design_content_width_px',
+            'design_logo_height', 'design_header_padding',
+            'design_nav_font_size', 'design_nav_spacing', 'design_nav_font_weight',
+            'design_color_footer_link', 'design_show_social_icons',
         ]);
     }
 
@@ -23419,6 +23446,14 @@ function sp_render_themes_page(): void {
 
 
 function sp_render_settings_design_page(): void {
+    // Ensure color picker assets are loaded — belt and suspenders.
+    // WHY here in addition to admin_enqueue_scripts: The hook-based enqueue
+    //      depends on WordPress passing the correct hook suffix, which varies
+    //      across WP versions and menu structures. Enqueueing directly in the
+    //      render function guarantees the scripts are available.
+    wp_enqueue_style( 'wp-color-picker' );
+    wp_enqueue_script( 'wp-color-picker' );
+    wp_enqueue_media();
     ?>
     <div class="wrap">
 
@@ -23800,6 +23835,113 @@ function sp_render_settings_design_page(): void {
                             </p>
                         </td>
                     </tr>
+                    <tr>
+                        <th scope="row"><label for="sp-design-logo-height"><?php esc_html_e( 'Logo Size', 'societypress' ); ?></label></th>
+                        <td>
+                            <?php $logo_height = (int) ( $settings['design_logo_height'] ?? 0 ); ?>
+                            <input type="number"
+                                   id="sp-design-logo-height"
+                                   name="societypress_settings[design_logo_height]"
+                                   value="<?php echo esc_attr( $logo_height ?: '' ); ?>"
+                                   min="1"
+                                   max="300"
+                                   step="1"
+                                   class="sp-design-input-narrow-sm"
+                                   placeholder="Auto">
+                            <span>px</span>
+                            <p class="description"><?php esc_html_e( 'Height of the logo in the header. Leave blank to use the image\'s natural size.', 'societypress' ); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="sp-design-header-padding"><?php esc_html_e( 'Header Padding', 'societypress' ); ?></label></th>
+                        <td>
+                            <?php $header_padding = (int) ( $settings['design_header_padding'] ?? 0 ); ?>
+                            <input type="number"
+                                   id="sp-design-header-padding"
+                                   name="societypress_settings[design_header_padding]"
+                                   value="<?php echo esc_attr( $header_padding ?: '' ); ?>"
+                                   min="0"
+                                   max="100"
+                                   step="1"
+                                   class="sp-design-input-narrow-sm"
+                                   placeholder="Auto">
+                            <span>px</span>
+                            <p class="description"><?php esc_html_e( 'Vertical padding above and below the header content. Leave blank for theme default.', 'societypress' ); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="sp-design-nav-font-size"><?php esc_html_e( 'Nav Font Size', 'societypress' ); ?></label></th>
+                        <td>
+                            <?php $nav_font_size = (int) ( $settings['design_nav_font_size'] ?? 0 ); ?>
+                            <input type="number"
+                                   id="sp-design-nav-font-size"
+                                   name="societypress_settings[design_nav_font_size]"
+                                   value="<?php echo esc_attr( $nav_font_size ?: '' ); ?>"
+                                   min="1"
+                                   max="72"
+                                   step="1"
+                                   class="sp-design-input-narrow-sm"
+                                   placeholder="Auto">
+                            <span>px</span>
+                            <p class="description"><?php esc_html_e( 'Size of navigation menu links. Leave blank for theme default.', 'societypress' ); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="sp-design-nav-spacing"><?php esc_html_e( 'Nav Link Spacing', 'societypress' ); ?></label></th>
+                        <td>
+                            <?php $nav_spacing = (int) ( $settings['design_nav_spacing'] ?? 0 ); ?>
+                            <input type="number"
+                                   id="sp-design-nav-spacing"
+                                   name="societypress_settings[design_nav_spacing]"
+                                   value="<?php echo esc_attr( $nav_spacing ?: '' ); ?>"
+                                   min="2"
+                                   max="40"
+                                   step="1"
+                                   class="sp-design-input-narrow-sm"
+                                   placeholder="Auto">
+                            <span>px</span>
+                            <p class="description"><?php esc_html_e( 'Horizontal padding on each side of navigation links.', 'societypress' ); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="sp-design-nav-font-weight"><?php esc_html_e( 'Nav Font Weight', 'societypress' ); ?></label></th>
+                        <td>
+                            <?php $nav_weight = $settings['design_nav_font_weight'] ?? ''; ?>
+                            <select id="sp-design-nav-font-weight" name="societypress_settings[design_nav_font_weight]">
+                                <option value="" <?php selected( $nav_weight, '' ); ?>><?php esc_html_e( 'Theme Default', 'societypress' ); ?></option>
+                                <option value="300" <?php selected( $nav_weight, '300' ); ?>><?php esc_html_e( 'Light (300)', 'societypress' ); ?></option>
+                                <option value="400" <?php selected( $nav_weight, '400' ); ?>><?php esc_html_e( 'Normal (400)', 'societypress' ); ?></option>
+                                <option value="500" <?php selected( $nav_weight, '500' ); ?>><?php esc_html_e( 'Medium (500)', 'societypress' ); ?></option>
+                                <option value="600" <?php selected( $nav_weight, '600' ); ?>><?php esc_html_e( 'Semi-Bold (600)', 'societypress' ); ?></option>
+                                <option value="700" <?php selected( $nav_weight, '700' ); ?>><?php esc_html_e( 'Bold (700)', 'societypress' ); ?></option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="sp-design-footer-link"><?php esc_html_e( 'Footer Link Color', 'societypress' ); ?></label></th>
+                        <td>
+                            <?php $footer_link = $settings['design_color_footer_link'] ?? ''; ?>
+                            <input type="text"
+                                   id="sp-design-footer-link"
+                                   name="societypress_settings[design_color_footer_link]"
+                                   value="<?php echo esc_attr( $footer_link ); ?>"
+                                   class="sp-color-picker"
+                                   data-default-color="#667eea"
+                                   placeholder="#667eea">
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><?php esc_html_e( 'Social Icons', 'societypress' ); ?></th>
+                        <td>
+                            <?php $show_social = (int) ( $settings['design_show_social_icons'] ?? 1 ); ?>
+                            <label>
+                                <input type="checkbox" value="1"
+                                       name="societypress_settings[design_show_social_icons]"
+                                       <?php checked( $show_social, 1 ); ?>>
+                                <?php esc_html_e( 'Show social media icons in the header', 'societypress' ); ?>
+                            </label>
+                        </td>
+                    </tr>
                 </table>
             </div>
 
@@ -23924,19 +24066,7 @@ function sp_render_settings_design_page(): void {
 
                 <table class="form-table" role="presentation">
                     <tr>
-                        <th scope="row"><label for="sp-design-content-width"><?php esc_html_e( 'Content Width', 'societypress' ); ?></label></th>
-                        <td>
-                            <select id="sp-design-content-width" name="societypress_settings[design_content_width]" class="sp-design-control">
-                                <option value="narrow" <?php selected( $d_content_width, 'narrow' ); ?>><?php esc_html_e( 'Narrow (900px) — Easy reading', 'societypress' ); ?></option>
-                                <option value="standard" <?php selected( $d_content_width, 'standard' ); ?>><?php esc_html_e( 'Standard (1100px) — Recommended', 'societypress' ); ?></option>
-                                <option value="wide" <?php selected( $d_content_width, 'wide' ); ?>><?php esc_html_e( 'Wide (1400px) — More space', 'societypress' ); ?></option>
-                                <option value="custom" <?php selected( $d_content_width, 'custom' ); ?>><?php esc_html_e( 'Custom', 'societypress' ); ?></option>
-                            </select>
-                            <p class="description"><?php esc_html_e( 'How wide the main content area is. Narrower is easier to read; wider shows more content.', 'societypress' ); ?></p>
-                        </td>
-                    </tr>
-                    <tr id="sp-custom-width-row" style="<?php echo $d_content_width === 'custom' ? '' : 'display:none;'; ?>">
-                        <th scope="row"><label for="sp-design-content-width-px"><?php esc_html_e( 'Custom Width', 'societypress' ); ?></label></th>
+                        <th scope="row"><label for="sp-design-content-width-px"><?php esc_html_e( 'Content Width', 'societypress' ); ?></label></th>
                         <td>
                             <?php $d_content_width_px = (int) ( $settings['design_content_width_px'] ?? 1100 ); ?>
                             <input type="number"
@@ -23944,11 +24074,11 @@ function sp_render_settings_design_page(): void {
                                    name="societypress_settings[design_content_width_px]"
                                    value="<?php echo esc_attr( $d_content_width_px ); ?>"
                                    min="600"
-                                   max="2000"
-                                   step="1"
+                                   max="2400"
+                                   step="10"
                                    class="sp-design-control sp-design-input-narrow-md">
                             <span>px</span>
-                            <p class="description"><?php esc_html_e( 'Enter an exact width in pixels (600–2000).', 'societypress' ); ?></p>
+                            <p class="description"><?php esc_html_e( 'Width of the main content area in pixels. The slider always goes edge-to-edge regardless of this value.', 'societypress' ); ?></p>
                         </td>
                     </tr>
                 </table>
@@ -24916,12 +25046,16 @@ function sp_render_user_access_page(): void {
  * would slow down pages that don't need it. We target only the SocietyPress
  * settings page by checking the hook suffix.
  */
-add_action( 'admin_enqueue_scripts', function ( $hook ) {
+add_action( "admin_enqueue_scripts", function ( $hook ) {
     // Our Design page is registered as a submenu under our custom menu.
     // The hook suffix varies by menu structure, so we check for our page slug.
     // WHY sp-settings-design specifically: Only the Design page uses color
     // pickers — no need to load these assets on the other six settings pages.
-    if ( strpos( $hook, 'sp-settings-design' ) === false ) {
+    // Load color picker and media uploader on all SocietyPress admin pages.
+    // WHY no guard: The overhead is negligible and the hook suffix format
+    //      varies unpredictably across WordPress versions and menu structures.
+    //      Better to always load than to silently fail.
+    if ( strpos( $hook ?? '', 'societypress' ) === false && strpos( $hook ?? '', 'sp-' ) === false ) {
         return;
     }
 
@@ -24939,7 +25073,7 @@ add_action( 'admin_enqueue_scripts', function ( $hook ) {
 //      admins can find specific members quickly among potentially thousands
 //      of entries. Loaded as a proper enqueued script (not inline) because
 //      wp_localize_script is the reliable way to pass PHP data to JS.
-add_action( 'admin_enqueue_scripts', function ( $hook ) {
+add_action( "admin_enqueue_scripts", function ( $hook ) {
     // Only load on the Leadership & Committees page
     if ( strpos( $hook, 'sp-governance' ) === false ) {
         return;
@@ -28548,7 +28682,7 @@ function sp_sanitize_builder_widget( string $type, array $settings ): array {
  * WHY: Only loads on page edit screens. We need the media uploader for the
  * Image widget and wp_editor for the Rich Text widget.
  */
-add_action( 'admin_enqueue_scripts', function ( $hook ) {
+add_action( "admin_enqueue_scripts", function ( $hook ) {
     // WHY: The builder needs wp_enqueue_media() and wp_enqueue_editor() for the
     // Image widget and Rich Text widget. Originally only loaded on native WP
     // page screens; now also loads on our custom SocietyPress page editor
@@ -30966,7 +31100,7 @@ add_action( 'admin_init', function () {
 //      the page callback. If called during render, the media modal scripts
 //      arrive after wp_head() and wp.media is undefined, so the "Select Image"
 //      button silently does nothing.
-add_action( 'admin_enqueue_scripts', function ( $hook ) {
+add_action( "admin_enqueue_scripts", function ( $hook ) {
     if ( strpos( $hook, 'sp-event-edit' ) === false ) {
         return;
     }

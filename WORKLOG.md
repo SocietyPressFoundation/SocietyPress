@@ -1,4 +1,44 @@
 # SocietyPress — WORKLOG
+## v0.46d — 2026-03-27
+
+### Session 3: CSS Architecture Fix, Design Settings, Header Polish
+
+**CSS Cascade Architecture (Major Fix):**
+- Design settings CSS moved from wp_head priority 1 (loaded FIRST) to wp_add_inline_style() on a handle that depends on parent theme stylesheet (loaded LAST)
+- Design settings now guaranteed to appear after both parent and child theme CSS
+- All !important declarations in child theme removed for properties controlled by Design settings
+- Child theme hardcoded values replaced with var(--sp-*) references (header bg, footer bg, body font, font size)
+- Root cause: 1 out of 13 Design settings properties were working; now all should work
+
+**New Design Settings:**
+- Logo Size (px) — controls logo height in header
+- Header Padding (px) — vertical padding above/below header content
+- Nav Font Size (px) — navigation link font size
+- Nav Font Weight — dropdown from Light to Bold
+- Nav Link Spacing (px) — horizontal padding on nav links
+- Footer Link Color — color picker
+- Social Icons — show/hide toggle
+- Content Width — replaced dropdown (narrow/standard/wide) with direct px input (600-2400px)
+
+**Color Pickers Fix:**
+- wp_enqueue_style/script('wp-color-picker') now called directly in the Design page render function
+- Bypasses the hook suffix check that was silently failing
+
+**Header/Nav Polish:**
+- User menu (Charles/Log In/Log Out) replaced: removed avatar, dropdown, caret
+- Now renders as plain text links matching nav style (same font, size, weight, color)
+- .sp-user-nav-link class included in Design settings CSS output
+- Desktop search form hidden in SAGHS child theme
+- Nav right-justified, gap between nav and user menu eliminated
+- SAGHS logo switched from fixed-size SVG to scalable JPG
+
+**SAGHS Child Theme (0.08d):**
+- Removed !important from .custom-logo, nav font-size
+- Replaced hardcoded font-family, font-size, header/footer bg/color with var(--sp-*)
+- Content width set via --sp-content-width CSS variable
+- Logo height via --sp-logo-height variable
+- Search form hidden, user menu simplified
+
 ## v0.45d — 2026-03-26
 
 ### Session 2: Membership Reports, AJAX Progress, Photos, Records, Gravatar Kill

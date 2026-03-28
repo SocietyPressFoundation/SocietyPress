@@ -1,7 +1,7 @@
 # SocietyPress — Known Issues & Technical Debt
 
 Originally compiled from full codebase audit, March 8, 2026 (v0.30d).
-Updated March 18, 2026 after comprehensive code review and fix session (v0.38d).
+Updated March 28, 2026 — all 43 items verified resolved (41 fixed, 2 deferred).
 
 ---
 
@@ -134,19 +134,19 @@ Comprehensive i18n pass completed March 18, 2026. ~500+ strings wrapped across t
 
 ---
 
-## In Progress (v0.38d agents running)
+## Resolved — Verified v0.47d
 
-### 39. Hardcoded USD Currency Symbol
-- Being replaced with configurable `sp_format_currency()` helper + settings.
+### 39. Hardcoded USD Currency Symbol — FIXED
+- **Fix:** `sp_format_currency()` helper (line ~2577) with configurable symbol placement via settings. 22+ call sites converted.
 
-### 40. GET-Based Destructive Actions
-- Group/page/payment deletes being converted from GET links to POST forms.
+### 40. GET-Based Destructive Actions — FIXED
+- **Fix:** Group/page/payment deletes converted from GET links to POST forms with `wp_nonce_field()` / `check_admin_referer()`.
 
-### 41. Duplicate Code (Font Map, Status Lists)
-- Being extracted to `sp_get_font_family_css()` and `sp_get_member_statuses()` helpers.
+### 41. Duplicate Code (Font Map, Status Lists) — FIXED
+- **Fix:** Extracted `sp_get_font_family_css()` (line ~4440) and `sp_get_member_statuses()` (line ~4469) helpers. All call sites updated.
 
-### 42. Dual Library Catalog Implementations
-- Page template being unified to use the superior OPAC-style widget.
+### 42. Dual Library Catalog Implementations — FIXED
+- **Fix:** Unified to single `sp_render_builder_widget_library_catalog()` OPAC-style widget with tabbed search, faceted filters, and stats.
 
-### 43. Donation Acknowledgment Email Not Customizable
-- Being wired into the existing email template editor system.
+### 43. Donation Acknowledgment Email Not Customizable — FIXED
+- **Fix:** Integrated into email template editor system. Customizable subject + body via Settings → Email Templates, with donation merge tags.

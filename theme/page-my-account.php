@@ -364,7 +364,18 @@ function sp_m( $member, $field ) {
             // ================================================================
             // SECTION 1: PROFILE PHOTO
             // ================================================================
+
+            // Nudge new members who haven't uploaded a photo yet.
+            // WHY: Members who add a photo are more recognizable in the directory
+            //      and at meetings. A gentle prompt on their first visit helps.
+            if ( ! $custom_photo && $member ) :
             ?>
+            <div class="sp-account-notice sp-account-notice--info">
+                <p><?php esc_html_e( 'Your profile is missing a photo. Adding one helps other members recognize you!', 'societypress' ); ?></p>
+                <a href="#photo" class="sp-button sp-button--secondary sp-button--small"><?php esc_html_e( 'Add a Photo', 'societypress' ); ?></a>
+            </div>
+            <?php endif; ?>
+
             <section class="sp-account-section" id="photo">
                 <h2><?php esc_html_e( 'Profile Photo', 'societypress' ); ?></h2>
 
@@ -386,6 +397,7 @@ function sp_m( $member, $field ) {
                                    id="sp-photo-upload"
                                    name="sp_profile_photo"
                                    accept="image/jpeg,image/png,image/gif"
+                                   capture="user"
                                    class="sp-file-input"
                                    onchange="this.form.submit();" />
 

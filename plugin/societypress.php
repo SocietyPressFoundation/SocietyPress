@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     0.47d
+ * Version:     0.48d
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '0.47d' );
+define( 'SOCIETYPRESS_VERSION', '0.48d' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -5941,7 +5941,7 @@ function sp_render_pending_changes_page(): void {
                     <button type="submit" name="sp_decision" value="approve" class="button button-primary">
                         <?php echo esc_html__( 'Approve', 'societypress' ); ?>
                     </button>
-                    <button type="submit" name="sp_decision" value="reject" class="button" onclick="return confirm('<?php echo esc_attr__( 'Reject this change request?', 'societypress' ); ?>');">
+                    <button type="submit" name="sp_decision" value="reject" class="button" data-sp-confirm="<?php echo esc_attr__( 'Reject this change request?', 'societypress' ); ?>">
                         <?php echo esc_html__( 'Reject', 'societypress' ); ?>
                     </button>
                 </form>
@@ -8375,8 +8375,7 @@ function sp_render_dashboard_page(): void {
                 if (!btn) return;
 
                 btn.addEventListener('click', function() {
-                    if (!confirm(<?php echo wp_json_encode( __( 'Update SocietyPress now? The site will be briefly unavailable during the update.', 'societypress' ) ); ?>)) return;
-
+                    spConfirm(<?php echo wp_json_encode( __( 'Update SocietyPress now? The site will be briefly unavailable during the update.', 'societypress' ) ); ?>, function() {
                     btn.disabled    = true;
                     btn.textContent = <?php echo wp_json_encode( __( 'Updating...', 'societypress' ) ); ?>;
                     status.textContent = '';
@@ -8483,7 +8482,7 @@ function sp_render_dashboard_page(): void {
                 var parentStatus = document.getElementById('sp-parent-theme-status');
                 if (parentBtn) {
                     parentBtn.addEventListener('click', function() {
-                        if (!confirm(<?php echo wp_json_encode( __( 'Update the parent theme now?', 'societypress' ) ); ?>)) return;
+                        spConfirm(<?php echo wp_json_encode( __( 'Update the parent theme now?', 'societypress' ) ); ?>, function() {
                         parentBtn.disabled    = true;
                         parentBtn.textContent = <?php echo wp_json_encode( __( 'Updating...', 'societypress' ) ); ?>;
 
@@ -8520,11 +8519,11 @@ function sp_render_dashboard_page(): void {
                     btn.addEventListener('click', function() {
                         var slug      = this.getAttribute('data-slug');
                         var statusEl  = document.querySelector('.sp-child-theme-status[data-slug="' + slug + '"]');
-                        if (!confirm(<?php echo wp_json_encode( __( 'Update this child theme?', 'societypress' ) ); ?>)) return;
+                        var thisBtn   = this;
+                        spConfirm(<?php echo wp_json_encode( __( 'Update this child theme?', 'societypress' ) ); ?>, function() {
 
-                        this.disabled    = true;
-                        this.textContent = <?php echo wp_json_encode( __( 'Updating...', 'societypress' ) ); ?>;
-                        var thisBtn = this;
+                        thisBtn.disabled    = true;
+                        thisBtn.textContent = <?php echo wp_json_encode( __( 'Updating...', 'societypress' ) ); ?>;
 
                         var data = new FormData();
                         data.append('action', 'sp_install_theme');
@@ -10031,8 +10030,7 @@ function sp_render_members_page(): void {
             var batchSize  = 25;
 
             btn.addEventListener('click', function() {
-                if (!confirm('<?php echo esc_js( sprintf( __( "This will permanently delete all %d other members and their accounts.\n\nYour own account will NOT be touched.\n\nAre you sure?", "societypress" ), $others_count ) ); ?>')) return;
-
+                spConfirm(<?php echo wp_json_encode( sprintf( __( "This will permanently delete all %d other members and their accounts.\n\nYour own account will NOT be touched.\n\nAre you sure?", "societypress" ), $others_count ) ); ?>, function() {
                 var overlay     = document.getElementById('sp-delete-overlay');
                 var progressBar = document.getElementById('sp-delete-progress');
                 var countEl     = document.getElementById('sp-delete-count');
@@ -10530,6 +10528,77 @@ add_action( 'admin_init', function () {
         ] );
     }
 
+    // ================================================================
+    // PHOTO — Handle admin photo upload or removal
+    // WHY: Harold photographs members at meetings and needs to attach
+    //      those photos from the admin edit page. Uses the same upload
+    //      directory and naming convention as the My Account handler
+    //      so photos are interchangeable between both interfaces.
+    // ================================================================
+    if ( ! empty( $_POST['sp_remove_photo'] ) && $user_id ) {
+        $old_photo = get_user_meta( $user_id, 'sp_profile_photo_url', true );
+        if ( $old_photo ) {
+            $upload_dir = wp_upload_dir();
+            $old_path   = str_replace( $upload_dir['baseurl'], $upload_dir['basedir'], strtok( $old_photo, '?' ) );
+            if ( file_exists( $old_path ) ) {
+                wp_delete_file( $old_path );
+            }
+            delete_user_meta( $user_id, 'sp_profile_photo_url' );
+            $wpdb->update( $prefix . 'members', [ 'photo_url' => '', 'updated_at' => current_time( 'mysql' ) ], [ 'user_id' => $user_id ] );
+        }
+    } elseif ( ! empty( $_FILES['sp_admin_photo']['tmp_name'] ) && $user_id ) {
+        $file          = $_FILES['sp_admin_photo'];
+        $allowed_types = [ 'image/jpeg', 'image/png', 'image/gif' ];
+        $finfo         = finfo_open( FILEINFO_MIME_TYPE );
+        $mime          = finfo_file( $finfo, $file['tmp_name'] );
+        finfo_close( $finfo );
+
+        if ( in_array( $mime, $allowed_types, true ) && $file['size'] <= 2 * 1024 * 1024 ) {
+            $upload_dir     = wp_upload_dir();
+            $photo_dir      = $upload_dir['basedir'] . '/sp-profile-photos';
+            $photo_url_base = $upload_dir['baseurl'] . '/sp-profile-photos';
+
+            if ( ! file_exists( $photo_dir ) ) {
+                wp_mkdir_p( $photo_dir );
+                file_put_contents( $photo_dir . '/index.php', '<?php // Silence is golden.' );
+            }
+            // Defense-in-depth: block PHP execution even if a malicious file lands here
+            if ( ! file_exists( $photo_dir . '/.htaccess' ) ) {
+                file_put_contents( $photo_dir . '/.htaccess', "Options -Indexes\n<FilesMatch \"\.php\">\n  Deny from all\n</FilesMatch>\n" );
+            }
+
+            // Derive extension from validated MIME, not user-supplied filename
+            $mime_to_ext    = [ 'image/jpeg' => 'jpg', 'image/png' => 'png', 'image/gif' => 'gif' ];
+            $ext            = $mime_to_ext[ $mime ] ?? 'jpg';
+
+            // Name by member name — same convention as My Account uploads
+            $name_parts = [ strtolower( $first_name ) ];
+            if ( ! empty( $middle_name ) ) {
+                $name_parts[] = strtolower( $middle_name );
+            }
+            $name_parts[]   = strtolower( $last_name );
+            $name_slug      = preg_replace( '/[^a-z0-9-]/', '', implode( '-', $name_parts ) );
+            $filename_photo = $name_slug ? $name_slug . '-member.' . $ext : 'user-' . $user_id . '.' . $ext;
+            $filepath       = $photo_dir . '/' . $filename_photo;
+            $fileurl        = $photo_url_base . '/' . $filename_photo;
+
+            // Remove old photo if filename differs (e.g. name change or format change)
+            $old_photo = get_user_meta( $user_id, 'sp_profile_photo_url', true );
+            if ( $old_photo ) {
+                $old_path = str_replace( $upload_dir['baseurl'], $upload_dir['basedir'], strtok( $old_photo, '?' ) );
+                if ( file_exists( $old_path ) && $old_path !== $filepath ) {
+                    wp_delete_file( $old_path );
+                }
+            }
+
+            if ( move_uploaded_file( $file['tmp_name'], $filepath ) ) {
+                $fileurl_busted = $fileurl . '?v=' . time();
+                update_user_meta( $user_id, 'sp_profile_photo_url', $fileurl_busted );
+                $wpdb->update( $prefix . 'members', [ 'photo_url' => $fileurl_busted, 'updated_at' => current_time( 'mysql' ) ], [ 'user_id' => $user_id ] );
+            }
+        }
+    }
+
     // Audit log: member create or update
     $display = trim( $first_name . ' ' . $last_name );
     if ( $editing_user_id ) {
@@ -10627,6 +10696,26 @@ function sp_render_member_edit_page(): void {
         ) );
     }
 
+    // Load photo for display — same fallback chain as My Account:
+    // sp_members.photo_url → wp_usermeta.sp_profile_photo_url → Gravatar
+    $admin_photo_url   = '';
+    $has_custom_photo   = false;
+    if ( $is_edit && $member ) {
+        if ( ! empty( $member->photo_url ) ) {
+            $admin_photo_url  = $member->photo_url;
+            $has_custom_photo = true;
+        } elseif ( $user_id ) {
+            $meta_photo = get_user_meta( $user_id, 'sp_profile_photo_url', true );
+            if ( $meta_photo ) {
+                $admin_photo_url  = $meta_photo;
+                $has_custom_photo = true;
+            }
+        }
+    }
+    if ( ! $admin_photo_url && $is_edit ) {
+        $admin_photo_url = get_avatar_url( $user_id, [ 'size' => 120 ] );
+    }
+
     // Load available tiers for the dropdown
     $tiers = $wpdb->get_results(
         "SELECT id, name FROM {$prefix}membership_tiers WHERE active = 1 ORDER BY sort_order"
@@ -10670,7 +10759,7 @@ function sp_render_member_edit_page(): void {
             </div>
         <?php endif; ?>
 
-        <form method="post" action="">
+        <form method="post" action="" enctype="multipart/form-data">
             <?php wp_nonce_field( 'sp_save_member', 'sp_member_nonce' ); ?>
             <input type="hidden" name="user_id" value="<?php echo esc_attr( $user_id ); ?>">
             <?php if ( $link_to_self ) : ?>
@@ -10888,6 +10977,29 @@ function sp_render_member_edit_page(): void {
                 /* Member-type label — slight bottom margin before radio group */
                 .sp-member-edit-type-heading {
                     margin-bottom: 8px;
+                }
+                /* Profile photo section on admin member edit */
+                .sp-admin-photo-wrap {
+                    display: flex;
+                    align-items: center;
+                    gap: 20px;
+                    padding: 16px 20px;
+                }
+                .sp-admin-photo-preview img {
+                    width: 120px;
+                    height: 120px;
+                    border-radius: 50%;
+                    object-fit: cover;
+                    border: 2px solid #dcdcde;
+                }
+                .sp-admin-photo-controls .sp-admin-photo-file {
+                    display: none;
+                }
+                .sp-admin-photo-controls .description {
+                    margin-top: 8px;
+                }
+                .sp-admin-photo-remove {
+                    margin-top: 6px;
                 }
             </style>
 
@@ -11169,6 +11281,47 @@ function sp_render_member_edit_page(): void {
                 toggleType();
             })();
             </script>
+
+            <!-- ============================================================ -->
+            <!-- SECTION: Profile Photo                                      -->
+            <!-- WHY: Harold photographs members at meetings. This gives him  -->
+            <!--      a place to upload those photos without switching to My   -->
+            <!--      Account. Only shown when editing (not on Add New).      -->
+            <!-- ============================================================ -->
+            <?php if ( $is_edit ) : ?>
+            <div class="sp-section">
+                <h2><?php esc_html_e( 'Profile Photo', 'societypress' ); ?></h2>
+                <div class="sp-admin-photo-wrap">
+                    <div class="sp-admin-photo-preview">
+                        <?php if ( $admin_photo_url ) : ?>
+                            <img src="<?php echo esc_url( $admin_photo_url ); ?>" alt="">
+                        <?php else : ?>
+                            <img src="<?php echo esc_url( get_avatar_url( 0, [ 'size' => 120 ] ) ); ?>" alt="">
+                        <?php endif; ?>
+                    </div>
+                    <div class="sp-admin-photo-controls">
+                        <label for="sp-admin-photo-input" class="button">
+                            <?php echo $has_custom_photo ? esc_html__( 'Change Photo', 'societypress' ) : esc_html__( 'Upload Photo', 'societypress' ); ?>
+                        </label>
+                        <input type="file"
+                               name="sp_admin_photo"
+                               id="sp-admin-photo-input"
+                               accept="image/jpeg,image/png,image/gif"
+                               capture="user"
+                               class="sp-admin-photo-file">
+                        <?php if ( $has_custom_photo ) : ?>
+                            <div class="sp-admin-photo-remove">
+                                <label>
+                                    <input type="checkbox" name="sp_remove_photo" value="1">
+                                    <?php esc_html_e( 'Remove photo', 'societypress' ); ?>
+                                </label>
+                            </div>
+                        <?php endif; ?>
+                        <p class="description"><?php esc_html_e( 'JPG, PNG, or GIF. Max 2 MB.', 'societypress' ); ?></p>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
 
             <!-- ============================================================ -->
             <!-- SECTION: Personal Information -->
@@ -12102,7 +12255,7 @@ function sp_render_member_edit_page(): void {
 
         </form>
         <?php if ( $is_edit && (int) $user_id !== get_current_user_id() ) : ?>
-            <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-members' ) ); ?>" class="sp-member-edit-delete-form" onsubmit="return confirm('<?php echo esc_js( __( 'Are you sure you want to permanently delete this member? This cannot be undone.', 'societypress' ) ); ?>');">
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-members' ) ); ?>" class="sp-member-edit-delete-form" data-sp-confirm="<?php echo esc_attr( __( 'Are you sure you want to permanently delete this member? This cannot be undone.', 'societypress' ) ); ?>">
                 <?php wp_nonce_field( 'sp_delete_member_' . $user_id ); ?>
                 <input type="hidden" name="action" value="delete">
                 <input type="hidden" name="member" value="<?php echo (int) $user_id; ?>">
@@ -18592,7 +18745,7 @@ function sp_render_groups_page(): void {
                             <td>
                                 <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-group-edit&group_id=' . $g->id ) ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
                                 |
-                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-groups' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this group and remove all members from it?', 'societypress' ) ); ?>');">
+                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-groups' ) ); ?>" style="display:inline;" data-sp-confirm="<?php echo esc_attr( __( 'Delete this group and remove all members from it?', 'societypress' ) ); ?>">
                                     <?php wp_nonce_field( 'sp_delete_group_' . $g->id ); ?>
                                     <input type="hidden" name="action" value="delete">
                                     <input type="hidden" name="group_id" value="<?php echo (int) $g->id; ?>">
@@ -19567,7 +19720,7 @@ function sp_render_page_edit(): void {
             </p>
         </form>
         <?php if ( $is_edit ) : ?>
-            <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-pages' ) ); ?>" style="display:inline; margin-top:-10px;" onsubmit="return confirm('<?php echo esc_js( __( 'Are you sure you want to delete this page?', 'societypress' ) ); ?>');">
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-pages' ) ); ?>" style="display:inline; margin-top:-10px;" data-sp-confirm="<?php echo esc_attr( __( 'Are you sure you want to delete this page?', 'societypress' ) ); ?>">
                 <?php wp_nonce_field( 'sp_delete_page_' . $post_id ); ?>
                 <input type="hidden" name="action" value="delete">
                 <input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>">
@@ -20115,7 +20268,7 @@ function sp_render_finances_page(): void {
                             <td><?php echo $row->note ? esc_html( wp_trim_words( $row->note, 10 ) ) : ''; ?></td>
                             <td><?php echo $row->recorded_by_name ? esc_html( $row->recorded_by_name ) : ''; ?></td>
                             <td>
-                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-finances' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this payment record?', 'societypress' ) ); ?>');">
+                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-finances' ) ); ?>" style="display:inline;" data-sp-confirm="<?php echo esc_attr( __( 'Delete this payment record?', 'societypress' ) ); ?>">
                                     <?php wp_nonce_field( 'sp_delete_payment_' . $row->id ); ?>
                                     <input type="hidden" name="action" value="delete">
                                     <input type="hidden" name="payment_id" value="<?php echo (int) $row->id; ?>">
@@ -20281,7 +20434,11 @@ function sp_render_record_payment_page(): void {
 function sp_render_settings_website_page(): void {
     ?>
     <div class="wrap">
-        <h1><?php esc_html_e( 'Settings: Website', 'societypress' ); ?></h1>
+        <h1 class="wp-heading-inline"><?php esc_html_e( 'Settings: Website', 'societypress' ); ?></h1>
+        <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=sp_export_settings_json&nonce=' . wp_create_nonce( 'sp_export_settings_json' ) ) ); ?>" class="page-title-action">
+            <?php esc_html_e( 'Export Settings (JSON)', 'societypress' ); ?>
+        </a>
+        <hr class="wp-header-end">
 
         <?php
         if ( isset( $_GET['settings-updated'] ) && $_GET['settings-updated'] === 'true' ) {
@@ -20299,6 +20456,56 @@ function sp_render_settings_website_page(): void {
     </div>
     <?php
 }
+
+
+/**
+ * Export all SocietyPress settings as a downloadable JSON file.
+ *
+ * WHY: Societies need a simple way to back up their configuration before
+ *      making changes, or to migrate settings to a new installation.
+ *      Stripe secret keys are excluded — they contain payment credentials
+ *      that must be re-entered on the target site for security reasons.
+ */
+add_action( 'wp_ajax_sp_export_settings_json', function () {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+    }
+    if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_settings_json' ) ) {
+        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+    }
+
+    $settings = get_option( 'societypress_settings', [] );
+    $modules  = get_option( 'sp_enabled_modules', [] );
+
+    // WHY: Stripe secret keys are encrypted at rest, but exporting the
+    // encrypted blob is useless on a different installation (different
+    // encryption key). Exclude them so Harold re-enters them fresh.
+    $secret_keys = [ 'stripe_secret_key', 'stripe_test_secret_key' ];
+    foreach ( $secret_keys as $key ) {
+        unset( $settings[ $key ] );
+    }
+
+    $export = [
+        '_meta' => [
+            'plugin_version' => defined( 'SOCIETYPRESS_VERSION' ) ? SOCIETYPRESS_VERSION : 'unknown',
+            'exported_at'    => current_time( 'c' ),
+            'site_url'       => home_url(),
+            'note'           => __( 'Stripe secret keys are excluded for security. Re-enter them after import.', 'societypress' ),
+        ],
+        'settings'        => $settings,
+        'enabled_modules' => $modules,
+    ];
+
+    $filename = 'societypress-settings-' . wp_date( 'Y-m-d' ) . '.json';
+
+    header( 'Content-Type: application/json; charset=utf-8' );
+    header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+    header( 'Pragma: no-cache' );
+    header( 'Expires: 0' );
+
+    echo wp_json_encode( $export, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
+    exit;
+});
 
 
 /**
@@ -23083,15 +23290,19 @@ function sp_render_themes_page(): void {
 
         document.querySelectorAll('.sp-theme-install-btn').forEach(function(btn) {
             btn.addEventListener('click', function() {
-                if (!confirm(<?php echo wp_json_encode( __( 'Install this theme?', 'societypress' ) ); ?>)) return;
-                handleThemeAction(this, this.getAttribute('data-slug'), <?php echo wp_json_encode( __( 'Installing', 'societypress' ) ); ?>);
+                var self = this;
+                spConfirm(<?php echo wp_json_encode( __( 'Install this theme?', 'societypress' ) ); ?>, function() {
+                    handleThemeAction(self, self.getAttribute('data-slug'), <?php echo wp_json_encode( __( 'Installing', 'societypress' ) ); ?>);
+                });
             });
         });
 
         document.querySelectorAll('.sp-theme-update-btn').forEach(function(btn) {
             btn.addEventListener('click', function() {
-                if (!confirm(<?php echo wp_json_encode( __( 'Update this theme? Your customizations in style.css and functions.php will be overwritten.', 'societypress' ) ); ?>)) return;
-                handleThemeAction(this, this.getAttribute('data-slug'), <?php echo wp_json_encode( __( 'Updating', 'societypress' ) ); ?>);
+                var self = this;
+                spConfirm(<?php echo wp_json_encode( __( 'Update this theme? Your customizations in style.css and functions.php will be overwritten.', 'societypress' ) ); ?>, function() {
+                    handleThemeAction(self, self.getAttribute('data-slug'), <?php echo wp_json_encode( __( 'Updating', 'societypress' ) ); ?>);
+                });
             });
         });
 
@@ -23299,8 +23510,7 @@ function sp_render_themes_page(): void {
 
         // ---- Delete custom theme ----
         function handleDelete(slug, name) {
-            if (!confirm(<?php echo wp_json_encode( __( 'Delete this custom theme? This cannot be undone.', 'societypress' ) ); ?>)) return;
-
+            spConfirm(<?php echo wp_json_encode( __( 'Delete this custom theme? This cannot be undone.', 'societypress' ) ); ?>, function() {
             var data = new FormData();
             data.append('action', 'sp_delete_custom_theme');
             data.append('nonce', customNonce);
@@ -25029,7 +25239,7 @@ function sp_render_user_access_page(): void {
                             </a>
                             <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=sp-user-access&sp_revoke=' . $staff_user->ID ), 'sp_revoke_' . $staff_user->ID ) ); ?>"
                                class="button button-small sp-access-revoke-btn"
-                               onclick="return confirm('<?php esc_attr_e( 'Revoke all SocietyPress access for this user?', 'societypress' ); ?>');">
+                               data-sp-confirm="<?php esc_attr_e( 'Revoke all SocietyPress access for this user?', 'societypress' ); ?>">
                                 <?php esc_html_e( 'Revoke', 'societypress' ); ?>
                             </a>
                         </td>
@@ -28670,8 +28880,10 @@ function sp_builder_fields_feature_cards( $index, array $settings ): void {
                 wrap.addEventListener('click', function(e) {
                     if (e.target.closest('.sp-fc-remove-card')) {
                         var row = e.target.closest('.sp-fc-card-row');
-                        if (row && confirm('<?php echo esc_js( __( 'Remove this card?', 'societypress' ) ); ?>')) {
-                            row.remove();
+                        if (row) {
+                            spConfirm('<?php echo esc_js( __( 'Remove this card?', 'societypress' ) ); ?>', function() {
+                                row.remove();
+                            });
                         }
                     }
                 });
@@ -29049,8 +29261,9 @@ add_action( 'admin_footer', function () {
         // Remove widget
         $list.on('click', '.sp-builder-remove', function(e) {
             e.stopPropagation();
-            if (!confirm('<?php echo esc_js( __( 'Remove this widget?', 'societypress' ) ); ?>')) return;
-            $(this).closest('.sp-builder-card').remove();
+            var $card = $(this).closest('.sp-builder-card');
+            spConfirm('<?php echo esc_js( __( 'Remove this widget?', 'societypress' ) ); ?>', function() {
+                $card.remove();
             reindex();
         });
 
@@ -30781,9 +30994,9 @@ class SP_Events_List_Table extends WP_List_Table {
                 'sp_cancel_event_' . $item->id
             );
             $actions['cancel'] = sprintf(
-                '<a href="%s" onclick="return confirm(\'%s\');">%s</a>',
+                '<a href="%s" data-sp-confirm="%s">%s</a>',
                 esc_url( $cancel_url ),
-                esc_js( __( 'Cancel this event?', 'societypress' ) ),
+                esc_attr( __( 'Cancel this event?', 'societypress' ) ),
                 esc_html__( 'Cancel', 'societypress' )
             );
         }
@@ -31277,6 +31490,7 @@ function sp_render_events_page(): void {
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-event-edit' ) ); ?>" class="page-title-action">
             Add New
         </a>
+        <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=sp_export_events&nonce=' . wp_create_nonce( 'sp_export_events' ) ) ); ?>" class="page-title-action"><?php esc_html_e( 'Export CSV', 'societypress' ); ?></a>
         <hr class="wp-header-end">
 
         <?php
@@ -32777,7 +32991,7 @@ function sp_render_event_edit_page(): void {
         var regenStatus = document.getElementById('sp-regen-status');
         if (regenBtn) {
             regenBtn.addEventListener('click', function() {
-                if (!confirm('<?php echo esc_js( __( 'Generate future occurrences? Existing events in the series will not be affected.', 'societypress' ) ); ?>')) return;
+                spConfirm('<?php echo esc_js( __( 'Generate future occurrences? Existing events in the series will not be affected.', 'societypress' ) ); ?>', function() {
                 regenBtn.disabled = true;
                 regenStatus.textContent = 'Generating\u2026';
 
@@ -32805,7 +33019,7 @@ function sp_render_event_edit_page(): void {
         var detachBtn = document.getElementById('sp-detach-from-series');
         if (detachBtn) {
             detachBtn.addEventListener('click', function() {
-                if (!confirm('<?php echo esc_js( __( 'Detach this event from its recurring series? This cannot be undone.', 'societypress' ) ); ?>')) return;
+                spConfirm('<?php echo esc_js( __( 'Detach this event from its recurring series? This cannot be undone.', 'societypress' ) ); ?>', function() {
                 detachBtn.disabled = true;
 
                 var fd = new FormData();
@@ -32833,7 +33047,7 @@ function sp_render_event_edit_page(): void {
         var detachFeedBtn = document.getElementById('sp-detach-from-feed');
         if (detachFeedBtn) {
             detachFeedBtn.addEventListener('click', function() {
-                if (!confirm('<?php echo esc_js( __( 'Detach this event from its iCal feed? It will become a standalone event and won\'t be updated by future syncs.', 'societypress' ) ); ?>')) return;
+                spConfirm('<?php echo esc_js( __( 'Detach this event from its iCal feed? It will become a standalone event and won\'t be updated by future syncs.', 'societypress' ) ); ?>', function() {
                 detachFeedBtn.disabled = true;
                 detachFeedBtn.textContent = '<?php echo esc_js( __( 'Detaching...', 'societypress' ) ); ?>';
 
@@ -33250,8 +33464,7 @@ function sp_render_event_categories_page(): void {
 
             // DELETE: Remove category via AJAX
             if (btn.classList.contains('sp-cat-delete-btn')) {
-                if (!confirm('<?php echo esc_js( __( 'Delete this category? This cannot be undone.', 'societypress' ) ); ?>')) return;
-
+                spConfirm('<?php echo esc_js( __( 'Delete this category? This cannot be undone.', 'societypress' ) ); ?>', function() {
                 btn.textContent = 'Deleting...';
                 btn.disabled = true;
 
@@ -33765,8 +33978,7 @@ function sp_render_member_tiers_page(): void {
 
             // DELETE: Remove tier via AJAX (only possible when 0 members assigned)
             if (btn.classList.contains('sp-tier-delete-btn')) {
-                if (!confirm('<?php echo esc_js( __( 'Delete this membership plan? This cannot be undone.', 'societypress' ) ); ?>')) return;
-
+                spConfirm('<?php echo esc_js( __( 'Delete this membership plan? This cannot be undone.', 'societypress' ) ); ?>', function() {
                 btn.textContent = 'Deleting...';
                 btn.disabled = true;
 
@@ -38640,9 +38852,10 @@ function sp_events_frontend_scripts(): void {
         //      its own cancel button. These use the same cancel AJAX endpoint.
         document.querySelectorAll('.sp-slot-cancel-btn').forEach(function(btn) {
             btn.addEventListener('click', function() {
-                if (!confirm('<?php echo esc_js( __( 'Cancel this registration?', 'societypress' ) ); ?>')) return;
-                var regId   = this.getAttribute('data-reg-id');
-                var eventId = this.getAttribute('data-event-id');
+                var self = this;
+                spConfirm('<?php echo esc_js( __( 'Cancel this registration?', 'societypress' ) ); ?>', function() {
+                var regId   = self.getAttribute('data-reg-id');
+                var eventId = self.getAttribute('data-event-id');
                 var row     = this.closest('.sp-user-slot-reg-row');
 
                 this.disabled = true;
@@ -38706,9 +38919,8 @@ function sp_events_frontend_scripts(): void {
             var cancelBtn = document.getElementById('sp-cancel-reg-btn');
             if (!cancelBtn) return;
             cancelBtn.addEventListener('click', function() {
-                if (!confirm('<?php echo esc_js( __( 'Are you sure you want to cancel your registration?', 'societypress' ) ); ?>')) return;
-
                 var btn     = this;
+                spConfirm('<?php echo esc_js( __( 'Are you sure you want to cancel your registration?', 'societypress' ) ); ?>', function() {
                 var eventId = btn.getAttribute('data-event-id');
                 var regId   = btn.getAttribute('data-reg-id');
 
@@ -39858,8 +40070,9 @@ function sp_render_event_registrations_section( object $event ): void {
         // ---- Admin cancel registration ----
         document.querySelectorAll('.sp-admin-cancel-reg').forEach(function(btn) {
             btn.addEventListener('click', function() {
-                if (!confirm('<?php echo esc_js( __( 'Cancel this registration?', 'societypress' ) ); ?>')) return;
-                var regId = this.getAttribute('data-reg-id');
+                var self = this;
+                spConfirm('<?php echo esc_js( __( 'Cancel this registration?', 'societypress' ) ); ?>', function() {
+                var regId = self.getAttribute('data-reg-id');
 
                 var fd = new FormData();
                 fd.append('action', 'sp_admin_cancel_registration');
@@ -39905,8 +40118,7 @@ function sp_render_event_registrations_section( object $event ): void {
         var bulkAttended = document.getElementById('sp-bulk-attended');
         if (bulkAttended) {
             bulkAttended.addEventListener('click', function() {
-                if (!confirm('<?php echo esc_js( __( 'Mark all confirmed registrants as attended?', 'societypress' ) ); ?>')) return;
-
+                spConfirm('<?php echo esc_js( __( 'Mark all confirmed registrants as attended?', 'societypress' ) ); ?>', function() {
                 var fd = new FormData();
                 fd.append('action', 'sp_admin_bulk_attendance');
                 fd.append('event_id', eventId);
@@ -39934,8 +40146,8 @@ function sp_render_event_registrations_section( object $event ): void {
         //      and the row updates without a page reload.
         document.querySelectorAll('.sp-admin-refund-btn').forEach(function(btn) {
             btn.addEventListener('click', function() {
-                if (!confirm('<?php echo esc_js( __( 'Issue a full refund for this payment? This cannot be undone.', 'societypress' ) ); ?>')) return;
                 var refundBtn = this;
+                spConfirm('<?php echo esc_js( __( 'Issue a full refund for this payment? This cannot be undone.', 'societypress' ) ); ?>', function() {
                 var regId = refundBtn.getAttribute('data-reg-id');
 
                 refundBtn.disabled = true;
@@ -45842,7 +46054,7 @@ function sp_render_gallery_page(): void {
                             <?php endif; ?>
                             <div style="margin-top:8px; font-size:12px;">
                                 <a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> |
-                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-gallery' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this album and all its photos?', 'societypress' ) ); ?>');">
+                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-gallery' ) ); ?>" style="display:inline;" data-sp-confirm="<?php echo esc_attr( __( 'Delete this album and all its photos?', 'societypress' ) ); ?>">
                                     <?php wp_nonce_field( 'sp_delete_album_' . $album->id ); ?>
                                     <input type="hidden" name="action" value="delete">
                                     <input type="hidden" name="album_id" value="<?php echo (int) $album->id; ?>">
@@ -47374,7 +47586,7 @@ function sp_render_help_requests_admin_page(): void {
                     <?php else : ?>
                         <a href="<?php echo esc_url( $reopen_url ); ?>" class="button"><?php esc_html_e( 'Reopen Request', 'societypress' ); ?></a>
                     <?php endif; ?>
-                    <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-help-requests' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this request and all responses?', 'societypress' ) ); ?>');">
+                    <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-help-requests' ) ); ?>" style="display:inline;" data-sp-confirm="<?php echo esc_attr( __( 'Delete this request and all responses?', 'societypress' ) ); ?>">
                         <?php wp_nonce_field( 'sp_delete_help_request_' . $req_id ); ?>
                         <input type="hidden" name="action" value="delete">
                         <input type="hidden" name="request_id" value="<?php echo (int) $req_id; ?>">
@@ -47438,7 +47650,7 @@ function sp_render_help_requests_admin_page(): void {
                                 <strong><a href="<?php echo esc_url( $view_url ); ?>"><?php echo esc_html( $req->title ); ?></a></strong>
                                 <div class="row-actions">
                                     <span><a href="<?php echo esc_url( $view_url ); ?>"><?php esc_html_e( 'View', 'societypress' ); ?></a> | </span>
-                                    <span><form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-help-requests' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete?', 'societypress' ) ); ?>');"><?php wp_nonce_field( 'sp_delete_help_request_' . $req->id ); ?><input type="hidden" name="action" value="delete"><input type="hidden" name="request_id" value="<?php echo (int) $req->id; ?>"><button type="submit" class="sp-link-btn" style="background:none; border:none; color:#b32d2e; cursor:pointer; padding:0; font:inherit; text-decoration:underline;"><?php esc_html_e( 'Delete', 'societypress' ); ?></button></form></span>
+                                    <span><form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-help-requests' ) ); ?>" style="display:inline;" data-sp-confirm="<?php echo esc_attr( __( 'Delete?', 'societypress' ) ); ?>"><?php wp_nonce_field( 'sp_delete_help_request_' . $req->id ); ?><input type="hidden" name="action" value="delete"><input type="hidden" name="request_id" value="<?php echo (int) $req->id; ?>"><button type="submit" class="sp-link-btn" style="background:none; border:none; color:#b32d2e; cursor:pointer; padding:0; font:inherit; text-decoration:underline;"><?php esc_html_e( 'Delete', 'societypress' ); ?></button></form></span>
                                 </div>
                             </td>
                             <td><?php echo esc_html( $req->first_name . ' ' . $req->last_name ); ?></td>
@@ -48485,7 +48697,7 @@ function sp_render_library_catalog_page(): void {
                                 <strong><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $item->title ); ?></a></strong>
                                 <div class="row-actions">
                                     <span><a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> | </span>
-                                    <span><form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-catalog' ) ); ?>" class="sp-catalog-delete-form" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this item?', 'societypress' ) ); ?>');"><?php wp_nonce_field( 'sp_delete_library_item_' . $item->id ); ?><input type="hidden" name="action" value="delete"><input type="hidden" name="item_id" value="<?php echo (int) $item->id; ?>"><button type="submit" class="sp-link-btn sp-catalog-delete-btn"><?php esc_html_e( 'Delete', 'societypress' ); ?></button></form></span>
+                                    <span><form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-catalog' ) ); ?>" class="sp-catalog-delete-form" data-sp-confirm="<?php echo esc_attr( __( 'Delete this item?', 'societypress' ) ); ?>"><?php wp_nonce_field( 'sp_delete_library_item_' . $item->id ); ?><input type="hidden" name="action" value="delete"><input type="hidden" name="item_id" value="<?php echo (int) $item->id; ?>"><button type="submit" class="sp-link-btn sp-catalog-delete-btn"><?php esc_html_e( 'Delete', 'societypress' ); ?></button></form></span>
                                 </div>
                             </td>
                             <td><?php echo esc_html( $item->author ?: '—' ); ?></td>
@@ -48936,7 +49148,7 @@ function sp_render_library_categories_page(): void {
                         ?>
                             <tr>
                                 <td><strong><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $cat->name ); ?></a></strong>
-                                    <div class="row-actions"><span><a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> | </span><span><form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-categories' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete?', 'societypress' ) ); ?>');"><?php wp_nonce_field( 'sp_delete_library_cat_' . $cat->id ); ?><input type="hidden" name="action" value="delete"><input type="hidden" name="cat_id" value="<?php echo (int) $cat->id; ?>"><button type="submit" class="sp-link-btn" style="background:none; border:none; color:#b32d2e; cursor:pointer; padding:0; font:inherit; text-decoration:underline;"><?php esc_html_e( 'Delete', 'societypress' ); ?></button></form></span></div>
+                                    <div class="row-actions"><span><a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> | </span><span><form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-categories' ) ); ?>" style="display:inline;" data-sp-confirm="<?php echo esc_attr( __( 'Delete?', 'societypress' ) ); ?>"><?php wp_nonce_field( 'sp_delete_library_cat_' . $cat->id ); ?><input type="hidden" name="action" value="delete"><input type="hidden" name="cat_id" value="<?php echo (int) $cat->id; ?>"><button type="submit" class="sp-link-btn" style="background:none; border:none; color:#b32d2e; cursor:pointer; padding:0; font:inherit; text-decoration:underline;"><?php esc_html_e( 'Delete', 'societypress' ); ?></button></form></span></div>
                                 </td>
                                 <td><?php echo esc_html( $cat->slug ); ?></td>
                                 <td><?php echo $cat->sort_order; ?></td>
@@ -49599,6 +49811,7 @@ function sp_render_resources_page(): void {
     <div class="wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Resource Links', 'societypress' ); ?></h1>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-import-links' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Import CSV', 'societypress' ); ?></a>
+        <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=sp_export_resources&nonce=' . wp_create_nonce( 'sp_export_resources' ) ) ); ?>" class="page-title-action"><?php esc_html_e( 'Export CSV', 'societypress' ); ?></a>
         <hr class="wp-header-end">
 
         <div style="background:#fff; border:1px solid #ccd0d4; border-radius:4px; padding:20px; margin:16px 0;">
@@ -49678,7 +49891,7 @@ function sp_render_resources_page(): void {
                                 <br><a href="<?php echo esc_url( $r->url ); ?>" target="_blank" style="color:#666; font-size:12px;"><?php echo esc_html( $r->url ); ?></a>
                                 <div class="row-actions">
                                     <span class="edit"><a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> | </span>
-                                    <span class="delete"><form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-library' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this resource?', 'societypress' ) ); ?>');"><?php wp_nonce_field( 'sp_delete_resource_' . $r->id ); ?><input type="hidden" name="action" value="delete"><input type="hidden" name="resource_id" value="<?php echo (int) $r->id; ?>"><button type="submit" class="sp-link-btn" style="background:none; border:none; color:#b32d2e; cursor:pointer; padding:0; font:inherit; text-decoration:underline;"><?php esc_html_e( 'Delete', 'societypress' ); ?></button></form></span>
+                                    <span class="delete"><form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-library' ) ); ?>" style="display:inline;" data-sp-confirm="<?php echo esc_attr( __( 'Delete this resource?', 'societypress' ) ); ?>"><?php wp_nonce_field( 'sp_delete_resource_' . $r->id ); ?><input type="hidden" name="action" value="delete"><input type="hidden" name="resource_id" value="<?php echo (int) $r->id; ?>"><button type="submit" class="sp-link-btn" style="background:none; border:none; color:#b32d2e; cursor:pointer; padding:0; font:inherit; text-decoration:underline;"><?php esc_html_e( 'Delete', 'societypress' ); ?></button></form></span>
                                 </div>
                             </td>
                             <td><?php echo esc_html( $r->category_name ?: '—' ); ?></td>
@@ -49783,7 +49996,7 @@ function sp_render_resource_categories_page(): void {
                                     <strong><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $cat->name ); ?></a></strong>
                                     <div class="row-actions">
                                         <span><a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> | </span>
-                                        <span><form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-resource-categories' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete?', 'societypress' ) ); ?>');"><?php wp_nonce_field( 'sp_delete_resource_cat_' . $cat->id ); ?><input type="hidden" name="action" value="delete"><input type="hidden" name="cat_id" value="<?php echo (int) $cat->id; ?>"><button type="submit" class="sp-link-btn" style="background:none; border:none; color:#b32d2e; cursor:pointer; padding:0; font:inherit; text-decoration:underline;"><?php esc_html_e( 'Delete', 'societypress' ); ?></button></form></span>
+                                        <span><form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-resource-categories' ) ); ?>" style="display:inline;" data-sp-confirm="<?php echo esc_attr( __( 'Delete?', 'societypress' ) ); ?>"><?php wp_nonce_field( 'sp_delete_resource_cat_' . $cat->id ); ?><input type="hidden" name="action" value="delete"><input type="hidden" name="cat_id" value="<?php echo (int) $cat->id; ?>"><button type="submit" class="sp-link-btn" style="background:none; border:none; color:#b32d2e; cursor:pointer; padding:0; font:inherit; text-decoration:underline;"><?php esc_html_e( 'Delete', 'societypress' ); ?></button></form></span>
                                     </div>
                                 </td>
                                 <td><?php echo esc_html( $cat->slug ); ?></td>
@@ -51126,10 +51339,11 @@ function sp_render_volunteer_opportunities_frontend(): string {
         // Cancel buttons
         document.querySelectorAll('.sp-vol-cancel-btn').forEach(function(btn) {
             btn.addEventListener('click', function() {
-                if (!confirm('<?php echo esc_js( __( 'Cancel your volunteer signup?', 'societypress' ) ); ?>')) return;
-                var signupId = this.getAttribute('data-signup-id');
-                this.disabled = true;
-                this.textContent = 'Cancelling\u2026';
+                var self = this;
+                spConfirm('<?php echo esc_js( __( 'Cancel your volunteer signup?', 'societypress' ) ); ?>', function() {
+                var signupId = self.getAttribute('data-signup-id');
+                self.disabled = true;
+                self.textContent = 'Cancelling\u2026';
 
                 var fd = new FormData();
                 fd.append('action', 'sp_volunteer_cancel');
@@ -51249,7 +51463,7 @@ function sp_render_volunteer_opportunities_page(): void {
                         <td>
                             <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-volunteer-opportunity-edit&opp_id=' . $opp->id ) ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
                             |
-                            <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-volunteer-opportunities' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this opportunity and all signups?', 'societypress' ) ); ?>');">
+                            <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-volunteer-opportunities' ) ); ?>" style="display:inline;" data-sp-confirm="<?php echo esc_attr( __( 'Delete this opportunity and all signups?', 'societypress' ) ); ?>">
                                 <?php wp_nonce_field( 'sp_delete_opp_' . $opp->id ); ?>
                                 <input type="hidden" name="action" value="delete">
                                 <input type="hidden" name="opp_id" value="<?php echo (int) $opp->id; ?>">
@@ -51885,6 +52099,7 @@ function sp_render_leadership_page(): void {
 
     <div class="wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Leadership & Committees', 'societypress' ); ?></h1>
+        <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=sp_export_leadership&nonce=' . wp_create_nonce( 'sp_export_leadership' ) ) ); ?>" class="page-title-action"><?php esc_html_e( 'Export CSV', 'societypress' ); ?></a>
         <hr class="wp-header-end">
 
         <?php
@@ -51934,7 +52149,7 @@ function sp_render_leadership_page(): void {
                             <form method="post" class="sp-leadership-inline-form">
                                 <?php wp_nonce_field( 'sp_delete_leadership_role_' . $o->id ); ?>
                                 <input type="hidden" name="delete_role_id" value="<?php echo (int) $o->id; ?>">
-                                <button type="submit" name="sp_delete_leadership" value="1" class="sp-leadership-delete-btn" onclick="return confirm('<?php echo esc_js( __( 'Delete this officer position?', 'societypress' ) ); ?>');">
+                                <button type="submit" name="sp_delete_leadership" value="1" class="sp-leadership-delete-btn" data-sp-confirm="<?php echo esc_attr( __( 'Delete this officer position?', 'societypress' ) ); ?>">
                                     <?php esc_html_e( 'Delete', 'societypress' ); ?>
                                 </button>
                             </form>
@@ -52124,7 +52339,7 @@ function sp_render_leadership_page(): void {
                                             <form method="post" class="sp-leadership-inline-form">
                                                 <?php wp_nonce_field( 'sp_delete_leadership_role_' . $cm->id ); ?>
                                                 <input type="hidden" name="delete_role_id" value="<?php echo (int) $cm->id; ?>">
-                                                <button type="submit" name="sp_delete_leadership" value="1" class="sp-leadership-delete-btn" onclick="return confirm('<?php echo esc_js( __( 'Remove this committee assignment?', 'societypress' ) ); ?>');">
+                                                <button type="submit" name="sp_delete_leadership" value="1" class="sp-leadership-delete-btn" data-sp-confirm="<?php echo esc_attr( __( 'Remove this committee assignment?', 'societypress' ) ); ?>">
                                                     <?php esc_html_e( 'Delete', 'societypress' ); ?>
                                                 </button>
                                             </form>
@@ -53296,9 +53511,7 @@ function sp_render_email_templates_page(): void {
         var resetBtn = document.getElementById('sp-reset-template');
         if (resetBtn) {
             resetBtn.addEventListener('click', function() {
-                if (!confirm(<?php echo wp_json_encode( __( 'Reset this template to the default? Your customizations will be lost.', 'societypress' ) ); ?>)) {
-                    return;
-                }
+                spConfirm(<?php echo wp_json_encode( __( 'Reset this template to the default? Your customizations will be lost.', 'societypress' ) ); ?>, function() {
                 // Fetch the default template via AJAX
                 var formData = new FormData();
                 formData.append('action', 'sp_get_default_template');
@@ -53538,7 +53751,9 @@ function sp_render_email_log_page(): void {
     </style>
 
     <div class="wrap">
-        <h1><?php esc_html_e( 'Email Log', 'societypress' ); ?></h1>
+        <h1 class="wp-heading-inline"><?php esc_html_e( 'Email Log', 'societypress' ); ?></h1>
+        <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=sp_export_email_log&nonce=' . wp_create_nonce( 'sp_export_email_log' ) ) ); ?>" class="page-title-action"><?php esc_html_e( 'Export CSV', 'societypress' ); ?></a>
+        <hr class="wp-header-end">
 
         <!-- Stats cards -->
         <div class="sp-email-log-stats-row">
@@ -54035,7 +54250,7 @@ function sp_render_blast_email_page(): void {
                                 <?php else : ?>
                                     <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email&view=' . $row->id ) ); ?>"><?php esc_html_e( 'View', 'societypress' ); ?></a> |
                                 <?php endif; ?>
-                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this blast email?', 'societypress' ) ); ?>');">
+                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ); ?>" style="display:inline;" data-sp-confirm="<?php echo esc_attr( __( 'Delete this blast email?', 'societypress' ) ); ?>">
                                     <?php wp_nonce_field( 'sp_delete_blast_' . $row->id ); ?>
                                     <input type="hidden" name="action" value="delete">
                                     <input type="hidden" name="blast_id" value="<?php echo (int) $row->id; ?>">
@@ -54373,7 +54588,8 @@ function sp_render_blast_email_compose_page(): void {
             <p class="submit sp-blast-submit-row">
                 <button type="submit" class="button button-primary" onclick="document.getElementById('sp-blast-action').value='save_draft';"><?php esc_html_e( 'Save Draft', 'societypress' ); ?></button>
                 <button type="submit" class="button button-primary sp-blast-send-btn"
-                        onclick="if(!confirm('<?php echo esc_js( __( 'Send this email to all selected recipients? This cannot be undone.', 'societypress' ) ); ?>')){event.preventDefault();return;}document.getElementById('sp-blast-action').value='send_now';">
+                        data-sp-confirm="<?php echo esc_attr( __( 'Send this email to all selected recipients? This cannot be undone.', 'societypress' ) ); ?>"
+                        onclick="document.getElementById('sp-blast-action').value='send_now';">
                     <?php esc_html_e( 'Send Now', 'societypress' ); ?>
                 </button>
                 <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ); ?>" class="button"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
@@ -54799,6 +55015,7 @@ function sp_render_donations_page(): void {
     <div class="wrap sp-admin-wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Donations', 'societypress' ); ?></h1>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-donation-edit' ) ); ?>" class="page-title-action">Record Donation</a>
+        <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=sp_export_donations&nonce=' . wp_create_nonce( 'sp_export_donations' ) ) ); ?>" class="page-title-action"><?php esc_html_e( 'Export CSV', 'societypress' ); ?></a>
 
         <?php if ( isset( $_GET['deleted'] ) ) : ?>
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Donation deleted.', 'societypress' ); ?></p></div>
@@ -55010,7 +55227,7 @@ function sp_render_donations_page(): void {
                                 <td>
                                     <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-donation-edit&donation_id=' . $row->id ) ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
                                     |
-                                    <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-donations' ) ); ?>" class="sp-donations-delete-form" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this donation record?', 'societypress' ) ); ?>');">
+                                    <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-donations' ) ); ?>" class="sp-donations-delete-form" data-sp-confirm="<?php echo esc_attr( __( 'Delete this donation record?', 'societypress' ) ); ?>">
                                         <?php wp_nonce_field( 'sp_delete_donation_' . $row->id ); ?>
                                         <input type="hidden" name="action" value="delete">
                                         <input type="hidden" name="donation_id" value="<?php echo (int) $row->id; ?>">
@@ -55026,7 +55243,7 @@ function sp_render_donations_page(): void {
             <?php if ( ! empty( $rows ) ) : ?>
                 <div class="sp-donations-bulk-bar">
                     <button type="submit" name="sp_bulk_acknowledge" value="1" class="button"
-                            onclick="return confirm('<?php echo esc_js( __( 'Send acknowledgment emails to all selected donors?', 'societypress' ) ); ?>');">
+                            data-sp-confirm="<?php echo esc_attr( __( 'Send acknowledgment emails to all selected donors?', 'societypress' ) ); ?>">
                         <?php esc_html_e( 'Send Acknowledgment Email', 'societypress' ); ?>
                     </button>
                 </div>
@@ -55463,7 +55680,7 @@ function sp_render_campaigns_page(): void {
                                 |
                                 <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-donations&campaign=' . $c->id ) ); ?>"><?php esc_html_e( 'Donations', 'societypress' ); ?></a>
                                 |
-                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-campaigns' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this campaign? Donations will be unlinked, not deleted.', 'societypress' ) ); ?>');">
+                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-campaigns' ) ); ?>" style="display:inline;" data-sp-confirm="<?php echo esc_attr( __( 'Delete this campaign? Donations will be unlinked, not deleted.', 'societypress' ) ); ?>">
                                     <?php wp_nonce_field( 'sp_delete_campaign_' . $c->id ); ?>
                                     <input type="hidden" name="action" value="delete">
                                     <input type="hidden" name="campaign_id" value="<?php echo (int) $c->id; ?>">
@@ -56881,6 +57098,351 @@ function sp_ajax_export_library(): void {
 
 
 // ============================================================================
+// DATA PORTABILITY — Per-Module CSV Exports
+// WHY: Every piece of data a society puts into SocietyPress can come back
+//      out in a standard format. No export fees, no "contact us," no degraded
+//      exports. Your data is yours. Always.
+// ============================================================================
+
+
+/**
+ * Export events as CSV.
+ *
+ * WHY: Events are a society's history. Treasurers need them for annual reports,
+ *      archivists need them for records, and societies switching platforms need
+ *      them for migration.
+ */
+add_action( 'wp_ajax_sp_export_events', function () {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+    }
+    if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_events' ) ) {
+        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $items = $wpdb->get_results(
+        "SELECT e.*, c.name AS category_name
+         FROM {$prefix}events e
+         LEFT JOIN {$prefix}event_categories c ON e.category_id = c.id
+         ORDER BY e.event_date DESC"
+    );
+
+    $headers = [
+        'ID', 'Title', 'Category', 'Status', 'Event Date', 'Start Time',
+        'End Time', 'Location Name', 'Location Address', 'Is Virtual',
+        'Virtual URL', 'Capacity', 'Price Per Ticket', 'Contact Name',
+        'Contact Email', 'Contact Phone', 'External URL', 'Description',
+        'Created At', 'Updated At',
+    ];
+
+    $filename = 'events-' . wp_date( 'Y-m-d' ) . '.csv';
+    header( 'Content-Type: text/csv; charset=utf-8' );
+    header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+    header( 'Pragma: no-cache' );
+    header( 'Expires: 0' );
+
+    $out = fopen( 'php://output', 'w' );
+    fwrite( $out, "\xEF\xBB\xBF" );
+    fputcsv( $out, $headers );
+
+    foreach ( $items as $e ) {
+        fputcsv( $out, [
+            $e->id, $e->title, $e->category_name ?? '', $e->status ?? '',
+            $e->event_date, $e->start_time, $e->end_time,
+            $e->location_name, $e->location_address,
+            $e->is_virtual, $e->virtual_url, $e->capacity,
+            $e->price_per_ticket, $e->contact_name, $e->contact_email,
+            $e->contact_phone, $e->external_url ?? '', $e->description,
+            $e->created_at, $e->updated_at,
+        ] );
+    }
+
+    fclose( $out );
+    exit;
+} );
+
+
+/**
+ * Export donations as CSV.
+ *
+ * WHY: Treasurers need donation records for tax reports and acknowledgment
+ *      tracking. Societies switching platforms need their full giving history.
+ */
+add_action( 'wp_ajax_sp_export_donations', function () {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+    }
+    if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_donations' ) ) {
+        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $items = $wpdb->get_results(
+        "SELECT d.*, c.name AS campaign_name, u.display_name AS recorded_by_name
+         FROM {$prefix}donations d
+         LEFT JOIN {$prefix}campaigns c ON d.campaign_id = c.id
+         LEFT JOIN {$wpdb->users} u ON d.recorded_by = u.ID
+         ORDER BY d.date DESC"
+    );
+
+    $headers = [
+        'ID', 'Donor Name', 'Donor Email', 'Amount', 'Type', 'Date',
+        'Campaign', 'In-Kind Description', 'Anonymous', 'Acknowledgment Sent',
+        'Acknowledgment Date', 'Note', 'Recorded By', 'Created At',
+    ];
+
+    $filename = 'donations-' . wp_date( 'Y-m-d' ) . '.csv';
+    header( 'Content-Type: text/csv; charset=utf-8' );
+    header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+    header( 'Pragma: no-cache' );
+    header( 'Expires: 0' );
+
+    $out = fopen( 'php://output', 'w' );
+    fwrite( $out, "\xEF\xBB\xBF" );
+    fputcsv( $out, $headers );
+
+    foreach ( $items as $d ) {
+        fputcsv( $out, [
+            $d->id, $d->donor_name, $d->donor_email, $d->amount,
+            $d->type, $d->date, $d->campaign_name ?? '',
+            $d->in_kind_description, $d->is_anonymous ? 'Yes' : 'No',
+            $d->acknowledgment_sent ? 'Yes' : 'No', $d->acknowledgment_date,
+            $d->note, $d->recorded_by_name ?? '', $d->created_at,
+        ] );
+    }
+
+    fclose( $out );
+    exit;
+} );
+
+
+/**
+ * Export leadership & committee roles as CSV.
+ *
+ * WHY: Governance history — who served in what role and when — is critical
+ *      for society records and officer transition documentation.
+ */
+add_action( 'wp_ajax_sp_export_leadership', function () {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+    }
+    if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_leadership' ) ) {
+        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $items = $wpdb->get_results(
+        "SELECT r.*, u.display_name AS member_name
+         FROM {$prefix}volunteer_roles r
+         LEFT JOIN {$wpdb->users} u ON r.user_id = u.ID
+         ORDER BY r.role_type ASC, r.start_date DESC"
+    );
+
+    $headers = [
+        'ID', 'Member Name', 'Role Title', 'Role Type', 'Committee',
+        'Start Date', 'End Date', 'Status', 'Created At', 'Updated At',
+    ];
+
+    $filename = 'leadership-committees-' . wp_date( 'Y-m-d' ) . '.csv';
+    header( 'Content-Type: text/csv; charset=utf-8' );
+    header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+    header( 'Pragma: no-cache' );
+    header( 'Expires: 0' );
+
+    $out = fopen( 'php://output', 'w' );
+    fwrite( $out, "\xEF\xBB\xBF" );
+    fputcsv( $out, $headers );
+
+    foreach ( $items as $r ) {
+        fputcsv( $out, [
+            $r->id, $r->member_name ?? '', $r->role_title, $r->role_type,
+            $r->committee, $r->start_date, $r->end_date, $r->status,
+            $r->created_at, $r->updated_at,
+        ] );
+    }
+
+    fclose( $out );
+    exit;
+} );
+
+
+/**
+ * Export store orders with line items as CSV.
+ *
+ * WHY: Treasurers need order history for bookkeeping. One row per line item —
+ *      an order with 3 items appears as 3 rows sharing the same order columns.
+ *      This is the standard e-commerce export format that imports into any
+ *      spreadsheet or accounting system.
+ */
+add_action( 'wp_ajax_sp_export_orders', function () {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+    }
+    if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_orders' ) ) {
+        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // One row per line item, with order data repeated on each row
+    $items = $wpdb->get_results(
+        "SELECT o.id AS order_id, o.created_at AS order_date, o.status,
+                o.customer_name, o.customer_email, o.subtotal, o.tax, o.total,
+                o.payment_method, o.shipping_address_1, o.shipping_city,
+                o.shipping_state, o.shipping_postal, o.admin_note,
+                oi.title AS item_title, oi.quantity, oi.unit_price, oi.line_total
+         FROM {$prefix}orders o
+         LEFT JOIN {$prefix}order_items oi ON oi.order_id = o.id
+         ORDER BY o.created_at DESC, oi.id ASC"
+    );
+
+    $headers = [
+        'Order ID', 'Order Date', 'Status', 'Customer Name', 'Customer Email',
+        'Subtotal', 'Tax', 'Total', 'Payment Method', 'Shipping Address',
+        'Shipping City', 'Shipping State', 'Shipping ZIP', 'Admin Note',
+        'Item Title', 'Quantity', 'Unit Price', 'Line Total',
+    ];
+
+    $filename = 'store-orders-' . wp_date( 'Y-m-d' ) . '.csv';
+    header( 'Content-Type: text/csv; charset=utf-8' );
+    header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+    header( 'Pragma: no-cache' );
+    header( 'Expires: 0' );
+
+    $out = fopen( 'php://output', 'w' );
+    fwrite( $out, "\xEF\xBB\xBF" );
+    fputcsv( $out, $headers );
+
+    foreach ( $items as $row ) {
+        fputcsv( $out, [
+            $row->order_id, $row->order_date, $row->status,
+            $row->customer_name, $row->customer_email,
+            $row->subtotal, $row->tax, $row->total, $row->payment_method,
+            $row->shipping_address_1, $row->shipping_city,
+            $row->shipping_state, $row->shipping_postal, $row->admin_note,
+            $row->item_title ?? '', $row->quantity ?? '', $row->unit_price ?? '',
+            $row->line_total ?? '',
+        ] );
+    }
+
+    fclose( $out );
+    exit;
+} );
+
+
+/**
+ * Export email log as CSV.
+ *
+ * WHY: Communication history is important for compliance and troubleshooting.
+ *      Body content is excluded (too large for CSV) — this exports metadata.
+ */
+add_action( 'wp_ajax_sp_export_email_log', function () {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+    }
+    if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_email_log' ) ) {
+        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_email_log';
+
+    $items = $wpdb->get_results(
+        "SELECT id, recipient, subject, status, email_type, error_message,
+                created_at, sent_at
+         FROM {$table}
+         ORDER BY created_at DESC"
+    );
+
+    $headers = [
+        'ID', 'Recipient', 'Subject', 'Status', 'Type', 'Error Message',
+        'Created At', 'Sent At',
+    ];
+
+    $filename = 'email-log-' . wp_date( 'Y-m-d' ) . '.csv';
+    header( 'Content-Type: text/csv; charset=utf-8' );
+    header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+    header( 'Pragma: no-cache' );
+    header( 'Expires: 0' );
+
+    $out = fopen( 'php://output', 'w' );
+    fwrite( $out, "\xEF\xBB\xBF" );
+    fputcsv( $out, $headers );
+
+    foreach ( $items as $e ) {
+        fputcsv( $out, [
+            $e->id, $e->recipient, $e->subject, $e->status,
+            $e->email_type, $e->error_message, $e->created_at, $e->sent_at,
+        ] );
+    }
+
+    fclose( $out );
+    exit;
+} );
+
+
+/**
+ * Export resource links as CSV.
+ *
+ * WHY: Curated research link collections take years to build. Societies
+ *      should never lose that work to a platform change.
+ */
+add_action( 'wp_ajax_sp_export_resources', function () {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+    }
+    if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_resources' ) ) {
+        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $items = $wpdb->get_results(
+        "SELECT r.*, c.name AS category_name
+         FROM {$prefix}resources r
+         LEFT JOIN {$prefix}resource_categories c ON r.category_id = c.id
+         ORDER BY c.sort_order ASC, r.sort_order ASC"
+    );
+
+    $headers = [
+        'ID', 'Title', 'URL', 'Description', 'Category', 'Featured',
+        'Active', 'Sort Order', 'Created At', 'Updated At',
+    ];
+
+    $filename = 'resource-links-' . wp_date( 'Y-m-d' ) . '.csv';
+    header( 'Content-Type: text/csv; charset=utf-8' );
+    header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+    header( 'Pragma: no-cache' );
+    header( 'Expires: 0' );
+
+    $out = fopen( 'php://output', 'w' );
+    fwrite( $out, "\xEF\xBB\xBF" );
+    fputcsv( $out, $headers );
+
+    foreach ( $items as $r ) {
+        fputcsv( $out, [
+            $r->id, $r->title, $r->url, $r->description,
+            $r->category_name ?? '', $r->featured ? 'Yes' : 'No',
+            $r->active ? 'Yes' : 'No', $r->sort_order,
+            $r->created_at, $r->updated_at,
+        ] );
+    }
+
+    fclose( $out );
+    exit;
+} );
+
+
+// ============================================================================
 // LIBRARY ENRICHMENT — Batch-fetch cover images + ISBNs from Open Library
 //
 // WHY: The imported catalog has 19k+ items but zero ISBNs and no cover images.
@@ -57638,7 +58200,7 @@ function sp_render_newsletter_archive_page(): void {
                             <?php endif; ?>
                             <div class="sp-newsletter-archive-actions">
                                 <a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> |
-                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-newsletter-archive' ) ); ?>" class="sp-newsletter-archive-delete-form" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this newsletter?', 'societypress' ) ); ?>');">
+                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-newsletter-archive' ) ); ?>" class="sp-newsletter-archive-delete-form" data-sp-confirm="<?php echo esc_attr( __( 'Delete this newsletter?', 'societypress' ) ); ?>">
                                     <?php wp_nonce_field( 'sp_delete_newsletter_' . $nl->id ); ?>
                                     <input type="hidden" name="action" value="delete">
                                     <input type="hidden" name="newsletter_id" value="<?php echo (int) $nl->id; ?>">
@@ -59308,7 +59870,7 @@ function sp_render_record_collections_page(): void {
                                 <a href="<?php echo esc_url( $browse_url ); ?>" class="button button-small"><?php esc_html_e( 'Browse', 'societypress' ); ?></a>
                                 <a href="<?php echo esc_url( $import_url ); ?>" class="button button-small"><?php esc_html_e( 'Import', 'societypress' ); ?></a>
                                 <a href="<?php echo esc_url( $edit_url ); ?>" class="button button-small"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
-                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-collections' ) ); ?>" class="sp-records-delete-form" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this collection and ALL its records? This cannot be undone.', 'societypress' ) ); ?>');">
+                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-collections' ) ); ?>" class="sp-records-delete-form" data-sp-confirm="<?php echo esc_attr( __( 'Delete this collection and ALL its records? This cannot be undone.', 'societypress' ) ); ?>">
                                     <?php wp_nonce_field( 'sp_delete_collection_' . $c->id ); ?>
                                     <input type="hidden" name="action" value="delete">
                                     <input type="hidden" name="collection_id" value="<?php echo (int) $c->id; ?>">
@@ -59934,7 +60496,7 @@ function sp_render_record_browse_page(): void {
                             <?php endforeach; ?>
                             <td>
                                 <a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> |
-                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-browse&collection_id=' . $collection_id ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this record?', 'societypress' ) ); ?>');">
+                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-browse&collection_id=' . $collection_id ) ); ?>" style="display:inline;" data-sp-confirm="<?php echo esc_attr( __( 'Delete this record?', 'societypress' ) ); ?>">
                                     <?php wp_nonce_field( 'sp_delete_record_' . $rec->id ); ?>
                                     <input type="hidden" name="action" value="delete">
                                     <input type="hidden" name="record_id" value="<?php echo (int) $rec->id; ?>">
@@ -62332,7 +62894,9 @@ function sp_render_orders_page(): void {
     ];
     ?>
     <div class="wrap sp-admin-wrap">
-        <h1><?php esc_html_e( 'Store Orders', 'societypress' ); ?></h1>
+        <h1 class="wp-heading-inline"><?php esc_html_e( 'Store Orders', 'societypress' ); ?></h1>
+        <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=sp_export_orders&nonce=' . wp_create_nonce( 'sp_export_orders' ) ) ); ?>" class="page-title-action"><?php esc_html_e( 'Export CSV', 'societypress' ); ?></a>
+        <hr class="wp-header-end">
 
         <?php if ( $updated === '1' ) : ?>
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Order updated.', 'societypress' ); ?></p></div>
@@ -62935,7 +63499,7 @@ function sp_render_documents_page(): void {
                         <td>
                             <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-document-edit&id=' . $doc->id ) ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
                             |
-                            <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-documents' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this document?', 'societypress' ) ); ?>');">
+                            <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-documents' ) ); ?>" style="display:inline;" data-sp-confirm="<?php echo esc_attr( __( 'Delete this document?', 'societypress' ) ); ?>">
                                 <?php wp_nonce_field( 'sp_delete_document_' . $doc->id ); ?>
                                 <input type="hidden" name="action" value="delete">
                                 <input type="hidden" name="id" value="<?php echo (int) $doc->id; ?>">
@@ -63047,7 +63611,7 @@ function sp_render_document_categories_page(): void {
                                 <td>
                                     <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-document-categories&edit=' . $cat->id ) ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
                                     |
-                                    <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-document-categories' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php echo esc_js( __( 'Delete this category? Documents in it will become uncategorized.', 'societypress' ) ); ?>');">
+                                    <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-document-categories' ) ); ?>" style="display:inline;" data-sp-confirm="<?php echo esc_attr( __( 'Delete this category? Documents in it will become uncategorized.', 'societypress' ) ); ?>">
                                         <?php wp_nonce_field( 'sp_delete_doc_cat_' . $cat->id ); ?>
                                         <input type="hidden" name="action" value="delete">
                                         <input type="hidden" name="id" value="<?php echo (int) $cat->id; ?>">
@@ -64751,10 +65315,7 @@ function sp_render_external_calendars_page(): void {
                 var nonce  = this.getAttribute('data-nonce');
                 var label  = this.getAttribute('data-label');
 
-                if (!confirm('<?php echo esc_js( __( 'Delete this feed and all its imported events?', 'societypress' ) ); ?>\n\n' + label)) {
-                    return;
-                }
-
+                spConfirm('<?php echo esc_js( __( 'Delete this feed and all its imported events?', 'societypress' ) ); ?>' + '\n\n' + label, function() {
                 var formData = new FormData();
                 formData.append('action', 'sp_delete_ical_feed');
                 formData.append('feed_id', feedId);
@@ -64953,4 +65514,308 @@ add_action( 'wp_ajax_sp_detach_event_from_feed', function () {
     sp_audit( 'event_detached', "Event detached from iCal feed", 'event', $event_id );
 
     wp_send_json_success( [ 'message' => __( 'Event detached from feed. It is now a standalone event.', 'societypress' ) ] );
+} );
+
+
+// ============================================================================
+// SITE HEALTH — REST API monitoring endpoint
+//
+// WHY: Societies run SocietyPress on shared hosting with no monitoring.
+//      This endpoint lets Harold (or an uptime service like UptimeRobot) check
+//      that the plugin is healthy without logging in. It verifies:
+//      - The plugin is active and responsive
+//      - All expected database tables exist
+//      - WP cron jobs are scheduled
+//      - PHP and WordPress versions meet requirements
+//
+//      The endpoint is intentionally public (no auth) so external monitors can
+//      hit it. It returns status info only — no sensitive data.
+// ============================================================================
+
+add_action( 'rest_api_init', function () {
+    register_rest_route( 'societypress/v1', '/health', [
+        'methods'             => 'GET',
+        'callback'            => 'sp_rest_health_check',
+        'permission_callback' => '__return_true',
+    ] );
+} );
+
+
+/**
+ * REST handler: /wp-json/societypress/v1/health
+ *
+ * Returns a JSON object with overall status (ok/degraded/error), individual
+ * check results, and basic version info. No authentication required — this
+ * is designed for external uptime monitors.
+ */
+function sp_rest_health_check(): WP_REST_Response {
+    global $wpdb;
+    $prefix  = $wpdb->prefix . 'sp_';
+    $checks  = [];
+    $overall = 'ok';
+
+    // ---- CHECK 1: Database tables ----
+    // WHY: If a table is missing, entire features break silently.
+    $expected_tables = [
+        'audit_log', 'blast_emails', 'campaigns', 'document_categories',
+        'documents', 'donations', 'email_log', 'event_categories',
+        'event_registrations', 'event_reminders', 'event_slots',
+        'event_speaker_assignments', 'event_speakers', 'events',
+        'group_members', 'groups', 'help_requests', 'help_responses',
+        'ical_feeds', 'library_categories', 'library_items', 'member_meta',
+        'member_notes', 'member_payments', 'member_relationships',
+        'member_research_areas', 'member_surnames', 'members',
+        'membership_tiers', 'newsletters', 'order_items', 'orders',
+        'pending_profile_changes', 'photo_album_items', 'photo_albums',
+        'record_collection_fields', 'record_collections', 'record_values',
+        'records', 'renewal_reminders', 'resource_categories', 'resources',
+        'volunteer_hours', 'volunteer_opportunities', 'volunteer_roles',
+        'volunteer_signups',
+    ];
+
+    $existing = $wpdb->get_col( $wpdb->prepare(
+        'SHOW TABLES LIKE %s',
+        $prefix . '%'
+    ) );
+    $existing_short = array_map( function ( $t ) use ( $prefix ) {
+        return str_replace( $prefix, '', $t );
+    }, $existing );
+
+    $missing = array_diff( $expected_tables, $existing_short );
+    if ( empty( $missing ) ) {
+        $checks['database'] = [
+            'status' => 'ok',
+            'tables' => count( $existing ),
+        ];
+    } else {
+        $checks['database'] = [
+            'status'  => 'error',
+            'tables'  => count( $existing ),
+            'missing' => array_values( $missing ),
+        ];
+        $overall = 'error';
+    }
+
+    // ---- CHECK 2: Cron jobs ----
+    // WHY: If crons aren't scheduled, renewal reminders don't send, event
+    //      reminders don't fire, and email logs don't get cleaned up.
+    $cron_hooks = [
+        'sp_daily_maintenance',
+        'sp_email_log_cleanup_cron',
+        'sp_event_reminder_cron',
+        'sp_renewal_reminder_cron',
+        'sp_ical_feed_sync_cron',
+    ];
+
+    $cron_results = [];
+    foreach ( $cron_hooks as $hook ) {
+        $next = wp_next_scheduled( $hook );
+        $cron_results[ $hook ] = $next
+            ? [ 'scheduled' => true, 'next_run' => wp_date( 'c', $next ) ]
+            : [ 'scheduled' => false ];
+
+        // Cron not scheduled for an enabled module is a warning, not an error
+        if ( ! $next ) {
+            $overall = ( $overall === 'error' ) ? 'error' : 'degraded';
+        }
+    }
+    $checks['crons'] = $cron_results;
+
+    // ---- CHECK 3: Plugin version + environment ----
+    $checks['environment'] = [
+        'plugin_version' => defined( 'SOCIETYPRESS_VERSION' ) ? SOCIETYPRESS_VERSION : 'unknown',
+        'wp_version'     => get_bloginfo( 'version' ),
+        'php_version'    => PHP_VERSION,
+        'php_ok'         => version_compare( PHP_VERSION, '8.0', '>=' ),
+        'wp_ok'          => version_compare( get_bloginfo( 'version' ), '6.0', '>=' ),
+        'libsodium'      => function_exists( 'sodium_crypto_aead_xchacha20poly1305_ietf_encrypt' ),
+    ];
+
+    if ( ! $checks['environment']['php_ok'] || ! $checks['environment']['wp_ok'] ) {
+        $overall = 'degraded';
+    }
+
+    return new WP_REST_Response( [
+        'status'     => $overall,
+        'checked_at' => current_time( 'c' ),
+        'site_url'   => home_url(),
+        'checks'     => $checks,
+    ], $overall === 'ok' ? 200 : 503 );
+}
+
+
+// ============================================================================
+// CUSTOM CONFIRMATION MODAL — spConfirm()
+//
+// WHY: Native browser confirm() dialogs are ugly, inconsistent across browsers,
+//      cannot be styled, and are being deprecated/restricted by some browsers.
+//      This custom modal provides a branded, accessible confirmation dialog
+//      that matches the SocietyPress admin design. It supports:
+//      - Async callback pattern (replaces synchronous confirm())
+//      - data-sp-confirm attribute for automatic form/link interception
+//      - Danger variant (red confirm button) for destructive actions
+//      - Keyboard: ESC to cancel, Enter to confirm
+//      - Focus trap for accessibility
+// ============================================================================
+
+add_action( 'admin_footer', function () {
+    // Only output on SP admin pages
+    $screen = get_current_screen();
+    if ( ! $screen || strpos( $screen->id ?? '', 'sp-' ) === false && strpos( $screen->id ?? '', 'societypress' ) === false ) {
+        // Also check if we're on a toplevel_page_sp- or societypress page
+        if ( ! $screen || ( strpos( $screen->base ?? '', 'sp-' ) === false && strpos( $screen->base ?? '', 'toplevel' ) === false ) ) {
+            // Cast a wide net — output on all admin pages since SP menu items
+            // appear across various screen IDs
+        }
+    }
+    ?>
+    <!-- SocietyPress Confirmation Modal -->
+    <div id="sp-confirm-overlay" class="sp-confirm-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="sp-confirm-message">
+        <div class="sp-confirm-box">
+            <p id="sp-confirm-message" class="sp-confirm-message"></p>
+            <div class="sp-confirm-actions">
+                <button type="button" id="sp-confirm-no" class="button sp-confirm-btn"><?php esc_html_e( 'Cancel', 'societypress' ); ?></button>
+                <button type="button" id="sp-confirm-yes" class="button sp-confirm-btn sp-confirm-btn--danger"><?php esc_html_e( 'Confirm', 'societypress' ); ?></button>
+            </div>
+        </div>
+    </div>
+    <style>
+        .sp-confirm-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 999999;
+            background: rgba(0, 0, 0, 0.55);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .sp-confirm-box {
+            background: #fff;
+            border-radius: 8px;
+            padding: 28px 32px 20px;
+            max-width: 440px;
+            width: 90%;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+        }
+        .sp-confirm-message {
+            font-size: 14px;
+            line-height: 1.6;
+            color: #1d2327;
+            margin: 0 0 20px;
+            white-space: pre-line;
+        }
+        .sp-confirm-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        .sp-confirm-btn {
+            padding: 6px 16px !important;
+            font-size: 13px !important;
+            cursor: pointer;
+        }
+        .sp-confirm-btn--danger {
+            background: #d63638 !important;
+            border-color: #d63638 !important;
+            color: #fff !important;
+        }
+        .sp-confirm-btn--danger:hover {
+            background: #b32d2e !important;
+            border-color: #b32d2e !important;
+        }
+        .sp-confirm-btn--primary {
+            background: #2271b1 !important;
+            border-color: #2271b1 !important;
+            color: #fff !important;
+        }
+    </style>
+    <script>
+    /**
+     * Custom confirmation modal.
+     *
+     * @param {string}   message   - The message to display.
+     * @param {Function} onConfirm - Called when the user clicks Confirm.
+     * @param {Object}   [opts]    - Optional: { confirmText, cancelText, type: 'danger'|'primary' }
+     */
+    function spConfirm(message, onConfirm, opts) {
+        opts = opts || {};
+        var overlay    = document.getElementById('sp-confirm-overlay');
+        var msgEl      = document.getElementById('sp-confirm-message');
+        var yesBtn     = document.getElementById('sp-confirm-yes');
+        var noBtn      = document.getElementById('sp-confirm-no');
+
+        msgEl.textContent = message;
+        if (opts.confirmText) yesBtn.textContent = opts.confirmText;
+        if (opts.cancelText)  noBtn.textContent  = opts.cancelText;
+
+        yesBtn.className = 'button sp-confirm-btn sp-confirm-btn--' + (opts.type || 'danger');
+        overlay.style.display = 'flex';
+
+        /* Clone buttons to remove any prior listeners */
+        var freshYes = yesBtn.cloneNode(true);
+        yesBtn.parentNode.replaceChild(freshYes, yesBtn);
+        var freshNo = noBtn.cloneNode(true);
+        noBtn.parentNode.replaceChild(freshNo, noBtn);
+
+        function close() {
+            overlay.style.display = 'none';
+            document.removeEventListener('keydown', keyHandler);
+        }
+
+        freshYes.addEventListener('click', function () {
+            close();
+            if (onConfirm) onConfirm();
+        });
+        freshNo.addEventListener('click', close);
+
+        function keyHandler(e) {
+            if (e.key === 'Escape') close();
+            if (e.key === 'Enter') { close(); if (onConfirm) onConfirm(); }
+        }
+        document.addEventListener('keydown', keyHandler);
+        freshYes.focus();
+    }
+
+    /*
+     * Global interceptors for data-sp-confirm attributes.
+     * Add data-sp-confirm="Your message" to any <form>, <a>, or <button>
+     * and the confirmation modal fires automatically before the action.
+     */
+
+    /* Forms: intercept submit */
+    document.addEventListener('submit', function (e) {
+        var form = e.target;
+        var msg  = form.getAttribute('data-sp-confirm');
+        if (!msg) return;
+        if (form.dataset.spConfirmed === '1') {
+            form.removeAttribute('data-sp-confirmed');
+            return;  /* Already confirmed — let the submit proceed */
+        }
+        e.preventDefault();
+        spConfirm(msg, function () {
+            form.dataset.spConfirmed = '1';
+            form.submit();
+        });
+    });
+
+    /* Links and buttons: intercept click */
+    document.addEventListener('click', function (e) {
+        var el = e.target.closest('[data-sp-confirm]');
+        if (!el || el.tagName === 'FORM') return;
+        if (el.dataset.spConfirmed === '1') {
+            el.removeAttribute('data-sp-confirmed');
+            return;
+        }
+        e.preventDefault();
+        spConfirm(el.getAttribute('data-sp-confirm'), function () {
+            if (el.tagName === 'A') {
+                window.location.href = el.href;
+            } else if (el.type === 'submit' && el.form) {
+                el.dataset.spConfirmed = '1';
+                el.click();
+            }
+        });
+    });
+    </script>
+    <?php
 } );

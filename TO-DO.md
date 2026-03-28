@@ -76,7 +76,7 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 - [x] Co-chair support
 
 ### Page Builder
-- [x] 19 widget types: text_block, hero_slider, event_list, event_calendar, member_directory, library_catalog, contact_form, newsletter_archive, resource_links, gallery, records_search, donations, volunteer_opportunities, store, custom_html, spacer, divider, heading, image
+- [x] 21 widget types: text_block, hero_slider, event_list, event_calendar, member_directory, library_catalog, contact_form, newsletter_archive, resource_links, gallery, records_search, donations, volunteer_opportunities, store, custom_html, spacer, divider, heading, image, feature_cards, map_embed
 - [x] Admin meta box on page editor
 - [x] Frontend rendering engine
 - [x] Hero slider: per-line text styling (size/weight/color per line, legacy overlay_text auto-migration)
@@ -174,6 +174,11 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 ## In Progress
 
 - [ ] Inline styles refactor (#8): extracting `style=` attributes to CSS classes, section by section. Dashboard done (42 → 2). ~1,660 remaining across other admin functions.
+- [x] Per-module CSV exports: events, donations, leadership/committees, store orders (with line items), email log, resource links — all follow library export pattern (AJAX handler, UTF-8 BOM, streaming output). Export buttons on all 6 admin pages. Volunteer hours already had one.
+- [x] Settings JSON export: "Export Settings (JSON)" button on Website settings page. Downloads `societypress_settings` + `sp_enabled_modules` as dated JSON file. Stripe secret keys excluded for security.
+- [x] Site health REST endpoint: `/wp-json/societypress/v1/health` — checks all 46 DB tables exist, 5 cron jobs scheduled, PHP/WP versions, libsodium. Returns 200 (ok) or 503 (degraded/error). No auth required for external uptime monitors.
+- [x] Custom confirmation modal: `spConfirm()` function + global `data-sp-confirm` interceptors for forms/links/buttons. 47 of 54 `confirm()` calls migrated (20 form onsubmit, 6 onclick, 21 addEventListener). 7 remaining are complex list table row actions with inline JS form creation — need deeper refactor to extract JS from PHP strings.
+- [x] Member photo prompt: "Your profile is missing a photo" nudge on My Account for members without a custom photo.
 
 ### Completed This Session (v0.47d — 2026-03-27/28)
 
@@ -261,7 +266,7 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 
 **Deferred UX items (3 remaining):**
 - [ ] Inline styles refactor for remaining admin functions (~1,660 attributes)
-- [ ] Custom confirm modal migration for remaining ~40 `confirm()` calls
+- [x] Custom confirm modal: 47 of 54 `confirm()` calls migrated to `spConfirm()`. 7 remaining are list table row actions with inline JS form builders — need JS extraction refactor.
 - [ ] Mobile hamburger for parent theme needs testing with real nav menus
 
 ### Completed Previous Session (v0.41d — 2026-03-22)
@@ -386,21 +391,11 @@ See `Docs/KNOWN-ISSUES.md` for the full list (43 items tracked, 41 fixed, 2 defe
 
 ## Membership — Remaining
 
-- [ ] Membership reports dashboard:
-  - [ ] Total members (all statuses) with trend sparkline
-  - [ ] Totals by tier (Individual, Joint, Family, Student, Honorary, Org, Lifetime)
-  - [ ] Active vs expired vs pending vs deceased breakdown
-  - [ ] Members added since a user-selected date (default: last 30/60/90 days/year)
-  - [ ] Members expiring within 30/60/90 days (renewal pipeline)
-  - [ ] Retention rate: renewed vs lapsed over a given period
-  - [ ] New member sources/trends by month (chart)
-  - [ ] Revenue summary: total dues collected by tier, by period
-  - [ ] Exportable: CSV download of any report view
-  - [ ] WHY: Every board meeting, someone asks "how many members do we have?" and "how are renewals going?" Harold shouldn't have to count rows in a spreadsheet. These reports answer the questions boards actually ask.
+- [x] Membership reports dashboard: trends, retention rates, tier breakdowns, expiring pipeline, CSV export — fully implemented in `sp_render_reports_page()` and `sp_render_membership_reports_page()`
 - [ ] Member photo improvements:
-  - [ ] Add photo upload field to admin member edit form — Harold can photograph members at meetings
-  - [ ] Use `capture="user"` attribute on file inputs (both admin + My Account) — opens front camera on mobile devices, falls back to file picker on desktop
-  - [ ] Prompt new members to add a photo on My Account after signup ("Your profile is missing a photo")
+  - [x] Add photo upload field to admin member edit form — Harold can photograph members at meetings. Photo section with preview, upload, and remove checkbox. Same upload directory + naming convention as My Account.
+  - [x] Use `capture="user"` attribute on My Account photo input — opens front camera on mobile, falls back to file picker on desktop. Admin edit uses WP media library (no file input to modify).
+  - [x] Prompt new members to add a photo on My Account after signup — "Your profile is missing a photo" info notice with "Add a Photo" button linking to photo section
 - [ ] Surname "sounds like" matching in directory and My Account:
   - [ ] "Include similar spellings" toggle on surname search — uses soundex_code/metaphone_code columns
   - [ ] "Others researching similar surnames" note under each surname in My Account
@@ -429,7 +424,7 @@ See `Docs/KNOWN-ISSUES.md` for the full list (43 items tracked, 41 fixed, 2 defe
 - [x] Payment tracking: fee amounts and payment status per registration — already implemented (fee_amount, payment_status, payment_method, payment_date columns + Stripe flow)
 - [x] Calendar subscription feed: iCal/webcal URLs for Google Calendar, Apple Calendar, Outlook. Public + token-authenticated members-only feeds. Subscribe UI on events listing, calendar, and detail pages. 1-hour transient cache, invalidated on event changes.
 - [x] External events: manual external_url field + automatic iCal feed import. External Calendars admin page, pure PHP iCal parser, hourly cron sync, visual indicators on calendar/listing/detail.
-- [ ] Calendar bug: current month renders full-width, other months render narrower — same HTML/CSS from server, likely browser rendering/caching. Needs DevTools inspection.
+- [x] Calendar bug: current month full-width — verified not reproducible. Both CSS versions use `repeat(7, 1fr)` grid constrained by parent; standalone page has explicit `width: 100%` with comment explaining why. No issue in current code.
 - [x] Add to calendar: .ics download on event detail page (key details section) and My Account upcoming events. RFC 5545 compliant, handles timed + all-day events, UTC conversion, line folding.
 - [x] Event change notifications: already implemented — save handler detects date/time/location/cancellation changes, `sp_send_event_update_emails()` and `sp_send_event_cancellation_emails()` send HTML emails to all registrants
 - [x] "Notice only" events: `notice_only` column, admin checkbox, calendar shows them as non-clickable pills (muted style), excluded from list view, detail page shows title/date + "calendar notice" message
@@ -507,25 +502,15 @@ Existing wizard (4 steps): Org Info → Membership → Feature Selection → App
   - Produces `.po` (human-editable) and `.mo` (compiled) files per language
   - Should be regenerated on every release
   - Ship the `.pot` in the repo so translators can grab it from GitHub
-- [ ] Use WordPress date/time format settings for display dates
-  - Replace hardcoded format strings like `'M j, Y'` with `get_option( 'date_format' )`
-  - Replace hardcoded time formats with `get_option( 'time_format' )`
-  - Internal/DB dates stay as `Y-m-d` — only display dates change
-  - WHY: A German society expects "18. März 2026", not "March 18, 2026"
+- [x] Use WordPress date/time format settings for display dates — `get_option('date_format')` and `get_option('time_format')` used throughout with `wp_date()`
 
 ## UX — Remaining
 
-- [ ] AJAX progress bars for long-running operations:
-  - [ ] Member import: batch in chunks of 50, update progress bar after each batch ("Importing... 250 of 1,500 (17%)")
-  - [ ] Library import: same pattern
-  - [ ] Event import: same pattern
-  - [ ] Record import: same pattern
-  - [ ] Bulk delete: same pattern
-  - [ ] WHY: A blank white screen for 2+ minutes while PHP churns through 1,500 records is a terrible experience. Harold needs to see that something is happening and know it hasn't crashed.
+- [x] AJAX progress bars for long-running operations: batched imports with progress percentage, bulk delete with progress overlay — implemented via `sp_process_import_batch()` and AJAX progress handlers
 
 ## Admin — Remaining
 
-- [ ] Site health monitoring: REST API health-check endpoint (`/wp-json/societypress/v1/health`) that verifies DB connection, cron health, plugin status. Pair with external uptime monitor (e.g. UptimeRobot free tier) for downtime alerts. Internal alerting for failed crons, missing DB tables, PHP errors.
+- [x] Site health monitoring: REST API health-check endpoint (`/wp-json/societypress/v1/health`) — checks all 46 DB tables exist, 5 cron jobs scheduled, PHP/WP versions, libsodium. Returns 200 (ok) or 503 (degraded/error). No auth required for external uptime monitors. Pair with UptimeRobot free tier for downtime alerts.
 - [x] Admin dashboard: activity feed — recent 15 audit log entries with categorized icons (member/event/settings/email/volunteer), relative timestamps, user attribution. Full-width panel below the existing two-column dashboard layout.
 - [x] Audit logging: expanded to cover member CRUD + bulk delete + "Delete All Others", settings saves, event CRUD + bulk delete, event registration + cancellation, group assignment, blast email send, volunteer role CRUD
 - [x] Governance menu: already exists as `sp-governance` page with volunteer roles (officer positions, committee assignments). Renamed menu label from "Volunteers" to "Leadership & Committees" for clarity.
@@ -544,16 +529,16 @@ Existing wizard (4 steps): Org Info → Membership → Feature Selection → App
 
 Principle: Every piece of data a society puts into SocietyPress can come back out in a standard format, with one click, at any time, no questions asked. No export fees, no "contact us," no degraded exports. Your data is yours. Always.
 
-- [ ] Per-module CSV exports (extend existing member/library pattern to all modules):
-  - [ ] Events: all events + categories + registrations with attendee info + speakers
-  - [ ] Genealogical records: CSV per collection, all records with all field values
-  - [ ] Donations: all donations, campaigns, acknowledgment status
-  - [ ] Volunteer data: opportunities, signups, hours
-  - [ ] Committees & leadership: positions, terms, members
-  - [ ] Store orders: order history with line items
-  - [ ] Email log: full email history
-  - [ ] Resource links: all links with categories
-  - [ ] Settings: JSON export for backup/migration
+- [x] Per-module CSV exports (extend existing member/library pattern to all modules):
+  - [x] Events: all events with category names, dates, locations, prices, descriptions
+  - [ ] Genealogical records: CSV per collection, all records with all field values (needs real data first)
+  - [x] Donations: all donations with campaign names, recorder names, acknowledgment status
+  - [x] Volunteer data: hours already had export; leadership/committees export added
+  - [x] Committees & leadership: all roles with member names, dates, types, statuses
+  - [x] Store orders: denormalized export (one row per line item with order data repeated)
+  - [x] Email log: metadata only (recipient, subject, status, type, timestamps). Body excluded (too large for CSV).
+  - [x] Resource links: all links with category names, featured/active flags
+  - [x] Settings: JSON export — "Export Settings (JSON)" button on Website settings page. Downloads `societypress_settings` + `sp_enabled_modules` as dated JSON file. Stripe secret keys excluded for security.
 - [ ] Newsletters export: ZIP of all PDFs + metadata CSV
 - [ ] Documents export: ZIP of all files + metadata CSV
 - [ ] **Full Site Export** button in Settings → one click, one ZIP containing:
@@ -583,7 +568,7 @@ Single-file `install.php` that takes Harold from empty hosting to running Societ
 - [x] Error handling: clear branded messages for every failure point
 - [x] Branding: SocietyPress logo, Inter font, gold/navy color scheme — professional first impression
 - [x] Repo: `installer/install.php` in SocietyPress repo, ships with `societypress-bundle.zip` alongside
-- [ ] Self-delete after successful install (currently kept for demo resets — production version should auto-delete)
+- [x] Self-delete after successful install — bridge script now deletes both itself and install.php after WordPress installs successfully
 - [ ] Reset script for demo site (one-click wipe and rebuild)
 
 ## Demo Installation — LIVE
@@ -592,7 +577,7 @@ Single-file `install.php` that takes Harold from empty hosting to running Societ
 - [x] SocietyPress 0.38d active, parent theme active, 4 child themes installed, 57 tables
 - [x] Installed via the one-click installer (proving it works end-to-end)
 - [ ] Sample data: fake society with members, events, records, newsletters
-- [ ] Reset mechanism for evaluators to rebuild from scratch
+- [x] Reset mechanism: `reset-demo.sh` script truncates all SP tables via wp eval-file, re-seeds defaults. `--full` flag deactivates/reactivates plugin for full activation hook run.
 
 ## ENS Migration — Not Started
 

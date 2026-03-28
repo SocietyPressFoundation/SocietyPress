@@ -175,7 +175,63 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 
 - [ ] Inline styles refactor (#8): extracting `style=` attributes to CSS classes, section by section. Dashboard done (42 → 2). ~1,660 remaining across other admin functions.
 
-### Completed This Session (v0.42d — 2026-03-23)
+### Completed This Session (v0.47d — 2026-03-27/28)
+
+**Page Builder — New Widgets & Builder-Driven Home Page:**
+- [x] New `feature_cards` widget: repeater-based grid of image cards with title, description, button — replaces hardcoded feature sections
+- [x] New `map_embed` widget: Google Maps embed from address field, configurable height
+- [x] `upcoming_events` widget: added "Photo Cards (grid)" layout option alongside original compact list
+- [x] Universal `section_heading` field on all widgets: optional centered heading with decorative divider, sanitized in save handler
+- [x] SAGHS front-page.php rewritten: renders page builder widgets instead of hardcoded sections — Harold controls the entire home page from the builder
+- [x] Home page populated with 4 builder widgets: hero slider, upcoming events (cards), feature cards (2×2), map
+
+**Page Builder — Bug Fixes:**
+- [x] Template input pollution: hidden widget templates submitted ghost widgets on every save (hero_slider kept reappearing) — fixed by disabling template inputs, re-enabling on clone
+- [x] SAGHS front-page.php had wrong meta key (`_sp_builder_widgets` → `_sp_page_widgets`) and passed whole widget object instead of settings to renderer
+- [x] Builder frontend CSS not loading on SAGHS front page — front-page.php now hooks `sp_builder_frontend_styles` and `sp_builder_frontend_scripts` with `has_action()` guard
+
+**Design Settings:**
+- [x] Color pickers not initializing — deferred wpColorPicker init to `window.load` (script loads in footer, was running before available)
+- [x] Footer Link Color field moved from Header & Navigation section to Colors section
+- [x] Footer links in SAGHS child theme + parent theme now use `var(--sp-color-footer-link)` CSS variable from Design settings
+
+**Code Review — 17 Issues Fixed:**
+- [x] Missing `sp_builder_frontend_scripts` hook in front-page.php (Critical)
+- [x] Contact form frontend JS rewritten from jQuery to vanilla fetch() (Critical)
+- [x] Unescaped `$height`/`$columns` in HTML attributes — now use `absint()` (Critical)
+- [x] Raw `$link_target` echo replaced with individual `esc_attr()` calls
+- [x] Contact form labels wrapped in `esc_html__()` (i18n)
+- [x] Contact form inline styles moved to `sp_builder_frontend_styles()`
+- [x] Login-required messages wrapped with `printf()` + `__()` + `wp_kses()`
+- [x] Duplicate style hook guard with `has_action()`
+- [x] Feature cards remove-card listener scoped to widget container (not document)
+- [x] `get_the_ID()` → `get_queried_object_id()` in front-page.php
+- [x] Dead CSS removed from SAGHS style.css
+- [x] Widget CSS consolidated into `sp_builder_frontend_styles()`
+- [x] Map embed inline styles moved to CSS class
+- [x] Section heading wrapper inline style moved to CSS
+
+**Security Audit — 12 Issues Fixed:**
+- [x] H1: 11 SQL LIMIT/OFFSET clauses converted to `$wpdb->prepare()` with `%d` placeholders
+- [x] H2: 6 SQL IN() clauses converted from `implode()` to `$wpdb->prepare()` with placeholder pattern
+- [x] H3: Stripe secret keys now encrypted at rest via `sp_encrypt()`/`sp_decrypt()`
+- [x] H4: Profile photo upload extension derived from validated MIME type, not client filename
+- [x] M1: `$font_family` CSS output escaped with `esc_attr()`
+- [x] M2: `rich_text` widget output re-sanitized with `wp_kses_post()`
+- [x] M4: Profile photo directory gets `.htaccess` blocking PHP execution
+- [x] M5: Rate limiter checks `X-Forwarded-For` for proxy-aware IP detection
+- [x] M6: Contact form rate limited to 5 submissions/hour per IP
+- [x] M7: Settings sanitize callback has explicit `current_user_can('manage_options')` check
+
+**Deploy Script:**
+- [x] SAGHS deploy target changed from kndgs.org to demo site
+- [x] `./deploy.sh all` now includes SAGHS child theme
+
+### Completed Previous Sessions
+
+**v0.46d (2026-03-26): CSS cascade fix, Design settings expansion, header polish**
+
+**v0.42d–0.45d (2026-03-23–25): i18n, accessibility, sample data, reports**
 
 **i18n Cleanup:**
 - [x] Generated `.pot` translation template — zero warnings
@@ -320,7 +376,7 @@ See `Docs/KNOWN-ISSUES.md` for the full list (43 items tracked, 41 fixed, 2 defe
 - [x] Merge tag syntax, GDPR donations, library AJAX nopriv, deprecated get_page_by_title, auto_update scope, rate limiting, help notifications, email log cron, breadcrumb settings, store SAGHS references, and 6 more
 
 **Deferred:**
-- [ ] jQuery → vanilla JS rewrite (contact form widget, album edit, page builder admin) — substantial effort, low user impact
+- [ ] jQuery → vanilla JS rewrite (album edit, page builder admin) — contact form widget done (v0.47d), remaining are admin-only
 - [x] Server path exposure in 5 import flows — FIXED: hidden fields now store basename only, readback validates with realpath + directory containment check
 
 **i18n:**

@@ -825,7 +825,7 @@ article.post:last-child {
 }
 
 .site-footer a {
-    color: rgba(255, 255, 255, 0.7);
+    color: var(--sp-color-footer-link, rgba(255, 255, 255, 0.7));
     text-decoration: none;
 }
 

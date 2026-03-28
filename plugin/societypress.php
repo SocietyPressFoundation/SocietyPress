@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     0.43d
+ * Version:     0.47d
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '0.46d' );
+define( 'SOCIETYPRESS_VERSION', '0.47d' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -5272,7 +5272,23 @@ function sp_handle_account_forms() {
         $photo_dir  = $upload_dir['basedir'] . '/sp-profile-photos';
         $photo_url  = $upload_dir['baseurl'] . '/sp-profile-photos';
         if ( ! file_exists( $photo_dir ) ) { wp_mkdir_p( $photo_dir ); file_put_contents( $photo_dir . '/index.php', '<?php // Silence is golden.' ); }
-        $ext      = strtolower( pathinfo( $file['name'], PATHINFO_EXTENSION ) );
+        // WHY: Block PHP execution inside the uploads directory. Even though we
+        // validate MIME types, a .htaccess rule provides defense-in-depth — if a
+        // malicious .php file somehow lands here, Apache won't execute it.
+        if ( ! file_exists( $photo_dir . '/.htaccess' ) ) {
+            file_put_contents( $photo_dir . '/.htaccess', "Options -Indexes\n<FilesMatch \"\.php\">\n  Deny from all\n</FilesMatch>\n" );
+        }
+        // WHY: Derive file extension from the validated MIME type, not the
+        // user-supplied filename. An attacker could upload "shell.php" with a
+        // valid JPEG MIME — using pathinfo() on the filename would preserve the
+        // .php extension. Mapping from $mime guarantees the extension matches
+        // the actual file content.
+        $mime_to_ext = [
+            'image/jpeg' => 'jpg',
+            'image/png'  => 'png',
+            'image/gif'  => 'gif',
+        ];
+        $ext = $mime_to_ext[ $mime ] ?? 'jpg';
         // WHY: Photos are named by member name (firstname-middlename-lastname-member.ext)
         //      instead of user ID. This makes the files folder human-readable — Harold
         //      can find a member's photo by name instead of guessing which user-123.jpg
@@ -7082,7 +7098,7 @@ add_action( 'login_enqueue_scripts', function () {
 
         body.login {
             background: #f5f5f5;
-            font-family: <?php echo $font_family; ?>;
+            font-family: <?php echo esc_attr( $font_family ); ?>;
         }
 
         /* Hide the WordPress logo entirely */
@@ -7244,7 +7260,7 @@ add_action( 'login_enqueue_scripts', function () {
             overflow-y: auto;
             padding: 32px 36px;
             box-shadow: 0 8px 40px rgba(0,0,0,0.3);
-            font-family: <?php echo $font_family; ?>;
+            font-family: <?php echo esc_attr( $font_family ); ?>;
         }
 
         .sp-acknowledge-modal h2 {
@@ -7485,7 +7501,7 @@ add_action( 'admin_footer', function () {
             overflow-y: auto;
             padding: 32px 36px;
             box-shadow: 0 8px 40px rgba(0,0,0,0.3);
-            font-family: <?php echo $font_family; ?>;
+            font-family: <?php echo esc_attr( $font_family ); ?>;
         }
         .sp-acknowledge-modal h2 {
             font-size: 1.3rem;
@@ -17300,6 +17316,14 @@ function sp_render_textarea_field( array $args ): void {
  */
 function sp_sanitize_settings( array $input ): array {
 
+    // WHY belt-and-suspenders: The WP Settings API gates options.php behind
+    // manage_options, but an explicit check here ensures no code path ever
+    // reaches the sanitizer without the right capability.
+    if ( ! current_user_can( 'manage_options' ) ) {
+        add_settings_error( 'societypress_settings', 'unauthorized', __( 'Unauthorized.', 'societypress' ) );
+        return get_option( 'societypress_settings', [] );
+    }
+
     // ---- MERGE, don't replace ----
     // WHY: Each settings page now has its own form that only submits the
     //      fields on that page. If we rebuilt the entire array from scratch
@@ -17391,9 +17415,18 @@ function sp_sanitize_settings( array $input ): array {
         // Stripe payment settings
         'stripe_test_mode'            => fn() => ! empty( $input['stripe_test_mode'] ) ? 1 : 0,
         'stripe_test_publishable_key' => fn() => sanitize_text_field( $input['stripe_test_publishable_key'] ?? '' ),
-        'stripe_test_secret_key'      => fn() => sanitize_text_field( $input['stripe_test_secret_key'] ?? '' ),
+        // WHY: Stripe secret keys are encrypted at rest using libsodium via
+        // sp_encrypt(). This prevents plaintext API keys from sitting in the
+        // wp_options table where a SQL injection or database leak would expose them.
+        'stripe_test_secret_key'      => function() use ( $input ) {
+            $val = sanitize_text_field( $input['stripe_test_secret_key'] ?? '' );
+            return $val ? sp_encrypt( $val ) : '';
+        },
         'stripe_live_publishable_key' => fn() => sanitize_text_field( $input['stripe_live_publishable_key'] ?? '' ),
-        'stripe_live_secret_key'      => fn() => sanitize_text_field( $input['stripe_live_secret_key'] ?? '' ),
+        'stripe_live_secret_key'      => function() use ( $input ) {
+            $val = sanitize_text_field( $input['stripe_live_secret_key'] ?? '' );
+            return $val ? sp_encrypt( $val ) : '';
+        },
         'stripe_currency'             => fn() => in_array( $input['stripe_currency'] ?? '', [ 'usd', 'cad', 'gbp', 'eur', 'aud' ], true )
                                                    ? $input['stripe_currency'] : 'usd',
 
@@ -19679,10 +19712,24 @@ function sp_handle_page_save(): void {
             $type = sanitize_key( $w['type'] ?? '' );
             if ( ! isset( $registry[ $type ] ) ) continue;
 
-            $s       = $w['settings'] ?? [];
+            $s         = $w['settings'] ?? [];
+            $sanitized = sp_sanitize_builder_widget( $type, $s );
+
+            // WHY here instead of in each sanitizer case: section_heading is a
+            // universal field available on every widget type. Handling it once
+            // in the save handler avoids duplicating it across 20+ switch cases.
+            $sec_heading = sanitize_text_field( $s['section_heading'] ?? '' );
+            // WHY omit empty headings: If the admin left the field blank, we don't
+            // store a key at all. This keeps the serialized widget data lean — no
+            // empty strings cluttering up the post meta for every widget that
+            // doesn't use a section heading (which is most of them).
+            if ( '' !== $sec_heading ) {
+                $sanitized['section_heading'] = $sec_heading;
+            }
+
             $clean[] = [
                 'type'     => $type,
-                'settings' => sp_sanitize_builder_widget( $type, $s ),
+                'settings' => $sanitized,
             ];
         }
 
@@ -23918,19 +23965,6 @@ function sp_render_settings_design_page(): void {
                         </td>
                     </tr>
                     <tr>
-                        <th scope="row"><label for="sp-design-footer-link"><?php esc_html_e( 'Footer Link Color', 'societypress' ); ?></label></th>
-                        <td>
-                            <?php $footer_link = $settings['design_color_footer_link'] ?? ''; ?>
-                            <input type="text"
-                                   id="sp-design-footer-link"
-                                   name="societypress_settings[design_color_footer_link]"
-                                   value="<?php echo esc_attr( $footer_link ); ?>"
-                                   class="sp-color-picker"
-                                   data-default-color="#667eea"
-                                   placeholder="#667eea">
-                        </td>
-                    </tr>
-                    <tr>
                         <th scope="row"><?php esc_html_e( 'Social Icons', 'societypress' ); ?></th>
                         <td>
                             <?php $show_social = (int) ( $settings['design_show_social_icons'] ?? 1 ); ?>
@@ -24001,6 +24035,19 @@ function sp_render_settings_design_page(): void {
                         <td>
                             <input type="text" id="sp-design-footer-text" name="societypress_settings[design_color_footer_text]"
                                    value="<?php echo esc_attr( $d_footer_text ); ?>" class="sp-color-picker" data-default-color="#ffffff">
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="sp-design-footer-link"><?php esc_html_e( 'Footer Link Color', 'societypress' ); ?></label></th>
+                        <td>
+                            <?php $footer_link = $settings['design_color_footer_link'] ?? ''; ?>
+                            <input type="text"
+                                   id="sp-design-footer-link"
+                                   name="societypress_settings[design_color_footer_link]"
+                                   value="<?php echo esc_attr( $footer_link ); ?>"
+                                   class="sp-color-picker"
+                                   data-default-color="#667eea"
+                                   placeholder="#667eea">
                         </td>
                     </tr>
                 </table>
@@ -24185,21 +24232,25 @@ function sp_render_settings_design_page(): void {
         });
 
         // ---- Initialize WordPress color pickers ----
-        // WHY: WordPress ships wp-color-picker (based on Iris) but we need
-        // to initialize it ourselves. The 'change' and 'clear' callbacks
-        // trigger preview updates whenever a color changes.
-        if (typeof jQuery !== 'undefined' && jQuery.fn.wpColorPicker) {
-            jQuery('.sp-color-picker').wpColorPicker({
-                change: function() {
-                    // Small delay because wpColorPicker fires 'change' before
-                    // updating the input value. 50ms is enough for it to sync.
-                    setTimeout(updatePreview, 50);
-                },
-                clear: function() {
-                    setTimeout(updatePreview, 50);
-                }
-            });
-        }
+        // WHY deferred to window load: wp-color-picker is enqueued via
+        // wp_enqueue_script, which outputs in the footer — AFTER this inline
+        // script in the page body. If we try to init immediately,
+        // jQuery.fn.wpColorPicker doesn't exist yet and the check fails
+        // silently, leaving plain text inputs with no color swatches.
+        window.addEventListener('load', function() {
+            if (typeof jQuery !== 'undefined' && jQuery.fn.wpColorPicker) {
+                jQuery('.sp-color-picker').wpColorPicker({
+                    change: function() {
+                        // Small delay because wpColorPicker fires 'change' before
+                        // updating the input value. 50ms is enough for it to sync.
+                        setTimeout(updatePreview, 50);
+                    },
+                    clear: function() {
+                        setTimeout(updatePreview, 50);
+                    }
+                });
+            }
+        });
 
         // ---- Font family mapping (mirrors the PHP mapping in functions.php) ----
         // WHY duplicated here: The preview runs client-side and needs to know
@@ -27321,6 +27372,18 @@ function sp_get_widget_registry(): array {
             'icon'        => 'slides',
             'category'    => 'content',
         ],
+        'feature_cards' => [
+            'label'       => __( 'Feature Cards', 'societypress' ),
+            'description' => __( 'Grid of image cards with headings, descriptions, and call-to-action buttons.', 'societypress' ),
+            'icon'        => 'screenoptions',
+            'category'    => 'content',
+        ],
+        'map_embed' => [
+            'label'       => __( 'Map', 'societypress' ),
+            'description' => __( 'Embedded Google Map showing your organization\'s location.', 'societypress' ),
+            'icon'        => 'location',
+            'category'    => 'info',
+        ],
     ];
 }
 
@@ -27551,6 +27614,15 @@ function sp_render_builder_card( $index, array $widget, array $registry ): void 
 
         <div class="sp-builder-card-body" style="display: none;">
             <input type="hidden" name="sp_widgets[<?php echo esc_attr( $index ); ?>][type]" value="<?php echo esc_attr( $type ); ?>">
+
+            <!-- Section heading — available on every widget -->
+            <div style="margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid #e0e0e0;">
+                <label style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Section Heading (optional)', 'societypress' ); ?></label>
+                <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][section_heading]"
+                       value="<?php echo esc_attr( $settings['section_heading'] ?? '' ); ?>"
+                       class="widefat" placeholder="<?php esc_attr_e( 'e.g., Classes & Events', 'societypress' ); ?>">
+                <p class="description" style="margin-top:4px;"><?php esc_html_e( 'Adds a centered heading with a decorative divider above this widget.', 'societypress' ); ?></p>
+            </div>
 
             <?php
             $fn = 'sp_builder_fields_' . $type;
@@ -27850,6 +27922,7 @@ function sp_builder_fields_upcoming_events( $index, array $settings ): void {
     global $wpdb;
     $count         = $settings['count'] ?? 5;
     $category_id   = $settings['category_id'] ?? '';
+    $layout        = $settings['layout'] ?? 'list';
     $show_date     = $settings['show_date'] ?? 1;
     $show_time     = $settings['show_time'] ?? 1;
     $show_location = $settings['show_location'] ?? 1;
@@ -27860,9 +27933,15 @@ function sp_builder_fields_upcoming_events( $index, array $settings ): void {
     );
     ?>
     <div class="sp-builder-field">
-        <p class="description"><?php esc_html_e( 'Displays a compact list of upcoming events pulled from your Events system.', 'societypress' ); ?></p>
+        <p class="description"><?php esc_html_e( 'Displays upcoming events pulled from your Events system.', 'societypress' ); ?></p>
 
-        <label style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Number of events to show', 'societypress' ); ?></label>
+        <label style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Layout', 'societypress' ); ?></label>
+        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][layout]">
+            <option value="list" <?php selected( $layout, 'list' ); ?>><?php esc_html_e( 'Compact List', 'societypress' ); ?></option>
+            <option value="cards" <?php selected( $layout, 'cards' ); ?>><?php esc_html_e( 'Photo Cards (grid)', 'societypress' ); ?></option>
+        </select>
+
+        <label style="display:block; font-weight:600; margin:12px 0 4px;"><?php esc_html_e( 'Number of events to show', 'societypress' ); ?></label>
         <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][count]">
             <?php foreach ( [ 3, 5, 10, 15, 20 ] as $opt ) : ?>
                 <option value="<?php echo $opt; ?>" <?php selected( $count, $opt ); ?>><?php echo $opt; ?></option>
@@ -28475,6 +28554,158 @@ function sp_builder_fields_hero_slider( $index, array $settings ): void {
     </div>
     <?php
 }
+
+
+/**
+ * Render admin settings fields for the Feature Cards widget.
+ *
+ * WHY: Repeater pattern (like hero_slider slides) lets the admin build a grid
+ * of image cards — each with a photo, title, description, and CTA button.
+ * Used for "Library / Volunteer / Learn / Benefits" style sections.
+ */
+function sp_builder_fields_feature_cards( $index, array $settings ): void {
+    $cards   = $settings['cards'] ?? [];
+    $columns = $settings['columns'] ?? 2;
+    ?>
+    <div class="sp-builder-field">
+        <p class="description"><?php esc_html_e( 'Add image cards with headings, descriptions, and buttons. Great for highlighting features, services, or calls to action.', 'societypress' ); ?></p>
+
+        <label style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Columns', 'societypress' ); ?></label>
+        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][columns]">
+            <option value="2" <?php selected( $columns, 2 ); ?>>2</option>
+            <option value="3" <?php selected( $columns, 3 ); ?>>3</option>
+            <option value="4" <?php selected( $columns, 4 ); ?>>4</option>
+        </select>
+
+        <div class="sp-fc-cards" data-widget-index="<?php echo esc_attr( $index ); ?>" style="margin-top:16px;">
+            <?php foreach ( $cards as $ci => $card ) : ?>
+                <div class="sp-fc-card-row" style="border:1px solid #ddd; border-radius:6px; padding:12px; margin-bottom:12px; background:#fafafa;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <strong><?php esc_html_e( 'Card', 'societypress' ); ?> <?php echo $ci + 1; ?></strong>
+                        <button type="button" class="button sp-fc-remove-card" style="color:#b32d2e;">&times; <?php esc_html_e( 'Remove', 'societypress' ); ?></button>
+                    </div>
+
+                    <label style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Image', 'societypress' ); ?></label>
+                    <div class="sp-builder-image-field" style="margin-bottom:8px;">
+                        <input type="hidden" class="sp-builder-image-id" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][cards][<?php echo $ci; ?>][image_id]" value="<?php echo esc_attr( $card['image_id'] ?? '' ); ?>">
+                        <?php
+                        $img_url = '';
+                        if ( ! empty( $card['image_id'] ) ) {
+                            $img_url = wp_get_attachment_image_url( (int) $card['image_id'], 'medium' );
+                        }
+                        ?>
+                        <div class="sp-builder-image-preview" style="<?php echo $img_url ? '' : 'display:none;'; ?> margin-bottom:6px;">
+                            <img src="<?php echo esc_url( $img_url ); ?>" style="max-height:100px; border-radius:4px;">
+                        </div>
+                        <button type="button" class="button sp-builder-image-select"><?php echo $img_url ? esc_html__( 'Change Image', 'societypress' ) : esc_html__( 'Select Image', 'societypress' ); ?></button>
+                        <button type="button" class="button sp-builder-image-remove" style="<?php echo $img_url ? '' : 'display:none;'; ?> color:#b32d2e;"><?php esc_html_e( 'Remove', 'societypress' ); ?></button>
+                    </div>
+
+                    <label style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Title', 'societypress' ); ?></label>
+                    <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][cards][<?php echo $ci; ?>][title]" value="<?php echo esc_attr( $card['title'] ?? '' ); ?>" class="widefat" style="margin-bottom:8px;">
+
+                    <label style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Description', 'societypress' ); ?></label>
+                    <textarea name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][cards][<?php echo $ci; ?>][description]" class="widefat" rows="3" style="margin-bottom:8px;"><?php echo esc_textarea( $card['description'] ?? '' ); ?></textarea>
+
+                    <div style="display:flex; gap:8px;">
+                        <div style="flex:1;">
+                            <label style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Button Text', 'societypress' ); ?></label>
+                            <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][cards][<?php echo $ci; ?>][btn_text]" value="<?php echo esc_attr( $card['btn_text'] ?? '' ); ?>" class="widefat">
+                        </div>
+                        <div style="flex:2;">
+                            <label style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Button URL', 'societypress' ); ?></label>
+                            <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][cards][<?php echo $ci; ?>][btn_url]" value="<?php echo esc_attr( $card['btn_url'] ?? '' ); ?>" class="widefat" placeholder="https://">
+                        </div>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+
+        <button type="button" class="button sp-fc-add-card" data-widget-index="<?php echo esc_attr( $index ); ?>"><?php esc_html_e( '+ Add Card', 'societypress' ); ?></button>
+
+        <script>
+        (function() {
+            // WHY inline JS per widget instance: Each Feature Cards widget needs its
+            // own add/remove handlers scoped to its card container. Using a data
+            // attribute to target the right container avoids cross-widget conflicts.
+            var idx = '<?php echo esc_js( $index ); ?>';
+            var wrap = document.querySelector('.sp-fc-cards[data-widget-index="' + idx + '"]');
+            var addBtn = document.querySelector('.sp-fc-add-card[data-widget-index="' + idx + '"]');
+
+            if (addBtn && wrap) {
+                addBtn.addEventListener('click', function() {
+                    var ci = wrap.querySelectorAll('.sp-fc-card-row').length;
+                    var html = '<div class="sp-fc-card-row" style="border:1px solid #ddd; border-radius:6px; padding:12px; margin-bottom:12px; background:#fafafa;">'
+                        + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">'
+                        + '<strong><?php echo esc_js( __( 'Card', 'societypress' ) ); ?> ' + (ci + 1) + '</strong>'
+                        + '<button type="button" class="button sp-fc-remove-card" style="color:#b32d2e;">&times; <?php echo esc_js( __( 'Remove', 'societypress' ) ); ?></button>'
+                        + '</div>'
+                        + '<label style="display:block; font-weight:600; margin-bottom:4px;"><?php echo esc_js( __( 'Image', 'societypress' ) ); ?></label>'
+                        + '<div class="sp-builder-image-field" style="margin-bottom:8px;">'
+                        + '<input type="hidden" class="sp-builder-image-id" name="sp_widgets[' + idx + '][settings][cards][' + ci + '][image_id]" value="">'
+                        + '<div class="sp-builder-image-preview" style="display:none; margin-bottom:6px;"><img src="" style="max-height:100px; border-radius:4px;"></div>'
+                        + '<button type="button" class="button sp-builder-image-select"><?php echo esc_js( __( 'Select Image', 'societypress' ) ); ?></button>'
+                        + '<button type="button" class="button sp-builder-image-remove" style="display:none; color:#b32d2e;"><?php echo esc_js( __( 'Remove', 'societypress' ) ); ?></button>'
+                        + '</div>'
+                        + '<label style="display:block; font-weight:600; margin-bottom:4px;"><?php echo esc_js( __( 'Title', 'societypress' ) ); ?></label>'
+                        + '<input type="text" name="sp_widgets[' + idx + '][settings][cards][' + ci + '][title]" value="" class="widefat" style="margin-bottom:8px;">'
+                        + '<label style="display:block; font-weight:600; margin-bottom:4px;"><?php echo esc_js( __( 'Description', 'societypress' ) ); ?></label>'
+                        + '<textarea name="sp_widgets[' + idx + '][settings][cards][' + ci + '][description]" class="widefat" rows="3" style="margin-bottom:8px;"></textarea>'
+                        + '<div style="display:flex; gap:8px;">'
+                        + '<div style="flex:1;"><label style="display:block; font-weight:600; margin-bottom:4px;"><?php echo esc_js( __( 'Button Text', 'societypress' ) ); ?></label>'
+                        + '<input type="text" name="sp_widgets[' + idx + '][settings][cards][' + ci + '][btn_text]" value="" class="widefat"></div>'
+                        + '<div style="flex:2;"><label style="display:block; font-weight:600; margin-bottom:4px;"><?php echo esc_js( __( 'Button URL', 'societypress' ) ); ?></label>'
+                        + '<input type="text" name="sp_widgets[' + idx + '][settings][cards][' + ci + '][btn_url]" value="" class="widefat" placeholder="https://"></div>'
+                        + '</div></div>';
+                    wrap.insertAdjacentHTML('beforeend', html);
+                });
+            }
+
+            // Remove card (delegated to wrap, not document)
+            // WHY scoped to wrap: Attaching to document means every widget
+            // instance adds another global listener. Scoping to the widget's
+            // own container prevents duplicate handlers and avoids the risk
+            // of one widget's listener accidentally firing on another's cards.
+            if (wrap) {
+                wrap.addEventListener('click', function(e) {
+                    if (e.target.closest('.sp-fc-remove-card')) {
+                        var row = e.target.closest('.sp-fc-card-row');
+                        if (row && confirm('<?php echo esc_js( __( 'Remove this card?', 'societypress' ) ); ?>')) {
+                            row.remove();
+                        }
+                    }
+                });
+            }
+        })();
+        </script>
+    </div>
+    <?php
+}
+
+
+/**
+ * Render admin settings fields for the Map Embed widget.
+ *
+ * WHY: Simple widget — just an address and a height. Google Maps embed doesn't
+ * need an API key, so Harold can drop a map on any page without configuration.
+ */
+function sp_builder_fields_map_embed( $index, array $settings ): void {
+    $address = $settings['address'] ?? '';
+    $height  = $settings['height'] ?? 350;
+    ?>
+    <div class="sp-builder-field">
+        <p class="description"><?php esc_html_e( 'Embeds a Google Map centered on the address you enter.', 'societypress' ); ?></p>
+
+        <label style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Address', 'societypress' ); ?></label>
+        <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][address]" value="<?php echo esc_attr( $address ); ?>" class="widefat" placeholder="<?php esc_attr_e( '911 Melissa Dr, San Antonio, TX 78213', 'societypress' ); ?>" style="margin-bottom:8px;">
+
+        <label style="display:block; font-weight:600; margin-bottom:4px;"><?php esc_html_e( 'Height (px)', 'societypress' ); ?></label>
+        <input type="number" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][height]" value="<?php echo esc_attr( $height ); ?>" min="200" max="600" style="width:100px;">
+    </div>
+    <?php
+}
+
+
 function sp_sanitize_builder_widget( string $type, array $settings ): array {
     switch ( $type ) {
         case 'rich_text':
@@ -28544,6 +28775,8 @@ function sp_sanitize_builder_widget( string $type, array $settings ): array {
                 'count'         => in_array( (int) ( $settings['count'] ?? 5 ), [ 3, 5, 10, 15, 20 ], true )
                                    ? (int) $settings['count'] : 5,
                 'category_id'   => absint( $settings['category_id'] ?? 0 ),
+                'layout'        => in_array( $settings['layout'] ?? 'list', [ 'list', 'cards' ], true )
+                                   ? $settings['layout'] : 'list',
                 'show_date'     => ! empty( $settings['show_date'] ) ? 1 : 0,
                 'show_time'     => ! empty( $settings['show_time'] ) ? 1 : 0,
                 'show_location' => ! empty( $settings['show_location'] ) ? 1 : 0,
@@ -28666,6 +28899,37 @@ function sp_sanitize_builder_widget( string $type, array $settings ): array {
                 'slides'   => $slides,
             ];
 
+        case 'feature_cards':
+            $cards_raw = $settings['cards'] ?? [];
+            $cards     = [];
+            if ( is_array( $cards_raw ) ) {
+                foreach ( $cards_raw as $card ) {
+                    if ( ! is_array( $card ) ) continue;
+                    $title = sanitize_text_field( $card['title'] ?? '' );
+                    if ( '' === $title ) continue;
+                    $cards[] = [
+                        'image_id'    => absint( $card['image_id'] ?? 0 ),
+                        'title'       => $title,
+                        'description' => sanitize_textarea_field( $card['description'] ?? '' ),
+                        'btn_text'    => sanitize_text_field( $card['btn_text'] ?? '' ),
+                        'btn_url'     => esc_url_raw( $card['btn_url'] ?? '' ),
+                    ];
+                }
+            }
+            return [
+                'columns' => in_array( (int) ( $settings['columns'] ?? 2 ), [ 2, 3, 4 ], true )
+                             ? (int) $settings['columns'] : 2,
+                'cards'   => $cards,
+            ];
+
+        case 'map_embed':
+            $height = absint( $settings['height'] ?? 350 );
+            $height = max( 200, min( 600, $height ) );
+            return [
+                'address' => sanitize_text_field( $settings['address'] ?? '' ),
+                'height'  => $height,
+            ];
+
         default:
             return [];
     }
@@ -28751,6 +29015,14 @@ add_action( 'admin_footer', function () {
         var $picker = $('#sp-builder-picker');
         var $addBtn = $('#sp-builder-add-btn');
 
+        // WHY: Hidden template cards contain live <input> elements with name
+        // attributes. If they're not disabled, they get submitted with the form
+        // on every save, creating ghost widgets (the last template type in DOM
+        // order — hero_slider — would re-appear on every save even after
+        // deletion). Disabling all template inputs prevents form submission
+        // without affecting clone behavior, since we re-enable on clone below.
+        $('#sp-builder-templates').find('input, select, textarea').prop('disabled', true);
+
         // Open/close picker
         $addBtn.on('click', function() { $picker.show(); });
         $picker.on('click', '.sp-builder-picker-close', function() { $picker.hide(); });
@@ -28763,6 +29035,10 @@ add_action( 'admin_footer', function () {
             var $tpl = $('#sp-builder-templates .sp-builder-template[data-widget-type="' + type + '"]');
             if ($tpl.length) {
                 var $clone = $tpl.children().first().clone(true);
+                // WHY: Template inputs were disabled to prevent form-submission
+                // pollution (see above). Re-enable them on the cloned card so
+                // the new widget's data actually gets submitted when saving.
+                $clone.find('input, select, textarea').prop('disabled', false);
                 $list.append($clone);
                 reindex();
                 $clone.find('.sp-builder-card-body').show();
@@ -28950,6 +29226,19 @@ function sp_render_builder_widgets( int $post_id ): void {
         $fn = 'sp_render_builder_widget_' . $type;
         if ( function_exists( $fn ) ) {
             echo '<section class="sp-widget sp-widget--' . esc_attr( $type ) . '">';
+
+            // Optional section heading — every widget can have one.
+            // WHY no inline style: Layout rules for .sp-widget-heading-wrap
+            // are defined centrally in sp_builder_frontend_styles(). This
+            // keeps the HTML markup clean and overridable by child themes.
+            $sec_heading = $settings['section_heading'] ?? '';
+            if ( '' !== $sec_heading ) {
+                echo '<div class="sp-widget-heading-wrap">';
+                echo '<h2 class="sp-widget-section-heading">' . esc_html( $sec_heading ) . '</h2>';
+                echo '<hr class="sp-widget-section-divider">';
+                echo '</div>';
+            }
+
             $fn( $settings );
             echo '</section>';
         }
@@ -28970,7 +29259,7 @@ function sp_render_builder_widget_rich_text( array $s ): void {
     $content = $s['content'] ?? '';
     if ( empty( $content ) ) return;
     echo '<div class="sp-widget-rich-text">';
-    echo do_shortcode( wpautop( $content ) );
+    echo wp_kses_post( do_shortcode( wpautop( $content ) ) );
     echo '</div>';
 }
 
@@ -28985,7 +29274,20 @@ function sp_render_builder_widget_member_directory( array $s ): void {
 
     if ( $login_required && ! is_user_logged_in() ) {
         echo '<div class="sp-widget-login-required">';
-        echo '<p>Please <a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">log in</a> to view the member directory.</p>';
+        // WHY wp_kses: The message contains an <a> tag for the login link, so we
+        // can't use esc_html. wp_kses limits allowed HTML to just the link element
+        // with href — no script injection possible.
+        printf(
+            '<p>%s</p>',
+            wp_kses(
+                sprintf(
+                    /* translators: %s is the login URL wrapped in an anchor tag */
+                    __( 'Please <a href="%s">log in</a> to view the member directory.', 'societypress' ),
+                    esc_url( wp_login_url( get_permalink() ) )
+                ),
+                [ 'a' => [ 'href' => [] ] ]
+            )
+        );
         echo '</div>';
         return;
     }
@@ -29012,7 +29314,19 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
 
     if ( $login_required && ! is_user_logged_in() ) {
         echo '<div class="sp-widget-login-required">';
-        echo '<p>Please <a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">log in</a> to search surnames.</p>';
+        // WHY wp_kses: Same pattern as the member directory — the translatable
+        // string contains an <a> link. wp_kses whitelists only the anchor tag.
+        printf(
+            '<p>%s</p>',
+            wp_kses(
+                sprintf(
+                    /* translators: %s is the login URL wrapped in an anchor tag */
+                    __( 'Please <a href="%s">log in</a> to search surnames.', 'societypress' ),
+                    esc_url( wp_login_url( get_permalink() ) )
+                ),
+                [ 'a' => [ 'href' => [] ] ]
+            )
+        );
         echo '</div>';
         return;
     }
@@ -29631,31 +29945,34 @@ function sp_render_builder_widget_contact_form( array $s ): void {
     $intro = $s['intro_text'] ?? '';
     $form_id = 'sp-bld-contact-' . wp_unique_id();
 
-    echo '<div class="sp-widget-contact-form" id="' . esc_attr( $form_id ) . '" style="max-width:600px;">';
+    // WHY no inline styles: All visual styling for the contact form is in
+    // sp_builder_frontend_styles() under .sp-contact-form-* classes. This
+    // keeps the HTML clean and makes the form easy to override in child themes.
+    echo '<div class="sp-widget-contact-form" id="' . esc_attr( $form_id ) . '">';
     if ( $intro ) {
-        echo '<p style="margin-bottom:16px; color:#555;">' . esc_html( $intro ) . '</p>';
+        echo '<p class="sp-contact-intro">' . esc_html( $intro ) . '</p>';
     }
-    echo '<div class="sp-contact-message" style="display:none; padding:12px 16px; border-radius:6px; margin-bottom:16px;"></div>';
+    echo '<div class="sp-contact-message"></div>';
     ?>
     <form class="sp-builder-contact-form-inner" method="post">
         <?php wp_nonce_field( 'sp_builder_contact', 'sp_builder_contact_nonce' ); ?>
-        <div style="position:absolute; left:-9999px;" aria-hidden="true"><input type="text" name="sp_website_url" tabindex="-1" autocomplete="off"></div>
+        <div class="sp-contact-honeypot" aria-hidden="true"><input type="text" name="sp_website_url" tabindex="-1" autocomplete="off"></div>
 
-        <div style="display:flex; gap:16px; margin-bottom:16px;">
-            <div style="flex:1;">
-                <label style="display:block; font-weight:600; margin-bottom:4px;">Name <span style="color:#d63638;">*</span></label>
-                <input type="text" name="sp_contact_name" required style="width:100%; padding:8px 12px; border:1px solid #ccc; border-radius:6px; font-size:16px;">
+        <div class="sp-contact-row">
+            <div class="sp-contact-field">
+                <label class="sp-contact-label"><?php echo esc_html__( 'Name', 'societypress' ); ?> <span class="sp-contact-required">*</span></label>
+                <input type="text" name="sp_contact_name" required class="sp-contact-input">
             </div>
-            <div style="flex:1;">
-                <label style="display:block; font-weight:600; margin-bottom:4px;">Email <span style="color:#d63638;">*</span></label>
-                <input type="email" name="sp_contact_email" required style="width:100%; padding:8px 12px; border:1px solid #ccc; border-radius:6px; font-size:16px;">
+            <div class="sp-contact-field">
+                <label class="sp-contact-label"><?php echo esc_html__( 'Email', 'societypress' ); ?> <span class="sp-contact-required">*</span></label>
+                <input type="email" name="sp_contact_email" required class="sp-contact-input">
             </div>
         </div>
-        <div style="margin-bottom:16px;">
-            <label style="display:block; font-weight:600; margin-bottom:4px;">Message <span style="color:#d63638;">*</span></label>
-            <textarea name="sp_contact_message" rows="5" required style="width:100%; padding:8px 12px; border:1px solid #ccc; border-radius:6px; font-size:16px; font-family:inherit;"></textarea>
+        <div class="sp-contact-field-full">
+            <label class="sp-contact-label"><?php echo esc_html__( 'Message', 'societypress' ); ?> <span class="sp-contact-required">*</span></label>
+            <textarea name="sp_contact_message" rows="5" required class="sp-contact-input sp-contact-textarea"></textarea>
         </div>
-        <button type="submit" class="sp-btn sp-btn-primary">Send Message</button>
+        <button type="submit" class="sp-btn sp-btn-primary"><?php echo esc_html__( 'Send Message', 'societypress' ); ?></button>
     </form>
     <?php
     echo '</div>';
@@ -29673,6 +29990,20 @@ function sp_handle_builder_contact_form(): void {
     if ( ! check_ajax_referer( 'sp_builder_contact', 'sp_builder_contact_nonce', false ) ) {
         wp_send_json_error( [ 'message' => __( 'Security check failed. Please refresh and try again.', 'societypress' ) ] );
     }
+
+    // WHY: Without rate limiting, a bot that captures the nonce can spam unlimited
+    // emails to the organization address. 5 submissions per hour per IP is generous
+    // for legitimate use but blocks automated abuse.
+    $ip    = isset( $_SERVER['HTTP_X_FORWARDED_FOR'] )
+        ? sanitize_text_field( trim( explode( ',', $_SERVER['HTTP_X_FORWARDED_FOR'] )[0] ) )
+        : ( $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0' );
+    $rkey  = 'sp_contact_rate_' . md5( $ip );
+    $hits  = (int) get_transient( $rkey );
+    if ( $hits > 5 ) {
+        wp_send_json_error( [ 'message' => __( 'Too many submissions. Please try again later.', 'societypress' ) ] );
+    }
+    set_transient( $rkey, $hits + 1, 3600 );
+
     if ( ! empty( $_POST['sp_website_url'] ) ) {
         wp_send_json_success( [ 'message' => __( 'Thank you for your message!', 'societypress' ) ] );
     }
@@ -29714,11 +30045,24 @@ function sp_handle_builder_contact_form(): void {
 function sp_builder_frontend_styles(): void {
     ?>
     <style id="sp-builder-frontend-css">
+        /* ------------------------------------------------------------------ */
+        /* LAYOUT — builder content wrapper and widget spacing                */
+        /* ------------------------------------------------------------------ */
         .sp-builder-content { max-width: 100%; }
-        .sp-widget { margin-bottom: 32px; }
+        .sp-widget { padding: 40px 20px; margin-bottom: 20px; }
         .sp-widget:last-child { margin-bottom: 0; }
+        .sp-widget--hero_slider { padding: 0; margin-bottom: 40px; }
+        .sp-widget--hero_slider + .sp-widget { padding-top: 50px; }
 
-        /* Buttons */
+        /* Section heading wrapper — centers the heading + divider within
+           the content width so it aligns with the widget content below. */
+        .sp-widget-heading-wrap { max-width: var(--sp-content-width, 1100px); margin: 0 auto 30px; text-align: center; }
+        .sp-widget-section-heading { text-align: center; font-size: 1.8rem; font-weight: 600; color: var(--sp-color-primary, #1e3a5f); margin: 0 0 8px; }
+        .sp-widget-section-divider { width: 80px; height: 3px; background: var(--sp-color-accent, #667eea); margin: 0 auto; border: none; }
+
+        /* ------------------------------------------------------------------ */
+        /* BUTTONS — shared across all widgets                                */
+        /* ------------------------------------------------------------------ */
         .sp-btn { display: inline-block; padding: 12px 24px; border-radius: 6px; font-size: 16px; font-weight: 600; text-decoration: none; cursor: pointer; border: 2px solid transparent; line-height: 1.4; transition: background-color 0.15s, border-color 0.15s, color 0.15s; }
         .sp-btn-primary { background: var(--sp-color-primary); color: #fff; border-color: var(--sp-color-primary); }
         .sp-btn-primary:hover { background: var(--sp-color-primary-hover); border-color: var(--sp-color-primary-hover); color: #fff; }
@@ -29733,15 +30077,118 @@ function sp_builder_frontend_styles(): void {
         /* Rich text images */
         .sp-widget-rich-text img { max-width: 100%; height: auto; border-radius: 6px; }
 
-        /* Contact form messages */
+        /* ------------------------------------------------------------------ */
+        /* CONTACT FORM — all visual styling for the builder contact widget   */
+        /* WHY here instead of inline: Keeps the form HTML clean, easy to     */
+        /* override in child themes, and compliant with no-inline-style rule. */
+        /* ------------------------------------------------------------------ */
+        .sp-widget-contact-form { max-width: 600px; }
+        .sp-contact-intro { margin-bottom: 16px; color: #555; }
+        .sp-contact-message { display: none; padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; }
         .sp-contact-message.sp-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
         .sp-contact-message.sp-error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+        .sp-contact-honeypot { position: absolute; left: -9999px; }
+        .sp-contact-row { display: flex; gap: 16px; margin-bottom: 16px; }
+        .sp-contact-field { flex: 1; }
+        .sp-contact-field-full { margin-bottom: 16px; }
+        .sp-contact-label { display: block; font-weight: 600; margin-bottom: 4px; }
+        .sp-contact-required { color: #d63638; }
+        .sp-contact-input { width: 100%; padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; box-sizing: border-box; }
+        .sp-contact-textarea { font-family: inherit; }
 
-        /* Mobile */
+        /* ------------------------------------------------------------------ */
+        /* HERO SLIDER — full-width image/video slider with overlaid text     */
+        /* WHY the viewport-width trick: The slider sits inside nested        */
+        /* content wrappers that cap the width. This breaks out to full       */
+        /* viewport width regardless of how many max-width containers wrap it.*/
+        /* ------------------------------------------------------------------ */
+        .sp-widget--hero_slider { width: 100vw; position: relative; left: 50%; right: 50%; margin-left: -50vw; margin-right: -50vw; }
+        .sp-hero-slider { position: relative; overflow: hidden; width: 100%; }
+        .sp-hero-slider .sp-slide { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 0.8s ease; background-size: cover; background-position: center; display: flex; align-items: center; justify-content: center; }
+        .sp-hero-slider .sp-slide.active { opacity: 1; position: relative; }
+        .sp-hero-slider .sp-slide video.sp-slide-video { position: absolute; top: 50%; left: 50%; min-width: 100%; min-height: 100%; width: auto; height: auto; transform: translate(-50%, -50%); object-fit: cover; z-index: 0; }
+        .sp-hero-slider .sp-slide-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        .sp-hero-slider .sp-slide-content { position: relative; z-index: 2; text-align: center; color: #fff; padding: 20px; max-width: 900px; }
+        /* WHY: Per-line styling is now inline on each .sp-slide-line element
+           (font-size, font-weight, color). This rule handles margin and
+           text-shadow — the shared bits that don't vary per line. */
+        .sp-hero-slider .sp-slide-content .sp-slide-line { margin: 0 0 6px; text-shadow: 0 2px 8px rgba(0,0,0,0.5); }
+        .sp-hero-slider .sp-slide-btn { display: inline-block; padding: 12px 28px; background: var(--sp-color-accent, #667eea); color: #fff; text-decoration: none; border-radius: 4px; font-size: 16px; font-weight: 600; transition: background 0.2s; }
+        .sp-hero-slider .sp-slide-btn:hover { background: var(--sp-color-primary, #2271b1); }
+        .sp-slider-dots { display: none; }
+        .sp-slider-arrows { display: none; }
+        /* WHY: Mobile sizes are applied via a CSS class on each line element
+           rather than inline styles, so the media query can override them. */
+        @media (max-width: 768px) {
+            .sp-hero-slider .sp-slide-content .sp-line-small  { font-size: 16px !important; }
+            .sp-hero-slider .sp-slide-content .sp-line-medium { font-size: 22px !important; }
+            .sp-hero-slider .sp-slide-content .sp-line-large  { font-size: 30px !important; }
+        }
+
+        /* ------------------------------------------------------------------ */
+        /* UPCOMING EVENTS — LIST LAYOUT                                      */
+        /* WHY centralized: These rules are static and identical for every    */
+        /* instance, so they belong in the shared stylesheet, not repeated    */
+        /* as inline <style> blocks in the renderer.                          */
+        /* ------------------------------------------------------------------ */
+        .sp-upcoming-events-widget { max-width: var(--sp-content-width, 1100px); margin: 0 auto; }
+        .sp-upcoming-events-list { list-style: none; margin: 0; padding: 0; }
+        .sp-upcoming-event-card { display: flex; align-items: flex-start; gap: 16px; padding: 16px 0; border-bottom: 1px solid #e5e7eb; }
+        .sp-upcoming-event-card:last-child { border-bottom: none; }
+        .sp-ue-date-block { flex-shrink: 0; width: 56px; text-align: center; background: #f0f4f8; border-radius: 8px; padding: 8px 4px; line-height: 1.2; }
+        .sp-ue-date-block .sp-ue-month { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--sp-color-primary); letter-spacing: 0.5px; }
+        .sp-ue-date-block .sp-ue-day { display: block; font-size: 22px; font-weight: 700; color: #1d2327; }
+        .sp-ue-date-block .sp-ue-weekday { display: block; font-size: 10px; color: #666; text-transform: uppercase; }
+        .sp-ue-details { flex: 1; min-width: 0; }
+        .sp-ue-title { font-size: 16px; font-weight: 600; margin: 0 0 4px; line-height: 1.3; }
+        .sp-ue-title a { color: #1d2327; text-decoration: none; }
+        .sp-ue-title a:hover { color: var(--sp-color-primary); }
+        .sp-ue-meta { font-size: 13px; color: #666; margin: 0; line-height: 1.5; }
+        .sp-ue-meta span { display: inline-block; margin-right: 12px; }
+        .sp-ue-category-badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; color: #fff; margin-top: 4px; }
+        .sp-ue-view-all { display: block; text-align: center; margin-top: 20px; padding: 10px 20px; font-size: 14px; font-weight: 600; color: var(--sp-color-primary); text-decoration: none; border: 2px solid var(--sp-color-primary); border-radius: 6px; transition: all 0.2s; }
+        .sp-ue-view-all:hover { background: var(--sp-color-primary); color: #fff; }
+        .sp-ue-empty { text-align: center; padding: 24px; color: #666; font-style: italic; }
+
+        /* UPCOMING EVENTS — CARD LAYOUT */
+        .sp-ue-cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; max-width: var(--sp-content-width, 1100px); margin: 0 auto; }
+        .sp-ue-photo-card { background: #fff; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .sp-ue-photo-card-image { height: 180px; background-size: cover; background-position: center; background-color: #f0f4f8; }
+        .sp-ue-photo-card-body { padding: 20px; display: flex; flex-direction: column; flex: 1; }
+        .sp-ue-photo-card-body h4 { font-size: 1.05rem; font-weight: 600; color: #1d2327; margin: 0 0 12px; line-height: 1.3; }
+        .sp-ue-photo-card-meta { font-size: 0.85rem; color: #666; line-height: 1.6; margin: 0 0 16px; flex: 1; }
+        .sp-ue-photo-card-meta strong { color: var(--sp-color-primary, #1e3a5f); }
+        .sp-ue-photo-card-btn { display: inline-block; padding: 8px 20px; font-size: 0.8rem; font-weight: 600; text-decoration: none; border-radius: 4px; background: var(--sp-color-primary, #1e3a5f); color: #fff; align-self: flex-start; transition: background 0.2s; }
+        .sp-ue-photo-card-btn:hover { background: var(--sp-color-primary-hover, #2c5282); color: #fff; }
+
+        /* ------------------------------------------------------------------ */
+        /* FEATURE CARDS — static rules (grid-template-columns is dynamic     */
+        /* and stays inline in the renderer since $columns varies per widget) */
+        /* ------------------------------------------------------------------ */
+        .sp-feature-card { text-align: center; padding: 30px 20px; background: #f8f8f8; border-radius: 8px; }
+        .sp-feature-card-img { width: 100%; height: 200px; object-fit: cover; border-radius: 8px; margin-bottom: 20px; }
+        .sp-feature-card h3 { font-size: 1.2rem; font-weight: 600; color: var(--sp-color-primary, #1e3a5f); margin: 0 0 12px; }
+        .sp-feature-card p { color: #666; font-size: 0.95rem; line-height: 1.6; margin: 0 0 20px; }
+        .sp-feature-card-btn { display: inline-block; padding: 10px 24px; font-size: 0.85rem; font-weight: 600; text-decoration: none; border-radius: 4px; background: var(--sp-color-primary, #1e3a5f); color: #fff; transition: background 0.2s; }
+        .sp-feature-card-btn:hover { background: var(--sp-color-primary-hover, #2c5282); color: #fff; }
+        @media (max-width: 768px) { .sp-feature-cards-grid { grid-template-columns: 1fr !important; } }
+
+        /* ------------------------------------------------------------------ */
+        /* MAP EMBED — wrapper constrains the iframe to content width         */
+        /* NOTE: The maps.google.com/maps?output=embed endpoint is unofficial */
+        /* and could change or break without notice. If it does, an API key   */
+        /* based solution (Maps Embed API) would be the replacement.          */
+        /* ------------------------------------------------------------------ */
+        .sp-map-embed-wrap { max-width: var(--sp-content-width, 1100px); margin: 0 auto; }
+        .sp-map-embed-wrap iframe { border: 0; border-radius: 8px; }
+
+        /* ------------------------------------------------------------------ */
+        /* MOBILE                                                              */
+        /* ------------------------------------------------------------------ */
         @media (max-width: 600px) {
             .sp-widget-stats > div:first-child { flex-direction: column !important; }
             .sp-tiers-grid { grid-template-columns: 1fr !important; }
-            .sp-builder-contact-form-inner > div:first-of-type { flex-direction: column !important; gap: 0 !important; }
+            .sp-contact-row { flex-direction: column !important; gap: 0 !important; }
         }
     </style>
     <?php
@@ -29755,34 +30202,63 @@ function sp_builder_frontend_styles(): void {
 function sp_builder_frontend_scripts(): void {
     ?>
     <script id="sp-builder-frontend-js">
-    jQuery(function($) {
+    (function() {
         'use strict';
-        $('.sp-builder-contact-form-inner').on('submit', function(e) {
+
+        // WHY vanilla JS instead of jQuery: The frontend prohibits jQuery to keep
+        // page weight down. fetch() + FormData gives us the same AJAX submit
+        // behavior with zero dependencies. We use event delegation on the document
+        // so the handler works even if the form is injected dynamically.
+        document.addEventListener('submit', function(e) {
+            var form = e.target.closest('.sp-builder-contact-form-inner');
+            if ( ! form ) return;
             e.preventDefault();
-            var $form = $(this), $wrap = $form.closest('.sp-widget-contact-form');
-            var $msg = $wrap.find('.sp-contact-message'), $btn = $form.find('button[type="submit"]');
-            var origText = $btn.text();
 
-            $btn.prop('disabled', true).text('Sending...');
-            $msg.hide().removeClass('sp-success sp-error');
+            var wrap     = form.closest('.sp-widget-contact-form');
+            var msg      = wrap.querySelector('.sp-contact-message');
+            var btn      = form.querySelector('button[type="submit"]');
+            var origText = btn.textContent;
 
-            $.ajax({
-                url: '<?php echo esc_url( admin_url( 'admin-ajax.php' ) ); ?>',
-                type: 'POST',
-                data: $form.serialize() + '&action=sp_builder_contact_form',
-                dataType: 'json',
-                success: function(r) {
-                    $msg.text(r.data.message);
-                    $msg.addClass(r.success ? 'sp-success' : 'sp-error').show();
-                    if (r.success) $form.find('input[type="text"], input[type="email"], textarea').val('');
-                },
-                error: function() {
-                    $msg.addClass('sp-error').text('An unexpected error occurred. Please try again.').show();
-                },
-                complete: function() { $btn.prop('disabled', false).text(origText); }
+            btn.disabled = true;
+            btn.textContent = '<?php echo esc_js( __( 'Sending...', 'societypress' ) ); ?>';
+            msg.style.display = 'none';
+            msg.classList.remove('sp-success', 'sp-error');
+
+            // WHY FormData + URLSearchParams: FormData captures all form fields
+            // including the nonce. We append the AJAX action, then convert to
+            // URL-encoded string for the POST body — same format as jQuery.serialize().
+            var data = new FormData(form);
+            data.append('action', 'sp_builder_contact_form');
+
+            fetch('<?php echo esc_url( admin_url( 'admin-ajax.php' ) ); ?>', {
+                method: 'POST',
+                body: new URLSearchParams(data),
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+            })
+            .then(function(response) { return response.json(); })
+            .then(function(r) {
+                msg.textContent = r.data.message;
+                msg.classList.add(r.success ? 'sp-success' : 'sp-error');
+                msg.style.display = 'block';
+
+                // Reset form fields on success so the user gets a clean slate
+                if (r.success) {
+                    form.querySelectorAll('input[type="text"], input[type="email"], textarea').forEach(function(el) {
+                        el.value = '';
+                    });
+                }
+            })
+            .catch(function() {
+                msg.classList.add('sp-error');
+                msg.textContent = '<?php echo esc_js( __( 'An unexpected error occurred. Please try again.', 'societypress' ) ); ?>';
+                msg.style.display = 'block';
+            })
+            .finally(function() {
+                btn.disabled = false;
+                btn.textContent = origText;
             });
         });
-    });
+    })();
     </script>
     <?php
 }
@@ -33799,7 +34275,9 @@ add_action( 'admin_init', function () {
         function () {
             $settings = get_option( 'societypress_settings', [] );
             $pub  = $settings['stripe_test_publishable_key'] ?? '';
-            $sec  = $settings['stripe_test_secret_key'] ?? '';
+            // WHY: Secret keys are stored encrypted — decrypt for form display.
+            $sec_raw = $settings['stripe_test_secret_key'] ?? '';
+            $sec     = $sec_raw ? ( sp_decrypt( $sec_raw ) ?: '' ) : '';
             ?>
             <div class="sp-stripe-keys-group" id="sp-stripe-test-keys">
                 <div style="margin-bottom: 8px;">
@@ -33832,7 +34310,9 @@ add_action( 'admin_init', function () {
         function () {
             $settings = get_option( 'societypress_settings', [] );
             $pub  = $settings['stripe_live_publishable_key'] ?? '';
-            $sec  = $settings['stripe_live_secret_key'] ?? '';
+            // WHY: Secret keys are stored encrypted — decrypt for form display.
+            $sec_raw = $settings['stripe_live_secret_key'] ?? '';
+            $sec     = $sec_raw ? ( sp_decrypt( $sec_raw ) ?: '' ) : '';
             ?>
             <div class="sp-stripe-keys-group" id="sp-stripe-live-keys">
                 <div style="margin-bottom: 8px;">
@@ -41429,12 +41909,14 @@ class SP_Speakers_List_Table extends WP_List_Table {
 
         $total = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} s {$where}" );
 
-        $this->items = $wpdb->get_results(
+        $this->items = $wpdb->get_results( $wpdb->prepare(
             "SELECT s.*, (SELECT COUNT(*) FROM {$assign} WHERE speaker_id = s.id) AS event_count
              FROM {$table} s {$where}
              ORDER BY s.name ASC
-             LIMIT {$per_page} OFFSET {$offset}"
-        );
+             LIMIT %d OFFSET %d",
+            $per_page,
+            $offset
+        ) );
 
         $this->set_pagination_args( [
             'total_items' => $total,
@@ -41992,6 +42474,7 @@ function sp_render_builder_widget_upcoming_events( array $s ): void {
 
     $count         = (int) ( $s['count'] ?? 5 );
     $category_id   = (int) ( $s['category_id'] ?? 0 );
+    $layout        = $s['layout'] ?? 'list';
     $show_date     = ! empty( $s['show_date'] );
     $show_time     = ! empty( $s['show_time'] );
     $show_location = ! empty( $s['show_location'] );
@@ -42029,121 +42512,78 @@ function sp_render_builder_widget_upcoming_events( array $s ): void {
     }
     $events_page_url = $events_page_id ? get_permalink( $events_page_id ) : '';
 
-    // --- Inline styles for this widget ---
-    ?>
-    <style>
-        .sp-upcoming-events-list {
-            list-style: none;
-            margin: 0;
-            padding: 0;
-        }
-        .sp-upcoming-event-card {
-            display: flex;
-            align-items: flex-start;
-            gap: 16px;
-            padding: 16px 0;
-            border-bottom: 1px solid #e5e7eb;
-        }
-        .sp-upcoming-event-card:last-child {
-            border-bottom: none;
-        }
-        /* Date block — compact calendar-style square */
-        .sp-ue-date-block {
-            flex-shrink: 0;
-            width: 56px;
-            text-align: center;
-            background: #f0f4f8;
-            border-radius: 8px;
-            padding: 8px 4px;
-            line-height: 1.2;
-        }
-        .sp-ue-date-block .sp-ue-month {
-            display: block;
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-            color: var(--sp-color-primary);
-            letter-spacing: 0.5px;
-        }
-        .sp-ue-date-block .sp-ue-day {
-            display: block;
-            font-size: 22px;
-            font-weight: 700;
-            color: #1d2327;
-        }
-        .sp-ue-date-block .sp-ue-weekday {
-            display: block;
-            font-size: 10px;
-            color: #666;
-            text-transform: uppercase;
-        }
-        .sp-ue-details {
-            flex: 1;
-            min-width: 0;
-        }
-        .sp-ue-title {
-            font-size: 16px;
-            font-weight: 600;
-            margin: 0 0 4px;
-            line-height: 1.3;
-        }
-        .sp-ue-title a {
-            color: #1d2327;
-            text-decoration: none;
-        }
-        .sp-ue-title a:hover {
-            color: var(--sp-color-primary);
-        }
-        .sp-ue-meta {
-            font-size: 13px;
-            color: #666;
-            margin: 0;
-            line-height: 1.5;
-        }
-        .sp-ue-meta span {
-            display: inline-block;
-            margin-right: 12px;
-        }
-        .sp-ue-category-badge {
-            display: inline-block;
-            font-size: 11px;
-            font-weight: 600;
-            padding: 2px 8px;
-            border-radius: 10px;
-            color: #fff;
-            margin-top: 4px;
-        }
-        .sp-ue-view-all {
-            display: block;
-            text-align: center;
-            margin-top: 20px;
-            padding: 10px 20px;
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--sp-color-primary);
-            text-decoration: none;
-            border: 2px solid var(--sp-color-primary);
-            border-radius: 6px;
-            transition: all 0.2s;
-        }
-        .sp-ue-view-all:hover {
-            background: var(--sp-color-primary);
-            color: #fff;
-        }
-        .sp-ue-empty {
-            text-align: center;
-            padding: 24px;
-            color: #666;
-            font-style: italic;
-        }
-    </style>
-    <?php
+    // WHY no inline <style> block: All upcoming events CSS (both list and card
+    // layouts) is now centralized in sp_builder_frontend_styles(). This prevents
+    // duplicate <style> blocks when multiple event widgets are on the same page.
 
+    // WHY no inline style on the wrapper: The .sp-upcoming-events-widget class
+    // has max-width and margin defined in sp_builder_frontend_styles().
     echo '<div class="sp-upcoming-events-widget">';
 
     if ( empty( $events ) ) {
         echo '<p class="sp-ue-empty">' . esc_html__( 'No upcoming events scheduled.', 'societypress' ) . '</p>';
+
+    } elseif ( 'cards' === $layout ) {
+        // ==================================================================
+        // CARD LAYOUT — photo cards in a responsive grid
+        // WHY: Matches the ENS reference site's homepage event display.
+        // Each card shows the event image, title, date/time, location, and
+        // a "Details" button. Falls back gracefully when no image is set.
+        // CSS is centralized in sp_builder_frontend_styles().
+        // ==================================================================
+        echo '<div class="sp-ue-cards-grid">';
+        foreach ( $events as $event ) {
+            $ts         = strtotime( $event->event_date );
+            $date_str   = wp_date( 'F j, Y', $ts );
+            $time_str   = '';
+            if ( $show_time && $event->start_time ) {
+                $time_str = wp_date( 'g:i A', strtotime( $event->start_time ) );
+                if ( $event->end_time ) {
+                    $time_str .= ' – ' . wp_date( 'g:i A', strtotime( $event->end_time ) );
+                }
+            }
+
+            $evt_img = '';
+            if ( ! empty( $event->image_id ) ) {
+                $evt_img = wp_get_attachment_image_url( (int) $event->image_id, 'medium_large' );
+            }
+
+            $is_external = ! empty( $event->external_url );
+            $detail_url  = '';
+            if ( $is_external ) {
+                $detail_url = $event->external_url;
+            } elseif ( $events_page_url && ! empty( $event->slug ) ) {
+                $detail_url = add_query_arg( 'sp_event', $event->slug, $events_page_url );
+            }
+
+            echo '<div class="sp-ue-photo-card">';
+            echo '<div class="sp-ue-photo-card-image"' . ( $evt_img ? ' style="background-image:url(\'' . esc_url( $evt_img ) . '\');"' : '' ) . '></div>';
+            echo '<div class="sp-ue-photo-card-body">';
+            echo '<h4>' . esc_html( $event->title ) . '</h4>';
+            echo '<p class="sp-ue-photo-card-meta">';
+            if ( $show_date ) {
+                echo '<strong>&bull; ' . esc_html( $date_str ) . '</strong>';
+            }
+            if ( $time_str ) {
+                echo '<br>' . esc_html( $time_str );
+            }
+            if ( $show_location && $event->location_name ) {
+                echo '<br><strong>&bull; ' . esc_html( $event->location_name ) . '</strong>';
+            }
+            echo '</p>';
+            if ( $detail_url ) {
+                echo '<a href="' . esc_url( $detail_url ) . '" class="sp-ue-photo-card-btn"'
+                     . ( $is_external ? ' target="_blank" rel="noopener"' : '' )
+                     . '>' . esc_html__( 'Details', 'societypress' ) . '</a>';
+            }
+            echo '</div></div>';
+        }
+        echo '</div>';
+
     } else {
+        // ==================================================================
+        // LIST LAYOUT — compact list with date blocks (original default)
+        // ==================================================================
         echo '<ul class="sp-upcoming-events-list">';
 
         foreach ( $events as $event ) {
@@ -42153,21 +42593,16 @@ function sp_render_builder_widget_upcoming_events( array $s ): void {
             $weekday   = wp_date( 'D', $ts );
             $full_date = wp_date( 'l, F j, Y', $ts );
 
-            // Build detail page URL — external events link directly to the
-            // external site, internal events link to the SocietyPress detail page.
             $is_external = ! empty( $event->external_url );
             $detail_url  = '';
-            $link_target = '';
             if ( $is_external ) {
-                $detail_url  = $event->external_url;
-                $link_target = ' target="_blank" rel="noopener"';
+                $detail_url = $event->external_url;
             } elseif ( $events_page_url && ! empty( $event->slug ) ) {
                 $detail_url = add_query_arg( 'sp_event', $event->slug, $events_page_url );
             }
 
             echo '<li class="sp-upcoming-event-card">';
 
-            // Date block (always shown — it's the visual anchor)
             if ( $show_date ) {
                 echo '<div class="sp-ue-date-block">';
                 echo '<span class="sp-ue-month">' . esc_html( $month ) . '</span>';
@@ -42177,11 +42612,16 @@ function sp_render_builder_widget_upcoming_events( array $s ): void {
             }
 
             echo '<div class="sp-ue-details">';
-
-            // Title — linked to detail page if available
             echo '<h4 class="sp-ue-title">';
             if ( $detail_url ) {
-                echo '<a href="' . esc_url( $detail_url ) . '"' . $link_target . '>' . esc_html( $event->title );
+                // WHY individual esc_attr() calls instead of concatenating a raw
+                // $link_target string: Each attribute is escaped separately so no
+                // unescaped user data can slip into the HTML output.
+                echo '<a href="' . esc_url( $detail_url ) . '"';
+                if ( $is_external ) {
+                    echo ' target="' . esc_attr( '_blank' ) . '" rel="' . esc_attr( 'noopener' ) . '"';
+                }
+                echo '>' . esc_html( $event->title );
                 if ( $is_external ) echo ' &#8599;';
                 echo '</a>';
             } else {
@@ -42189,7 +42629,6 @@ function sp_render_builder_widget_upcoming_events( array $s ): void {
             }
             echo '</h4>';
 
-            // Meta line — time and/or location
             $meta_parts = [];
             if ( $show_time && $event->start_time ) {
                 $time_str = wp_date( 'g:i A', strtotime( $event->start_time ) );
@@ -42202,24 +42641,20 @@ function sp_render_builder_widget_upcoming_events( array $s ): void {
                 $meta_parts[] = '<span>📍 ' . esc_html( $event->location_name ) . '</span>';
             }
             if ( ! $show_date ) {
-                // If date block is hidden, show date inline so people still know when
                 $meta_parts[] = '<span>📅 ' . esc_html( $full_date ) . '</span>';
             }
             if ( ! empty( $meta_parts ) ) {
                 echo '<p class="sp-ue-meta">' . implode( '', $meta_parts ) . '</p>';
             }
 
-            // Category badge
             if ( ! empty( $event->category_name ) ) {
                 $color = $event->category_color ?: '#2271b1';
                 echo '<span class="sp-ue-category-badge" style="background:' . esc_attr( $color ) . ';">'
                      . esc_html( $event->category_name ) . '</span>';
             }
 
-            // Price badge — show both member and non-member when applicable
             $m_price  = (float) $event->member_price;
             $nm_price = (float) $event->nonmember_price;
-
             if ( $m_price > 0 && $nm_price > 0 ) {
                 echo '<span class="sp-ue-category-badge" style="background:#555;">'
                      . esc_html__( 'Members', 'societypress' ) . ' ' . esc_html( sp_format_currency( $m_price ) )
@@ -42235,19 +42670,20 @@ function sp_render_builder_widget_upcoming_events( array $s ): void {
                      . '</span>';
             }
 
-            echo '</div>'; // .sp-ue-details
+            echo '</div>';
             echo '</li>';
         }
 
         echo '</ul>';
     }
 
-    // "View All Events" link — only if an events page exists
-    if ( $events_page_url ) {
+    // "View All Events" link — list layout only. Card layout already has
+    // "Details" buttons on each card, so this link would be redundant.
+    if ( $events_page_url && 'cards' !== $layout ) {
         echo '<a href="' . esc_url( $events_page_url ) . '" class="sp-ue-view-all">' . esc_html__( 'View All Events', 'societypress' ) . ' &rarr;</a>';
     }
 
-    echo '</div>'; // .sp-upcoming-events-widget
+    echo '</div>';
 }
 
 
@@ -42723,9 +43159,13 @@ function sp_stripe_is_configured( array $settings ): bool {
  */
 function sp_stripe_get_secret_key( array $settings ): string {
     $test_mode = ! empty( $settings['stripe_test_mode'] );
-    return $test_mode
+    $key = $test_mode
         ? ( $settings['stripe_test_secret_key'] ?? '' )
         : ( $settings['stripe_live_secret_key'] ?? '' );
+    // WHY: Secret keys are now stored encrypted via sp_encrypt(). We must
+    // decrypt them before passing to the Stripe API. sp_decrypt() returns
+    // false on failure (e.g. corrupted data), so we fall back to empty string.
+    return $key ? ( sp_decrypt( $key ) ?: '' ) : '';
 }
 
 
@@ -43942,9 +44382,10 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
     } else {
         // Albums grid view — show album covers
         $visibility_clause = is_user_logged_in() ? '' : " AND visibility = 'public'";
-        $albums = $wpdb->get_results(
-            "SELECT * FROM {$prefix}photo_albums WHERE 1=1{$visibility_clause} ORDER BY sort_order ASC, created_at DESC LIMIT {$count}"
-        );
+        $albums = $wpdb->get_results( $wpdb->prepare(
+            "SELECT * FROM {$prefix}photo_albums WHERE 1=1{$visibility_clause} ORDER BY sort_order ASC, created_at DESC LIMIT %d",
+            $count
+        ) );
 
         if ( empty( $albums ) ) {
             echo '<p class="sp-gallery-empty">' . esc_html__( 'No photo albums yet.', 'societypress' ) . '</p>';
@@ -44025,14 +44466,15 @@ function sp_render_builder_widget_resource_links( array $s ): void {
     }
     $where_sql = implode( ' AND ', $where );
 
-    $resources = $wpdb->get_results(
+    $resources = $wpdb->get_results( $wpdb->prepare(
         "SELECT r.*, rc.name as category_name
          FROM {$prefix}resources r
          LEFT JOIN {$prefix}resource_categories rc ON r.category_id = rc.id
          WHERE {$where_sql}
          ORDER BY rc.sort_order ASC, rc.name ASC, r.sort_order ASC, r.title ASC
-         LIMIT {$count}"
-    );
+         LIMIT %d",
+        $count
+    ) );
 
     echo '<div class="sp-widget-resource-links">';
     if ( empty( $resources ) ) {
@@ -44192,14 +44634,16 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
     // ---- Count + fetch results ----
     $offset = ( $page_num - 1 ) * $per_page;
     $total  = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}library_items li WHERE {$where_sql}" );
-    $items  = $wpdb->get_results(
+    $items  = $wpdb->get_results( $wpdb->prepare(
         "SELECT li.*, lc.name as category_name
          FROM {$prefix}library_items li
          LEFT JOIN {$prefix}library_categories lc ON li.category_id = lc.id
          WHERE {$where_sql}
          ORDER BY {$order_sql}
-         LIMIT {$per_page} OFFSET {$offset}"
-    );
+         LIMIT %d OFFSET %d",
+        $per_page,
+        $offset
+    ) );
     $total_pages = (int) ceil( $total / $per_page );
 
     // ---- Collection-wide stats (for the landing header) ----
@@ -45001,36 +45445,12 @@ function sp_render_builder_widget_hero_slider( array $s ): void {
     }
 
     ?>
-    <style>
-        /* WHY the viewport-width trick: The slider sits inside nested content
-           wrappers that cap the width. This breaks out to full viewport width
-           regardless of how many max-width containers wrap it. */
-        .sp-widget--hero_slider { width: 100vw; position: relative; left: 50%; right: 50%; margin-left: -50vw; margin-right: -50vw; margin-top: -130px; }
-        .sp-hero-slider { position: relative; overflow: hidden; width: 100%; }
-        .sp-hero-slider .sp-slide { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 0.8s ease; background-size: cover; background-position: center; display: flex; align-items: center; justify-content: center; }
-        .sp-hero-slider .sp-slide.active { opacity: 1; position: relative; }
-        .sp-hero-slider .sp-slide video.sp-slide-video { position: absolute; top: 50%; left: 50%; min-width: 100%; min-height: 100%; width: auto; height: auto; transform: translate(-50%, -50%); object-fit: cover; z-index: 0; }
-        .sp-hero-slider .sp-slide-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-        .sp-hero-slider .sp-slide-content { position: relative; z-index: 2; text-align: center; color: #fff; padding: 20px; max-width: 900px; }
-        /* WHY: Per-line styling is now inline on each .sp-slide-line element
-           (font-size, font-weight, color). This rule just handles margin and
-           text-shadow — the shared bits that don't vary per line. */
-        .sp-hero-slider .sp-slide-content .sp-slide-line { margin: 0 0 6px; text-shadow: 0 2px 8px rgba(0,0,0,0.5); }
-        .sp-hero-slider .sp-slide-btn { display: inline-block; padding: 12px 28px; background: var(--sp-color-accent, #667eea); color: #fff; text-decoration: none; border-radius: 4px; font-size: 16px; font-weight: 600; transition: background 0.2s; }
-        .sp-hero-slider .sp-slide-btn:hover { background: var(--sp-color-primary, #2271b1); }
-        .sp-slider-dots { display: none; }
-        .sp-slider-arrows { display: none; }
-        /* WHY: Mobile sizes are applied via a CSS class on each line element
-           rather than inline styles, so the media query can override them.
-           .sp-line-small = 16px, .sp-line-medium = 22px, .sp-line-large = 30px */
-        @media (max-width: 768px) {
-            .sp-hero-slider .sp-slide-content .sp-line-small  { font-size: 16px !important; }
-            .sp-hero-slider .sp-slide-content .sp-line-medium { font-size: 22px !important; }
-            .sp-hero-slider .sp-slide-content .sp-line-large  { font-size: 30px !important; }
-        }
-    </style>
-
-    <div class="sp-hero-slider" id="<?php echo esc_attr( $uid ); ?>" style="height: <?php echo $height; ?>px;">
+    <?php
+    // WHY no inline <style> block: All static hero slider CSS is now centralized
+    // in sp_builder_frontend_styles(). Only the dynamic height value (which varies
+    // per widget instance) remains as an inline style on the container div.
+    ?>
+    <div class="sp-hero-slider" id="<?php echo esc_attr( $uid ); ?>" style="height: <?php echo absint( $height ); ?>px;">
         <?php foreach ( $slides as $i => $slide ) :
             $media_url = esc_url( $slide['image'] ?? '' );
             // WHY: Detect video files so we can render a <video> element instead
@@ -45176,6 +45596,96 @@ function sp_render_builder_widget_hero_slider( array $s ): void {
         })();
         </script>
     <?php endif; ?>
+    <?php
+}
+
+
+/**
+ * Render: Feature Cards
+ *
+ * WHY: Grid of image cards with titles, descriptions, and buttons. Used for
+ * "Library / Volunteer / Learn / Benefits" style sections. Replaces the
+ * hardcoded feature cards that were previously in SAGHS front-page.php.
+ */
+function sp_render_builder_widget_feature_cards( array $s ): void {
+    $cards   = $s['cards'] ?? [];
+    $columns = (int) ( $s['columns'] ?? 2 );
+
+    if ( empty( $cards ) ) {
+        echo '<p style="text-align:center; padding:40px; color:#646970;">' . esc_html__( 'No cards configured.', 'societypress' ) . '</p>';
+        return;
+    }
+
+    ?>
+    <?php
+    // WHY: Static feature card CSS is centralized in sp_builder_frontend_styles().
+    // Only the dynamic grid-template-columns (which depends on $columns) stays
+    // inline on the grid container. This avoids duplicate <style> blocks when
+    // multiple feature_cards widgets appear on the same page.
+    ?>
+    <div class="sp-feature-cards-grid" style="grid-template-columns: repeat(<?php echo absint( $columns ); ?>, 1fr);">
+        <?php foreach ( $cards as $card ) :
+            $img_url = '';
+            if ( ! empty( $card['image_id'] ) ) {
+                $img_url = wp_get_attachment_image_url( (int) $card['image_id'], 'medium_large' );
+            }
+        ?>
+            <div class="sp-feature-card">
+                <?php if ( $img_url ) : ?>
+                    <img class="sp-feature-card-img" src="<?php echo esc_url( $img_url ); ?>" alt="<?php echo esc_attr( $card['title'] ?? '' ); ?>">
+                <?php endif; ?>
+                <h3><?php echo esc_html( $card['title'] ?? '' ); ?></h3>
+                <?php if ( ! empty( $card['description'] ) ) : ?>
+                    <p><?php echo esc_html( $card['description'] ); ?></p>
+                <?php endif; ?>
+                <?php if ( ! empty( $card['btn_text'] ) && ! empty( $card['btn_url'] ) ) : ?>
+                    <a href="<?php echo esc_url( $card['btn_url'] ); ?>" class="sp-feature-card-btn"><?php echo esc_html( $card['btn_text'] ); ?></a>
+                <?php endif; ?>
+            </div>
+        <?php endforeach; ?>
+    </div>
+    <?php
+}
+
+
+/**
+ * Render: Map Embed
+ *
+ * WHY: Embeds a Google Map using the free iframe embed (no API key). The
+ * address is URL-encoded and passed to Google Maps' embed endpoint.
+ */
+function sp_render_builder_widget_map_embed( array $s ): void {
+    $address = $s['address'] ?? '';
+    $height  = (int) ( $s['height'] ?? 350 );
+
+    if ( empty( $address ) ) {
+        echo '<p style="text-align:center; padding:40px; color:#646970;">' . esc_html__( 'No address configured.', 'societypress' ) . '</p>';
+        return;
+    }
+
+    // WHY this URL format: Google's free embed endpoint requires the query
+    // string parameters in this specific order. The 't' param is map type,
+    // 'z' is zoom level, 'output=embed' tells Google to serve the iframe
+    // version. esc_url() will encode the & signs for HTML but browsers
+    // decode them correctly in src attributes.
+    //
+    // NOTE: The maps.google.com/maps?output=embed endpoint is unofficial
+    // and could change or break without notice from Google. If that happens,
+    // the proper replacement is the Maps Embed API (requires an API key):
+    // https://developers.google.com/maps/documentation/embed/get-started
+    $embed_url = 'https://maps.google.com/maps?q=' . rawurlencode( $address ) . '&t=&z=15&ie=UTF8&iwloc=&output=embed';
+    ?>
+    <div class="sp-map-embed-wrap">
+        <iframe
+            src="<?php echo esc_url( $embed_url ); ?>"
+            width="100%"
+            height="<?php echo absint( $height ); ?>"
+            allowfullscreen=""
+            loading="lazy"
+            referrerpolicy="no-referrer-when-downgrade"
+            title="<?php echo esc_attr( $address ); ?>">
+        </iframe>
+    </div>
     <?php
 }
 
@@ -47529,14 +48039,16 @@ function sp_frontend_library_catalog(): void {
     $page_num = max( 1, absint( $_GET['pg'] ?? 1 ) );
     $offset   = ( $page_num - 1 ) * $per_page;
     $total    = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}library_items li WHERE {$where_sql}" );
-    $items    = $wpdb->get_results(
+    $items    = $wpdb->get_results( $wpdb->prepare(
         "SELECT li.*, lc.name as category_name
          FROM {$prefix}library_items li
          LEFT JOIN {$prefix}library_categories lc ON li.category_id = lc.id
          WHERE {$where_sql}
          ORDER BY li.title ASC
-         LIMIT {$per_page} OFFSET {$offset}"
-    );
+         LIMIT %d OFFSET %d",
+        $per_page,
+        $offset
+    ) );
 
     // WHY: All layout/typography styles live here rather than inline so they
     // can be overridden by child themes and the design stays centralised.
@@ -47708,13 +48220,15 @@ function sp_render_library_catalog_page(): void {
     $page_num = max( 1, absint( $_GET['paged'] ?? 1 ) );
     $offset   = ( $page_num - 1 ) * $per_page;
     $total    = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}library_items li WHERE {$where_sql}" );
-    $items    = $wpdb->get_results(
+    $items    = $wpdb->get_results( $wpdb->prepare(
         "SELECT li.*
          FROM {$prefix}library_items li
          WHERE {$where_sql}
          ORDER BY {$orderby} {$order}
-         LIMIT {$per_page} OFFSET {$offset}"
-    );
+         LIMIT %d OFFSET %d",
+        $per_page,
+        $offset
+    ) );
     $total_pages = (int) ceil( $total / $per_page );
 
     // Helper to build sortable column header links
@@ -49872,14 +50386,16 @@ class SP_Volunteers_List_Table extends WP_List_Table {
              WHERE 1=1{$where}"
         );
 
-        $this->items = $wpdb->get_results(
+        $this->items = $wpdb->get_results( $wpdb->prepare(
             "SELECT vr.*, m.first_name, m.last_name
              FROM {$prefix}volunteer_roles vr
              INNER JOIN {$prefix}members m ON vr.user_id = m.user_id
              WHERE 1=1{$where}
              ORDER BY {$orderby} {$order}
-             LIMIT {$per_page} OFFSET {$offset}"
-        );
+             LIMIT %d OFFSET %d",
+            $per_page,
+            $offset
+        ) );
 
         $this->set_pagination_args( [
             'total_items' => $total,
@@ -49982,13 +50498,15 @@ class SP_VolunteerHours_List_Table extends WP_List_Table {
             "SELECT COUNT(*) FROM {$prefix}volunteer_hours"
         );
 
-        $this->items = $wpdb->get_results(
+        $this->items = $wpdb->get_results( $wpdb->prepare(
             "SELECT vh.*, m.first_name, m.last_name
              FROM {$prefix}volunteer_hours vh
              INNER JOIN {$prefix}members m ON vh.user_id = m.user_id
              ORDER BY {$orderby} {$order}
-             LIMIT {$per_page} OFFSET {$offset}"
-        );
+             LIMIT %d OFFSET %d",
+            $per_page,
+            $offset
+        ) );
 
         $this->set_pagination_args( [
             'total_items' => $total,
@@ -57948,12 +58466,13 @@ function sp_do_unified_search( string $query, int $per_module = 5 ): array {
         "SELECT COUNT(*) FROM {$prefix}events {$events_where}"
     );
 
-    $events_items = $wpdb->get_results(
+    $events_items = $wpdb->get_results( $wpdb->prepare(
         "SELECT id, title, description, event_date, start_time, location_name, visibility
          FROM {$prefix}events {$events_where}
          ORDER BY event_date DESC
-         LIMIT {$per_module}"
-    );
+         LIMIT %d",
+        $per_module
+    ) );
 
     if ( $events_total > 0 ) {
         $results['events'] = [
@@ -57979,12 +58498,13 @@ function sp_do_unified_search( string $query, int $per_module = 5 ): array {
         "SELECT COUNT(*) FROM {$prefix}library_items {$library_where}"
     );
 
-    $library_items = $wpdb->get_results(
+    $library_items = $wpdb->get_results( $wpdb->prepare(
         "SELECT id, title, author, call_number, media_type
          FROM {$prefix}library_items {$library_where}
          ORDER BY title ASC
-         LIMIT {$per_module}"
-    );
+         LIMIT %d",
+        $per_module
+    ) );
 
     if ( $library_total > 0 ) {
         $results['library'] = [
@@ -58010,14 +58530,15 @@ function sp_do_unified_search( string $query, int $per_module = 5 ): array {
         "SELECT COUNT(*) FROM {$prefix}resources {$resources_where}"
     );
 
-    $resource_items = $wpdb->get_results(
+    $resource_items = $wpdb->get_results( $wpdb->prepare(
         "SELECT r.id, r.title, r.url, r.description, rc.name as category_name
          FROM {$prefix}resources r
          LEFT JOIN {$prefix}resource_categories rc ON r.category_id = rc.id
          {$resources_where}
          ORDER BY r.title ASC
-         LIMIT {$per_module}"
-    );
+         LIMIT %d",
+        $per_module
+    ) );
 
     if ( $resources_total > 0 ) {
         $results['resources'] = [
@@ -58048,13 +58569,14 @@ function sp_do_unified_search( string $query, int $per_module = 5 ): array {
             "SELECT COUNT(*) FROM {$prefix}members {$members_where}"
         );
 
-        $members_items = $wpdb->get_results(
+        $members_items = $wpdb->get_results( $wpdb->prepare(
             "SELECT user_id, first_name, last_name, preferred_name,
                     organization_name, member_type, city, state
              FROM {$prefix}members {$members_where}
              ORDER BY last_name ASC, first_name ASC
-             LIMIT {$per_module}"
-        );
+             LIMIT %d",
+            $per_module
+        ) );
 
         if ( $members_total > 0 ) {
             $results['members'] = [
@@ -58083,12 +58605,13 @@ function sp_do_unified_search( string $query, int $per_module = 5 ): array {
             "SELECT COUNT(*) FROM {$prefix}newsletters {$nl_where}"
         );
 
-        $nl_items = $wpdb->get_results(
+        $nl_items = $wpdb->get_results( $wpdb->prepare(
             "SELECT id, title, description, pub_date, volume, issue_number
              FROM {$prefix}newsletters {$nl_where}
              ORDER BY pub_date DESC
-             LIMIT {$per_module}"
-        );
+             LIMIT %d",
+            $per_module
+        ) );
 
         if ( $nl_total > 0 ) {
             $results['newsletters'] = [
@@ -58531,7 +59054,12 @@ add_action( 'wp_ajax_nopriv_sp_unified_search', 'sp_unified_search' );
 function sp_unified_search(): void {
     // Rate-limit unauthenticated requests to prevent abuse (30 requests/minute per IP)
     if ( ! is_user_logged_in() ) {
-        $ip  = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        // WHY: On sites behind a reverse proxy or CDN, REMOTE_ADDR is the proxy IP.
+        // X-Forwarded-For's leftmost entry is the original client IP. We fall back
+        // to REMOTE_ADDR if no forwarding header is present.
+        $ip = isset( $_SERVER['HTTP_X_FORWARDED_FOR'] )
+            ? sanitize_text_field( trim( explode( ',', $_SERVER['HTTP_X_FORWARDED_FOR'] )[0] ) )
+            : ( $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0' );
         $key = 'sp_search_rate_' . md5( $ip );
         $hits = (int) get_transient( $key );
         if ( $hits > 30 ) {
@@ -58988,10 +59516,11 @@ function sp_render_record_collection_edit_page(): void {
             // Delete only fields that were removed from the form (not in submitted list)
             $removed_ids = array_diff( $existing_ids, $submitted_ids );
             if ( $removed_ids ) {
-                $id_list = implode( ',', array_map( 'intval', $removed_ids ) );
-                $wpdb->query( "DELETE FROM {$prefix}record_collection_fields WHERE id IN ({$id_list})" );
+                $removed_ids    = array_values( array_map( 'intval', $removed_ids ) );
+                $placeholders   = implode( ',', array_fill( 0, count( $removed_ids ), '%d' ) );
+                $wpdb->query( $wpdb->prepare( "DELETE FROM {$prefix}record_collection_fields WHERE id IN ({$placeholders})", ...$removed_ids ) );
                 // Also clean up orphaned record values for removed fields
-                $wpdb->query( "DELETE FROM {$prefix}record_values WHERE field_id IN ({$id_list})" );
+                $wpdb->query( $wpdb->prepare( "DELETE FROM {$prefix}record_values WHERE field_id IN ({$placeholders})", ...$removed_ids ) );
             }
 
             echo '<div class="notice notice-success"><p>' . esc_html__( 'Collection saved.', 'societypress' ) . '</p></div>';
@@ -59337,19 +59866,22 @@ function sp_render_record_browse_page(): void {
     }
 
     $total = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}records r WHERE {$where}" );
-    $records = $wpdb->get_results(
-        "SELECT r.* FROM {$prefix}records r WHERE {$where} ORDER BY r.id DESC LIMIT {$per_page} OFFSET {$offset}"
-    );
+    $records = $wpdb->get_results( $wpdb->prepare(
+        "SELECT r.* FROM {$prefix}records r WHERE {$where} ORDER BY r.id DESC LIMIT %d OFFSET %d",
+        $per_page,
+        $offset
+    ) );
     $total_pages = (int) ceil( $total / $per_page );
 
     // Load all values for these records in one query (avoid N+1)
-    $record_ids = wp_list_pluck( $records, 'id' );
+    $record_ids = array_map( 'absint', wp_list_pluck( $records, 'id' ) );
     $values_map = []; // record_id => [ field_id => value ]
     if ( $record_ids ) {
-        $id_list = implode( ',', array_map( 'absint', $record_ids ) );
-        $all_vals = $wpdb->get_results(
-            "SELECT record_id, field_id, field_value FROM {$prefix}record_values WHERE record_id IN ({$id_list})"
-        );
+        $placeholders = implode( ',', array_fill( 0, count( $record_ids ), '%d' ) );
+        $all_vals = $wpdb->get_results( $wpdb->prepare(
+            "SELECT record_id, field_id, field_value FROM {$prefix}record_values WHERE record_id IN ({$placeholders})",
+            ...$record_ids
+        ) );
         foreach ( $all_vals as $v ) {
             $values_map[ $v->record_id ][ $v->field_id ] = $v->field_value;
         }
@@ -60229,8 +60761,10 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
         return;
     }
 
-    // Build WHERE
-    $where = [ 'r.collection_id IN (' . implode( ',', array_map( 'absint', $coll_ids ) ) . ')' ];
+    // Build WHERE — defense-in-depth: use prepare() even though $coll_ids came from the DB
+    $coll_ids          = array_map( 'absint', $coll_ids );
+    $coll_placeholders = implode( ',', array_fill( 0, count( $coll_ids ), '%d' ) );
+    $where = [ $wpdb->prepare( "r.collection_id IN ({$coll_placeholders})", ...$coll_ids ) ];
     if ( $coll_filter && in_array( $coll_filter, $coll_ids, true ) ) {
         $where = [ $wpdb->prepare( 'r.collection_id = %d', $coll_filter ) ];
     }
@@ -60242,24 +60776,28 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
 
     // Count + fetch
     $total   = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}records r WHERE {$where_sql}" );
-    $records = $wpdb->get_results(
+    $records = $wpdb->get_results( $wpdb->prepare(
         "SELECT r.*, c.name AS collection_name, c.record_type
          FROM {$prefix}records r
          INNER JOIN {$prefix}record_collections c ON r.collection_id = c.id
          WHERE {$where_sql}
          ORDER BY r.id DESC
-         LIMIT {$per_page} OFFSET {$offset}"
-    );
+         LIMIT %d OFFSET %d",
+        $per_page,
+        $offset
+    ) );
     $total_pages = (int) ceil( $total / $per_page );
 
     // Load field definitions for display collections
     $active_coll_ids = array_unique( wp_list_pluck( $records, 'collection_id' ) );
     $fields_by_coll  = [];
     if ( $active_coll_ids ) {
-        $cid_list  = implode( ',', array_map( 'absint', $active_coll_ids ) );
-        $all_fields = $wpdb->get_results(
-            "SELECT * FROM {$prefix}record_collection_fields WHERE collection_id IN ({$cid_list}) ORDER BY sort_order ASC"
-        );
+        $active_coll_ids  = array_values( array_map( 'absint', $active_coll_ids ) );
+        $cid_placeholders = implode( ',', array_fill( 0, count( $active_coll_ids ), '%d' ) );
+        $all_fields = $wpdb->get_results( $wpdb->prepare(
+            "SELECT * FROM {$prefix}record_collection_fields WHERE collection_id IN ({$cid_placeholders}) ORDER BY sort_order ASC",
+            ...$active_coll_ids
+        ) );
         foreach ( $all_fields as $f ) {
             // Respect per-field access: hide non-public fields from non-members
             if ( ! $is_member && ! $f->is_public ) continue;
@@ -60268,13 +60806,14 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
     }
 
     // Load values for displayed records
-    $record_ids = wp_list_pluck( $records, 'id' );
+    $record_ids = array_map( 'absint', wp_list_pluck( $records, 'id' ) );
     $values_map = [];
     if ( $record_ids ) {
-        $rid_list = implode( ',', array_map( 'absint', $record_ids ) );
-        $all_vals = $wpdb->get_results(
-            "SELECT record_id, field_id, field_value FROM {$prefix}record_values WHERE record_id IN ({$rid_list})"
-        );
+        $rid_placeholders = implode( ',', array_fill( 0, count( $record_ids ), '%d' ) );
+        $all_vals = $wpdb->get_results( $wpdb->prepare(
+            "SELECT record_id, field_id, field_value FROM {$prefix}record_values WHERE record_id IN ({$rid_placeholders})",
+            ...$record_ids
+        ) );
         foreach ( $all_vals as $v ) {
             $values_map[ $v->record_id ][ $v->field_id ] = $v->field_value;
         }

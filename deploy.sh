@@ -38,7 +38,7 @@ case "${1:-plugin}" in
         deploy_theme "theme" "societypress" "$DEMO_BASE"
         ;;
     saghs)
-        deploy_theme "theme-saghs" "saghs" "$KNDGS_BASE"
+        deploy_theme "theme-saghs" "saghs" "$DEMO_BASE"
         ;;
     heritage|coastline|prairie|ledger|parlor)
         deploy_theme "theme-$1" "societypress-$1" "$DEMO_BASE"
@@ -46,6 +46,7 @@ case "${1:-plugin}" in
     all)
         deploy_plugin
         deploy_theme "theme" "societypress" "$DEMO_BASE"
+        deploy_theme "theme-saghs" "saghs" "$DEMO_BASE"
         for t in heritage coastline prairie ledger parlor; do
             if [ -d "$LOCAL_BASE/theme-$t" ]; then
                 deploy_theme "theme-$t" "societypress-$t" "$DEMO_BASE"

@@ -8,11 +8,11 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 ## Completed
 
 ### Core Platform
-- [x] Single-file plugin architecture (~48,000 lines, function-based, inline JS/CSS)
-- [x] 43 database tables via dbDelta on activation (39 original + sp_pending_profile_changes + sp_orders + sp_order_items + sp_documents + sp_document_categories)
+- [x] Single-file plugin architecture (~68,000 lines, function-based, inline JS/CSS)
+- [x] 47 database tables via dbDelta on activation (43 original + sp_ballots + sp_ballot_questions + sp_ballot_choices + sp_ballot_votes)
 - [x] Constants: `SOCIETYPRESS_VERSION`, `SOCIETYPRESS_PLUGIN_DIR`, `SOCIETYPRESS_PLUGIN_URL`, `SOCIETYPRESS_PLUGIN_FILE`
 - [x] Settings: single `societypress_settings` option array (68 keys), 8-tab admin page (Website, Organization, Membership, Directory, Events, Privacy, Design, Modules)
-- [x] Module toggle system: 12 feature modules (Events, Library, Newsletters, Resources, Governance, Store, Records, Donations, Blast Email, Gallery, Research Help, Documents) — wizard step + settings page, gates admin menus, page templates, shortcodes, and crons
+- [x] Module toggle system: 13 feature modules (Events, Library, Newsletters, Resources, Governance, Store, Records, Donations, Blast Email, Gallery, Research Help, Documents, Voting) — wizard step + settings page, gates admin menus, page templates, shortcodes, and crons
 - [x] Admin: unified sidebar with flyout groups (Communications, Finances), WP branding hidden, custom login page
 - [x] Admin dashboard: stat cards (total/active/expiring/expired/new members), upcoming events, expiring members, recent signups, quick links, site info
 - [x] Site lockdown: logged-in for frontend, admin-only for backend
@@ -173,14 +173,38 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 
 ## In Progress
 
-- [ ] Inline styles refactor (#8): extracting `style=` attributes to CSS classes, section by section. Dashboard done (42 → 2). ~1,660 remaining across other admin functions.
+- [x] Inline styles refactor (#8): 305 inline styles extracted to CSS classes (772 → 467), then voting module added ~35 more. 50+ utility CSS classes in `<style id="sp-admin-utilities">`. Remaining ~500 are JS-toggled display:none (risky), dynamic PHP values, or unique one-offs.
 - [x] Per-module CSV exports: events, donations, leadership/committees, store orders (with line items), email log, resource links — all follow library export pattern (AJAX handler, UTF-8 BOM, streaming output). Export buttons on all 6 admin pages. Volunteer hours already had one.
 - [x] Settings JSON export: "Export Settings (JSON)" button on Website settings page. Downloads `societypress_settings` + `sp_enabled_modules` as dated JSON file. Stripe secret keys excluded for security.
-- [x] Site health REST endpoint: `/wp-json/societypress/v1/health` — checks all 46 DB tables exist, 5 cron jobs scheduled, PHP/WP versions, libsodium. Returns 200 (ok) or 503 (degraded/error). No auth required for external uptime monitors.
-- [x] Custom confirmation modal: `spConfirm()` function + global `data-sp-confirm` interceptors for forms/links/buttons. 47 of 54 `confirm()` calls migrated (20 form onsubmit, 6 onclick, 21 addEventListener). 7 remaining are complex list table row actions with inline JS form creation — need deeper refactor to extract JS from PHP strings.
+- [x] Site health REST endpoint: `/wp-json/societypress/v1/health` — checks all 50 DB tables exist, 5 cron jobs scheduled, PHP/WP versions, libsodium. Returns 200 (ok) or 503 (degraded/error). No auth required for external uptime monitors.
+- [x] Custom confirmation modal: `spConfirm()` function + global `data-sp-confirm` interceptors for forms/links/buttons. All 54 `confirm()` calls migrated — zero native confirm() remaining.
 - [x] Member photo prompt: "Your profile is missing a photo" nudge on My Account for members without a custom photo.
 
-### Completed This Session (v0.47d — 2026-03-27/28)
+### Completed This Session (v0.49d — 2026-03-28)
+
+**Voting & Elections Module (new):**
+- [x] 4 new DB tables: sp_ballots, sp_ballot_questions, sp_ballot_choices, sp_ballot_votes (UNIQUE KEY prevents double-voting)
+- [x] Module registration in sp_get_modules(), template map, capability map, flyout menu
+- [x] Admin: Ballots list page (WP_List_Table, status filter tabs, vote counts, row actions)
+- [x] Admin: Ballot edit page (title, type, eligibility, voting period, question/choice repeaters with vanilla JS)
+- [x] Admin: Ballot results page (participation stats, CSS bar charts, winner highlighting, CSV export)
+- [x] Frontend: sp-voting page template (open ballot voting, closed ballot results, AJAX vote submission)
+- [x] AJAX: sp_submit_vote (eligibility, period, one-vote enforcement, DB transaction), sp_export_ballot_results (CSV)
+- [x] 6 audit log events (ballot_created/updated/deleted/opened/closed, vote_cast — ballot secrecy preserved)
+- [x] Supports election, referendum, and survey types; single-choice, multi-choice, and yes/no questions
+
+**jQuery Rewrites (3 violations → 0):**
+- [x] Color picker initialization: vanilla JS selectors, jQuery kept only for wpColorPicker() init (unavoidable WP dependency)
+- [x] Page builder admin JS: full rewrite (~140 lines) — event delegation, cloneNode, display toggles, reindexing
+- [x] Album edit page JS: full rewrite — media library callbacks, drag-drop, photo management
+
+**Code Quality & Debt:**
+- [x] Known Issues 39–43 verified FIXED, KNOWN-ISSUES.md updated (43/43 tracked, 41 fixed, 2 deferred)
+- [x] Remaining 6 confirm() calls migrated to spConfirm() — zero native confirm() in plugin
+- [x] 305 inline styles extracted to 50+ CSS utility classes (sp-field-label, sp-text-danger, sp-full-width, sp-card, etc.)
+- [x] Mobile hamburger menu code-reviewed (proper aria-expanded, escape key, click-outside, z-index)
+
+### Completed Previous Session (v0.47d — 2026-03-27/28)
 
 **Page Builder — New Widgets & Builder-Driven Home Page:**
 - [x] New `feature_cards` widget: repeater-based grid of image cards with title, description, button — replaces hardcoded feature sections
@@ -264,10 +288,10 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 - [x] Search input focus ring contrast fix
 - [x] Dashboard inline styles extracted to CSS classes (42 → 2)
 
-**Deferred UX items (3 remaining):**
-- [ ] Inline styles refactor for remaining admin functions (~1,660 attributes)
-- [x] Custom confirm modal: 47 of 54 `confirm()` calls migrated to `spConfirm()`. 7 remaining are list table row actions with inline JS form builders — need JS extraction refactor.
-- [ ] Mobile hamburger for parent theme needs testing with real nav menus
+**Deferred UX items (1 remaining):**
+- [x] Inline styles refactor: 305 extracted to CSS classes (772 → ~500). Remaining are JS-toggled, dynamic, or unique.
+- [x] Custom confirm modal: all 54 `confirm()` calls migrated to `spConfirm()` — zero remaining (v0.49d)
+- [ ] Mobile hamburger for parent theme needs testing with real nav menus (code review passed v0.49d, no live test site)
 
 ### Completed Previous Session (v0.41d — 2026-03-22)
 
@@ -381,7 +405,7 @@ See `Docs/KNOWN-ISSUES.md` for the full list (43 items tracked, 41 fixed, 2 defe
 - [x] Merge tag syntax, GDPR donations, library AJAX nopriv, deprecated get_page_by_title, auto_update scope, rate limiting, help notifications, email log cron, breadcrumb settings, store the society references, and 6 more
 
 **Deferred:**
-- [ ] jQuery → vanilla JS rewrite (album edit, page builder admin) — contact form widget done (v0.47d), remaining are admin-only
+- [x] jQuery → vanilla JS rewrite — all 3 violations resolved (v0.49d). Color picker keeps jQuery for wpColorPicker() only (unavoidable WP dependency). Page builder admin + album edit fully rewritten to vanilla JS.
 - [x] Server path exposure in 5 import flows — FIXED: hidden fields now store basename only, readback validates with realpath + directory containment check
 
 **i18n:**

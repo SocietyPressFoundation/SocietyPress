@@ -537,6 +537,14 @@ body {
     background: var(--society-cream);
 }
 
+/* WHY: Page builder widgets on the front page need alternating backgrounds
+   to match the ENS reference site. The hero slider has no background (it's
+   full-bleed imagery), then sections alternate cream → white → cream.
+   Targeting by widget type so the order doesn't matter if Harold reorders. */
+.society-front-page .sp-widget--upcoming_events { background: var(--society-cream); }
+.society-front-page .sp-widget--feature_cards   { background: #fff; }
+.society-front-page .sp-widget--map_embed       { background: var(--society-cream); }
+
 .society-section-white {
     background: var(--sp-color-header-bg, #ffffff);
 }
@@ -560,114 +568,11 @@ body {
 }
 
 
-/* ============================================================================
-   FRONT PAGE — CLASSES / EVENTS SECTION
-   WHY: Events are displayed as a simple stacked list (not a card grid) to
-   match the reference site. Each event shows date, title, time, and location
-   in a clean, scannable format.
-   ============================================================================ */
-
-/* "More Future Events" link below the events list */
-.society-more-link {
-    display: block;
-    text-align: center;
-    margin-top: 30px;
-    font-family: 'Poppins', sans-serif;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--society-burgundy);
-    text-decoration: none;
-}
-
-.society-more-link:hover {
-    color: var(--society-terracotta);
-    text-decoration: underline;
-}
-
-
-/* ============================================================================
-   FRONT PAGE — LIBRARY CALLOUT
-   WHY: Side-by-side layout (image left, text right) highlights the the society
-   library collection. Links to the library catalog page. Sits on a cream
-   background section to create contrast with adjacent white sections.
-   ============================================================================ */
-
-.society-library-callout {
-    display: flex;
-    gap: 40px;
-    align-items: center;
-}
-
-.society-library-image {
-    flex: 0 0 45%;
-}
-
-.society-library-image img {
-    width: 100%;
-    border-radius: 8px;
-}
-
-.society-library-text {
-    flex: 1;
-}
-
-.society-library-text h3 {
-    font-family: 'Poppins', sans-serif;
-    font-size: 1.4rem;
-    font-weight: 600;
-    color: var(--society-burgundy);
-    margin-bottom: 16px;
-}
-
-.society-library-text p {
-    color: var(--society-taupe);
-    line-height: 1.7;
-    margin-bottom: 20px;
-}
-
-
-/* ============================================================================
-   FRONT PAGE — FEATURE CARDS (Volunteer, Learn, Benefits)
-   WHY: Three-column grid showcasing key value props. Each card has an image,
-   burgundy heading, description, and a dark call-to-action button. The cards
-   sit on a cream background to match the reference site's alternating pattern.
-   ============================================================================ */
-
-.society-features-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 30px;
-}
-
-.society-feature-card {
-    text-align: center;
-    padding: 30px 20px;
-    background: var(--sp-color-header-bg, #ffffff);
-    border-radius: 8px;
-}
-
-.society-feature-card img {
-    width: 100%;
-    max-height: 200px;
-    object-fit: cover;
-    border-radius: 8px;
-    margin-bottom: 20px;
-}
-
-.society-feature-card h3 {
-    font-family: 'Poppins', sans-serif;
-    font-size: 1.2rem;
-    font-weight: 600;
-    color: var(--society-burgundy);
-    margin-bottom: 12px;
-}
-
-.society-feature-card p {
-    color: var(--society-taupe);
-    font-size: 0.95rem;
-    line-height: 1.6;
-    margin-bottom: 20px;
-}
+/* NOTE: The old hardcoded .society-events-grid, .society-event-card, .society-more-link,
+   .society-features-grid, and .society-feature-card CSS was removed in the code review
+   cleanup. Those classes belonged to the pre-page-builder front-page.php. All event
+   and feature card styling is now handled by the plugin's sp_builder_frontend_styles
+   and per-widget CSS (.sp-ue-*, .sp-feature-card-*, etc.). */
 
 
 /* ============================================================================
@@ -766,7 +671,7 @@ body {
 }
 
 .society-footer-col a {
-    color: var(--society-burgundy);
+    color: var(--sp-color-footer-link, var(--society-burgundy));
     text-decoration: none;
 }
 
@@ -796,7 +701,7 @@ body {
 }
 
 .society-footer-links a {
-    color: var(--society-burgundy);
+    color: var(--sp-color-footer-link, var(--society-burgundy));
     font-size: 0.9rem;
     font-weight: 400;
 }
@@ -827,7 +732,7 @@ body {
 }
 
 .society-footer-contact-info a {
-    color: var(--sp-color-header-text, #1a1a1a);
+    color: var(--sp-color-footer-link, var(--sp-color-header-text, #1a1a1a));
     text-decoration: none;
 }
 
@@ -851,7 +756,7 @@ body {
 }
 
 .society-footer-copyright a {
-    color: var(--society-burgundy);
+    color: var(--sp-color-footer-link, var(--society-burgundy));
     text-decoration: none;
 }
 
@@ -1086,10 +991,6 @@ body {
    ============================================================================ */
 
 @media (max-width: 1024px) {
-    .society-features-grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
-
     /* Footer stacks on tablet — mission full width, links below */
     .society-footer-inner {
         flex-wrap: wrap;
@@ -1238,21 +1139,6 @@ body {
         font-size: 0.95rem;
     }
 
-    /* Library callout stacks vertically */
-    .society-library-callout {
-        flex-direction: column;
-    }
-
-    .society-library-image {
-        flex: none;
-        width: 100%;
-    }
-
-    /* Feature cards go single column */
-    .society-features-grid {
-        grid-template-columns: 1fr;
-    }
-
     /* Footer stacks to single column on mobile */
     .society-footer-inner {
         flex-direction: column;
@@ -1291,10 +1177,6 @@ body {
 
     .society-section {
         padding: 30px 16px;
-    }
-
-    .society-feature-card {
-        padding: 20px 12px;
     }
 
     .custom-logo {

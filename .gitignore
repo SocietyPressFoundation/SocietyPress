@@ -51,3 +51,6 @@ NOTES.md
 scratch/
 Misc/
 Sample Data/photos/
+
+# Large source data files (keep samples, exclude full datasets)
+Sample Data/nyc-marriage-certificates.csv

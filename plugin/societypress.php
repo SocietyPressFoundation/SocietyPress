@@ -103,6 +103,20 @@ register_activation_hook( __FILE__, function () {
             'paypal_sandbox_secret'        => '',          // encrypted at rest
             'paypal_live_client_id'        => '',
             'paypal_live_secret'           => '',          // encrypted at rest
+            // Backups — automated & manual backup schedule
+            // WHY defaults: Weekly at 3 AM Sunday covers the common case — the
+            //   society's data changes slowly (a few new members, some events),
+            //   so daily is overkill but weekly is responsible. Retention of 5
+            //   means ~5 weeks of history. Uploads are off by default because
+            //   they can be enormous and are usually already on the host's own
+            //   backup. Harold can change all of this from the Backups page.
+            'backup_frequency'             => 'weekly',
+            'backup_retention'             => 5,
+            'backup_include_db'            => 1,
+            'backup_include_uploads'       => 0,
+            'backup_include_settings'      => 1,
+            'backup_day_of_week'           => 0,          // 0 = Sunday
+            'backup_hour'                  => 3,          // 3 AM server time
             // Community forum URL — Feature 1
             'community_forum_url'          => '',
             // Renewal reminders — Feature 3
@@ -1973,6 +1987,38 @@ function sp_create_tables(): void {
         KEY user_id (user_id)
     ) {$charset_collate};" );
 
+    // ========================================================================
+    // sp_backups — Backup archive metadata
+    //
+    // WHY: A society's data is irreplaceable — decades of membership records,
+    //      library catalogs, genealogical transcriptions, event history. This
+    //      table tracks every backup archive (manual or scheduled) so we can
+    //      display backup history, enforce retention limits, and let Harold
+    //      download or delete old backups from the admin UI. The actual backup
+    //      files live on disk as ZIP archives; this table is the index.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}backups (
+        id                BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        filename          VARCHAR(255)        NOT NULL,
+        file_size         BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
+        backup_type       VARCHAR(20)         NOT NULL DEFAULT 'full',
+        includes_db       TINYINT(1)          NOT NULL DEFAULT 1,
+        includes_uploads  TINYINT(1)          NOT NULL DEFAULT 0,
+        includes_settings TINYINT(1)          NOT NULL DEFAULT 1,
+        status            VARCHAR(20)         NOT NULL DEFAULT 'pending',
+        trigger_type      VARCHAR(20)         NOT NULL DEFAULT 'manual',
+        tables_count      INT UNSIGNED        NOT NULL DEFAULT 0,
+        files_count       INT UNSIGNED        NOT NULL DEFAULT 0,
+        note              TEXT                NULL,
+        created_by        BIGINT(20) UNSIGNED NULL,
+        started_at        DATETIME            NULL,
+        completed_at      DATETIME            NULL,
+        created_at        DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY status (status),
+        KEY created_at (created_at)
+    ) {$charset_collate};" );
+
 
     // Store the schema version so we can run migrations in future updates
     // without re-running the full dbDelta on every page load.
@@ -2322,6 +2368,7 @@ register_deactivation_hook( __FILE__, function () {
     wp_clear_scheduled_hook( 'sp_renewal_reminder_cron' );
     wp_clear_scheduled_hook( 'sp_email_log_cleanup_cron' );
     wp_clear_scheduled_hook( 'sp_ical_feed_sync_cron' );
+    wp_clear_scheduled_hook( 'sp_backup_cron' );
 });
 
 // ============================================================================
@@ -44349,6 +44396,608 @@ add_action( 'wp_ajax_sp_test_paypal_connection', function(): void {
 } );
 
 
+// ============================================================================
+// BACKUPS — Automated & Manual Backup System
+//
+// WHY: A society's data is irreplaceable — decades of membership records,
+//      library catalogs, genealogical transcriptions, event history. If the
+//      server dies, the database corrupts, or someone accidentally deletes
+//      everything, the society needs to recover. This backup system creates
+//      downloadable ZIP archives of the database tables, uploaded files, and
+//      settings — on a schedule or on demand.
+// ============================================================================
+
+
+/**
+ * Get (and create if needed) the backup storage directory.
+ *
+ * WHY: Backups live inside wp-content/uploads/sp-backups so they're in a
+ *      predictable location that works on any host. The .htaccess and index.php
+ *      files prevent direct HTTP access — backup ZIPs contain full database
+ *      dumps with member names, emails, addresses, and payment history. Nobody
+ *      should be able to download them by guessing the URL.
+ *
+ * @return string Absolute path to the backup directory.
+ */
+function sp_get_backup_dir(): string {
+    $upload_dir = wp_upload_dir();
+    $backup_dir = $upload_dir['basedir'] . '/sp-backups';
+
+    if ( ! is_dir( $backup_dir ) ) {
+        wp_mkdir_p( $backup_dir );
+    }
+
+    // Prevent direct HTTP access — backup ZIPs contain sensitive member data
+    if ( ! file_exists( $backup_dir . '/.htaccess' ) ) {
+        file_put_contents( $backup_dir . '/.htaccess', "Order Deny,Allow\nDeny from all" );
+    }
+    if ( ! file_exists( $backup_dir . '/index.php' ) ) {
+        file_put_contents( $backup_dir . '/index.php', '<?php // Silence is golden.' );
+    }
+
+    return $backup_dir;
+}
+
+
+/**
+ * Get all database tables that should be included in a backup.
+ *
+ * WHY: We back up every sp_* table (all SocietyPress data) plus the core
+ *      WordPress user tables (wp_users and wp_usermeta). SP members ARE WP
+ *      users — the sp_members table references user_id — so restoring member
+ *      data without the user accounts would leave orphaned references.
+ *      We intentionally do NOT back up wp_posts, wp_options, etc. — those
+ *      are WordPress core data, not society data, and the host's own backups
+ *      cover those.
+ *
+ * @return array List of full table names (e.g., 'wp_sp_events', 'wp_users').
+ */
+function sp_backup_get_tables(): array {
+    global $wpdb;
+    $sp_tables = $wpdb->get_col(
+        $wpdb->prepare( "SHOW TABLES LIKE %s", $wpdb->esc_like( $wpdb->prefix . 'sp_' ) . '%' )
+    );
+    // Also include WP user tables since SP members are WP users
+    $wp_tables = [ $wpdb->users, $wpdb->usermeta ];
+    return array_merge( $sp_tables, $wp_tables );
+}
+
+
+/**
+ * Export a single database table to a SQL file using paginated SELECTs.
+ *
+ * WHY: We can't use mysqldump on shared hosting (no shell access). Instead
+ *      we SELECT in batches of 1000 rows and write INSERT statements to a
+ *      .sql file. The batch approach keeps memory usage flat even for tables
+ *      with tens of thousands of rows (e.g., library_items with 19,000+).
+ *      Each INSERT groups up to 100 rows in a single VALUES clause — this is
+ *      dramatically faster to import than one INSERT per row.
+ *
+ * @param string $table     Full table name (e.g., 'wp_sp_members').
+ * @param string $output_dir Directory to write the .sql file into.
+ * @return int Number of rows exported.
+ */
+function sp_backup_export_table( string $table, string $output_dir ): int {
+    global $wpdb;
+
+    $file   = $output_dir . '/' . $table . '.sql';
+    $handle = fopen( $file, 'w' );
+    if ( ! $handle ) return 0;
+
+    // Header comment so anyone reading the raw SQL knows what this is
+    $row_count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM `{$table}`" );
+    fwrite( $handle, "-- SocietyPress Backup: {$table}\n" );
+    fwrite( $handle, "-- Generated: " . current_time( 'mysql' ) . "\n" );
+    fwrite( $handle, "-- Rows: {$row_count}\n\n" );
+
+    // CREATE TABLE statement — needed for restore to recreate the schema
+    $create = $wpdb->get_row( "SHOW CREATE TABLE `{$table}`", ARRAY_N );
+    if ( $create ) {
+        fwrite( $handle, "DROP TABLE IF EXISTS `{$table}`;\n" );
+        fwrite( $handle, $create[1] . ";\n\n" );
+    }
+
+    // Export data in batches of 1000 rows to keep memory flat.
+    // WHY 1000: Large enough to minimize query overhead, small enough that
+    // even a 50-column table with TEXT fields won't blow PHP's memory limit.
+    $batch_size = 1000;
+    $offset     = 0;
+    $exported   = 0;
+
+    while ( true ) {
+        $rows = $wpdb->get_results(
+            "SELECT * FROM `{$table}` LIMIT {$batch_size} OFFSET {$offset}",
+            ARRAY_A
+        );
+        if ( empty( $rows ) ) break;
+
+        // Build batched INSERTs — 100 rows per statement is a good balance
+        // between import speed (fewer statements) and readability/debuggability.
+        $chunks = array_chunk( $rows, 100 );
+        foreach ( $chunks as $chunk ) {
+            $columns  = array_keys( $chunk[0] );
+            $col_list = '`' . implode( '`, `', $columns ) . '`';
+            fwrite( $handle, "INSERT INTO `{$table}` ({$col_list}) VALUES\n" );
+
+            $value_rows = [];
+            foreach ( $chunk as $row ) {
+                $vals = [];
+                foreach ( $row as $val ) {
+                    if ( $val === null ) {
+                        $vals[] = 'NULL';
+                    } else {
+                        $vals[] = "'" . $wpdb->_real_escape( $val ) . "'";
+                    }
+                }
+                $value_rows[] = '(' . implode( ', ', $vals ) . ')';
+            }
+            fwrite( $handle, implode( ",\n", $value_rows ) . ";\n\n" );
+        }
+
+        $exported += count( $rows );
+        $offset   += $batch_size;
+
+        // Memory safety — nudge PHP to free the previous batch's memory
+        if ( function_exists( 'gc_collect_cycles' ) ) {
+            gc_collect_cycles();
+        }
+    }
+
+    fclose( $handle );
+    return $exported;
+}
+
+
+/**
+ * Export SocietyPress settings to a JSON file.
+ *
+ * WHY: Settings are stored in wp_options as a serialized array. If the site
+ *      is rebuilt from scratch, Harold would have to re-enter every setting
+ *      by hand — colors, email templates, module toggles, payment config.
+ *      This exports them as human-readable JSON that the restore process can
+ *      re-import. We intentionally EXCLUDE encrypted API secrets because
+ *      they're tied to this site's AUTH_KEY — they'd be garbage on a
+ *      different installation.
+ *
+ * @param string $output_dir Directory to write settings.json into.
+ */
+function sp_backup_export_settings( string $output_dir ): void {
+    $settings = get_option( 'societypress_settings', [] );
+    $modules  = get_option( 'sp_enabled_modules', [] );
+
+    // Exclude encrypted secrets — they're tied to this site's AUTH_KEY and
+    // would be undecryptable on a restored/migrated site.
+    $exclude = [
+        'stripe_test_secret_key', 'stripe_live_secret_key',
+        'paypal_sandbox_secret',  'paypal_live_secret',
+    ];
+    foreach ( $exclude as $key ) {
+        unset( $settings[ $key ] );
+    }
+
+    $data = [
+        'societypress_settings' => $settings,
+        'sp_enabled_modules'    => $modules,
+        'exported_at'           => current_time( 'mysql' ),
+    ];
+
+    file_put_contents(
+        $output_dir . '/settings.json',
+        wp_json_encode( $data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE )
+    );
+}
+
+
+/**
+ * Create a manifest.json describing the contents of a backup archive.
+ *
+ * WHY: When someone opens a backup ZIP months later — or tries to restore
+ *      on a different server — they need to know what's inside without
+ *      reading every SQL file. The manifest records the plugin version,
+ *      PHP/WP versions, which components were included, and table/file
+ *      counts. The restore process will also use this to validate
+ *      compatibility before importing.
+ *
+ * @param string $output_dir Directory to write manifest.json into.
+ * @param array  $options    What was included: 'db', 'uploads', 'settings',
+ *                           'tables' (array), 'file_count' (int).
+ */
+function sp_backup_create_manifest( string $output_dir, array $options ): void {
+    $manifest = [
+        'version'        => '1.0',
+        'plugin_version' => SOCIETYPRESS_VERSION,
+        'wp_version'     => get_bloginfo( 'version' ),
+        'php_version'    => PHP_VERSION,
+        'site_url'       => home_url(),
+        'created_at'     => current_time( 'c' ),
+        'includes'       => [
+            'database' => (bool) $options['db'],
+            'uploads'  => (bool) $options['uploads'],
+            'settings' => (bool) $options['settings'],
+        ],
+    ];
+
+    if ( $options['db'] && isset( $options['tables'] ) ) {
+        $manifest['database'] = [
+            'tables'      => $options['tables'],
+            'table_count' => count( $options['tables'] ),
+            'prefix'      => $GLOBALS['wpdb']->prefix . 'sp_',
+        ];
+    }
+
+    if ( $options['uploads'] && isset( $options['file_count'] ) ) {
+        $manifest['uploads'] = [
+            'file_count' => $options['file_count'],
+        ];
+    }
+
+    file_put_contents(
+        $output_dir . '/manifest.json',
+        wp_json_encode( $manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE )
+    );
+}
+
+
+/**
+ * Create a ZIP archive from a directory of backup files.
+ *
+ * WHY: A single ZIP is easier for Harold to download, store, and move than
+ *      a folder of SQL and JSON files. We try PHP's ZipArchive first (faster,
+ *      better compression) and fall back to PclZip which WordPress bundles
+ *      for hosts that don't have the zip extension.
+ *
+ * @param string $source_dir Directory containing the backup files.
+ * @param string $zip_path   Full path for the output ZIP file.
+ * @return bool True if the ZIP was created successfully.
+ */
+function sp_backup_create_zip( string $source_dir, string $zip_path ): bool {
+    // Try ZipArchive first (preferred — faster, better compression)
+    if ( class_exists( 'ZipArchive' ) ) {
+        $zip = new ZipArchive();
+        if ( $zip->open( $zip_path, ZipArchive::CREATE | ZipArchive::OVERWRITE ) !== true ) {
+            return false;
+        }
+
+        $files = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator( $source_dir, RecursiveDirectoryIterator::SKIP_DOTS ),
+            RecursiveIteratorIterator::LEAVES_ONLY
+        );
+
+        foreach ( $files as $file ) {
+            if ( $file->isFile() ) {
+                // Store relative paths inside the ZIP so it extracts cleanly
+                $relative = substr( $file->getPathname(), strlen( $source_dir ) + 1 );
+                $zip->addFile( $file->getPathname(), $relative );
+            }
+        }
+
+        $zip->close();
+        return file_exists( $zip_path );
+    }
+
+    // Fallback: PclZip (bundled with WordPress for plugin/theme uploads)
+    require_once ABSPATH . 'wp-admin/includes/class-pclzip.php';
+    $zip    = new PclZip( $zip_path );
+    $result = $zip->create( $source_dir, PCLZIP_OPT_REMOVE_PATH, $source_dir );
+    return $result !== 0;
+}
+
+
+/**
+ * Delete old backups beyond the retention limit.
+ *
+ * WHY: Without pruning, backups would accumulate forever and eventually fill
+ *      the disk. The retention setting (default 5) keeps the most recent N
+ *      completed backups and deletes the rest — both the ZIP file on disk
+ *      and the metadata row in sp_backups.
+ */
+function sp_prune_old_backups(): void {
+    global $wpdb;
+    $settings  = get_option( 'societypress_settings', [] );
+    $retention = max( 1, (int) ( $settings['backup_retention'] ?? 5 ) );
+    $prefix    = $wpdb->prefix . 'sp_';
+
+    // Get all completed backups ordered newest-first
+    $backups = $wpdb->get_results(
+        "SELECT id, filename FROM {$prefix}backups WHERE status = 'complete' ORDER BY created_at DESC"
+    );
+
+    // Keep the newest $retention, delete the rest
+    if ( count( $backups ) <= $retention ) return;
+
+    $to_delete  = array_slice( $backups, $retention );
+    $backup_dir = sp_get_backup_dir();
+
+    foreach ( $to_delete as $old ) {
+        $path = $backup_dir . '/' . $old->filename;
+        if ( file_exists( $path ) ) {
+            wp_delete_file( $path );
+        }
+        $wpdb->delete( $prefix . 'backups', [ 'id' => $old->id ] );
+    }
+}
+
+
+/**
+ * Clean up stale/orphaned backup records and temp directories.
+ *
+ * WHY: If a backup crashes mid-run (PHP timeout, memory limit, server restart),
+ *      it leaves behind a 'running' or 'pending' database row and a temp
+ *      directory full of partial SQL files. This function marks those records
+ *      as failed (so they show an error in the UI instead of "running" forever)
+ *      and deletes orphaned temp directories older than 1 hour.
+ */
+function sp_cleanup_stale_backups(): void {
+    global $wpdb;
+    $prefix     = $wpdb->prefix . 'sp_';
+    $backup_dir = sp_get_backup_dir();
+
+    // Mark stale running/pending backups as failed (older than 1 hour)
+    $wpdb->query( $wpdb->prepare(
+        "UPDATE {$prefix}backups SET status = 'failed', note = %s
+         WHERE status IN ('pending', 'running')
+         AND created_at < DATE_SUB(NOW(), INTERVAL 1 HOUR)",
+        __( 'Backup timed out.', 'societypress' )
+    ) );
+
+    // Clean up orphaned temp directories
+    $dirs = glob( $backup_dir . '/tmp-*', GLOB_ONLYDIR );
+    if ( $dirs ) {
+        foreach ( $dirs as $dir ) {
+            // Only delete if older than 1 hour — don't nuke a backup in progress
+            if ( filemtime( $dir ) < time() - 3600 ) {
+                sp_backup_rmdir( $dir );
+            }
+        }
+    }
+}
+
+
+/**
+ * Recursively delete a directory and all its contents.
+ *
+ * WHY: PHP has no built-in "rm -rf". After a backup ZIP is created, we need
+ *      to clean up the temp directory that held the raw SQL and JSON files.
+ *      We use wp_delete_file() for files (respects security filters) and
+ *      iterate children-first so directories are empty before we rmdir() them.
+ *
+ * @param string $dir Absolute path to the directory to remove.
+ */
+function sp_backup_rmdir( string $dir ): void {
+    if ( ! is_dir( $dir ) ) return;
+    $items = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator( $dir, RecursiveDirectoryIterator::SKIP_DOTS ),
+        RecursiveIteratorIterator::CHILD_FIRST
+    );
+    foreach ( $items as $item ) {
+        if ( $item->isDir() ) {
+            rmdir( $item->getPathname() );
+        } else {
+            wp_delete_file( $item->getPathname() );
+        }
+    }
+    rmdir( $dir );
+}
+
+
+// ============================================================================
+// BACKUPS — Cron Schedule & Scheduled Backup Runner
+// ============================================================================
+
+// Register a weekly cron interval.
+// WHY: WordPress only ships with 'hourly', 'twicedaily', and 'daily'.
+// Genealogical societies don't change data fast enough to need daily backups
+// by default, so we add a weekly option.
+add_filter( 'cron_schedules', function( array $schedules ): array {
+    $schedules['sp_weekly'] = [
+        'interval' => WEEK_IN_SECONDS,
+        'display'  => __( 'Once Weekly (SocietyPress)', 'societypress' ),
+    ];
+    return $schedules;
+} );
+
+// Schedule (or deschedule) the backup cron on every request.
+// WHY: We check on 'init' so that if Harold changes the frequency from
+// "weekly" to "daily" (or "off"), the cron updates on the next page load
+// without requiring a deactivate/reactivate cycle. If frequency is 'off',
+// we clear the hook entirely.
+add_action( 'init', function(): void {
+    $settings  = get_option( 'societypress_settings', [] );
+    $frequency = $settings['backup_frequency'] ?? 'weekly';
+
+    if ( $frequency === 'off' ) {
+        wp_clear_scheduled_hook( 'sp_backup_cron' );
+        return;
+    }
+
+    if ( ! wp_next_scheduled( 'sp_backup_cron' ) ) {
+        $schedule = ( $frequency === 'daily' ) ? 'daily' : 'sp_weekly';
+        // Schedule for the configured hour (default 3 AM).
+        // WHY: 3 AM is a safe default — almost no society admin is using
+        // the site at that hour, so the backup won't compete for resources.
+        $hour = (int) ( $settings['backup_hour'] ?? 3 );
+        $next = strtotime( "today {$hour}:00" );
+        if ( $next < time() ) $next = strtotime( "tomorrow {$hour}:00" );
+        wp_schedule_event( $next, $schedule, 'sp_backup_cron' );
+    }
+} );
+
+// The cron handler itself.
+add_action( 'sp_backup_cron', 'sp_run_scheduled_backup' );
+
+/**
+ * Execute a scheduled backup.
+ *
+ * WHY: This is the workhorse — called by wp_cron on the configured schedule.
+ *      It creates a metadata row in sp_backups, exports the database tables
+ *      to SQL files, exports settings to JSON, optionally copies uploads,
+ *      wraps everything in a ZIP, updates the metadata with the final size
+ *      and status, and prunes old backups beyond the retention limit.
+ *
+ *      If another backup is already running (started < 30 min ago), we bail
+ *      to prevent overlapping runs on sites with aggressive wp_cron triggers.
+ *      The 10-minute time limit gives large databases room to export without
+ *      hitting PHP's default 30-second limit.
+ */
+function sp_run_scheduled_backup(): void {
+    global $wpdb;
+    $prefix   = $wpdb->prefix . 'sp_';
+    $settings = get_option( 'societypress_settings', [] );
+
+    // Don't run if another backup is already in progress
+    $running = $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$prefix}backups WHERE status = 'running' AND created_at > DATE_SUB(NOW(), INTERVAL 30 MINUTE)"
+    );
+    if ( $running > 0 ) return;
+
+    // Clean up stale/orphaned backups before starting a new one
+    sp_cleanup_stale_backups();
+
+    // Give the backup up to 10 minutes — large databases with TEXT columns
+    // (library items, genealogical records) can take a while to export.
+    set_time_limit( 600 );
+
+    $include_db       = ! empty( $settings['backup_include_db'] );
+    $include_uploads  = ! empty( $settings['backup_include_uploads'] );
+    $include_settings = ! empty( $settings['backup_include_settings'] );
+
+    // Nothing to back up — all three components are disabled
+    if ( ! $include_db && ! $include_uploads && ! $include_settings ) return;
+
+    $backup_dir = sp_get_backup_dir();
+    $token      = wp_generate_password( 8, false );
+    $date_str   = current_time( 'Y-m-d' );
+    $filename   = "sp-backup-{$date_str}-{$token}.zip";
+
+    // Determine backup type label for the UI
+    $type = 'full';
+    if ( $include_db && ! $include_uploads ) $type = 'db_only';
+    if ( ! $include_db && $include_uploads )  $type = 'uploads_only';
+
+    // Create the metadata row first — this lets us track the backup even
+    // if it crashes partway through (sp_cleanup_stale_backups will mark
+    // it as failed after 1 hour).
+    $wpdb->insert( $prefix . 'backups', [
+        'filename'          => $filename,
+        'backup_type'       => $type,
+        'includes_db'       => $include_db ? 1 : 0,
+        'includes_uploads'  => $include_uploads ? 1 : 0,
+        'includes_settings' => $include_settings ? 1 : 0,
+        'status'            => 'running',
+        'trigger_type'      => 'scheduled',
+        'started_at'        => current_time( 'mysql' ),
+    ] );
+    $backup_id = (int) $wpdb->insert_id;
+
+    if ( ! $backup_id ) {
+        error_log( 'SocietyPress Backup: Could not create backup record.' );
+        return;
+    }
+
+    $temp_dir = $backup_dir . '/tmp-' . $backup_id;
+    wp_mkdir_p( $temp_dir );
+
+    $tables_count = 0;
+    $files_count  = 0;
+
+    try {
+        // ---- Export database tables ----
+        if ( $include_db ) {
+            $db_dir = $temp_dir . '/database';
+            wp_mkdir_p( $db_dir );
+            $tables = sp_backup_get_tables();
+            foreach ( $tables as $table ) {
+                sp_backup_export_table( $table, $db_dir );
+                $tables_count++;
+            }
+        }
+
+        // ---- Export settings ----
+        if ( $include_settings ) {
+            $settings_dir = $temp_dir . '/settings';
+            wp_mkdir_p( $settings_dir );
+            sp_backup_export_settings( $settings_dir );
+        }
+
+        // ---- Copy uploads (media library) ----
+        if ( $include_uploads ) {
+            $upload_dir   = wp_upload_dir();
+            $uploads_src  = $upload_dir['basedir'];
+            $uploads_dest = $temp_dir . '/uploads';
+            wp_mkdir_p( $uploads_dest );
+
+            $iterator = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator( $uploads_src, RecursiveDirectoryIterator::SKIP_DOTS ),
+                RecursiveIteratorIterator::SELF_FIRST
+            );
+
+            foreach ( $iterator as $item ) {
+                $relative = substr( $item->getPathname(), strlen( $uploads_src ) + 1 );
+                // Skip the backups directory itself — don't back up backups
+                if ( strpos( $relative, 'sp-backups' ) === 0 ) continue;
+
+                $dest_path = $uploads_dest . '/' . $relative;
+                if ( $item->isDir() ) {
+                    wp_mkdir_p( $dest_path );
+                } else {
+                    copy( $item->getPathname(), $dest_path );
+                    $files_count++;
+                }
+            }
+        }
+
+        // ---- Create manifest ----
+        sp_backup_create_manifest( $temp_dir, [
+            'db'         => $include_db,
+            'uploads'    => $include_uploads,
+            'settings'   => $include_settings,
+            'tables'     => $include_db ? sp_backup_get_tables() : [],
+            'file_count' => $files_count,
+        ] );
+
+        // ---- Create ZIP archive ----
+        $zip_path = $backup_dir . '/' . $filename;
+        $success  = sp_backup_create_zip( $temp_dir, $zip_path );
+
+        if ( $success && file_exists( $zip_path ) ) {
+            // Success — update the metadata row with final stats
+            $wpdb->update( $prefix . 'backups', [
+                'status'       => 'complete',
+                'file_size'    => filesize( $zip_path ),
+                'tables_count' => $tables_count,
+                'files_count'  => $files_count,
+                'completed_at' => current_time( 'mysql' ),
+            ], [ 'id' => $backup_id ] );
+
+            // Log it in the audit trail so there's a record of what ran
+            sp_audit( 'backup_created', sprintf( 'Scheduled backup created: %d tables, %d files, %s',
+                $tables_count, $files_count, size_format( filesize( $zip_path ) ) ), 'backup', $backup_id );
+
+            // Enforce retention limit — delete oldest backups beyond the limit
+            sp_prune_old_backups();
+        } else {
+            $wpdb->update( $prefix . 'backups', [
+                'status' => 'failed',
+                'note'   => __( 'ZIP creation failed.', 'societypress' ),
+            ], [ 'id' => $backup_id ] );
+        }
+
+    } catch ( \Throwable $e ) {
+        // Catch any unexpected error so the backup row doesn't stay 'running'
+        // forever — mark it failed and log the error for debugging.
+        $wpdb->update( $prefix . 'backups', [
+            'status' => 'failed',
+            'note'   => $e->getMessage(),
+        ], [ 'id' => $backup_id ] );
+        error_log( 'SocietyPress Backup error: ' . $e->getMessage() );
+    }
+
+    // Always clean up the temp directory — even on failure, the partial
+    // files are useless and just waste disk space.
+    sp_backup_rmdir( $temp_dir );
+}
+
+
 /**
  * Create a Stripe Checkout Session for an event registration payment.
  *
@@ -67396,8 +68045,8 @@ function sp_rest_health_check(): WP_REST_Response {
     // ---- CHECK 1: Database tables ----
     // WHY: If a table is missing, entire features break silently.
     $expected_tables = [
-        'audit_log', 'ballot_choices', 'ballot_questions', 'ballot_votes',
-        'ballots', 'blast_emails', 'campaigns', 'document_categories',
+        'audit_log', 'backups', 'ballot_choices', 'ballot_questions',
+        'ballot_votes', 'ballots', 'blast_emails', 'campaigns', 'document_categories',
         'documents', 'donations', 'email_log', 'event_categories',
         'event_registrations', 'event_reminders', 'event_slots',
         'event_speaker_assignments', 'event_speakers', 'events',
@@ -67440,6 +68089,7 @@ function sp_rest_health_check(): WP_REST_Response {
     // WHY: If crons aren't scheduled, renewal reminders don't send, event
     //      reminders don't fire, and email logs don't get cleaned up.
     $cron_hooks = [
+        'sp_backup_cron',
         'sp_daily_maintenance',
         'sp_email_log_cleanup_cron',
         'sp_event_reminder_cron',

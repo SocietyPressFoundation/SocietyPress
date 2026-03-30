@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    SocietyPress — Softaculous Install Configuration
+
+    WHY: Defines the form fields Softaculous shows during installation and
+    tells it we need a MySQL database. Softaculous handles DB creation,
+    file extraction, and domain/path setup — we handle WordPress + SP config
+    in install.php.
+-->
+<install>
+    <softinstall>
+
+        <!-- Softaculous creates the database automatically when this is present -->
+        <db>mysql</db>
+
+        <!-- Admin Account -->
+        <group heading="[[admin_heading]]" desc="[[admin_desc]]">
+            <input type="text">
+                <head>[[admin_username]]</head>
+                <name>admin_username</name>
+                <default>admin</default>
+            </input>
+            <input type="text">
+                <head>[[admin_pass]]</head>
+                <name>admin_pass</name>
+                <default></default>
+            </input>
+            <input type="text" softmail="true">
+                <head>[[admin_email]]</head>
+                <name>admin_email</name>
+                <default></default>
+            </input>
+        </group>
+
+        <!-- Society Information -->
+        <group heading="[[org_heading]]" desc="[[org_desc]]">
+            <input type="text">
+                <head>[[site_name]]</head>
+                <name>site_name</name>
+                <default>My Genealogical Society</default>
+            </input>
+            <input type="text">
+                <head>[[org_name]]</head>
+                <name>org_name</name>
+                <default></default>
+            </input>
+            <input type="text" softmail="true">
+                <head>[[org_email]]</head>
+                <name>org_email</name>
+                <default></default>
+                <optional>true</optional>
+            </input>
+        </group>
+
+    </softinstall>
+</install>

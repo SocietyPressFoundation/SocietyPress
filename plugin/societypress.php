@@ -3875,8 +3875,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Finances — SocietyPress',
-        'Finances',
+        __( 'Payment History — SocietyPress', 'societypress' ),
+        __( 'Payment History', 'societypress' ),
         'manage_options',
         'sp-finances',
         'sp_render_finances_page'
@@ -4065,8 +4065,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Reports — SocietyPress',
-        'Reports',
+        __( 'Overview — SocietyPress', 'societypress' ),
+        __( 'Overview', 'societypress' ),
         'manage_options',
         'sp-reports',
         'sp_render_reports_page'
@@ -4168,8 +4168,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Settings — SocietyPress',
-        'Settings',
+        __( 'Design — SocietyPress', 'societypress' ),
+        __( 'Design', 'societypress' ),
         'manage_options',
         'sp-settings-design',
         'sp_render_settings_design_page'
@@ -20493,7 +20493,7 @@ function sp_render_finances_page(): void {
 
     ?>
     <div class="wrap sp-admin-wrap">
-        <h1 class="wp-heading-inline"><?php esc_html_e( 'Finances', 'societypress' ); ?></h1>
+        <h1 class="wp-heading-inline"><?php esc_html_e( 'Payment History', 'societypress' ); ?></h1>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-payment' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Record Payment', 'societypress' ); ?></a>
 
         <?php if ( isset( $_GET['deleted'] ) ) : ?>
@@ -47999,7 +47999,7 @@ function sp_render_reports_page(): void {
 
     ?>
     <div class="wrap">
-        <h1><?php esc_html_e( 'Reports', 'societypress' ); ?></h1>
+        <h1><?php esc_html_e( 'Overview', 'societypress' ); ?></h1>
 
         <?php
         // WHY: All static styles for the reports dashboard are defined here as CSS classes

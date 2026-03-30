@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    SocietyPress — Softaculous Upgrade Configuration
+
+    WHY: When a new version of SocietyPress is released and Softaculous detects
+    it, this file tells it what to show during the upgrade process and which
+    files to protect from overwriting. wp-config.php and user uploads must
+    never be touched during an upgrade.
+-->
+<install>
+    <softupgrade>
+
+        <!-- Files and directories to EXCLUDE from overwriting during upgrade -->
+        <files>
+            <exclude>wp-config.php</exclude>
+            <exclude>wp-content/uploads</exclude>
+            <exclude>wp-content/themes/*/style.css</exclude>
+            <exclude>.htaccess</exclude>
+        </files>
+
+    </softupgrade>
+</install>

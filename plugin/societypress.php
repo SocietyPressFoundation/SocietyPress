@@ -1289,18 +1289,22 @@ function sp_create_tables(): void {
     ) {$charset_collate};" );
 
     // ========================================================================
-    // sp_photo_albums — Photo album containers
+    // sp_photo_albums — Media folders (Photos & Videos)
     //
-    // WHY: Societies take photos at every event, field trip, and meeting.
-    //      Albums group photos logically. Each album can optionally link to
-    //      an event (via event_id FK) and can be restricted to members only.
-    //      The cover_image_id points to a WP media attachment for the thumbnail.
+    // WHY: Folders organize images, photos, and videos hierarchically.
+    //      parent_id enables nested subfolders up to 5 levels deep.
+    //      Each folder can optionally link to an event (via event_id FK)
+    //      and can be restricted to members only. The cover_image_id points
+    //      to a WP media attachment for the thumbnail.
+    //      Table name kept as photo_albums for backward compatibility with
+    //      existing installs — the UI calls them "folders."
     // ========================================================================
     dbDelta( "CREATE TABLE {$prefix}photo_albums (
         id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
         title           VARCHAR(255)        NOT NULL,
         slug            VARCHAR(255)        NOT NULL,
         description     TEXT                NULL,
+        parent_id       BIGINT(20) UNSIGNED NULL DEFAULT NULL,
         cover_image_id  BIGINT(20) UNSIGNED NULL,
         event_id        BIGINT(20) UNSIGNED NULL,
         visibility      VARCHAR(20)         NOT NULL DEFAULT 'public',
@@ -1310,27 +1314,34 @@ function sp_create_tables(): void {
         updated_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         KEY slug (slug),
+        KEY parent_id (parent_id),
         KEY event_id (event_id),
         KEY visibility (visibility)
     ) {$charset_collate};" );
 
     // ========================================================================
-    // sp_photo_album_items — Individual photos within albums
+    // sp_photo_album_items — Media items within folders
     //
-    // WHY: Each item links to a WordPress media library attachment (the real
-    //      image lives in WP's uploads folder, not duplicated). sort_order
-    //      allows drag-drop reordering in the admin. Caption is optional
-    //      metadata displayed in the lightbox.
+    // WHY: Each item is either an image (linked to a WP media library
+    //      attachment) or a video (YouTube URL). The type column distinguishes
+    //      them. For images, attachment_id points to WP uploads (no
+    //      duplication). For videos, video_url stores the YouTube link and
+    //      attachment_id is NULL. sort_order allows drag-drop reordering.
+    //      Caption is optional metadata displayed in the lightbox.
+    //      Table name kept as photo_album_items for backward compatibility.
     // ========================================================================
     dbDelta( "CREATE TABLE {$prefix}photo_album_items (
         id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
         album_id        BIGINT(20) UNSIGNED NOT NULL,
-        attachment_id   BIGINT(20) UNSIGNED NOT NULL,
+        attachment_id   BIGINT(20) UNSIGNED NULL DEFAULT NULL,
+        type            VARCHAR(20)         NOT NULL DEFAULT 'image',
+        video_url       VARCHAR(500)        NULL DEFAULT NULL,
         caption         VARCHAR(500)        NULL,
         sort_order      INT                 NOT NULL DEFAULT 0,
         created_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         KEY album_id (album_id),
+        KEY type (type),
         KEY sort_order (sort_order)
     ) {$charset_collate};" );
 
@@ -2858,10 +2869,10 @@ function sp_get_modules(): array {
             'menu_slugs'  => [ 'sp-blast-email', 'sp-blast-email-compose', 'sp-email-templates' ],
         ],
         'gallery' => [
-            'name'        => __( 'Photo Gallery', 'societypress' ),
-            'description' => __( 'Create photo albums to showcase society events, meetings, and member activities.', 'societypress' ),
+            'name'        => __( 'Photos & Videos', 'societypress' ),
+            'description' => __( 'Organize images, photos, and videos into folders. Supports YouTube links for video content.', 'societypress' ),
             'icon'        => 'dashicons-format-gallery',
-            'menu_slugs'  => [ 'sp-gallery', 'sp-album-edit' ],
+            'menu_slugs'  => [ 'sp-gallery', 'sp-media-folder' ],
         ],
         'help_requests' => [
             'name'        => __( 'Research Help', 'societypress' ),
@@ -3113,7 +3124,7 @@ function sp_get_access_areas(): array {
             'name'       => __( 'Content & Pages', 'societypress' ),
             'capability' => 'sp_manage_content',
             'icon'       => 'dashicons-admin-page',
-            'description'=> __( 'Pages, media library, resources, documents, gallery, and the page builder.', 'societypress' ),
+            'description'=> __( 'Pages, media library, resources, documents, photos & videos, and the page builder.', 'societypress' ),
         ],
         'settings' => [
             'name'       => __( 'Settings & Design', 'societypress' ),
@@ -3178,7 +3189,7 @@ function sp_get_role_templates(): array {
         ],
         'content_editor' => [
             'name'   => __( 'Content Editor', 'societypress' ),
-            'description' => __( 'Manages pages, resources, documents, gallery, and media.', 'societypress' ),
+            'description' => __( 'Manages pages, resources, documents, photos & videos, and media.', 'societypress' ),
             'areas'  => [ 'content' ],
         ],
     ];
@@ -3637,27 +3648,27 @@ add_action( 'admin_menu', function () {
     add_submenu_page( null, __( 'Ballot Results — SocietyPress', 'societypress' ), '', 'manage_options', 'sp-ballot-results', 'sp_render_ballot_results_page' );
 
     // -----------------------------------------------------------------
-    // GALLERY GROUP — Photo album management
-    // WHY: Societies take photos at every event. Albums organize them.
+    // MEDIA GROUP — Photos & Videos folder management
+    // WHY: Societies capture media at every event. Folders organize them.
     // -----------------------------------------------------------------
 
     add_submenu_page(
         'societypress',
-        'Photo Gallery — SocietyPress',
-        'Photo Gallery',
+        __( 'Photos & Videos — SocietyPress', 'societypress' ),
+        __( 'Photos & Videos', 'societypress' ),
         'manage_options',
         'sp-gallery',
         'sp_render_gallery_page'
     );
 
-    // Gallery album edit — hidden (accessed via row actions)
+    // Folder edit — hidden (accessed via row actions on gallery page)
     add_submenu_page(
         '',
-        'Edit Album — SocietyPress',
-        'Edit Album',
+        __( 'Edit Folder — SocietyPress', 'societypress' ),
+        __( 'Edit Folder', 'societypress' ),
         'manage_options',
-        'sp-album-edit',
-        'sp_render_album_edit_page'
+        'sp-media-folder',
+        'sp_render_media_folder_page'
     );
 
     // -----------------------------------------------------------------
@@ -4317,9 +4328,9 @@ function sp_get_menu_capability_map(): array {
         'sp-ballot-edit'            => 'sp_manage_governance',
         'sp-ballot-results'         => 'sp_manage_governance',
 
-        // Gallery
+        // Photos & Videos
         'sp-gallery'               => 'sp_manage_content',
-        'sp-album-edit'            => 'sp_manage_content',
+        'sp-media-folder'          => 'sp_manage_content',
 
         // Library
         'sp-library-catalog'       => 'sp_manage_library',
@@ -6965,7 +6976,7 @@ var spMenuConfig = {
         },
         {
             id:    'gallery',
-            label: 'Gallery',
+            label: 'Photos & Videos',
             icon:  'dashicons-format-gallery',
             items: ['sp-gallery']
         },
@@ -27948,8 +27959,8 @@ function sp_get_widget_registry(): array {
             'category'    => 'info',
         ],
         'photo_gallery' => [
-            'label'       => __( 'Photo Gallery', 'societypress' ),
-            'description' => __( 'Display photo albums or a single album with CSS lightbox.', 'societypress' ),
+            'label'       => __( 'Photos & Videos', 'societypress' ),
+            'description' => __( 'Display media folders or a single folder with CSS lightbox. Supports images and YouTube videos.', 'societypress' ),
             'icon'        => 'format-gallery',
             'category'    => 'content',
         ],
@@ -28709,7 +28720,10 @@ function sp_builder_fields_volunteer_stats( $index, array $settings ): void {
 
 
 /**
- * Photo Gallery widget settings.
+ * Photos & Videos widget settings.
+ *
+ * WHY: Settings key 'album_id' kept for backward compatibility with
+ *      existing page builder widget configs — the UI calls them "folders."
  */
 function sp_builder_fields_photo_gallery( $index, array $settings ): void {
     global $wpdb;
@@ -28719,24 +28733,26 @@ function sp_builder_fields_photo_gallery( $index, array $settings ): void {
     $count          = $settings['count'] ?? 12;
     $login_required = $settings['login_required'] ?? false;
 
-    $albums = $wpdb->get_results(
-        "SELECT id, title FROM {$wpdb->prefix}sp_photo_albums ORDER BY sort_order, title"
+    // WHY: Query all folders (top-level and nested) for the dropdown.
+    // Folders are displayed with their path for clarity.
+    $folders = $wpdb->get_results(
+        "SELECT id, title, parent_id FROM {$wpdb->prefix}sp_photo_albums ORDER BY sort_order, title"
     );
     ?>
     <div class="sp-builder-field">
-        <p class="description"><?php esc_html_e( 'Displays photo albums from the Gallery section.', 'societypress' ); ?></p>
+        <p class="description"><?php esc_html_e( 'Displays media folders from the Photos & Videos section.', 'societypress' ); ?></p>
         <label class="sp-field-label"><?php esc_html_e( 'Display mode', 'societypress' ); ?></label>
         <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][display_mode]">
-            <option value="albums" <?php selected( $display_mode, 'albums' ); ?>><?php esc_html_e( 'All albums (grid of thumbnails)', 'societypress' ); ?></option>
-            <option value="single" <?php selected( $display_mode, 'single' ); ?>><?php esc_html_e( 'Single album (all photos)', 'societypress' ); ?></option>
+            <option value="albums" <?php selected( $display_mode, 'albums' ); ?>><?php esc_html_e( 'All folders (grid of thumbnails)', 'societypress' ); ?></option>
+            <option value="single" <?php selected( $display_mode, 'single' ); ?>><?php esc_html_e( 'Single folder (all media)', 'societypress' ); ?></option>
         </select>
     </div>
     <div class="sp-builder-field">
-        <label class="sp-field-label"><?php esc_html_e( 'Album (for single mode)', 'societypress' ); ?></label>
+        <label class="sp-field-label"><?php esc_html_e( 'Folder (for single mode)', 'societypress' ); ?></label>
         <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][album_id]">
-            <option value=""><?php esc_html_e( '— Select an album —', 'societypress' ); ?></option>
-            <?php foreach ( $albums as $a ) : ?>
-                <option value="<?php echo esc_attr( $a->id ); ?>" <?php selected( $album_id, $a->id ); ?>><?php echo esc_html( $a->title ); ?></option>
+            <option value=""><?php esc_html_e( '— Select a folder —', 'societypress' ); ?></option>
+            <?php foreach ( $folders as $f ) : ?>
+                <option value="<?php echo esc_attr( $f->id ); ?>" <?php selected( $album_id, $f->id ); ?>><?php echo esc_html( $f->title ); ?></option>
             <?php endforeach; ?>
         </select>
     </div>
@@ -46061,11 +46077,12 @@ function sp_render_builder_widget_volunteer_stats( array $s ): void {
 
 
 /**
- * Render: Photo Gallery
+ * Render: Photos & Videos
  *
- * WHY: Feature 5 — displays photo albums or a single album's images on the
- *      frontend. Uses a pure CSS :target lightbox so it works without
- *      JavaScript and is fully accessible.
+ * WHY: Displays media folders or a single folder's items on the frontend.
+ *      Supports both images (WP media library) and YouTube videos.
+ *      Images use a pure CSS :target lightbox. Videos open in a responsive
+ *      iframe lightbox. Both work without JavaScript for basic functionality.
  */
 function sp_render_builder_widget_photo_gallery( array $s ): void {
     global $wpdb;
@@ -46074,7 +46091,7 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
     $login_required = $s['login_required'] ?? false;
     if ( $login_required && ! is_user_logged_in() ) {
         echo '<div class="sp-widget-login-required">';
-        echo '<p>' . esc_html__( 'Please', 'societypress' ) . ' <a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">' . esc_html__( 'log in', 'societypress' ) . '</a> ' . esc_html__( 'to view photos.', 'societypress' ) . '</p>';
+        echo '<p>' . esc_html__( 'Please', 'societypress' ) . ' <a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">' . esc_html__( 'log in', 'societypress' ) . '</a> ' . esc_html__( 'to view media.', 'societypress' ) . '</p>';
         echo '</div>';
         return;
     }
@@ -46094,13 +46111,20 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
      * break that toggle without JavaScript.
      */
     echo '<style>
-/* Photo Gallery widget — static layout & presentational rules */
+/* Photos & Videos widget — static layout & presentational rules */
 .sp-gallery-not-found          { color: #666; }
 .sp-gallery-album-title        { margin: 0 0 16px; }
 .sp-gallery-album-desc         { color: #555; margin: 0 0 16px; }
 .sp-gallery-empty              { color: #666; font-style: italic; }
 .sp-gallery-photo-grid         { display: flex; flex-wrap: wrap; gap: 8px; }
 .sp-gallery-thumb-img          { width: 100%; height: 100%; object-fit: cover; }
+/* Video play overlay — indicates clickable YouTube thumbnails */
+.sp-gallery-video-overlay      { position: absolute; inset: 0; display: flex;
+                                  align-items: center; justify-content: center;
+                                  background: rgba(0,0,0,0.2); }
+.sp-gallery-play-icon          { width: 48px; height: 48px; background: rgba(0,0,0,0.7);
+                                  border-radius: 50%; display: flex; align-items: center;
+                                  justify-content: center; color: #fff; font-size: 20px; }
 /* Lightbox overlay — display:none kept inline; :target rule overrides it */
 .sp-gallery-lightbox           { position: fixed; inset: 0; z-index: 100000;
                                   background: rgba(0,0,0,0.9);
@@ -46109,12 +46133,16 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
 .sp-gallery-lightbox-img       { max-width: 90vw; max-height: 90vh;
                                   object-fit: contain; position: relative;
                                   z-index: 2; border-radius: 4px; }
+.sp-gallery-lightbox-video     { position: relative; z-index: 2; width: 80vw;
+                                  max-width: 960px; aspect-ratio: 16/9; }
+.sp-gallery-lightbox-video iframe { width: 100%; height: 100%; border: none;
+                                  border-radius: 4px; }
 .sp-gallery-lightbox-caption   { position: absolute; bottom: 20px; left: 50%;
                                   transform: translateX(-50%); color: #fff;
                                   font-size: 14px; z-index: 2;
                                   background: rgba(0,0,0,0.6);
                                   padding: 6px 16px; border-radius: 4px; }
-/* Albums grid */
+/* Folder grid */
 .sp-gallery-albums-grid        { display: flex; flex-wrap: wrap; gap: 16px; }
 .sp-gallery-cover-wrap         { aspect-ratio: 4/3; overflow: hidden;
                                   border-radius: 8px; margin-bottom: 8px; }
@@ -46126,33 +46154,33 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
 .sp-gallery-no-cover-icon      { font-size: 48px; width: 48px; height: 48px; }
 .sp-gallery-album-name         { margin: 0 0 4px; font-size: 16px; }
 .sp-gallery-photo-count        { color: #666; font-size: 13px; }
-/* :target lightbox trigger — flips display:none → flex when hash matches */
+/* :target lightbox trigger — flips display:none to flex when hash matches */
 .sp-gallery-lightbox:target    { display: flex !important; }
 </style>';
 
     echo '<div class="sp-widget-photo-gallery">';
 
     if ( $display_mode === 'single' && $album_id ) {
-        // Single album view — show photos in a grid
-        $album = $wpdb->get_row( $wpdb->prepare(
+        // Single folder view — show all media items in a grid
+        $folder = $wpdb->get_row( $wpdb->prepare(
             "SELECT * FROM {$prefix}photo_albums WHERE id = %d", $album_id
         ) );
-        if ( ! $album ) {
-            echo '<p class="sp-gallery-not-found">' . esc_html__( 'Album not found.', 'societypress' ) . '</p></div>';
+        if ( ! $folder ) {
+            echo '<p class="sp-gallery-not-found">' . esc_html__( 'Folder not found.', 'societypress' ) . '</p></div>';
             return;
         }
 
         // Visibility check
-        if ( $album->visibility === 'members_only' && ! is_user_logged_in() ) {
-            echo '<p>' . esc_html__( 'Please', 'societypress' ) . ' <a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">' . esc_html__( 'log in', 'societypress' ) . '</a> ' . esc_html__( 'to view this album.', 'societypress' ) . '</p></div>';
+        if ( $folder->visibility === 'members_only' && ! is_user_logged_in() ) {
+            echo '<p>' . esc_html__( 'Please', 'societypress' ) . ' <a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">' . esc_html__( 'log in', 'societypress' ) . '</a> ' . esc_html__( 'to view this folder.', 'societypress' ) . '</p></div>';
             return;
         }
 
-        if ( $album->title ) {
-            echo '<h3 class="sp-gallery-album-title">' . esc_html( $album->title ) . '</h3>';
+        if ( $folder->title ) {
+            echo '<h3 class="sp-gallery-album-title">' . esc_html( $folder->title ) . '</h3>';
         }
-        if ( $album->description ) {
-            echo '<p class="sp-gallery-album-desc">' . esc_html( $album->description ) . '</p>';
+        if ( $folder->description ) {
+            echo '<p class="sp-gallery-album-desc">' . esc_html( $folder->description ) . '</p>';
         }
 
         $items = $wpdb->get_results( $wpdb->prepare(
@@ -46161,105 +46189,138 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
         ) );
 
         if ( empty( $items ) ) {
-            echo '<p class="sp-gallery-empty">' . esc_html__( 'No photos in this album yet.', 'societypress' ) . '</p>';
+            echo '<p class="sp-gallery-empty">' . esc_html__( 'No media in this folder yet.', 'societypress' ) . '</p>';
         } else {
-            /*
-             * WHY inline style on the thumbnail <a>: $col_width is computed at
-             * runtime from a user-configurable column count (2–6). A static CSS
-             * class cannot express this; we keep only the dynamic calc() value
-             * inline. The non-dynamic properties (aspect-ratio, overflow,
-             * border-radius, display) live in .sp-gallery-thumb-link below.
-             */
             $col_width = round( 100 / $columns, 2 );
 
-            // Emit the per-instance dynamic thumbnail width rule so the rest
-            // of the thumbnail link's styles can live in the static block above.
             echo '<style>
-.sp-gallery-thumb-link { aspect-ratio: 1; overflow: hidden; border-radius: 6px; display: block; }
+.sp-gallery-thumb-link { aspect-ratio: 1; overflow: hidden; border-radius: 6px; display: block; position: relative; }
 </style>';
 
             echo '<div class="sp-gallery-photo-grid">';
             foreach ( $items as $i => $item ) {
-                $img_url   = wp_get_attachment_image_url( $item->attachment_id, 'medium' );
-                $full_url  = wp_get_attachment_image_url( $item->attachment_id, 'full' );
-                $target_id = 'sp-photo-' . $album_id . '-' . $item->id;
+                $item_type = $item->type ?? 'image';
+                $target_id = 'sp-media-' . $album_id . '-' . $item->id;
 
-                if ( ! $img_url ) continue;
+                if ( $item_type === 'video' && ! empty( $item->video_url ) ) {
+                    // WHY: Extract YouTube video ID to build thumbnail URL and
+                    // embed URL. Supports youtube.com/watch?v=, youtu.be/, and
+                    // youtube.com/embed/ formats.
+                    $video_id = sp_extract_youtube_id( $item->video_url );
+                    if ( ! $video_id ) continue;
 
-                // Thumbnail — width is dynamic (depends on $col_width), all other styles are in CSS class
-                echo '<a href="#' . esc_attr( $target_id ) . '" class="sp-gallery-thumb-link" style="width:calc(' . $col_width . '% - 8px);">';
-                echo '<img src="' . esc_url( $img_url ) . '" alt="' . esc_attr( $item->caption ?: 'Photo ' . ( $i + 1 ) ) . '" class="sp-gallery-thumb-img" loading="lazy">';
-                echo '</a>';
+                    $thumb_url = 'https://img.youtube.com/vi/' . $video_id . '/mqdefault.jpg';
+                    $embed_url = 'https://www.youtube-nocookie.com/embed/' . $video_id . '?autoplay=1';
 
-                /*
-                 * WHY display:none is kept inline on the lightbox <div>: the
-                 * CSS :target rule (.sp-gallery-lightbox:target) flips it to
-                 * flex. If display:none were moved to the stylesheet, a more-
-                 * specific rule would be needed and the no-JS fallback would
-                 * break. Keeping it inline preserves the original behaviour.
-                 */
-                echo '<div id="' . esc_attr( $target_id ) . '" class="sp-gallery-lightbox" style="display:none;">';
-                echo '<a href="#" class="sp-gallery-lightbox-backdrop"></a>';
-                echo '<img src="' . esc_url( $full_url ?: $img_url ) . '" alt="' . esc_attr( $item->caption ) . '" class="sp-gallery-lightbox-img">';
-                if ( $item->caption ) {
-                    echo '<p class="sp-gallery-lightbox-caption">' . esc_html( $item->caption ) . '</p>';
+                    // Video thumbnail with play overlay
+                    echo '<a href="#' . esc_attr( $target_id ) . '" class="sp-gallery-thumb-link" style="width:calc(' . $col_width . '% - 8px);">';
+                    echo '<img src="' . esc_url( $thumb_url ) . '" alt="' . esc_attr( $item->caption ?: __( 'Video', 'societypress' ) . ' ' . ( $i + 1 ) ) . '" class="sp-gallery-thumb-img" loading="lazy">';
+                    echo '<div class="sp-gallery-video-overlay"><div class="sp-gallery-play-icon">&#9654;</div></div>';
+                    echo '</a>';
+
+                    // Video lightbox with responsive iframe
+                    echo '<div id="' . esc_attr( $target_id ) . '" class="sp-gallery-lightbox" style="display:none;">';
+                    echo '<a href="#" class="sp-gallery-lightbox-backdrop"></a>';
+                    echo '<div class="sp-gallery-lightbox-video"><iframe src="' . esc_url( $embed_url ) . '" allowfullscreen></iframe></div>';
+                    if ( $item->caption ) {
+                        echo '<p class="sp-gallery-lightbox-caption">' . esc_html( $item->caption ) . '</p>';
+                    }
+                    echo '</div>';
+                } else {
+                    // Image from WP media library
+                    $img_url  = wp_get_attachment_image_url( $item->attachment_id, 'medium' );
+                    $full_url = wp_get_attachment_image_url( $item->attachment_id, 'full' );
+                    if ( ! $img_url ) continue;
+
+                    echo '<a href="#' . esc_attr( $target_id ) . '" class="sp-gallery-thumb-link" style="width:calc(' . $col_width . '% - 8px);">';
+                    echo '<img src="' . esc_url( $img_url ) . '" alt="' . esc_attr( $item->caption ?: __( 'Photo', 'societypress' ) . ' ' . ( $i + 1 ) ) . '" class="sp-gallery-thumb-img" loading="lazy">';
+                    echo '</a>';
+
+                    /*
+                     * WHY display:none is kept inline on the lightbox <div>: the
+                     * CSS :target rule (.sp-gallery-lightbox:target) flips it to
+                     * flex. Keeping it inline preserves the no-JS fallback.
+                     */
+                    echo '<div id="' . esc_attr( $target_id ) . '" class="sp-gallery-lightbox" style="display:none;">';
+                    echo '<a href="#" class="sp-gallery-lightbox-backdrop"></a>';
+                    echo '<img src="' . esc_url( $full_url ?: $img_url ) . '" alt="' . esc_attr( $item->caption ) . '" class="sp-gallery-lightbox-img">';
+                    if ( $item->caption ) {
+                        echo '<p class="sp-gallery-lightbox-caption">' . esc_html( $item->caption ) . '</p>';
+                    }
+                    echo '</div>';
                 }
-                echo '</div>';
             }
             echo '</div>';
         }
     } else {
-        // Albums grid view — show album covers
+        // Folders grid view — show top-level folder covers
         $visibility_clause = is_user_logged_in() ? '' : " AND visibility = 'public'";
-        $albums = $wpdb->get_results( $wpdb->prepare(
-            "SELECT * FROM {$prefix}photo_albums WHERE 1=1{$visibility_clause} ORDER BY sort_order ASC, created_at DESC LIMIT %d",
+        $folders = $wpdb->get_results( $wpdb->prepare(
+            "SELECT * FROM {$prefix}photo_albums WHERE (parent_id IS NULL OR parent_id = 0){$visibility_clause} ORDER BY sort_order ASC, created_at DESC LIMIT %d",
             $count
         ) );
 
-        if ( empty( $albums ) ) {
-            echo '<p class="sp-gallery-empty">' . esc_html__( 'No photo albums yet.', 'societypress' ) . '</p>';
+        if ( empty( $folders ) ) {
+            echo '<p class="sp-gallery-empty">' . esc_html__( 'No media folders yet.', 'societypress' ) . '</p>';
         } else {
-            /*
-             * WHY inline style on the album card <div>: same reason as the
-             * thumbnail link above — $col_width is a runtime value. The
-             * min-width fallback and any other static rules belong in the CSS
-             * class; only the dynamic width calc() stays inline.
-             */
             $col_width = round( 100 / $columns, 2 );
 
-            // Emit the per-instance dynamic album card width rule.
             echo '<style>
 .sp-gallery-album-card { min-width: 200px; }
 </style>';
 
             echo '<div class="sp-gallery-albums-grid">';
-            foreach ( $albums as $album ) {
-                $cover_url = $album->cover_image_id
-                    ? wp_get_attachment_image_url( $album->cover_image_id, 'medium' )
+            foreach ( $folders as $folder ) {
+                $cover_url = $folder->cover_image_id
+                    ? wp_get_attachment_image_url( $folder->cover_image_id, 'medium' )
                     : '';
-                $photo_count = (int) $wpdb->get_var( $wpdb->prepare(
-                    "SELECT COUNT(*) FROM {$prefix}photo_album_items WHERE album_id = %d", $album->id
+                $item_count = (int) $wpdb->get_var( $wpdb->prepare(
+                    "SELECT COUNT(*) FROM {$prefix}photo_album_items WHERE album_id = %d", $folder->id
                 ) );
 
-                // Album card — width is dynamic, all other styles are in CSS class
                 echo '<div class="sp-gallery-album-card" style="width:calc(' . $col_width . '% - 16px);">';
                 if ( $cover_url ) {
                     echo '<div class="sp-gallery-cover-wrap">';
-                    echo '<img src="' . esc_url( $cover_url ) . '" alt="' . esc_attr( $album->title ) . '" class="sp-gallery-cover-img" loading="lazy">';
+                    echo '<img src="' . esc_url( $cover_url ) . '" alt="' . esc_attr( $folder->title ) . '" class="sp-gallery-cover-img" loading="lazy">';
                     echo '</div>';
                 } else {
                     echo '<div class="sp-gallery-no-cover">';
                     echo '<span class="dashicons dashicons-format-gallery sp-gallery-no-cover-icon"></span>';
                     echo '</div>';
                 }
-                echo '<h4 class="sp-gallery-album-name">' . esc_html( $album->title ) . '</h4>';
-                echo '<span class="sp-gallery-photo-count">' . sprintf( _n( '%d photo', '%d photos', $photo_count, 'societypress' ), $photo_count ) . '</span>';
+                echo '<h4 class="sp-gallery-album-name">' . esc_html( $folder->title ) . '</h4>';
+                echo '<span class="sp-gallery-photo-count">' . sprintf( _n( '%d item', '%d items', $item_count, 'societypress' ), $item_count ) . '</span>';
                 echo '</div>';
             }
             echo '</div>';
         }
     }
     echo '</div>';
+}
+
+/**
+ * Extract YouTube video ID from a URL.
+ *
+ * WHY: Supports multiple YouTube URL formats (watch, short link, embed) so
+ *      volunteers can paste any YouTube link format and it just works.
+ *
+ * @param string $url The YouTube URL.
+ * @return string|false The video ID, or false if not a valid YouTube URL.
+ */
+function sp_extract_youtube_id( string $url ) {
+    // youtube.com/watch?v=ID
+    if ( preg_match( '/[?&]v=([a-zA-Z0-9_-]{11})/', $url, $m ) ) {
+        return $m[1];
+    }
+    // youtu.be/ID
+    if ( preg_match( '#youtu\.be/([a-zA-Z0-9_-]{11})#', $url, $m ) ) {
+        return $m[1];
+    }
+    // youtube.com/embed/ID
+    if ( preg_match( '#youtube\.com/embed/([a-zA-Z0-9_-]{11})#', $url, $m ) ) {
+        return $m[1];
+    }
+    return false;
 }
 
 /**
@@ -47609,229 +47670,846 @@ function sp_handle_surname_contact(): void {
 
 
 // ============================================================================
-// PHOTO GALLERY — ADMIN PAGES
+// PHOTOS & VIDEOS — ADMIN PAGES
 // ============================================================================
 //
-// WHY: Feature 5 — admin interface for managing photo albums. Albums group
-//      WordPress media library attachments with captions and sort order.
+// WHY: Admin interface for managing media in a hierarchical folder structure.
+//      Folders can be nested up to 5 levels deep. Each folder holds images
+//      (from WP media library) and videos (YouTube links). All folder
+//      operations (create, rename, move, delete) happen via AJAX so the
+//      admin stays on the same page.
 
 /**
- * Render: Gallery Albums List Page
+ * Build breadcrumb trail for a folder.
  *
- * WHY: Shows all albums in a card grid layout rather than a list table,
- *      because albums are visual by nature. Each card shows the cover image,
- *      title, photo count, and visibility status.
+ * WHY: Breadcrumbs show the user exactly where they are in the folder tree
+ *      and let them navigate back up to any parent with one click.
+ *
+ * @param int    $folder_id  Current folder ID (0 = root).
+ * @param string $base_url   Base admin URL for the gallery page.
+ * @return array Array of [ 'id' => int, 'title' => string, 'url' => string ].
  */
-function sp_render_gallery_page(): void {
+function sp_build_folder_breadcrumbs( int $folder_id, string $base_url ): array {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
+    $crumbs = [];
 
-    // Handle delete action
-    if ( ( $_POST['action'] ?? '' ) === 'delete' && ! empty( $_POST['album_id'] ) ) {
-        $album_id = absint( $_POST['album_id'] );
-        check_admin_referer( 'sp_delete_album_' . $album_id );
-        $wpdb->delete( $prefix . 'photo_album_items', [ 'album_id' => $album_id ] );
-        $wpdb->delete( $prefix . 'photo_albums', [ 'id' => $album_id ] );
-        echo '<div class="notice notice-success"><p>' . esc_html__( 'Album deleted.', 'societypress' ) . '</p></div>';
+    $current = $folder_id;
+    while ( $current ) {
+        $row = $wpdb->get_row( $wpdb->prepare(
+            "SELECT id, title, parent_id FROM {$prefix}photo_albums WHERE id = %d",
+            $current
+        ) );
+        if ( ! $row ) break;
+
+        array_unshift( $crumbs, [
+            'id'    => (int) $row->id,
+            'title' => $row->title,
+            'url'   => add_query_arg( 'folder', $row->id, $base_url ),
+        ] );
+        $current = (int) $row->parent_id;
     }
 
-    $albums = $wpdb->get_results(
-        "SELECT a.*, (SELECT COUNT(*) FROM {$prefix}photo_album_items WHERE album_id = a.id) as photo_count
-         FROM {$prefix}photo_albums a
-         ORDER BY a.sort_order ASC, a.created_at DESC"
-    );
-    ?>
-    <div class="wrap">
-        <h1 class="wp-heading-inline"><?php esc_html_e( 'Photo Gallery', 'societypress' ); ?></h1>
-        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-album-edit' ) ); ?>" class="page-title-action">Add New Album</a>
-        <hr class="wp-header-end">
+    // Prepend root
+    array_unshift( $crumbs, [
+        'id'    => 0,
+        'title' => __( 'All Media', 'societypress' ),
+        'url'   => $base_url,
+    ] );
 
-        <?php if ( empty( $albums ) ) : ?>
-            <p><?php esc_html_e( 'No albums yet.', 'societypress' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-album-edit' ) ); ?>"><?php esc_html_e( 'Create your first album', 'societypress' ); ?></a>.</p>
-        <?php else : ?>
-            <div style="display:flex; flex-wrap:wrap; gap:20px; margin-top:20px;">
-                <?php foreach ( $albums as $album ) :
-                    $cover_url = $album->cover_image_id
-                        ? wp_get_attachment_image_url( $album->cover_image_id, 'medium' )
-                        : '';
-                    $edit_url   = admin_url( 'admin.php?page=sp-album-edit&album_id=' . $album->id );
-                    // $delete_url removed — using POST form below
-                ?>
-                    <div style="width:220px; background:#fff; border:1px solid #ccd0d4; border-radius:8px; overflow:hidden;">
-                        <a href="<?php echo esc_url( $edit_url ); ?>" class="sp-block">
-                            <?php if ( $cover_url ) : ?>
-                                <img src="<?php echo esc_url( $cover_url ); ?>" alt="" style="width:100%; height:160px; object-fit:cover;">
-                            <?php else : ?>
-                                <div style="width:100%; height:160px; background:#f0f0f0; display:flex; align-items:center; justify-content:center;">
-                                    <span class="dashicons dashicons-format-gallery" style="font-size:48px; width:48px; height:48px; color:#ccc;"></span>
-                                </div>
-                            <?php endif; ?>
-                        </a>
-                        <div style="padding:12px;">
-                            <h4 style="margin:0 0 4px;"><a href="<?php echo esc_url( $edit_url ); ?>" style="text-decoration:none; color:#1d2327;"><?php echo esc_html( $album->title ); ?></a></h4>
-                            <span class="sp-text-secondary sp-text-sm"><?php echo $album->photo_count; ?> photos</span>
-                            <?php if ( $album->visibility === 'members_only' ) : ?>
-                                <span style="background:#fef0c7; color:#92400e; font-size:10px; padding:2px 6px; border-radius:3px; margin-left:4px;"><?php esc_html_e( 'Members Only', 'societypress' ); ?></span>
-                            <?php endif; ?>
-                            <div style="margin-top:8px; font-size:12px;">
-                                <a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> |
-                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-gallery' ) ); ?>" class="sp-inline" data-sp-confirm="<?php echo esc_attr( __( 'Delete this album and all its photos?', 'societypress' ) ); ?>">
-                                    <?php wp_nonce_field( 'sp_delete_album_' . $album->id ); ?>
-                                    <input type="hidden" name="action" value="delete">
-                                    <input type="hidden" name="album_id" value="<?php echo (int) $album->id; ?>">
-                                    <button type="submit" class="sp-link-btn"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
-                <?php endforeach; ?>
-            </div>
-        <?php endif; ?>
-    </div>
-    <?php
+    return $crumbs;
 }
 
 /**
- * Render: Album Edit Page
+ * Render: Photos & Videos — Folder Browser
  *
- * WHY: Add/edit a photo album. Uses the WordPress media library picker so
- *      Harold can select existing images rather than re-uploading. Photos
- *      are sorted via drag-drop using native HTML5 drag events.
+ * WHY: Single-page folder browser that shows the current folder's contents
+ *      (subfolders + media items). Breadcrumb navigation for moving through
+ *      the hierarchy. Folder CRUD happens via AJAX. Images are added from
+ *      the WP media library picker. Videos are added by pasting YouTube URLs.
  */
-function sp_render_album_edit_page(): void {
+function sp_render_gallery_page(): void {
     global $wpdb;
-    $prefix   = $wpdb->prefix . 'sp_';
-    $album_id = absint( $_GET['album_id'] ?? 0 );
+    $prefix    = $wpdb->prefix . 'sp_';
+    $folder_id = absint( $_GET['folder'] ?? 0 );
+    $base_url  = admin_url( 'admin.php?page=sp-gallery' );
+
+    // Load current folder info (null if at root)
+    $current_folder = $folder_id ? $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$prefix}photo_albums WHERE id = %d", $folder_id
+    ) ) : null;
+
+    // If folder ID was provided but doesn't exist, redirect to root
+    if ( $folder_id && ! $current_folder ) {
+        echo '<div class="notice notice-error"><p>' . esc_html__( 'Folder not found.', 'societypress' ) . '</p></div>';
+        $folder_id      = 0;
+        $current_folder = null;
+    }
+
+    // Build breadcrumbs
+    $breadcrumbs = sp_build_folder_breadcrumbs( $folder_id, $base_url );
+
+    // Load subfolders of current folder
+    if ( $folder_id ) {
+        $subfolders = $wpdb->get_results( $wpdb->prepare(
+            "SELECT a.*, (SELECT COUNT(*) FROM {$prefix}photo_album_items WHERE album_id = a.id) as item_count
+             FROM {$prefix}photo_albums a
+             WHERE a.parent_id = %d
+             ORDER BY a.sort_order ASC, a.title ASC",
+            $folder_id
+        ) );
+    } else {
+        $subfolders = $wpdb->get_results(
+            "SELECT a.*, (SELECT COUNT(*) FROM {$prefix}photo_album_items WHERE album_id = a.id) as item_count
+             FROM {$prefix}photo_albums a
+             WHERE a.parent_id IS NULL OR a.parent_id = 0
+             ORDER BY a.sort_order ASC, a.title ASC"
+        );
+    }
+
+    // Load media items in current folder (only if viewing a specific folder)
+    $items = [];
+    if ( $folder_id ) {
+        $items = $wpdb->get_results( $wpdb->prepare(
+            "SELECT * FROM {$prefix}photo_album_items WHERE album_id = %d ORDER BY sort_order ASC",
+            $folder_id
+        ) );
+    }
+
+    // Load all folders for the "Move to" dropdown (used by AJAX)
+    $all_folders = $wpdb->get_results(
+        "SELECT id, title, parent_id FROM {$prefix}photo_albums ORDER BY title ASC"
+    );
+
+    // Generate the AJAX nonce
+    $nonce = wp_create_nonce( 'sp_media_folder_nonce' );
+
+    // WordPress media uploader needs this when viewing a folder
+    if ( $folder_id ) {
+        wp_enqueue_media();
+    }
+    ?>
+    <style>
+    /* sp_render_gallery_page styles — folder browser layout */
+    .sp-media-breadcrumbs          { display: flex; align-items: center; gap: 4px;
+                                     padding: 8px 0; margin-bottom: 16px; font-size: 13px; }
+    .sp-media-breadcrumbs a        { color: #2271b1; text-decoration: none; }
+    .sp-media-breadcrumbs a:hover  { text-decoration: underline; }
+    .sp-media-breadcrumbs .sep     { color: #999; }
+    .sp-media-breadcrumbs .current { font-weight: 600; color: #1d2327; }
+    .sp-media-toolbar              { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+    .sp-media-folders-grid         { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; }
+    .sp-media-folder-card          { width: 180px; background: #fff; border: 1px solid #ccd0d4;
+                                     border-radius: 8px; overflow: hidden; transition: box-shadow 0.2s; }
+    .sp-media-folder-card:hover    { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .sp-media-folder-icon          { width: 100%; height: 100px; background: #f0f6fc;
+                                     display: flex; align-items: center; justify-content: center; }
+    .sp-media-folder-icon .dashicons { font-size: 48px; width: 48px; height: 48px; color: #2271b1; }
+    .sp-media-folder-info          { padding: 10px 12px; }
+    .sp-media-folder-title         { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+    .sp-media-folder-title a       { text-decoration: none; color: #1d2327; }
+    .sp-media-folder-title a:hover { color: #2271b1; }
+    .sp-media-folder-meta          { font-size: 12px; color: #666; }
+    .sp-media-folder-actions       { font-size: 12px; margin-top: 6px; display: flex; gap: 8px; }
+    .sp-media-folder-actions button { background: none; border: none; color: #2271b1;
+                                      cursor: pointer; padding: 0; font-size: 12px; }
+    .sp-media-folder-actions button:hover { color: #d63638; }
+    .sp-media-items-section        { border-top: 1px solid #e5e7eb; padding-top: 20px; }
+    .sp-media-items-grid           { display: flex; flex-wrap: wrap; gap: 12px; min-height: 80px; }
+    .sp-media-item-tile            { position: relative; width: 140px; }
+    .sp-media-item-thumb           { width: 140px; height: 140px; object-fit: cover;
+                                     border-radius: 6px; border: 1px solid #ddd; }
+    .sp-media-item-video-overlay   { position: absolute; top: 0; left: 0; width: 140px; height: 140px;
+                                     display: flex; align-items: center; justify-content: center;
+                                     background: rgba(0,0,0,0.25); border-radius: 6px; pointer-events: none; }
+    .sp-media-item-play            { width: 36px; height: 36px; background: rgba(0,0,0,0.7);
+                                     border-radius: 50%; display: flex; align-items: center;
+                                     justify-content: center; color: #fff; font-size: 16px; }
+    .sp-media-item-caption         { font-size: 11px; color: #666; margin-top: 4px;
+                                     max-width: 140px; overflow: hidden; text-overflow: ellipsis;
+                                     white-space: nowrap; }
+    .sp-media-item-remove          { position: absolute; top: -6px; right: -6px; background: #b32d2e;
+                                     color: #fff; border: none; border-radius: 50%; width: 20px;
+                                     height: 20px; cursor: pointer; font-size: 14px; line-height: 18px; }
+    .sp-media-empty                { color: #666; font-style: italic; padding: 20px 0; }
+    .sp-media-new-folder-input     { display: none; align-items: center; gap: 8px; margin-bottom: 16px; }
+    .sp-media-new-folder-input.active { display: flex; }
+    .sp-media-rename-input         { width: 140px; font-size: 12px; padding: 2px 6px; }
+    .sp-media-video-form           { display: none; align-items: center; gap: 8px; margin-bottom: 16px; }
+    .sp-media-video-form.active    { display: flex; }
+    .sp-media-visibility-badge     { background: #fef0c7; color: #92400e; font-size: 10px;
+                                     padding: 2px 6px; border-radius: 3px; margin-left: 4px; }
+    .sp-media-move-select          { font-size: 12px; max-width: 160px; }
+    </style>
+
+    <div class="wrap">
+        <h1 class="wp-heading-inline"><?php esc_html_e( 'Photos & Videos', 'societypress' ); ?></h1>
+        <hr class="wp-header-end">
+
+        <!-- Breadcrumbs -->
+        <div class="sp-media-breadcrumbs">
+            <?php foreach ( $breadcrumbs as $i => $crumb ) : ?>
+                <?php if ( $i > 0 ) : ?><span class="sep">/</span><?php endif; ?>
+                <?php if ( $i === count( $breadcrumbs ) - 1 ) : ?>
+                    <span class="current"><?php echo esc_html( $crumb['title'] ); ?></span>
+                <?php else : ?>
+                    <a href="<?php echo esc_url( $crumb['url'] ); ?>"><?php echo esc_html( $crumb['title'] ); ?></a>
+                <?php endif; ?>
+            <?php endforeach; ?>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="sp-media-toolbar">
+            <button type="button" class="button" id="sp-new-folder-btn">
+                <span class="dashicons dashicons-plus-alt2" style="vertical-align:middle; margin-right:2px;"></span>
+                <?php esc_html_e( 'New Folder', 'societypress' ); ?>
+            </button>
+            <?php if ( $folder_id ) : ?>
+                <button type="button" class="button" id="sp-add-images-btn">
+                    <span class="dashicons dashicons-format-image" style="vertical-align:middle; margin-right:2px;"></span>
+                    <?php esc_html_e( 'Add Images', 'societypress' ); ?>
+                </button>
+                <button type="button" class="button" id="sp-add-video-btn">
+                    <span class="dashicons dashicons-video-alt3" style="vertical-align:middle; margin-right:2px;"></span>
+                    <?php esc_html_e( 'Add Video', 'societypress' ); ?>
+                </button>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-media-folder&folder_id=' . $folder_id ) ); ?>" class="button">
+                    <span class="dashicons dashicons-admin-generic" style="vertical-align:middle; margin-right:2px;"></span>
+                    <?php esc_html_e( 'Folder Settings', 'societypress' ); ?>
+                </a>
+            <?php endif; ?>
+        </div>
+
+        <!-- New Folder inline form -->
+        <div class="sp-media-new-folder-input" id="sp-new-folder-form">
+            <input type="text" id="sp-new-folder-name" class="regular-text" placeholder="<?php echo esc_attr__( 'Folder name', 'societypress' ); ?>">
+            <button type="button" class="button button-primary" id="sp-new-folder-save"><?php esc_html_e( 'Create', 'societypress' ); ?></button>
+            <button type="button" class="button" id="sp-new-folder-cancel"><?php esc_html_e( 'Cancel', 'societypress' ); ?></button>
+        </div>
+
+        <!-- Add Video inline form (only visible in a folder) -->
+        <?php if ( $folder_id ) : ?>
+        <div class="sp-media-video-form" id="sp-video-form">
+            <input type="url" id="sp-video-url" class="regular-text" placeholder="<?php echo esc_attr__( 'YouTube URL', 'societypress' ); ?>">
+            <input type="text" id="sp-video-caption" placeholder="<?php echo esc_attr__( 'Caption (optional)', 'societypress' ); ?>">
+            <button type="button" class="button button-primary" id="sp-video-save"><?php esc_html_e( 'Add', 'societypress' ); ?></button>
+            <button type="button" class="button" id="sp-video-cancel"><?php esc_html_e( 'Cancel', 'societypress' ); ?></button>
+        </div>
+        <?php endif; ?>
+
+        <!-- Subfolders -->
+        <?php if ( ! empty( $subfolders ) ) : ?>
+        <div class="sp-media-folders-grid" id="sp-folders-grid">
+            <?php foreach ( $subfolders as $subfolder ) :
+                $folder_url = add_query_arg( 'folder', $subfolder->id, $base_url );
+            ?>
+                <div class="sp-media-folder-card" data-folder-id="<?php echo (int) $subfolder->id; ?>">
+                    <a href="<?php echo esc_url( $folder_url ); ?>" class="sp-media-folder-icon">
+                        <span class="dashicons dashicons-portfolio"></span>
+                    </a>
+                    <div class="sp-media-folder-info">
+                        <h4 class="sp-media-folder-title">
+                            <a href="<?php echo esc_url( $folder_url ); ?>"><?php echo esc_html( $subfolder->title ); ?></a>
+                        </h4>
+                        <span class="sp-media-folder-meta">
+                            <?php echo sprintf( _n( '%d item', '%d items', (int) $subfolder->item_count, 'societypress' ), (int) $subfolder->item_count ); ?>
+                            <?php if ( $subfolder->visibility === 'members_only' ) : ?>
+                                <span class="sp-media-visibility-badge"><?php esc_html_e( 'Members Only', 'societypress' ); ?></span>
+                            <?php endif; ?>
+                        </span>
+                        <div class="sp-media-folder-actions">
+                            <button type="button" class="sp-folder-rename" data-id="<?php echo (int) $subfolder->id; ?>" data-title="<?php echo esc_attr( $subfolder->title ); ?>"><?php esc_html_e( 'Rename', 'societypress' ); ?></button>
+                            <button type="button" class="sp-folder-move" data-id="<?php echo (int) $subfolder->id; ?>"><?php esc_html_e( 'Move', 'societypress' ); ?></button>
+                            <button type="button" class="sp-folder-delete" data-id="<?php echo (int) $subfolder->id; ?>" data-title="<?php echo esc_attr( $subfolder->title ); ?>"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                        </div>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+
+        <!-- Media items (only shown when inside a folder) -->
+        <?php if ( $folder_id ) : ?>
+        <div class="sp-media-items-section">
+            <h3><?php esc_html_e( 'Media', 'societypress' ); ?></h3>
+            <div class="sp-media-items-grid" id="sp-items-grid">
+                <?php if ( empty( $items ) ) : ?>
+                    <p class="sp-media-empty" id="sp-items-empty"><?php esc_html_e( 'No media in this folder yet. Use the buttons above to add images or videos.', 'societypress' ); ?></p>
+                <?php else : ?>
+                    <?php foreach ( $items as $item ) :
+                        $item_type = $item->type ?? 'image';
+                    ?>
+                        <div class="sp-media-item-tile" data-item-id="<?php echo (int) $item->id; ?>">
+                            <?php if ( $item_type === 'video' && ! empty( $item->video_url ) ) :
+                                $vid = sp_extract_youtube_id( $item->video_url );
+                                $thumb = $vid ? 'https://img.youtube.com/vi/' . $vid . '/mqdefault.jpg' : '';
+                            ?>
+                                <img src="<?php echo esc_url( $thumb ); ?>" alt="" class="sp-media-item-thumb">
+                                <div class="sp-media-item-video-overlay">
+                                    <div class="sp-media-item-play">&#9654;</div>
+                                </div>
+                            <?php else :
+                                $thumb = wp_get_attachment_image_url( $item->attachment_id, 'thumbnail' );
+                                if ( ! $thumb ) $thumb = '';
+                            ?>
+                                <img src="<?php echo esc_url( $thumb ); ?>" alt="" class="sp-media-item-thumb">
+                            <?php endif; ?>
+                            <?php if ( $item->caption ) : ?>
+                                <div class="sp-media-item-caption"><?php echo esc_html( $item->caption ); ?></div>
+                            <?php endif; ?>
+                            <button type="button" class="sp-media-item-remove" data-item-id="<?php echo (int) $item->id; ?>">&times;</button>
+                        </div>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <!-- Empty state when at root with no folders -->
+        <?php if ( ! $folder_id && empty( $subfolders ) ) : ?>
+            <p class="sp-media-empty"><?php esc_html_e( 'No folders yet. Click "New Folder" to get started.', 'societypress' ); ?></p>
+        <?php endif; ?>
+    </div>
+
+    <?php
+    // WHY: Build a flat list of all folders for the "Move to" dialog.
+    // Serialized as a JS array so the move handler can build a dropdown.
+    $folder_tree_json = wp_json_encode( array_map( function ( $f ) {
+        return [
+            'id'        => (int) $f->id,
+            'title'     => $f->title,
+            'parent_id' => (int) $f->parent_id,
+        ];
+    }, $all_folders ) );
+    ?>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var nonce        = '<?php echo esc_js( $nonce ); ?>';
+        var currentFolder = <?php echo (int) $folder_id; ?>;
+        var ajaxUrl      = '<?php echo esc_url( admin_url( 'admin-ajax.php' ) ); ?>';
+        var baseUrl      = '<?php echo esc_url( $base_url ); ?>';
+        var allFolders   = <?php echo $folder_tree_json; ?>;
+
+        // ---- New Folder ----
+        var newFolderBtn    = document.getElementById('sp-new-folder-btn');
+        var newFolderForm   = document.getElementById('sp-new-folder-form');
+        var newFolderName   = document.getElementById('sp-new-folder-name');
+        var newFolderSave   = document.getElementById('sp-new-folder-save');
+        var newFolderCancel = document.getElementById('sp-new-folder-cancel');
+
+        if (newFolderBtn) {
+            newFolderBtn.addEventListener('click', function() {
+                newFolderForm.classList.add('active');
+                newFolderName.focus();
+            });
+        }
+        if (newFolderCancel) {
+            newFolderCancel.addEventListener('click', function() {
+                newFolderForm.classList.remove('active');
+                newFolderName.value = '';
+            });
+        }
+        if (newFolderSave) {
+            newFolderSave.addEventListener('click', function() {
+                var name = newFolderName.value.trim();
+                if (!name) return;
+
+                var fd = new FormData();
+                fd.append('action', 'sp_create_media_folder');
+                fd.append('nonce', nonce);
+                fd.append('title', name);
+                fd.append('parent_id', currentFolder);
+
+                fetch(ajaxUrl, { method: 'POST', body: fd })
+                    .then(function(r) { return r.json(); })
+                    .then(function(resp) {
+                        if (resp.success) {
+                            // WHY: Reload the page to show the new folder in its
+                            // correct position rather than manually inserting DOM
+                            // nodes that might not match the server sort order.
+                            location.reload();
+                        } else {
+                            alert(resp.data.message || '<?php echo esc_js( __( 'Error creating folder.', 'societypress' ) ); ?>');
+                        }
+                    });
+            });
+
+            // WHY: Let the user press Enter to create the folder without
+            // having to click the button.
+            newFolderName.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') { e.preventDefault(); newFolderSave.click(); }
+                if (e.key === 'Escape') { newFolderCancel.click(); }
+            });
+        }
+
+        // ---- Rename Folder ----
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest('.sp-folder-rename');
+            if (!btn) return;
+
+            var folderId = btn.dataset.id;
+            var oldTitle = btn.dataset.title;
+            var newTitle = prompt('<?php echo esc_js( __( 'New folder name:', 'societypress' ) ); ?>', oldTitle);
+
+            if (!newTitle || newTitle.trim() === '' || newTitle === oldTitle) return;
+
+            var fd = new FormData();
+            fd.append('action', 'sp_rename_media_folder');
+            fd.append('nonce', nonce);
+            fd.append('folder_id', folderId);
+            fd.append('title', newTitle.trim());
+
+            fetch(ajaxUrl, { method: 'POST', body: fd })
+                .then(function(r) { return r.json(); })
+                .then(function(resp) {
+                    if (resp.success) {
+                        location.reload();
+                    } else {
+                        alert(resp.data.message || '<?php echo esc_js( __( 'Error renaming folder.', 'societypress' ) ); ?>');
+                    }
+                });
+        });
+
+        // ---- Move Folder ----
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest('.sp-folder-move');
+            if (!btn) return;
+
+            var folderId = parseInt(btn.dataset.id);
+
+            // WHY: Build a list of valid move targets (exclude the folder itself
+            // and its descendants to prevent circular references). The full
+            // circular-reference check also happens server-side.
+            var descendants = sp_get_descendant_ids(folderId, allFolders);
+            descendants.push(folderId);
+
+            var options = ['<?php echo esc_js( __( '— Root (top level) —', 'societypress' ) ); ?>'];
+            var optionIds = [0];
+
+            allFolders.forEach(function(f) {
+                if (descendants.indexOf(f.id) === -1) {
+                    options.push(f.title);
+                    optionIds.push(f.id);
+                }
+            });
+
+            // WHY: Using a simple prompt with numbered choices since this is
+            // an uncommon operation and a full modal would be overkill. The
+            // user types a number to select the target folder.
+            var msg = '<?php echo esc_js( __( 'Move folder to:', 'societypress' ) ); ?>\n';
+            options.forEach(function(opt, i) { msg += (i + 1) + '. ' + opt + '\n'; });
+            msg += '\n<?php echo esc_js( __( 'Enter number:', 'societypress' ) ); ?>';
+
+            var choice = prompt(msg);
+            if (!choice) return;
+
+            var idx = parseInt(choice) - 1;
+            if (isNaN(idx) || idx < 0 || idx >= optionIds.length) {
+                alert('<?php echo esc_js( __( 'Invalid selection.', 'societypress' ) ); ?>');
+                return;
+            }
+
+            var fd = new FormData();
+            fd.append('action', 'sp_move_media_folder');
+            fd.append('nonce', nonce);
+            fd.append('folder_id', folderId);
+            fd.append('new_parent_id', optionIds[idx]);
+
+            fetch(ajaxUrl, { method: 'POST', body: fd })
+                .then(function(r) { return r.json(); })
+                .then(function(resp) {
+                    if (resp.success) {
+                        location.reload();
+                    } else {
+                        alert(resp.data.message || '<?php echo esc_js( __( 'Error moving folder.', 'societypress' ) ); ?>');
+                    }
+                });
+        });
+
+        // WHY: Recursively collect all descendant folder IDs to exclude from
+        // move targets. Prevents the user from trying to move a folder into
+        // one of its own children.
+        function sp_get_descendant_ids(parentId, folders) {
+            var ids = [];
+            folders.forEach(function(f) {
+                if (f.parent_id === parentId) {
+                    ids.push(f.id);
+                    ids = ids.concat(sp_get_descendant_ids(f.id, folders));
+                }
+            });
+            return ids;
+        }
+
+        // ---- Delete Folder ----
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest('.sp-folder-delete');
+            if (!btn) return;
+
+            var folderId  = btn.dataset.id;
+            var title     = btn.dataset.title;
+
+            // WHY: Using spConfirm (the SocietyPress custom confirmation dialog)
+            // instead of native confirm(). Falls back to confirm() if spConfirm
+            // isn't available.
+            var msg = '<?php echo esc_js( __( 'Delete folder "%s" and its media? Subfolders will be moved up to the parent.', 'societypress' ) ); ?>'.replace('%s', title);
+
+            var doDelete = function() {
+                var fd = new FormData();
+                fd.append('action', 'sp_delete_media_folder');
+                fd.append('nonce', nonce);
+                fd.append('folder_id', folderId);
+
+                fetch(ajaxUrl, { method: 'POST', body: fd })
+                    .then(function(r) { return r.json(); })
+                    .then(function(resp) {
+                        if (resp.success) {
+                            location.reload();
+                        } else {
+                            alert(resp.data.message || '<?php echo esc_js( __( 'Error deleting folder.', 'societypress' ) ); ?>');
+                        }
+                    });
+            };
+
+            if (typeof spConfirm === 'function') {
+                spConfirm(msg, doDelete);
+            } else if (confirm(msg)) {
+                doDelete();
+            }
+        });
+
+        // ---- Add Images (WP Media Library) ----
+        var addImagesBtn = document.getElementById('sp-add-images-btn');
+        if (addImagesBtn && currentFolder) {
+            addImagesBtn.addEventListener('click', function() {
+                var frame = wp.media({
+                    title: '<?php echo esc_js( __( 'Add Images to Folder', 'societypress' ) ); ?>',
+                    button: { text: '<?php echo esc_js( __( 'Add to Folder', 'societypress' ) ); ?>' },
+                    multiple: true
+                });
+                frame.on('select', function() {
+                    var attachments = frame.state().get('selection').toJSON();
+                    var itemsGrid   = document.getElementById('sp-items-grid');
+                    var emptyMsg    = document.getElementById('sp-items-empty');
+
+                    // WHY: Save each selected image as a new media item via a
+                    // traditional form POST. We build a temporary form and submit
+                    // it, which reloads the page with the new items visible.
+                    // This is simpler than AJAX-inserting tiles that might not
+                    // match the server's sort order.
+                    var form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = location.href;
+                    form.style.display = 'none';
+
+                    var nonceInput = document.createElement('input');
+                    nonceInput.name = '_wpnonce';
+                    nonceInput.value = '<?php echo wp_create_nonce( 'sp_add_images_to_folder' ); ?>';
+                    form.appendChild(nonceInput);
+
+                    var actionInput = document.createElement('input');
+                    actionInput.name = 'sp_add_images';
+                    actionInput.value = '1';
+                    form.appendChild(actionInput);
+
+                    attachments.forEach(function(att) {
+                        var input = document.createElement('input');
+                        input.name = 'attachment_ids[]';
+                        input.value = att.id;
+                        form.appendChild(input);
+                    });
+
+                    document.body.appendChild(form);
+                    form.submit();
+                });
+                frame.open();
+            });
+        }
+
+        // ---- Add Video ----
+        var addVideoBtn = document.getElementById('sp-add-video-btn');
+        var videoForm   = document.getElementById('sp-video-form');
+        var videoUrl    = document.getElementById('sp-video-url');
+        var videoCaption= document.getElementById('sp-video-caption');
+        var videoSave   = document.getElementById('sp-video-save');
+        var videoCancel = document.getElementById('sp-video-cancel');
+
+        if (addVideoBtn) {
+            addVideoBtn.addEventListener('click', function() {
+                videoForm.classList.add('active');
+                videoUrl.focus();
+            });
+        }
+        if (videoCancel) {
+            videoCancel.addEventListener('click', function() {
+                videoForm.classList.remove('active');
+                videoUrl.value = '';
+                videoCaption.value = '';
+            });
+        }
+        if (videoSave) {
+            videoSave.addEventListener('click', function() {
+                var url = videoUrl.value.trim();
+                if (!url) return;
+
+                var fd = new FormData();
+                fd.append('action', 'sp_add_media_video');
+                fd.append('nonce', nonce);
+                fd.append('folder_id', currentFolder);
+                fd.append('video_url', url);
+                fd.append('caption', videoCaption.value.trim());
+
+                fetch(ajaxUrl, { method: 'POST', body: fd })
+                    .then(function(r) { return r.json(); })
+                    .then(function(resp) {
+                        if (resp.success) {
+                            location.reload();
+                        } else {
+                            alert(resp.data.message || '<?php echo esc_js( __( 'Error adding video.', 'societypress' ) ); ?>');
+                        }
+                    });
+            });
+
+            videoUrl.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') { e.preventDefault(); videoSave.click(); }
+                if (e.key === 'Escape') { videoCancel.click(); }
+            });
+        }
+
+        // ---- Remove Media Item ----
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest('.sp-media-item-remove');
+            if (!btn) return;
+
+            var itemId = btn.dataset.itemId;
+            var msg = '<?php echo esc_js( __( 'Remove this item from the folder?', 'societypress' ) ); ?>';
+
+            var doRemove = function() {
+                var fd = new FormData();
+                fd.append('action', 'sp_remove_media_item');
+                fd.append('nonce', nonce);
+                fd.append('item_id', itemId);
+
+                fetch(ajaxUrl, { method: 'POST', body: fd })
+                    .then(function(r) { return r.json(); })
+                    .then(function(resp) {
+                        if (resp.success) {
+                            var tile = btn.closest('.sp-media-item-tile');
+                            if (tile) tile.remove();
+                        } else {
+                            alert(resp.data.message || '<?php echo esc_js( __( 'Error removing item.', 'societypress' ) ); ?>');
+                        }
+                    });
+            };
+
+            if (typeof spConfirm === 'function') {
+                spConfirm(msg, doRemove);
+            } else if (confirm(msg)) {
+                doRemove();
+            }
+        });
+    });
+    </script>
+
+    <?php
+    // WHY: Handle the image addition form POST from the WP media picker.
+    // This runs at the top of the page load (before HTML output) via
+    // the POST check, but since WordPress admin pages render after
+    // headers, we handle it inline and redirect.
+}
+
+/**
+ * Handle adding images to a folder via POST.
+ *
+ * WHY: Hooked to admin_init so it runs before any output. The WP media
+ *      picker submits a form with attachment IDs, we save them and redirect
+ *      back to the folder view to show the new items.
+ */
+add_action( 'admin_init', function () {
+    if ( empty( $_POST['sp_add_images'] ) || empty( $_GET['page'] ) || $_GET['page'] !== 'sp-gallery' ) {
+        return;
+    }
+
+    check_admin_referer( 'sp_add_images_to_folder' );
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+
+    global $wpdb;
+    $prefix        = $wpdb->prefix . 'sp_';
+    $folder_id     = absint( $_GET['folder'] ?? 0 );
+    $attachment_ids = array_filter( array_map( 'absint', (array) ( $_POST['attachment_ids'] ?? [] ) ) );
+
+    if ( ! $folder_id || empty( $attachment_ids ) ) {
+        return;
+    }
+
+    // Get the current max sort order for this folder
+    $max_order = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT MAX(sort_order) FROM {$prefix}photo_album_items WHERE album_id = %d",
+        $folder_id
+    ) );
+
+    // WHY: Check for duplicates — don't add an image that's already in this folder.
+    $existing = $wpdb->get_col( $wpdb->prepare(
+        "SELECT attachment_id FROM {$prefix}photo_album_items WHERE album_id = %d AND type = 'image'",
+        $folder_id
+    ) );
+
+    foreach ( $attachment_ids as $att_id ) {
+        if ( in_array( $att_id, $existing ) ) continue;
+
+        $max_order++;
+        $wpdb->insert( $prefix . 'photo_album_items', [
+            'album_id'      => $folder_id,
+            'attachment_id'  => $att_id,
+            'type'          => 'image',
+            'sort_order'    => $max_order,
+        ] );
+    }
+
+    // Redirect back to the folder to avoid form resubmission
+    wp_safe_redirect( admin_url( 'admin.php?page=sp-gallery&folder=' . $folder_id ) );
+    exit;
+} );
+
+/**
+ * AJAX: Remove a media item from a folder.
+ *
+ * WHY: Lets the admin remove individual images or videos from a folder
+ *      without a page reload. The WP media library attachment is NOT deleted —
+ *      only the link between the folder and the attachment is removed.
+ */
+add_action( 'wp_ajax_sp_remove_media_item', function () {
+    check_ajax_referer( 'sp_media_folder_nonce', 'nonce' );
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Permission denied.', 'societypress' ) ] );
+    }
+
+    global $wpdb;
+    $prefix  = $wpdb->prefix . 'sp_';
+    $item_id = absint( $_POST['item_id'] ?? 0 );
+
+    if ( ! $item_id ) {
+        wp_send_json_error( [ 'message' => __( 'Item ID is required.', 'societypress' ) ] );
+    }
+
+    $wpdb->delete( $prefix . 'photo_album_items', [ 'id' => $item_id ] );
+
+    wp_send_json_success( [ 'message' => __( 'Item removed.', 'societypress' ) ] );
+} );
+
+/**
+ * Render: Folder Settings Page
+ *
+ * WHY: Edit a folder's metadata (name, description, visibility, cover image,
+ *      sort order). Accessed from the "Folder Settings" button on the folder
+ *      browser page. Uses the WordPress media library picker for the cover
+ *      image so Harold can select existing images rather than re-uploading.
+ */
+function sp_render_media_folder_page(): void {
+    global $wpdb;
+    $prefix    = $wpdb->prefix . 'sp_';
+    $folder_id = absint( $_GET['folder_id'] ?? 0 );
+
+    if ( ! $folder_id ) {
+        echo '<div class="wrap"><p>' . esc_html__( 'No folder specified.', 'societypress' ) . '</p></div>';
+        return;
+    }
 
     // Handle save
-    if ( isset( $_POST['sp_save_album'] ) && check_admin_referer( 'sp_album_save' ) ) {
+    if ( isset( $_POST['sp_save_folder'] ) && check_admin_referer( 'sp_folder_save' ) ) {
         $data = [
             'title'          => sanitize_text_field( $_POST['title'] ?? '' ),
             'slug'           => sanitize_title( $_POST['title'] ?? '' ),
             'description'    => sanitize_textarea_field( $_POST['description'] ?? '' ),
-            'cover_image_id' => absint( $_POST['cover_image_id'] ?? 0 ),
+            'cover_image_id' => absint( $_POST['cover_image_id'] ?? 0 ) ?: null,
             'event_id'       => absint( $_POST['event_id'] ?? 0 ) ?: null,
             'visibility'     => sanitize_text_field( $_POST['visibility'] ?? 'public' ),
             'sort_order'     => absint( $_POST['sort_order'] ?? 0 ),
         ];
 
-        if ( $album_id ) {
-            $wpdb->update( $prefix . 'photo_albums', $data, [ 'id' => $album_id ] );
-        } else {
-            $wpdb->insert( $prefix . 'photo_albums', $data );
-            $album_id = $wpdb->insert_id;
-        }
-
-        // Save photos — expects comma-separated attachment IDs
-        $photo_ids = array_filter( array_map( 'absint', explode( ',', $_POST['photo_ids'] ?? '' ) ) );
-        $captions  = (array) ( $_POST['photo_captions'] ?? [] );
-
-        // Clear existing items and re-insert in order
-        $wpdb->delete( $prefix . 'photo_album_items', [ 'album_id' => $album_id ] );
-        foreach ( $photo_ids as $order => $attachment_id ) {
-            $wpdb->insert( $prefix . 'photo_album_items', [
-                'album_id'      => $album_id,
-                'attachment_id' => $attachment_id,
-                'caption'       => sanitize_text_field( $captions[ $attachment_id ] ?? '' ),
-                'sort_order'    => $order,
-            ] );
-        }
-
-        echo '<div class="notice notice-success"><p>' . esc_html__( 'Album saved.', 'societypress' ) . '</p></div>';
+        $wpdb->update( $prefix . 'photo_albums', $data, [ 'id' => $folder_id ] );
+        echo '<div class="notice notice-success"><p>' . esc_html__( 'Folder settings saved.', 'societypress' ) . '</p></div>';
     }
 
-    // Load album data
-    $album = $album_id ? $wpdb->get_row( $wpdb->prepare(
-        "SELECT * FROM {$prefix}photo_albums WHERE id = %d", $album_id
-    ) ) : null;
+    // Load folder data
+    $folder = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$prefix}photo_albums WHERE id = %d", $folder_id
+    ) );
 
-    $photos = $album_id ? $wpdb->get_results( $wpdb->prepare(
-        "SELECT * FROM {$prefix}photo_album_items WHERE album_id = %d ORDER BY sort_order ASC", $album_id
-    ) ) : [];
+    if ( ! $folder ) {
+        echo '<div class="wrap"><p>' . esc_html__( 'Folder not found.', 'societypress' ) . '</p></div>';
+        return;
+    }
 
     // WordPress media uploader needs this
     wp_enqueue_media();
+
+    // Build the "back" URL — go to the folder's parent in the browser
+    $back_url = admin_url( 'admin.php?page=sp-gallery' );
+    if ( $folder->parent_id ) {
+        $back_url = add_query_arg( 'folder', $folder->parent_id, $back_url );
+    } else {
+        $back_url = add_query_arg( 'folder', $folder_id, $back_url );
+    }
     ?>
     <style>
-    /* sp_render_album_edit_page styles
-     * WHY: Extracted from inline style= attributes so markup stays clean
-     * and all visual rules live in one auditable place.
-     * The remove-cover-btn display:none is kept inline (PHP-conditional visibility). */
-    .sp-album-edit-form          { margin-top: 20px; }
-    .sp-album-edit-cover-preview { margin-bottom: 8px; }
-    .sp-album-edit-cover-img     { max-width: 150px; border-radius: 4px; }
-    .sp-album-edit-sort-input    { width: 80px; }
-    .sp-album-edit-photos-grid   { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; min-height: 100px; background: #f9f9f9; border: 2px dashed #ddd; border-radius: 8px; padding: 16px; }
-    .sp-album-edit-photo-tile    { position: relative; width: 120px; cursor: grab; }
-    .sp-album-edit-photo-img     { width: 120px; height: 120px; object-fit: cover; border-radius: 6px; }
-    .sp-album-edit-caption-input { width: 120px; font-size: 11px; margin-top: 4px; padding: 2px 4px; border: 1px solid #ccc; border-radius: 3px; }
-    .sp-album-edit-remove-btn    { position: absolute; top: -6px; right: -6px; background: #b32d2e; color: #fff; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; font-size: 14px; line-height: 18px; }
+    /* sp_render_media_folder_page styles */
+    .sp-folder-edit-form          { margin-top: 20px; }
+    .sp-folder-edit-cover-preview { margin-bottom: 8px; }
+    .sp-folder-edit-cover-img     { max-width: 150px; border-radius: 4px; }
+    .sp-folder-edit-sort-input    { width: 80px; }
     </style>
     <div class="wrap">
-        <h1><?php echo $album ? esc_html__( 'Edit Album', 'societypress' ) : esc_html__( 'Add New Album', 'societypress' ); ?></h1>
-        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-gallery' ) ); ?>">&larr; <?php esc_html_e( 'Back to Gallery', 'societypress' ); ?></a>
+        <h1><?php esc_html_e( 'Folder Settings', 'societypress' ); ?></h1>
+        <a href="<?php echo esc_url( $back_url ); ?>">&larr; <?php esc_html_e( 'Back to Folder', 'societypress' ); ?></a>
 
-        <form method="post" class="sp-album-edit-form">
-            <?php wp_nonce_field( 'sp_album_save' ); ?>
+        <form method="post" class="sp-folder-edit-form">
+            <?php wp_nonce_field( 'sp_folder_save' ); ?>
 
             <table class="form-table">
                 <tr>
-                    <th><label for="title"><?php esc_html_e( 'Album Title', 'societypress' ); ?></label></th>
-                    <td><input type="text" name="title" id="title" class="regular-text" value="<?php echo esc_attr( $album->title ?? '' ); ?>" required></td>
+                    <th><label for="title"><?php esc_html_e( 'Folder Name', 'societypress' ); ?></label></th>
+                    <td><input type="text" name="title" id="title" class="regular-text" value="<?php echo esc_attr( $folder->title ); ?>" required></td>
                 </tr>
                 <tr>
                     <th><label for="description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
-                    <td><textarea name="description" id="description" rows="3" class="large-text"><?php echo esc_textarea( $album->description ?? '' ); ?></textarea></td>
+                    <td><textarea name="description" id="description" rows="3" class="large-text"><?php echo esc_textarea( $folder->description ?? '' ); ?></textarea></td>
                 </tr>
                 <tr>
                     <th><?php esc_html_e( 'Cover Image', 'societypress' ); ?></th>
                     <td>
-                        <input type="hidden" name="cover_image_id" id="cover_image_id" value="<?php echo esc_attr( $album->cover_image_id ?? 0 ); ?>">
-                        <div id="cover-preview" class="sp-album-edit-cover-preview">
-                            <?php if ( ! empty( $album->cover_image_id ) ) :
-                                $img = wp_get_attachment_image_url( $album->cover_image_id, 'thumbnail' );
-                                if ( $img ) echo '<img src="' . esc_url( $img ) . '" class="sp-album-edit-cover-img">';
+                        <input type="hidden" name="cover_image_id" id="cover_image_id" value="<?php echo esc_attr( $folder->cover_image_id ?? 0 ); ?>">
+                        <div id="cover-preview" class="sp-folder-edit-cover-preview">
+                            <?php if ( ! empty( $folder->cover_image_id ) ) :
+                                $img = wp_get_attachment_image_url( $folder->cover_image_id, 'thumbnail' );
+                                if ( $img ) echo '<img src="' . esc_url( $img ) . '" class="sp-folder-edit-cover-img">';
                             endif; ?>
                         </div>
                         <button type="button" class="button" id="select-cover-btn"><?php esc_html_e( 'Select Image', 'societypress' ); ?></button>
-                        <button type="button" class="button" id="remove-cover-btn" <?php if ( empty( $album->cover_image_id ) ) echo 'style="display:none;"'; ?>><?php esc_html_e( 'Remove', 'societypress' ); ?></button>
+                        <button type="button" class="button" id="remove-cover-btn" <?php if ( empty( $folder->cover_image_id ) ) echo 'style="display:none;"'; ?>><?php esc_html_e( 'Remove', 'societypress' ); ?></button>
                     </td>
                 </tr>
                 <tr>
                     <th><label for="visibility"><?php esc_html_e( 'Visibility', 'societypress' ); ?></label></th>
                     <td>
                         <select name="visibility" id="visibility">
-                            <option value="public" <?php selected( $album->visibility ?? 'public', 'public' ); ?>><?php esc_html_e( 'Public', 'societypress' ); ?></option>
-                            <option value="members_only" <?php selected( $album->visibility ?? '', 'members_only' ); ?>><?php esc_html_e( 'Members Only', 'societypress' ); ?></option>
+                            <option value="public" <?php selected( $folder->visibility, 'public' ); ?>><?php esc_html_e( 'Public', 'societypress' ); ?></option>
+                            <option value="members_only" <?php selected( $folder->visibility, 'members_only' ); ?>><?php esc_html_e( 'Members Only', 'societypress' ); ?></option>
                         </select>
                     </td>
                 </tr>
                 <tr>
                     <th><label for="sort_order"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label></th>
-                    <td><input type="number" name="sort_order" id="sort_order" value="<?php echo esc_attr( $album->sort_order ?? 0 ); ?>" min="0" class="sp-album-edit-sort-input"></td>
+                    <td><input type="number" name="sort_order" id="sort_order" value="<?php echo esc_attr( $folder->sort_order ); ?>" min="0" class="sp-folder-edit-sort-input"></td>
                 </tr>
             </table>
 
-            <!-- Photos section -->
-            <h3><?php esc_html_e( 'Photos', 'societypress' ); ?></h3>
-            <input type="hidden" name="photo_ids" id="photo_ids" value="<?php echo esc_attr( implode( ',', array_column( $photos, 'attachment_id' ) ) ); ?>">
-
-            <div id="album-photos" class="sp-album-edit-photos-grid">
-                <?php foreach ( $photos as $photo ) :
-                    $thumb = wp_get_attachment_image_url( $photo->attachment_id, 'thumbnail' );
-                    if ( ! $thumb ) continue;
-                ?>
-                    <div class="sp-album-photo sp-album-edit-photo-tile" data-id="<?php echo $photo->attachment_id; ?>" draggable="true">
-                        <img src="<?php echo esc_url( $thumb ); ?>" class="sp-album-edit-photo-img">
-                        <input type="text" name="photo_captions[<?php echo $photo->attachment_id; ?>]" value="<?php echo esc_attr( $photo->caption ); ?>" placeholder="<?php echo esc_attr__( 'Caption', 'societypress' ); ?>" class="sp-album-edit-caption-input">
-                        <button type="button" class="sp-remove-photo sp-album-edit-remove-btn" data-id="<?php echo $photo->attachment_id; ?>">&times;</button>
-                    </div>
-                <?php endforeach; ?>
-            </div>
-            <button type="button" class="button" id="add-photos-btn"><?php esc_html_e( 'Add Photos', 'societypress' ); ?></button>
-
             <p class="submit">
-                <input type="submit" name="sp_save_album" class="button button-primary" value="<?php echo esc_attr__( 'Save Album', 'societypress' ); ?>">
+                <input type="submit" name="sp_save_folder" class="button button-primary" value="<?php echo esc_attr__( 'Save Settings', 'societypress' ); ?>">
             </p>
         </form>
     </div>
@@ -47842,22 +48520,23 @@ function sp_render_album_edit_page(): void {
         var coverRemove  = document.getElementById('remove-cover-btn');
         var coverIdInput = document.getElementById('cover_image_id');
         var coverPreview = document.getElementById('cover-preview');
-        var addPhotosBtn = document.getElementById('add-photos-btn');
-        var photoIdsInput = document.getElementById('photo_ids');
-        var albumPhotos  = document.getElementById('album-photos');
 
         // Cover image picker
-        // WHY wp.media is NOT jQuery — it's the WordPress media frame API.
+        // WHY: wp.media is NOT jQuery — it's the WordPress media frame API.
         // We only use vanilla JS for all DOM updates in the callbacks.
         if (coverBtn) {
             coverBtn.addEventListener('click', function() {
-                var frame = wp.media({ title: 'Select Cover Image', button: { text: 'Set as Cover' }, multiple: false });
+                var frame = wp.media({
+                    title: '<?php echo esc_js( __( 'Select Cover Image', 'societypress' ) ); ?>',
+                    button: { text: '<?php echo esc_js( __( 'Set as Cover', 'societypress' ) ); ?>' },
+                    multiple: false
+                });
                 frame.on('select', function() {
                     var att = frame.state().get('selection').first().toJSON();
                     if (coverIdInput) coverIdInput.value = att.id;
                     if (coverPreview) {
                         var thumbUrl = (att.sizes && att.sizes.thumbnail) ? att.sizes.thumbnail.url : att.url;
-                        coverPreview.innerHTML = '<img src="' + thumbUrl + '" class="sp-album-edit-cover-img">';
+                        coverPreview.innerHTML = '<img src="' + thumbUrl + '" class="sp-folder-edit-cover-img">';
                     }
                     if (coverRemove) coverRemove.style.display = '';
                 });
@@ -47872,75 +48551,317 @@ function sp_render_album_edit_page(): void {
                 coverRemove.style.display = 'none';
             });
         }
-
-        // Add photos
-        if (addPhotosBtn) {
-            addPhotosBtn.addEventListener('click', function() {
-                var frame = wp.media({ title: 'Add Photos', button: { text: 'Add to Album' }, multiple: true });
-                frame.on('select', function() {
-                    var attachments = frame.state().get('selection').toJSON();
-                    var currentIds = (photoIdsInput && photoIdsInput.value) ? photoIdsInput.value.split(',').map(Number) : [];
-                    attachments.forEach(function(att) {
-                        if (currentIds.indexOf(att.id) !== -1) return; // skip dupes
-                        currentIds.push(att.id);
-                        var thumb = att.sizes && att.sizes.thumbnail ? att.sizes.thumbnail.url : att.url;
-                        var html = '<div class="sp-album-photo sp-album-edit-photo-tile" data-id="' + att.id + '" draggable="true">'
-                            + '<img src="' + thumb + '" class="sp-album-edit-photo-img">'
-                            + '<input type="text" name="photo_captions[' + att.id + ']" placeholder="<?php echo esc_js( __( 'Caption', 'societypress' ) ); ?>" class="sp-album-edit-caption-input">'
-                            + '<button type="button" class="sp-remove-photo sp-album-edit-remove-btn" data-id="' + att.id + '">&times;</button>'
-                            + '</div>';
-                        if (albumPhotos) albumPhotos.insertAdjacentHTML('beforeend', html);
-                    });
-                    if (photoIdsInput) photoIdsInput.value = currentIds.join(',');
-                });
-                frame.open();
-            });
-        }
-
-        // Remove photo — uses event delegation on document for dynamically added elements
-        document.addEventListener('click', function(e) {
-            var removeBtn = e.target.closest('.sp-remove-photo');
-            if (!removeBtn) return;
-            var id = removeBtn.dataset.id;
-            var photoTile = removeBtn.closest('.sp-album-photo');
-            if (photoTile) photoTile.remove();
-            if (photoIdsInput) {
-                var ids = photoIdsInput.value.split(',').filter(function(v) { return v != id; });
-                photoIdsInput.value = ids.join(',');
-            }
-        });
-
-        // Drag-drop reorder
-        // WHY: Already vanilla JS in the original — no changes needed here
-        // except replacing the one remaining jQuery call for photo_ids update.
-        if (albumPhotos) {
-            var dragSrc = null;
-            albumPhotos.addEventListener('dragstart', function(e) {
-                dragSrc = e.target.closest('.sp-album-photo');
-                if (dragSrc) e.dataTransfer.effectAllowed = 'move';
-            });
-            albumPhotos.addEventListener('dragover', function(e) {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = 'move';
-            });
-            albumPhotos.addEventListener('drop', function(e) {
-                e.preventDefault();
-                var target = e.target.closest('.sp-album-photo');
-                if (target && dragSrc && target !== dragSrc) {
-                    var items = Array.from(albumPhotos.querySelectorAll('.sp-album-photo'));
-                    var srcIdx = items.indexOf(dragSrc);
-                    var tgtIdx = items.indexOf(target);
-                    if (srcIdx < tgtIdx) target.after(dragSrc);
-                    else target.before(dragSrc);
-                    // Update hidden field with new order
-                    var newIds = Array.from(albumPhotos.querySelectorAll('.sp-album-photo')).map(function(el) { return el.dataset.id; });
-                    if (photoIdsInput) photoIdsInput.value = newIds.join(',');
-                }
-            });
-        }
     });
     </script>
     <?php
+}
+
+
+// ============================================================================
+// PHOTOS & VIDEOS — AJAX HANDLERS FOR FOLDER MANAGEMENT
+// ============================================================================
+//
+// WHY: Folder operations (create, rename, move, delete) use AJAX so the admin
+//      can manage the folder tree without page reloads. This keeps everything
+//      "within the same area" as Charles specified — no navigating away.
+// ============================================================================
+
+/**
+ * AJAX: Create a new folder.
+ *
+ * WHY: Lets admin create subfolders inline from the folder browser page.
+ *      Enforces a max nesting depth of 5 levels to keep the tree manageable.
+ */
+add_action( 'wp_ajax_sp_create_media_folder', function () {
+    check_ajax_referer( 'sp_media_folder_nonce', 'nonce' );
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Permission denied.', 'societypress' ) ] );
+    }
+
+    global $wpdb;
+    $prefix    = $wpdb->prefix . 'sp_';
+    $title     = sanitize_text_field( $_POST['title'] ?? '' );
+    $parent_id = absint( $_POST['parent_id'] ?? 0 );
+
+    if ( empty( $title ) ) {
+        wp_send_json_error( [ 'message' => __( 'Folder name is required.', 'societypress' ) ] );
+    }
+
+    // WHY: Enforce 5-level max depth to prevent deeply nested folder trees
+    // that become confusing for non-technical users like Harold.
+    if ( $parent_id ) {
+        $depth = 1;
+        $check_id = $parent_id;
+        while ( $check_id ) {
+            $check_id = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT parent_id FROM {$prefix}photo_albums WHERE id = %d",
+                $check_id
+            ) );
+            if ( $check_id ) $depth++;
+            if ( $depth >= 5 ) {
+                wp_send_json_error( [ 'message' => __( 'Maximum folder depth (5 levels) reached.', 'societypress' ) ] );
+            }
+        }
+    }
+
+    $wpdb->insert( $prefix . 'photo_albums', [
+        'title'      => $title,
+        'slug'       => sanitize_title( $title ),
+        'parent_id'  => $parent_id ?: null,
+        'visibility' => 'public',
+        'sort_order' => 0,
+        'created_by' => get_current_user_id(),
+    ] );
+
+    $new_id = $wpdb->insert_id;
+    if ( ! $new_id ) {
+        wp_send_json_error( [ 'message' => __( 'Failed to create folder.', 'societypress' ) ] );
+    }
+
+    wp_send_json_success( [
+        'message'   => __( 'Folder created.', 'societypress' ),
+        'folder_id' => $new_id,
+        'title'     => $title,
+    ] );
+} );
+
+/**
+ * AJAX: Rename a folder.
+ *
+ * WHY: Inline rename avoids a full page reload and keeps the admin
+ *      focused on organization rather than form navigation.
+ */
+add_action( 'wp_ajax_sp_rename_media_folder', function () {
+    check_ajax_referer( 'sp_media_folder_nonce', 'nonce' );
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Permission denied.', 'societypress' ) ] );
+    }
+
+    global $wpdb;
+    $prefix    = $wpdb->prefix . 'sp_';
+    $folder_id = absint( $_POST['folder_id'] ?? 0 );
+    $title     = sanitize_text_field( $_POST['title'] ?? '' );
+
+    if ( ! $folder_id || empty( $title ) ) {
+        wp_send_json_error( [ 'message' => __( 'Folder ID and name are required.', 'societypress' ) ] );
+    }
+
+    $wpdb->update( $prefix . 'photo_albums', [
+        'title' => $title,
+        'slug'  => sanitize_title( $title ),
+    ], [ 'id' => $folder_id ] );
+
+    wp_send_json_success( [ 'message' => __( 'Folder renamed.', 'societypress' ) ] );
+} );
+
+/**
+ * AJAX: Move a folder to a new parent.
+ *
+ * WHY: Supports reorganizing the folder hierarchy without deleting and
+ *      recreating folders. Validates against circular references and
+ *      the 5-level depth limit.
+ */
+add_action( 'wp_ajax_sp_move_media_folder', function () {
+    check_ajax_referer( 'sp_media_folder_nonce', 'nonce' );
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Permission denied.', 'societypress' ) ] );
+    }
+
+    global $wpdb;
+    $prefix        = $wpdb->prefix . 'sp_';
+    $folder_id     = absint( $_POST['folder_id'] ?? 0 );
+    $new_parent_id = absint( $_POST['new_parent_id'] ?? 0 );
+
+    if ( ! $folder_id ) {
+        wp_send_json_error( [ 'message' => __( 'Folder ID is required.', 'societypress' ) ] );
+    }
+
+    // WHY: Prevent moving a folder into itself or one of its descendants,
+    // which would create a circular reference and break the tree.
+    if ( $new_parent_id === $folder_id ) {
+        wp_send_json_error( [ 'message' => __( 'Cannot move a folder into itself.', 'societypress' ) ] );
+    }
+
+    if ( $new_parent_id ) {
+        // Check the new parent is not a descendant of this folder
+        $check_id = $new_parent_id;
+        while ( $check_id ) {
+            $check_id = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT parent_id FROM {$prefix}photo_albums WHERE id = %d",
+                $check_id
+            ) );
+            if ( $check_id === $folder_id ) {
+                wp_send_json_error( [ 'message' => __( 'Cannot move a folder into one of its own subfolders.', 'societypress' ) ] );
+            }
+        }
+
+        // Check depth limit — count depth of new_parent + depth of folder's subtree
+        $parent_depth = 0;
+        $check_id     = $new_parent_id;
+        while ( $check_id ) {
+            $check_id = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT parent_id FROM {$prefix}photo_albums WHERE id = %d",
+                $check_id
+            ) );
+            if ( $check_id ) $parent_depth++;
+        }
+        $parent_depth++; // Include the new_parent itself
+
+        // Get max depth of folder's subtree
+        $subtree_depth = sp_get_folder_subtree_depth( $folder_id );
+
+        if ( ( $parent_depth + $subtree_depth ) > 5 ) {
+            wp_send_json_error( [ 'message' => __( 'Moving here would exceed the 5-level folder depth limit.', 'societypress' ) ] );
+        }
+    }
+
+    $wpdb->update( $prefix . 'photo_albums', [
+        'parent_id' => $new_parent_id ?: null,
+    ], [ 'id' => $folder_id ] );
+
+    wp_send_json_success( [ 'message' => __( 'Folder moved.', 'societypress' ) ] );
+} );
+
+/**
+ * AJAX: Delete a folder.
+ *
+ * WHY: Deletes a folder and all its media items. Subfolders are moved up
+ *      to the deleted folder's parent (not deleted recursively) so the
+ *      admin doesn't accidentally lose an entire subtree.
+ */
+add_action( 'wp_ajax_sp_delete_media_folder', function () {
+    check_ajax_referer( 'sp_media_folder_nonce', 'nonce' );
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Permission denied.', 'societypress' ) ] );
+    }
+
+    global $wpdb;
+    $prefix    = $wpdb->prefix . 'sp_';
+    $folder_id = absint( $_POST['folder_id'] ?? 0 );
+
+    if ( ! $folder_id ) {
+        wp_send_json_error( [ 'message' => __( 'Folder ID is required.', 'societypress' ) ] );
+    }
+
+    $folder = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$prefix}photo_albums WHERE id = %d", $folder_id
+    ) );
+    if ( ! $folder ) {
+        wp_send_json_error( [ 'message' => __( 'Folder not found.', 'societypress' ) ] );
+    }
+
+    // WHY: Move subfolders up to the deleted folder's parent rather than
+    // deleting them recursively. This is the safer behavior — deleting one
+    // folder shouldn't wipe out an entire branch of the tree.
+    $wpdb->update(
+        $prefix . 'photo_albums',
+        [ 'parent_id' => $folder->parent_id ],
+        [ 'parent_id' => $folder_id ]
+    );
+
+    // Delete the folder's media items
+    $wpdb->delete( $prefix . 'photo_album_items', [ 'album_id' => $folder_id ] );
+
+    // Delete the folder itself
+    $wpdb->delete( $prefix . 'photo_albums', [ 'id' => $folder_id ] );
+
+    wp_send_json_success( [ 'message' => __( 'Folder deleted. Subfolders moved to parent.', 'societypress' ) ] );
+} );
+
+/**
+ * AJAX: Add a YouTube video to a folder.
+ *
+ * WHY: Videos are added via AJAX so the admin can paste a YouTube URL
+ *      and see it appear immediately without a page reload.
+ */
+add_action( 'wp_ajax_sp_add_media_video', function () {
+    check_ajax_referer( 'sp_media_folder_nonce', 'nonce' );
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Permission denied.', 'societypress' ) ] );
+    }
+
+    global $wpdb;
+    $prefix    = $wpdb->prefix . 'sp_';
+    $folder_id = absint( $_POST['folder_id'] ?? 0 );
+    $video_url = esc_url_raw( $_POST['video_url'] ?? '' );
+    $caption   = sanitize_text_field( $_POST['caption'] ?? '' );
+
+    if ( ! $folder_id ) {
+        wp_send_json_error( [ 'message' => __( 'Folder ID is required.', 'societypress' ) ] );
+    }
+
+    if ( empty( $video_url ) ) {
+        wp_send_json_error( [ 'message' => __( 'YouTube URL is required.', 'societypress' ) ] );
+    }
+
+    // WHY: Validate that the URL is actually a YouTube link before storing it.
+    // We don't want arbitrary URLs in the video field.
+    $video_id = sp_extract_youtube_id( $video_url );
+    if ( ! $video_id ) {
+        wp_send_json_error( [ 'message' => __( 'Please enter a valid YouTube URL.', 'societypress' ) ] );
+    }
+
+    // Get the next sort order for this folder
+    $max_order = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT MAX(sort_order) FROM {$prefix}photo_album_items WHERE album_id = %d",
+        $folder_id
+    ) );
+
+    $wpdb->insert( $prefix . 'photo_album_items', [
+        'album_id'   => $folder_id,
+        'type'       => 'video',
+        'video_url'  => $video_url,
+        'caption'    => $caption,
+        'sort_order' => $max_order + 1,
+    ] );
+
+    $item_id = $wpdb->insert_id;
+    if ( ! $item_id ) {
+        wp_send_json_error( [ 'message' => __( 'Failed to add video.', 'societypress' ) ] );
+    }
+
+    wp_send_json_success( [
+        'message'   => __( 'Video added.', 'societypress' ),
+        'item_id'   => $item_id,
+        'video_id'  => $video_id,
+        'thumb_url' => 'https://img.youtube.com/vi/' . $video_id . '/mqdefault.jpg',
+    ] );
+} );
+
+/**
+ * Get the maximum depth of a folder's subtree.
+ *
+ * WHY: Used by the move-folder handler to check whether moving a folder
+ *      to a new parent would exceed the 5-level depth limit. We need to
+ *      know how deep the folder's own children go.
+ *
+ * @param int $folder_id The folder ID to check.
+ * @return int The depth of the subtree (1 = folder itself, no children).
+ */
+function sp_get_folder_subtree_depth( int $folder_id ): int {
+    global $wpdb;
+    $prefix   = $wpdb->prefix . 'sp_';
+    $children = $wpdb->get_col( $wpdb->prepare(
+        "SELECT id FROM {$prefix}photo_albums WHERE parent_id = %d",
+        $folder_id
+    ) );
+
+    if ( empty( $children ) ) {
+        return 1;
+    }
+
+    $max_child_depth = 0;
+    foreach ( $children as $child_id ) {
+        $child_depth     = sp_get_folder_subtree_depth( (int) $child_id );
+        $max_child_depth = max( $max_child_depth, $child_depth );
+    }
+
+    return 1 + $max_child_depth;
 }
 
 

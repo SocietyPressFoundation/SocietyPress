@@ -1,4 +1,26 @@
 # SocietyPress — WORKLOG
+## v1.0.1 — 2026-04-02
+
+### Session: Photos & Videos Module, Child Theme Logo Fallback
+
+**Photos & Videos Module (formerly Photo Gallery):**
+- Renamed "Photo Gallery" / "Gallery" to "Photos & Videos" across all admin UI, sidebar menu, page builder widget, role descriptions, and permissions
+- Added folder hierarchy: folders can be nested up to 5 levels deep (parent_id column on sp_photo_albums)
+- Added YouTube video support: new type and video_url columns on sp_photo_album_items
+- Folder operations via AJAX: create, rename, move (with circular-reference and depth validation), delete (subfolders moved to parent, not recursively deleted)
+- Admin folder browser: breadcrumb navigation, folder cards with inline actions, media items grid, "New Folder" inline form, WP media picker for images, YouTube URL form for videos, item removal via AJAX
+- Folder settings page: name, description, cover image, visibility, sort order
+- Frontend widget: YouTube video thumbnails with play overlay, responsive iframe lightbox via youtube-nocookie.com, sp_extract_youtube_id() utility supporting watch/short/embed URL formats
+- Page builder widget labels updated, backward-compatible settings keys preserved
+
+**Child Theme Logo Fallback:**
+- Parent theme header.php now falls back to child theme's img/logo.svg or img/logo.png when no admin logo is set via Design settings
+- Same fallback added to SAGHS child theme header.php
+- Admin Design settings logo always takes precedence over child theme default
+- Child themes can now ship with a built-in logo that works out of the box
+
+---
+
 ## v0.46d — 2026-03-27
 
 ### Session 3: CSS Architecture Fix, Design Settings, Header Polish

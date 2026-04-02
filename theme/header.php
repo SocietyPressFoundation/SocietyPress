@@ -40,9 +40,34 @@
             $show_header_title = (int) ( $sp_settings['design_show_header_title'] ?? 1 );
             ?>
             <div class="site-branding">
-                <?php if ( has_custom_logo() ) : ?>
-                    <?php the_custom_logo(); ?>
-                <?php endif; ?>
+                <?php
+                if ( has_custom_logo() ) :
+                    // Admin uploaded a logo via Design settings — use it.
+                    the_custom_logo();
+                else :
+                    // WHY: Fall back to a logo file bundled in the child theme.
+                    // This lets child themes ship with a default logo that works
+                    // out of the box, without requiring Harold to upload anything.
+                    // The admin Design setting always wins if one is set.
+                    // Checks for logo.svg first, then logo.png.
+                    $child_logo = '';
+                    if ( is_child_theme() ) {
+                        foreach ( [ 'img/logo.svg', 'img/logo.png' ] as $logo_file ) {
+                            if ( file_exists( get_stylesheet_directory() . '/' . $logo_file ) ) {
+                                $child_logo = get_stylesheet_directory_uri() . '/' . $logo_file;
+                                break;
+                            }
+                        }
+                    }
+                    if ( $child_logo ) :
+                ?>
+                    <a href="<?php echo esc_url( home_url( '/' ) ); ?>" class="custom-logo-link" rel="home">
+                        <img src="<?php echo esc_url( $child_logo ); ?>" class="custom-logo" alt="<?php echo esc_attr( get_bloginfo( 'name' ) ); ?>">
+                    </a>
+                <?php
+                    endif;
+                endif;
+                ?>
 
                 <?php if ( $show_header_title ) : ?>
                 <div>

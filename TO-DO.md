@@ -531,6 +531,10 @@ Existing wizard (4 steps): Org Info → Membership → Feature Selection → App
 ## UX — Remaining
 
 - [x] AJAX progress bars for long-running operations: batched imports with progress percentage, bulk delete with progress overlay — implemented via `sp_process_import_batch()` and AJAX progress handlers
+- [ ] Alphabetize pages by name in the admin page list
+- [ ] Menu organizer: allow grouping menu items into folders/submenus for sites with many pages
+- [x] Media folders: organize Media Library items into folders for easier management — renamed to "Photos & Videos", nested folders (5 levels), YouTube video support, AJAX folder CRUD, breadcrumb navigation
+- [x] Child theme logo fallback: header.php checks for img/logo.svg or img/logo.png in child theme when no admin logo is set
 
 ## Admin — Remaining
 
@@ -600,6 +604,7 @@ Single-file `install.php` that takes Harold from empty hosting to running Societ
 - [x] Demo site running at https://demo.getsocietypress.org
 - [x] SocietyPress 0.38d active, parent theme active, 4 child themes installed, 57 tables
 - [x] Installed via the one-click installer (proving it works end-to-end)
+- [ ] Remove SAGHS data/theme from demo — demo should be a clean generic society, not SAGHS
 - [ ] Sample data: fake society with members, events, records, newsletters
 - [x] Reset mechanism: `reset-demo.sh` script truncates all SP tables via wp eval-file, re-seeds defaults. `--full` flag deactivates/reactivates plugin for full activation hook run.
 

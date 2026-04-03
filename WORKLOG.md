@@ -1,4 +1,35 @@
 # SocietyPress — WORKLOG
+## v1.0.4 — 2026-04-03
+
+### Session: Remaining Accessibility + Security Fixes
+
+Applied all pending a11y and security fixes from the v1.0.3 audit backlog:
+
+**Accessibility — 10 fixes (6 medium, 4 low):**
+- M-2: Frontend library catalog search input — added `aria-label`
+- M-3: Frontend library catalog category filter — added `aria-label`
+- M-5: Event capacity bar — added `role="progressbar"` with `aria-valuenow`/`aria-valuemin`/`aria-valuemax`/`aria-label`
+- M-6: Page Groups header — converted from plain `div onclick` to `role="button"` with `tabindex="0"`, `aria-expanded`, `aria-controls`, keyboard Enter/Space handling
+- M-9: Proxy form container — added `aria-live="polite"` for AJAX-loaded content
+- M-11: Join form tier error — added `id="sp-tier-error"` + `aria-describedby` on radio inputs
+- L-4: Committees admin tables — added `<caption class="screen-reader-text">` with committee name
+- L-6: Page item drag handles — added `aria-label` + `title` (matching group-level handles)
+- L-9: Newsletter archive page builder widget date — changed `color:#999` to `color:#767676` (WCAG AA compliant)
+- L-11: Admin gallery folder cards — added `aria-label` with folder name
+
+**Security — 1 fix (medium):**
+- MED-1: Push REST endpoint — added actual `wp_verify_nonce()` check for logged-in users (comment existed but verification code was missing; frontend JS already sent `X-WP-Nonce` header)
+
+**Already implemented (verified, skipped):**
+- L-3: Library catalog tabs already had `aria-selected` + `aria-controls`
+- L-8: `spConfirm()` already captured and restored focus on close
+- L-10: Volunteer stats widget already had `screen-reader-text` heading
+- L-12: Event registration emoji already had `aria-hidden="true"`
+
+Regenerated `.pot` translation template with new translatable strings.
+
+---
+
 ## v1.0.3 — 2026-04-03
 
 ### Session: Multi-Feature Build + Tier 1 Cleanup

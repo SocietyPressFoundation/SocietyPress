@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.0.3
+ * Version:     1.0.4
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -29,7 +29,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // NOTE: This MUST match the "Version:" line in the plugin header comment above.
 // WordPress reads the version from the header; this constant is used for
 // cache-busting and comparison logic. They must stay in sync.
-define( 'SOCIETYPRESS_VERSION', '1.0.3' );
+define( 'SOCIETYPRESS_VERSION', '1.0.4' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -20561,7 +20561,14 @@ function sp_render_pages_page(): void {
         </style>
 
         <div class="sp-page-groups-wrap">
-            <div class="sp-page-groups-header" onclick="var body = this.nextElementSibling; body.style.display = body.style.display === 'none' ? 'block' : 'none'; this.querySelector('.sp-toggle-arrow').textContent = body.style.display === 'none' ? '\u25B6' : '\u25BC';">
+            <?php /* WHY: role="button" + tabindex + aria-expanded make this keyboard-
+                     accessible and announce collapse state to screen readers. The
+                     keydown handler fires the same toggle on Enter/Space so keyboard
+                     users aren't locked out of the accordion. */ ?>
+            <div class="sp-page-groups-header" role="button" tabindex="0"
+                 aria-expanded="true" aria-controls="sp-page-groups-body"
+                 onclick="var body = this.nextElementSibling; var collapsed = body.style.display === 'none'; body.style.display = collapsed ? 'block' : 'none'; this.querySelector('.sp-toggle-arrow').textContent = collapsed ? '\u25BC' : '\u25B6'; this.setAttribute('aria-expanded', collapsed ? 'true' : 'false');"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
                 <h2>
                     <span class="sp-toggle-arrow">&#9660;</span>
                     <?php esc_html_e( 'Page Groups', 'societypress' ); ?>
@@ -20592,7 +20599,7 @@ function sp_render_pages_page(): void {
                                     if ( ! $page_obj ) continue;
                                 ?>
                                     <li data-page-id="<?php echo (int) $pid; ?>" draggable="true">
-                                        <span class="dashicons dashicons-menu"></span>
+                                        <span class="dashicons dashicons-menu" title="<?php esc_attr_e( 'Drag to reorder', 'societypress' ); ?>" aria-label="<?php esc_attr_e( 'Drag to reorder', 'societypress' ); ?>"></span>
                                         <?php echo esc_html( $page_obj->post_title ); ?>
                                     </li>
                                 <?php endforeach; ?>
@@ -41527,7 +41534,13 @@ function sp_render_event_detail( string $slug, array $settings ): void {
                     $pct = ( $reg_count / $event->registration_limit ) * 100;
                     ?>
                     <div class="sp-event-capacity">
-                        <div class="sp-capacity-bar">
+                        <?php /* WHY: role="progressbar" + aria attributes let screen readers
+                                 announce capacity (e.g. "67% full") without needing to see
+                                 the visual bar. aria-label gives the human-readable context. */ ?>
+                        <div class="sp-capacity-bar" role="progressbar"
+                             aria-valuenow="<?php echo (int) round( $pct ); ?>"
+                             aria-valuemin="0" aria-valuemax="100"
+                             aria-label="<?php echo esc_attr( sprintf( __( 'Event capacity: %d%% filled', 'societypress' ), (int) round( $pct ) ) ); ?>">
                             <div class="sp-capacity-fill" style="width: <?php echo min( 100, $pct ); ?>%;
                                 background: <?php echo $pct >= 90 ? '#d63638' : ( $pct >= 70 ? '#dba617' : '#00a32a' ); ?>;"></div>
                         </div>
@@ -45722,13 +45735,15 @@ function sp_render_join_form(): string {
         <fieldset>
             <legend><?php esc_html_e( 'Choose Your Membership Level', 'societypress' ); ?></legend>
             <?php if ( ! empty( $field_errors['tier_id'] ) ) : ?>
-                <p class="sp-field-error-msg" role="alert"><?php echo esc_html( $field_errors['tier_id'] ); ?></p>
+                <?php /* WHY: id lets aria-describedby on each radio point to this error
+                         message so screen readers announce the reason for the invalid state. */ ?>
+                <p class="sp-field-error-msg" role="alert" id="sp-tier-error"><?php echo esc_html( $field_errors['tier_id'] ); ?></p>
             <?php endif; ?>
             <?php foreach ( $tiers as $tier ) : ?>
                 <label class="sp-tier-option">
                     <input type="radio" name="tier_id" value="<?php echo esc_attr( $tier->id ); ?>"
                            <?php checked( ( $_POST['tier_id'] ?? '' ), $tier->id ); ?>
-                           <?php echo ! empty( $field_errors['tier_id'] ) ? 'aria-invalid="true"' : ''; ?>
+                           <?php echo ! empty( $field_errors['tier_id'] ) ? 'aria-invalid="true" aria-describedby="sp-tier-error"' : ''; ?>
                            required style="margin-right: 8px;">
                     <span class="sp-tier-label">
                         <span class="sp-tier-name"><?php echo esc_html( $tier->name ); ?></span>
@@ -51583,7 +51598,9 @@ function sp_render_builder_widget_newsletter_archive( array $s ): void {
             echo '<a href="' . esc_url( get_permalink( $post ) ) . '" style="font-size:17px; font-weight:600; color:var(--sp-color-primary); text-decoration:none;">';
             echo esc_html( $post->post_title ) . '</a>';
             if ( $show_date ) {
-                echo '<span style="display:block; color:#999; font-size:13px; margin-top:2px;">'
+                // WHY: #767676 is the lightest gray that passes WCAG AA contrast (4.54:1)
+                // against white. The previous #999 only hit 2.85:1 — failing AA.
+                echo '<span style="display:block; color:#767676; font-size:13px; margin-top:2px;">'
                    . esc_html( get_the_date( '', $post ) ) . '</span>';
             }
             if ( $show_excerpt && $post->post_excerpt ) {
@@ -53579,7 +53596,10 @@ function sp_render_gallery_page(): void {
             <?php foreach ( $subfolders as $subfolder ) :
                 $folder_url = add_query_arg( 'folder', $subfolder->id, $base_url );
             ?>
-                <div class="sp-media-folder-card" data-folder-id="<?php echo (int) $subfolder->id; ?>">
+                <?php /* WHY: aria-label identifies this folder card to screen readers —
+                         the frontend gallery cards already have this, admin cards need parity. */ ?>
+                <div class="sp-media-folder-card" data-folder-id="<?php echo (int) $subfolder->id; ?>"
+                     aria-label="<?php echo esc_attr( sprintf( __( 'Folder: %s', 'societypress' ), $subfolder->title ) ); ?>">
                     <a href="<?php echo esc_url( $folder_url ); ?>" class="sp-media-folder-icon">
                         <span class="dashicons dashicons-portfolio"></span>
                     </a>
@@ -56558,8 +56578,8 @@ function sp_frontend_library_catalog(): void {
 
     echo '<h2>' . esc_html__( 'Library Catalog', 'societypress' ) . '</h2>';
     echo '<form method="get" class="sp-fe-catalog-form">';
-    echo '<input type="text" name="sp_lib_search" value="' . esc_attr( $search ) . '" placeholder="Search title, author, or call number..." class="sp-fe-catalog-search">';
-    echo '<select name="category" class="sp-fe-catalog-cat-select">';
+    echo '<input type="text" name="sp_lib_search" value="' . esc_attr( $search ) . '" placeholder="Search title, author, or call number..." class="sp-fe-catalog-search" aria-label="' . esc_attr__( 'Search the library catalog', 'societypress' ) . '">';
+    echo '<select name="category" class="sp-fe-catalog-cat-select" aria-label="' . esc_attr__( 'Filter by category', 'societypress' ) . '">';
     echo '<option value="0">' . esc_html__( 'All Categories', 'societypress' ) . '</option>';
     foreach ( $categories as $cat ) {
         echo '<option value="' . $cat->id . '"' . selected( $cat_filter, $cat->id, false ) . '>' . esc_html( $cat->name ) . '</option>';
@@ -60596,6 +60616,12 @@ function sp_render_leadership_page(): void {
                          not in markup, so it does not count as an inline style= attribute. -->
                     <div class="sp-leadership-committee-body">
                         <table class="wp-list-table widefat fixed striped sp-leadership-committee-table">
+                            <?php /* WHY: <caption> gives screen readers a label for each
+                                     table when multiple committee tables appear on one page.
+                                     Visually hidden so it doesn't duplicate the card header. */ ?>
+                            <caption class="screen-reader-text">
+                                <?php echo esc_html( sprintf( __( '%s committee members', 'societypress' ), $committee_name ) ); ?>
+                            </caption>
                             <thead>
                                 <tr>
                                     <th class="sp-leadership-col-name"><?php esc_html_e( 'Name', 'societypress' ); ?></th>
@@ -77234,7 +77260,10 @@ function sp_render_voting_frontend(): void {
                     }
                     echo '</select>';
                     echo ' <button type="button" class="sp-btn sp-btn-outline sp-proxy-start-btn" data-ballot-id="' . esc_attr( $ballot->id ) . '" data-nonce="' . esc_attr( $proxy_nonce ) . '">' . esc_html__( 'Cast Proxy Vote', 'societypress' ) . '</button>';
-                    echo '<div class="sp-proxy-form-container" id="sp-proxy-form-' . esc_attr( $ballot->id ) . '" style="display:none; margin-top:12px;"></div>';
+                    // WHY: aria-live="polite" announces the proxy form content to screen
+                    // readers when it's loaded via AJAX — without it, the new form is
+                    // invisible to assistive tech until the user manually navigates to it.
+                    echo '<div class="sp-proxy-form-container" id="sp-proxy-form-' . esc_attr( $ballot->id ) . '" style="display:none; margin-top:12px;" aria-live="polite"></div>';
                     echo '<div class="sp-proxy-message" id="sp-proxy-msg-' . esc_attr( $ballot->id ) . '" style="display:none; margin-top:8px;"></div>';
                     echo '</div>';
                 }
@@ -80916,6 +80945,15 @@ function sp_rest_push_subscribe( WP_REST_Request $request ): WP_REST_Response {
     // Non-logged-in requests without a nonce are still accepted (the subscription
     // itself is harmless — the endpoint URL is browser-generated and can only
     // receive notifications signed with our VAPID key).
+    if ( is_user_logged_in() ) {
+        $nonce = $request->get_header( 'X-WP-Nonce' );
+        if ( ! $nonce || ! wp_verify_nonce( $nonce, 'wp_rest' ) ) {
+            return new WP_REST_Response(
+                [ 'success' => false, 'message' => __( 'Invalid or missing security token.', 'societypress' ) ],
+                403
+            );
+        }
+    }
 
     // WHY: Rate limit to prevent database flooding — an attacker could POST
     //      millions of fake subscriptions with rotating endpoint URLs. 10 per

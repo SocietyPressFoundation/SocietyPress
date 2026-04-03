@@ -333,6 +333,11 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 - [x] Search input focus ring contrast fix
 - [x] Dashboard inline styles extracted to CSS classes (42 → 2)
 
+**Accessibility Cleanup (v1.0.4 — 2026-04-03):**
+- [x] 10 a11y fixes applied: library catalog aria-labels, event capacity progressbar, page groups keyboard accessible header, proxy form aria-live, join form tier error aria-describedby, committee table captions, page item drag handle labels, newsletter date color contrast, admin gallery folder card labels
+- [x] 1 security fix: push REST endpoint nonce verification for logged-in users (MED-1)
+- [x] .pot regenerated with new translatable strings
+
 **Deferred UX item:**
 - [ ] Mobile hamburger for parent theme needs testing with real nav menus (code review passed v0.49d, no live test site)
 

@@ -19184,7 +19184,7 @@ function sp_render_setup_wizard(): void {
                     </div>
 
                     <div class="sp-wizard-actions">
-                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-setup-wizard&step=1' ) ); ?>" class="button">&larr; <?php esc_html_e( 'Back', 'societypress' ); ?></a>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-setup-wizard&step=1' ) ); ?>" class="button"><span aria-hidden="true">&larr;</span> <?php esc_html_e( 'Back', 'societypress' ); ?></a>
                         <button type="submit" class="button button-primary"><?php esc_html_e( 'Continue', 'societypress' ); ?> &rarr;</button>
                     </div>
 
@@ -19231,7 +19231,7 @@ function sp_render_setup_wizard(): void {
                     </p>
 
                     <div class="sp-wizard-actions">
-                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-setup-wizard&step=2' ) ); ?>" class="button">&larr; <?php esc_html_e( 'Back', 'societypress' ); ?></a>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-setup-wizard&step=2' ) ); ?>" class="button"><span aria-hidden="true">&larr;</span> <?php esc_html_e( 'Back', 'societypress' ); ?></a>
                         <button type="submit" class="button button-primary"><?php esc_html_e( 'Continue', 'societypress' ); ?> &rarr;</button>
                     </div>
 
@@ -19269,7 +19269,7 @@ function sp_render_setup_wizard(): void {
                     </div>
 
                     <div class="sp-wizard-actions">
-                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-setup-wizard&step=3' ) ); ?>" class="button">&larr; <?php esc_html_e( 'Back', 'societypress' ); ?></a>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-setup-wizard&step=3' ) ); ?>" class="button"><span aria-hidden="true">&larr;</span> <?php esc_html_e( 'Back', 'societypress' ); ?></a>
                         <button type="submit" class="button button-primary"><?php esc_html_e( 'Finish Setup', 'societypress' ); ?> &check;</button>
                     </div>
 
@@ -20049,7 +20049,7 @@ function sp_render_group_edit_page(): void {
     ?>
     <div class="wrap sp-admin-wrap">
         <h1><?php echo $group_id ? esc_html__( 'Edit Group', 'societypress' ) : esc_html__( 'Add New Group', 'societypress' ); ?></h1>
-        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-groups' ) ); ?>">&larr; <?php esc_html_e( 'Back to Groups', 'societypress' ); ?></a></p>
+        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-groups' ) ); ?>"><span aria-hidden="true">&larr;</span> <?php esc_html_e( 'Back to Groups', 'societypress' ); ?></a></p>
 
         <form method="post" class="sp-max-w-600">
             <?php wp_nonce_field( 'sp_save_group', 'sp_group_nonce' ); ?>
@@ -22004,7 +22004,7 @@ function sp_render_record_payment_page(): void {
     ?>
     <div class="wrap sp-admin-wrap">
         <h1><?php esc_html_e( 'Record Payment', 'societypress' ); ?></h1>
-        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-finances' ) ); ?>">&larr; <?php esc_html_e( 'Back to Finances', 'societypress' ); ?></a></p>
+        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-finances' ) ); ?>"><span aria-hidden="true">&larr;</span> <?php esc_html_e( 'Back to Finances', 'societypress' ); ?></a></p>
 
         <form method="post" style="max-width: 500px;">
             <?php wp_nonce_field( 'sp_record_payment', 'sp_record_payment_nonce' ); ?>
@@ -27430,7 +27430,7 @@ function sp_render_settings_mailchimp_page(): void {
                     <th scope="row"><label for="sp-mc-api-key"><?php esc_html_e( 'API Key', 'societypress' ); ?></label></th>
                     <td>
                         <input type="password" name="societypress_settings[mailchimp_api_key]" id="sp-mc-api-key"
-                               value="<?php echo esc_attr( $api_key ); ?>" class="regular-text" autocomplete="off">
+                               value="<?php echo esc_attr( $api_key ? str_repeat( '\u2022', 12 ) : '' ); ?>" class="regular-text" autocomplete="off">
                         <p class="description">
                             <?php
                             /* translators: %s: URL to Mailchimp API keys page */
@@ -27645,29 +27645,35 @@ function sp_render_settings_zoom_page(): void {
     // WHY: Test the connection live so Harold sees a green/red status before
     //      trying to create virtual events. We call Zoom's /users/me endpoint
     //      which returns account info on success.
+    // WHY: Cache the connection test for 5 minutes so we don't hit Zoom's
+    //      API on every settings page render. Clear the cache on settings save.
     $connected  = false;
     $status_msg = '';
     if ( $api_key && $api_secret && $account_email ) {
-        // Build a JWT for the Zoom API (Server-to-Server OAuth is preferred,
-        // but many societies still use JWT apps). The token is short-lived
-        // (60 seconds) and only used for this connection test.
-        $jwt_token  = sp_zoom_generate_jwt( $api_key, $api_secret );
-        if ( $jwt_token ) {
-            $response = wp_remote_get( 'https://api.zoom.us/v2/users/me', [
-                'headers' => [
-                    'Authorization' => 'Bearer ' . $jwt_token,
-                    'Content-Type'  => 'application/json',
-                ],
-                'timeout' => 10,
-            ] );
-            if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) === 200 ) {
-                $connected  = true;
-                $status_msg = __( 'Connected to Zoom.', 'societypress' );
-            } else {
-                $status_msg = __( 'Could not connect. Check your API Key and Secret.', 'societypress' );
-            }
+        $cached = get_transient( 'sp_zoom_conn_test' );
+        if ( $cached !== false ) {
+            $connected  = $cached['ok'];
+            $status_msg = $cached['msg'];
         } else {
-            $status_msg = __( 'Could not generate authentication token. Verify your API Key and Secret.', 'societypress' );
+            $jwt_token = sp_zoom_generate_jwt( $api_key, $api_secret );
+            if ( $jwt_token ) {
+                $response = wp_remote_get( 'https://api.zoom.us/v2/users/me', [
+                    'headers' => [
+                        'Authorization' => 'Bearer ' . $jwt_token,
+                        'Content-Type'  => 'application/json',
+                    ],
+                    'timeout' => 10,
+                ] );
+                if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) === 200 ) {
+                    $connected  = true;
+                    $status_msg = __( 'Connected to Zoom.', 'societypress' );
+                } else {
+                    $status_msg = __( 'Could not connect. Check your API Key and Secret.', 'societypress' );
+                }
+                set_transient( 'sp_zoom_conn_test', [ 'ok' => $connected, 'msg' => $status_msg ], 5 * MINUTE_IN_SECONDS );
+            } else {
+                $status_msg = __( 'Could not generate authentication token. Verify your API Key and Secret.', 'societypress' );
+            }
         }
     }
     ?>
@@ -27679,6 +27685,11 @@ function sp_render_settings_zoom_page(): void {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Settings saved.', 'societypress' ) . '</p></div>';
         }
         ?>
+
+        <div class="notice notice-warning" style="margin:16px 0;">
+            <p><strong><?php esc_html_e( 'Note:', 'societypress' ); ?></strong>
+            <?php esc_html_e( 'Zoom deprecated JWT app authentication in 2024. If your JWT app has stopped working, you may need to create a Server-to-Server OAuth app in the Zoom Marketplace instead. The credentials entered here are used for JWT-based authentication.', 'societypress' ); ?></p>
+        </div>
 
         <?php if ( $api_key && $api_secret ) : ?>
             <div class="notice notice-<?php echo $connected ? 'success' : 'error'; ?>" style="margin:16px 0;">
@@ -29987,7 +29998,7 @@ function sp_render_directory( array $settings ): void {
                            placeholder="<?php echo esc_attr__( 'e.g. Smith', 'societypress' ); ?>"
                            class="sp-filter-input">
                     <label style="display:block; margin-top:6px; font-size:12px; font-weight:400;">
-                        <input type="checkbox" name="sp_surname_similar" value="1"
+                        <input type="checkbox" id="sp-surname-similar" name="sp_surname_similar" value="1"
                                <?php checked( ! empty( $_GET['sp_surname_similar'] ) ); ?>>
                         <?php esc_html_e( 'Include similar spellings', 'societypress' ); ?>
                     </label>
@@ -30151,7 +30162,8 @@ function sp_render_directory( array $settings ): void {
                 }
             ?>
                 <tr>
-                    <td class="sp-col-name" data-label="<?php echo esc_attr__( 'Name', 'societypress' ); ?>"><a href="#" class="sp-member-name-link" data-user-id="<?php echo (int) $m->user_id; ?>"><?php echo $display_name; ?></a></td>
+                    <?php // WHY: button not <a href="#"> — opens a modal, not navigation. ?>
+                    <td class="sp-col-name" data-label="<?php echo esc_attr__( 'Name', 'societypress' ); ?>"><button type="button" class="sp-member-name-link" data-user-id="<?php echo (int) $m->user_id; ?>" aria-expanded="false"><?php echo $display_name; ?></button></td>
 
                     <?php if ( $show_city_state ) : ?>
                         <td class="sp-col-location" data-label="<?php echo esc_attr__( 'Location', 'societypress' ); ?>">
@@ -41106,7 +41118,7 @@ function sp_render_event_detail( string $slug, array $settings ): void {
 
             <div class="sp-event-key-details sp-event-detail-key-details-ext">
                 <div class="sp-event-detail-item">
-                    <span class="sp-detail-icon">&#128197;</span>
+                    <span class="sp-detail-icon" aria-hidden="true">&#128197;</span>
                     <div>
                         <strong><?php echo esc_html( $ext_date_display ); ?></strong>
                         <?php if ( $ext_time_display ) : ?>
@@ -41117,7 +41129,7 @@ function sp_render_event_detail( string $slug, array $settings ): void {
 
                 <?php if ( ! empty( $event->location_name ) ) : ?>
                 <div class="sp-event-detail-item">
-                    <span class="sp-detail-icon">&#128205;</span>
+                    <span class="sp-detail-icon" aria-hidden="true">&#128205;</span>
                     <div><strong><?php echo esc_html( $event->location_name ); ?></strong></div>
                 </div>
                 <?php endif; ?>
@@ -41316,7 +41328,7 @@ function sp_render_event_detail( string $slug, array $settings ): void {
         <!-- Key Details: Date, Time, Location -->
         <div class="sp-event-key-details">
             <div class="sp-event-detail-item">
-                <span class="sp-detail-icon">&#128197;</span>
+                <span class="sp-detail-icon" aria-hidden="true">&#128197;</span>
                 <div>
                     <strong><?php echo esc_html( $date_display ); ?></strong>
                     <?php if ( $time_display ) : ?>
@@ -41327,7 +41339,7 @@ function sp_render_event_detail( string $slug, array $settings ): void {
 
             <?php if ( ! empty( $event->location_name ) || $event->is_virtual ) : ?>
             <div class="sp-event-detail-item">
-                <span class="sp-detail-icon">&#128205;</span>
+                <span class="sp-detail-icon" aria-hidden="true">&#128205;</span>
                 <div>
                     <?php if ( ! empty( $event->location_name ) ) : ?>
                         <strong><?php echo esc_html( $event->location_name ); ?></strong>
@@ -41359,7 +41371,7 @@ function sp_render_event_detail( string $slug, array $settings ): void {
             $ics_url = add_query_arg( 'sp_ics', $event->id, home_url( '/' ) );
             ?>
             <div class="sp-event-detail-item sp-event-add-to-cal">
-                <span class="sp-detail-icon">&#128198;</span>
+                <span class="sp-detail-icon" aria-hidden="true">&#128198;</span>
                 <div>
                     <a href="<?php echo esc_url( $ics_url ); ?>" class="sp-add-to-cal-link"
                        title="<?php esc_attr_e( 'Download .ics file to add this event to your calendar', 'societypress' ); ?>">
@@ -44926,6 +44938,8 @@ function sp_ajax_export_registrations(): void {
     ) );
 
     // Send CSV headers for browser file download
+    // WHY: Flush any buffered output to prevent CSV corruption.
+    if ( ob_get_level() ) { ob_end_clean(); }
     header( 'Content-Type: text/csv; charset=utf-8' );
     header( 'Content-Disposition: attachment; filename="registrations-' . $safe_title . '.csv"' );
     header( 'Pragma: no-cache' );
@@ -54119,7 +54133,7 @@ function sp_render_media_folder_page(): void {
     </style>
     <div class="wrap">
         <h1><?php esc_html_e( 'Folder Settings', 'societypress' ); ?></h1>
-        <a href="<?php echo esc_url( $back_url ); ?>">&larr; <?php esc_html_e( 'Back to Folder', 'societypress' ); ?></a>
+        <a href="<?php echo esc_url( $back_url ); ?>"><span aria-hidden="true">&larr;</span> <?php esc_html_e( 'Back to Folder', 'societypress' ); ?></a>
 
         <form method="post" class="sp-folder-edit-form">
             <?php wp_nonce_field( 'sp_folder_save' ); ?>
@@ -54961,6 +54975,8 @@ function sp_ajax_export_membership_report(): void {
     }
 
     $filename = 'membership-report-' . $today . '.csv';
+    // WHY: Flush any buffered output to prevent CSV corruption.
+    if ( ob_get_level() ) { ob_end_clean(); }
     header( 'Content-Type: text/csv; charset=utf-8' );
     header( 'Content-Disposition: attachment; filename=' . $filename );
     $out = fopen( 'php://output', 'w' );
@@ -61244,6 +61260,8 @@ add_action( 'admin_init', function() {
          ORDER BY vh.activity_date DESC"
     );
 
+    // WHY: Flush any buffered output to prevent CSV corruption.
+    if ( ob_get_level() ) { ob_end_clean(); }
     header( 'Content-Type: text/csv; charset=utf-8' );
     header( 'Content-Disposition: attachment; filename=volunteer-hours-' . wp_date( 'Y-m-d' ) . '.csv' );
     $out = fopen( 'php://output', 'w' );
@@ -62751,7 +62769,7 @@ function sp_render_blast_email_detail( int $blast_id ): void {
     ?>
     <div class="wrap">
         <h1><?php echo esc_html( sprintf( __( 'Blast Email — %s', 'societypress' ), $blast->subject ) ); ?></h1>
-        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ); ?>">&larr; <?php esc_html_e( 'Back to Blast Email', 'societypress' ); ?></a></p>
+        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ); ?>"><span aria-hidden="true">&larr;</span> <?php esc_html_e( 'Back to Blast Email', 'societypress' ); ?></a></p>
 
         <table class="widefat" style="max-width: 800px; margin-bottom: 24px;">
             <tbody>
@@ -62930,7 +62948,7 @@ function sp_render_blast_email_compose_page(): void {
     </style>
     <div class="wrap sp-admin-wrap">
         <h1><?php echo $blast_id ? esc_html__( 'Edit Blast Email', 'societypress' ) : esc_html__( 'Compose Blast Email', 'societypress' ); ?></h1>
-        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ); ?>">&larr; <?php esc_html_e( 'Back to Blast Email', 'societypress' ); ?></a></p>
+        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ); ?>"><span aria-hidden="true">&larr;</span> <?php esc_html_e( 'Back to Blast Email', 'societypress' ); ?></a></p>
 
         <form method="post" id="sp-blast-form">
             <?php wp_nonce_field( 'sp_save_blast', 'sp_blast_nonce' ); ?>
@@ -66633,6 +66651,8 @@ function sp_ajax_export_library(): void {
     $filename = 'library-catalog-' . gmdate( 'Y-m-d' ) . '.csv';
 
     // Stream CSV output directly — no buffering the whole result set
+    // WHY: Flush any buffered output to prevent CSV corruption.
+    if ( ob_get_level() ) { ob_end_clean(); }
     header( 'Content-Type: text/csv; charset=utf-8' );
     header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
     header( 'Pragma: no-cache' );
@@ -66728,6 +66748,8 @@ add_action( 'wp_ajax_sp_export_events', function () {
     ];
 
     $filename = 'events-' . wp_date( 'Y-m-d' ) . '.csv';
+    // WHY: Flush any buffered output to prevent CSV corruption.
+    if ( ob_get_level() ) { ob_end_clean(); }
     header( 'Content-Type: text/csv; charset=utf-8' );
     header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
     header( 'Pragma: no-cache' );
@@ -66786,6 +66808,8 @@ add_action( 'wp_ajax_sp_export_donations', function () {
     ];
 
     $filename = 'donations-' . wp_date( 'Y-m-d' ) . '.csv';
+    // WHY: Flush any buffered output to prevent CSV corruption.
+    if ( ob_get_level() ) { ob_end_clean(); }
     header( 'Content-Type: text/csv; charset=utf-8' );
     header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
     header( 'Pragma: no-cache' );
@@ -66840,6 +66864,8 @@ add_action( 'wp_ajax_sp_export_leadership', function () {
     ];
 
     $filename = 'leadership-committees-' . wp_date( 'Y-m-d' ) . '.csv';
+    // WHY: Flush any buffered output to prevent CSV corruption.
+    if ( ob_get_level() ) { ob_end_clean(); }
     header( 'Content-Type: text/csv; charset=utf-8' );
     header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
     header( 'Pragma: no-cache' );
@@ -66901,6 +66927,8 @@ add_action( 'wp_ajax_sp_export_orders', function () {
     ];
 
     $filename = 'store-orders-' . wp_date( 'Y-m-d' ) . '.csv';
+    // WHY: Flush any buffered output to prevent CSV corruption.
+    if ( ob_get_level() ) { ob_end_clean(); }
     header( 'Content-Type: text/csv; charset=utf-8' );
     header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
     header( 'Pragma: no-cache' );
@@ -66957,6 +66985,8 @@ add_action( 'wp_ajax_sp_export_email_log', function () {
     ];
 
     $filename = 'email-log-' . wp_date( 'Y-m-d' ) . '.csv';
+    // WHY: Flush any buffered output to prevent CSV corruption.
+    if ( ob_get_level() ) { ob_end_clean(); }
     header( 'Content-Type: text/csv; charset=utf-8' );
     header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
     header( 'Pragma: no-cache' );
@@ -67008,6 +67038,8 @@ add_action( 'wp_ajax_sp_export_resources', function () {
     ];
 
     $filename = 'resource-links-' . wp_date( 'Y-m-d' ) . '.csv';
+    // WHY: Flush any buffered output to prevent CSV corruption.
+    if ( ob_get_level() ) { ob_end_clean(); }
     header( 'Content-Type: text/csv; charset=utf-8' );
     header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
     header( 'Pragma: no-cache' );
@@ -69952,7 +69984,7 @@ function sp_render_record_collection_edit_page(): void {
     </style>
     <div class="wrap">
         <h1><?php echo $collection ? esc_html__( 'Edit Collection', 'societypress' ) : esc_html__( 'Add Collection', 'societypress' ); ?></h1>
-        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-collections' ) ); ?>">&larr; <?php esc_html_e( 'Back to Collections', 'societypress' ); ?></a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-collections' ) ); ?>"><span aria-hidden="true">&larr;</span> <?php esc_html_e( 'Back to Collections', 'societypress' ); ?></a>
 
         <form method="post" class="sp-lib-edit-form">
             <?php wp_nonce_field( 'sp_record_collection_save' ); ?>
@@ -70248,7 +70280,7 @@ function sp_render_record_browse_page(): void {
             <span style="font-size:14px; font-weight:400; color:#666;">(<?php echo number_format( $total ); ?> <?php esc_html_e( 'records', 'societypress' ); ?>)</span>
             <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-edit&collection_id=' . $collection_id ) ); ?>" class="page-title-action"><?php esc_html_e( 'Add Record', 'societypress' ); ?></a>
         </h1>
-        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-collections' ) ); ?>">&larr; <?php esc_html_e( 'Back to Collections', 'societypress' ); ?></a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-collections' ) ); ?>"><span aria-hidden="true">&larr;</span> <?php esc_html_e( 'Back to Collections', 'societypress' ); ?></a>
 
         <!-- Search -->
         <form method="get" class="sp-my-16">
@@ -71805,6 +71837,8 @@ add_action( 'wp_ajax_sp_export_records_csv', function () {
     // Stream CSV
     $slug     = sanitize_file_name( $collection->slug ?: 'records' );
     $filename = $slug . '-' . wp_date( 'Y-m-d' ) . '.csv';
+    // WHY: Flush any buffered output to prevent CSV corruption.
+    if ( ob_get_level() ) { ob_end_clean(); }
     header( 'Content-Type: text/csv; charset=utf-8' );
     header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
     header( 'Pragma: no-cache' );
@@ -72567,7 +72601,7 @@ function sp_render_store_frontend(): void {
                                 <div class="sp-store-price"><?php echo esc_html( sp_format_currency( $item->item_value ) ); ?></div>
                                 <div class="sp-store-actions">
                                     <input type="number" class="sp-store-qty" value="1" min="1" max="99" aria-label="<?php echo esc_attr( sprintf( __( 'Quantity for %s', 'societypress' ), $item->title ) ); ?>">
-                                    <button type="button" class="sp-store-add-to-cart"><?php esc_html_e( 'Add to Cart', 'societypress' ); ?></button>
+                                    <button type="button" class="sp-store-add-to-cart" aria-label="<?php echo esc_attr( sprintf( __( 'Add %s to cart', 'societypress' ), $item->title ) ); ?>"><?php esc_html_e( 'Add to Cart', 'societypress' ); ?></button>
                                 </div>
                             </div>
                         </div>
@@ -73844,7 +73878,7 @@ function sp_render_order_detail_page(): void {
     </style>
     <div class="wrap sp-admin-wrap">
         <h1><?php printf( esc_html__( 'Order #%d', 'societypress' ), $order_id ); ?></h1>
-        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-orders' ) ); ?>">&larr; <?php esc_html_e( 'Back to Orders', 'societypress' ); ?></a></p>
+        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-orders' ) ); ?>"><span aria-hidden="true">&larr;</span> <?php esc_html_e( 'Back to Orders', 'societypress' ); ?></a></p>
 
         <?php if ( $updated === '1' ) : ?>
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Order updated.', 'societypress' ); ?></p></div>
@@ -77132,7 +77166,7 @@ function sp_render_voting_frontend(): void {
 
             if ( $has_voted > 0 ) {
                 echo '<div class="sp-ballot-voted-badge">';
-                echo '<span class="dashicons dashicons-yes-alt"></span> ';
+                echo '<span class="dashicons dashicons-yes-alt" aria-hidden="true"></span> ';
                 echo esc_html__( 'You have already voted on this ballot.', 'societypress' );
                 echo '</div>';
 
@@ -77966,7 +78000,7 @@ function sp_render_ballot_edit_page(): void {
     ?>
     <div class="wrap sp-admin-wrap">
         <h1><?php echo $ballot_id ? esc_html__( 'Edit Ballot', 'societypress' ) : esc_html__( 'Create New Ballot', 'societypress' ); ?></h1>
-        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-ballots' ) ); ?>">&larr; <?php esc_html_e( 'Back to Ballots', 'societypress' ); ?></a></p>
+        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-ballots' ) ); ?>"><span aria-hidden="true">&larr;</span> <?php esc_html_e( 'Back to Ballots', 'societypress' ); ?></a></p>
 
         <?php if ( $has_votes ) : ?>
             <div class="notice notice-warning">
@@ -78449,7 +78483,7 @@ function sp_render_ballot_results_page(): void {
     ?>
     <div class="wrap">
         <h1><?php echo esc_html( sprintf( __( 'Results: %s', 'societypress' ), $ballot->title ) ); ?></h1>
-        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-ballots' ) ); ?>">&larr; <?php esc_html_e( 'Back to Ballots', 'societypress' ); ?></a></p>
+        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-ballots' ) ); ?>"><span aria-hidden="true">&larr;</span> <?php esc_html_e( 'Back to Ballots', 'societypress' ); ?></a></p>
 
         <!-- Ballot Info Summary -->
         <div class="sp-card">
@@ -79006,6 +79040,8 @@ add_action( 'wp_ajax_sp_export_ballot_results', function () {
 
     // Set headers for CSV download
     $filename = sanitize_file_name( 'ballot-results-' . $ballot_id . '-' . wp_date( 'Y-m-d' ) . '.csv' );
+    // WHY: Flush any buffered output to prevent CSV corruption.
+    if ( ob_get_level() ) { ob_end_clean(); }
     header( 'Content-Type: text/csv; charset=UTF-8' );
     header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
     header( 'Pragma: no-cache' );

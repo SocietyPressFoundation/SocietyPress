@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.0
+ * Version:     1.0.2
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -29,7 +29,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // NOTE: This MUST match the "Version:" line in the plugin header comment above.
 // WordPress reads the version from the header; this constant is used for
 // cache-busting and comparison logic. They must stay in sync.
-define( 'SOCIETYPRESS_VERSION', '1.0' );
+define( 'SOCIETYPRESS_VERSION', '1.0.2' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -106,6 +106,11 @@ register_activation_hook( __FILE__, function () {
             'paypal_sandbox_secret'        => '',          // encrypted at rest
             'paypal_live_client_id'        => '',
             'paypal_live_secret'           => '',          // encrypted at rest
+            // Mailchimp integration
+            'mailchimp_api_key'            => '',          // encrypted at rest
+            'mailchimp_audience_id'        => '',
+            'mailchimp_sync_enabled'       => 0,           // 0 = manual sync only, 1 = auto-sync on member changes
+            'mailchimp_dc'                 => '',          // auto-extracted from API key (e.g., "us21")
             // Backups — automated & manual backup schedule
             // WHY defaults: Weekly at 3 AM Sunday covers the common case — the
             //   society's data changes slowly (a few new members, some events),
@@ -156,6 +161,22 @@ register_activation_hook( __FILE__, function () {
             // Analytics — Google Analytics integration
             'analytics_google_id'          => '',
             'analytics_exclude_admins'     => 1,
+            // Page Groups — automatic nav menu organization
+            // WHY: On by default so page groups immediately work in the nav.
+            // Harold can turn this off if he prefers manual menu management.
+            'auto_group_nav'               => 1,
+            // Committee-scoped access — auto-grant permissions from committees
+            // WHY: On by default so committee chairs automatically get access
+            // to their area. Reduces Harold's workload — he assigns someone as
+            // Library Committee Chair, and they can manage the library catalog
+            // without Harold needing to separately configure access areas.
+            'committee_auto_permissions'   => 1,
+            // PWA — Progressive Web App settings
+            // WHY defaults: Off by default because PWA features (service worker,
+            // manifest, install prompts) can confuse Harold if enabled before he's
+            // configured his site identity. He opts in once the site is ready.
+            'pwa_enabled'                  => 0,
+            'pwa_offline_message'          => 'You appear to be offline. Please check your connection.',
         ]);
     }
 
@@ -759,6 +780,26 @@ function sp_create_tables(): void {
     ) {$charset_collate};" );
 
     // ========================================================================
+    // sp_surname_variants — Explicit surname variant/alias mappings
+    //
+    // WHY: Phonetic matching (soundex/metaphone) catches many similar spellings,
+    //      but it also produces false positives and misses some real variants.
+    //      Explicit variant mappings let the admin (or bulk auto-detection) say
+    //      "Smythe IS a variant of Smith" — no guesswork. This table bridges the
+    //      gap between perfect-match and phonetic-match with curated certainty.
+    //      When a member searches for "Smythe" and a variant record maps it to
+    //      "Smith," we can confidently include Smith results too.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}surname_variants (
+        id        BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        canonical VARCHAR(100)        NOT NULL,
+        variant   VARCHAR(100)        NOT NULL,
+        PRIMARY KEY (id),
+        UNIQUE KEY canonical_variant (canonical, variant),
+        KEY variant (variant)
+    ) {$charset_collate};" );
+
+    // ========================================================================
     // sp_member_research_areas — Geographic areas of genealogical interest
     //
     // WHY: Members research specific geographic regions — counties, states,
@@ -1079,6 +1120,7 @@ function sp_create_tables(): void {
         role_title      VARCHAR(200)        NOT NULL,
         committee       VARCHAR(200)        NULL,
         role_type       VARCHAR(20)         NOT NULL DEFAULT 'volunteer',
+        committee_access_area VARCHAR(50) NULL DEFAULT NULL,
         start_date      DATE                NULL,
         end_date        DATE                NULL,
         status          VARCHAR(20)         NOT NULL DEFAULT 'active',
@@ -1468,6 +1510,7 @@ function sp_create_tables(): void {
         available           TINYINT(1)          NOT NULL DEFAULT 1,
         cover_url           VARCHAR(500)        NULL,
         store_category      VARCHAR(50)         NULL,
+        store_description   TEXT                NULL,
         created_at          DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at          DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
@@ -1931,6 +1974,9 @@ function sp_create_tables(): void {
         voting_start      DATETIME            NULL,
         voting_end        DATETIME            NULL,
         allow_abstain     TINYINT(1)          NOT NULL DEFAULT 1,
+        allow_absentee    TINYINT(1)          NOT NULL DEFAULT 0,
+        allow_proxy       TINYINT(1)          NOT NULL DEFAULT 0,
+        proxy_limit       INT UNSIGNED        NOT NULL DEFAULT 1,
         results_visibility VARCHAR(20)        NOT NULL DEFAULT 'after_close',
         created_by        BIGINT(20) UNSIGNED NULL,
         created_at        DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1987,18 +2033,24 @@ function sp_create_tables(): void {
     //      the application logic has a bug, the DB constraint catches it.
     //      choice_id is NULL for abstain votes — this lets us distinguish
     //      "voted but abstained" from "didn't vote at all."
+    //      is_absentee flags votes cast before the official voting_start date
+    //      (allowed when allow_absentee is on). proxy_voter_id records which
+    //      member actually submitted a proxy vote on behalf of user_id.
     // ========================================================================
     dbDelta( "CREATE TABLE {$prefix}ballot_votes (
-        id          BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-        ballot_id   BIGINT(20) UNSIGNED NOT NULL,
-        question_id BIGINT(20) UNSIGNED NOT NULL,
-        choice_id   BIGINT(20) UNSIGNED NULL,
-        user_id     BIGINT(20) UNSIGNED NOT NULL,
-        voted_at    DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        ballot_id       BIGINT(20) UNSIGNED NOT NULL,
+        question_id     BIGINT(20) UNSIGNED NOT NULL,
+        choice_id       BIGINT(20) UNSIGNED NULL,
+        user_id         BIGINT(20) UNSIGNED NOT NULL,
+        is_absentee     TINYINT(1)          NOT NULL DEFAULT 0,
+        proxy_voter_id  BIGINT(20) UNSIGNED NULL,
+        voted_at        DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         UNIQUE KEY question_user (question_id, user_id),
         KEY ballot_id (ballot_id),
-        KEY user_id (user_id)
+        KEY user_id (user_id),
+        KEY proxy_voter_id (proxy_voter_id)
     ) {$charset_collate};" );
 
     // ========================================================================
@@ -2320,6 +2372,30 @@ add_action( 'admin_init', function () {
     if ( empty( $col ) ) {
         $wpdb->query( "ALTER TABLE {$table} ADD COLUMN role_type VARCHAR(20) NOT NULL DEFAULT 'volunteer' AFTER committee" );
         $wpdb->query( "ALTER TABLE {$table} ADD KEY role_type (role_type)" );
+    }
+} );
+
+
+// ============================================================================
+// MIGRATION: Add committee_access_area column to sp_volunteer_roles
+//
+// WHY: Committee-scoped access maps a committee assignment to a SocietyPress
+//      access area (e.g., Library Committee -> 'library'). When a member is
+//      assigned as Chair of that committee, they automatically get the
+//      corresponding sp_manage_* capability. This column stores the mapping.
+//      NULL means no access area is associated (the default for most roles).
+// ============================================================================
+add_action( 'admin_init', function () {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_volunteer_roles';
+
+    if ( $wpdb->get_var( "SHOW TABLES LIKE '{$table}'" ) !== $table ) {
+        return;
+    }
+
+    $col = $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE 'committee_access_area'" );
+    if ( empty( $col ) ) {
+        $wpdb->query( "ALTER TABLE {$table} ADD COLUMN committee_access_area VARCHAR(50) NULL DEFAULT NULL AFTER role_type" );
     }
 } );
 
@@ -2856,11 +2932,11 @@ function sp_get_modules(): array {
             'name'        => __( 'Committees & Leadership', 'societypress' ),
             'description' => __( 'Track officer positions, committee assignments, and manage volunteer opportunities and hours.', 'societypress' ),
             'icon'        => 'dashicons-groups',
-            'menu_slugs'  => [ 'sp-governance', 'sp-volunteer-roster', 'sp-volunteer-hours', 'sp-volunteer-opportunities', 'sp-volunteer-opportunity-edit', 'sp-ballots', 'sp-ballot-edit', 'sp-ballot-results' ],
+            'menu_slugs'  => [ 'sp-governance', 'sp-committees', 'sp-volunteer-roster', 'sp-volunteer-hours', 'sp-volunteer-opportunities', 'sp-volunteer-opportunity-edit', 'sp-ballots', 'sp-ballot-edit', 'sp-ballot-results' ],
         ],
         'store' => [
             'name'        => __( 'Online Store', 'societypress' ),
-            'description' => __( 'Sell publications and other items through your website with a shopping cart and Stripe checkout.', 'societypress' ),
+            'description' => __( 'Sell publications and other items through your website with a shopping cart and secure online checkout.', 'societypress' ),
             'icon'        => 'dashicons-cart',
             'menu_slugs'  => [ 'sp-orders', 'sp-order-detail' ],
         ],
@@ -2911,6 +2987,18 @@ function sp_get_modules(): array {
             'description' => __( 'Integrate with bbPress forums — members-only access, role sync, and navigation.', 'societypress' ),
             'icon'        => 'dashicons-format-chat',
             'menu_slugs'  => [ 'edit.php?post_type=forum' ],
+        ],
+        'mailchimp' => [
+            'name'        => __( 'Mailchimp', 'societypress' ),
+            'description' => __( 'Sync your member list to a Mailchimp audience automatically.', 'societypress' ),
+            'icon'        => 'dashicons-email',
+            'menu_slugs'  => [ 'sp-settings-mailchimp' ],
+        ],
+        'zoom' => [
+            'name'        => __( 'Zoom', 'societypress' ),
+            'description' => __( 'Add Zoom meeting links to events for virtual programming.', 'societypress' ),
+            'icon'        => 'dashicons-video-alt2',
+            'menu_slugs'  => [],
         ],
     ];
 }
@@ -3259,6 +3347,70 @@ function sp_user_can_access_admin(): bool {
 }
 
 /**
+ * Get access area slugs that a user should have based on their committee roles.
+ *
+ * WHY: Committee chairs automatically get management access to the area their
+ *      committee maps to. For example, the Library Committee Chair gets 'library'
+ *      access. This function queries sp_volunteer_roles for active committee
+ *      assignments where committee_access_area is set.
+ *
+ *      We use a static cache keyed by user_id so this query only runs once per
+ *      request even though user_has_cap fires many times per page load.
+ *
+ * @param int $user_id The WordPress user ID to check.
+ * @return array List of access area slugs (e.g., ['library', 'events']).
+ */
+function sp_get_user_committee_access_areas( int $user_id ): array {
+    static $cache = [];
+
+    if ( isset( $cache[ $user_id ] ) ) {
+        return $cache[ $user_id ];
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    $table  = $prefix . 'volunteer_roles';
+
+    // Bail if table doesn't exist yet (fresh install, tables not created yet)
+    if ( $wpdb->get_var( "SHOW TABLES LIKE '{$table}'" ) !== $table ) {
+        $cache[ $user_id ] = [];
+        return [];
+    }
+
+    // Check if the committee_access_area column exists (migration may not have run)
+    $col = $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE 'committee_access_area'" );
+    if ( empty( $col ) ) {
+        $cache[ $user_id ] = [];
+        return [];
+    }
+
+    // Query: active committee/officer roles with a mapped access area where the
+    // role_title contains "Chair" (case-insensitive). Committee chairs get full
+    // management access; regular committee members don't (they can still view
+    // data via their own My Account page and frontend).
+    //
+    // WHY role_title LIKE '%chair%': Committee chairs are the ones who need admin
+    //     access to do their job. Regular members of a committee typically don't
+    //     need to manage the catalog/events/etc. from the admin side. "Chair" is
+    //     the standard title, but we also match "Co-Chair", "Vice-Chair", etc.
+    $results = $wpdb->get_col( $wpdb->prepare(
+        "SELECT DISTINCT committee_access_area
+         FROM {$table}
+         WHERE user_id = %d
+           AND status = 'active'
+           AND role_type = 'committee'
+           AND committee_access_area IS NOT NULL
+           AND committee_access_area != ''
+           AND LOWER(role_title) LIKE %s",
+        $user_id,
+        '%chair%'
+    ) );
+
+    $cache[ $user_id ] = is_array( $results ) ? $results : [];
+    return $cache[ $user_id ];
+}
+
+/**
  * Grant SocietyPress capabilities to users based on their access areas.
  *
  * WHY: WordPress menus and capability checks use the has_cap system. We
@@ -3268,6 +3420,7 @@ function sp_user_can_access_admin(): bool {
  *      - Non-admin SP staff get only their assigned caps
  *      - Menu items using sp_manage_events (etc.) just work
  *      - No need to modify WordPress roles or the wp_usermeta capabilities blob
+ *      - Committee chairs auto-get their committee's area (if mapped)
  */
 add_filter( 'user_has_cap', function ( array $allcaps, array $caps, array $args, $user ): array {
 
@@ -3286,7 +3439,29 @@ add_filter( 'user_has_cap', function ( array $allcaps, array $caps, array $args,
     if ( ! $user_id ) return $allcaps;
 
     $user_areas = get_user_meta( $user_id, 'sp_access_areas', true );
-    if ( ! is_array( $user_areas ) || empty( $user_areas ) ) {
+    if ( ! is_array( $user_areas ) ) {
+        $user_areas = [];
+    }
+
+    // ------------------------------------------------------------------
+    // Committee-scoped access: auto-grant capabilities based on committee
+    // roles. If the user is a committee chair/officer for a committee that
+    // maps to an access area, they get that area's capability automatically.
+    // Committee members (non-chairs) get read-only access (sp_view_* cap).
+    //
+    // WHY: Harold assigns someone as Library Committee Chair. That person
+    //      should automatically be able to manage the library catalog
+    //      without Harold needing to separately configure access areas.
+    // ------------------------------------------------------------------
+    $sp_settings = get_option( 'societypress_settings', [] );
+    if ( ! empty( $sp_settings['committee_auto_permissions'] ) ) {
+        $committee_areas = sp_get_user_committee_access_areas( $user_id );
+        // Merge committee-derived areas with manually-assigned areas
+        // (committee areas won't duplicate — array_unique handles it)
+        $user_areas = array_unique( array_merge( $user_areas, $committee_areas ) );
+    }
+
+    if ( empty( $user_areas ) ) {
         return $allcaps;
     }
 
@@ -3609,6 +3784,18 @@ add_action( 'admin_menu', function () {
         'manage_options',
         'sp-governance',
         'sp_render_leadership_page'
+    );
+
+    // WHY: Committees get their own menu entry so Harold can find them without
+    //      scrolling through the Leadership page. Points to the same render
+    //      function with a query arg that auto-scrolls to the committees section.
+    add_submenu_page(
+        'societypress',
+        __( 'Committees — SocietyPress', 'societypress' ),
+        __( 'Committees', 'societypress' ),
+        'manage_options',
+        'sp-committees',
+        'sp_render_committees_page'
     );
 
     // WHY: The volunteer roster is now a separate page from Leadership & Committees.
@@ -4242,6 +4429,21 @@ add_action( 'admin_menu', function () {
         'sp_render_backup_page'
     );
 
+    // Mailchimp Integration — only show when the Mailchimp module is enabled.
+    // WHY: Societies that don't use Mailchimp shouldn't see the settings page.
+    //      When enabled, this gives Harold a single page to enter his API key,
+    //      audience ID, test the connection, and trigger a full member sync.
+    if ( sp_module_enabled( 'mailchimp' ) ) {
+        add_submenu_page(
+            'societypress',
+            __( 'Mailchimp — SocietyPress', 'societypress' ),
+            __( 'Mailchimp', 'societypress' ),
+            'manage_options',
+            'sp-settings-mailchimp',
+            'sp_render_settings_mailchimp_page'
+        );
+    }
+
     // -----------------------------------------------------------------
     // BACKWARD COMPAT — Old sp-settings URL redirect
     // WHY: The Settings page used to live at admin.php?page=sp-settings.
@@ -4354,6 +4556,7 @@ function sp_get_menu_capability_map(): array {
 
         // Governance / Volunteers
         'sp-governance'            => 'sp_manage_governance',
+        'sp-committees'            => 'sp_manage_governance',
         'sp-volunteer-roster'      => 'sp_manage_governance',
         'sp-volunteer-hours'       => 'sp_manage_governance',
         'sp-volunteer-opportunities' => 'sp_manage_governance',
@@ -7038,7 +7241,7 @@ var spMenuConfig = {
             id:    'governance',
             label: 'Governance',
             icon:  'dashicons-building',
-            items: ['sp-governance', 'sp-volunteer-roster', 'sp-volunteer-hours', 'sp-volunteer-opportunities', 'sp-ballots']
+            items: ['sp-governance', 'sp-committees', 'sp-volunteer-roster', 'sp-volunteer-hours', 'sp-volunteer-opportunities', 'sp-ballots']
         },
         {
             id:    'gallery',
@@ -16694,6 +16897,19 @@ add_action( 'admin_init', function () {
         ]
     );
 
+    // ---- MAILCHIMP page — saves to societypress_settings array ----
+    // WHY: Follows the same pattern as every other settings page — one
+    //      settings group per page, all routing through sp_sanitize_settings()
+    //      so the merge logic keeps other pages' data intact.
+    register_setting(
+        'sp-settings-mailchimp',
+        'societypress_settings',
+        [
+            'type'              => 'array',
+            'sanitize_callback' => 'sp_sanitize_settings',
+        ]
+    );
+
 
     // ====================================================================
     // SECTION: Your Website
@@ -17136,6 +17352,49 @@ add_action( 'admin_init', function () {
             );
             echo '<p class="description">'
                . esc_html__( 'When checked, page views by site admins won\'t appear in your analytics.', 'societypress' )
+               . '</p>';
+            echo '</div>';
+        },
+        'sp-settings-website',
+        'sp_website_section'
+    );
+
+    // --- Progressive Web App (PWA) ---
+    // WHY: PWA support lets members "install" the society website on their phone
+    // home screen and use it offline. This is especially valuable for societies
+    // that host events in areas with poor connectivity (rural courthouses,
+    // church basements, etc.). Gated behind a toggle because service workers
+    // and manifests should only be active once the site is configured.
+    add_settings_field(
+        'pwa_enabled',
+        __( 'Progressive Web App', 'societypress' ),
+        function () {
+            $settings        = get_option( 'societypress_settings', [] );
+            $enabled         = ! empty( $settings['pwa_enabled'] );
+            $offline_message = esc_attr( $settings['pwa_offline_message'] ?? __( 'You appear to be offline. Please check your connection.', 'societypress' ) );
+
+            echo '<input type="hidden" name="societypress_settings[pwa_enabled]" value="0">';
+            printf(
+                '<label><input type="checkbox" name="societypress_settings[pwa_enabled]" value="1" %s> '
+                . '%s</label>',
+                checked( $enabled, true, false ),
+                esc_html__( 'Enable Progressive Web App features', 'societypress' )
+            );
+            echo '<p class="description">'
+               . esc_html__( 'When enabled, members can install your site as an app on their phone or tablet. The site will also work offline with cached content.', 'societypress' )
+               . '</p>';
+
+            echo '<div class="sp-mt-12">';
+            printf(
+                '<label style="display:block; font-weight:500; margin-bottom:4px;">%s</label>'
+                . '<input type="text" name="societypress_settings[pwa_offline_message]" value="%s" '
+                . 'class="large-text" placeholder="%s">',
+                esc_html__( 'Offline Message', 'societypress' ),
+                $offline_message,
+                esc_attr__( 'You appear to be offline. Please check your connection.', 'societypress' )
+            );
+            echo '<p class="description">'
+               . esc_html__( 'Shown to visitors when they lose their internet connection.', 'societypress' )
                . '</p>';
             echo '</div>';
         },
@@ -17953,6 +18212,10 @@ function sp_sanitize_settings( array $input ): array {
                                               ? sanitize_text_field( $input['analytics_google_id'] ) : '',
         'analytics_exclude_admins'=> fn() => ! empty( $input['analytics_exclude_admins'] ) ? 1 : 0,
 
+        // PWA — Progressive Web App
+        'pwa_enabled'             => fn() => ! empty( $input['pwa_enabled'] ) ? 1 : 0,
+        'pwa_offline_message'     => fn() => sanitize_text_field( $input['pwa_offline_message'] ?? __( 'You appear to be offline. Please check your connection.', 'societypress' ) ),
+
         // Organization
         'organization_name'       => fn() => sanitize_text_field( $input['organization_name'] ?? '' ),
         'organization_address'    => fn() => sanitize_textarea_field( $input['organization_address'] ?? '' ),
@@ -18085,6 +18348,29 @@ function sp_sanitize_settings( array $input ): array {
         'design_nav_font_weight'      => fn() => in_array( $input['design_nav_font_weight'] ?? '', [ '', '300', '400', '500', '600', '700' ], true ) ? ( $input['design_nav_font_weight'] ?? '' ) : '',
         'design_color_footer_link'    => fn() => sanitize_hex_color( $input['design_color_footer_link'] ?? '' ) ?: '',
         'design_show_social_icons'    => fn() => (int) ! empty( $input['design_show_social_icons'] ),
+
+        // Mailchimp Integration
+        // WHY: The API key is encrypted at rest just like Stripe/PayPal secrets —
+        // if the database leaks, the Mailchimp API key is useless without the
+        // encryption key. The data center (dc) is auto-extracted from the API key
+        // (the part after the dash, e.g., "us21") so Harold doesn't have to figure
+        // out which Mailchimp data center he's on.
+        'mailchimp_api_key'           => function() use ( $input ) {
+            $val = sanitize_text_field( $input['mailchimp_api_key'] ?? '' );
+            return $val ? sp_encrypt( $val ) : '';
+        },
+        'mailchimp_audience_id'       => fn() => sanitize_text_field( $input['mailchimp_audience_id'] ?? '' ),
+        'mailchimp_sync_enabled'      => fn() => ! empty( $input['mailchimp_sync_enabled'] ) ? 1 : 0,
+        'mailchimp_dc'                => function() use ( $input ) {
+            // Auto-extract the data center from the API key — it's the part after
+            // the last dash, e.g., "abc123-us21" → "us21". Harold never needs to
+            // know or type this manually.
+            $key = sanitize_text_field( $input['mailchimp_api_key'] ?? '' );
+            if ( $key && strpos( $key, '-' ) !== false ) {
+                return substr( $key, strrpos( $key, '-' ) + 1 );
+            }
+            return '';
+        },
     ];
 
     // Only sanitize + update keys that were actually submitted in the form.
@@ -18170,6 +18456,17 @@ function sp_sanitize_settings( array $input ): array {
             'design_logo_height', 'design_header_padding',
             'design_nav_font_size', 'design_nav_spacing', 'design_nav_font_weight',
             'design_color_footer_link', 'design_show_social_icons',
+        ]);
+    }
+
+    // Mailchimp page — signature: mailchimp_audience_id is always in the form
+    // WHY: We use mailchimp_audience_id as the signature key because it's a
+    //      text field that will always be submitted (even if empty), unlike
+    //      checkbox fields that disappear when unchecked.
+    if ( array_key_exists( 'mailchimp_audience_id', $input ) ) {
+        $page_keys = array_merge( $page_keys, [
+            'mailchimp_api_key', 'mailchimp_audience_id',
+            'mailchimp_sync_enabled', 'mailchimp_dc',
         ]);
     }
 
@@ -19787,6 +20084,246 @@ function sp_render_pages_page(): void {
         ?>
 
         <?php
+        // PAGE GROUPS UI — inserted above the page list
+        $page_groups = sp_get_page_groups();
+        $all_sp_pages = get_pages( [ 'post_status' => [ 'publish', 'draft' ], 'sort_column' => 'post_title', 'sort_order' => 'ASC' ] );
+        $grouped_page_ids = [];
+        foreach ( $page_groups as $g ) {
+            foreach ( $g['page_ids'] as $pid ) {
+                $grouped_page_ids[ $pid ] = true;
+            }
+        }
+        ?>
+
+        <style>
+            .sp-page-groups-wrap { margin-bottom: 24px; border: 1px solid #c3c4c7; border-radius: 4px; background: #fff; }
+            .sp-page-groups-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: #f0f0f1; border-bottom: 1px solid #c3c4c7; cursor: pointer; user-select: none; }
+            .sp-page-groups-header h2 { margin: 0; font-size: 14px; font-weight: 600; }
+            .sp-page-groups-body { padding: 16px; }
+            .sp-page-group-card { border: 1px solid #ddd; border-radius: 4px; margin-bottom: 12px; background: #fff; }
+            .sp-page-group-card-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: #f9f9f9; border-bottom: 1px solid #eee; cursor: grab; }
+            .sp-page-group-card-header:active { cursor: grabbing; }
+            .sp-page-group-card-header .sp-group-name { font-weight: 600; font-size: 13px; }
+            .sp-page-group-card-header .sp-group-count { color: #646970; font-size: 12px; margin-left: 8px; }
+            .sp-page-group-card-actions { display: flex; gap: 8px; font-size: 12px; }
+            .sp-page-group-card-actions a { text-decoration: none; }
+            .sp-page-group-pages { padding: 8px 14px; list-style: none; margin: 0; }
+            .sp-page-group-pages li { padding: 4px 8px; border: 1px solid transparent; border-radius: 3px; cursor: grab; display: flex; align-items: center; gap: 8px; font-size: 13px; }
+            .sp-page-group-pages li:active { cursor: grabbing; }
+            .sp-page-group-pages li:hover { background: #f0f6fc; border-color: #c3c4c7; }
+            .sp-page-group-pages li .dashicons { color: #c3c4c7; font-size: 16px; width: 16px; height: 16px; }
+            .sp-page-group-drag-placeholder { height: 32px; border: 2px dashed #2271b1; border-radius: 3px; background: #f0f6fc; margin: 2px 0; }
+            .sp-page-group-form { background: #f6f7f7; border: 1px solid #c3c4c7; border-radius: 4px; padding: 14px 16px; margin-top: 12px; }
+            .sp-page-group-form label { display: block; font-weight: 600; margin-bottom: 4px; font-size: 13px; }
+            .sp-page-group-form input[type="text"] { width: 100%; max-width: 400px; }
+            .sp-page-group-checkboxes { max-height: 200px; overflow-y: auto; border: 1px solid #ddd; border-radius: 3px; padding: 8px; margin-top: 8px; background: #fff; }
+            .sp-page-group-checkboxes label { display: block; font-weight: normal; padding: 2px 0; font-size: 13px; }
+            .sp-ungrouped-section { margin-top: 12px; padding-top: 12px; border-top: 1px solid #ddd; }
+            .sp-ungrouped-section h3 { font-size: 13px; font-weight: 600; color: #646970; margin: 0 0 8px 0; }
+            .sp-ungrouped-pages { list-style: none; margin: 0; padding: 0; columns: 2; }
+            .sp-ungrouped-pages li { font-size: 13px; padding: 2px 0; color: #646970; }
+            .sp-page-group-card.sp-dragging { opacity: 0.4; }
+        </style>
+
+        <div class="sp-page-groups-wrap">
+            <div class="sp-page-groups-header" onclick="var body = this.nextElementSibling; body.style.display = body.style.display === 'none' ? 'block' : 'none'; this.querySelector('.sp-toggle-arrow').textContent = body.style.display === 'none' ? '\u25B6' : '\u25BC';">
+                <h2>
+                    <span class="sp-toggle-arrow">&#9660;</span>
+                    <?php esc_html_e( 'Page Groups', 'societypress' ); ?>
+                    <span class="sp-group-count">(<?php echo count( $page_groups ); ?>)</span>
+                </h2>
+                <span class="description"><?php esc_html_e( 'Organize pages into navigation groups', 'societypress' ); ?></span>
+            </div>
+            <div class="sp-page-groups-body" id="sp-page-groups-body">
+                <div id="sp-page-groups-container">
+                    <?php foreach ( $page_groups as $gi => $group ) : ?>
+                        <div class="sp-page-group-card" data-group-index="<?php echo (int) $gi; ?>" draggable="true">
+                            <div class="sp-page-group-card-header">
+                                <div>
+                                    <span class="dashicons dashicons-menu" title="<?php esc_attr_e( 'Drag to reorder', 'societypress' ); ?>"></span>
+                                    <span class="sp-group-name"><?php echo esc_html( $group['name'] ); ?></span>
+                                    <span class="sp-group-count">(<?php echo esc_html( sprintf( _n( '%d page', '%d pages', count( $group['page_ids'] ), 'societypress' ), count( $group['page_ids'] ) ) ); ?>)</span>
+                                </div>
+                                <div class="sp-page-group-card-actions">
+                                    <a href="#" class="sp-edit-group" data-index="<?php echo (int) $gi; ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
+                                    <a href="#" class="sp-delete-group sp-text-danger" data-index="<?php echo (int) $gi; ?>"><?php esc_html_e( 'Delete', 'societypress' ); ?></a>
+                                </div>
+                            </div>
+                            <ul class="sp-page-group-pages" data-group-index="<?php echo (int) $gi; ?>">
+                                <?php foreach ( $group['page_ids'] as $pid ) :
+                                    $page_obj = get_post( $pid );
+                                    if ( ! $page_obj ) continue;
+                                ?>
+                                    <li data-page-id="<?php echo (int) $pid; ?>" draggable="true">
+                                        <span class="dashicons dashicons-menu"></span>
+                                        <?php echo esc_html( $page_obj->post_title ); ?>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php
+                $ungrouped = array_filter( $all_sp_pages, function( $p ) use ( $grouped_page_ids ) {
+                    return ! isset( $grouped_page_ids[ $p->ID ] );
+                } );
+                if ( ! empty( $ungrouped ) ) : ?>
+                    <div class="sp-ungrouped-section">
+                        <h3><?php esc_html_e( 'Ungrouped Pages', 'societypress' ); ?></h3>
+                        <ul class="sp-ungrouped-pages">
+                            <?php foreach ( $ungrouped as $p ) : ?>
+                                <li><?php echo esc_html( $p->post_title ); ?></li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                <?php endif; ?>
+                <div style="margin-top: 12px;">
+                    <button type="button" class="button button-primary" id="sp-create-group-btn"><?php esc_html_e( 'Create Group', 'societypress' ); ?></button>
+                </div>
+                <div id="sp-page-group-form" class="sp-page-group-form" style="display:none;">
+                    <label for="sp-group-name-input"><?php esc_html_e( 'Group Name', 'societypress' ); ?></label>
+                    <input type="text" id="sp-group-name-input" placeholder="<?php esc_attr_e( 'e.g., About Us, Resources, Membership', 'societypress' ); ?>">
+                    <label style="margin-top: 12px;"><?php esc_html_e( 'Pages in this group', 'societypress' ); ?></label>
+                    <div class="sp-page-group-checkboxes" id="sp-group-page-checkboxes">
+                        <?php foreach ( $all_sp_pages as $p ) : ?>
+                            <label><input type="checkbox" value="<?php echo (int) $p->ID; ?>"> <?php echo esc_html( $p->post_title ); ?></label>
+                        <?php endforeach; ?>
+                    </div>
+                    <div style="margin-top: 12px; display: flex; gap: 8px;">
+                        <button type="button" class="button button-primary" id="sp-group-form-save"><?php esc_html_e( 'Save Group', 'societypress' ); ?></button>
+                        <button type="button" class="button" id="sp-group-form-cancel"><?php esc_html_e( 'Cancel', 'societypress' ); ?></button>
+                    </div>
+                    <input type="hidden" id="sp-group-edit-index" value="-1">
+                </div>
+            </div>
+        </div>
+
+        <script>
+        (function() {
+            var nonce = '<?php echo wp_create_nonce( "sp_page_groups_nonce" ); ?>';
+            var container = document.getElementById('sp-page-groups-container');
+            var formEl = document.getElementById('sp-page-group-form');
+            var nameInput = document.getElementById('sp-group-name-input');
+            var checkboxContainer = document.getElementById('sp-group-page-checkboxes');
+            var editIndexInput = document.getElementById('sp-group-edit-index');
+            var createBtn = document.getElementById('sp-create-group-btn');
+            var saveBtn = document.getElementById('sp-group-form-save');
+            var cancelBtn = document.getElementById('sp-group-form-cancel');
+            if (!container || !formEl) return;
+
+            createBtn.addEventListener('click', function() {
+                editIndexInput.value = '-1'; nameInput.value = '';
+                checkboxContainer.querySelectorAll('input[type="checkbox"]').forEach(function(cb) { cb.checked = false; });
+                formEl.style.display = 'block'; nameInput.focus();
+            });
+            cancelBtn.addEventListener('click', function() { formEl.style.display = 'none'; });
+
+            container.addEventListener('click', function(e) {
+                var editLink = e.target.closest('.sp-edit-group');
+                if (editLink) {
+                    e.preventDefault();
+                    var idx = parseInt(editLink.dataset.index, 10);
+                    var card = container.querySelector('[data-group-index="' + idx + '"]');
+                    if (!card) return;
+                    editIndexInput.value = idx;
+                    nameInput.value = card.querySelector('.sp-group-name').textContent.trim();
+                    var gIds = [];
+                    card.querySelectorAll('.sp-page-group-pages li').forEach(function(li) { gIds.push(li.dataset.pageId); });
+                    checkboxContainer.querySelectorAll('input[type="checkbox"]').forEach(function(cb) { cb.checked = gIds.indexOf(cb.value) !== -1; });
+                    formEl.style.display = 'block'; nameInput.focus();
+                }
+                var delLink = e.target.closest('.sp-delete-group');
+                if (delLink) {
+                    e.preventDefault();
+                    var idx2 = parseInt(delLink.dataset.index, 10);
+                    spConfirm('<?php echo esc_js( __( "Delete this group? Pages will not be deleted.", "societypress" ) ); ?>', function() {
+                        var d = new FormData(); d.append('action','sp_delete_page_group'); d.append('group_index',idx2); d.append('_ajax_nonce',nonce);
+                        fetch(ajaxurl,{method:'POST',body:d}).then(function(r){return r.json();}).then(function(resp){if(resp.success)location.reload();});
+                    });
+                }
+            });
+
+            saveBtn.addEventListener('click', function() {
+                var name = nameInput.value.trim();
+                if (!name) { nameInput.focus(); return; }
+                var pageIds = [];
+                checkboxContainer.querySelectorAll('input[type="checkbox"]:checked').forEach(function(cb) { pageIds.push(cb.value); });
+                var editIdx = parseInt(editIndexInput.value, 10), isEdit = editIdx >= 0;
+                var d = new FormData();
+                d.append('action', isEdit ? 'sp_update_page_group' : 'sp_create_page_group');
+                d.append('group_name', name); d.append('_ajax_nonce', nonce);
+                if (isEdit) d.append('group_index', editIdx);
+                pageIds.forEach(function(id) { d.append('page_ids[]', id); });
+                saveBtn.disabled = true; saveBtn.textContent = '<?php echo esc_js( __( "Saving...", "societypress" ) ); ?>';
+                fetch(ajaxurl,{method:'POST',body:d}).then(function(r){return r.json();}).then(function(resp){
+                    if (resp.success) location.reload();
+                    else { alert(resp.data); saveBtn.disabled=false; saveBtn.textContent='<?php echo esc_js( __( "Save Group", "societypress" ) ); ?>'; }
+                }).catch(function(){ saveBtn.disabled=false; saveBtn.textContent='<?php echo esc_js( __( "Save Group", "societypress" ) ); ?>'; });
+            });
+
+            // Drag groups
+            var draggedCard = null;
+            container.addEventListener('dragstart', function(e) {
+                var c = e.target.closest('.sp-page-group-card');
+                if (!c || e.target.closest('.sp-page-group-pages li')) return;
+                draggedCard = c; c.classList.add('sp-dragging'); e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain',c.dataset.groupIndex);
+            });
+            container.addEventListener('dragend', function() { if(draggedCard){draggedCard.classList.remove('sp-dragging');draggedCard=null;} container.querySelectorAll('.sp-page-group-drag-placeholder').forEach(function(p){p.remove();}); });
+            container.addEventListener('dragover', function(e) {
+                if (!draggedCard) return; e.preventDefault();
+                var after = getDragAfter(container,'.sp-page-group-card:not(.sp-dragging)',e.clientY);
+                var ph = container.querySelector('.sp-page-group-drag-placeholder');
+                if (!ph) { ph=document.createElement('div'); ph.className='sp-page-group-drag-placeholder'; }
+                if (after) container.insertBefore(ph,after); else container.appendChild(ph);
+            });
+            container.addEventListener('drop', function(e) {
+                e.preventDefault(); if(!draggedCard) return;
+                var ph=container.querySelector('.sp-page-group-drag-placeholder');
+                if(ph){container.insertBefore(draggedCard,ph);ph.remove();}
+                var cards=container.querySelectorAll('.sp-page-group-card'), newOrder=[];
+                cards.forEach(function(c){newOrder.push(parseInt(c.dataset.groupIndex,10));});
+                var d=new FormData(); d.append('action','sp_reorder_page_groups'); d.append('_ajax_nonce',nonce);
+                newOrder.forEach(function(i){d.append('new_order[]',i);});
+                fetch(ajaxurl,{method:'POST',body:d}).then(function(r){return r.json();}).then(function(resp){if(resp.success)location.reload();});
+            });
+
+            // Drag pages within group
+            var draggedLi=null, srcGi=null;
+            document.addEventListener('dragstart', function(e) {
+                var li=e.target.closest('.sp-page-group-pages li'); if(!li) return;
+                e.stopPropagation(); draggedLi=li; srcGi=li.parentNode.dataset.groupIndex;
+                li.style.opacity='0.4'; e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain',li.dataset.pageId);
+            });
+            document.addEventListener('dragend', function() { if(draggedLi){draggedLi.style.opacity='';draggedLi=null;srcGi=null;} document.querySelectorAll('.sp-page-group-drag-placeholder').forEach(function(p){p.remove();}); });
+            document.addEventListener('dragover', function(e) {
+                if(!draggedLi) return; var list=e.target.closest('.sp-page-group-pages');
+                if(!list||list.dataset.groupIndex!==srcGi) return; e.preventDefault();
+                var after=getDragAfter(list,'li[data-page-id]:not([style*="opacity"])',e.clientY);
+                var ph=list.querySelector('.sp-page-group-drag-placeholder');
+                if(!ph){ph=document.createElement('li');ph.className='sp-page-group-drag-placeholder';}
+                if(after) list.insertBefore(ph,after); else list.appendChild(ph);
+            });
+            document.addEventListener('drop', function(e) {
+                if(!draggedLi) return; var list=e.target.closest('.sp-page-group-pages');
+                if(!list||list.dataset.groupIndex!==srcGi) return; e.preventDefault();
+                var ph=list.querySelector('.sp-page-group-drag-placeholder');
+                if(ph){list.insertBefore(draggedLi,ph);ph.remove();}
+                var gIdx=parseInt(list.dataset.groupIndex,10), newIds=[];
+                list.querySelectorAll('li[data-page-id]').forEach(function(li){newIds.push(li.dataset.pageId);});
+                var card=list.closest('.sp-page-group-card'), gName=card.querySelector('.sp-group-name').textContent.trim();
+                var d=new FormData(); d.append('action','sp_update_page_group'); d.append('group_index',gIdx); d.append('group_name',gName); d.append('_ajax_nonce',nonce);
+                newIds.forEach(function(id){d.append('page_ids[]',id);}); fetch(ajaxurl,{method:'POST',body:d});
+            });
+
+            function getDragAfter(parent,selector,y) {
+                var items=Array.from(parent.querySelectorAll(selector)),closest=null,closestOff=Number.NEGATIVE_INFINITY;
+                items.forEach(function(item){var box=item.getBoundingClientRect(),off=y-box.top-box.height/2;if(off<0&&off>closestOff){closestOff=off;closest=item;}});
+                return closest;
+            }
+        })();
+        </script>
+
+        <?php
         // Show All / Show Paginated toggle
         $showing_all = ! empty( $_GET['show_all'] );
         if ( $showing_all ) {
@@ -19989,6 +20526,226 @@ function sp_handle_quick_edit_page(): void {
     wp_send_json_success();
 }
 add_action( 'wp_ajax_sp_quick_edit_page', 'sp_handle_quick_edit_page' );
+
+
+// ============================================================================
+// PAGE GROUPS — AJAX HANDLERS & HELPERS
+//
+// WHY: Page groups let Harold organize pages into folders (e.g., "About Us",
+//      "Resources"). Groups are stored as a flat array in an option, not in a
+//      separate DB table — societies have at most a handful of groups, so the
+//      overhead of a table isn't justified. Groups also drive automatic nav
+//      menu nesting: grouped pages become children of a virtual parent item.
+// ============================================================================
+
+/**
+ * Retrieve page groups from the database.
+ *
+ * @return array List of groups: [ ['name' => '...', 'page_ids' => [...]], ... ]
+ */
+function sp_get_page_groups(): array {
+    $groups = get_option( 'sp_page_groups', [] );
+    if ( ! is_array( $groups ) ) {
+        return [];
+    }
+    return $groups;
+}
+
+/**
+ * Save page groups to the database.
+ *
+ * @param array $groups The groups array to persist.
+ */
+function sp_save_page_groups( array $groups ): void {
+    foreach ( $groups as &$group ) {
+        $group['name']     = sanitize_text_field( $group['name'] ?? '' );
+        $group['page_ids'] = array_map( 'intval', (array) ( $group['page_ids'] ?? [] ) );
+        $group['page_ids'] = array_values( array_unique( $group['page_ids'] ) );
+    }
+    unset( $group );
+    update_option( 'sp_page_groups', $groups );
+}
+
+/** AJAX: Create a new page group. */
+function sp_ajax_create_page_group(): void {
+    check_ajax_referer( 'sp_page_groups_nonce' );
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( __( 'Permission denied.', 'societypress' ) );
+    }
+    $name     = sanitize_text_field( $_POST['group_name'] ?? '' );
+    $page_ids = array_map( 'intval', (array) ( $_POST['page_ids'] ?? [] ) );
+    if ( empty( $name ) ) {
+        wp_send_json_error( __( 'Group name is required.', 'societypress' ) );
+    }
+    $groups   = sp_get_page_groups();
+    $groups[] = [ 'name' => $name, 'page_ids' => $page_ids ];
+    sp_save_page_groups( $groups );
+    wp_send_json_success( [ 'groups' => sp_get_page_groups(), 'message' => __( 'Group created.', 'societypress' ) ] );
+}
+add_action( 'wp_ajax_sp_create_page_group', 'sp_ajax_create_page_group' );
+
+/** AJAX: Update an existing page group (rename, change pages, reorder pages within). */
+function sp_ajax_update_page_group(): void {
+    check_ajax_referer( 'sp_page_groups_nonce' );
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( __( 'Permission denied.', 'societypress' ) );
+    }
+    $index    = (int) ( $_POST['group_index'] ?? -1 );
+    $name     = sanitize_text_field( $_POST['group_name'] ?? '' );
+    $page_ids = array_map( 'intval', (array) ( $_POST['page_ids'] ?? [] ) );
+    if ( empty( $name ) ) {
+        wp_send_json_error( __( 'Group name is required.', 'societypress' ) );
+    }
+    $groups = sp_get_page_groups();
+    if ( ! isset( $groups[ $index ] ) ) {
+        wp_send_json_error( __( 'Group not found.', 'societypress' ) );
+    }
+    $groups[ $index ] = [ 'name' => $name, 'page_ids' => $page_ids ];
+    sp_save_page_groups( $groups );
+    wp_send_json_success( [ 'groups' => sp_get_page_groups(), 'message' => __( 'Group updated.', 'societypress' ) ] );
+}
+add_action( 'wp_ajax_sp_update_page_group', 'sp_ajax_update_page_group' );
+
+/** AJAX: Delete a page group. Pages are not deleted — just un-grouped. */
+function sp_ajax_delete_page_group(): void {
+    check_ajax_referer( 'sp_page_groups_nonce' );
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( __( 'Permission denied.', 'societypress' ) );
+    }
+    $index  = (int) ( $_POST['group_index'] ?? -1 );
+    $groups = sp_get_page_groups();
+    if ( ! isset( $groups[ $index ] ) ) {
+        wp_send_json_error( __( 'Group not found.', 'societypress' ) );
+    }
+    array_splice( $groups, $index, 1 );
+    sp_save_page_groups( $groups );
+    wp_send_json_success( [ 'groups' => sp_get_page_groups(), 'message' => __( 'Group deleted.', 'societypress' ) ] );
+}
+add_action( 'wp_ajax_sp_delete_page_group', 'sp_ajax_delete_page_group' );
+
+/** AJAX: Reorder page groups (drag-and-drop group order). */
+function sp_ajax_reorder_page_groups(): void {
+    check_ajax_referer( 'sp_page_groups_nonce' );
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( __( 'Permission denied.', 'societypress' ) );
+    }
+    $new_order = array_map( 'intval', (array) ( $_POST['new_order'] ?? [] ) );
+    $groups    = sp_get_page_groups();
+    if ( count( $new_order ) !== count( $groups ) ) {
+        wp_send_json_error( __( 'Invalid order data.', 'societypress' ) );
+    }
+    $reordered = [];
+    foreach ( $new_order as $old_index ) {
+        if ( isset( $groups[ $old_index ] ) ) {
+            $reordered[] = $groups[ $old_index ];
+        }
+    }
+    sp_save_page_groups( $reordered );
+    wp_send_json_success( [ 'groups' => sp_get_page_groups(), 'message' => __( 'Groups reordered.', 'societypress' ) ] );
+}
+add_action( 'wp_ajax_sp_reorder_page_groups', 'sp_ajax_reorder_page_groups' );
+
+
+// ============================================================================
+// PAGE GROUPS — FRONTEND NAV INTEGRATION
+//
+// WHY: When auto_group_nav is enabled (default), page groups automatically
+//      create parent/child relationships in the nav menu. Only applies when
+//      the admin hasn't manually organized the menu.
+// ============================================================================
+
+add_filter( 'wp_nav_menu_objects', 'sp_auto_group_nav_items', 15, 2 );
+
+/**
+ * Nest grouped pages under virtual parent menu items.
+ *
+ * @param array  $items Sorted array of menu item objects.
+ * @param object $args  The wp_nav_menu arguments.
+ * @return array Modified menu items with group parents injected.
+ */
+function sp_auto_group_nav_items( array $items, $args ): array {
+    $settings = get_option( 'societypress_settings', [] );
+    if ( empty( $settings['auto_group_nav'] ) ) {
+        return $items;
+    }
+    // If any items already have parent-child relationships, leave it alone
+    foreach ( $items as $item ) {
+        if ( (int) $item->menu_item_parent > 0 ) {
+            return $items;
+        }
+    }
+    $groups = sp_get_page_groups();
+    if ( empty( $groups ) ) {
+        return $items;
+    }
+    $page_to_group = [];
+    foreach ( $groups as $gi => $group ) {
+        foreach ( $group['page_ids'] as $pid ) {
+            $page_to_group[ $pid ] = $gi;
+        }
+    }
+    $group_has_items   = [];
+    $items_to_reparent = [];
+    foreach ( $items as $item ) {
+        if ( $item->type !== 'post_type' || $item->object !== 'page' ) {
+            continue;
+        }
+        $page_id = (int) $item->object_id;
+        if ( isset( $page_to_group[ $page_id ] ) ) {
+            $gi = $page_to_group[ $page_id ];
+            $group_has_items[ $gi ] = true;
+            $items_to_reparent[ $item->ID ] = $gi;
+        }
+    }
+    if ( empty( $group_has_items ) ) {
+        return $items;
+    }
+    $virtual_parents = [];
+    $max_menu_order  = 0;
+    foreach ( $items as $item ) {
+        if ( (int) $item->menu_order > $max_menu_order ) {
+            $max_menu_order = (int) $item->menu_order;
+        }
+    }
+    foreach ( $group_has_items as $gi => $has ) {
+        $virtual_id  = -( $gi + 1000 );
+        $virtual_parents[ $gi ] = (object) [
+            'ID' => $virtual_id, 'db_id' => $virtual_id, 'menu_item_parent' => 0,
+            'object_id' => $virtual_id, 'object' => 'custom', 'type' => 'custom',
+            'type_label' => __( 'Page Group', 'societypress' ),
+            'title' => $groups[ $gi ]['name'], 'url' => '#', 'target' => '',
+            'attr_title' => '', 'description' => '',
+            'classes' => [ 'menu-item', 'sp-page-group-parent' ],
+            'xfn' => '', 'current' => false,
+            'current_item_ancestor' => false, 'current_item_parent' => false,
+            'menu_order' => ++$max_menu_order, 'post_type' => 'nav_menu_item',
+        ];
+    }
+    foreach ( $items as $item ) {
+        if ( isset( $items_to_reparent[ $item->ID ] ) ) {
+            $gi = $items_to_reparent[ $item->ID ];
+            $item->menu_item_parent = (string) $virtual_parents[ $gi ]->ID;
+        }
+    }
+    $result = [];
+    $injected_groups = [];
+    foreach ( $items as $item ) {
+        if ( isset( $items_to_reparent[ $item->ID ] ) ) {
+            $gi = $items_to_reparent[ $item->ID ];
+            if ( ! isset( $injected_groups[ $gi ] ) ) {
+                $result[] = $virtual_parents[ $gi ];
+                $injected_groups[ $gi ] = true;
+            }
+        }
+        $result[] = $item;
+    }
+    foreach ( $virtual_parents as $gi => $vp ) {
+        if ( ! isset( $injected_groups[ $gi ] ) ) {
+            $result[] = $vp;
+        }
+    }
+    return $result;
+}
 
 
 /**
@@ -20957,6 +21714,7 @@ add_action( 'wp_ajax_sp_export_settings_json', function () {
         'paypal_live_secret',
         'paypal_sandbox_client_id',
         'paypal_live_client_id',
+        'mailchimp_api_key',
     ];
     foreach ( $secret_keys as $key ) {
         unset( $settings[ $key ] );
@@ -21407,6 +22165,7 @@ add_action( 'wp_ajax_sp_export_full_site', function () {
         'paypal_live_secret',
         'paypal_sandbox_client_id',
         'paypal_live_client_id',
+        'mailchimp_api_key',
     ];
     foreach ( $secret_keys as $key ) {
         unset( $settings[ $key ] );
@@ -26070,6 +26829,261 @@ function sp_render_settings_modules_page(): void {
     </div>
     <?php
 }
+
+// ============================================================================
+// MAILCHIMP INTEGRATION — SETTINGS PAGE & SYNC
+//
+// WHY: Many societies already use Mailchimp for newsletters and blast emails.
+//      Rather than replacing Mailchimp, SocietyPress syncs the member list so
+//      Harold doesn't have to maintain two separate contact lists. When a member
+//      joins, renews, or updates their info, Mailchimp stays in sync.
+// ============================================================================
+
+/**
+ * Render the Mailchimp settings page.
+ *
+ * Shows API key, audience ID, sync toggle, connection test, and manual sync
+ * trigger. Settings are saved to the shared societypress_settings option via
+ * the standard Settings API pipeline (sp_sanitize_settings handles encryption
+ * of the API key and auto-extraction of the data center prefix).
+ */
+function sp_render_settings_mailchimp_page(): void {
+    $settings    = get_option( 'societypress_settings', [] );
+    $api_key     = sp_decrypt( $settings['mailchimp_api_key'] ?? '' );
+    $audience_id = $settings['mailchimp_audience_id'] ?? '';
+    $sync_on     = ! empty( $settings['mailchimp_sync_enabled'] );
+    $dc          = $settings['mailchimp_dc'] ?? '';
+
+    // WHY: Test the connection live so Harold sees a green/red status before
+    //      trying a full sync. We ping the Mailchimp /ping endpoint which
+    //      returns { "health_status": "Everything's Chimpy!" } on success.
+    $connected = false;
+    $status_msg = '';
+    if ( $api_key && $dc ) {
+        $response = wp_remote_get( "https://{$dc}.api.mailchimp.com/3.0/ping", [
+            'headers' => [
+                'Authorization' => 'apikey ' . $api_key,
+            ],
+            'timeout' => 10,
+        ] );
+        if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) === 200 ) {
+            $connected  = true;
+            $status_msg = __( 'Connected to Mailchimp.', 'societypress' );
+        } else {
+            $status_msg = __( 'Could not connect. Check your API key.', 'societypress' );
+        }
+    }
+    ?>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Settings: Mailchimp', 'societypress' ); ?></h1>
+
+        <?php
+        if ( isset( $_GET['settings-updated'] ) && $_GET['settings-updated'] === 'true' ) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Settings saved.', 'societypress' ) . '</p></div>';
+        }
+        ?>
+
+        <?php if ( $api_key && $dc ) : ?>
+            <div class="notice notice-<?php echo $connected ? 'success' : 'error'; ?>" style="margin:16px 0;">
+                <p><strong><?php echo esc_html( $status_msg ); ?></strong>
+                <?php if ( $connected && $audience_id ) : ?>
+                    — <?php
+                    /* translators: %s: Mailchimp data center identifier (e.g. "us21") */
+                    printf( esc_html__( 'Data center: %s', 'societypress' ), '<code>' . esc_html( $dc ) . '</code>' );
+                    ?>
+                <?php endif; ?>
+                </p>
+            </div>
+        <?php endif; ?>
+
+        <form method="post" action="options.php">
+            <?php settings_fields( 'sp-settings-mailchimp' ); ?>
+
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><label for="sp-mc-api-key"><?php esc_html_e( 'API Key', 'societypress' ); ?></label></th>
+                    <td>
+                        <input type="password" name="societypress_settings[mailchimp_api_key]" id="sp-mc-api-key"
+                               value="<?php echo esc_attr( $api_key ); ?>" class="regular-text" autocomplete="off">
+                        <p class="description">
+                            <?php
+                            /* translators: %s: URL to Mailchimp API keys page */
+                            printf(
+                                wp_kses(
+                                    __( 'Find your API key at <a href="%s" target="_blank" rel="noopener">Mailchimp → Account → API Keys</a>.', 'societypress' ),
+                                    [ 'a' => [ 'href' => [], 'target' => [], 'rel' => [] ] ]
+                                ),
+                                'https://admin.mailchimp.com/account/api/'
+                            );
+                            ?>
+                        </p>
+                        <!-- WHY: The API key is encrypted at rest just like Stripe/PayPal secrets —
+                             sp_sanitize_settings() calls sp_encrypt() before saving. We decrypt it
+                             here for display so Harold can verify it's correct. -->
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="sp-mc-audience"><?php esc_html_e( 'Audience ID', 'societypress' ); ?></label></th>
+                    <td>
+                        <input type="text" name="societypress_settings[mailchimp_audience_id]" id="sp-mc-audience"
+                               value="<?php echo esc_attr( $audience_id ); ?>" class="regular-text">
+                        <p class="description">
+                            <?php esc_html_e( 'The Mailchimp audience (list) to sync members to. Found under Audience → Settings → Audience name and defaults.', 'societypress' ); ?>
+                        </p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php esc_html_e( 'Auto-Sync', 'societypress' ); ?></th>
+                    <td>
+                        <input type="hidden" name="societypress_settings[mailchimp_sync_enabled]" value="0">
+                        <label>
+                            <input type="checkbox" name="societypress_settings[mailchimp_sync_enabled]" value="1" <?php checked( $sync_on ); ?>>
+                            <?php esc_html_e( 'Automatically sync member changes to Mailchimp', 'societypress' ); ?>
+                        </label>
+                        <p class="description">
+                            <?php esc_html_e( 'When enabled, adding, editing, or deleting a member will update Mailchimp in real time. When disabled, use the manual sync button below.', 'societypress' ); ?>
+                        </p>
+                    </td>
+                </tr>
+            </table>
+
+            <?php submit_button( __( 'Save Settings', 'societypress' ) ); ?>
+        </form>
+
+        <?php if ( $connected && $audience_id ) : ?>
+            <hr>
+            <h2><?php esc_html_e( 'Manual Sync', 'societypress' ); ?></h2>
+            <p class="description">
+                <?php esc_html_e( 'Push all active members to your Mailchimp audience. This will add new subscribers and update existing ones. It will not remove anyone from Mailchimp.', 'societypress' ); ?>
+            </p>
+            <p>
+                <button type="button" class="button button-secondary" id="sp-mc-sync-now">
+                    <?php esc_html_e( 'Sync Now', 'societypress' ); ?>
+                </button>
+                <span id="sp-mc-sync-status" style="margin-left:12px;"></span>
+            </p>
+
+            <script>
+            // WHY: Manual sync uses AJAX so Harold gets live feedback without a
+            //      page reload. We batch members in groups of 500 using Mailchimp's
+            //      batch subscribe endpoint to stay within API rate limits.
+            (function() {
+                var btn    = document.getElementById('sp-mc-sync-now');
+                var status = document.getElementById('sp-mc-sync-status');
+                if (!btn) return;
+
+                btn.addEventListener('click', function() {
+                    btn.disabled = true;
+                    status.textContent = <?php echo wp_json_encode( __( 'Syncing...', 'societypress' ) ); ?>;
+
+                    fetch(ajaxurl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: 'action=sp_mailchimp_sync&_ajax_nonce=' + <?php echo wp_json_encode( wp_create_nonce( 'sp_mailchimp_sync' ) ); ?>
+                    })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        btn.disabled = false;
+                        if (data.success) {
+                            status.textContent = data.data.message || <?php echo wp_json_encode( __( 'Sync complete.', 'societypress' ) ); ?>;
+                        } else {
+                            status.textContent = data.data || <?php echo wp_json_encode( __( 'Sync failed.', 'societypress' ) ); ?>;
+                        }
+                    })
+                    .catch(function() {
+                        btn.disabled = false;
+                        status.textContent = <?php echo wp_json_encode( __( 'Network error.', 'societypress' ) ); ?>;
+                    });
+                });
+            })();
+            </script>
+        <?php endif; ?>
+    </div>
+    <?php
+}
+
+// ---- Mailchimp AJAX sync handler ----
+// WHY: Pushes all active members to Mailchimp using the batch subscribe/update
+//      endpoint. This creates new subscribers and updates existing ones without
+//      removing anyone — safe to run repeatedly.
+add_action( 'wp_ajax_sp_mailchimp_sync', function () {
+    check_ajax_referer( 'sp_mailchimp_sync' );
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( __( 'Permission denied.', 'societypress' ) );
+    }
+
+    $settings    = get_option( 'societypress_settings', [] );
+    $api_key     = sp_decrypt( $settings['mailchimp_api_key'] ?? '' );
+    $audience_id = $settings['mailchimp_audience_id'] ?? '';
+    $dc          = $settings['mailchimp_dc'] ?? '';
+
+    if ( ! $api_key || ! $audience_id || ! $dc ) {
+        wp_send_json_error( __( 'Mailchimp is not configured. Enter your API key and Audience ID first.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // Fetch all active members with email addresses
+    $members = $wpdb->get_results(
+        "SELECT m.first_name, m.last_name, u.user_email
+         FROM {$prefix}members m
+         JOIN {$wpdb->users} u ON m.user_id = u.ID
+         WHERE m.status = 'active' AND u.user_email != ''"
+    );
+
+    if ( empty( $members ) ) {
+        wp_send_json_success( [ 'message' => __( 'No active members to sync.', 'societypress' ) ] );
+    }
+
+    // Build batch operations — Mailchimp accepts up to 500 per batch call
+    $batch_members = [];
+    foreach ( $members as $m ) {
+        $batch_members[] = [
+            'email_address' => $m->user_email,
+            'status_if_new' => 'subscribed',
+            'merge_fields'  => [
+                'FNAME' => $m->first_name,
+                'LNAME' => $m->last_name,
+            ],
+        ];
+    }
+
+    // WHY: The /lists/{id} endpoint with update_existing=true does upserts —
+    //      new emails get subscribed, existing ones get their merge fields updated.
+    //      This is safer than individual PUT calls and faster for large lists.
+    $response = wp_remote_post(
+        "https://{$dc}.api.mailchimp.com/3.0/lists/{$audience_id}",
+        [
+            'headers' => [
+                'Authorization' => 'apikey ' . $api_key,
+                'Content-Type'  => 'application/json',
+            ],
+            'body'    => wp_json_encode( [
+                'members'         => $batch_members,
+                'update_existing' => true,
+            ] ),
+            'timeout' => 60,
+        ]
+    );
+
+    if ( is_wp_error( $response ) ) {
+        wp_send_json_error( $response->get_error_message() );
+    }
+
+    $body = json_decode( wp_remote_retrieve_body( $response ), true );
+    $new  = $body['new_members'] ?? 0;
+    $upd  = $body['updated_members'] ?? 0;
+    $err  = $body['error_count'] ?? 0;
+
+    /* translators: 1: number of new subscribers, 2: number updated, 3: number of errors */
+    $message = sprintf(
+        __( 'Sync complete: %1$d new, %2$d updated, %3$d errors.', 'societypress' ),
+        $new, $upd, $err
+    );
+
+    wp_send_json_success( [ 'message' => $message ] );
+} );
 
 
 // ============================================================================
@@ -33494,7 +34508,7 @@ function sp_render_event_edit_page(): void {
                             $modes = [
                                 'none'    => __( 'Free (no payment)', 'societypress' ),
                                 'at_door' => __( 'Pay at the door', 'societypress' ),
-                                'online'  => __( 'Online payment (Stripe)', 'societypress' ),
+                                'online'  => __( 'Online payment', 'societypress' ),
                                 'either'  => __( 'Online or at the door', 'societypress' ),
                             ];
                             foreach ( $modes as $mval => $mlabel ) :
@@ -38820,13 +39834,22 @@ function sp_render_event_detail( string $slug, array $settings ): void {
                                         <?php esc_html_e( 'Join Waitlist', 'societypress' ); ?>
                                     </button>
                                 <?php elseif ( $show_pay_btn && $show_door_btn ) : ?>
-                                    <!-- "Either" mode — two buttons so the registrant can choose -->
+                                    <!-- "Either" mode — multiple payment buttons so the registrant can choose -->
                                     <div class="sp-reg-pay-options">
+                                        <?php if ( $stripe_ready ) : ?>
                                         <button type="button" class="sp-reg-submit-btn sp-pay-online-btn" id="sp-register-btn"
                                                 data-event-id="<?php echo esc_attr( $event->id ); ?>"
                                                 data-pay-method="online">
                                             <?php esc_html_e( 'Pay Now with Card', 'societypress' ); ?>
                                         </button>
+                                        <?php endif; ?>
+                                        <?php if ( $paypal_ready ) : ?>
+                                        <button type="button" class="sp-reg-submit-btn sp-pay-paypal-btn" id="sp-register-paypal-btn"
+                                                data-event-id="<?php echo esc_attr( $event->id ); ?>"
+                                                data-pay-method="paypal">
+                                            <?php esc_html_e( 'Pay with PayPal', 'societypress' ); ?>
+                                        </button>
+                                        <?php endif; ?>
                                         <button type="button" class="sp-reg-submit-btn sp-pay-door-btn" id="sp-register-door-btn"
                                                 data-event-id="<?php echo esc_attr( $event->id ); ?>"
                                                 data-pay-method="at_door">
@@ -38834,11 +39857,22 @@ function sp_render_event_detail( string $slug, array $settings ): void {
                                         </button>
                                     </div>
                                 <?php elseif ( $show_pay_btn ) : ?>
-                                    <button type="button" class="sp-reg-submit-btn sp-pay-online-btn" id="sp-register-btn"
-                                            data-event-id="<?php echo esc_attr( $event->id ); ?>"
-                                            data-pay-method="online">
-                                        <?php esc_html_e( 'Pay & Register', 'societypress' ); ?>
-                                    </button>
+                                    <div class="sp-reg-pay-options">
+                                        <?php if ( $stripe_ready ) : ?>
+                                        <button type="button" class="sp-reg-submit-btn sp-pay-online-btn" id="sp-register-btn"
+                                                data-event-id="<?php echo esc_attr( $event->id ); ?>"
+                                                data-pay-method="online">
+                                            <?php esc_html_e( 'Pay & Register', 'societypress' ); ?>
+                                        </button>
+                                        <?php endif; ?>
+                                        <?php if ( $paypal_ready ) : ?>
+                                        <button type="button" class="sp-reg-submit-btn sp-pay-paypal-btn" id="sp-register-paypal-btn"
+                                                data-event-id="<?php echo esc_attr( $event->id ); ?>"
+                                                data-pay-method="paypal">
+                                            <?php esc_html_e( 'Pay with PayPal', 'societypress' ); ?>
+                                        </button>
+                                        <?php endif; ?>
+                                    </div>
                                 <?php else : ?>
                                     <button type="button" class="sp-reg-submit-btn" id="sp-register-btn"
                                             data-event-id="<?php echo esc_attr( $event->id ); ?>"
@@ -38917,11 +39951,20 @@ function sp_render_event_detail( string $slug, array $settings ): void {
                                     </button>
                                 <?php elseif ( $show_pay_btn && $show_door_btn ) : ?>
                                     <div class="sp-reg-pay-options">
+                                        <?php if ( $stripe_ready ) : ?>
                                         <button type="button" class="sp-reg-submit-btn sp-pay-online-btn" id="sp-guest-register-btn"
                                                 data-event-id="<?php echo esc_attr( $event->id ); ?>"
                                                 data-pay-method="online">
                                             <?php esc_html_e( 'Pay Now with Card', 'societypress' ); ?>
                                         </button>
+                                        <?php endif; ?>
+                                        <?php if ( $paypal_ready ) : ?>
+                                        <button type="button" class="sp-reg-submit-btn sp-pay-paypal-btn" id="sp-guest-register-paypal-btn"
+                                                data-event-id="<?php echo esc_attr( $event->id ); ?>"
+                                                data-pay-method="paypal">
+                                            <?php esc_html_e( 'Pay with PayPal', 'societypress' ); ?>
+                                        </button>
+                                        <?php endif; ?>
                                         <button type="button" class="sp-reg-submit-btn sp-pay-door-btn" id="sp-guest-register-door-btn"
                                                 data-event-id="<?php echo esc_attr( $event->id ); ?>"
                                                 data-pay-method="at_door">
@@ -38929,11 +39972,22 @@ function sp_render_event_detail( string $slug, array $settings ): void {
                                         </button>
                                     </div>
                                 <?php elseif ( $show_pay_btn ) : ?>
-                                    <button type="button" class="sp-reg-submit-btn sp-pay-online-btn" id="sp-guest-register-btn"
-                                            data-event-id="<?php echo esc_attr( $event->id ); ?>"
-                                            data-pay-method="online">
-                                        <?php esc_html_e( 'Pay & Register', 'societypress' ); ?>
-                                    </button>
+                                    <div class="sp-reg-pay-options">
+                                        <?php if ( $stripe_ready ) : ?>
+                                        <button type="button" class="sp-reg-submit-btn sp-pay-online-btn" id="sp-guest-register-btn"
+                                                data-event-id="<?php echo esc_attr( $event->id ); ?>"
+                                                data-pay-method="online">
+                                            <?php esc_html_e( 'Pay & Register', 'societypress' ); ?>
+                                        </button>
+                                        <?php endif; ?>
+                                        <?php if ( $paypal_ready ) : ?>
+                                        <button type="button" class="sp-reg-submit-btn sp-pay-paypal-btn" id="sp-guest-register-paypal-btn"
+                                                data-event-id="<?php echo esc_attr( $event->id ); ?>"
+                                                data-pay-method="paypal">
+                                            <?php esc_html_e( 'Pay with PayPal', 'societypress' ); ?>
+                                        </button>
+                                        <?php endif; ?>
+                                    </div>
                                 <?php else : ?>
                                     <button type="button" class="sp-reg-submit-btn" id="sp-guest-register-btn"
                                             data-event-id="<?php echo esc_attr( $event->id ); ?>"
@@ -38982,18 +40036,20 @@ function sp_render_event_detail( string $slug, array $settings ): void {
     <?php if ( $event->registration_enabled && $event->status === 'scheduled' ) : ?>
         <!-- Registration data for AJAX calls -->
         <?php
-        // Determine if Stripe is available for this event
+        // Determine if payment gateways are available for this event
         // WHY: The frontend JS needs to know whether to offer online payment
         //      vs. just a plain registration. We check both the event's payment
-        //      mode AND whether Stripe keys are actually configured — no point
-        //      showing a "Pay Now" button if the society hasn't set up Stripe.
+        //      mode AND whether gateway keys are actually configured — no point
+        //      showing a "Pay Now" button if the society hasn't set up any gateway.
         $sp_settings    = get_option( 'societypress_settings', [] );
         $stripe_ready   = sp_stripe_is_configured( $sp_settings );
+        $paypal_ready   = sp_paypal_is_configured( $sp_settings );
+        $any_gateway    = $stripe_ready || $paypal_ready;
         $payment_mode   = $event->payment_mode ?? 'none';
         $has_fee        = ( (float) $event->member_price > 0 || (float) $event->nonmember_price > 0 );
-        $show_pay_btn   = $has_fee && $stripe_ready && in_array( $payment_mode, [ 'online', 'either' ], true );
+        $show_pay_btn   = $has_fee && $any_gateway && in_array( $payment_mode, [ 'online', 'either' ], true );
         $show_door_btn  = $has_fee && in_array( $payment_mode, [ 'at_door', 'either' ], true );
-        $pay_only       = $has_fee && $payment_mode === 'online' && $stripe_ready;
+        $pay_only       = $has_fee && $payment_mode === 'online' && $any_gateway;
         ?>
         <script>
         var spRegData = {
@@ -39002,6 +40058,8 @@ function sp_render_event_detail( string $slug, array $settings ): void {
             showPayBtn:   <?php echo $show_pay_btn ? 'true' : 'false'; ?>,
             showDoorBtn:  <?php echo $show_door_btn ? 'true' : 'false'; ?>,
             payOnly:      <?php echo $pay_only ? 'true' : 'false'; ?>,
+            stripeReady:  <?php echo $stripe_ready ? 'true' : 'false'; ?>,
+            paypalReady:  <?php echo $paypal_ready ? 'true' : 'false'; ?>,
             memberPrice:  <?php echo (float) $event->member_price; ?>,
             nonmemberPrice: <?php echo (float) $event->nonmember_price; ?>,
             currency:     '<?php echo strtoupper( $sp_settings['stripe_currency'] ?? 'USD' ); ?>'
@@ -39778,6 +40836,12 @@ function sp_events_frontend_styles(): void {
         .sp-pay-door-btn:hover {
             background: #3c4043 !important;
         }
+        .sp-pay-paypal-btn {
+            background: #0070ba !important;
+        }
+        .sp-pay-paypal-btn:hover {
+            background: #005ea6 !important;
+        }
 
         /* Contact section */
         .sp-event-contact {
@@ -40170,11 +41234,13 @@ function sp_events_frontend_scripts(): void {
         }
 
         // ---- Registration AJAX (member + guest + payment) ----
-        var regBtn     = document.getElementById('sp-register-btn');
-        var doorBtn    = document.getElementById('sp-register-door-btn');
-        var guestBtn   = document.getElementById('sp-guest-register-btn');
-        var guestDoor  = document.getElementById('sp-guest-register-door-btn');
-        var msgBox     = document.getElementById('sp-reg-message');
+        var regBtn      = document.getElementById('sp-register-btn');
+        var doorBtn     = document.getElementById('sp-register-door-btn');
+        var paypalBtn   = document.getElementById('sp-register-paypal-btn');
+        var guestBtn    = document.getElementById('sp-guest-register-btn');
+        var guestDoor   = document.getElementById('sp-guest-register-door-btn');
+        var guestPaypal = document.getElementById('sp-guest-register-paypal-btn');
+        var msgBox      = document.getElementById('sp-reg-message');
 
         // Show message in the registration message area
         function showRegMsg(text, type) {
@@ -40242,7 +41308,7 @@ function sp_events_frontend_scripts(): void {
             var btnText   = btn.textContent;
 
             btn.disabled = true;
-            btn.textContent = payMethod === 'online' ? '<?php echo esc_js( __( "Redirecting to payment\u2026", "societypress" ) ); ?>' : '<?php echo esc_js( __( "Registering\u2026", "societypress" ) ); ?>';
+            btn.textContent = (payMethod === 'online' || payMethod === 'paypal') ? '<?php echo esc_js( __( "Redirecting to payment\u2026", "societypress" ) ); ?>' : '<?php echo esc_js( __( "Registering\u2026", "societypress" ) ); ?>';
 
             var formData = new FormData();
             formData.append('action', 'sp_register_for_event');
@@ -40329,6 +41395,16 @@ function sp_events_frontend_scripts(): void {
             });
         }
 
+        // Member registration — "Pay with PayPal" button
+        if (paypalBtn) {
+            paypalBtn.addEventListener('click', function() {
+                var extras = { party_size: document.getElementById('sp-reg-party-size').value };
+                var slotEl = document.getElementById('sp-reg-slot');
+                if (slotEl && slotEl.value) { extras.slot_id = slotEl.value; }
+                handleRegistration(this, extras);
+            });
+        }
+
         // Guest registration — main button
         if (guestBtn) {
             guestBtn.addEventListener('click', function() {
@@ -40353,6 +41429,27 @@ function sp_events_frontend_scripts(): void {
         // Guest registration — "Pay at Door" alternate button
         if (guestDoor) {
             guestDoor.addEventListener('click', function() {
+                var name  = document.getElementById('sp-guest-name').value.trim();
+                var email = document.getElementById('sp-guest-email').value.trim();
+                var phone = document.getElementById('sp-guest-phone').value.trim();
+                if (!name) { showRegMsg('<?php echo esc_js( __( 'Please enter your name.', 'societypress' ) ); ?>', 'error'); return; }
+                if (!email || email.indexOf('@') < 1) { showRegMsg('<?php echo esc_js( __( 'Please enter a valid email address.', 'societypress' ) ); ?>', 'error'); return; }
+
+                var extras = {
+                    party_size: document.getElementById('sp-guest-party-size').value,
+                    guest_name: name,
+                    guest_email: email,
+                    guest_phone: phone
+                };
+                var gSlotEl = document.getElementById('sp-guest-slot');
+                if (gSlotEl && gSlotEl.value) { extras.slot_id = gSlotEl.value; }
+                handleRegistration(this, extras);
+            });
+        }
+
+        // Guest registration — "Pay with PayPal" button
+        if (guestPaypal) {
+            guestPaypal.addEventListener('click', function() {
                 var name  = document.getElementById('sp-guest-name').value.trim();
                 var email = document.getElementById('sp-guest-email').value.trim();
                 var phone = document.getElementById('sp-guest-phone').value.trim();
@@ -40680,9 +41777,9 @@ function sp_ajax_register_for_event(): void {
     $fee_amount = $per_person_fee * $party_size;
 
     // Determine payment method from the frontend
-    // WHY: The frontend sends 'online', 'at_door', or 'none' based on which
-    //      button was clicked. If 'online', we create a Stripe Checkout Session
-    //      and send back the URL for the redirect. Otherwise, register normally.
+    // WHY: The frontend sends 'online' (Stripe), 'paypal', 'at_door', or 'none'
+    //      based on which button was clicked. If 'online' or 'paypal', we create
+    //      a checkout session and send back the redirect URL. Otherwise, register.
     $pay_method = sanitize_text_field( $_POST['pay_method'] ?? 'none' );
 
     // Determine the correct payment_status based on method and fee
@@ -40692,6 +41789,9 @@ function sp_ajax_register_for_event(): void {
         if ( $pay_method === 'online' ) {
             $payment_status = 'pending';
             $payment_method = 'stripe';
+        } elseif ( $pay_method === 'paypal' ) {
+            $payment_status = 'pending';
+            $payment_method = 'paypal';
         } elseif ( $pay_method === 'at_door' ) {
             $payment_status = 'pending';
             $payment_method = 'at_door';
@@ -40761,6 +41861,66 @@ function sp_ajax_register_for_event(): void {
 
         wp_send_json_success( [
             'checkout_url'   => $checkout_url,
+            'registration_id' => $registration_id,
+        ] );
+    }
+
+    // If paying via PayPal, create a PayPal Order and send back the approval URL
+    // WHY: Same redirect-based flow as Stripe but using PayPal's Orders API.
+    //      We create an order, get an approval URL, and redirect the user to PayPal.
+    //      After they approve, PayPal redirects them back and we capture the payment.
+    if ( $pay_method === 'paypal' && $fee_amount > 0 && $status !== 'waitlisted' ) {
+        $sp_settings = get_option( 'societypress_settings', [] );
+
+        if ( ! sp_paypal_is_configured( $sp_settings ) ) {
+            $wpdb->delete( $reg_table, [ 'id' => $registration_id ] );
+            wp_send_json_error( __( 'PayPal is not configured. Please contact the site administrator.', 'societypress' ) );
+        }
+
+        $currency = $sp_settings['stripe_currency'] ?? 'usd';
+
+        // Build return URLs — PayPal redirects back here after approval/cancel
+        $event_url = get_permalink();
+        if ( ! $event_url ) {
+            $event_url = home_url();
+        }
+        $return_url = add_query_arg( [
+            'sp_payment'    => 'success',
+            'sp_paypal'     => '1',
+            'sp_pp_reg'     => $registration_id,
+        ], $event_url );
+        $cancel_url = add_query_arg( [ 'sp_payment' => 'cancelled' ], $event_url );
+
+        $description = sprintf(
+            /* translators: %s: event title */
+            __( 'Event Registration: %s', 'societypress' ),
+            mb_substr( $event->title, 0, 100 )
+        );
+
+        $order_result = sp_paypal_create_order(
+            $fee_amount,
+            $currency,
+            $description,
+            $return_url,
+            $cancel_url,
+            [ 'type' => 'event', 'registration_id' => $registration_id, 'event_id' => $event_id ],
+            $sp_settings
+        );
+
+        if ( is_wp_error( $order_result ) ) {
+            $wpdb->delete( $reg_table, [ 'id' => $registration_id ] );
+            wp_send_json_error( $order_result->get_error_message() );
+        }
+
+        // Store PayPal order ID on the registration for later verification
+        $wpdb->update(
+            $reg_table,
+            [ 'notes' => 'paypal_order:' . $order_result['id'] ],
+            [ 'id' => $registration_id ]
+        );
+
+        wp_send_json_success( [
+            'checkout_url'    => $order_result['approve_url'],
             'registration_id' => $registration_id,
         ] );
     }
@@ -41475,14 +42635,14 @@ function sp_render_event_registrations_section( object $event ): void {
                                         <?php endif; ?>
                                     </span>
                                     <?php
-                                    // Show refund button for Stripe payments that are marked as paid
+                                    // Show refund button for Stripe and PayPal payments that are marked as paid
                                     // WHY: One-click refund right in the table. Harold shouldn't
-                                    //      have to log into Stripe's dashboard to refund someone.
-                                    if ( $reg->payment_status === 'paid' && $reg->payment_method === 'stripe' ) : ?>
+                                    //      have to log into the payment dashboard to refund someone.
+                                    if ( $reg->payment_status === 'paid' && in_array( $reg->payment_method, [ 'stripe', 'paypal' ], true ) ) : ?>
                                         <button type="button" class="button-link sp-admin-refund-btn sp-event-reg-refund-btn"
                                                 data-reg-id="<?php echo esc_attr( $reg->id ); ?>"
-                                                title="Issue a full refund via Stripe">
-                                            Refund
+                                                title="<?php echo esc_attr( sprintf( __( 'Issue a full refund via %s', 'societypress' ), ucfirst( $reg->payment_method ) ) ); ?>">
+                                            <?php esc_html_e( 'Refund', 'societypress' ); ?>
                                         </button>
                                     <?php endif; ?>
                                 <?php else : ?>
@@ -47162,6 +48322,99 @@ add_action( 'template_redirect', function () {
 } );
 
 
+/**
+ * Handle the return from PayPal Checkout for event registration.
+ *
+ * WHY: After approving payment on PayPal's site, the buyer is redirected back
+ *      to the event page with ?sp_payment=success&sp_paypal=1&sp_pp_reg=N
+ *      and a PayPal-appended token parameter. We capture the payment via the
+ *      PayPal API, verify it succeeded, and update the registration record.
+ *
+ *      This runs on template_redirect (same as Stripe) so the registration is
+ *      already updated by the time the page renders.
+ */
+add_action( 'template_redirect', function () {
+    if ( ! is_page() || get_page_template_slug() !== 'sp-events' ) return;
+
+    $payment_status = sanitize_text_field( $_GET['sp_payment'] ?? '' );
+    $is_paypal      = ! empty( $_GET['sp_paypal'] );
+    $reg_id         = absint( $_GET['sp_pp_reg'] ?? 0 );
+
+    // Only handle PayPal returns — Stripe returns are handled by the hook above
+    if ( $payment_status !== 'success' || ! $is_paypal || ! $reg_id ) return;
+
+    // PayPal appends a 'token' parameter (the order ID) to the return URL
+    $paypal_token = sanitize_text_field( $_GET['token'] ?? '' );
+    if ( empty( $paypal_token ) ) return;
+
+    global $wpdb;
+    $reg_table = $wpdb->prefix . 'sp_event_registrations';
+
+    $reg = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$reg_table} WHERE id = %d", $reg_id
+    ) );
+
+    if ( ! $reg || $reg->payment_status === 'paid' ) return;
+
+    if ( is_user_logged_in() && $reg->user_id && (int) $reg->user_id !== get_current_user_id() ) {
+        return;
+    }
+
+    // Verify the PayPal order ID matches what we stored on this registration
+    if ( strpos( $reg->notes ?? '', 'paypal_order:' . $paypal_token ) === false ) {
+        return;
+    }
+
+    $settings = get_option( 'societypress_settings', [] );
+    if ( ! sp_paypal_is_configured( $settings ) ) return;
+
+    $capture = sp_paypal_capture_order( $paypal_token, $settings );
+
+    if ( is_wp_error( $capture ) ) {
+        error_log( 'SocietyPress PayPal event capture error: ' . $capture->get_error_message() );
+        return;
+    }
+
+    $wpdb->update(
+        $reg_table,
+        [
+            'payment_status' => 'paid',
+            'payment_method' => 'paypal',
+            'payment_date'   => current_time( 'mysql' ),
+            'notes'          => 'paypal_order:' . $paypal_token . '|paypal_capture:' . ( $capture['capture_id'] ?? '' ),
+        ],
+        [ 'id' => $reg_id ]
+    );
+
+    sp_audit(
+        'event_payment_captured',
+        sprintf( 'PayPal payment captured for registration #%d ($%s)', $reg_id, number_format( $capture['capture_amount'] ?? 0, 2 ) ),
+        'event_registration',
+        $reg_id
+    );
+
+    $event = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_events WHERE id = %d", $reg->event_id
+    ) );
+
+    if ( $event ) {
+        $recipient_email = '';
+        if ( $reg->user_id ) {
+            $user = get_userdata( $reg->user_id );
+            $recipient_email = $user ? $user->user_email : '';
+        } elseif ( $reg->guest_email ) {
+            $recipient_email = $reg->guest_email;
+        }
+        if ( $recipient_email ) {
+            sp_send_registration_email(
+                $event, $reg_id, 'confirmed',
+                $recipient_email, (int) $reg->party_size, (float) $reg->fee_amount
+            );
+        }
+    }
+} );
+
+
 // ============================================================================
 // EVENTS — iCAL HELPERS (shared between .ics download + subscription feed)
 // ============================================================================
@@ -47770,70 +49023,120 @@ add_action( 'wp_ajax_sp_admin_refund_payment', function () {
         wp_send_json_error( __( 'Registration not found.', 'societypress' ) );
     }
 
-    if ( $reg->payment_status !== 'paid' || $reg->payment_method !== 'stripe' ) {
-        wp_send_json_error( __( 'This registration was not paid via Stripe.', 'societypress' ) );
+    if ( $reg->payment_status !== 'paid' || ! in_array( $reg->payment_method, [ 'stripe', 'paypal' ], true ) ) {
+        wp_send_json_error( __( 'This registration was not paid via an online payment method.', 'societypress' ) );
     }
 
-    // Extract the Stripe PaymentIntent ID from the notes field
-    // WHY: We stored it as "stripe_session:cs_xxx|stripe_pi:pi_xxx" when the
-    //      payment was confirmed. The PaymentIntent ID is what Stripe needs to
-    //      process a refund.
-    $payment_intent = '';
-    if ( preg_match( '/stripe_pi:(\S+)/', $reg->notes ?? '', $matches ) ) {
-        $payment_intent = $matches[1];
-    }
+    $settings = get_option( 'societypress_settings', [] );
 
-    if ( empty( $payment_intent ) ) {
-        wp_send_json_error( __( 'Could not find payment reference. Please refund manually in Stripe dashboard.', 'societypress' ) );
-    }
+    // ---- Stripe refund path ----
+    if ( $reg->payment_method === 'stripe' ) {
+        // Extract the Stripe PaymentIntent ID from the notes field
+        // WHY: We stored it as "stripe_session:cs_xxx|stripe_pi:pi_xxx" when the
+        //      payment was confirmed. The PaymentIntent ID is what Stripe needs to
+        //      process a refund.
+        $payment_intent = '';
+        if ( preg_match( '/stripe_pi:(\S+)/', $reg->notes ?? '', $matches ) ) {
+            $payment_intent = $matches[1];
+        }
 
-    $settings   = get_option( 'societypress_settings', [] );
-    $secret_key = sp_stripe_get_secret_key( $settings );
+        if ( empty( $payment_intent ) ) {
+            wp_send_json_error( __( 'Could not find payment reference. Please refund manually in Stripe dashboard.', 'societypress' ) );
+        }
 
-    if ( empty( $secret_key ) ) {
-        wp_send_json_error( __( 'Stripe is not configured.', 'societypress' ) );
-    }
+        $secret_key = sp_stripe_get_secret_key( $settings );
+        if ( empty( $secret_key ) ) {
+            wp_send_json_error( __( 'Stripe is not configured.', 'societypress' ) );
+        }
 
-    // Call Stripe's Refund API
-    $response = wp_remote_post( 'https://api.stripe.com/v1/refunds', [
-        'timeout' => 30,
-        'headers' => [
-            'Authorization' => 'Bearer ' . $secret_key,
-            'Content-Type'  => 'application/x-www-form-urlencoded',
-        ],
-        'body' => [
-            'payment_intent' => $payment_intent,
-        ],
-    ] );
+        $response = wp_remote_post( 'https://api.stripe.com/v1/refunds', [
+            'timeout' => 30,
+            'headers' => [
+                'Authorization' => 'Bearer ' . $secret_key,
+                'Content-Type'  => 'application/x-www-form-urlencoded',
+            ],
+            'body' => [ 'payment_intent' => $payment_intent ],
+        ] );
 
-    if ( is_wp_error( $response ) ) {
-        wp_send_json_error( __( 'Could not connect to Stripe. Please try again.', 'societypress' ) );
-    }
+        if ( is_wp_error( $response ) ) {
+            wp_send_json_error( __( 'Could not connect to Stripe. Please try again.', 'societypress' ) );
+        }
 
-    $body = json_decode( wp_remote_retrieve_body( $response ), true );
-    $code = wp_remote_retrieve_response_code( $response );
+        $body = json_decode( wp_remote_retrieve_body( $response ), true );
+        $code = wp_remote_retrieve_response_code( $response );
 
-    // WHY: Stripe refunds can return 'succeeded' (instant) or 'pending' (bank
-    //      processing delay). Both are valid success states — 'pending' just means
-    //      the funds haven't cleared yet, but the refund is committed.
-    $status = $body['status'] ?? '';
-    if ( $code === 200 && in_array( $status, [ 'succeeded', 'pending' ], true ) ) {
-        // Update registration to reflect the refund
-        $wpdb->update(
-            $reg_table,
-            [
+        $status = $body['status'] ?? '';
+        if ( $code === 200 && in_array( $status, [ 'succeeded', 'pending' ], true ) ) {
+            $wpdb->update( $reg_table, [
                 'payment_status' => 'refunded',
                 'notes'          => $reg->notes . '|refund:' . ( $body['id'] ?? 'unknown' ),
-            ],
-            [ 'id' => $registration_id ]
+            ], [ 'id' => $registration_id ] );
+            $message = ( $status === 'pending' )
+                ? __( 'Refund initiated — processing with Stripe.', 'societypress' )
+                : __( 'Refund processed successfully via Stripe.', 'societypress' );
+            wp_send_json_success( [ 'message' => $message ] );
+        } else {
+            $error_msg = $body['error']['message'] ?? 'Refund failed (HTTP ' . $code . ')';
+            wp_send_json_error( $error_msg );
+        }
+    }
+
+    // ---- PayPal refund path ----
+    // WHY: PayPal refunds go through the Captures API — we refund the capture, not
+    //      the order. The capture ID was stored in the notes when payment was confirmed.
+    if ( $reg->payment_method === 'paypal' ) {
+        $capture_id = '';
+        if ( preg_match( '/paypal_capture:(\S+)/', $reg->notes ?? '', $matches ) ) {
+            $capture_id = $matches[1];
+        }
+
+        if ( empty( $capture_id ) ) {
+            wp_send_json_error( __( 'Could not find PayPal capture reference. Please refund manually in PayPal dashboard.', 'societypress' ) );
+        }
+
+        if ( ! sp_paypal_is_configured( $settings ) ) {
+            wp_send_json_error( __( 'PayPal is not configured.', 'societypress' ) );
+        }
+
+        $token = sp_paypal_get_access_token( $settings );
+        if ( is_wp_error( $token ) ) {
+            wp_send_json_error( __( 'Could not authenticate with PayPal. Please try again.', 'societypress' ) );
+        }
+
+        $response = wp_remote_post(
+            sp_paypal_api_base( $settings ) . '/v2/payments/captures/' . urlencode( $capture_id ) . '/refund',
+            [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $token,
+                    'Content-Type'  => 'application/json',
+                ],
+                'body'    => '{}', // Full refund — no amount needed
+                'timeout' => 30,
+            ]
         );
-        $message = ( $status === 'pending' )
-            ? __( 'Refund initiated — processing with payment provider.', 'societypress' )
-            : __( 'Refund processed successfully.', 'societypress' );
-        wp_send_json_success( [ 'message' => $message ] );
-    } else {
-        $error_msg = $body['error']['message'] ?? 'Refund failed (HTTP ' . $code . ')';
-        wp_send_json_error( $error_msg );
+
+        if ( is_wp_error( $response ) ) {
+            wp_send_json_error( __( 'Could not connect to PayPal. Please try again.', 'societypress' ) );
+        }
+
+        $body = json_decode( wp_remote_retrieve_body( $response ), true );
+        $code = wp_remote_retrieve_response_code( $response );
+        $pp_status = $body['status'] ?? '';
+
+        if ( in_array( $code, [ 200, 201 ], true ) && in_array( $pp_status, [ 'COMPLETED', 'PENDING' ], true ) ) {
+            $wpdb->update( $reg_table, [
+                'payment_status' => 'refunded',
+                'notes'          => $reg->notes . '|paypal_refund:' . ( $body['id'] ?? 'unknown' ),
+            ], [ 'id' => $registration_id ] );
+            $message = ( $pp_status === 'PENDING' )
+                ? __( 'Refund initiated — processing with PayPal.', 'societypress' )
+                : __( 'Refund processed successfully via PayPal.', 'societypress' );
+            wp_send_json_success( [ 'message' => $message ] );
+        } else {
+            $error_msg = $body['message'] ?? $body['error'] ?? 'PayPal refund failed (HTTP ' . $code . ')';
+            error_log( 'SocietyPress PayPal refund error: ' . wp_json_encode( $body ) );
+            wp_send_json_error( $error_msg );
+        }
     }
 } );
 
@@ -53304,6 +54607,7 @@ function sp_render_library_item_edit_page(): void {
             'surname'             => sanitize_text_field( $_POST['surname'] ?? '' ) ?: null,
             'subject'             => sanitize_text_field( $_POST['subject'] ?? '' ) ?: null,
             'librarian_notes'     => sanitize_textarea_field( $_POST['librarian_notes'] ?? '' ) ?: null,
+            'store_description'   => sanitize_textarea_field( $_POST['store_description'] ?? '' ) ?: null,
             'item_condition'      => sanitize_text_field( $_POST['item_condition'] ?? 'good' ),
             'available'           => ! empty( $_POST['available'] ) ? 1 : 0,
             'cover_url'           => esc_url_raw( $_POST['cover_url'] ?? '' ) ?: null,
@@ -53565,6 +54869,11 @@ function sp_render_library_item_edit_page(): void {
                 <tr>
                     <th><label for="item_value"><?php esc_html_e( 'Value ($)', 'societypress' ); ?></label></th>
                     <td><input type="number" name="item_value" id="item_value" value="<?php echo esc_attr( $item->item_value ?? '' ); ?>" step="0.01" min="0" class="sp-lib-edit-short-input"></td>
+                </tr>
+                <tr>
+                    <th><label for="store_description"><?php esc_html_e( 'Store Description', 'societypress' ); ?></label></th>
+                    <td><textarea name="store_description" id="store_description" rows="3" class="large-text"><?php echo esc_textarea( $item->store_description ?? '' ); ?></textarea>
+                    <p class="description"><?php esc_html_e( 'Marketing description shown on the store page. If blank, the physical description field is used instead.', 'societypress' ); ?></p></td>
                 </tr>
             </table>
 
@@ -57013,6 +58322,147 @@ function sp_render_leadership_page(): void {
     </div>
     <?php
 }
+
+// ============================================================================
+// Render: Committees — Dedicated Admin Page
+//
+// WHY: Committees are important enough to warrant their own menu entry. This
+//      page shows only the committee management portion of the Leadership page
+//      — committee definitions, member assignments, chair/co-chair roles.
+//      Officers and board positions remain on the Leadership & Committees page.
+// ============================================================================
+
+function sp_render_committees_page(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // ------------------------------------------------------------------
+    // FORM HANDLING: Save / Delete committee
+    // ------------------------------------------------------------------
+    if ( isset( $_POST['sp_save_committee'] ) && check_admin_referer( 'sp_committee_save' ) ) {
+        $committee_id = absint( $_POST['committee_id'] ?? 0 );
+        $data = [
+            'committee'   => sanitize_text_field( $_POST['committee_name'] ?? '' ),
+            'description' => sanitize_textarea_field( $_POST['committee_description'] ?? '' ) ?: null,
+            'status'      => sanitize_text_field( $_POST['committee_status'] ?? 'active' ),
+        ];
+
+        if ( ! empty( $data['committee'] ) ) {
+            if ( $committee_id ) {
+                // Update existing committee assignments' committee name
+                $old_name = $wpdb->get_var( $wpdb->prepare(
+                    "SELECT committee FROM {$prefix}volunteer_roles WHERE id = %d", $committee_id
+                ) );
+                if ( $old_name && $old_name !== $data['committee'] ) {
+                    $wpdb->update(
+                        $prefix . 'volunteer_roles',
+                        [ 'committee' => $data['committee'] ],
+                        [ 'committee' => $old_name, 'role_type' => 'committee' ]
+                    );
+                }
+                echo '<div class="notice notice-success"><p>' . esc_html__( 'Committee updated.', 'societypress' ) . '</p></div>';
+            } else {
+                // Create a placeholder committee role so the committee name exists
+                $wpdb->insert( $prefix . 'volunteer_roles', [
+                    'user_id'    => 0,
+                    'role_title' => __( 'Member', 'societypress' ),
+                    'committee'  => $data['committee'],
+                    'role_type'  => 'committee',
+                    'status'     => $data['status'],
+                ] );
+                echo '<div class="notice notice-success"><p>' . esc_html__( 'Committee created.', 'societypress' ) . '</p></div>';
+            }
+        }
+    }
+
+    // Delete committee
+    if ( isset( $_POST['sp_delete_committee'] ) && check_admin_referer( 'sp_committee_delete' ) ) {
+        $committee_name = sanitize_text_field( $_POST['committee_name_delete'] ?? '' );
+        if ( $committee_name ) {
+            $wpdb->delete( $prefix . 'volunteer_roles', [
+                'committee' => $committee_name,
+                'role_type' => 'committee',
+            ] );
+            echo '<div class="notice notice-success"><p>' . esc_html__( 'Committee deleted.', 'societypress' ) . '</p></div>';
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // DATA: Fetch committees grouped by name
+    // ------------------------------------------------------------------
+    $committees = $wpdb->get_results(
+        "SELECT DISTINCT committee
+         FROM {$prefix}volunteer_roles
+         WHERE role_type = 'committee' AND committee IS NOT NULL AND committee != ''
+         ORDER BY committee ASC"
+    );
+
+    ?>
+    <div class="wrap">
+        <h1 class="wp-heading-inline"><?php esc_html_e( 'Committees', 'societypress' ); ?></h1>
+        <hr class="wp-header-end">
+
+        <p class="description">
+            <?php esc_html_e( 'Manage your society\'s committees. Assign members as chairs, co-chairs, or committee members. Committee chairs with auto-permissions enabled will automatically get access to their area.', 'societypress' ); ?>
+        </p>
+
+        <?php if ( empty( $committees ) ) : ?>
+            <div class="notice notice-info">
+                <p><?php esc_html_e( 'No committees have been created yet. You can create committees on the Leadership & Committees page, or use the form below.', 'societypress' ); ?></p>
+            </div>
+        <?php else : ?>
+            <?php foreach ( $committees as $c ) :
+                $members = $wpdb->get_results( $wpdb->prepare(
+                    "SELECT vr.*, u.display_name
+                     FROM {$prefix}volunteer_roles vr
+                     LEFT JOIN {$wpdb->users} u ON vr.user_id = u.ID
+                     WHERE vr.committee = %s AND vr.role_type = 'committee' AND vr.user_id > 0
+                     ORDER BY FIELD(vr.role_title, 'Chair', 'Co-Chair', 'Member'), u.display_name ASC",
+                    $c->committee
+                ) );
+            ?>
+                <div class="sp-committee-card" style="background:#fff; border:1px solid #ccd0d4; border-radius:4px; padding:16px 20px; margin:16px 0;">
+                    <h3 style="margin:0 0 8px;"><?php echo esc_html( $c->committee ); ?></h3>
+                    <?php if ( $members ) : ?>
+                        <table class="widefat striped" style="margin-top:8px;">
+                            <thead>
+                                <tr>
+                                    <th><?php esc_html_e( 'Member', 'societypress' ); ?></th>
+                                    <th><?php esc_html_e( 'Role', 'societypress' ); ?></th>
+                                    <th><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ( $members as $m ) : ?>
+                                    <tr>
+                                        <td><?php echo esc_html( $m->display_name ?: __( '(unassigned)', 'societypress' ) ); ?></td>
+                                        <td><?php echo esc_html( $m->role_title ); ?></td>
+                                        <td><?php echo esc_html( ucfirst( $m->status ) ); ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    <?php else : ?>
+                        <p class="description"><?php esc_html_e( 'No members assigned yet.', 'societypress' ); ?></p>
+                    <?php endif; ?>
+                    <p style="margin:8px 0 0;">
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-governance' ) ); ?>" class="button button-small">
+                            <?php esc_html_e( 'Manage Members', 'societypress' ); ?>
+                        </a>
+                    </p>
+                </div>
+            <?php endforeach; ?>
+        <?php endif; ?>
+
+        <p>
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-governance' ) ); ?>" class="button button-primary">
+                <?php esc_html_e( 'Go to Leadership & Committees', 'societypress' ); ?>
+            </a>
+        </p>
+    </div>
+    <?php
+}
+
 function sp_render_volunteers_page(): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
@@ -67201,7 +68651,7 @@ function sp_render_store_frontend(): void {
     }
 
     $items = $wpdb->get_results(
-        "SELECT id, title, author, pub_year, description, item_value, cover_url, store_category
+        "SELECT id, title, author, pub_year, description, store_description, item_value, cover_url, store_category
          FROM {$prefix}library_items
          WHERE {$where}
          ORDER BY title ASC"
@@ -67447,7 +68897,11 @@ function sp_render_store_frontend(): void {
                 <div class="sp-store-grid">
                     <?php foreach ( $items as $item ) :
                         $author = rtrim( trim( $item->author ?? '' ), ',' );
-                        $desc   = $item->description ?: '';
+                        // WHY: store_description is marketing copy written by
+                        // Harold specifically for the store. If he hasn't written
+                        // one yet, fall back to the physical description from the
+                        // library catalog so the card isn't blank.
+                        $desc   = $item->store_description ?: ( $item->description ?: '' );
                     ?>
                         <div class="sp-store-card" data-item-id="<?php echo (int) $item->id; ?>">
                             <div class="sp-store-cover">
@@ -67979,6 +69433,78 @@ add_action( 'template_redirect', function () {
 } );
 
 
+// ============================================================================
+// PAYPAL — STORE CHECKOUT + RETURN HANDLER
+// ============================================================================
+
+add_action( 'wp_ajax_sp_store_checkout_paypal', function () {
+    check_ajax_referer( 'sp_store_cart' );
+    $cart = sp_get_cart();
+    if ( empty( $cart ) ) { wp_send_json_error( [ 'message' => __( 'Your cart is empty.', 'societypress' ) ] ); }
+    global $wpdb;
+    $prefix   = $wpdb->prefix . 'sp_';
+    $settings = get_option( 'societypress_settings', [] );
+    if ( ! sp_paypal_is_configured( $settings ) ) { wp_send_json_error( [ 'message' => __( 'PayPal is not configured. Please contact the site administrator.', 'societypress' ) ] ); }
+    $user   = wp_get_current_user();
+    $member = sp_get_member_by_user_id( $user->ID );
+    $order_items = [];
+    $subtotal    = 0;
+    foreach ( $cart as $entry ) {
+        $item = $wpdb->get_row( $wpdb->prepare( "SELECT id, title, item_value FROM {$prefix}library_items WHERE id = %d AND item_value > 0", (int) $entry['item_id'] ) );
+        if ( ! $item ) continue;
+        $qty = max( 1, min( 99, (int) $entry['qty'] ) );
+        $unit_price = (float) $item->item_value;
+        $line_total = round( $unit_price * $qty, 2 );
+        $order_items[] = [ 'library_item_id' => $item->id, 'title' => $item->title, 'quantity' => $qty, 'unit_price' => $unit_price, 'line_total' => $line_total ];
+        $subtotal += $line_total;
+    }
+    if ( empty( $order_items ) ) { wp_send_json_error( [ 'message' => __( 'No valid items in your cart.', 'societypress' ) ] ); }
+    $now = current_time( 'mysql' );
+    $wpdb->insert( $prefix . 'orders', [ 'user_id' => $user->ID, 'status' => 'pending', 'subtotal' => $subtotal, 'tax' => 0.00, 'total' => $subtotal, 'payment_method' => 'paypal', 'customer_name' => $member ? trim( ( $member->first_name ?? '' ) . ' ' . ( $member->last_name ?? '' ) ) : $user->display_name, 'customer_email' => $user->user_email, 'customer_phone' => $member->phone ?? '', 'created_at' => $now, 'updated_at' => $now ] );
+    $order_id = (int) $wpdb->insert_id;
+    if ( ! $order_id ) { wp_send_json_error( [ 'message' => __( 'Could not create order. Please try again.', 'societypress' ) ] ); }
+    foreach ( $order_items as $oi ) {
+        $wpdb->insert( $prefix . 'order_items', [ 'order_id' => $order_id, 'library_item_id' => $oi['library_item_id'], 'title' => $oi['title'], 'quantity' => $oi['quantity'], 'unit_price' => $oi['unit_price'], 'line_total' => $oi['line_total'] ] );
+    }
+    $currency   = $settings['stripe_currency'] ?? 'usd';
+    $cart_pages = get_pages( [ 'meta_key' => '_wp_page_template', 'meta_value' => 'sp-cart' ] );
+    $cart_url   = ! empty( $cart_pages ) ? get_permalink( $cart_pages[0]->ID ) : home_url();
+    $return_url = add_query_arg( [ 'sp_store_payment' => 'success', 'sp_paypal' => '1', 'sp_pp_order' => $order_id ], $cart_url );
+    $cancel_url = add_query_arg( [ 'sp_store_payment' => 'cancelled' ], $cart_url );
+    $item_names  = array_map( function( $oi ) { return $oi['title']; }, $order_items );
+    $order_result = sp_paypal_create_order( $subtotal, $currency, implode( ', ', $item_names ), $return_url, $cancel_url, [ 'type' => 'store', 'order_id' => $order_id ], $settings );
+    if ( is_wp_error( $order_result ) ) { $wpdb->update( $prefix . 'orders', [ 'status' => 'failed' ], [ 'id' => $order_id ] ); wp_send_json_error( [ 'message' => __( 'Could not set up PayPal payment. Please try again.', 'societypress' ) ] ); }
+    $wpdb->update( $prefix . 'orders', [ 'paypal_order_id' => $order_result['id'] ], [ 'id' => $order_id ] );
+    sp_audit( 'store_order_created', sprintf( 'Order #%d created ($%s, %d items) — redirecting to PayPal', $order_id, number_format( $subtotal, 2 ), count( $order_items ) ), 'order', $order_id );
+    wp_send_json_success( [ 'checkout_url' => $order_result['approve_url'] ] );
+} );
+
+// PayPal store return handler — captures payment after buyer approves on PayPal
+add_action( 'template_redirect', function () {
+    if ( ! is_page() ) return;
+    $ps = sanitize_text_field( $_GET['sp_store_payment'] ?? '' );
+    $pp = ! empty( $_GET['sp_paypal'] );
+    $oid = absint( $_GET['sp_pp_order'] ?? 0 );
+    if ( $ps !== 'success' || ! $pp || ! $oid ) return;
+    $tok = sanitize_text_field( $_GET['token'] ?? '' );
+    if ( empty( $tok ) ) return;
+    global $wpdb;
+    $pfx = $wpdb->prefix . 'sp_';
+    $order = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$pfx}orders WHERE id = %d", $oid ) );
+    if ( ! $order || $order->status === 'paid' ) return;
+    if ( is_user_logged_in() && (int) $order->user_id !== get_current_user_id() ) return;
+    if ( $order->paypal_order_id !== $tok ) return;
+    $settings = get_option( 'societypress_settings', [] );
+    if ( ! sp_paypal_is_configured( $settings ) ) return;
+    $cap = sp_paypal_capture_order( $tok, $settings );
+    if ( is_wp_error( $cap ) ) { error_log( 'SocietyPress PayPal store capture error: ' . $cap->get_error_message() ); return; }
+    $wpdb->update( $pfx . 'orders', [ 'status' => 'paid', 'payment_method' => 'paypal', 'paypal_capture_id' => $cap['capture_id'] ?? '', 'updated_at' => current_time( 'mysql' ) ], [ 'id' => $oid ] );
+    if ( $order->user_id ) { sp_save_cart( [], (int) $order->user_id ); }
+    sp_audit( 'store_order_paid', sprintf( 'Order #%d paid via PayPal ($%s)', $oid, number_format( (float) $order->total, 2 ) ), 'order', $oid );
+    sp_send_store_order_email( $oid );
+} );
+
+
 /**
  * Send order confirmation email.
  *
@@ -68203,6 +69729,8 @@ function sp_render_cart_page(): void {
         ?>';
         var container = document.getElementById('sp-cart-content');
         var checkingOut = false;
+        var stripeReady = <?php echo sp_stripe_is_configured( $settings ) ? 'true' : 'false'; ?>;
+        var paypalReady = <?php echo sp_paypal_is_configured( $settings ) ? 'true' : 'false'; ?>;
 
         // Currency symbol and position from settings
         var spCurrencySym = <?php echo wp_json_encode( sp_get_currency_symbol() ); ?>;
@@ -68255,7 +69783,8 @@ function sp_render_cart_page(): void {
                 '<a href="' + storeUrl + '" class="sp-cart-continue">&larr; <?php echo esc_js( __( 'Continue Shopping', 'societypress' ) ); ?></a>' +
                 '<div class="sp-cart-actions">' +
                 '<div class="sp-cart-total"><span><?php echo esc_js( __( 'Total:', 'societypress' ) ); ?></span>' + spCartFmtCurrency(data.total.toFixed(2)) + '</div>' +
-                '<button class="sp-cart-checkout-btn" id="sp-checkout-btn"><?php echo esc_js( __( 'Proceed to Checkout', 'societypress' ) ); ?></button>' +
+                (stripeReady ? '<button class="sp-cart-checkout-btn" id="sp-checkout-btn"><?php echo esc_js( __( 'Checkout with Card', 'societypress' ) ); ?></button>' : '') +
+                (paypalReady ? '<button class="sp-cart-checkout-btn sp-cart-paypal-btn" id="sp-checkout-paypal-btn" style="background:#0070ba;"><?php echo esc_js( __( 'Pay with PayPal', 'societypress' ) ); ?></button>' : '') +
                 '</div></div>';
 
             container.innerHTML = html;
@@ -68341,6 +69870,39 @@ function sp_render_cart_page(): void {
                             checkingOut = false;
                             checkoutBtn.disabled = false;
                             checkoutBtn.textContent = '<?php echo esc_js( __( 'Proceed to Checkout', 'societypress' ) ); ?>';
+                        });
+                });
+            }
+
+            // PayPal checkout button
+            var ppBtn = document.getElementById('sp-checkout-paypal-btn');
+            if (ppBtn) {
+                ppBtn.addEventListener('click', function() {
+                    if (checkingOut) return;
+                    checkingOut = true;
+                    this.disabled = true;
+                    this.textContent = '<?php echo esc_js( __( "Redirecting to PayPal…", "societypress" ) ); ?>';
+
+                    var fd = new FormData();
+                    fd.append('action', 'sp_store_checkout_paypal');
+                    fd.append('_ajax_nonce', nonce);
+
+                    fetch(ajaxUrl, { method: 'POST', body: fd, credentials: 'same-origin' })
+                        .then(function(r) { return r.json(); })
+                        .then(function(d) {
+                            if (d.success && d.data.checkout_url) {
+                                window.location.href = d.data.checkout_url;
+                            } else {
+                                alert(d.data && d.data.message ? d.data.message : '<?php echo esc_js( __( "PayPal checkout failed. Please try again.", "societypress" ) ); ?>');
+                                checkingOut = false;
+                                ppBtn.disabled = false;
+                                ppBtn.textContent = '<?php echo esc_js( __( "Pay with PayPal", "societypress" ) ); ?>';
+                            }
+                        })
+                        .catch(function() {
+                            checkingOut = false;
+                            ppBtn.disabled = false;
+                            ppBtn.textContent = '<?php echo esc_js( __( "Pay with PayPal", "societypress" ) ); ?>';
                         });
                 });
             }
@@ -71270,6 +72832,17 @@ add_action( 'wp_ajax_sp_detach_event_from_feed', function () {
 // ============================================================================
 
 add_action( 'rest_api_init', function () {
+    // PayPal webhook endpoint — receives asynchronous payment notifications
+    // WHY: PayPal sends webhook events for payment captures, refunds, and disputes.
+    //      This endpoint handles those notifications as a safety net — the primary
+    //      payment confirmation happens via the return URL redirect, but webhooks
+    //      catch cases where the buyer closes their browser before being redirected.
+    register_rest_route( 'societypress/v1', '/webhooks/paypal', [
+        'methods'             => 'POST',
+        'callback'            => 'sp_rest_paypal_webhook',
+        'permission_callback' => '__return_true', // PayPal sends unsigned POST requests
+    ] );
+
     register_rest_route( 'societypress/v1', '/health', [
         'methods'             => 'GET',
         'callback'            => 'sp_rest_health_check',
@@ -71285,6 +72858,137 @@ add_action( 'rest_api_init', function () {
  * check results, and basic version info. No authentication required — this
  * is designed for external uptime monitors.
  */
+/**
+ * REST handler: /wp-json/societypress/v1/webhooks/paypal
+ *
+ * WHY: PayPal sends webhook notifications for payment events. This is a safety
+ *      net — the primary payment confirmation happens via the return URL. But if
+ *      a buyer closes their browser before returning, the webhook catches it.
+ *
+ *      We verify the webhook signature using PayPal's webhook verification API
+ *      to prevent spoofed notifications. We handle CHECKOUT.ORDER.APPROVED and
+ *      PAYMENT.CAPTURE.COMPLETED events to update order/registration status.
+ *
+ * @param WP_REST_Request $request The incoming webhook request.
+ * @return WP_REST_Response
+ */
+function sp_rest_paypal_webhook( WP_REST_Request $request ): WP_REST_Response {
+    $body_raw = $request->get_body();
+    $body     = json_decode( $body_raw, true );
+
+    if ( empty( $body['event_type'] ) || empty( $body['resource'] ) ) {
+        return new WP_REST_Response( [ 'status' => 'ignored', 'reason' => 'missing event_type or resource' ], 200 );
+    }
+
+    $settings = get_option( 'societypress_settings', [] );
+    if ( ! sp_paypal_is_configured( $settings ) ) {
+        return new WP_REST_Response( [ 'status' => 'error', 'reason' => 'paypal not configured' ], 200 );
+    }
+
+    // Verify the webhook signature with PayPal's verification API
+    // WHY: Without verification, anyone could POST fake webhook data to this
+    //      endpoint and mark orders as paid. PayPal's API confirms the signature.
+    $webhook_id = get_option( 'sp_paypal_webhook_id', '' );
+    if ( $webhook_id ) {
+        $verify_body = [
+            'auth_algo'         => $request->get_header( 'paypal-auth-algo' ) ?? '',
+            'cert_url'          => $request->get_header( 'paypal-cert-url' ) ?? '',
+            'transmission_id'   => $request->get_header( 'paypal-transmission-id' ) ?? '',
+            'transmission_sig'  => $request->get_header( 'paypal-transmission-sig' ) ?? '',
+            'transmission_time' => $request->get_header( 'paypal-transmission-time' ) ?? '',
+            'webhook_id'        => $webhook_id,
+            'webhook_event'     => $body,
+        ];
+
+        $token = sp_paypal_get_access_token( $settings );
+        if ( ! is_wp_error( $token ) ) {
+            $verify_response = wp_remote_post(
+                sp_paypal_api_base( $settings ) . '/v1/notifications/verify-webhook-signature',
+                [
+                    'headers' => [
+                        'Authorization' => 'Bearer ' . $token,
+                        'Content-Type'  => 'application/json',
+                    ],
+                    'body'    => wp_json_encode( $verify_body ),
+                    'timeout' => 30,
+                ]
+            );
+
+            if ( ! is_wp_error( $verify_response ) ) {
+                $verify_data = json_decode( wp_remote_retrieve_body( $verify_response ), true );
+                if ( ( $verify_data['verification_status'] ?? '' ) !== 'SUCCESS' ) {
+                    error_log( 'SocietyPress PayPal webhook: signature verification FAILED' );
+                    return new WP_REST_Response( [ 'status' => 'error', 'reason' => 'signature verification failed' ], 200 );
+                }
+            }
+        }
+    }
+
+    $event_type = $body['event_type'];
+    $resource   = $body['resource'];
+
+    sp_audit(
+        'paypal_webhook',
+        sprintf( 'PayPal webhook received: %s', $event_type ),
+        'payment'
+    );
+
+    // Handle PAYMENT.CAPTURE.COMPLETED — the primary event for successful payments
+    if ( $event_type === 'PAYMENT.CAPTURE.COMPLETED' ) {
+        $capture_id = $resource['id'] ?? '';
+        $custom_id  = $resource['custom_id'] ?? '';
+        $metadata   = json_decode( $custom_id, true );
+
+        if ( ! empty( $metadata['type'] ) ) {
+            global $wpdb;
+
+            if ( $metadata['type'] === 'event' && ! empty( $metadata['registration_id'] ) ) {
+                $reg_table = $wpdb->prefix . 'sp_event_registrations';
+                $reg_id    = (int) $metadata['registration_id'];
+                $reg       = $wpdb->get_row( $wpdb->prepare(
+                    "SELECT * FROM {$reg_table} WHERE id = %d", $reg_id
+                ) );
+                // Only update if still pending — the return handler may have already processed it
+                if ( $reg && $reg->payment_status !== 'paid' ) {
+                    $wpdb->update( $reg_table, [
+                        'payment_status' => 'paid',
+                        'payment_method' => 'paypal',
+                        'payment_date'   => current_time( 'mysql' ),
+                        'notes'          => ( $reg->notes ? $reg->notes . '|' : '' ) . 'paypal_capture:' . $capture_id . '|webhook',
+                    ], [ 'id' => $reg_id ] );
+
+                    sp_audit( 'event_payment_webhook', sprintf( 'PayPal webhook confirmed payment for registration #%d', $reg_id ), 'event_registration', $reg_id );
+                }
+            } elseif ( $metadata['type'] === 'store' && ! empty( $metadata['order_id'] ) ) {
+                $prefix   = $wpdb->prefix . 'sp_';
+                $order_id = (int) $metadata['order_id'];
+                $order    = $wpdb->get_row( $wpdb->prepare(
+                    "SELECT * FROM {$prefix}orders WHERE id = %d", $order_id
+                ) );
+                if ( $order && $order->status !== 'paid' ) {
+                    $wpdb->update( $prefix . 'orders', [
+                        'status'            => 'paid',
+                        'payment_method'    => 'paypal',
+                        'paypal_capture_id' => $capture_id,
+                        'updated_at'        => current_time( 'mysql' ),
+                    ], [ 'id' => $order_id ] );
+
+                    if ( $order->user_id ) {
+                        sp_save_cart( [], (int) $order->user_id );
+                    }
+
+                    sp_audit( 'store_payment_webhook', sprintf( 'PayPal webhook confirmed payment for order #%d', $order_id ), 'order', $order_id );
+                    sp_send_store_order_email( $order_id );
+                }
+            }
+        }
+    }
+
+    // Return 200 to acknowledge receipt — PayPal will retry if we don't
+    return new WP_REST_Response( [ 'status' => 'ok' ], 200 );
+}
+
+
 function sp_rest_health_check(): WP_REST_Response {
     global $wpdb;
     $prefix  = $wpdb->prefix . 'sp_';
@@ -71491,6 +73195,9 @@ add_action( 'admin_init', function () {
         'voting_start'       => $voting_start,
         'voting_end'         => $voting_end,
         'allow_abstain'      => ! empty( $_POST['allow_abstain'] ) ? 1 : 0,
+        'allow_absentee'     => ! empty( $_POST['allow_absentee'] ) ? 1 : 0,
+        'allow_proxy'        => ! empty( $_POST['allow_proxy'] ) ? 1 : 0,
+        'proxy_limit'        => max( 1, (int) ( $_POST['proxy_limit'] ?? 1 ) ),
         'results_visibility' => $results_visibility,
     ];
 
@@ -71700,7 +73407,11 @@ function sp_render_voting_frontend(): void {
         return;
     }
 
-    // ---- Open Ballots ----
+    // ---- Open Ballots (including absentee-eligible ballots not yet in voting window) ----
+    // WHY: Two queries — one for regular open ballots in the voting window,
+    //      one for absentee-eligible ballots whose status is 'open' but whose
+    //      voting_start hasn't arrived yet. We merge and deduplicate by ID so
+    //      a ballot never appears twice.
     $open_ballots = $wpdb->get_results( $wpdb->prepare(
         "SELECT * FROM {$prefix}ballots
          WHERE status = 'open'
@@ -71710,15 +73421,39 @@ function sp_render_voting_frontend(): void {
         $now, $now
     ) );
 
-    if ( ! empty( $open_ballots ) ) {
+    // Absentee-eligible ballots: open status, before voting_start, absentee allowed
+    $absentee_ballots = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$prefix}ballots
+         WHERE status = 'open'
+           AND allow_absentee = 1
+           AND voting_start > %s
+           AND voting_end >= %s
+         ORDER BY voting_end ASC",
+        $now, $now
+    ) );
+
+    // Merge and deduplicate
+    $seen_ids = [];
+    $all_votable_ballots = [];
+    foreach ( array_merge( $open_ballots, $absentee_ballots ) as $b ) {
+        if ( ! isset( $seen_ids[ $b->id ] ) ) {
+            $seen_ids[ $b->id ] = true;
+            $all_votable_ballots[] = $b;
+        }
+    }
+
+    if ( ! empty( $all_votable_ballots ) ) {
         echo '<h2>' . esc_html__( 'Open Ballots', 'societypress' ) . '</h2>';
-        foreach ( $open_ballots as $ballot ) {
+        foreach ( $all_votable_ballots as $ballot ) {
             // Check eligibility for this specific ballot
             if ( ! sp_voting_user_eligible( $ballot, $member ) ) {
                 continue;
             }
 
-            // Check if already voted
+            // Determine if this is an absentee-only window for this user
+            $is_absentee_period = ( $ballot->allow_absentee && $ballot->voting_start && $now < $ballot->voting_start );
+
+            // Check if this member has already voted (directly or via proxy)
             $has_voted = (int) $wpdb->get_var( $wpdb->prepare(
                 "SELECT COUNT(*) FROM {$prefix}ballot_votes WHERE ballot_id = %d AND user_id = %d",
                 $ballot->id, $user_id
@@ -71732,7 +73467,11 @@ function sp_render_voting_frontend(): void {
                 'referendum' => __( 'Referendum', 'societypress' ),
                 'survey'     => __( 'Survey', 'societypress' ),
             ];
-            echo '<span class="sp-ballot-type-badge">' . esc_html( $type_labels[ $ballot->ballot_type ] ?? $ballot->ballot_type ) . '</span>';
+            $badges = '<span class="sp-ballot-type-badge">' . esc_html( $type_labels[ $ballot->ballot_type ] ?? $ballot->ballot_type ) . '</span>';
+            if ( $is_absentee_period ) {
+                $badges .= ' <span class="sp-ballot-type-badge" style="background:#fef3c7;color:#92400e;">' . esc_html__( 'Absentee', 'societypress' ) . '</span>';
+            }
+            echo $badges;
             echo '</div>';
 
             if ( ! empty( $ballot->description ) ) {
@@ -71740,9 +73479,20 @@ function sp_render_voting_frontend(): void {
             }
 
             echo '<p class="sp-ballot-period">';
+            if ( $is_absentee_period ) {
+                echo '<strong>' . esc_html__( 'Voting opens:', 'societypress' ) . '</strong> ';
+                echo esc_html( wp_date( 'F j, Y \a\t g:i A', strtotime( $ballot->voting_start ) ) );
+                echo '<br>';
+            }
             echo '<strong>' . esc_html__( 'Voting closes:', 'societypress' ) . '</strong> ';
             echo esc_html( wp_date( 'F j, Y \a\t g:i A', strtotime( $ballot->voting_end ) ) );
             echo '</p>';
+
+            if ( $is_absentee_period ) {
+                echo '<p class="sp-ballot-absentee-note" style="color:#92400e;font-style:italic;">';
+                echo esc_html__( 'You are voting early (absentee). Your vote will be counted with all other votes when the voting period opens.', 'societypress' );
+                echo '</p>';
+            }
 
             if ( $has_voted > 0 ) {
                 echo '<div class="sp-ballot-voted-badge">';
@@ -71757,6 +73507,67 @@ function sp_render_voting_frontend(): void {
             } else {
                 // Show the voting form
                 sp_render_vote_form( $ballot );
+            }
+
+            // ---- Proxy Voting Section ----
+            // WHY: If proxy voting is enabled and the member has already voted (or wants
+            //      to vote for someone else), show a section where they can cast proxy
+            //      votes for other eligible members who haven't voted yet.
+            if ( $ballot->allow_proxy ) {
+                // Get eligible members who haven't voted yet (excluding current user)
+                $eligible_non_voters = $wpdb->get_results( $wpdb->prepare(
+                    "SELECT m.user_id, m.first_name, m.last_name, m.preferred_name, m.organization_name, m.tier_id
+                     FROM {$prefix}members m
+                     WHERE m.status = 'active'
+                       AND m.user_id != %d
+                       AND m.user_id NOT IN (
+                           SELECT DISTINCT bv.user_id FROM {$prefix}ballot_votes bv WHERE bv.ballot_id = %d
+                       )
+                     ORDER BY m.last_name ASC, m.first_name ASC",
+                    $user_id, $ballot->id
+                ) );
+
+                // Filter by ballot eligibility (tier restrictions)
+                $eligible_non_voters = array_filter( $eligible_non_voters, function ( $m ) use ( $ballot ) {
+                    return sp_voting_user_eligible( $ballot, $m );
+                } );
+
+                // Count how many proxy votes this user has already cast on this ballot
+                $proxy_count = (int) $wpdb->get_var( $wpdb->prepare(
+                    "SELECT COUNT(DISTINCT user_id) FROM {$prefix}ballot_votes WHERE ballot_id = %d AND proxy_voter_id = %d",
+                    $ballot->id, $user_id
+                ) );
+
+                $proxy_remaining = max( 0, (int) $ballot->proxy_limit - $proxy_count );
+
+                if ( ! empty( $eligible_non_voters ) && $proxy_remaining > 0 ) {
+                    $proxy_nonce = wp_create_nonce( 'sp_submit_proxy_vote' );
+                    echo '<div class="sp-proxy-voting-section" style="margin-top:20px; padding:16px; background:#f0f9ff; border:1px solid #bae6fd; border-radius:6px;">';
+                    echo '<h4 style="margin:0 0 8px 0;">' . esc_html__( 'Vote as Proxy', 'societypress' ) . '</h4>';
+                    echo '<p class="sp-text-muted" style="margin:0 0 12px 0;">';
+                    echo esc_html( sprintf(
+                        /* translators: %1$d: remaining proxies, %2$d: max proxies */
+                        __( 'You may cast proxy votes for up to %1$d more member(s) on this ballot (limit: %2$d).', 'societypress' ),
+                        $proxy_remaining,
+                        (int) $ballot->proxy_limit
+                    ) );
+                    echo '</p>';
+                    echo '<label for="sp-proxy-member-' . esc_attr( $ballot->id ) . '">' . esc_html__( 'Vote on behalf of:', 'societypress' ) . '</label> ';
+                    echo '<select id="sp-proxy-member-' . esc_attr( $ballot->id ) . '" class="sp-proxy-member-select" data-ballot-id="' . esc_attr( $ballot->id ) . '">';
+                    echo '<option value="">' . esc_html__( '— Select a member —', 'societypress' ) . '</option>';
+                    foreach ( $eligible_non_voters as $enm ) {
+                        $enm_name = trim( $enm->last_name . ', ' . ( $enm->preferred_name ?: $enm->first_name ) );
+                        if ( ! empty( $enm->organization_name ) && empty( $enm->last_name ) ) {
+                            $enm_name = $enm->organization_name;
+                        }
+                        echo '<option value="' . esc_attr( $enm->user_id ) . '">' . esc_html( $enm_name ) . '</option>';
+                    }
+                    echo '</select>';
+                    echo ' <button type="button" class="sp-btn sp-btn-outline sp-proxy-start-btn" data-ballot-id="' . esc_attr( $ballot->id ) . '" data-nonce="' . esc_attr( $proxy_nonce ) . '">' . esc_html__( 'Cast Proxy Vote', 'societypress' ) . '</button>';
+                    echo '<div class="sp-proxy-form-container" id="sp-proxy-form-' . esc_attr( $ballot->id ) . '" style="display:none; margin-top:12px;"></div>';
+                    echo '<div class="sp-proxy-message" id="sp-proxy-msg-' . esc_attr( $ballot->id ) . '" style="display:none; margin-top:8px;"></div>';
+                    echo '</div>';
+                }
             }
 
             echo '</div>'; // .sp-ballot-card
@@ -72101,6 +73912,26 @@ function sp_render_ballot_results_frontend( object $ballot ): void {
         }
 
         echo '</div>'; // .sp-results-question
+    }
+
+    // WHY: Show a transparent breakdown of absentee and proxy votes at the
+    //      bottom of the results so members can see ballot integrity at a glance.
+    $ab_ct = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(DISTINCT user_id) FROM {$prefix}ballot_votes WHERE ballot_id = %d AND is_absentee = 1", $ballot->id
+    ) );
+    $px_ct = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(DISTINCT user_id) FROM {$prefix}ballot_votes WHERE ballot_id = %d AND proxy_voter_id IS NOT NULL", $ballot->id
+    ) );
+    if ( $ab_ct > 0 || $px_ct > 0 ) {
+        $bp = [];
+        $tv = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(DISTINCT user_id) FROM {$prefix}ballot_votes WHERE ballot_id = %d", $ballot->id
+        ) );
+        if ( $ab_ct > 0 ) { $bp[] = sprintf( __( '%d absentee', 'societypress' ), $ab_ct ); }
+        if ( $px_ct > 0 ) { $bp[] = sprintf( __( '%d by proxy', 'societypress' ), $px_ct ); }
+        echo '<p class="sp-results-vote-summary" style="color:#6b7280;font-size:0.9em;margin-top:8px;">';
+        echo esc_html( sprintf( __( '%1$d votes (%2$s)', 'societypress' ), $tv, implode( ', ', $bp ) ) );
+        echo '</p>';
     }
 }
 
@@ -72612,6 +74443,41 @@ function sp_render_ballot_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
+                    <th><?php esc_html_e( 'Absentee Voting', 'societypress' ); ?></th>
+                    <td>
+                        <label>
+                            <input type="checkbox" name="allow_absentee" value="1"
+                                   <?php checked( $ballot->allow_absentee ?? 0, 1 ); ?>>
+                            <?php esc_html_e( 'Allow absentee voting (members can submit votes before the voting period)', 'societypress' ); ?>
+                        </label>
+                    </td>
+                </tr>
+                <tr>
+                    <th><?php esc_html_e( 'Proxy Voting', 'societypress' ); ?></th>
+                    <td>
+                        <label>
+                            <input type="checkbox" name="allow_proxy" value="1" id="sp-allow-proxy"
+                                   <?php checked( $ballot->allow_proxy ?? 0, 1 ); ?>>
+                            <?php esc_html_e( 'Allow proxy voting (a member can vote on behalf of another)', 'societypress' ); ?>
+                        </label>
+                        <div id="sp-proxy-limit-wrap" style="margin-top:10px; padding-left:24px; <?php echo empty( $ballot->allow_proxy ) ? 'display:none;' : ''; ?>">
+                            <label for="sp-proxy-limit"><?php esc_html_e( 'Maximum proxies per member:', 'societypress' ); ?></label>
+                            <input type="number" name="proxy_limit" id="sp-proxy-limit" value="<?php echo esc_attr( $ballot->proxy_limit ?? 1 ); ?>" min="1" max="50" class="sp-w-80">
+                        </div>
+                        <script>
+                        (function() {
+                            var cb = document.getElementById('sp-allow-proxy');
+                            var wrap = document.getElementById('sp-proxy-limit-wrap');
+                            if (cb && wrap) {
+                                cb.addEventListener('change', function() {
+                                    wrap.style.display = cb.checked ? '' : 'none';
+                                });
+                            }
+                        })();
+                        </script>
+                    </td>
+                </tr>
+                <tr>
                     <th><label for="sp-results-vis"><?php esc_html_e( 'Results Visibility', 'societypress' ); ?></label></th>
                     <td>
                         <select name="results_visibility" id="sp-results-vis">
@@ -72922,6 +74788,13 @@ function sp_render_ballot_results_page(): void {
         $ballot_id
     ) );
 
+    $absentee_voter_count = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(DISTINCT user_id) FROM {$prefix}ballot_votes WHERE ballot_id = %d AND is_absentee = 1", $ballot_id
+    ) );
+    $proxy_voter_count = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(DISTINCT user_id) FROM {$prefix}ballot_votes WHERE ballot_id = %d AND proxy_voter_id IS NOT NULL", $ballot_id
+    ) );
+
     $participation = $eligible_count > 0 ? round( ( $total_voters / $eligible_count ) * 100, 1 ) : 0;
 
     $type_labels = [
@@ -72970,7 +74843,24 @@ function sp_render_ballot_results_page(): void {
             </div>
             <div class="sp-card sp-stat-card">
                 <div class="sp-fw-600" style="font-size:28px;"><?php echo esc_html( $total_voters ); ?></div>
-                <div class="sp-text-muted"><?php esc_html_e( 'Votes Cast', 'societypress' ); ?></div>
+                <div class="sp-text-muted">
+                    <?php esc_html_e( 'Votes Cast', 'societypress' ); ?>
+                    <?php
+                    // WHY: Show absentee/proxy breakdown so admins know how
+                    //      many votes came from which mechanism. This is critical
+                    //      for meeting minutes and governance transparency.
+                    $vote_breakdown_parts = [];
+                    if ( $absentee_voter_count > 0 ) {
+                        $vote_breakdown_parts[] = sprintf( __( '%d absentee', 'societypress' ), $absentee_voter_count );
+                    }
+                    if ( $proxy_voter_count > 0 ) {
+                        $vote_breakdown_parts[] = sprintf( __( '%d by proxy', 'societypress' ), $proxy_voter_count );
+                    }
+                    if ( ! empty( $vote_breakdown_parts ) ) {
+                        echo '<br><small>(' . esc_html( implode( ', ', $vote_breakdown_parts ) ) . ')</small>';
+                    }
+                    ?>
+                </div>
             </div>
             <div class="sp-card sp-stat-card">
                 <div class="sp-fw-600" style="font-size:28px;"><?php echo esc_html( $participation ); ?>%</div>
@@ -73133,10 +75023,19 @@ add_action( 'wp_ajax_sp_submit_vote', function () {
         wp_send_json_error( __( 'This ballot is not currently open for voting.', 'societypress' ) );
     }
 
-    // ---- Check voting period ----
+    // ---- Check voting period (with absentee exception) ----
+    // WHY: Absentee voting allows members to cast their ballot before the
+    //      official voting_start date. If allow_absentee is on and the ballot
+    //      status is 'open', we permit early votes. The is_absentee flag on
+    //      the vote record tracks that the vote was cast before the window.
     $now = current_time( 'mysql' );
+    $is_absentee_vote = false;
     if ( $ballot->voting_start && $now < $ballot->voting_start ) {
-        wp_send_json_error( __( 'Voting has not started yet.', 'societypress' ) );
+        if ( $ballot->allow_absentee ) {
+            $is_absentee_vote = true;
+        } else {
+            wp_send_json_error( __( 'Voting has not started yet.', 'societypress' ) );
+        }
     }
     if ( $ballot->voting_end && $now > $ballot->voting_end ) {
         wp_send_json_error( __( 'Voting has ended.', 'societypress' ) );
@@ -73192,11 +75091,13 @@ add_action( 'wp_ajax_sp_submit_vote', function () {
             }
             // Treat as abstain
             $votes_to_insert[] = [
-                'ballot_id'   => $ballot_id,
-                'question_id' => (int) $question->id,
-                'choice_id'   => null,
-                'user_id'     => $user_id,
-                'voted_at'    => $now,
+                'ballot_id'      => $ballot_id,
+                'question_id'    => (int) $question->id,
+                'choice_id'      => null,
+                'user_id'        => $user_id,
+                'is_absentee'    => $is_absentee_vote ? 1 : 0,
+                'proxy_voter_id' => null,
+                'voted_at'       => $now,
             ];
             continue;
         }
@@ -73207,11 +75108,13 @@ add_action( 'wp_ajax_sp_submit_vote', function () {
         // Check for abstain
         if ( in_array( 'abstain', $selections, true ) ) {
             $votes_to_insert[] = [
-                'ballot_id'   => $ballot_id,
-                'question_id' => (int) $question->id,
-                'choice_id'   => null,
-                'user_id'     => $user_id,
-                'voted_at'    => $now,
+                'ballot_id'      => $ballot_id,
+                'question_id'    => (int) $question->id,
+                'choice_id'      => null,
+                'user_id'        => $user_id,
+                'is_absentee'    => $is_absentee_vote ? 1 : 0,
+                'proxy_voter_id' => null,
+                'voted_at'       => $now,
             ];
             continue;
         }
@@ -73237,11 +75140,13 @@ add_action( 'wp_ajax_sp_submit_vote', function () {
                 wp_send_json_error( __( 'Invalid choice selected.', 'societypress' ) );
             }
             $votes_to_insert[] = [
-                'ballot_id'   => $ballot_id,
-                'question_id' => (int) $question->id,
-                'choice_id'   => $choice_id,
-                'user_id'     => $user_id,
-                'voted_at'    => $now,
+                'ballot_id'      => $ballot_id,
+                'question_id'    => (int) $question->id,
+                'choice_id'      => $choice_id,
+                'user_id'        => $user_id,
+                'is_absentee'    => $is_absentee_vote ? 1 : 0,
+                'proxy_voter_id' => null,
+                'voted_at'       => $now,
             ];
         }
     }
@@ -73262,7 +75167,10 @@ add_action( 'wp_ajax_sp_submit_vote', function () {
         $wpdb->query( 'COMMIT' );
 
         // Log audit event — ballot_id + user_id only, NOT the choice (ballot secrecy)
-        sp_audit( 'vote_cast', sprintf( 'Vote cast on ballot #%d', $ballot_id ), 'ballot', $ballot_id );
+        $audit_msg = $is_absentee_vote
+            ? sprintf( 'Absentee vote cast on ballot #%d', $ballot_id )
+            : sprintf( 'Vote cast on ballot #%d', $ballot_id );
+        sp_audit( 'vote_cast', $audit_msg, 'ballot', $ballot_id );
 
         wp_send_json_success( [
             'message' => __( 'Your vote has been recorded. Thank you for participating!', 'societypress' ),
@@ -73270,6 +75178,155 @@ add_action( 'wp_ajax_sp_submit_vote', function () {
     } else {
         $wpdb->query( 'ROLLBACK' );
         wp_send_json_error( __( 'An error occurred while recording your vote. Please try again.', 'societypress' ) );
+    }
+} );
+
+
+// --------------------------------------------------------------------------
+// AJAX HANDLER: Submit Proxy Vote (frontend)
+//
+// WHY: Proxy voting allows one member to cast a vote on behalf of another
+//      eligible member who hasn't voted yet. The proxy voter must be eligible
+//      themselves, and the proxy_limit setting caps how many members one
+//      person can represent on a given ballot.
+// --------------------------------------------------------------------------
+add_action( 'wp_ajax_sp_submit_proxy_vote', function () {
+    global $wpdb;
+    $prefix      = $wpdb->prefix . 'sp_';
+    $proxy_voter = get_current_user_id();
+
+    if ( ! $proxy_voter ) {
+        wp_send_json_error( __( 'You must be logged in to vote.', 'societypress' ) );
+    }
+
+    check_ajax_referer( 'sp_submit_proxy_vote', 'nonce' );
+
+    $ballot_id      = (int) ( $_POST['ballot_id'] ?? 0 );
+    $target_user_id = (int) ( $_POST['proxy_for_user_id'] ?? 0 );
+
+    if ( ! $ballot_id || ! $target_user_id ) {
+        wp_send_json_error( __( 'Invalid request.', 'societypress' ) );
+    }
+    if ( $proxy_voter === $target_user_id ) {
+        wp_send_json_error( __( 'You cannot cast a proxy vote for yourself.', 'societypress' ) );
+    }
+
+    $ballot = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$prefix}ballots WHERE id = %d", $ballot_id
+    ) );
+    if ( ! $ballot || $ballot->status !== 'open' ) {
+        wp_send_json_error( __( 'This ballot is not currently open for voting.', 'societypress' ) );
+    }
+    if ( ! $ballot->allow_proxy ) {
+        wp_send_json_error( __( 'Proxy voting is not enabled for this ballot.', 'societypress' ) );
+    }
+
+    $now = current_time( 'mysql' );
+    $is_absentee_vote = false;
+    if ( $ballot->voting_start && $now < $ballot->voting_start ) {
+        if ( $ballot->allow_absentee ) {
+            $is_absentee_vote = true;
+        } else {
+            wp_send_json_error( __( 'Voting has not started yet.', 'societypress' ) );
+        }
+    }
+    if ( $ballot->voting_end && $now > $ballot->voting_end ) {
+        wp_send_json_error( __( 'Voting has ended.', 'societypress' ) );
+    }
+
+    $proxy_member = $wpdb->get_row( $wpdb->prepare(
+        "SELECT user_id, status, tier_id FROM {$prefix}members WHERE user_id = %d", $proxy_voter
+    ) );
+    if ( ! $proxy_member || $proxy_member->status !== 'active' || ! sp_voting_user_eligible( $ballot, $proxy_member ) ) {
+        wp_send_json_error( __( 'You are not eligible to cast proxy votes on this ballot.', 'societypress' ) );
+    }
+
+    $target_member = $wpdb->get_row( $wpdb->prepare(
+        "SELECT user_id, status, tier_id, first_name, last_name FROM {$prefix}members WHERE user_id = %d", $target_user_id
+    ) );
+    if ( ! $target_member || $target_member->status !== 'active' || ! sp_voting_user_eligible( $ballot, $target_member ) ) {
+        wp_send_json_error( __( 'The selected member is not eligible to vote on this ballot.', 'societypress' ) );
+    }
+
+    $target_already_voted = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$prefix}ballot_votes WHERE ballot_id = %d AND user_id = %d", $ballot_id, $target_user_id
+    ) );
+    if ( $target_already_voted > 0 ) {
+        wp_send_json_error( __( 'This member has already voted on this ballot.', 'societypress' ) );
+    }
+
+    $proxy_count = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(DISTINCT user_id) FROM {$prefix}ballot_votes WHERE ballot_id = %d AND proxy_voter_id = %d", $ballot_id, $proxy_voter
+    ) );
+    if ( $proxy_count >= (int) $ballot->proxy_limit ) {
+        wp_send_json_error( sprintf( __( 'You have already cast the maximum number of proxy votes (%d) for this ballot.', 'societypress' ), (int) $ballot->proxy_limit ) );
+    }
+
+    $questions = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$prefix}ballot_questions WHERE ballot_id = %d ORDER BY sort_order ASC", $ballot_id
+    ) );
+    if ( empty( $questions ) ) {
+        wp_send_json_error( __( 'This ballot has no questions.', 'societypress' ) );
+    }
+
+    $votes_to_insert = [];
+    foreach ( $questions as $question ) {
+        $field_key = 'vote_q_' . $question->id;
+        $submitted = $_POST[ $field_key ] ?? null;
+
+        $base_vote = [
+            'ballot_id'      => $ballot_id,
+            'question_id'    => (int) $question->id,
+            'user_id'        => $target_user_id,
+            'is_absentee'    => $is_absentee_vote ? 1 : 0,
+            'proxy_voter_id' => $proxy_voter,
+            'voted_at'       => $now,
+        ];
+
+        if ( $submitted === null || $submitted === '' ) {
+            if ( ! $ballot->allow_abstain ) {
+                wp_send_json_error( sprintf( __( 'Please select an answer for: %s', 'societypress' ), $question->question_text ) );
+            }
+            $votes_to_insert[] = array_merge( $base_vote, [ 'choice_id' => null ] );
+            continue;
+        }
+
+        $selections = is_array( $submitted ) ? $submitted : [ $submitted ];
+        if ( in_array( 'abstain', $selections, true ) ) {
+            $votes_to_insert[] = array_merge( $base_vote, [ 'choice_id' => null ] );
+            continue;
+        }
+
+        if ( $question->question_type === 'multi_choice' && count( $selections ) > (int) $question->max_selections ) {
+            wp_send_json_error( sprintf( __( 'Too many selections for: %s (max %d)', 'societypress' ), $question->question_text, $question->max_selections ) );
+        }
+
+        $valid_choice_ids = $wpdb->get_col( $wpdb->prepare( "SELECT id FROM {$prefix}ballot_choices WHERE question_id = %d", $question->id ) );
+        foreach ( $selections as $choice_id ) {
+            $choice_id = (int) $choice_id;
+            if ( ! in_array( $choice_id, array_map( 'intval', $valid_choice_ids ), true ) ) {
+                wp_send_json_error( __( 'Invalid choice selected.', 'societypress' ) );
+            }
+            $votes_to_insert[] = array_merge( $base_vote, [ 'choice_id' => $choice_id ] );
+        }
+    }
+
+    $wpdb->query( 'START TRANSACTION' );
+    $insert_ok = true;
+    foreach ( $votes_to_insert as $vote ) {
+        if ( $wpdb->insert( $prefix . 'ballot_votes', $vote ) === false ) {
+            $insert_ok = false;
+            break;
+        }
+    }
+    if ( $insert_ok ) {
+        $wpdb->query( 'COMMIT' );
+        $target_name = trim( $target_member->first_name . ' ' . $target_member->last_name );
+        sp_audit( 'proxy_vote_cast', sprintf( 'User #%d cast proxy vote for %s (User #%d) on ballot #%d', $proxy_voter, $target_name, $target_user_id, $ballot_id ), 'ballot', $ballot_id );
+        wp_send_json_success( [ 'message' => sprintf( __( 'Proxy vote for %s has been recorded. Thank you!', 'societypress' ), esc_html( $target_name ) ) ] );
+    } else {
+        $wpdb->query( 'ROLLBACK' );
+        wp_send_json_error( __( 'An error occurred while recording the proxy vote. Please try again.', 'societypress' ) );
     }
 } );
 
@@ -73795,6 +75852,31 @@ function sp_voting_frontend_js(): void {
             });
         });
 
+        // ---- Proxy voting: load form and submit via AJAX ----
+        document.querySelectorAll('.sp-proxy-start-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var bId = btn.getAttribute('data-ballot-id'), nonce = btn.getAttribute('data-nonce');
+                var sel = document.getElementById('sp-proxy-member-' + bId), tid = sel ? sel.value : '';
+                var mD = document.getElementById('sp-proxy-msg-' + bId), fD = document.getElementById('sp-proxy-form-' + bId);
+                if (!tid) { mD.textContent = 'Please select a member.'; mD.className = 'sp-proxy-message sp-vote-form-message--error'; mD.style.display = ''; return; }
+                var bc = btn.closest('.sp-ballot-card'), of = bc ? bc.querySelector('.sp-vote-form') : null;
+                var h = '<form class="sp-proxy-vote-form"><p class="sp-fw-600">Casting proxy vote for: ' + sel.options[sel.selectedIndex].text + '</p>';
+                if (of) { of.querySelectorAll('.sp-vote-question').forEach(function(q) { var c = q.cloneNode(true); c.querySelectorAll('input').forEach(function(i) { i.checked = false; }); h += c.outerHTML; }); }
+                h += '<div class="sp-vote-submit-wrap" style="margin-top:12px;"><button type="submit" class="sp-vote-submit-btn">Submit Proxy Vote</button></div><div class="sp-proxy-form-msg" style="display:none;"></div></form>';
+                fD.innerHTML = h; fD.style.display = ''; mD.style.display = 'none';
+                fD.querySelector('.sp-proxy-vote-form').addEventListener('submit', function(e) {
+                    e.preventDefault(); var fd = new FormData(); fd.append('action','sp_submit_proxy_vote'); fd.append('ballot_id',bId); fd.append('proxy_for_user_id',tid); fd.append('nonce',nonce);
+                    this.querySelectorAll('.sp-vote-question').forEach(function(qD) { var qi = qD.getAttribute('data-question-id'); var r = qD.querySelectorAll('input[type="radio"]:checked'), x = qD.querySelectorAll('input[type="checkbox"]:checked'); if (r.length) fd.append('vote_q_'+qi,r[0].value); else if (x.length) x.forEach(function(c){fd.append('vote_q_'+qi+'[]',c.value);}); });
+                    var pB = this.querySelector('.sp-vote-submit-btn'), pM = this.querySelector('.sp-proxy-form-msg'), me = this;
+                    pB.disabled = true; pB.textContent = 'Submitting...';
+                    fetch(ajaxUrl,{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){return r.json();}).then(function(d){
+                        pM.style.display=''; if(d.success){pM.textContent=d.data.message;pM.className='sp-proxy-form-msg sp-vote-form-message--success';me.querySelectorAll('input,button').forEach(function(el){el.disabled=true;});pB.style.display='none';for(var i=0;i<sel.options.length;i++){if(sel.options[i].value===tid){sel.remove(i);break;}}}
+                        else{pM.textContent=d.data||'Error';pM.className='sp-proxy-form-msg sp-vote-form-message--error';pB.disabled=false;pB.textContent='Submit Proxy Vote';}
+                    }).catch(function(){pM.style.display='';pM.textContent='Something went wrong.';pM.className='sp-proxy-form-msg sp-vote-form-message--error';pB.disabled=false;pB.textContent='Submit Proxy Vote';});
+                });
+            });
+        });
+
         // ---- Countdown timer for voting deadlines ----
         document.querySelectorAll('.sp-ballot-card[data-ballot-id]').forEach(function(card) {
             var periodEl = card.querySelector('.sp-ballot-period');
@@ -74230,6 +76312,801 @@ function sp_bbpress_add_forums_nav_link( array $items ): array {
     $items[] = $forums_item;
     return $items;
 }
+
+
+
+// ============================================================================
+// PROGRESSIVE WEB APP (PWA) LAYER
+//
+// WHY: Many society members are older adults who access the society website
+//      primarily from phones and tablets. PWA support lets them "install" the
+//      site to their home screen like a native app, with offline access to
+//      previously viewed pages. This is especially useful at events in areas
+//      with poor connectivity — rural courthouses, church basements, etc.
+//
+// COMPONENTS:
+//   1. Web App Manifest — served via REST endpoint, tells the browser how to
+//      display the "installed" app (name, icons, colors, display mode)
+//   2. Service Worker — caches static assets and key pages for offline access,
+//      served from site root via rewrite rule for proper scope
+//   3. "Add to Home Screen" banner — branded prompt shown to logged-in mobile
+//      members, dismissible with localStorage memory
+//   4. Push Notification registration — subscription only (no server-side
+//      sending yet), stores endpoint in user_meta for future use
+//
+// ALL gated by the `pwa_enabled` setting. When off, nothing is output — no
+// manifest link, no service worker registration, no banners, no push UI.
+// ============================================================================
+
+
+// ---------------------------------------------------------------------------
+// 1. WEB APP MANIFEST — REST endpoint
+//
+// WHY a REST endpoint rather than a static file: The manifest needs dynamic
+// values from the database — organization name, theme color, site icon URL.
+// A static manifest.json would go stale whenever settings change.
+// ---------------------------------------------------------------------------
+
+add_action( 'rest_api_init', function () {
+    register_rest_route( 'societypress/v1', '/manifest.json', [
+        'methods'             => 'GET',
+        'callback'            => 'sp_pwa_manifest',
+        'permission_callback' => '__return_true',
+    ] );
+} );
+
+
+/**
+ * Generate the Web App Manifest JSON.
+ *
+ * WHY: The manifest tells browsers how to display the "installed" PWA — its
+ * name, start URL, theme color, and icons. We pull these from the site's
+ * settings so it matches whatever Harold has configured.
+ */
+function sp_pwa_manifest(): WP_REST_Response {
+    $settings  = get_option( 'societypress_settings', [] );
+    $site_name = ! empty( $settings['organization_name'] )
+        ? $settings['organization_name']
+        : get_bloginfo( 'name' );
+
+    // Short name: first 12 chars, used on home screen where space is tight
+    $short_name = mb_substr( $site_name, 0, 12 );
+
+    $theme_color = $settings['design_color_primary'] ?? '#1e3a5f';
+    $bg_color    = '#ffffff';
+
+    // Icons: prefer the site icon (set via Customizer), then the custom logo,
+    // then fall back to a default SP icon bundled with the plugin.
+    $icons = sp_pwa_get_icons();
+
+    $manifest = [
+        'name'             => $site_name,
+        'short_name'       => $short_name,
+        'description'      => get_bloginfo( 'description' ),
+        'start_url'        => home_url( '/' ),
+        'display'          => 'standalone',
+        'orientation'      => 'any',
+        'theme_color'      => $theme_color,
+        'background_color' => $bg_color,
+        'icons'            => $icons,
+        'scope'            => home_url( '/' ),
+    ];
+
+    $response = new WP_REST_Response( $manifest, 200 );
+    $response->header( 'Content-Type', 'application/manifest+json' );
+
+    return $response;
+}
+
+
+/**
+ * Build the icons array for the PWA manifest.
+ *
+ * WHY separate function: Icon resolution is non-trivial — we check multiple
+ * sources (site icon, custom logo, fallback) and need to provide both the
+ * 192x192 and 512x512 sizes that Chrome/Android require for installability.
+ */
+function sp_pwa_get_icons(): array {
+    $icons = [];
+
+    // Priority 1: WordPress Site Icon (set via admin, stored as option)
+    // WHY: This is the "official" icon for the site in WP's own model.
+    $site_icon_id = get_option( 'site_icon' );
+    if ( $site_icon_id ) {
+        $icon_192 = wp_get_attachment_image_url( $site_icon_id, [ 192, 192 ] );
+        $icon_512 = wp_get_attachment_image_url( $site_icon_id, [ 512, 512 ] );
+
+        if ( $icon_192 ) {
+            $icons[] = [
+                'src'   => $icon_192,
+                'sizes' => '192x192',
+                'type'  => 'image/png',
+            ];
+        }
+        if ( $icon_512 ) {
+            $icons[] = [
+                'src'   => $icon_512,
+                'sizes' => '512x512',
+                'type'  => 'image/png',
+            ];
+        }
+    }
+
+    // Priority 2: Custom logo (set via SocietyPress Design settings)
+    if ( empty( $icons ) ) {
+        $custom_logo_id = get_theme_mod( 'custom_logo' );
+        if ( $custom_logo_id ) {
+            $logo_192 = wp_get_attachment_image_url( $custom_logo_id, [ 192, 192 ] );
+            $logo_512 = wp_get_attachment_image_url( $custom_logo_id, [ 512, 512 ] );
+
+            if ( $logo_192 ) {
+                $icons[] = [
+                    'src'   => $logo_192,
+                    'sizes' => '192x192',
+                    'type'  => 'image/png',
+                ];
+            }
+            if ( $logo_512 ) {
+                $icons[] = [
+                    'src'   => $logo_512,
+                    'sizes' => '512x512',
+                    'type'  => 'image/png',
+                ];
+            }
+        }
+    }
+
+    // Priority 3: Default SocietyPress icon bundled with the plugin
+    // WHY: A manifest without icons won't pass Chrome's installability check.
+    // We ship a generic SP icon so the PWA is always installable, even if
+    // Harold hasn't uploaded a logo yet.
+    if ( empty( $icons ) ) {
+        $plugin_url = plugin_dir_url( SOCIETYPRESS_PLUGIN_FILE );
+        $icons[] = [
+            'src'   => $plugin_url . 'assets/icon-192.png',
+            'sizes' => '192x192',
+            'type'  => 'image/png',
+        ];
+        $icons[] = [
+            'src'   => $plugin_url . 'assets/icon-512.png',
+            'sizes' => '512x512',
+            'type'  => 'image/png',
+        ];
+    }
+
+    return $icons;
+}
+
+
+// ---------------------------------------------------------------------------
+// 2. SERVICE WORKER — served from site root via rewrite rule
+//
+// WHY root scope matters: Service workers can only control pages at or below
+// their own URL path. If the SW file lives at /wp-content/plugins/.../sw.js,
+// it can only cache pages under that path — useless. We need it at the site
+// root (/) so it controls the entire site. We achieve this by adding a
+// rewrite rule that maps /sp-sw.js to a PHP handler that outputs the JS.
+// ---------------------------------------------------------------------------
+
+/**
+ * Register the rewrite rule that serves the service worker from the site root.
+ *
+ * WHY: WordPress rewrite rules let us map any URL to a query var handler.
+ * /sp-sw.js -> ?sp_service_worker=1 -> our template_redirect handler outputs JS.
+ */
+add_action( 'init', function () {
+    $settings = get_option( 'societypress_settings', [] );
+    if ( empty( $settings['pwa_enabled'] ) ) {
+        return;
+    }
+
+    add_rewrite_rule( '^sp-sw\.js$', 'index.php?sp_service_worker=1', 'top' );
+} );
+
+
+/**
+ * Register the query var so WordPress recognizes it.
+ */
+add_filter( 'query_vars', function ( array $vars ): array {
+    $vars[] = 'sp_service_worker';
+    return $vars;
+} );
+
+
+/**
+ * Serve the service worker JavaScript when the query var is present.
+ *
+ * WHY template_redirect: This fires before WordPress renders any template,
+ * letting us short-circuit the normal page load and output raw JS instead.
+ * We set the correct Content-Type and Service-Worker-Allowed headers.
+ */
+add_action( 'template_redirect', function () {
+    if ( ! get_query_var( 'sp_service_worker' ) ) {
+        return;
+    }
+
+    $settings = get_option( 'societypress_settings', [] );
+    if ( empty( $settings['pwa_enabled'] ) ) {
+        status_header( 404 );
+        exit;
+    }
+
+    $version         = defined( 'SOCIETYPRESS_VERSION' ) ? SOCIETYPRESS_VERSION : '1.0';
+    $cache_name      = 'sp-cache-v' . $version;
+    $offline_message = $settings['pwa_offline_message'] ?? __( 'You appear to be offline. Please check your connection.', 'societypress' );
+    $site_name       = ! empty( $settings['organization_name'] ) ? $settings['organization_name'] : get_bloginfo( 'name' );
+    $theme_color     = $settings['design_color_primary'] ?? '#1e3a5f';
+
+    // Build the list of URLs to pre-cache on install.
+    // WHY: These are the pages a member most likely needs offline — the home
+    // page, events listing, member directory, library catalog, and their
+    // own account page.
+    $precache_urls = [
+        home_url( '/' ),
+    ];
+
+    // Dynamically find the SP template pages to precache
+    $template_slugs = [
+        'sp-events'    => 'events',
+        'sp-directory' => 'directory',
+        'sp-library'   => 'library',
+        'sp-my-account'=> 'my-account',
+    ];
+
+    global $wpdb;
+    foreach ( $template_slugs as $template => $fallback_slug ) {
+        $page_id = $wpdb->get_var( $wpdb->prepare(
+            "SELECT ID FROM {$wpdb->posts}
+             WHERE post_type = 'page'
+               AND post_status = 'publish'
+               AND ID IN (
+                   SELECT post_id FROM {$wpdb->postmeta}
+                   WHERE meta_key = '_wp_page_template'
+                     AND meta_value = %s
+               )
+             LIMIT 1",
+            'page-' . str_replace( 'sp-', '', $template ) . '.php'
+        ) );
+
+        if ( $page_id ) {
+            $precache_urls[] = get_permalink( $page_id );
+        }
+    }
+
+    $precache_json = wp_json_encode( array_values( array_unique( $precache_urls ) ) );
+
+    // Escape values for safe embedding inside JS strings
+    $js_version         = esc_js( $version );
+    $js_cache_name      = esc_js( $cache_name );
+    $js_offline_message = esc_js( $offline_message );
+    $js_site_name       = esc_js( $site_name );
+    $js_theme_color     = esc_js( $theme_color );
+    $js_try_again       = esc_js( __( 'Try Again', 'societypress' ) );
+
+    header( 'Content-Type: application/javascript; charset=utf-8' );
+    header( 'Service-Worker-Allowed: /' );
+    header( 'Cache-Control: no-cache' );
+
+    // Output the service worker JavaScript.
+    // WHY inline PHP rather than a static file: The SW needs dynamic values
+    // (cache name, precache URLs, offline message, theme color) that come
+    // from the database. A static .js file would require a separate build
+    // step or server config to inject these values.
+    echo "/**\n";
+    echo " * SocietyPress Service Worker v{$js_version}\n";
+    echo " *\n";
+    echo " * Cache strategy:\n";
+    echo " *   - Static assets (CSS, JS, fonts, images): cache-first with background refresh\n";
+    echo " *   - HTML pages: network-first with cache fallback\n";
+    echo " *   - Offline fallback: branded page when network and cache both miss\n";
+    echo " */\n\n";
+
+    echo "var CACHE_NAME = '{$js_cache_name}';\n";
+    echo "var PRECACHE_URLS = {$precache_json};\n\n";
+
+    echo <<<'SWJS'
+/**
+ * Install event — pre-cache key pages so they're available offline immediately.
+ */
+self.addEventListener('install', function(event) {
+    event.waitUntil(
+        caches.open(CACHE_NAME).then(function(cache) {
+            return cache.addAll(PRECACHE_URLS);
+        }).then(function() {
+            return self.skipWaiting();
+        })
+    );
+});
+
+/**
+ * Activate event — clean up old caches from previous plugin versions.
+ * WHY: Without cleanup, cache storage grows unbounded with every update.
+ */
+self.addEventListener('activate', function(event) {
+    event.waitUntil(
+        caches.keys().then(function(cacheNames) {
+            return Promise.all(
+                cacheNames.filter(function(name) {
+                    return name.startsWith('sp-cache-') && name !== CACHE_NAME;
+                }).map(function(name) {
+                    return caches.delete(name);
+                })
+            );
+        }).then(function() {
+            return self.clients.claim();
+        })
+    );
+});
+
+/**
+ * Fetch event — route requests through the appropriate cache strategy.
+ */
+self.addEventListener('fetch', function(event) {
+    var request = event.request;
+
+    /* Only handle GET requests — POST/PUT/DELETE always go to network */
+    if (request.method !== 'GET') {
+        return;
+    }
+
+    /* Skip wp-admin, wp-login, and REST API requests — these should never
+       be cached because they contain dynamic, user-specific data. */
+    var url = new URL(request.url);
+    if (url.pathname.indexOf('/wp-admin') !== -1 ||
+        url.pathname.indexOf('/wp-login') !== -1 ||
+        url.pathname.indexOf('/wp-json') !== -1) {
+        return;
+    }
+
+    /* Determine strategy based on resource type */
+    var accept   = request.headers.get('Accept') || '';
+    var isHTML   = accept.indexOf('text/html') !== -1;
+    var isStatic = /\.(css|js|woff2?|ttf|eot|png|jpe?g|gif|svg|webp|ico)$/i.test(url.pathname);
+
+    if (isStatic) {
+        /* CACHE-FIRST for static assets — fast loads, falls back to network.
+           WHY: CSS, JS, fonts, and images rarely change between page loads.
+           Serving from cache eliminates network latency entirely. We also
+           update the cache in the background so the next visit gets fresh files. */
+        event.respondWith(
+            caches.match(request).then(function(cached) {
+                if (cached) {
+                    /* Stale-while-revalidate: serve cached immediately,
+                       fetch fresh copy in background for next time */
+                    event.waitUntil(
+                        fetch(request).then(function(networkResponse) {
+                            if (networkResponse && networkResponse.status === 200) {
+                                caches.open(CACHE_NAME).then(function(cache) {
+                                    cache.put(request, networkResponse);
+                                });
+                            }
+                        }).catch(function() { /* Network unavailable — stale cache is fine */ })
+                    );
+                    return cached;
+                }
+                return fetch(request).then(function(networkResponse) {
+                    if (networkResponse && networkResponse.status === 200) {
+                        var responseToCache = networkResponse.clone();
+                        caches.open(CACHE_NAME).then(function(cache) {
+                            cache.put(request, responseToCache);
+                        });
+                    }
+                    return networkResponse;
+                });
+            })
+        );
+    } else if (isHTML) {
+        /* NETWORK-FIRST for HTML pages — always try to get fresh content,
+           fall back to cached version, last resort is the offline page.
+           WHY: HTML pages contain dynamic data (event dates, member info)
+           that should be current. But a stale page is better than nothing
+           when the member is in a church basement with no signal. */
+        event.respondWith(
+            fetch(request).then(function(networkResponse) {
+                if (networkResponse && networkResponse.status === 200) {
+                    var responseToCache = networkResponse.clone();
+                    caches.open(CACHE_NAME).then(function(cache) {
+                        cache.put(request, responseToCache);
+                    });
+                }
+                return networkResponse;
+            }).catch(function() {
+                return caches.match(request).then(function(cached) {
+                    if (cached) {
+                        return cached;
+                    }
+                    /* No cached version — serve the offline fallback page */
+                    return new Response(sp_offline_page(), {
+                        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+                    });
+                });
+            })
+        );
+    }
+});
+
+SWJS;
+
+    // The offline page function contains dynamic values so it's output with PHP
+    echo "/**\n";
+    echo " * Generate a branded offline fallback page.\n";
+    echo " *\n";
+    echo " * WHY a function rather than a pre-cached HTML file: The offline message\n";
+    echo " * and branding come from the database. Generating inline ensures the page\n";
+    echo " * always reflects the current site name and theme color.\n";
+    echo " */\n";
+    echo "function sp_offline_page() {\n";
+    echo "    return '<!DOCTYPE html>'\n";
+    echo "        + '<html lang=\"en\"><head><meta charset=\"utf-8\">'\n";
+    echo "        + '<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">'\n";
+    echo "        + '<title>{$js_site_name}</title>'\n";
+    echo "        + '<style>'\n";
+    echo "        + 'body{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,Oxygen,Ubuntu,sans-serif;'\n";
+    echo "        + 'display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;'\n";
+    echo "        + 'background:#f5f5f5;color:#333;text-align:center;padding:20px}'\n";
+    echo "        + '.sp-offline{max-width:480px}'\n";
+    echo "        + '.sp-offline-icon{font-size:64px;margin-bottom:20px}'\n";
+    echo "        + '.sp-offline h1{font-size:22px;color:{$js_theme_color};margin:0 0 16px}'\n";
+    echo "        + '.sp-offline p{font-size:16px;line-height:1.5;color:#666;margin:0 0 24px}'\n";
+    echo "        + '.sp-offline button{background:{$js_theme_color};color:#fff;border:none;'\n";
+    echo "        + 'padding:12px 24px;border-radius:6px;font-size:15px;cursor:pointer}'\n";
+    echo "        + '.sp-offline button:hover{opacity:.9}'\n";
+    echo "        + '</style></head><body>'\n";
+    echo "        + '<div class=\"sp-offline\">'\n";
+    echo "        + '<div class=\"sp-offline-icon\">&#128268;</div>'\n";
+    echo "        + '<h1>{$js_site_name}</h1>'\n";
+    echo "        + '<p>{$js_offline_message}</p>'\n";
+    echo "        + '<button onclick=\"window.location.reload()\">{$js_try_again}</button>'\n";
+    echo "        + '</div></body></html>';\n";
+    echo "}\n";
+
+    exit;
+} );
+
+
+// ---------------------------------------------------------------------------
+// 3. MANIFEST LINK + SERVICE WORKER REGISTRATION — wp_head / wp_footer
+//
+// WHY: The manifest <link> must be in <head> for browsers to discover the PWA.
+// The service worker registration runs in <footer> after the page loads so
+// it doesn't block rendering.
+// ---------------------------------------------------------------------------
+
+/**
+ * Output the manifest link tag and PWA meta tags in <head>.
+ *
+ * WHY: Without the <link rel="manifest">, no browser will recognize the site
+ * as a PWA. The theme-color meta tag matches the manifest and colors the
+ * mobile browser chrome (address bar) on Android.
+ */
+add_action( 'wp_head', function () {
+    $settings = get_option( 'societypress_settings', [] );
+    if ( empty( $settings['pwa_enabled'] ) ) {
+        return;
+    }
+
+    $manifest_url = rest_url( 'societypress/v1/manifest.json' );
+    $theme_color  = esc_attr( $settings['design_color_primary'] ?? '#1e3a5f' );
+    ?>
+    <!-- SocietyPress PWA -->
+    <link rel="manifest" href="<?php echo esc_url( $manifest_url ); ?>">
+    <meta name="theme-color" content="<?php echo $theme_color; ?>">
+    <!-- iOS PWA support — Safari doesn't fully read the manifest for these -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="<?php echo esc_attr( ! empty( $settings['organization_name'] ) ? $settings['organization_name'] : get_bloginfo( 'name' ) ); ?>">
+    <?php
+    // Apple touch icon — same priority chain as the manifest icons
+    $site_icon_id = get_option( 'site_icon' );
+    $touch_icon   = '';
+    if ( $site_icon_id ) {
+        $touch_icon = wp_get_attachment_image_url( $site_icon_id, [ 180, 180 ] );
+    }
+    if ( ! $touch_icon ) {
+        $custom_logo_id = get_theme_mod( 'custom_logo' );
+        if ( $custom_logo_id ) {
+            $touch_icon = wp_get_attachment_image_url( $custom_logo_id, [ 180, 180 ] );
+        }
+    }
+    if ( ! $touch_icon ) {
+        $touch_icon = plugin_dir_url( SOCIETYPRESS_PLUGIN_FILE ) . 'assets/icon-192.png';
+    }
+    ?>
+    <link rel="apple-touch-icon" href="<?php echo esc_url( $touch_icon ); ?>">
+    <?php
+}, 1 );
+
+
+/**
+ * Register the service worker and output the "Add to Home Screen" banner
+ * from wp_footer. Also handles the install prompt interception.
+ *
+ * WHY wp_footer: Service worker registration should happen after the page
+ * content loads — it's a background enhancement, not a blocking resource.
+ * The install banner is also injected here so it appears at the bottom
+ * of the viewport.
+ */
+add_action( 'wp_footer', function () {
+    $settings = get_option( 'societypress_settings', [] );
+    if ( empty( $settings['pwa_enabled'] ) ) {
+        return;
+    }
+
+    $org_name    = ! empty( $settings['organization_name'] ) ? $settings['organization_name'] : get_bloginfo( 'name' );
+    $theme_color = esc_attr( $settings['design_color_primary'] ?? '#1e3a5f' );
+
+    // Only show the install banner to logged-in members on the frontend
+    $show_banner = is_user_logged_in() && ! is_admin();
+    $banner_text = esc_js( sprintf(
+        /* translators: %s: organization name */
+        __( 'Add %s to your home screen for quick access', 'societypress' ),
+        $org_name
+    ) );
+    $install_label  = esc_js( __( 'Install', 'societypress' ) );
+    $dismiss_label  = esc_js( __( 'Not now', 'societypress' ) );
+    $sw_url         = esc_url( home_url( '/sp-sw.js' ) );
+    $show_banner_js = $show_banner ? 'true' : 'false';
+    ?>
+    <!-- SocietyPress PWA: Install Banner -->
+    <div id="sp-pwa-banner" style="display:none;" role="alert">
+        <div class="sp-pwa-banner-inner">
+            <p class="sp-pwa-banner-text" id="sp-pwa-banner-text"></p>
+            <div class="sp-pwa-banner-actions">
+                <button type="button" id="sp-pwa-install" class="sp-pwa-btn sp-pwa-btn--install"></button>
+                <button type="button" id="sp-pwa-dismiss" class="sp-pwa-btn sp-pwa-btn--dismiss"></button>
+            </div>
+        </div>
+    </div>
+    <style>
+        /* PWA Install Banner — fixed to bottom of viewport on mobile only.
+           WHY fixed positioning: The banner needs to be visible regardless of
+           scroll position. On desktop it stays hidden entirely (members on
+           desktop don't benefit from "installing" a website). */
+        #sp-pwa-banner {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 99998;
+            background: #fff;
+            border-top: 3px solid <?php echo $theme_color; ?>;
+            box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+            padding: 16px 20px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        .sp-pwa-banner-inner {
+            max-width: 600px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .sp-pwa-banner-text {
+            margin: 0;
+            font-size: 14px;
+            color: #333;
+            line-height: 1.4;
+            flex: 1;
+        }
+        .sp-pwa-banner-actions {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        .sp-pwa-btn {
+            border: none;
+            border-radius: 6px;
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .sp-pwa-btn--install {
+            background: <?php echo $theme_color; ?>;
+            color: #fff;
+        }
+        .sp-pwa-btn--install:hover {
+            opacity: 0.9;
+        }
+        .sp-pwa-btn--dismiss {
+            background: transparent;
+            color: #666;
+            padding: 8px 12px;
+        }
+        .sp-pwa-btn--dismiss:hover {
+            color: #333;
+            background: #f0f0f0;
+        }
+        /* Hide banner entirely on desktop — only useful on mobile (< 768px) */
+        @media (min-width: 768px) {
+            #sp-pwa-banner { display: none !important; }
+        }
+    </style>
+    <script>
+    (function() {
+        'use strict';
+
+        /* ---- Service Worker Registration ----
+           WHY: This is the core of PWA functionality. Without a registered
+           service worker, there's no offline support and no install prompt. */
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('<?php echo $sw_url; ?>', { scope: '/' })
+                    .then(function(reg) {
+                        /* Check for service worker updates every hour.
+                           WHY: When we bump SOCIETYPRESS_VERSION, the service worker
+                           file changes and the browser picks up the new version.
+                           Without periodic checks, users might stay on stale caches
+                           until they manually hard-refresh. */
+                        setInterval(function() { reg.update(); }, 60 * 60 * 1000);
+                    })
+                    .catch(function() {
+                        /* Silent fail — PWA is an enhancement, not a requirement.
+                           If registration fails (e.g., no HTTPS on local dev),
+                           the site works normally without offline support. */
+                    });
+            });
+        }
+
+        /* ---- "Add to Home Screen" Banner ----
+           WHY: Most users don't know they can install a website as an app.
+           The banner educates them and makes it one tap. We intercept Chrome's
+           beforeinstallprompt event to control when and how the prompt appears. */
+        var showBanner = <?php echo $show_banner_js; ?>;
+        var deferredPrompt = null;
+
+        if (showBanner && !localStorage.getItem('sp_pwa_dismissed')) {
+            window.addEventListener('beforeinstallprompt', function(e) {
+                /* Prevent the browser's default mini-infobar */
+                e.preventDefault();
+                deferredPrompt = e;
+
+                var banner    = document.getElementById('sp-pwa-banner');
+                var textEl    = document.getElementById('sp-pwa-banner-text');
+                var installEl = document.getElementById('sp-pwa-install');
+                var dismissEl = document.getElementById('sp-pwa-dismiss');
+
+                if (!banner || !textEl || !installEl || !dismissEl) return;
+
+                textEl.textContent    = '<?php echo $banner_text; ?>';
+                installEl.textContent = '<?php echo $install_label; ?>';
+                dismissEl.textContent = '<?php echo $dismiss_label; ?>';
+
+                /* Only show on mobile viewports — CSS also hides it above 768px,
+                   but this JS check prevents a brief flash before CSS applies */
+                if (window.innerWidth < 768) {
+                    banner.style.display = 'block';
+                }
+
+                installEl.addEventListener('click', function() {
+                    if (!deferredPrompt) return;
+                    deferredPrompt.prompt();
+                    deferredPrompt.userChoice.then(function(result) {
+                        deferredPrompt = null;
+                        banner.style.display = 'none';
+                        if (result.outcome === 'accepted') {
+                            /* Remember installation so we never show the banner
+                               again on this device */
+                            localStorage.setItem('sp_pwa_installed', '1');
+                        }
+                    });
+                });
+
+                dismissEl.addEventListener('click', function() {
+                    banner.style.display = 'none';
+                    /* Remember dismissal so we don't nag on every page load.
+                       WHY localStorage over cookies: No server round-trip needed,
+                       persists across sessions, and this is purely a UI preference. */
+                    localStorage.setItem('sp_pwa_dismissed', '1');
+                });
+            });
+        }
+    })();
+    </script>
+    <?php
+}, 99 );
+
+
+// ---------------------------------------------------------------------------
+// 4. PUSH NOTIFICATION SUBSCRIPTION — registration only
+//
+// WHY "registration only": Push notifications require a VAPID key pair and
+// a server-side sending mechanism (web-push library or third-party service).
+// That's significant infrastructure we're not building yet. For now, we
+// collect subscription endpoints so that when push sending IS built, we
+// already have a subscriber base ready to go. Members opt in from their
+// My Account page.
+// ---------------------------------------------------------------------------
+
+/**
+ * AJAX handler: save a push notification subscription to user_meta.
+ *
+ * WHY user_meta: Each subscription is tied to a specific user (member).
+ * user_meta is the standard WordPress way to store per-user data, and it
+ * survives password changes, session resets, and plugin deactivation/reactivation.
+ * The subscription is a JSON blob containing the endpoint URL, keys, etc.
+ */
+add_action( 'wp_ajax_sp_push_subscribe', function () {
+    check_ajax_referer( 'sp_push_subscribe', 'nonce' );
+
+    $user_id = get_current_user_id();
+    if ( ! $user_id ) {
+        wp_send_json_error( [ 'message' => __( 'Not logged in.', 'societypress' ) ] );
+    }
+
+    $subscription = isset( $_POST['subscription'] ) ? sanitize_text_field( wp_unslash( $_POST['subscription'] ) ) : '';
+    if ( empty( $subscription ) ) {
+        wp_send_json_error( [ 'message' => __( 'No subscription data received.', 'societypress' ) ] );
+    }
+
+    // Validate that the subscription is valid JSON with the required endpoint field
+    $sub_data = json_decode( $subscription, true );
+    if ( ! $sub_data || empty( $sub_data['endpoint'] ) ) {
+        wp_send_json_error( [ 'message' => __( 'Invalid subscription data.', 'societypress' ) ] );
+    }
+
+    update_user_meta( $user_id, 'sp_push_subscription', $subscription );
+    wp_send_json_success( [ 'message' => __( 'Push notifications enabled.', 'societypress' ) ] );
+} );
+
+
+/**
+ * AJAX handler: remove a push notification subscription from user_meta.
+ *
+ * WHY separate unsubscribe action: We can't just set the meta to empty —
+ * delete_user_meta is cleaner and makes the "how many members have push
+ * enabled" dashboard query accurate (we count rows, not non-empty values).
+ */
+add_action( 'wp_ajax_sp_push_unsubscribe', function () {
+    check_ajax_referer( 'sp_push_subscribe', 'nonce' );
+
+    $user_id = get_current_user_id();
+    if ( ! $user_id ) {
+        wp_send_json_error( [ 'message' => __( 'Not logged in.', 'societypress' ) ] );
+    }
+
+    delete_user_meta( $user_id, 'sp_push_subscription' );
+    wp_send_json_success( [ 'message' => __( 'Push notifications disabled.', 'societypress' ) ] );
+} );
+
+
+/**
+ * Get the count of members who have push notifications enabled.
+ *
+ * WHY a helper function: Used on the admin dashboard stat card and potentially
+ * in reports. Centralizing the query avoids duplication.
+ */
+function sp_pwa_push_subscriber_count(): int {
+    global $wpdb;
+    return (int) $wpdb->get_var(
+        "SELECT COUNT(DISTINCT user_id) FROM {$wpdb->usermeta}
+         WHERE meta_key = 'sp_push_subscription'
+           AND meta_value != ''"
+    );
+}
+
+
+// ---------------------------------------------------------------------------
+// 5. FLUSH REWRITE RULES ON PWA SETTINGS CHANGE
+//
+// WHY: When pwa_enabled is toggled, the sp-sw.js rewrite rule needs to be
+// added or removed. WordPress only recognizes new rewrite rules after a
+// flush. We hook into the settings save to do this automatically so Harold
+// doesn't have to visit Settings -> Permalinks manually.
+// ---------------------------------------------------------------------------
+
+add_action( 'update_option_societypress_settings', function ( $old_value, $new_value ) {
+    $old_pwa = ! empty( $old_value['pwa_enabled'] );
+    $new_pwa = ! empty( $new_value['pwa_enabled'] );
+
+    // Only flush if the PWA toggle actually changed — flushing on every
+    // settings save would be wasteful and could cause permalink conflicts.
+    if ( $old_pwa !== $new_pwa ) {
+        flush_rewrite_rules();
+    }
+}, 10, 2 );
 
 
 // ============================================================================

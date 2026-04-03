@@ -169,7 +169,7 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 - [x] Centralized capability map remaps all 100+ menu items without touching individual `add_submenu_page` calls
 - [x] User Access admin page: assign roles, customize per-user access areas, revoke access
 - [x] Non-admin SP staff: redirected from WP dashboard to SP dashboard, see only permitted sections
-- [ ] Committee-scoped access: automatic chair/member permissions from governance data (deferred)
+- [x] Committee-scoped access: automatic chair/member permissions from governance data (v1.0.2 — committee_access_area column, sp_get_user_committee_access_areas(), committee_auto_permissions setting)
 
 ## Recently Completed
 
@@ -481,7 +481,7 @@ See `Docs/KNOWN-ISSUES.md` for the full list (43 items tracked, 41 fixed, 2 defe
   - [x] Surnames: added `note` column for research notes, notes display in My Account + add form
   - [x] Geographic research areas (`sp_member_research_areas`): new table + full My Account section (add/remove/display with area type, year range, notes)
   - [x] Member relationships: read-only "Family Connections" section in My Account (admin manages via member edit page)
-  - [ ] Normalized surname variants — deferred (needs design: auto-suggest? alias table?)
+  - [x] Normalized surname variants — sp_surname_variants table with canonical↔variant explicit mappings (v1.0.2)
   - [x] 8 genealogy service integrations (WikiTree, FamilySearch, Geni, WeRelate, Ancestry, MyHeritage, Find A Grave, 23andMe) — My Account section with URL fields per service, AJAX save, directory member detail modal shows linked profiles as colored buttons. Stored as user_meta (`sp_genealogy_*`).
 - [x] Contact data encryption at rest: XChaCha20-Poly1305 (libsodium) encryption for 7 sensitive fields — cell, work_phone, alt_phone, fax, address_1, address_2, seasonal_address_1. Phone (home) and city/state left plaintext for directory search/sort. Columns widened (VARCHAR 200/512) to fit ciphertext. Helper functions `sp_member_encrypt_fields()` / `sp_member_decrypt_row()` / `sp_member_decrypt_rows()` applied at all 9 write points (admin edit, CSV import, join form, AJAX/POST contact+address, profile change approval) and all 10 read points (admin edit, member list, directory listing+detail, CSV export, GDPR export, welcome email, My Account, generic getter, profile change comparison). One-time migration `sp_maybe_migrate_encrypt_contacts()` runs on activation, batched by 100, idempotent. Graceful fallback: if decryption fails (plaintext data), value passes through unchanged.
 - [x] Couples / household accounts: `allows_joint` flag on tiers, `joint_first_name`/`joint_last_name`/`joint_preferred_name` columns on sp_members, admin member edit joint section with toggle, join form shows joint fields when tier allows it, My Account joint member management section, directory shows "John & Jane Smith" for joint memberships, form handler for My Account joint updates
@@ -507,7 +507,7 @@ See `Docs/KNOWN-ISSUES.md` for the full list (43 items tracked, 41 fixed, 2 defe
 
 ## Store — Remaining
 
-- [ ] Real marketing descriptions (currently showing physical specs from library import)
+- [x] Real marketing descriptions: `store_description` column on library_items, separate from physical description, store frontend prefers it with fallback (v1.0.2)
 - [x] Shopping cart / checkout flow: Full cart system — cart stored as user_meta (JSON), AJAX add/update/remove/get endpoints, store page "Add to Cart" buttons wired with JS (logged-in only, logged-out see "please log in"), cart badge in header (SVG cart icon with red count badge next to user menu, updates live via AJAX). Cart page (`sp-cart` template, auto-created on example.org): responsive table with cover images, +/- quantity buttons, remove links, real-time AJAX updates without page reload, "Continue Shopping" link, total display, "Proceed to Checkout" button. Mobile: stacked card layout.
 - [x] Order tracking: `sp_orders` + `sp_order_items` tables (41 total DB tables now). Admin "Store Orders" page with status filter tabs (all/paid/pending/shipped/completed/refunded), colored status badges, item count, customer info, date. Order detail page: 2-column layout (order info + customer), items table, status update form with admin note. Added to Finances flyout menu.
 - [x] Payment integration: Stripe Checkout for store — reuses existing Stripe REST API pattern (no SDK). Checkout AJAX creates order (status=pending), builds multi-line-item Stripe session, redirects to Stripe. Return handler verifies session, updates order to "paid", clears cart, sends confirmation email (HTML receipt with item table + total). Supports multiple items per checkout. Audit logging for order create + payment.
@@ -577,7 +577,7 @@ Existing wizard (4 steps): Org Info → Membership → Feature Selection → App
 
 - [x] AJAX progress bars for long-running operations: batched imports with progress percentage, bulk delete with progress overlay — implemented via `sp_process_import_batch()` and AJAX progress handlers
 - [x] Alphabetize pages by name in the admin page list (v0.50d — default sort changed from menu_order to post_title)
-- [ ] Menu organizer: allow grouping menu items into folders/submenus for sites with many pages
+- [x] Menu organizer / Page Groups: drag-and-drop page organization, auto-nav integration, AJAX CRUD (v1.0.2)
 - [x] Media folders: organize Media Library items into folders for easier management — renamed to "Photos & Videos", nested folders (5 levels), YouTube video support, AJAX folder CRUD, breadcrumb navigation
 - [x] Child theme logo fallback: header.php checks for img/logo.svg or img/logo.png in child theme when no admin logo is set
 
@@ -686,16 +686,18 @@ Single-file `install.php` that takes Harold from empty hosting to running Societ
   - [x] Supports election, referendum, and survey types; single-choice, multi-choice, and yes/no questions
   - [x] 6 audit log events (ballot CRUD, open/close, vote cast — secrecy preserved)
 - [x] Email notification when a ballot opens (v0.50d — sp_send_ballot_open_emails() sends to eligible members respecting communication prefs)
-- [ ] Absentee / proxy voting support (optional, society-configurable)
+- [x] Absentee / proxy voting support: allow_absentee, allow_proxy, proxy_limit columns, proxy vote AJAX endpoint (v1.0.2)
 
 ## Mobile — Not Started
 
-- [ ] Progressive Web App (PWA) layer
-  - Web app manifest (name, icons, theme color, display: standalone)
-  - Service worker for offline caching (directory, events, library)
-  - "Add to Home Screen" prompt for mobile visitors
-  - Push notifications for event reminders, blast emails, renewal notices
-  - WHY: Native apps (iOS + Android) would be a second full-time project with app store overhead. A PWA gives app-like experience from the browser with zero friction. Can wrap in Capacitor later if store presence is ever needed.
+- [x] Progressive Web App (PWA) layer (v1.0.2)
+  - [x] Web app manifest REST endpoint (name, icons, theme color, display: standalone)
+  - [x] Service worker with 3 cache strategies
+  - [x] Offline message setting (pwa_offline_message)
+  - [x] Off by default (pwa_enabled toggle on Website settings)
+  - [ ] Push notifications for event reminders, blast emails, renewal notices (scaffolding exists, needs subscription management UI + VAPID keys)
+  - [ ] Icon generation for various device sizes
+  - [ ] "Add to Home Screen" install prompt UX
 
 ## AI — Not Started
 
@@ -717,7 +719,7 @@ Single-file `install.php` that takes Harold from empty hosting to running Societ
   - [x] Role sync: active → bbp_participant, expired/cancelled/pending → bbp_spectator (on save + daily cron reconciliation)
   - [x] Nav integration: auto-injects "Forums" link for logged-in members, highlights on bbPress pages
   - [x] Admin flyout: bbPress admin page added to Communications group
-- [ ] Mailchimp: sync member list to Mailchimp audience (white paper claims this)
+- [x] Mailchimp: full settings page (API key encrypted, audience ID, auto-sync toggle, connection test, manual Sync Now AJAX endpoint) (v1.0.2)
 - [ ] Zoom: event integration for online programming (white paper mentions this)
 Note: PayPal and Stripe are under Payment Processing above.
 

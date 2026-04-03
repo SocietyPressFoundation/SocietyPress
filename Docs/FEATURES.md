@@ -1,7 +1,7 @@
 # SocietyPress — Feature Inventory
 
-Complete feature list based on full codebase audit, March 8, 2026 — updated March 18, 2026.
-Version 0.38d — ~52,500 lines — 43 database tables.
+Complete feature list based on full codebase audit, March 8, 2026 — updated April 3, 2026.
+Version 1.0.2 — ~77,000 lines — 50 database tables.
 
 ---
 
@@ -87,10 +87,12 @@ Version 0.38d — ~52,500 lines — 43 database tables.
 - Category CRUD with sort order
 
 ### 6. Committees & Leadership
-**Status: Built (backend complete, admin UI needs dedicated menu)** | Tables: 4
+**Status: Built** | Tables: 4 | Admin pages: 4
 
 - Committee definitions with descriptions and status
+- Dedicated Committees admin page with member roster per committee
 - Committee member assignments with roles (member, chair, co-chair)
+- Committee-scoped access: chairs automatically get admin access to their area
 - Chairperson frontend management capabilities
 - Named leadership positions (President, VP, Secretary, etc.)
 - Term tracking with date ranges
@@ -147,6 +149,7 @@ Version 0.38d — ~52,500 lines — 43 database tables.
 
 - Public storefront with category sidebar and product card grid
 - Products sourced from library catalog (configurable `store_acq_code` setting, `item_value > 0`)
+- Store-specific marketing descriptions (separate from library physical descriptions, with fallback)
 - 8 auto-categorized store categories
 - Quantity selector per product
 - Shopping cart: user_meta storage, AJAX CRUD, responsive cart page with quantity controls, header badge with live count
@@ -166,13 +169,14 @@ Version 0.38d — ~52,500 lines — 43 database tables.
 - Access-controlled download via AJAX handler (raw upload URLs never exposed)
 
 ### 13. Page Builder
-**Status: Built** | 19 widget types
+**Status: Built** | 21 widget types
 
 - Admin meta box on page editor with widget stack
 - Drag-reorder widget ordering
 - Per-widget settings via modal/inline form
 - Frontend rendering engine
-- Widget types: text_block, hero_slider, event_list, event_calendar, member_directory, library_catalog, contact_form, newsletter_archive, resource_links, gallery, records_search, donations, volunteer_opportunities, store, custom_html, spacer, divider, heading, image
+- Universal `section_heading` field on all widgets
+- Widget types: text_block, hero_slider, event_list, event_calendar, member_directory, library_catalog, contact_form, newsletter_archive, resource_links, gallery, records_search, donations, volunteer_opportunities, store, custom_html, spacer, divider, heading, image, feature_cards, map_embed
 
 ### 14. Design System
 **Status: Built**
@@ -249,7 +253,7 @@ Version 0.38d — ~52,500 lines — 43 database tables.
 - Per-module result sections with appropriate access controls
 
 ### Feature Toggles
-- 12-module toggle system: Events, Library, Newsletters, Resources, Governance, Store, Records, Donations, Blast Email, Gallery, Research Help, Documents
+- 16-module toggle system: Events, Library, Newsletters, Resources, Governance, Store, Records, Donations, Blast Email, Photos & Videos, Research Help, Documents, Voting, Forums (bbPress), Mailchimp, Zoom
 - Setup wizard step for initial selection + Settings → Modules page for ongoing changes
 - Disabled modules: admin menus hidden, page templates removed from dropdown, frontend pages show "Feature Not Available"
 - Tables stay intact when disabled — toggling off is never destructive
@@ -282,9 +286,9 @@ Version 0.38d — ~52,500 lines — 43 database tables.
 
 ### Internationalization
 - Text domain: `societypress`
-- Comprehensive i18n pass completed: ~350+ strings wrapped across all admin/frontend surfaces
+- Comprehensive i18n passes (v0.38d, v0.50d): ~550+ strings wrapped across all admin/frontend surfaces
 - All 8 settings tabs, admin notices, edit forms, page builder fields, design settings, setup wizard, import notices — all wrapped
-- Remaining: ~200 edge-case strings in a 52K-line file
+- Estimated ~95% coverage; remaining gaps in edge-case strings
 
 ---
 
@@ -293,18 +297,20 @@ Version 0.38d — ~52,500 lines — 43 database tables.
 | Module | Status | Tables | Admin Pages | AJAX | Shortcodes | Builder Widget |
 |--------|--------|--------|-------------|------|------------|----------------|
 | Members | Built | 6 | ~8 | 4 | — | member_directory |
-| Events | Built | 6 | ~6 | 10 | — | event_list, event_calendar |
+| Events | Built | 7 | ~8 | 10 | — | event_list, event_calendar |
 | Library | Built | 2 | ~7 | 3 | — | library_catalog |
 | Newsletters | Built | 1 | 2 | 2 | — | newsletter_archive |
 | Resources | Built | 2 | 3 | — | — | resource_links |
-| Committees | Built* | 4 | ~3 | — | — | — |
+| Committees | Built | 4 | 4 | — | — | — |
 | Volunteers | Built | 4 | 4 | 2 | 1 | volunteer_opportunities |
 | Donations | Built | 2 | 4 | — | — | donations |
 | Blast Email | Built | 2 | 3 | 1 | — | — |
-| Records | Built† | 4 | 5 | — | — | records_search |
+| Records | Built | 4 | 5 | — | — | records_search |
 | Store | Built | 2 | 2 | 6 | — | store |
 | Documents | Built | 2 | 3 | 1 | — | — |
-| Page Builder | Built | 0 | — | — | — | (19 types) |
+| Photos & Videos | Built | 2 | 3 | 4 | — | gallery |
+| Voting & Elections | Built | 4 | 3 | 2 | — | — |
+| Page Builder | Built | 0 | — | — | — | (21 types) |
 | Design System | Built | 0 | 1 | — | — | — |
 | Email System | Built | 1 | 2 | 1 | — | — |
 | Join Form | Built | 0 | 0 | — | 1 | — |
@@ -313,10 +319,6 @@ Version 0.38d — ~52,500 lines — 43 database tables.
 | GDPR | Built | 0 | 0 | — | — | — |
 | Roles & Perms | Built | 0 | 1 | — | — | — |
 | Update System | Built | 0 | 0 | 3 | — | — |
-
-\* Backend complete, needs dedicated admin menu entry
-† Needs real data imported
-
-### Planned Modules
-- **Voting & Elections** — ballot/election system for officer elections, secret ballot, configurable voting window
-- **PWA** — Progressive Web App layer (manifest, service worker, offline caching, push notifications)
+| Backups | Built | 0 | 1 | 1 | — | — |
+| Mailchimp | Built | 0 | 1 | 1 | — | — |
+| Forums (bbPress) | Built | 0 | 0 | — | — | — |

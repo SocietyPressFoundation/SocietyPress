@@ -36,7 +36,7 @@ if ( file_exists( __DIR__ . '/wp-config.php' ) && file_exists( __DIR__ . '/wp-in
         'WordPress Is Already Installed',
         'A WordPress installation already exists in this directory. If you need to reinstall, '
         . 'remove the existing files first. If SocietyPress is already running, you can safely '
-        . 'delete this install.php file.'
+        . 'delete this sp-installer.php file.'
     );
 }
 
@@ -778,7 +778,7 @@ MUPLUGIN;
         . "\n"
         . '// Self-destruct — remove bridge script and main installer' . "\n"
         . '@unlink( __FILE__ );' . "\n"
-        . '$installer = dirname( __FILE__ ) . "/install.php";' . "\n"
+        . '$installer = dirname( __FILE__ ) . "/sp-installer.php";' . "\n"
         . 'if ( file_exists( $installer ) ) { @unlink( $installer ); }' . "\n"
         . "\n"
         . '// Redirect to login — the mu-plugin will activate SocietyPress on first admin load' . "\n"
@@ -810,7 +810,7 @@ MUPLUGIN;
 
     // Try 1: Bundle ZIP in the same directory as this installer
     // WHY: The most reliable approach. If the admin uploaded societypress-bundle.zip
-    // alongside install.php, we just use it. No HTTP, no path guessing.
+    // alongside sp-installer.php, we just use it. No HTTP, no path guessing.
     $local_bundle = $install_dir . '/societypress-bundle.zip';
     if ( file_exists( $local_bundle ) ) {
         $sp_downloaded = copy( $local_bundle, $sp_zip_path );

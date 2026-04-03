@@ -1,4 +1,61 @@
 # SocietyPress — WORKLOG
+## v1.0.2 — 2026-04-03
+
+### Session: Multi-Feature Build + Tier 1 Cleanup
+
+**Recovered from crashed session — 7 parallel agent features landed clean (1 partial):**
+
+**Page Groups:**
+- Drag-and-drop page organization with AJAX CRUD (create, update, delete, reorder)
+- Auto-nav integration: page groups automatically organize the frontend nav menu
+- `auto_group_nav` setting (on by default)
+
+**Committee-Scoped Access:**
+- `committee_access_area` column on volunteer_roles
+- `sp_get_user_committee_access_areas()` queries active committee chairs
+- `committee_auto_permissions` setting (on by default)
+- Committee chairs automatically get admin access to their area
+
+**Surname Variants Table:**
+- `sp_surname_variants` table: canonical↔variant explicit mappings
+- Bridges the gap between exact-match and phonetic-match
+
+**PWA Foundation:**
+- Manifest REST endpoint, service worker with 3 cache strategies
+- Push notification scaffolding, offline message setting
+- Off by default (`pwa_enabled` = 0)
+
+**Ballot Enhancements:**
+- Absentee voting (`allow_absentee` column), proxy voting (`allow_proxy`, `proxy_limit`)
+- `is_absentee` and `proxy_voter_id` columns on ballot_votes
+- Proxy vote AJAX endpoint
+
+**PayPal Store Checkout + Webhooks:**
+- PayPal Orders API checkout flow for store
+- PayPal webhook endpoint with signature verification
+- PayPal refund via Captures API
+
+**Event Detail Improvements:**
+- Multiple frontend rendering improvements across 7 hunks
+
+**Mailchimp Integration (completed from partial):**
+- Settings infrastructure existed; built full settings page (`sp_render_settings_mailchimp_page`)
+- API key encrypted at rest, audience ID, auto-sync toggle
+- Live connection test (pings Mailchimp /ping endpoint)
+- Manual "Sync Now" AJAX handler: batch-pushes all active members via /lists/{id} endpoint
+
+**Tier 1 Cleanup — 7 items:**
+
+1. Version bumped to 1.0.2
+2. FEATURES.md updated: 77K lines, 50 tables, 16 modules, 21 widgets, full summary table refresh
+3. KNOWN-ISSUES.md updated: all 43 items now marked fixed (jQuery v0.49d, import paths v0.41d)
+4. .pot translation template regenerated
+5. Store marketing descriptions: `store_description` column on library_items, edit form field, store frontend prefers it over physical description
+6. Committees dedicated admin menu: `sp-committees` page with roster cards, capability map, flyout integration
+7. Mailchimp settings page: see above
+
+---
+
 ## v1.0.1 — 2026-04-02
 
 ### Session: Photos & Videos Module, Child Theme Logo Fallback

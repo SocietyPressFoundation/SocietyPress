@@ -1,7 +1,7 @@
 # SocietyPress — Known Issues & Technical Debt
 
 Originally compiled from full codebase audit, March 8, 2026 (v0.30d).
-Updated March 28, 2026 — all 43 items verified resolved (41 fixed, 2 deferred).
+Updated April 3, 2026 — all 43 items resolved and fixed.
 
 ---
 
@@ -122,15 +122,15 @@ Comprehensive i18n pass completed March 18, 2026. ~500+ strings wrapped across t
 
 ---
 
-## Still Deferred
+## Previously Deferred — Now Fixed
 
-### 37. jQuery Usage Violations
+### 37. jQuery Usage Violations — FIXED (v0.49d)
 - **Location:** Contact form widget frontend, album edit page, page builder admin
-- **Status:** Deferred — substantial rewrite, low user impact since jQuery is always available in WP admin.
+- **Fix:** All 3 jQuery violations rewritten to vanilla JS. Only wpColorPicker init remains (unavoidable WP dependency).
 
-### 38. Server Path Exposure in Import Flows
-- **Location:** 5 import flows expose server temp file paths in hidden form fields
-- **Status:** Deferred — admin-only pages, nonce-protected, low risk. Requires refactoring all import flows to use transient-based temp file tracking.
+### 38. Server Path Exposure in Import Flows — FIXED (v0.41d)
+- **Location:** 5 import flows exposed server temp file paths in hidden form fields
+- **Fix:** Hidden fields now store basename only, readback validates with realpath + directory containment check.
 
 ---
 

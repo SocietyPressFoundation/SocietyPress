@@ -63,6 +63,14 @@
 12. Verified: import path exposure fix (all 5 flows confirmed secure — basename + realpath + containment)
 13. Verified: absentee/proxy voting UI already fully implemented (edit form, save handler, frontend, AJAX)
 
+**Tier 3 (no-input-needed items):**
+
+14. PayPal Join Form: payment method routing for paid tiers, Stripe + PayPal buttons with tier price detection JS, PayPal/Stripe return handlers, member payment recording, user meta for order ID verification
+15. PayPal Donations Form: frontend sp-donate page template with campaign cards + progress bars, suggested amounts ($25/$50/$100/$250/Other), anonymous donations, AJAX handler with nopriv for non-members, rate limiting (5/hr/IP), Stripe + PayPal flows, page builder donations_form widget
+16. Zoom Settings: sp_render_settings_zoom_page() with API key/secret (encrypted), account email, connection test against Zoom /v2/users/me, JWT helper for API auth, module now wired to settings page
+17. Push Notifications: VAPID key auto-generation (P-256 EC), sp_push_subscriptions DB table, REST subscribe endpoint, service worker push/notificationclick handlers, frontend subscription JS, sp_send_push_notification() helper with VAPID JWT auth, push_enabled toggle on Website settings, subscriber count display
+18. Verified: PayPal event registration already fully implemented, PWA already fully implemented, feedback form already exists on marketing site
+
 ---
 
 ## v1.0.1 — 2026-04-02

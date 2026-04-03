@@ -516,7 +516,7 @@ See `Docs/KNOWN-ISSUES.md` for the full list (43 items tracked, 41 fixed, 2 defe
 ## Payment Processing — Remaining
 
 - [x] Stripe: card payments via Checkout Sessions — join form, event registration, and store all use `wp_remote_post()` to Stripe REST API (no SDK). Test/live mode toggle via settings. Store checkout sends multi-line-item sessions.
-- [ ] PayPal integration: Balance, Venmo, credit/debit, pay-later (SDK)
+- [x] PayPal integration: Join form (PayPal + Stripe buttons for paid tiers), event registration (already done), store checkout (already done), donations form (new sp-donate page template + page builder widget) (v1.0.2)
 - [x] Sandbox + live modes: `stripe_test_mode` setting switches between test/live keys
 - [x] Payment history: `sp_orders` table tracks store purchases with Stripe session ID + payment intent. Event registrations track via `sp_event_registrations.payment_status`.
 - [x] Payment status tracking: orders have full lifecycle (pending → paid → shipped → completed → refunded), event registrations have payment_status + payment_date
@@ -696,9 +696,9 @@ Single-file `install.php` that takes Harold from empty hosting to running Societ
   - [x] Service worker with 3 cache strategies
   - [x] Offline message setting (pwa_offline_message)
   - [x] Off by default (pwa_enabled toggle on Website settings)
-  - [ ] Push notifications for event reminders, blast emails, renewal notices (scaffolding exists, needs subscription management UI + VAPID keys)
+  - [x] Push notifications: VAPID key auto-generation, sp_push_subscriptions table, REST subscribe endpoint, service worker push handler, sp_send_push_notification() helper, push_enabled toggle (v1.0.2)
   - [ ] Icon generation for various device sizes
-  - [ ] "Add to Home Screen" install prompt UX
+  - [x] "Add to Home Screen" install prompt UX (already implemented with install banner)
 
 ## AI — Not Started
 
@@ -721,7 +721,7 @@ Single-file `install.php` that takes Harold from empty hosting to running Societ
   - [x] Nav integration: auto-injects "Forums" link for logged-in members, highlights on bbPress pages
   - [x] Admin flyout: bbPress admin page added to Communications group
 - [x] Mailchimp: full settings page (API key encrypted, audience ID, auto-sync toggle, connection test, manual Sync Now AJAX endpoint) (v1.0.2)
-- [ ] Zoom: event integration for online programming (white paper mentions this)
+- [x] Zoom: settings page with API key/secret (encrypted), connection test, JWT auth helper. Events already have is_virtual + virtual_url fields. (v1.0.2)
 Note: PayPal and Stripe are under Payment Processing above.
 
 ## Not Doing (spec divergences)

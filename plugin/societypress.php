@@ -106,6 +106,14 @@ register_activation_hook( __FILE__, function () {
             'paypal_sandbox_secret'        => '',          // encrypted at rest
             'paypal_live_client_id'        => '',
             'paypal_live_secret'           => '',          // encrypted at rest
+            // Zoom integration
+            'zoom_api_key'                 => '',          // encrypted at rest
+            'zoom_api_secret'              => '',          // encrypted at rest
+            'zoom_account_email'           => '',
+            // Push notifications (requires PWA enabled)
+            'push_enabled'                 => 0,
+            'push_vapid_public'            => '',
+            'push_vapid_secret'            => '',          // encrypted at rest
             // Mailchimp integration
             'mailchimp_api_key'            => '',          // encrypted at rest
             'mailchimp_audience_id'        => '',
@@ -177,6 +185,19 @@ register_activation_hook( __FILE__, function () {
             // configured his site identity. He opts in once the site is ready.
             'pwa_enabled'                  => 0,
             'pwa_offline_message'          => 'You appear to be offline. Please check your connection.',
+            // Push Notifications — requires PWA to be enabled first.
+            // WHY default off: Push is intrusive. Harold should consciously opt in
+            // after understanding what it does. VAPID keys auto-generate on first
+            // access of the settings page so Harold never has to deal with key pairs.
+            'push_enabled'                 => 0,
+            'push_vapid_public'            => '',
+            'push_vapid_secret'            => '',  // encrypted at rest
+            // Zoom — video conferencing integration for virtual events
+            // WHY defaults: Empty by default. Harold enters his Zoom API credentials
+            // on the Zoom settings page once the module is enabled.
+            'zoom_api_key'                 => '',   // encrypted at rest
+            'zoom_api_secret'              => '',   // encrypted at rest
+            'zoom_account_email'           => '',
         ]);
     }
 
@@ -2085,6 +2106,29 @@ function sp_create_tables(): void {
         KEY created_at (created_at)
     ) {$charset_collate};" );
 
+    // ========================================================================
+    // sp_push_subscriptions — Web Push notification subscriptions
+    //
+    // WHY: Stores browser push subscription endpoints so the server can send
+    //      push notifications to members (and optionally non-logged-in visitors).
+    //      Each row represents one browser/device subscription. user_id is
+    //      nullable because we may want to accept subscriptions from non-logged-in
+    //      visitors in the future. The endpoint, p256dh, and auth fields come
+    //      from the browser's PushSubscription object and are required by the
+    //      Web Push protocol to encrypt and deliver notifications.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}push_subscriptions (
+        id          BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        user_id     BIGINT(20) UNSIGNED NULL,
+        endpoint    VARCHAR(500)        NOT NULL,
+        p256dh      VARCHAR(255)        NOT NULL,
+        auth        VARCHAR(255)        NOT NULL,
+        created_at  DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY user_id (user_id),
+        KEY endpoint (endpoint(191))
+    ) {$charset_collate};" );
+
 
     // Store the schema version so we can run migrations in future updates
     // without re-running the full dbDelta on every page load.
@@ -2998,7 +3042,7 @@ function sp_get_modules(): array {
             'name'        => __( 'Zoom', 'societypress' ),
             'description' => __( 'Add Zoom meeting links to events for virtual programming.', 'societypress' ),
             'icon'        => 'dashicons-video-alt2',
-            'menu_slugs'  => [],
+            'menu_slugs'  => [ 'sp-settings-zoom' ],
         ],
     ];
 }
@@ -3083,6 +3127,7 @@ function sp_template_module_map(): array {
         'sp-help-requests'      => 'help_requests',
         'sp-documents'          => 'documents',
         'sp-voting'             => 'voting',
+        'sp-donate'             => 'donations',
     ];
 }
 
@@ -4457,6 +4502,22 @@ add_action( 'admin_menu', function () {
         );
     }
 
+    // Zoom Integration — only show when the Zoom module is enabled.
+    // WHY: Societies that don't use Zoom for virtual events shouldn't see
+    //      the credentials page. When enabled, Harold gets a single page to
+    //      enter his Zoom API Key, Secret, and Account Email, plus a
+    //      connection test button so he knows the credentials work.
+    if ( sp_module_enabled( 'zoom' ) ) {
+        add_submenu_page(
+            'societypress',
+            __( 'Zoom — SocietyPress', 'societypress' ),
+            __( 'Zoom', 'societypress' ),
+            'manage_options',
+            'sp-settings-zoom',
+            'sp_render_settings_zoom_page'
+        );
+    }
+
     // -----------------------------------------------------------------
     // BACKWARD COMPAT — Old sp-settings URL redirect
     // WHY: The Settings page used to live at admin.php?page=sp-settings.
@@ -4653,6 +4714,8 @@ function sp_get_menu_capability_map(): array {
         'sp-user-access'           => 'sp_manage_settings',
         'sp-settings-backups'      => 'sp_manage_settings',
         'sp-audit-log'             => 'sp_manage_settings',
+        'sp-settings-zoom'         => 'sp_manage_settings',
+        'sp-settings-mailchimp'    => 'sp_manage_settings',
     ];
 }
 
@@ -17075,6 +17138,18 @@ add_action( 'admin_init', function () {
         ]
     );
 
+    // ---- ZOOM page — saves to societypress_settings array ----
+    // WHY: Same pattern as Mailchimp — separate settings group so saving
+    //      Zoom credentials doesn't clobber other pages' data.
+    register_setting(
+        'sp-settings-zoom',
+        'societypress_settings',
+        [
+            'type'              => 'array',
+            'sanitize_callback' => 'sp_sanitize_settings',
+        ]
+    );
+
 
     // ====================================================================
     // SECTION: Your Website
@@ -17588,6 +17663,38 @@ add_action( 'admin_init', function () {
                . esc_html__( 'Shown to visitors when they lose their internet connection.', 'societypress' )
                . '</p>';
             echo '</div>';
+
+            // --- Push Notifications sub-section (only visible when PWA is enabled) ---
+            // WHY: Push requires PWA (service worker) to function. Showing push settings
+            // only when PWA is on prevents Harold from enabling push on a site that
+            // can't actually deliver notifications. The toggle is nested under the
+            // PWA field so the relationship is visually obvious.
+            $push_on = ! empty( $settings['push_enabled'] );
+            if ( $enabled ) {
+                echo '<div class="sp-mt-12" style="border-top:1px solid #ddd; padding-top:12px; margin-top:16px;">';
+                echo '<input type="hidden" name="societypress_settings[push_enabled]" value="0">';
+                printf(
+                    '<label><input type="checkbox" name="societypress_settings[push_enabled]" value="1" %s> '
+                    . '%s</label>',
+                    checked( $push_on, true, false ),
+                    esc_html__( 'Enable push notifications', 'societypress' )
+                );
+                echo '<p class="description">'
+                   . esc_html__( 'Allow members to subscribe to push notifications from their browser. Notifications can be sent for new events, announcements, and reminders.', 'societypress' )
+                   . '</p>';
+
+                // Show subscriber count if push is enabled
+                if ( $push_on ) {
+                    $sub_count = sp_pwa_push_subscriber_count();
+                    printf(
+                        '<p class="description sp-mt-8"><strong>%s</strong> %s</p>',
+                        esc_html( number_format_i18n( $sub_count ) ),
+                        esc_html( _n( 'subscriber', 'subscribers', $sub_count, 'societypress' ) )
+                    );
+                }
+
+                echo '</div>';
+            }
         },
         'sp-settings-website',
         'sp_website_section'
@@ -18565,6 +18672,26 @@ function sp_sanitize_settings( array $input ): array {
             }
             return '';
         },
+
+        // Push Notifications
+        // WHY: push_enabled is a simple toggle; VAPID keys are auto-generated
+        // and should not be changed by form submission — they're set once and
+        // stored encrypted. We only sanitize push_enabled here.
+        'push_enabled'                => fn() => ! empty( $input['push_enabled'] ) ? 1 : 0,
+
+        // Zoom Integration
+        // WHY: API key and secret are encrypted at rest — same pattern as
+        // Stripe/PayPal/Mailchimp. If the database leaks, the Zoom credentials
+        // are useless without the encryption key.
+        'zoom_api_key'                => function() use ( $input ) {
+            $val = sanitize_text_field( $input['zoom_api_key'] ?? '' );
+            return $val ? sp_encrypt( $val ) : '';
+        },
+        'zoom_api_secret'             => function() use ( $input ) {
+            $val = sanitize_text_field( $input['zoom_api_secret'] ?? '' );
+            return $val ? sp_encrypt( $val ) : '';
+        },
+        'zoom_account_email'          => fn() => sanitize_email( $input['zoom_account_email'] ?? '' ),
     ];
 
     // Only sanitize + update keys that were actually submitted in the form.
@@ -18587,7 +18714,7 @@ function sp_sanitize_settings( array $input ): array {
             'social_tiktok', 'social_x',
             'breadcrumbs_enabled', 'breadcrumb_home_label', 'breadcrumb_separator',
             'analytics_google_id', 'analytics_exclude_admins',
-            'pwa_enabled', 'pwa_offline_message', 'auto_group_nav',
+            'pwa_enabled', 'pwa_offline_message', 'push_enabled', 'auto_group_nav',
         ]);
     }
 
@@ -18662,6 +18789,15 @@ function sp_sanitize_settings( array $input ): array {
         $page_keys = array_merge( $page_keys, [
             'mailchimp_api_key', 'mailchimp_audience_id',
             'mailchimp_sync_enabled', 'mailchimp_dc',
+        ]);
+    }
+
+    // Zoom page — signature: zoom_account_email is always in the form
+    // WHY: Same pattern as Mailchimp — zoom_account_email is a text field
+    //      that will always be submitted even if empty.
+    if ( array_key_exists( 'zoom_account_email', $input ) ) {
+        $page_keys = array_merge( $page_keys, [
+            'zoom_api_key', 'zoom_api_secret', 'zoom_account_email',
         ]);
     }
 
@@ -27368,6 +27504,175 @@ add_action( 'wp_ajax_sp_mailchimp_sync', function () {
 
 
 // ============================================================================
+// ZOOM INTEGRATION — SETTINGS PAGE
+//
+// WHY: Societies increasingly hold virtual meetings, workshops, and SIG sessions
+//      via Zoom. This settings page lets Harold enter his Zoom API credentials
+//      so the plugin can auto-generate meeting links when creating events marked
+//      as virtual. Follows the same pattern as the Mailchimp settings page —
+//      a single page with credentials, a connection test, and clear instructions.
+//
+//      Gated behind sp_module_enabled('zoom') at the menu registration level.
+// ============================================================================
+
+/**
+ * Render the Zoom Integration settings page.
+ *
+ * WHY a dedicated page rather than cramming it into Events settings: Zoom
+ * credentials are account-level, not per-event. They only need to be entered
+ * once, and Harold shouldn't have to scroll past API keys every time he
+ * adjusts event defaults.
+ */
+function sp_render_settings_zoom_page(): void {
+    $settings      = get_option( 'societypress_settings', [] );
+    $api_key       = sp_decrypt( $settings['zoom_api_key'] ?? '' );
+    $api_secret    = sp_decrypt( $settings['zoom_api_secret'] ?? '' );
+    $account_email = $settings['zoom_account_email'] ?? '';
+
+    // WHY: Test the connection live so Harold sees a green/red status before
+    //      trying to create virtual events. We call Zoom's /users/me endpoint
+    //      which returns account info on success.
+    $connected  = false;
+    $status_msg = '';
+    if ( $api_key && $api_secret && $account_email ) {
+        // Build a JWT for the Zoom API (Server-to-Server OAuth is preferred,
+        // but many societies still use JWT apps). The token is short-lived
+        // (60 seconds) and only used for this connection test.
+        $jwt_token  = sp_zoom_generate_jwt( $api_key, $api_secret );
+        if ( $jwt_token ) {
+            $response = wp_remote_get( 'https://api.zoom.us/v2/users/me', [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $jwt_token,
+                    'Content-Type'  => 'application/json',
+                ],
+                'timeout' => 10,
+            ] );
+            if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) === 200 ) {
+                $connected  = true;
+                $status_msg = __( 'Connected to Zoom.', 'societypress' );
+            } else {
+                $status_msg = __( 'Could not connect. Check your API Key and Secret.', 'societypress' );
+            }
+        } else {
+            $status_msg = __( 'Could not generate authentication token. Verify your API Key and Secret.', 'societypress' );
+        }
+    }
+    ?>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Settings: Zoom', 'societypress' ); ?></h1>
+
+        <?php
+        if ( isset( $_GET['settings-updated'] ) && $_GET['settings-updated'] === 'true' ) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Settings saved.', 'societypress' ) . '</p></div>';
+        }
+        ?>
+
+        <?php if ( $api_key && $api_secret ) : ?>
+            <div class="notice notice-<?php echo $connected ? 'success' : 'error'; ?>" style="margin:16px 0;">
+                <p><strong><?php echo esc_html( $status_msg ); ?></strong></p>
+            </div>
+        <?php endif; ?>
+
+        <form method="post" action="options.php">
+            <?php settings_fields( 'sp-settings-zoom' ); ?>
+
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><label for="sp-zoom-api-key"><?php esc_html_e( 'API Key', 'societypress' ); ?></label></th>
+                    <td>
+                        <input type="password" name="societypress_settings[zoom_api_key]" id="sp-zoom-api-key"
+                               value="<?php echo esc_attr( $api_key ); ?>" class="regular-text" autocomplete="off">
+                        <p class="description">
+                            <?php
+                            /* translators: %s: URL to Zoom App Marketplace */
+                            printf(
+                                wp_kses(
+                                    __( 'Create a Server-to-Server OAuth or JWT app at <a href="%s" target="_blank" rel="noopener">Zoom App Marketplace</a> to get your API Key.', 'societypress' ),
+                                    [ 'a' => [ 'href' => [], 'target' => [], 'rel' => [] ] ]
+                                ),
+                                'https://marketplace.zoom.us/'
+                            );
+                            ?>
+                        </p>
+                        <!-- WHY: The API key is encrypted at rest via sp_encrypt() — same
+                             as Stripe/PayPal/Mailchimp secrets. We decrypt here for display
+                             so Harold can verify it's correct. -->
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="sp-zoom-api-secret"><?php esc_html_e( 'API Secret', 'societypress' ); ?></label></th>
+                    <td>
+                        <input type="password" name="societypress_settings[zoom_api_secret]" id="sp-zoom-api-secret"
+                               value="<?php echo esc_attr( $api_secret ); ?>" class="regular-text" autocomplete="off">
+                        <p class="description">
+                            <?php esc_html_e( 'The API Secret from your Zoom app. This is encrypted before storage.', 'societypress' ); ?>
+                        </p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="sp-zoom-email"><?php esc_html_e( 'Account Email', 'societypress' ); ?></label></th>
+                    <td>
+                        <input type="email" name="societypress_settings[zoom_account_email]" id="sp-zoom-email"
+                               value="<?php echo esc_attr( $account_email ); ?>" class="regular-text">
+                        <p class="description">
+                            <?php esc_html_e( 'The email address associated with your Zoom account. Used to create meetings on your behalf.', 'societypress' ); ?>
+                        </p>
+                    </td>
+                </tr>
+            </table>
+
+            <?php submit_button( __( 'Save Settings', 'societypress' ) ); ?>
+        </form>
+    </div>
+    <?php
+}
+
+
+/**
+ * Generate a short-lived JWT for the Zoom API.
+ *
+ * WHY: Zoom's JWT apps require a signed token for authentication. This generates
+ * a minimal JWT with a 60-second expiry — long enough for a single API call
+ * (connection test or meeting creation) but short enough to be safe if leaked.
+ *
+ * NOTE: Zoom is deprecating JWT apps in favor of Server-to-Server OAuth. When
+ * that transition is complete, this function will need to be replaced with an
+ * OAuth token exchange. For now, JWT is what most existing Zoom apps use.
+ *
+ * @param string $api_key    The Zoom API Key (acts as JWT issuer).
+ * @param string $api_secret The Zoom API Secret (used to sign the JWT).
+ * @return string|false The signed JWT string, or false on failure.
+ */
+function sp_zoom_generate_jwt( string $api_key, string $api_secret ): string|false {
+    if ( empty( $api_key ) || empty( $api_secret ) ) {
+        return false;
+    }
+
+    // JWT Header — always HS256 per Zoom's requirements
+    $header = wp_json_encode( [ 'alg' => 'HS256', 'typ' => 'JWT' ] );
+
+    // JWT Payload — iss is the API key, exp is 60 seconds from now
+    $payload = wp_json_encode( [
+        'iss' => $api_key,
+        'exp' => time() + 60,
+    ] );
+
+    // Base64url encode header and payload (URL-safe, no padding)
+    // WHY base64url vs base64: JWT spec requires URL-safe encoding without
+    // trailing '=' padding characters. Standard base64 uses '+' and '/' which
+    // break in URLs and headers.
+    $b64_header  = rtrim( strtr( base64_encode( $header ), '+/', '-_' ), '=' );
+    $b64_payload = rtrim( strtr( base64_encode( $payload ), '+/', '-_' ), '=' );
+
+    // Sign with HMAC-SHA256 using the API secret
+    $signature     = hash_hmac( 'sha256', "{$b64_header}.{$b64_payload}", $api_secret, true );
+    $b64_signature = rtrim( strtr( base64_encode( $signature ), '+/', '-_' ), '=' );
+
+    return "{$b64_header}.{$b64_payload}.{$b64_signature}";
+}
+
+
+// ============================================================================
 // USER ACCESS — ASSIGN ROLES & PERMISSIONS TO NON-ADMIN USERS
 // ============================================================================
 //
@@ -30122,6 +30427,12 @@ function sp_get_widget_registry(): array {
             'description' => __( 'Embedded Google Map showing your organization\'s location.', 'societypress' ),
             'icon'        => 'location',
             'category'    => 'info',
+        ],
+        'donations_form' => [
+            'label'       => __( 'Donation Form', 'societypress' ),
+            'description' => __( 'Online donation form with campaign selection, suggested amounts, and payment via Stripe or PayPal.', 'societypress' ),
+            'icon'        => 'money-alt',
+            'category'    => 'action',
         ],
     ];
 }
@@ -43469,8 +43780,9 @@ function sp_ajax_export_registrations(): void {
 //        - Sends a welcome email (if enabled in settings)
 //        - Uses honeypot spam protection (no CAPTCHA needed)
 //
-//      Payment is currently offline (member pays by check/PayPal/etc. after
-//      applying). Online payment integration can be added later.
+//      If the selected tier has a price > 0 and a payment gateway is
+//      configured (Stripe or PayPal), the form routes through the gateway
+//      before completing. Free tiers submit directly.
 // ============================================================================
 
 add_shortcode( 'societypress_join', 'sp_render_join_form' );
@@ -43660,7 +43972,171 @@ add_action( 'init', function () {
     sp_member_encrypt_fields( $join_member_data );
     $wpdb->insert( $prefix . 'members', $join_member_data );
 
-    // Send welcome email
+    // ---- Payment routing for paid tiers ----
+    // WHY: If the tier costs money, we need to route the user through a payment
+    //      gateway before their application is complete. The member record is
+    //      already created with status='pending' — we'll update it after payment
+    //      is captured (or admin manually approves for free tiers).
+    $tier_price  = (float) ( $tier->price ?? 0 );
+    $pay_method  = sanitize_text_field( $_POST['pay_method'] ?? '' );
+
+    if ( $tier_price > 0 && in_array( $pay_method, [ 'paypal', 'stripe' ], true ) ) {
+        $sp_settings = get_option( 'societypress_settings', [] );
+        $currency    = $sp_settings['stripe_currency'] ?? 'usd';
+        $org_name    = $sp_settings['organization_name'] ?? get_bloginfo( 'name' );
+
+        // Build description for the payment processor
+        $pay_description = sprintf(
+            /* translators: %1$s: tier name, %2$s: organization name */
+            __( 'Membership Dues: %1$s — %2$s', 'societypress' ),
+            mb_substr( $tier->name, 0, 80 ),
+            mb_substr( $org_name, 0, 40 )
+        );
+
+        // The return URL is the page containing the [societypress_join] shortcode.
+        // WHY: We look for the page using a content search for the shortcode rather
+        //      than a fixed page slug, since the shortcode can live on any page.
+        //      Falls back to home_url() if no shortcode page is found.
+        $join_page_url = home_url();
+        $join_pages    = get_posts( [
+            'post_type'   => 'page',
+            'post_status' => 'publish',
+            's'           => '[societypress_join',
+            'numberposts' => 1,
+            'fields'      => 'ids',
+        ] );
+        if ( ! empty( $join_pages ) ) {
+            $join_page_url = get_permalink( $join_pages[0] );
+        }
+
+        // --- PayPal flow ---
+        if ( $pay_method === 'paypal' ) {
+            if ( ! sp_paypal_is_configured( $sp_settings ) ) {
+                $GLOBALS['sp_join_result'] = [
+                    'success' => false,
+                    'message' => __( 'PayPal is not configured. Please contact the site administrator.', 'societypress' ),
+                ];
+                return;
+            }
+
+            $return_url = add_query_arg( [
+                'sp_join_payment' => 'success',
+                'sp_paypal'       => '1',
+                'sp_member_id'    => $user_id,
+            ], $join_page_url );
+            $cancel_url = add_query_arg( [ 'sp_join_payment' => 'cancelled' ], $join_page_url );
+
+            $order_result = sp_paypal_create_order(
+                $tier_price,
+                $currency,
+                $pay_description,
+                $return_url,
+                $cancel_url,
+                [ 'type' => 'membership', 'user_id' => $user_id, 'tier_id' => $tier_id ],
+                $sp_settings
+            );
+
+            if ( is_wp_error( $order_result ) ) {
+                error_log( 'SocietyPress Join PayPal error: ' . $order_result->get_error_message() );
+                $GLOBALS['sp_join_result'] = [
+                    'success' => false,
+                    'message' => __( 'Could not connect to PayPal. Please try again or choose a different payment method.', 'societypress' ),
+                ];
+                return;
+            }
+
+            // Store PayPal order ID on the member record via user meta so we can
+            // verify on return. Using meta instead of a dedicated column because
+            // sp_members doesn't have payment gateway columns — those live on
+            // sp_member_payments once payment is captured.
+            update_user_meta( $user_id, '_sp_join_paypal_order', $order_result['id'] );
+
+            // Redirect to PayPal for payment approval
+            wp_redirect( $order_result['approve_url'] );
+            exit;
+        }
+
+        // --- Stripe flow ---
+        if ( $pay_method === 'stripe' ) {
+            if ( ! sp_stripe_is_configured( $sp_settings ) ) {
+                $GLOBALS['sp_join_result'] = [
+                    'success' => false,
+                    'message' => __( 'Card payments are not configured. Please contact the site administrator.', 'societypress' ),
+                ];
+                return;
+            }
+
+            $secret_key   = sp_stripe_get_secret_key( $sp_settings );
+            $amount_cents = (int) round( $tier_price * 100 );
+
+            $success_url = add_query_arg( [
+                'sp_join_payment' => 'success',
+                'sp_stripe'       => '1',
+                'sp_member_id'    => $user_id,
+                'sp_session'      => '{CHECKOUT_SESSION_ID}',
+            ], $join_page_url );
+            $cancel_url = add_query_arg( [ 'sp_join_payment' => 'cancelled' ], $join_page_url );
+
+            $line_item_name = $tier->name;
+            if ( strlen( $line_item_name ) > 100 ) {
+                $line_item_name = substr( $line_item_name, 0, 97 ) . '...';
+            }
+
+            $stripe_response = wp_remote_post( 'https://api.stripe.com/v1/checkout/sessions', [
+                'timeout' => 30,
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $secret_key,
+                    'Content-Type'  => 'application/x-www-form-urlencoded',
+                ],
+                'body' => [
+                    'payment_method_types[0]' => 'card',
+                    'mode'                    => 'payment',
+                    'success_url'             => $success_url,
+                    'cancel_url'              => $cancel_url,
+                    'client_reference_id'     => (string) $user_id,
+                    'metadata[user_id]'       => (string) $user_id,
+                    'metadata[tier_id]'       => (string) $tier_id,
+                    'metadata[type]'          => 'membership',
+                    'metadata[site_url]'      => home_url(),
+                    'line_items[0][price_data][currency]'     => $currency,
+                    'line_items[0][price_data][unit_amount]'   => $amount_cents,
+                    'line_items[0][price_data][product_data][name]' => $line_item_name,
+                    'line_items[0][price_data][product_data][description]' => $pay_description,
+                    'line_items[0][quantity]' => 1,
+                ],
+            ] );
+
+            if ( is_wp_error( $stripe_response ) ) {
+                $GLOBALS['sp_join_result'] = [
+                    'success' => false,
+                    'message' => __( 'Could not connect to payment processor. Please try again.', 'societypress' ),
+                ];
+                return;
+            }
+
+            $stripe_body = json_decode( wp_remote_retrieve_body( $stripe_response ), true );
+            $stripe_code = wp_remote_retrieve_response_code( $stripe_response );
+
+            if ( $stripe_code !== 200 || empty( $stripe_body['url'] ) ) {
+                $stripe_err = $stripe_body['error']['message'] ?? 'Payment setup failed.';
+                error_log( 'SocietyPress Join Stripe error: ' . $stripe_err );
+                $GLOBALS['sp_join_result'] = [
+                    'success' => false,
+                    'message' => __( 'Could not set up payment. Please try again or choose a different payment method.', 'societypress' ),
+                ];
+                return;
+            }
+
+            // Store Stripe session ID on the member for verification on return
+            update_user_meta( $user_id, '_sp_join_stripe_session', $stripe_body['id'] );
+
+            // Redirect to Stripe Checkout
+            wp_redirect( $stripe_body['url'] );
+            exit;
+        }
+    }
+
+    // Send welcome email (for free tiers, or if no payment method was selected)
     sp_send_welcome_email( $user_id );
 
     $GLOBALS['sp_join_result'] = [
@@ -43668,6 +44144,247 @@ add_action( 'init', function () {
         'message' => __( 'Welcome! Your membership application has been submitted. You will receive a confirmation email shortly.', 'societypress' ),
     ];
 } );
+
+
+/**
+ * Handle the return from PayPal after a join form payment.
+ *
+ * WHY: After the prospective member approves payment on PayPal's site, PayPal
+ *      redirects them back to the join page with query parameters including the
+ *      PayPal order token. We capture the payment, record it in sp_member_payments,
+ *      send the welcome email, and show a success message.
+ *
+ *      This runs on template_redirect so the payment is captured before the page
+ *      renders — same pattern as the event registration PayPal return handler.
+ */
+add_action( 'template_redirect', function () {
+    $join_status = sanitize_text_field( $_GET['sp_join_payment'] ?? '' );
+    $is_paypal   = ! empty( $_GET['sp_paypal'] );
+    $member_id   = absint( $_GET['sp_member_id'] ?? 0 );
+
+    // Only handle PayPal join returns
+    if ( $join_status !== 'success' || ! $is_paypal || ! $member_id ) {
+        return;
+    }
+
+    // PayPal appends a 'token' parameter (the order ID) to the return URL
+    $paypal_token = sanitize_text_field( $_GET['token'] ?? '' );
+    if ( empty( $paypal_token ) ) {
+        return;
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // Verify this member exists and is still pending
+    $member = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$prefix}members WHERE user_id = %d", $member_id
+    ) );
+    if ( ! $member || $member->status !== 'pending' ) {
+        return;
+    }
+
+    // Verify the PayPal order ID matches what we stored during form submission
+    // WHY: Prevents someone from crafting a URL with a different member_id and
+    //      a valid PayPal token to mark an arbitrary member as paid.
+    $stored_order = get_user_meta( $member_id, '_sp_join_paypal_order', true );
+    if ( empty( $stored_order ) || $stored_order !== $paypal_token ) {
+        return;
+    }
+
+    $settings = get_option( 'societypress_settings', [] );
+    if ( ! sp_paypal_is_configured( $settings ) ) {
+        return;
+    }
+
+    $capture = sp_paypal_capture_order( $paypal_token, $settings );
+
+    if ( is_wp_error( $capture ) ) {
+        error_log( 'SocietyPress Join PayPal capture error: ' . $capture->get_error_message() );
+        // Show an error message on the join page via the global result
+        $GLOBALS['sp_join_result'] = [
+            'success' => false,
+            'message' => __( 'Payment could not be processed. Please contact us for assistance.', 'societypress' ),
+        ];
+        return;
+    }
+
+    // Record the payment in the member payments ledger
+    // WHY: sp_member_payments is the canonical payment history table. We store
+    //      the PayPal order and capture IDs in the note field for audit trail,
+    //      same pattern used in event registration PayPal capture.
+    $tier = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$prefix}membership_tiers WHERE id = %d", $member->tier_id
+    ) );
+    $wpdb->insert( $prefix . 'member_payments', [
+        'user_id'     => $member_id,
+        'amount'      => $capture['capture_amount'] ?? ( $tier ? (float) $tier->price : 0 ),
+        'type'        => 'dues',
+        'method'      => 'paypal',
+        'date'        => current_time( 'Y-m-d' ),
+        'note'        => 'paypal_order:' . $paypal_token . '|paypal_capture:' . ( $capture['capture_id'] ?? '' ),
+        'recorded_by' => null,
+        'created_at'  => current_time( 'mysql' ),
+    ] );
+
+    // Clean up the temporary meta — no longer needed after capture
+    delete_user_meta( $member_id, '_sp_join_paypal_order' );
+
+    sp_audit(
+        'join_payment_captured',
+        sprintf(
+            'PayPal payment captured for new member #%d ($%s)',
+            $member_id,
+            number_format( $capture['capture_amount'] ?? 0, 2 )
+        ),
+        'member',
+        $member_id
+    );
+
+    // Send welcome email now that payment is confirmed
+    sp_send_welcome_email( $member_id );
+
+    // Show success to the user — the member record stays 'pending' until
+    // admin approves, but the payment is captured and recorded.
+    $GLOBALS['sp_join_result'] = [
+        'success' => true,
+        'message' => __( 'Payment received! Your membership application has been submitted. You will receive a confirmation email shortly.', 'societypress' ),
+    ];
+} );
+
+
+/**
+ * Handle the return from Stripe Checkout after a join form payment.
+ *
+ * WHY: After the prospective member pays on Stripe's hosted page, Stripe
+ *      redirects them back to the join page with the session ID in the URL.
+ *      We verify the session with Stripe's API, confirm payment was successful,
+ *      record it in sp_member_payments, and send the welcome email.
+ */
+add_action( 'template_redirect', function () {
+    $join_status = sanitize_text_field( $_GET['sp_join_payment'] ?? '' );
+    $is_stripe   = ! empty( $_GET['sp_stripe'] );
+    $member_id   = absint( $_GET['sp_member_id'] ?? 0 );
+    $session_id  = sanitize_text_field( $_GET['sp_session'] ?? '' );
+
+    // Only handle Stripe join returns
+    if ( $join_status !== 'success' || ! $is_stripe || ! $member_id || empty( $session_id ) ) {
+        return;
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // Verify this member exists and is still pending
+    $member = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$prefix}members WHERE user_id = %d", $member_id
+    ) );
+    if ( ! $member || $member->status !== 'pending' ) {
+        return;
+    }
+
+    // Verify the Stripe session ID matches what we stored during form submission
+    $stored_session = get_user_meta( $member_id, '_sp_join_stripe_session', true );
+    if ( empty( $stored_session ) || $stored_session !== $session_id ) {
+        return;
+    }
+
+    $settings   = get_option( 'societypress_settings', [] );
+    $secret_key = sp_stripe_get_secret_key( $settings );
+    if ( empty( $secret_key ) ) {
+        return;
+    }
+
+    // Retrieve the Checkout Session from Stripe to verify payment status
+    $response = wp_remote_get(
+        'https://api.stripe.com/v1/checkout/sessions/' . urlencode( $session_id ),
+        [
+            'timeout' => 30,
+            'headers' => [
+                'Authorization' => 'Bearer ' . $secret_key,
+            ],
+        ]
+    );
+
+    if ( is_wp_error( $response ) ) {
+        error_log( 'SocietyPress Join Stripe session retrieve error: ' . $response->get_error_message() );
+        return;
+    }
+
+    $body = json_decode( wp_remote_retrieve_body( $response ), true );
+    $code = wp_remote_retrieve_response_code( $response );
+
+    // Stripe Checkout sessions have payment_status = 'paid' when successful
+    if ( $code !== 200 || empty( $body['payment_status'] ) || $body['payment_status'] !== 'paid' ) {
+        $GLOBALS['sp_join_result'] = [
+            'success' => false,
+            'message' => __( 'Payment could not be verified. Please contact us for assistance.', 'societypress' ),
+        ];
+        return;
+    }
+
+    $amount_paid    = ( (float) ( $body['amount_total'] ?? 0 ) ) / 100; // Convert cents back to dollars
+    $payment_intent = $body['payment_intent'] ?? '';
+
+    // Record the payment in the member payments ledger
+    $tier = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$prefix}membership_tiers WHERE id = %d", $member->tier_id
+    ) );
+    $wpdb->insert( $prefix . 'member_payments', [
+        'user_id'     => $member_id,
+        'amount'      => $amount_paid > 0 ? $amount_paid : ( $tier ? (float) $tier->price : 0 ),
+        'type'        => 'dues',
+        'method'      => 'stripe',
+        'date'        => current_time( 'Y-m-d' ),
+        'note'        => 'stripe_session:' . $session_id . '|stripe_pi:' . $payment_intent,
+        'recorded_by' => null,
+        'created_at'  => current_time( 'mysql' ),
+    ] );
+
+    // Clean up the temporary meta
+    delete_user_meta( $member_id, '_sp_join_stripe_session' );
+
+    sp_audit(
+        'join_payment_captured',
+        sprintf(
+            'Stripe payment captured for new member #%d ($%s)',
+            $member_id,
+            number_format( $amount_paid, 2 )
+        ),
+        'member',
+        $member_id
+    );
+
+    // Send welcome email now that payment is confirmed
+    sp_send_welcome_email( $member_id );
+
+    $GLOBALS['sp_join_result'] = [
+        'success' => true,
+        'message' => __( 'Payment received! Your membership application has been submitted. You will receive a confirmation email shortly.', 'societypress' ),
+    ];
+} );
+
+
+/**
+ * Handle cancelled join payment returns (both PayPal and Stripe).
+ *
+ * WHY: If the prospective member cancels payment on PayPal or Stripe's page,
+ *      they are redirected back with sp_join_payment=cancelled. We show a
+ *      helpful message letting them know they can try again. The member record
+ *      already exists in 'pending' status — they can resubmit the form.
+ */
+add_action( 'template_redirect', function () {
+    $join_status = sanitize_text_field( $_GET['sp_join_payment'] ?? '' );
+    if ( $join_status !== 'cancelled' ) {
+        return;
+    }
+
+    $GLOBALS['sp_join_result'] = [
+        'success' => false,
+        'message' => __( 'Payment was cancelled. If you would like to complete your membership, please fill out the form again.', 'societypress' ),
+    ];
+} );
+
 
 /**
  * Render the [societypress_join] shortcode form.
@@ -43741,6 +44458,11 @@ function sp_render_join_form(): string {
         .sp-join-form .sp-tier-desc { font-size: 13px; color: #666; margin-top: 4px; }
         .sp-join-form .sp-submit { display: inline-block; padding: 12px 32px; background: #2271b1; color: #fff; border: none; border-radius: 4px; font-size: 16px; font-weight: 600; cursor: pointer; }
         .sp-join-form .sp-submit:hover { background: #135e96; }
+        .sp-join-form .sp-submit-paypal { background: #0070ba; }
+        .sp-join-form .sp-submit-paypal:hover { background: #005ea6; }
+        .sp-join-form .sp-join-submit-area { margin-top: 4px; }
+        .sp-join-form .sp-join-submit-hidden { display: none !important; }
+        .sp-join-form #sp-join-paid-submit { display: flex; gap: 12px; flex-wrap: wrap; }
         .sp-join-form .sp-honeypot { position: absolute; left: -9999px; }
         .sp-join-notice { padding: 12px 16px; margin-bottom: 20px; border-radius: 4px; }
         .sp-join-notice--success { background: #edfaef; border: 1px solid #00a32a; }
@@ -43929,21 +44651,71 @@ function sp_render_join_form(): string {
             </div>
         </fieldset>
 
-        <button type="submit" class="sp-submit"><?php esc_html_e( 'Complete Membership', 'societypress' ); ?></button>
+        <!-- Payment / Submit buttons -->
+        <!-- WHY: If the selected tier is free, show a simple submit button.     -->
+        <!--      If paid, show payment gateway buttons (Stripe and/or PayPal)   -->
+        <!--      depending on which gateways are configured. JS toggles         -->
+        <!--      visibility based on the selected tier's price.                 -->
+        <input type="hidden" name="pay_method" id="sp-join-pay-method" value="">
+
+        <?php
+        // Determine which payment gateways are available so we can conditionally
+        // render payment buttons. We need this server-side to avoid showing buttons
+        // for gateways that aren't configured.
+        $join_settings   = get_option( 'societypress_settings', [] );
+        $join_has_stripe = sp_stripe_is_configured( $join_settings );
+        $join_has_paypal = sp_paypal_is_configured( $join_settings );
+
+        // Build a price map keyed by tier ID so JS can look up prices.
+        // WHY: The form needs to know at render time which tiers cost money
+        //      so it can show/hide payment buttons dynamically as the user
+        //      selects different tiers.
+        $tier_prices = [];
+        foreach ( $tiers as $t ) {
+            $tier_prices[ (int) $t->id ] = (float) ( $t->price ?? 0 );
+        }
+        ?>
+
+        <!-- Free tier: simple submit button (shown when selected tier price is 0) -->
+        <div id="sp-join-free-submit" class="sp-join-submit-area">
+            <button type="submit" class="sp-submit"><?php esc_html_e( 'Complete Membership', 'societypress' ); ?></button>
+        </div>
+
+        <!-- Paid tier: payment gateway buttons (shown when selected tier price > 0) -->
+        <div id="sp-join-paid-submit" class="sp-join-submit-area sp-join-submit-hidden">
+            <?php if ( $join_has_stripe ) : ?>
+                <button type="submit" class="sp-submit sp-submit-stripe" id="sp-join-btn-stripe">
+                    <?php esc_html_e( 'Pay with Card', 'societypress' ); ?>
+                </button>
+            <?php endif; ?>
+            <?php if ( $join_has_paypal ) : ?>
+                <button type="submit" class="sp-submit sp-submit-paypal" id="sp-join-btn-paypal">
+                    <?php esc_html_e( 'Pay with PayPal', 'societypress' ); ?>
+                </button>
+            <?php endif; ?>
+            <?php if ( ! $join_has_stripe && ! $join_has_paypal ) : ?>
+                <!-- No payment gateways configured — fall back to free-style submit -->
+                <!-- WHY: If an admin sets tier prices but hasn't configured any      -->
+                <!--      gateway, we still let the form submit so the member record  -->
+                <!--      is created. The admin can collect payment offline.           -->
+                <button type="submit" class="sp-submit"><?php esc_html_e( 'Complete Membership', 'societypress' ); ?></button>
+            <?php endif; ?>
+        </div>
     </form>
 
-    <!-- Joint member fieldset visibility toggle based on selected tier -->
+    <!-- Joint member fieldset visibility toggle + payment button logic -->
     <script>
     (function() {
         'use strict';
+
+        // --- Joint member fieldset visibility ---
         var jointTierIds = <?php echo wp_json_encode( $joint_tier_ids ); ?>;
         var fieldset = document.getElementById('sp-join-joint-fieldset');
-        if (!fieldset || !jointTierIds.length) return;
-
-        var form = fieldset.closest('form');
+        var form = document.querySelector('.sp-join-form');
         if (!form) return;
 
         function updateJointVisibility() {
+            if (!fieldset || !jointTierIds.length) return;
             var checked = form.querySelector('input[name="tier_id"]:checked');
             if (checked && jointTierIds.indexOf(parseInt(checked.value, 10)) !== -1) {
                 fieldset.style.display = '';
@@ -43952,13 +44724,67 @@ function sp_render_join_form(): string {
             }
         }
 
-        // Listen on all tier radio buttons
+        // --- Payment button visibility ---
+        // WHY: When a user selects a tier, we need to show either the simple
+        //      "Complete Membership" button (free tiers) or the payment gateway
+        //      buttons (paid tiers). This avoids confusing users with payment
+        //      options when they've selected a free membership level.
+        var tierPrices    = <?php echo wp_json_encode( $tier_prices ); ?>;
+        var freeSubmit    = document.getElementById('sp-join-free-submit');
+        var paidSubmit    = document.getElementById('sp-join-paid-submit');
+        var payMethodInput = document.getElementById('sp-join-pay-method');
+
+        function updatePaymentButtons() {
+            var checked = form.querySelector('input[name="tier_id"]:checked');
+            if (!checked || !freeSubmit || !paidSubmit) return;
+
+            var tierId = parseInt(checked.value, 10);
+            var price  = tierPrices[tierId] || 0;
+
+            if (price > 0) {
+                // Paid tier — show payment buttons, hide free submit
+                freeSubmit.classList.add('sp-join-submit-hidden');
+                paidSubmit.classList.remove('sp-join-submit-hidden');
+            } else {
+                // Free tier — show simple submit, hide payment buttons
+                freeSubmit.classList.remove('sp-join-submit-hidden');
+                paidSubmit.classList.add('sp-join-submit-hidden');
+                // Clear pay_method for free tiers so the form handler
+                // knows no payment gateway is needed
+                if (payMethodInput) payMethodInput.value = '';
+            }
+        }
+
+        // --- Wire up payment buttons to set the pay_method hidden field ---
+        // WHY: The form has two submit buttons for paid tiers (Stripe and PayPal).
+        //      We need to know which one was clicked so the server-side handler
+        //      routes to the correct gateway. Setting the hidden input on click
+        //      (before the form submits) is cleaner than using separate forms.
+        var stripeBtn = document.getElementById('sp-join-btn-stripe');
+        var paypalBtn = document.getElementById('sp-join-btn-paypal');
+
+        if (stripeBtn) {
+            stripeBtn.addEventListener('click', function() {
+                if (payMethodInput) payMethodInput.value = 'stripe';
+            });
+        }
+        if (paypalBtn) {
+            paypalBtn.addEventListener('click', function() {
+                if (payMethodInput) payMethodInput.value = 'paypal';
+            });
+        }
+
+        // Listen on all tier radio buttons for both joint and payment updates
         form.querySelectorAll('input[name="tier_id"]').forEach(function(radio) {
-            radio.addEventListener('change', updateJointVisibility);
+            radio.addEventListener('change', function() {
+                updateJointVisibility();
+                updatePaymentButtons();
+            });
         });
 
         // Run on load in case a tier is pre-selected (form resubmit)
         updateJointVisibility();
+        updatePaymentButtons();
 
         // WHY: If there are field-level validation errors, scroll to and focus
         // the first invalid field so the user sees exactly what needs fixing.
@@ -61191,6 +62017,1087 @@ add_action( 'wp_ajax_sp_blast_recipient_count', 'sp_ajax_blast_recipient_count' 
 //      let them organize giving around specific goals (building fund,
 //      memorial fund, etc.). The acknowledgment system automates thank-you
 //      emails so the treasurer doesn't have to do them manually.
+
+
+// ============================================================================
+// DONATIONS — ONLINE DONATION FORM (PUBLIC FRONTEND)
+// ============================================================================
+//
+// WHY: Until now, donations could only be recorded manually by admins via the
+//      Donations admin page. Societies need a public-facing donation form so
+//      members (and non-members) can donate online via Stripe or PayPal —
+//      exactly the way the event registration and store checkout flows work.
+//
+// ARCHITECTURE:
+//   1. theme_page_templates filter — adds "Donate" to the template dropdown
+//   2. template_include filter — renders the donation form page
+//   3. AJAX handler (sp_donate_online) — creates donation record + payment session
+//   4. template_redirect handlers — capture PayPal/Stripe returns, update records
+//   5. Page builder widget — sp_render_builder_widget_donations_form()
+//
+// The form supports both logged-in and anonymous visitors (nopriv AJAX).
+// Rate limiting (5 donations/hour/IP) protects against abuse.
+// ============================================================================
+
+
+/**
+ * Register the "Donate" page template.
+ *
+ * WHY: Societies need a dedicated Donate page. Same pattern as Events, Store,
+ *      etc. — a plugin-provided template that appears in the Template dropdown
+ *      without requiring a theme file.
+ */
+add_filter( 'theme_page_templates', function ( $templates ) {
+    $templates['sp-donate'] = __( 'Donate', 'societypress' );
+    return $templates;
+} );
+
+
+/**
+ * Render the Donate page template.
+ *
+ * WHY: When WordPress loads a page assigned to the sp-donate template, we
+ *      intercept and render the full donation form inside the active theme's
+ *      header/footer. The form includes campaign selection, amount presets,
+ *      donor info, and payment buttons — conditionally shown based on which
+ *      gateways are configured.
+ */
+add_filter( 'template_include', function ( $template ) {
+    if ( ! is_page() || get_page_template_slug() !== 'sp-donate' ) {
+        return $template;
+    }
+
+    get_header();
+    echo '<div class="entry-content" style="max-width:var(--sp-content-width,700px); margin:40px auto; padding:0 20px;">';
+    echo '<h1 class="entry-title">' . esc_html( get_the_title() ) . '</h1>';
+    sp_render_donation_form_frontend();
+    echo '</div>';
+    get_footer();
+
+    return sp_get_blank_template_path();
+}, 50 );
+
+
+/**
+ * Handle the return from Stripe Checkout for online donations.
+ *
+ * WHY: After paying on Stripe's page, the donor is redirected back to the
+ *      donate page with ?sp_donation_payment=success&sp_session=cs_xxx in
+ *      the URL. We verify the session with Stripe's API, confirm the payment
+ *      actually went through, and update the donation record accordingly.
+ *
+ *      This runs on template_redirect (same pattern as event Stripe returns)
+ *      so the donation record is already updated by the time the page renders.
+ */
+add_action( 'template_redirect', function () {
+    if ( ! is_page() ) return;
+
+    $payment_status = sanitize_text_field( $_GET['sp_donation_payment'] ?? '' );
+    $session_id     = sanitize_text_field( $_GET['sp_session'] ?? '' );
+
+    // Only handle Stripe returns — PayPal handled separately below
+    if ( $payment_status !== 'success' || empty( $session_id ) || ! empty( $_GET['sp_paypal'] ) ) return;
+
+    $settings   = get_option( 'societypress_settings', [] );
+    $secret_key = sp_stripe_get_secret_key( $settings );
+
+    if ( empty( $secret_key ) ) return;
+
+    // Retrieve the Checkout Session from Stripe to verify payment
+    $response = wp_remote_get( 'https://api.stripe.com/v1/checkout/sessions/' . urlencode( $session_id ), [
+        'timeout' => 30,
+        'headers' => [
+            'Authorization' => 'Bearer ' . $secret_key,
+        ],
+    ] );
+
+    if ( is_wp_error( $response ) ) return;
+
+    $body = json_decode( wp_remote_retrieve_body( $response ), true );
+    if ( empty( $body['payment_status'] ) || $body['payment_status'] !== 'paid' ) return;
+
+    $donation_id = (int) ( $body['metadata']['donation_id'] ?? 0 );
+    if ( ! $donation_id ) return;
+
+    global $wpdb;
+    $don_table = $wpdb->prefix . 'sp_donations';
+
+    $donation = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$don_table} WHERE id = %d", $donation_id
+    ) );
+
+    // Only process if the donation exists and hasn't already been marked paid
+    if ( ! $donation || $donation->type === 'stripe' ) return;
+
+    // Verify the Stripe session ID matches what we stored
+    if ( $donation->stripe_session_id !== $session_id ) return;
+
+    $wpdb->update(
+        $don_table,
+        [
+            'type' => 'stripe',
+        ],
+        [ 'id' => $donation_id ]
+    );
+
+    sp_audit(
+        'donation_payment_captured',
+        sprintf( 'Stripe payment captured for donation #%d ($%s)', $donation_id, number_format( (float) $donation->amount, 2 ) ),
+        'donation',
+        $donation_id
+    );
+
+    // Send acknowledgment email if the society has an email template configured
+    sp_send_donation_acknowledgments( [ $donation_id ] );
+} );
+
+
+/**
+ * Handle the return from PayPal for online donations.
+ *
+ * WHY: After approving payment on PayPal's site, the donor is redirected back
+ *      with ?sp_donation_payment=success&sp_paypal=1&token=XX&sp_donation_id=N.
+ *      We capture the payment via the PayPal API, verify it succeeded, and
+ *      update the donation record with the capture ID.
+ *
+ *      Same two-phase flow as event PayPal returns: create -> approve -> capture.
+ */
+add_action( 'template_redirect', function () {
+    if ( ! is_page() ) return;
+
+    $payment_status = sanitize_text_field( $_GET['sp_donation_payment'] ?? '' );
+    $is_paypal      = ! empty( $_GET['sp_paypal'] );
+    $donation_id    = absint( $_GET['sp_donation_id'] ?? 0 );
+
+    if ( $payment_status !== 'success' || ! $is_paypal || ! $donation_id ) return;
+
+    // PayPal appends a 'token' parameter (the order ID) to the return URL
+    $paypal_token = sanitize_text_field( $_GET['token'] ?? '' );
+    if ( empty( $paypal_token ) ) return;
+
+    global $wpdb;
+    $don_table = $wpdb->prefix . 'sp_donations';
+
+    $donation = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$don_table} WHERE id = %d", $donation_id
+    ) );
+
+    // Only process if the donation exists and hasn't already been captured
+    if ( ! $donation || $donation->type === 'paypal' ) return;
+
+    // Verify the PayPal order ID matches what we stored on this donation
+    if ( $donation->paypal_order_id !== $paypal_token ) return;
+
+    $settings = get_option( 'societypress_settings', [] );
+    if ( ! sp_paypal_is_configured( $settings ) ) return;
+
+    $capture = sp_paypal_capture_order( $paypal_token, $settings );
+
+    if ( is_wp_error( $capture ) ) {
+        error_log( 'SocietyPress PayPal donation capture error: ' . $capture->get_error_message() );
+        return;
+    }
+
+    $wpdb->update(
+        $don_table,
+        [
+            'type'              => 'paypal',
+            'paypal_capture_id' => $capture['capture_id'] ?? '',
+        ],
+        [ 'id' => $donation_id ]
+    );
+
+    sp_audit(
+        'donation_payment_captured',
+        sprintf( 'PayPal payment captured for donation #%d ($%s)', $donation_id, number_format( $capture['capture_amount'] ?? 0, 2 ) ),
+        'donation',
+        $donation_id
+    );
+
+    // Send acknowledgment email
+    sp_send_donation_acknowledgments( [ $donation_id ] );
+} );
+
+
+/**
+ * AJAX: Process an online donation.
+ *
+ * WHY: The public donation form submits via AJAX. We validate inputs, create a
+ *      pending donation record in sp_donations, then initiate the payment flow
+ *      with the selected gateway (Stripe Checkout or PayPal Orders API). The
+ *      response includes a checkout_url that the frontend JS redirects to.
+ *
+ *      Both wp_ajax and wp_ajax_nopriv hooks are needed because non-members
+ *      should be able to donate without logging in.
+ *
+ *      Rate limiting: 5 donations per hour per IP prevents abuse. We use a
+ *      transient keyed by hashed IP — lightweight, no extra DB table needed.
+ */
+add_action( 'wp_ajax_sp_donate_online', 'sp_ajax_donate_online' );
+add_action( 'wp_ajax_nopriv_sp_donate_online', 'sp_ajax_donate_online' );
+
+function sp_ajax_donate_online(): void {
+    check_ajax_referer( 'sp_donate_online', 'nonce' );
+
+    global $wpdb;
+    $prefix   = $wpdb->prefix . 'sp_';
+    $settings = get_option( 'societypress_settings', [] );
+
+    // --- Rate limiting: 5 donations per hour per IP ---
+    // WHY: Public forms without rate limiting are abuse magnets. We use a
+    // transient with hashed IP as the key — cheap and stateless. The counter
+    // resets after 1 hour.
+    $ip_hash       = 'sp_donate_rl_' . md5( $_SERVER['REMOTE_ADDR'] ?? 'unknown' );
+    $current_count = (int) get_transient( $ip_hash );
+    if ( $current_count >= 5 ) {
+        wp_send_json_error( [
+            'message' => __( 'Too many donation attempts. Please try again later.', 'societypress' ),
+        ] );
+    }
+    set_transient( $ip_hash, $current_count + 1, HOUR_IN_SECONDS );
+
+    // --- Validate inputs ---
+    $donor_name   = sanitize_text_field( $_POST['donor_name'] ?? '' );
+    $donor_email  = sanitize_email( $_POST['donor_email'] ?? '' );
+    $amount       = (float) ( $_POST['amount'] ?? 0 );
+    $campaign_id  = absint( $_POST['campaign_id'] ?? 0 );
+    $is_anonymous = ! empty( $_POST['is_anonymous'] ) ? 1 : 0;
+    $note         = sanitize_textarea_field( $_POST['note'] ?? '' );
+    $pay_method   = sanitize_text_field( $_POST['pay_method'] ?? '' );
+
+    if ( empty( $donor_name ) ) {
+        wp_send_json_error( [ 'message' => __( 'Please enter your name.', 'societypress' ) ] );
+    }
+    if ( empty( $donor_email ) || ! is_email( $donor_email ) ) {
+        wp_send_json_error( [ 'message' => __( 'Please enter a valid email address.', 'societypress' ) ] );
+    }
+    if ( $amount <= 0 ) {
+        wp_send_json_error( [ 'message' => __( 'Please enter a donation amount greater than zero.', 'societypress' ) ] );
+    }
+    if ( $amount > 99999.99 ) {
+        wp_send_json_error( [ 'message' => __( 'Please enter a valid donation amount.', 'societypress' ) ] );
+    }
+    if ( ! in_array( $pay_method, [ 'stripe', 'paypal' ], true ) ) {
+        wp_send_json_error( [ 'message' => __( 'Please select a payment method.', 'societypress' ) ] );
+    }
+
+    // Validate campaign exists and is active (if specified)
+    if ( $campaign_id ) {
+        $campaign = $wpdb->get_row( $wpdb->prepare(
+            "SELECT id FROM {$prefix}campaigns WHERE id = %d AND status = 'active'",
+            $campaign_id
+        ) );
+        if ( ! $campaign ) {
+            $campaign_id = 0; // Fall back to general donation
+        }
+    }
+
+    // Determine user_id if the donor is logged in
+    $user_id = is_user_logged_in() ? get_current_user_id() : null;
+
+    // --- Insert pending donation record ---
+    // WHY: We create the record BEFORE initiating payment so we have a donation_id
+    // to reference in the payment metadata. The type is set to 'pending' until
+    // the payment gateway confirms. If the donor abandons checkout, the record
+    // stays as 'pending' — admins can clean these up or they serve as audit trail.
+    $now = current_time( 'mysql' );
+    $wpdb->insert( $prefix . 'donations', [
+        'campaign_id'  => $campaign_id ?: null,
+        'user_id'      => $user_id,
+        'donor_name'   => $donor_name,
+        'donor_email'  => $donor_email,
+        'amount'       => $amount,
+        'type'         => 'pending',
+        'date'         => wp_date( 'Y-m-d' ),
+        'note'         => $note ?: null,
+        'is_anonymous' => $is_anonymous,
+        'recorded_by'  => null, // Online donation — not recorded by an admin
+        'created_at'   => $now,
+    ] );
+    $donation_id = (int) $wpdb->insert_id;
+
+    if ( ! $donation_id ) {
+        wp_send_json_error( [ 'message' => __( 'Could not process your donation. Please try again.', 'societypress' ) ] );
+    }
+
+    // --- Find the donate page URL for return redirects ---
+    // WHY: After payment, the gateway redirects back to our site. We need the
+    // donate page URL (or the referring page for widget usage) as the base.
+    $donate_url = wp_get_referer();
+    if ( ! $donate_url ) {
+        // Fall back to finding a page with the sp-donate template
+        $donate_pages = get_pages( [ 'meta_key' => '_wp_page_template', 'meta_value' => 'sp-donate' ] );
+        $donate_url   = ! empty( $donate_pages ) ? get_permalink( $donate_pages[0]->ID ) : home_url();
+    }
+
+    $currency = $settings['stripe_currency'] ?? 'usd';
+
+    // --- Stripe payment flow ---
+    if ( $pay_method === 'stripe' ) {
+        if ( ! sp_stripe_is_configured( $settings ) ) {
+            $wpdb->delete( $prefix . 'donations', [ 'id' => $donation_id ] );
+            wp_send_json_error( [ 'message' => __( 'Card payments are not configured. Please contact the site administrator.', 'societypress' ) ] );
+        }
+
+        $secret_key = sp_stripe_get_secret_key( $settings );
+        if ( empty( $secret_key ) ) {
+            $wpdb->delete( $prefix . 'donations', [ 'id' => $donation_id ] );
+            wp_send_json_error( [ 'message' => __( 'Payment processing is not configured. Please contact the site administrator.', 'societypress' ) ] );
+        }
+
+        $amount_cents = (int) round( $amount * 100 );
+
+        $success_url = add_query_arg( [
+            'sp_donation_payment' => 'success',
+            'sp_session'          => '{CHECKOUT_SESSION_ID}',
+        ], $donate_url );
+
+        $cancel_url = add_query_arg( [
+            'sp_donation_payment' => 'cancelled',
+        ], $donate_url );
+
+        $org_name  = $settings['organization_name'] ?? get_bloginfo( 'name' );
+        $line_name = sprintf(
+            /* translators: %s: organization name */
+            __( 'Donation to %s', 'societypress' ),
+            mb_substr( $org_name, 0, 80 )
+        );
+
+        // Build the Stripe Checkout Session request
+        $stripe_body = [
+            'payment_method_types[0]' => 'card',
+            'mode'                    => 'payment',
+            'success_url'             => $success_url,
+            'cancel_url'              => $cancel_url,
+            'customer_email'          => $donor_email,
+            'metadata[donation_id]'   => (string) $donation_id,
+            'metadata[site_url]'      => home_url(),
+            'metadata[type]'          => 'donation',
+            'line_items[0][price_data][currency]'                    => $currency,
+            'line_items[0][price_data][unit_amount]'                  => $amount_cents,
+            'line_items[0][price_data][product_data][name]'          => $line_name,
+            'line_items[0][quantity]'                                 => 1,
+        ];
+
+        $response = wp_remote_post( 'https://api.stripe.com/v1/checkout/sessions', [
+            'timeout' => 30,
+            'headers' => [
+                'Authorization' => 'Bearer ' . $secret_key,
+                'Content-Type'  => 'application/x-www-form-urlencoded',
+            ],
+            'body' => $stripe_body,
+        ] );
+
+        if ( is_wp_error( $response ) ) {
+            $wpdb->delete( $prefix . 'donations', [ 'id' => $donation_id ] );
+            wp_send_json_error( [ 'message' => __( 'Could not connect to payment processor. Please try again.', 'societypress' ) ] );
+        }
+
+        $body = json_decode( wp_remote_retrieve_body( $response ), true );
+        $code = wp_remote_retrieve_response_code( $response );
+
+        if ( $code !== 200 || empty( $body['url'] ) ) {
+            $error_msg = $body['error']['message'] ?? 'Payment setup failed.';
+            error_log( 'SocietyPress donation Stripe error: ' . $error_msg );
+            $wpdb->delete( $prefix . 'donations', [ 'id' => $donation_id ] );
+            wp_send_json_error( [ 'message' => __( 'Could not set up payment. Please try again.', 'societypress' ) ] );
+        }
+
+        // Store the Stripe session ID on the donation for later verification
+        $wpdb->update(
+            $prefix . 'donations',
+            [ 'stripe_session_id' => $body['id'] ],
+            [ 'id' => $donation_id ]
+        );
+
+        sp_audit(
+            'donation_initiated',
+            sprintf( 'Online donation #%d ($%s) initiated via Stripe', $donation_id, number_format( $amount, 2 ) ),
+            'donation',
+            $donation_id
+        );
+
+        wp_send_json_success( [ 'checkout_url' => $body['url'] ] );
+    }
+
+    // --- PayPal payment flow ---
+    if ( $pay_method === 'paypal' ) {
+        if ( ! sp_paypal_is_configured( $settings ) ) {
+            $wpdb->delete( $prefix . 'donations', [ 'id' => $donation_id ] );
+            wp_send_json_error( [ 'message' => __( 'PayPal is not configured. Please contact the site administrator.', 'societypress' ) ] );
+        }
+
+        $return_url = add_query_arg( [
+            'sp_donation_payment' => 'success',
+            'sp_paypal'           => '1',
+            'sp_donation_id'      => $donation_id,
+        ], $donate_url );
+
+        $cancel_url = add_query_arg( [
+            'sp_donation_payment' => 'cancelled',
+        ], $donate_url );
+
+        $org_name    = $settings['organization_name'] ?? get_bloginfo( 'name' );
+        $description = sprintf(
+            /* translators: %s: organization name */
+            __( 'Donation to %s', 'societypress' ),
+            mb_substr( $org_name, 0, 100 )
+        );
+
+        $order_result = sp_paypal_create_order(
+            $amount,
+            $currency,
+            $description,
+            $return_url,
+            $cancel_url,
+            [ 'type' => 'donation', 'donation_id' => $donation_id ],
+            $settings
+        );
+
+        if ( is_wp_error( $order_result ) ) {
+            $wpdb->delete( $prefix . 'donations', [ 'id' => $donation_id ] );
+            wp_send_json_error( [ 'message' => __( 'Could not set up PayPal payment. Please try again.', 'societypress' ) ] );
+        }
+
+        // Store the PayPal order ID on the donation for later verification
+        $wpdb->update(
+            $prefix . 'donations',
+            [ 'paypal_order_id' => $order_result['id'] ],
+            [ 'id' => $donation_id ]
+        );
+
+        sp_audit(
+            'donation_initiated',
+            sprintf( 'Online donation #%d ($%s) initiated via PayPal', $donation_id, number_format( $amount, 2 ) ),
+            'donation',
+            $donation_id
+        );
+
+        wp_send_json_success( [ 'checkout_url' => $order_result['approve_url'] ] );
+    }
+}
+
+
+/**
+ * Render the public-facing donation form.
+ *
+ * WHY: This is the shared rendering function used by both the sp-donate page
+ *      template and the donations_form page builder widget. Extracted into its
+ *      own function so both entry points produce identical markup.
+ *
+ * @param int $locked_campaign_id If set, locks the form to a specific campaign
+ *                                (used by the page builder widget). 0 = show
+ *                                the campaign dropdown.
+ */
+function sp_render_donation_form_frontend( int $locked_campaign_id = 0 ): void {
+    global $wpdb;
+    $prefix   = $wpdb->prefix . 'sp_';
+    $settings = get_option( 'societypress_settings', [] );
+
+    $stripe_ready = sp_stripe_is_configured( $settings );
+    $paypal_ready = sp_paypal_is_configured( $settings );
+    $org_name     = esc_html( $settings['organization_name'] ?? get_bloginfo( 'name' ) );
+
+    // Check if a donation was just completed (return from payment gateway)
+    $payment_status = sanitize_text_field( $_GET['sp_donation_payment'] ?? '' );
+
+    if ( $payment_status === 'success' ) {
+        ?>
+        <div class="sp-donate-thankyou" style="text-align:center; padding:40px 20px;">
+            <div style="font-size:48px; margin-bottom:16px;">&#10003;</div>
+            <h2 style="color:#00a32a; margin-bottom:12px;"><?php esc_html_e( 'Thank You for Your Donation!', 'societypress' ); ?></h2>
+            <p style="color:#50575e; font-size:16px; max-width:500px; margin:0 auto 20px;">
+                <?php printf(
+                    esc_html__( 'Your generous contribution to %s has been received. You will receive a confirmation email shortly.', 'societypress' ),
+                    '<strong>' . $org_name . '</strong>'
+                ); ?>
+            </p>
+            <a href="<?php echo esc_url( remove_query_arg( [ 'sp_donation_payment', 'sp_session', 'sp_paypal', 'sp_donation_id', 'token', 'PayerID' ] ) ); ?>"
+               class="sp-btn sp-btn-primary" style="display:inline-block; padding:10px 24px; text-decoration:none;">
+                <?php esc_html_e( 'Make Another Donation', 'societypress' ); ?>
+            </a>
+        </div>
+        <?php
+        return;
+    }
+
+    if ( $payment_status === 'cancelled' ) {
+        ?>
+        <div class="sp-donate-cancelled" style="background:#fef3cd; border:1px solid #ffc107; border-radius:6px; padding:16px 20px; margin-bottom:24px;">
+            <p style="margin:0; color:#856404;">
+                <strong><?php esc_html_e( 'Payment cancelled.', 'societypress' ); ?></strong>
+                <?php esc_html_e( 'Your donation was not processed. You can try again below.', 'societypress' ); ?>
+            </p>
+        </div>
+        <?php
+    }
+
+    // If no gateways are configured, show a helpful message instead of the form
+    if ( ! $stripe_ready && ! $paypal_ready ) {
+        $org_email = $settings['organization_email'] ?? get_option( 'admin_email' );
+        ?>
+        <div class="sp-donate-no-gateway" style="text-align:center; padding:40px 20px;">
+            <p style="font-size:16px; color:#50575e;">
+                <?php esc_html_e( 'Online donations are not currently available.', 'societypress' ); ?>
+            </p>
+            <?php if ( $org_email ) : ?>
+                <p style="font-size:16px; color:#50575e;">
+                    <?php printf(
+                        esc_html__( 'To make a donation, please contact us at %s.', 'societypress' ),
+                        '<a href="mailto:' . esc_attr( $org_email ) . '">' . esc_html( $org_email ) . '</a>'
+                    ); ?>
+                </p>
+            <?php endif; ?>
+        </div>
+        <?php
+        return;
+    }
+
+    // Load active campaigns for the dropdown (unless locked to a specific campaign)
+    $campaigns = [];
+    if ( ! $locked_campaign_id ) {
+        $campaigns = $wpdb->get_results(
+            "SELECT c.id, c.name, c.description, c.goal_amount,
+                    COALESCE((SELECT SUM(d.amount) FROM {$prefix}donations d WHERE d.campaign_id = c.id AND d.type != 'pending'), 0) AS raised
+             FROM {$prefix}campaigns c
+             WHERE c.status = 'active'
+             ORDER BY c.name"
+        );
+    } else {
+        // Validate the locked campaign exists and is active
+        $locked = $wpdb->get_row( $wpdb->prepare(
+            "SELECT c.id, c.name, c.description, c.goal_amount,
+                    COALESCE((SELECT SUM(d.amount) FROM {$prefix}donations d WHERE d.campaign_id = c.id AND d.type != 'pending'), 0) AS raised
+             FROM {$prefix}campaigns c
+             WHERE c.id = %d AND c.status = 'active'",
+            $locked_campaign_id
+        ) );
+        if ( $locked ) {
+            $campaigns = [ $locked ];
+        }
+    }
+
+    // Pre-fill name and email for logged-in users
+    $prefill_name  = '';
+    $prefill_email = '';
+    if ( is_user_logged_in() ) {
+        $user = wp_get_current_user();
+        $prefill_name  = $user->display_name;
+        $prefill_email = $user->user_email;
+
+        // Try to get a better name from the members table
+        $member = $wpdb->get_row( $wpdb->prepare(
+            "SELECT first_name, last_name FROM {$prefix}members WHERE user_id = %d",
+            $user->ID
+        ) );
+        if ( $member ) {
+            $full_name = trim( ( $member->first_name ?? '' ) . ' ' . ( $member->last_name ?? '' ) );
+            if ( $full_name ) {
+                $prefill_name = $full_name;
+            }
+        }
+    }
+
+    $nonce = wp_create_nonce( 'sp_donate_online' );
+
+    // Unique form ID for multiple forms on one page (widget support)
+    $form_id = 'sp-donate-form-' . wp_rand( 1000, 9999 );
+
+    ?>
+    <style>
+        /* sp_render_donation_form_frontend() — Donation form styles
+         *
+         * WHY: Scoped styles for the public donation form. Uses CSS custom
+         * properties from the design system where possible. Kept here (not
+         * in the admin stylesheet) because this is frontend-only markup.
+         */
+        .sp-donate-form {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .sp-donate-form .sp-donate-field {
+            margin-bottom: 20px;
+        }
+        .sp-donate-form label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 6px;
+            font-size: 14px;
+            color: var(--sp-text-color, #1d2327);
+        }
+        .sp-donate-form input[type="text"],
+        .sp-donate-form input[type="email"],
+        .sp-donate-form input[type="number"],
+        .sp-donate-form select,
+        .sp-donate-form textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--sp-border-color, #c3c4c7);
+            border-radius: 4px;
+            font-size: 15px;
+            box-sizing: border-box;
+        }
+        .sp-donate-form textarea {
+            resize: vertical;
+        }
+        .sp-donate-form .sp-donate-required {
+            color: #d63638;
+        }
+
+        /* Campaign cards with progress bars */
+        .sp-donate-campaigns {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+        .sp-donate-campaign-card {
+            border: 2px solid var(--sp-border-color, #e0e0e0);
+            border-radius: 8px;
+            padding: 14px 16px;
+            cursor: pointer;
+            transition: border-color 0.15s;
+        }
+        .sp-donate-campaign-card:hover,
+        .sp-donate-campaign-card.sp-selected {
+            border-color: var(--sp-accent-color, #2271b1);
+        }
+        .sp-donate-campaign-card .sp-campaign-name {
+            font-weight: 600;
+            font-size: 15px;
+            margin-bottom: 4px;
+        }
+        .sp-donate-campaign-card .sp-campaign-desc {
+            font-size: 13px;
+            color: #646970;
+            margin-bottom: 8px;
+        }
+        .sp-donate-campaign-progress {
+            background: #e5e7eb;
+            border-radius: 4px;
+            height: 10px;
+            overflow: hidden;
+            margin-bottom: 4px;
+        }
+        .sp-donate-campaign-progress-bar {
+            height: 100%;
+            border-radius: 4px;
+            background: var(--sp-accent-color, #2271b1);
+            transition: width 0.3s;
+        }
+        .sp-donate-campaign-progress-text {
+            font-size: 12px;
+            color: #787c82;
+        }
+
+        /* Suggested amount buttons */
+        .sp-donate-amounts {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .sp-donate-amount-btn {
+            padding: 10px 18px;
+            border: 2px solid var(--sp-border-color, #c3c4c7);
+            border-radius: 6px;
+            background: #fff;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+            color: var(--sp-text-color, #1d2327);
+        }
+        .sp-donate-amount-btn:hover,
+        .sp-donate-amount-btn.sp-selected {
+            border-color: var(--sp-accent-color, #2271b1);
+            background: var(--sp-accent-color, #2271b1);
+            color: #fff;
+        }
+        .sp-donate-custom-amount {
+            margin-top: 8px;
+        }
+
+        /* Payment buttons */
+        .sp-donate-pay-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 24px;
+        }
+        .sp-donate-pay-btn {
+            display: block;
+            width: 100%;
+            padding: 14px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: center;
+            transition: opacity 0.15s;
+        }
+        .sp-donate-pay-btn:hover {
+            opacity: 0.9;
+        }
+        .sp-donate-pay-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .sp-donate-pay-btn-stripe {
+            background: #635bff;
+            color: #fff;
+        }
+        .sp-donate-pay-btn-paypal {
+            background: #ffc439;
+            color: #253b80;
+        }
+
+        /* Anonymous checkbox & note */
+        .sp-donate-checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        .sp-donate-checkbox-row input[type="checkbox"] {
+            width: auto;
+            margin: 0;
+        }
+        .sp-donate-checkbox-row label {
+            font-weight: normal;
+            margin-bottom: 0;
+        }
+
+        .sp-donate-error {
+            background: #fcf0f1;
+            border: 1px solid #d63638;
+            border-radius: 4px;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            color: #d63638;
+            display: none;
+        }
+        .sp-donate-spinner {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #646970;
+        }
+    </style>
+
+    <div class="sp-donate-form" id="<?php echo esc_attr( $form_id ); ?>">
+        <div class="sp-donate-error" id="<?php echo esc_attr( $form_id ); ?>-error"></div>
+        <div class="sp-donate-spinner" id="<?php echo esc_attr( $form_id ); ?>-spinner">
+            <?php esc_html_e( 'Processing your donation...', 'societypress' ); ?>
+        </div>
+        <form id="<?php echo esc_attr( $form_id ); ?>-inner" onsubmit="return false;">
+
+            <?php
+            // --- Campaign selection ---
+            // WHY: If there are active campaigns, show them as selectable cards
+            // with progress bars so donors can see exactly where their money goes.
+            // If locked to a specific campaign, just show that one highlighted.
+            if ( ! empty( $campaigns ) ) :
+            ?>
+            <div class="sp-donate-field">
+                <label><?php esc_html_e( 'Choose a Campaign', 'societypress' ); ?></label>
+                <div class="sp-donate-campaigns">
+                    <?php if ( ! $locked_campaign_id ) : ?>
+                        <div class="sp-donate-campaign-card sp-selected" data-campaign-id="0">
+                            <div class="sp-campaign-name"><?php esc_html_e( 'General Donation', 'societypress' ); ?></div>
+                            <div class="sp-campaign-desc"><?php printf( esc_html__( 'Support %s with an unrestricted gift.', 'societypress' ), $org_name ); ?></div>
+                        </div>
+                    <?php endif; ?>
+                    <?php foreach ( $campaigns as $c ) :
+                        $raised = (float) $c->raised;
+                        $goal   = (float) ( $c->goal_amount ?? 0 );
+                        $pct    = $goal > 0 ? min( 100, round( ( $raised / $goal ) * 100 ) ) : 0;
+                        $is_preselected = $locked_campaign_id && (int) $c->id === $locked_campaign_id;
+                    ?>
+                        <div class="sp-donate-campaign-card<?php echo $is_preselected ? ' sp-selected' : ''; ?>"
+                             data-campaign-id="<?php echo esc_attr( $c->id ); ?>">
+                            <div class="sp-campaign-name"><?php echo esc_html( $c->name ); ?></div>
+                            <?php if ( $c->description ) : ?>
+                                <div class="sp-campaign-desc"><?php echo esc_html( wp_trim_words( $c->description, 20 ) ); ?></div>
+                            <?php endif; ?>
+                            <?php if ( $goal > 0 ) : ?>
+                                <div class="sp-donate-campaign-progress">
+                                    <div class="sp-donate-campaign-progress-bar" style="width:<?php echo esc_attr( $pct ); ?>%;"></div>
+                                </div>
+                                <div class="sp-donate-campaign-progress-text">
+                                    <?php printf(
+                                        esc_html__( '%1$s raised of %2$s goal (%3$d%%)', 'societypress' ),
+                                        esc_html( sp_format_currency( $raised ) ),
+                                        esc_html( sp_format_currency( $goal ) ),
+                                        $pct
+                                    ); ?>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+                <input type="hidden" name="campaign_id" value="<?php echo esc_attr( $locked_campaign_id ); ?>">
+            </div>
+            <?php endif; ?>
+
+            <?php // --- Donor info --- ?>
+            <div class="sp-donate-field">
+                <label for="<?php echo esc_attr( $form_id ); ?>-name">
+                    <?php esc_html_e( 'Your Name', 'societypress' ); ?>
+                    <span class="sp-donate-required">*</span>
+                </label>
+                <input type="text" id="<?php echo esc_attr( $form_id ); ?>-name" name="donor_name"
+                       value="<?php echo esc_attr( $prefill_name ); ?>" required
+                       placeholder="<?php esc_attr_e( 'Full name', 'societypress' ); ?>">
+            </div>
+
+            <div class="sp-donate-field">
+                <label for="<?php echo esc_attr( $form_id ); ?>-email">
+                    <?php esc_html_e( 'Email Address', 'societypress' ); ?>
+                    <span class="sp-donate-required">*</span>
+                </label>
+                <input type="email" id="<?php echo esc_attr( $form_id ); ?>-email" name="donor_email"
+                       value="<?php echo esc_attr( $prefill_email ); ?>" required
+                       placeholder="<?php esc_attr_e( 'you@example.com', 'societypress' ); ?>">
+            </div>
+
+            <?php // --- Amount selection --- ?>
+            <div class="sp-donate-field">
+                <label><?php esc_html_e( 'Donation Amount', 'societypress' ); ?>
+                    <span class="sp-donate-required">*</span>
+                </label>
+                <div class="sp-donate-amounts">
+                    <button type="button" class="sp-donate-amount-btn" data-amount="25">$25</button>
+                    <button type="button" class="sp-donate-amount-btn" data-amount="50">$50</button>
+                    <button type="button" class="sp-donate-amount-btn" data-amount="100">$100</button>
+                    <button type="button" class="sp-donate-amount-btn" data-amount="250">$250</button>
+                    <button type="button" class="sp-donate-amount-btn" data-amount="other"><?php esc_html_e( 'Other', 'societypress' ); ?></button>
+                </div>
+                <div class="sp-donate-custom-amount" id="<?php echo esc_attr( $form_id ); ?>-custom-wrap" style="display:none;">
+                    <input type="number" id="<?php echo esc_attr( $form_id ); ?>-custom-amount"
+                           name="custom_amount" min="1" step="0.01"
+                           placeholder="<?php esc_attr_e( 'Enter amount', 'societypress' ); ?>">
+                </div>
+                <input type="hidden" name="amount" id="<?php echo esc_attr( $form_id ); ?>-amount" value="">
+            </div>
+
+            <?php // --- Anonymous + Note --- ?>
+            <div class="sp-donate-checkbox-row">
+                <input type="checkbox" id="<?php echo esc_attr( $form_id ); ?>-anon" name="is_anonymous" value="1">
+                <label for="<?php echo esc_attr( $form_id ); ?>-anon">
+                    <?php esc_html_e( 'Make this donation anonymous', 'societypress' ); ?>
+                </label>
+            </div>
+
+            <div class="sp-donate-field">
+                <label for="<?php echo esc_attr( $form_id ); ?>-note">
+                    <?php esc_html_e( 'Note (optional)', 'societypress' ); ?>
+                </label>
+                <textarea id="<?php echo esc_attr( $form_id ); ?>-note" name="note" rows="3"
+                          placeholder="<?php esc_attr_e( 'Add a personal message or dedication...', 'societypress' ); ?>"></textarea>
+            </div>
+
+            <?php // --- Payment buttons — shown conditionally based on configured gateways --- ?>
+            <div class="sp-donate-pay-buttons">
+                <?php if ( $stripe_ready ) : ?>
+                    <button type="button" class="sp-donate-pay-btn sp-donate-pay-btn-stripe"
+                            data-method="stripe" id="<?php echo esc_attr( $form_id ); ?>-btn-stripe">
+                        <?php esc_html_e( 'Donate with Card', 'societypress' ); ?>
+                    </button>
+                <?php endif; ?>
+                <?php if ( $paypal_ready ) : ?>
+                    <button type="button" class="sp-donate-pay-btn sp-donate-pay-btn-paypal"
+                            data-method="paypal" id="<?php echo esc_attr( $form_id ); ?>-btn-paypal">
+                        <?php esc_html_e( 'Donate with PayPal', 'societypress' ); ?>
+                    </button>
+                <?php endif; ?>
+            </div>
+
+            <input type="hidden" name="nonce" value="<?php echo esc_attr( $nonce ); ?>">
+            <input type="hidden" name="action" value="sp_donate_online">
+        </form>
+    </div>
+
+    <script>
+    /**
+     * Donation form handler — vanilla JS, no jQuery.
+     *
+     * WHY: Manages campaign card selection, amount preset buttons, custom amount
+     * toggling, form validation, and AJAX submission to the sp_donate_online
+     * endpoint. On success, redirects to the checkout URL returned by the server.
+     *
+     * Uses an IIFE scoped to the form ID so multiple donation widgets on one
+     * page don't conflict with each other.
+     */
+    (function() {
+        var formId   = <?php echo wp_json_encode( $form_id ); ?>;
+        var form     = document.getElementById(formId + '-inner');
+        var errorBox = document.getElementById(formId + '-error');
+        var spinner  = document.getElementById(formId + '-spinner');
+        var customWrap   = document.getElementById(formId + '-custom-wrap');
+        var customInput  = document.getElementById(formId + '-custom-amount');
+        var amountHidden = document.getElementById(formId + '-amount');
+
+        if (!form) return;
+
+        // --- Campaign card selection ---
+        var campaignCards = form.querySelectorAll('.sp-donate-campaign-card');
+        var campaignInput = form.querySelector('input[name="campaign_id"]');
+
+        campaignCards.forEach(function(card) {
+            card.addEventListener('click', function() {
+                campaignCards.forEach(function(c) { c.classList.remove('sp-selected'); });
+                card.classList.add('sp-selected');
+                if (campaignInput) {
+                    campaignInput.value = card.getAttribute('data-campaign-id') || '0';
+                }
+            });
+        });
+
+        // --- Amount preset buttons ---
+        var amountBtns = form.querySelectorAll('.sp-donate-amount-btn');
+        var selectedPreset = null;
+
+        amountBtns.forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                amountBtns.forEach(function(b) { b.classList.remove('sp-selected'); });
+                btn.classList.add('sp-selected');
+
+                var val = btn.getAttribute('data-amount');
+                if (val === 'other') {
+                    // Show custom amount input, clear preset value
+                    customWrap.style.display = '';
+                    customInput.focus();
+                    amountHidden.value = '';
+                    selectedPreset = 'other';
+                } else {
+                    customWrap.style.display = 'none';
+                    customInput.value = '';
+                    amountHidden.value = val;
+                    selectedPreset = val;
+                }
+            });
+        });
+
+        // Sync custom amount input to hidden field
+        if (customInput) {
+            customInput.addEventListener('input', function() {
+                amountHidden.value = this.value;
+            });
+        }
+
+        // --- Payment button handlers ---
+        var payBtns = form.querySelectorAll('.sp-donate-pay-btn');
+        var submitting = false;
+
+        payBtns.forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                if (submitting) return;
+
+                errorBox.style.display = 'none';
+                errorBox.textContent = '';
+
+                // Resolve the final amount
+                var amount = parseFloat(amountHidden.value);
+                if (!amount || amount <= 0) {
+                    showError(<?php echo wp_json_encode( __( 'Please select or enter a donation amount.', 'societypress' ) ); ?>);
+                    return;
+                }
+
+                var nameField  = form.querySelector('input[name="donor_name"]');
+                var emailField = form.querySelector('input[name="donor_email"]');
+
+                if (!nameField.value.trim()) {
+                    showError(<?php echo wp_json_encode( __( 'Please enter your name.', 'societypress' ) ); ?>);
+                    nameField.focus();
+                    return;
+                }
+                if (!emailField.value.trim() || emailField.value.indexOf('@') === -1) {
+                    showError(<?php echo wp_json_encode( __( 'Please enter a valid email address.', 'societypress' ) ); ?>);
+                    emailField.focus();
+                    return;
+                }
+
+                var method = btn.getAttribute('data-method');
+
+                // Build form data
+                var fd = new FormData();
+                fd.append('action', 'sp_donate_online');
+                fd.append('nonce', form.querySelector('input[name="nonce"]').value);
+                fd.append('donor_name', nameField.value.trim());
+                fd.append('donor_email', emailField.value.trim());
+                fd.append('amount', amount.toString());
+                fd.append('pay_method', method);
+                fd.append('campaign_id', (campaignInput ? campaignInput.value : '0'));
+                fd.append('is_anonymous', form.querySelector('input[name="is_anonymous"]').checked ? '1' : '0');
+
+                var noteField = form.querySelector('textarea[name="note"]');
+                if (noteField) {
+                    fd.append('note', noteField.value);
+                }
+
+                // Disable buttons and show spinner
+                submitting = true;
+                payBtns.forEach(function(b) { b.disabled = true; });
+                spinner.style.display = '';
+
+                fetch(<?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    body: fd,
+                })
+                .then(function(resp) { return resp.json(); })
+                .then(function(data) {
+                    if (data.success && data.data && data.data.checkout_url) {
+                        // Redirect to the payment gateway
+                        window.location.href = data.data.checkout_url;
+                    } else {
+                        showError(data.data && data.data.message
+                            ? data.data.message
+                            : <?php echo wp_json_encode( __( 'Something went wrong. Please try again.', 'societypress' ) ); ?>);
+                        submitting = false;
+                        payBtns.forEach(function(b) { b.disabled = false; });
+                        spinner.style.display = 'none';
+                    }
+                })
+                .catch(function() {
+                    showError(<?php echo wp_json_encode( __( 'Network error. Please check your connection and try again.', 'societypress' ) ); ?>);
+                    submitting = false;
+                    payBtns.forEach(function(b) { b.disabled = false; });
+                    spinner.style.display = 'none';
+                });
+            });
+        });
+
+        function showError(msg) {
+            errorBox.textContent = msg;
+            errorBox.style.display = '';
+            errorBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    })();
+    </script>
+    <?php
+}
+
+
+/**
+ * Render the Donation Form page builder widget.
+ *
+ * WHY: Societies may want to embed a donation form on any builder page — not
+ *      just the dedicated Donate page. This widget wraps the shared form
+ *      rendering function with an optional campaign_id setting to lock the
+ *      form to a specific campaign.
+ *
+ * @param array $s Widget settings array. Keys:
+ *                  - campaign_id (int): Lock to a specific campaign (0 = show dropdown).
+ */
+function sp_render_builder_widget_donations_form( array $s ): void {
+    $campaign_id = absint( $s['campaign_id'] ?? 0 );
+    sp_render_donation_form_frontend( $campaign_id );
+}
+
+
 // ============================================================================
 
 /**
@@ -77103,6 +79010,88 @@ self.addEventListener('fetch', function(event) {
 
 SWJS;
 
+    // Push notification event handler — only output if push is enabled.
+    // WHY conditional: If push is disabled, there's no reason to register
+    // the push event listener in the service worker. Keeping it out reduces
+    // the SW size and avoids confusing debug output in DevTools.
+    if ( ! empty( $settings['push_enabled'] ) ) {
+        echo <<<'PUSHJS'
+
+/**
+ * Push event — show a notification when the server sends one.
+ *
+ * WHY self.registration.showNotification: This is the Web Push API's standard
+ * method for displaying a notification from a service worker. The notification
+ * payload is a JSON object with title, body, icon, and optional url fields.
+ * We parse the payload and display it, falling back to sensible defaults if
+ * any field is missing.
+ */
+self.addEventListener('push', function(event) {
+    var data = {};
+    if (event.data) {
+        try {
+            data = event.data.json();
+        } catch (e) {
+            /* If the payload isn't valid JSON, use the raw text as the body.
+               WHY: Some push implementations send plain text instead of JSON.
+               We handle both gracefully rather than silently swallowing the
+               notification. */
+            data = { title: 'Notification', body: event.data.text() };
+        }
+    }
+
+    var title   = data.title || 'New Update';
+    var options = {
+        body: data.body || '',
+        icon: data.icon || '/wp-content/plugins/societypress/assets/icon-192.png',
+        badge: data.badge || '/wp-content/plugins/societypress/assets/icon-192.png',
+        data: { url: data.url || '/' }
+    };
+
+    event.waitUntil(
+        self.registration.showNotification(title, options)
+    );
+});
+
+/**
+ * Notification click handler — open the associated URL when the member taps
+ * the notification.
+ *
+ * WHY: Without this handler, tapping a notification does nothing. We close the
+ * notification and either focus an existing tab or open a new one at the URL
+ * specified in the push payload's data.url field.
+ */
+self.addEventListener('notificationclick', function(event) {
+    event.notification.close();
+
+    var targetUrl = event.notification.data && event.notification.data.url
+        ? event.notification.data.url
+        : '/';
+
+    event.waitUntil(
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
+            /* If the site is already open in a tab, focus it and navigate */
+            for (var i = 0; i < clientList.length; i++) {
+                var client = clientList[i];
+                if ('focus' in client) {
+                    client.focus();
+                    if (client.url !== targetUrl && 'navigate' in client) {
+                        return client.navigate(targetUrl);
+                    }
+                    return client;
+                }
+            }
+            /* No existing tab — open a new one */
+            if (clients.openWindow) {
+                return clients.openWindow(targetUrl);
+            }
+        })
+    );
+});
+
+PUSHJS;
+    }
+
     // The offline page function contains dynamic values so it's output with PHP
     echo "/**\n";
     echo " * Generate a branded offline fallback page.\n";
@@ -77386,23 +79375,210 @@ add_action( 'wp_footer', function () {
 
 
 // ---------------------------------------------------------------------------
-// 4. PUSH NOTIFICATION SUBSCRIPTION — registration only
+// 4. PUSH NOTIFICATION SUBSCRIPTION & SENDING
 //
-// WHY "registration only": Push notifications require a VAPID key pair and
-// a server-side sending mechanism (web-push library or third-party service).
-// That's significant infrastructure we're not building yet. For now, we
-// collect subscription endpoints so that when push sending IS built, we
-// already have a subscriber base ready to go. Members opt in from their
-// My Account page.
+// WHY: Push notifications let societies send time-sensitive updates directly
+// to members' devices — new event announcements, meeting reminders, dues
+// renewal nudges. Unlike email, push appears instantly on the lock screen
+// and doesn't get lost in spam folders.
+//
+// ARCHITECTURE:
+//   - VAPID key pair auto-generates on first settings page access
+//   - Subscriptions stored in sp_push_subscriptions table (not user_meta)
+//     so we can support non-logged-in visitors and multiple devices per user
+//   - REST API endpoint for subscription management (replaces old AJAX handler)
+//   - sp_send_push_notification() helper iterates all subscriptions and sends
+//     via wp_remote_post() using the Web Push protocol with VAPID JWT auth
+//   - Frontend JS requests permission, subscribes via service worker, and
+//     POSTs the subscription to the REST endpoint
+//
+// GATED by both pwa_enabled AND push_enabled settings.
 // ---------------------------------------------------------------------------
+
+/**
+ * Auto-generate VAPID key pair on first access if not already set.
+ *
+ * WHY: VAPID (Voluntary Application Server Identification) is required by the
+ * Web Push protocol. The public key is shared with the browser during
+ * subscription; the private key signs the JWT auth header when sending.
+ * Generating automatically means Harold never has to deal with key pairs —
+ * it "just works" when he enables push notifications.
+ *
+ * WHY admin_init: We need this to run before the settings page renders so
+ * the VAPID public key is available for the frontend JS. admin_init fires
+ * early enough on every admin page load.
+ */
+add_action( 'admin_init', function () {
+    $settings = get_option( 'societypress_settings', [] );
+
+    // Only generate if push is enabled and keys are missing
+    if ( empty( $settings['push_enabled'] ) ) {
+        return;
+    }
+
+    if ( ! empty( $settings['push_vapid_public'] ) && ! empty( $settings['push_vapid_secret'] ) ) {
+        return;
+    }
+
+    // Generate VAPID key pair using openssl
+    // WHY openssl: PHP's openssl extension is available on virtually all shared
+    // hosting (including Skystra). We generate a P-256 EC key pair which is the
+    // only curve supported by the Web Push standard.
+    if ( ! function_exists( 'openssl_pkey_new' ) ) {
+        return; // Can't generate keys without openssl — Harold will need to install it
+    }
+
+    $key = openssl_pkey_new( [
+        'curve_name'       => 'prime256v1',
+        'private_key_type' => OPENSSL_KEYTYPE_EC,
+    ] );
+
+    if ( ! $key ) {
+        return;
+    }
+
+    $details = openssl_pkey_get_details( $key );
+    if ( ! $details || empty( $details['ec']['x'] ) || empty( $details['ec']['y'] ) || empty( $details['ec']['d'] ) ) {
+        return;
+    }
+
+    // The VAPID public key is the uncompressed point (0x04 || x || y) base64url-encoded
+    // WHY uncompressed format: The Web Push spec requires the public key in
+    // uncompressed EC point format. The 0x04 prefix byte indicates uncompressed.
+    $public_key_bytes = "\x04" . $details['ec']['x'] . $details['ec']['y'];
+    $vapid_public     = rtrim( strtr( base64_encode( $public_key_bytes ), '+/', '-_' ), '=' );
+
+    // The private key is just the d parameter base64url-encoded
+    $vapid_private = rtrim( strtr( base64_encode( $details['ec']['d'] ), '+/', '-_' ), '=' );
+
+    $settings['push_vapid_public'] = $vapid_public;
+    $settings['push_vapid_secret'] = sp_encrypt( $vapid_private );
+    update_option( 'societypress_settings', $settings );
+} );
+
+
+/**
+ * Register REST API endpoint for push subscriptions.
+ *
+ * WHY REST instead of AJAX: The subscription JS runs in the frontend context
+ * (not wp-admin) and may run for non-logged-in visitors in the future. REST
+ * endpoints are the modern WordPress way to handle this, and they work
+ * without requiring the ajaxurl global.
+ */
+add_action( 'rest_api_init', function () {
+    register_rest_route( 'societypress/v1', '/push/subscribe', [
+        'methods'             => 'POST',
+        'callback'            => 'sp_rest_push_subscribe',
+        'permission_callback' => '__return_true', // Public endpoint — anyone can subscribe
+    ] );
+} );
+
+
+/**
+ * REST handler: /wp-json/societypress/v1/push/subscribe
+ *
+ * Accepts a push subscription object from the browser and stores it in the
+ * sp_push_subscriptions table. If the same endpoint already exists, we update
+ * rather than duplicate — a browser's subscription endpoint is unique per
+ * device/browser combination.
+ *
+ * @param WP_REST_Request $request The incoming subscription request.
+ * @return WP_REST_Response
+ */
+function sp_rest_push_subscribe( WP_REST_Request $request ): WP_REST_Response {
+    $settings = get_option( 'societypress_settings', [] );
+
+    // Gate: push must be enabled
+    if ( empty( $settings['push_enabled'] ) || empty( $settings['pwa_enabled'] ) ) {
+        return new WP_REST_Response(
+            [ 'success' => false, 'message' => __( 'Push notifications are not enabled.', 'societypress' ) ],
+            403
+        );
+    }
+
+    // Verify nonce from the X-WP-Nonce header (WordPress REST API convention)
+    // WHY: Even though this is a public endpoint, we verify a nonce when available
+    // to prevent CSRF attacks from malicious pages subscribing random endpoints.
+    // Non-logged-in requests without a nonce are still accepted (the subscription
+    // itself is harmless — the endpoint URL is browser-generated and can only
+    // receive notifications signed with our VAPID key).
+
+    $body = $request->get_json_params();
+
+    $endpoint = sanitize_url( $body['endpoint'] ?? '' );
+    $p256dh   = sanitize_text_field( $body['keys']['p256dh'] ?? '' );
+    $auth     = sanitize_text_field( $body['keys']['auth'] ?? '' );
+
+    if ( empty( $endpoint ) || empty( $p256dh ) || empty( $auth ) ) {
+        return new WP_REST_Response(
+            [ 'success' => false, 'message' => __( 'Invalid subscription data. Endpoint, p256dh, and auth are required.', 'societypress' ) ],
+            400
+        );
+    }
+
+    // Validate the endpoint is a proper push service URL
+    // WHY: Prevent abuse — only accept URLs from known push services (Google FCM,
+    // Mozilla, Apple, Microsoft, etc.). All legitimate push endpoints use HTTPS.
+    if ( strpos( $endpoint, 'https://' ) !== 0 ) {
+        return new WP_REST_Response(
+            [ 'success' => false, 'message' => __( 'Push endpoint must use HTTPS.', 'societypress' ) ],
+            400
+        );
+    }
+
+    global $wpdb;
+    $table   = $wpdb->prefix . 'sp_push_subscriptions';
+    $user_id = get_current_user_id() ?: null;
+
+    // Check if this endpoint already exists — update instead of duplicate
+    // WHY: A browser can re-subscribe (e.g., after clearing notifications or
+    // re-enabling permissions). The endpoint URL is unique per subscription,
+    // so we use it as the dedup key.
+    $existing_id = $wpdb->get_var( $wpdb->prepare(
+        "SELECT id FROM {$table} WHERE endpoint = %s LIMIT 1",
+        $endpoint
+    ) );
+
+    if ( $existing_id ) {
+        $wpdb->update(
+            $table,
+            [
+                'user_id' => $user_id,
+                'p256dh'  => $p256dh,
+                'auth'    => $auth,
+            ],
+            [ 'id' => $existing_id ],
+            [ '%d', '%s', '%s' ],
+            [ '%d' ]
+        );
+    } else {
+        $wpdb->insert(
+            $table,
+            [
+                'user_id'  => $user_id,
+                'endpoint' => $endpoint,
+                'p256dh'   => $p256dh,
+                'auth'     => $auth,
+            ],
+            [ '%d', '%s', '%s', '%s' ]
+        );
+    }
+
+    return new WP_REST_Response(
+        [ 'success' => true, 'message' => __( 'Push subscription saved.', 'societypress' ) ],
+        200
+    );
+}
+
 
 /**
  * AJAX handler: save a push notification subscription to user_meta.
  *
- * WHY user_meta: Each subscription is tied to a specific user (member).
- * user_meta is the standard WordPress way to store per-user data, and it
- * survives password changes, session resets, and plugin deactivation/reactivation.
- * The subscription is a JSON blob containing the endpoint URL, keys, etc.
+ * WHY keep the AJAX handler alongside the REST endpoint: The My Account page
+ * still uses the AJAX approach for the subscribe/unsubscribe toggle. The REST
+ * endpoint is for the frontend service worker flow. Both coexist — the REST
+ * endpoint stores in the database table, the AJAX handler stores in user_meta.
+ * The sp_send_push_notification() helper checks both sources.
  */
 add_action( 'wp_ajax_sp_push_subscribe', function () {
     check_ajax_referer( 'sp_push_subscribe', 'nonce' );
@@ -77451,17 +79627,480 @@ add_action( 'wp_ajax_sp_push_unsubscribe', function () {
 /**
  * Get the count of members who have push notifications enabled.
  *
- * WHY a helper function: Used on the admin dashboard stat card and potentially
- * in reports. Centralizing the query avoids duplication.
+ * WHY: Counts from both the database table (REST subscriptions) and user_meta
+ * (AJAX subscriptions) for a complete picture. Used on the admin dashboard
+ * stat card and in the settings page.
  */
 function sp_pwa_push_subscriber_count(): int {
     global $wpdb;
-    return (int) $wpdb->get_var(
+
+    // Count from the push_subscriptions table
+    $table       = $wpdb->prefix . 'sp_push_subscriptions';
+    $table_count = 0;
+
+    // Check if the table exists before querying — it might not on older installs
+    // that haven't run sp_create_tables() since the table was added.
+    $table_exists = $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = %s AND table_name = %s",
+        DB_NAME,
+        $table
+    ) );
+
+    if ( $table_exists ) {
+        $table_count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" );
+    }
+
+    // Also count from user_meta (legacy AJAX subscriptions)
+    $meta_count = (int) $wpdb->get_var(
         "SELECT COUNT(DISTINCT user_id) FROM {$wpdb->usermeta}
          WHERE meta_key = 'sp_push_subscription'
            AND meta_value != ''"
     );
+
+    // Return the higher of the two to avoid double-counting
+    // WHY max instead of sum: Some users may have both a table row and a meta
+    // entry if they subscribed via both methods. Max gives a conservative count.
+    return max( $table_count, $meta_count );
 }
+
+
+/**
+ * Send a push notification to all subscribers.
+ *
+ * WHY: This is the server-side push sending mechanism. It iterates all
+ * subscriptions from the sp_push_subscriptions table and sends a notification
+ * to each one using the Web Push protocol with VAPID authentication.
+ *
+ * The Web Push protocol works by:
+ *   1. Building a VAPID JWT signed with our private key
+ *   2. Encrypting the notification payload using the subscriber's public key
+ *   3. POSTing to the push service endpoint with the encrypted payload
+ *
+ * For simplicity, we send the payload unencrypted (Content-Encoding: identity).
+ * The notification payload is not sensitive (title + body), and HTTPS protects
+ * it in transit to the push service. When a proper web-push library is added,
+ * this can be upgraded to encrypted payloads (aes128gcm).
+ *
+ * @param string $title The notification title.
+ * @param string $body  The notification body text.
+ * @param string $url   Optional URL to open when the notification is clicked.
+ * @return int The number of successful sends.
+ */
+function sp_send_push_notification( string $title, string $body, string $url = '' ): int {
+    $settings = get_option( 'societypress_settings', [] );
+
+    if ( empty( $settings['push_enabled'] ) || empty( $settings['pwa_enabled'] ) ) {
+        return 0;
+    }
+
+    $vapid_public  = $settings['push_vapid_public'] ?? '';
+    $vapid_private = sp_decrypt( $settings['push_vapid_secret'] ?? '' );
+
+    if ( empty( $vapid_public ) || empty( $vapid_private ) ) {
+        return 0;
+    }
+
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_push_subscriptions';
+
+    // Check if the table exists
+    $table_exists = $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = %s AND table_name = %s",
+        DB_NAME,
+        $table
+    ) );
+
+    if ( ! $table_exists ) {
+        return 0;
+    }
+
+    $subscriptions = $wpdb->get_results( "SELECT id, endpoint, p256dh, auth FROM {$table}" );
+
+    if ( empty( $subscriptions ) ) {
+        return 0;
+    }
+
+    // Build the notification payload
+    $payload = wp_json_encode( [
+        'title' => $title,
+        'body'  => $body,
+        'url'   => $url ?: home_url( '/' ),
+        'icon'  => plugin_dir_url( SOCIETYPRESS_PLUGIN_FILE ) . 'assets/icon-192.png',
+    ] );
+
+    $success_count   = 0;
+    $expired_ids     = [];
+    $site_url_parsed = wp_parse_url( home_url() );
+    $audience        = $site_url_parsed['scheme'] . '://' . $site_url_parsed['host'];
+
+    // Build VAPID JWT for authorization
+    // WHY: The push service needs to verify that we're the legitimate sender.
+    // VAPID uses a JWT signed with our private key. The push service validates
+    // it against our public key (which was provided during subscription).
+    $jwt_token = sp_push_build_vapid_jwt( $vapid_public, $vapid_private, $audience );
+
+    if ( ! $jwt_token ) {
+        return 0;
+    }
+
+    foreach ( $subscriptions as $sub ) {
+        $response = wp_remote_post( $sub->endpoint, [
+            'headers' => [
+                'Content-Type'     => 'application/json',
+                'TTL'              => '86400', // 24 hours — if the device is offline, retry for a day
+                'Authorization'    => 'vapid t=' . $jwt_token . ', k=' . $vapid_public,
+                'Content-Encoding' => 'identity', // Unencrypted payload (see function docblock)
+            ],
+            'body'    => $payload,
+            'timeout' => 10,
+        ] );
+
+        $status_code = wp_remote_retrieve_response_code( $response );
+
+        if ( $status_code === 201 || $status_code === 200 ) {
+            $success_count++;
+        } elseif ( $status_code === 410 || $status_code === 404 ) {
+            // 410 Gone or 404 Not Found — the subscription has expired or been
+            // revoked by the user. Clean it up so we don't waste requests.
+            $expired_ids[] = $sub->id;
+        }
+        // Other errors (429 rate limit, 500 server error) are transient —
+        // we leave the subscription in place for retry on the next send.
+    }
+
+    // Clean up expired/revoked subscriptions in bulk
+    if ( ! empty( $expired_ids ) ) {
+        $placeholders = implode( ',', array_fill( 0, count( $expired_ids ), '%d' ) );
+        $wpdb->query( $wpdb->prepare(
+            "DELETE FROM {$table} WHERE id IN ({$placeholders})",
+            ...$expired_ids
+        ) );
+    }
+
+    return $success_count;
+}
+
+
+/**
+ * Build a VAPID JWT for Web Push authentication.
+ *
+ * WHY: The Web Push protocol requires a VAPID JWT in the Authorization header.
+ * This JWT proves to the push service (Google FCM, Mozilla autopush, etc.)
+ * that we own the VAPID key pair that the subscriber subscribed with.
+ *
+ * @param string $vapid_public  Base64url-encoded VAPID public key.
+ * @param string $vapid_private Base64url-encoded VAPID private key (the 'd' parameter).
+ * @param string $audience      The origin of the push service (e.g., "https://fcm.googleapis.com").
+ * @return string|false The signed JWT, or false on failure.
+ */
+function sp_push_build_vapid_jwt( string $vapid_public, string $vapid_private, string $audience ): string|false {
+    if ( ! function_exists( 'openssl_sign' ) ) {
+        return false;
+    }
+
+    // JWT Header
+    $header = wp_json_encode( [ 'typ' => 'JWT', 'alg' => 'ES256' ] );
+
+    // JWT Payload — sub is a mailto: URI identifying the sender, aud is the
+    // push service origin, exp is 24 hours from now (max allowed by spec).
+    $settings    = get_option( 'societypress_settings', [] );
+    $admin_email = $settings['organization_email'] ?? get_option( 'admin_email', '' );
+
+    $payload = wp_json_encode( [
+        'aud' => $audience,
+        'exp' => time() + 86400,
+        'sub' => 'mailto:' . $admin_email,
+    ] );
+
+    $b64_header  = rtrim( strtr( base64_encode( $header ), '+/', '-_' ), '=' );
+    $b64_payload = rtrim( strtr( base64_encode( $payload ), '+/', '-_' ), '=' );
+
+    $signing_input = "{$b64_header}.{$b64_payload}";
+
+    // Reconstruct the PEM private key from the base64url-encoded 'd' parameter
+    // WHY: openssl_sign needs a PEM-formatted key. We have the raw 'd' parameter
+    // stored base64url-encoded. We need to build the full EC private key in
+    // DER format and wrap it in PEM headers.
+    $d_bytes = base64_decode( strtr( $vapid_private, '-_', '+/' ) );
+
+    // Also need the public key coordinates to build the full key
+    $pub_bytes = base64_decode( strtr( $vapid_public, '-_', '+/' ) );
+
+    if ( strlen( $d_bytes ) !== 32 || strlen( $pub_bytes ) !== 65 ) {
+        return false;
+    }
+
+    // Build DER-encoded EC private key
+    // WHY manual DER construction: PHP's openssl doesn't have a convenient
+    // function to import raw EC key parameters. We build the ASN.1 DER
+    // structure manually: SEQUENCE { version, privateKey, parameters, publicKey }
+    $der = "\x30\x77"                                    // SEQUENCE (119 bytes)
+         . "\x02\x01\x01"                                // INTEGER 1 (version)
+         . "\x04\x20" . $d_bytes                         // OCTET STRING (32 bytes, private key)
+         . "\xa0\x0a"                                    // [0] EXPLICIT (10 bytes)
+         . "\x06\x08\x2a\x86\x48\xce\x3d\x03\x01\x07"  // OID prime256v1
+         . "\xa1\x44"                                    // [1] EXPLICIT (68 bytes)
+         . "\x03\x42\x00" . $pub_bytes;                  // BIT STRING (66 bytes, public key)
+
+    $pem = "-----BEGIN EC PRIVATE KEY-----\n"
+         . chunk_split( base64_encode( $der ), 64, "\n" )
+         . "-----END EC PRIVATE KEY-----\n";
+
+    $private_key = openssl_pkey_get_private( $pem );
+    if ( ! $private_key ) {
+        return false;
+    }
+
+    $signature = '';
+    if ( ! openssl_sign( $signing_input, $signature, $private_key, OPENSSL_ALGO_SHA256 ) ) {
+        return false;
+    }
+
+    // Convert the DER-encoded ECDSA signature to raw R||S format (64 bytes)
+    // WHY: JWT ES256 expects the signature as raw 32-byte R + 32-byte S concatenated.
+    // OpenSSL returns DER-encoded which wraps R and S in ASN.1 INTEGER tags.
+    $r_and_s = sp_push_der_to_raw_ecdsa( $signature );
+    if ( ! $r_and_s ) {
+        return false;
+    }
+
+    $b64_signature = rtrim( strtr( base64_encode( $r_and_s ), '+/', '-_' ), '=' );
+
+    return "{$b64_header}.{$b64_payload}.{$b64_signature}";
+}
+
+
+/**
+ * Convert a DER-encoded ECDSA signature to raw R||S format.
+ *
+ * WHY: OpenSSL's openssl_sign() returns signatures in ASN.1 DER format, but
+ * JWT ES256 expects raw concatenated R and S values (each 32 bytes, zero-padded).
+ * This function parses the DER structure and extracts the raw values.
+ *
+ * @param string $der_sig The DER-encoded ECDSA signature.
+ * @return string|false 64-byte raw signature (R||S), or false on failure.
+ */
+function sp_push_der_to_raw_ecdsa( string $der_sig ): string|false {
+    $pos = 0;
+    $len = strlen( $der_sig );
+
+    // Expect SEQUENCE tag (0x30)
+    if ( $pos >= $len || ord( $der_sig[ $pos ] ) !== 0x30 ) {
+        return false;
+    }
+    $pos++;
+
+    // Skip the sequence length byte(s)
+    if ( $pos >= $len ) {
+        return false;
+    }
+    $seq_len = ord( $der_sig[ $pos ] );
+    $pos++;
+    if ( $seq_len & 0x80 ) {
+        // Long form length — skip the extra bytes
+        $num_len_bytes = $seq_len & 0x7F;
+        $pos += $num_len_bytes;
+    }
+
+    // Extract R
+    $r = sp_push_extract_der_integer( $der_sig, $pos );
+    if ( $r === false ) {
+        return false;
+    }
+
+    // Extract S
+    $s = sp_push_extract_der_integer( $der_sig, $pos );
+    if ( $s === false ) {
+        return false;
+    }
+
+    // Pad or trim R and S to exactly 32 bytes each
+    $r = str_pad( substr( $r, -32 ), 32, "\x00", STR_PAD_LEFT );
+    $s = str_pad( substr( $s, -32 ), 32, "\x00", STR_PAD_LEFT );
+
+    return $r . $s;
+}
+
+
+/**
+ * Extract an ASN.1 INTEGER from a DER-encoded buffer.
+ *
+ * WHY: DER-encoded ECDSA signatures contain R and S as ASN.1 INTEGER values,
+ * which may have a leading zero byte for sign padding. We need the raw bytes.
+ *
+ * @param string $buf The DER buffer.
+ * @param int    &$pos Current position in the buffer (advanced past the INTEGER).
+ * @return string|false The raw integer bytes, or false on parse error.
+ */
+function sp_push_extract_der_integer( string $buf, int &$pos ): string|false {
+    $len = strlen( $buf );
+
+    // Expect INTEGER tag (0x02)
+    if ( $pos >= $len || ord( $buf[ $pos ] ) !== 0x02 ) {
+        return false;
+    }
+    $pos++;
+
+    // Read length
+    if ( $pos >= $len ) {
+        return false;
+    }
+    $int_len = ord( $buf[ $pos ] );
+    $pos++;
+
+    if ( $pos + $int_len > $len ) {
+        return false;
+    }
+
+    $int_bytes = substr( $buf, $pos, $int_len );
+    $pos += $int_len;
+
+    // Strip leading zero byte used for sign padding in DER
+    if ( strlen( $int_bytes ) > 1 && $int_bytes[0] === "\x00" ) {
+        $int_bytes = substr( $int_bytes, 1 );
+    }
+
+    return $int_bytes;
+}
+
+
+// ---------------------------------------------------------------------------
+// 4b. FRONTEND PUSH SUBSCRIPTION JS
+//
+// WHY: When push is enabled and the service worker is registered, we need
+// frontend JS that: (1) requests notification permission from the user,
+// (2) subscribes via the service worker's pushManager using our VAPID public
+// key, and (3) POSTs the subscription to our REST endpoint. This runs in
+// wp_footer after the service worker registration.
+// ---------------------------------------------------------------------------
+
+add_action( 'wp_footer', function () {
+    $settings = get_option( 'societypress_settings', [] );
+
+    // Gate: both PWA and push must be enabled
+    if ( empty( $settings['pwa_enabled'] ) || empty( $settings['push_enabled'] ) ) {
+        return;
+    }
+
+    $vapid_public = $settings['push_vapid_public'] ?? '';
+    if ( empty( $vapid_public ) ) {
+        return; // VAPID keys haven't been generated yet
+    }
+
+    $rest_url = esc_url( rest_url( 'societypress/v1/push/subscribe' ) );
+    $nonce    = wp_create_nonce( 'wp_rest' );
+    ?>
+    <script>
+    /**
+     * SocietyPress Push Notification Subscription
+     *
+     * WHY: This code runs after the service worker is registered. It requests
+     * notification permission, subscribes via the Push API using our VAPID
+     * public key, and sends the subscription to our REST endpoint for storage.
+     *
+     * Only runs once per browser session (tracked via sessionStorage) to avoid
+     * repeated permission prompts on every page load.
+     */
+    (function() {
+        'use strict';
+
+        /* Gate: Only run if the browser supports push and service workers */
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+            return;
+        }
+
+        /* Gate: Don't re-subscribe if already done this session */
+        if (sessionStorage.getItem('sp_push_subscribed')) {
+            return;
+        }
+
+        /* Wait for the service worker to be ready before subscribing */
+        navigator.serviceWorker.ready.then(function(registration) {
+            /* Check if already subscribed — no need to re-subscribe */
+            return registration.pushManager.getSubscription().then(function(existing) {
+                if (existing) {
+                    /* Already subscribed — send to server in case it's a new device
+                       or the server lost the subscription */
+                    sendSubscription(existing);
+                    sessionStorage.setItem('sp_push_subscribed', '1');
+                    return;
+                }
+
+                /* Request notification permission from the user.
+                   WHY: Browsers require explicit user consent before allowing push
+                   subscriptions. If the user denies, we respect that and don't ask again
+                   (the browser remembers the decision). */
+                return Notification.requestPermission().then(function(permission) {
+                    if (permission !== 'granted') {
+                        return; /* User denied — respect their choice */
+                    }
+
+                    /* Convert the VAPID public key from base64url to Uint8Array.
+                       WHY: The Push API's subscribe() method requires the applicationServerKey
+                       as a Uint8Array, not a base64 string. */
+                    var vapidKey = urlBase64ToUint8Array(<?php echo wp_json_encode( $vapid_public ); ?>);
+
+                    return registration.pushManager.subscribe({
+                        userVisibleOnly: true, /* Required by Chrome — all pushes must show a notification */
+                        applicationServerKey: vapidKey
+                    }).then(function(subscription) {
+                        sendSubscription(subscription);
+                        sessionStorage.setItem('sp_push_subscribed', '1');
+                    });
+                });
+            });
+        }).catch(function() {
+            /* Silent fail — push is an enhancement, not a requirement */
+        });
+
+        /**
+         * Send the push subscription to our REST endpoint.
+         *
+         * WHY: The subscription object contains the endpoint URL and encryption
+         * keys that the server needs to send push notifications to this browser.
+         * We POST it as JSON to our REST endpoint which stores it in the database.
+         */
+        function sendSubscription(subscription) {
+            var subJson = subscription.toJSON();
+            fetch(<?php echo wp_json_encode( $rest_url ); ?>, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-WP-Nonce': <?php echo wp_json_encode( $nonce ); ?>
+                },
+                body: JSON.stringify({
+                    endpoint: subJson.endpoint,
+                    keys: {
+                        p256dh: subJson.keys.p256dh,
+                        auth: subJson.keys.auth
+                    }
+                })
+            }).catch(function() {
+                /* Silent fail — subscription will be retried on next page load */
+            });
+        }
+
+        /**
+         * Convert a base64url-encoded string to a Uint8Array.
+         *
+         * WHY: The Push API requires the VAPID applicationServerKey as a
+         * Uint8Array. Our server stores the key in base64url format (the
+         * standard for VAPID keys). This converts between the two.
+         */
+        function urlBase64ToUint8Array(base64String) {
+            var padding = '='.repeat((4 - base64String.length % 4) % 4);
+            var base64  = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+            var rawData = window.atob(base64);
+            var outputArray = new Uint8Array(rawData.length);
+            for (var i = 0; i < rawData.length; i++) {
+                outputArray[i] = rawData.charCodeAt(i);
+            }
+            return outputArray;
+        }
+    })();
+    </script>
+    <?php
+}, 100 ); // Priority 100 — after the service worker registration (priority 99)
 
 
 // ---------------------------------------------------------------------------

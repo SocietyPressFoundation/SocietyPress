@@ -3,21 +3,29 @@ Theme Name: Prairie
 Theme URI: https://getsocietypress.org/themes/prairie
 Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
-Description: An earthy, welcoming theme with warm greens and natural tones. Inspired by
-             open landscapes and community gathering places. Ideal for Midwest and rural
-             societies that value warmth, accessibility, and a down-to-earth personality.
-Version: 1.0.0
+Description: An Explorer layout theme with a permanent left sidebar navigation. Earthy,
+             welcoming colors with warm greens and natural tones. Designed for content-heavy
+             societies with deep page structures — big libraries, lots of records, research
+             guides. The left sidebar gives visitors persistent navigation without hunting
+             through menus.
+Version: 1.1.0
 Template: societypress
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 8.0
 License: GPL-2.0-or-later
 Text Domain: prairie
-Tags: genealogy, historical-society, earthy, warm, natural, serif
+Tags: genealogy, historical-society, earthy, warm, natural, serif, sidebar-navigation
 */
 
 /* ============================================================================
    PRAIRIE COLOR PALETTE & FONT
+   ============================================================================
+   WHY: These custom properties define the Prairie identity. The --prairie-*
+   vars are for child-theme-specific selectors. The --sp-* overrides push
+   our palette into the parent theme's design system so every parent
+   component (buttons, cards, form inputs) picks up our colors without
+   needing per-component overrides.
    ============================================================================ */
 
 :root {
@@ -49,10 +57,15 @@ Tags: genealogy, historical-society, earthy, warm, natural, serif
        at larger sizes — important for our older demographic. */
     --sp-font-body:    'Lora', Georgia, 'Times New Roman', serif;
     --sp-font-heading: 'Lora', Georgia, 'Times New Roman', serif;
+
+    /* Explorer layout dimensions */
+    --prairie-sidebar-width: 260px;
+    --prairie-content-max:   900px;
 }
 
+
 /* ============================================================================
-   PRAIRIE-SPECIFIC TWEAKS
+   BASE OVERRIDES
    ============================================================================ */
 
 body {
@@ -83,4 +96,684 @@ input[type="submit"]:hover {
 hr,
 .sp-divider {
     border-color: var(--prairie-wheat);
+}
+
+
+/* ============================================================================
+   COMPACT HEADER
+   ============================================================================
+   WHY: The Explorer layout puts the primary navigation in the left sidebar,
+   so the header only needs branding + a few utility links. We keep it slim
+   to maximize vertical space for the two-column layout below.
+   ============================================================================ */
+
+.prairie-header {
+    background-color: var(--prairie-forest);
+    color: var(--sp-color-header-text);
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    border-bottom: 3px solid var(--prairie-clay);
+}
+
+.prairie-header-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 8px 24px;
+    gap: 16px;
+}
+
+/* Logo — kept small since the header is compact */
+.prairie-header .site-branding {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.prairie-header .site-branding a {
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+}
+
+.prairie-header .custom-logo,
+.prairie-header .site-branding img {
+    height: 40px;
+    width: auto;
+}
+
+.prairie-header .site-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 0;
+    line-height: 1.2;
+}
+
+.prairie-header .site-title a {
+    color: var(--sp-color-header-text);
+    text-decoration: none;
+}
+.prairie-header .site-title a:hover {
+    color: var(--prairie-clay);
+}
+
+.prairie-header .site-description {
+    display: none; /* Too much for a compact header */
+}
+
+/* Header navigation area — utility links + search + user menu */
+.prairie-header-nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Minimal horizontal nav — just a few key links */
+.prairie-top-nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.prairie-top-nav li {
+    margin: 0;
+}
+
+.prairie-top-nav a {
+    color: var(--sp-color-header-text);
+    text-decoration: none;
+    padding: 6px 12px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-radius: 4px;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.prairie-top-nav a:hover,
+.prairie-top-nav .current-menu-item > a {
+    background-color: rgba(255, 255, 255, 0.15);
+    color: var(--prairie-clay);
+}
+
+
+/* ============================================================================
+   SIDEBAR TOGGLE BUTTON (Mobile)
+   ============================================================================
+   WHY: On screens below 768px, the left sidebar is hidden by default.
+   This hamburger-style button lets the user reveal it. We use a different
+   class from the parent's .sp-hamburger to avoid conflicts — the parent's
+   hamburger controls the main-navigation, ours controls the sidebar.
+   ============================================================================ */
+
+.prairie-sidebar-toggle {
+    display: none; /* Hidden on desktop — sidebar is always visible */
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 6px;
+    margin-right: 4px;
+    flex-shrink: 0;
+}
+
+.prairie-sidebar-toggle .bar {
+    display: block;
+    width: 22px;
+    height: 2px;
+    background-color: var(--sp-color-header-text);
+    margin: 5px 0;
+    border-radius: 2px;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+/* Animate bars into an X when sidebar is open */
+.prairie-sidebar-toggle.is-active .bar:nth-child(1) {
+    transform: translateY(7px) rotate(45deg);
+}
+.prairie-sidebar-toggle.is-active .bar:nth-child(2) {
+    opacity: 0;
+}
+.prairie-sidebar-toggle.is-active .bar:nth-child(3) {
+    transform: translateY(-7px) rotate(-45deg);
+}
+
+
+/* ============================================================================
+   EXPLORER LAYOUT — TWO-COLUMN GRID
+   ============================================================================
+   WHY: The Explorer archetype puts navigation in a permanent left sidebar so
+   content-heavy societies can expose their deep page structure (library
+   categories, record collections, research guides) without relying on
+   dropdowns or hamburger menus. The sidebar is always visible on desktop,
+   giving users a persistent "table of contents" for the site.
+   ============================================================================ */
+
+.prairie-layout {
+    display: grid;
+    grid-template-columns: var(--prairie-sidebar-width) 1fr;
+    min-height: calc(100vh - 60px); /* Full viewport minus compact header */
+}
+
+
+/* ============================================================================
+   LEFT SIDEBAR
+   ============================================================================ */
+
+.prairie-sidebar {
+    background-color: #F0EBE1; /* Slightly darker than body for visual separation */
+    border-right: 1px solid var(--sp-color-border);
+    padding: 24px 0;
+    overflow-y: auto;
+    position: sticky;
+    top: 60px; /* Below the sticky header */
+    height: calc(100vh - 60px);
+    scrollbar-width: thin;
+    scrollbar-color: var(--prairie-clay) transparent;
+}
+
+/* Section headings in the sidebar nav */
+.prairie-sidebar-heading {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--prairie-muted);
+    padding: 16px 20px 6px;
+    margin: 0;
+}
+
+/* Sidebar navigation menu — vertical link list */
+.prairie-sidebar .menu {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.prairie-sidebar .menu li {
+    margin: 0;
+}
+
+.prairie-sidebar .menu a {
+    display: block;
+    padding: 10px 20px;
+    color: var(--prairie-text);
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 400;
+    border-left: 3px solid transparent;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.prairie-sidebar .menu a:hover {
+    background-color: rgba(122, 154, 94, 0.1);
+    color: var(--prairie-forest);
+    border-left-color: var(--prairie-sage);
+}
+
+/* Active page highlighting — the current page gets a bold left border
+   and a subtle background tint so users always know where they are. */
+.prairie-sidebar .menu .current-menu-item > a,
+.prairie-sidebar .menu .current_page_item > a,
+.prairie-sidebar .menu .current-menu-ancestor > a {
+    background-color: rgba(45, 80, 22, 0.08);
+    color: var(--prairie-forest);
+    font-weight: 600;
+    border-left-color: var(--prairie-forest);
+}
+
+/* Sub-menu items — indented for hierarchy */
+.prairie-sidebar .menu .sub-menu {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.prairie-sidebar .menu .sub-menu a {
+    padding-left: 40px;
+    font-size: 0.85rem;
+}
+
+.prairie-sidebar .menu .sub-menu .sub-menu a {
+    padding-left: 56px;
+    font-size: 0.82rem;
+}
+
+/* Widget area in sidebar — when widgets are used instead of a nav menu */
+.prairie-sidebar .widget-area {
+    padding: 0 20px;
+}
+
+.prairie-sidebar .widget {
+    margin-bottom: 24px;
+}
+
+.prairie-sidebar .widget-title {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--prairie-muted);
+    margin: 0 0 8px;
+    padding: 0;
+}
+
+.prairie-sidebar .widget ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.prairie-sidebar .widget li {
+    margin: 0;
+}
+
+.prairie-sidebar .widget a {
+    display: block;
+    padding: 8px 0;
+    color: var(--prairie-text);
+    text-decoration: none;
+    font-size: 0.9rem;
+    border-bottom: 1px solid rgba(216, 206, 188, 0.5);
+    transition: color 0.15s ease;
+}
+
+.prairie-sidebar .widget a:hover {
+    color: var(--prairie-forest);
+}
+
+
+/* ============================================================================
+   CONTENT AREA
+   ============================================================================
+   WHY: The content takes up the remaining width after the sidebar. We set
+   a max-width for comfortable reading (long lines of text are hard to read)
+   but let it breathe with generous padding.
+   ============================================================================ */
+
+.prairie-content {
+    padding: 32px 40px;
+    max-width: calc(var(--prairie-content-max) + 80px); /* content-max + padding */
+}
+
+.prairie-content .entry-header {
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid var(--prairie-wheat);
+}
+
+.prairie-content .entry-title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--prairie-forest);
+    margin: 0;
+    line-height: 1.3;
+}
+
+.prairie-content .entry-content {
+    line-height: 1.7;
+}
+
+
+/* ============================================================================
+   FRONT PAGE — EXPLORER HOMEPAGE
+   ============================================================================
+   WHY: The homepage uses the same sidebar + content layout but the content
+   area has a welcome section and feature cards to help visitors find what
+   they're looking for. The cards are 2-column on wider screens, single
+   column on narrower screens.
+   ============================================================================ */
+
+.prairie-welcome {
+    margin-bottom: 32px;
+    padding-bottom: 24px;
+    border-bottom: 2px solid var(--prairie-wheat);
+}
+
+.prairie-welcome h1 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--prairie-forest);
+    margin: 0 0 12px;
+}
+
+.prairie-welcome p {
+    font-size: 1.05rem;
+    color: var(--prairie-muted);
+    margin: 0;
+    line-height: 1.6;
+}
+
+/* Feature cards grid */
+.prairie-features {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+    margin-top: 24px;
+}
+
+.prairie-feature-card {
+    background-color: #fff;
+    border: 1px solid var(--sp-color-border);
+    border-radius: 8px;
+    padding: 24px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.prairie-feature-card:hover {
+    border-color: var(--prairie-sage);
+    box-shadow: 0 2px 8px rgba(45, 80, 22, 0.08);
+}
+
+.prairie-feature-card h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--prairie-forest);
+    margin: 0 0 8px;
+}
+
+.prairie-feature-card p {
+    font-size: 0.9rem;
+    color: var(--prairie-muted);
+    margin: 0 0 12px;
+    line-height: 1.5;
+}
+
+.prairie-feature-card a {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--prairie-sage);
+    text-decoration: none;
+}
+
+.prairie-feature-card a:hover {
+    color: var(--prairie-forest);
+    text-decoration: underline;
+}
+
+/* Featured image on the front page */
+.prairie-featured-image {
+    margin-bottom: 24px;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.prairie-featured-image img {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+
+/* ============================================================================
+   MINIMAL FOOTER
+   ============================================================================
+   WHY: The Explorer layout is sidebar-heavy, so the footer stays minimal —
+   just a single row with copyright and a few links. This avoids visual
+   clutter and keeps the sidebar as the primary navigation mechanism.
+   ============================================================================ */
+
+.prairie-footer {
+    background-color: var(--prairie-forest);
+    color: var(--sp-color-footer-text);
+    border-top: 3px solid var(--prairie-clay);
+}
+
+.prairie-footer-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 16px 24px;
+    font-size: 0.85rem;
+}
+
+.prairie-footer-copy {
+    margin: 0;
+    opacity: 0.8;
+}
+
+.prairie-footer-links {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.prairie-footer-links a {
+    color: var(--prairie-clay);
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.prairie-footer-links a:hover {
+    color: #fff;
+}
+
+
+/* ============================================================================
+   MOBILE OVERLAY SIDEBAR
+   ============================================================================
+   WHY: Below 768px, the sidebar can't sit beside the content — there isn't
+   room. Instead, it hides off-screen and slides in as an overlay when the
+   user taps the hamburger button. A semi-transparent backdrop behind it
+   lets the user tap outside to dismiss.
+   ============================================================================ */
+
+/* Backdrop overlay — covers the content when sidebar is open on mobile.
+   WHY display:none here: On desktop the backdrop isn't needed (sidebar is
+   always visible). We also keep it out of grid flow so it doesn't create
+   an extra grid cell that would break the 2-column layout. */
+.prairie-sidebar-backdrop {
+    display: none;
+    position: fixed; /* Fixed positioning takes it out of grid flow entirely */
+}
+
+@media (max-width: 768px) {
+
+    /* Switch to single-column — the sidebar is an overlay, not in the grid */
+    .prairie-layout {
+        grid-template-columns: 1fr;
+    }
+
+    /* Show the sidebar toggle button in the header */
+    .prairie-sidebar-toggle {
+        display: block;
+    }
+
+    /* Hide the top nav on mobile — sidebar has the full nav */
+    .prairie-top-nav-wrap {
+        display: none;
+    }
+
+    /* Sidebar becomes a fixed overlay that slides in from the left */
+    .prairie-sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: var(--prairie-sidebar-width);
+        height: 100vh;
+        z-index: 2000;
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+        /* Reset the sticky positioning for mobile */
+        top: 0;
+        overflow-y: auto;
+        padding-top: 60px; /* Space for close action / header height */
+    }
+
+    .prairie-sidebar.is-open {
+        transform: translateX(0);
+    }
+
+    /* Semi-transparent backdrop behind the sidebar */
+    .prairie-sidebar-backdrop {
+        display: block;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.4);
+        z-index: 1999;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.3s ease, visibility 0.3s ease;
+    }
+
+    .prairie-sidebar-backdrop.is-visible {
+        opacity: 1;
+        visibility: visible;
+    }
+
+    /* Content area needs more breathing room on mobile */
+    .prairie-content {
+        padding: 20px 16px;
+    }
+
+    /* Feature cards stack to single column on mobile */
+    .prairie-features {
+        grid-template-columns: 1fr;
+    }
+
+    /* Footer stacks vertically on narrow screens */
+    .prairie-footer-inner {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    .prairie-footer-links {
+        justify-content: center;
+    }
+}
+
+/* Tablet tweaks — sidebar still present but slightly narrower */
+@media (min-width: 769px) and (max-width: 1024px) {
+    :root {
+        --prairie-sidebar-width: 220px;
+    }
+
+    .prairie-content {
+        padding: 24px 24px;
+    }
+}
+
+
+/* ============================================================================
+   SKIP LINK
+   ============================================================================
+   WHY: Keyboard and screen reader users need a way to skip the sidebar
+   navigation. This link is visually hidden until focused via Tab.
+   WCAG 2.1 Level A requirement (2.4.1).
+   ============================================================================ */
+
+.prairie-skip-link {
+    position: absolute;
+    top: -100%;
+    left: 0;
+    z-index: 3000;
+    background-color: var(--prairie-forest);
+    color: #fff;
+    padding: 8px 16px;
+    font-size: 0.875rem;
+    text-decoration: none;
+    transition: top 0.2s ease;
+}
+
+.prairie-skip-link:focus {
+    top: 0;
+}
+
+
+/* ============================================================================
+   SEARCH IN HEADER
+   ============================================================================
+   WHY: We re-use the parent's search toggle pattern but need to ensure
+   it fits within the compact header. These tweaks keep it aligned.
+   ============================================================================ */
+
+.prairie-header .sp-header-search-wrap {
+    position: relative;
+}
+
+.prairie-header .sp-search-toggle {
+    background: none;
+    border: none;
+    color: var(--sp-color-header-text);
+    cursor: pointer;
+    padding: 6px;
+    display: flex;
+    align-items: center;
+}
+
+.prairie-header .sp-search-toggle:hover {
+    color: var(--prairie-clay);
+}
+
+.prairie-header .sp-header-search {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: #fff;
+    border: 1px solid var(--sp-color-border);
+    border-radius: 4px;
+    padding: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 1001;
+}
+
+.prairie-header .sp-search-open .sp-header-search {
+    display: flex;
+    gap: 4px;
+}
+
+.prairie-header .sp-header-search input[type="text"] {
+    width: 220px;
+    padding: 6px 10px;
+    border: 1px solid var(--sp-color-border);
+    border-radius: 4px;
+    font-size: 0.875rem;
+}
+
+.prairie-header .sp-header-search button[type="submit"] {
+    background-color: var(--prairie-forest);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+}
+
+.prairie-header .sp-header-search button[type="submit"]:hover {
+    background-color: var(--prairie-sage);
+}
+
+
+/* ============================================================================
+   POST THUMBNAIL IN CONTENT
+   ============================================================================ */
+
+.prairie-content .post-thumbnail {
+    margin-bottom: 24px;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.prairie-content .post-thumbnail img {
+    display: block;
+    width: 100%;
+    height: auto;
 }

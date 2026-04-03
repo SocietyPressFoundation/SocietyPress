@@ -10294,7 +10294,8 @@ function sp_render_members_page(): void {
             $current_uid,
             $admin_display
         ) );
-        <?php // "Delete All Others" moved to danger zone section at page bottom ?>
+        // "Delete All Others" button moved to danger zone section at page bottom
+        ?>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-import' ) ); ?>" class="page-title-action">
             <?php esc_html_e( 'Import Membership List', 'societypress' ); ?>
         </a>

@@ -3,10 +3,11 @@ Theme Name: Parlor
 Theme URI: https://getsocietypress.org/themes/parlor
 Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
-Description: An elegant, refined theme inspired by Victorian parlor rooms and fine stationery.
-             Deep plum, warm ivory, and rose gold create a sense of grace and sophistication.
-             Ideal for societies with a literary or artistic heritage, or any group that wants
-             to feel polished and inviting without being stuffy.
+Description: A "Traditional" layout archetype — the comfortable, familiar layout that
+             ENS migrants will feel at home with. Centered banner, horizontal nav,
+             optional right sidebar, classic organizational homepage with "Next Meeting"
+             callout, upcoming events, and recent news. Deep plum, warm ivory, and
+             rose gold create a sense of grace and sophistication.
 Version: 1.0.0
 Template: societypress
 Requires at least: 6.0
@@ -14,7 +15,7 @@ Tested up to: 6.7
 Requires PHP: 8.0
 License: GPL-2.0-or-later
 Text Domain: parlor
-Tags: genealogy, historical-society, elegant, refined, serif, victorian
+Tags: genealogy, historical-society, elegant, refined, serif, victorian, traditional
 */
 
 /* ============================================================================
@@ -56,10 +57,11 @@ Tags: genealogy, historical-society, elegant, refined, serif, victorian
     --sp-font-heading: 'EB Garamond', Georgia, 'Times New Roman', serif;
 }
 
+
 /* ============================================================================
-   PARLOR-SPECIFIC TWEAKS
+   BASE OVERRIDES
    WHY: Minimal overrides beyond the color/font vars. The parent theme handles
-   layout and structure — we just refine the feel.
+   most structure — we refine the feel and add the Traditional layout pattern.
    ============================================================================ */
 
 /* Warm ivory background throughout */
@@ -98,4 +100,841 @@ hr,
 /* Slightly larger heading weight for the thin Garamond to feel substantial */
 h1, h2, h3 {
     font-weight: 600;
+}
+
+
+/* ============================================================================
+   HEADER — CENTERED BANNER + NAV BAR
+   WHY: The "Traditional" layout centers the logo and site name at the top,
+   with a full-width navigation bar below. This is the classic pattern every
+   ENS society website uses — logo on top, nav below, no surprises.
+   ============================================================================ */
+
+/* Override parent header to remove its default layout */
+.site-header {
+    background-color: transparent;
+    padding: 0;
+}
+
+/* WHY we override the parent's header-inner: The parent theme lays out the
+   header as a horizontal flexbox (logo left, nav right). Parlor splits the
+   header into two stacked regions — banner (centered) and nav bar (full-width) —
+   so we need to neutralize the parent's flex layout. */
+.header-inner {
+    display: block;
+    padding: 0;
+    max-width: none;
+}
+
+/* Banner area: centered logo and site identity above the nav */
+.parlor-banner {
+    background-color: var(--parlor-plum);
+    padding: 30px 20px;
+    text-align: center;
+}
+
+.parlor-banner .site-branding {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    justify-content: center;
+}
+
+.parlor-banner .custom-logo-link {
+    display: inline-block;
+}
+
+/* WHY max-height on logo: Without a constraint, an oversized logo image
+   could blow up the banner. 120px is generous enough for most society
+   logos while keeping the banner proportional. */
+.parlor-banner .custom-logo {
+    max-height: 120px;
+    width: auto;
+}
+
+.parlor-banner .parlor-banner-text {
+    text-align: center;
+}
+
+.parlor-banner .site-title {
+    margin: 0;
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.parlor-banner .site-title a {
+    color: var(--parlor-ivory);
+    text-decoration: none;
+}
+.parlor-banner .site-title a:hover {
+    color: var(--parlor-blush);
+}
+
+.parlor-banner .site-description {
+    color: var(--parlor-blush);
+    font-size: 1.05rem;
+    font-style: italic;
+    margin: 5px 0 0;
+}
+
+
+/* Navigation bar: full-width band below the banner */
+.parlor-nav-bar {
+    background-color: var(--parlor-rose);
+}
+
+.parlor-nav-inner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+    position: relative;
+}
+
+/* Navigation links: horizontal, centered, clean */
+.parlor-nav-bar .main-navigation {
+    flex: 1;
+}
+
+.parlor-nav-bar .main-navigation ul {
+    display: flex;
+    justify-content: center;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    gap: 0;
+    flex-wrap: wrap;
+}
+
+.parlor-nav-bar .main-navigation li {
+    margin: 0;
+}
+
+.parlor-nav-bar .main-navigation a {
+    display: block;
+    padding: 12px 18px;
+    color: #fff;
+    text-decoration: none;
+    font-size: 0.95rem;
+    font-weight: 500;
+    transition: background-color 0.2s ease;
+}
+
+.parlor-nav-bar .main-navigation a:hover,
+.parlor-nav-bar .main-navigation .current-menu-item > a {
+    background-color: var(--parlor-plum);
+    color: #fff;
+}
+
+/* Dropdown submenus (depth 2) */
+.parlor-nav-bar .main-navigation li {
+    position: relative;
+}
+
+.parlor-nav-bar .main-navigation .sub-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 100;
+    background-color: var(--parlor-plum);
+    min-width: 200px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.parlor-nav-bar .main-navigation li:hover > .sub-menu,
+.parlor-nav-bar .main-navigation li:focus-within > .sub-menu {
+    display: block;
+}
+
+.parlor-nav-bar .main-navigation .sub-menu a {
+    padding: 10px 18px;
+    font-size: 0.9rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.parlor-nav-bar .main-navigation .sub-menu a:hover {
+    background-color: var(--parlor-rose);
+}
+
+/* Search toggle in the nav bar — inherit the nav bar's white text */
+.parlor-nav-bar .sp-search-toggle {
+    color: #fff;
+}
+.parlor-nav-bar .sp-search-toggle:hover {
+    color: var(--parlor-ivory);
+}
+
+/* User menu in the nav bar — white text to match */
+.parlor-nav-bar .sp-user-menu .sp-user-trigger {
+    color: #fff;
+}
+
+/* Social icons in the nav bar */
+.parlor-nav-bar .sp-social-icons a {
+    color: #fff;
+}
+.parlor-nav-bar .sp-social-icons a:hover {
+    color: var(--parlor-ivory);
+}
+
+/* Hamburger: hidden on desktop, visible on mobile */
+.parlor-nav-bar .sp-hamburger {
+    display: none;
+}
+
+
+/* ============================================================================
+   CONTENT LAYOUT — OPTIONAL SIDEBAR
+   WHY: The .parlor-content-wrap uses CSS grid. When the .parlor-has-sidebar
+   class is present (meaning the admin added widgets to parlor-sidebar), the
+   grid switches to a two-column layout. Without it, content is full-width.
+   This means the sidebar is truly optional — zero config for a clean look.
+   ============================================================================ */
+
+.site-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 30px 20px;
+}
+
+.parlor-content-wrap {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 40px;
+}
+
+/* WHY 1fr 280px: When the sidebar is active, the content area gets the
+   remaining space and the sidebar gets a fixed 280px. This is narrow
+   enough to not compete with the content but wide enough for widgets
+   like calendars and search forms to render properly. */
+.parlor-content-wrap.parlor-has-sidebar {
+    grid-template-columns: 1fr 280px;
+}
+
+
+/* ============================================================================
+   SIDEBAR
+   WHY: Traditional sidebar styling — clean, bordered, with clear widget
+   separation. Matches the organizational website aesthetic.
+   ============================================================================ */
+
+.parlor-sidebar {
+    font-size: 0.92rem;
+}
+
+.parlor-sidebar .widget {
+    margin-bottom: 25px;
+    padding-bottom: 25px;
+    border-bottom: 1px solid var(--parlor-blush);
+}
+
+.parlor-sidebar .widget:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.parlor-sidebar .widget-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--parlor-plum);
+    margin: 0 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--parlor-rose);
+}
+
+.parlor-sidebar ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.parlor-sidebar li {
+    margin: 0;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(232, 196, 196, 0.5);
+}
+
+.parlor-sidebar li:last-child {
+    border-bottom: none;
+}
+
+.parlor-sidebar a {
+    text-decoration: none;
+}
+
+.parlor-sidebar a:hover {
+    text-decoration: underline;
+}
+
+
+/* ============================================================================
+   FRONT PAGE — WELCOME SECTION
+   ============================================================================ */
+
+.parlor-welcome {
+    margin-bottom: 30px;
+}
+
+.parlor-welcome .entry-content {
+    font-size: 1.05rem;
+    line-height: 1.7;
+}
+
+
+/* ============================================================================
+   FRONT PAGE — "NEXT MEETING" CALLOUT
+   WHY: This is THE key element of the Traditional layout. ENS society members
+   visit the website primarily to find out when the next meeting is. This
+   callout box puts that information front and center — bordered, slightly
+   highlighted background, impossible to miss. The date block on the left
+   with month/day makes it scannable at a glance.
+   ============================================================================ */
+
+.parlor-next-meeting {
+    background-color: #fff;
+    border: 2px solid var(--parlor-rose);
+    border-radius: 6px;
+    padding: 25px 30px;
+    margin-bottom: 35px;
+}
+
+.parlor-next-meeting h2 {
+    font-size: 1.4rem;
+    color: var(--parlor-plum);
+    margin: 0 0 18px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--parlor-blush);
+}
+
+.parlor-meeting-details {
+    display: flex;
+    gap: 25px;
+    align-items: flex-start;
+}
+
+/* Date block: large visual date in a colored box for instant scanning.
+   WHY this pattern: Calendar-style date blocks are universally understood.
+   The month abbreviation on top, big day number below — visitors know
+   exactly when the meeting is without reading a word. */
+.parlor-meeting-date-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 70px;
+    background-color: var(--parlor-plum);
+    color: var(--parlor-ivory);
+    border-radius: 6px;
+    padding: 10px 12px;
+    flex-shrink: 0;
+}
+
+.parlor-meeting-month {
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.parlor-meeting-day {
+    font-size: 1.8rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.parlor-meeting-info {
+    flex: 1;
+}
+
+.parlor-meeting-title {
+    font-size: 1.25rem;
+    color: var(--parlor-plum);
+    margin: 0 0 8px;
+}
+
+.parlor-meeting-datetime {
+    color: var(--parlor-text);
+    margin: 0 0 6px;
+    font-size: 0.95rem;
+}
+
+.parlor-meeting-location {
+    color: var(--parlor-muted);
+    margin: 0 0 10px;
+    font-size: 0.92rem;
+}
+
+.parlor-meeting-excerpt {
+    color: var(--parlor-muted);
+    font-size: 0.92rem;
+    line-height: 1.5;
+    margin: 8px 0 0;
+}
+
+
+/* ============================================================================
+   FRONT PAGE — UPCOMING EVENTS LIST
+   WHY: A compact list with date on the left and details on the right.
+   Clean horizontal rows separated by subtle borders. The traditional
+   "what's coming up" section every organizational site needs.
+   ============================================================================ */
+
+.parlor-upcoming-events {
+    margin-bottom: 35px;
+}
+
+.parlor-upcoming-events h2 {
+    font-size: 1.3rem;
+    color: var(--parlor-plum);
+    margin: 0 0 15px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--parlor-rose);
+}
+
+.parlor-events-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.parlor-event-item {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--parlor-blush);
+}
+
+.parlor-event-item:last-child {
+    border-bottom: none;
+}
+
+/* Event date: compact calendar block — smaller than the meeting callout */
+.parlor-event-date {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 50px;
+    background-color: var(--parlor-plum);
+    color: var(--parlor-ivory);
+    border-radius: 4px;
+    padding: 6px 8px;
+    flex-shrink: 0;
+}
+
+.parlor-event-month {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.parlor-event-day {
+    font-size: 1.3rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.parlor-event-details {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 5px 12px;
+    flex: 1;
+}
+
+.parlor-event-title {
+    color: var(--parlor-text);
+    font-size: 1rem;
+}
+
+.parlor-event-time {
+    color: var(--parlor-muted);
+    font-size: 0.88rem;
+}
+
+.parlor-event-location {
+    color: var(--parlor-muted);
+    font-size: 0.88rem;
+}
+
+/* Separate time and location with a bullet when they're on the same line */
+.parlor-event-time + .parlor-event-location::before {
+    content: '\00B7';
+    margin-right: 12px;
+    color: var(--parlor-blush);
+}
+
+
+/* ============================================================================
+   FRONT PAGE — RECENT NEWS
+   WHY: Shows the latest 3 blog posts so the homepage doesn't feel static.
+   Simple list: title, date, excerpt. Standard organizational news section.
+   ============================================================================ */
+
+.parlor-recent-news {
+    margin-bottom: 35px;
+}
+
+.parlor-recent-news h2 {
+    font-size: 1.3rem;
+    color: var(--parlor-plum);
+    margin: 0 0 15px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--parlor-rose);
+}
+
+.parlor-news-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.parlor-news-item {
+    padding: 15px 0;
+    border-bottom: 1px solid var(--parlor-blush);
+}
+
+.parlor-news-item:last-child {
+    border-bottom: none;
+}
+
+.parlor-news-title {
+    font-size: 1.1rem;
+    margin: 0 0 4px;
+}
+
+.parlor-news-title a {
+    color: var(--parlor-plum);
+    text-decoration: none;
+}
+
+.parlor-news-title a:hover {
+    color: var(--parlor-rose);
+    text-decoration: underline;
+}
+
+.parlor-news-meta {
+    color: var(--parlor-muted);
+    font-size: 0.85rem;
+    margin: 0 0 8px;
+}
+
+.parlor-news-excerpt {
+    font-size: 0.92rem;
+    line-height: 1.5;
+    color: var(--parlor-text);
+}
+
+.parlor-news-excerpt p {
+    margin: 0;
+}
+
+
+/* ============================================================================
+   PAGE CONTENT — ENTRY STYLES
+   WHY: Clean, readable content area with clear headings and proper spacing.
+   Traditional organizational styling — nothing fancy, just well-organized.
+   ============================================================================ */
+
+.content-area .entry-header {
+    margin-bottom: 25px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid var(--parlor-blush);
+}
+
+.content-area .entry-title {
+    font-size: 1.8rem;
+    color: var(--parlor-plum);
+    margin: 0;
+}
+
+.content-area .entry-content {
+    line-height: 1.7;
+}
+
+.content-area .post-thumbnail {
+    margin-bottom: 25px;
+}
+
+.content-area .post-thumbnail img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+}
+
+
+/* ============================================================================
+   FOOTER — 2-COLUMN LAYOUT
+   WHY: Classic organizational footer — org info on the left, quick links on
+   the right, copyright bar at the bottom. Clean, familiar, functional.
+   ============================================================================ */
+
+.site-footer {
+    background-color: var(--parlor-plum);
+    color: var(--parlor-ivory);
+    margin-top: 40px;
+}
+
+.parlor-footer-inner {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 40px 20px 30px;
+}
+
+.parlor-footer-col h3 {
+    color: var(--parlor-ivory);
+    font-size: 1.15rem;
+    margin: 0 0 12px;
+}
+
+.parlor-footer-col p {
+    color: rgba(255, 248, 240, 0.8);
+    line-height: 1.6;
+    margin: 0 0 10px;
+}
+
+/* Footer links */
+.parlor-footer-links ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.parlor-footer-links li {
+    margin: 0;
+    padding: 5px 0;
+}
+
+.parlor-footer-links a {
+    color: var(--parlor-blush);
+    text-decoration: none;
+    font-size: 0.95rem;
+}
+
+.parlor-footer-links a:hover {
+    color: #fff;
+    text-decoration: underline;
+}
+
+/* Footer widget titles */
+.parlor-footer-col .widget-title {
+    color: var(--parlor-ivory);
+    font-size: 1.15rem;
+    margin: 0 0 12px;
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+/* Footer widget links inherit the footer link style */
+.parlor-footer-col .widget a {
+    color: var(--parlor-blush);
+    text-decoration: none;
+}
+.parlor-footer-col .widget a:hover {
+    color: #fff;
+    text-decoration: underline;
+}
+
+.parlor-footer-col .widget ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.parlor-footer-col .widget li {
+    padding: 5px 0;
+}
+
+/* Bottom bar: copyright */
+.parlor-footer-bottom {
+    border-top: 1px solid rgba(255, 248, 240, 0.15);
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 18px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.parlor-footer-bottom p {
+    margin: 0;
+    font-size: 0.85rem;
+    color: rgba(255, 248, 240, 0.7);
+}
+
+.parlor-footer-bottom .parlor-powered-by a {
+    color: var(--parlor-blush);
+    text-decoration: none;
+}
+
+.parlor-footer-bottom .parlor-powered-by a:hover {
+    color: #fff;
+    text-decoration: underline;
+}
+
+
+/* ============================================================================
+   RESPONSIVE — MOBILE ADJUSTMENTS
+   WHY: At 768px the sidebar drops below the content, the nav collapses to a
+   hamburger menu, and the footer goes single-column. Standard responsive
+   patterns that keep the site usable on phones and tablets.
+   ============================================================================ */
+
+@media (max-width: 768px) {
+
+    /* Sidebar drops below content */
+    .parlor-content-wrap.parlor-has-sidebar {
+        grid-template-columns: 1fr;
+    }
+
+    .parlor-sidebar {
+        border-top: 2px solid var(--parlor-blush);
+        padding-top: 25px;
+        margin-top: 10px;
+    }
+
+    /* Banner: tighten padding */
+    .parlor-banner {
+        padding: 20px 15px;
+    }
+
+    .parlor-banner .site-title {
+        font-size: 1.5rem;
+    }
+
+    .parlor-banner .custom-logo {
+        max-height: 80px;
+    }
+
+    /* Nav: hamburger visible, nav links hidden until toggled */
+    .parlor-nav-bar .sp-hamburger {
+        display: flex;
+    }
+
+    .parlor-nav-bar .main-navigation {
+        display: none;
+        width: 100%;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        background-color: var(--parlor-rose);
+        z-index: 999;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    /* WHY sp-nav-open: The parent theme's JS toggles this class on the
+       main-navigation element when the hamburger is clicked. We use the
+       same class so the parent's JS works without any changes. */
+    .parlor-nav-bar .main-navigation.sp-nav-open {
+        display: block;
+    }
+
+    .parlor-nav-bar .main-navigation ul {
+        flex-direction: column;
+    }
+
+    .parlor-nav-bar .main-navigation a {
+        padding: 14px 20px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    /* Submenus on mobile: stack below their parent */
+    .parlor-nav-bar .main-navigation .sub-menu {
+        position: static;
+        box-shadow: none;
+        background-color: rgba(0, 0, 0, 0.1);
+    }
+
+    .parlor-nav-bar .main-navigation .sub-menu a {
+        padding-left: 35px;
+    }
+
+    /* Next Meeting callout: stack date block above info on small screens */
+    .parlor-meeting-details {
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .parlor-meeting-date-block {
+        flex-direction: row;
+        gap: 8px;
+        min-width: auto;
+        padding: 8px 16px;
+    }
+
+    .parlor-meeting-day {
+        font-size: 1.4rem;
+    }
+
+    /* Footer: single column */
+    .parlor-footer-inner {
+        grid-template-columns: 1fr;
+        gap: 25px;
+        padding: 30px 15px 20px;
+    }
+
+    /* Footer bottom: stack */
+    .parlor-footer-bottom {
+        flex-direction: column;
+        text-align: center;
+        padding: 15px;
+    }
+
+    /* Event items: tighten on small screens */
+    .parlor-event-item {
+        gap: 10px;
+    }
+
+    .parlor-event-date {
+        min-width: 44px;
+    }
+
+    .site-content {
+        padding: 20px 15px;
+    }
+}
+
+/* WHY 480px: At very small screens, further reduce sizes to prevent
+   horizontal scrolling and keep text readable. */
+@media (max-width: 480px) {
+
+    .parlor-banner .site-title {
+        font-size: 1.25rem;
+    }
+
+    .parlor-banner .site-description {
+        font-size: 0.9rem;
+    }
+
+    .parlor-next-meeting {
+        padding: 18px 15px;
+    }
+
+    .parlor-next-meeting h2 {
+        font-size: 1.2rem;
+    }
+
+    .parlor-meeting-title {
+        font-size: 1.1rem;
+    }
+
+    .content-area .entry-title {
+        font-size: 1.4rem;
+    }
 }

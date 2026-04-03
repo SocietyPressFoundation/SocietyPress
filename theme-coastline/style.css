@@ -3,21 +3,25 @@ Theme Name: Coastline
 Theme URI: https://getsocietypress.org/themes/coastline
 Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
-Description: A clean, modern theme with an airy coastal feel. Navy and white with soft blue
-             accents create a professional, approachable look. Perfect for societies that want
-             to feel contemporary and welcoming without sacrificing credibility.
-Version: 1.0.0
+Description: A magazine-style layout with a right sidebar on desktop, ideal for active societies
+             with lots happening. Navy and white with soft blue accents create a professional,
+             approachable look. The sidebar collapses below content on mobile for a clean
+             reading experience on any device.
+Version: 1.1.0
 Template: societypress
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 8.0
 License: GPL-2.0-or-later
 Text Domain: coastline
-Tags: genealogy, historical-society, modern, clean, coastal, sans-serif
+Tags: genealogy, historical-society, modern, clean, coastal, sans-serif, magazine, sidebar
 */
 
 /* ============================================================================
    COASTLINE COLOR PALETTE & FONT
+   WHY: These custom properties define Coastline's visual identity. We set both
+   our own --coast-* vars (for Coastline-specific CSS) AND override the parent
+   theme's --sp-* vars so the plugin's design system outputs our palette.
    ============================================================================ */
 
 :root {
@@ -29,6 +33,7 @@ Tags: genealogy, historical-society, modern, clean, coastal, sans-serif
     --coast-sand:      #F5F0EB;
     --coast-text:      #1A2A3A;
     --coast-muted:     #6B7D8E;
+    --coast-border:    #D6E4F0;
 
     /* Override SocietyPress design vars */
     --sp-color-primary:       #1B3A5C;
@@ -50,8 +55,11 @@ Tags: genealogy, historical-society, modern, clean, coastal, sans-serif
     --sp-font-heading: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
+
 /* ============================================================================
-   COASTLINE-SPECIFIC TWEAKS
+   COASTLINE BASE STYLES
+   WHY: These overrides customize the parent theme's base elements to match
+   Coastline's airy coastal personality.
    ============================================================================ */
 
 body {
@@ -84,4 +92,539 @@ input[type="submit"]:hover {
 .sp-event-card,
 .sp-widget-card {
     border-radius: 8px;
+}
+
+
+/* ============================================================================
+   HEADER — CENTERED LOGO + NAV BELOW
+   WHY: The magazine archetype uses a centered header to give the logo
+   prominence and create a distinct masthead feel. Logo sits above, nav
+   sits below in a centered row. This differentiates Coastline from the
+   parent theme's left-logo/right-nav layout.
+   ============================================================================ */
+
+/* Override parent's side-by-side header layout to stacked/centered */
+.site-header .header-inner {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 20px 0 0;
+    gap: 0;
+}
+
+/* Branding block: centered logo + title */
+.site-header .site-branding {
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.site-header .site-title {
+    font-size: 1.6rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.site-header .site-description {
+    font-size: 0.8rem;
+    opacity: 0.7;
+}
+
+/* Nav area: centered row with nav links, search, user menu */
+.site-header .header-nav-area {
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 8px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+/* Nav links: centered, slightly smaller for the compact nav bar */
+.site-header .main-navigation a {
+    font-size: 0.95rem;
+    padding: 8px 14px;
+}
+
+
+/* ============================================================================
+   MAGAZINE LAYOUT — TWO-COLUMN GRID (CONTENT + SIDEBAR)
+   WHY: The magazine archetype places a right sidebar alongside the main
+   content area. This gives active societies a persistent space for upcoming
+   events, newsletter covers, quick links, and other at-a-glance info.
+   CSS Grid handles the layout cleanly — the sidebar is a fixed 300px on
+   desktop and collapses to full-width below content on tablet/mobile.
+   ============================================================================ */
+
+.coastline-layout {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 40px;
+    max-width: var(--sp-content-width, 1100px);
+    margin: 0 auto;
+    padding: 40px 20px;
+    width: 100%;
+}
+
+/* Main content area — takes remaining width */
+.coastline-content {
+    min-width: 0; /* Prevent content from blowing out the grid */
+}
+
+/* Sidebar — fixed 300px on desktop */
+.coastline-sidebar {
+    min-width: 0;
+}
+
+
+/* ============================================================================
+   SIDEBAR WIDGET CARDS
+   WHY: Each widget in the sidebar is styled as a card with a colored header
+   bar. This creates visual structure so the sidebar doesn't look like a
+   dumping ground — each section is clearly delineated and scannable.
+   ============================================================================ */
+
+.coastline-sidebar .widget {
+    background: var(--coast-white);
+    border: 1px solid var(--coast-border);
+    border-radius: 8px;
+    margin-bottom: 24px;
+    overflow: hidden;
+}
+
+/* Widget title bar — navy background with white text for visual anchoring */
+.coastline-sidebar .widget-title {
+    background: var(--coast-navy);
+    color: var(--coast-white);
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 10px 16px;
+    margin: 0;
+    border-radius: 0;
+}
+
+/* Widget body content area — padded interior */
+.coastline-sidebar .widget > *:not(.widget-title) {
+    padding-left: 16px;
+    padding-right: 16px;
+}
+
+/* First element after the widget title needs top padding */
+.coastline-sidebar .widget-title + * {
+    padding-top: 16px;
+}
+
+/* Last element in the widget needs bottom padding */
+.coastline-sidebar .widget > *:last-child {
+    padding-bottom: 16px;
+}
+
+/* Lists inside sidebar widgets (nav menus, link lists, etc.) */
+.coastline-sidebar .widget ul {
+    list-style: none;
+    margin: 0;
+    padding: 12px 16px 16px;
+}
+
+.coastline-sidebar .widget li {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--coast-border);
+    font-size: 0.9rem;
+}
+
+.coastline-sidebar .widget li:last-child {
+    border-bottom: none;
+}
+
+.coastline-sidebar .widget li a {
+    text-decoration: none;
+    color: var(--coast-text);
+    transition: color 0.2s ease;
+}
+
+.coastline-sidebar .widget li a:hover {
+    color: var(--coast-sky);
+}
+
+
+/* ============================================================================
+   DEFAULT SIDEBAR CONTENT (when no widgets are configured)
+   WHY: If the admin hasn't added widgets yet, the sidebar shows default
+   sections (upcoming events, newsletters) so the magazine layout isn't
+   broken or empty on first activation.
+   ============================================================================ */
+
+.coastline-default-widget {
+    background: var(--coast-white);
+    border: 1px solid var(--coast-border);
+    border-radius: 8px;
+    margin-bottom: 24px;
+    overflow: hidden;
+}
+
+.coastline-default-widget-title {
+    background: var(--coast-navy);
+    color: var(--coast-white);
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 10px 16px;
+    margin: 0;
+}
+
+.coastline-default-widget-body {
+    padding: 16px;
+}
+
+.coastline-default-widget-body p {
+    font-size: 0.9rem;
+    color: var(--coast-muted);
+    margin-bottom: 0;
+}
+
+
+/* ============================================================================
+   FRONT PAGE — MAGAZINE HOMEPAGE
+   WHY: The magazine homepage uses the same two-column layout but with
+   distinct content sections in the main area: a welcome/hero section at top
+   followed by upcoming events. The sidebar carries persistent info.
+   ============================================================================ */
+
+/* Welcome section at the top of the homepage content area */
+.coastline-welcome {
+    margin-bottom: 32px;
+}
+
+.coastline-welcome h2 {
+    color: var(--coast-navy);
+    font-size: calc(1.4rem * var(--sp-font-scale, 1));
+    margin-bottom: 12px;
+}
+
+.coastline-welcome .entry-content {
+    font-size: 1rem;
+    line-height: 1.7;
+    color: var(--coast-text);
+}
+
+/* Events section on the homepage */
+.coastline-events-section {
+    margin-top: 16px;
+}
+
+.coastline-section-heading {
+    color: var(--coast-navy);
+    font-size: calc(1.3rem * var(--sp-font-scale, 1));
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.coastline-section-divider {
+    border: none;
+    border-top: 3px solid var(--coast-sky);
+    width: 60px;
+    margin: 0 0 20px;
+}
+
+/* "View All Events" link at the bottom of the events section */
+.coastline-more-link {
+    display: inline-block;
+    margin-top: 16px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--coast-sky);
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.coastline-more-link:hover {
+    color: var(--coast-navy);
+}
+
+/* Fallback message when SocietyPress plugin is not active */
+.coastline-plugin-notice {
+    background: var(--coast-light);
+    border: 1px solid var(--coast-border);
+    border-radius: 6px;
+    padding: 20px;
+    text-align: center;
+    color: var(--coast-muted);
+    font-size: 0.9rem;
+}
+
+
+/* ============================================================================
+   PAGE CONTENT WITHIN MAGAZINE LAYOUT
+   WHY: Pages within the two-column layout need proper spacing and typography
+   treatment for their article content.
+   ============================================================================ */
+
+.coastline-content .entry-header {
+    margin-bottom: 20px;
+}
+
+.coastline-content .entry-title {
+    color: var(--coast-navy);
+    font-size: calc(1.6rem * var(--sp-font-scale, 1));
+}
+
+.coastline-content .post-thumbnail {
+    margin-bottom: 24px;
+}
+
+.coastline-content .post-thumbnail img {
+    border-radius: 8px;
+    width: 100%;
+    height: auto;
+}
+
+.coastline-content .entry-content {
+    line-height: 1.7;
+}
+
+
+/* ============================================================================
+   FOOTER — TWO-COLUMN LAYOUT + BOTTOM BAR
+   WHY: A two-column footer gives societies space to show org info on one side
+   and useful links on the other. The bottom bar below carries the copyright.
+   This is more substantial than the parent's single-line footer, fitting
+   the "magazine" feel of having more information available at a glance.
+   ============================================================================ */
+
+.site-footer {
+    background: var(--coast-navy);
+    color: var(--coast-white);
+}
+
+/* Top section: two widget columns */
+.coastline-footer-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+    max-width: var(--sp-content-width, 1100px);
+    margin: 0 auto;
+    padding: 40px 20px 32px;
+}
+
+/* Footer widget area styling */
+.coastline-footer-col .widget {
+    margin-bottom: 20px;
+}
+
+.coastline-footer-col .widget-title {
+    color: var(--coast-white);
+    font-size: 0.95rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--coast-sky);
+}
+
+.coastline-footer-col .widget ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.coastline-footer-col .widget li {
+    padding: 4px 0;
+}
+
+.coastline-footer-col .widget a {
+    color: rgba(255, 255, 255, 0.8);
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: color 0.2s ease;
+}
+
+.coastline-footer-col .widget a:hover {
+    color: var(--coast-sky);
+}
+
+.coastline-footer-col p {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+/* Default footer content (when no widgets configured) */
+.coastline-footer-default-title {
+    color: var(--coast-white);
+    font-size: 0.95rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--coast-sky);
+}
+
+.coastline-footer-default-text {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+.coastline-footer-default-links {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.coastline-footer-default-links li {
+    padding: 4px 0;
+}
+
+.coastline-footer-default-links a {
+    color: rgba(255, 255, 255, 0.8);
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: color 0.2s ease;
+}
+
+.coastline-footer-default-links a:hover {
+    color: var(--coast-sky);
+}
+
+/* Bottom bar: copyright line */
+.coastline-footer-bottom {
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    max-width: var(--sp-content-width, 1100px);
+    margin: 0 auto;
+    padding: 16px 20px;
+    text-align: center;
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.coastline-footer-bottom a {
+    color: var(--coast-sky);
+    text-decoration: none;
+}
+
+.coastline-footer-bottom a:hover {
+    color: var(--coast-white);
+}
+
+
+/* ============================================================================
+   RESPONSIVE — 1280px
+   WHY: On large-but-not-huge screens, slightly reduce the gap between
+   content and sidebar so things don't feel overly spread out.
+   ============================================================================ */
+
+@media (max-width: 1280px) {
+    .coastline-layout {
+        gap: 30px;
+    }
+
+    .coastline-footer-columns {
+        gap: 30px;
+    }
+}
+
+
+/* ============================================================================
+   RESPONSIVE — 1024px
+   WHY: On tablets in landscape and smaller laptops, narrow the sidebar
+   slightly and reduce padding to make better use of available space.
+   ============================================================================ */
+
+@media (max-width: 1024px) {
+    .coastline-layout {
+        grid-template-columns: 1fr 260px;
+        gap: 24px;
+        padding: 30px 16px;
+    }
+
+    .coastline-footer-columns {
+        gap: 24px;
+        padding: 30px 16px 24px;
+    }
+}
+
+
+/* ============================================================================
+   RESPONSIVE — 768px
+   WHY: On tablets in portrait and phones in landscape, the sidebar can no
+   longer sit beside the content without cramping both. We collapse to a
+   single-column layout: content first, sidebar below. The footer also
+   goes single-column. The header nav switches to hamburger (handled by
+   the parent theme's responsive CSS).
+   ============================================================================ */
+
+@media (max-width: 768px) {
+    /* Collapse the two-column grid to a single column */
+    .coastline-layout {
+        grid-template-columns: 1fr;
+        gap: 32px;
+        padding: 24px 16px;
+    }
+
+    /* Sidebar fills full width below the content */
+    .coastline-sidebar {
+        border-top: 2px solid var(--coast-border);
+        padding-top: 24px;
+    }
+
+    /* Footer collapses to single column */
+    .coastline-footer-columns {
+        grid-template-columns: 1fr;
+        gap: 24px;
+        padding: 24px 16px 20px;
+    }
+
+    .coastline-footer-bottom {
+        padding: 12px 16px;
+    }
+
+    /* Header stays centered but with tighter spacing */
+    .site-header .header-inner {
+        padding: 12px 0 0;
+    }
+
+    .site-header .site-branding {
+        margin-bottom: 8px;
+    }
+
+    .site-header .site-title {
+        font-size: 1.3rem;
+    }
+}
+
+
+/* ============================================================================
+   RESPONSIVE — 480px
+   WHY: On small phones, tighten everything up further. Sidebar widgets
+   stack nicely as full-width cards. Footer gets minimal padding.
+   ============================================================================ */
+
+@media (max-width: 480px) {
+    .coastline-layout {
+        padding: 16px 12px;
+        gap: 24px;
+    }
+
+    .coastline-footer-columns {
+        padding: 20px 12px 16px;
+    }
+
+    .coastline-footer-bottom {
+        padding: 10px 12px;
+        font-size: 0.75rem;
+    }
+
+    .site-header .site-title {
+        font-size: 1.1rem;
+    }
+
+    .coastline-section-heading {
+        font-size: calc(1.1rem * var(--sp-font-scale, 1));
+    }
 }

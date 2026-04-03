@@ -6,15 +6,16 @@ Author URI: https://stricklindevelopment.com/
 Description: A warm, traditional theme inspired by old library stacks and leather-bound journals.
              Rich browns, soft cream, and antique gold create a sense of history and permanence.
              Pairs beautifully with genealogical and historical societies that want to feel
-             established and scholarly.
-Version: 1.0.0
+             established and scholarly. Classic layout: single-column, generous whitespace,
+             full-width hero, 3-column footer.
+Version: 1.1.0
 Template: societypress
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 8.0
 License: GPL-2.0-or-later
 Text Domain: heritage
-Tags: genealogy, historical-society, traditional, warm, serif
+Tags: genealogy, historical-society, traditional, warm, serif, one-column
 */
 
 /* ============================================================================
@@ -51,33 +52,81 @@ Tags: genealogy, historical-society, traditional, warm, serif
        feeling stuffy. Excellent at body sizes for older readers. */
     --sp-font-body:    'Merriweather', Georgia, 'Times New Roman', serif;
     --sp-font-heading: 'Merriweather', Georgia, 'Times New Roman', serif;
+
+    /* ---- Heritage layout vars ----
+       WHY custom properties for layout: Centralizes all spacing and sizing
+       decisions. If we later add Customizer controls or need to tweak the
+       feel, we change one value instead of hunting through 50 selectors. */
+    --heritage-reading-width:  720px;
+    --heritage-content-width:  1100px;
+    --heritage-wide-width:     1280px;
+    --heritage-section-pad-y:  80px;
+    --heritage-section-pad-x:  24px;
+    --heritage-card-radius:    8px;
+    --heritage-card-shadow:    0 2px 12px rgba(0, 0, 0, 0.08);
 }
 
+
 /* ============================================================================
-   HERITAGE-SPECIFIC TWEAKS
-   WHY: Minimal overrides beyond the color/font vars. The parent theme handles
-   layout and structure — we just refine the feel.
+   GLOBAL TYPOGRAPHY REFINEMENTS
+   WHY: The "Classic" archetype emphasizes readability and elegance. Larger
+   line-height gives the text room to breathe; subtle letter-spacing on
+   headings creates a sense of deliberate, scholarly typesetting. These
+   override the parent's defaults without changing the font family.
    ============================================================================ */
 
-/* Soften the background on the main content area */
 body {
     background-color: var(--heritage-cream);
+    line-height: 1.75;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+}
+
+h1 {
+    font-size: 2.4rem;
+    font-weight: 700;
+}
+
+h2 {
+    font-size: 1.8rem;
+    font-weight: 700;
+}
+
+h3 {
+    font-size: 1.35rem;
+    font-weight: 700;
 }
 
 /* Links use the gold accent */
 a {
     color: var(--heritage-gold);
+    transition: color 0.2s ease;
 }
 a:hover {
     color: var(--heritage-brown);
 }
 
-/* Buttons get the warm brown treatment */
+
+/* ============================================================================
+   BUTTONS
+   WHY: Warm brown buttons with gold hover match the Heritage palette. The
+   slight border-radius and transition keep things modern without feeling
+   trendy. Padding is generous for easy tap targets (older demographics).
+   ============================================================================ */
+
 .sp-btn,
 button.sp-btn,
 input[type="submit"] {
     background-color: var(--heritage-brown);
     border-color: var(--heritage-brown);
+    border-radius: 4px;
+    padding: 12px 28px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 .sp-btn:hover,
 button.sp-btn:hover,
@@ -90,4 +139,486 @@ input[type="submit"]:hover {
 hr,
 .sp-divider {
     border-color: var(--heritage-tan);
+}
+
+
+/* ============================================================================
+   NARROW READING COLUMN
+   WHY: The "Classic" layout centers text content in a narrow column (720px)
+   for optimal readability — the ideal is 50-75 characters per line. Full-width
+   sections (hero, feature cards) break out of this column via their own
+   max-width rules. The parent's .site-content provides the outer container;
+   we narrow the inner content area.
+   ============================================================================ */
+
+/* WHY override content-area-full: The parent sets this to 800px. We narrow
+   it further to 720px for the Classic reading column, and add vertical
+   padding to create the generous whitespace the archetype demands. */
+.content-area-full {
+    max-width: var(--heritage-reading-width);
+    margin: 0 auto;
+    padding: 60px var(--heritage-section-pad-x);
+}
+
+/* WHY .entry-content spacing: Paragraphs, lists, and block-level elements
+   inside content need breathing room. 1.5em between paragraphs feels right
+   at Merriweather's character width. */
+.entry-content p,
+.entry-content ul,
+.entry-content ol,
+.entry-content blockquote,
+.entry-content table,
+.entry-content .wp-block-image {
+    margin-bottom: 1.5em;
+}
+
+/* Entry header spacing — title needs room above and below */
+.entry-header {
+    margin-bottom: 40px;
+    text-align: center;
+}
+
+.entry-title {
+    margin-bottom: 8px;
+}
+
+
+/* ============================================================================
+   FRONT PAGE — HERO SECTION
+   WHY: The hero is the first thing visitors see. A large heading + tagline +
+   CTA button on a warm brown background creates an immediate sense of purpose
+   and invitation. Full-width background breaks out of the reading column to
+   feel expansive; the text stays within a readable width.
+   ============================================================================ */
+
+.heritage-hero {
+    background-color: var(--heritage-brown);
+    color: var(--heritage-cream);
+    text-align: center;
+    padding: 100px var(--heritage-section-pad-x) 90px;
+}
+
+.heritage-hero-inner {
+    max-width: var(--heritage-reading-width);
+    margin: 0 auto;
+}
+
+.heritage-hero-title {
+    font-size: 2.8rem;
+    font-weight: 700;
+    line-height: 1.2;
+    margin-bottom: 20px;
+    color: var(--heritage-cream);
+    letter-spacing: -0.02em;
+}
+
+.heritage-hero-subtitle {
+    font-size: 1.15rem;
+    line-height: 1.7;
+    margin-bottom: 36px;
+    color: var(--heritage-tan);
+    font-weight: 300;
+}
+
+/* WHY distinct CTA styling: The hero button needs to pop against the dark
+   background. Gold on brown is the Heritage signature contrast. Larger size
+   and extra padding make it unmissable without being garish. */
+.heritage-hero-cta {
+    display: inline-block;
+    background-color: var(--heritage-gold);
+    color: #fff;
+    padding: 14px 36px;
+    font-size: 1rem;
+    font-weight: 600;
+    text-decoration: none;
+    border-radius: 4px;
+    letter-spacing: 0.03em;
+    transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.heritage-hero-cta:hover {
+    background-color: #9a7209;
+    color: #fff;
+    transform: translateY(-1px);
+}
+
+/* WHY: If the hero widget area is active, render its widgets inside the
+   hero section for admin-controlled content. */
+.heritage-hero-widgets {
+    max-width: var(--heritage-reading-width);
+    margin: 0 auto;
+}
+
+
+/* ============================================================================
+   FRONT PAGE — FEATURE CARDS
+   WHY: Three cards pointing to key society pages (Events, Library, Membership)
+   give visitors immediate wayfinding. The card pattern is familiar from modern
+   nonprofit sites — clean, scannable, clickable. 3-column on desktop collapses
+   gracefully to 1-column on mobile.
+   ============================================================================ */
+
+.heritage-features {
+    padding: var(--heritage-section-pad-y) var(--heritage-section-pad-x);
+    background-color: var(--heritage-cream);
+}
+
+.heritage-features-inner {
+    max-width: var(--heritage-content-width);
+    margin: 0 auto;
+}
+
+.heritage-features-heading {
+    text-align: center;
+    margin-bottom: 48px;
+    font-size: 1.8rem;
+    color: var(--heritage-brown);
+}
+
+.heritage-features-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 32px;
+}
+
+.heritage-card {
+    background: #fff;
+    border-radius: var(--heritage-card-radius);
+    box-shadow: var(--heritage-card-shadow);
+    padding: 40px 32px;
+    text-align: center;
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.heritage-card:hover {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+    transform: translateY(-2px);
+}
+
+/* WHY SVG icon sizing: Icons need to be large enough to be recognizable at
+   a glance but not so large they dominate the card. 48px is the sweet spot. */
+.heritage-card-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 20px;
+    background-color: var(--heritage-cream);
+    border-radius: 50%;
+    color: var(--heritage-gold);
+}
+
+.heritage-card-icon svg {
+    width: 28px;
+    height: 28px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.heritage-card-title {
+    font-size: 1.25rem;
+    margin-bottom: 12px;
+    color: var(--heritage-brown);
+}
+
+.heritage-card-desc {
+    font-size: 0.95rem;
+    line-height: 1.65;
+    color: var(--heritage-muted);
+    margin-bottom: 20px;
+}
+
+.heritage-card-link {
+    display: inline-block;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--heritage-gold);
+    text-decoration: none;
+    letter-spacing: 0.02em;
+}
+
+.heritage-card-link:hover {
+    color: var(--heritage-brown);
+}
+
+/* Arrow after the link text — purely decorative */
+.heritage-card-link::after {
+    content: ' \2192';
+    transition: transform 0.2s ease;
+}
+
+
+/* ============================================================================
+   FRONT PAGE — ABOUT SECTION
+   WHY: Pulls the page's actual content (the_content) so Harold can edit it
+   from the page editor. The section has a slightly different background to
+   visually separate it from the feature cards above. Centered reading column
+   keeps it scannable.
+   ============================================================================ */
+
+.heritage-about {
+    padding: var(--heritage-section-pad-y) var(--heritage-section-pad-x);
+    background-color: #fff;
+}
+
+.heritage-about-inner {
+    max-width: var(--heritage-reading-width);
+    margin: 0 auto;
+}
+
+.heritage-about-heading {
+    text-align: center;
+    margin-bottom: 32px;
+    font-size: 1.8rem;
+    color: var(--heritage-brown);
+}
+
+/* WHY generous paragraph spacing inside the about section: The content here
+   may be long-form (mission statements, history). Extra spacing between
+   paragraphs prevents the wall-of-text effect. */
+.heritage-about-content p {
+    margin-bottom: 1.5em;
+    line-height: 1.75;
+}
+
+.heritage-about-content p:last-child {
+    margin-bottom: 0;
+}
+
+
+/* ============================================================================
+   FOOTER — 3-COLUMN LAYOUT
+   WHY: The Classic archetype uses a substantial footer with three widget
+   areas (about/description, quick links, contact info). This gives societies
+   a place to put their address, mission, and important links without cluttering
+   the main navigation. The 3-column grid collapses to 1 column on mobile.
+   ============================================================================ */
+
+.heritage-footer {
+    background-color: var(--heritage-brown);
+    color: var(--heritage-cream);
+}
+
+/* WHY separate accent bar: A thin gold line at the top of the footer creates
+   a visual boundary between content and footer. It's a small touch that makes
+   the footer feel intentional rather than just "the bottom of the page." */
+.heritage-footer-accent {
+    height: 3px;
+    background-color: var(--heritage-gold);
+}
+
+.heritage-footer-columns {
+    max-width: var(--heritage-content-width);
+    margin: 0 auto;
+    padding: 60px var(--heritage-section-pad-x) 48px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 48px;
+}
+
+/* WHY widget styling inside footer: WordPress widgets come with their own
+   heading and list markup. We need to style those generically so any widget
+   Harold drops in looks right — not just our specific defaults. */
+.heritage-footer-col h3,
+.heritage-footer-col .widget-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 16px;
+    color: var(--heritage-cream);
+    letter-spacing: 0.02em;
+}
+
+.heritage-footer-col p {
+    font-size: 0.9rem;
+    line-height: 1.7;
+    color: var(--heritage-tan);
+    margin-bottom: 12px;
+}
+
+.heritage-footer-col p:last-child {
+    margin-bottom: 0;
+}
+
+.heritage-footer-col ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.heritage-footer-col ul li {
+    margin-bottom: 8px;
+}
+
+.heritage-footer-col a {
+    color: var(--heritage-tan);
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: color 0.2s ease;
+}
+
+.heritage-footer-col a:hover {
+    color: var(--heritage-gold);
+}
+
+/* WHY bottom bar is visually distinct: A subtle top border separates the
+   widget columns from the copyright line. This is a common pattern in
+   professional footers — columns for content, a bottom bar for legal. */
+.heritage-footer-bottom {
+    border-top: 1px solid rgba(253, 246, 236, 0.15);
+    padding: 20px var(--heritage-section-pad-x);
+    text-align: center;
+    font-size: 0.82rem;
+    color: var(--heritage-tan);
+}
+
+.heritage-footer-bottom-inner {
+    max-width: var(--heritage-content-width);
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.heritage-footer-bottom a {
+    color: var(--heritage-gold);
+    text-decoration: none;
+}
+
+.heritage-footer-bottom a:hover {
+    color: var(--heritage-cream);
+}
+
+
+/* ============================================================================
+   RESPONSIVE — 1024px
+   WHY: Tablet landscape. Feature cards go from 3 to 2 columns. Footer stays
+   3-column but tightens the gap. Hero text shrinks slightly.
+   ============================================================================ */
+
+@media (max-width: 1024px) {
+    :root {
+        --heritage-section-pad-y: 64px;
+    }
+
+    .heritage-hero-title {
+        font-size: 2.4rem;
+    }
+
+    .heritage-features-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 24px;
+    }
+
+    .heritage-footer-columns {
+        gap: 32px;
+    }
+}
+
+
+/* ============================================================================
+   RESPONSIVE — 768px
+   WHY: Tablet portrait / large phone. Everything goes single-column. Footer
+   collapses to stacked. Hero padding reduces. The reading column already
+   fits at this width so no change needed there.
+   ============================================================================ */
+
+@media (max-width: 768px) {
+    :root {
+        --heritage-section-pad-y: 48px;
+        --heritage-section-pad-x: 20px;
+    }
+
+    .heritage-hero {
+        padding: 72px var(--heritage-section-pad-x) 64px;
+    }
+
+    .heritage-hero-title {
+        font-size: 2rem;
+    }
+
+    .heritage-hero-subtitle {
+        font-size: 1.05rem;
+    }
+
+    .heritage-features-grid {
+        grid-template-columns: 1fr;
+        gap: 24px;
+    }
+
+    .heritage-card {
+        padding: 32px 24px;
+    }
+
+    .heritage-footer-columns {
+        grid-template-columns: 1fr;
+        gap: 32px;
+        padding: 40px var(--heritage-section-pad-x) 32px;
+    }
+
+    /* WHY center-align footer columns on mobile: When stacked, centered text
+       feels more balanced than left-aligned. On desktop, left-aligned is
+       correct because the columns sit side by side. */
+    .heritage-footer-col {
+        text-align: center;
+    }
+
+    .heritage-footer-bottom-inner {
+        flex-direction: column;
+        text-align: center;
+    }
+}
+
+
+/* ============================================================================
+   RESPONSIVE — 480px
+   WHY: Small phone. Final size reductions for comfortable reading on the
+   smallest screens. Hero heading drops to ~1.6rem which is still impactful
+   but doesn't overflow.
+   ============================================================================ */
+
+@media (max-width: 480px) {
+    :root {
+        --heritage-section-pad-x: 16px;
+    }
+
+    .heritage-hero {
+        padding: 56px var(--heritage-section-pad-x) 48px;
+    }
+
+    .heritage-hero-title {
+        font-size: 1.7rem;
+    }
+
+    .heritage-hero-subtitle {
+        font-size: 0.95rem;
+        margin-bottom: 28px;
+    }
+
+    .heritage-hero-cta {
+        padding: 12px 28px;
+        font-size: 0.95rem;
+    }
+
+    h1 {
+        font-size: 1.8rem;
+    }
+
+    h2 {
+        font-size: 1.4rem;
+    }
+
+    .heritage-features-heading,
+    .heritage-about-heading {
+        font-size: 1.4rem;
+    }
+
+    .content-area-full {
+        padding: 40px var(--heritage-section-pad-x);
+    }
 }

@@ -3,21 +3,27 @@ Theme Name: Ledger
 Theme URI: https://getsocietypress.org/themes/ledger
 Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
-Description: A formal, archival theme with sharp contrasts and buttoned-up elegance.
-             Charcoal and ivory with a deep burgundy accent evoke courthouses, ledger books,
-             and official records. For societies that want to project authority and permanence.
-Version: 1.0.0
+Description: A modern dashboard-style theme with card-based layouts, clean navigation,
+             and professional spacing. Charcoal and ivory with a deep burgundy accent
+             evoke courthouses, ledger books, and official records. For societies that
+             want to project authority and permanence.
+Version: 1.1.0
 Template: societypress
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 8.0
 License: GPL-2.0-or-later
 Text Domain: ledger
-Tags: genealogy, historical-society, formal, archival, professional, sans-serif
+Tags: genealogy, historical-society, formal, archival, professional, sans-serif, dashboard, card-layout
 */
 
 /* ============================================================================
    LEDGER COLOR PALETTE & FONT
+   ============================================================================
+   WHY: These custom properties define the Ledger visual identity. The --ledger-*
+   vars are for Ledger-specific components (hero, cards, CTA band, footer columns).
+   The --sp-* overrides push our palette into the parent theme's layout system so
+   everything from buttons to form borders picks up our colors automatically.
    ============================================================================ */
 
 :root {
@@ -51,8 +57,9 @@ Tags: genealogy, historical-society, formal, archival, professional, sans-serif
     --sp-font-heading: 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
+
 /* ============================================================================
-   LEDGER-SPECIFIC TWEAKS
+   LEDGER-SPECIFIC BASE TWEAKS
    ============================================================================ */
 
 body {
@@ -89,4 +96,949 @@ hr,
 /* Tighten heading letter spacing for a more formal feel */
 h1, h2, h3, h4, h5, h6 {
     letter-spacing: -0.01em;
+}
+
+
+/* ============================================================================
+   HEADER — FULL-WIDTH STICKY NAV
+   ============================================================================
+   WHY sticky: A fixed top nav keeps navigation always reachable on long pages.
+   The charcoal bar stretches full-width while the inner content is constrained
+   to the content width — standard modern SaaS/dashboard pattern.
+   ============================================================================ */
+
+.ledger-header {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    background: var(--ledger-charcoal);
+    color: var(--ledger-ivory);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.ledger-header-inner {
+    max-width: var(--sp-content-width, 1200px);
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    min-height: 64px;
+    gap: 24px;
+}
+
+/* Logo / branding — sits left */
+.ledger-header .site-branding {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.ledger-header .site-branding .custom-logo-link img,
+.ledger-header .site-branding .custom-logo {
+    max-height: 44px;
+    width: auto;
+}
+
+.ledger-header .site-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin: 0;
+    line-height: 1.2;
+}
+
+.ledger-header .site-title a {
+    color: var(--ledger-ivory);
+    text-decoration: none;
+}
+
+.ledger-header .site-title a:hover {
+    color: var(--ledger-burgundy);
+}
+
+.ledger-header .site-description {
+    font-size: 0.75rem;
+    color: var(--ledger-silver);
+    margin: 0;
+    line-height: 1.3;
+}
+
+
+/* ============================================================================
+   NAVIGATION — HORIZONTAL WITH DROPDOWN SUPPORT
+   ============================================================================
+   WHY depth:2 dropdowns: Dashboard layouts commonly have a single level of
+   dropdown for grouping related pages (e.g., "Resources" → Library, Documents,
+   Links). Two levels covers this without over-complicating the nav.
+   ============================================================================ */
+
+.ledger-nav-area {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-left: auto;
+    flex: 1;
+    justify-content: flex-end;
+}
+
+.ledger-navigation {
+    display: flex;
+    align-items: center;
+}
+
+.ledger-navigation > ul {
+    list-style: none;
+    display: flex;
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+}
+
+.ledger-navigation ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.ledger-navigation a {
+    display: block;
+    padding: 10px 14px;
+    color: var(--ledger-ivory);
+    text-decoration: none;
+    font-size: 0.875rem;
+    font-weight: 500;
+    white-space: nowrap;
+    border-radius: 4px;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.ledger-navigation a:hover,
+.ledger-navigation .current-menu-item > a {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+
+/* WHY: Items with children need a visual cue that there's a submenu.
+   The small caret after the link text is universally understood. */
+.ledger-navigation .menu-item-has-children > a::after {
+    content: '';
+    display: inline-block;
+    width: 0;
+    height: 0;
+    margin-left: 6px;
+    vertical-align: middle;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 4px solid currentColor;
+}
+
+/* Second-level dropdown */
+.ledger-navigation .menu-item-has-children {
+    position: relative;
+}
+
+.ledger-navigation .sub-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    min-width: 200px;
+    background: #fff;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    padding: 6px 0;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(8px);
+    transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
+    z-index: 1001;
+}
+
+/* WHY both :hover and :focus-within: Mouse users get hover dropdowns,
+   keyboard users get the same behavior when they Tab into a child link.
+   This satisfies WCAG 2.1 keyboard accessibility requirements. */
+.ledger-navigation .menu-item-has-children:hover > .sub-menu,
+.ledger-navigation .menu-item-has-children:focus-within > .sub-menu {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+.ledger-navigation .sub-menu a {
+    color: var(--ledger-text);
+    padding: 8px 16px;
+    font-size: 0.85rem;
+    border-radius: 0;
+}
+
+.ledger-navigation .sub-menu a:hover {
+    background: var(--ledger-ivory);
+    color: var(--ledger-burgundy);
+}
+
+/* Mobile toggle button for submenu items — hidden on desktop, shown on mobile */
+.ledger-submenu-toggle {
+    display: none;
+}
+
+
+/* ============================================================================
+   HAMBURGER MENU — MOBILE ONLY
+   ============================================================================ */
+
+.ledger-hamburger {
+    display: none; /* Hidden on desktop, shown via media query */
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 8px;
+    z-index: 1002;
+}
+
+.ledger-hamburger-bar {
+    display: block;
+    width: 22px;
+    height: 2px;
+    background: var(--ledger-ivory);
+    margin: 5px 0;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+    border-radius: 1px;
+}
+
+/* Animate hamburger to X when nav is open */
+.ledger-hamburger.is-active .ledger-hamburger-bar:nth-child(1) {
+    transform: rotate(45deg) translate(5px, 5px);
+}
+.ledger-hamburger.is-active .ledger-hamburger-bar:nth-child(2) {
+    opacity: 0;
+}
+.ledger-hamburger.is-active .ledger-hamburger-bar:nth-child(3) {
+    transform: rotate(-45deg) translate(5px, -5px);
+}
+
+
+/* ============================================================================
+   HERO BANNER
+   ============================================================================
+   WHY: The hero sets the visual tone immediately. Full-width dark background
+   with large centered text and a CTA button is the standard pattern for
+   dashboard/SaaS landing pages. The gradient overlay ensures text readability
+   regardless of any background image.
+   ============================================================================ */
+
+.ledger-hero {
+    background: var(--ledger-charcoal);
+    color: var(--ledger-ivory);
+    padding: 80px 24px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+/* WHY: Subtle gradient gives depth to the hero even without a background image.
+   If an admin adds a background image via CSS or inline style, the overlay
+   darkens it enough for white text to remain readable. */
+.ledger-hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        135deg,
+        rgba(44, 44, 44, 0.95) 0%,
+        rgba(123, 45, 59, 0.3) 100%
+    );
+    z-index: 1;
+}
+
+.ledger-hero-content {
+    position: relative;
+    z-index: 2;
+    max-width: 720px;
+    margin: 0 auto;
+}
+
+.ledger-hero h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 16px;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+}
+
+.ledger-hero p {
+    font-size: 1.15rem;
+    color: var(--ledger-silver);
+    margin-bottom: 32px;
+    line-height: 1.6;
+}
+
+.ledger-hero-btn {
+    display: inline-block;
+    padding: 14px 36px;
+    background: var(--ledger-burgundy);
+    color: #fff;
+    text-decoration: none;
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 6px;
+    transition: background 0.2s ease, transform 0.15s ease;
+}
+
+.ledger-hero-btn:hover {
+    background: #923444;
+    color: #fff;
+    transform: translateY(-1px);
+}
+
+
+/* ============================================================================
+   CARD GRID — DASHBOARD-STYLE SECTION CARDS
+   ============================================================================
+   WHY CSS Grid with auto-fit: Cards automatically fill the available width
+   and wrap responsively without media queries. On wide screens you get 3
+   columns, tablets get 2, phones get 1 — all from one rule. The 280px
+   minimum ensures cards never get too narrow to read.
+   ============================================================================ */
+
+.ledger-cards-section {
+    padding: 64px 24px;
+    background: var(--ledger-ivory);
+}
+
+.ledger-cards-section-title {
+    text-align: center;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--ledger-charcoal);
+    margin-bottom: 40px;
+}
+
+.ledger-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 24px;
+    max-width: var(--sp-content-width, 1200px);
+    margin: 0 auto;
+}
+
+.ledger-card {
+    background: #fff;
+    border-radius: 8px;
+    padding: 32px 28px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    border: 1px solid var(--ledger-silver);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    text-decoration: none;
+    color: inherit;
+}
+
+/* WHY hover lift: Subtle upward movement + deeper shadow on hover gives
+   tactile feedback that the card is interactive. This is expected behavior
+   in modern card-based UIs — skipping it would make the cards feel static. */
+.ledger-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    color: inherit;
+}
+
+.ledger-card-icon {
+    width: 48px;
+    height: 48px;
+    background: var(--ledger-ivory);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+    color: var(--ledger-burgundy);
+    flex-shrink: 0;
+}
+
+.ledger-card-icon svg {
+    width: 24px;
+    height: 24px;
+}
+
+.ledger-card-icon .dashicons {
+    font-size: 24px;
+    width: 24px;
+    height: 24px;
+    color: var(--ledger-burgundy);
+}
+
+.ledger-card h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--ledger-charcoal);
+    margin-bottom: 8px;
+}
+
+.ledger-card p {
+    font-size: 0.9rem;
+    color: var(--ledger-steel);
+    line-height: 1.55;
+    margin-bottom: 16px;
+    flex: 1;
+}
+
+.ledger-card-link {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--ledger-burgundy);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: gap 0.2s ease;
+}
+
+.ledger-card:hover .ledger-card-link {
+    gap: 8px;
+}
+
+.ledger-card-link::after {
+    content: '\2192'; /* right arrow */
+}
+
+
+/* ============================================================================
+   UPCOMING EVENTS SECTION
+   ============================================================================ */
+
+.ledger-events-section {
+    padding: 64px 24px;
+    background: #fff;
+}
+
+.ledger-events-section-title {
+    text-align: center;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--ledger-charcoal);
+    margin-bottom: 40px;
+}
+
+.ledger-events-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    max-width: var(--sp-content-width, 1200px);
+    margin: 0 auto;
+}
+
+.ledger-event-card {
+    display: flex;
+    gap: 16px;
+    padding: 20px;
+    background: var(--ledger-ivory);
+    border-radius: 8px;
+    border: 1px solid var(--ledger-silver);
+    text-decoration: none;
+    color: inherit;
+    transition: box-shadow 0.2s ease;
+}
+
+.ledger-event-card:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+    color: inherit;
+}
+
+.ledger-event-date {
+    flex-shrink: 0;
+    width: 52px;
+    text-align: center;
+    background: var(--ledger-burgundy);
+    color: #fff;
+    border-radius: 6px;
+    padding: 8px 4px;
+    line-height: 1.1;
+}
+
+.ledger-event-date-month {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.ledger-event-date-day {
+    display: block;
+    font-size: 1.4rem;
+    font-weight: 700;
+}
+
+.ledger-event-info h4 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--ledger-charcoal);
+    margin-bottom: 4px;
+}
+
+.ledger-event-info p {
+    font-size: 0.82rem;
+    color: var(--ledger-steel);
+    line-height: 1.4;
+}
+
+.ledger-events-view-all {
+    text-align: center;
+    margin-top: 24px;
+}
+
+
+/* ============================================================================
+   CTA BAND
+   ============================================================================
+   WHY: A contrasting band near the bottom of the homepage drives the primary
+   conversion action (joining the society). The burgundy background creates
+   visual urgency and breaks up the page rhythm.
+   ============================================================================ */
+
+.ledger-cta-band {
+    background: var(--ledger-burgundy);
+    color: #fff;
+    text-align: center;
+    padding: 56px 24px;
+}
+
+.ledger-cta-band h2 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    margin-bottom: 12px;
+}
+
+.ledger-cta-band p {
+    font-size: 1rem;
+    color: rgba(255, 255, 255, 0.85);
+    margin-bottom: 28px;
+    max-width: 540px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.ledger-cta-btn {
+    display: inline-block;
+    padding: 14px 36px;
+    background: #fff;
+    color: var(--ledger-burgundy);
+    text-decoration: none;
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 6px;
+    transition: background 0.2s ease, transform 0.15s ease;
+}
+
+.ledger-cta-btn:hover {
+    background: var(--ledger-ivory);
+    color: var(--ledger-burgundy);
+    transform: translateY(-1px);
+}
+
+
+/* ============================================================================
+   SUBPAGE — NARROW READING COLUMN
+   ============================================================================
+   WHY 760px: Research on optimal line length shows 50-75 characters per line
+   is ideal for readability. At our base font size, 760px lands right in that
+   range. This is standard for long-form reading layouts (Medium, documentation
+   sites, etc.). Generous vertical padding gives the content breathing room.
+   ============================================================================ */
+
+.ledger-page-content {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 56px 24px 80px;
+}
+
+.ledger-page-content .entry-header {
+    margin-bottom: 32px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--ledger-silver);
+}
+
+.ledger-page-content .entry-title {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--ledger-charcoal);
+    line-height: 1.2;
+}
+
+.ledger-page-content .entry-content {
+    font-size: 1rem;
+    line-height: 1.7;
+    color: var(--ledger-text);
+}
+
+.ledger-page-content .entry-content p {
+    margin-bottom: 1.25em;
+}
+
+.ledger-page-content .entry-content h2 {
+    font-size: 1.4rem;
+    margin-top: 2em;
+    margin-bottom: 0.75em;
+}
+
+.ledger-page-content .entry-content h3 {
+    font-size: 1.15rem;
+    margin-top: 1.5em;
+    margin-bottom: 0.5em;
+}
+
+.ledger-page-content .post-thumbnail {
+    margin-bottom: 32px;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.ledger-page-content .post-thumbnail img {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+
+/* ============================================================================
+   FOOTER — 3-COLUMN + SOCIAL ROW + BOTTOM BAR
+   ============================================================================
+   WHY 3 columns: Standard modern footer pattern — About (who we are), Nav
+   (quick links), and Contact (how to reach us). Widget areas give the admin
+   full control over what appears in each column.
+   ============================================================================ */
+
+.ledger-footer {
+    background: var(--ledger-charcoal);
+    color: var(--ledger-ivory);
+}
+
+.ledger-footer a {
+    color: var(--ledger-silver);
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.ledger-footer a:hover {
+    color: #fff;
+}
+
+/* Footer columns container */
+.ledger-footer-columns {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 40px;
+    max-width: var(--sp-content-width, 1200px);
+    margin: 0 auto;
+    padding: 48px 24px 40px;
+}
+
+.ledger-footer-col h3,
+.ledger-footer-col .widget-title {
+    font-size: 0.9rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #fff;
+    margin-bottom: 16px;
+}
+
+.ledger-footer-col p {
+    font-size: 0.875rem;
+    color: var(--ledger-silver);
+    line-height: 1.6;
+}
+
+.ledger-footer-col ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.ledger-footer-col ul li {
+    margin-bottom: 8px;
+}
+
+.ledger-footer-col ul li a {
+    font-size: 0.875rem;
+}
+
+/* Widget styling inside footer */
+.ledger-footer-col .widget {
+    margin-bottom: 20px;
+}
+
+.ledger-footer-col .widget:last-child {
+    margin-bottom: 0;
+}
+
+
+/* ============================================================================
+   SOCIAL ICON ROW
+   ============================================================================ */
+
+.ledger-footer-social {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    padding: 0 24px 32px;
+}
+
+.ledger-footer-social a {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--ledger-silver);
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.ledger-footer-social a:hover {
+    background: var(--ledger-burgundy);
+    color: #fff;
+}
+
+.ledger-footer-social svg {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+}
+
+
+/* ============================================================================
+   FOOTER BOTTOM BAR
+   ============================================================================ */
+
+.ledger-footer-bottom {
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 20px 24px;
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--ledger-muted);
+}
+
+.ledger-footer-bottom a {
+    color: var(--ledger-silver);
+}
+
+.ledger-footer-bottom a:hover {
+    color: #fff;
+}
+
+.ledger-footer-bottom-inner {
+    max-width: var(--sp-content-width, 1200px);
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+
+/* ============================================================================
+   RESPONSIVE — TABLET (1024px)
+   ============================================================================ */
+
+@media (max-width: 1024px) {
+    .ledger-footer-columns {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .ledger-hero h1 {
+        font-size: 2rem;
+    }
+}
+
+
+/* ============================================================================
+   RESPONSIVE — MOBILE (768px)
+   ============================================================================ */
+
+@media (max-width: 768px) {
+
+    /* Show hamburger, hide desktop nav */
+    .ledger-hamburger {
+        display: block;
+    }
+
+    .ledger-navigation {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: var(--ledger-charcoal);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+        z-index: 1001;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .ledger-navigation.ledger-nav-open {
+        display: block;
+    }
+
+    .ledger-navigation > ul {
+        flex-direction: column;
+        gap: 0;
+    }
+
+    .ledger-navigation a {
+        padding: 12px 24px;
+        border-radius: 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    /* Dropdown carets point down on desktop, but on mobile the submenu
+       is below each item — hide the caret, show a toggle button instead */
+    .ledger-navigation .menu-item-has-children > a::after {
+        display: none;
+    }
+
+    /* Mobile submenu toggle button — visible only on mobile */
+    .ledger-submenu-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: none;
+        border: none;
+        color: var(--ledger-silver);
+        padding: 12px 16px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        position: absolute;
+        right: 0;
+        top: 0;
+        height: 100%;
+    }
+
+    .ledger-submenu-toggle .ledger-toggle-icon {
+        transition: transform 0.2s ease;
+    }
+
+    .ledger-submenu-toggle[aria-expanded="true"] .ledger-toggle-icon {
+        transform: rotate(180deg);
+    }
+
+    .ledger-navigation .menu-item-has-children {
+        position: relative;
+    }
+
+    /* Mobile submenus: hidden by default, slide open on toggle */
+    .ledger-navigation .sub-menu {
+        position: static;
+        opacity: 1;
+        visibility: visible;
+        transform: none;
+        box-shadow: none;
+        border-radius: 0;
+        background: rgba(0, 0, 0, 0.15);
+        display: none;
+        padding: 0;
+    }
+
+    .ledger-navigation .menu-item-has-children.is-open > .sub-menu {
+        display: block;
+    }
+
+    .ledger-navigation .sub-menu a {
+        color: var(--ledger-silver);
+        padding-left: 40px;
+    }
+
+    .ledger-navigation .sub-menu a:hover {
+        background: rgba(255, 255, 255, 0.05);
+        color: #fff;
+    }
+
+    /* Disable hover-based dropdown on mobile — use JS toggle only */
+    .ledger-navigation .menu-item-has-children:hover > .sub-menu,
+    .ledger-navigation .menu-item-has-children:focus-within > .sub-menu {
+        display: none;
+    }
+    .ledger-navigation .menu-item-has-children.is-open > .sub-menu {
+        display: block;
+    }
+
+    /* Header */
+    .ledger-header-inner {
+        min-height: 56px;
+        padding: 0 16px;
+        position: relative;
+    }
+
+    .ledger-header .site-description {
+        display: none;
+    }
+
+    /* Hero */
+    .ledger-hero {
+        padding: 56px 20px;
+    }
+
+    .ledger-hero h1 {
+        font-size: 1.6rem;
+    }
+
+    .ledger-hero p {
+        font-size: 1rem;
+    }
+
+    /* Cards */
+    .ledger-cards-section {
+        padding: 40px 16px;
+    }
+
+    .ledger-card-grid {
+        grid-template-columns: 1fr;
+    }
+
+    /* Footer */
+    .ledger-footer-columns {
+        grid-template-columns: 1fr;
+        gap: 32px;
+        padding: 32px 16px 24px;
+    }
+
+    .ledger-footer-bottom-inner {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    /* Subpage */
+    .ledger-page-content {
+        padding: 32px 16px 56px;
+    }
+
+    .ledger-page-content .entry-title {
+        font-size: 1.5rem;
+    }
+}
+
+
+/* ============================================================================
+   RESPONSIVE — SMALL PHONE (480px)
+   ============================================================================ */
+
+@media (max-width: 480px) {
+    .ledger-hero h1 {
+        font-size: 1.35rem;
+    }
+
+    .ledger-hero-btn,
+    .ledger-cta-btn {
+        display: block;
+        text-align: center;
+    }
+
+    .ledger-card {
+        padding: 24px 20px;
+    }
+
+    .ledger-cta-band {
+        padding: 40px 16px;
+    }
 }

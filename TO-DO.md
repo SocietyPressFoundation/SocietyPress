@@ -603,7 +603,7 @@ Principle: Every piece of data a society puts into SocietyPress can come back ou
 
 - [x] Per-module CSV exports (extend existing member/library pattern to all modules):
   - [x] Events: all events with category names, dates, locations, prices, descriptions
-  - [ ] Genealogical records: CSV per collection, all records with all field values (needs real data first)
+  - [x] Genealogical records: CSV per collection with dynamic columns from field definitions, "CSV" button on collections page (v1.0.2)
   - [x] Donations: all donations with campaign names, recorder names, acknowledgment status
   - [x] Volunteer data: hours already had export; leadership/committees export added
   - [x] Committees & leadership: all roles with member names, dates, types, statuses
@@ -619,6 +619,7 @@ Principle: Every piece of data a society puts into SocietyPress can come back ou
   - [x] All document files in `documents/{Category}/` subfolders
   - [x] Settings JSON (payment secrets excluded)
   - [x] README.txt explaining the archive structure
+- [x] Full site export now includes member profile photos (member-photos/ folder) and photo album media (photo-albums/ organized by album name) (v1.0.2)
 - [ ] Marketing: "Your data is yours" messaging on getsocietypress.org — front and center, not buried in a FAQ
 
 ## One-Click Installer — COMPLETE (separate project)

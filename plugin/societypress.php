@@ -3696,6 +3696,19 @@ add_action( 'admin_menu', function () {
         'sp_render_pending_changes_page'
     );
 
+    // WHY: Explicit surname variant mappings let Harold (or a genealogy
+    //      committee) record that "Smythe" IS a variant of "Smith" — more
+    //      reliable than phonetic matching alone. The directory search checks
+    //      this table when "include similar spellings" is on.
+    add_submenu_page(
+        'societypress',
+        __( 'Surname Variants — SocietyPress', 'societypress' ),
+        __( 'Surname Variants', 'societypress' ),
+        'manage_options',
+        'sp-surname-variants',
+        'sp_render_surname_variants_page'
+    );
+
     // -----------------------------------------------------------------
     // EVENTS GROUP — Event management, categories, speakers
     // WHY: Monthly meetings, workshops, seminars, SIG gatherings.
@@ -4544,6 +4557,7 @@ function sp_get_menu_capability_map(): array {
         'sp-group-edit'            => 'sp_manage_members',
         'sp-member-edit'           => 'sp_manage_members',
         'sp-pending-changes'       => 'sp_manage_members',
+        'sp-surname-variants'      => 'sp_manage_members',
 
         // Events
         'sp-events'                => 'sp_manage_events',
@@ -6068,9 +6082,160 @@ function sp_apply_profile_change( object $change ): void {
 }
 
 
+// ============================================================================
+// SURNAME VARIANTS — Admin CRUD Page
+//
+// WHY: Phonetic matching (soundex/metaphone) catches many similar spellings but
+//      also produces false positives. Explicit variant mappings let Harold say
+//      "Smythe IS a variant of Smith" — no guesswork. The directory search
+//      checks this table when "include similar spellings" is enabled.
+// ============================================================================
+
+function sp_render_surname_variants_page(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // ---- Handle form submission: Add/Update variant ----
+    if ( isset( $_POST['sp_save_variant'] ) && check_admin_referer( 'sp_surname_variant_save' ) ) {
+        $variant_id = absint( $_POST['variant_id'] ?? 0 );
+        $canonical  = sanitize_text_field( $_POST['canonical'] ?? '' );
+        $variant    = sanitize_text_field( $_POST['variant'] ?? '' );
+
+        if ( $canonical && $variant && strtolower( $canonical ) !== strtolower( $variant ) ) {
+            $data = [
+                'canonical' => $canonical,
+                'variant'   => $variant,
+            ];
+            if ( $variant_id ) {
+                $wpdb->update( $prefix . 'surname_variants', $data, [ 'id' => $variant_id ] );
+                echo '<div class="notice notice-success"><p>' . esc_html__( 'Variant updated.', 'societypress' ) . '</p></div>';
+            } else {
+                // Check for duplicate before inserting
+                $exists = $wpdb->get_var( $wpdb->prepare(
+                    "SELECT id FROM {$prefix}surname_variants WHERE canonical = %s AND variant = %s",
+                    $canonical, $variant
+                ) );
+                if ( $exists ) {
+                    echo '<div class="notice notice-warning"><p>' . esc_html__( 'This variant mapping already exists.', 'societypress' ) . '</p></div>';
+                } else {
+                    $wpdb->insert( $prefix . 'surname_variants', $data );
+                    echo '<div class="notice notice-success"><p>' . esc_html__( 'Variant added.', 'societypress' ) . '</p></div>';
+                }
+            }
+        } elseif ( $canonical && $variant ) {
+            echo '<div class="notice notice-error"><p>' . esc_html__( 'Canonical and variant surnames must be different.', 'societypress' ) . '</p></div>';
+        }
+    }
+
+    // ---- Handle delete ----
+    if ( isset( $_POST['sp_delete_variant'] ) && check_admin_referer( 'sp_surname_variant_delete' ) ) {
+        $del_id = absint( $_POST['variant_id'] ?? 0 );
+        if ( $del_id ) {
+            $wpdb->delete( $prefix . 'surname_variants', [ 'id' => $del_id ] );
+            echo '<div class="notice notice-success"><p>' . esc_html__( 'Variant deleted.', 'societypress' ) . '</p></div>';
+        }
+    }
+
+    // ---- Load data ----
+    $editing  = null;
+    $edit_id  = absint( $_GET['edit'] ?? 0 );
+    if ( $edit_id ) {
+        $editing = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$prefix}surname_variants WHERE id = %d", $edit_id
+        ) );
+    }
+
+    $variants = $wpdb->get_results(
+        "SELECT * FROM {$prefix}surname_variants ORDER BY canonical ASC, variant ASC"
+    );
+
+    ?>
+    <div class="wrap">
+        <h1 class="wp-heading-inline"><?php esc_html_e( 'Surname Variants', 'societypress' ); ?></h1>
+        <hr class="wp-header-end">
+
+        <p class="description">
+            <?php esc_html_e( 'Define explicit surname variant mappings. When a member searches the directory with "include similar spellings" enabled, these mappings are checked alongside phonetic matching. For example, mapping "Smythe" as a variant of "Smith" ensures anyone searching for either name finds both.', 'societypress' ); ?>
+        </p>
+
+        <div style="display:flex; gap:24px; align-items:flex-start; margin-top:16px;">
+            <!-- Add/Edit form -->
+            <div style="background:#fff; border:1px solid #ccd0d4; border-radius:4px; padding:16px 20px; min-width:320px;">
+                <h3 style="margin-top:0;"><?php echo $editing ? esc_html__( 'Edit Variant', 'societypress' ) : esc_html__( 'Add Variant', 'societypress' ); ?></h3>
+                <form method="post">
+                    <?php wp_nonce_field( 'sp_surname_variant_save' ); ?>
+                    <input type="hidden" name="variant_id" value="<?php echo $editing ? (int) $editing->id : 0; ?>">
+
+                    <p>
+                        <label for="canonical"><strong><?php esc_html_e( 'Canonical Surname', 'societypress' ); ?></strong></label><br>
+                        <input type="text" name="canonical" id="canonical" class="regular-text"
+                               value="<?php echo esc_attr( $editing->canonical ?? '' ); ?>" required
+                               placeholder="<?php esc_attr_e( 'e.g., Smith', 'societypress' ); ?>">
+                        <span class="description"><?php esc_html_e( 'The primary/standard spelling.', 'societypress' ); ?></span>
+                    </p>
+                    <p>
+                        <label for="variant"><strong><?php esc_html_e( 'Variant', 'societypress' ); ?></strong></label><br>
+                        <input type="text" name="variant" id="variant" class="regular-text"
+                               value="<?php echo esc_attr( $editing->variant ?? '' ); ?>" required
+                               placeholder="<?php esc_attr_e( 'e.g., Smythe', 'societypress' ); ?>">
+                        <span class="description"><?php esc_html_e( 'An alternate spelling or historical form.', 'societypress' ); ?></span>
+                    </p>
+                    <p>
+                        <input type="submit" name="sp_save_variant" class="button button-primary"
+                               value="<?php echo $editing ? esc_attr__( 'Update Variant', 'societypress' ) : esc_attr__( 'Add Variant', 'societypress' ); ?>">
+                        <?php if ( $editing ) : ?>
+                            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-surname-variants' ) ); ?>" class="button"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
+                        <?php endif; ?>
+                    </p>
+                </form>
+            </div>
+
+            <!-- Existing variants table -->
+            <div style="flex:1;">
+                <?php if ( empty( $variants ) ) : ?>
+                    <p class="description"><?php esc_html_e( 'No surname variants defined yet. Add your first mapping using the form.', 'societypress' ); ?></p>
+                <?php else : ?>
+                    <table class="widefat striped">
+                        <thead>
+                            <tr>
+                                <th><?php esc_html_e( 'Canonical', 'societypress' ); ?></th>
+                                <th><?php esc_html_e( 'Variant', 'societypress' ); ?></th>
+                                <th><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ( $variants as $v ) : ?>
+                                <tr>
+                                    <td><strong><?php echo esc_html( $v->canonical ); ?></strong></td>
+                                    <td><?php echo esc_html( $v->variant ); ?></td>
+                                    <td>
+                                        <a href="<?php echo esc_url( add_query_arg( 'edit', $v->id ) ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
+                                        &nbsp;|&nbsp;
+                                        <form method="post" style="display:inline;" data-sp-confirm="<?php echo esc_attr( __( 'Delete this variant mapping?', 'societypress' ) ); ?>">
+                                            <?php wp_nonce_field( 'sp_surname_variant_delete' ); ?>
+                                            <input type="hidden" name="variant_id" value="<?php echo (int) $v->id; ?>">
+                                            <button type="submit" name="sp_delete_variant" class="button-link sp-text-danger"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                    <p class="description">
+                        <?php
+                        /* translators: %d: number of variant mappings */
+                        printf( esc_html__( '%d variant mapping(s) defined.', 'societypress' ), count( $variants ) );
+                        ?>
+                    </p>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+    <?php
+}
+
+
 /**
- * Render the Pending Profile Changes admin page.
- *
  * WHY: When admin approval is required, this page shows Harold all pending
  *      change requests from members. Each request shows a side-by-side diff
  *      of old vs new values. Harold can approve (applies the changes) or
@@ -7229,7 +7394,7 @@ var spMenuConfig = {
             id:    'members',
             label: 'Members',
             icon:  'dashicons-id',
-            items: ['sp-members', 'sp-import', 'sp-export', 'sp-member-tiers', 'sp-groups', 'sp-pending-changes']
+            items: ['sp-members', 'sp-import', 'sp-export', 'sp-member-tiers', 'sp-groups', 'sp-pending-changes', 'sp-surname-variants']
         },
         {
             id:    'events',
@@ -17229,6 +17394,32 @@ add_action( 'admin_init', function () {
         'sp_website_section'
     );
 
+    // --- Page Groups in Navigation ---
+    // WHY: Page groups automatically organize the nav menu into dropdown
+    //      folders. Harold creates groups on the Pages admin page and they
+    //      appear as nav dropdowns without touching the WordPress menu editor.
+    //      Off means Harold uses the standard WP menu editor instead.
+    add_settings_field(
+        'auto_group_nav',
+        __( 'Page Groups in Navigation', 'societypress' ),
+        function () {
+            $settings = get_option( 'societypress_settings', [] );
+            $enabled  = ! empty( $settings['auto_group_nav'] );
+
+            echo '<input type="hidden" name="societypress_settings[auto_group_nav]" value="0">';
+            printf(
+                '<label><input type="checkbox" name="societypress_settings[auto_group_nav]" value="1" %s> %s</label>',
+                checked( $enabled, true, false ),
+                esc_html__( 'Automatically organize navigation using page groups', 'societypress' )
+            );
+            echo '<p class="description">'
+               . esc_html__( 'When enabled, page groups you create on the Pages admin page will automatically appear as dropdown folders in the site navigation. Disable this if you prefer to manage menus manually.', 'societypress' )
+               . '</p>';
+        },
+        'sp-settings-website',
+        'sp_website_section'
+    );
+
     // --- Social Media Links ---
     // WHY on the Website tab: Social links are site-wide branding, not
     // org-specific contact info. They control what shows in the header,
@@ -18216,6 +18407,9 @@ function sp_sanitize_settings( array $input ): array {
         'pwa_enabled'             => fn() => ! empty( $input['pwa_enabled'] ) ? 1 : 0,
         'pwa_offline_message'     => fn() => sanitize_text_field( $input['pwa_offline_message'] ?? __( 'You appear to be offline. Please check your connection.', 'societypress' ) ),
 
+        // Page Groups
+        'auto_group_nav'          => fn() => ! empty( $input['auto_group_nav'] ) ? 1 : 0,
+
         // Organization
         'organization_name'       => fn() => sanitize_text_field( $input['organization_name'] ?? '' ),
         'organization_address'    => fn() => sanitize_textarea_field( $input['organization_address'] ?? '' ),
@@ -18393,6 +18587,7 @@ function sp_sanitize_settings( array $input ): array {
             'social_tiktok', 'social_x',
             'breadcrumbs_enabled', 'breadcrumb_home_label', 'breadcrumb_separator',
             'analytics_google_id', 'analytics_exclude_admins',
+            'pwa_enabled', 'pwa_offline_message', 'auto_group_nav',
         ]);
     }
 
@@ -22321,7 +22516,91 @@ add_action( 'wp_ajax_sp_export_full_site', function () {
 
 
     // ================================================================
-    // 13. README.txt
+    // 13. MEMBER PROFILE PHOTOS
+    // ================================================================
+    // WHY: Full exports mean full exports. ENS only gives you a filename
+    //      string for member photos — the actual image stays trapped on
+    //      their server. We include the actual files so Harold's data is
+    //      truly his. Photos are in sp-profile-photos/ in the uploads dir.
+    // ================================================================
+    $upload_dir = wp_upload_dir();
+    $photos_source = $upload_dir['basedir'] . '/sp-profile-photos/';
+    if ( is_dir( $photos_source ) ) {
+        $photos_dest = $temp_dir . 'member-photos/';
+        wp_mkdir_p( $photos_dest );
+
+        $photo_files = glob( $photos_source . '*.*' );
+        foreach ( $photo_files as $photo_path ) {
+            if ( is_file( $photo_path ) ) {
+                copy( $photo_path, $photos_dest . basename( $photo_path ) );
+            }
+        }
+    }
+
+
+    // ================================================================
+    // 14. PHOTO ALBUM MEDIA
+    // ================================================================
+    // WHY: Photo albums contain images stored as WP media attachments.
+    //      We export the actual image files organized by album name so
+    //      the export is self-contained — no broken references.
+    // ================================================================
+    $albums = $wpdb->get_results(
+        "SELECT a.id, a.title, ai.attachment_id, ai.caption, ai.type, ai.video_url
+         FROM {$prefix}photo_albums a
+         INNER JOIN {$prefix}photo_album_items ai ON a.id = ai.album_id
+         ORDER BY a.title ASC, ai.sort_order ASC"
+    );
+
+    if ( $albums ) {
+        $albums_dest = $temp_dir . 'photo-albums/';
+        wp_mkdir_p( $albums_dest );
+        $used_album_files = [];
+
+        foreach ( $albums as $ai ) {
+            $album_folder = sanitize_file_name( $ai->title ?: 'album-' . $ai->id );
+            $album_dir    = $albums_dest . $album_folder . '/';
+            wp_mkdir_p( $album_dir );
+
+            if ( $ai->type === 'video' && $ai->video_url ) {
+                // For YouTube videos, store a text file with the URL
+                $video_name = sanitize_file_name( $ai->caption ?: 'video-' . $ai->attachment_id );
+                file_put_contents( $album_dir . $video_name . '.url', $ai->video_url );
+                continue;
+            }
+
+            if ( empty( $ai->attachment_id ) ) {
+                continue;
+            }
+
+            $source = get_attached_file( (int) $ai->attachment_id );
+            if ( ! $source || ! file_exists( $source ) ) {
+                continue;
+            }
+
+            $filename = basename( $source );
+            // Deduplicate within album
+            $key = strtolower( $album_folder );
+            if ( ! isset( $used_album_files[ $key ] ) ) {
+                $used_album_files[ $key ] = [];
+            }
+            $counter = 1;
+            $ext  = pathinfo( $filename, PATHINFO_EXTENSION );
+            $base = pathinfo( $filename, PATHINFO_FILENAME );
+            while ( in_array( strtolower( $filename ), $used_album_files[ $key ], true ) ) {
+                $filename = $base . '-' . $counter . '.' . $ext;
+                $counter++;
+            }
+            $used_album_files[ $key ][] = strtolower( $filename );
+
+            copy( $source, $album_dir . $filename );
+        }
+    }
+    unset( $albums, $used_album_files );
+
+
+    // ================================================================
+    // 15. README.txt
     // ================================================================
     // WHY: When Harold opens this ZIP five years from now (or hands it
     //      to a new webmaster), this file explains what everything is.
@@ -22348,6 +22627,8 @@ Files:
 - settings.json        — Plugin settings and enabled modules
 - newsletters/         — Newsletter PDFs
 - documents/           — Document files organized by category
+- member-photos/       — Member profile photos
+- photo-albums/        — Photo album media organized by album name
 
 All CSV files use UTF-8 encoding with BOM for Excel compatibility.', 'societypress' ),
         wp_date( 'Y-m-d H:i:s T' ),
@@ -27903,14 +28184,32 @@ function sp_render_directory( array $settings ): void {
             $sdx = soundex( $surname_search );
             $mph = metaphone( $surname_search );
             $surname_like = '%' . $wpdb->esc_like( $surname_search ) . '%';
+            // WHY: We check four sources in priority order:
+            //   1. LIKE match on the surname itself
+            //   2. Soundex phonetic match
+            //   3. Metaphone phonetic match
+            //   4. Explicit variant table — admin-curated mappings that say
+            //      "Smythe IS a variant of Smith" with certainty, bridging
+            //      gaps that phonetic algorithms miss.
             $where[]  = "EXISTS (
                 SELECT 1 FROM {$prefix}member_surnames s
                 WHERE s.user_id = m.user_id
-                  AND (s.surname LIKE %s OR s.soundex_code = %s OR s.metaphone_code = %s)
+                  AND (
+                    s.surname LIKE %s
+                    OR s.soundex_code = %s
+                    OR s.metaphone_code = %s
+                    OR s.surname IN (
+                        SELECT sv.variant FROM {$prefix}surname_variants sv WHERE sv.canonical = %s
+                        UNION
+                        SELECT sv2.canonical FROM {$prefix}surname_variants sv2 WHERE sv2.variant = %s
+                    )
+                  )
             )";
             $params[] = $surname_like;
             $params[] = $sdx;
             $params[] = $mph;
+            $params[] = $surname_search;
+            $params[] = $surname_search;
         } else {
             $surname_like = '%' . $wpdb->esc_like( $surname_search ) . '%';
             $where[]  = "EXISTS (
@@ -66075,6 +66374,7 @@ function sp_render_record_collections_page(): void {
                                 <a href="<?php echo esc_url( $browse_url ); ?>" class="button button-small"><?php esc_html_e( 'Browse', 'societypress' ); ?></a>
                                 <a href="<?php echo esc_url( $import_url ); ?>" class="button button-small"><?php esc_html_e( 'Import', 'societypress' ); ?></a>
                                 <a href="<?php echo esc_url( $export_url ); ?>" class="button button-small" title="<?php esc_attr_e( 'Export as GENRECORD file', 'societypress' ); ?>"><?php esc_html_e( 'Export', 'societypress' ); ?></a>
+                                <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=sp_export_records_csv&collection_id=' . $c->id . '&nonce=' . wp_create_nonce( 'sp_export_records_csv' ) ) ); ?>" class="button button-small" title="<?php esc_attr_e( 'Export as CSV', 'societypress' ); ?>"><?php esc_html_e( 'CSV', 'societypress' ); ?></a>
                                 <a href="<?php echo esc_url( $edit_url ); ?>" class="button button-small"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
                                 <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-collections' ) ); ?>" class="sp-records-delete-form" data-sp-confirm="<?php echo esc_attr( __( 'Delete this collection and ALL its records? This cannot be undone.', 'societypress' ) ); ?>">
                                     <?php wp_nonce_field( 'sp_delete_collection_' . $c->id ); ?>
@@ -68190,6 +68490,82 @@ function sp_ajax_export_genrecord(): void {
     fclose( $out );
     exit;
 }
+
+
+// ---- Records CSV Export — per-collection standard CSV ----
+// WHY: GENRECORD is great for inter-society exchange, but Harold also needs
+//      plain CSV exports he can open in Excel. Dynamic columns come from the
+//      collection's field definitions — same EAV resolution as GENRECORD export
+//      but without the header metadata block.
+add_action( 'wp_ajax_sp_export_records_csv', function () {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+    }
+    if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_records_csv' ) ) {
+        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $prefix        = $wpdb->prefix . 'sp_';
+    $collection_id = absint( $_GET['collection_id'] ?? 0 );
+
+    $collection = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$prefix}record_collections WHERE id = %d", $collection_id
+    ) );
+    if ( ! $collection ) {
+        wp_die( esc_html__( 'Collection not found.', 'societypress' ) );
+    }
+
+    // Load field definitions (column headers)
+    $fields = $wpdb->get_results( $wpdb->prepare(
+        "SELECT id, field_name FROM {$prefix}record_collection_fields WHERE collection_id = %d ORDER BY sort_order ASC",
+        $collection_id
+    ) );
+    $field_ids   = wp_list_pluck( $fields, 'id' );
+    $field_names = wp_list_pluck( $fields, 'field_name' );
+
+    // Load all records
+    $record_ids = $wpdb->get_col( $wpdb->prepare(
+        "SELECT id FROM {$prefix}records WHERE collection_id = %d ORDER BY id ASC",
+        $collection_id
+    ) );
+
+    // Pre-load all values in one query (EAV pattern)
+    $all_values = [];
+    if ( $record_ids ) {
+        $id_placeholders = implode( ',', array_fill( 0, count( $record_ids ), '%d' ) );
+        $value_rows = $wpdb->get_results( $wpdb->prepare(
+            "SELECT record_id, field_id, field_value FROM {$prefix}record_values WHERE record_id IN ($id_placeholders)",
+            ...$record_ids
+        ) );
+        foreach ( $value_rows as $vr ) {
+            $all_values[ (int) $vr->record_id ][ (int) $vr->field_id ] = $vr->field_value;
+        }
+    }
+
+    // Stream CSV
+    $slug     = sanitize_file_name( $collection->slug ?: 'records' );
+    $filename = $slug . '-' . wp_date( 'Y-m-d' ) . '.csv';
+    header( 'Content-Type: text/csv; charset=utf-8' );
+    header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+    header( 'Pragma: no-cache' );
+    header( 'Expires: 0' );
+
+    $out = fopen( 'php://output', 'w' );
+    fwrite( $out, "\xEF\xBB\xBF" ); // UTF-8 BOM for Excel
+    fputcsv( $out, array_merge( [ 'Record ID' ], $field_names ) );
+
+    foreach ( $record_ids as $rid ) {
+        $row = [ $rid ];
+        foreach ( $field_ids as $fid ) {
+            $row[] = $all_values[ $rid ][ $fid ] ?? '';
+        }
+        fputcsv( $out, $row );
+    }
+
+    fclose( $out );
+    exit;
+} );
 
 
 // ============================================================================

@@ -700,15 +700,17 @@ Single-file `install.php` that takes Harold from empty hosting to running Societ
   - [ ] Icon generation for various device sizes
   - [x] "Add to Home Screen" install prompt UX (already implemented with install banner)
 
-## AI — Not Started
+## AI — Built (v1.0.2)
 
-- [ ] AI-powered Q&A: let members (or the public) ask natural-language questions and get answers drawn from society data
-  - Could cover library catalog, events, newsletters, resource links, genealogical records, FAQs, etc.
-  - Needs clear scoping: what data sources feed the AI, what stays private vs public
-  - Consider embeddings + vector search vs API-based retrieval-augmented generation (RAG)
-  - Privacy implications: member data must NEVER leak into AI responses unless explicitly intended
-  - Could start simple (FAQ-style knowledge base) and expand to full RAG later
-  - Admin controls: toggle on/off, choose which data sources are indexed, review/audit responses
+- [x] AI-powered Q&A: Claude API RAG over society data (v1.0.2)
+  - [x] Settings page: API key (encrypted), model selector (Haiku/Sonnet), access level, data source checkboxes, custom system prompt, monthly query limit
+  - [x] 5 data sources: events, library catalog, resource links, genealogical records, WP pages
+  - [x] Privacy: member PII never sent to API — only public/semi-public metadata
+  - [x] Keyword extraction + SQL search + Claude API call pipeline
+  - [x] Rate limiting (10 queries/hr per user/IP) + monthly limit enforcement
+  - [x] Query logging (sp_ai_queries table) with admin audit view
+  - [x] Frontend: chat-style widget + sp-ai-assistant page template
+  - [x] Page builder widget: ai_assistant with login_required option
 
 ## Integrations — Remaining
 

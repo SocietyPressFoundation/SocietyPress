@@ -1,5 +1,5 @@
 # SocietyPress — WORKLOG
-## v1.0.2 — 2026-04-03
+## v1.0.3 — 2026-04-03
 
 ### Session: Multi-Feature Build + Tier 1 Cleanup
 
@@ -70,6 +70,26 @@
 16. Zoom Settings: sp_render_settings_zoom_page() with API key/secret (encrypted), account email, connection test against Zoom /v2/users/me, JWT helper for API auth, module now wired to settings page
 17. Push Notifications: VAPID key auto-generation (P-256 EC), sp_push_subscriptions DB table, REST subscribe endpoint, service worker push/notificationclick handlers, frontend subscription JS, sp_send_push_notification() helper with VAPID JWT auth, push_enabled toggle on Website settings, subscriber count display
 18. Verified: PayPal event registration already fully implemented, PWA already fully implemented, feedback form already exists on marketing site
+
+**i18n Final Pass:**
+- ~162 strings wrapped: 121 add_submenu_page titles/labels, 30 frontend template strings, 11 PHP echo-context strings
+- .pot regenerated
+
+**Architecture:**
+- Dropped payment plugin separation (societypress-payments) — all payment code stays in main plugin, gateway helpers serve as internal abstraction
+- Updated CLAUDE.md to remove all payment plugin references
+
+**AI Assistant (new module):**
+- sp_ai_queries table for query logging
+- Settings page: API key (encrypted), model selector (Haiku/Sonnet), access level (members/public), data source checkboxes, custom system prompt, monthly query limit with usage counter
+- AJAX handler: keyword extraction, SQL search across 5 data sources (events, library, resources, records, pages), Claude API call, response parsing, rate limiting (10/hr), monthly limit enforcement
+- Privacy: member PII never sent to API — only public/semi-public metadata
+- Frontend: chat-style widget + page template, vanilla JS, loading states, attribution disclaimer
+- Page builder widget: ai_assistant with login_required option
+
+**Security Audit + Accessibility Audit:** (results pending at session close)
+
+**PWA Icons + deploy.sh:** (done earlier this session)
 
 ---
 

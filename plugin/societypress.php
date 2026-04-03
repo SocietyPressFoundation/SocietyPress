@@ -3652,8 +3652,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Membership — SocietyPress',
-        'Membership',
+        __( 'Membership — SocietyPress', 'societypress' ),
+        __( 'Membership', 'societypress' ),
         'manage_options',
         'sp-members',
         'sp_render_members_page'
@@ -3661,8 +3661,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Import Members — SocietyPress',
-        'Import Members',
+        __( 'Import Members — SocietyPress', 'societypress' ),
+        __( 'Import Members', 'societypress' ),
         'manage_options',
         'sp-import',
         'sp_render_import_page'
@@ -3670,8 +3670,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Export Members — SocietyPress',
-        'Export Members',
+        __( 'Export Members — SocietyPress', 'societypress' ),
+        __( 'Export Members', 'societypress' ),
         'manage_options',
         'sp-export',
         'sp_render_export_page'
@@ -3683,8 +3683,8 @@ add_action( 'admin_menu', function () {
     //      this page the only way to manage tiers was direct DB access.
     add_submenu_page(
         'societypress',
-        'Membership Plans — SocietyPress',
-        'Membership Plans',
+        __( 'Membership Plans — SocietyPress', 'societypress' ),
+        __( 'Membership Plans', 'societypress' ),
         'manage_options',
         'sp-member-tiers',
         'sp_render_member_tiers_page'
@@ -3693,8 +3693,8 @@ add_action( 'admin_menu', function () {
     // Groups — casual interest groups (SIGs) that members self-join
     add_submenu_page(
         'societypress',
-        'Groups — SocietyPress',
-        'Groups',
+        __( 'Groups — SocietyPress', 'societypress' ),
+        __( 'Groups', 'societypress' ),
         'manage_options',
         'sp-groups',
         'sp_render_groups_page'
@@ -3703,8 +3703,8 @@ add_action( 'admin_menu', function () {
     // Hidden: Edit Group page
     add_submenu_page(
         null,
-        'Edit Group — SocietyPress',
-        'Edit Group',
+        __( 'Edit Group — SocietyPress', 'societypress' ),
+        __( 'Edit Group', 'societypress' ),
         'manage_options',
         'sp-group-edit',
         'sp_render_group_edit_page'
@@ -3713,8 +3713,8 @@ add_action( 'admin_menu', function () {
     // Member Edit — hidden (no sidebar link, accessed via row actions)
     add_submenu_page(
         '',
-        'Edit Member — SocietyPress',
-        'Edit Member',
+        __( 'Edit Member — SocietyPress', 'societypress' ),
+        __( 'Edit Member', 'societypress' ),
         'manage_options',
         'sp-member-edit',
         'sp_render_member_edit_page'
@@ -3762,8 +3762,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Events — SocietyPress',
-        'Events',
+        __( 'Events — SocietyPress', 'societypress' ),
+        __( 'Events', 'societypress' ),
         'manage_options',
         'sp-events',
         'sp_render_events_page'
@@ -3771,8 +3771,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Event Categories — SocietyPress',
-        'Event Categories',
+        __( 'Event Categories — SocietyPress', 'societypress' ),
+        __( 'Event Categories', 'societypress' ),
         'manage_options',
         'sp-event-categories',
         'sp_render_event_categories_page'
@@ -3780,8 +3780,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Import Events — SocietyPress',
-        'Import Events',
+        __( 'Import Events — SocietyPress', 'societypress' ),
+        __( 'Import Events', 'societypress' ),
         'manage_options',
         'sp-import-events',
         'sp_render_import_events_page'
@@ -3789,8 +3789,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Speakers — SocietyPress',
-        'Speakers',
+        __( 'Speakers — SocietyPress', 'societypress' ),
+        __( 'Speakers', 'societypress' ),
         'manage_options',
         'sp-speakers',
         'sp_render_speakers_page'
@@ -3812,8 +3812,8 @@ add_action( 'admin_menu', function () {
     // Event Edit — hidden (no sidebar link, accessed via row actions)
     add_submenu_page(
         '',
-        'Edit Event — SocietyPress',
-        'Edit Event',
+        __( 'Edit Event — SocietyPress', 'societypress' ),
+        __( 'Edit Event', 'societypress' ),
         'manage_options',
         'sp-event-edit',
         'sp_render_event_edit_page'
@@ -3822,8 +3822,8 @@ add_action( 'admin_menu', function () {
     // Speaker Edit — hidden (accessed via row actions on speakers list)
     add_submenu_page(
         '',
-        'Edit Speaker — SocietyPress',
-        'Edit Speaker',
+        __( 'Edit Speaker — SocietyPress', 'societypress' ),
+        __( 'Edit Speaker', 'societypress' ),
         'manage_options',
         'sp-speaker-edit',
         'sp_render_speaker_edit_page'
@@ -3837,8 +3837,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Leadership & Committees — SocietyPress',
-        'Leadership & Committees',
+        __( 'Leadership & Committees — SocietyPress', 'societypress' ),
+        __( 'Leadership & Committees', 'societypress' ),
         'manage_options',
         'sp-governance',
         'sp_render_leadership_page'
@@ -3861,8 +3861,8 @@ add_action( 'admin_menu', function () {
     // volunteer role assignments live here on their own dedicated roster page.
     add_submenu_page(
         'societypress',
-        'Volunteer Roster — SocietyPress',
-        'Volunteer Roster',
+        __( 'Volunteer Roster — SocietyPress', 'societypress' ),
+        __( 'Volunteer Roster', 'societypress' ),
         'manage_options',
         'sp-volunteer-roster',
         'sp_render_volunteers_page'
@@ -3870,8 +3870,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Volunteer Hours — SocietyPress',
-        'Volunteer Hours',
+        __( 'Volunteer Hours — SocietyPress', 'societypress' ),
+        __( 'Volunteer Hours', 'societypress' ),
         'manage_options',
         'sp-volunteer-hours',
         'sp_render_volunteer_hours_page'
@@ -3879,8 +3879,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Volunteer Opportunities — SocietyPress',
-        'Opportunities',
+        __( 'Volunteer Opportunities — SocietyPress', 'societypress' ),
+        __( 'Opportunities', 'societypress' ),
         'manage_options',
         'sp-volunteer-opportunities',
         'sp_render_volunteer_opportunities_page'
@@ -3889,7 +3889,7 @@ add_action( 'admin_menu', function () {
     // Hidden page for editing a single opportunity
     add_submenu_page(
         null,
-        'Edit Opportunity — SocietyPress',
+        __( 'Edit Opportunity — SocietyPress', 'societypress' ),
         '',
         'manage_options',
         'sp-volunteer-opportunity-edit',
@@ -3943,8 +3943,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Resource Links — SocietyPress',
-        'Resource Links',
+        __( 'Resource Links — SocietyPress', 'societypress' ),
+        __( 'Resource Links', 'societypress' ),
         'manage_options',
         'sp-library',
         'sp_render_resources_page'
@@ -3952,8 +3952,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Resource Categories — SocietyPress',
-        'Resource Categories',
+        __( 'Resource Categories — SocietyPress', 'societypress' ),
+        __( 'Resource Categories', 'societypress' ),
         'manage_options',
         'sp-resource-categories',
         'sp_render_resource_categories_page'
@@ -3961,8 +3961,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Library Catalog — SocietyPress',
-        'Library Catalog',
+        __( 'Library Catalog — SocietyPress', 'societypress' ),
+        __( 'Library Catalog', 'societypress' ),
         'manage_options',
         'sp-library-catalog',
         'sp_render_library_catalog_page'
@@ -3970,8 +3970,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Library Categories — SocietyPress',
-        'Library Categories',
+        __( 'Library Categories — SocietyPress', 'societypress' ),
+        __( 'Library Categories', 'societypress' ),
         'manage_options',
         'sp-library-categories',
         'sp_render_library_categories_page'
@@ -3979,8 +3979,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Import Library — SocietyPress',
-        'Import Library',
+        __( 'Import Library — SocietyPress', 'societypress' ),
+        __( 'Import Library', 'societypress' ),
         'manage_options',
         'sp-import-library',
         'sp_render_library_import_page'
@@ -3992,8 +3992,8 @@ add_action( 'admin_menu', function () {
     //      title+author fallback to populate cover_url and isbn fields automatically.
     add_submenu_page(
         'societypress',
-        'Library Enrichment — SocietyPress',
-        'Library Enrichment',
+        __( 'Library Enrichment — SocietyPress', 'societypress' ),
+        __( 'Library Enrichment', 'societypress' ),
         'manage_options',
         'sp-library-enrich',
         'sp_render_library_enrich_page'
@@ -4004,8 +4004,8 @@ add_action( 'admin_menu', function () {
     //     they need their own field mapping and processing logic.
     add_submenu_page(
         'societypress',
-        'Import Links — SocietyPress',
-        'Import Links',
+        __( 'Import Links — SocietyPress', 'societypress' ),
+        __( 'Import Links', 'societypress' ),
         'manage_options',
         'sp-import-links',
         'sp_render_links_import_page'
@@ -4013,8 +4013,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Research Help — SocietyPress',
-        'Research Help',
+        __( 'Research Help — SocietyPress', 'societypress' ),
+        __( 'Research Help', 'societypress' ),
         'manage_options',
         'sp-help-requests',
         'sp_render_help_requests_admin_page'
@@ -4025,8 +4025,8 @@ add_action( 'admin_menu', function () {
     //      thumbnails. Members can browse, preview, and download past issues.
     add_submenu_page(
         'societypress',
-        'Newsletter Archive — SocietyPress',
-        'Newsletter Archive',
+        __( 'Newsletter Archive — SocietyPress', 'societypress' ),
+        __( 'Newsletter Archive', 'societypress' ),
         'manage_options',
         'sp-newsletter-archive',
         'sp_render_newsletter_archive_page'
@@ -4035,8 +4035,8 @@ add_action( 'admin_menu', function () {
     // Newsletter Edit — hidden (accessed via Add New / Edit row actions)
     add_submenu_page(
         '',
-        'Edit Newsletter — SocietyPress',
-        'Edit Newsletter',
+        __( 'Edit Newsletter — SocietyPress', 'societypress' ),
+        __( 'Edit Newsletter', 'societypress' ),
         'manage_options',
         'sp-newsletter-edit',
         'sp_render_newsletter_edit_page'
@@ -4088,8 +4088,8 @@ add_action( 'admin_menu', function () {
     // Library item edit — hidden (accessed via row actions)
     add_submenu_page(
         '',
-        'Edit Library Item — SocietyPress',
-        'Edit Library Item',
+        __( 'Edit Library Item — SocietyPress', 'societypress' ),
+        __( 'Edit Library Item', 'societypress' ),
         'manage_options',
         'sp-library-item-edit',
         'sp_render_library_item_edit_page'
@@ -4101,8 +4101,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Record Collections — SocietyPress',
-        'Record Collections',
+        __( 'Record Collections — SocietyPress', 'societypress' ),
+        __( 'Record Collections', 'societypress' ),
         'manage_options',
         'sp-record-collections',
         'sp_render_record_collections_page'
@@ -4110,8 +4110,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Import Records — SocietyPress',
-        'Import Records',
+        __( 'Import Records — SocietyPress', 'societypress' ),
+        __( 'Import Records', 'societypress' ),
         'manage_options',
         'sp-import-records',
         'sp_render_record_import_page'
@@ -4120,8 +4120,8 @@ add_action( 'admin_menu', function () {
     // Hidden pages — accessed via row actions, not visible in sidebar
     add_submenu_page(
         '',
-        'Edit Collection — SocietyPress',
-        'Edit Collection',
+        __( 'Edit Collection — SocietyPress', 'societypress' ),
+        __( 'Edit Collection', 'societypress' ),
         'manage_options',
         'sp-record-collection-edit',
         'sp_render_record_collection_edit_page'
@@ -4129,8 +4129,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         '',
-        'Browse Records — SocietyPress',
-        'Browse Records',
+        __( 'Browse Records — SocietyPress', 'societypress' ),
+        __( 'Browse Records', 'societypress' ),
         'manage_options',
         'sp-record-browse',
         'sp_render_record_browse_page'
@@ -4138,8 +4138,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         '',
-        'Edit Record — SocietyPress',
-        'Edit Record',
+        __( 'Edit Record — SocietyPress', 'societypress' ),
+        __( 'Edit Record', 'societypress' ),
         'manage_options',
         'sp-record-edit',
         'sp_render_record_edit_page'
@@ -4161,8 +4161,8 @@ add_action( 'admin_menu', function () {
     // Hidden page for recording a new payment (linked from finances page)
     add_submenu_page(
         null,
-        'Record Payment — SocietyPress',
-        'Record Payment',
+        __( 'Record Payment — SocietyPress', 'societypress' ),
+        __( 'Record Payment', 'societypress' ),
         'manage_options',
         'sp-record-payment',
         'sp_render_record_payment_page'
@@ -4171,8 +4171,8 @@ add_action( 'admin_menu', function () {
     // Donations — charitable giving tracker, separate from dues payments
     add_submenu_page(
         'societypress',
-        'Donations — SocietyPress',
-        'Donations',
+        __( 'Donations — SocietyPress', 'societypress' ),
+        __( 'Donations', 'societypress' ),
         'manage_options',
         'sp-donations',
         'sp_render_donations_page'
@@ -4181,8 +4181,8 @@ add_action( 'admin_menu', function () {
     // Hidden: Donation edit/record page
     add_submenu_page(
         null,
-        'Record Donation — SocietyPress',
-        'Record Donation',
+        __( 'Record Donation — SocietyPress', 'societypress' ),
+        __( 'Record Donation', 'societypress' ),
         'manage_options',
         'sp-donation-edit',
         'sp_render_donation_edit_page'
@@ -4191,8 +4191,8 @@ add_action( 'admin_menu', function () {
     // Campaigns — fundraising campaign management
     add_submenu_page(
         'societypress',
-        'Campaigns — SocietyPress',
-        'Campaigns',
+        __( 'Campaigns — SocietyPress', 'societypress' ),
+        __( 'Campaigns', 'societypress' ),
         'manage_options',
         'sp-campaigns',
         'sp_render_campaigns_page'
@@ -4201,8 +4201,8 @@ add_action( 'admin_menu', function () {
     // Hidden: Campaign edit page
     add_submenu_page(
         null,
-        'Edit Campaign — SocietyPress',
-        'Edit Campaign',
+        __( 'Edit Campaign — SocietyPress', 'societypress' ),
+        __( 'Edit Campaign', 'societypress' ),
         'manage_options',
         'sp-campaign-edit',
         'sp_render_campaign_edit_page'
@@ -4211,8 +4211,8 @@ add_action( 'admin_menu', function () {
     // Store Orders — purchase order management
     add_submenu_page(
         'societypress',
-        'Store Orders — SocietyPress',
-        'Store Orders',
+        __( 'Store Orders — SocietyPress', 'societypress' ),
+        __( 'Store Orders', 'societypress' ),
         'manage_options',
         'sp-orders',
         'sp_render_orders_page'
@@ -4221,8 +4221,8 @@ add_action( 'admin_menu', function () {
     // Hidden: Order detail page
     add_submenu_page(
         null,
-        'Order Detail — SocietyPress',
-        'Order Detail',
+        __( 'Order Detail — SocietyPress', 'societypress' ),
+        __( 'Order Detail', 'societypress' ),
         'manage_options',
         'sp-order-detail',
         'sp_render_order_detail_page'
@@ -4238,8 +4238,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Blast Email — SocietyPress',
-        'Blast Email',
+        __( 'Blast Email — SocietyPress', 'societypress' ),
+        __( 'Blast Email', 'societypress' ),
         'manage_options',
         'sp-blast-email',
         'sp_render_blast_email_page'
@@ -4248,8 +4248,8 @@ add_action( 'admin_menu', function () {
     // Hidden: Compose/edit blast email page
     add_submenu_page(
         null,
-        'Compose Email — SocietyPress',
-        'Compose Email',
+        __( 'Compose Email — SocietyPress', 'societypress' ),
+        __( 'Compose Email', 'societypress' ),
         'manage_options',
         'sp-blast-email-compose',
         'sp_render_blast_email_compose_page'
@@ -4257,8 +4257,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Email Templates — SocietyPress',
-        'Email Templates',
+        __( 'Email Templates — SocietyPress', 'societypress' ),
+        __( 'Email Templates', 'societypress' ),
         'manage_options',
         'sp-email-templates',
         'sp_render_email_templates_page'
@@ -4266,8 +4266,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Email Log — SocietyPress',
-        'Email Log',
+        __( 'Email Log — SocietyPress', 'societypress' ),
+        __( 'Email Log', 'societypress' ),
         'manage_options',
         'sp-email-log',
         'sp_render_email_log_page'
@@ -4283,8 +4283,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Themes — SocietyPress',
-        'Themes',
+        __( 'Themes — SocietyPress', 'societypress' ),
+        __( 'Themes', 'societypress' ),
         'manage_options',
         'sp-themes',
         'sp_render_themes_page'
@@ -4292,8 +4292,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Pages — SocietyPress',
-        'Pages',
+        __( 'Pages — SocietyPress', 'societypress' ),
+        __( 'Pages', 'societypress' ),
         'manage_options',
         'sp-pages',
         'sp_render_pages_page'
@@ -4302,8 +4302,8 @@ add_action( 'admin_menu', function () {
     // Page Edit — hidden (no sidebar link, accessed via row actions or Add New)
     add_submenu_page(
         '',
-        'Edit Page — SocietyPress',
-        'Edit Page',
+        __( 'Edit Page — SocietyPress', 'societypress' ),
+        __( 'Edit Page', 'societypress' ),
         'manage_options',
         'sp-page-edit',
         'sp_render_page_edit'
@@ -4311,24 +4311,24 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Media',
-        'Media',
+        __( 'Media', 'societypress' ),
+        __( 'Media', 'societypress' ),
         'manage_options',
         'upload.php'
     );
 
     add_submenu_page(
         'societypress',
-        'Menus',
-        'Menus',
+        __( 'Menus', 'societypress' ),
+        __( 'Menus', 'societypress' ),
         'manage_options',
         'nav-menus.php'
     );
 
     add_submenu_page(
         'societypress',
-        'Widgets',
-        'Widgets',
+        __( 'Widgets', 'societypress' ),
+        __( 'Widgets', 'societypress' ),
         'manage_options',
         'widgets.php'
     );
@@ -4350,8 +4350,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Annual Report — SocietyPress',
-        'Annual Report',
+        __( 'Annual Report — SocietyPress', 'societypress' ),
+        __( 'Annual Report', 'societypress' ),
         'manage_options',
         'sp-annual-report',
         'sp_render_annual_report_page'
@@ -4376,8 +4376,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Website Settings — SocietyPress',
-        'Website',
+        __( 'Website Settings — SocietyPress', 'societypress' ),
+        __( 'Website', 'societypress' ),
         'manage_options',
         'sp-settings-website',
         'sp_render_settings_website_page'
@@ -4385,8 +4385,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Organization Settings — SocietyPress',
-        'Organization',
+        __( 'Organization Settings — SocietyPress', 'societypress' ),
+        __( 'Organization', 'societypress' ),
         'manage_options',
         'sp-settings-organization',
         'sp_render_settings_organization_page'
@@ -4394,8 +4394,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Membership Settings — SocietyPress',
-        'Membership',
+        __( 'Membership Settings — SocietyPress', 'societypress' ),
+        __( 'Membership', 'societypress' ),
         'manage_options',
         'sp-settings-membership',
         'sp_render_settings_membership_page'
@@ -4403,8 +4403,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Directory Settings — SocietyPress',
-        'Directory',
+        __( 'Directory Settings — SocietyPress', 'societypress' ),
+        __( 'Directory', 'societypress' ),
         'manage_options',
         'sp-settings-directory',
         'sp_render_settings_directory_page'
@@ -4412,8 +4412,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Events Settings — SocietyPress',
-        'Events',
+        __( 'Events Settings — SocietyPress', 'societypress' ),
+        __( 'Events', 'societypress' ),
         'manage_options',
         'sp-settings-events',
         'sp_render_settings_events_page'
@@ -4421,8 +4421,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Privacy Settings — SocietyPress',
-        'Privacy',
+        __( 'Privacy Settings — SocietyPress', 'societypress' ),
+        __( 'Privacy', 'societypress' ),
         'manage_options',
         'sp-settings-privacy',
         'sp_render_settings_privacy_page'
@@ -4453,8 +4453,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Modules — SocietyPress',
-        'Modules',
+        __( 'Modules — SocietyPress', 'societypress' ),
+        __( 'Modules', 'societypress' ),
         'manage_options',
         'sp-settings-modules',
         'sp_render_settings_modules_page'
@@ -8155,9 +8155,9 @@ add_filter( 'login_message', function ( $message ) {
     $org_email = $settings['organization_email'] ?? '';
 
     $notice  = '<div class="sp-login-notice">';
-    $notice .= '<h2>Important Notice</h2>';
-    $notice .= '<p>This information is for members only; please do not share your ID and password with non-members. Names and contact information are provided to assist members in collaborating on society projects and in genealogical research. The use of this information for commercial, political, personal, or religious purposes is strictly forbidden. It would show a lack of respect for the privacy of our members and would reduce their willingness to share contact data. Any violation will be considered a serious offense and will have consequences.</p>';
-    $notice .= '<p>Just as you would not share your private family conversations or your family financial matters with the general public, please do not share our financial reports, board meeting notes, etc. with non-members. In an effort to keep our members well informed, we are exceptionally open with this data within our membership. However, it is not intended for public dissemination.</p>';
+    $notice .= '<h2>' . esc_html__( 'Important Notice', 'societypress' ) . '</h2>';
+    $notice .= '<p>' . esc_html__( 'This information is for members only; please do not share your ID and password with non-members. Names and contact information are provided to assist members in collaborating on society projects and in genealogical research. The use of this information for commercial, political, personal, or religious purposes is strictly forbidden. It would show a lack of respect for the privacy of our members and would reduce their willingness to share contact data. Any violation will be considered a serious offense and will have consequences.', 'societypress' ) . '</p>';
+    $notice .= '<p>' . esc_html__( 'Just as you would not share your private family conversations or your family financial matters with the general public, please do not share our financial reports, board meeting notes, etc. with non-members. In an effort to keep our members well informed, we are exceptionally open with this data within our membership. However, it is not intended for public dissemination.', 'societypress' ) . '</p>';
 
     if ( $org_email ) {
         $notice .= '<p>' . esc_html__( 'If you have any membership questions, please contact the Membership Chair at ', 'societypress' ) . sp_obfuscate_email( $org_email ) . '.</p>';
@@ -8318,7 +8318,7 @@ add_action( 'admin_footer', function () {
             $sp_ack_email    = $sp_ack_settings['org_email'] ?? '';
             ?>
             <p><?php echo esc_html__( 'If you have any questions, please contact us at ', 'societypress' ); ?><?php echo $sp_ack_email ? sp_obfuscate_email( $sp_ack_email ) : ''; ?>.</p>
-            <button type="button" class="sp-acknowledge-btn" id="sp-login-ack-btn">I Understand</button>
+            <button type="button" class="sp-acknowledge-btn" id="sp-login-ack-btn"><?php esc_html_e( 'I Understand', 'societypress' ); ?></button>
         </div>
     </div>
     <style>
@@ -18854,8 +18854,8 @@ function sp_sanitize_settings( array $input ): array {
 function sp_register_wizard_page(): void {
     add_submenu_page(
         null, // Hidden — no menu link
-        'SocietyPress Setup',
-        'Setup Wizard',
+        __( 'SocietyPress Setup', 'societypress' ),
+        __( 'Setup Wizard', 'societypress' ),
         'manage_options',
         'sp-setup-wizard',
         'sp_render_setup_wizard'
@@ -19388,8 +19388,8 @@ if ( ! wp_next_scheduled( 'sp_daily_maintenance' ) ) {
 function sp_register_audit_log_menu(): void {
     add_submenu_page(
         'societypress',
-        'Audit Log — SocietyPress',
-        'Audit Log',
+        __( 'Audit Log — SocietyPress', 'societypress' ),
+        __( 'Audit Log', 'societypress' ),
         'manage_options',
         'sp-audit-log',
         'sp_render_audit_log_page'
@@ -21515,7 +21515,7 @@ function sp_render_groups_frontend( $content ): string {
     </style>
 
     <?php if ( empty( $groups ) ) : ?>
-        <p>No interest groups are available yet.</p>
+        <p><?php esc_html_e( 'No interest groups are available yet.', 'societypress' ); ?></p>
     <?php else : ?>
         <div class="sp-groups-grid">
             <?php foreach ( $groups as $g ) :
@@ -32875,7 +32875,7 @@ function sp_render_builder_widget_membership_tiers( array $s ): void {
     $tiers = $wpdb->get_results( "SELECT name, price, duration_months, active FROM {$prefix}membership_tiers {$where} ORDER BY sort_order ASC, name ASC" );
 
     if ( empty( $tiers ) ) {
-        echo '<p>No membership tiers have been configured yet.</p>';
+        echo '<p>' . esc_html__( 'No membership tiers have been configured yet.', 'societypress' ) . '</p>';
         return;
     }
 
@@ -32979,18 +32979,18 @@ function sp_render_builder_widget_member_stats( array $s ): void {
     echo '<div class="sp-member-stats-row">';
     echo '<div class="sp-member-stats-card">';
     echo '<div class="sp-member-stats-number">' . number_format( $total ) . '</div>';
-    echo '<div class="sp-member-stats-label">Total Members</div>';
+    echo '<div class="sp-member-stats-label">' . esc_html__( 'Total Members', 'societypress' ) . '</div>';
     echo '</div>';
     echo '<div class="sp-member-stats-card">';
     echo '<div class="sp-member-stats-number">' . number_format( $active ) . '</div>';
-    echo '<div class="sp-member-stats-label">Active Members</div>';
+    echo '<div class="sp-member-stats-label">' . esc_html__( 'Active Members', 'societypress' ) . '</div>';
     echo '</div>';
     echo '</div>';
 
     if ( $show_status_counts ) {
         $statuses = $wpdb->get_results( "SELECT status, COUNT(*) as count FROM {$prefix}members GROUP BY status ORDER BY count DESC" );
         if ( $statuses ) {
-            echo '<h4 class="sp-member-stats-section-head">By Status</h4>';
+            echo '<h4 class="sp-member-stats-section-head">' . esc_html__( 'By Status', 'societypress' ) . '</h4>';
             echo '<ul class="sp-member-stats-list">';
             foreach ( $statuses as $st ) {
                 echo '<li class="sp-member-stats-list-item">';
@@ -33011,7 +33011,7 @@ function sp_render_builder_widget_member_stats( array $s ): void {
              GROUP BY t.id ORDER BY t.sort_order ASC"
         );
         if ( $tiers ) {
-            echo '<h4 class="sp-member-stats-section-head">By Membership Level</h4>';
+            echo '<h4 class="sp-member-stats-section-head">' . esc_html__( 'By Membership Level', 'societypress' ) . '</h4>';
             echo '<ul class="sp-member-stats-list-last">';
             foreach ( $tiers as $t ) {
                 echo '<li class="sp-member-stats-list-item">';
@@ -36149,7 +36149,7 @@ function sp_render_event_categories_page(): void {
 
         <!-- Add New Category Form -->
         <div class="card sp-event-cats-add-card">
-            <h3 class="sp-event-cats-add-heading">Add New Category</h3>
+            <h3 class="sp-event-cats-add-heading"><?php esc_html_e( 'Add New Category', 'societypress' ); ?></h3>
             <form id="sp-add-category-form">
                 <?php wp_nonce_field( 'sp_event_category_nonce', 'sp_cat_nonce' ); ?>
                 <table class="form-table sp-event-cats-form-table" role="presentation">
@@ -36177,7 +36177,7 @@ function sp_render_event_categories_page(): void {
                     </tr>
                 </table>
                 <p class="sp-event-cats-submit-row">
-                    <button type="submit" class="button button-primary">Add Category</button>
+                    <button type="submit" class="button button-primary"><?php esc_html_e( 'Add Category', 'societypress' ); ?></button>
                     <span id="sp-cat-add-status" class="sp-event-cats-add-status"></span>
                 </p>
             </form>
@@ -36585,7 +36585,7 @@ function sp_render_member_tiers_page(): void {
 
         <!-- Add New Plan Form -->
         <div class="card sp-tiers-card">
-            <h3 class="sp-tiers-form-heading">Add New Plan</h3>
+            <h3 class="sp-tiers-form-heading"><?php esc_html_e( 'Add New Plan', 'societypress' ); ?></h3>
             <form id="sp-add-tier-form">
                 <?php wp_nonce_field( 'sp_membership_tier_nonce', 'sp_tier_nonce' ); ?>
                 <table class="form-table sp-tiers-form-table" role="presentation">
@@ -36619,7 +36619,7 @@ function sp_render_member_tiers_page(): void {
                         <th scope="row"><label for="sp-tier-sort"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label></th>
                         <td>
                             <input type="number" id="sp-tier-sort" value="0" min="0" class="small-text">
-                            <p class="description">Lower numbers appear first in dropdowns.</p>
+                            <p class="description"><?php esc_html_e( 'Lower numbers appear first in dropdowns.', 'societypress' ); ?></p>
                         </td>
                     </tr>
                     <tr>
@@ -36634,7 +36634,7 @@ function sp_render_member_tiers_page(): void {
                     </tr>
                 </table>
                 <p class="sp-tiers-form-actions">
-                    <button type="submit" class="button button-primary">Add Plan</button>
+                    <button type="submit" class="button button-primary"><?php esc_html_e( 'Add Plan', 'societypress' ); ?></button>
                     <span id="sp-tier-add-status" class="sp-tiers-add-status"></span>
                 </p>
             </form>
@@ -39865,7 +39865,7 @@ function sp_render_event_detail( string $slug, array $settings ): void {
         echo '<div class="sp-event-not-found">';
         echo '<h2>Event Not Found</h2>';
         echo '<p>The event you\'re looking for doesn\'t exist or has been removed.</p>';
-        echo '<p><a href="' . esc_url( get_permalink() ) . '">&larr; Back to Events</a></p>';
+        echo '<p><a href="' . esc_url( get_permalink() ) . '">&larr; ' . esc_html__( 'Back to Events', 'societypress' ) . '</a></p>';
         echo '</div>';
         return;
     }
@@ -40066,7 +40066,7 @@ function sp_render_event_detail( string $slug, array $settings ): void {
 
     <!-- Back link -->
     <div class="sp-event-back">
-        <a href="<?php echo esc_url( $events_page_url ); ?>">&larr; Back to Events</a>
+        <a href="<?php echo esc_url( $events_page_url ); ?>">&larr; <?php esc_html_e( 'Back to Events', 'societypress' ); ?></a>
     </div>
 
     <article class="sp-event-detail">
@@ -40266,26 +40266,26 @@ function sp_render_event_detail( string $slug, array $settings ): void {
                     <div class="sp-event-pricing">
                         <?php if ( (float) $event->member_price > 0 ) : ?>
                             <div class="sp-price-item">
-                                <span class="sp-price-label">Members:</span>
+                                <span class="sp-price-label"><?php esc_html_e( 'Members:', 'societypress' ); ?></span>
                                 <span class="sp-price-amount"><?php echo esc_html( sp_format_currency( $event->member_price ) ); ?></span>
                             </div>
                         <?php else : ?>
                             <div class="sp-price-item">
-                                <span class="sp-price-label">Members:</span>
-                                <span class="sp-price-amount sp-price-free">Free</span>
+                                <span class="sp-price-label"><?php esc_html_e( 'Members:', 'societypress' ); ?></span>
+                                <span class="sp-price-amount sp-price-free"><?php esc_html_e( 'Free', 'societypress' ); ?></span>
                             </div>
                         <?php endif; ?>
 
                         <?php if ( $event->guest_registration ) : ?>
                             <?php if ( (float) $event->nonmember_price > 0 ) : ?>
                                 <div class="sp-price-item">
-                                    <span class="sp-price-label">Non-Members:</span>
+                                    <span class="sp-price-label"><?php esc_html_e( 'Non-Members:', 'societypress' ); ?></span>
                                     <span class="sp-price-amount"><?php echo esc_html( sp_format_currency( $event->nonmember_price ) ); ?></span>
                                 </div>
                             <?php else : ?>
                                 <div class="sp-price-item">
-                                    <span class="sp-price-label">Non-Members:</span>
-                                    <span class="sp-price-amount sp-price-free">Free</span>
+                                    <span class="sp-price-label"><?php esc_html_e( 'Non-Members:', 'societypress' ); ?></span>
+                                    <span class="sp-price-amount sp-price-free"><?php esc_html_e( 'Free', 'societypress' ); ?></span>
                                 </div>
                             <?php endif; ?>
                         <?php endif; ?>
@@ -43801,7 +43801,7 @@ add_action( 'init', function () {
 
     // Verify nonce
     if ( ! wp_verify_nonce( $_POST['sp_join_nonce'], 'sp_join_form' ) ) {
-        $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => 'Security check failed. Please try again.' ];
+        $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => __( 'Security check failed. Please try again.', 'societypress' ) ];
         return;
     }
 
@@ -53345,37 +53345,37 @@ function sp_render_reports_page(): void {
             </div>
             <div class="sp-reports-card">
                 <div class="sp-reports-stat-number"><?php echo absint( $total_events ); ?></div>
-                <div class="sp-reports-stat-label">Events This Year</div>
+                <div class="sp-reports-stat-label"><?php esc_html_e( 'Events This Year', 'societypress' ); ?></div>
             </div>
             <div class="sp-reports-card">
                 <div class="sp-reports-stat-number"><?php echo esc_html( number_format( $volunteer_hours, 1 ) ); ?></div>
-                <div class="sp-reports-stat-label">Volunteer Hours</div>
+                <div class="sp-reports-stat-label"><?php esc_html_e( 'Volunteer Hours', 'societypress' ); ?></div>
                 <div class="sp-reports-stat-sublabel">This year</div>
             </div>
             <div class="sp-reports-card">
                 <div class="sp-reports-stat-number"><?php echo absint( $library_items ); ?></div>
-                <div class="sp-reports-stat-label">Library Items</div>
+                <div class="sp-reports-stat-label"><?php esc_html_e( 'Library Items', 'societypress' ); ?></div>
             </div>
             <div class="sp-reports-card">
                 <div class="sp-reports-stat-number"><?php echo absint( $help_requests ); ?></div>
-                <div class="sp-reports-stat-label">Open Help Requests</div>
+                <div class="sp-reports-stat-label"><?php esc_html_e( 'Open Help Requests', 'societypress' ); ?></div>
             </div>
             <div class="sp-reports-card">
                 <div class="sp-reports-stat-number--green"><?php echo esc_html( sp_format_currency( $donations_year ) ); ?></div>
-                <div class="sp-reports-stat-label">Donations This Year</div>
+                <div class="sp-reports-stat-label"><?php esc_html_e( 'Donations This Year', 'societypress' ); ?></div>
                 <div class="sp-reports-stat-sublabel"><?php echo absint( $donor_count ); ?> donors</div>
             </div>
             <?php if ( $top_campaign ) : ?>
             <div class="sp-reports-card">
                 <div class="sp-reports-stat-number--green"><?php echo esc_html( sp_format_currency( $top_campaign->raised ) ); ?></div>
-                <div class="sp-reports-stat-label">Top Campaign</div>
+                <div class="sp-reports-stat-label"><?php esc_html_e( 'Top Campaign', 'societypress' ); ?></div>
                 <div class="sp-reports-stat-sublabel"><?php echo esc_html( $top_campaign->name ); ?></div>
             </div>
             <?php endif; ?>
         </div>
 
         <div class="sp-reports-cta">
-            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-annual-report' ) ); ?>" class="button button-primary button-hero">Generate Annual Report</a>
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-annual-report' ) ); ?>" class="button button-primary button-hero"><?php esc_html_e( 'Generate Annual Report', 'societypress' ); ?></a>
         </div>
     </div>
     <?php
@@ -54790,8 +54790,8 @@ function sp_frontend_help_requests(): void {
     // Sub-view routing
     if ( $view === 'submit' ) {
         // Submit question form
-        echo '<h2>Ask a Research Question</h2>';
-        echo '<p class="sp-help-intro-text">Describe your genealogy research challenge. Other members may be able to help!</p>';
+        echo '<h2>' . esc_html__( 'Ask a Research Question', 'societypress' ) . '</h2>';
+        echo '<p class="sp-help-intro-text">' . esc_html__( 'Describe your genealogy research challenge. Other members may be able to help!', 'societypress' ) . '</p>';
         ?>
         <style>
             /*
@@ -55012,23 +55012,23 @@ function sp_frontend_help_requests(): void {
         if ( $request->status === 'open' ) {
             ?>
             <div class="sp-help-reply-section">
-                <h4>Add a Response</h4>
+                <h4><?php esc_html_e( 'Add a Response', 'societypress' ); ?></h4>
                 <form method="post">
                     <?php wp_nonce_field( 'sp_help_response' ); ?>
                     <input type="hidden" name="request_id" value="<?php echo $req_id; ?>">
                     <textarea name="response_content" rows="4" required class="sp-help-reply-textarea" placeholder="<?php echo esc_attr__( 'Share what you know...', 'societypress' ); ?>"></textarea>
-                    <button type="submit" name="sp_submit_response" class="sp-btn sp-btn-primary">Post Response</button>
+                    <button type="submit" name="sp_submit_response" class="sp-btn sp-btn-primary"><?php esc_html_e( 'Post Response', 'societypress' ); ?></button>
                 </form>
             </div>
             <?php
         } else {
-            echo '<p class="sp-help-closed-notice">This question has been closed and is no longer accepting responses.</p>';
+            echo '<p class="sp-help-closed-notice">' . esc_html__( 'This question has been closed and is no longer accepting responses.', 'societypress' ) . '</p>';
         }
 
     } else {
         // List view
         echo '<div class="sp-help-list-header">';
-        echo '<h2>Research Help</h2>';
+        echo '<h2>' . esc_html__( 'Research Help', 'societypress' ) . '</h2>';
         echo '<a href="' . esc_url( add_query_arg( 'sp_help', 'submit' ) ) . '" class="sp-btn sp-btn-primary">Ask a Question</a>';
         echo '</div>';
 
@@ -55245,7 +55245,7 @@ function sp_frontend_library_catalog(): void {
         .sp-fe-catalog-empty         { color:#666; font-style:italic; }
     </style>';
 
-    echo '<h2>Library Catalog</h2>';
+    echo '<h2>' . esc_html__( 'Library Catalog', 'societypress' ) . '</h2>';
     echo '<form method="get" class="sp-fe-catalog-form">';
     echo '<input type="text" name="sp_lib_search" value="' . esc_attr( $search ) . '" placeholder="Search title, author, or call number..." class="sp-fe-catalog-search">';
     echo '<select name="category" class="sp-fe-catalog-cat-select">';
@@ -61269,7 +61269,7 @@ function sp_render_blast_email_page(): void {
     ?>
     <div class="wrap sp-admin-wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Blast Email', 'societypress' ); ?></h1>
-        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email-compose' ) ); ?>" class="page-title-action">Compose New</a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email-compose' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Compose New', 'societypress' ); ?></a>
 
         <?php if ( isset( $_GET['deleted'] ) ) : ?>
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Blast email deleted.', 'societypress' ); ?></p></div>
@@ -63803,7 +63803,7 @@ function sp_render_campaigns_page(): void {
     ?>
     <div class="wrap sp-admin-wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Campaigns', 'societypress' ); ?></h1>
-        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-campaign-edit' ) ); ?>" class="page-title-action">Add New</a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-campaign-edit' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Add New', 'societypress' ); ?></a>
 
         <?php if ( isset( $_GET['deleted'] ) ) : ?>
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Campaign deleted. Donations have been unlinked.', 'societypress' ); ?></p></div>
@@ -66370,7 +66370,7 @@ function sp_render_newsletter_archive_page(): void {
 
     <div class="wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Newsletter Archive', 'societypress' ); ?></h1>
-        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-newsletter-edit' ) ); ?>" class="page-title-action">Add New</a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-newsletter-edit' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Add New', 'societypress' ); ?></a>
         <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=sp_export_newsletters_zip&nonce=' . wp_create_nonce( 'sp_export_newsletters_zip' ) ) ); ?>" class="page-title-action"><?php esc_html_e( 'Export All (ZIP)', 'societypress' ); ?></a>
         <hr class="wp-header-end">
 
@@ -67107,7 +67107,7 @@ function sp_frontend_newsletter_archive(): void {
     );
     ?>
     <div class="sp-newsletter-archive">
-        <h1 class="entry-title" class="sp-mb-8">Newsletter Archive</h1>
+        <h1 class="entry-title" class="sp-mb-8"><?php esc_html_e( 'Newsletter Archive', 'societypress' ); ?></h1>
 
         <!-- Search bar -->
         <div class="sp-mb-24">
@@ -67116,7 +67116,7 @@ function sp_frontend_newsletter_archive(): void {
         </div>
 
         <?php if ( empty( $newsletters ) ) : ?>
-            <p>No newsletters have been published yet. Check back soon!</p>
+            <p><?php esc_html_e( 'No newsletters have been published yet. Check back soon!', 'societypress' ); ?></p>
         <?php else : ?>
             <div class="sp-newsletter-grid" id="sp-nl-grid">
                 <?php foreach ( $newsletters as $nl ) :
@@ -67183,7 +67183,7 @@ function sp_frontend_newsletter_archive(): void {
                                 <?php if ( $can_access && $pdf_url ) : ?>
                                     <a href="<?php echo esc_url( $download_url ); ?>" class="sp-newsletter-btn sp-newsletter-btn-download">Download</a>
                                 <?php else : ?>
-                                    <span class="sp-newsletter-members-badge">Members Only</span>
+                                    <span class="sp-newsletter-members-badge"><?php esc_html_e( 'Members Only', 'societypress' ); ?></span>
                                 <?php endif; ?>
                             </div>
                         </div>

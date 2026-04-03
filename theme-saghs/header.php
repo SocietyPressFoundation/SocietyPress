@@ -27,6 +27,8 @@
 <body <?php body_class(); ?>>
 <?php wp_body_open(); ?>
 
+<a class="skip-to-main" href="#main-content"><?php esc_html_e( 'Skip to main content', 'societypress' ); ?></a>
+
 <div class="site">
     <header class="site-header">
 
@@ -53,12 +55,18 @@
                 <?php endif; ?>
 
                 <?php if ( $show_header_title ) : ?>
+                <?php
+                // WHY: Only the front page gets <h1> for the site title. Interior
+                // pages use <p> so the page title can be the sole <h1> — proper
+                // document structure for screen readers and SEO.
+                $title_tag = is_front_page() ? 'h1' : 'p';
+                ?>
                 <div>
-                    <h1 class="site-title">
+                    <<?php echo $title_tag; ?> class="site-title">
                         <a href="<?php echo esc_url( home_url( '/' ) ); ?>">
                             <?php bloginfo( 'name' ); ?>
                         </a>
-                    </h1>
+                    </<?php echo $title_tag; ?>>
                     <?php
                     $description = get_bloginfo( 'description', 'display' );
                     if ( $description ) :
@@ -78,7 +86,7 @@
             <div class="header-nav-area">
 
                 <!-- Hamburger toggle — visible on mobile only (CSS hides on desktop) -->
-                <button class="society-hamburger" aria-label="Toggle navigation menu" aria-expanded="false">
+                <button class="society-hamburger" aria-label="<?php esc_attr_e( 'Toggle navigation menu', 'society' ); ?>" aria-expanded="false">
                     <span class="society-hamburger-bar"></span>
                     <span class="society-hamburger-bar"></span>
                     <span class="society-hamburger-bar"></span>
@@ -95,7 +103,7 @@
                     // instead. This avoids duplicating the form in JS.
                     if ( function_exists( 'sp_get_search_page_url' ) ) : ?>
                     <form class="sp-header-search sp-header-search-mobile" action="<?php echo esc_url( sp_get_search_page_url() ); ?>" method="get">
-                        <input type="text" name="sp_q" placeholder="<?php esc_attr_e( 'Search…', 'societypress' ); ?>" autocomplete="off" required minlength="2">
+                        <input type="text" name="sp_q" placeholder="<?php esc_attr_e( 'Search…', 'societypress' ); ?>" aria-label="<?php esc_attr_e( 'Search the site', 'societypress' ); ?>" autocomplete="off" required minlength="2">
                         <button type="submit" aria-label="<?php esc_attr_e( 'Search', 'societypress' ); ?>">
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                         </button>
@@ -119,7 +127,7 @@
                      has its own copy above the nav links. CSS toggles visibility. -->
                 <?php if ( function_exists( 'sp_get_search_page_url' ) ) : ?>
                 <form class="sp-header-search sp-header-search-desktop" action="<?php echo esc_url( sp_get_search_page_url() ); ?>" method="get">
-                    <input type="text" name="sp_q" placeholder="<?php esc_attr_e( 'Search…', 'societypress' ); ?>" autocomplete="off" required minlength="2">
+                    <input type="text" name="sp_q" placeholder="<?php esc_attr_e( 'Search…', 'societypress' ); ?>" aria-label="<?php esc_attr_e( 'Search the site', 'societypress' ); ?>" autocomplete="off" required minlength="2">
                     <button type="submit" aria-label="<?php esc_attr_e( 'Search', 'societypress' ); ?>">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                     </button>

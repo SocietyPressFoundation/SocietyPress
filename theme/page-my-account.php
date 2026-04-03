@@ -276,7 +276,7 @@ function sp_m( $member, $field ) {
             // ----------------------------------------------------------------
             ?>
             <?php if ( $success ) : ?>
-                <div class="sp-notice sp-notice--success">
+                <div class="sp-notice sp-notice--success" role="alert">
                     <?php
                     switch ( $success ) {
                         case 'profile':
@@ -314,13 +314,13 @@ function sp_m( $member, $field ) {
             <?php endif; ?>
 
             <?php if ( $pending ) : ?>
-                <div class="sp-notice sp-notice--info" style="background: #fff8e1; border-left: 4px solid #f9a825; color: #5d4037; padding: 12px 16px; border-radius: 4px; margin-bottom: 16px;">
+                <div class="sp-notice sp-notice--info sp-notice--pending" role="status">
                     <?php esc_html_e( 'Your changes have been submitted for review. An administrator will approve them shortly.', 'societypress' ); ?>
                 </div>
             <?php endif; ?>
 
             <?php if ( $error ) : ?>
-                <div class="sp-notice sp-notice--error">
+                <div class="sp-notice sp-notice--error" role="alert">
                     <?php
                     switch ( $error ) {
                         case 'password-mismatch':
@@ -397,7 +397,6 @@ function sp_m( $member, $field ) {
                                    id="sp-photo-upload"
                                    name="sp_profile_photo"
                                    accept="image/jpeg,image/png,image/gif"
-                                   capture="user"
                                    class="sp-file-input"
                                    onchange="this.form.submit();" />
 
@@ -1063,12 +1062,35 @@ function sp_m( $member, $field ) {
                 <?php
                 // Load this member's current research surnames with full location columns
                 $surnames = $wpdb->get_results( $wpdb->prepare(
-                    "SELECT id, surname, county, state, country, year_from, year_to, note
+                    "SELECT id, surname, county, state, country, year_from, year_to, note, soundex_code, metaphone_code
                      FROM {$wpdb->prefix}sp_member_surnames
                      WHERE user_id = %d
                      ORDER BY surname ASC",
                     $user->ID
                 ) );
+
+                // WHY: For each surname, count how many OTHER active members are
+                // researching the same or similar surnames. This is the connective
+                // tissue of a genealogical society — "You're not the only one
+                // researching Smiths in Sample County."
+                $surname_similar_counts = [];
+                foreach ( $surnames as $sn ) {
+                    $count = 0;
+                    if ( $sn->soundex_code || $sn->metaphone_code ) {
+                        $count = (int) $wpdb->get_var( $wpdb->prepare(
+                            "SELECT COUNT(DISTINCT s.user_id)
+                             FROM {$wpdb->prefix}sp_member_surnames s
+                             INNER JOIN {$wpdb->prefix}sp_members m ON s.user_id = m.user_id
+                             WHERE m.status = 'active'
+                               AND s.user_id != %d
+                               AND (s.soundex_code = %s OR s.metaphone_code = %s)",
+                            $user->ID,
+                            $sn->soundex_code ?: '',
+                            $sn->metaphone_code ?: ''
+                        ) );
+                    }
+                    $surname_similar_counts[ $sn->id ] = $count;
+                }
                 ?>
 
                 <!-- Existing surnames -->
@@ -1103,6 +1125,24 @@ function sp_m( $member, $field ) {
                                 <?php endif; ?>
                                 <?php if ( ! empty( $sn->note ) ) : ?>
                                     <span class="sp-surname-note"><?php echo esc_html( $sn->note ); ?></span>
+                                <?php endif; ?>
+                                <?php
+                                $sim_count = $surname_similar_counts[ $sn->id ] ?? 0;
+                                if ( $sim_count > 0 ) : ?>
+                                    <span class="sp-surname-similar" style="display:block; font-size:12px; color:#2271b1; margin-top:2px;">
+                                        <?php
+                                        printf(
+                                            /* translators: %d: number of other members researching similar surnames */
+                                            esc_html( _n(
+                                                '%d other member is researching a similar surname',
+                                                '%d other members are researching similar surnames',
+                                                $sim_count,
+                                                'societypress'
+                                            ) ),
+                                            $sim_count
+                                        );
+                                        ?>
+                                    </span>
                                 <?php endif; ?>
                                 <form method="post" onsubmit="return confirm('<?php echo esc_js( __( 'Remove this surname?', 'societypress' ) ); ?>');">
                                     <?php wp_nonce_field( 'sp_remove_surname', 'sp_surname_nonce' ); ?>
@@ -1542,7 +1582,8 @@ function sp_m( $member, $field ) {
     //      password (re-auth sensitive), surnames, research areas, or event
     //      cancellation (those use add/remove patterns with redirects).
     // =========================================================================
-    var ajaxUrl = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
+    var ajaxUrl   = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
+    var ajaxNonce = <?php echo wp_json_encode( wp_create_nonce( 'sp_save_account' ) ); ?>;
     var ajaxActions = [
         'update_profile', 'update_contact', 'update_address',
         'update_preferences', 'update_privacy', 'update_interests',
@@ -1570,6 +1611,7 @@ function sp_m( $member, $field ) {
 
             var formData = new FormData(form);
             formData.append('action', 'sp_save_account');
+            formData.append('nonce', ajaxNonce);
 
             fetch(ajaxUrl, { method: 'POST', body: formData, credentials: 'same-origin' })
                 .then(function(r) { return r.json(); })

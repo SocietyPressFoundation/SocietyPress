@@ -171,12 +171,57 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 - [x] Non-admin SP staff: redirected from WP dashboard to SP dashboard, see only permitted sections
 - [ ] Committee-scoped access: automatic chair/member permissions from governance data (deferred)
 
-## In Progress
+## Recently Completed
+
+### Completed This Session (v0.50d — 2026-04-02)
+
+**Security Audit — 17 Issues Fixed:**
+- [x] CRIT: Settings JSON export now excludes all 6 payment credentials (was missing stripe_live_secret_key + all PayPal keys)
+- [x] CRIT: Encryption fallback refuses to store without sodium (was silently storing base64 plaintext)
+- [x] HIGH: Newsletter volume/issue numbers XSS — now escaped with esc_html()
+- [x] HIGH: Event payment return handler — added ownership check (user_id match)
+- [x] HIGH: Admin member edit page title — now uses wp_kses()
+- [x] HIGH: Vote nonce reordered — generic nonce verified before touching user-supplied ballot_id
+- [x] MED: Health endpoint hides PHP/WP/plugin versions from unauthenticated callers
+- [x] MED: Quick edit page handler validates post_type === 'page'
+- [x] MED: Batch delete verifies each ID exists in sp_members before deleting
+- [x] MED: Vote submission has explicit user_id > 0 guard
+- [x] MED: Newsletter PDFs served through AJAX endpoint only — direct attachment URLs no longer in HTML
+- [x] LOW: sp_dismiss_login_ack now verifies nonce
+
+**Code Review — 27 Issues Fixed:**
+- [x] SQL injection: Reports dashboard queries now use $wpdb->prepare()
+- [x] date() → wp_date(): 30+ additional calls converted (crons, calendar, recurrence, volunteers, donations)
+- [x] wp_redirect() → wp_safe_redirect(): all ~97 internal redirects converted
+- [x] admin_url() in JS: 6 locations wrapped in esc_js()
+- [x] admin_url() in HTML href: 4 locations wrapped in esc_url(), back links i18n-wrapped
+- [x] Dashboard activity feed: malformed icon_char HTML fixed (missing class=), output via wp_kses()
+- [x] Account save AJAX: global nonce check added before any DB query
+- [x] confirm() fallbacks: 2 remaining in media manager removed, spConfirm() now unconditional
+- [x] Hardcoded "SAGHS Publication": replaced with dynamic DISTINCT query from database
+- [x] i18n: ~40+ strings wrapped (setup wizard, speakers, library stats, blast email, donations, page editor)
+- [x] Blast email detail: inline style on <th> replaced with utility class
+- [x] Explanatory comments on public endpoints (unified search, library detail), backup export, version constant
+
+**UX Review — 25 Issues Fixed:**
+- [x] SAGHS: skip navigation link added, conditional h1/p for site title, hamburger aria-label i18n-wrapped
+- [x] spConfirm: focus trap added, Enter key removed (prevents accidental confirm), visible X close button
+- [x] Flyout menu: role="menu" removed (was incomplete ARIA contract), focus() on first link when panel opens
+- [x] Join form: field-level validation with inline errors, aria-invalid, aria-describedby, auto-scroll to first error
+- [x] My Account notices: role="alert" on success/error, role="status" on pending, inline styles → CSS class
+- [x] Members-only gate: 5 inline styles → CSS classes, id="main-content" for skip link, design system color fallback corrected
+- [x] Footer link contrast: rgba opacity 0.7 → 0.85 (meets WCAG 4.5:1)
+- [x] Search inputs: aria-label added in parent theme + SAGHS (desktop + mobile)
+- [x] Photo upload: capture="user" removed (was forcing camera, preventing file picker)
+- [x] Rate limit message: now shows wait time (1 hour) and org contact email
+- [x] "Delete All Others": moved from header bar to dedicated danger zone at page bottom
+- [x] Calendar sync: spinner animation replaces "..." text during AJAX sync
+- [x] Reusable sp-spinner CSS class added to admin utilities
 
 - [x] Inline styles refactor (#8): 305 inline styles extracted to CSS classes (772 → 467), then voting module added ~35 more. 50+ utility CSS classes in `<style id="sp-admin-utilities">`. Remaining ~500 are JS-toggled display:none (risky), dynamic PHP values, or unique one-offs.
 - [x] Per-module CSV exports: events, donations, leadership/committees, store orders (with line items), email log, resource links — all follow library export pattern (AJAX handler, UTF-8 BOM, streaming output). Export buttons on all 6 admin pages. Volunteer hours already had one.
 - [x] Settings JSON export: "Export Settings (JSON)" button on Website settings page. Downloads `societypress_settings` + `sp_enabled_modules` as dated JSON file. Stripe secret keys excluded for security.
-- [x] Site health REST endpoint: `/wp-json/societypress/v1/health` — checks all 50 DB tables exist, 5 cron jobs scheduled, PHP/WP versions, libsodium. Returns 200 (ok) or 503 (degraded/error). No auth required for external uptime monitors.
+- [x] Site health REST endpoint: `/wp-json/societypress/v1/health` — checks all 50 DB tables exist, 5 cron jobs scheduled, PHP/WP versions, libsodium. Returns 200 (ok) or 503 (degraded/error). No auth required for external uptime monitors. Version details only shown to authenticated admins (v0.50d).
 - [x] Custom confirmation modal: `spConfirm()` function + global `data-sp-confirm` interceptors for forms/links/buttons. All 54 `confirm()` calls migrated — zero native confirm() remaining.
 - [x] Member photo prompt: "Your profile is missing a photo" nudge on My Account for members without a custom photo.
 
@@ -288,9 +333,7 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 - [x] Search input focus ring contrast fix
 - [x] Dashboard inline styles extracted to CSS classes (42 → 2)
 
-**Deferred UX items (1 remaining):**
-- [x] Inline styles refactor: 305 extracted to CSS classes (772 → ~500). Remaining are JS-toggled, dynamic, or unique.
-- [x] Custom confirm modal: all 54 `confirm()` calls migrated to `spConfirm()` — zero remaining (v0.49d)
+**Deferred UX item:**
 - [ ] Mobile hamburger for parent theme needs testing with real nav menus (code review passed v0.49d, no live test site)
 
 ### Completed Previous Session (v0.41d — 2026-03-22)
@@ -387,9 +430,10 @@ See `Docs/KNOWN-ISSUES.md` for the full list (43 items tracked, 41 fixed, 2 defe
 - [x] Hardcoded SAGHS email — now pulls from org_email setting (v0.38d)
 - [x] Unescaped get_the_title() XSS (v0.38d)
 
-**Code quality (all fixed in v0.38d):**
-- [x] date() → wp_date() for ~30 display-context calls
-- [x] admin_url() wrapped in esc_url() (~40+ instances)
+**Code quality (all fixed v0.38d–v0.50d):**
+- [x] date() → wp_date() — initial ~30 calls (v0.38d), then additional 30+ calls in crons, calendar, recurrence, volunteers, donations (v0.50d). Zero PHP date() remaining in display/SQL contexts.
+- [x] admin_url() wrapped in esc_url() (~40+ in v0.38d), then all remaining bare admin_url() in JS (esc_js) and HTML href contexts (v0.50d)
+- [x] wp_redirect() → wp_safe_redirect() for all ~97 internal redirects (v0.50d). Zero wp_redirect() remaining.
 - [x] Stripe refund handles 'pending' status
 - [x] ICS multibyte line folding (mb_strlen/mb_substr)
 - [x] preferred_name fallback PHP 8.x notice
@@ -410,21 +454,22 @@ See `Docs/KNOWN-ISSUES.md` for the full list (43 items tracked, 41 fixed, 2 defe
 
 **i18n:**
 - [x] Comprehensive i18n pass (v0.38d): ~500+ strings wrapped across 4 agent passes, text domain appears 2,564+ times, estimated ~95% coverage
+- [x] Additional i18n pass (v0.50d): setup wizard (all 4 steps), speakers page, library catalog stats, blast email detail labels, donations, page editor buttons, join form rate limit message. ~40+ additional strings wrapped.
 
 ---
 
 ## Membership — Remaining
 
 - [x] Membership reports dashboard: trends, retention rates, tier breakdowns, expiring pipeline, CSV export — fully implemented in `sp_render_reports_page()` and `sp_render_membership_reports_page()`
-- [ ] Member photo improvements:
+- [x] Member photo improvements:
   - [x] Add photo upload field to admin member edit form — Harold can photograph members at meetings. Photo section with preview, upload, and remove checkbox. Same upload directory + naming convention as My Account.
-  - [x] Use `capture="user"` attribute on My Account photo input — opens front camera on mobile, falls back to file picker on desktop. Admin edit uses WP media library (no file input to modify).
+  - [x] ~~`capture="user"` attribute~~ — removed. Forced mobile camera instead of allowing file picker. `accept="image/jpeg,image/png,image/gif"` is sufficient.
   - [x] Prompt new members to add a photo on My Account after signup — "Your profile is missing a photo" info notice with "Add a Photo" button linking to photo section
-- [ ] Surname "sounds like" matching in directory and My Account:
-  - [ ] "Include similar spellings" toggle on surname search — uses soundex_code/metaphone_code columns
-  - [ ] "Others researching similar surnames" note under each surname in My Account
-  - [ ] Frontend surname search page shows "Also showing similar spellings" section
-- [ ] Member portal polish:
+- [x] Surname "sounds like" matching in directory and My Account (v0.50d):
+  - [x] "Include similar spellings" checkbox on directory surname search — queries soundex_code/metaphone_code columns
+  - [x] "N other members are researching similar surnames" note under each surname in My Account
+  - [x] "Also showing members with similar surname spellings" note when similar toggle is active
+- [x] Member portal polish:
   - [x] Optional admin approval for profile changes — new `sp_pending_profile_changes` table, `profile_changes_require_approval` setting in Directory settings, queues Personal Info/Contact/Address changes for review when enabled. Admin review page (`sp-pending-changes`) with side-by-side diff, approve/reject with optional notes, email notifications both ways (admin on submit, member on decision). Preferences/privacy/interests/genealogy save immediately. Count badge in Members flyout menu.
   - [x] AJAX save for 6 text/checkbox sections (profile, contact, address, preferences, privacy, interests) — inline success/error messages, no page reload, old POST handlers remain as no-JS fallback. Photo and password forms still use traditional POST.
 - [x] Contact information enhancements (spec called for separate `sp_member_contact` table — implemented as enhancements to existing `sp_members` instead, avoiding a massive query refactor across 40+ locations):
@@ -441,7 +486,7 @@ See `Docs/KNOWN-ISSUES.md` for the full list (43 items tracked, 41 fixed, 2 defe
 - [x] Contact data encryption at rest: XChaCha20-Poly1305 (libsodium) encryption for 7 sensitive fields — cell, work_phone, alt_phone, fax, address_1, address_2, seasonal_address_1. Phone (home) and city/state left plaintext for directory search/sort. Columns widened (VARCHAR 200/512) to fit ciphertext. Helper functions `sp_member_encrypt_fields()` / `sp_member_decrypt_row()` / `sp_member_decrypt_rows()` applied at all 9 write points (admin edit, CSV import, join form, AJAX/POST contact+address, profile change approval) and all 10 read points (admin edit, member list, directory listing+detail, CSV export, GDPR export, welcome email, My Account, generic getter, profile change comparison). One-time migration `sp_maybe_migrate_encrypt_contacts()` runs on activation, batched by 100, idempotent. Graceful fallback: if decryption fails (plaintext data), value passes through unchanged.
 - [x] Couples / household accounts: `allows_joint` flag on tiers, `joint_first_name`/`joint_last_name`/`joint_preferred_name` columns on sp_members, admin member edit joint section with toggle, join form shows joint fields when tier allows it, My Account joint member management section, directory shows "John & Jane Smith" for joint memberships, form handler for My Account joint updates
 
-## Events — Remaining
+## Events — Complete
 
 - [x] Time slots: individual capacity limits per slot — already implemented (`sp_slot_get_remaining_capacity()`, enforced in registration AJAX)
 - [x] Waitlist: auto-promotion when cancellation occurs — already implemented (`sp_promote_waitlist()` called from cancel handler)
@@ -453,7 +498,7 @@ See `Docs/KNOWN-ISSUES.md` for the full list (43 items tracked, 41 fixed, 2 defe
 - [x] Event change notifications: already implemented — save handler detects date/time/location/cancellation changes, `sp_send_event_update_emails()` and `sp_send_event_cancellation_emails()` send HTML emails to all registrants
 - [x] "Notice only" events: `notice_only` column, admin checkbox, calendar shows them as non-clickable pills (muted style), excluded from list view, detail page shows title/date + "calendar notice" message
 
-## Email & Notifications — Remaining
+## Email & Notifications — Complete
 
 - [x] Expiration notice: `sp_process_expired_notices()` — already implemented, daily cron, dedup via reminder_key, auto-status-update, merge tags. Added settings UI (enable toggle + subject field) on Membership settings page.
 - [x] Waitlist promotion email: `sp_send_waitlist_promotion_email()` — already fully implemented, called from cancel handler when waitlisted registrant gets promoted
@@ -507,7 +552,7 @@ Existing wizard (4 steps): Org Info → Membership → Feature Selection → App
   - Cron: event reminder cron gated by `events` module (unschedules when disabled)
   - Members is always enabled (hardcoded in `sp_module_enabled()`)
 
-## Theme — Remaining
+## Theme — Complete
 
 - [x] Style presets: 6 named presets (Parchment, Slate, Ledger, Hearth, Archive, Chronicle) — clickable cards on Design settings page, each fills in all 7 colors + 2 fonts, instant live preview update, highlighted selection state. Harold picks a preset then fine-tunes.
 - [x] Starter content on activation: auto-creates 15 pages (Home, About, Membership, Events, Calendar, Directory, My Account, Join, Newsletters, Library, Search, Contact, Resources, Leadership, News + Privacy Policy), removes WP default post/page/comment, sets static front page + blog page, creates Primary Menu with all key pages assigned to `primary` theme location. Smart nav filter handles visibility. Only runs on fresh installs (skips if pages already exist).
@@ -531,7 +576,7 @@ Existing wizard (4 steps): Org Info → Membership → Feature Selection → App
 ## UX — Remaining
 
 - [x] AJAX progress bars for long-running operations: batched imports with progress percentage, bulk delete with progress overlay — implemented via `sp_process_import_batch()` and AJAX progress handlers
-- [ ] Alphabetize pages by name in the admin page list
+- [x] Alphabetize pages by name in the admin page list (v0.50d — default sort changed from menu_order to post_title)
 - [ ] Menu organizer: allow grouping menu items into folders/submenus for sites with many pages
 - [x] Media folders: organize Media Library items into folders for easier management — renamed to "Photos & Videos", nested folders (5 levels), YouTube video support, AJAX folder CRUD, breadcrumb navigation
 - [x] Child theme logo fallback: header.php checks for img/logo.svg or img/logo.png in child theme when no admin logo is set
@@ -542,18 +587,17 @@ Existing wizard (4 steps): Org Info → Membership → Feature Selection → App
 - [x] Admin dashboard: activity feed — recent 15 audit log entries with categorized icons (member/event/settings/email/volunteer), relative timestamps, user attribution. Full-width panel below the existing two-column dashboard layout.
 - [x] Audit logging: expanded to cover member CRUD + bulk delete + "Delete All Others", settings saves, event CRUD + bulk delete, event registration + cancellation, group assignment, blast email send, volunteer role CRUD
 - [x] Governance menu: already exists as `sp-governance` page with volunteer roles (officer positions, committee assignments). Renamed menu label from "Volunteers" to "Leadership & Committees" for clarity.
-- [ ] Database backup system:
-  - [ ] Manual "Back Up Now" button on Settings page — one click, generates a full SQL dump of all SP tables
-  - [ ] Storage options: browser download (`.sql` file saves to Harold's machine) or save to server (stored in the protected backups directory for later retrieval)
-  - [ ] Optional automated monthly backup via WP cron — toggle + day-of-month selector in Settings
-  - [ ] Backups stored in `wp-content/uploads/societypress-backups/` with `.htaccess` protection
-  - [ ] Retention setting: keep last N backups (default 3), auto-delete older ones
-  - [ ] Admin notification email when automated backup completes (or fails)
-  - [ ] Email backup delivery: option to attach the SQL dump to the notification email so a copy lands off-server automatically — no cloud API keys, no OAuth, uses infrastructure Harold already has
-  - [ ] Size guard: if the dump exceeds a reasonable attachment limit (~10MB), email a download link instead of an attachment (link expires after 48 hours)
-  - [ ] WHY: Harold's hosting provider might do backups, but societies shouldn't have to trust that. A one-click backup they control — and can download — means they're never one bad server day away from losing everything. The email option gets a copy off the server without requiring Harold to set up cloud storage credentials.
+- [x] Database backup system (v0.50d):
+  - [x] Manual "Back Up Now" button on Backups admin page — one click, generates full SQL dump + settings + uploads ZIP
+  - [x] Storage: saved to server in `wp-content/uploads/sp-backups/` with `.htaccess` protection; download via admin UI
+  - [x] Automated monthly backup via WP cron — toggle + day-of-month selector (1-28) in settings
+  - [x] Retention setting: keep last N backups (default 3), auto-delete older ones
+  - [x] Admin notification email when backup completes (or fails)
+  - [x] Email backup delivery: attaches ZIP if under 10MB, otherwise sends download link
+  - [x] Backups admin page: list table with date/size/type/status, download/delete actions, settings form
+  - [x] Audit logging for backup create/delete operations
 
-## Data Portability — Not Started
+## Data Portability — Remaining
 
 Principle: Every piece of data a society puts into SocietyPress can come back out in a standard format, with one click, at any time, no questions asked. No export fees, no "contact us," no degraded exports. Your data is yours. Always.
 
@@ -567,15 +611,14 @@ Principle: Every piece of data a society puts into SocietyPress can come back ou
   - [x] Email log: metadata only (recipient, subject, status, type, timestamps). Body excluded (too large for CSV).
   - [x] Resource links: all links with category names, featured/active flags
   - [x] Settings: JSON export — "Export Settings (JSON)" button on Website settings page. Downloads `societypress_settings` + `sp_enabled_modules` as dated JSON file. Stripe secret keys excluded for security.
-- [ ] Newsletters export: ZIP of all PDFs + metadata CSV
-- [ ] Documents export: ZIP of all files + metadata CSV
-- [ ] **Full Site Export** button in Settings → one click, one ZIP containing:
-  - All module CSVs
-  - All newsletter PDFs
-  - All document files
-  - Settings JSON
-  - README explaining the file structure
-  - WHY: This is the single feature that proves we mean it when we say "no lock-in." If a society can download their entire operation in one click, they know we're not holding them hostage. It also doubles as a complete backup.
+- [x] Newsletters export: ZIP of all PDFs + metadata CSV (v0.50d — sp_export_newsletters_zip, "Export All (ZIP)" button on admin page)
+- [x] Documents export: ZIP of all files + metadata CSV (v0.50d — sp_export_documents_zip, organized by category subfolders)
+- [x] **Full Site Export** button on Website settings page (v0.50d) — one click, one ZIP containing:
+  - [x] 9 module CSVs (members, events, donations, library, orders, email log, resources, leadership, volunteer hours)
+  - [x] All newsletter PDFs in `newsletters/` subfolder
+  - [x] All document files in `documents/{Category}/` subfolders
+  - [x] Settings JSON (payment secrets excluded)
+  - [x] README.txt explaining the archive structure
 - [ ] Marketing: "Your data is yours" messaging on getsocietypress.org — front and center, not buried in a FAQ
 
 ## One-Click Installer — COMPLETE (separate project)
@@ -597,14 +640,14 @@ Single-file `install.php` that takes Harold from empty hosting to running Societ
 - [x] Branding: SocietyPress logo, Inter font, gold/navy color scheme — professional first impression
 - [x] Repo: `installer/install.php` in SocietyPress repo, ships with `societypress-bundle.zip` alongside
 - [x] Self-delete after successful install — bridge script now deletes both itself and install.php after WordPress installs successfully
-- [ ] Reset script for demo site (one-click wipe and rebuild)
+- [x] Reset script for demo site: `reset-demo.sh` — truncates all SP tables, re-seeds defaults, optional `--full` flag for plugin reactivation
 
 ## Demo Installation — LIVE
 
 - [x] Demo site running at https://demo.getsocietypress.org
 - [x] SocietyPress 0.38d active, parent theme active, 4 child themes installed, 57 tables
 - [x] Installed via the one-click installer (proving it works end-to-end)
-- [ ] Remove SAGHS data/theme from demo — demo should be a clean generic society, not SAGHS
+- [x] Remove SAGHS data/theme from demo (v0.50d — switched to parent theme, removed saghs dir, renamed to "Heritage Valley Historical Society", cleared SAGHS logo)
 - [ ] Sample data: fake society with members, events, records, newsletters
 - [x] Reset mechanism: `reset-demo.sh` script truncates all SP tables via wp eval-file, re-seeds defaults. `--full` flag deactivates/reactivates plugin for full activation hook run.
 
@@ -616,7 +659,7 @@ Single-file `install.php` that takes Harold from empty hosting to running Societ
   - Content pages: manual migration guidance (copy/paste is realistic for most societies)
 - [ ] Migration assistance as a selling point — reduce the switching-cost objection
 
-## getsocietypress.org — On Hold
+## getsocietypress.org — Remaining
 
 - [ ] Getting Started guide — illustrated walkthrough for non-technical admins:
   1. Choose hosting (visual guide for top 3 hosts: Bluehost, SiteGround, DreamHost)
@@ -627,21 +670,23 @@ Single-file `install.php` that takes Harold from empty hosting to running Societ
   6. Add yourself as the first member (why this matters)
   7. Import your membership list — or load sample data to explore first
   8. "After adding yourself as the first member, go to Import Members to import your membership list. If you'd prefer to explore with sample data first, we've prepared 2,500 realistic fake members you can load and clear anytime."
-- [ ] Documentation pages (feature-by-feature guides, waiting until SP features more stable)
+- [ ] Documentation pages (feature-by-feature guides)
 - [ ] Feedback form (structured: bug report / feature request / general question) — future companion plugin
 
-## Voting & Elections — Not Started
+## Voting & Elections — Remaining
 
-- [ ] Ballot / election system for officer elections
-  - Create ballot with positions and candidates
-  - Configurable voting window (open/close dates)
-  - One vote per member, verified by user_id
-  - Secret ballot (votes stored without voter identity link)
-  - Results page with vote counts, automatic winner determination
-  - Admin can create, open, close, and publish results
-  - Email notification when a ballot opens
-  - Absentee / proxy voting support (optional, society-configurable)
-  - ENS and ClubExpress both have this — table stakes for society software
+- [x] Ballot / election system for officer elections (built v0.49d):
+  - [x] 4 DB tables: sp_ballots, sp_ballot_questions, sp_ballot_choices, sp_ballot_votes (UNIQUE KEY prevents double-voting)
+  - [x] Create ballot with positions and candidates
+  - [x] Configurable voting window (open/close dates)
+  - [x] One vote per member, verified by user_id
+  - [x] Secret ballot (votes stored without voter identity link)
+  - [x] Results page with vote counts, automatic winner determination, CSV export
+  - [x] Admin can create, open, close, and publish results
+  - [x] Supports election, referendum, and survey types; single-choice, multi-choice, and yes/no questions
+  - [x] 6 audit log events (ballot CRUD, open/close, vote cast — secrecy preserved)
+- [x] Email notification when a ballot opens (v0.50d — sp_send_ballot_open_emails() sends to eligible members respecting communication prefs)
+- [ ] Absentee / proxy voting support (optional, society-configurable)
 
 ## Mobile — Not Started
 
@@ -662,29 +707,19 @@ Single-file `install.php` that takes Harold from empty hosting to running Societ
   - Could start simple (FAQ-style knowledge base) and expand to full RAG later
   - Admin controls: toggle on/off, choose which data sources are indexed, review/audit responses
 
-## Integrations — Not Started
+## Integrations — Remaining
 
 - [x] Google Analytics: GA4 Measurement ID setting on Website page, gtag.js output in wp_head, admin traffic exclusion option
-- [ ] bbPress forum integration (if installed):
-  - Detect bbPress via `class_exists('bbPress')`
-  - Members-only forum access via existing `_sp_members_only` page mechanism
-  - Role sync: active members can post, expired get read-only, non-members blocked — hook `bbp_current_user_can_access_forum_id` and `bbp_current_user_can_publish_topics`
-  - Nav integration: auto-add Forums link if bbPress detected
-  - Admin flyout: show under Communications group
-  - Module toggle: "Forums (bbPress)" in Settings → Modules, nudge to install bbPress if not present
-  - ~200-300 lines of glue code — let bbPress handle the forum engine
+- [x] bbPress forum integration (v0.50d — ~250 lines of glue code):
+  - [x] Module: `forums` in sp_get_modules(), dashicons-format-chat, gated by sp_module_enabled + class_exists('bbPress')
+  - [x] Admin notice nudges Harold to install bbPress if module is enabled but plugin missing
+  - [x] Access control: active members can post, expired get read-only, non-members blocked on _sp_members_only forums
+  - [x] Role sync: active → bbp_participant, expired/cancelled/pending → bbp_spectator (on save + daily cron reconciliation)
+  - [x] Nav integration: auto-injects "Forums" link for logged-in members, highlights on bbPress pages
+  - [x] Admin flyout: bbPress admin page added to Communications group
 - [ ] Mailchimp: sync member list to Mailchimp audience (white paper claims this)
 - [ ] Zoom: event integration for online programming (white paper mentions this)
-- [ ] Note: PayPal and Stripe are under Payment Processing above
-
-## White Paper Alignment — Review Needed
-
-- [ ] Tighten white paper language: "dues processing" listed as current feature — payments aren't fully built yet
-- [ ] "Core feature" claim for genealogical records search — module exists now but needs real data
-- [ ] Consider adding a Roadmap section to the white paper to separate built/in-progress/planned
-- [ ] Or soften present-tense claims to "core and planned features include..."
-
----
+Note: PayPal and Stripe are under Payment Processing above.
 
 ## Not Doing (spec divergences)
 

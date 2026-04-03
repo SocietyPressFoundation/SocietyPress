@@ -26,6 +26,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
+// NOTE: This MUST match the "Version:" line in the plugin header comment above.
+// WordPress reads the version from the header; this constant is used for
+// cache-busting and comparison logic. They must stay in sync.
 define( 'SOCIETYPRESS_VERSION', '1.0' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
@@ -2443,12 +2446,18 @@ function sp_encrypt( string $plaintext ): string {
         return '';
     }
 
-    // sodium must be available (it is on PHP 7.2+ / 8.x)
+    // WHY: Sodium is bundled in PHP 7.2+, so this should never trigger on
+    // any supported hosting. If it does, we refuse to store credentials at
+    // all rather than silently storing them in reversible base64.
     if ( ! function_exists( 'sodium_crypto_secretbox' ) ) {
-        // Fallback: return the plaintext base64-encoded with a prefix so
-        // sp_decrypt() knows it wasn't actually encrypted. This should
-        // never happen on PHP 8.3, but better than crashing.
-        return 'noenc:' . base64_encode( $plaintext );
+        if ( function_exists( 'add_action' ) ) {
+            add_action( 'admin_notices', function () {
+                echo '<div class="notice notice-error"><p><strong>' .
+                    esc_html__( 'SocietyPress: The PHP sodium extension is required for encrypting sensitive data. Please contact your hosting provider to enable it.', 'societypress' ) .
+                    '</strong></p></div>';
+            } );
+        }
+        return '';
     }
 
     $key   = sp_get_encryption_key();
@@ -2473,8 +2482,13 @@ function sp_decrypt( string $encrypted ) {
         return '';
     }
 
-    // Handle the "noenc:" fallback prefix
+    // WHY: Legacy fallback for data stored before sodium was enforced.
+    // Decode it so the system still works, but log a warning so the admin
+    // knows there is unencrypted data in the database that needs re-saving.
     if ( strpos( $encrypted, 'noenc:' ) === 0 ) {
+        if ( function_exists( 'error_log' ) ) {
+            error_log( 'SocietyPress: Found unencrypted data with noenc: prefix. Re-save the record to encrypt it properly.' );
+        }
         return base64_decode( substr( $encrypted, 6 ) );
     }
 
@@ -2891,6 +2905,12 @@ function sp_get_modules(): array {
             'description' => __( 'Create ballots for board elections, bylaw amendments, and member votes. Manage voting periods and tally results securely.', 'societypress' ),
             'icon'        => 'dashicons-yes-alt',
             'menu_slugs'  => [ 'sp-ballots', 'sp-ballot-edit', 'sp-ballot-results' ],
+        ],
+        'forums' => [
+            'name'        => __( 'Forums (bbPress)', 'societypress' ),
+            'description' => __( 'Integrate with bbPress forums — members-only access, role sync, and navigation.', 'societypress' ),
+            'icon'        => 'dashicons-format-chat',
+            'menu_slugs'  => [ 'edit.php?post_type=forum' ],
         ],
     ];
 }
@@ -3334,7 +3354,7 @@ add_action( 'admin_init', function () {
 
     // If they have SP access, redirect to our dashboard
     if ( sp_user_can_access_admin() ) {
-        wp_redirect( admin_url( 'admin.php?page=societypress' ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=societypress' ) );
         exit;
     }
 } );
@@ -4208,6 +4228,20 @@ add_action( 'admin_menu', function () {
         'sp_render_user_access_page'
     );
 
+    // Backups — on-demand and scheduled database/settings backups.
+    // WHY: A society's data is irreplaceable. This gives Harold a
+    //      one-click "Back Up Now" button and lets him manage scheduled
+    //      backups, download archives, and control retention — all from
+    //      a single page under the Settings flyout.
+    add_submenu_page(
+        'societypress',
+        __( 'Backups — SocietyPress', 'societypress' ),
+        __( 'Backups', 'societypress' ),
+        'manage_options',
+        'sp-settings-backups',
+        'sp_render_backup_page'
+    );
+
     // -----------------------------------------------------------------
     // BACKWARD COMPAT — Old sp-settings URL redirect
     // WHY: The Settings page used to live at admin.php?page=sp-settings.
@@ -4400,6 +4434,7 @@ function sp_get_menu_capability_map(): array {
         'sp-design'                => 'sp_manage_settings',
         'sp-settings-modules'      => 'sp_manage_settings',
         'sp-user-access'           => 'sp_manage_settings',
+        'sp-settings-backups'      => 'sp_manage_settings',
         'sp-audit-log'             => 'sp_manage_settings',
     ];
 }
@@ -5276,7 +5311,7 @@ function sp_handle_account_forms() {
     $require_approval = ! empty( $sp_settings['profile_changes_require_approval'] );
 
     if ( $action === 'update_profile' ) {
-        if ( ! wp_verify_nonce( $_POST['sp_profile_nonce'] ?? '', 'sp_update_profile' ) ) { wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
+        if ( ! wp_verify_nonce( $_POST['sp_profile_nonce'] ?? '', 'sp_update_profile' ) ) { wp_safe_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
         $first_name     = sanitize_text_field( $_POST['first_name'] ?? '' );
         $middle_name    = sanitize_text_field( $_POST['middle_name'] ?? '' );
         $last_name      = sanitize_text_field( $_POST['last_name'] ?? '' );
@@ -5294,7 +5329,7 @@ function sp_handle_account_forms() {
 
         if ( $require_approval && sp_user_has_member_record( $user->ID ) ) {
             sp_queue_profile_change( $user->ID, 'profile', $new_data );
-            wp_redirect( add_query_arg( 'sp-pending', '1', $account_url . '#info' ) ); exit;
+            wp_safe_redirect( add_query_arg( 'sp-pending', '1', $account_url . '#info' ) ); exit;
         }
 
         $display = $preferred_name ?: $first_name;
@@ -5304,11 +5339,11 @@ function sp_handle_account_forms() {
             $new_data['updated_at'] = current_time( 'mysql' );
             $wpdb->update( $table, $new_data, [ 'user_id' => $user->ID ] );
         }
-        wp_redirect( add_query_arg( 'sp-updated', 'profile', $account_url . '#info' ) ); exit;
+        wp_safe_redirect( add_query_arg( 'sp-updated', 'profile', $account_url . '#info' ) ); exit;
     }
 
     if ( $action === 'update_contact' ) {
-        if ( ! wp_verify_nonce( $_POST['sp_contact_nonce'] ?? '', 'sp_update_contact' ) ) { wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
+        if ( ! wp_verify_nonce( $_POST['sp_contact_nonce'] ?? '', 'sp_update_contact' ) ) { wp_safe_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
         $email          = sanitize_email( $_POST['user_email'] ?? '' );
         $phone          = sanitize_text_field( $_POST['phone'] ?? '' );
         $cell           = sanitize_text_field( $_POST['cell'] ?? '' );
@@ -5317,15 +5352,15 @@ function sp_handle_account_forms() {
         if ( ! in_array( $preferred_phone, [ 'phone', 'cell', 'work_phone' ], true ) ) {
             $preferred_phone = 'cell';
         }
-        if ( ! is_email( $email ) ) { wp_redirect( add_query_arg( 'sp-error', 'email-invalid', $account_url . '#contact' ) ); exit; }
+        if ( ! is_email( $email ) ) { wp_safe_redirect( add_query_arg( 'sp-error', 'email-invalid', $account_url . '#contact' ) ); exit; }
         $existing = email_exists( $email );
-        if ( $existing && $existing !== $user->ID ) { wp_redirect( add_query_arg( 'sp-error', 'email-taken', $account_url . '#contact' ) ); exit; }
+        if ( $existing && $existing !== $user->ID ) { wp_safe_redirect( add_query_arg( 'sp-error', 'email-taken', $account_url . '#contact' ) ); exit; }
 
         $new_data = [ 'user_email' => $email, 'phone' => $phone, 'cell' => $cell, 'website' => $website, 'preferred_phone' => $preferred_phone ];
 
         if ( $require_approval && sp_user_has_member_record( $user->ID ) ) {
             sp_queue_profile_change( $user->ID, 'contact', $new_data );
-            wp_redirect( add_query_arg( 'sp-pending', '1', $account_url . '#contact' ) ); exit;
+            wp_safe_redirect( add_query_arg( 'sp-pending', '1', $account_url . '#contact' ) ); exit;
         }
 
         wp_update_user([ 'ID' => $user->ID, 'user_email' => $email ]);
@@ -5338,12 +5373,12 @@ function sp_handle_account_forms() {
             sp_member_encrypt_fields( $contact_data );
             $wpdb->update( $table, $contact_data, [ 'user_id' => $user->ID ] );
         }
-        wp_redirect( add_query_arg( 'sp-updated', 'profile', $account_url . '#contact' ) ); exit;
+        wp_safe_redirect( add_query_arg( 'sp-updated', 'profile', $account_url . '#contact' ) ); exit;
     }
 
     if ( $action === 'update_address' ) {
-        if ( ! wp_verify_nonce( $_POST['sp_address_nonce'] ?? '', 'sp_update_address' ) ) { wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
-        if ( ! sp_user_has_member_record( $user->ID ) ) { wp_redirect( add_query_arg( 'sp-error', 'no-member', $account_url ) ); exit; }
+        if ( ! wp_verify_nonce( $_POST['sp_address_nonce'] ?? '', 'sp_update_address' ) ) { wp_safe_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
+        if ( ! sp_user_has_member_record( $user->ID ) ) { wp_safe_redirect( add_query_arg( 'sp-error', 'no-member', $account_url ) ); exit; }
 
         $new_data = [
             'address_1' => sanitize_text_field( $_POST['address_1'] ?? '' ), 'address_2' => sanitize_text_field( $_POST['address_2'] ?? '' ),
@@ -5358,14 +5393,14 @@ function sp_handle_account_forms() {
 
         if ( $require_approval ) {
             sp_queue_profile_change( $user->ID, 'address', $new_data );
-            wp_redirect( add_query_arg( 'sp-pending', '1', $account_url . '#address' ) ); exit;
+            wp_safe_redirect( add_query_arg( 'sp-pending', '1', $account_url . '#address' ) ); exit;
         }
 
         $new_data['updated_at'] = current_time( 'mysql' );
         // Encrypt sensitive address fields (address_1, address_2, seasonal_address_1)
         sp_member_encrypt_fields( $new_data );
         $wpdb->update( $table, $new_data, [ 'user_id' => $user->ID ] );
-        wp_redirect( add_query_arg( 'sp-updated', 'profile', $account_url . '#address' ) ); exit;
+        wp_safe_redirect( add_query_arg( 'sp-updated', 'profile', $account_url . '#address' ) ); exit;
     }
 
     // ---- Joint Member ----
@@ -5374,8 +5409,8 @@ function sp_handle_account_forms() {
     // (no approval required) since it's adding/updating supplemental info,
     // not changing the primary member's identity.
     if ( $action === 'update_joint' ) {
-        if ( ! wp_verify_nonce( $_POST['sp_joint_nonce'] ?? '', 'sp_update_joint' ) ) { wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
-        if ( ! sp_user_has_member_record( $user->ID ) ) { wp_redirect( add_query_arg( 'sp-error', 'no-member', $account_url ) ); exit; }
+        if ( ! wp_verify_nonce( $_POST['sp_joint_nonce'] ?? '', 'sp_update_joint' ) ) { wp_safe_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
+        if ( ! sp_user_has_member_record( $user->ID ) ) { wp_safe_redirect( add_query_arg( 'sp-error', 'no-member', $account_url ) ); exit; }
 
         $joint_first = sanitize_text_field( $_POST['joint_first_name'] ?? '' );
         $has_joint   = ! empty( $joint_first );
@@ -5390,12 +5425,12 @@ function sp_handle_account_forms() {
             'updated_at'           => current_time( 'mysql' ),
         ];
         $wpdb->update( $table, $joint_data, [ 'user_id' => $user->ID ] );
-        wp_redirect( add_query_arg( 'sp-updated', 'joint', $account_url . '#joint-member' ) ); exit;
+        wp_safe_redirect( add_query_arg( 'sp-updated', 'joint', $account_url . '#joint-member' ) ); exit;
     }
 
     if ( $action === 'update_preferences' ) {
-        if ( ! wp_verify_nonce( $_POST['sp_preferences_nonce'] ?? '', 'sp_update_preferences' ) ) { wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
-        if ( ! sp_user_has_member_record( $user->ID ) ) { wp_redirect( add_query_arg( 'sp-error', 'no-member', $account_url ) ); exit; }
+        if ( ! wp_verify_nonce( $_POST['sp_preferences_nonce'] ?? '', 'sp_update_preferences' ) ) { wp_safe_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
+        if ( ! sp_user_has_member_record( $user->ID ) ) { wp_safe_redirect( add_query_arg( 'sp-error', 'no-member', $account_url ) ); exit; }
         $wpdb->update( $table, [
             'receive_print' => ! empty( $_POST['receive_print'] ) ? 1 : 0,
             'pref_email_notices' => ! empty( $_POST['pref_email_notices'] ) ? 1 : 0,
@@ -5405,12 +5440,12 @@ function sp_handle_account_forms() {
             'blast_email_opt_out' => ! empty( $_POST['blast_email_opt_out'] ) ? 1 : 0,
             'updated_at' => current_time( 'mysql' ),
         ], [ 'user_id' => $user->ID ] );
-        wp_redirect( add_query_arg( 'sp-updated', 'preferences', $account_url . '#preferences' ) ); exit;
+        wp_safe_redirect( add_query_arg( 'sp-updated', 'preferences', $account_url . '#preferences' ) ); exit;
     }
 
     if ( $action === 'update_privacy' ) {
-        if ( ! wp_verify_nonce( $_POST['sp_privacy_nonce'] ?? '', 'sp_update_privacy' ) ) { wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
-        if ( ! sp_user_has_member_record( $user->ID ) ) { wp_redirect( add_query_arg( 'sp-error', 'no-member', $account_url ) ); exit; }
+        if ( ! wp_verify_nonce( $_POST['sp_privacy_nonce'] ?? '', 'sp_update_privacy' ) ) { wp_safe_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
+        if ( ! sp_user_has_member_record( $user->ID ) ) { wp_safe_redirect( add_query_arg( 'sp-error', 'no-member', $account_url ) ); exit; }
         $wpdb->update( $table, [
             'dir_show_name' => ! empty( $_POST['dir_show_name'] ) ? 1 : 0,
             'dir_show_address' => ! empty( $_POST['dir_show_address'] ) ? 1 : 0,
@@ -5420,21 +5455,21 @@ function sp_handle_account_forms() {
             'dir_show_photo' => ! empty( $_POST['dir_show_photo'] ) ? 1 : 0,
             'updated_at' => current_time( 'mysql' ),
         ], [ 'user_id' => $user->ID ] );
-        wp_redirect( add_query_arg( 'sp-updated', 'privacy', $account_url . '#privacy' ) ); exit;
+        wp_safe_redirect( add_query_arg( 'sp-updated', 'privacy', $account_url . '#privacy' ) ); exit;
     }
 
     // ---- Interests & Skills ----
     // WHY: Members can share their research interests and skills so admins
     // can match volunteers to committees and connect members with shared interests.
     if ( $action === 'update_interests' ) {
-        if ( ! wp_verify_nonce( $_POST['sp_interests_nonce'] ?? '', 'sp_update_interests' ) ) { wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
-        if ( ! sp_user_has_member_record( $user->ID ) ) { wp_redirect( add_query_arg( 'sp-error', 'no-member', $account_url ) ); exit; }
+        if ( ! wp_verify_nonce( $_POST['sp_interests_nonce'] ?? '', 'sp_update_interests' ) ) { wp_safe_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
+        if ( ! sp_user_has_member_record( $user->ID ) ) { wp_safe_redirect( add_query_arg( 'sp-error', 'no-member', $account_url ) ); exit; }
         $wpdb->update( $table, [
             'interests'  => sanitize_textarea_field( $_POST['interests'] ?? '' ),
             'skills'     => sanitize_textarea_field( $_POST['skills'] ?? '' ),
             'updated_at' => current_time( 'mysql' ),
         ], [ 'user_id' => $user->ID ] );
-        wp_redirect( add_query_arg( 'sp-updated', 'interests', $account_url . '#interests' ) ); exit;
+        wp_safe_redirect( add_query_arg( 'sp-updated', 'interests', $account_url . '#interests' ) ); exit;
     }
 
     // ---- Genealogy Service Profiles ----
@@ -5443,7 +5478,7 @@ function sp_handle_account_forms() {
     //      supplemental links — adding 8 columns to sp_members would be wasteful.
     if ( $action === 'update_genealogy_services' ) {
         if ( ! wp_verify_nonce( $_POST['sp_genealogy_nonce'] ?? '', 'sp_update_genealogy_services' ) ) {
-            wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) );
+            wp_safe_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) );
             exit;
         }
         $service_keys = [ 'wikitree', 'familysearch', 'geni', 'werelate', 'ancestry', 'myheritage', 'findagrave', '23andme' ];
@@ -5451,20 +5486,20 @@ function sp_handle_account_forms() {
             $value = esc_url_raw( $_POST[ 'genealogy_' . $key ] ?? '' );
             update_user_meta( $user->ID, 'sp_genealogy_' . $key, $value );
         }
-        wp_redirect( add_query_arg( 'sp-updated', 'genealogy', $account_url . '#genealogy-services' ) );
+        wp_safe_redirect( add_query_arg( 'sp-updated', 'genealogy', $account_url . '#genealogy-services' ) );
         exit;
     }
 
     if ( $action === 'update_photo' ) {
-        if ( ! wp_verify_nonce( $_POST['sp_photo_nonce'] ?? '', 'sp_update_photo' ) ) { wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
-        if ( empty( $_FILES['sp_profile_photo']['tmp_name'] ) ) { wp_redirect( $account_url ); exit; }
+        if ( ! wp_verify_nonce( $_POST['sp_photo_nonce'] ?? '', 'sp_update_photo' ) ) { wp_safe_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
+        if ( empty( $_FILES['sp_profile_photo']['tmp_name'] ) ) { wp_safe_redirect( $account_url ); exit; }
         $file = $_FILES['sp_profile_photo'];
         $allowed_types = [ 'image/jpeg', 'image/png', 'image/gif' ];
         $finfo = finfo_open( FILEINFO_MIME_TYPE );
         $mime  = finfo_file( $finfo, $file['tmp_name'] );
         finfo_close( $finfo );
-        if ( ! in_array( $mime, $allowed_types, true ) ) { wp_redirect( add_query_arg( 'sp-error', 'photo-type', $account_url ) ); exit; }
-        if ( $file['size'] > 2 * 1024 * 1024 ) { wp_redirect( add_query_arg( 'sp-error', 'photo-size', $account_url ) ); exit; }
+        if ( ! in_array( $mime, $allowed_types, true ) ) { wp_safe_redirect( add_query_arg( 'sp-error', 'photo-type', $account_url ) ); exit; }
+        if ( $file['size'] > 2 * 1024 * 1024 ) { wp_safe_redirect( add_query_arg( 'sp-error', 'photo-size', $account_url ) ); exit; }
         $upload_dir = wp_upload_dir();
         $photo_dir  = $upload_dir['basedir'] . '/sp-profile-photos';
         $photo_url  = $upload_dir['baseurl'] . '/sp-profile-photos';
@@ -5520,13 +5555,13 @@ function sp_handle_account_forms() {
             if ( sp_user_has_member_record( $user->ID ) ) {
                 $wpdb->update( $table, [ 'photo_url' => $fileurl_busted, 'updated_at' => current_time( 'mysql' ) ], [ 'user_id' => $user->ID ] );
             }
-            wp_redirect( add_query_arg( 'sp-updated', 'photo', $account_url ) ); exit;
+            wp_safe_redirect( add_query_arg( 'sp-updated', 'photo', $account_url ) ); exit;
         }
-        wp_redirect( add_query_arg( 'sp-error', 'photo-upload', $account_url ) ); exit;
+        wp_safe_redirect( add_query_arg( 'sp-error', 'photo-upload', $account_url ) ); exit;
     }
 
     if ( $action === 'remove_photo' ) {
-        if ( ! wp_verify_nonce( $_POST['sp_remove_photo_nonce'] ?? '', 'sp_remove_photo' ) ) { wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
+        if ( ! wp_verify_nonce( $_POST['sp_remove_photo_nonce'] ?? '', 'sp_remove_photo' ) ) { wp_safe_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
         $old_photo_url = get_user_meta( $user->ID, 'sp_profile_photo_url', true );
         if ( $old_photo_url ) {
             $upload_dir = wp_upload_dir();
@@ -5537,21 +5572,21 @@ function sp_handle_account_forms() {
         if ( sp_user_has_member_record( $user->ID ) ) {
             $wpdb->update( $table, [ 'photo_url' => '', 'updated_at' => current_time( 'mysql' ) ], [ 'user_id' => $user->ID ] );
         }
-        wp_redirect( add_query_arg( 'sp-updated', 'photo-removed', $account_url ) ); exit;
+        wp_safe_redirect( add_query_arg( 'sp-updated', 'photo-removed', $account_url ) ); exit;
     }
 
     if ( $action === 'update_password' ) {
-        if ( ! wp_verify_nonce( $_POST['sp_password_nonce'] ?? '', 'sp_update_password' ) ) { wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
+        if ( ! wp_verify_nonce( $_POST['sp_password_nonce'] ?? '', 'sp_update_password' ) ) { wp_safe_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
         $current = $_POST['current_password'] ?? '';
         $new     = $_POST['new_password']      ?? '';
         $confirm = $_POST['confirm_password']  ?? '';
-        if ( ! wp_check_password( $current, $user->user_pass, $user->ID ) ) { wp_redirect( add_query_arg( 'sp-error', 'password-wrong', $account_url . '#password' ) ); exit; }
-        if ( strlen( $new ) < 8 ) { wp_redirect( add_query_arg( 'sp-error', 'password-short', $account_url . '#password' ) ); exit; }
-        if ( $new !== $confirm ) { wp_redirect( add_query_arg( 'sp-error', 'password-mismatch', $account_url . '#password' ) ); exit; }
+        if ( ! wp_check_password( $current, $user->user_pass, $user->ID ) ) { wp_safe_redirect( add_query_arg( 'sp-error', 'password-wrong', $account_url . '#password' ) ); exit; }
+        if ( strlen( $new ) < 8 ) { wp_safe_redirect( add_query_arg( 'sp-error', 'password-short', $account_url . '#password' ) ); exit; }
+        if ( $new !== $confirm ) { wp_safe_redirect( add_query_arg( 'sp-error', 'password-mismatch', $account_url . '#password' ) ); exit; }
         wp_set_password( $new, $user->ID );
         wp_set_current_user( $user->ID );
         wp_set_auth_cookie( $user->ID, true );
-        wp_redirect( add_query_arg( 'sp-updated', 'password', $account_url ) ); exit;
+        wp_safe_redirect( add_query_arg( 'sp-updated', 'password', $account_url ) ); exit;
     }
 
     // ---- Research Surnames: Add ----
@@ -5559,7 +5594,7 @@ function sp_handle_account_forms() {
     // not a single 'location' column. This matches the admin surname form.
     if ( $action === 'add_surname' ) {
         if ( ! wp_verify_nonce( $_POST['sp_surname_nonce'] ?? '', 'sp_add_surname' ) ) {
-            wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url . '#surnames' ) );
+            wp_safe_redirect( add_query_arg( 'sp-error', 'nonce', $account_url . '#surnames' ) );
             exit;
         }
         $surname   = strtoupper( sanitize_text_field( $_POST['new_surname'] ?? '' ) );
@@ -5583,14 +5618,14 @@ function sp_handle_account_forms() {
                 'metaphone_code' => metaphone( $surname ),
             ] );
         }
-        wp_redirect( add_query_arg( 'sp-updated', 'surnames', $account_url . '#surnames' ) );
+        wp_safe_redirect( add_query_arg( 'sp-updated', 'surnames', $account_url . '#surnames' ) );
         exit;
     }
 
     // ---- Research Surnames: Remove ----
     if ( $action === 'remove_surname' ) {
         if ( ! wp_verify_nonce( $_POST['sp_surname_nonce'] ?? '', 'sp_remove_surname' ) ) {
-            wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url . '#surnames' ) );
+            wp_safe_redirect( add_query_arg( 'sp-error', 'nonce', $account_url . '#surnames' ) );
             exit;
         }
         $surname_id = absint( $_POST['surname_id'] ?? 0 );
@@ -5601,7 +5636,7 @@ function sp_handle_account_forms() {
                 'user_id' => $user->ID,
             ] );
         }
-        wp_redirect( add_query_arg( 'sp-updated', 'surnames', $account_url . '#surnames' ) );
+        wp_safe_redirect( add_query_arg( 'sp-updated', 'surnames', $account_url . '#surnames' ) );
         exit;
     }
 
@@ -5611,7 +5646,7 @@ function sp_handle_account_forms() {
     // they're tracking different surnames in that area.
     if ( $action === 'add_research_area' ) {
         if ( ! wp_verify_nonce( $_POST['sp_research_area_nonce'] ?? '', 'sp_add_research_area' ) ) {
-            wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url . '#research-areas' ) );
+            wp_safe_redirect( add_query_arg( 'sp-error', 'nonce', $account_url . '#research-areas' ) );
             exit;
         }
         $area      = sanitize_text_field( $_POST['new_area'] ?? '' );
@@ -5629,14 +5664,14 @@ function sp_handle_account_forms() {
                 'note'      => $note ?: null,
             ] );
         }
-        wp_redirect( add_query_arg( 'sp-updated', 'research-areas', $account_url . '#research-areas' ) );
+        wp_safe_redirect( add_query_arg( 'sp-updated', 'research-areas', $account_url . '#research-areas' ) );
         exit;
     }
 
     // ---- Research Areas: Remove ----
     if ( $action === 'remove_research_area' ) {
         if ( ! wp_verify_nonce( $_POST['sp_research_area_nonce'] ?? '', 'sp_remove_research_area' ) ) {
-            wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url . '#research-areas' ) );
+            wp_safe_redirect( add_query_arg( 'sp-error', 'nonce', $account_url . '#research-areas' ) );
             exit;
         }
         $area_id = absint( $_POST['area_id'] ?? 0 );
@@ -5646,14 +5681,14 @@ function sp_handle_account_forms() {
                 'user_id' => $user->ID,
             ] );
         }
-        wp_redirect( add_query_arg( 'sp-updated', 'research-areas', $account_url . '#research-areas' ) );
+        wp_safe_redirect( add_query_arg( 'sp-updated', 'research-areas', $account_url . '#research-areas' ) );
         exit;
     }
 
     // ---- Cancel Event Registration from Portal ----
     if ( $action === 'cancel_event_registration' ) {
         if ( ! wp_verify_nonce( $_POST['sp_event_nonce'] ?? '', 'sp_cancel_event_reg' ) ) {
-            wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url . '#events' ) );
+            wp_safe_redirect( add_query_arg( 'sp-error', 'nonce', $account_url . '#events' ) );
             exit;
         }
         $reg_id = absint( $_POST['registration_id'] ?? 0 );
@@ -5667,7 +5702,7 @@ function sp_handle_account_forms() {
                 [ '%d', '%d' ]
             );
         }
-        wp_redirect( add_query_arg( 'sp-updated', 'event-cancelled', $account_url . '#events' ) );
+        wp_safe_redirect( add_query_arg( 'sp-updated', 'event-cancelled', $account_url . '#events' ) );
         exit;
     }
 }
@@ -6156,7 +6191,16 @@ function sp_render_pending_changes_page(): void {
 }
 
 
+// WHY: No nopriv variant — My Account requires login by design.
 add_action( 'wp_ajax_sp_save_account', function() {
+    // WHY: Verify authentication and a nonce before touching the database.
+    // Each sub-action also has its own nonce, but this global gate prevents
+    // any DB work on unauthenticated or forged requests.
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => __( 'You must be logged in.', 'societypress' ) ] );
+    }
+    check_ajax_referer( 'sp_save_account', 'nonce' );
+
     global $wpdb;
 
     $action = sanitize_text_field( $_POST['sp_action'] ?? '' );
@@ -6731,7 +6775,29 @@ add_action( 'admin_head', function () {
 /* ---------- Additional widths ---------- */
 .sp-w-100  { width: 100px; }
 .sp-w-120  { width: 120px; }
+.sp-w-140  { width: 140px; }
 .sp-w-150  { width: 150px; }
+
+/* ---------- Spinner for AJAX loading states ---------- */
+/* WHY: A visible spinner tells Harold the system is working, not frozen.
+   Used in calendar sync, and available for any AJAX button. */
+.sp-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(0, 0, 0, 0.15);
+    border-top-color: #2271b1;
+    border-radius: 50%;
+    animation: sp-spin 0.6s linear infinite;
+    vertical-align: middle;
+}
+.sp-spinner--light {
+    border-color: rgba(255, 255, 255, 0.3);
+    border-top-color: #fff;
+}
+@keyframes sp-spin {
+    to { transform: rotate(360deg); }
+}
 </style>
 <?php
 });
@@ -7002,7 +7068,7 @@ var spMenuConfig = {
             id:    'communications',
             label: 'Communications',
             icon:  'dashicons-email-alt',
-            items: ['sp-blast-email', 'sp-email-templates', 'sp-email-log']
+            items: ['sp-blast-email', 'sp-email-templates', 'sp-email-log', 'edit.php?post_type=forum']
         },
         {
             id:    'appearance',
@@ -7020,7 +7086,7 @@ var spMenuConfig = {
             id:    'settings',
             label: 'Settings',
             icon:  'dashicons-admin-generic',
-            items: ['sp-settings-website', 'sp-settings-organization', 'sp-settings-membership', 'sp-settings-directory', 'sp-settings-events', 'sp-settings-privacy', 'privacy-policy-guide.php', 'sp-settings-modules', 'sp-user-access']
+            items: ['sp-settings-website', 'sp-settings-organization', 'sp-settings-membership', 'sp-settings-directory', 'sp-settings-events', 'sp-settings-privacy', 'privacy-policy-guide.php', 'sp-settings-modules', 'sp-user-access', 'sp-settings-backups']
         }
     ],
     standalone: []
@@ -7143,7 +7209,10 @@ var spMenuConfig = {
             // Panel that opens over the content area
             var flyoutUl = document.createElement('ul');
             flyoutUl.className = 'sp-menu-flyout';
-            flyoutUl.setAttribute('role', 'menu');
+            // WHY: We intentionally do NOT set role="menu" here. The ARIA menu
+            // pattern requires role="menuitem" children and arrow-key navigation.
+            // This is a simple list of links — the default list semantics plus
+            // focus management is the correct accessible pattern.
 
             // Group heading inside the panel — hide if only 1 item (redundant)
             var heading = document.createElement('li');
@@ -7232,6 +7301,13 @@ var spMenuConfig = {
                     group.classList.add('sp-flyout-open');
                     header.setAttribute('aria-expanded', 'true');
                     scrim.classList.add('sp-scrim-visible');
+
+                    // WHY: Move focus into the panel so keyboard users can navigate
+                    // the menu items without having to Tab blindly.
+                    if (flyout) {
+                        var firstLink = flyout.querySelector('a');
+                        if (firstLink) firstLink.focus();
+                    }
                 }
                 return;
             }
@@ -7280,7 +7356,7 @@ add_action( 'admin_init', function () {
 
     // Only redirect the main dashboard page, not AJAX requests or cron jobs
     if ( $pagenow === 'index.php' && ! wp_doing_ajax() && ! defined( 'DOING_CRON' ) ) {
-        wp_redirect( admin_url( 'admin.php?page=societypress' ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=societypress' ) );
         exit;
     }
 });
@@ -7363,11 +7439,13 @@ add_filter( 'the_content', function ( $content ) {
         ? sp_get_login_page_url()
         : wp_login_url( get_permalink() );
 
-    return '<div style="text-align:center; padding:60px 20px; max-width:500px; margin:0 auto;">'
-         . '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:#999; margin-bottom:16px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
-         . '<h2 style="margin:0 0 12px; font-size:1.4em;">' . esc_html__( 'Members Only', 'societypress' ) . '</h2>'
-         . '<p style="color:#666; margin:0 0 24px;">' . esc_html__( 'This page is available to members only. Please log in to view this content.', 'societypress' ) . '</p>'
-         . '<a href="' . esc_url( $login_url ) . '" style="display:inline-block; padding:10px 28px; background:var(--sp-color-primary, #0D1F3C); color:#fff; text-decoration:none; border-radius:4px; font-weight:600;">' . esc_html__( 'Log In', 'societypress' ) . '</a>'
+    // WHY: CSS classes instead of inline styles so child themes can restyle the
+    // gate. id="main-content" lets the skip link land here on locked pages.
+    return '<div id="main-content" class="sp-members-only-gate">'
+         . '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="sp-members-only-icon"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
+         . '<h2 class="sp-members-only-heading">' . esc_html__( 'Members Only', 'societypress' ) . '</h2>'
+         . '<p class="sp-members-only-text">' . esc_html__( 'This page is available to members only. Please log in to view this content.', 'societypress' ) . '</p>'
+         . '<a href="' . esc_url( $login_url ) . '" class="sp-members-only-btn">' . esc_html__( 'Log In', 'societypress' ) . '</a>'
          . '</div>';
 }, 1 );
 
@@ -7381,7 +7459,7 @@ add_filter( 'the_content', function ( $content ) {
  */
 add_action( 'admin_init', function () {
     if ( ! current_user_can( 'manage_options' ) && ! wp_doing_ajax() ) {
-        wp_redirect( wp_login_url() );
+        wp_safe_redirect( wp_login_url() );
         exit;
     }
 } );
@@ -7765,6 +7843,7 @@ add_action( 'wp_login', function ( $user_login, $user ) {
  *      on subsequent page loads within the same session.
  */
 add_action( 'wp_ajax_sp_dismiss_login_ack', function () {
+    check_ajax_referer( 'sp_dismiss_login_ack' );
     $user_id = get_current_user_id();
     if ( $user_id ) {
         delete_transient( 'sp_login_ack_' . $user_id );
@@ -8571,7 +8650,7 @@ function sp_render_dashboard_page(): void {
     $site_name    = get_option( 'blogname', '' );
     $display_name = ! empty( $org_name ) ? $org_name : $site_name;
     $today        = current_time( 'Y-m-d' );
-    $thirty_days  = date( 'Y-m-d', strtotime( '+30 days', strtotime( $today ) ) );
+    $thirty_days  = wp_date( 'Y-m-d', strtotime( '+30 days', strtotime( $today ) ) );
 
     // ---- Stat queries ----
     // WHY one query per stat: These are simple COUNT queries on indexed columns.
@@ -8597,7 +8676,7 @@ function sp_render_dashboard_page(): void {
     // New members in the last 30 days
     $recent_signup_count = (int) $wpdb->get_var( $wpdb->prepare(
         "SELECT COUNT(*) FROM {$prefix}members WHERE join_date >= %s",
-        date( 'Y-m-d', strtotime( '-30 days', strtotime( $today ) ) )
+        wp_date( 'Y-m-d', strtotime( '-30 days', strtotime( $today ) ) )
     ) );
 
     // ---- Upcoming events (next 5) ----
@@ -9395,22 +9474,22 @@ function sp_render_dashboard_page(): void {
                     // WHY: A colored icon per category lets Harold scan the feed fast —
                     //      green = member stuff, blue = events, orange = settings, etc.
                     $icon_class = 'other';
-                    $icon_char  = '<span class="dashicons dashicons-info-outline" sp-dash-activity-icon-glyph"></span>';
+                    $icon_char  = '<span class="dashicons dashicons-info-outline sp-dash-activity-icon-glyph"></span>';
                     if ( str_starts_with( $act->action, 'member' ) || $act->action === 'group_members_added' || $act->action === 'members_bulk_deleted' ) {
                         $icon_class = 'member';
-                        $icon_char  = '<span class="dashicons dashicons-admin-users" sp-dash-activity-icon-glyph"></span>';
+                        $icon_char  = '<span class="dashicons dashicons-admin-users sp-dash-activity-icon-glyph"></span>';
                     } elseif ( str_starts_with( $act->action, 'event' ) ) {
                         $icon_class = 'event';
-                        $icon_char  = '<span class="dashicons dashicons-calendar-alt" sp-dash-activity-icon-glyph"></span>';
+                        $icon_char  = '<span class="dashicons dashicons-calendar-alt sp-dash-activity-icon-glyph"></span>';
                     } elseif ( str_starts_with( $act->action, 'settings' ) ) {
                         $icon_class = 'settings';
-                        $icon_char  = '<span class="dashicons dashicons-admin-generic" sp-dash-activity-icon-glyph"></span>';
+                        $icon_char  = '<span class="dashicons dashicons-admin-generic sp-dash-activity-icon-glyph"></span>';
                     } elseif ( str_starts_with( $act->action, 'blast' ) || str_starts_with( $act->action, 'email' ) ) {
                         $icon_class = 'email';
-                        $icon_char  = '<span class="dashicons dashicons-email-alt" sp-dash-activity-icon-glyph"></span>';
+                        $icon_char  = '<span class="dashicons dashicons-email-alt sp-dash-activity-icon-glyph"></span>';
                     } elseif ( str_starts_with( $act->action, 'volunteer' ) ) {
                         $icon_class = 'other';
-                        $icon_char  = '<span class="dashicons dashicons-heart" sp-dash-activity-icon-glyph"></span>';
+                        $icon_char  = '<span class="dashicons dashicons-heart sp-dash-activity-icon-glyph"></span>';
                     }
 
                     // Relative time display: "2 hours ago" is more useful than "Mar 9, 2026 3:14 PM"
@@ -9434,7 +9513,7 @@ function sp_render_dashboard_page(): void {
                 ?>
                 <div class="sp-dash-activity-item">
                     <div class="sp-dash-activity-icon sp-dash-activity-icon--<?php echo esc_attr( $icon_class ); ?>">
-                        <?php echo $icon_char; ?>
+                        <?php echo wp_kses( $icon_char, [ 'span' => [ 'class' => true ] ] ); ?>
                     </div>
                     <div class="sp-dash-activity-body">
                         <div class="sp-dash-activity-desc">
@@ -9979,7 +10058,7 @@ function sp_cascade_delete_member_data( $user_id ) {
  * any HTML output.
  *
  * WHY: WordPress fires page callbacks (sp_render_members_page) AFTER the admin
- *      header has already been sent. Any wp_redirect() inside the callback
+ *      header has already been sent. Any wp_safe_redirect() inside the callback
  *      fails with "headers already sent". Moving delete handlers to admin_init
  *      ensures we redirect cleanly before any output. The member save handler
  *      already uses this pattern (see sp_save_member admin_init hook above).
@@ -10011,7 +10090,7 @@ add_action( 'admin_init', function () {
     // If WordPress can't identify who's logged in, we refuse to delete
     // anything. Better to show an error than to nuke the admin's account.
     if ( $current === 0 ) {
-        wp_redirect( admin_url( 'admin.php?page=sp-members&sp_error=auth_failed' ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-members&sp_error=auth_failed' ) );
         exit;
     }
 
@@ -10034,14 +10113,14 @@ add_action( 'admin_init', function () {
         //      An admin should never be able to delete any admin-level user
         //      through the Members interface.
         if ( $user_id === $current ) {
-            wp_redirect( admin_url( 'admin.php?page=sp-members&sp_error=self_delete' ) );
+            wp_safe_redirect( admin_url( 'admin.php?page=sp-members&sp_error=self_delete' ) );
             exit;
         }
 
         // Also check by username or admin role — demote first, then delete.
         $target_user = get_userdata( $user_id );
         if ( $target_user && ( $target_user->user_login === $current_login || user_can( $user_id, 'manage_options' ) ) ) {
-            wp_redirect( admin_url( 'admin.php?page=sp-members&sp_error=self_delete' ) );
+            wp_safe_redirect( admin_url( 'admin.php?page=sp-members&sp_error=self_delete' ) );
             exit;
         }
 
@@ -10060,7 +10139,7 @@ add_action( 'admin_init', function () {
 
         sp_audit( 'member_deleted', 'Member deleted: ' . ( trim( $del_name ) ?: "User #{$user_id}" ), 'member', $user_id );
 
-        wp_redirect( admin_url( 'admin.php?page=sp-members&deleted=1' ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-members&deleted=1' ) );
         exit;
     }
 
@@ -10107,7 +10186,7 @@ add_action( 'admin_init', function () {
         if ( $skipped_self ) {
             $redirect = add_query_arg( 'sp_error', 'self_delete', $redirect );
         }
-        wp_redirect( $redirect );
+        wp_safe_redirect( $redirect );
         exit;
     }
 
@@ -10162,7 +10241,7 @@ add_action( 'admin_init', function () {
             }
         }
 
-        wp_redirect( admin_url( 'admin.php?page=sp-members&group_assigned=' . $added ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-members&group_assigned=' . $added ) );
         exit;
     }
 
@@ -10215,14 +10294,7 @@ function sp_render_members_page(): void {
             $current_uid,
             $admin_display
         ) );
-        if ( $others_count > 0 ) :
-        ?>
-            <button type="button" id="sp-delete-all-btn" class="page-title-action" style="color:#b32d2e; border-color:#b32d2e; cursor:pointer; background:none;">
-                <?php esc_html_e( 'Delete All Others', 'societypress' ); ?>
-            </button>
-            <input type="hidden" id="sp-delete-nonce" value="<?php echo esc_attr( wp_create_nonce( 'sp_delete_all_others' ) ); ?>">
-            <input type="hidden" id="sp-delete-others-count" value="<?php echo esc_attr( $others_count ); ?>">
-        <?php endif; ?>
+        <?php // "Delete All Others" moved to danger zone section at page bottom ?>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-import' ) ); ?>" class="page-title-action">
             <?php esc_html_e( 'Import Membership List', 'societypress' ); ?>
         </a>
@@ -10334,6 +10406,31 @@ function sp_render_members_page(): void {
             }
         })();
         </script>
+
+        <!-- Danger Zone — visually separated from the member list.
+             WHY: "Delete All Others" was previously in the header bar next to
+             "Add New" and "Import." That put a nuclear action alongside
+             navigation actions. Now it's in a clearly marked danger zone at
+             the bottom where a casual click won't find it. -->
+        <?php if ( $others_count > 0 ) : ?>
+        <div class="sp-danger-zone" style="margin-top: 40px; padding: 20px 24px; border: 1px solid #d63638; border-radius: 4px; background: #fcf0f1;">
+            <h3 style="margin: 0 0 8px; color: #b32d2e; font-size: 14px;">
+                <span class="dashicons dashicons-warning" style="color:#d63638; font-size:16px; margin-right:4px; vertical-align:text-bottom;"></span>
+                <?php esc_html_e( 'Danger Zone', 'societypress' ); ?>
+            </h3>
+            <p style="margin: 0 0 12px; font-size: 13px; color: #50575e;">
+                <?php
+                /* translators: %d: number of members that would be deleted */
+                printf( esc_html__( 'Delete all %d members except yourself. This cannot be undone.', 'societypress' ), $others_count );
+                ?>
+            </p>
+            <button type="button" id="sp-delete-all-btn" class="button" style="color:#b32d2e; border-color:#b32d2e; cursor:pointer;">
+                <?php esc_html_e( 'Delete All Others', 'societypress' ); ?>
+            </button>
+            <input type="hidden" id="sp-delete-nonce" value="<?php echo esc_attr( wp_create_nonce( 'sp_delete_all_others' ) ); ?>">
+            <input type="hidden" id="sp-delete-others-count" value="<?php echo esc_attr( $others_count ); ?>">
+        </div>
+        <?php endif; ?>
 
         <!-- Delete All Others: AJAX progress overlay -->
         <div id="sp-delete-overlay" style="display:none; position:fixed; inset:0; background:rgba(255,255,255,0.92); z-index:999999; justify-content:center; align-items:center;">
@@ -10558,7 +10655,7 @@ add_action( 'admin_init', function () {
             $redirect_url = $_POST['user_id']
                 ? admin_url( 'admin.php?page=sp-member-edit&user_id=' . absint( $_POST['user_id'] ) . '&error=1' )
                 : admin_url( 'admin.php?page=sp-member-edit&error=1' );
-            wp_redirect( $redirect_url );
+            wp_safe_redirect( $redirect_url );
             exit;
         }
         // WHY: Org members still need first_name and last_name in the DB because
@@ -10576,7 +10673,7 @@ add_action( 'admin_init', function () {
         $redirect_url = $_POST['user_id']
             ? admin_url( 'admin.php?page=sp-member-edit&user_id=' . absint( $_POST['user_id'] ) . '&error=1' )
             : admin_url( 'admin.php?page=sp-member-edit&error=1' );
-        wp_redirect( $redirect_url );
+        wp_safe_redirect( $redirect_url );
         exit;
     }
 
@@ -10723,7 +10820,7 @@ add_action( 'admin_init', function () {
             ) );
             if ( $already_member ) {
                 set_transient( 'sp_member_error', 'You already have a member record.', 30 );
-                wp_redirect( admin_url( 'admin.php?page=sp-member-edit&user_id=' . $self_id . '&error=1' ) );
+                wp_safe_redirect( admin_url( 'admin.php?page=sp-member-edit&user_id=' . $self_id . '&error=1' ) );
                 exit;
             }
             // Update the admin's WP user profile with whatever name/email
@@ -10746,7 +10843,7 @@ add_action( 'admin_init', function () {
             ) );
             if ( $already_member ) {
                 set_transient( 'sp_member_error', 'A member with this email address already exists.', 30 );
-                wp_redirect( admin_url( 'admin.php?page=sp-member-edit&error=1' ) );
+                wp_safe_redirect( admin_url( 'admin.php?page=sp-member-edit&error=1' ) );
                 exit;
             }
             // User exists but isn't a member yet — link them
@@ -10772,7 +10869,7 @@ add_action( 'admin_init', function () {
 
             if ( is_wp_error( $user_id ) ) {
                 set_transient( 'sp_member_error', $user_id->get_error_message(), 30 );
-                wp_redirect( admin_url( 'admin.php?page=sp-member-edit&error=1' ) );
+                wp_safe_redirect( admin_url( 'admin.php?page=sp-member-edit&error=1' ) );
                 exit;
             }
 
@@ -10946,7 +11043,7 @@ add_action( 'admin_init', function () {
     }
 
     // Redirect to the edit page with success message
-    wp_redirect( admin_url( 'admin.php?page=sp-member-edit&user_id=' . $user_id . '&saved=1' ) );
+    wp_safe_redirect( admin_url( 'admin.php?page=sp-member-edit&user_id=' . $user_id . '&saved=1' ) );
     exit;
 });
 
@@ -11070,7 +11167,7 @@ function sp_render_member_edit_page(): void {
 
     ?>
     <div class="wrap">
-        <h1 class="wp-heading-inline"><?php echo $page_title; ?></h1>
+        <h1 class="wp-heading-inline"><?php echo wp_kses( $page_title, [] ); ?></h1>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-members' ) ); ?>" class="page-title-action">
             &larr; <?php esc_html_e( 'Back to Members', 'societypress' ); ?>
         </a>
@@ -14682,15 +14779,25 @@ add_action( 'wp_ajax_sp_delete_members_batch', function () {
 
     require_once ABSPATH . 'wp-admin/includes/user.php';
 
-    // Safety: never delete administrators regardless of what IDs are sent
+    // WHY: Safety checks — never delete administrators, and verify each ID
+    // is actually a member in sp_members, not an arbitrary user ID injected
+    // by modifying the client-side request.
     $admin_ids = array_map( 'intval', get_users( [
         'role'   => 'administrator',
         'fields' => 'ID',
     ] ) );
 
+    global $wpdb;
+    $member_table = $wpdb->prefix . 'sp_members';
+
     $deleted = 0;
     foreach ( $ids as $uid ) {
         if ( in_array( $uid, $admin_ids, true ) ) continue;
+        // Verify this user_id exists in the members table
+        $is_member = $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$member_table} WHERE user_id = %d", $uid
+        ) );
+        if ( ! $is_member ) continue;
         sp_cascade_delete_member_data( $uid );
         wp_delete_user( $uid );
         $deleted++;
@@ -18260,7 +18367,7 @@ function sp_render_setup_wizard(): void {
     <div class="sp-wizard-wrap">
         <div class="sp-wizard-header">
             <h1><?php esc_html_e( 'Welcome to SocietyPress', 'societypress' ); ?></h1>
-            <p>Let's get your society website set up. This only takes a minute.</p>
+            <p><?php esc_html_e( 'Let\'s get your society website set up. This only takes a minute.', 'societypress' ); ?></p>
         </div>
 
         <!-- Step indicators -->
@@ -18282,7 +18389,7 @@ function sp_render_setup_wizard(): void {
                 <?php if ( $step === 1 ) : ?>
                     <!-- Step 1: Organization Info -->
                     <h2><?php esc_html_e( 'Your Organization', 'societypress' ); ?></h2>
-                    <p class="desc">Tell us about your genealogical society.</p>
+                    <p class="desc"><?php esc_html_e( 'Tell us about your genealogical society.', 'societypress' ); ?></p>
 
                     <div class="sp-wizard-field">
                         <label for="wiz-org-name"><?php esc_html_e( 'Society Name', 'societypress' ); ?></label>
@@ -18306,27 +18413,27 @@ function sp_render_setup_wizard(): void {
                         <input type="tel" id="wiz-org-phone" name="organization_phone"
                                value="<?php echo esc_attr( $settings['organization_phone'] ?? '' ); ?>"
                                placeholder="Optional">
-                        <div class="hint">Optional — leave blank if your society doesn't have a public phone number.</div>
+                        <div class="hint"><?php esc_html_e( 'Optional — leave blank if your society doesn\'t have a public phone number.', 'societypress' ); ?></div>
                     </div>
 
                     <div class="sp-wizard-actions">
-                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=societypress' ) ); ?>" class="sp-wizard-skip">Skip setup</a>
-                        <button type="submit" class="button button-primary">Continue &rarr;</button>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=societypress' ) ); ?>" class="sp-wizard-skip"><?php esc_html_e( 'Skip setup', 'societypress' ); ?></a>
+                        <button type="submit" class="button button-primary"><?php esc_html_e( 'Continue', 'societypress' ); ?> &rarr;</button>
                     </div>
 
                 <?php elseif ( $step === 2 ) : ?>
                     <!-- Step 2: Membership Settings -->
                     <h2><?php esc_html_e( 'Membership', 'societypress' ); ?></h2>
-                    <p class="desc">How does your society handle membership periods?</p>
+                    <p class="desc"><?php esc_html_e( 'How does your society handle membership periods?', 'societypress' ); ?></p>
 
                     <div class="sp-wizard-field">
                         <label for="wiz-period"><?php esc_html_e( 'Membership Period', 'societypress' ); ?></label>
                         <select id="wiz-period" name="membership_period_type">
-                            <option value="annual" <?php selected( $settings['membership_period_type'] ?? 'annual', 'annual' ); ?>>Annual (fixed year)</option>
-                            <option value="rolling" <?php selected( $settings['membership_period_type'] ?? '', 'rolling' ); ?>>Rolling (12 months from join date)</option>
-                            <option value="lifetime" <?php selected( $settings['membership_period_type'] ?? '', 'lifetime' ); ?>>Lifetime only</option>
+                            <option value="annual" <?php selected( $settings['membership_period_type'] ?? 'annual', 'annual' ); ?>><?php esc_html_e( 'Annual (fixed year)', 'societypress' ); ?></option>
+                            <option value="rolling" <?php selected( $settings['membership_period_type'] ?? '', 'rolling' ); ?>><?php esc_html_e( 'Rolling (12 months from join date)', 'societypress' ); ?></option>
+                            <option value="lifetime" <?php selected( $settings['membership_period_type'] ?? '', 'lifetime' ); ?>><?php esc_html_e( 'Lifetime only', 'societypress' ); ?></option>
                         </select>
-                        <div class="hint">Most societies use annual memberships with a fixed fiscal year.</div>
+                        <div class="hint"><?php esc_html_e( 'Most societies use annual memberships with a fixed fiscal year.', 'societypress' ); ?></div>
                     </div>
 
                     <div class="sp-wizard-field">
@@ -18340,12 +18447,12 @@ function sp_render_setup_wizard(): void {
                                 <option value="<?php echo $num; ?>" <?php selected( (int) ( $settings['membership_start_month'] ?? 7 ), $num ); ?>><?php echo $m; ?></option>
                             <?php endforeach; ?>
                         </select>
-                        <div class="hint">When does your membership year begin? Many societies use July.</div>
+                        <div class="hint"><?php esc_html_e( 'When does your membership year begin? Many societies use July.', 'societypress' ); ?></div>
                     </div>
 
                     <div class="sp-wizard-actions">
-                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-setup-wizard&step=1' ) ); ?>" class="button">&larr; Back</a>
-                        <button type="submit" class="button button-primary">Continue &rarr;</button>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-setup-wizard&step=1' ) ); ?>" class="button">&larr; <?php esc_html_e( 'Back', 'societypress' ); ?></a>
+                        <button type="submit" class="button button-primary"><?php esc_html_e( 'Continue', 'societypress' ); ?> &rarr;</button>
                     </div>
 
                 <?php elseif ( $step === 3 ) : ?>
@@ -18398,7 +18505,7 @@ function sp_render_setup_wizard(): void {
                 <?php elseif ( $step === 4 ) : ?>
                     <!-- Step 4: Appearance & Email -->
                     <h2><?php esc_html_e( 'Finishing Touches', 'societypress' ); ?></h2>
-                    <p class="desc">Customize the look of your site and configure email.</p>
+                    <p class="desc"><?php esc_html_e( 'Customize the look of your site and configure email.', 'societypress' ); ?></p>
 
                     <div class="sp-wizard-field" style="display: flex; gap: 20px;">
                         <div>
@@ -18418,14 +18525,14 @@ function sp_render_setup_wizard(): void {
                         <input type="text" id="wiz-email-name" name="email_from_name"
                                value="<?php echo esc_attr( $settings['email_from_name'] ?? '' ); ?>"
                                placeholder="e.g., SAGHS Membership">
-                        <div class="hint">The name that appears in the "From" field of emails sent by SocietyPress.</div>
+                        <div class="hint"><?php esc_html_e( 'The name that appears in the "From" field of emails sent by SocietyPress.', 'societypress' ); ?></div>
                     </div>
                     <div class="sp-wizard-field">
                         <label for="wiz-email-from"><?php esc_html_e( 'Email "From" Address', 'societypress' ); ?></label>
                         <input type="email" id="wiz-email-from" name="email_from_email"
                                value="<?php echo esc_attr( $settings['email_from_email'] ?? '' ); ?>"
                                placeholder="e.g., noreply@yoursociety.org">
-                        <div class="hint">The email address that SocietyPress sends from.</div>
+                        <div class="hint"><?php esc_html_e( 'The email address that SocietyPress sends from.', 'societypress' ); ?></div>
                     </div>
 
                     <div class="sp-wizard-actions">
@@ -19038,7 +19145,7 @@ function sp_render_groups_page(): void {
         $gid = (int) $_POST['group_id'];
         $wpdb->delete( $prefix . 'group_members', [ 'group_id' => $gid ] );
         $wpdb->delete( $prefix . 'groups', [ 'id' => $gid ] );
-        wp_redirect( admin_url( 'admin.php?page=sp-groups&deleted=1' ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-groups&deleted=1' ) );
         exit;
     }
 
@@ -19128,7 +19235,7 @@ function sp_render_group_edit_page(): void {
             "SELECT * FROM {$prefix}groups WHERE id = %d", $group_id
         ) );
         if ( ! $group ) {
-            echo '<div class="wrap"><h1>' . esc_html__( 'Group Not Found', 'societypress' ) . '</h1><p><a href="' . admin_url( 'admin.php?page=sp-groups' ) . '">&larr; Back</a></p></div>';
+            echo '<div class="wrap"><h1>' . esc_html__( 'Group Not Found', 'societypress' ) . '</h1><p><a href="' . esc_url( admin_url( 'admin.php?page=sp-groups' ) ) . '">&larr; ' . esc_html__( 'Back', 'societypress' ) . '</a></p></div>';
             return;
         }
         $members = $wpdb->get_results( $wpdb->prepare(
@@ -19193,7 +19300,7 @@ function sp_render_group_edit_page(): void {
                 }
             }
 
-            wp_redirect( admin_url( 'admin.php?page=sp-groups&saved=1' ) );
+            wp_safe_redirect( admin_url( 'admin.php?page=sp-groups&saved=1' ) );
             exit;
         }
     }
@@ -19547,13 +19654,10 @@ class SP_Pages_List_Table extends WP_List_Table {
             $args['s'] = sanitize_text_field( $search );
         }
 
-        // Sorting — default to menu_order so pages appear in the same
-        // order Harold arranged them in Appearance → Menus / Pages.
-        // WHY menu_order: WordPress stores a numeric order on each page.
-        // When Harold drags pages around in the WP page list or sets parent
-        // pages, menu_order reflects that hierarchy. Showing pages in this
-        // order matches what he sees on the actual site nav.
-        $orderby = $_GET['orderby'] ?? 'menu_order';
+        // Sorting — default to alphabetical by title so Harold can find
+        // pages quickly. Column headers are clickable to re-sort by date
+        // or menu order if preferred.
+        $orderby = $_GET['orderby'] ?? 'post_title';
         $order   = $_GET['order'] ?? 'ASC';
 
         $allowed_orderby = [ 'post_title', 'post_date', 'menu_order' ];
@@ -19561,7 +19665,7 @@ class SP_Pages_List_Table extends WP_List_Table {
             $args['orderby'] = $orderby;
             $args['order']   = strtoupper( $order ) === 'DESC' ? 'DESC' : 'ASC';
         } else {
-            $args['orderby'] = 'menu_order';
+            $args['orderby'] = 'post_title';
             $args['order']   = 'ASC';
         }
 
@@ -19632,7 +19736,7 @@ function sp_render_pages_page(): void {
         $post_id = (int) $_POST['post_id'];
         check_admin_referer( 'sp_delete_page_' . $post_id );
         wp_delete_post( $post_id, true ); // true = bypass trash, permanent delete
-        wp_redirect( admin_url( 'admin.php?page=sp-pages&deleted=1' ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-pages&deleted=1' ) );
         exit;
     }
 
@@ -19647,7 +19751,7 @@ function sp_render_pages_page(): void {
             wp_delete_post( (int) $pid, true );
             $count++;
         }
-        wp_redirect( admin_url( 'admin.php?page=sp-pages&deleted=' . $count ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-pages&deleted=' . $count ) );
         exit;
     }
 
@@ -19853,7 +19957,8 @@ function sp_handle_quick_edit_page(): void {
                 ? $_POST['status'] : 'draft';
     $template = sanitize_text_field( $_POST['template'] ?? '' );
 
-    if ( ! $post_id || ! get_post( $post_id ) ) {
+    $post = get_post( $post_id );
+    if ( ! $post_id || ! $post || $post->post_type !== 'page' ) {
         wp_send_json_error( __( 'Page not found.', 'societypress' ) );
     }
 
@@ -20028,8 +20133,8 @@ function sp_render_page_edit(): void {
                     <th scope="row"><label for="page_status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
                     <td>
                         <select id="page_status" name="page_status">
-                            <option value="publish" <?php selected( $status, 'publish' ); ?>>Published</option>
-                            <option value="draft" <?php selected( $status, 'draft' ); ?>>Draft</option>
+                            <option value="publish" <?php selected( $status, 'publish' ); ?>><?php esc_html_e( 'Published', 'societypress' ); ?></option>
+                            <option value="draft" <?php selected( $status, 'draft' ); ?>><?php esc_html_e( 'Draft', 'societypress' ); ?></option>
                         </select>
                     </td>
                 </tr>
@@ -20060,14 +20165,14 @@ function sp_render_page_edit(): void {
                 <input type="submit"
                        name="sp_save_page"
                        class="button button-primary"
-                       value="<?php echo $is_edit ? 'Update Page' : 'Create Page'; ?>">
+                       value="<?php echo $is_edit ? esc_attr__( 'Update Page', 'societypress' ) : esc_attr__( 'Create Page', 'societypress' ); ?>">
 
                 <?php // Delete button is in a separate POST form below the save form ?>
 
                 <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-pages' ) ); ?>"
                    class="button"
                    style="margin-left: 8px;">
-                    Cancel
+                    <?php esc_html_e( 'Cancel', 'societypress' ); ?>
                 </a>
             </p>
         </form>
@@ -20147,7 +20252,7 @@ function sp_handle_page_save(): void {
             $redirect .= '&post_id=' . $post_id;
         }
         $redirect .= '&sp_error=no_title';
-        wp_redirect( $redirect );
+        wp_safe_redirect( $redirect );
         exit;
     }
 
@@ -20244,7 +20349,7 @@ function sp_handle_page_save(): void {
         delete_post_meta( $saved_id, '_sp_page_widgets' );
     }
 
-    wp_redirect( admin_url( 'admin.php?page=sp-pages&saved=1' ) );
+    wp_safe_redirect( admin_url( 'admin.php?page=sp-pages&saved=1' ) );
     exit;
 }
 
@@ -20420,7 +20525,7 @@ function sp_render_finances_page(): void {
     if ( isset( $_POST['action'] ) && $_POST['action'] === 'delete' && isset( $_POST['payment_id'] ) ) {
         check_admin_referer( 'sp_delete_payment_' . $_POST['payment_id'] );
         $wpdb->delete( $prefix . 'member_payments', [ 'id' => (int) $_POST['payment_id'] ] );
-        wp_redirect( admin_url( 'admin.php?page=sp-finances&deleted=1' ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-finances&deleted=1' ) );
         exit;
     }
 
@@ -20688,7 +20793,7 @@ function sp_render_record_payment_page(): void {
                 'created_at'  => current_time( 'mysql' ),
             ] );
 
-            wp_redirect( admin_url( 'admin.php?page=sp-finances&recorded=1' ) );
+            wp_safe_redirect( admin_url( 'admin.php?page=sp-finances&recorded=1' ) );
             exit;
         }
     }
@@ -20790,7 +20895,19 @@ function sp_render_settings_website_page(): void {
         <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=sp_export_settings_json&nonce=' . wp_create_nonce( 'sp_export_settings_json' ) ) ); ?>" class="page-title-action">
             <?php esc_html_e( 'Export Settings (JSON)', 'societypress' ); ?>
         </a>
+        <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=sp_export_full_site&nonce=' . wp_create_nonce( 'sp_export_full_site' ) ) ); ?>" class="page-title-action">
+            <?php esc_html_e( 'Export Everything (ZIP)', 'societypress' ); ?>
+        </a>
         <hr class="wp-header-end">
+
+        <?php
+        // WHY: A brief description so Harold knows what the full export does
+        //      before he clicks it. The settings JSON export is obvious from
+        //      context, but "Export Everything" deserves a sentence.
+        ?>
+        <p class="description">
+            <?php esc_html_e( 'Export Everything generates a complete archive of all your society\'s data, documents, and settings as a single ZIP file.', 'societypress' ); ?>
+        </p>
 
         <?php
         if ( isset( $_GET['settings-updated'] ) && $_GET['settings-updated'] === 'true' ) {
@@ -20829,10 +20946,17 @@ add_action( 'wp_ajax_sp_export_settings_json', function () {
     $settings = get_option( 'societypress_settings', [] );
     $modules  = get_option( 'sp_enabled_modules', [] );
 
-    // WHY: Stripe secret keys are encrypted at rest, but exporting the
-    // encrypted blob is useless on a different installation (different
-    // encryption key). Exclude them so Harold re-enters them fresh.
-    $secret_keys = [ 'stripe_secret_key', 'stripe_test_secret_key' ];
+    // WHY: Stripe/PayPal secret keys are encrypted at rest, but exporting
+    // the encrypted blob is useless on a different installation (different
+    // encryption key). Exclude all secrets so Harold re-enters them fresh.
+    $secret_keys = [
+        'stripe_test_secret_key',
+        'stripe_live_secret_key',
+        'paypal_sandbox_secret',
+        'paypal_live_secret',
+        'paypal_sandbox_client_id',
+        'paypal_live_client_id',
+    ];
     foreach ( $secret_keys as $key ) {
         unset( $settings[ $key ] );
     }
@@ -20842,7 +20966,7 @@ add_action( 'wp_ajax_sp_export_settings_json', function () {
             'plugin_version' => defined( 'SOCIETYPRESS_VERSION' ) ? SOCIETYPRESS_VERSION : 'unknown',
             'exported_at'    => current_time( 'c' ),
             'site_url'       => home_url(),
-            'note'           => __( 'Stripe secret keys are excluded for security. Re-enter them after import.', 'societypress' ),
+            'note'           => __( 'Payment gateway credentials are excluded for security. Re-enter them after import.', 'societypress' ),
         ],
         'settings'        => $settings,
         'enabled_modules' => $modules,
@@ -20858,6 +20982,665 @@ add_action( 'wp_ajax_sp_export_settings_json', function () {
     echo wp_json_encode( $export, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
     exit;
 });
+
+
+// ============================================================================
+// FULL SITE EXPORT — One ZIP containing everything
+//
+// WHY: Societies accumulate years of data — members, events, donations, library
+//      catalogs, newsletters, documents, settings. If they ever need to migrate,
+//      archive, or just sleep soundly knowing they have a complete backup of
+//      their own data, this gives them everything in one click. No picking
+//      through module-by-module exports, no forgetting the newsletter PDFs.
+//      One button, one ZIP, everything.
+//
+// HOW: Creates a temp directory, generates each module's CSV directly (same
+//      query patterns as the individual exports), copies newsletter PDFs and
+//      document files into subfolders, exports settings JSON, writes a README,
+//      ZIPs it all, streams it to the browser, and cleans up behind itself.
+// ============================================================================
+
+add_action( 'wp_ajax_sp_export_full_site', function () {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+    }
+    if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_full_site' ) ) {
+        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+    }
+
+    if ( ! class_exists( 'ZipArchive' ) ) {
+        wp_die( esc_html__( 'The ZipArchive PHP extension is required but not available on this server.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // ---- Create temp directory inside WP uploads ----
+    $upload_dir = wp_upload_dir();
+    $temp_base  = trailingslashit( $upload_dir['basedir'] ) . 'sp-export-temp/';
+    $temp_dir   = $temp_base . 'sp-full-export-' . time() . '/';
+
+    if ( ! wp_mkdir_p( $temp_dir ) ) {
+        wp_die( esc_html__( 'Could not create temporary directory for export.', 'societypress' ) );
+    }
+
+    // ---- Cleanup function — runs on shutdown no matter what ----
+    // WHY: Even if we hit a fatal error partway through, temp files get cleaned
+    //      up. We also sweep any stale full-export ZIPs from previous runs.
+    $cleanup = function () use ( $temp_dir, $temp_base ) {
+        if ( is_dir( $temp_dir ) ) {
+            $files = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator( $temp_dir, RecursiveDirectoryIterator::SKIP_DOTS ),
+                RecursiveIteratorIterator::CHILD_FIRST
+            );
+            foreach ( $files as $file_info ) {
+                if ( $file_info->isDir() ) {
+                    @rmdir( $file_info->getRealPath() );
+                } else {
+                    @unlink( $file_info->getRealPath() );
+                }
+            }
+            @rmdir( $temp_dir );
+        }
+        // Remove stale ZIP files from previous full exports
+        foreach ( glob( $temp_base . 'sp-full-export-*.zip' ) as $stale_zip ) {
+            @unlink( $stale_zip );
+        }
+    };
+    register_shutdown_function( $cleanup );
+
+
+    // ---- Helper: write a CSV file with BOM and headers ----
+    // WHY: Every CSV in this export follows the same pattern — UTF-8 BOM for
+    //      Excel compatibility, header row, then data rows. This helper keeps
+    //      the per-module code DRY and consistent.
+    $write_csv = function ( string $filename, array $headers, array $rows ) use ( $temp_dir ) {
+        $path = $temp_dir . sanitize_file_name( $filename );
+        $out  = fopen( $path, 'w' );
+        if ( ! $out ) {
+            return;
+        }
+        // UTF-8 BOM so Excel handles accented characters correctly
+        fwrite( $out, "\xEF\xBB\xBF" );
+        fputcsv( $out, $headers );
+        foreach ( $rows as $row ) {
+            fputcsv( $out, $row );
+        }
+        fclose( $out );
+    };
+
+
+    // ================================================================
+    // 1. MEMBERS CSV
+    // ================================================================
+    // WHY: The core dataset — every member record with their tier name
+    //      and WP email address. Encrypted fields (phone, address) are
+    //      decrypted before export so the CSV contains readable data.
+    // ================================================================
+    $members = $wpdb->get_results(
+        "SELECT m.*, t.name AS tier_name, u.user_email AS email
+         FROM {$prefix}members m
+         LEFT JOIN {$prefix}membership_tiers t ON m.tier_id = t.id
+         LEFT JOIN {$wpdb->users} u ON m.user_id = u.ID
+         ORDER BY m.last_name ASC, m.first_name ASC"
+    );
+    // Decrypt encrypted fields (phone, address, etc.) so the CSV is readable
+    $members = sp_member_decrypt_rows( $members );
+
+    $member_headers = [
+        'User ID', 'Member Number', 'Member Type', 'Organization Name',
+        'Status', 'Membership Type', 'Prefix', 'First Name', 'Preferred Name',
+        'Middle Name', 'Last Name', 'Maiden Name', 'Suffix', 'Date of Birth',
+        'Email', 'Phone', 'Cell', 'Website', 'Address 1', 'Address 2',
+        'City', 'State', 'Postal Code', 'Country',
+        'Seasonal', 'Seasonal From', 'Seasonal To', 'Seasonal Address 1',
+        'Seasonal City', 'Seasonal State', 'Seasonal Postal Code', 'Seasonal Country',
+        'Join Date', 'Expiration Date', 'Lifetime', 'Deceased',
+        'Receive Print', 'Email Notices', 'Email Events', 'Email Newsletters',
+        'Email Surnames', 'Dir Show Name', 'Dir Show Address', 'Dir Show Phone',
+        'Dir Show Email', 'Dir Show Website', 'Dir Show Photo',
+        'Created At', 'Updated At',
+    ];
+    $member_rows = [];
+    foreach ( $members as $m ) {
+        $member_rows[] = [
+            $m->user_id, $m->member_number ?? '', $m->member_type ?? 'individual',
+            $m->organization_name ?? '', $m->status ?? '', $m->tier_name ?? '',
+            $m->prefix ?? '', $m->first_name ?? '', $m->preferred_name ?? '',
+            $m->middle_name ?? '', $m->last_name ?? '', $m->maiden_name ?? '',
+            $m->suffix ?? '', $m->date_of_birth ?? '',
+            $m->email ?? '', $m->phone ?? '', $m->cell ?? '', $m->website ?? '',
+            $m->address_1 ?? '', $m->address_2 ?? '', $m->city ?? '',
+            $m->state ?? '', $m->postal_code ?? '', $m->country ?? '',
+            $m->seasonal ? 'Yes' : 'No', $m->seasonal_from ?? '', $m->seasonal_to ?? '',
+            $m->seasonal_address_1 ?? '', $m->seasonal_city ?? '',
+            $m->seasonal_state ?? '', $m->seasonal_postal_code ?? '',
+            $m->seasonal_country ?? '',
+            $m->join_date ?? '', $m->expiration_date ?? '',
+            $m->lifetime ? 'Yes' : 'No', $m->deceased ? 'Yes' : 'No',
+            $m->receive_print ? 'Yes' : 'No',
+            $m->pref_email_notices ? 'Yes' : 'No',
+            $m->pref_email_events ? 'Yes' : 'No',
+            $m->pref_email_newsletters ? 'Yes' : 'No',
+            $m->pref_email_surnames ? 'Yes' : 'No',
+            $m->dir_show_name ? 'Yes' : 'No',
+            $m->dir_show_address ? 'Yes' : 'No',
+            $m->dir_show_phone ? 'Yes' : 'No',
+            $m->dir_show_email ? 'Yes' : 'No',
+            $m->dir_show_website ? 'Yes' : 'No',
+            $m->dir_show_photo ? 'Yes' : 'No',
+            $m->created_at ?? '', $m->updated_at ?? '',
+        ];
+    }
+    $write_csv( 'members.csv', $member_headers, $member_rows );
+    // Free memory — member result sets can be large
+    unset( $members, $member_rows );
+
+
+    // ================================================================
+    // 2. EVENTS CSV
+    // ================================================================
+    // WHY: Same query pattern as sp_export_events — category name joined
+    //      in so the CSV has human-readable category labels.
+    // ================================================================
+    $events = $wpdb->get_results(
+        "SELECT e.*, c.name AS category_name
+         FROM {$prefix}events e
+         LEFT JOIN {$prefix}event_categories c ON e.category_id = c.id
+         ORDER BY e.event_date DESC"
+    );
+    $event_headers = [
+        'ID', 'Title', 'Category', 'Status', 'Event Date', 'Start Time',
+        'End Time', 'Location Name', 'Location Address', 'Is Virtual',
+        'Virtual URL', 'Capacity', 'Price Per Ticket', 'Contact Name',
+        'Contact Email', 'Contact Phone', 'External URL', 'Description',
+        'Created At', 'Updated At',
+    ];
+    $event_rows = [];
+    foreach ( $events as $e ) {
+        $event_rows[] = [
+            $e->id, $e->title, $e->category_name ?? '', $e->status ?? '',
+            $e->event_date, $e->start_time, $e->end_time,
+            $e->location_name, $e->location_address,
+            $e->is_virtual, $e->virtual_url, $e->capacity,
+            $e->price_per_ticket, $e->contact_name, $e->contact_email,
+            $e->contact_phone, $e->external_url ?? '', $e->description,
+            $e->created_at, $e->updated_at,
+        ];
+    }
+    $write_csv( 'events.csv', $event_headers, $event_rows );
+    unset( $events, $event_rows );
+
+
+    // ================================================================
+    // 3. DONATIONS CSV
+    // ================================================================
+    // WHY: Same query as sp_export_donations — joins campaigns for name
+    //      and users table for who recorded the donation.
+    // ================================================================
+    $donations = $wpdb->get_results(
+        "SELECT d.*, c.name AS campaign_name, u.display_name AS recorded_by_name
+         FROM {$prefix}donations d
+         LEFT JOIN {$prefix}campaigns c ON d.campaign_id = c.id
+         LEFT JOIN {$wpdb->users} u ON d.recorded_by = u.ID
+         ORDER BY d.date DESC"
+    );
+    $donation_headers = [
+        'ID', 'Donor Name', 'Donor Email', 'Amount', 'Type', 'Date',
+        'Campaign', 'In-Kind Description', 'Anonymous', 'Acknowledgment Sent',
+        'Acknowledgment Date', 'Note', 'Recorded By', 'Created At',
+    ];
+    $donation_rows = [];
+    foreach ( $donations as $d ) {
+        $donation_rows[] = [
+            $d->id, $d->donor_name, $d->donor_email, $d->amount,
+            $d->type, $d->date, $d->campaign_name ?? '',
+            $d->in_kind_description, $d->is_anonymous ? 'Yes' : 'No',
+            $d->acknowledgment_sent ? 'Yes' : 'No', $d->acknowledgment_date,
+            $d->note, $d->recorded_by_name ?? '', $d->created_at,
+        ];
+    }
+    $write_csv( 'donations.csv', $donation_headers, $donation_rows );
+    unset( $donations, $donation_rows );
+
+
+    // ================================================================
+    // 4. LIBRARY CSV
+    // ================================================================
+    // WHY: Same query as sp_ajax_export_library but without filter params —
+    //      full site export always includes the entire catalog. No filters.
+    // ================================================================
+    $library = $wpdb->get_results(
+        "SELECT li.* FROM {$prefix}library_items li ORDER BY li.title ASC"
+    );
+    $library_headers = [
+        'System ID', 'Title', 'Author', 'Description', 'Publisher',
+        'Publisher Location', 'Pub. Year', 'Pub. Month', 'Pub. Day',
+        'Media Type', 'Use Serials', 'ISBN', 'Call Number', 'LCCN',
+        'Shelf Location', 'Geographic Location', 'Acquisition Number',
+        'Acq. Year', 'Acq. Month', 'Acq. Day', 'Acq. Code', 'Donor',
+        'Value', 'County', 'State', 'Surname', 'Subject',
+        'Librarian Notes', 'Updated By', 'Last Updated Date',
+        'Condition', 'Available', 'Cover URL',
+    ];
+    $library_rows = [];
+    foreach ( $library as $item ) {
+        $library_rows[] = [
+            $item->system_id, $item->title, $item->author, $item->description,
+            $item->publisher, $item->publisher_location,
+            $item->pub_year, $item->pub_month, $item->pub_day,
+            $item->media_type, $item->use_serials, $item->isbn,
+            $item->call_number, $item->lccn, $item->shelf_location,
+            $item->geographic_location, $item->acquisition_number,
+            $item->acq_year, $item->acq_month, $item->acq_day,
+            $item->acq_code, $item->donor, $item->item_value,
+            $item->county, $item->state, $item->surname, $item->subject,
+            $item->librarian_notes, $item->updated_by, $item->last_updated_date,
+            $item->item_condition, $item->available, $item->cover_url,
+        ];
+    }
+    $write_csv( 'library.csv', $library_headers, $library_rows );
+    unset( $library, $library_rows );
+
+
+    // ================================================================
+    // 5. STORE ORDERS CSV
+    // ================================================================
+    // WHY: One row per line item, order data repeated — same format as
+    //      the standalone orders export. Standard for accounting imports.
+    // ================================================================
+    $orders = $wpdb->get_results(
+        "SELECT o.id AS order_id, o.created_at AS order_date, o.status,
+                o.customer_name, o.customer_email, o.subtotal, o.tax, o.total,
+                o.payment_method, o.shipping_address_1, o.shipping_city,
+                o.shipping_state, o.shipping_postal, o.admin_note,
+                oi.title AS item_title, oi.quantity, oi.unit_price, oi.line_total
+         FROM {$prefix}orders o
+         LEFT JOIN {$prefix}order_items oi ON oi.order_id = o.id
+         ORDER BY o.created_at DESC, oi.id ASC"
+    );
+    $order_headers = [
+        'Order ID', 'Order Date', 'Status', 'Customer Name', 'Customer Email',
+        'Subtotal', 'Tax', 'Total', 'Payment Method', 'Shipping Address',
+        'Shipping City', 'Shipping State', 'Shipping ZIP', 'Admin Note',
+        'Item Title', 'Quantity', 'Unit Price', 'Line Total',
+    ];
+    $order_rows = [];
+    foreach ( $orders as $row ) {
+        $order_rows[] = [
+            $row->order_id, $row->order_date, $row->status,
+            $row->customer_name, $row->customer_email,
+            $row->subtotal, $row->tax, $row->total, $row->payment_method,
+            $row->shipping_address_1, $row->shipping_city,
+            $row->shipping_state, $row->shipping_postal, $row->admin_note,
+            $row->item_title ?? '', $row->quantity ?? '', $row->unit_price ?? '',
+            $row->line_total ?? '',
+        ];
+    }
+    $write_csv( 'orders.csv', $order_headers, $order_rows );
+    unset( $orders, $order_rows );
+
+
+    // ================================================================
+    // 6. EMAIL LOG CSV
+    // ================================================================
+    // WHY: Communication metadata — who was emailed, when, and whether
+    //      it succeeded. Body content excluded (too large for CSV).
+    // ================================================================
+    $email_table = $wpdb->prefix . 'sp_email_log';
+    $emails = $wpdb->get_results(
+        "SELECT id, recipient, subject, status, email_type, error_message,
+                created_at, sent_at
+         FROM {$email_table}
+         ORDER BY created_at DESC"
+    );
+    $email_headers = [
+        'ID', 'Recipient', 'Subject', 'Status', 'Type', 'Error Message',
+        'Created At', 'Sent At',
+    ];
+    $email_rows = [];
+    foreach ( $emails as $e ) {
+        $email_rows[] = [
+            $e->id, $e->recipient, $e->subject, $e->status,
+            $e->email_type, $e->error_message, $e->created_at, $e->sent_at,
+        ];
+    }
+    $write_csv( 'email-log.csv', $email_headers, $email_rows );
+    unset( $emails, $email_rows );
+
+
+    // ================================================================
+    // 7. RESOURCE LINKS CSV
+    // ================================================================
+    // WHY: Curated research link collections take years to build. Sorted
+    //      by category and then link sort order, same as the standalone.
+    // ================================================================
+    $resources = $wpdb->get_results(
+        "SELECT r.*, c.name AS category_name
+         FROM {$prefix}resources r
+         LEFT JOIN {$prefix}resource_categories c ON r.category_id = c.id
+         ORDER BY c.sort_order ASC, r.sort_order ASC"
+    );
+    $resource_headers = [
+        'ID', 'Title', 'URL', 'Description', 'Category', 'Featured',
+        'Active', 'Sort Order', 'Created At', 'Updated At',
+    ];
+    $resource_rows = [];
+    foreach ( $resources as $r ) {
+        $resource_rows[] = [
+            $r->id, $r->title, $r->url, $r->description,
+            $r->category_name ?? '', $r->featured ? 'Yes' : 'No',
+            $r->active ? 'Yes' : 'No', $r->sort_order,
+            $r->created_at, $r->updated_at,
+        ];
+    }
+    $write_csv( 'resources.csv', $resource_headers, $resource_rows );
+    unset( $resources, $resource_rows );
+
+
+    // ================================================================
+    // 8. LEADERSHIP / COMMITTEES CSV
+    // ================================================================
+    // WHY: Governance history — who served in what role and when.
+    // ================================================================
+    $leadership = $wpdb->get_results(
+        "SELECT r.*, u.display_name AS member_name
+         FROM {$prefix}volunteer_roles r
+         LEFT JOIN {$wpdb->users} u ON r.user_id = u.ID
+         ORDER BY r.role_type ASC, r.start_date DESC"
+    );
+    $leadership_headers = [
+        'ID', 'Member Name', 'Role Title', 'Role Type', 'Committee',
+        'Start Date', 'End Date', 'Status', 'Created At', 'Updated At',
+    ];
+    $leadership_rows = [];
+    foreach ( $leadership as $r ) {
+        $leadership_rows[] = [
+            $r->id, $r->member_name ?? '', $r->role_title, $r->role_type,
+            $r->committee, $r->start_date, $r->end_date, $r->status,
+            $r->created_at, $r->updated_at,
+        ];
+    }
+    $write_csv( 'leadership.csv', $leadership_headers, $leadership_rows );
+    unset( $leadership, $leadership_rows );
+
+
+    // ================================================================
+    // 9. VOLUNTEER HOURS CSV
+    // ================================================================
+    // WHY: Volunteer contribution records — needed for annual reports,
+    //      grant applications, and recognizing dedication.
+    // ================================================================
+    $vol_hours = $wpdb->get_results(
+        "SELECT m.first_name, m.last_name, vh.activity, vh.committee, vh.hours, vh.activity_date
+         FROM {$prefix}volunteer_hours vh
+         INNER JOIN {$prefix}members m ON vh.user_id = m.user_id
+         ORDER BY vh.activity_date DESC"
+    );
+    $vol_headers = [ 'First Name', 'Last Name', 'Activity', 'Committee', 'Hours', 'Date' ];
+    $vol_rows    = [];
+    foreach ( $vol_hours as $row ) {
+        $vol_rows[] = [
+            $row->first_name, $row->last_name, $row->activity,
+            $row->committee, $row->hours, $row->activity_date,
+        ];
+    }
+    $write_csv( 'volunteer-hours.csv', $vol_headers, $vol_rows );
+    unset( $vol_hours, $vol_rows );
+
+
+    // ================================================================
+    // 10. SETTINGS JSON
+    // ================================================================
+    // WHY: Same logic as the standalone settings export — excludes
+    //      payment gateway secrets (encrypted at rest, useless on a
+    //      different installation with a different encryption key).
+    // ================================================================
+    $settings = get_option( 'societypress_settings', [] );
+    $modules  = get_option( 'sp_enabled_modules', [] );
+
+    $secret_keys = [
+        'stripe_test_secret_key',
+        'stripe_live_secret_key',
+        'paypal_sandbox_secret',
+        'paypal_live_secret',
+        'paypal_sandbox_client_id',
+        'paypal_live_client_id',
+    ];
+    foreach ( $secret_keys as $key ) {
+        unset( $settings[ $key ] );
+    }
+
+    $settings_export = [
+        '_meta' => [
+            'plugin_version' => defined( 'SOCIETYPRESS_VERSION' ) ? SOCIETYPRESS_VERSION : 'unknown',
+            'exported_at'    => current_time( 'c' ),
+            'site_url'       => home_url(),
+            'note'           => __( 'Payment gateway credentials are excluded for security. Re-enter them after import.', 'societypress' ),
+        ],
+        'settings'        => $settings,
+        'enabled_modules' => $modules,
+    ];
+
+    $settings_path = $temp_dir . 'settings.json';
+    file_put_contents(
+        $settings_path,
+        wp_json_encode( $settings_export, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES )
+    );
+    unset( $settings, $modules, $settings_export );
+
+
+    // ================================================================
+    // 11. NEWSLETTER PDFs
+    // ================================================================
+    // WHY: Newsletter PDFs are the society's published record. The CSV
+    //      metadata lets them rebuild the newsletter archive; the actual
+    //      PDFs let them redistribute without re-scanning.
+    // ================================================================
+    $nl_dir = $temp_dir . 'newsletters/';
+    wp_mkdir_p( $nl_dir );
+
+    $newsletters = $wpdb->get_results(
+        "SELECT * FROM {$prefix}newsletters ORDER BY pub_date DESC, created_at DESC"
+    );
+
+    $used_nl_filenames = [];
+    foreach ( $newsletters as $nl ) {
+        if ( empty( $nl->file_id ) ) {
+            continue;
+        }
+        $source_path = get_attached_file( (int) $nl->file_id );
+        if ( ! $source_path || ! file_exists( $source_path ) ) {
+            continue;
+        }
+
+        $ext = pathinfo( $source_path, PATHINFO_EXTENSION );
+        if ( ! $ext ) {
+            $ext = 'pdf';
+        }
+
+        // Build a human-readable filename from the newsletter title
+        $base_name = sanitize_file_name( $nl->title );
+        $base_name = preg_replace( '/\.' . preg_quote( $ext, '/' ) . '$/i', '', $base_name );
+        $candidate = $base_name . '.' . $ext;
+
+        // Deduplicate filenames in case multiple newsletters share a title
+        $counter = 1;
+        while ( in_array( strtolower( $candidate ), $used_nl_filenames, true ) ) {
+            $candidate = $base_name . '-' . $counter . '.' . $ext;
+            $counter++;
+        }
+        $used_nl_filenames[] = strtolower( $candidate );
+
+        copy( $source_path, $nl_dir . $candidate );
+    }
+    unset( $newsletters, $used_nl_filenames );
+
+
+    // ================================================================
+    // 12. DOCUMENT FILES (organized by category)
+    // ================================================================
+    // WHY: Same structure as the standalone documents export — files
+    //      organized into category subfolders so the archive mirrors
+    //      the document library's organization.
+    // ================================================================
+    $doc_dir = $temp_dir . 'documents/';
+    wp_mkdir_p( $doc_dir );
+
+    $docs_table = $wpdb->prefix . 'sp_documents';
+    $cats_table = $wpdb->prefix . 'sp_document_categories';
+
+    $documents = $wpdb->get_results(
+        "SELECT d.*, c.name AS category_name
+         FROM {$docs_table} d
+         LEFT JOIN {$cats_table} c ON d.category_id = c.id
+         ORDER BY c.sort_order ASC, c.name ASC, d.title ASC"
+    );
+
+    $uploads_url  = trailingslashit( $upload_dir['baseurl'] );
+    $uploads_path = trailingslashit( $upload_dir['basedir'] );
+
+    $used_doc_filenames = [];
+
+    foreach ( $documents as $doc ) {
+        // Determine category subfolder name (sanitized), or "Uncategorized"
+        $category_folder = $doc->category_name
+            ? sanitize_file_name( $doc->category_name )
+            : sanitize_file_name( __( 'Uncategorized', 'societypress' ) );
+
+        $cat_dir = $doc_dir . $category_folder . '/';
+        if ( ! is_dir( $cat_dir ) ) {
+            wp_mkdir_p( $cat_dir );
+        }
+
+        if ( empty( $doc->file_url ) ) {
+            continue;
+        }
+
+        // Resolve the file_url to a local filesystem path so we can copy
+        // without making an HTTP request (faster, works offline)
+        $local_path = '';
+        if ( strpos( $doc->file_url, $uploads_url ) === 0 ) {
+            $relative   = substr( $doc->file_url, strlen( $uploads_url ) );
+            $local_path = $uploads_path . $relative;
+        } elseif ( strpos( $doc->file_url, '/' ) === 0 && file_exists( ABSPATH . ltrim( $doc->file_url, '/' ) ) ) {
+            $local_path = ABSPATH . ltrim( $doc->file_url, '/' );
+        }
+
+        if ( ! $local_path || ! file_exists( $local_path ) ) {
+            continue;
+        }
+
+        $ext = pathinfo( $local_path, PATHINFO_EXTENSION );
+        if ( ! $ext && ! empty( $doc->file_name ) ) {
+            $ext = pathinfo( $doc->file_name, PATHINFO_EXTENSION );
+        }
+        if ( ! $ext ) {
+            $ext = 'pdf';
+        }
+
+        $base_name = sanitize_file_name( $doc->title );
+        $base_name = preg_replace( '/\.' . preg_quote( $ext, '/' ) . '$/i', '', $base_name );
+        $candidate = $base_name . '.' . $ext;
+
+        // Per-category filename deduplication
+        $cat_key = strtolower( $category_folder );
+        if ( ! isset( $used_doc_filenames[ $cat_key ] ) ) {
+            $used_doc_filenames[ $cat_key ] = [];
+        }
+        $counter = 1;
+        while ( in_array( strtolower( $candidate ), $used_doc_filenames[ $cat_key ], true ) ) {
+            $candidate = $base_name . '-' . $counter . '.' . $ext;
+            $counter++;
+        }
+        $used_doc_filenames[ $cat_key ][] = strtolower( $candidate );
+
+        copy( $local_path, $cat_dir . $candidate );
+    }
+    unset( $documents, $used_doc_filenames );
+
+
+    // ================================================================
+    // 13. README.txt
+    // ================================================================
+    // WHY: When Harold opens this ZIP five years from now (or hands it
+    //      to a new webmaster), this file explains what everything is.
+    // ================================================================
+    $readme_content = sprintf(
+        /* translators: %1$s = date, %2$s = site URL */
+        __(
+'SocietyPress Full Site Export
+Generated: %1$s
+Site: %2$s
+
+This archive contains all data from your SocietyPress installation.
+
+Files:
+- members.csv          — All member records
+- events.csv           — All events with categories
+- donations.csv        — All donations with campaign names
+- library.csv          — All library catalog items
+- orders.csv           — All store orders with line items
+- email-log.csv        — Email delivery log (metadata only)
+- resources.csv        — Resource links with categories
+- leadership.csv       — Officer and committee assignments
+- volunteer-hours.csv  — Volunteer hour logs
+- settings.json        — Plugin settings and enabled modules
+- newsletters/         — Newsletter PDFs
+- documents/           — Document files organized by category
+
+All CSV files use UTF-8 encoding with BOM for Excel compatibility.', 'societypress' ),
+        wp_date( 'Y-m-d H:i:s T' ),
+        home_url()
+    );
+
+    file_put_contents( $temp_dir . 'README.txt', $readme_content );
+
+
+    // ================================================================
+    // CREATE THE ZIP
+    // ================================================================
+    $zip_filename = sanitize_file_name( 'societypress-full-export-' . wp_date( 'Y-m-d' ) . '.zip' );
+    $zip_path     = $temp_base . $zip_filename;
+
+    $zip = new ZipArchive();
+    if ( $zip->open( $zip_path, ZipArchive::CREATE | ZipArchive::OVERWRITE ) !== true ) {
+        wp_die( esc_html__( 'Could not create ZIP file.', 'societypress' ) );
+    }
+
+    // Walk the entire temp directory recursively and preserve subfolder
+    // structure (newsletters/, documents/Category/, etc.)
+    $base_len      = strlen( $temp_dir );
+    $dir_iterator  = new RecursiveDirectoryIterator( $temp_dir, RecursiveDirectoryIterator::SKIP_DOTS );
+    $file_iterator = new RecursiveIteratorIterator( $dir_iterator );
+    foreach ( $file_iterator as $file_info ) {
+        if ( $file_info->isFile() ) {
+            // Relative path preserves subfolders (e.g. "newsletters/Spring-2024.pdf")
+            $relative_path = substr( $file_info->getRealPath(), $base_len );
+            $zip->addFile( $file_info->getRealPath(), $relative_path );
+        }
+    }
+
+    $zip->close();
+
+
+    // ================================================================
+    // STREAM THE ZIP TO THE BROWSER
+    // ================================================================
+    $zip_size = filesize( $zip_path );
+    header( 'Content-Type: application/zip' );
+    header( 'Content-Disposition: attachment; filename="' . $zip_filename . '"' );
+    header( 'Content-Length: ' . $zip_size );
+    header( 'Pragma: no-cache' );
+    header( 'Expires: 0' );
+
+    readfile( $zip_path );
+
+    // Clean up the ZIP file immediately (temp dir handled by shutdown function)
+    @unlink( $zip_path );
+
+    exit;
+} );
 
 
 /**
@@ -26022,7 +26805,8 @@ function sp_render_directory( array $settings ): void {
     // Dedicated surname search — separate from the main text search so members
     // can filter specifically by surname being researched without mixing it
     // into the general name/email search.
-    $surname_search = isset( $_GET['sp_surname'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_surname'] ) ) : '';
+    $surname_search  = isset( $_GET['sp_surname'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_surname'] ) ) : '';
+    $surname_similar = ! empty( $_GET['sp_surname_similar'] );
 
     // Sort column and direction
     $allowed_sorts = [ 'last_name', 'first_name', 'city', 'state', 'join_date', 'tier_name', 'phone', 'user_email', 'website' ];
@@ -26095,12 +26879,31 @@ function sp_render_directory( array $settings ): void {
     //      through general search results. A dedicated surname filter makes
     //      this dead simple.
     if ( $surname_search !== '' ) {
-        $surname_like = '%' . $wpdb->esc_like( $surname_search ) . '%';
-        $where[]  = "EXISTS (
-            SELECT 1 FROM {$prefix}member_surnames s
-            WHERE s.user_id = m.user_id AND s.surname LIKE %s
-        )";
-        $params[] = $surname_like;
+        if ( $surname_similar ) {
+            // WHY: Soundex and Metaphone are phonetic algorithms that group
+            // surnames that "sound alike" — Smith/Smyth, Meyer/Meier/Myer,
+            // Johnson/Jonson. We check both because each catches different
+            // variations. This is THE feature that makes a genealogical
+            // society directory worth having.
+            $sdx = soundex( $surname_search );
+            $mph = metaphone( $surname_search );
+            $surname_like = '%' . $wpdb->esc_like( $surname_search ) . '%';
+            $where[]  = "EXISTS (
+                SELECT 1 FROM {$prefix}member_surnames s
+                WHERE s.user_id = m.user_id
+                  AND (s.surname LIKE %s OR s.soundex_code = %s OR s.metaphone_code = %s)
+            )";
+            $params[] = $surname_like;
+            $params[] = $sdx;
+            $params[] = $mph;
+        } else {
+            $surname_like = '%' . $wpdb->esc_like( $surname_search ) . '%';
+            $where[]  = "EXISTS (
+                SELECT 1 FROM {$prefix}member_surnames s
+                WHERE s.user_id = m.user_id AND s.surname LIKE %s
+            )";
+            $params[] = $surname_like;
+        }
     }
 
     // Group/committee filter — find members who belong to the selected group
@@ -26369,6 +27172,11 @@ function sp_render_directory( array $settings ): void {
                            value="<?php echo esc_attr( $surname_search ); ?>"
                            placeholder="<?php echo esc_attr__( 'e.g. Smith', 'societypress' ); ?>"
                            class="sp-filter-input">
+                    <label style="display:block; margin-top:6px; font-size:12px; font-weight:400;">
+                        <input type="checkbox" name="sp_surname_similar" value="1"
+                               <?php checked( ! empty( $_GET['sp_surname_similar'] ) ); ?>>
+                        <?php esc_html_e( 'Include similar spellings', 'societypress' ); ?>
+                    </label>
                 </div>
 
             </div>
@@ -26423,6 +27231,13 @@ function sp_render_directory( array $settings ): void {
             echo '<p>' . esc_html__( '1 member', 'societypress' ) . '</p>';
         } else {
             printf( '<p>%s ' . esc_html__( 'members', 'societypress' ) . '</p>', number_format_i18n( $total_members ) );
+        }
+
+        // Show a note when similar-spellings search is active
+        if ( $surname_search !== '' && $surname_similar && $total_members > 0 ) {
+            echo '<p style="font-size:13px; color:#2271b1; margin-top:4px;">'
+               . esc_html__( 'Also showing members with similar surname spellings.', 'societypress' )
+               . '</p>';
         }
         ?>
     </div>
@@ -31820,7 +32635,7 @@ class SP_Events_List_Table extends WP_List_Table {
 // ============================================================================
 //
 // WHY: Same pattern as the member delete handlers — these run on admin_init
-//      BEFORE any HTML output, so wp_redirect() works cleanly. If we tried
+//      BEFORE any HTML output, so wp_safe_redirect() works cleanly. If we tried
 //      to redirect inside the page callback, WordPress would have already
 //      sent headers and the redirect would fail.
 // ============================================================================
@@ -31860,7 +32675,7 @@ add_action( 'admin_init', function () {
         delete_transient( 'sp_ical_feed_public' );
         delete_transient( 'sp_ical_feed_members' );
 
-        wp_redirect( admin_url( 'admin.php?page=sp-events&deleted=1' ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-events&deleted=1' ) );
         exit;
     }
 
@@ -31898,7 +32713,7 @@ add_action( 'admin_init', function () {
         delete_transient( 'sp_ical_feed_public' );
         delete_transient( 'sp_ical_feed_members' );
 
-        wp_redirect( admin_url( 'admin.php?page=sp-events&deleted=' . count( $ids ) ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-events&deleted=' . count( $ids ) ) );
         exit;
     }
 
@@ -31945,11 +32760,11 @@ add_action( 'admin_init', function () {
                 }
             }
 
-            wp_redirect( admin_url( 'admin.php?page=sp-event-edit&event_id=' . $new_id . '&duplicated=1' ) );
+            wp_safe_redirect( admin_url( 'admin.php?page=sp-event-edit&event_id=' . $new_id . '&duplicated=1' ) );
             exit;
         }
 
-        wp_redirect( admin_url( 'admin.php?page=sp-events' ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-events' ) );
         exit;
     }
 
@@ -31973,7 +32788,7 @@ add_action( 'admin_init', function () {
         delete_transient( 'sp_ical_feed_public' );
         delete_transient( 'sp_ical_feed_members' );
 
-        wp_redirect( admin_url( 'admin.php?page=sp-events&cancelled=1' ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-events&cancelled=1' ) );
         exit;
     }
 });
@@ -32230,22 +33045,22 @@ add_action( 'admin_init', function () {
 
         if ( $recurrence_type === 'weekly' ) {
             // weekly:N where N = day of week (0=Sun, 6=Sat)
-            $rule = 'weekly:' . date( 'w', $event_date_ts );
+            $rule = 'weekly:' . wp_date( 'w', $event_date_ts );
         } elseif ( $recurrence_type === 'monthly-nth' ) {
             // monthly-nth:W-D where W = week number (1-5), D = day of week
-            $day_of_week = (int) date( 'w', $event_date_ts );
-            $day_of_month = (int) date( 'j', $event_date_ts );
+            $day_of_week = (int) wp_date( 'w', $event_date_ts );
+            $day_of_month = (int) wp_date( 'j', $event_date_ts );
             $week_num = (int) ceil( $day_of_month / 7 );
             $rule = 'monthly-nth:' . $week_num . '-' . $day_of_week;
         } elseif ( $recurrence_type === 'monthly-date' ) {
             // monthly-date:D where D = day of month
-            $rule = 'monthly-date:' . date( 'j', $event_date_ts );
+            $rule = 'monthly-date:' . wp_date( 'j', $event_date_ts );
         }
 
         if ( $rule ) {
             $end_date = ! empty( $_POST['event_recurrence_end'] )
                 ? sanitize_text_field( $_POST['event_recurrence_end'] )
-                : date( 'Y-m-d', strtotime( '+12 months', $event_date_ts ) );
+                : wp_date( 'Y-m-d', strtotime( '+12 months', $event_date_ts ) );
 
             $wpdb->update( $events_table, [
                 'recurrence_rule'     => $rule,
@@ -32274,7 +33089,7 @@ add_action( 'admin_init', function () {
     delete_transient( 'sp_ical_feed_public' );
     delete_transient( 'sp_ical_feed_members' );
 
-    wp_redirect( admin_url( 'admin.php?page=sp-events&saved=1' ) );
+    wp_safe_redirect( admin_url( 'admin.php?page=sp-events&saved=1' ) );
     exit;
 });
 
@@ -33509,7 +34324,7 @@ function sp_render_event_edit_page(): void {
                 fd.append('event_id', regenBtn.getAttribute('data-event-id'));
                 fd.append('nonce', '<?php echo wp_create_nonce( "sp_recurrence" ); ?>');
 
-                fetch('<?php echo admin_url( "admin-ajax.php" ); ?>', { method: 'POST', body: fd, credentials: 'same-origin' })
+                fetch('<?php echo esc_js( admin_url( "admin-ajax.php" ) ); ?>', { method: 'POST', body: fd, credentials: 'same-origin' })
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
                         regenBtn.disabled = false;
@@ -33536,7 +34351,7 @@ function sp_render_event_edit_page(): void {
                 fd.append('event_id', detachBtn.getAttribute('data-event-id'));
                 fd.append('nonce', '<?php echo wp_create_nonce( "sp_recurrence" ); ?>');
 
-                fetch('<?php echo admin_url( "admin-ajax.php" ); ?>', { method: 'POST', body: fd, credentials: 'same-origin' })
+                fetch('<?php echo esc_js( admin_url( "admin-ajax.php" ) ); ?>', { method: 'POST', body: fd, credentials: 'same-origin' })
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
                         if (data.success) {
@@ -33565,7 +34380,7 @@ function sp_render_event_edit_page(): void {
                 fd.append('event_id', detachFeedBtn.getAttribute('data-event-id'));
                 fd.append('_wpnonce', detachFeedBtn.getAttribute('data-nonce'));
 
-                fetch('<?php echo admin_url( "admin-ajax.php" ); ?>', { method: 'POST', body: fd, credentials: 'same-origin' })
+                fetch('<?php echo esc_js( admin_url( "admin-ajax.php" ) ); ?>', { method: 'POST', body: fd, credentials: 'same-origin' })
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
                         if (data.success) {
@@ -35113,7 +35928,7 @@ add_action( 'admin_init', function () {
                     formData.append('action', 'sp_test_stripe_connection');
                     formData.append('nonce', '<?php echo wp_create_nonce( "sp_stripe_test" ); ?>');
 
-                    fetch('<?php echo admin_url( "admin-ajax.php" ); ?>', {
+                    fetch('<?php echo esc_js( admin_url( "admin-ajax.php" ) ); ?>', {
                         method: 'POST',
                         body: formData,
                         credentials: 'same-origin'
@@ -35688,7 +36503,7 @@ function sp_process_event_import( string $file_path, array $field_map ): array {
             $results['errors'][] = "Row {$row_num}: Skipped — could not parse date \"{$event_date}\" for \"{$title}\".";
             continue;
         }
-        $event_date = date( 'Y-m-d', $parsed_date );
+        $event_date = wp_date( 'Y-m-d', $parsed_date );
 
         // Generate slug from title
         $slug = sanitize_title( $title );
@@ -36477,15 +37292,15 @@ function sp_render_calendar_grid( int $category_id = 0, string $base_url = '', a
     // ---- Determine which month to display ----
     // WHY: The sp_cal_month query param lets users navigate months via
     //      prev/next links. Default to current month if not set or invalid.
-    $cal_month = isset( $_GET['sp_cal_month'] ) ? sanitize_text_field( $_GET['sp_cal_month'] ) : date( 'Y-m' );
+    $cal_month = isset( $_GET['sp_cal_month'] ) ? sanitize_text_field( $_GET['sp_cal_month'] ) : wp_date( 'Y-m' );
     if ( ! preg_match( '/^\d{4}-\d{2}$/', $cal_month ) ) {
-        $cal_month = date( 'Y-m' );
+        $cal_month = wp_date( 'Y-m' );
     }
 
     $cal_year    = (int) substr( $cal_month, 0, 4 );
     $cal_mon     = (int) substr( $cal_month, 5, 2 );
-    $days_in     = (int) date( 't', mktime( 0, 0, 0, $cal_mon, 1, $cal_year ) );
-    $first_dow   = (int) date( 'w', mktime( 0, 0, 0, $cal_mon, 1, $cal_year ) ); // 0=Sun
+    $days_in     = (int) wp_date( 't', mktime( 0, 0, 0, $cal_mon, 1, $cal_year ) );
+    $first_dow   = (int) wp_date( 'w', mktime( 0, 0, 0, $cal_mon, 1, $cal_year ) ); // 0=Sun
     $month_label = wp_date( 'F Y', mktime( 0, 0, 0, $cal_mon, 1, $cal_year ) );
 
     // ---- Start day of week (Sunday or Monday) ----
@@ -36546,8 +37361,8 @@ function sp_render_calendar_grid( int $category_id = 0, string $base_url = '', a
     }
 
     // ---- Prev/Next month links ----
-    $prev_month = date( 'Y-m', mktime( 0, 0, 0, $cal_mon - 1, 1, $cal_year ) );
-    $next_month = date( 'Y-m', mktime( 0, 0, 0, $cal_mon + 1, 1, $cal_year ) );
+    $prev_month = wp_date( 'Y-m', mktime( 0, 0, 0, $cal_mon - 1, 1, $cal_year ) );
+    $next_month = wp_date( 'Y-m', mktime( 0, 0, 0, $cal_mon + 1, 1, $cal_year ) );
     $cal_nav_args = $extra_args;
     $cal_nav_args['sp_cal_month'] = $prev_month;
     $prev_url = add_query_arg( $cal_nav_args, $base_url );
@@ -37002,22 +37817,22 @@ function sp_render_events_listing( array $settings ): void {
         case '30days':
             $where[]  = "e.event_date >= %s AND e.event_date <= %s";
             $params[] = $today;
-            $params[] = date( 'Y-m-d', strtotime( '+30 days' ) );
+            $params[] = wp_date( 'Y-m-d', strtotime( '+30 days' ) );
             break;
         case '3months':
             $where[]  = "e.event_date >= %s AND e.event_date <= %s";
             $params[] = $today;
-            $params[] = date( 'Y-m-d', strtotime( '+3 months' ) );
+            $params[] = wp_date( 'Y-m-d', strtotime( '+3 months' ) );
             break;
         case '6months':
             $where[]  = "e.event_date >= %s AND e.event_date <= %s";
             $params[] = $today;
-            $params[] = date( 'Y-m-d', strtotime( '+6 months' ) );
+            $params[] = wp_date( 'Y-m-d', strtotime( '+6 months' ) );
             break;
         case '12months':
             $where[]  = "e.event_date >= %s AND e.event_date <= %s";
             $params[] = $today;
-            $params[] = date( 'Y-m-d', strtotime( '+12 months' ) );
+            $params[] = wp_date( 'Y-m-d', strtotime( '+12 months' ) );
             break;
         case 'all':
             $where[]  = "e.event_date >= %s";
@@ -38181,7 +38996,7 @@ function sp_render_event_detail( string $slug, array $settings ): void {
         ?>
         <script>
         var spRegData = {
-            ajaxUrl:      '<?php echo admin_url( "admin-ajax.php" ); ?>',
+            ajaxUrl:      '<?php echo esc_js( admin_url( "admin-ajax.php" ) ); ?>',
             nonce:        '<?php echo wp_create_nonce( "sp_event_register" ); ?>',
             showPayBtn:   <?php echo $show_pay_btn ? 'true' : 'false'; ?>,
             showDoorBtn:  <?php echo $show_door_btn ? 'true' : 'false'; ?>,
@@ -40709,7 +41524,7 @@ function sp_render_event_registrations_section( object $event ): void {
     (function() {
         'use strict';
         var eventId = <?php echo (int) $event->id; ?>;
-        var ajaxUrl = '<?php echo admin_url( "admin-ajax.php" ); ?>';
+        var ajaxUrl = '<?php echo esc_js( admin_url( "admin-ajax.php" ) ); ?>';
         var nonce   = '<?php echo wp_create_nonce( "sp_admin_registration" ); ?>';
 
         // ---- Walk-in form toggle ----
@@ -41233,7 +42048,9 @@ add_action( 'init', function () {
     $rate_key   = 'sp_join_rate_' . md5( $_SERVER['REMOTE_ADDR'] ?? 'unknown' );
     $attempts   = (int) get_transient( $rate_key );
     if ( $attempts >= 3 ) {
-        $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => 'Too many attempts. Please try again later.' ];
+        $org_email = get_option( 'societypress_settings', [] )['org_email'] ?? get_option( 'admin_email' );
+        /* translators: %s: organization email address */
+        $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => sprintf( __( 'Too many attempts. Please wait one hour and try again, or contact us at %s if you need help.', 'societypress' ), $org_email ) ];
         return;
     }
     set_transient( $rate_key, $attempts + 1, HOUR_IN_SECONDS );
@@ -41244,13 +42061,32 @@ add_action( 'init', function () {
     $email      = sanitize_email( $_POST['email'] ?? '' );
     $tier_id    = absint( $_POST['tier_id'] ?? 0 );
 
-    if ( ! $first_name || ! $last_name || ! $email || ! $tier_id ) {
-        $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => 'Please fill in all required fields.' ];
-        return;
+    // WHY: Field-level errors so the form can highlight exactly which fields
+    // need attention, not just a single banner at the top. Harold's prospective
+    // members are often older and may not scroll up to see a generic message.
+    $field_errors = [];
+
+    if ( ! $first_name ) {
+        $field_errors['first_name'] = __( 'First name is required.', 'societypress' );
+    }
+    if ( ! $last_name ) {
+        $field_errors['last_name'] = __( 'Last name is required.', 'societypress' );
+    }
+    if ( ! $email ) {
+        $field_errors['email'] = __( 'Email address is required.', 'societypress' );
+    } elseif ( ! is_email( $email ) ) {
+        $field_errors['email'] = __( 'Please enter a valid email address.', 'societypress' );
+    }
+    if ( ! $tier_id ) {
+        $field_errors['tier_id'] = __( 'Please select a membership level.', 'societypress' );
     }
 
-    if ( ! is_email( $email ) ) {
-        $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => 'Please enter a valid email address.' ];
+    if ( ! empty( $field_errors ) ) {
+        $GLOBALS['sp_join_result'] = [
+            'success'      => false,
+            'message'      => __( 'Please correct the highlighted fields below.', 'societypress' ),
+            'field_errors' => $field_errors,
+        ];
         return;
     }
 
@@ -41264,7 +42100,11 @@ add_action( 'init', function () {
         $email
     ) );
     if ( $existing ) {
-        $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => 'A member with this email address already exists. Please contact us if you need help.' ];
+        $GLOBALS['sp_join_result'] = [
+            'success'      => false,
+            'message'      => __( 'A member with this email address already exists. Please contact us if you need help.', 'societypress' ),
+            'field_errors' => [ 'email' => __( 'This email is already registered.', 'societypress' ) ],
+        ];
         return;
     }
 
@@ -41273,7 +42113,11 @@ add_action( 'init', function () {
         "SELECT * FROM {$prefix}membership_tiers WHERE id = %d AND is_active = 1", $tier_id
     ) );
     if ( ! $tier ) {
-        $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => 'Invalid membership level selected.' ];
+        $GLOBALS['sp_join_result'] = [
+            'success'      => false,
+            'message'      => __( 'Invalid membership level selected.', 'societypress' ),
+            'field_errors' => [ 'tier_id' => __( 'Please select a valid membership level.', 'societypress' ) ],
+        ];
         return;
     }
 
@@ -41390,16 +42234,15 @@ function sp_render_join_form(): string {
     );
 
     // Check for form result
-    $result = $GLOBALS['sp_join_result'] ?? null;
+    $result       = $GLOBALS['sp_join_result'] ?? null;
+    $field_errors = $result['field_errors'] ?? [];
 
     ob_start();
 
-    // Show result message
+    // Show summary result message
     if ( $result ) {
-        $class = $result['success'] ? 'sp-notice--success' : 'sp-notice--error';
-        $bg    = $result['success'] ? '#edfaef' : '#fcf0f1';
-        $border = $result['success'] ? '#00a32a' : '#d63638';
-        echo '<div style="padding: 12px 16px; margin-bottom: 20px; background: ' . $bg . '; border: 1px solid ' . $border . '; border-radius: 4px;">';
+        $notice_class = $result['success'] ? 'sp-join-notice--success' : 'sp-join-notice--error';
+        echo '<div class="sp-join-notice ' . $notice_class . '" role="alert">';
         echo '<p class="sp-m-0">' . esc_html( $result['message'] ) . '</p>';
         echo '</div>';
 
@@ -41439,6 +42282,14 @@ function sp_render_join_form(): string {
         .sp-join-form .sp-submit { display: inline-block; padding: 12px 32px; background: #2271b1; color: #fff; border: none; border-radius: 4px; font-size: 16px; font-weight: 600; cursor: pointer; }
         .sp-join-form .sp-submit:hover { background: #135e96; }
         .sp-join-form .sp-honeypot { position: absolute; left: -9999px; }
+        .sp-join-notice { padding: 12px 16px; margin-bottom: 20px; border-radius: 4px; }
+        .sp-join-notice--success { background: #edfaef; border: 1px solid #00a32a; }
+        .sp-join-notice--error { background: #fcf0f1; border: 1px solid #d63638; }
+        .sp-join-form .sp-field-error input,
+        .sp-join-form .sp-field-error select { border-color: #d63638; }
+        .sp-join-form .sp-field-error input:focus,
+        .sp-join-form .sp-field-error select:focus { border-color: #d63638; box-shadow: 0 0 0 1px #d63638; }
+        .sp-join-form .sp-field-error-msg { color: #d63638; font-size: 12px; margin-top: 4px; display: block; }
         @media (max-width: 480px) {
             .sp-join-form .sp-field-row { flex-direction: column; gap: 0; }
         }
@@ -41456,10 +42307,14 @@ function sp_render_join_form(): string {
         <!-- Membership Level -->
         <fieldset>
             <legend><?php esc_html_e( 'Choose Your Membership Level', 'societypress' ); ?></legend>
+            <?php if ( ! empty( $field_errors['tier_id'] ) ) : ?>
+                <p class="sp-field-error-msg" role="alert"><?php echo esc_html( $field_errors['tier_id'] ); ?></p>
+            <?php endif; ?>
             <?php foreach ( $tiers as $tier ) : ?>
                 <label class="sp-tier-option">
                     <input type="radio" name="tier_id" value="<?php echo esc_attr( $tier->id ); ?>"
                            <?php checked( ( $_POST['tier_id'] ?? '' ), $tier->id ); ?>
+                           <?php echo ! empty( $field_errors['tier_id'] ) ? 'aria-invalid="true"' : ''; ?>
                            required style="margin-right: 8px;">
                     <span class="sp-tier-label">
                         <span class="sp-tier-name"><?php echo esc_html( $tier->name ); ?></span>
@@ -41480,15 +42335,23 @@ function sp_render_join_form(): string {
         <fieldset>
             <legend><?php esc_html_e( 'Personal Information', 'societypress' ); ?></legend>
             <div class="sp-field-row">
-                <div class="sp-field">
+                <div class="sp-field <?php echo ! empty( $field_errors['first_name'] ) ? 'sp-field-error' : ''; ?>">
                     <label for="sp-first-name"><?php esc_html_e( 'First Name', 'societypress' ); ?> <span class="required">*</span></label>
                     <input type="text" id="sp-first-name" name="first_name" required
-                           value="<?php echo esc_attr( $_POST['first_name'] ?? '' ); ?>">
+                           value="<?php echo esc_attr( $_POST['first_name'] ?? '' ); ?>"
+                           <?php echo ! empty( $field_errors['first_name'] ) ? 'aria-invalid="true" aria-describedby="sp-err-first-name"' : ''; ?>>
+                    <?php if ( ! empty( $field_errors['first_name'] ) ) : ?>
+                        <span class="sp-field-error-msg" id="sp-err-first-name" role="alert"><?php echo esc_html( $field_errors['first_name'] ); ?></span>
+                    <?php endif; ?>
                 </div>
-                <div class="sp-field">
+                <div class="sp-field <?php echo ! empty( $field_errors['last_name'] ) ? 'sp-field-error' : ''; ?>">
                     <label for="sp-last-name"><?php esc_html_e( 'Last Name', 'societypress' ); ?> <span class="required">*</span></label>
                     <input type="text" id="sp-last-name" name="last_name" required
-                           value="<?php echo esc_attr( $_POST['last_name'] ?? '' ); ?>">
+                           value="<?php echo esc_attr( $_POST['last_name'] ?? '' ); ?>"
+                           <?php echo ! empty( $field_errors['last_name'] ) ? 'aria-invalid="true" aria-describedby="sp-err-last-name"' : ''; ?>>
+                    <?php if ( ! empty( $field_errors['last_name'] ) ) : ?>
+                        <span class="sp-field-error-msg" id="sp-err-last-name" role="alert"><?php echo esc_html( $field_errors['last_name'] ); ?></span>
+                    <?php endif; ?>
                 </div>
             </div>
             <div class="sp-field">
@@ -41501,10 +42364,14 @@ function sp_render_join_form(): string {
         <!-- Contact Information -->
         <fieldset>
             <legend><?php esc_html_e( 'Contact Information', 'societypress' ); ?></legend>
-            <div class="sp-field">
+            <div class="sp-field <?php echo ! empty( $field_errors['email'] ) ? 'sp-field-error' : ''; ?>">
                 <label for="sp-email"><?php esc_html_e( 'Email Address', 'societypress' ); ?> <span class="required">*</span></label>
                 <input type="email" id="sp-email" name="email" required
-                       value="<?php echo esc_attr( $_POST['email'] ?? '' ); ?>">
+                       value="<?php echo esc_attr( $_POST['email'] ?? '' ); ?>"
+                       <?php echo ! empty( $field_errors['email'] ) ? 'aria-invalid="true" aria-describedby="sp-err-email"' : ''; ?>>
+                <?php if ( ! empty( $field_errors['email'] ) ) : ?>
+                    <span class="sp-field-error-msg" id="sp-err-email" role="alert"><?php echo esc_html( $field_errors['email'] ); ?></span>
+                <?php endif; ?>
             </div>
             <div class="sp-field-row">
                 <div class="sp-field">
@@ -41632,6 +42499,14 @@ function sp_render_join_form(): string {
 
         // Run on load in case a tier is pre-selected (form resubmit)
         updateJointVisibility();
+
+        // WHY: If there are field-level validation errors, scroll to and focus
+        // the first invalid field so the user sees exactly what needs fixing.
+        var firstError = document.querySelector('.sp-join-form .sp-field-error input, .sp-join-form .sp-field-error select');
+        if (firstError) {
+            firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            firstError.focus();
+        }
     })();
     </script>
 
@@ -42716,7 +43591,7 @@ function sp_send_event_reminders(): void {
 
     foreach ( $timings as $reminder_type => $days_before ) {
         // Find events happening exactly $days_before days from now
-        $target_date = date( 'Y-m-d', strtotime( "+{$days_before} days" ) );
+        $target_date = wp_date( 'Y-m-d', strtotime( "+{$days_before} days" ) );
 
         $events = $wpdb->get_results( $wpdb->prepare(
             "SELECT * FROM {$evt_table}
@@ -42942,12 +43817,12 @@ function sp_render_speakers_page(): void {
     ?>
     <div class="wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Speakers', 'societypress' ); ?></h1>
-        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-speaker-edit' ) ); ?>" class="page-title-action">Add New Speaker</a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-speaker-edit' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Add New Speaker', 'societypress' ); ?></a>
         <hr class="wp-header-end">
 
         <form method="get">
             <input type="hidden" name="page" value="sp-speakers">
-            <?php $table->search_box( 'Search Speakers', 'sp-speaker-search' ); ?>
+            <?php $table->search_box( __( 'Search Speakers', 'societypress' ), 'sp-speaker-search' ); ?>
         </form>
 
         <form method="post">
@@ -42993,7 +43868,7 @@ add_action( 'admin_init', function () {
 
     if ( empty( $data['name'] ) ) {
         // Can't save without a name — redirect back with error
-        wp_redirect( admin_url( 'admin.php?page=sp-speaker-edit&speaker_id=' . $speaker_id . '&error=name' ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-speaker-edit&speaker_id=' . $speaker_id . '&error=name' ) );
         exit;
     }
 
@@ -43004,7 +43879,7 @@ add_action( 'admin_init', function () {
         $speaker_id = $wpdb->insert_id;
     }
 
-    wp_redirect( admin_url( 'admin.php?page=sp-speakers&saved=1' ) );
+    wp_safe_redirect( admin_url( 'admin.php?page=sp-speakers&saved=1' ) );
     exit;
 } );
 
@@ -43038,7 +43913,7 @@ function sp_render_speaker_edit_page(): void {
         return $speaker && isset( $speaker->$field ) ? $speaker->$field : $default;
     };
 
-    $page_title = $speaker ? 'Edit Speaker' : 'Add New Speaker';
+    $page_title = $speaker ? __( 'Edit Speaker', 'societypress' ) : __( 'Add New Speaker', 'societypress' );
     ?>
     <div class="wrap">
         <h1><?php echo esc_html( $page_title ); ?></h1>
@@ -43240,7 +44115,7 @@ function sp_ajax_regenerate_occurrences(): void {
         while ( true ) {
             $interval_ts = strtotime( '+1 week', $interval_ts );
             if ( $interval_ts > $end_date ) break;
-            $dates[] = date( 'Y-m-d', $interval_ts );
+            $dates[] = wp_date( 'Y-m-d', $interval_ts );
         }
     } elseif ( strpos( $rule, 'monthly-nth:' ) === 0 ) {
         // monthly-nth:W-D — Wth day-D of each month (e.g., 2nd Saturday = 2-6)
@@ -43254,20 +44129,20 @@ function sp_ajax_regenerate_occurrences(): void {
         // Start from the month after the parent event
         $month_ts = strtotime( 'first day of +1 month', $start_ts );
         while ( $month_ts <= $end_date ) {
-            $year  = date( 'Y', $month_ts );
-            $month = date( 'n', $month_ts );
+            $year  = wp_date( 'Y', $month_ts );
+            $month = wp_date( 'n', $month_ts );
 
             // Find the Nth day_name of this month
             // WHY: "2nd Saturday" means we find the first Saturday, then add
             //      (N-1) weeks. If that's still in the same month, it's valid.
             $first_of_month = mktime( 0, 0, 0, $month, 1, $year );
-            $first_target_day = strtotime( "first {$day_name} of " . date( 'F Y', $first_of_month ) );
+            $first_target_day = strtotime( "first {$day_name} of " . wp_date( 'F Y', $first_of_month ) );
 
             if ( $first_target_day ) {
                 $target_date = strtotime( '+' . ( $week_num - 1 ) . ' weeks', $first_target_day );
                 // Make sure it's still in the same month
-                if ( (int) date( 'n', $target_date ) === $month && $target_date <= $end_date ) {
-                    $dates[] = date( 'Y-m-d', $target_date );
+                if ( (int) wp_date( 'n', $target_date ) === (int) $month && $target_date <= $end_date ) {
+                    $dates[] = wp_date( 'Y-m-d', $target_date );
                 }
             }
 
@@ -43280,16 +44155,16 @@ function sp_ajax_regenerate_occurrences(): void {
 
         $month_ts = strtotime( 'first day of +1 month', $start_ts );
         while ( $month_ts <= $end_date ) {
-            $year       = (int) date( 'Y', $month_ts );
-            $month      = (int) date( 'n', $month_ts );
-            $days_in_mo = (int) date( 't', $month_ts );
+            $year       = (int) wp_date( 'Y', $month_ts );
+            $month      = (int) wp_date( 'n', $month_ts );
+            $days_in_mo = (int) wp_date( 't', $month_ts );
 
             // If the target day exceeds this month's length, use last day
             $actual_day = min( $target_day, $days_in_mo );
             $target_ts  = mktime( 0, 0, 0, $month, $actual_day, $year );
 
             if ( $target_ts <= $end_date ) {
-                $dates[] = date( 'Y-m-d', $target_ts );
+                $dates[] = wp_date( 'Y-m-d', $target_ts );
             }
 
             $month_ts = strtotime( 'first day of +1 month', $month_ts );
@@ -44500,7 +45375,10 @@ function sp_backup_export_table( string $table, string $output_dir ): int {
     $handle = fopen( $file, 'w' );
     if ( ! $handle ) return 0;
 
-    // Header comment so anyone reading the raw SQL knows what this is
+    // WHY no $wpdb->prepare() for table names: MySQL prepared statements cannot
+    // parameterize identifiers (table/column names), only values. The table names
+    // come from sp_backup_get_tables() which returns only hardcoded SP table names
+    // and WP core table names — never user input. This is architecturally correct.
     $row_count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM `{$table}`" );
     fwrite( $handle, "-- SocietyPress Backup: {$table}\n" );
     fwrite( $handle, "-- Generated: " . current_time( 'mysql' ) . "\n" );
@@ -45014,6 +45892,1060 @@ function sp_run_scheduled_backup(): void {
 }
 
 
+// ============================================================================
+// BACKUPS — Admin Page, AJAX Handlers, Cron Wiring
+//
+// WHY: The backup infrastructure (table creation, directory management, table
+//      export, ZIP creation, scheduling, pruning) is all built above. This
+//      section adds the user-facing admin page where Harold can trigger manual
+//      backups, view/download/delete existing archives, and configure the
+//      automated backup schedule. Without this, the backup system is invisible.
+// ============================================================================
+
+
+/**
+ * Render the Backups admin page.
+ *
+ * WHY: Harold needs a single page where he can:
+ *      1. Create an immediate backup with one click
+ *      2. See all existing backups with date, size, type, and status
+ *      3. Download or delete any backup
+ *      4. Configure automated backup schedule and retention
+ *      All in one place, no digging through multiple screens.
+ */
+function sp_render_backup_page(): void {
+    global $wpdb;
+    $prefix   = $wpdb->prefix . 'sp_';
+    $settings = get_option( 'societypress_settings', [] );
+
+    // Fetch all backups, newest first
+    $backups = $wpdb->get_results(
+        "SELECT * FROM {$prefix}backups ORDER BY created_at DESC"
+    );
+
+    // Current settings with defaults
+    $auto_enabled     = ! empty( $settings['backup_auto_enabled'] );
+    $day_of_month     = (int) ( $settings['backup_day_of_month'] ?? 1 );
+    $retention        = (int) ( $settings['backup_retention'] ?? 3 );
+    $email_notify     = ! empty( $settings['backup_email_notify'] );
+    $email_attach     = ! empty( $settings['backup_email_attach'] );
+    $include_db       = isset( $settings['backup_include_db'] ) ? (int) $settings['backup_include_db'] : 1;
+    $include_uploads  = ! empty( $settings['backup_include_uploads'] );
+    $include_settings = isset( $settings['backup_include_settings'] ) ? (int) $settings['backup_include_settings'] : 1;
+
+    // Nonces for AJAX operations
+    $backup_nonce   = wp_create_nonce( 'sp_create_manual_backup' );
+    $delete_nonce   = wp_create_nonce( 'sp_delete_backup' );
+    $download_nonce = wp_create_nonce( 'sp_download_backup' );
+    $settings_nonce = wp_create_nonce( 'sp_save_backup_settings' );
+    ?>
+    <div class="wrap">
+        <h1 class="wp-heading-inline"><?php esc_html_e( 'Backups', 'societypress' ); ?></h1>
+        <hr class="wp-header-end">
+
+        <?php if ( isset( $_GET['settings-saved'] ) && $_GET['settings-saved'] === '1' ) : ?>
+            <div class="notice notice-success is-dismissible">
+                <p><?php esc_html_e( 'Backup settings saved.', 'societypress' ); ?></p>
+            </div>
+        <?php endif; ?>
+
+        <!-- Status messages inserted by JS -->
+        <div id="sp-backup-notices"></div>
+
+        <!-- ============================================================ -->
+        <!-- Back Up Now — Primary Action                                 -->
+        <!-- ============================================================ -->
+        <div class="sp-backup-action-card">
+            <h2><?php esc_html_e( 'Create Backup', 'societypress' ); ?></h2>
+            <p class="sp-backup-action-description">
+                <?php esc_html_e( 'Create an immediate backup of your society\'s database and settings. This may take a few minutes for large databases.', 'societypress' ); ?>
+            </p>
+            <button type="button" id="sp-backup-now-btn" class="button button-primary button-hero">
+                <?php esc_html_e( 'Back Up Now', 'societypress' ); ?>
+            </button>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- Existing Backups Table                                       -->
+        <!-- ============================================================ -->
+        <h2><?php esc_html_e( 'Existing Backups', 'societypress' ); ?></h2>
+
+        <?php if ( empty( $backups ) ) : ?>
+            <p class="sp-backup-empty-message">
+                <?php esc_html_e( 'No backups yet. Click "Back Up Now" to create your first backup.', 'societypress' ); ?>
+            </p>
+        <?php else : ?>
+            <table class="widefat striped sp-backup-table" id="sp-backup-table">
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e( 'Date', 'societypress' ); ?></th>
+                        <th><?php esc_html_e( 'Size', 'societypress' ); ?></th>
+                        <th><?php esc_html_e( 'Type', 'societypress' ); ?></th>
+                        <th><?php esc_html_e( 'Contents', 'societypress' ); ?></th>
+                        <th><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                        <th><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ( $backups as $backup ) : ?>
+                        <tr data-backup-id="<?php echo esc_attr( $backup->id ); ?>">
+                            <td>
+                                <?php
+                                // WHY: Show both date and time so Harold can distinguish
+                                // between a morning manual backup and an afternoon one.
+                                echo esc_html( wp_date( 'M j, Y \a\t g:i A', strtotime( $backup->created_at ) ) );
+                                ?>
+                            </td>
+                            <td>
+                                <?php
+                                if ( $backup->status === 'complete' && $backup->file_size > 0 ) {
+                                    echo esc_html( size_format( $backup->file_size, 1 ) );
+                                } else {
+                                    echo '&mdash;';
+                                }
+                                ?>
+                            </td>
+                            <td>
+                                <?php
+                                // WHY: Distinguish manual from scheduled so Harold knows
+                                // which backups he triggered vs. which ran automatically.
+                                if ( $backup->trigger_type === 'manual' ) {
+                                    esc_html_e( 'Manual', 'societypress' );
+                                } else {
+                                    esc_html_e( 'Scheduled', 'societypress' );
+                                }
+                                ?>
+                            </td>
+                            <td>
+                                <?php
+                                // WHY: Show what's included so Harold knows whether an
+                                // older backup has his uploads or just the database.
+                                $parts = [];
+                                if ( $backup->includes_db )       $parts[] = __( 'Database', 'societypress' );
+                                if ( $backup->includes_settings ) $parts[] = __( 'Settings', 'societypress' );
+                                if ( $backup->includes_uploads )  $parts[] = __( 'Uploads', 'societypress' );
+                                echo esc_html( implode( ', ', $parts ) ?: '—' );
+                                ?>
+                            </td>
+                            <td>
+                                <?php
+                                $status_labels = [
+                                    'complete' => __( 'Complete', 'societypress' ),
+                                    'running'  => __( 'Running', 'societypress' ),
+                                    'pending'  => __( 'Pending', 'societypress' ),
+                                    'failed'   => __( 'Failed', 'societypress' ),
+                                ];
+                                $status_classes = [
+                                    'complete' => 'sp-backup-status-complete',
+                                    'running'  => 'sp-backup-status-running',
+                                    'pending'  => 'sp-backup-status-pending',
+                                    'failed'   => 'sp-backup-status-failed',
+                                ];
+                                $status_label = $status_labels[ $backup->status ] ?? $backup->status;
+                                $status_class = $status_classes[ $backup->status ] ?? '';
+                                ?>
+                                <span class="sp-backup-status <?php echo esc_attr( $status_class ); ?>">
+                                    <?php echo esc_html( $status_label ); ?>
+                                </span>
+                                <?php if ( $backup->status === 'failed' && ! empty( $backup->note ) ) : ?>
+                                    <span class="sp-backup-note"><?php echo esc_html( $backup->note ); ?></span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php if ( $backup->status === 'complete' ) : ?>
+                                    <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=sp_download_backup&id=' . $backup->id . '&nonce=' . $download_nonce ) ); ?>" class="button button-small">
+                                        <?php esc_html_e( 'Download', 'societypress' ); ?>
+                                    </a>
+                                <?php endif; ?>
+                                <?php if ( $backup->status !== 'running' ) : ?>
+                                    <button type="button" class="button button-small sp-backup-delete-btn" data-id="<?php echo esc_attr( $backup->id ); ?>">
+                                        <?php esc_html_e( 'Delete', 'societypress' ); ?>
+                                    </button>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+
+        <!-- ============================================================ -->
+        <!-- Backup Settings                                              -->
+        <!-- ============================================================ -->
+        <h2 class="sp-backup-settings-heading"><?php esc_html_e( 'Backup Settings', 'societypress' ); ?></h2>
+
+        <form id="sp-backup-settings-form" class="sp-backup-settings-form">
+            <table class="form-table" role="presentation">
+                <!-- What to include -->
+                <tr>
+                    <th scope="row"><?php esc_html_e( 'Include in Backups', 'societypress' ); ?></th>
+                    <td>
+                        <fieldset>
+                            <label>
+                                <input type="checkbox" name="backup_include_db" value="1" <?php checked( $include_db ); ?>>
+                                <?php esc_html_e( 'Database tables (members, events, library, etc.)', 'societypress' ); ?>
+                            </label>
+                            <br>
+                            <label>
+                                <input type="checkbox" name="backup_include_settings" value="1" <?php checked( $include_settings ); ?>>
+                                <?php esc_html_e( 'Settings and configuration', 'societypress' ); ?>
+                            </label>
+                            <br>
+                            <label>
+                                <input type="checkbox" name="backup_include_uploads" value="1" <?php checked( $include_uploads ); ?>>
+                                <?php esc_html_e( 'Uploaded files (photos, documents)', 'societypress' ); ?>
+                            </label>
+                            <p class="description">
+                                <?php esc_html_e( 'Including uploads can make backups very large. Your hosting provider likely already backs up files separately.', 'societypress' ); ?>
+                            </p>
+                        </fieldset>
+                    </td>
+                </tr>
+
+                <!-- Automated backup toggle -->
+                <tr>
+                    <th scope="row"><?php esc_html_e( 'Automated Backups', 'societypress' ); ?></th>
+                    <td>
+                        <label>
+                            <input type="checkbox" name="backup_auto_enabled" id="sp-backup-auto-toggle" value="1" <?php checked( $auto_enabled ); ?>>
+                            <?php esc_html_e( 'Enable automated monthly backup', 'societypress' ); ?>
+                        </label>
+                        <p class="description">
+                            <?php esc_html_e( 'When enabled, a backup runs automatically on the selected day each month.', 'societypress' ); ?>
+                        </p>
+                    </td>
+                </tr>
+
+                <!-- Day of month -->
+                <tr class="sp-backup-auto-row">
+                    <th scope="row">
+                        <label for="sp-backup-day"><?php esc_html_e( 'Day of Month', 'societypress' ); ?></label>
+                    </th>
+                    <td>
+                        <select name="backup_day_of_month" id="sp-backup-day">
+                            <?php for ( $d = 1; $d <= 28; $d++ ) : ?>
+                                <option value="<?php echo esc_attr( $d ); ?>" <?php selected( $day_of_month, $d ); ?>>
+                                    <?php echo esc_html( $d ); ?>
+                                </option>
+                            <?php endfor; ?>
+                        </select>
+                        <p class="description">
+                            <?php esc_html_e( 'Limited to 1–28 to avoid issues with shorter months.', 'societypress' ); ?>
+                        </p>
+                    </td>
+                </tr>
+
+                <!-- Retention -->
+                <tr>
+                    <th scope="row">
+                        <label for="sp-backup-retention"><?php esc_html_e( 'Keep Last', 'societypress' ); ?></label>
+                    </th>
+                    <td>
+                        <input type="number" name="backup_retention" id="sp-backup-retention"
+                               value="<?php echo esc_attr( $retention ); ?>"
+                               min="1" max="50" class="small-text">
+                        <?php esc_html_e( 'backups', 'societypress' ); ?>
+                        <p class="description">
+                            <?php esc_html_e( 'Older backups beyond this limit are automatically deleted to save disk space.', 'societypress' ); ?>
+                        </p>
+                    </td>
+                </tr>
+
+                <!-- Email notification -->
+                <tr>
+                    <th scope="row"><?php esc_html_e( 'Email Notification', 'societypress' ); ?></th>
+                    <td>
+                        <label>
+                            <input type="checkbox" name="backup_email_notify" value="1" <?php checked( $email_notify ); ?>>
+                            <?php esc_html_e( 'Send email when a backup completes', 'societypress' ); ?>
+                        </label>
+                    </td>
+                </tr>
+
+                <!-- Email attachment -->
+                <tr>
+                    <th scope="row"><?php esc_html_e( 'Email Delivery', 'societypress' ); ?></th>
+                    <td>
+                        <label>
+                            <input type="checkbox" name="backup_email_attach" value="1" <?php checked( $email_attach ); ?>>
+                            <?php esc_html_e( 'Attach backup file to notification email', 'societypress' ); ?>
+                        </label>
+                        <p class="description">
+                            <?php esc_html_e( 'Only attaches if the backup file is under 10 MB. Larger backups will include a download reminder instead.', 'societypress' ); ?>
+                        </p>
+                    </td>
+                </tr>
+            </table>
+
+            <p class="submit">
+                <button type="submit" class="button button-primary" id="sp-backup-save-settings-btn">
+                    <?php esc_html_e( 'Save Settings', 'societypress' ); ?>
+                </button>
+            </p>
+        </form>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- Backup Page Styles                                               -->
+    <!-- WHY: Scoped to the backup page. Structural layout rules that     -->
+    <!--      make the page readable and organized.                       -->
+    <!-- ================================================================ -->
+    <style>
+        /* sp-backup-action-card: The primary "Back Up Now" call-to-action area.
+         * WHY: Visually distinct from the rest of the page so Harold immediately
+         * sees the most important action. White card with border matches the
+         * existing SocietyPress admin card pattern. */
+        .sp-backup-action-card {
+            background: #fff;
+            border: 1px solid #c3c4c7;
+            border-radius: 4px;
+            padding: 20px 24px;
+            margin: 20px 0;
+            max-width: 700px;
+        }
+        .sp-backup-action-card h2 {
+            margin-top: 0;
+            margin-bottom: 8px;
+        }
+        .sp-backup-action-description {
+            color: #646970;
+            margin-bottom: 16px;
+        }
+
+        /* sp-backup-table: The existing backups list.
+         * WHY: Constrain width so it doesn't stretch across ultra-wide monitors.
+         * The status column uses inline color badges. */
+        .sp-backup-table {
+            max-width: 960px;
+        }
+        .sp-backup-empty-message {
+            color: #646970;
+            font-style: italic;
+        }
+        .sp-backup-status {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+            line-height: 1.6;
+        }
+        .sp-backup-status-complete {
+            background: #d4edda;
+            color: #155724;
+        }
+        .sp-backup-status-running {
+            background: #fff3cd;
+            color: #856404;
+        }
+        .sp-backup-status-pending {
+            background: #e2e3e5;
+            color: #383d41;
+        }
+        .sp-backup-status-failed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .sp-backup-note {
+            display: block;
+            font-size: 12px;
+            color: #721c24;
+            margin-top: 4px;
+        }
+
+        /* sp-backup-settings: Settings form section spacing. */
+        .sp-backup-settings-heading {
+            margin-top: 40px;
+        }
+        .sp-backup-settings-form {
+            max-width: 700px;
+        }
+
+        /* sp-backup-auto-row: Day-of-month row, hidden when auto is off.
+         * WHY: Don't show the day selector if automated backups are disabled —
+         * it's confusing to configure a schedule that isn't running. */
+        .sp-backup-auto-row {
+            transition: opacity 0.2s;
+        }
+        .sp-backup-auto-row.sp-hidden {
+            display: none;
+        }
+
+        /* Button states during AJAX operations */
+        .sp-backup-btn-working {
+            opacity: 0.7;
+            pointer-events: none;
+        }
+    </style>
+
+    <!-- ================================================================ -->
+    <!-- Backup Page JavaScript                                           -->
+    <!-- WHY: All AJAX interactions for the backup page — creating,       -->
+    <!--      deleting, and saving settings. Vanilla JS, no jQuery.       -->
+    <!-- ================================================================ -->
+    <script>
+    (function() {
+        'use strict';
+
+        var backupNonce   = <?php echo wp_json_encode( $backup_nonce ); ?>;
+        var deleteNonce   = <?php echo wp_json_encode( $delete_nonce ); ?>;
+        var settingsNonce = <?php echo wp_json_encode( $settings_nonce ); ?>;
+
+        // ---- Toggle day-of-month row visibility based on auto toggle ----
+        var autoToggle = document.getElementById('sp-backup-auto-toggle');
+        var autoRows   = document.querySelectorAll('.sp-backup-auto-row');
+
+        function updateAutoRowVisibility() {
+            autoRows.forEach(function(row) {
+                if (autoToggle && autoToggle.checked) {
+                    row.classList.remove('sp-hidden');
+                } else {
+                    row.classList.add('sp-hidden');
+                }
+            });
+        }
+
+        if (autoToggle) {
+            autoToggle.addEventListener('change', updateAutoRowVisibility);
+            updateAutoRowVisibility();
+        }
+
+        // ---- Helper: Show a notice at the top of the page ----
+        function showNotice(message, type) {
+            var container = document.getElementById('sp-backup-notices');
+            if (!container) return;
+            var div = document.createElement('div');
+            div.className = 'notice notice-' + (type || 'success') + ' is-dismissible';
+            div.innerHTML = '<p>' + message + '</p>' +
+                '<button type="button" class="notice-dismiss"><span class="screen-reader-text">' +
+                <?php echo wp_json_encode( __( 'Dismiss this notice.', 'societypress' ) ); ?> +
+                '</span></button>';
+            container.appendChild(div);
+            // Wire up the dismiss button
+            div.querySelector('.notice-dismiss').addEventListener('click', function() {
+                div.remove();
+            });
+        }
+
+        // ---- "Back Up Now" handler ----
+        var backupBtn = document.getElementById('sp-backup-now-btn');
+        if (backupBtn) {
+            backupBtn.addEventListener('click', function() {
+                backupBtn.disabled = true;
+                backupBtn.classList.add('sp-backup-btn-working');
+                backupBtn.innerHTML = '<span class="sp-spinner sp-spinner--light"></span> ' +
+                    <?php echo wp_json_encode( __( 'Creating backup...', 'societypress' ) ); ?>;
+
+                var formData = new FormData();
+                formData.append('action', 'sp_create_manual_backup');
+                formData.append('nonce', backupNonce);
+
+                fetch(ajaxurl, { method: 'POST', body: formData })
+                    .then(function(response) { return response.json(); })
+                    .then(function(data) {
+                        backupBtn.disabled = false;
+                        backupBtn.classList.remove('sp-backup-btn-working');
+                        backupBtn.textContent = <?php echo wp_json_encode( __( 'Back Up Now', 'societypress' ) ); ?>;
+
+                        if (data.success) {
+                            showNotice(data.data.message, 'success');
+                            // Reload the page to show the new backup in the table
+                            window.location.reload();
+                        } else {
+                            showNotice(data.data || <?php echo wp_json_encode( __( 'Backup failed. Please try again.', 'societypress' ) ); ?>, 'error');
+                        }
+                    })
+                    .catch(function() {
+                        backupBtn.disabled = false;
+                        backupBtn.classList.remove('sp-backup-btn-working');
+                        backupBtn.textContent = <?php echo wp_json_encode( __( 'Back Up Now', 'societypress' ) ); ?>;
+                        showNotice(<?php echo wp_json_encode( __( 'An unexpected error occurred. Please try again.', 'societypress' ) ); ?>, 'error');
+                    });
+            });
+        }
+
+        // ---- Delete backup handler ----
+        document.querySelectorAll('.sp-backup-delete-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var backupId = btn.getAttribute('data-id');
+                spConfirm(<?php echo wp_json_encode( __( 'Delete this backup? This cannot be undone.', 'societypress' ) ); ?>, function() {
+                    btn.disabled = true;
+                    btn.classList.add('sp-backup-btn-working');
+
+                    var formData = new FormData();
+                    formData.append('action', 'sp_delete_backup');
+                    formData.append('nonce', deleteNonce);
+                    formData.append('id', backupId);
+
+                    fetch(ajaxurl, { method: 'POST', body: formData })
+                        .then(function(response) { return response.json(); })
+                        .then(function(data) {
+                            if (data.success) {
+                                // Remove the row from the table
+                                var row = document.querySelector('tr[data-backup-id="' + backupId + '"]');
+                                if (row) row.remove();
+                                showNotice(data.data.message, 'success');
+                                // If no rows left, show the empty message
+                                var tbody = document.querySelector('#sp-backup-table tbody');
+                                if (tbody && tbody.children.length === 0) {
+                                    window.location.reload();
+                                }
+                            } else {
+                                btn.disabled = false;
+                                btn.classList.remove('sp-backup-btn-working');
+                                showNotice(data.data || <?php echo wp_json_encode( __( 'Could not delete backup.', 'societypress' ) ); ?>, 'error');
+                            }
+                        })
+                        .catch(function() {
+                            btn.disabled = false;
+                            btn.classList.remove('sp-backup-btn-working');
+                            showNotice(<?php echo wp_json_encode( __( 'An unexpected error occurred.', 'societypress' ) ); ?>, 'error');
+                        });
+                });
+            });
+        });
+
+        // ---- Save settings handler ----
+        var settingsForm = document.getElementById('sp-backup-settings-form');
+        if (settingsForm) {
+            settingsForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                var saveBtn = document.getElementById('sp-backup-save-settings-btn');
+                if (saveBtn) {
+                    saveBtn.disabled = true;
+                    saveBtn.classList.add('sp-backup-btn-working');
+                }
+
+                var formData = new FormData(settingsForm);
+                formData.append('action', 'sp_save_backup_settings');
+                formData.append('nonce', settingsNonce);
+
+                fetch(ajaxurl, { method: 'POST', body: formData })
+                    .then(function(response) { return response.json(); })
+                    .then(function(data) {
+                        if (saveBtn) {
+                            saveBtn.disabled = false;
+                            saveBtn.classList.remove('sp-backup-btn-working');
+                        }
+                        if (data.success) {
+                            showNotice(data.data.message, 'success');
+                        } else {
+                            showNotice(data.data || <?php echo wp_json_encode( __( 'Could not save settings.', 'societypress' ) ); ?>, 'error');
+                        }
+                    })
+                    .catch(function() {
+                        if (saveBtn) {
+                            saveBtn.disabled = false;
+                            saveBtn.classList.remove('sp-backup-btn-working');
+                        }
+                        showNotice(<?php echo wp_json_encode( __( 'An unexpected error occurred.', 'societypress' ) ); ?>, 'error');
+                    });
+            });
+        }
+    })();
+    </script>
+    <?php
+}
+
+
+// ============================================================================
+// BACKUPS — AJAX: Create Manual Backup
+//
+// WHY: The "Back Up Now" button triggers this. It reuses the same export
+//      pipeline as sp_run_scheduled_backup() but sets trigger_type to 'manual'
+//      and returns JSON instead of running silently via cron.
+// ============================================================================
+add_action( 'wp_ajax_sp_create_manual_backup', function() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( __( 'You do not have permission to create backups.', 'societypress' ) );
+    }
+    if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_create_manual_backup' ) ) {
+        wp_send_json_error( __( 'Security check failed. Please reload the page and try again.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $prefix   = $wpdb->prefix . 'sp_';
+    $settings = get_option( 'societypress_settings', [] );
+
+    // Don't allow overlapping backups
+    $running = $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$prefix}backups WHERE status = 'running' AND created_at > DATE_SUB(NOW(), INTERVAL 30 MINUTE)"
+    );
+    if ( $running > 0 ) {
+        wp_send_json_error( __( 'A backup is already in progress. Please wait for it to complete.', 'societypress' ) );
+    }
+
+    // Clean up any stale records first
+    sp_cleanup_stale_backups();
+
+    // Give the backup room to run — shared hosting often has 30s default
+    set_time_limit( 600 );
+
+    $include_db       = ! empty( $settings['backup_include_db'] );
+    $include_uploads  = ! empty( $settings['backup_include_uploads'] );
+    $include_settings = isset( $settings['backup_include_settings'] ) ? (int) $settings['backup_include_settings'] : 1;
+
+    // At least one component must be included
+    if ( ! $include_db && ! $include_uploads && ! $include_settings ) {
+        wp_send_json_error( __( 'Nothing to back up — all backup components are disabled in settings.', 'societypress' ) );
+    }
+
+    $backup_dir = sp_get_backup_dir();
+    $token      = wp_generate_password( 8, false );
+    $date_str   = current_time( 'Y-m-d-His' );
+    $filename   = "sp-backup-{$date_str}-{$token}.zip";
+
+    // Determine backup type label
+    $type = 'full';
+    if ( $include_db && ! $include_uploads ) $type = 'db_only';
+    if ( ! $include_db && $include_uploads )  $type = 'uploads_only';
+
+    // Create metadata row
+    $wpdb->insert( $prefix . 'backups', [
+        'filename'          => $filename,
+        'backup_type'       => $type,
+        'includes_db'       => $include_db ? 1 : 0,
+        'includes_uploads'  => $include_uploads ? 1 : 0,
+        'includes_settings' => $include_settings ? 1 : 0,
+        'status'            => 'running',
+        'trigger_type'      => 'manual',
+        'created_by'        => get_current_user_id(),
+        'started_at'        => current_time( 'mysql' ),
+    ] );
+    $backup_id = (int) $wpdb->insert_id;
+
+    if ( ! $backup_id ) {
+        wp_send_json_error( __( 'Could not create backup record in the database.', 'societypress' ) );
+    }
+
+    $temp_dir     = $backup_dir . '/tmp-' . $backup_id;
+    wp_mkdir_p( $temp_dir );
+    $tables_count = 0;
+    $files_count  = 0;
+
+    try {
+        // ---- Export database tables ----
+        if ( $include_db ) {
+            $db_dir = $temp_dir . '/database';
+            wp_mkdir_p( $db_dir );
+            $tables = sp_backup_get_tables();
+            foreach ( $tables as $table ) {
+                sp_backup_export_table( $table, $db_dir );
+                $tables_count++;
+            }
+        }
+
+        // ---- Export settings ----
+        if ( $include_settings ) {
+            $settings_dir = $temp_dir . '/settings';
+            wp_mkdir_p( $settings_dir );
+            sp_backup_export_settings( $settings_dir );
+        }
+
+        // ---- Copy uploads ----
+        if ( $include_uploads ) {
+            $upload_dir   = wp_upload_dir();
+            $uploads_src  = $upload_dir['basedir'];
+            $uploads_dest = $temp_dir . '/uploads';
+            wp_mkdir_p( $uploads_dest );
+
+            $iterator = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator( $uploads_src, RecursiveDirectoryIterator::SKIP_DOTS ),
+                RecursiveIteratorIterator::SELF_FIRST
+            );
+
+            foreach ( $iterator as $item ) {
+                $relative = substr( $item->getPathname(), strlen( $uploads_src ) + 1 );
+                // Skip the backups directory itself
+                if ( strpos( $relative, 'sp-backups' ) === 0 ) continue;
+
+                $dest_path = $uploads_dest . '/' . $relative;
+                if ( $item->isDir() ) {
+                    wp_mkdir_p( $dest_path );
+                } else {
+                    copy( $item->getPathname(), $dest_path );
+                    $files_count++;
+                }
+            }
+        }
+
+        // ---- Create manifest ----
+        sp_backup_create_manifest( $temp_dir, [
+            'db'         => $include_db,
+            'uploads'    => $include_uploads,
+            'settings'   => $include_settings,
+            'tables'     => $include_db ? sp_backup_get_tables() : [],
+            'file_count' => $files_count,
+        ] );
+
+        // ---- Create ZIP ----
+        $zip_path = $backup_dir . '/' . $filename;
+        $success  = sp_backup_create_zip( $temp_dir, $zip_path );
+
+        if ( $success && file_exists( $zip_path ) ) {
+            $file_size = filesize( $zip_path );
+            $wpdb->update( $prefix . 'backups', [
+                'status'       => 'complete',
+                'file_size'    => $file_size,
+                'tables_count' => $tables_count,
+                'files_count'  => $files_count,
+                'completed_at' => current_time( 'mysql' ),
+            ], [ 'id' => $backup_id ] );
+
+            sp_audit( 'backup_created', sprintf(
+                'Manual backup created: %d tables, %d files, %s',
+                $tables_count, $files_count, size_format( $file_size )
+            ), 'backup', $backup_id );
+
+            // Enforce retention
+            sp_prune_old_backups();
+
+            // Clean up temp
+            sp_backup_rmdir( $temp_dir );
+
+            wp_send_json_success( [
+                'message' => sprintf(
+                    /* translators: %s: human-readable file size like "2.4 MB" */
+                    __( 'Backup created successfully (%s).', 'societypress' ),
+                    size_format( $file_size, 1 )
+                ),
+                'id' => $backup_id,
+            ] );
+        } else {
+            $wpdb->update( $prefix . 'backups', [
+                'status' => 'failed',
+                'note'   => __( 'ZIP creation failed.', 'societypress' ),
+            ], [ 'id' => $backup_id ] );
+
+            sp_backup_rmdir( $temp_dir );
+            wp_send_json_error( __( 'Backup failed — could not create ZIP archive.', 'societypress' ) );
+        }
+    } catch ( \Throwable $e ) {
+        $wpdb->update( $prefix . 'backups', [
+            'status' => 'failed',
+            'note'   => $e->getMessage(),
+        ], [ 'id' => $backup_id ] );
+        error_log( 'SocietyPress Manual Backup error: ' . $e->getMessage() );
+        sp_backup_rmdir( $temp_dir );
+        wp_send_json_error( __( 'Backup failed due to an unexpected error. Check the server error log for details.', 'societypress' ) );
+    }
+} );
+
+
+// ============================================================================
+// BACKUPS — AJAX: Download Backup
+//
+// WHY: Backup ZIPs live in a .htaccess-protected directory — they can't be
+//      downloaded via direct URL (by design, since they contain sensitive data).
+//      This handler verifies the user is an admin, looks up the backup record,
+//      and streams the file with proper Content-Disposition headers.
+// ============================================================================
+add_action( 'wp_ajax_sp_download_backup', function() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You do not have permission to download backups.', 'societypress' ) );
+    }
+    if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_download_backup' ) ) {
+        wp_die( esc_html__( 'Security check failed. Please reload the page and try again.', 'societypress' ) );
+    }
+
+    $id = (int) ( $_GET['id'] ?? 0 );
+    if ( ! $id ) {
+        wp_die( esc_html__( 'Invalid backup ID.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    $backup = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$prefix}backups WHERE id = %d AND status = 'complete'",
+        $id
+    ) );
+
+    if ( ! $backup ) {
+        wp_die( esc_html__( 'Backup not found or not yet complete.', 'societypress' ) );
+    }
+
+    $file_path = sp_get_backup_dir() . '/' . $backup->filename;
+    if ( ! file_exists( $file_path ) ) {
+        wp_die( esc_html__( 'Backup file not found on disk. It may have been manually deleted.', 'societypress' ) );
+    }
+
+    // Stream the file to the browser
+    header( 'Content-Type: application/zip' );
+    header( 'Content-Disposition: attachment; filename="' . basename( $backup->filename ) . '"' );
+    header( 'Content-Length: ' . filesize( $file_path ) );
+    header( 'Pragma: no-cache' );
+    header( 'Expires: 0' );
+
+    // WHY readfile() instead of file_get_contents(): readfile() streams the
+    // file directly to output without loading it all into memory. A 200MB
+    // backup ZIP would crash PHP with file_get_contents().
+    readfile( $file_path );
+    exit;
+} );
+
+
+// ============================================================================
+// BACKUPS — AJAX: Delete Backup
+//
+// WHY: Harold needs to free disk space or remove old backups he no longer
+//      needs. This deletes both the ZIP file on disk and the metadata row
+//      in sp_backups.
+// ============================================================================
+add_action( 'wp_ajax_sp_delete_backup', function() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( __( 'You do not have permission to delete backups.', 'societypress' ) );
+    }
+    if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_delete_backup' ) ) {
+        wp_send_json_error( __( 'Security check failed. Please reload the page and try again.', 'societypress' ) );
+    }
+
+    $id = (int) ( $_POST['id'] ?? 0 );
+    if ( ! $id ) {
+        wp_send_json_error( __( 'Invalid backup ID.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    $backup = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$prefix}backups WHERE id = %d",
+        $id
+    ) );
+
+    if ( ! $backup ) {
+        wp_send_json_error( __( 'Backup not found.', 'societypress' ) );
+    }
+
+    // Delete the file from disk
+    $file_path = sp_get_backup_dir() . '/' . $backup->filename;
+    if ( file_exists( $file_path ) ) {
+        wp_delete_file( $file_path );
+    }
+
+    // Delete the database row
+    $wpdb->delete( $prefix . 'backups', [ 'id' => $id ] );
+
+    sp_audit( 'backup_deleted', sprintf(
+        'Backup deleted: %s (%s)',
+        $backup->filename,
+        size_format( $backup->file_size )
+    ), 'backup', $id );
+
+    wp_send_json_success( [
+        'message' => __( 'Backup deleted.', 'societypress' ),
+    ] );
+} );
+
+
+// ============================================================================
+// BACKUPS — AJAX: Save Backup Settings
+//
+// WHY: The settings form on the Backups page saves via AJAX so Harold doesn't
+//      have to leave the page or lose his scroll position. All backup-related
+//      settings are stored in the main societypress_settings option array.
+// ============================================================================
+add_action( 'wp_ajax_sp_save_backup_settings', function() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( __( 'You do not have permission to change backup settings.', 'societypress' ) );
+    }
+    if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_save_backup_settings' ) ) {
+        wp_send_json_error( __( 'Security check failed. Please reload the page and try again.', 'societypress' ) );
+    }
+
+    $settings = get_option( 'societypress_settings', [] );
+
+    // What to include
+    $settings['backup_include_db']       = ! empty( $_POST['backup_include_db'] ) ? 1 : 0;
+    $settings['backup_include_settings'] = ! empty( $_POST['backup_include_settings'] ) ? 1 : 0;
+    $settings['backup_include_uploads']  = ! empty( $_POST['backup_include_uploads'] ) ? 1 : 0;
+
+    // Automated backup toggle
+    $settings['backup_auto_enabled'] = ! empty( $_POST['backup_auto_enabled'] ) ? 1 : 0;
+
+    // Day of month — clamp to 1–28
+    $day = (int) ( $_POST['backup_day_of_month'] ?? 1 );
+    $settings['backup_day_of_month'] = max( 1, min( 28, $day ) );
+
+    // Retention — at least 1, sane maximum of 50
+    $retention = (int) ( $_POST['backup_retention'] ?? 3 );
+    $settings['backup_retention'] = max( 1, min( 50, $retention ) );
+
+    // Email notification
+    $settings['backup_email_notify'] = ! empty( $_POST['backup_email_notify'] ) ? 1 : 0;
+    $settings['backup_email_attach'] = ! empty( $_POST['backup_email_attach'] ) ? 1 : 0;
+
+    // WHY: When the auto toggle changes, we need to reschedule or clear the
+    // cron. The existing 'init' handler reads backup_frequency, so we sync
+    // that setting here. When auto is enabled, we set frequency to 'daily'
+    // (the cron fires daily and the handler checks if today matches the
+    // configured day_of_month). When disabled, we set 'off' to clear cron.
+    if ( ! empty( $settings['backup_auto_enabled'] ) ) {
+        $settings['backup_frequency'] = 'daily';
+    } else {
+        $settings['backup_frequency'] = 'off';
+    }
+
+    update_option( 'societypress_settings', $settings );
+
+    // If auto was just turned off, clear any scheduled cron immediately
+    if ( empty( $settings['backup_auto_enabled'] ) ) {
+        wp_clear_scheduled_hook( 'sp_backup_cron' );
+    }
+
+    sp_audit( 'backup_settings_changed', __( 'Backup settings updated.', 'societypress' ), 'settings' );
+
+    wp_send_json_success( [
+        'message' => __( 'Backup settings saved.', 'societypress' ),
+    ] );
+} );
+
+
+// ============================================================================
+// BACKUPS — Cron: Monthly Day-of-Month Check + Email Notification
+//
+// WHY: The existing cron fires daily (when auto-enabled). This filter wraps
+//      the cron handler to check whether today matches the configured
+//      day_of_month before running. After a successful backup, it sends an
+//      email notification if that setting is on, optionally attaching the ZIP
+//      if it's under 10 MB.
+// ============================================================================
+add_action( 'sp_backup_cron', 'sp_backup_cron_monthly_gate', 5 );
+
+/**
+ * Gate the scheduled backup to only run on the configured day of the month.
+ *
+ * WHY: The cron fires daily so we can do the day-of-month check in PHP rather
+ *      than trying to schedule a "monthly" WordPress cron (which WP doesn't
+ *      natively support). If today isn't the right day, we bail before the
+ *      actual backup runs — sp_run_scheduled_backup is hooked at default
+ *      priority 10, so this priority-5 hook can remove it to prevent execution.
+ */
+function sp_backup_cron_monthly_gate(): void {
+    $settings = get_option( 'societypress_settings', [] );
+
+    // If auto backups are disabled, don't run
+    if ( empty( $settings['backup_auto_enabled'] ) ) {
+        remove_action( 'sp_backup_cron', 'sp_run_scheduled_backup' );
+        return;
+    }
+
+    // Check if today matches the configured day of month
+    $target_day = (int) ( $settings['backup_day_of_month'] ?? 1 );
+    $today      = (int) current_time( 'j' ); // Day of the month without leading zeros
+
+    if ( $today !== $target_day ) {
+        // Not the right day — prevent sp_run_scheduled_backup from running
+        remove_action( 'sp_backup_cron', 'sp_run_scheduled_backup' );
+        return;
+    }
+
+    // It IS the right day — sp_run_scheduled_backup will fire at priority 10.
+    // After it runs, we send the notification email (priority 15).
+}
+
+
+add_action( 'sp_backup_cron', 'sp_backup_cron_email_notification', 15 );
+
+/**
+ * Send email notification after a scheduled backup completes.
+ *
+ * WHY: Harold may not log in every day. An email confirms the backup ran
+ *      successfully (or warns him if it failed) without him having to check.
+ *      If the "attach ZIP" option is on and the file is under 10 MB, we
+ *      include it — so Harold has an off-site copy in his email archive.
+ *      The 10 MB limit prevents bounced emails from hosts with attachment
+ *      size restrictions.
+ */
+function sp_backup_cron_email_notification(): void {
+    $settings = get_option( 'societypress_settings', [] );
+
+    // Only send if notification is enabled
+    if ( empty( $settings['backup_email_notify'] ) ) {
+        return;
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // Find the most recent backup (the one we just created)
+    $backup = $wpdb->get_row(
+        "SELECT * FROM {$prefix}backups WHERE trigger_type = 'scheduled' ORDER BY created_at DESC LIMIT 1"
+    );
+
+    if ( ! $backup ) {
+        return;
+    }
+
+    // Only notify for backups created in the last 10 minutes (i.e., the one
+    // that just ran, not an old one from last month)
+    $backup_time = strtotime( $backup->created_at );
+    if ( $backup_time < time() - 600 ) {
+        return;
+    }
+
+    $admin_email = get_option( 'admin_email' );
+    $site_name   = get_bloginfo( 'name' );
+
+    if ( $backup->status === 'complete' ) {
+        $subject = sprintf(
+            /* translators: %s: site name */
+            __( '[%s] Backup completed successfully', 'societypress' ),
+            $site_name
+        );
+        $message = sprintf(
+            /* translators: 1: site name, 2: date/time, 3: file size */
+            __( "A scheduled backup of %1\$s completed successfully.\n\nDate: %2\$s\nSize: %3\$s\nTables: %4\$d\n\nYou can download this backup from the Backups page in your admin panel.", 'societypress' ),
+            $site_name,
+            wp_date( 'F j, Y \a\t g:i A', strtotime( $backup->completed_at ) ),
+            size_format( $backup->file_size, 1 ),
+            $backup->tables_count
+        );
+    } else {
+        $subject = sprintf(
+            /* translators: %s: site name */
+            __( '[%s] Backup failed', 'societypress' ),
+            $site_name
+        );
+        $message = sprintf(
+            /* translators: 1: site name, 2: error note */
+            __( "A scheduled backup of %1\$s failed.\n\nError: %2\$s\n\nPlease check the Backups page in your admin panel.", 'societypress' ),
+            $site_name,
+            $backup->note ?: __( 'Unknown error', 'societypress' )
+        );
+    }
+
+    $attachments = [];
+
+    // Attach the ZIP if enabled, the backup succeeded, and it's under 10 MB
+    // WHY 10 MB: Most email providers and shared hosting SMTP relays reject
+    // attachments larger than 10-25 MB. 10 MB is the safe floor that works
+    // everywhere — Gmail, Outlook, Fastmail, and budget SMTP services.
+    if ( $backup->status === 'complete'
+         && ! empty( $settings['backup_email_attach'] )
+         && $backup->file_size > 0
+         && $backup->file_size <= 10 * 1024 * 1024 ) {
+
+        $file_path = sp_get_backup_dir() . '/' . $backup->filename;
+        if ( file_exists( $file_path ) ) {
+            $attachments[] = $file_path;
+        }
+    }
+
+    // If attachment was requested but file is too large, note that in the email
+    if ( $backup->status === 'complete'
+         && ! empty( $settings['backup_email_attach'] )
+         && $backup->file_size > 10 * 1024 * 1024 ) {
+
+        $message .= "\n\n" . sprintf(
+            /* translators: %s: file size */
+            __( 'Note: The backup file (%s) exceeds the 10 MB email attachment limit. Please download it from the admin panel.', 'societypress' ),
+            size_format( $backup->file_size, 1 )
+        );
+    }
+
+    wp_mail( $admin_email, $subject, $message, '', $attachments );
+}
+
+
 /**
  * Create a Stripe Checkout Session for an event registration payment.
  *
@@ -45186,6 +47118,12 @@ add_action( 'template_redirect', function () {
 
     if ( ! $reg || $reg->payment_status === 'paid' ) return;
 
+    // WHY: Prevent a logged-in user from confirming payment for another user's
+    // registration by visiting the success URL with someone else's session ID.
+    if ( is_user_logged_in() && $reg->user_id && (int) $reg->user_id !== get_current_user_id() ) {
+        return;
+    }
+
     $wpdb->update(
         $reg_table,
         [
@@ -45317,7 +47255,7 @@ function sp_ical_build_dt_lines( object $event ): array {
 
     // All-day event — use DATE format (no time component)
     $date_val = str_replace( '-', '', $event_date );
-    $next_day = date( 'Ymd', strtotime( $event_date . ' +1 day' ) );
+    $next_day = wp_date( 'Ymd', strtotime( $event_date . ' +1 day' ) );
 
     return [
         'dtstart' => 'DTSTART;VALUE=DATE:' . $date_val,
@@ -46016,9 +47954,9 @@ function sp_render_builder_widget_volunteer_stats( array $s ): void {
     // Build date constraint based on time period
     $date_clause = '';
     if ( $period === 'year' ) {
-        $date_clause = $wpdb->prepare( ' AND vh.activity_date >= %s', date( 'Y-01-01' ) );
+        $date_clause = $wpdb->prepare( ' AND vh.activity_date >= %s', wp_date( 'Y-01-01' ) );
     } elseif ( $period === 'month' ) {
-        $date_clause = $wpdb->prepare( ' AND vh.activity_date >= %s', date( 'Y-m-01' ) );
+        $date_clause = $wpdb->prepare( ' AND vh.activity_date >= %s', wp_date( 'Y-m-01' ) );
     }
     // 'all' = no date constraint
 
@@ -48171,11 +50109,7 @@ function sp_render_gallery_page(): void {
                     });
             };
 
-            if (typeof spConfirm === 'function') {
-                spConfirm(msg, doDelete);
-            } else if (confirm(msg)) {
-                doDelete();
-            }
+            spConfirm(msg, doDelete);
         });
 
         // ---- Add Images (WP Media Library) ----
@@ -48302,11 +50236,7 @@ function sp_render_gallery_page(): void {
                     });
             };
 
-            if (typeof spConfirm === 'function') {
-                spConfirm(msg, doRemove);
-            } else if (confirm(msg)) {
-                doRemove();
-            }
+            spConfirm(msg, doRemove);
         });
     });
     </script>
@@ -48887,19 +50817,19 @@ function sp_render_reports_page(): void {
     // Gather quick stats
     $total_members  = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}members" );
     $active_members = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}members WHERE status = 'active'" );
-    $total_events   = (int) $wpdb->get_var(
-        "SELECT COUNT(*) FROM {$prefix}events WHERE event_date >= '" . date( 'Y-01-01' ) . "'"
-    );
-    $volunteer_hours = (float) $wpdb->get_var(
-        "SELECT COALESCE(SUM(hours), 0) FROM {$prefix}volunteer_hours WHERE activity_date >= '" . date( 'Y-01-01' ) . "'"
-    );
+    $year_start      = wp_date( 'Y-01-01' );
+    $total_events    = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$prefix}events WHERE event_date >= %s", $year_start
+    ) );
+    $volunteer_hours = (float) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COALESCE(SUM(hours), 0) FROM {$prefix}volunteer_hours WHERE activity_date >= %s", $year_start
+    ) );
     $library_items   = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}library_items" );
     $help_requests   = (int) $wpdb->get_var(
         "SELECT COUNT(*) FROM {$prefix}help_requests WHERE status = 'open'"
     );
 
     // Donation stats for this year
-    $year_start     = date( 'Y-01-01' );
     $donations_year = (float) $wpdb->get_var( $wpdb->prepare(
         "SELECT COALESCE(SUM(amount), 0) FROM {$prefix}donations WHERE date >= %s", $year_start
     ) );
@@ -50274,7 +52204,7 @@ add_filter( 'template_include', function( $template ) {
     // own access (records: per-collection, store: public storefront, documents:
     // per-document access_level). Cart requires login to purchase.
     if ( ! in_array( $page_template, [ 'sp-records', 'sp-store', 'sp-cart', 'sp-documents' ], true ) && ! is_user_logged_in() ) {
-        wp_redirect( wp_login_url( get_permalink() ) );
+        wp_safe_redirect( wp_login_url( get_permalink() ) );
         exit;
     }
 
@@ -51139,8 +53069,8 @@ function sp_render_library_catalog_page(): void {
 
     <div class="wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Library Catalog', 'societypress' ); ?></h1>
-        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-item-edit' ) ); ?>" class="page-title-action">Add New Item</a>
-        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-import-library' ) ); ?>" class="page-title-action">Import CSV</a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-item-edit' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Add New Item', 'societypress' ); ?></a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-import-library' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Import CSV', 'societypress' ); ?></a>
         <?php
         // Export CSV button — passes current filters so admins export what they see
         $export_args = [ 'action' => 'sp_export_library' ];
@@ -51150,7 +53080,7 @@ function sp_render_library_catalog_page(): void {
         if ( $acq_filter )   $export_args['acq_code']    = $acq_filter;
         $export_url = wp_nonce_url( add_query_arg( $export_args, admin_url( 'admin-ajax.php' ) ), 'sp_export_library' );
         ?>
-        <a href="<?php echo esc_url( $export_url ); ?>" class="page-title-action">Export CSV</a>
+        <a href="<?php echo esc_url( $export_url ); ?>" class="page-title-action"><?php esc_html_e( 'Export CSV', 'societypress' ); ?></a>
         <hr class="wp-header-end">
 
         <?php
@@ -51168,19 +53098,19 @@ function sp_render_library_catalog_page(): void {
         <div class="sp-library-stats sp-catalog-stats-grid">
             <div class="sp-catalog-stat-card">
                 <div class="sp-catalog-stat-number sp-catalog-stat-number--total"><?php echo number_format( $stats_total ); ?></div>
-                <div class="sp-catalog-stat-label">Total Items</div>
+                <div class="sp-catalog-stat-label"><?php esc_html_e( 'Total Items', 'societypress' ); ?></div>
             </div>
             <div class="sp-catalog-stat-card">
                 <div class="sp-catalog-stat-number sp-catalog-stat-number--available"><?php echo number_format( $stats_available ); ?></div>
-                <div class="sp-catalog-stat-label">Available</div>
+                <div class="sp-catalog-stat-label"><?php esc_html_e( 'Available', 'societypress' ); ?></div>
             </div>
             <div class="sp-catalog-stat-card">
                 <div class="sp-catalog-stat-number sp-catalog-stat-number--value"><?php echo esc_html( sp_format_currency( $stats_value ) ); ?></div>
-                <div class="sp-catalog-stat-label">Collection Value</div>
+                <div class="sp-catalog-stat-label"><?php esc_html_e( 'Collection Value', 'societypress' ); ?></div>
             </div>
             <div class="sp-catalog-stat-card">
                 <div class="sp-catalog-stat-number sp-catalog-stat-number--types"><?php echo count( $media_types ); ?></div>
-                <div class="sp-catalog-stat-label">Media Types</div>
+                <div class="sp-catalog-stat-label"><?php esc_html_e( 'Media Types', 'societypress' ); ?></div>
             </div>
         </div>
 
@@ -51592,8 +53522,24 @@ function sp_render_library_item_edit_page(): void {
                     <th><label for="acq_code"><?php esc_html_e( 'How Acquired', 'societypress' ); ?></label></th>
                     <td>
                         <select name="acq_code" id="acq_code">
-                            <option value="">— Unknown —</option>
-                            <?php foreach ( [ 'Donation', 'Exchange', 'Gift', 'Memorial', 'Purchase', 'SAGHS Publication' ] as $code ) : ?>
+                            <option value=""><?php
+                                /* translators: default option when acquisition method is unknown */
+                                echo '— ' . esc_html__( 'Unknown', 'societypress' ) . ' —';
+                            ?></option>
+                            <?php
+                            // WHY: Build the option list dynamically by merging a
+                            // sensible set of defaults with any acq_codes that already
+                            // exist in the database. This removes the old hardcoded
+                            // "SAGHS Publication" and ensures society-specific codes
+                            // (entered via import or direct DB edit) always appear.
+                            $default_acq_codes = [ 'Donation', 'Exchange', 'Gift', 'Memorial', 'Purchase' ];
+                            $db_acq_codes      = $wpdb->get_col(
+                                "SELECT DISTINCT acq_code FROM {$prefix}library_items WHERE acq_code IS NOT NULL AND acq_code != '' ORDER BY acq_code ASC"
+                            );
+                            $all_acq_codes = array_unique( array_merge( $default_acq_codes, $db_acq_codes ) );
+                            sort( $all_acq_codes );
+                            foreach ( $all_acq_codes as $code ) :
+                            ?>
                                 <option value="<?php echo esc_attr( $code ); ?>" <?php selected( $item->acq_code ?? '', $code ); ?>><?php echo esc_html( $code ); ?></option>
                             <?php endforeach; ?>
                         </select>
@@ -55230,7 +57176,7 @@ function sp_render_volunteer_hours_page(): void {
     }
 
     // Summary stats
-    $year_start   = date( 'Y-01-01' );
+    $year_start   = wp_date( 'Y-01-01' );
     $total_hours  = (float) $wpdb->get_var( $wpdb->prepare(
         "SELECT COALESCE(SUM(hours), 0) FROM {$prefix}volunteer_hours WHERE activity_date >= %s", $year_start
     ) );
@@ -55382,7 +57328,7 @@ function sp_render_volunteer_hours_page(): void {
                 </div>
                 <div>
                     <label class="sp-vol-hours-field-label"><?php esc_html_e( 'Date', 'societypress' ); ?></label>
-                    <input type="date" name="activity_date" value="<?php echo date( 'Y-m-d' ); ?>">
+                    <input type="date" name="activity_date" value="<?php echo esc_attr( wp_date( 'Y-m-d' ) ); ?>">
                 </div>
                 <div>
                     <input type="submit" name="sp_log_volunteer_hours" class="button button-primary" value="<?php esc_attr_e( 'Log Hours', 'societypress' ); ?>">
@@ -55416,7 +57362,7 @@ add_action( 'admin_init', function() {
     );
 
     header( 'Content-Type: text/csv; charset=utf-8' );
-    header( 'Content-Disposition: attachment; filename=volunteer-hours-' . date( 'Y-m-d' ) . '.csv' );
+    header( 'Content-Disposition: attachment; filename=volunteer-hours-' . wp_date( 'Y-m-d' ) . '.csv' );
     $out = fopen( 'php://output', 'w' );
     fputcsv( $out, [ 'First Name', 'Last Name', 'Activity', 'Committee', 'Hours', 'Date' ] );
     foreach ( $rows as $row ) {
@@ -55464,7 +57410,7 @@ function sp_process_renewal_reminders(): void {
 
     // ---- Send renewal reminders for each enabled interval ----
     foreach ( $intervals as $days ) {
-        $target_date  = date( 'Y-m-d', strtotime( "+{$days} days" ) );
+        $target_date  = wp_date( 'Y-m-d', strtotime( "+{$days} days" ) );
         $reminder_key = "{$days}d_{$target_date}";
 
         // WHY: Join wp_users to get the email address. The old code joined a
@@ -55548,7 +57494,7 @@ function sp_process_expired_notices(): void {
         return;
     }
 
-    $yesterday    = date( 'Y-m-d', strtotime( '-1 day' ) );
+    $yesterday    = wp_date( 'Y-m-d', strtotime( '-1 day' ) );
     $reminder_key = 'expired_' . $yesterday;
     $site_name    = get_bloginfo( 'name' );
     $subject      = $settings['expired_notice_subject'] ?? 'Your {{organization_name}} membership has expired';
@@ -56698,7 +58644,7 @@ function sp_render_blast_email_page(): void {
     if ( isset( $_POST['action'] ) && $_POST['action'] === 'delete' && isset( $_POST['blast_id'] ) ) {
         check_admin_referer( 'sp_delete_blast_' . $_POST['blast_id'] );
         $wpdb->delete( $prefix . 'blast_emails', [ 'id' => (int) $_POST['blast_id'] ] );
-        wp_redirect( admin_url( 'admin.php?page=sp-blast-email&deleted=1' ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-blast-email&deleted=1' ) );
         exit;
     }
 
@@ -56891,12 +58837,12 @@ function sp_render_blast_email_detail( int $blast_id ): void {
 
     if ( ! $blast ) {
         echo '<div class="wrap"><h1>' . esc_html__( 'Blast Email Not Found', 'societypress' ) . '</h1>';
-        echo '<p><a href="' . admin_url( 'admin.php?page=sp-blast-email' ) . '">&larr; Back</a></p></div>';
+        echo '<p><a href="' . esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ) . '">&larr; ' . esc_html__( 'Back', 'societypress' ) . '</a></p></div>';
         return;
     }
 
     // Decode recipient filter for display
-    $filter_display = 'All Active Members';
+    $filter_display = __( 'All Active Members', 'societypress' );
     if ( $blast->recipient_type === 'group' && $blast->recipient_filter ) {
         $filter_data = json_decode( $blast->recipient_filter, true );
         if ( ! empty( $filter_data['group_ids'] ) ) {
@@ -56904,7 +58850,8 @@ function sp_render_blast_email_detail( int $blast_id ): void {
                 "SELECT name FROM {$prefix}groups WHERE id IN (%s)",
                 implode( ',', array_map( 'intval', $filter_data['group_ids'] ) )
             ) );
-            $filter_display = 'Groups: ' . implode( ', ', $group_names );
+            /* translators: %s: comma-separated list of group names */
+            $filter_display = sprintf( __( 'Groups: %s', 'societypress' ), implode( ', ', $group_names ) );
         }
     } elseif ( $blast->recipient_type === 'tier' && $blast->recipient_filter ) {
         $filter_data = json_decode( $blast->recipient_filter, true );
@@ -56913,23 +58860,27 @@ function sp_render_blast_email_detail( int $blast_id ): void {
                 "SELECT name FROM {$prefix}membership_tiers WHERE id IN (%s)",
                 implode( ',', array_map( 'intval', $filter_data['tier_ids'] ) )
             ) );
-            $filter_display = 'Tiers: ' . implode( ', ', $tier_names );
+            /* translators: %s: comma-separated list of tier names */
+            $filter_display = sprintf( __( 'Tiers: %s', 'societypress' ), implode( ', ', $tier_names ) );
         }
     }
 
     ?>
     <div class="wrap">
         <h1><?php echo esc_html( sprintf( __( 'Blast Email — %s', 'societypress' ), $blast->subject ) ); ?></h1>
-        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ); ?>">&larr; Back to Blast Email</a></p>
+        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ); ?>">&larr; <?php esc_html_e( 'Back to Blast Email', 'societypress' ); ?></a></p>
 
         <table class="widefat" style="max-width: 800px; margin-bottom: 24px;">
             <tbody>
-                <tr><th style="width: 140px; background: #f6f7f7;">Subject</th><td><?php echo esc_html( $blast->subject ); ?></td></tr>
-                <tr><th class="sp-bg-subtle">Sender</th><td><?php echo esc_html( $blast->sender_name ?: '—' ); ?></td></tr>
-                <tr><th class="sp-bg-subtle">Recipients</th><td><?php echo esc_html( $filter_display ); ?></td></tr>
-                <tr><th class="sp-bg-subtle">Delivery</th><td><?php echo (int) $blast->total_sent; ?> sent, <?php echo (int) $blast->total_failed; ?> failed, <?php echo (int) $blast->total_recipients; ?> total</td></tr>
-                <tr><th class="sp-bg-subtle">Status</th><td><strong><?php echo esc_html( ucfirst( $blast->status ) ); ?></strong></td></tr>
-                <tr><th class="sp-bg-subtle">Sent</th><td><?php echo $blast->sent_at ? esc_html( date_i18n( 'F j, Y g:i a', strtotime( $blast->sent_at ) ) ) : '—'; ?></td></tr>
+                <tr><th class="sp-bg-subtle sp-w-140"><?php esc_html_e( 'Subject', 'societypress' ); ?></th><td><?php echo esc_html( $blast->subject ); ?></td></tr>
+                <tr><th class="sp-bg-subtle"><?php esc_html_e( 'Sender', 'societypress' ); ?></th><td><?php echo esc_html( $blast->sender_name ?: '—' ); ?></td></tr>
+                <tr><th class="sp-bg-subtle"><?php esc_html_e( 'Recipients', 'societypress' ); ?></th><td><?php echo esc_html( $filter_display ); ?></td></tr>
+                <tr><th class="sp-bg-subtle"><?php esc_html_e( 'Delivery', 'societypress' ); ?></th><td><?php
+                    /* translators: %1$d: sent count, %2$d: failed count, %3$d: total count */
+                    printf( esc_html__( '%1$d sent, %2$d failed, %3$d total', 'societypress' ), (int) $blast->total_sent, (int) $blast->total_failed, (int) $blast->total_recipients );
+                ?></td></tr>
+                <tr><th class="sp-bg-subtle"><?php esc_html_e( 'Status', 'societypress' ); ?></th><td><strong><?php echo esc_html( ucfirst( $blast->status ) ); ?></strong></td></tr>
+                <tr><th class="sp-bg-subtle"><?php esc_html_e( 'Sent', 'societypress' ); ?></th><td><?php echo $blast->sent_at ? esc_html( date_i18n( 'F j, Y g:i a', strtotime( $blast->sent_at ) ) ) : '—'; ?></td></tr>
             </tbody>
         </table>
 
@@ -56967,8 +58918,8 @@ function sp_render_blast_email_compose_page(): void {
         // Only allow editing drafts
         if ( $blast && $blast->status !== 'draft' ) {
             echo '<div class="wrap"><h1>' . esc_html__( 'Cannot Edit', 'societypress' ) . '</h1>';
-            echo '<p>This blast email has already been sent and cannot be edited.</p>';
-            echo '<p><a href="' . admin_url( 'admin.php?page=sp-blast-email' ) . '">&larr; Back</a></p></div>';
+            echo '<p>' . esc_html__( 'This blast email has already been sent and cannot be edited.', 'societypress' ) . '</p>';
+            echo '<p><a href="' . esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ) . '">&larr; ' . esc_html__( 'Back', 'societypress' ) . '</a></p></div>';
             return;
         }
     }
@@ -57033,11 +58984,11 @@ function sp_render_blast_email_compose_page(): void {
             // Schedule the first batch via WP cron (runs immediately on next page load)
             wp_schedule_single_event( time(), 'sp_blast_email_send_batch', [ $blast_id, 0 ] );
 
-            wp_redirect( admin_url( 'admin.php?page=sp-blast-email&sent=1' ) );
+            wp_safe_redirect( admin_url( 'admin.php?page=sp-blast-email&sent=1' ) );
             exit;
         }
 
-        wp_redirect( admin_url( 'admin.php?page=sp-blast-email&saved=1' ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-blast-email&saved=1' ) );
         exit;
     }
 
@@ -57096,7 +59047,7 @@ function sp_render_blast_email_compose_page(): void {
     </style>
     <div class="wrap sp-admin-wrap">
         <h1><?php echo $blast_id ? esc_html__( 'Edit Blast Email', 'societypress' ) : esc_html__( 'Compose Blast Email', 'societypress' ); ?></h1>
-        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ); ?>">&larr; Back to Blast Email</a></p>
+        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ); ?>">&larr; <?php esc_html_e( 'Back to Blast Email', 'societypress' ); ?></a></p>
 
         <form method="post" id="sp-blast-form">
             <?php wp_nonce_field( 'sp_save_blast', 'sp_blast_nonce' ); ?>
@@ -57508,7 +59459,7 @@ function sp_render_donations_page(): void {
     if ( isset( $_POST['action'] ) && $_POST['action'] === 'delete' && isset( $_POST['donation_id'] ) ) {
         check_admin_referer( 'sp_delete_donation_' . $_POST['donation_id'] );
         $wpdb->delete( $prefix . 'donations', [ 'id' => (int) $_POST['donation_id'] ] );
-        wp_redirect( admin_url( 'admin.php?page=sp-donations&deleted=1' ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-donations&deleted=1' ) );
         exit;
     }
 
@@ -57516,7 +59467,7 @@ function sp_render_donations_page(): void {
     if ( isset( $_POST['sp_bulk_acknowledge'] ) && ! empty( $_POST['donation_ids'] ) ) {
         check_admin_referer( 'sp_bulk_acknowledge' );
         sp_send_donation_acknowledgments( array_map( 'intval', (array) $_POST['donation_ids'] ) );
-        wp_redirect( admin_url( 'admin.php?page=sp-donations&acknowledged=1' ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-donations&acknowledged=1' ) );
         exit;
     }
 
@@ -57571,7 +59522,7 @@ function sp_render_donations_page(): void {
         : $wpdb->get_row( $stats_sql );
 
     // This year's total (always unfiltered)
-    $year_start = date( 'Y-01-01' );
+    $year_start = wp_date( 'Y-01-01' );
     $year_total = (float) $wpdb->get_var( $wpdb->prepare(
         "SELECT COALESCE(SUM(amount), 0) FROM {$prefix}donations WHERE date >= %s",
         $year_start
@@ -57600,7 +59551,7 @@ function sp_render_donations_page(): void {
     ?>
     <div class="wrap sp-admin-wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Donations', 'societypress' ); ?></h1>
-        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-donation-edit' ) ); ?>" class="page-title-action">Record Donation</a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-donation-edit' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Record Donation', 'societypress' ); ?></a>
         <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=sp_export_donations&nonce=' . wp_create_nonce( 'sp_export_donations' ) ) ); ?>" class="page-title-action"><?php esc_html_e( 'Export CSV', 'societypress' ); ?></a>
 
         <?php if ( isset( $_GET['deleted'] ) ) : ?>
@@ -57907,7 +59858,7 @@ function sp_render_donation_edit_page(): void {
             'amount'              => (float) ( $_POST['amount'] ?? 0 ),
             'type'                => sanitize_text_field( $_POST['donation_type'] ?? 'cash' ),
             'in_kind_description' => sanitize_textarea_field( $_POST['in_kind_description'] ?? '' ) ?: null,
-            'date'                => sanitize_text_field( $_POST['donation_date'] ?? date( 'Y-m-d' ) ),
+            'date'                => sanitize_text_field( $_POST['donation_date'] ?? wp_date( 'Y-m-d' ) ),
             'note'                => sanitize_textarea_field( $_POST['note'] ?? '' ) ?: null,
             'is_anonymous'        => isset( $_POST['is_anonymous'] ) ? 1 : 0,
             'recorded_by'         => get_current_user_id(),
@@ -57920,7 +59871,7 @@ function sp_render_donation_edit_page(): void {
             $wpdb->insert( $prefix . 'donations', $data );
         }
 
-        wp_redirect( admin_url( 'admin.php?page=sp-donations&saved=1' ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-donations&saved=1' ) );
         exit;
     }
 
@@ -58004,7 +59955,7 @@ function sp_render_donation_edit_page(): void {
                 </tr>
                 <tr>
                     <th><label for="sp-d-date"><?php esc_html_e( 'Date', 'societypress' ); ?> <span class="sp-text-error">*</span></label></th>
-                    <td><input type="date" name="donation_date" id="sp-d-date" value="<?php echo esc_attr( $donation->date ?? date( 'Y-m-d' ) ); ?>" required></td>
+                    <td><input type="date" name="donation_date" id="sp-d-date" value="<?php echo esc_attr( $donation->date ?? wp_date( 'Y-m-d' ) ); ?>" required></td>
                 </tr>
                 <tr>
                     <th><label for="sp-d-note"><?php esc_html_e( 'Note', 'societypress' ); ?></label></th>
@@ -58178,7 +60129,7 @@ function sp_render_campaigns_page(): void {
         // Don't delete donations — just unlink them
         $wpdb->update( $prefix . 'donations', [ 'campaign_id' => null ], [ 'campaign_id' => (int) $_POST['campaign_id'] ] );
         $wpdb->delete( $prefix . 'campaigns', [ 'id' => (int) $_POST['campaign_id'] ] );
-        wp_redirect( admin_url( 'admin.php?page=sp-campaigns&deleted=1' ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-campaigns&deleted=1' ) );
         exit;
     }
 
@@ -58300,7 +60251,7 @@ function sp_render_campaign_edit_page(): void {
             "SELECT * FROM {$prefix}campaigns WHERE id = %d", $campaign_id
         ) );
         if ( ! $campaign ) {
-            echo '<div class="wrap"><h1>' . esc_html__( 'Campaign Not Found', 'societypress' ) . '</h1><p><a href="' . admin_url( 'admin.php?page=sp-campaigns' ) . '">&larr; Back</a></p></div>';
+            echo '<div class="wrap"><h1>' . esc_html__( 'Campaign Not Found', 'societypress' ) . '</h1><p><a href="' . esc_url( admin_url( 'admin.php?page=sp-campaigns' ) ) . '">&larr; ' . esc_html__( 'Back', 'societypress' ) . '</a></p></div>';
             return;
         }
     }
@@ -58332,7 +60283,7 @@ function sp_render_campaign_edit_page(): void {
                 $wpdb->insert( $prefix . 'campaigns', $data );
             }
 
-            wp_redirect( admin_url( 'admin.php?page=sp-campaigns&saved=1' ) );
+            wp_safe_redirect( admin_url( 'admin.php?page=sp-campaigns&saved=1' ) );
             exit;
         }
     }
@@ -59505,6 +61456,8 @@ function sp_privacy_erase_donation_data( string $email_address, int $page = 1 ):
 add_action( 'wp_ajax_sp_library_item_detail', 'sp_ajax_library_item_detail' );
 // Also register for non-logged-in users so the catalog expand works when
 // the library widget is configured as public (login_required = false).
+// WHY no nonce: Same as unified search — public endpoint for anonymous visitors.
+// The data returned is read-only catalog info, not sensitive.
 add_action( 'wp_ajax_nopriv_sp_library_item_detail', 'sp_ajax_library_item_detail' );
 function sp_ajax_library_item_detail(): void {
     $item_id = absint( $_GET['item_id'] ?? 0 );
@@ -60761,6 +62714,7 @@ function sp_render_newsletter_archive_page(): void {
     <div class="wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Newsletter Archive', 'societypress' ); ?></h1>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-newsletter-edit' ) ); ?>" class="page-title-action">Add New</a>
+        <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=sp_export_newsletters_zip&nonce=' . wp_create_nonce( 'sp_export_newsletters_zip' ) ) ); ?>" class="page-title-action"><?php esc_html_e( 'Export All (ZIP)', 'societypress' ); ?></a>
         <hr class="wp-header-end">
 
         <!-- Search bar -->
@@ -60790,8 +62744,8 @@ function sp_render_newsletter_archive_page(): void {
 
                     // Format the volume/issue line (e.g. "Vol. 3, No. 2")
                     $vol_issue = '';
-                    if ( $nl->volume )       $vol_issue .= 'Vol.&nbsp;' . $nl->volume;
-                    if ( $nl->issue_number ) $vol_issue .= ( $vol_issue ? ', ' : '' ) . 'No.&nbsp;' . $nl->issue_number;
+                    if ( $nl->volume )       $vol_issue .= 'Vol.&nbsp;' . esc_html( $nl->volume );
+                    if ( $nl->issue_number ) $vol_issue .= ( $vol_issue ? ', ' : '' ) . 'No.&nbsp;' . esc_html( $nl->issue_number );
 
                     // Format the publication date
                     $date_display = $nl->pub_date ? wp_date( 'M j, Y', strtotime( $nl->pub_date ) ) : '';
@@ -60843,8 +62797,168 @@ function sp_render_newsletter_archive_page(): void {
     </div>
     <?php
 }
+
+
+/**
+ * Export all newsletters as a ZIP archive containing the actual PDF files plus
+ * a metadata CSV.
+ *
+ * WHY: Societies that switch platforms or need an offline backup of their entire
+ *      newsletter archive should be able to grab everything in one click — the
+ *      actual PDFs and the structured metadata (title, dates, volume/issue) —
+ *      without downloading files one-by-one. The CSV lets them reimport the
+ *      metadata into another system, and the PDFs are the irreplaceable originals.
+ */
+add_action( 'wp_ajax_sp_export_newsletters_zip', function () {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+    }
+    if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_newsletters_zip' ) ) {
+        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+    }
+
+    if ( ! class_exists( 'ZipArchive' ) ) {
+        wp_die( esc_html__( 'The ZipArchive PHP extension is required but not available on this server.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $newsletters = $wpdb->get_results(
+        "SELECT * FROM {$prefix}newsletters ORDER BY pub_date DESC, created_at DESC"
+    );
+
+    if ( empty( $newsletters ) ) {
+        wp_die( esc_html__( 'No newsletters to export.', 'societypress' ) );
+    }
+
+    // Build temp directory inside the WP uploads folder
+    $upload_dir = wp_upload_dir();
+    $temp_base  = trailingslashit( $upload_dir['basedir'] ) . 'sp-export-temp/';
+    $temp_dir   = $temp_base . 'newsletters-' . wp_generate_password( 8, false ) . '/';
+
+    if ( ! wp_mkdir_p( $temp_dir ) ) {
+        wp_die( esc_html__( 'Could not create temporary directory for export.', 'societypress' ) );
+    }
+
+    // Clean up temp files when we are done no matter what
+    $cleanup = function () use ( $temp_dir, $temp_base ) {
+        // Recursively remove the temp directory
+        if ( is_dir( $temp_dir ) ) {
+            $files = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator( $temp_dir, RecursiveDirectoryIterator::SKIP_DOTS ),
+                RecursiveIteratorIterator::CHILD_FIRST
+            );
+            foreach ( $files as $file_info ) {
+                if ( $file_info->isDir() ) {
+                    @rmdir( $file_info->getRealPath() );
+                } else {
+                    @unlink( $file_info->getRealPath() );
+                }
+            }
+            @rmdir( $temp_dir );
+        }
+        // Remove any leftover ZIP files in the temp base
+        foreach ( glob( $temp_base . 'newsletters-*.zip' ) as $stale_zip ) {
+            @unlink( $stale_zip );
+        }
+    };
+    register_shutdown_function( $cleanup );
+
+    // ---- Build the metadata CSV ----
+    $csv_path = $temp_dir . 'newsletters.csv';
+    $csv_out  = fopen( $csv_path, 'w' );
+    // UTF-8 BOM so Excel handles accented characters correctly
+    fwrite( $csv_out, "\xEF\xBB\xBF" );
+    fputcsv( $csv_out, [
+        'ID', 'Title', 'Pub Date', 'Volume', 'Issue Number', 'Visibility', 'Filename',
+    ] );
+
+    // Track filenames to avoid collisions when multiple newsletters share a title
+    $used_filenames = [];
+
+    foreach ( $newsletters as $nl ) {
+        $safe_filename = '';
+
+        // Copy the actual PDF into the temp directory if the attachment exists
+        if ( ! empty( $nl->file_id ) ) {
+            $source_path = get_attached_file( (int) $nl->file_id );
+            if ( $source_path && file_exists( $source_path ) ) {
+                $ext = pathinfo( $source_path, PATHINFO_EXTENSION );
+                if ( ! $ext ) {
+                    $ext = 'pdf';
+                }
+                // Build a human-readable filename from the newsletter title
+                $base_name = sanitize_file_name( $nl->title );
+                // Strip any extension sanitize_file_name may have kept
+                $base_name = preg_replace( '/\.' . preg_quote( $ext, '/' ) . '$/i', '', $base_name );
+                $candidate = $base_name . '.' . $ext;
+
+                // Deduplicate: append a numeric suffix if the name is already used
+                $counter = 1;
+                while ( in_array( strtolower( $candidate ), $used_filenames, true ) ) {
+                    $candidate = $base_name . '-' . $counter . '.' . $ext;
+                    $counter++;
+                }
+                $used_filenames[] = strtolower( $candidate );
+                $safe_filename    = $candidate;
+
+                copy( $source_path, $temp_dir . $safe_filename );
+            }
+        }
+
+        fputcsv( $csv_out, [
+            $nl->id,
+            $nl->title,
+            $nl->pub_date ?? '',
+            $nl->volume ?? '',
+            $nl->issue_number ?? '',
+            $nl->visibility,
+            $safe_filename,
+        ] );
+    }
+
+    fclose( $csv_out );
+
+    // ---- Create the ZIP ----
+    $zip_filename = 'newsletters-' . wp_date( 'Y-m-d' ) . '.zip';
+    $zip_path     = $temp_base . $zip_filename;
+
+    $zip = new ZipArchive();
+    if ( $zip->open( $zip_path, ZipArchive::CREATE | ZipArchive::OVERWRITE ) !== true ) {
+        wp_die( esc_html__( 'Could not create ZIP file.', 'societypress' ) );
+    }
+
+    // Add every file in the temp directory to the ZIP (flat — no subfolders needed)
+    $dir_iterator  = new RecursiveDirectoryIterator( $temp_dir, RecursiveDirectoryIterator::SKIP_DOTS );
+    $file_iterator = new RecursiveIteratorIterator( $dir_iterator );
+    foreach ( $file_iterator as $file_info ) {
+        if ( $file_info->isFile() ) {
+            $zip->addFile( $file_info->getRealPath(), $file_info->getFilename() );
+        }
+    }
+
+    $zip->close();
+
+    // ---- Stream the ZIP to the browser ----
+    $zip_size = filesize( $zip_path );
+    header( 'Content-Type: application/zip' );
+    header( 'Content-Disposition: attachment; filename="' . $zip_filename . '"' );
+    header( 'Content-Length: ' . $zip_size );
+    header( 'Pragma: no-cache' );
+    header( 'Expires: 0' );
+
+    readfile( $zip_path );
+
+    // Clean up the ZIP file immediately (temp dir handled by shutdown function)
+    @unlink( $zip_path );
+
+    exit;
+} );
+
+
 // WHY: Newsletter save must happen on admin_init (before any output) because
-// wp_redirect() requires headers not yet sent. The page render callback fires
+// wp_safe_redirect() requires headers not yet sent. The page render callback fires
 // after admin_head has already output CSS, so redirect would silently fail.
 add_action( 'admin_init', function () {
     // Only run on the newsletter edit page when the save button was clicked.
@@ -60877,7 +62991,7 @@ add_action( 'admin_init', function () {
         $wpdb->insert( $prefix . 'newsletters', $data );
     }
 
-    wp_redirect( admin_url( 'admin.php?page=sp-newsletter-archive&sp_notice=newsletter_saved' ) );
+    wp_safe_redirect( admin_url( 'admin.php?page=sp-newsletter-archive&sp_notice=newsletter_saved' ) );
     exit;
 } );
 
@@ -61255,7 +63369,7 @@ function sp_ajax_newsletter_download(): void {
 
     // Members-only newsletters require login
     if ( $nl->visibility === 'members_only' && ! is_user_logged_in() ) {
-        wp_redirect( wp_login_url( add_query_arg( [] ) ) );
+        wp_safe_redirect( wp_login_url( add_query_arg( [] ) ) );
         exit;
     }
 
@@ -61264,9 +63378,12 @@ function sp_ajax_newsletter_download(): void {
         wp_die( esc_html__( 'This newsletter is not currently available.', 'societypress' ) );
     }
 
-    // Serve the file with proper headers for download
+    // WHY: Preview mode serves inline (for the lightbox PDF viewer).
+    // Download mode serves as attachment (for the download button).
+    $is_preview = ! empty( $_GET['preview'] );
+
     header( 'Content-Type: application/pdf' );
-    header( 'Content-Disposition: attachment; filename="' . sanitize_file_name( $nl->title ) . '.pdf"' );
+    header( 'Content-Disposition: ' . ( $is_preview ? 'inline' : 'attachment' ) . '; filename="' . sanitize_file_name( $nl->title ) . '.pdf"' );
     header( 'Content-Length: ' . filesize( $file_path ) );
     header( 'Cache-Control: private, max-age=0' );
     header( 'Pragma: public' );
@@ -61357,24 +63474,27 @@ function sp_frontend_newsletter_archive(): void {
 
                     // Format volume/issue
                     $vol_issue = '';
-                    if ( $nl->volume )       $vol_issue .= 'Vol.&nbsp;' . $nl->volume;
-                    if ( $nl->issue_number ) $vol_issue .= ( $vol_issue ? ', ' : '' ) . 'No.&nbsp;' . $nl->issue_number;
+                    if ( $nl->volume )       $vol_issue .= 'Vol.&nbsp;' . esc_html( $nl->volume );
+                    if ( $nl->issue_number ) $vol_issue .= ( $vol_issue ? ', ' : '' ) . 'No.&nbsp;' . esc_html( $nl->issue_number );
 
                     // Format date
                     $date_display = $nl->pub_date ? wp_date( 'F Y', strtotime( $nl->pub_date ) ) : '';
 
-                    // Download URL goes through our AJAX endpoint for access control
+                    // WHY: All PDF access goes through the AJAX endpoint so members-only
+                    // access control is enforced. We never expose the direct attachment URL
+                    // in HTML — a logged-in member could share it, bypassing the gate.
                     $download_url = admin_url( 'admin-ajax.php?action=sp_newsletter_download&newsletter_id=' . $nl->id );
+                    $preview_url  = add_query_arg( 'preview', '1', $download_url );
                 ?>
                     <div class="sp-newsletter-card" data-title="<?php echo esc_attr( strtolower( $nl->title ) ); ?>">
                         <!-- Cover image -->
                         <div class="sp-newsletter-card-cover"
                              <?php if ( $can_access && $pdf_url ) : ?>
-                                 data-pdf="<?php echo esc_url( $pdf_url ); ?>"
+                                 data-pdf="<?php echo esc_url( $preview_url ); ?>"
                                  data-title="<?php echo esc_attr( $nl->title ); ?>"
                                  data-download="<?php echo esc_url( $download_url ); ?>"
                                  style="cursor:pointer;"
-                                 title="Click to preview"
+                                 title="<?php esc_attr_e( 'Click to preview', 'societypress' ); ?>"
                              <?php endif; ?>>
                             <?php if ( $cover_url ) : ?>
                                 <img src="<?php echo esc_url( $cover_url ); ?>" alt="<?php echo esc_attr( $nl->title ); ?>">
@@ -62240,6 +64360,10 @@ add_action( 'wp_ajax_nopriv_sp_unified_search', 'sp_unified_search' );
 
 /**
  * AJAX handler for unified search — returns JSON grouped by module.
+ *
+ * WHY no nonce: This endpoint is intentionally public for site visitors who
+ * are not logged in. Nonce verification requires a WP session, which
+ * anonymous users don't have. IP-based rate limiting below mitigates abuse.
  */
 function sp_unified_search(): void {
     // Rate-limit unauthenticated requests to prevent abuse (30 requests/minute per IP)
@@ -66414,7 +68538,7 @@ function sp_render_order_detail_page(): void {
                 $order_id
             );
 
-            wp_redirect( admin_url( 'admin.php?page=sp-order-detail&order_id=' . $order_id . '&updated=1' ) );
+            wp_safe_redirect( admin_url( 'admin.php?page=sp-order-detail&order_id=' . $order_id . '&updated=1' ) );
             exit;
         }
     }
@@ -66676,7 +68800,7 @@ add_action( 'admin_init', function () {
     ];
 
     if ( empty( $data['title'] ) || empty( $data['file_url'] ) ) {
-        wp_redirect( admin_url( 'admin.php?page=sp-document-edit' . ( $doc_id ? '&id=' . $doc_id : '' ) . '&sp_error=missing_fields' ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-document-edit' . ( $doc_id ? '&id=' . $doc_id : '' ) . '&sp_error=missing_fields' ) );
         exit;
     }
 
@@ -66689,7 +68813,7 @@ add_action( 'admin_init', function () {
         $doc_id = $wpdb->insert_id;
     }
 
-    wp_redirect( admin_url( 'admin.php?page=sp-documents&sp_updated=1' ) );
+    wp_safe_redirect( admin_url( 'admin.php?page=sp-documents&sp_updated=1' ) );
     exit;
 });
 
@@ -66716,7 +68840,7 @@ add_action( 'admin_init', function () {
     global $wpdb;
     $wpdb->delete( $wpdb->prefix . 'sp_documents', [ 'id' => $doc_id ] );
 
-    wp_redirect( admin_url( 'admin.php?page=sp-documents&sp_deleted=1' ) );
+    wp_safe_redirect( admin_url( 'admin.php?page=sp-documents&sp_deleted=1' ) );
     exit;
 });
 
@@ -66742,7 +68866,7 @@ add_action( 'admin_init', function () {
     $name   = sanitize_text_field( $_POST['category_name'] ?? '' );
 
     if ( empty( $name ) ) {
-        wp_redirect( admin_url( 'admin.php?page=sp-document-categories&sp_error=no_name' ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-document-categories&sp_error=no_name' ) );
         exit;
     }
 
@@ -66759,7 +68883,7 @@ add_action( 'admin_init', function () {
         $wpdb->insert( $table, $data );
     }
 
-    wp_redirect( admin_url( 'admin.php?page=sp-document-categories&sp_updated=1' ) );
+    wp_safe_redirect( admin_url( 'admin.php?page=sp-document-categories&sp_updated=1' ) );
     exit;
 });
 
@@ -66792,7 +68916,7 @@ add_action( 'admin_init', function () {
     );
     $wpdb->delete( $wpdb->prefix . 'sp_document_categories', [ 'id' => $cat_id ] );
 
-    wp_redirect( admin_url( 'admin.php?page=sp-document-categories&sp_deleted=1' ) );
+    wp_safe_redirect( admin_url( 'admin.php?page=sp-document-categories&sp_deleted=1' ) );
     exit;
 });
 
@@ -66843,6 +68967,7 @@ function sp_render_documents_page(): void {
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Documents', 'societypress' ); ?></h1>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-document-edit' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Add New', 'societypress' ); ?></a>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-document-bulk-upload' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Bulk Upload', 'societypress' ); ?></a>
+        <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=sp_export_documents_zip&nonce=' . wp_create_nonce( 'sp_export_documents_zip' ) ) ); ?>" class="page-title-action"><?php esc_html_e( 'Export All (ZIP)', 'societypress' ); ?></a>
         <hr class="wp-header-end">
 
         <?php if ( ! empty( $_GET['sp_updated'] ) ) : ?>
@@ -66927,6 +69052,208 @@ function sp_render_documents_page(): void {
     </div>
     <?php
 }
+
+
+/**
+ * Export all documents as a ZIP archive organized by category subfolders,
+ * plus a metadata CSV.
+ *
+ * WHY: Documents are a society's institutional memory — bylaws, meeting minutes,
+ *      forms, policies. An admin who needs an offline backup or is migrating to
+ *      another platform should be able to download everything in one shot with
+ *      the category structure preserved. The CSV provides the metadata (access
+ *      levels, dates, categories) so reimporting into another system is possible.
+ *
+ * NOTE: Unlike newsletters (which use WP attachment IDs via file_id), documents
+ *       store a direct file_url. We resolve that URL to a local filesystem path
+ *       so we can copy the actual file into the ZIP without an HTTP round-trip.
+ */
+add_action( 'wp_ajax_sp_export_documents_zip', function () {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+    }
+    if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_documents_zip' ) ) {
+        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+    }
+
+    if ( ! class_exists( 'ZipArchive' ) ) {
+        wp_die( esc_html__( 'The ZipArchive PHP extension is required but not available on this server.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $docs_table = $wpdb->prefix . 'sp_documents';
+    $cats_table = $wpdb->prefix . 'sp_document_categories';
+
+    $documents = $wpdb->get_results(
+        "SELECT d.*, c.name AS category_name
+         FROM {$docs_table} d
+         LEFT JOIN {$cats_table} c ON d.category_id = c.id
+         ORDER BY c.sort_order ASC, c.name ASC, d.title ASC"
+    );
+
+    if ( empty( $documents ) ) {
+        wp_die( esc_html__( 'No documents to export.', 'societypress' ) );
+    }
+
+    // Build temp directory inside the WP uploads folder
+    $upload_dir = wp_upload_dir();
+    $temp_base  = trailingslashit( $upload_dir['basedir'] ) . 'sp-export-temp/';
+    $temp_dir   = $temp_base . 'documents-' . wp_generate_password( 8, false ) . '/';
+
+    if ( ! wp_mkdir_p( $temp_dir ) ) {
+        wp_die( esc_html__( 'Could not create temporary directory for export.', 'societypress' ) );
+    }
+
+    // Clean up temp files when we are done no matter what
+    $cleanup = function () use ( $temp_dir, $temp_base ) {
+        if ( is_dir( $temp_dir ) ) {
+            $files = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator( $temp_dir, RecursiveDirectoryIterator::SKIP_DOTS ),
+                RecursiveIteratorIterator::CHILD_FIRST
+            );
+            foreach ( $files as $file_info ) {
+                if ( $file_info->isDir() ) {
+                    @rmdir( $file_info->getRealPath() );
+                } else {
+                    @unlink( $file_info->getRealPath() );
+                }
+            }
+            @rmdir( $temp_dir );
+        }
+        foreach ( glob( $temp_base . 'documents-*.zip' ) as $stale_zip ) {
+            @unlink( $stale_zip );
+        }
+    };
+    register_shutdown_function( $cleanup );
+
+    // ---- Build the metadata CSV ----
+    $csv_path = $temp_dir . 'documents.csv';
+    $csv_out  = fopen( $csv_path, 'w' );
+    // UTF-8 BOM for Excel compatibility
+    fwrite( $csv_out, "\xEF\xBB\xBF" );
+    fputcsv( $csv_out, [
+        'ID', 'Title', 'Category', 'Access Level', 'Status', 'Created At', 'Filename',
+    ] );
+
+    // Helper: convert a file_url stored in the database to a local filesystem
+    // path. Documents are typically stored inside wp-content/uploads, so we
+    // swap the uploads base URL for the uploads base directory.
+    $uploads_url  = trailingslashit( $upload_dir['baseurl'] );
+    $uploads_path = trailingslashit( $upload_dir['basedir'] );
+
+    // Track filenames per category folder to avoid collisions
+    $used_filenames = [];
+
+    foreach ( $documents as $doc ) {
+        // Determine category subfolder name (sanitized), or "Uncategorized"
+        $category_folder = $doc->category_name
+            ? sanitize_file_name( $doc->category_name )
+            : sanitize_file_name( __( 'Uncategorized', 'societypress' ) );
+
+        // Ensure the category subfolder exists
+        $cat_dir = $temp_dir . $category_folder . '/';
+        if ( ! is_dir( $cat_dir ) ) {
+            wp_mkdir_p( $cat_dir );
+        }
+
+        $safe_filename = '';
+
+        // Resolve the file_url to a local path so we can copy without HTTP
+        if ( ! empty( $doc->file_url ) ) {
+            $local_path = '';
+            // If the URL is within the uploads directory, resolve directly
+            if ( strpos( $doc->file_url, $uploads_url ) === 0 ) {
+                $relative   = substr( $doc->file_url, strlen( $uploads_url ) );
+                $local_path = $uploads_path . $relative;
+            } elseif ( strpos( $doc->file_url, '/' ) === 0 && file_exists( ABSPATH . ltrim( $doc->file_url, '/' ) ) ) {
+                // Absolute path relative to ABSPATH
+                $local_path = ABSPATH . ltrim( $doc->file_url, '/' );
+            }
+
+            if ( $local_path && file_exists( $local_path ) ) {
+                $ext = pathinfo( $local_path, PATHINFO_EXTENSION );
+                if ( ! $ext && ! empty( $doc->file_name ) ) {
+                    $ext = pathinfo( $doc->file_name, PATHINFO_EXTENSION );
+                }
+                if ( ! $ext ) {
+                    $ext = 'pdf';
+                }
+
+                // Build a human-readable filename from the document title
+                $base_name = sanitize_file_name( $doc->title );
+                $base_name = preg_replace( '/\.' . preg_quote( $ext, '/' ) . '$/i', '', $base_name );
+                $candidate = $base_name . '.' . $ext;
+
+                // Initialize per-category dedup tracker
+                $cat_key = strtolower( $category_folder );
+                if ( ! isset( $used_filenames[ $cat_key ] ) ) {
+                    $used_filenames[ $cat_key ] = [];
+                }
+
+                // Deduplicate within the category folder
+                $counter = 1;
+                while ( in_array( strtolower( $candidate ), $used_filenames[ $cat_key ], true ) ) {
+                    $candidate = $base_name . '-' . $counter . '.' . $ext;
+                    $counter++;
+                }
+                $used_filenames[ $cat_key ][] = strtolower( $candidate );
+                $safe_filename = $candidate;
+
+                copy( $local_path, $cat_dir . $safe_filename );
+            }
+        }
+
+        fputcsv( $csv_out, [
+            $doc->id,
+            $doc->title,
+            $doc->category_name ?? '',
+            $doc->access_level,
+            $doc->status,
+            $doc->created_at,
+            $safe_filename ? ( $category_folder . '/' . $safe_filename ) : '',
+        ] );
+    }
+
+    fclose( $csv_out );
+
+    // ---- Create the ZIP ----
+    $zip_filename = 'documents-' . wp_date( 'Y-m-d' ) . '.zip';
+    $zip_path     = $temp_base . $zip_filename;
+
+    $zip = new ZipArchive();
+    if ( $zip->open( $zip_path, ZipArchive::CREATE | ZipArchive::OVERWRITE ) !== true ) {
+        wp_die( esc_html__( 'Could not create ZIP file.', 'societypress' ) );
+    }
+
+    // Walk the temp directory recursively; preserve category subfolder structure
+    $base_len      = strlen( $temp_dir );
+    $dir_iterator  = new RecursiveDirectoryIterator( $temp_dir, RecursiveDirectoryIterator::SKIP_DOTS );
+    $file_iterator = new RecursiveIteratorIterator( $dir_iterator );
+    foreach ( $file_iterator as $file_info ) {
+        if ( $file_info->isFile() ) {
+            // Relative path preserves category subfolders (e.g. "Bylaws/charter.pdf")
+            $relative_path = substr( $file_info->getRealPath(), $base_len );
+            $zip->addFile( $file_info->getRealPath(), $relative_path );
+        }
+    }
+
+    $zip->close();
+
+    // ---- Stream the ZIP to the browser ----
+    $zip_size = filesize( $zip_path );
+    header( 'Content-Type: application/zip' );
+    header( 'Content-Disposition: attachment; filename="' . $zip_filename . '"' );
+    header( 'Content-Length: ' . $zip_size );
+    header( 'Pragma: no-cache' );
+    header( 'Expires: 0' );
+
+    readfile( $zip_path );
+
+    // Clean up the ZIP file immediately (temp dir handled by shutdown function)
+    @unlink( $zip_path );
+
+    exit;
+} );
 
 
 // ---------------------------------------------------------------------------
@@ -67288,7 +69615,7 @@ add_action( 'admin_init', function () {
         $count++;
     }
 
-    wp_redirect( admin_url( 'admin.php?page=sp-documents&sp_bulk_count=' . $count ) );
+    wp_safe_redirect( admin_url( 'admin.php?page=sp-documents&sp_bulk_count=' . $count ) );
     exit;
 });
 
@@ -68664,7 +70991,7 @@ function sp_render_external_calendars_page(): void {
                 var statusEl = document.getElementById('sp-ical-status-' + feedId);
 
                 btn.disabled = true;
-                btn.textContent = '...';
+                btn.innerHTML = '<span class="sp-spinner"></span>';
                 if (statusEl) statusEl.textContent = '<?php echo esc_js( __( 'Syncing...', 'societypress' ) ); ?>';
 
                 var formData = new FormData();
@@ -69033,25 +71360,45 @@ function sp_rest_health_check(): WP_REST_Response {
     $checks['crons'] = $cron_results;
 
     // ---- CHECK 3: Plugin version + environment ----
-    $checks['environment'] = [
-        'plugin_version' => defined( 'SOCIETYPRESS_VERSION' ) ? SOCIETYPRESS_VERSION : 'unknown',
-        'wp_version'     => get_bloginfo( 'version' ),
-        'php_version'    => PHP_VERSION,
-        'php_ok'         => version_compare( PHP_VERSION, '8.0', '>=' ),
-        'wp_ok'          => version_compare( get_bloginfo( 'version' ), '6.0', '>=' ),
-        'libsodium'      => function_exists( 'sodium_crypto_aead_xchacha20poly1305_ietf_encrypt' ),
-    ];
+    // WHY: Version numbers help diagnose issues, but only admins should see
+    // them. Public callers (UptimeRobot, etc.) only need the status code and
+    // overall status field to detect degraded state.
+    $php_ok = version_compare( PHP_VERSION, '8.0', '>=' );
+    $wp_ok  = version_compare( get_bloginfo( 'version' ), '6.0', '>=' );
 
-    if ( ! $checks['environment']['php_ok'] || ! $checks['environment']['wp_ok'] ) {
+    if ( ! $php_ok || ! $wp_ok ) {
         $overall = 'degraded';
     }
 
-    return new WP_REST_Response( [
+    // Authenticated admins get full diagnostics; public callers get status only
+    if ( current_user_can( 'manage_options' ) ) {
+        $checks['environment'] = [
+            'plugin_version' => defined( 'SOCIETYPRESS_VERSION' ) ? SOCIETYPRESS_VERSION : 'unknown',
+            'wp_version'     => get_bloginfo( 'version' ),
+            'php_version'    => PHP_VERSION,
+            'php_ok'         => $php_ok,
+            'wp_ok'          => $wp_ok,
+            'libsodium'      => function_exists( 'sodium_crypto_aead_xchacha20poly1305_ietf_encrypt' ),
+        ];
+    } else {
+        $checks['environment'] = [
+            'php_ok' => $php_ok,
+            'wp_ok'  => $wp_ok,
+        ];
+    }
+
+    $response_data = [
         'status'     => $overall,
         'checked_at' => current_time( 'c' ),
-        'site_url'   => home_url(),
         'checks'     => $checks,
-    ], $overall === 'ok' ? 200 : 503 );
+    ];
+
+    // Only include site_url for authenticated admins
+    if ( current_user_can( 'manage_options' ) ) {
+        $response_data['site_url'] = home_url();
+    }
+
+    return new WP_REST_Response( $response_data, $overall === 'ok' ? 200 : 503 );
 }
 
 
@@ -69099,14 +71446,14 @@ add_action( 'admin_init', function () {
     // ---- Validate required fields ----
     $title = sanitize_text_field( $_POST['ballot_title'] ?? '' );
     if ( empty( $title ) ) {
-        wp_redirect( admin_url( 'admin.php?page=sp-ballot-edit&ballot_id=' . $ballot_id . '&error=title' ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-ballot-edit&ballot_id=' . $ballot_id . '&error=title' ) );
         exit;
     }
 
     // ---- Validate at least one question with choices ----
     $questions_raw = $_POST['sp_questions'] ?? [];
     if ( empty( $questions_raw ) ) {
-        wp_redirect( admin_url( 'admin.php?page=sp-ballot-edit&ballot_id=' . $ballot_id . '&error=questions' ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-ballot-edit&ballot_id=' . $ballot_id . '&error=questions' ) );
         exit;
     }
 
@@ -69264,7 +71611,7 @@ add_action( 'admin_init', function () {
         ) );
     }
 
-    wp_redirect( admin_url( 'admin.php?page=sp-ballot-edit&ballot_id=' . $ballot_id . '&saved=1' ) );
+    wp_safe_redirect( admin_url( 'admin.php?page=sp-ballot-edit&ballot_id=' . $ballot_id . '&saved=1' ) );
     exit;
 } );
 
@@ -69480,6 +71827,99 @@ function sp_voting_user_eligible( object $ballot, object $member ): bool {
 
 
 /**
+ * Send email notifications to all eligible members when a ballot opens.
+ *
+ * WHY: Members may not check the site frequently enough to catch a short
+ *      voting window. An email ensures they know a ballot is open and can
+ *      vote before it closes. Only sends to members with an active status
+ *      who pass the ballot's eligibility rules and have email notifications
+ *      enabled (pref_email_notices).
+ *
+ * @param object $ballot The ballot row (must include id, title, eligibility_type, eligible_tiers, voting_end).
+ */
+function sp_send_ballot_open_emails( object $ballot ): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // Get all active members
+    $members = $wpdb->get_results(
+        "SELECT m.*, u.user_email FROM {$prefix}members m
+         INNER JOIN {$wpdb->users} u ON m.user_id = u.ID
+         WHERE m.status = 'active'"
+    );
+
+    if ( empty( $members ) ) return;
+
+    $settings   = get_option( 'societypress_settings', [] );
+    $org_name   = $settings['organization_name'] ?? get_bloginfo( 'name' );
+
+    // Build the voting page URL
+    $voting_url = '';
+    $voting_page = $wpdb->get_var(
+        "SELECT ID FROM {$wpdb->posts} WHERE post_status = 'publish' AND post_type = 'page'
+         AND ID IN (SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_wp_page_template' AND meta_value = 'sp-voting')
+         LIMIT 1"
+    );
+    if ( $voting_page ) {
+        $voting_url = get_permalink( $voting_page );
+    }
+
+    // Format the deadline if available
+    $deadline_text = '';
+    if ( ! empty( $ballot->voting_end ) ) {
+        $deadline_text = sprintf(
+            /* translators: %s: formatted date/time */
+            __( 'Voting closes %s.', 'societypress' ),
+            wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $ballot->voting_end ) )
+        );
+    }
+
+    $sent = 0;
+    foreach ( $members as $member ) {
+        // Respect communication preferences
+        if ( isset( $member->pref_email_notices ) && ! $member->pref_email_notices ) {
+            continue;
+        }
+
+        // Check eligibility
+        if ( ! sp_voting_user_eligible( $ballot, $member ) ) {
+            continue;
+        }
+
+        if ( empty( $member->user_email ) ) continue;
+
+        $name = trim( ( $member->preferred_name ?: $member->first_name ) );
+
+        /* translators: %s: ballot title */
+        $subject = sprintf( __( 'New Vote: %s', 'societypress' ), $ballot->title );
+
+        $body  = '<p>' . sprintf( esc_html__( 'Hello %s,', 'societypress' ), esc_html( $name ) ) . '</p>';
+        $body .= '<p>' . sprintf(
+            /* translators: %1$s: organization name, %2$s: ballot title */
+            esc_html__( '%1$s has opened a new ballot: %2$s', 'societypress' ),
+            esc_html( $org_name ),
+            '<strong>' . esc_html( $ballot->title ) . '</strong>'
+        ) . '</p>';
+
+        if ( $deadline_text ) {
+            $body .= '<p>' . esc_html( $deadline_text ) . '</p>';
+        }
+
+        if ( $voting_url ) {
+            $body .= '<p><a href="' . esc_url( $voting_url ) . '" style="display:inline-block;padding:10px 24px;background:#2271b1;color:#fff;text-decoration:none;border-radius:4px;font-weight:600;">'
+                   . esc_html__( 'Vote Now', 'societypress' )
+                   . '</a></p>';
+        }
+
+        wp_mail( $member->user_email, $subject, $body, [ 'Content-Type: text/html; charset=UTF-8' ] );
+        $sent++;
+    }
+
+    sp_audit( 'ballot_notification_sent', sprintf( 'Ballot open notification sent to %d members for "%s"', $sent, $ballot->title ), 'ballot', $ballot->id );
+}
+
+
+/**
  * Render the vote form for a single ballot on the frontend.
  *
  * WHY: Each open ballot needs a form with radio buttons (single choice),
@@ -69503,7 +71943,7 @@ function sp_render_vote_form( object $ballot ): void {
         return;
     }
 
-    $nonce = wp_create_nonce( 'sp_submit_vote_' . $ballot->id );
+    $nonce = wp_create_nonce( 'sp_submit_vote' );
 
     echo '<form class="sp-vote-form" data-ballot-id="' . esc_attr( $ballot->id ) . '" data-nonce="' . esc_attr( $nonce ) . '" data-allow-abstain="' . esc_attr( $ballot->allow_abstain ? '1' : '0' ) . '">';
 
@@ -69892,9 +72332,18 @@ function sp_render_ballots_page(): void {
         $bid = (int) $_POST['ballot_id'];
         if ( wp_verify_nonce( $_POST['_wpnonce'] ?? '', 'sp_open_ballot_' . $bid ) ) {
             $wpdb->update( $prefix . 'ballots', [ 'status' => 'open' ], [ 'id' => $bid ] );
-            $title = $wpdb->get_var( $wpdb->prepare( "SELECT title FROM {$prefix}ballots WHERE id = %d", $bid ) );
+            $ballot_row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$prefix}ballots WHERE id = %d", $bid ) );
+            $title      = $ballot_row ? $ballot_row->title : '';
             sp_audit( 'ballot_opened', sprintf( 'Voting opened on ballot "%s"', $title ), 'ballot', $bid );
-            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Voting is now open.', 'societypress' ) . '</p></div>';
+
+            // WHY: Notify eligible members that a ballot is open so they
+            // don't miss the voting window. Sent once when the admin clicks
+            // "Open Voting," not on every page load.
+            if ( $ballot_row ) {
+                sp_send_ballot_open_emails( $ballot_row );
+            }
+
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Voting is now open. Eligible members have been notified by email.', 'societypress' ) . '</p></div>';
         }
     }
 
@@ -70655,14 +73104,19 @@ add_action( 'wp_ajax_sp_submit_vote', function () {
     $prefix  = $wpdb->prefix . 'sp_';
     $user_id = get_current_user_id();
 
+    // WHY: Guard against unauthenticated calls (wp_ajax_ should prevent this,
+    // but belt-and-suspenders for vote integrity).
+    if ( ! $user_id ) {
+        wp_send_json_error( __( 'You must be logged in to vote.', 'societypress' ) );
+    }
+
+    // WHY: Verify nonce before touching any user-supplied ballot_id. We use a
+    // generic action so the nonce check isn't dependent on user-controlled input.
+    check_ajax_referer( 'sp_submit_vote', 'nonce' );
+
     $ballot_id = (int) ( $_POST['ballot_id'] ?? 0 );
     if ( ! $ballot_id ) {
         wp_send_json_error( __( 'Invalid ballot.', 'societypress' ) );
-    }
-
-    // Verify nonce
-    if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_submit_vote_' . $ballot_id ) ) {
-        wp_send_json_error( __( 'Security check failed. Please reload the page and try again.', 'societypress' ) );
     }
 
     // ---- Load ballot ----
@@ -71366,6 +73820,418 @@ function sp_voting_frontend_js(): void {
 
 
 // ============================================================================
+// FORUMS (bbPress) INTEGRATION
+//
+// WHY: Many genealogical and historical societies want a discussion forum for
+//      their members. bbPress is the leading WordPress forum plugin and already
+//      follows WordPress conventions, so rather than building our own forum from
+//      scratch, we provide a thin glue layer that:
+//      - Restricts forum access based on SP membership status
+//      - Syncs bbPress roles when membership status changes
+//      - Auto-adds a "Forums" nav link for logged-in members
+//      - Surfaces the bbPress admin in the SP sidebar
+//
+//      All hooks bail out early if the forums module is disabled or if bbPress
+//      is not installed, so this code is completely inert when not needed.
+// ============================================================================
+
+/**
+ * Admin notice: forums module enabled but bbPress not installed.
+ *
+ * WHY: Harold might enable the Forums module in Settings → Modules before
+ *      actually installing bbPress. Rather than silently doing nothing, we
+ *      show a clear, actionable notice so he knows what to do next.
+ */
+add_action( 'admin_notices', function (): void {
+    if ( ! sp_module_enabled( 'forums' ) ) {
+        return;
+    }
+    if ( class_exists( 'bbPress' ) ) {
+        return;
+    }
+    // Only show to users who can install plugins — no point confusing editors
+    if ( ! current_user_can( 'install_plugins' ) ) {
+        return;
+    }
+    ?>
+    <div class="notice notice-warning is-dismissible">
+        <p>
+            <strong><?php esc_html_e( 'SocietyPress Forums:', 'societypress' ); ?></strong>
+            <?php
+            echo wp_kses(
+                sprintf(
+                    /* translators: %1$s: opening link tag, %2$s: closing link tag */
+                    __( 'The Forums module requires the bbPress plugin. Install it from %1$sPlugins → Add New%2$s.', 'societypress' ),
+                    '<a href="' . esc_url( admin_url( 'plugin-install.php?s=bbpress&tab=search&type=term' ) ) . '">',
+                    '</a>'
+                ),
+                [ 'a' => [ 'href' => [] ] ]
+            );
+            ?>
+        </p>
+    </div>
+    <?php
+} );
+
+/**
+ * Restrict forum access for non-members on members-only forums.
+ *
+ * WHY: If a forum's page has the _sp_members_only meta (or the forum itself
+ *      is gated), non-members should be blocked entirely. bbPress provides
+ *      the bbp_user_can_view_forum filter to control per-forum visibility.
+ *      We hook into it and deny access when:
+ *      - The user is not logged in, OR
+ *      - The user has no SP member record
+ *
+ *      This respects the existing _sp_members_only page meta pattern used
+ *      everywhere else in SP, so Harold can gate individual forums the same
+ *      way he gates any other page.
+ */
+add_filter( 'bbp_user_can_view_forum', 'sp_bbpress_gate_forum_access', 10, 3 );
+
+function sp_bbpress_gate_forum_access( $retval, $forum_id, $user_id ) {
+    // Bail if forums module disabled or bbPress not active
+    if ( ! sp_module_enabled( 'forums' ) || ! class_exists( 'bbPress' ) ) {
+        return $retval;
+    }
+
+    // Check if this specific forum (or its parent page) is members-only
+    // WHY: Not all forums need to be gated — only those the admin has
+    //      explicitly marked. This lets societies have a mix of public
+    //      and private forums.
+    $forum_members_only = get_post_meta( $forum_id, '_sp_members_only', true ) === '1';
+
+    if ( ! $forum_members_only ) {
+        return $retval;
+    }
+
+    // Non-logged-in users: blocked from members-only forums
+    if ( ! $user_id || ! is_user_logged_in() ) {
+        return false;
+    }
+
+    // Logged-in but not an SP member: blocked
+    if ( ! sp_is_member( $user_id ) ) {
+        return false;
+    }
+
+    // SP members (any status including expired) can at least view
+    // WHY: Expired members get read-only access (see topic/reply filters
+    //      below), but they should still be able to browse existing threads.
+    return $retval;
+}
+
+/**
+ * Prevent expired/non-active members from creating new topics.
+ *
+ * WHY: Expired members retain read access so they can still reference past
+ *      discussions, but they shouldn't be able to start new conversations.
+ *      This encourages renewal while not being punitive about existing content.
+ */
+add_filter( 'bbp_current_user_can_publish_topics', 'sp_bbpress_gate_publish_topics' );
+
+function sp_bbpress_gate_publish_topics( $can_publish ) {
+    if ( ! sp_module_enabled( 'forums' ) || ! class_exists( 'bbPress' ) ) {
+        return $can_publish;
+    }
+
+    $user_id = get_current_user_id();
+    if ( ! $user_id ) {
+        return false;
+    }
+
+    $member = sp_get_member_by_user_id( $user_id );
+
+    // No member record — cannot post
+    if ( ! $member ) {
+        return false;
+    }
+
+    // Only active members can create topics
+    // WHY: 'active' is the only status that means "fully paid, in good standing."
+    //      Every other status (expired, lapsed, grace, pending, inactive, deceased)
+    //      represents some form of non-current membership.
+    if ( $member->status !== 'active' ) {
+        return false;
+    }
+
+    return $can_publish;
+}
+
+/**
+ * Prevent expired/non-active members from posting replies.
+ *
+ * WHY: Same logic as topics — if you can't start a thread, you shouldn't be
+ *      able to reply in one either. Active membership is required to participate.
+ */
+add_filter( 'bbp_current_user_can_publish_replies', 'sp_bbpress_gate_publish_replies' );
+
+function sp_bbpress_gate_publish_replies( $can_publish ) {
+    if ( ! sp_module_enabled( 'forums' ) || ! class_exists( 'bbPress' ) ) {
+        return $can_publish;
+    }
+
+    $user_id = get_current_user_id();
+    if ( ! $user_id ) {
+        return false;
+    }
+
+    $member = sp_get_member_by_user_id( $user_id );
+
+    if ( ! $member ) {
+        return false;
+    }
+
+    if ( $member->status !== 'active' ) {
+        return false;
+    }
+
+    return $can_publish;
+}
+
+/**
+ * Sync bbPress role when a member record is saved (admin edit).
+ *
+ * WHY: bbPress uses its own role system (bbp_participant, bbp_spectator, etc.)
+ *      layered on top of WordPress roles. When an admin changes a member's
+ *      status in SocietyPress, the bbPress role should reflect that change
+ *      automatically. Without this sync, a member could be expired in SP
+ *      but still have full posting rights in bbPress.
+ *
+ *      We hook into the member save redirect (sp-member-edit&saved=1) rather
+ *      than a custom action hook because the member save handler doesn't fire
+ *      a dedicated do_action yet. The redirect happens only after a successful
+ *      save, so we piggyback on admin_init to detect it and sync the role.
+ */
+add_action( 'admin_init', 'sp_bbpress_sync_role_on_member_save', 20 );
+
+function sp_bbpress_sync_role_on_member_save(): void {
+    if ( ! sp_module_enabled( 'forums' ) || ! class_exists( 'bbPress' ) ) {
+        return;
+    }
+
+    // Only trigger on the redirect after a member save
+    // WHY: The member edit handler redirects to sp-member-edit with saved=1
+    //      after a successful update. This is the cheapest place to detect
+    //      "a member was just saved" without modifying the existing save handler.
+    if ( ! isset( $_GET['page'], $_GET['saved'], $_GET['user_id'] ) ) {
+        return;
+    }
+    if ( $_GET['page'] !== 'sp-member-edit' || $_GET['saved'] !== '1' ) {
+        return;
+    }
+
+    $user_id = absint( $_GET['user_id'] );
+    if ( ! $user_id ) {
+        return;
+    }
+
+    sp_bbpress_set_role_for_member( $user_id );
+}
+
+/**
+ * Sync bbPress role when the expiration cron auto-expires a member.
+ *
+ * WHY: sp_process_expired_notices() updates status to 'expired' directly via
+ *      $wpdb->update() with no action hook. We hook into the same daily cron
+ *      event and re-check all members whose status is expired but who still
+ *      have bbp_participant. This is lightweight — we only query members whose
+ *      bbPress role is out of sync.
+ */
+add_action( 'sp_daily_maintenance', 'sp_bbpress_sync_expired_roles' );
+
+function sp_bbpress_sync_expired_roles(): void {
+    if ( ! sp_module_enabled( 'forums' ) || ! class_exists( 'bbPress' ) ) {
+        return;
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // Find members who are NOT active — they should all be spectators
+    // WHY: Rather than tracking "who just changed," we do a reconciliation
+    //      pass. This catches any status changes that happened via cron,
+    //      direct DB edits, imports, or any other path we might miss.
+    $non_active = $wpdb->get_col(
+        "SELECT user_id FROM {$prefix}members WHERE status != 'active'"
+    );
+
+    foreach ( $non_active as $user_id ) {
+        $user_id = (int) $user_id;
+
+        // Only downgrade if they currently have a posting role
+        // WHY: Don't waste writes on users who are already spectators or
+        //      who have no bbPress role at all.
+        if ( bbp_is_user_keymaster( $user_id ) ) {
+            continue; // Never touch keymasters — they're forum admins
+        }
+
+        $current_role = bbp_get_user_role( $user_id );
+        if ( $current_role === bbp_get_spectator_role() ) {
+            continue; // Already correct
+        }
+        if ( empty( $current_role ) ) {
+            continue; // No bbPress role — they may not use forums
+        }
+
+        bbp_set_user_role( $user_id, bbp_get_spectator_role() );
+    }
+
+    // Also upgrade active members who are stuck as spectators
+    // WHY: A member might renew (status goes back to active) between cron
+    //      runs. The admin-save hook catches manual renewals, but this
+    //      handles bulk imports, payment webhooks, or other automated paths.
+    $active = $wpdb->get_col(
+        "SELECT user_id FROM {$prefix}members WHERE status = 'active'"
+    );
+
+    foreach ( $active as $user_id ) {
+        $user_id = (int) $user_id;
+
+        if ( bbp_is_user_keymaster( $user_id ) ) {
+            continue;
+        }
+
+        $current_role = bbp_get_user_role( $user_id );
+
+        // Only upgrade spectators — don't touch moderators or keymasters
+        if ( $current_role === bbp_get_spectator_role() ) {
+            bbp_set_user_role( $user_id, bbp_get_participant_role() );
+        }
+    }
+}
+
+/**
+ * Set a single member's bbPress role based on their SP membership status.
+ *
+ * WHY: Centralizes the status-to-role mapping so both the admin-save hook
+ *      and the cron reconciliation can use the same logic. Keymasters (forum
+ *      admins) are never touched — their role is managed separately.
+ *
+ * @param int $user_id WordPress user ID.
+ */
+function sp_bbpress_set_role_for_member( int $user_id ): void {
+    if ( ! function_exists( 'bbp_get_user_role' ) ) {
+        return;
+    }
+
+    // Never touch keymasters — they administer the forums
+    if ( bbp_is_user_keymaster( $user_id ) ) {
+        return;
+    }
+
+    $member = sp_get_member_by_user_id( $user_id );
+    if ( ! $member ) {
+        return;
+    }
+
+    // Active members get participant (can post); everyone else gets spectator (read-only)
+    $desired_role = ( $member->status === 'active' )
+        ? bbp_get_participant_role()
+        : bbp_get_spectator_role();
+
+    $current_role = bbp_get_user_role( $user_id );
+
+    // Only write if the role actually needs to change
+    if ( $current_role !== $desired_role ) {
+        bbp_set_user_role( $user_id, $desired_role );
+    }
+}
+
+/**
+ * Auto-add a "Forums" link to the primary navigation menu.
+ *
+ * WHY: When bbPress is active and the forums module is enabled, members
+ *      should see a "Forums" link without Harold having to manually add one
+ *      to the nav menu. We use wp_nav_menu_objects — the same filter already
+ *      used for Join/Directory/My Account visibility — to inject the link.
+ *
+ *      The link only appears for logged-in SP members (the people who can
+ *      actually use the forums). Non-members don't see it.
+ */
+add_filter( 'wp_nav_menu_objects', 'sp_bbpress_add_forums_nav_link', 20 );
+
+function sp_bbpress_add_forums_nav_link( array $items ): array {
+    if ( ! sp_module_enabled( 'forums' ) || ! class_exists( 'bbPress' ) ) {
+        return $items;
+    }
+
+    // Only show to logged-in members
+    if ( ! is_user_logged_in() ) {
+        return $items;
+    }
+    if ( ! sp_is_member() ) {
+        return $items;
+    }
+
+    // Get the bbPress forums root URL
+    // WHY: bbp_get_forums_url() returns the canonical URL for the forums
+    //      archive page. If bbPress isn't configured yet (no forum root page),
+    //      this returns empty and we skip the link.
+    $forums_url = function_exists( 'bbp_get_forums_url' ) ? bbp_get_forums_url() : '';
+    if ( empty( $forums_url ) ) {
+        return $items;
+    }
+
+    // Don't add if "Forums" is already in the menu (Harold added it manually)
+    // WHY: If the admin deliberately placed a Forums link, we don't want to
+    //      duplicate it. Check both custom links and page-type items.
+    foreach ( $items as $item ) {
+        if ( stripos( $item->title, 'forum' ) !== false ) {
+            return $items;
+        }
+        // Also check if the URL matches the forums root
+        if ( ! empty( $item->url ) && trailingslashit( $item->url ) === trailingslashit( $forums_url ) ) {
+            return $items;
+        }
+    }
+
+    // Build a fake menu item object
+    // WHY: wp_nav_menu_objects expects WP_Post-like objects with specific
+    //      properties. We create one that matches the structure WordPress
+    //      outputs for real menu items.
+    $forums_item = (object) [
+        'ID'               => PHP_INT_MAX - 10, // Unique fake ID — won't collide with real items
+        'db_id'            => 0,
+        'menu_item_parent' => 0,
+        'object_id'        => 0,
+        'object'           => 'custom',
+        'type'             => 'custom',
+        'type_label'       => '',
+        'title'            => __( 'Forums', 'societypress' ),
+        'url'              => $forums_url,
+        'target'           => '',
+        'attr_title'       => '',
+        'description'      => '',
+        'classes'           => [ 'menu-item', 'menu-item-type-custom', 'menu-item-forums' ],
+        'xfn'              => '',
+        'current'          => false,
+        'current_item_ancestor' => false,
+        'current_item_parent'   => false,
+    ];
+
+    // Highlight the nav item when viewing a bbPress page
+    if ( function_exists( 'is_bbpress' ) && is_bbpress() ) {
+        $forums_item->current    = true;
+        $forums_item->classes[]  = 'current-menu-item';
+    }
+
+    // Insert before the last item (usually "My Account" or similar)
+    // WHY: Appending to the very end could put Forums after the user
+    //      dropdown. Inserting second-to-last keeps it in the main nav flow.
+    $items_array = array_values( $items );
+    $count       = count( $items_array );
+    if ( $count > 1 ) {
+        array_splice( $items_array, $count - 1, 0, [ $forums_item ] );
+        return $items_array;
+    }
+
+    $items[] = $forums_item;
+    return $items;
+}
+
+
+// ============================================================================
 // CUSTOM CONFIRMATION MODAL — spConfirm()
 //
 // WHY: Native browser confirm() dialogs are ugly, inconsistent across browsers,
@@ -71393,6 +74259,7 @@ add_action( 'admin_footer', function () {
     <!-- SocietyPress Confirmation Modal -->
     <div id="sp-confirm-overlay" class="sp-confirm-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="sp-confirm-message">
         <div class="sp-confirm-box">
+            <button type="button" id="sp-confirm-close" class="sp-confirm-close" aria-label="<?php esc_attr_e( 'Close', 'societypress' ); ?>">&times;</button>
             <p id="sp-confirm-message" class="sp-confirm-message"></p>
             <div class="sp-confirm-actions">
                 <button type="button" id="sp-confirm-no" class="button sp-confirm-btn"><?php esc_html_e( 'Cancel', 'societypress' ); ?></button>
@@ -71417,6 +74284,22 @@ add_action( 'admin_footer', function () {
             max-width: 440px;
             width: 90%;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+            position: relative;
+        }
+        .sp-confirm-close {
+            position: absolute;
+            top: 8px;
+            right: 12px;
+            background: none;
+            border: none;
+            font-size: 22px;
+            color: #787c82;
+            cursor: pointer;
+            padding: 2px 6px;
+            line-height: 1;
+        }
+        .sp-confirm-close:hover {
+            color: #1d2327;
         }
         .sp-confirm-message {
             font-size: 14px;
@@ -71460,10 +74343,11 @@ add_action( 'admin_footer', function () {
      */
     function spConfirm(message, onConfirm, opts) {
         opts = opts || {};
-        var overlay    = document.getElementById('sp-confirm-overlay');
-        var msgEl      = document.getElementById('sp-confirm-message');
-        var yesBtn     = document.getElementById('sp-confirm-yes');
-        var noBtn      = document.getElementById('sp-confirm-no');
+        var overlay  = document.getElementById('sp-confirm-overlay');
+        var msgEl    = document.getElementById('sp-confirm-message');
+        var yesBtn   = document.getElementById('sp-confirm-yes');
+        var noBtn    = document.getElementById('sp-confirm-no');
+        var closeBtn = document.getElementById('sp-confirm-close');
 
         msgEl.textContent = message;
         if (opts.confirmText) yesBtn.textContent = opts.confirmText;
@@ -71473,10 +74357,12 @@ add_action( 'admin_footer', function () {
         overlay.style.display = 'flex';
 
         /* Clone buttons to remove any prior listeners */
-        var freshYes = yesBtn.cloneNode(true);
+        var freshYes   = yesBtn.cloneNode(true);
         yesBtn.parentNode.replaceChild(freshYes, yesBtn);
-        var freshNo = noBtn.cloneNode(true);
+        var freshNo    = noBtn.cloneNode(true);
         noBtn.parentNode.replaceChild(freshNo, noBtn);
+        var freshClose = closeBtn.cloneNode(true);
+        closeBtn.parentNode.replaceChild(freshClose, closeBtn);
 
         function close() {
             overlay.style.display = 'none';
@@ -71488,10 +74374,31 @@ add_action( 'admin_footer', function () {
             if (onConfirm) onConfirm();
         });
         freshNo.addEventListener('click', close);
+        freshClose.addEventListener('click', close);
+
+        // WHY: Focus trap keeps keyboard users inside the dialog. Without it,
+        // Tab moves focus to page content behind the overlay — disorienting.
+        var focusable = [freshClose, freshNo, freshYes];
 
         function keyHandler(e) {
-            if (e.key === 'Escape') close();
-            if (e.key === 'Enter') { close(); if (onConfirm) onConfirm(); }
+            if (e.key === 'Escape') { close(); return; }
+
+            // Focus trap: cycle Tab between the dialog's focusable elements
+            if (e.key === 'Tab') {
+                var first = focusable[0];
+                var last  = focusable[focusable.length - 1];
+                if (e.shiftKey) {
+                    if (document.activeElement === first) {
+                        e.preventDefault();
+                        last.focus();
+                    }
+                } else {
+                    if (document.activeElement === last) {
+                        e.preventDefault();
+                        first.focus();
+                    }
+                }
+            }
         }
         document.addEventListener('keydown', keyHandler);
         freshYes.focus();

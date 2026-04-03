@@ -87,7 +87,20 @@
 - Frontend: chat-style widget + page template, vanilla JS, loading states, attribution disclaimer
 - Page builder widget: ai_assistant with login_required option
 
-**Security Audit + Accessibility Audit:** (results pending at session close)
+**Security Audit (15 findings, 6 fixed this session):**
+- CRIT-1 FIXED: Mailchimp $dc/$audience_id validated with regex to prevent SSRF
+- CRIT-2 FIXED: Push subscription REST endpoint rate limited (10/hr/IP)
+- HIGH-1 FIXED: Donation Stripe return idempotency guard changed to check `type !== 'pending'`
+- HIGH-2 FIXED: Donation redirect URL validated with `wp_validate_redirect()`
+- HIGH-3 FIXED: Committees + surname variants pages now check `current_user_can('manage_options')`
+- MED-5 FIXED: PayPal donation return idempotency guard fixed same as HIGH-1
+- Also fixed: `sanitize_url()` → `esc_url_raw()`, base64 key sanitizer corrected
+- Remaining (tracked for next session): HIGH-4 (Zoom JWT deprecated), MED-1 (push CSRF for logged-in), MED-3 (committee delete by name), MED-4 (unencrypted push payloads), LOW-1 (secrets in form values), LOW-3 (CSV ob_clean)
+
+**Accessibility Audit (31 findings — tracked for next session):**
+- 7 High: skip nav, AJAX aria-live, donation campaign keyboard access, amount button aria-pressed, vote fieldset/legend, lightbox focus management, event banners
+- 12 Medium: directory checkbox id, library search/filter labels, store cart button labels, capacity bar color-only, page groups div→button, emoji aria-hidden, dashicons aria-hidden, proxy form aria-live, new-tab warnings, join tier error id, member detail panel
+- 12 Low: hardcoded colors, contrast edge cases, tab aria-controls, table captions, decorative checkmark, drag-drop keyboard alt, arrow aria-hidden, spConfirm focus return, stat card semantics, newsletter inline styles, gallery folder cards
 
 **PWA Icons + deploy.sh:** (done earlier this session)
 

@@ -6211,6 +6211,9 @@ function sp_apply_profile_change( object $change ): void {
 // ============================================================================
 
 function sp_render_surname_variants_page(): void {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You do not have permission to access this page.', 'societypress' ) );
+    }
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
@@ -27377,7 +27380,10 @@ function sp_render_settings_mailchimp_page(): void {
     //      returns { "health_status": "Everything's Chimpy!" } on success.
     $connected = false;
     $status_msg = '';
-    if ( $api_key && $dc ) {
+    // WHY: Validate $dc format to prevent SSRF — a crafted API key could
+    //      make $dc something like "evil.com/path?x=" which would redirect
+    //      the HTTP request (and the Authorization header) to an attacker.
+    if ( $api_key && $dc && preg_match( '/^[a-z0-9]{2,10}$/', $dc ) ) {
         $response = wp_remote_get( "https://{$dc}.api.mailchimp.com/3.0/ping", [
             'headers' => [
                 'Authorization' => 'apikey ' . $api_key,
@@ -27537,6 +27543,10 @@ add_action( 'wp_ajax_sp_mailchimp_sync', function () {
 
     if ( ! $api_key || ! $audience_id || ! $dc ) {
         wp_send_json_error( __( 'Mailchimp is not configured. Enter your API key and Audience ID first.', 'societypress' ) );
+    }
+    // WHY: Validate format to prevent SSRF — see CRIT-1 in security audit.
+    if ( ! preg_match( '/^[a-z0-9]{2,10}$/', $dc ) || ! preg_match( '/^[a-f0-9]{8,12}$/i', $audience_id ) ) {
+        wp_send_json_error( __( 'Invalid Mailchimp configuration. Check your API key and Audience ID.', 'societypress' ) );
     }
 
     global $wpdb;
@@ -60647,6 +60657,9 @@ function sp_render_leadership_page(): void {
 // ============================================================================
 
 function sp_render_committees_page(): void {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You do not have permission to access this page.', 'societypress' ) );
+    }
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
@@ -63316,7 +63329,10 @@ add_action( 'template_redirect', function () {
     ) );
 
     // Only process if the donation exists and hasn't already been marked paid
-    if ( ! $donation || $donation->type === 'stripe' ) return;
+    // WHY: Only process pending donations — prevents double-processing if
+    //      the member reloads the return URL or if another code path already
+    //      captured this payment.
+    if ( ! $donation || $donation->type !== 'pending' ) return;
 
     // Verify the Stripe session ID matches what we stored
     if ( $donation->stripe_session_id !== $session_id ) return;
@@ -63372,7 +63388,7 @@ add_action( 'template_redirect', function () {
     ) );
 
     // Only process if the donation exists and hasn't already been captured
-    if ( ! $donation || $donation->type === 'paypal' ) return;
+    if ( ! $donation || $donation->type !== 'pending' ) return;
 
     // Verify the PayPal order ID matches what we stored on this donation
     if ( $donation->paypal_order_id !== $paypal_token ) return;
@@ -63512,8 +63528,11 @@ function sp_ajax_donate_online(): void {
     // --- Find the donate page URL for return redirects ---
     // WHY: After payment, the gateway redirects back to our site. We need the
     // donate page URL (or the referring page for widget usage) as the base.
+    // WHY: wp_get_referer() reads the HTTP Referer header which is client-controlled.
+    //      A crafted Referer could redirect the payment return to an attacker's site.
+    //      wp_validate_redirect() ensures the URL belongs to this site.
     $donate_url = wp_get_referer();
-    if ( ! $donate_url ) {
+    if ( ! $donate_url || ! wp_validate_redirect( $donate_url, false ) ) {
         // Fall back to finding a page with the sp-donate template
         $donate_pages = get_pages( [ 'meta_key' => '_wp_page_template', 'meta_value' => 'sp-donate' ] );
         $donate_url   = ! empty( $donate_pages ) ? get_permalink( $donate_pages[0]->ID ) : home_url();
@@ -80692,11 +80711,26 @@ function sp_rest_push_subscribe( WP_REST_Request $request ): WP_REST_Response {
     // itself is harmless — the endpoint URL is browser-generated and can only
     // receive notifications signed with our VAPID key).
 
+    // WHY: Rate limit to prevent database flooding — an attacker could POST
+    //      millions of fake subscriptions with rotating endpoint URLs. 10 per
+    //      hour per IP is generous for legitimate use (one browser = one sub).
+    $ip_hash = 'sp_push_rl_' . md5( $_SERVER['REMOTE_ADDR'] ?? '' );
+    $hits    = (int) get_transient( $ip_hash );
+    if ( $hits >= 10 ) {
+        return new WP_REST_Response(
+            [ 'success' => false, 'message' => __( 'Rate limit exceeded. Try again later.', 'societypress' ) ],
+            429
+        );
+    }
+    set_transient( $ip_hash, $hits + 1, HOUR_IN_SECONDS );
+
     $body = $request->get_json_params();
 
-    $endpoint = sanitize_url( $body['endpoint'] ?? '' );
-    $p256dh   = sanitize_text_field( $body['keys']['p256dh'] ?? '' );
-    $auth     = sanitize_text_field( $body['keys']['auth'] ?? '' );
+    $endpoint = esc_url_raw( $body['endpoint'] ?? '' );
+    // WHY: sanitize_text_field strips characters that corrupt base64 keys.
+    //      These are opaque binary-safe tokens — just ensure they're strings.
+    $p256dh   = substr( preg_replace( '/[^A-Za-z0-9_\-=+\/]/', '', $body['keys']['p256dh'] ?? '' ), 0, 255 );
+    $auth     = substr( preg_replace( '/[^A-Za-z0-9_\-=+\/]/', '', $body['keys']['auth'] ?? '' ), 0, 255 );
 
     if ( empty( $endpoint ) || empty( $p256dh ) || empty( $auth ) ) {
         return new WP_REST_Response(

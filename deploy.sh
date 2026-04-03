@@ -9,15 +9,21 @@
 #   ./deploy.sh society        Deploy the society child theme only
 #   ./deploy.sh all          Deploy everything
 #   ./deploy.sh <theme-name> Deploy a specific child theme (e.g., heritage, coastline)
+#   ./deploy.sh installer   Deploy the one-click installer
+#   ./deploy.sh marketing   Deploy the getsocietypress.org theme
 
 HOST="skystra"
 DEMO_BASE="~/domains/getsocietypress.org/public_html/demo/wp-content"
-KNDGS_BASE="~/domains/example.org/public_html/cms/wp-content"
 LOCAL_BASE="$(cd "$(dirname "$0")" && pwd)"
 
 deploy_plugin() {
     echo "Deploying plugin to demo site..."
+    # Main plugin file
     scp "$LOCAL_BASE/plugin/societypress.php" "$HOST:$DEMO_BASE/plugins/societypress/societypress.php"
+    # Translation template
+    scp "$LOCAL_BASE/plugin/languages/societypress.pot" "$HOST:$DEMO_BASE/plugins/societypress/languages/societypress.pot" 2>/dev/null
+    # PWA icons and other assets
+    scp -r "$LOCAL_BASE/plugin/assets/"* "$HOST:$DEMO_BASE/plugins/societypress/assets/" 2>/dev/null
     echo "Plugin deployed."
 }
 
@@ -53,8 +59,18 @@ case "${1:-plugin}" in
             fi
         done
         ;;
+    installer)
+        echo "Deploying installer..."
+        scp "$LOCAL_BASE/installer/sp-installer.php" "$HOST:~/domains/getsocietypress.org/public_html/sp-installer.php"
+        echo "Installer deployed."
+        ;;
+    marketing)
+        echo "Deploying marketing site theme..."
+        scp -r "$LOCAL_BASE/marketing-theme/"* "$HOST:~/domains/getsocietypress.org/public_html/cms/wp-content/themes/getsocietypress/" 2>/dev/null
+        echo "Marketing theme deployed."
+        ;;
     *)
-        echo "Usage: $0 [plugin|theme|society|heritage|coastline|prairie|ledger|parlor|all]"
+        echo "Usage: $0 [plugin|theme|society|heritage|coastline|prairie|ledger|parlor|installer|marketing|all]"
         exit 1
         ;;
 esac

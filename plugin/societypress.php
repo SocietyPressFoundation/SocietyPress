@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.0.2
+ * Version:     1.0.3
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -29,7 +29,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // NOTE: This MUST match the "Version:" line in the plugin header comment above.
 // WordPress reads the version from the header; this constant is used for
 // cache-busting and comparison logic. They must stay in sync.
-define( 'SOCIETYPRESS_VERSION', '1.0.2' );
+define( 'SOCIETYPRESS_VERSION', '1.0.3' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -110,6 +110,16 @@ register_activation_hook( __FILE__, function () {
             'zoom_api_key'                 => '',          // encrypted at rest
             'zoom_api_secret'              => '',          // encrypted at rest
             'zoom_account_email'           => '',
+            // AI Assistant — Claude API integration for member Q&A
+            // WHY off by default: Requires an API key and conscious opt-in.
+            // Harold shouldn't be surprised by API calls or costs.
+            'ai_enabled'                   => 0,
+            'ai_api_key'                   => '',          // encrypted at rest via sp_encrypt
+            'ai_model'                     => 'claude-haiku-4-5-20251001',
+            'ai_access'                    => 'members',   // 'members', 'public', or 'disabled'
+            'ai_data_sources'              => [ 'events', 'library', 'resources', 'records', 'pages' ],
+            'ai_system_prompt'             => '',           // optional custom prompt prepended to every query
+            'ai_max_monthly_queries'       => 500,          // prevent runaway API costs
             // Push notifications (requires PWA enabled)
             'push_enabled'                 => 0,
             'push_vapid_public'            => '',
@@ -2130,6 +2140,28 @@ function sp_create_tables(): void {
     ) {$charset_collate};" );
 
 
+    // ========================================================================
+    // sp_ai_queries — AI Assistant query log
+    //
+    // WHY: Every question sent to the Claude API is logged so Harold can
+    //      audit what's being asked, monitor usage, troubleshoot bad answers,
+    //      and ensure the monthly query limit is tracked accurately.
+    //      user_id is nullable because public (non-logged-in) visitors may
+    //      also use the assistant if ai_access is set to 'public'.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}ai_queries (
+        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        user_id         BIGINT(20) UNSIGNED NULL,
+        question        TEXT                NOT NULL,
+        answer          TEXT                NOT NULL,
+        tokens_used     INT UNSIGNED        NOT NULL DEFAULT 0,
+        ip_address      VARCHAR(45)         NULL,
+        created_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY user_id (user_id),
+        KEY created_at (created_at)
+    ) {$charset_collate};" );
+
     // Store the schema version so we can run migrations in future updates
     // without re-running the full dbDelta on every page load.
     update_option( 'societypress_db_version', '0.26d' );
@@ -3026,6 +3058,12 @@ function sp_get_modules(): array {
             'icon'        => 'dashicons-yes-alt',
             'menu_slugs'  => [ 'sp-ballots', 'sp-ballot-edit', 'sp-ballot-results' ],
         ],
+        'ai' => [
+            'name'        => __( 'AI Assistant', 'societypress' ),
+            'description' => __( 'Let members ask natural-language questions and get AI-generated answers drawn from your society\'s data — events, library catalog, resources, records, and pages.', 'societypress' ),
+            'icon'        => 'dashicons-format-chat',
+            'menu_slugs'  => [ 'sp-settings-ai' ],
+        ],
         'forums' => [
             'name'        => __( 'Forums (bbPress)', 'societypress' ),
             'description' => __( 'Integrate with bbPress forums — members-only access, role sync, and navigation.', 'societypress' ),
@@ -3128,6 +3166,7 @@ function sp_template_module_map(): array {
         'sp-documents'          => 'documents',
         'sp-voting'             => 'voting',
         'sp-donate'             => 'donations',
+        'sp-ai-assistant'       => 'ai',
     ];
 }
 
@@ -4518,6 +4557,22 @@ add_action( 'admin_menu', function () {
         );
     }
 
+    // AI Assistant Integration — only show when the AI module is enabled.
+    // WHY: Societies that don't use the AI assistant shouldn't see the
+    //      settings page. When enabled, Harold gets a single page to enter
+    //      his Claude API key, choose a model, configure access level and
+    //      data sources, set a monthly query limit, and monitor usage.
+    if ( sp_module_enabled( 'ai' ) ) {
+        add_submenu_page(
+            'societypress',
+            __( 'AI Assistant — SocietyPress', 'societypress' ),
+            __( 'AI Assistant', 'societypress' ),
+            'manage_options',
+            'sp-settings-ai',
+            'sp_render_settings_ai_page'
+        );
+    }
+
     // -----------------------------------------------------------------
     // BACKWARD COMPAT — Old sp-settings URL redirect
     // WHY: The Settings page used to live at admin.php?page=sp-settings.
@@ -4716,6 +4771,7 @@ function sp_get_menu_capability_map(): array {
         'sp-audit-log'             => 'sp_manage_settings',
         'sp-settings-zoom'         => 'sp_manage_settings',
         'sp-settings-mailchimp'    => 'sp_manage_settings',
+        'sp-settings-ai'           => 'sp_manage_settings',
     ];
 }
 
@@ -7517,7 +7573,7 @@ var spMenuConfig = {
             id:    'settings',
             label: 'Settings',
             icon:  'dashicons-admin-generic',
-            items: ['sp-settings-website', 'sp-settings-organization', 'sp-settings-membership', 'sp-settings-directory', 'sp-settings-events', 'sp-settings-privacy', 'privacy-policy-guide.php', 'sp-settings-modules', 'sp-user-access', 'sp-settings-backups']
+            items: ['sp-settings-website', 'sp-settings-organization', 'sp-settings-membership', 'sp-settings-directory', 'sp-settings-events', 'sp-settings-privacy', 'privacy-policy-guide.php', 'sp-settings-modules', 'sp-user-access', 'sp-settings-backups', 'sp-settings-ai']
         }
     ],
     standalone: []
@@ -17150,6 +17206,18 @@ add_action( 'admin_init', function () {
         ]
     );
 
+    // ---- AI ASSISTANT page — saves to societypress_settings array ----
+    // WHY: Same pattern as Mailchimp/Zoom — separate settings group so saving
+    //      AI settings doesn't clobber other pages' data.
+    register_setting(
+        'sp-settings-ai',
+        'societypress_settings',
+        [
+            'type'              => 'array',
+            'sanitize_callback' => 'sp_sanitize_settings',
+        ]
+    );
+
 
     // ====================================================================
     // SECTION: Your Website
@@ -18692,6 +18760,29 @@ function sp_sanitize_settings( array $input ): array {
             return $val ? sp_encrypt( $val ) : '';
         },
         'zoom_account_email'          => fn() => sanitize_email( $input['zoom_account_email'] ?? '' ),
+
+        // AI Assistant Integration
+        // WHY: The API key is encrypted at rest — same pattern as Stripe, PayPal,
+        // Mailchimp, and Zoom. If the database leaks, the Claude API key is
+        // useless without the encryption key.
+        'ai_enabled'                  => fn() => ! empty( $input['ai_enabled'] ) ? 1 : 0,
+        'ai_api_key'                  => function() use ( $input ) {
+            $val = sanitize_text_field( $input['ai_api_key'] ?? '' );
+            return $val ? sp_encrypt( $val ) : '';
+        },
+        'ai_model'                    => fn() => in_array( $input['ai_model'] ?? '', [ 'claude-haiku-4-5-20251001', 'claude-sonnet-4-6-20250514' ], true )
+                                                   ? $input['ai_model'] : 'claude-haiku-4-5-20251001',
+        'ai_access'                   => fn() => in_array( $input['ai_access'] ?? '', [ 'members', 'public', 'disabled' ], true )
+                                                   ? $input['ai_access'] : 'members',
+        'ai_data_sources'             => function() use ( $input ) {
+            // WHY: Data sources are submitted as an array of checkboxes. We
+            // whitelist against the known source slugs to prevent injection.
+            $allowed = [ 'events', 'library', 'resources', 'records', 'pages' ];
+            $raw     = (array) ( $input['ai_data_sources'] ?? [] );
+            return array_values( array_intersect( $raw, $allowed ) );
+        },
+        'ai_system_prompt'            => fn() => sanitize_textarea_field( $input['ai_system_prompt'] ?? '' ),
+        'ai_max_monthly_queries'      => fn() => max( 10, min( 50000, (int) ( $input['ai_max_monthly_queries'] ?? 500 ) ) ),
     ];
 
     // Only sanitize + update keys that were actually submitted in the form.
@@ -18798,6 +18889,16 @@ function sp_sanitize_settings( array $input ): array {
     if ( array_key_exists( 'zoom_account_email', $input ) ) {
         $page_keys = array_merge( $page_keys, [
             'zoom_api_key', 'zoom_api_secret', 'zoom_account_email',
+        ]);
+    }
+
+    // AI Assistant page — signature: ai_model select is always in the form
+    // WHY: Same pattern as Zoom/Mailchimp — ai_model is a select field
+    //      that will always be submitted even if the default is selected.
+    if ( array_key_exists( 'ai_model', $input ) ) {
+        $page_keys = array_merge( $page_keys, [
+            'ai_enabled', 'ai_api_key', 'ai_model', 'ai_access',
+            'ai_data_sources', 'ai_system_prompt', 'ai_max_monthly_queries',
         ]);
     }
 
@@ -27673,6 +27774,1088 @@ function sp_zoom_generate_jwt( string $api_key, string $api_secret ): string|fal
 
 
 // ============================================================================
+// AI ASSISTANT — CLAUDE API INTEGRATION FOR MEMBER Q&A
+//
+// WHY: Societies accumulate enormous amounts of data — event histories, library
+//      catalogs with 19,000+ items, newsletters going back decades, resource
+//      links, genealogical records. Finding specific information means knowing
+//      which section to search and what terms to use. An AI assistant lets
+//      members (or the public) ask plain-language questions and get answers
+//      drawn from the society's actual data, without needing to know the site
+//      structure.
+//
+// ARCHITECTURE: Simple RAG (Retrieval-Augmented Generation) without embeddings
+//      or vector databases. When a question comes in:
+//      1. Extract keywords (strip stop words)
+//      2. Query relevant tables via SQL LIKE (events, library, resources, etc.)
+//      3. Build a context string from results (~3000 chars max)
+//      4. Send question + context to the Claude API
+//      5. Return the answer
+//
+// PRIVACY: Member PII (names, emails, phones, addresses) is NEVER included in
+//      the context sent to the API. Only public/semi-public data is sent: event
+//      titles/descriptions, library catalog metadata, resource links, page
+//      content, and record metadata.
+//
+// COST CONTROL: Monthly query limit (default 500), per-user rate limit (10/hr),
+//      and cheapest model (Haiku) by default keep costs manageable for societies.
+//
+// Gated behind sp_module_enabled('ai') at the menu registration level.
+// ============================================================================
+
+
+/**
+ * Render the AI Assistant settings page.
+ *
+ * WHY a dedicated page: The AI assistant involves API credentials, model
+ * selection, access control, data source configuration, and usage monitoring.
+ * Cramming this into an existing settings page would make both pages harder
+ * to understand. Harold gets a single page where everything AI-related lives.
+ */
+function sp_render_settings_ai_page(): void {
+    $settings           = get_option( 'societypress_settings', [] );
+    $ai_enabled         = ! empty( $settings['ai_enabled'] );
+    $api_key            = sp_decrypt( $settings['ai_api_key'] ?? '' );
+    $model              = $settings['ai_model'] ?? 'claude-haiku-4-5-20251001';
+    $access             = $settings['ai_access'] ?? 'members';
+    $data_sources       = (array) ( $settings['ai_data_sources'] ?? [ 'events', 'library', 'resources', 'records', 'pages' ] );
+    $custom_prompt      = $settings['ai_system_prompt'] ?? '';
+    $max_monthly        = (int) ( $settings['ai_max_monthly_queries'] ?? 500 );
+
+    // Get current month's usage count from the query log table.
+    // WHY: Harold needs to see how close he is to the monthly limit so he can
+    //      adjust the limit or disable the feature before unexpected costs hit.
+    global $wpdb;
+    $prefix       = $wpdb->prefix . 'sp_';
+    $month_start  = gmdate( 'Y-m-01 00:00:00' );
+    $month_count  = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$prefix}ai_queries WHERE created_at >= %s",
+        $month_start
+    ) );
+
+    ?>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Settings: AI Assistant', 'societypress' ); ?></h1>
+
+        <?php
+        if ( isset( $_GET['settings-updated'] ) && $_GET['settings-updated'] === 'true' ) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Settings saved.', 'societypress' ) . '</p></div>';
+        }
+        ?>
+
+        <div class="notice notice-info" style="margin:16px 0;">
+            <p>
+                <?php esc_html_e( 'The AI Assistant uses the Claude API by Anthropic to answer questions from your society\'s data. You need a Claude API key to use this feature.', 'societypress' ); ?>
+                <?php
+                /* translators: %s: URL to Anthropic console */
+                printf(
+                    wp_kses(
+                        __( 'Get an API key at <a href="%s" target="_blank" rel="noopener">console.anthropic.com</a>.', 'societypress' ),
+                        [ 'a' => [ 'href' => [], 'target' => [], 'rel' => [] ] ]
+                    ),
+                    'https://console.anthropic.com/'
+                );
+                ?>
+            </p>
+        </div>
+
+        <div class="notice notice-warning" style="margin:16px 0;">
+            <p>
+                <strong><?php esc_html_e( 'Data sent to the API:', 'societypress' ); ?></strong>
+                <?php esc_html_e( 'When a question is asked, relevant data from the enabled sources below is sent to the Claude API for processing. This includes event titles and descriptions, library catalog metadata, resource link titles, record metadata, and page content. No member personal information (names, emails, phone numbers, or addresses) is ever included.', 'societypress' ); ?>
+            </p>
+        </div>
+
+        <form method="post" action="options.php">
+            <?php settings_fields( 'sp-settings-ai' ); ?>
+
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><?php esc_html_e( 'Enable AI Assistant', 'societypress' ); ?></th>
+                    <td>
+                        <input type="hidden" name="societypress_settings[ai_enabled]" value="0">
+                        <label>
+                            <input type="checkbox" name="societypress_settings[ai_enabled]" value="1" <?php checked( $ai_enabled ); ?>>
+                            <?php esc_html_e( 'Allow users to ask questions via the AI Assistant', 'societypress' ); ?>
+                        </label>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="sp-ai-api-key"><?php esc_html_e( 'API Key', 'societypress' ); ?></label></th>
+                    <td>
+                        <input type="password" name="societypress_settings[ai_api_key]" id="sp-ai-api-key"
+                               value="<?php echo esc_attr( $api_key ); ?>" class="regular-text" autocomplete="off">
+                        <p class="description">
+                            <?php esc_html_e( 'Your Claude API key. Encrypted at rest — it is never stored in plain text.', 'societypress' ); ?>
+                        </p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="sp-ai-model"><?php esc_html_e( 'Model', 'societypress' ); ?></label></th>
+                    <td>
+                        <select name="societypress_settings[ai_model]" id="sp-ai-model">
+                            <option value="claude-haiku-4-5-20251001" <?php selected( $model, 'claude-haiku-4-5-20251001' ); ?>>
+                                <?php esc_html_e( 'Claude Haiku (fastest, cheapest)', 'societypress' ); ?>
+                            </option>
+                            <option value="claude-sonnet-4-6-20250514" <?php selected( $model, 'claude-sonnet-4-6-20250514' ); ?>>
+                                <?php esc_html_e( 'Claude Sonnet (smarter, higher cost)', 'societypress' ); ?>
+                            </option>
+                        </select>
+                        <p class="description">
+                            <?php esc_html_e( 'Haiku is recommended for most societies — it is fast and inexpensive. Sonnet gives better answers for complex questions but costs more per query.', 'societypress' ); ?>
+                        </p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="sp-ai-access"><?php esc_html_e( 'Access Level', 'societypress' ); ?></label></th>
+                    <td>
+                        <select name="societypress_settings[ai_access]" id="sp-ai-access">
+                            <option value="members" <?php selected( $access, 'members' ); ?>>
+                                <?php esc_html_e( 'Members Only', 'societypress' ); ?>
+                            </option>
+                            <option value="public" <?php selected( $access, 'public' ); ?>>
+                                <?php esc_html_e( 'Public (anyone can ask)', 'societypress' ); ?>
+                            </option>
+                            <option value="disabled" <?php selected( $access, 'disabled' ); ?>>
+                                <?php esc_html_e( 'Disabled', 'societypress' ); ?>
+                            </option>
+                        </select>
+                        <p class="description">
+                            <?php esc_html_e( '"Members Only" requires login. "Public" allows anyone visiting the site to ask questions (counts toward your monthly limit). "Disabled" turns off the assistant without removing your settings.', 'societypress' ); ?>
+                        </p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php esc_html_e( 'Data Sources', 'societypress' ); ?></th>
+                    <td>
+                        <?php
+                        // WHY: Each data source is a separate checkbox so Harold can control
+                        //      exactly which parts of his society's data the AI can reference.
+                        //      For example, a society might not want the AI referencing records
+                        //      data but is fine with events and library.
+                        $source_labels = [
+                            'events'    => __( 'Events (titles, descriptions, dates)', 'societypress' ),
+                            'library'   => __( 'Library catalog (titles, authors, subjects)', 'societypress' ),
+                            'resources' => __( 'Resource links (titles, URLs)', 'societypress' ),
+                            'records'   => __( 'Genealogical records (metadata, search text)', 'societypress' ),
+                            'pages'     => __( 'Published pages (page content)', 'societypress' ),
+                        ];
+                        foreach ( $source_labels as $slug => $label ) :
+                        ?>
+                            <label style="display:block; margin-bottom:6px;">
+                                <input type="checkbox" name="societypress_settings[ai_data_sources][]"
+                                       value="<?php echo esc_attr( $slug ); ?>"
+                                       <?php checked( in_array( $slug, $data_sources, true ) ); ?>>
+                                <?php echo esc_html( $label ); ?>
+                            </label>
+                        <?php endforeach; ?>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="sp-ai-prompt"><?php esc_html_e( 'Custom System Prompt', 'societypress' ); ?></label></th>
+                    <td>
+                        <textarea name="societypress_settings[ai_system_prompt]" id="sp-ai-prompt"
+                                  rows="4" class="large-text" placeholder="<?php esc_attr_e( 'Optional. Added before every query to customize the assistant\'s behavior.', 'societypress' ); ?>"><?php echo esc_textarea( $custom_prompt ); ?></textarea>
+                        <p class="description">
+                            <?php esc_html_e( 'Optional instructions added to every query. For example: "Always mention that our library is open Tuesdays 10am-2pm" or "Focus on local-area genealogy."', 'societypress' ); ?>
+                        </p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="sp-ai-max-queries"><?php esc_html_e( 'Monthly Query Limit', 'societypress' ); ?></label></th>
+                    <td>
+                        <input type="number" name="societypress_settings[ai_max_monthly_queries]" id="sp-ai-max-queries"
+                               value="<?php echo esc_attr( $max_monthly ); ?>" min="10" max="50000" step="10" class="small-text">
+                        <p class="description">
+                            <?php
+                            /* translators: 1: current month query count, 2: monthly limit */
+                            printf(
+                                esc_html__( 'Current month: %1$d of %2$d queries used.', 'societypress' ),
+                                $month_count,
+                                $max_monthly
+                            );
+                            ?>
+                        </p>
+                    </td>
+                </tr>
+            </table>
+
+            <?php submit_button( __( 'Save Settings', 'societypress' ) ); ?>
+        </form>
+
+        <?php if ( $month_count > 0 ) : ?>
+            <hr>
+            <h2><?php esc_html_e( 'Recent Queries', 'societypress' ); ?></h2>
+            <p class="description">
+                <?php esc_html_e( 'The 20 most recent questions asked via the AI Assistant.', 'societypress' ); ?>
+            </p>
+            <?php
+            $recent = $wpdb->get_results(
+                "SELECT q.question, q.tokens_used, q.created_at, u.display_name
+                 FROM {$prefix}ai_queries q
+                 LEFT JOIN {$wpdb->users} u ON q.user_id = u.ID
+                 ORDER BY q.created_at DESC
+                 LIMIT 20"
+            );
+            if ( $recent ) :
+            ?>
+                <table class="widefat striped" style="max-width:900px;">
+                    <thead>
+                        <tr>
+                            <th><?php esc_html_e( 'Question', 'societypress' ); ?></th>
+                            <th><?php esc_html_e( 'User', 'societypress' ); ?></th>
+                            <th><?php esc_html_e( 'Tokens', 'societypress' ); ?></th>
+                            <th><?php esc_html_e( 'Date', 'societypress' ); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ( $recent as $row ) : ?>
+                            <tr>
+                                <td><?php echo esc_html( wp_trim_words( $row->question, 20 ) ); ?></td>
+                                <td><?php echo esc_html( $row->display_name ?: __( 'Guest', 'societypress' ) ); ?></td>
+                                <td><?php echo esc_html( number_format_i18n( $row->tokens_used ) ); ?></td>
+                                <td><?php echo esc_html( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $row->created_at ) ) ); ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php else : ?>
+                <p class="sp-text-secondary"><?php esc_html_e( 'No queries yet this month.', 'societypress' ); ?></p>
+            <?php endif; ?>
+        <?php endif; ?>
+    </div>
+    <?php
+}
+
+
+/**
+ * Extract keywords from a natural-language question.
+ *
+ * WHY: We need to convert a question like "When is the next genealogy workshop?"
+ *      into search terms ['genealogy', 'workshop'] that can drive SQL LIKE queries.
+ *      This is intentionally simple — no NLP, no stemming — just stop word removal
+ *      and minimum length filtering. Good enough for keyword matching against
+ *      titles, descriptions, and subjects.
+ *
+ * @param string $question The user's question.
+ * @return array Array of lowercase keyword strings.
+ */
+function sp_ai_extract_keywords( string $question ): array {
+    // WHY these stop words: They're the most common English function words that
+    // add no search value. This list is deliberately conservative — we'd rather
+    // include a marginal word as a keyword than miss a relevant result.
+    $stop_words = [
+        'a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+        'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+        'should', 'may', 'might', 'shall', 'can', 'need', 'dare', 'ought',
+        'used', 'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from',
+        'as', 'into', 'through', 'during', 'before', 'after', 'above', 'below',
+        'between', 'out', 'off', 'over', 'under', 'again', 'further', 'then',
+        'once', 'here', 'there', 'when', 'where', 'why', 'how', 'all', 'each',
+        'every', 'both', 'few', 'more', 'most', 'other', 'some', 'such', 'no',
+        'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very',
+        'just', 'because', 'but', 'and', 'or', 'if', 'while', 'about', 'up',
+        'what', 'which', 'who', 'whom', 'this', 'that', 'these', 'those',
+        'i', 'me', 'my', 'myself', 'we', 'our', 'ours', 'ourselves', 'you',
+        'your', 'yours', 'yourself', 'yourselves', 'he', 'him', 'his', 'himself',
+        'she', 'her', 'hers', 'herself', 'it', 'its', 'itself', 'they', 'them',
+        'their', 'theirs', 'themselves', 'am',
+    ];
+
+    // Strip punctuation, lowercase, split on whitespace
+    $clean   = preg_replace( '/[^\w\s]/', '', strtolower( $question ) );
+    $words   = preg_split( '/\s+/', $clean, -1, PREG_SPLIT_NO_EMPTY );
+
+    // Filter: remove stop words and words under 3 characters
+    $keywords = array_filter( $words, function( $word ) use ( $stop_words ) {
+        return strlen( $word ) >= 3 && ! in_array( $word, $stop_words, true );
+    } );
+
+    // Return unique keywords, limit to 10 to keep SQL sane
+    return array_slice( array_unique( array_values( $keywords ) ), 0, 10 );
+}
+
+
+/**
+ * Search society data sources for context relevant to a question.
+ *
+ * WHY: The Claude API needs factual context to give accurate answers. Rather than
+ *      sending the entire database (impossible), we search each enabled data source
+ *      for rows matching the extracted keywords and build a concise context string.
+ *      The 3000-char limit keeps us well within token limits and keeps API costs low.
+ *
+ * PRIVACY: Only public/semi-public data is included. No member names, emails,
+ *      phone numbers, or addresses are ever sent to the API.
+ *
+ * @param array $keywords     Extracted keywords from the question.
+ * @param array $data_sources Array of enabled source slugs.
+ * @return string Context string for the API call.
+ */
+function sp_ai_build_context( array $keywords, array $data_sources ): string {
+    if ( empty( $keywords ) || empty( $data_sources ) ) {
+        return '';
+    }
+
+    global $wpdb;
+    $prefix  = $wpdb->prefix . 'sp_';
+    $context = '';
+    $max_len = 3000; // ~750 tokens — leaves plenty of room for question + answer
+
+    // Build LIKE conditions for each keyword. Using OR across keywords gives
+    // broader coverage than AND — a question about "genealogy workshop" should
+    // match events containing either word, not just both.
+    $like_parts = [];
+    foreach ( $keywords as $kw ) {
+        $like_parts[] = '%' . $wpdb->esc_like( $kw ) . '%';
+    }
+
+    // --- EVENTS ---
+    if ( in_array( 'events', $data_sources, true ) ) {
+        $or_clauses = [];
+        $params     = [];
+        foreach ( $like_parts as $like ) {
+            $or_clauses[] = 'title LIKE %s';
+            $params[]     = $like;
+            $or_clauses[] = 'description LIKE %s';
+            $params[]     = $like;
+        }
+        $where = implode( ' OR ', $or_clauses );
+
+        // WHY: Search both upcoming and recent events (last 90 days) — someone
+        //      might ask about a past event or a recurring one.
+        $cutoff   = gmdate( 'Y-m-d', strtotime( '-90 days' ) );
+        $params[] = $cutoff;
+
+        $events = $wpdb->get_results( $wpdb->prepare(
+            "SELECT title, description, start_date, location
+             FROM {$prefix}events
+             WHERE ({$where}) AND start_date >= %s
+             ORDER BY start_date ASC
+             LIMIT 5",
+            ...$params
+        ) );
+
+        if ( $events ) {
+            $context .= "EVENTS:\n";
+            foreach ( $events as $e ) {
+                $desc     = wp_strip_all_tags( $e->description ?? '' );
+                $desc     = wp_trim_words( $desc, 30, '...' );
+                $context .= "- {$e->title} ({$e->start_date}";
+                if ( $e->location ) {
+                    $context .= ", {$e->location}";
+                }
+                $context .= "): {$desc}\n";
+            }
+            $context .= "\n";
+        }
+    }
+
+    // --- LIBRARY CATALOG ---
+    if ( in_array( 'library', $data_sources, true ) && strlen( $context ) < $max_len ) {
+        $or_clauses = [];
+        $params     = [];
+        foreach ( $like_parts as $like ) {
+            $or_clauses[] = 'title LIKE %s';
+            $params[]     = $like;
+            $or_clauses[] = 'author LIKE %s';
+            $params[]     = $like;
+            $or_clauses[] = 'subject LIKE %s';
+            $params[]     = $like;
+        }
+        $where = implode( ' OR ', $or_clauses );
+
+        $items = $wpdb->get_results( $wpdb->prepare(
+            "SELECT title, author, subject, media_type, shelf_location
+             FROM {$prefix}library_items
+             WHERE ({$where})
+             ORDER BY title ASC
+             LIMIT 10",
+            ...$params
+        ) );
+
+        if ( $items ) {
+            $context .= "LIBRARY CATALOG:\n";
+            foreach ( $items as $item ) {
+                $context .= "- \"{$item->title}\"";
+                if ( $item->author ) {
+                    $context .= " by {$item->author}";
+                }
+                if ( $item->subject ) {
+                    $context .= " (subject: {$item->subject})";
+                }
+                if ( $item->media_type ) {
+                    $context .= " [{$item->media_type}]";
+                }
+                if ( $item->shelf_location ) {
+                    $context .= " — shelf: {$item->shelf_location}";
+                }
+                $context .= "\n";
+            }
+            $context .= "\n";
+        }
+    }
+
+    // --- RESOURCE LINKS ---
+    if ( in_array( 'resources', $data_sources, true ) && strlen( $context ) < $max_len ) {
+        $or_clauses = [];
+        $params     = [];
+        foreach ( $like_parts as $like ) {
+            $or_clauses[] = 'title LIKE %s';
+            $params[]     = $like;
+            $or_clauses[] = 'url LIKE %s';
+            $params[]     = $like;
+        }
+        $where = implode( ' OR ', $or_clauses );
+
+        $links = $wpdb->get_results( $wpdb->prepare(
+            "SELECT title, url, description
+             FROM {$prefix}resources
+             WHERE ({$where}) AND active = 1
+             ORDER BY title ASC
+             LIMIT 8",
+            ...$params
+        ) );
+
+        if ( $links ) {
+            $context .= "RESOURCE LINKS:\n";
+            foreach ( $links as $link ) {
+                $desc     = wp_strip_all_tags( $link->description ?? '' );
+                $desc     = wp_trim_words( $desc, 15, '...' );
+                $context .= "- {$link->title} ({$link->url})";
+                if ( $desc ) {
+                    $context .= ": {$desc}";
+                }
+                $context .= "\n";
+            }
+            $context .= "\n";
+        }
+    }
+
+    // --- GENEALOGICAL RECORDS ---
+    if ( in_array( 'records', $data_sources, true ) && strlen( $context ) < $max_len ) {
+        $or_clauses = [];
+        $params     = [];
+        foreach ( $like_parts as $like ) {
+            $or_clauses[] = 'r.search_text LIKE %s';
+            $params[]     = $like;
+        }
+        $where = implode( ' OR ', $or_clauses );
+
+        $records = $wpdb->get_results( $wpdb->prepare(
+            "SELECT r.search_text, c.name AS collection_name
+             FROM {$prefix}records r
+             JOIN {$prefix}record_collections c ON r.collection_id = c.id
+             WHERE ({$where}) AND c.status = 'active' AND c.access_level = 'public'
+             ORDER BY r.id DESC
+             LIMIT 5",
+            ...$params
+        ) );
+
+        if ( $records ) {
+            $context .= "GENEALOGICAL RECORDS:\n";
+            foreach ( $records as $rec ) {
+                $text     = wp_trim_words( $rec->search_text, 25, '...' );
+                $context .= "- [{$rec->collection_name}] {$text}\n";
+            }
+            $context .= "\n";
+        }
+    }
+
+    // --- PUBLISHED PAGES ---
+    if ( in_array( 'pages', $data_sources, true ) && strlen( $context ) < $max_len ) {
+        $or_clauses = [];
+        $params     = [];
+        foreach ( $like_parts as $like ) {
+            $or_clauses[] = 'post_title LIKE %s';
+            $params[]     = $like;
+            $or_clauses[] = 'post_content LIKE %s';
+            $params[]     = $like;
+        }
+        $where = implode( ' OR ', $or_clauses );
+
+        $pages = $wpdb->get_results( $wpdb->prepare(
+            "SELECT post_title, post_content
+             FROM {$wpdb->posts}
+             WHERE ({$where}) AND post_type = 'page' AND post_status = 'publish'
+             ORDER BY post_title ASC
+             LIMIT 3",
+            ...$params
+        ) );
+
+        if ( $pages ) {
+            $context .= "PAGES:\n";
+            foreach ( $pages as $pg ) {
+                $content  = wp_strip_all_tags( $pg->post_content );
+                $content  = wp_trim_words( $content, 40, '...' );
+                $context .= "- {$pg->post_title}: {$content}\n";
+            }
+            $context .= "\n";
+        }
+    }
+
+    // Hard-truncate to max_len to prevent oversized API payloads.
+    // WHY: Even with per-source LIMIT clauses, the combined context could
+    //      exceed 3000 chars if many sources match. A hard truncate is the
+    //      safety net.
+    if ( strlen( $context ) > $max_len ) {
+        $context = substr( $context, 0, $max_len ) . "\n[...context truncated]";
+    }
+
+    return $context;
+}
+
+
+/**
+ * AJAX handler: sp_ai_ask — process a question via the Claude API.
+ *
+ * WHY: This is the backend for the AI Assistant frontend widget and page
+ *      template. It validates the request, searches society data for context,
+ *      calls the Claude API, logs the query, and returns the answer.
+ *
+ * Security:
+ * - Nonce verification on every request
+ * - Rate limit: 10 queries per hour per user (or per IP for guests)
+ * - Monthly query limit enforced
+ * - API key and module enabled check
+ * - Member PII never included in API context
+ */
+function sp_ajax_ai_ask(): void {
+    // Nonce verification — prevents CSRF
+    check_ajax_referer( 'sp_ai_ask' );
+
+    $settings = get_option( 'societypress_settings', [] );
+
+    // Gate: Is the AI module enabled and not set to "disabled" access?
+    if ( empty( $settings['ai_enabled'] ) || ( $settings['ai_access'] ?? 'disabled' ) === 'disabled' ) {
+        wp_send_json_error( __( 'The AI Assistant is not currently available.', 'societypress' ) );
+    }
+
+    // Gate: Does the API key exist?
+    $api_key = sp_decrypt( $settings['ai_api_key'] ?? '' );
+    if ( empty( $api_key ) ) {
+        wp_send_json_error( __( 'The AI Assistant has not been configured yet. Please contact your site administrator.', 'societypress' ) );
+    }
+
+    // Gate: Access level check
+    $access = $settings['ai_access'] ?? 'members';
+    if ( $access === 'members' && ! is_user_logged_in() ) {
+        wp_send_json_error( __( 'Please log in to use the AI Assistant.', 'societypress' ) );
+    }
+
+    // Validate the question
+    $question = sanitize_textarea_field( $_POST['question'] ?? '' );
+    if ( empty( $question ) || strlen( $question ) < 5 ) {
+        wp_send_json_error( __( 'Please enter a question (at least 5 characters).', 'societypress' ) );
+    }
+    if ( strlen( $question ) > 1000 ) {
+        wp_send_json_error( __( 'Please keep your question under 1000 characters.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // Rate limit: 10 queries per hour per user or IP
+    // WHY: Prevents a single user (or bot) from burning through the monthly
+    //      limit. 10/hour is generous for genuine questions but stops abuse.
+    $user_id    = get_current_user_id();
+    $ip_address = sanitize_text_field( $_SERVER['REMOTE_ADDR'] ?? '' );
+    $hour_ago   = gmdate( 'Y-m-d H:i:s', strtotime( '-1 hour' ) );
+
+    if ( $user_id ) {
+        $hour_count = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$prefix}ai_queries WHERE user_id = %d AND created_at >= %s",
+            $user_id, $hour_ago
+        ) );
+    } else {
+        $hour_count = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$prefix}ai_queries WHERE ip_address = %s AND created_at >= %s",
+            $ip_address, $hour_ago
+        ) );
+    }
+
+    if ( $hour_count >= 10 ) {
+        wp_send_json_error( __( 'You have reached the hourly question limit. Please try again later.', 'societypress' ) );
+    }
+
+    // Monthly limit check
+    $max_monthly  = (int) ( $settings['ai_max_monthly_queries'] ?? 500 );
+    $month_start  = gmdate( 'Y-m-01 00:00:00' );
+    $month_count  = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$prefix}ai_queries WHERE created_at >= %s",
+        $month_start
+    ) );
+
+    if ( $month_count >= $max_monthly ) {
+        wp_send_json_error( __( 'The monthly question limit has been reached. Please try again next month or contact the site administrator.', 'societypress' ) );
+    }
+
+    // Extract keywords and build context from society data
+    $keywords     = sp_ai_extract_keywords( $question );
+    $data_sources = (array) ( $settings['ai_data_sources'] ?? [ 'events', 'library', 'resources', 'records', 'pages' ] );
+    $context      = sp_ai_build_context( $keywords, $data_sources );
+
+    // Build the system prompt
+    $org_name      = $settings['organization_name'] ?? '';
+    $org_label     = $org_name ?: __( 'this organization', 'societypress' );
+    $system_prompt = sprintf(
+        /* translators: %s: organization name */
+        __( 'You are a helpful assistant for %s, a genealogical/historical society. Answer questions using ONLY the provided context. If the context does not contain enough information to answer the question, say so honestly. Never make up information. Keep answers concise and friendly.', 'societypress' ),
+        $org_label
+    );
+
+    // Prepend custom system prompt if one is configured
+    $custom_prompt = trim( $settings['ai_system_prompt'] ?? '' );
+    if ( $custom_prompt ) {
+        $system_prompt = $custom_prompt . "\n\n" . $system_prompt;
+    }
+
+    // Build the user message with context
+    $user_message = $question;
+    if ( $context ) {
+        $user_message .= "\n\n--- SOCIETY DATA ---\n" . $context;
+    }
+
+    // Call the Claude API
+    // WHY wp_remote_post: Uses WordPress's HTTP API which respects proxy settings,
+    //      SSL verification, and timeout configuration on shared hosting. No SDK needed.
+    $model    = $settings['ai_model'] ?? 'claude-haiku-4-5-20251001';
+    $response = wp_remote_post( 'https://api.anthropic.com/v1/messages', [
+        'headers' => [
+            'x-api-key'         => $api_key,
+            'anthropic-version'  => '2023-06-01',
+            'content-type'       => 'application/json',
+        ],
+        'body'    => wp_json_encode( [
+            'model'      => $model,
+            'max_tokens' => 1024,
+            'system'     => $system_prompt,
+            'messages'   => [
+                [
+                    'role'    => 'user',
+                    'content' => $user_message,
+                ],
+            ],
+        ] ),
+        'timeout' => 30,
+    ] );
+
+    if ( is_wp_error( $response ) ) {
+        wp_send_json_error(
+            /* translators: %s: error message from HTTP request */
+            sprintf( __( 'Could not reach the AI service: %s', 'societypress' ), $response->get_error_message() )
+        );
+    }
+
+    $status_code = wp_remote_retrieve_response_code( $response );
+    $body        = json_decode( wp_remote_retrieve_body( $response ), true );
+
+    if ( $status_code !== 200 ) {
+        // WHY: Log the error for debugging but show a user-friendly message.
+        // Common errors: 401 (bad key), 429 (rate limited), 500 (API down).
+        $error_msg = $body['error']['message'] ?? __( 'Unknown error', 'societypress' );
+        if ( $status_code === 401 ) {
+            $error_msg = __( 'Invalid API key. Please contact the site administrator.', 'societypress' );
+        } elseif ( $status_code === 429 ) {
+            $error_msg = __( 'The AI service is temporarily busy. Please try again in a moment.', 'societypress' );
+        } elseif ( $status_code >= 500 ) {
+            $error_msg = __( 'The AI service is experiencing issues. Please try again later.', 'societypress' );
+        }
+        wp_send_json_error( $error_msg );
+    }
+
+    // Extract the answer text from the API response
+    $answer      = '';
+    $tokens_used = 0;
+    if ( ! empty( $body['content'] ) && is_array( $body['content'] ) ) {
+        foreach ( $body['content'] as $block ) {
+            if ( ( $block['type'] ?? '' ) === 'text' ) {
+                $answer .= $block['text'];
+            }
+        }
+    }
+    // Track token usage from the API response
+    if ( ! empty( $body['usage'] ) ) {
+        $tokens_used = (int) ( $body['usage']['input_tokens'] ?? 0 ) + (int) ( $body['usage']['output_tokens'] ?? 0 );
+    }
+
+    if ( empty( $answer ) ) {
+        wp_send_json_error( __( 'The AI returned an empty response. Please try rephrasing your question.', 'societypress' ) );
+    }
+
+    // Log the query for admin audit
+    // WHY: Every question and answer is logged so Harold can review what's being
+    //      asked, spot patterns, identify bad answers, and monitor token usage.
+    // WHY: We build the data and format arrays conditionally because
+    //      $wpdb->insert doesn't support null format specifiers. When there's
+    //      no logged-in user, we omit user_id entirely and let the DB default
+    //      to NULL (the column is nullable).
+    $insert_data   = [
+        'question'    => $question,
+        'answer'      => wp_trim_words( $answer, 100 ),  // Truncate for storage
+        'tokens_used' => $tokens_used,
+        'ip_address'  => $ip_address,
+        'created_at'  => current_time( 'mysql', true ),
+    ];
+    $insert_format = [ '%s', '%s', '%d', '%s', '%s' ];
+
+    if ( $user_id ) {
+        $insert_data['user_id'] = $user_id;
+        $insert_format[]        = '%d';
+    }
+
+    $wpdb->insert( $prefix . 'ai_queries', $insert_data, $insert_format );
+
+    wp_send_json_success( [
+        'answer' => wp_kses_post( $answer ),
+    ] );
+}
+
+// Register the AJAX handler for logged-in users (always available)
+add_action( 'wp_ajax_sp_ai_ask', 'sp_ajax_ai_ask' );
+
+// Conditionally register the nopriv handler based on access level.
+// WHY: If ai_access is 'public', non-logged-in visitors need the AJAX endpoint.
+//      We check the setting at registration time rather than inside the handler
+//      because WordPress won't route nopriv requests to wp_ajax_ hooks.
+//      The handler itself also checks the access level as defense-in-depth.
+add_action( 'init', function () {
+    $settings = get_option( 'societypress_settings', [] );
+    if ( ( $settings['ai_access'] ?? 'members' ) === 'public' ) {
+        add_action( 'wp_ajax_nopriv_sp_ai_ask', 'sp_ajax_ai_ask' );
+    }
+} );
+
+
+// ============================================================================
+// AI ASSISTANT — PAGE TEMPLATE
+//
+// WHY: A dedicated page template lets Harold create an "Ask the AI" page that
+//      visitors can find in the navigation. Same pattern as Events, Donate,
+//      Store, etc. — a plugin-provided template that appears in the Template
+//      dropdown without requiring a theme file.
+// ============================================================================
+
+/**
+ * Register the "AI Assistant" page template.
+ */
+add_filter( 'theme_page_templates', function ( $templates ) {
+    if ( sp_module_enabled( 'ai' ) ) {
+        $templates['sp-ai-assistant'] = __( 'AI Assistant', 'societypress' );
+    }
+    return $templates;
+} );
+
+/**
+ * Render the AI Assistant page template.
+ *
+ * WHY: When WordPress loads a page assigned to the sp-ai-assistant template,
+ *      we intercept and render the chat-style Q&A interface inside the active
+ *      theme's header/footer. Access is controlled by the ai_access setting.
+ */
+add_filter( 'template_include', function ( $template ) {
+    if ( ! is_page() || get_page_template_slug() !== 'sp-ai-assistant' ) {
+        return $template;
+    }
+
+    $settings = get_option( 'societypress_settings', [] );
+    $access   = $settings['ai_access'] ?? 'members';
+
+    get_header();
+    echo '<div class="entry-content" style="max-width:var(--sp-content-width,700px); margin:40px auto; padding:0 20px;">';
+    echo '<h1 class="entry-title">' . esc_html( get_the_title() ) . '</h1>';
+
+    // Access gate: if members only and not logged in, show login prompt
+    if ( $access === 'members' && ! is_user_logged_in() ) {
+        echo '<p>' . sprintf(
+            /* translators: %s: login URL */
+            wp_kses(
+                __( 'Please <a href="%s">log in</a> to use the AI Assistant.', 'societypress' ),
+                [ 'a' => [ 'href' => [] ] ]
+            ),
+            esc_url( wp_login_url( get_permalink() ) )
+        ) . '</p>';
+    } elseif ( empty( $settings['ai_enabled'] ) || $access === 'disabled' ) {
+        echo '<p>' . esc_html__( 'The AI Assistant is not currently available.', 'societypress' ) . '</p>';
+    } else {
+        sp_render_ai_assistant_widget();
+    }
+
+    echo '</div>';
+    get_footer();
+
+    return sp_get_blank_template_path();
+}, 50 );
+
+
+/**
+ * Render the AI Assistant chat interface.
+ *
+ * WHY: Shared between the page template and the page builder widget so the
+ *      chat UI is identical whether Harold uses a dedicated page or embeds it
+ *      on an existing page. The interface is deliberately simple: one input,
+ *      one button, one response area. No chat history — each question is
+ *      independent, which matches the stateless RAG architecture.
+ *
+ * Uses vanilla JS (no jQuery) per project standards. AJAX call uses fetch()
+ * with proper nonce verification.
+ */
+function sp_render_ai_assistant_widget(): void {
+    $settings = get_option( 'societypress_settings', [] );
+
+    // Don't render anything if disabled or not configured
+    if ( empty( $settings['ai_enabled'] ) || ( $settings['ai_access'] ?? 'disabled' ) === 'disabled' ) {
+        echo '<p class="sp-text-secondary">' . esc_html__( 'The AI Assistant is not currently available.', 'societypress' ) . '</p>';
+        return;
+    }
+
+    // Access check for page builder widget context (template already checks)
+    $access = $settings['ai_access'] ?? 'members';
+    if ( $access === 'members' && ! is_user_logged_in() ) {
+        echo '<p>' . sprintf(
+            /* translators: %s: login URL */
+            wp_kses(
+                __( 'Please <a href="%s">log in</a> to use the AI Assistant.', 'societypress' ),
+                [ 'a' => [ 'href' => [] ] ]
+            ),
+            esc_url( wp_login_url( get_permalink() ) )
+        ) . '</p>';
+        return;
+    }
+
+    // Generate a unique ID for this widget instance in case multiple are on one page
+    $widget_id = 'sp-ai-' . wp_rand( 1000, 9999 );
+    ?>
+    <div class="sp-ai-assistant" id="<?php echo esc_attr( $widget_id ); ?>">
+        <style>
+            /* WHY scoped styles: The AI assistant can appear in a page builder widget
+               or a dedicated page template. These styles ensure consistent appearance
+               in both contexts without leaking into the rest of the page. */
+            .sp-ai-assistant {
+                max-width: 100%;
+            }
+            .sp-ai-form {
+                display: flex;
+                gap: 8px;
+                margin-bottom: 16px;
+            }
+            .sp-ai-form input[type="text"] {
+                flex: 1;
+                padding: 10px 14px;
+                font-size: 15px;
+                border: 1px solid var(--sp-color-border, #d0d5dd);
+                border-radius: 6px;
+                background: #fff;
+                color: var(--sp-color-text, #1a1a1a);
+            }
+            .sp-ai-form input[type="text"]:focus {
+                outline: none;
+                border-color: var(--sp-color-primary, #1e3a5f);
+                box-shadow: 0 0 0 2px rgba(30, 58, 95, 0.15);
+            }
+            .sp-ai-form button {
+                padding: 10px 20px;
+                font-size: 15px;
+                font-weight: 600;
+                color: #fff;
+                background: var(--sp-color-primary, #1e3a5f);
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                white-space: nowrap;
+                transition: background 0.15s ease;
+            }
+            .sp-ai-form button:hover {
+                background: var(--sp-color-primary-hover, #2c5282);
+            }
+            .sp-ai-form button:disabled {
+                opacity: 0.6;
+                cursor: not-allowed;
+            }
+            .sp-ai-response {
+                padding: 16px 20px;
+                background: var(--sp-color-surface, #f9fafb);
+                border: 1px solid var(--sp-color-border, #e5e7eb);
+                border-radius: 8px;
+                line-height: 1.65;
+                font-size: 15px;
+                display: none;
+            }
+            .sp-ai-response.sp-visible {
+                display: block;
+            }
+            .sp-ai-response p {
+                margin: 0 0 10px;
+            }
+            .sp-ai-response p:last-child {
+                margin-bottom: 0;
+            }
+            .sp-ai-thinking {
+                color: var(--sp-color-text-secondary, #6b7280);
+                font-style: italic;
+            }
+            .sp-ai-error {
+                color: #b91c1c;
+            }
+            .sp-ai-attribution {
+                margin-top: 12px;
+                font-size: 12px;
+                color: var(--sp-color-text-secondary, #9ca3af);
+            }
+        </style>
+
+        <div class="sp-ai-form">
+            <input type="text" id="<?php echo esc_attr( $widget_id ); ?>-input"
+                   placeholder="<?php esc_attr_e( 'Ask a question about our society...', 'societypress' ); ?>"
+                   maxlength="1000"
+                   aria-label="<?php esc_attr_e( 'Your question', 'societypress' ); ?>">
+            <button type="button" id="<?php echo esc_attr( $widget_id ); ?>-btn">
+                <?php esc_html_e( 'Ask', 'societypress' ); ?>
+            </button>
+        </div>
+
+        <div class="sp-ai-response" id="<?php echo esc_attr( $widget_id ); ?>-response" role="status" aria-live="polite"></div>
+
+        <p class="sp-ai-attribution">
+            <?php esc_html_e( 'Answers are AI-generated from society data and may not be perfectly accurate.', 'societypress' ); ?>
+        </p>
+
+        <script>
+        // WHY vanilla JS: Project standard — no jQuery. Uses fetch() for the AJAX
+        //      call with proper nonce verification via the WordPress admin-ajax pattern.
+        (function() {
+            'use strict';
+
+            var widgetId = <?php echo wp_json_encode( $widget_id ); ?>;
+            var input    = document.getElementById(widgetId + '-input');
+            var btn      = document.getElementById(widgetId + '-btn');
+            var respDiv  = document.getElementById(widgetId + '-response');
+            var nonce    = <?php echo wp_json_encode( wp_create_nonce( 'sp_ai_ask' ) ); ?>;
+            var ajaxUrl  = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
+
+            if (!input || !btn || !respDiv) return;
+
+            function askQuestion() {
+                var question = input.value.trim();
+                if (question.length < 5) {
+                    respDiv.innerHTML = '<p class="sp-ai-error">' +
+                        <?php echo wp_json_encode( __( 'Please enter a question (at least 5 characters).', 'societypress' ) ); ?> +
+                        '</p>';
+                    respDiv.classList.add('sp-visible');
+                    return;
+                }
+
+                btn.disabled = true;
+                respDiv.innerHTML = '<p class="sp-ai-thinking">' +
+                    <?php echo wp_json_encode( __( 'Thinking...', 'societypress' ) ); ?> +
+                    '</p>';
+                respDiv.classList.add('sp-visible');
+
+                fetch(ajaxUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: 'action=sp_ai_ask&_ajax_nonce=' + encodeURIComponent(nonce) +
+                          '&question=' + encodeURIComponent(question)
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    btn.disabled = false;
+                    if (data.success && data.data && data.data.answer) {
+                        // WHY innerHTML: The answer may contain basic formatting
+                        // (paragraphs, bold) from the AI. wp_kses_post on the server
+                        // side ensures only safe HTML passes through.
+                        respDiv.innerHTML = '<div>' + data.data.answer.replace(/\n/g, '<br>') + '</div>';
+                    } else {
+                        var errorMsg = (data.data && typeof data.data === 'string')
+                            ? data.data
+                            : <?php echo wp_json_encode( __( 'Something went wrong. Please try again.', 'societypress' ) ); ?>;
+                        respDiv.innerHTML = '<p class="sp-ai-error">' + errorMsg + '</p>';
+                    }
+                })
+                .catch(function() {
+                    btn.disabled = false;
+                    respDiv.innerHTML = '<p class="sp-ai-error">' +
+                        <?php echo wp_json_encode( __( 'Network error. Please check your connection and try again.', 'societypress' ) ); ?> +
+                        '</p>';
+                });
+            }
+
+            btn.addEventListener('click', askQuestion);
+
+            // Allow pressing Enter to submit the question
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    askQuestion();
+                }
+            });
+        })();
+        </script>
+    </div>
+    <?php
+}
+
+
+// ============================================================================
+// AI ASSISTANT — PAGE BUILDER WIDGET
+//
+// WHY: Harold might want the AI Assistant embedded on an existing page (like
+//      the homepage or a resources page) rather than on its own dedicated page.
+//      The page builder widget lets him drop it anywhere, same as any other
+//      widget type.
+// ============================================================================
+
+/**
+ * Register the AI Assistant as a page builder widget type.
+ *
+ * WHY: Uses the sp_builder_widget_types filter — same pattern as records_search.
+ *      The widget has one option: whether to require login (overriding the global
+ *      ai_access setting for this specific placement).
+ */
+add_filter( 'sp_builder_widget_types', function( array $types ): array {
+    $types['ai_assistant'] = [
+        'label'       => __( 'AI Assistant', 'societypress' ),
+        'description' => __( 'Chat-style Q&A powered by AI, drawing answers from your society\'s data.', 'societypress' ),
+        'fields'      => [
+            'login_required' => [
+                'label'   => __( 'Require Login', 'societypress' ),
+                'type'    => 'checkbox',
+                'default' => false,
+            ],
+        ],
+    ];
+    return $types;
+} );
+
+
+/**
+ * Render the AI Assistant page builder widget on the frontend.
+ *
+ * WHY: When the page builder encounters an ai_assistant widget, it calls this
+ *      function. We check the login_required setting (which can override the
+ *      global ai_access setting) and then delegate to the shared render function.
+ */
+add_action( 'sp_render_builder_widget_ai_assistant', function( array $widget_settings ): void {
+    $login_required = ! empty( $widget_settings['login_required'] );
+
+    if ( $login_required && ! is_user_logged_in() ) {
+        echo '<div class="sp-widget-login-required">';
+        echo '<p>' . sprintf(
+            /* translators: %s: login URL */
+            wp_kses(
+                __( 'Please <a href="%s">log in</a> to use the AI Assistant.', 'societypress' ),
+                [ 'a' => [ 'href' => [] ] ]
+            ),
+            esc_url( wp_login_url( get_permalink() ) )
+        ) . '</p>';
+        echo '</div>';
+        return;
+    }
+
+    sp_render_ai_assistant_widget();
+} );
+
+
+// ============================================================================
 // USER ACCESS — ASSIGN ROLES & PERMISSIONS TO NON-ADMIN USERS
 // ============================================================================
 //
@@ -30432,6 +31615,12 @@ function sp_get_widget_registry(): array {
             'label'       => __( 'Donation Form', 'societypress' ),
             'description' => __( 'Online donation form with campaign selection, suggested amounts, and payment via Stripe or PayPal.', 'societypress' ),
             'icon'        => 'money-alt',
+            'category'    => 'action',
+        ],
+        'ai_assistant' => [
+            'label'       => __( 'AI Assistant', 'societypress' ),
+            'description' => __( 'AI-powered Q&A that answers questions from your society\'s data.', 'societypress' ),
+            'icon'        => 'format-chat',
             'category'    => 'action',
         ],
     ];

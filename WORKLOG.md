@@ -54,6 +54,15 @@
 6. Committees dedicated admin menu: `sp-committees` page with roster cards, capability map, flyout integration
 7. Mailchimp settings page: see above
 
+**Tier 2 (no-input-needed items):**
+
+8. Surname Variants admin page: full CRUD (add/edit/delete) with two-column layout, integrated into directory search (variant table checked alongside phonetic matching), Members flyout menu, capability map
+9. Genealogical Records CSV export: per-collection CSV with dynamic columns from field definitions, EAV value resolution, UTF-8 BOM, "CSV" button on collections page alongside GENRECORD export
+10. Page Groups settings toggle: `auto_group_nav` checkbox on Website settings page, registered in sanitizer and page signature
+11. Full export now includes member photos (`member-photos/` folder) and photo album media (`photo-albums/{Album Name}/` folders with deduplication), README updated
+12. Verified: import path exposure fix (all 5 flows confirmed secure — basename + realpath + containment)
+13. Verified: absentee/proxy voting UI already fully implemented (edit form, save handler, frontend, AJAX)
+
 ---
 
 ## v1.0.1 — 2026-04-02

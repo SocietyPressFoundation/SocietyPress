@@ -339,7 +339,7 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 - [x] .pot regenerated with new translatable strings
 
 **Deferred UX item:**
-- [ ] Mobile hamburger for parent theme needs testing with real nav menus (code review passed v0.49d, no live test site)
+- [x] Mobile hamburger for parent theme: tested on demo site with 7 real nav items — nav was wrapping at 768–1024px. Bumped collapse breakpoint from 768px to 1024px (matches SAGHS child theme). Hamburger, X animation, Escape close, click-outside close, aria-expanded all working.
 
 ### Completed Previous Session (v0.41d — 2026-03-22)
 
@@ -702,7 +702,7 @@ Single-file `install.php` that takes Harold from empty hosting to running Societ
   - [x] Offline message setting (pwa_offline_message)
   - [x] Off by default (pwa_enabled toggle on Website settings)
   - [x] Push notifications: VAPID key auto-generation, sp_push_subscriptions table, REST subscribe endpoint, service worker push handler, sp_send_push_notification() helper, push_enabled toggle (v1.0.2)
-  - [ ] Icon generation for various device sizes
+  - [x] Icon generation for various device sizes — 192/512 standard, 192/512 maskable (80% safe zone), 180 apple-touch-icon, 32/16 favicons. Maskable icons in manifest, favicons output always (not gated by pwa_enabled).
   - [x] "Add to Home Screen" install prompt UX (already implemented with install banner)
 
 ## AI — Built (v1.0.2)

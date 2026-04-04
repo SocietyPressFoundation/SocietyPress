@@ -1283,13 +1283,15 @@ input[type="date"]:focus {
    main content is always visible first.
    ============================================================================ */
 
-@media (max-width: 768px) {
-    html {
-        /* WHY we clamp mobile font size: On small screens, the chosen base
-           size might be too large. We use a slightly smaller size but still
-           respect the user's preference via the CSS variable. */
-        font-size: 16px;
-    }
+/* ============================================================================
+   NAV COLLAPSE — 1024px
+   WHY 1024px instead of 768px: With 7 nav items plus social icons, search,
+   and user menu, the horizontal nav wraps awkwardly between 768–1024px.
+   Collapsing at 1024px matches the iPad landscape/portrait divide and
+   prevents the nav from ever wrapping to two lines.
+   ============================================================================ */
+
+@media (max-width: 1024px) {
 
     /* === HAMBURGER + MOBILE NAV COLLAPSE ===
        WHY: The full horizontal nav wraps or overflows on narrow screens.
@@ -1383,6 +1385,17 @@ input[type="date"]:focus {
     .sp-user-menu:focus-within .sp-user-dropdown,
     .sp-user-menu.sp-user-open .sp-user-dropdown {
         transform: translateX(-50%) translateY(0);
+    }
+
+} /* end 1024px nav collapse */
+
+
+@media (max-width: 768px) {
+    html {
+        /* WHY we clamp mobile font size: On small screens, the chosen base
+           size might be too large. We use a slightly smaller size but still
+           respect the user's preference via the CSS variable. */
+        font-size: 16px;
     }
 
     .content-area-with-sidebar {

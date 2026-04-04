@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.0.4
+ * Version:     1.0.5
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -29,11 +29,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 // NOTE: This MUST match the "Version:" line in the plugin header comment above.
 // WordPress reads the version from the header; this constant is used for
 // cache-busting and comparison logic. They must stay in sync.
-define( 'SOCIETYPRESS_VERSION', '1.0.4' );
+define( 'SOCIETYPRESS_VERSION', '1.0.5' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
-define( 'SOCIETYPRESS_GITHUB_REPO', 'charles-stricklin/SocietyPress' );
+define( 'SOCIETYPRESS_GITHUB_REPO', 'societypress/SocietyPress' );
 
 
 /**
@@ -8993,7 +8993,7 @@ add_filter( 'pre_set_site_transient_update_themes', function ( $transient ) {
  * Rename the extracted directory when WordPress updates the parent theme
  * from a GitHub zipball.
  *
- * WHY: GitHub's zipball extracts to "charles-stricklin-SocietyPress-abc1234/"
+ * WHY: GitHub's zipball extracts to "societypress-SocietyPress-abc1234/"
  *      but WordPress expects the theme directory to be "societypress/".
  *      We intercept the extraction and rename the directory. Only acts
  *      on our theme — other themes are unaffected.
@@ -23518,7 +23518,7 @@ add_action( 'wp_ajax_sp_install_theme', function () {
     }
 
     // Find the theme directory inside the extracted repo.
-    // GitHub zipballs extract to a directory like "charles-stricklin-SocietyPress-abc1234/"
+    // GitHub zipballs extract to a directory like "societypress-SocietyPress-abc1234/"
     // We need to find $repo_path inside that.
     $extracted_dirs = glob( $tmp_dir . '*', GLOB_ONLYDIR );
     $source_path    = null;
@@ -80200,6 +80200,25 @@ function sp_pwa_get_icons(): array {
         ];
     }
 
+    // Maskable icons — padded to the 80% safe zone so Android's adaptive
+    // icon shapes (circle, squircle, etc.) don't clip the logo. These are
+    // always the bundled SP icons since the maskable padding is baked in;
+    // if Harold sets a site icon or custom logo, the standard icons above
+    // will use his upload while these provide the maskable fallback.
+    $plugin_url = plugin_dir_url( SOCIETYPRESS_PLUGIN_FILE );
+    $icons[] = [
+        'src'     => $plugin_url . 'assets/icon-192-maskable.png',
+        'sizes'   => '192x192',
+        'type'    => 'image/png',
+        'purpose' => 'maskable',
+    ];
+    $icons[] = [
+        'src'     => $plugin_url . 'assets/icon-512-maskable.png',
+        'sizes'   => '512x512',
+        'type'    => 'image/png',
+        'purpose' => 'maskable',
+    ];
+
     return $icons;
 }
 
@@ -80617,12 +80636,34 @@ add_action( 'wp_head', function () {
         }
     }
     if ( ! $touch_icon ) {
-        $touch_icon = plugin_dir_url( SOCIETYPRESS_PLUGIN_FILE ) . 'assets/icon-192.png';
+        // WHY apple-touch-icon.png instead of icon-192.png: Apple specifies
+        // 180x180 for touch icons. The 192px icon works but gets downscaled
+        // by iOS, which can produce subtle blurriness on retina displays.
+        $touch_icon = plugin_dir_url( SOCIETYPRESS_PLUGIN_FILE ) . 'assets/apple-touch-icon.png';
     }
     ?>
     <link rel="apple-touch-icon" href="<?php echo esc_url( $touch_icon ); ?>">
     <?php
 }, 1 );
+
+
+/**
+ * Output favicon link tags in <head> — always, regardless of PWA setting.
+ *
+ * WHY separate from the PWA head hook: Favicons are basic browser chrome —
+ * they show in tabs, bookmarks, and history. They should be present whether
+ * or not PWA mode is enabled. If Harold has set a WordPress Site Icon via
+ * Customizer, WP outputs its own favicon tags and these become harmless
+ * duplicates that browsers de-duplicate by size.
+ */
+add_action( 'wp_head', function () {
+    $plugin_url = plugin_dir_url( SOCIETYPRESS_PLUGIN_FILE );
+    ?>
+    <!-- SocietyPress favicons -->
+    <link rel="icon" type="image/png" sizes="32x32" href="<?php echo esc_url( $plugin_url . 'assets/favicon-32x32.png' ); ?>">
+    <link rel="icon" type="image/png" sizes="16x16" href="<?php echo esc_url( $plugin_url . 'assets/favicon-16x16.png' ); ?>">
+    <?php
+}, 2 );
 
 
 /**

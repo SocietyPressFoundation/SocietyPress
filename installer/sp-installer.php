@@ -1,8 +1,4 @@
 <?php
-// TEMPORARY: Show PHP errors to diagnose 500s on shared hosting
-error_reporting( E_ALL );
-ini_set( 'display_errors', '1' );
-
 /**
  * SocietyPress One-Click Installer
  *

@@ -1,4 +1,8 @@
 <?php
+// TEMPORARY: Show PHP errors to diagnose 500s on shared hosting
+error_reporting( E_ALL );
+ini_set( 'display_errors', '1' );
+
 /**
  * SocietyPress One-Click Installer
  *
@@ -563,18 +567,30 @@ function sp_installer_process(): void {
     $log = [];
 
     // ---- 1. Test database connection ----
+    // WHY try/catch: PHP 8.1+ throws mysqli_sql_exception on connection failure
+    //      instead of returning an error code. The @ suppression operator doesn't
+    //      catch exceptions, so without this try/catch the installer shows a raw
+    //      fatal error instead of a friendly message.
     $log[] = 'Testing database connection...';
-    $conn = @new mysqli( $db_host, $db_user, $db_pass, $db_name );
+    try {
+        $conn = new mysqli( $db_host, $db_user, $db_pass, $db_name );
+    } catch ( mysqli_sql_exception $e ) {
+        sp_installer_die(
+            'Database Connection Failed',
+            'Could not connect to the database. Please check your credentials.<br><br>'
+            . '<strong>Error:</strong> ' . htmlspecialchars( $e->getMessage() ) . '<br><br>'
+            . 'Common fixes:<ul style="margin: 8px 0 0 20px;">'
+            . '<li>Make sure the database name, username, and password are correct</li>'
+            . '<li>Make sure the database user has permission to access the database</li>'
+            . '<li>If your host uses a non-standard database host, enter it instead of &ldquo;localhost&rdquo;</li>'
+            . '</ul>'
+        );
+    }
     if ( $conn->connect_error ) {
         sp_installer_die(
             'Database Connection Failed',
             'Could not connect to the database. Please check your credentials.<br><br>'
-            . '<strong>Error:</strong> ' . htmlspecialchars( $conn->connect_error ) . '<br><br>'
-            . 'Common fixes:<ul style="margin: 8px 0 0 20px;">'
-            . '<li>Make sure the database name, username, and password are correct</li>'
-            . '<li>Make sure the database user has permission to access the database</li>'
-            . '<li>If your host uses a non-standard database host, enter it instead of "localhost"</li>'
-            . '</ul>'
+            . '<strong>Error:</strong> ' . htmlspecialchars( $conn->connect_error )
         );
     }
     $conn->close();

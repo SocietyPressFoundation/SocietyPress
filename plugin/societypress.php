@@ -24365,14 +24365,9 @@ add_action( 'admin_init', function () {
  */
 function sp_get_theme_registry(): array {
     return [
-        'society' => [
-            'slug'        => 'society',
-            'name'        => 'the society',
-            'version'     => '0.04d',
-            'description' => __( 'the society — burgundy and cream palette with brand-specific header, dual search forms, and social media icons.', 'societypress' ),
-            'colors'      => [ '#632220', '#fbebd2', '#7f7166', '#ba5f36' ],
-            'repo_path'   => 'theme-society',
-        ],
+        // WHY no the society: The the society child theme is a client-specific theme for
+        // the the society. It lives in the
+        // repo for Charles' use but is not offered in the public gallery.
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',

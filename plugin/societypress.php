@@ -32987,6 +32987,64 @@ add_action( 'add_meta_boxes', function () {
 
 
 /**
+ * Save page builder widget data when WordPress's native "Update" button is clicked.
+ *
+ * WHY: The builder meta box renders on the native post.php editor screen, but
+ *      the save logic was only wired into the custom SocietyPress page editor
+ *      redirect. When Harold used the native WP "Update" button, widget changes
+ *      (including deletes) were silently discarded. This hook processes the
+ *      builder form data on save_post_page, mirroring the same sanitization
+ *      logic used in the custom editor flow.
+ */
+add_action( 'save_post_page', function ( $post_id ) {
+    // Skip autosaves, revisions, and bulk edits
+    if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) return;
+    if ( wp_is_post_revision( $post_id ) ) return;
+
+    // Verify the builder nonce — only present if the meta box was rendered
+    if ( ! isset( $_POST['sp_page_builder_nonce'] )
+         || ! wp_verify_nonce( $_POST['sp_page_builder_nonce'], 'sp_page_builder_save' ) ) {
+        return;
+    }
+
+    if ( ! current_user_can( 'edit_page', $post_id ) ) return;
+
+    $template = get_page_template_slug( $post_id );
+
+    if ( 'sp-builder' === $template ) {
+        $registry    = sp_get_widget_registry();
+        $raw_widgets = $_POST['sp_widgets'] ?? [];
+        $clean       = [];
+
+        if ( is_array( $raw_widgets ) ) {
+            foreach ( $raw_widgets as $w ) {
+                $type = sanitize_key( $w['type'] ?? '' );
+                if ( ! isset( $registry[ $type ] ) ) continue;
+
+                $s         = $w['settings'] ?? [];
+                $sanitized = sp_sanitize_builder_widget( $type, $s );
+
+                $sec_heading = sanitize_text_field( $s['section_heading'] ?? '' );
+                if ( '' !== $sec_heading ) {
+                    $sanitized['section_heading'] = $sec_heading;
+                }
+
+                $clean[] = [
+                    'type'     => $type,
+                    'settings' => $sanitized,
+                ];
+            }
+        }
+
+        update_post_meta( $post_id, '_sp_page_widgets', $clean );
+    } elseif ( 'sp-builder' !== $template ) {
+        // Not a builder page — remove orphaned widget meta
+        delete_post_meta( $post_id, '_sp_page_widgets' );
+    }
+} );
+
+
+/**
  * Render the Page Builder meta box.
  *
  * WHY: Shows a list of currently-added widgets (collapsible cards with settings),

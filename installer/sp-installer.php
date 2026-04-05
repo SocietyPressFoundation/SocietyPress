@@ -1146,7 +1146,7 @@ MUPLUGIN;
         $plugin_dir = $install_dir . '/wp-content' . '/plugins/societypress/';
         @mkdir( $plugin_dir, 0755, true );
 
-        $child_themes = [ 'heritage', 'coastline', 'prairie', 'ledger' ];
+        $child_themes = [ 'heritage', 'coastline', 'prairie', 'ledger', 'parlor' ];
 
         for ( $i = 0; $i < $zip->numFiles; $i++ ) {
             $name = $zip->getNameIndex( $i );

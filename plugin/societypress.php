@@ -578,22 +578,26 @@ function sp_maybe_create_default_pages(): void {
     //      sensible default menu with the key public-facing pages. The smart nav
     //      filter (wp_nav_menu_objects) handles visibility — Join hides for
     //      logged-in members, Directory/My Account hide for logged-out visitors.
-    $menu_name = __( 'Primary Menu', 'societypress' );
+    // WHY plain strings, not __(): This runs inside register_activation_hook,
+    // which fires during plugins_loaded — before init. WordPress 6.7+ warns
+    // when translation functions are called before the textdomain is loaded.
+    // These labels are English defaults that Harold can rename later.
+    $menu_name = 'Primary Menu';
     $menu_exists = wp_get_nav_menu_object( $menu_name );
     if ( ! $menu_exists ) {
         $menu_id = wp_create_nav_menu( $menu_name );
         if ( $menu_id && ! is_wp_error( $menu_id ) ) {
             // Menu items in display order
             $menu_items = [
-                [ 'slug' => 'home',        'label' => __( 'Home', 'societypress' ) ],
-                [ 'slug' => 'about',       'label' => __( 'About', 'societypress' ) ],
-                [ 'slug' => 'events',      'label' => __( 'Events', 'societypress' ) ],
-                [ 'slug' => 'library',     'label' => __( 'Library', 'societypress' ) ],
-                [ 'slug' => 'newsletters', 'label' => __( 'Newsletters', 'societypress' ) ],
-                [ 'slug' => 'join',        'label' => __( 'Join', 'societypress' ) ],
-                [ 'slug' => 'directory',   'label' => __( 'Directory', 'societypress' ) ],
-                [ 'slug' => 'my-account',  'label' => __( 'My Account', 'societypress' ) ],
-                [ 'slug' => 'contact-us',  'label' => __( 'Contact', 'societypress' ) ],
+                [ 'slug' => 'home',        'label' => 'Home' ],
+                [ 'slug' => 'about',       'label' => 'About' ],
+                [ 'slug' => 'events',      'label' => 'Events' ],
+                [ 'slug' => 'library',     'label' => 'Library' ],
+                [ 'slug' => 'newsletters', 'label' => 'Newsletters' ],
+                [ 'slug' => 'join',        'label' => 'Join' ],
+                [ 'slug' => 'directory',   'label' => 'Directory' ],
+                [ 'slug' => 'my-account',  'label' => 'My Account' ],
+                [ 'slug' => 'contact-us',  'label' => 'Contact' ],
             ];
 
             // Also collect About page ID from the earlier insert
@@ -3831,11 +3835,32 @@ add_filter( 'user_has_cap', function ( array $allcaps, array $caps ): array {
  *      to the SocietyPress dashboard where they see relevant stats and
  *      quick links for their assigned areas.
  */
+// ============================================================================
+// WP ADMIN MODE — Exit handler
+// ============================================================================
+//
+// WHY: When an admin clicks "Back to SocietyPress" (or the transient expires),
+//      we clear the WP admin mode flag so the native menus hide again. The
+//      sp_exit_wp_admin=1 query param triggers immediate cleanup + redirect.
+// ============================================================================
+add_action( 'admin_init', function () {
+    if ( empty( $_GET['sp_exit_wp_admin'] ) ) {
+        return;
+    }
+    $user_id = get_current_user_id();
+    delete_transient( 'sp_wp_admin_mode_' . $user_id );
+    wp_safe_redirect( admin_url( 'admin.php?page=societypress' ) );
+    exit;
+} );
+
 add_action( 'admin_init', function () {
     global $pagenow;
 
     // Only redirect on the WP dashboard (index.php)
     if ( $pagenow !== 'index.php' ) return;
+
+    // Don't redirect if WP admin mode is active for this user
+    if ( get_transient( 'sp_wp_admin_mode_' . get_current_user_id() ) ) return;
 
     // Don't redirect WordPress admins — they might want the WP dashboard
     if ( current_user_can( 'manage_options' ) ) return;
@@ -3983,7 +4008,7 @@ add_action( 'admin_menu', function () {
 
     // Hidden: Edit Group page
     add_submenu_page(
-        null,
+        '',
         __( 'Edit Group — SocietyPress', 'societypress' ),
         __( 'Edit Group', 'societypress' ),
         'manage_options',
@@ -4169,7 +4194,7 @@ add_action( 'admin_menu', function () {
 
     // Hidden page for editing a single opportunity
     add_submenu_page(
-        null,
+        '',
         __( 'Edit Opportunity — SocietyPress', 'societypress' ),
         '',
         'manage_options',
@@ -4190,8 +4215,8 @@ add_action( 'admin_menu', function () {
     );
 
     // Hidden pages for ballot editing and results
-    add_submenu_page( null, __( 'Edit Ballot — SocietyPress', 'societypress' ), '', 'manage_options', 'sp-ballot-edit', 'sp_render_ballot_edit_page' );
-    add_submenu_page( null, __( 'Ballot Results — SocietyPress', 'societypress' ), '', 'manage_options', 'sp-ballot-results', 'sp_render_ballot_results_page' );
+    add_submenu_page( '', __( 'Edit Ballot — SocietyPress', 'societypress' ), '', 'manage_options', 'sp-ballot-edit', 'sp_render_ballot_edit_page' );
+    add_submenu_page( '', __( 'Ballot Results — SocietyPress', 'societypress' ), '', 'manage_options', 'sp-ballot-results', 'sp_render_ballot_results_page' );
 
     // -----------------------------------------------------------------
     // MEDIA GROUP — Photos & Videos folder management
@@ -4441,7 +4466,7 @@ add_action( 'admin_menu', function () {
 
     // Hidden page for recording a new payment (linked from finances page)
     add_submenu_page(
-        null,
+        '',
         __( 'Record Payment — SocietyPress', 'societypress' ),
         __( 'Record Payment', 'societypress' ),
         'manage_options',
@@ -4461,7 +4486,7 @@ add_action( 'admin_menu', function () {
 
     // Hidden: Donation edit/record page
     add_submenu_page(
-        null,
+        '',
         __( 'Record Donation — SocietyPress', 'societypress' ),
         __( 'Record Donation', 'societypress' ),
         'manage_options',
@@ -4481,7 +4506,7 @@ add_action( 'admin_menu', function () {
 
     // Hidden: Campaign edit page
     add_submenu_page(
-        null,
+        '',
         __( 'Edit Campaign — SocietyPress', 'societypress' ),
         __( 'Edit Campaign', 'societypress' ),
         'manage_options',
@@ -4501,7 +4526,7 @@ add_action( 'admin_menu', function () {
 
     // Hidden: Order detail page
     add_submenu_page(
-        null,
+        '',
         __( 'Order Detail — SocietyPress', 'societypress' ),
         __( 'Order Detail', 'societypress' ),
         'manage_options',
@@ -4528,7 +4553,7 @@ add_action( 'admin_menu', function () {
 
     // Hidden: Compose/edit blast email page
     add_submenu_page(
-        null,
+        '',
         __( 'Compose Email — SocietyPress', 'societypress' ),
         __( 'Compose Email', 'societypress' ),
         'manage_options',
@@ -4816,6 +4841,33 @@ add_action( 'admin_menu', function () {
     }
 
     // -----------------------------------------------------------------
+    // WORDPRESS ADMIN — Escape hatch for when you need raw WP access.
+    // WHY: SocietyPress hides all native WordPress menus to keep things
+    //      simple for Harold. But occasionally an admin needs to reach
+    //      the underlying WordPress dashboard — plugin updates, permalink
+    //      settings, a stubborn widget, etc. This link at the bottom of
+    //      the Settings flyout flips a per-user transient that un-hides
+    //      the native menus for 30 minutes. A "Back to SocietyPress"
+    //      link in the admin bar brings them back.
+    // -----------------------------------------------------------------
+    add_submenu_page(
+        'societypress',
+        __( 'WordPress Admin — SocietyPress', 'societypress' ),
+        __( 'WordPress Admin', 'societypress' ),
+        'manage_options',
+        'sp-wp-admin',
+        function () {
+            // Set a 30-minute transient keyed to this user.
+            $user_id = get_current_user_id();
+            set_transient( 'sp_wp_admin_mode_' . $user_id, true, 30 * MINUTE_IN_SECONDS );
+
+            // Drop the user into the real WordPress Dashboard.
+            wp_safe_redirect( admin_url( 'index.php' ) );
+            exit;
+        }
+    );
+
+    // -----------------------------------------------------------------
     // BACKWARD COMPAT — Old sp-settings URL redirect
     // WHY: The Settings page used to live at admin.php?page=sp-settings.
     //      Anyone who bookmarked it, or had it open when the update
@@ -4863,16 +4915,23 @@ add_action( 'admin_menu', function () {
     //       re-added them as submenus under SocietyPress.
     // ========================================================================
 
-    remove_menu_page( 'index.php' );              // Dashboard
-    remove_menu_page( 'edit.php' );                // Posts
-    remove_menu_page( 'upload.php' );              // Media (re-added above)
-    remove_menu_page( 'edit.php?post_type=page' ); // Pages (re-added above)
-    remove_menu_page( 'edit-comments.php' );       // Comments
-    remove_menu_page( 'themes.php' );              // Appearance
-    remove_menu_page( 'plugins.php' );             // Plugins
-    remove_menu_page( 'users.php' );               // Users
-    remove_menu_page( 'tools.php' );               // Tools
-    remove_menu_page( 'options-general.php' );     // Settings
+    // Skip menu hiding when the current user has toggled into WP Admin mode.
+    // The transient lasts 30 minutes, then everything goes back to normal.
+    $user_id = get_current_user_id();
+    if ( get_transient( 'sp_wp_admin_mode_' . $user_id ) ) {
+        // Don't hide anything — let them see the full WordPress admin.
+    } else {
+        remove_menu_page( 'index.php' );              // Dashboard
+        remove_menu_page( 'edit.php' );                // Posts
+        remove_menu_page( 'upload.php' );              // Media (re-added above)
+        remove_menu_page( 'edit.php?post_type=page' ); // Pages (re-added above)
+        remove_menu_page( 'edit-comments.php' );       // Comments
+        remove_menu_page( 'themes.php' );              // Appearance
+        remove_menu_page( 'plugins.php' );             // Plugins
+        remove_menu_page( 'users.php' );               // Users
+        remove_menu_page( 'tools.php' );               // Tools
+        remove_menu_page( 'options-general.php' );     // Settings
+    }
 
 }, 999 ); // Priority 999 = run AFTER all default menus are registered
 
@@ -5101,25 +5160,43 @@ add_action( 'admin_menu', function () {
  */
 add_action( 'admin_bar_menu', function ( $wp_admin_bar ) {
 
-    // Remove the default site-name dropdown children
-    // (Dashboard, Themes, Customize, Widgets, Menus, Plugins)
-    $wp_admin_bar->remove_node( 'dashboard' );
-    $wp_admin_bar->remove_node( 'themes' );
-    $wp_admin_bar->remove_node( 'customize' );
-    $wp_admin_bar->remove_node( 'widgets' );
-    $wp_admin_bar->remove_node( 'menus' );
+    $in_wp_admin_mode = get_transient( 'sp_wp_admin_mode_' . get_current_user_id() );
 
-    // Remove Plugins (only shows for admins, but we still don't want it)
-    // The node ID varies — could be 'plugins' or embedded in appearance
-    $wp_admin_bar->remove_node( 'plugins' );
+    if ( $in_wp_admin_mode ) {
+        // -----------------------------------------------------------------
+        // WP Admin mode is active — leave the native bar nodes alone and
+        // add a prominent "← Back to SocietyPress" link so the user can
+        // get back. Also add a link to explicitly exit WP admin mode.
+        // -----------------------------------------------------------------
+        $wp_admin_bar->add_node( [
+            'id'    => 'sp-back',
+            'title' => '&larr; ' . __( 'Back to SocietyPress', 'societypress' ),
+            'href'  => admin_url( 'admin.php?page=societypress&sp_exit_wp_admin=1' ),
+            'meta'  => [
+                'class' => 'sp-back-to-sp',
+            ],
+        ] );
+    } else {
+        // Remove the default site-name dropdown children
+        // (Dashboard, Themes, Customize, Widgets, Menus, Plugins)
+        $wp_admin_bar->remove_node( 'dashboard' );
+        $wp_admin_bar->remove_node( 'themes' );
+        $wp_admin_bar->remove_node( 'customize' );
+        $wp_admin_bar->remove_node( 'widgets' );
+        $wp_admin_bar->remove_node( 'menus' );
 
-    // Add SocietyPress as the only item under the site name
-    $wp_admin_bar->add_node( [
-        'parent' => 'site-name',
-        'id'     => 'sp-admin',
-        'title'  => 'SocietyPress',
-        'href'   => admin_url( 'admin.php?page=societypress' ),
-    ] );
+        // Remove Plugins (only shows for admins, but we still don't want it)
+        // The node ID varies — could be 'plugins' or embedded in appearance
+        $wp_admin_bar->remove_node( 'plugins' );
+
+        // Add SocietyPress as the only item under the site name
+        $wp_admin_bar->add_node( [
+            'parent' => 'site-name',
+            'id'     => 'sp-admin',
+            'title'  => 'SocietyPress',
+            'href'   => admin_url( 'admin.php?page=societypress' ),
+        ] );
+    }
 
 }, 999 ); // Late priority to run after WP adds its default nodes
 
@@ -5611,7 +5688,7 @@ add_action( 'wp_enqueue_scripts', function () {
     // Register with no src (false) — just a handle for attaching inline CSS.
     // Depends on the parent theme stylesheet so it loads after it.
     // If a child theme is active, the child's stylesheet also loads before this.
-    wp_register_style( 'sp-design-overrides', false, [ 'societypress-parent-style' ], SOCIETYPRESS_VERSION );
+    wp_register_style( 'sp-design-overrides', false, [ 'societypress-style' ], SOCIETYPRESS_VERSION );
     wp_enqueue_style( 'sp-design-overrides' );
     wp_add_inline_style( 'sp-design-overrides', sp_get_design_override_css() );
 }, 999 );
@@ -19556,7 +19633,7 @@ function sp_sanitize_settings( array $input ): array {
  */
 function sp_register_wizard_page(): void {
     add_submenu_page(
-        null, // Hidden — no menu link
+        '', // Hidden — no menu link
         __( 'SocietyPress Setup', 'societypress' ),
         __( 'Setup Wizard', 'societypress' ),
         'manage_options',
@@ -19728,16 +19805,24 @@ function sp_render_setup_wizard(): void {
                     <h2><?php esc_html_e( 'Your Organization', 'societypress' ); ?></h2>
                     <p class="desc"><?php esc_html_e( 'Tell us about your genealogical society.', 'societypress' ); ?></p>
 
+                    <?php
+                    // Pre-fill from what the installer already collected.
+                    // WHY: The installer asked for "Society Name" (stored as blogname)
+                    // and "Admin Email" (stored as admin_email). No point making Harold
+                    // type them again. He can change them here if needed.
+                    $prefill_name  = $settings['organization_name'] ?? get_bloginfo( 'name' );
+                    $prefill_email = $settings['organization_email'] ?? get_option( 'admin_email', '' );
+                    ?>
                     <div class="sp-wizard-field">
                         <label for="wiz-org-name"><?php esc_html_e( 'Society Name', 'societypress' ); ?></label>
                         <input type="text" id="wiz-org-name" name="organization_name"
-                               value="<?php echo esc_attr( $settings['organization_name'] ?? '' ); ?>"
+                               value="<?php echo esc_attr( $prefill_name ); ?>"
                                placeholder="e.g., San Antonio Genealogical & Historical Society">
                     </div>
                     <div class="sp-wizard-field">
                         <label for="wiz-org-email"><?php esc_html_e( 'Contact Email', 'societypress' ); ?></label>
                         <input type="email" id="wiz-org-email" name="organization_email"
-                               value="<?php echo esc_attr( $settings['organization_email'] ?? '' ); ?>"
+                               value="<?php echo esc_attr( $prefill_email ); ?>"
                                placeholder="e.g., info@yoursociety.org">
                     </div>
                     <div class="sp-wizard-field">
@@ -19754,7 +19839,6 @@ function sp_render_setup_wizard(): void {
                     </div>
 
                     <div class="sp-wizard-actions">
-                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=societypress' ) ); ?>" class="sp-wizard-skip"><?php esc_html_e( 'Skip setup', 'societypress' ); ?></a>
                         <button type="submit" class="button button-primary"><?php esc_html_e( 'Continue', 'societypress' ); ?> &rarr;</button>
                     </div>
 
@@ -81097,6 +81181,12 @@ add_action( 'admin_notices', function (): void {
         return;
     }
     if ( class_exists( 'bbPress' ) ) {
+        return;
+    }
+    // Don't nag about dependencies until the setup wizard is complete —
+    // Harold shouldn't see "install bbPress" before he's even finished
+    // telling us what his society is called.
+    if ( ! get_option( 'sp_wizard_completed' ) ) {
         return;
     }
     // Only show to users who can install plugins — no point confusing editors

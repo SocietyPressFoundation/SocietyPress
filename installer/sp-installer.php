@@ -453,6 +453,65 @@ function sp_installer_show_form(): void {
                 </tr>
             </table>
 
+            <!-- SocietyPress Settings -->
+            <h2 style="font-size: 18px; font-weight: 700; color: #0D1F3C; margin: 32px 0 16px; padding-bottom: 8px; border-bottom: 2px solid #C9973A;">
+                Society Details
+            </h2>
+            <p style="color: #6B7280; font-size: 13px; margin-bottom: 16px;">
+                These are used on your public website and in emails to members.
+                Everything here can be changed later.
+            </p>
+
+            <table class="sp-form-table">
+                <tr>
+                    <th><label for="org_address">Mailing Address</label></th>
+                    <td>
+                        <textarea id="org_address" name="org_address" rows="3"
+                                  placeholder="Street address, city, state, zip"></textarea>
+                        <p class="desc">Your society's mailing address. Shown on the contact page and in emails.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="org_phone">Phone Number</label></th>
+                    <td>
+                        <input type="tel" id="org_phone" name="org_phone"
+                               placeholder="Optional">
+                        <p class="desc">Leave blank if your society doesn't have a public phone number.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="membership_period">Membership Period</label></th>
+                    <td>
+                        <select id="membership_period" name="membership_period">
+                            <option value="annual">Annual (fixed year)</option>
+                            <option value="rolling">Rolling (12 months from join date)</option>
+                            <option value="lifetime">Lifetime only</option>
+                        </select>
+                        <p class="desc">Most societies use annual memberships with a fixed fiscal year.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="membership_start_month">Fiscal Year Starts</label></th>
+                    <td>
+                        <select id="membership_start_month" name="membership_start_month">
+                            <option value="1">January</option>
+                            <option value="2">February</option>
+                            <option value="3">March</option>
+                            <option value="4">April</option>
+                            <option value="5">May</option>
+                            <option value="6">June</option>
+                            <option value="7" selected>July</option>
+                            <option value="8">August</option>
+                            <option value="9">September</option>
+                            <option value="10">October</option>
+                            <option value="11">November</option>
+                            <option value="12">December</option>
+                        </select>
+                        <p class="desc">When does your membership year begin? Many societies use July.</p>
+                    </td>
+                </tr>
+            </table>
+
             <!-- Honeypot — bots fill this in, humans don't see it -->
             <div style="position: absolute; left: -9999px;" aria-hidden="true">
                 <input type="text" name="sp_hp_field" tabindex="-1" autocomplete="off">
@@ -529,6 +588,12 @@ function sp_installer_process(): void {
     $admin_user  = trim( $_POST['admin_user'] ?? '' );
     $admin_pass  = $_POST['admin_pass'] ?? '';
     $admin_pass2 = $_POST['admin_pass2'] ?? '';
+
+    // SocietyPress settings collected in the installer form
+    $org_address        = trim( $_POST['org_address'] ?? '' );
+    $org_phone          = trim( $_POST['org_phone'] ?? '' );
+    $membership_period  = trim( $_POST['membership_period'] ?? 'annual' );
+    $membership_start   = (int) ( $_POST['membership_start_month'] ?? 7 );
 
     // Validate
     $errors = [];
@@ -707,6 +772,27 @@ function sp_installer_process(): void {
  * WordPress installs itself, activates SocietyPress + the parent theme, sets
  * permalinks, and then deletes itself.
  */
+
+// Recursive directory delete for removing default themes.
+// WHY: PHP has no built-in rmdir-recursive, and we can't rely on the
+// installer's sp_installer_rmdir() since this mu-plugin runs in a
+// separate request after WordPress is fully installed.
+function sp_installer_mu_rmdir( string $dir ): void {
+    if ( ! is_dir( $dir ) ) return;
+    $items = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator( $dir, RecursiveDirectoryIterator::SKIP_DOTS ),
+        RecursiveIteratorIterator::CHILD_FIRST
+    );
+    foreach ( $items as $item ) {
+        if ( $item->isDir() ) {
+            @rmdir( $item->getPathname() );
+        } else {
+            @unlink( $item->getPathname() );
+        }
+    }
+    @rmdir( $dir );
+}
+
 add_action( 'admin_init', function () {
     // Only run once — if SocietyPress is already active, bail
     $active = get_option( 'active_plugins', [] );
@@ -716,9 +802,47 @@ add_action( 'admin_init', function () {
         return;
     }
 
-    // Activate SocietyPress plugin
-    $active[] = 'societypress/societypress.php';
-    update_option( 'active_plugins', $active );
+    // ---- Cleanup FIRST: remove WordPress default cruft ----
+    // WHY: This MUST happen before SocietyPress activation. The plugin's
+    // activation hook runs sp_maybe_create_default_pages(), which only
+    // creates a Home page if zero published pages exist. WordPress ships
+    // with a "Sample Page" that counts as a published page — if we don't
+    // delete it first, the activation hook sees it and skips homepage
+    // creation, leaving show_on_front stuck on "posts."
+
+    // Delete "Hello world!" post, "Sample Page", and default comment
+    $hello_post = get_page_by_path( 'hello-world', OBJECT, 'post' );
+    if ( $hello_post ) { wp_delete_post( $hello_post->ID, true ); }
+
+    $sample_page = get_page_by_path( 'sample-page' );
+    if ( $sample_page ) { wp_delete_post( $sample_page->ID, true ); }
+
+    $default_comments = get_comments( [ 'number' => 100 ] );
+    foreach ( $default_comments as $c ) {
+        wp_delete_comment( $c->comment_ID, true );
+    }
+
+    // Delete Hello Dolly plugin file
+    $hello = WP_PLUGIN_DIR . '/hello.php';
+    if ( file_exists( $hello ) ) { @unlink( $hello ); }
+
+    // Delete default Twenty* themes — SocietyPress is the only theme needed
+    $default_themes = [ 'twentytwentythree', 'twentytwentyfour', 'twentytwentyfive' ];
+    foreach ( $default_themes as $slug ) {
+        $theme_dir = get_theme_root() . '/' . $slug;
+        if ( is_dir( $theme_dir ) ) {
+            sp_installer_mu_rmdir( $theme_dir );
+        }
+    }
+
+    // ---- NOW activate SocietyPress ----
+    // WHY activate_plugin() instead of update_option('active_plugins'):
+    // Manually adding to the active_plugins array skips register_activation_hook.
+    // That means sp_maybe_create_default_pages(), sp_create_tables(), and all
+    // the other activation setup never runs. activate_plugin() loads the plugin
+    // file, fires the activation hook, and does everything properly.
+    require_once ABSPATH . 'wp-admin/includes/plugin.php';
+    activate_plugin( 'societypress/societypress.php' );
 
     // Activate parent theme
     switch_theme( 'societypress' );
@@ -728,17 +852,62 @@ add_action( 'admin_init', function () {
     $wp_rewrite->set_permalink_structure( '/%postname%/' );
     $wp_rewrite->flush_rules( true );
 
+    // ---- Apply installer-collected SocietyPress settings ----
+    // WHY: The installer form collects org details and membership config so
+    // Harold doesn't have to re-enter them in a separate setup wizard. The
+    // installer writes these to a JSON file (sp-installer-config.json) that
+    // we read here, merge into the SP settings, and delete.
+    $config_file = ABSPATH . 'sp-installer-config.json';
+    if ( file_exists( $config_file ) ) {
+        $installer_config = json_decode( file_get_contents( $config_file ), true );
+        if ( is_array( $installer_config ) ) {
+            $sp_settings = get_option( 'societypress_settings', [] );
+            // Map installer fields to SP settings keys
+            $sp_settings['organization_name']    = $installer_config['organization_name'] ?? $sp_settings['organization_name'] ?? '';
+            $sp_settings['organization_email']   = $installer_config['organization_email'] ?? $sp_settings['organization_email'] ?? '';
+            $sp_settings['organization_address'] = $installer_config['organization_address'] ?? '';
+            $sp_settings['organization_phone']   = $installer_config['organization_phone'] ?? '';
+            $sp_settings['membership_period_type'] = $installer_config['membership_period_type'] ?? 'annual';
+            $sp_settings['membership_start_month'] = (int) ( $installer_config['membership_start_month'] ?? 7 );
+            // Email from defaults to org name + email
+            $sp_settings['email_from_name']  = $sp_settings['email_from_name'] ?: $sp_settings['organization_name'];
+            $sp_settings['email_from_email'] = $sp_settings['email_from_email'] ?: $sp_settings['organization_email'];
+            update_option( 'societypress_settings', $sp_settings );
+
+            // Mark wizard as complete — Harold already provided everything
+            update_option( 'sp_wizard_completed', 1 );
+        }
+        @unlink( $config_file );
+    }
+
     // Self-destruct
     @unlink( __FILE__ );
 
-    // Redirect to trigger SocietyPress activation + setup wizard
-    wp_safe_redirect( admin_url( 'index.php' ) );
+    // Redirect to the SocietyPress dashboard
+    wp_safe_redirect( admin_url( 'admin.php?page=societypress' ) );
     exit;
 }, 1 );
 MUPLUGIN;
 
     file_put_contents( $mu_dir . '/sp-auto-activate.php', $mu_plugin );
     $log[] = 'Auto-activator planted.';
+
+    // ---- 6b. Write installer config for the mu-plugin to pick up ----
+    // WHY: The mu-plugin runs in a separate request where $_POST is gone.
+    // We write the SP settings to a JSON file that the mu-plugin reads,
+    // applies to the societypress_settings option, and deletes. This is
+    // how the installer-collected org details reach the plugin without
+    // a second wizard step.
+    $installer_config = [
+        'organization_name'    => $site_title,
+        'organization_email'   => $admin_email,
+        'organization_address' => $org_address,
+        'organization_phone'   => $org_phone,
+        'membership_period_type' => $membership_period,
+        'membership_start_month' => $membership_start,
+    ];
+    file_put_contents( $install_dir . '/sp-installer-config.json', json_encode( $installer_config ) );
+    $log[] = 'Installer config written.';
 
     // ---- 7. Create a bridge script that runs WordPress's install with our data ----
     // WHY: We already collected the society name, admin email, username, and password
@@ -804,8 +973,15 @@ MUPLUGIN;
         . '$installer = dirname( __FILE__ ) . "/sp-installer.php";' . "\n"
         . 'if ( file_exists( $installer ) ) { @unlink( $installer ); }' . "\n"
         . "\n"
-        . '// Redirect to login — the mu-plugin will activate SocietyPress on first admin load' . "\n"
-        . 'wp_redirect( wp_login_url( admin_url() ) );' . "\n"
+        . '// Auto-login — set the auth cookie so Harold lands in wp-admin' . "\n"
+        . '// without seeing a login screen. wp_install() returns the admin' . "\n"
+        . '// user ID in $result["user_id"]. wp_set_auth_cookie() sets the' . "\n"
+        . '// same cookies that wp_login() would.' . "\n"
+        . 'wp_set_auth_cookie( $result["user_id"], true );' . "\n"
+        . "\n"
+        . '// Redirect straight to wp-admin — the mu-plugin will activate' . "\n"
+        . '// SocietyPress and redirect to the dashboard on first load.' . "\n"
+        . 'wp_redirect( admin_url() );' . "\n"
         . 'exit;' . "\n";
 
     file_put_contents( $bridge_script, $bridge_code );

@@ -8008,7 +8008,7 @@ var spMenuConfig = {
             id:    'settings',
             label: 'Settings',
             icon:  'dashicons-admin-generic',
-            items: ['sp-settings-website', 'sp-settings-organization', 'sp-settings-membership', 'sp-settings-directory', 'sp-settings-events', 'sp-settings-privacy', 'privacy-policy-guide.php', 'sp-settings-modules', 'sp-user-access', 'sp-settings-backups', 'sp-settings-ai']
+            items: ['sp-settings-website', 'sp-settings-organization', 'sp-settings-membership', 'sp-settings-directory', 'sp-settings-events', 'sp-settings-privacy', 'privacy-policy-guide.php', 'sp-settings-modules', 'sp-user-access', 'sp-settings-backups', 'sp-settings-ai', 'sp-settings-mailchimp', 'sp-settings-zoom']
         }
     ],
     standalone: []

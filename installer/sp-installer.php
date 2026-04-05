@@ -421,8 +421,19 @@ function sp_installer_show_form(): void {
                     <th><label for="admin_user">Admin Username</label></th>
                     <td>
                         <input type="text" id="admin_user" name="admin_user" required
-                               value="admin" pattern="[a-zA-Z0-9_\-\.]{3,60}">
-                        <p class="desc">Your login username. Choose something memorable.</p>
+                               value="" pattern="[a-zA-Z0-9_\-\.]{3,60}"
+                               placeholder="e.g. jsmith or harold.whitfield">
+                        <p class="desc">Your login username. Choose something unique and memorable.</p>
+                        <p id="sp-admin-warn" style="display:none; color: #DC2626; font-size: 13px; margin-top: 4px;">
+                            &#9888; Avoid common usernames like &ldquo;admin&rdquo; &mdash; they're the first thing attackers try.
+                        </p>
+                        <script>
+                        document.getElementById('admin_user').addEventListener('input', function() {
+                            var bad = ['admin', 'administrator', 'root', 'superadmin', 'user', 'test'];
+                            var warn = document.getElementById('sp-admin-warn');
+                            warn.style.display = bad.indexOf(this.value.toLowerCase().trim()) !== -1 ? '' : 'none';
+                        });
+                        </script>
                     </td>
                 </tr>
                 <tr>

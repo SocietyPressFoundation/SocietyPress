@@ -25678,9 +25678,14 @@ function sp_render_themes_page(): void {
     $custom_themes = sp_get_custom_themes();
 
     // Determine which registry themes are not yet installed
+    // WHY: Check both the registry slug (e.g. "heritage") AND the prefixed
+    //      variant (e.g. "societypress-heritage") because the install process
+    //      may create the directory under either name depending on how the
+    //      GitHub zipball was extracted.
     $not_installed = [];
     foreach ( $registry as $reg_slug => $reg_info ) {
-        if ( ! isset( $sp_themes[ $reg_slug ] ) ) {
+        $prefixed_slug = 'societypress-' . $reg_slug;
+        if ( ! isset( $sp_themes[ $reg_slug ] ) && ! isset( $sp_themes[ $prefixed_slug ] ) ) {
             $not_installed[ $reg_slug ] = $reg_info;
         }
     }
@@ -26304,9 +26309,18 @@ function sp_render_themes_page(): void {
                 $is_custom      = isset( $custom_themes[ $slug ] );
 
                 // Check if a registry update is available for this installed theme
+                // WHY: Match both "heritage" and "societypress-heritage" slugs
                 $update_available = false;
-                if ( isset( $registry[ $slug ] ) ) {
-                    $reg_version = $registry[ $slug ]['version'];
+                $reg_key = isset( $registry[ $slug ] ) ? $slug : null;
+                if ( ! $reg_key ) {
+                    // Try without the "societypress-" prefix
+                    $unprefixed = preg_replace( '/^societypress-/', '', $slug );
+                    if ( $unprefixed !== $slug && isset( $registry[ $unprefixed ] ) ) {
+                        $reg_key = $unprefixed;
+                    }
+                }
+                if ( $reg_key ) {
+                    $reg_version = $registry[ $reg_key ]['version'];
                     if ( version_compare( $version, $reg_version, '<' ) ) {
                         $update_available = true;
                     }

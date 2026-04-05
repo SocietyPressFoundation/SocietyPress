@@ -24943,6 +24943,73 @@ add_action( 'wp_ajax_sp_delete_custom_theme', function () {
     ] );
 } );
 
+
+// ---- Delete an installed child theme (registry or otherwise) ----
+// WHY: Unused themes are a security risk — every theme directory on disk is
+//      a potential attack surface if a vulnerability is found. Harold should be
+//      able to remove themes he doesn't need. Can't delete the parent theme or
+//      the currently active theme. Uses WP_Filesystem for safe recursive deletion.
+add_action( 'wp_ajax_sp_delete_child_theme', function () {
+    if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_install_theme_nonce' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ] );
+    }
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ] );
+    }
+
+    $slug = sanitize_file_name( $_POST['theme_slug'] ?? '' );
+
+    if ( empty( $slug ) ) {
+        wp_send_json_error( [ 'message' => __( 'No theme specified.', 'societypress' ) ] );
+    }
+
+    // Safety: never allow deleting the parent theme
+    if ( $slug === 'societypress' ) {
+        wp_send_json_error( [ 'message' => __( 'The parent theme cannot be deleted.', 'societypress' ) ] );
+    }
+
+    // Safety: never allow deleting the currently active theme
+    if ( get_stylesheet() === $slug ) {
+        wp_send_json_error( [ 'message' => __( 'You cannot delete the currently active theme. Switch to a different theme first.', 'societypress' ) ] );
+    }
+
+    // Verify the theme exists and is actually a SocietyPress child theme
+    $theme = wp_get_theme( $slug );
+    if ( ! $theme->exists() ) {
+        wp_send_json_error( [ 'message' => __( 'Theme not found.', 'societypress' ) ] );
+    }
+    if ( $theme->get( 'Template' ) !== 'societypress' ) {
+        wp_send_json_error( [ 'message' => __( 'This is not a SocietyPress child theme.', 'societypress' ) ] );
+    }
+
+    $name      = $theme->get( 'Name' );
+    $theme_dir = get_theme_root() . '/' . $slug;
+
+    if ( is_dir( $theme_dir ) ) {
+        global $wp_filesystem;
+        if ( ! function_exists( 'WP_Filesystem' ) ) {
+            require_once ABSPATH . 'wp-admin/includes/file.php';
+        }
+        WP_Filesystem();
+        $deleted = $wp_filesystem->delete( $theme_dir, true );
+
+        if ( ! $deleted ) {
+            wp_send_json_error( [ 'message' => __( 'Failed to delete theme directory. Check file permissions.', 'societypress' ) ] );
+        }
+    }
+
+    sp_audit(
+        'child_theme_deleted',
+        sprintf( 'Child theme "%s" (%s) deleted', $name, $slug ),
+        'settings'
+    );
+
+    wp_send_json_success( [
+        'message' => sprintf( __( '"%s" has been deleted.', 'societypress' ), $name ),
+    ] );
+} );
+
+
 // ============================================================================
 // SITE COLOR/FONT EXTRACTOR — "Match My Current Site"
 // ============================================================================
@@ -26348,6 +26415,20 @@ function sp_render_themes_page(): void {
                                     <?php esc_html_e( 'Delete', 'societypress' ); ?>
                                 </button>
                             <?php endif; ?>
+
+                            <?php
+                            // Delete button for installed child themes (registry or otherwise)
+                            // WHY: Unused themes can be a security risk — every theme on disk
+                            //      is a potential attack surface. Harold should be able to remove
+                            //      themes he doesn't need. Can't delete the parent or active theme.
+                            //      Custom themes already have their own delete button above.
+                            if ( ! $is_parent && ! $is_active && ! $is_custom ) : ?>
+                                <button type="button" class="button sp-theme-delete-btn sp-themes-delete-btn-danger"
+                                        data-slug="<?php echo esc_attr( $slug ); ?>"
+                                        data-name="<?php echo esc_attr( $name ); ?>">
+                                    <?php esc_html_e( 'Delete', 'societypress' ); ?>
+                                </button>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>
@@ -27075,6 +27156,39 @@ function sp_render_themes_page(): void {
         document.querySelectorAll('.sp-custom-delete-btn').forEach(function(btn) {
             btn.addEventListener('click', function() {
                 handleDelete(this.getAttribute('data-slug'), this.getAttribute('data-name'));
+            });
+        });
+
+        // Delete buttons on installed (non-custom) child theme cards
+        // WHY: Separate from custom theme delete because it uses a different
+        //      AJAX action and nonce. Same UX pattern — spConfirm, AJAX, reload.
+        document.querySelectorAll('.sp-theme-delete-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var slug = this.getAttribute('data-slug');
+                var name = this.getAttribute('data-name');
+
+                spConfirm(
+                    <?php echo wp_json_encode( __( 'Delete this theme? The theme files will be permanently removed. This cannot be undone.', 'societypress' ) ); ?>,
+                    function() {
+                        var data = new FormData();
+                        data.append('action', 'sp_delete_child_theme');
+                        data.append('nonce', installNonce);
+                        data.append('theme_slug', slug);
+
+                        fetch(ajaxUrl, { method: 'POST', body: data })
+                            .then(function(r) { return r.json(); })
+                            .then(function(r) {
+                                if (r.success) {
+                                    location.reload();
+                                } else {
+                                    alert(r.data.message || <?php echo wp_json_encode( __( 'Could not delete theme.', 'societypress' ) ); ?>);
+                                }
+                            })
+                            .catch(function() {
+                                alert(<?php echo wp_json_encode( __( 'Network error.', 'societypress' ) ); ?>);
+                            });
+                    }
+                );
             });
         });
 

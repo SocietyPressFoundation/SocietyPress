@@ -19596,6 +19596,11 @@ function sp_render_setup_wizard(): void {
                 $settings['design_color_accent']  = sanitize_hex_color( $_POST['design_color_accent'] ?? '#667eea' );
                 $settings['email_from_name']      = sanitize_text_field( $_POST['email_from_name'] ?? '' );
                 $settings['email_from_email']     = sanitize_email( $_POST['email_from_email'] ?? '' );
+
+                // Homepage style — Classic (none) or Cinematic (image)
+                $hero_type = $_POST['homepage_hero_type'] ?? 'image';
+                $settings['homepage_hero_type'] = in_array( $hero_type, [ 'none', 'image', 'video' ], true ) ? $hero_type : 'image';
+
                 update_option( 'societypress_settings', $settings );
 
                 // Mark wizard as complete
@@ -19786,6 +19791,46 @@ function sp_render_setup_wizard(): void {
                     <!-- Step 4: Appearance & Email -->
                     <h2><?php esc_html_e( 'Finishing Touches', 'societypress' ); ?></h2>
                     <p class="desc"><?php esc_html_e( 'Customize the look of your site and configure email.', 'societypress' ); ?></p>
+
+                    <!-- Homepage Style — Classic vs Cinematic -->
+                    <div class="sp-wizard-field">
+                        <label style="font-weight: 600; margin-bottom: 8px; display: block;"><?php esc_html_e( 'Homepage Style', 'societypress' ); ?></label>
+                        <div style="display: flex; gap: 16px;">
+                            <?php $hero_choice = $settings['homepage_hero_type'] ?? 'image'; ?>
+
+                            <label class="sp-wizard-style-card" style="flex: 1; cursor: pointer; border: 2px solid <?php echo $hero_choice === 'none' ? '#2271b1' : '#ddd'; ?>; border-radius: 8px; padding: 20px; text-align: center; transition: border-color 0.2s;">
+                                <input type="radio" name="homepage_hero_type" value="none"
+                                       <?php checked( $hero_choice, 'none' ); ?>
+                                       style="display: none;">
+                                <div style="font-size: 32px; margin-bottom: 8px;">📄</div>
+                                <div style="font-weight: 600; margin-bottom: 4px;"><?php esc_html_e( 'Classic', 'societypress' ); ?></div>
+                                <div style="font-size: 13px; color: #666;"><?php esc_html_e( 'Clean and simple. Your content front and center.', 'societypress' ); ?></div>
+                            </label>
+
+                            <label class="sp-wizard-style-card" style="flex: 1; cursor: pointer; border: 2px solid <?php echo $hero_choice !== 'none' ? '#2271b1' : '#ddd'; ?>; border-radius: 8px; padding: 20px; text-align: center; transition: border-color 0.2s;">
+                                <input type="radio" name="homepage_hero_type" value="image"
+                                       <?php checked( in_array( $hero_choice, [ 'image', 'video' ], true ) ); ?>
+                                       style="display: none;">
+                                <div style="font-size: 32px; margin-bottom: 8px;">🎬</div>
+                                <div style="font-weight: 600; margin-bottom: 4px;"><?php esc_html_e( 'Cinematic', 'societypress' ); ?></div>
+                                <div style="font-size: 13px; color: #666;"><?php esc_html_e( 'Full-screen hero with headline and call-to-action.', 'societypress' ); ?></div>
+                            </label>
+                        </div>
+                        <div class="hint"><?php esc_html_e( 'You can change this anytime in Settings → Design → Homepage Hero.', 'societypress' ); ?></div>
+
+                        <script>
+                        (function() {
+                            document.querySelectorAll('.sp-wizard-style-card').forEach(function(card) {
+                                card.addEventListener('click', function() {
+                                    document.querySelectorAll('.sp-wizard-style-card').forEach(function(c) {
+                                        c.style.borderColor = '#ddd';
+                                    });
+                                    this.style.borderColor = '#2271b1';
+                                });
+                            });
+                        })();
+                        </script>
+                    </div>
 
                     <div class="sp-wizard-field" style="display: flex; gap: 20px;">
                         <div>

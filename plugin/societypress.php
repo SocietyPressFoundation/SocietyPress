@@ -8315,6 +8315,58 @@ add_filter( 'login_redirect', function ( $redirect_to, $requested_redirect_to, $
  *      The login page itself, admin-ajax, cron, and REST API are excluded
  *      so WordPress internals keep working normally.
  */
+
+// ---- Pre-wizard block: don't show the site until setup is complete ----
+// WHY: A fresh install shouldn't be publicly visible with default placeholder
+//      content. Until Harold runs the setup wizard, visitors see a clean
+//      "setting up" page. Admins are allowed through so they can reach wp-admin.
+add_action( 'template_redirect', function () {
+    if ( get_option( 'sp_wizard_completed' ) ) {
+        return; // Setup is done — site is live
+    }
+
+    // Let admins through so they can reach the wizard
+    if ( is_user_logged_in() && current_user_can( 'manage_options' ) ) {
+        return;
+    }
+
+    // Don't block login, cron, AJAX, or REST
+    if ( is_login() || wp_doing_cron() || wp_doing_ajax() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
+        return;
+    }
+
+    // Show a simple, dignified "setting up" page
+    $site_name = get_bloginfo( 'name' );
+    status_header( 503 );
+    header( 'Retry-After: 3600' );
+    ?>
+    <!DOCTYPE html>
+    <html <?php language_attributes(); ?>>
+    <head>
+        <meta charset="<?php bloginfo( 'charset' ); ?>">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title><?php echo esc_html( $site_name ); ?></title>
+        <style>
+            body {
+                margin: 0; display: flex; align-items: center; justify-content: center;
+                min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: #1e3a5f; color: #fff; text-align: center;
+            }
+            .sp-setup-msg h1 { font-size: 2rem; font-weight: 300; margin: 0 0 12px; }
+            .sp-setup-msg p { font-size: 1rem; opacity: 0.7; margin: 0; }
+        </style>
+    </head>
+    <body>
+        <div class="sp-setup-msg">
+            <h1><?php echo esc_html( $site_name ); ?></h1>
+            <p><?php esc_html_e( 'We\'re setting things up. Check back soon.', 'societypress' ); ?></p>
+        </div>
+    </body>
+    </html>
+    <?php
+    exit;
+}, 1 ); // Priority 1 — runs before all other template_redirect hooks
+
 add_action( 'template_redirect', function () {
     $sp = get_option( 'societypress_settings', [] );
     if ( empty( $sp['website_require_login'] ) ) {

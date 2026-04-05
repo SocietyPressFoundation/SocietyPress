@@ -20,7 +20,7 @@
 get_header();
 
 $sp         = get_option( 'societypress_settings', [] );
-$hero_type  = $sp['homepage_hero_type']      ?? 'image';
+$hero_type  = $sp['homepage_hero_type']      ?? 'none';
 $hero_media = $sp['homepage_hero_media']     ?? '';
 $hero_poster = $sp['homepage_hero_poster']   ?? '';
 $hero_headline = $sp['homepage_hero_headline'] ?? '';

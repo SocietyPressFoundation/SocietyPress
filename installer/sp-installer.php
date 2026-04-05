@@ -767,11 +767,41 @@ function sp_installer_process(): void {
 /**
  * SocietyPress Auto-Activator (must-use plugin)
  *
- * WHY: The installer can't bootstrap WordPress to activate the plugin and theme
- * programmatically. This mu-plugin runs on the first admin page load after
- * WordPress installs itself, activates SocietyPress + the parent theme, sets
- * permalinks, and then deletes itself.
+ * Two jobs, in two separate requests:
+ *
+ * 1. login_init hook — Auto-login. The bridge script writes a one-time token
+ *    file containing the admin user ID. When WordPress bounces the
+ *    unauthenticated user to wp-login.php, this hook reads the token, sets the
+ *    auth cookie in a fully-initialized WordPress context, deletes the token,
+ *    and redirects to wp-admin. This avoids calling wp_set_auth_cookie() during
+ *    the WP_INSTALLING bootstrap where cookie constants are unreliable.
+ *
+ * 2. admin_init hook — Activate SocietyPress + parent theme, apply installer
+ *    settings, clean up default WordPress cruft, and self-destruct.
  */
+
+// ---- Auto-login on first hit to wp-login.php ----
+add_action( 'login_init', function () {
+    $token_file = ABSPATH . 'wp-content/sp-auto-login.token';
+    if ( ! file_exists( $token_file ) ) {
+        return;
+    }
+
+    $user_id = (int) trim( file_get_contents( $token_file ) );
+    @unlink( $token_file );
+
+    if ( $user_id < 1 ) {
+        return;
+    }
+
+    // Set the auth cookie in a normal WordPress context where COOKIEPATH,
+    // COOKIE_DOMAIN, and session token infrastructure are all correct.
+    wp_set_auth_cookie( $user_id, true );
+
+    // Redirect to wp-admin — the admin_init hook below will handle the rest.
+    wp_safe_redirect( admin_url() );
+    exit;
+} );
 
 // Recursive directory delete for removing default themes.
 // WHY: PHP has no built-in rmdir-recursive, and we can't rely on the
@@ -963,25 +993,25 @@ MUPLUGIN;
         . '    wp_die( "Installation failed: " . $result->get_error_message() );' . "\n"
         . '}' . "\n"
         . "\n"
-        . '// Set permalinks' . "\n"
-        . 'global $wp_rewrite;' . "\n"
-        . '$wp_rewrite->set_permalink_structure( "/%postname%/" );' . "\n"
-        . '$wp_rewrite->flush_rules( true );' . "\n"
+        . '// Write a one-time auto-login token for the mu-plugin to pick up.' . "\n"
+        . '// WHY: wp_set_auth_cookie() does not work reliably during WP_INSTALLING' . "\n"
+        . '// because cookie constants (COOKIEPATH, COOKIE_DOMAIN) are derived from' . "\n"
+        . '// the siteurl option, which is set AFTER wp_install() runs but the' . "\n"
+        . '// constants were already defined (with wrong values) during bootstrap.' . "\n"
+        . '// Instead, we hand the user ID to the mu-plugin which runs in a normal' . "\n"
+        . '// WordPress context where everything is properly initialized.' . "\n"
+        . '$token_file = ABSPATH . "wp-content/sp-auto-login.token";' . "\n"
+        . 'file_put_contents( $token_file, $result["user_id"] );' . "\n"
         . "\n"
         . '// Self-destruct — remove bridge script and main installer' . "\n"
         . '@unlink( __FILE__ );' . "\n"
         . '$installer = dirname( __FILE__ ) . "/sp-installer.php";' . "\n"
         . 'if ( file_exists( $installer ) ) { @unlink( $installer ); }' . "\n"
         . "\n"
-        . '// Auto-login — set the auth cookie so Harold lands in wp-admin' . "\n"
-        . '// without seeing a login screen. wp_install() returns the admin' . "\n"
-        . '// user ID in $result["user_id"]. wp_set_auth_cookie() sets the' . "\n"
-        . '// same cookies that wp_login() would.' . "\n"
-        . 'wp_set_auth_cookie( $result["user_id"], true );' . "\n"
-        . "\n"
-        . '// Redirect straight to wp-admin — the mu-plugin will activate' . "\n"
-        . '// SocietyPress and redirect to the dashboard on first load.' . "\n"
-        . 'wp_redirect( admin_url() );' . "\n"
+        . '// Redirect to wp-admin. The user is not yet authenticated, so WordPress' . "\n"
+        . '// will bounce them to wp-login.php, where the mu-plugin\'s login_init' . "\n"
+        . '// hook picks up the auto-login token and logs them in.' . "\n"
+        . 'header( "Location: " . rtrim( dirname( $_SERVER["SCRIPT_NAME"] ), "/" ) . "/wp-admin/" );' . "\n"
         . 'exit;' . "\n";
 
     file_put_contents( $bridge_script, $bridge_code );

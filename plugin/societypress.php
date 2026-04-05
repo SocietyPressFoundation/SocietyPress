@@ -9778,6 +9778,39 @@ function sp_complete_getting_started_step( string $step ): void {
 }
 
 /**
+ * Handle module settings save via admin_init — before any output.
+ *
+ * WHY: The save handler must redirect with wp_safe_redirect(), which requires
+ *      that no HTTP headers have been sent yet. Page render callbacks run after
+ *      WordPress has started the admin page output, so the redirect would fail.
+ *      Moving the save to admin_init (priority 1) ensures it runs before any
+ *      HTML is output to the browser.
+ */
+add_action( 'admin_init', function () {
+    if ( ( $_GET['page'] ?? '' ) !== 'sp-settings-modules' ) {
+        return;
+    }
+    if ( $_SERVER['REQUEST_METHOD'] !== 'POST' || ! isset( $_POST['_sp_modules_nonce'] ) ) {
+        return;
+    }
+    if ( ! wp_verify_nonce( $_POST['_sp_modules_nonce'], 'sp_save_modules' ) || ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+
+    $all_module_slugs = array_keys( sp_get_modules() );
+    $enabled = [];
+    foreach ( $all_module_slugs as $slug ) {
+        if ( ! empty( $_POST[ 'sp_module_' . $slug ] ) ) {
+            $enabled[] = $slug;
+        }
+    }
+    update_option( 'sp_enabled_modules', $enabled );
+
+    wp_safe_redirect( admin_url( 'admin.php?page=sp-settings-modules&saved=1' ) );
+    exit;
+}, 1 );
+
+/**
  * Detect settings page saves and mark the corresponding getting-started step.
  *
  * WHY: We hook into admin_init to catch the redirect after a successful save.
@@ -14023,9 +14056,54 @@ function sp_render_member_edit_page(): void {
                     }
                     ?>
 
+                    <style>
+                        /* Genealogy profile rows — horizontal layout that must NOT
+                         * inherit .sp-field's flex-direction:column or width:100% inputs. */
+                        .sp-gen-row {
+                            display: flex;
+                            align-items: center;
+                            gap: 10px;
+                            margin-bottom: 6px;
+                        }
+                        .sp-gen-row input[type="url"] {
+                            flex: 1;
+                            min-width: 0;
+                            width: auto;
+                        }
+                        .sp-gen-row input[type="checkbox"] {
+                            width: auto;
+                        }
+                        .sp-gen-label {
+                            flex: 0 0 160px;
+                            font-size: 13px;
+                            font-weight: normal;
+                            margin-bottom: 0;
+                        }
+                        .sp-gen-visible {
+                            display: flex;
+                            align-items: center;
+                            gap: 4px;
+                            font-size: 12px;
+                            font-weight: normal;
+                            color: #666;
+                            white-space: nowrap;
+                            margin-bottom: 0;
+                        }
+                        .sp-gen-cat-heading {
+                            font-size: 13px;
+                            font-weight: 600;
+                            color: #666;
+                            text-transform: uppercase;
+                            letter-spacing: 0.5px;
+                            margin: 0 0 8px 0;
+                            padding-bottom: 4px;
+                            border-bottom: 1px solid #e0e0e0;
+                        }
+                    </style>
+
                     <?php foreach ( $gen_by_cat as $cat_slug => $cat_sites ) : ?>
                     <div style="margin-bottom: 16px;">
-                        <h3 style="font-size: 13px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 8px 0; padding-bottom: 4px; border-bottom: 1px solid #e0e0e0;">
+                        <h3 class="sp-gen-cat-heading">
                             <?php echo esc_html( $gen_categories[ $cat_slug ] ?? ucfirst( $cat_slug ) ); ?>
                         </h3>
 
@@ -14036,14 +14114,14 @@ function sp_render_member_edit_page(): void {
                             $is_pub   = $existing ? (int) $existing->is_public : 1;
                             $icon_url = sp_get_genealogy_site_icon_url( $gs );
                         ?>
-                        <div class="sp-field" style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+                        <div class="sp-gen-row">
                             <?php if ( $icon_url ) : ?>
                                 <img src="<?php echo esc_url( $icon_url ); ?>" alt="" width="16" height="16" style="border-radius: 2px;" loading="lazy" />
                             <?php else : ?>
                                 <span class="dashicons dashicons-admin-site-alt3" style="font-size: 16px; width: 16px; height: 16px; color: #999;"></span>
                             <?php endif; ?>
 
-                            <label style="flex: 0 0 180px; font-size: 13px;">
+                            <label class="sp-gen-label">
                                 <?php echo esc_html( $gs->name ); ?>
                             </label>
 
@@ -14051,10 +14129,9 @@ function sp_render_member_edit_page(): void {
                             <input type="url"
                                    name="gen_profile_url[]"
                                    value="<?php echo esc_attr( $url_val ); ?>"
-                                   placeholder="<?php echo esc_attr( $gs->url_template ?: 'https://...' ); ?>"
-                                   style="flex: 1; min-width: 0;" />
+                                   placeholder="<?php echo esc_attr( $gs->url_template ?: 'https://...' ); ?>" />
 
-                            <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: #666; white-space: nowrap;">
+                            <label class="sp-gen-visible">
                                 <input type="checkbox"
                                        name="gen_profile_public_<?php echo esc_attr( $sid ); ?>"
                                        value="1"
@@ -14585,7 +14662,7 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
         // WHY: These were originally stored as custom meta when the columns
         //      didn't exist yet. The schema now has dedicated columns for all
         //      of them, so we write directly instead of using the meta table.
-        'Contact'                   => 'contact',
+        // NOTE: 'Contact' intentionally omitted — no matching column in sp_members.
         'UseMaiden'                 => 'use_maiden',
         // 'Deceased' intentionally omitted — already mapped to 'deceased'
         // field above for status logic. Duplicate keys in PHP arrays
@@ -14856,17 +14933,23 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
             }
         }
 
-        // Skip only if this email + name combination already exists.
+        // If this email + name combination already exists, UPDATE the existing
+        // record instead of skipping. This lets Harold re-import a CSV to
+        // refresh member data without deleting everyone first.
         // WHY: Same email ≠ same person. Married couples share addresses.
         //      We compare names under that email — if the last name matches
         //      and the first name is identical or one contains the other,
-        //      it's a true duplicate. Otherwise it's a family member who
+        //      it's the same person. Otherwise it's a family member who
         //      happens to share an inbox.
+        $update_existing_user_id = null;
         if ( ! empty( $email ) && isset( $existing_members[ strtolower( $email ) ] ) ) {
             if ( $is_name_similar( $first_name, $last_name, $existing_members[ strtolower( $email ) ] ) ) {
-                $results['skipped']++;
-                $results['errors'][] = "Row {$row_num}: Skipped {$first_name} {$last_name} — already exists (same email and similar name).";
-                continue;
+                foreach ( $existing_members[ strtolower( $email ) ] as $match ) {
+                    if ( $match['last'] === strtolower( trim( $last_name ) ) ) {
+                        $update_existing_user_id = $match['user_id'];
+                        break;
+                    }
+                }
             }
         }
 
@@ -14989,7 +15072,12 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
         // Use the imported login if available, otherwise fall back to email
         $imported_login = sanitize_user( $get( $row, 'login' ), true );
 
-        if ( ! empty( $email ) ) {
+        // If we already identified this as an existing member (email + name match),
+        // skip user creation and jump straight to updating the sp_members row.
+        if ( $update_existing_user_id ) {
+            $user_id = $update_existing_user_id;
+            // Fall through to the member_data build + update below
+        } elseif ( ! empty( $email ) ) {
             $existing_user = get_user_by( 'email', $email );
             if ( $existing_user ) {
                 // A WP user already has this email. Check if that user is
@@ -15002,10 +15090,9 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
                     'first' => strtolower( $already->first_name ),
                     'last'  => strtolower( $already->last_name ),
                 ] ] ) ) {
-                    // Same person, already imported — skip
-                    $results['skipped']++;
-                    $results['errors'][] = "Row {$row_num}: Skipped {$first_name} {$last_name} — already imported.";
-                    continue;
+                    // Same person — use existing user_id, will update below
+                    $update_existing_user_id = $existing_user->ID;
+                    $user_id = $existing_user->ID;
                 }
 
                 // Different person sharing the same email (spouse, parent, etc.).
@@ -15177,25 +15264,9 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
             'interests'             => sanitize_text_field( $get( $row, 'interests' ) ) ?: null,
             'education'             => sanitize_text_field( $get( $row, 'education' ) ) ?: null,
             'label_name'            => sanitize_text_field( $get( $row, 'label_name' ) ) ?: null,
-            'contact'               => sanitize_text_field( $get( $row, 'contact' ) ) ?: null,
-            'use_maiden'            => sanitize_text_field( $get( $row, 'use_maiden' ) ) ?: 'Not Used',
-            'image_filename'        => sanitize_text_field( $get( $row, 'image_filename' ) ) ?: null,
-            'toll_free_phone'       => $clean_phone( $get( $row, 'toll_free_phone' ) ),
-            'international_phone'   => $clean_phone( $get( $row, 'international_phone' ) ),
             'preferred_phone'       => sanitize_text_field( $get( $row, 'preferred_phone' ) ) ?: null,
             'alt_phone'             => $clean_phone( $get( $row, 'alt_phone' ) ),
-            'alt_international_phone' => $clean_phone( $get( $row, 'alt_international_phone' ) ),
-            'alt_preferred_phone'   => sanitize_text_field( $get( $row, 'alt_preferred_phone' ) ) ?: 'Alt. Phone',
             'alt_email'             => sanitize_email( $get( $row, 'alt_email' ) ) ?: null,
-            'seasonal_address_2'    => sanitize_text_field( $get( $row, 'seasonal_address_2' ) ) ?: null,
-            'membership_type'       => sanitize_text_field( $get( $row, 'membership_type' ) ) ?: null,
-            'max_members'           => max( 1, (int) ( $get( $row, 'max_members' ) ?: 1 ) ),
-            'acct_primary'          => $yes_no( $get( $row, 'acct_primary' ) ),
-            'login_count'           => (int) ( $get( $row, 'login_count' ) ?: 0 ),
-            'last_login_date'       => $parse_date( $get( $row, 'last_login_date' ) ) ?: null,
-            'last_updated_by'       => sanitize_text_field( $get( $row, 'last_updated_by' ) ) ?: null,
-            'last_updated_date'     => $parse_date( $get( $row, 'last_updated_date' ) ) ?: null,
-            'ens_record_id'         => (int) ( $get( $row, 'ens_record_id' ) ?: 0 ) ?: null,
             'login_username'        => $imported_login ?: null,
             'receive_print'         => $yes_no( $get( $row, 'pref_print' ) ),
             'pref_email_notices'    => $yes_no( $get( $row, 'pref_general_email' ) ),
@@ -15212,11 +15283,32 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
 
         // Encrypt sensitive contact fields before writing to DB
         sp_member_encrypt_fields( $member_data );
-        $inserted = $wpdb->insert( $prefix . 'members', $member_data );
-        if ( ! $inserted ) {
-            $results['errors'][] = "Row {$row_num}: Database error inserting {$first_name} {$last_name}. MySQL: {$wpdb->last_error}";
-            $results['skipped']++;
-            continue;
+
+        if ( $update_existing_user_id ) {
+            // Update existing member record instead of inserting a new one.
+            // WHY: Harold should be able to re-import a CSV to refresh data
+            //      without deleting everyone first. The existing user account
+            //      and user_id are preserved; only the sp_members row is updated.
+            $updated = $wpdb->update(
+                $prefix . 'members',
+                $member_data,
+                [ 'user_id' => $update_existing_user_id ]
+            );
+            if ( $updated === false ) {
+                $results['errors'][] = "Row {$row_num}: Database error updating {$first_name} {$last_name}. MySQL: {$wpdb->last_error}";
+                $results['skipped']++;
+                continue;
+            }
+            if ( ! isset( $results['updated'] ) ) $results['updated'] = 0;
+            $results['updated']++;
+        } else {
+            $inserted = $wpdb->insert( $prefix . 'members', $member_data );
+            if ( ! $inserted ) {
+                $results['errors'][] = "Row {$row_num}: Database error inserting {$first_name} {$last_name}. MySQL: {$wpdb->last_error}";
+                $results['skipped']++;
+                continue;
+            }
+            $results['imported']++;
         }
 
         // Track for duplicate detection within the same import batch.
@@ -15333,8 +15425,6 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
                 }
             }
         }
-
-        $results['imported']++;
     }
 
     fclose( $handle );
@@ -15524,7 +15614,7 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
         // WHY: These were originally stored as custom meta when the columns
         //      didn't exist yet. The schema now has dedicated columns for all
         //      of them, so we write directly instead of using the meta table.
-        'Contact'                   => 'contact',
+        // NOTE: 'Contact' intentionally omitted — no matching column in sp_members.
         'UseMaiden'                 => 'use_maiden',
         // 'Deceased' intentionally omitted — already mapped to 'deceased'
         // field above for status logic. Duplicate keys in PHP arrays
@@ -15808,17 +15898,23 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
             }
         }
 
-        // Skip only if this email + name combination already exists.
+        // If this email + name combination already exists, UPDATE the existing
+        // record instead of skipping. This lets Harold re-import a CSV to
+        // refresh member data without deleting everyone first.
         // WHY: Same email ≠ same person. Married couples share addresses.
         //      We compare names under that email — if the last name matches
         //      and the first name is identical or one contains the other,
-        //      it's a true duplicate. Otherwise it's a family member who
+        //      it's the same person. Otherwise it's a family member who
         //      happens to share an inbox.
+        $update_existing_user_id = null;
         if ( ! empty( $email ) && isset( $existing_members[ strtolower( $email ) ] ) ) {
             if ( $is_name_similar( $first_name, $last_name, $existing_members[ strtolower( $email ) ] ) ) {
-                $results['skipped']++;
-                $results['errors'][] = "Row {$row_num}: Skipped {$first_name} {$last_name} — already exists (same email and similar name).";
-                continue;
+                foreach ( $existing_members[ strtolower( $email ) ] as $match ) {
+                    if ( $match['last'] === strtolower( trim( $last_name ) ) ) {
+                        $update_existing_user_id = $match['user_id'];
+                        break;
+                    }
+                }
             }
         }
 
@@ -15941,7 +16037,12 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
         // Use the imported login if available, otherwise fall back to email
         $imported_login = sanitize_user( $get( $row, 'login' ), true );
 
-        if ( ! empty( $email ) ) {
+        // If we already identified this as an existing member (email + name match),
+        // skip user creation and jump straight to updating the sp_members row.
+        if ( $update_existing_user_id ) {
+            $user_id = $update_existing_user_id;
+            // Fall through to the member_data build + update below
+        } elseif ( ! empty( $email ) ) {
             $existing_user = get_user_by( 'email', $email );
             if ( $existing_user ) {
                 // A WP user already has this email. Check if that user is
@@ -15954,10 +16055,9 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
                     'first' => strtolower( $already->first_name ),
                     'last'  => strtolower( $already->last_name ),
                 ] ] ) ) {
-                    // Same person, already imported — skip
-                    $results['skipped']++;
-                    $results['errors'][] = "Row {$row_num}: Skipped {$first_name} {$last_name} — already imported.";
-                    continue;
+                    // Same person — use existing user_id, will update below
+                    $update_existing_user_id = $existing_user->ID;
+                    $user_id = $existing_user->ID;
                 }
 
                 // Different person sharing the same email (spouse, parent, etc.).
@@ -16129,25 +16229,9 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
             'interests'             => sanitize_text_field( $get( $row, 'interests' ) ) ?: null,
             'education'             => sanitize_text_field( $get( $row, 'education' ) ) ?: null,
             'label_name'            => sanitize_text_field( $get( $row, 'label_name' ) ) ?: null,
-            'contact'               => sanitize_text_field( $get( $row, 'contact' ) ) ?: null,
-            'use_maiden'            => sanitize_text_field( $get( $row, 'use_maiden' ) ) ?: 'Not Used',
-            'image_filename'        => sanitize_text_field( $get( $row, 'image_filename' ) ) ?: null,
-            'toll_free_phone'       => $clean_phone( $get( $row, 'toll_free_phone' ) ),
-            'international_phone'   => $clean_phone( $get( $row, 'international_phone' ) ),
             'preferred_phone'       => sanitize_text_field( $get( $row, 'preferred_phone' ) ) ?: null,
             'alt_phone'             => $clean_phone( $get( $row, 'alt_phone' ) ),
-            'alt_international_phone' => $clean_phone( $get( $row, 'alt_international_phone' ) ),
-            'alt_preferred_phone'   => sanitize_text_field( $get( $row, 'alt_preferred_phone' ) ) ?: 'Alt. Phone',
             'alt_email'             => sanitize_email( $get( $row, 'alt_email' ) ) ?: null,
-            'seasonal_address_2'    => sanitize_text_field( $get( $row, 'seasonal_address_2' ) ) ?: null,
-            'membership_type'       => sanitize_text_field( $get( $row, 'membership_type' ) ) ?: null,
-            'max_members'           => max( 1, (int) ( $get( $row, 'max_members' ) ?: 1 ) ),
-            'acct_primary'          => $yes_no( $get( $row, 'acct_primary' ) ),
-            'login_count'           => (int) ( $get( $row, 'login_count' ) ?: 0 ),
-            'last_login_date'       => $parse_date( $get( $row, 'last_login_date' ) ) ?: null,
-            'last_updated_by'       => sanitize_text_field( $get( $row, 'last_updated_by' ) ) ?: null,
-            'last_updated_date'     => $parse_date( $get( $row, 'last_updated_date' ) ) ?: null,
-            'ens_record_id'         => (int) ( $get( $row, 'ens_record_id' ) ?: 0 ) ?: null,
             'login_username'        => $imported_login ?: null,
             'receive_print'         => $yes_no( $get( $row, 'pref_print' ) ),
             'pref_email_notices'    => $yes_no( $get( $row, 'pref_general_email' ) ),
@@ -16164,11 +16248,32 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
 
         // Encrypt sensitive contact fields before writing to DB
         sp_member_encrypt_fields( $member_data );
-        $inserted = $wpdb->insert( $prefix . 'members', $member_data );
-        if ( ! $inserted ) {
-            $results['errors'][] = "Row {$row_num}: Database error inserting {$first_name} {$last_name}. MySQL: {$wpdb->last_error}";
-            $results['skipped']++;
-            continue;
+
+        if ( $update_existing_user_id ) {
+            // Update existing member record instead of inserting a new one.
+            // WHY: Harold should be able to re-import a CSV to refresh data
+            //      without deleting everyone first. The existing user account
+            //      and user_id are preserved; only the sp_members row is updated.
+            $updated = $wpdb->update(
+                $prefix . 'members',
+                $member_data,
+                [ 'user_id' => $update_existing_user_id ]
+            );
+            if ( $updated === false ) {
+                $results['errors'][] = "Row {$row_num}: Database error updating {$first_name} {$last_name}. MySQL: {$wpdb->last_error}";
+                $results['skipped']++;
+                continue;
+            }
+            if ( ! isset( $results['updated'] ) ) $results['updated'] = 0;
+            $results['updated']++;
+        } else {
+            $inserted = $wpdb->insert( $prefix . 'members', $member_data );
+            if ( ! $inserted ) {
+                $results['errors'][] = "Row {$row_num}: Database error inserting {$first_name} {$last_name}. MySQL: {$wpdb->last_error}";
+                $results['skipped']++;
+                continue;
+            }
+            $results['imported']++;
         }
 
         // Track for duplicate detection within the same import batch.
@@ -16279,8 +16384,6 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
                 }
             }
         }
-
-        $results['imported']++;
     }
 
     fclose( $handle );
@@ -18322,9 +18425,13 @@ add_action( 'admin_init', function () {
         ]
     );
 
-    // ---- PRIVACY page — just the privacy policy page picker ----
+    // ---- PRIVACY page — page picker + interactive privacy choices ----
     register_setting( 'sp-settings-privacy', 'wp_page_for_privacy_policy',
         [ 'sanitize_callback' => 'absint' ] );
+    register_setting( 'sp-settings-privacy', 'sp_privacy_choices', [
+        'type'              => 'array',
+        'sanitize_callback' => 'sp_sanitize_privacy_choices',
+    ] );
 
     // ---- DESIGN page — saves to societypress_settings array ----
     register_setting(
@@ -24736,27 +24843,301 @@ function sp_render_settings_events_page(): void {
 /**
  * Output the Privacy settings page.
  *
- * WHY: Just the privacy policy page picker. Simple, but important for
- *      compliance. Gets its own page so Harold can find it when he needs
- *      to set or change his privacy policy page.
+ * WHY: Harold shouldn't need a lawyer to write a privacy policy. This page
+ *      shows a checklist of data practices, pre-populated from SP's own
+ *      config — Harold reviews, adjusts, and saves. The privacy policy page
+ *      template then renders a complete, legally sound policy based on these
+ *      choices. Auto-detected items show a note explaining why they were
+ *      pre-checked so Harold understands what triggered each one.
  */
 function sp_render_settings_privacy_page(): void {
+    $auto     = sp_auto_detect_privacy_practices();
+    $saved    = get_option( 'sp_privacy_choices', null );
+    $choices  = is_array( $saved ) ? $saved : $auto;
+
+    // Helper: is a checkbox checked?
+    $is_on = function ( string $key ) use ( $choices ): bool {
+        return ! empty( $choices[ $key ] );
+    };
+
+    // Helper: was this auto-detected?
+    $is_auto = function ( string $key ) use ( $auto ): bool {
+        return ! empty( $auto[ $key ] );
+    };
     ?>
     <div class="wrap">
         <h1><?php esc_html_e( 'Settings: Privacy', 'societypress' ); ?></h1>
 
         <?php
         if ( isset( $_GET['settings-updated'] ) && $_GET['settings-updated'] === 'true' ) {
-            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Settings saved.', 'societypress' ) . '</p></div>';
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Privacy settings saved. Your privacy policy page has been updated.', 'societypress' ) . '</p></div>';
         }
         ?>
 
+        <p class="description" style="max-width: 700px; margin-bottom: 20px;">
+            <?php esc_html_e( 'Check each item that applies to your organization. SocietyPress will generate a complete privacy policy based on your selections. Items detected from your current settings are pre-checked — review them and adjust as needed.', 'societypress' ); ?>
+        </p>
+
+        <style>
+            .sp-privacy-section { margin-bottom: 28px; }
+            .sp-privacy-section-title {
+                font-size: 14px; font-weight: 600; color: #1d2327;
+                margin: 0 0 12px; padding-bottom: 8px;
+                border-bottom: 1px solid #e0e0e0;
+            }
+            .sp-privacy-item {
+                display: flex; align-items: flex-start; gap: 8px;
+                padding: 6px 0;
+            }
+            .sp-privacy-item input[type="checkbox"] { margin-top: 3px; }
+            .sp-privacy-item-label { font-size: 13px; color: #1d2327; }
+            .sp-privacy-auto-tag {
+                display: inline-block; font-size: 11px; color: #2271b1;
+                background: #f0f6fc; padding: 1px 6px; border-radius: 3px;
+                margin-left: 6px; vertical-align: middle;
+            }
+            .sp-privacy-textarea {
+                width: 100%; max-width: 600px; min-height: 80px;
+                margin-top: 8px;
+            }
+            .sp-privacy-page-picker { margin-top: 8px; }
+        </style>
+
         <form method="post" action="options.php">
-            <?php
-            settings_fields( 'sp-settings-privacy' );
-            do_settings_sections( 'sp-settings-privacy' );
-            submit_button( __( 'Save Settings', 'societypress' ) );
-            ?>
+            <?php settings_fields( 'sp-settings-privacy' ); ?>
+
+            <!-- ======================================================== -->
+            <!-- DATA COLLECTION                                          -->
+            <!-- ======================================================== -->
+            <div class="sp-privacy-section">
+                <h2 class="sp-privacy-section-title"><?php esc_html_e( 'What Your Organization Collects', 'societypress' ); ?></h2>
+
+                <div class="sp-privacy-item">
+                    <input type="checkbox" name="sp_privacy_choices[collect_members]" id="sp-priv-members" value="1" <?php checked( $is_on( 'collect_members' ) ); ?>>
+                    <label for="sp-priv-members" class="sp-privacy-item-label">
+                        <?php esc_html_e( 'Member personal information (names, email, address, phone)', 'societypress' ); ?>
+                        <?php if ( $is_auto( 'collect_members' ) ) : ?>
+                            <span class="sp-privacy-auto-tag"><?php esc_html_e( 'Core feature', 'societypress' ); ?></span>
+                        <?php endif; ?>
+                    </label>
+                </div>
+
+                <div class="sp-privacy-item">
+                    <input type="checkbox" name="sp_privacy_choices[collect_genealogy]" id="sp-priv-genealogy" value="1" <?php checked( $is_on( 'collect_genealogy' ) ); ?>>
+                    <label for="sp-priv-genealogy" class="sp-privacy-item-label">
+                        <?php esc_html_e( 'Genealogical research information (surnames, platforms, research areas)', 'societypress' ); ?>
+                        <?php if ( $is_auto( 'collect_genealogy' ) ) : ?>
+                            <span class="sp-privacy-auto-tag"><?php esc_html_e( 'Core feature', 'societypress' ); ?></span>
+                        <?php endif; ?>
+                    </label>
+                </div>
+
+                <div class="sp-privacy-item">
+                    <input type="checkbox" name="sp_privacy_choices[collect_events]" id="sp-priv-events" value="1" <?php checked( $is_on( 'collect_events' ) ); ?>>
+                    <label for="sp-priv-events" class="sp-privacy-item-label">
+                        <?php esc_html_e( 'Event registrations', 'societypress' ); ?>
+                        <?php if ( $is_auto( 'collect_events' ) ) : ?>
+                            <span class="sp-privacy-auto-tag"><?php esc_html_e( 'Events module enabled', 'societypress' ); ?></span>
+                        <?php endif; ?>
+                    </label>
+                </div>
+
+                <div class="sp-privacy-item">
+                    <input type="checkbox" name="sp_privacy_choices[collect_volunteers]" id="sp-priv-volunteers" value="1" <?php checked( $is_on( 'collect_volunteers' ) ); ?>>
+                    <label for="sp-priv-volunteers" class="sp-privacy-item-label">
+                        <?php esc_html_e( 'Volunteer sign-ups and activity', 'societypress' ); ?>
+                        <?php if ( $is_auto( 'collect_volunteers' ) ) : ?>
+                            <span class="sp-privacy-auto-tag"><?php esc_html_e( 'Governance module enabled', 'societypress' ); ?></span>
+                        <?php endif; ?>
+                    </label>
+                </div>
+
+                <div class="sp-privacy-item">
+                    <input type="checkbox" name="sp_privacy_choices[collect_photos]" id="sp-priv-photos" value="1" <?php checked( $is_on( 'collect_photos' ) ); ?>>
+                    <label for="sp-priv-photos" class="sp-privacy-item-label">
+                        <?php esc_html_e( 'Profile photos', 'societypress' ); ?>
+                        <?php if ( $is_auto( 'collect_photos' ) ) : ?>
+                            <span class="sp-privacy-auto-tag"><?php esc_html_e( 'Core feature', 'societypress' ); ?></span>
+                        <?php endif; ?>
+                    </label>
+                </div>
+
+                <div class="sp-privacy-item">
+                    <input type="checkbox" name="sp_privacy_choices[collect_donations]" id="sp-priv-donations" value="1" <?php checked( $is_on( 'collect_donations' ) ); ?>>
+                    <label for="sp-priv-donations" class="sp-privacy-item-label">
+                        <?php esc_html_e( 'Donation records', 'societypress' ); ?>
+                        <?php if ( $is_auto( 'collect_donations' ) ) : ?>
+                            <span class="sp-privacy-auto-tag"><?php esc_html_e( 'Donations module enabled', 'societypress' ); ?></span>
+                        <?php endif; ?>
+                    </label>
+                </div>
+
+                <div class="sp-privacy-item">
+                    <input type="checkbox" name="sp_privacy_choices[collect_store]" id="sp-priv-store" value="1" <?php checked( $is_on( 'collect_store' ) ); ?>>
+                    <label for="sp-priv-store" class="sp-privacy-item-label">
+                        <?php esc_html_e( 'Store purchases', 'societypress' ); ?>
+                        <?php if ( $is_auto( 'collect_store' ) ) : ?>
+                            <span class="sp-privacy-auto-tag"><?php esc_html_e( 'Store module enabled', 'societypress' ); ?></span>
+                        <?php endif; ?>
+                    </label>
+                </div>
+            </div>
+
+            <!-- ======================================================== -->
+            <!-- ONLINE SERVICES                                          -->
+            <!-- ======================================================== -->
+            <div class="sp-privacy-section">
+                <h2 class="sp-privacy-section-title"><?php esc_html_e( 'Online Services You Use', 'societypress' ); ?></h2>
+
+                <div class="sp-privacy-item">
+                    <input type="checkbox" name="sp_privacy_choices[payments_stripe]" id="sp-priv-stripe" value="1" <?php checked( $is_on( 'payments_stripe' ) ); ?>>
+                    <label for="sp-priv-stripe" class="sp-privacy-item-label">
+                        <?php esc_html_e( 'Stripe (online payments)', 'societypress' ); ?>
+                        <?php if ( $is_auto( 'payments_stripe' ) ) : ?>
+                            <span class="sp-privacy-auto-tag"><?php esc_html_e( 'Stripe keys configured', 'societypress' ); ?></span>
+                        <?php endif; ?>
+                    </label>
+                </div>
+
+                <div class="sp-privacy-item">
+                    <input type="checkbox" name="sp_privacy_choices[payments_paypal]" id="sp-priv-paypal" value="1" <?php checked( $is_on( 'payments_paypal' ) ); ?>>
+                    <label for="sp-priv-paypal" class="sp-privacy-item-label">
+                        <?php esc_html_e( 'PayPal (online payments)', 'societypress' ); ?>
+                        <?php if ( $is_auto( 'payments_paypal' ) ) : ?>
+                            <span class="sp-privacy-auto-tag"><?php esc_html_e( 'PayPal configured', 'societypress' ); ?></span>
+                        <?php endif; ?>
+                    </label>
+                </div>
+
+                <div class="sp-privacy-item">
+                    <input type="checkbox" name="sp_privacy_choices[analytics_google]" id="sp-priv-ga" value="1" <?php checked( $is_on( 'analytics_google' ) ); ?>>
+                    <label for="sp-priv-ga" class="sp-privacy-item-label">
+                        <?php esc_html_e( 'Google Analytics', 'societypress' ); ?>
+                        <?php if ( $is_auto( 'analytics_google' ) ) : ?>
+                            <span class="sp-privacy-auto-tag"><?php esc_html_e( 'Analytics ID configured', 'societypress' ); ?></span>
+                        <?php endif; ?>
+                    </label>
+                </div>
+
+                <div class="sp-privacy-item">
+                    <input type="checkbox" name="sp_privacy_choices[service_mailchimp]" id="sp-priv-mailchimp" value="1" <?php checked( $is_on( 'service_mailchimp' ) ); ?>>
+                    <label for="sp-priv-mailchimp" class="sp-privacy-item-label">
+                        <?php esc_html_e( 'Mailchimp (external email service)', 'societypress' ); ?>
+                        <?php if ( $is_auto( 'service_mailchimp' ) ) : ?>
+                            <span class="sp-privacy-auto-tag"><?php esc_html_e( 'Mailchimp API key configured', 'societypress' ); ?></span>
+                        <?php endif; ?>
+                    </label>
+                </div>
+            </div>
+
+            <!-- ======================================================== -->
+            <!-- EMAIL COMMUNICATIONS                                     -->
+            <!-- ======================================================== -->
+            <div class="sp-privacy-section">
+                <h2 class="sp-privacy-section-title"><?php esc_html_e( 'Email Communications', 'societypress' ); ?></h2>
+
+                <div class="sp-privacy-item">
+                    <input type="checkbox" name="sp_privacy_choices[email_blast]" id="sp-priv-blast" value="1" <?php checked( $is_on( 'email_blast' ) ); ?>>
+                    <label for="sp-priv-blast" class="sp-privacy-item-label">
+                        <?php esc_html_e( 'Mass email announcements to members', 'societypress' ); ?>
+                        <?php if ( $is_auto( 'email_blast' ) ) : ?>
+                            <span class="sp-privacy-auto-tag"><?php esc_html_e( 'Blast Email module enabled', 'societypress' ); ?></span>
+                        <?php endif; ?>
+                    </label>
+                </div>
+
+                <div class="sp-privacy-item">
+                    <input type="checkbox" name="sp_privacy_choices[email_newsletters]" id="sp-priv-newsletters" value="1" <?php checked( $is_on( 'email_newsletters' ) ); ?>>
+                    <label for="sp-priv-newsletters" class="sp-privacy-item-label">
+                        <?php esc_html_e( 'Newsletter archives', 'societypress' ); ?>
+                        <?php if ( $is_auto( 'email_newsletters' ) ) : ?>
+                            <span class="sp-privacy-auto-tag"><?php esc_html_e( 'Newsletters module enabled', 'societypress' ); ?></span>
+                        <?php endif; ?>
+                    </label>
+                </div>
+
+                <div class="sp-privacy-item">
+                    <input type="checkbox" name="sp_privacy_choices[email_events]" id="sp-priv-email-events" value="1" <?php checked( $is_on( 'email_events' ) ); ?>>
+                    <label for="sp-priv-email-events" class="sp-privacy-item-label">
+                        <?php esc_html_e( 'Event confirmation and reminder emails', 'societypress' ); ?>
+                        <?php if ( $is_auto( 'email_events' ) ) : ?>
+                            <span class="sp-privacy-auto-tag"><?php esc_html_e( 'Events module enabled', 'societypress' ); ?></span>
+                        <?php endif; ?>
+                    </label>
+                </div>
+            </div>
+
+            <!-- ======================================================== -->
+            <!-- MEMBER VISIBILITY                                        -->
+            <!-- ======================================================== -->
+            <div class="sp-privacy-section">
+                <h2 class="sp-privacy-section-title"><?php esc_html_e( 'Member Visibility', 'societypress' ); ?></h2>
+
+                <div class="sp-privacy-item">
+                    <input type="checkbox" name="sp_privacy_choices[directory_visible]" id="sp-priv-directory" value="1" <?php checked( $is_on( 'directory_visible' ) ); ?>>
+                    <label for="sp-priv-directory" class="sp-privacy-item-label">
+                        <?php esc_html_e( 'Member directory visible to logged-in members', 'societypress' ); ?>
+                        <?php if ( $is_auto( 'directory_visible' ) ) : ?>
+                            <span class="sp-privacy-auto-tag"><?php esc_html_e( 'Core feature', 'societypress' ); ?></span>
+                        <?php endif; ?>
+                    </label>
+                </div>
+            </div>
+
+            <!-- ======================================================== -->
+            <!-- THIRD-PARTY SHARING & EMBEDDED CONTENT                   -->
+            <!-- ======================================================== -->
+            <div class="sp-privacy-section">
+                <h2 class="sp-privacy-section-title"><?php esc_html_e( 'Third-Party Sharing & Embedded Content', 'societypress' ); ?></h2>
+
+                <div class="sp-privacy-item">
+                    <input type="checkbox" name="sp_privacy_choices[embed_content]" id="sp-priv-embed" value="1" <?php checked( $is_on( 'embed_content' ) ); ?>>
+                    <label for="sp-priv-embed" class="sp-privacy-item-label">
+                        <?php esc_html_e( 'Your site includes embedded content from other websites (YouTube videos, Google Maps, etc.)', 'societypress' ); ?>
+                    </label>
+                </div>
+
+                <div class="sp-privacy-item">
+                    <input type="checkbox" name="sp_privacy_choices[share_third_parties]" id="sp-priv-third" value="1" <?php checked( $is_on( 'share_third_parties' ) ); ?>>
+                    <label for="sp-priv-third" class="sp-privacy-item-label">
+                        <?php esc_html_e( 'You share member data with other organizations or third parties', 'societypress' ); ?>
+                    </label>
+                </div>
+
+                <div style="margin-left: 26px; margin-top: 4px;">
+                    <label for="sp-priv-third-details" class="sp-privacy-item-label">
+                        <?php esc_html_e( 'If yes, describe who and why:', 'societypress' ); ?>
+                    </label>
+                    <textarea id="sp-priv-third-details" name="sp_privacy_choices[third_party_details]"
+                              class="sp-privacy-textarea"
+                              placeholder="<?php esc_attr_e( 'e.g., We share member counts with our state genealogical council for reporting purposes.', 'societypress' ); ?>"
+                    ><?php echo esc_textarea( $choices['third_party_details'] ?? '' ); ?></textarea>
+                </div>
+            </div>
+
+            <!-- ======================================================== -->
+            <!-- ADDITIONAL DISCLOSURES                                   -->
+            <!-- ======================================================== -->
+            <div class="sp-privacy-section">
+                <h2 class="sp-privacy-section-title"><?php esc_html_e( 'Additional Disclosures', 'societypress' ); ?></h2>
+                <p class="description" style="margin-bottom: 8px;">
+                    <?php esc_html_e( 'Anything else your members should know about how their data is handled? This will appear as an additional section in your privacy policy.', 'societypress' ); ?>
+                </p>
+                <textarea name="sp_privacy_choices[custom_disclosures]"
+                          class="sp-privacy-textarea"
+                          placeholder="<?php esc_attr_e( 'Optional — leave blank if the above covers everything.', 'societypress' ); ?>"
+                ><?php echo esc_textarea( $choices['custom_disclosures'] ?? '' ); ?></textarea>
+            </div>
+
+            <!-- ======================================================== -->
+            <!-- PRIVACY POLICY PAGE                                      -->
+            <!-- ======================================================== -->
+            <div class="sp-privacy-section">
+                <h2 class="sp-privacy-section-title"><?php esc_html_e( 'Privacy Policy Page', 'societypress' ); ?></h2>
+                <?php do_settings_sections( 'sp-settings-privacy' ); ?>
+            </div>
+
+            <?php submit_button( __( 'Save Privacy Settings', 'societypress' ) ); ?>
         </form>
     </div>
     <?php
@@ -29085,28 +29466,6 @@ function sp_render_settings_design_page(): void {
 // ============================================================================
 
 function sp_render_settings_modules_page(): void {
-    // ---- Handle form submission ----
-    // WHY we handle save here instead of using register_setting: The module
-    // toggle is stored in its own option (sp_enabled_modules), not inside the
-    // societypress_settings array. Processing the POST ourselves keeps it
-    // simple — one nonce check, one update_option call, done.
-    if ( $_SERVER['REQUEST_METHOD'] === 'POST' && isset( $_POST['_sp_modules_nonce'] ) ) {
-        if ( wp_verify_nonce( $_POST['_sp_modules_nonce'], 'sp_save_modules' ) && current_user_can( 'manage_options' ) ) {
-            $all_module_slugs = array_keys( sp_get_modules() );
-            $enabled = [];
-            foreach ( $all_module_slugs as $slug ) {
-                if ( ! empty( $_POST[ 'sp_module_' . $slug ] ) ) {
-                    $enabled[] = $slug;
-                }
-            }
-            update_option( 'sp_enabled_modules', $enabled );
-
-            // Redirect to avoid form resubmission on refresh
-            wp_safe_redirect( admin_url( 'admin.php?page=sp-settings-modules&saved=1' ) );
-            exit;
-        }
-    }
-
     $modules = sp_get_modules();
     $enabled = sp_get_enabled_modules();
     ?>
@@ -67404,6 +67763,109 @@ function sp_render_campaign_edit_page(): void {
 // ============================================================================
 
 
+/**
+ * Auto-detect which data practices apply based on current SP configuration.
+ *
+ * WHY: Harold shouldn't have to guess what his site collects — SocietyPress
+ *      already knows. This function reads module states, API keys, and settings
+ *      to pre-populate the privacy checklist. Harold reviews and adjusts; he
+ *      doesn't start from a blank page.
+ *
+ * @return array Associative array of practice_key => bool.
+ */
+function sp_auto_detect_privacy_practices(): array {
+    $settings = get_option( 'societypress_settings', [] );
+
+    return [
+        // Data collection — what personal data flows into SP
+        'collect_members'      => true,  // Always — it's the core purpose
+        'collect_genealogy'    => true,  // Always — surnames, platforms, research areas
+        'collect_events'       => sp_module_enabled( 'events' ),
+        'collect_volunteers'   => sp_module_enabled( 'governance' ),
+        'collect_photos'       => true,  // Always — profile photo upload
+        'collect_donations'    => sp_module_enabled( 'donations' ),
+        'collect_store'        => sp_module_enabled( 'store' ),
+
+        // Payment processing
+        'payments_stripe'      => ! empty( $settings['stripe_test_publishable_key'] ) || ! empty( $settings['stripe_live_publishable_key'] ),
+        'payments_paypal'      => ! empty( $settings['paypal_client_id'] ),
+
+        // Third-party services
+        'analytics_google'     => ! empty( $settings['analytics_google_id'] ),
+        'service_mailchimp'    => ! empty( $settings['mailchimp_api_key'] ),
+
+        // Email communications
+        'email_blast'          => sp_module_enabled( 'blast_email' ),
+        'email_newsletters'    => sp_module_enabled( 'newsletters' ),
+        'email_events'         => sp_module_enabled( 'events' ),
+
+        // Member visibility
+        'directory_visible'    => true,  // Always — directory is core
+
+        // Manual items — SP can't detect these, Harold decides
+        'embed_content'        => false,
+        'share_third_parties'  => false,
+    ];
+}
+
+/**
+ * Get the effective privacy choices — saved if Harold has configured them,
+ * otherwise auto-detected from current config.
+ *
+ * WHY: Before Harold visits the privacy settings page, the privacy policy
+ *      still needs to render correctly. Auto-detection provides the fallback.
+ *      Once Harold saves his choices, those take precedence.
+ *
+ * @return array Associative array of practice_key => bool.
+ */
+function sp_get_privacy_choices(): array {
+    $saved = get_option( 'sp_privacy_choices', null );
+
+    if ( is_array( $saved ) ) {
+        return $saved;
+    }
+
+    // No saved choices yet — fall back to auto-detection
+    return sp_auto_detect_privacy_practices();
+}
+
+/**
+ * Sanitize privacy choices from the settings form.
+ *
+ * WHY: Checkboxes only appear in POST when checked. We need to explicitly
+ *      set unchecked items to false so the saved array is complete.
+ *
+ * @param mixed $input Raw POST data.
+ * @return array Sanitized array of practice_key => bool.
+ */
+function sp_sanitize_privacy_choices( $input ): array {
+    if ( ! is_array( $input ) ) {
+        $input = [];
+    }
+
+    // All valid keys — anything not in POST is unchecked (false)
+    $all_keys = [
+        'collect_members', 'collect_genealogy', 'collect_events',
+        'collect_volunteers', 'collect_photos', 'collect_donations',
+        'collect_store', 'payments_stripe', 'payments_paypal',
+        'analytics_google', 'service_mailchimp', 'email_blast',
+        'email_newsletters', 'email_events', 'directory_visible',
+        'embed_content', 'share_third_parties',
+    ];
+
+    $clean = [];
+    foreach ( $all_keys as $key ) {
+        $clean[ $key ] = ! empty( $input[ $key ] );
+    }
+
+    // Text fields
+    $clean['third_party_details'] = sanitize_textarea_field( $input['third_party_details'] ?? '' );
+    $clean['custom_disclosures']  = sanitize_textarea_field( $input['custom_disclosures'] ?? '' );
+
+    return $clean;
+}
+
+
 // --------------------------------------------------------------------------
 // 1. SUGGESTED PRIVACY POLICY CONTENT
 // --------------------------------------------------------------------------
@@ -67477,21 +67939,27 @@ add_filter( 'template_include', function ( $template ) {
 function sp_render_privacy_policy_content(): void {
 
     $settings    = get_option( 'societypress_settings', [] );
+    $choices     = sp_get_privacy_choices();
     $org_name    = esc_html( $settings['organization_name'] ?? get_bloginfo( 'name' ) );
     $org_email   = esc_html( $settings['organization_email'] ?? get_option( 'admin_email' ) );
     $site_url    = esc_url( home_url( '/' ) );
-    $ga_enabled  = ! empty( $settings['analytics_google_id'] );
-    $has_stripe  = ! empty( $settings['stripe_test_publishable_key'] ) || ! empty( $settings['stripe_live_publishable_key'] );
-    $has_donations = sp_module_enabled( 'donations' );
-    $has_store     = sp_module_enabled( 'store' );
-    $has_events    = sp_module_enabled( 'events' );
-    $has_library   = sp_module_enabled( 'library' );
-    $has_volunteers = sp_module_enabled( 'governance' );
-    $has_records   = sp_module_enabled( 'records' );
-    $has_blast     = sp_module_enabled( 'blast_email' );
-    $has_newsletters = sp_module_enabled( 'newsletters' );
-    $has_documents = sp_module_enabled( 'documents' );
-    $last_updated  = current_time( 'F j, Y' );
+
+    // Read from Harold's saved privacy choices instead of re-detecting
+    $ga_enabled     = ! empty( $choices['analytics_google'] );
+    $has_stripe     = ! empty( $choices['payments_stripe'] );
+    $has_paypal     = ! empty( $choices['payments_paypal'] );
+    $has_donations  = ! empty( $choices['collect_donations'] );
+    $has_store      = ! empty( $choices['collect_store'] );
+    $has_events     = ! empty( $choices['collect_events'] );
+    $has_volunteers = ! empty( $choices['collect_volunteers'] );
+    $has_blast      = ! empty( $choices['email_blast'] );
+    $has_newsletters = ! empty( $choices['email_newsletters'] );
+    $has_embed      = ! empty( $choices['embed_content'] );
+    $has_third_party = ! empty( $choices['share_third_parties'] );
+    $third_party_details = $choices['third_party_details'] ?? '';
+    $custom_disclosures  = $choices['custom_disclosures'] ?? '';
+    $has_mailchimp  = ! empty( $choices['service_mailchimp'] );
+    $last_updated   = current_time( 'F j, Y' );
     ?>
     <div class="sp-privacy-policy">
 
@@ -67545,26 +68013,43 @@ function sp_render_privacy_policy_content(): void {
         <p><?php esc_html_e( 'You can view your upcoming and past event registrations, and cancel upcoming registrations, from your account page.', 'societypress' ); ?></p>
         <?php endif; ?>
 
-        <?php if ( $has_stripe ) : ?>
+        <?php if ( $has_stripe || $has_paypal ) : ?>
         <h3><?php esc_html_e( 'Payments', 'societypress' ); ?></h3>
         <p><?php
             $payment_uses = [ esc_html__( 'membership dues', 'societypress' ) ];
             if ( $has_events ) $payment_uses[] = esc_html__( 'event fees', 'societypress' );
             if ( $has_store ) $payment_uses[] = esc_html__( 'store purchases', 'societypress' );
             if ( $has_donations ) $payment_uses[] = esc_html__( 'donations', 'societypress' );
+            $processors = [];
+            if ( $has_stripe ) $processors[] = 'Stripe';
+            if ( $has_paypal ) $processors[] = 'PayPal';
             printf(
-                esc_html__( 'We accept online payments for %s through Stripe. When you pay online:', 'societypress' ),
-                implode( ', ', $payment_uses )
+                esc_html__( 'We accept online payments for %1$s through %2$s. When you pay online:', 'societypress' ),
+                implode( ', ', $payment_uses ),
+                implode( ' ' . esc_html__( 'and', 'societypress' ) . ' ', $processors )
             );
         ?></p>
         <ul>
-            <li><?php esc_html_e( 'Your payment is processed entirely by Stripe. We never see, store, or have access to your credit card number or bank account details.', 'societypress' ); ?></li>
-            <li><?php esc_html_e( 'We store a record of the transaction amount, date, and Stripe reference ID for our bookkeeping records.', 'societypress' ); ?></li>
+            <li><?php
+                printf(
+                    esc_html__( 'Your payment is processed entirely by %s. We never see, store, or have access to your credit card number or bank account details.', 'societypress' ),
+                    implode( '/' , $processors )
+                );
+            ?></li>
+            <li><?php esc_html_e( 'We store a record of the transaction amount, date, and reference ID for our bookkeeping records.', 'societypress' ); ?></li>
         </ul>
+        <?php if ( $has_stripe ) : ?>
         <p><?php printf(
             esc_html__( 'For more information about how Stripe handles your payment data, see %sStripe\'s Privacy Policy%s.', 'societypress' ),
             '<a href="https://stripe.com/privacy" target="_blank" rel="noopener">', '</a>'
         ); ?></p>
+        <?php endif; ?>
+        <?php if ( $has_paypal ) : ?>
+        <p><?php printf(
+            esc_html__( 'For more information about how PayPal handles your payment data, see %sPayPal\'s Privacy Policy%s.', 'societypress' ),
+            '<a href="https://www.paypal.com/us/legalhub/privacy-full" target="_blank" rel="noopener">', '</a>'
+        ); ?></p>
+        <?php endif; ?>
         <?php endif; ?>
 
         <?php if ( $has_donations ) : ?>
@@ -67684,11 +68169,24 @@ function sp_render_privacy_policy_content(): void {
         <p><?php esc_html_e( 'You can control which categories of email you receive through the communication preferences on your account page, including opting out of mass emails entirely. Renewal and transaction-related emails cannot be opted out of, as they relate directly to your membership.', 'societypress' ); ?></p>
         <p><?php esc_html_e( 'All outgoing emails are logged internally for troubleshooting and administrative purposes.', 'societypress' ); ?></p>
 
+        <?php if ( $has_mailchimp ) : ?>
+        <!-- ============================================================ -->
+        <!-- MAILCHIMP                                                    -->
+        <!-- ============================================================ -->
+        <h2><?php esc_html_e( 'External Email Service', 'societypress' ); ?></h2>
+        <p><?php printf(
+            esc_html__( 'We use Mailchimp to manage some of our email communications. When you become a member, your name and email address may be shared with Mailchimp for this purpose. See %sMailchimp\'s Privacy Policy%s for details on how they handle your data.', 'societypress' ),
+            '<a href="https://www.intuit.com/privacy/statement/" target="_blank" rel="noopener">', '</a>'
+        ); ?></p>
+        <?php endif; ?>
+
+        <?php if ( $has_embed ) : ?>
         <!-- ============================================================ -->
         <!-- EMBEDDED CONTENT                                             -->
         <!-- ============================================================ -->
         <h2><?php esc_html_e( 'Embedded Content from Other Websites', 'societypress' ); ?></h2>
         <p><?php esc_html_e( 'Pages on this site may include embedded content (such as videos or maps) from other websites. Embedded content from other websites behaves in the same way as if you visited those websites directly. These websites may collect data about you, use cookies, embed additional third-party tracking, and monitor your interaction with the embedded content.', 'societypress' ); ?></p>
+        <?php endif; ?>
 
         <!-- ============================================================ -->
         <!-- WHO WE SHARE DATA WITH                                       -->
@@ -67699,13 +68197,22 @@ function sp_render_privacy_policy_content(): void {
             <?php if ( $has_stripe ) : ?>
                 <li><?php esc_html_e( 'Stripe (payment processor) — receives only the data necessary to process your payment. We never transmit your card number; Stripe collects it directly.', 'societypress' ); ?></li>
             <?php endif; ?>
+            <?php if ( $has_paypal ) : ?>
+                <li><?php esc_html_e( 'PayPal (payment processor) — receives only the data necessary to process your payment.', 'societypress' ); ?></li>
+            <?php endif; ?>
             <?php if ( $ga_enabled ) : ?>
                 <li><?php printf(
                     esc_html__( 'Google Analytics — receives anonymous, aggregated usage data (pages visited, visit duration). See %sGoogle\'s Privacy Policy%s.', 'societypress' ),
                     '<a href="https://policies.google.com/privacy" target="_blank" rel="noopener">', '</a>'
                 ); ?></li>
             <?php endif; ?>
+            <?php if ( $has_mailchimp ) : ?>
+                <li><?php esc_html_e( 'Mailchimp (email service) — receives member names and email addresses for newsletter and communication management.', 'societypress' ); ?></li>
+            <?php endif; ?>
             <li><?php esc_html_e( 'Other members — only the information you choose to make visible through your directory privacy settings. You control this entirely from your account page.', 'societypress' ); ?></li>
+            <?php if ( $has_third_party && ! empty( $third_party_details ) ) : ?>
+                <li><?php echo esc_html( $third_party_details ); ?></li>
+            <?php endif; ?>
         </ul>
         <p><?php esc_html_e( 'If you request a password reset, your IP address will be included in the reset email for security purposes.', 'societypress' ); ?></p>
 
@@ -67718,7 +68225,7 @@ function sp_render_privacy_policy_content(): void {
             <?php if ( $has_events ) : ?>
                 <li><?php esc_html_e( 'Event registrations: retained indefinitely for historical reporting and attendance records.', 'societypress' ); ?></li>
             <?php endif; ?>
-            <?php if ( $has_stripe || $has_donations ) : ?>
+            <?php if ( $has_stripe || $has_paypal || $has_donations ) : ?>
                 <li><?php esc_html_e( 'Financial records (payments, donations, purchases): retained as required for tax and accounting purposes. If you request data erasure, financial records are anonymized rather than deleted.', 'societypress' ); ?></li>
             <?php endif; ?>
             <li><?php esc_html_e( 'Email logs: retained for administrative troubleshooting and are periodically cleaned up.', 'societypress' ); ?></li>
@@ -67752,10 +68259,26 @@ function sp_render_privacy_policy_content(): void {
             <li><?php esc_html_e( 'All administrative actions are logged for accountability.', 'societypress' ); ?></li>
             <li><?php esc_html_e( 'Access to member data is restricted to authorized administrators.', 'societypress' ); ?></li>
             <li><?php esc_html_e( 'All pages on this site are served over HTTPS (encrypted connections).', 'societypress' ); ?></li>
-            <?php if ( $has_stripe ) : ?>
-                <li><?php esc_html_e( 'Payment information is handled entirely by Stripe and never touches our servers.', 'societypress' ); ?></li>
+            <?php if ( $has_stripe || $has_paypal ) : ?>
+                <li><?php
+                    $sec_processors = [];
+                    if ( $has_stripe ) $sec_processors[] = 'Stripe';
+                    if ( $has_paypal ) $sec_processors[] = 'PayPal';
+                    printf(
+                        esc_html__( 'Payment information is handled entirely by %s and never touches our servers.', 'societypress' ),
+                        implode( '/' , $sec_processors )
+                    );
+                ?></li>
             <?php endif; ?>
         </ul>
+
+        <?php if ( ! empty( $custom_disclosures ) ) : ?>
+        <!-- ============================================================ -->
+        <!-- ADDITIONAL DISCLOSURES                                       -->
+        <!-- ============================================================ -->
+        <h2><?php esc_html_e( 'Additional Information', 'societypress' ); ?></h2>
+        <?php echo wpautop( esc_html( $custom_disclosures ) ); ?>
+        <?php endif; ?>
 
     </div>
     <?php

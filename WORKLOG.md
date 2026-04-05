@@ -1,4 +1,47 @@
 # SocietyPress — WORKLOG
+## v1.0.6 — 2026-04-05
+
+### Session: Installer Auto-Login Fix + Getting Started Checklist
+
+**Installer Auto-Login** — fixed wp_set_auth_cookie() silently failing in the bridge script. Root cause: cookie constants (COOKIEPATH, COOKIE_DOMAIN) are derived from the siteurl option, which doesn't exist yet during WP_INSTALLING bootstrap. Moved auto-login to the mu-plugin via a one-time token file — the mu-plugin hooks login_init in a normal WordPress context where cookie infrastructure is fully initialized. Harold now lands directly in wp-admin after install.
+
+**Getting Started Checklist** — new dashboard banner that walks Harold through 10 essential setup steps after a fresh install:
+1. Review website settings
+2. Confirm organization details
+3. Set up membership rules
+4. Configure member directory
+5. Configure events
+6. Set up privacy policy
+7. Choose which features to enable
+8. Import members or create membership tiers
+9. Pick a theme
+10. Customize design
+
+Each step links directly to its settings page and checks off when Harold saves. Progress bar tracks completion. "I've got this" dismissal at any time. Auto-dismisses after all steps shown complete. "Continue setting up your site →" link appears on settings pages after save to guide Harold back to the checklist.
+
+Uses explicit save tracking (not dynamic data checks) so activation-seeded defaults don't give false credit for steps Harold hasn't reviewed.
+
+**Interactive Privacy Policy Generator** — rewrote the privacy settings page from a simple page picker into a full interactive checklist. Auto-detects data practices from SP config (modules, Stripe/PayPal keys, GA ID, Mailchimp), presents as pre-checked checkboxes Harold can review and adjust. Added manual items SP can't detect (embedded content, third-party sharing). Custom disclosures text area. Privacy policy template now reads from saved choices instead of re-detecting on every render. Added PayPal and Mailchimp sections to generated policy.
+
+**Member Import Fixes:**
+- Fixed `contact` column error — mapped in auto-mapper but didn't exist in sp_members table
+- Fixed `use_maiden` and 13 other non-existent columns in insert arrays (image_filename, toll_free_phone, international_phone, alt_international_phone, alt_preferred_phone, seasonal_address_2, membership_type, max_members, acct_primary, login_count, last_login_date, last_updated_by, last_updated_date, ens_record_id)
+- Changed duplicate handling: re-importing a CSV now UPDATES existing members instead of skipping them (matches on email + similar name)
+- Moved modules save handler from page callback to admin_init hook to fix blank page after save (wp_safe_redirect failed because headers were already sent)
+
+**Genealogy Profiles Layout Fix** — member edit page genealogy platform rows were inheriting `.sp-field` flex-direction:column, forcing vertical layout with huge gaps. Switched to dedicated `.sp-gen-row` class with horizontal flex.
+
+**Sample Data** — generated 570-member EasyNetSites CSV for North Dakota genealogy society (30 orgs, 75 lapsed, 23 new, 12 lifetime, 20 leadership roles, 5 tiers)
+
+**Other fixes:**
+- Suppressed bbPress nag during initial setup (getting-started not dismissed)
+- Removed SAGHS from themes page (stale plugin on server had it in registry)
+- Added Parlor to installer child themes list
+- Privacy policy checklist step now links to SP settings page instead of WP core page
+- "Continue setting up your site →" link on settings pages after save while getting-started is active
+
+---
+
 ## v1.0.6 — 2026-04-04
 
 ### Session: Genealogy Profiles + Theme Polish

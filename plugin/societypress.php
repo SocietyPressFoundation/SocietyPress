@@ -170,7 +170,7 @@ register_activation_hook( __FILE__, function () {
             'design_color_footer_text'     => '#ffffff',
             'design_font_body'             => 'system',
             'design_font_heading'          => 'playfair',
-            'design_font_size'             => 'comfortable',
+            'design_font_size'             => 16,
             'design_heading_scale'         => 'normal',
             'design_content_width'         => 'standard',
             // Store — configurable product source
@@ -5517,8 +5517,13 @@ function sp_get_design_override_css(): string {
     $font_body   = $font_map[ $body_key ] ?? $font_map['system'];
     $font_heading = ( $heading_key === 'inherit' ) ? 'inherit' : ( $font_map[ $heading_key ] ?? 'inherit' );
 
-    $size_map = [ 'compact' => '16px', 'comfortable' => '18px', 'large' => '20px' ];
-    $font_size = $size_map[ $settings['design_font_size'] ?? 'comfortable' ] ?? '18px';
+    // WHY direct px: The old 3-option dropdown (compact/comfortable/large) was
+    //      too restrictive. Harold can now set any size from 12–24px. Legacy
+    //      preset values are mapped for backward compatibility.
+    $raw_size = $settings['design_font_size'] ?? 16;
+    $legacy_map = [ 'compact' => 16, 'comfortable' => 18, 'large' => 20 ];
+    $font_size_px = isset( $legacy_map[ $raw_size ] ) ? $legacy_map[ $raw_size ] : max( 12, min( 24, (int) $raw_size ) );
+    $font_size = $font_size_px . 'px';
 
     $scale_map = [ 'small' => '0.85', 'normal' => '1', 'large' => '1.15' ];
     $font_scale = $scale_map[ $settings['design_heading_scale'] ?? 'normal' ] ?? '1';
@@ -19219,8 +19224,7 @@ function sp_sanitize_settings( array $input ): array {
                                                    ? $input['design_font_body'] : 'system',
         'design_font_heading'         => fn() => in_array( $input['design_font_heading'] ?? '', array_merge( [ 'inherit' ], array_keys( sp_get_font_family_options() ) ), true )
                                                    ? $input['design_font_heading'] : 'playfair',
-        'design_font_size'            => fn() => in_array( $input['design_font_size'] ?? '', [ 'compact', 'comfortable', 'large' ], true )
-                                                   ? $input['design_font_size'] : 'comfortable',
+        'design_font_size'            => fn() => max( 12, min( 24, (int) ( $input['design_font_size'] ?? 16 ) ) ),
         'design_heading_scale'        => fn() => in_array( $input['design_heading_scale'] ?? '', [ 'small', 'normal', 'large' ], true )
                                                    ? $input['design_heading_scale'] : 'normal',
         'design_content_width'        => fn() => in_array( $input['design_content_width'] ?? '', [ 'narrow', 'standard', 'wide', 'custom' ], true )
@@ -27377,7 +27381,13 @@ function sp_render_settings_design_page(): void {
             $d_footer_text   = $settings['design_color_footer_text']   ?? '#ffffff';
             $d_font_body     = $settings['design_font_body']           ?? 'system';
             $d_font_heading  = $settings['design_font_heading']        ?? 'playfair';
-            $d_font_size     = $settings['design_font_size']           ?? 'comfortable';
+            $d_font_size     = $settings['design_font_size']           ?? 16;
+            // Legacy preset → px conversion for the UI
+            $legacy_size_map = [ 'compact' => 16, 'comfortable' => 18, 'large' => 20 ];
+            if ( isset( $legacy_size_map[ $d_font_size ] ) ) {
+                $d_font_size = $legacy_size_map[ $d_font_size ];
+            }
+            $d_font_size = max( 12, min( 24, (int) $d_font_size ) );
             $d_heading_scale = $settings['design_heading_scale']       ?? 'normal';
             $d_content_width = $settings['design_content_width']       ?? 'standard';
 
@@ -27781,12 +27791,27 @@ function sp_render_settings_design_page(): void {
                     <tr>
                         <th scope="row"><label for="sp-design-font-size"><?php esc_html_e( 'Text Size', 'societypress' ); ?></label></th>
                         <td>
-                            <select id="sp-design-font-size" name="societypress_settings[design_font_size]" class="sp-design-control">
-                                <option value="compact" <?php selected( $d_font_size, 'compact' ); ?>><?php esc_html_e( 'Compact (16px)', 'societypress' ); ?></option>
-                                <option value="comfortable" <?php selected( $d_font_size, 'comfortable' ); ?>><?php esc_html_e( 'Comfortable (18px) — Recommended', 'societypress' ); ?></option>
-                                <option value="large" <?php selected( $d_font_size, 'large' ); ?>><?php esc_html_e( 'Large (20px)', 'societypress' ); ?></option>
-                            </select>
-                            <p class="description"><?php esc_html_e( 'Base text size. "Comfortable" works well for most audiences.', 'societypress' ); ?></p>
+                            <input type="range" id="sp-design-font-size"
+                                   name="societypress_settings[design_font_size]"
+                                   value="<?php echo esc_attr( $d_font_size ); ?>"
+                                   min="12" max="24" step="1"
+                                   class="sp-design-control"
+                                   style="width: 220px; vertical-align: middle;">
+                            <span id="sp-font-size-display" style="display: inline-block; min-width: 40px; margin-left: 8px; font-weight: 600;">
+                                <?php echo esc_html( $d_font_size ); ?>px
+                            </span>
+                            <p class="description"><?php esc_html_e( 'Base text size in pixels (12–24). All other text scales proportionally.', 'societypress' ); ?></p>
+                            <script>
+                            (function() {
+                                var slider  = document.getElementById('sp-design-font-size');
+                                var display = document.getElementById('sp-font-size-display');
+                                if (slider && display) {
+                                    slider.addEventListener('input', function() {
+                                        display.textContent = this.value + 'px';
+                                    });
+                                }
+                            })();
+                            </script>
                         </td>
                     </tr>
                     <tr>
@@ -28112,7 +28137,7 @@ function sp_render_settings_design_page(): void {
         };
 
         // Size/scale/width mappings (mirrors PHP)
-        var sizeMap  = { 'compact': '16px', 'comfortable': '18px', 'large': '20px' };
+        // sizeMap no longer needed — font size is now a direct px value from a range slider
         var scaleMap = { 'small': '0.85', 'normal': '1', 'large': '1.15' };
         var widthMap = { 'narrow': '900px', 'standard': '1100px', 'wide': '1400px' };
 
@@ -28168,7 +28193,7 @@ function sp_render_settings_design_page(): void {
                     + '  --sp-color-footer-text: ' + footerText + ';\n'
                     + '  --sp-font-body: ' + bodyFontCSS + ';\n'
                     + '  --sp-font-heading: ' + headingFontCSS + ';\n'
-                    + '  --sp-font-size-base: ' + (sizeMap[fontSize] || '18px') + ';\n'
+                    + '  --sp-font-size-base: ' + fontSize + 'px;\n'
                     + '  --sp-font-scale: ' + (scaleMap[headingScale] || '1') + ';\n'
                     + '  --sp-content-width: ' + (contentWidth === 'custom'
                         ? (document.getElementById('sp-design-content-width-px').value || '1100') + 'px'

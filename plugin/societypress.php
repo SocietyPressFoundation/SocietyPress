@@ -24365,14 +24365,9 @@ add_action( 'admin_init', function () {
  */
 function sp_get_theme_registry(): array {
     return [
-        'saghs' => [
-            'slug'        => 'saghs',
-            'name'        => 'SAGHS',
-            'version'     => '0.04d',
-            'description' => __( 'San Antonio Genealogical & Historical Society — burgundy and cream palette with brand-specific header, dual search forms, and social media icons.', 'societypress' ),
-            'colors'      => [ '#632220', '#fbebd2', '#7f7166', '#ba5f36' ],
-            'repo_path'   => 'theme-saghs',
-        ],
+        // WHY no SAGHS: The SAGHS child theme is a client-specific theme for
+        // the San Antonio Genealogical & Historical Society. It lives in the
+        // repo for Charles' use but is not offered in the public gallery.
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',

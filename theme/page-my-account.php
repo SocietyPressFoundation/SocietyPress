@@ -89,6 +89,90 @@ function sp_m( $member, $field ) {
     uses class-based styling defined in the theme's style.css.
 -->
 <style>
+/* ---- Genealogy Profiles ---- */
+/* WHY: The form shows up to 26+ genealogy sites grouped by category. Each row
+   has an icon, site name, URL input, and visibility toggle. Sites without a
+   URL entered are visually muted so Harold can scan past them quickly. */
+.sp-gen-category-group {
+    margin-bottom: 20px;
+}
+.sp-gen-category-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--sp-text-muted, #666);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0 0 8px 0;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--sp-border, #e0e0e0);
+}
+.sp-gen-profile-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    opacity: 0.6;
+    transition: opacity 0.15s;
+}
+.sp-gen-profile-row:hover,
+.sp-gen-profile-row:focus-within,
+.sp-gen-profile-row.sp-gen-has-value {
+    opacity: 1;
+}
+.sp-gen-profile-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 200px;
+    font-size: 14px;
+    white-space: nowrap;
+}
+.sp-gen-icon {
+    width: 16px;
+    height: 16px;
+    border-radius: 2px;
+}
+.sp-gen-icon-fallback {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    color: var(--sp-text-muted, #999);
+}
+.sp-gen-profile-fields {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+}
+.sp-gen-url-input {
+    flex: 1;
+    min-width: 0;
+}
+.sp-gen-public-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    color: var(--sp-text-muted, #666);
+    white-space: nowrap;
+    cursor: pointer;
+}
+/* Responsive: stack label and fields on narrow screens */
+@media screen and (max-width: 600px) {
+    .sp-gen-profile-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 4px;
+        padding: 8px 0;
+    }
+    .sp-gen-profile-label {
+        flex: none;
+    }
+    .sp-gen-profile-fields {
+        flex-direction: row;
+    }
+}
+
 /* ---- Research Surnames ---- */
 .sp-surname-row {
     display: flex;
@@ -995,47 +1079,80 @@ function sp_m( $member, $field ) {
             //      platforms. Linking them here lets other members find
             //      and connect with them across services — the genealogy
             //      equivalent of sharing your LinkedIn or GitHub.
-            //      Stored as user_meta (not sp_members columns) because
-            //      these are optional supplemental links, not core data.
+            //      Pulled from sp_genealogy_sites (admin-configurable) and
+            //      stored in sp_member_genealogy_profiles with per-link
+            //      privacy toggles. Grouped by category so the form stays
+            //      manageable even with 26+ sites.
             // ================================================================
             ?>
             <?php if ( $member ) : ?>
+            <?php
+                // Get the admin-configurable list of active genealogy sites
+                $gen_sites    = sp_get_active_genealogy_sites();
+                $gen_profiles = sp_get_member_genealogy_profiles( $user->ID );
+                $categories   = sp_get_genealogy_site_categories();
+
+                // Index existing profiles by site_id for quick lookup
+                $profiles_by_site = [];
+                foreach ( $gen_profiles as $profile ) {
+                    $profiles_by_site[ (int) $profile->site_id ] = $profile;
+                }
+
+                // Group sites by category
+                $sites_by_category = [];
+                foreach ( $gen_sites as $site ) {
+                    $sites_by_category[ $site->category ][] = $site;
+                }
+            ?>
             <section class="sp-account-section" id="genealogy-services">
                 <h2><?php esc_html_e( 'Genealogy Service Profiles', 'societypress' ); ?></h2>
                 <p class="sp-section-hint">
-                    <?php esc_html_e( 'Link your profiles on genealogy research platforms so other members can find and connect with you.', 'societypress' ); ?>
+                    <?php esc_html_e( 'Link your profiles on genealogy research platforms so other members can find and connect with you. Uncheck "Visible" to keep a link private.', 'societypress' ); ?>
                 </p>
 
                 <form method="post" class="sp-account-form">
                     <?php wp_nonce_field( 'sp_update_genealogy_services', 'sp_genealogy_nonce' ); ?>
                     <input type="hidden" name="sp_action" value="update_genealogy_services" />
 
-                    <?php
-                    // The 8 services from the spec, plus their expected URL patterns
-                    // as placeholder hints so members know what to enter.
-                    $services = [
-                        'wikitree'     => [ 'WikiTree',      'https://www.wikitree.com/wiki/YourProfile' ],
-                        'familysearch' => [ 'FamilySearch',  'https://www.familysearch.org/tree/person/details/XXXX-XXX' ],
-                        'geni'         => [ 'Geni',          'https://www.geni.com/people/Your-Name/123456789' ],
-                        'werelate'     => [ 'WeRelate',      'https://www.werelate.org/wiki/Person:Your_Name' ],
-                        'ancestry'     => [ 'Ancestry',      'https://www.ancestry.com/family-tree/person/...' ],
-                        'myheritage'   => [ 'MyHeritage',    'https://www.myheritage.com/...' ],
-                        'findagrave'   => [ 'Find A Grave',  'https://www.findagrave.com/memorial/...' ],
-                        '23andme'      => [ '23andMe',       'https://you.23andme.com/...' ],
-                    ];
-                    foreach ( $services as $key => [ $label, $placeholder ] ) :
-                        $meta_key = 'sp_genealogy_' . $key;
-                        $value    = get_user_meta( $user->ID, $meta_key, true );
+                    <?php foreach ( $sites_by_category as $cat_slug => $cat_sites ) :
+                        $cat_label = $categories[ $cat_slug ] ?? ucfirst( $cat_slug );
                     ?>
-                    <div class="sp-form-field">
-                        <label for="sp-gen-<?php echo esc_attr( $key ); ?>">
-                            <?php echo esc_html( $label ); ?>
-                        </label>
-                        <input type="url"
-                               id="sp-gen-<?php echo esc_attr( $key ); ?>"
-                               name="genealogy_<?php echo esc_attr( $key ); ?>"
-                               value="<?php echo esc_attr( $value ); ?>"
-                               placeholder="<?php echo esc_attr( $placeholder ); ?>" />
+                    <div class="sp-gen-category-group">
+                        <h3 class="sp-gen-category-label"><?php echo esc_html( $cat_label ); ?></h3>
+
+                        <?php foreach ( $cat_sites as $site ) :
+                            $site_id  = (int) $site->id;
+                            $existing = $profiles_by_site[ $site_id ] ?? null;
+                            $url_val  = $existing ? $existing->profile_url : '';
+                            $is_pub   = $existing ? (int) $existing->is_public : 1;
+                            $icon_url = sp_get_genealogy_site_icon_url( $site );
+                        ?>
+                        <div class="sp-gen-profile-row<?php echo $url_val ? ' sp-gen-has-value' : ''; ?>">
+                            <div class="sp-gen-profile-label">
+                                <?php if ( $icon_url ) : ?>
+                                    <img src="<?php echo esc_url( $icon_url ); ?>"
+                                         alt="" width="16" height="16" class="sp-gen-icon" loading="lazy" />
+                                <?php else : ?>
+                                    <span class="dashicons dashicons-admin-site-alt3 sp-gen-icon-fallback"></span>
+                                <?php endif; ?>
+                                <span><?php echo esc_html( $site->name ); ?></span>
+                            </div>
+                            <div class="sp-gen-profile-fields">
+                                <input type="url"
+                                       name="genealogy_profiles[<?php echo esc_attr( $site_id ); ?>][url]"
+                                       value="<?php echo esc_attr( $url_val ); ?>"
+                                       placeholder="<?php echo esc_attr( $site->url_template ?: 'https://...' ); ?>"
+                                       class="sp-gen-url-input" />
+                                <label class="sp-gen-public-toggle">
+                                    <input type="checkbox"
+                                           name="genealogy_profiles[<?php echo esc_attr( $site_id ); ?>][public]"
+                                           value="1"
+                                           <?php checked( $is_pub, 1 ); ?> />
+                                    <?php esc_html_e( 'Visible', 'societypress' ); ?>
+                                </label>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
                     </div>
                     <?php endforeach; ?>
 

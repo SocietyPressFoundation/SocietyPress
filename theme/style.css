@@ -5,7 +5,7 @@ Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
 Description: A clean, readable theme for genealogical and historical societies.
              Designed for ease of use with large fonts, high contrast, and simple navigation.
-Version: 1.0.5
+Version: 1.0.6
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 8.0
@@ -47,9 +47,11 @@ body {
     /* WHY var(--sp-font-body): The body font family is selectable from the
        Design tab. Defaults to the system font stack for maximum compatibility. */
     font-family: var(--sp-font-body, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif);
-    line-height: 1.6;
-    color: #333;
+    line-height: 1.7;
+    color: #2d2d2d;
     background: #fff;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 /* ============================================================================
@@ -203,7 +205,8 @@ img {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    min-height: 70px;
+    min-height: 80px;
+    padding: var(--sp-header-padding, 8px) 0;
 }
 
 .site-branding {
@@ -227,10 +230,12 @@ img {
 }
 
 .site-title {
+    font-family: var(--sp-font-heading, 'Playfair Display', Georgia, serif);
     font-size: 1.4rem;
     font-weight: 600;
     margin: 0;
     line-height: 1.2;
+    letter-spacing: 0.01em;
 }
 
 .site-title a {
@@ -281,18 +286,39 @@ img {
 
 .main-navigation a {
     display: block;
-    padding: 10px 16px;
+    padding: 10px 18px;
     color: var(--sp-color-header-text, #fff);
     text-decoration: none;
-    font-size: 1.1rem;
-    font-weight: 500;
+    font-size: var(--sp-nav-font-size, 0.85rem);
+    font-weight: var(--sp-nav-font-weight, 500);
+    font-family: var(--sp-font-body, -apple-system, BlinkMacSystemFont, sans-serif);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
     border-radius: 4px;
-    transition: background 0.2s ease;
+    transition: background 0.2s ease, color 0.2s ease;
 }
 
 .main-navigation a:hover,
 .main-navigation .current-menu-item a {
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.12);
+}
+
+/* WHY: The "Join" link is the primary CTA — it should stand out from
+   regular nav items. We target it by class (.menu-item-join) which
+   Harold can set by adding a CSS class to the menu item, or we
+   detect it by URL (the Join page). */
+.main-navigation .menu-item-join > a,
+.main-navigation .sp-nav-cta > a {
+    background: var(--sp-color-accent, #667eea);
+    color: #fff;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+.main-navigation .menu-item-join > a:hover,
+.main-navigation .sp-nav-cta > a:hover {
+    opacity: 0.9;
+    background: var(--sp-color-accent, #667eea);
 }
 
 /* ============================================================================
@@ -670,36 +696,45 @@ img {
    ============================================================================ */
 
 .entry-header {
-    margin-bottom: 24px;
+    margin-bottom: 32px;
 }
 
 .entry-title {
-    font-size: calc(2rem * var(--sp-font-scale, 1));
-    margin-bottom: 8px;
+    font-family: var(--sp-font-heading, 'Playfair Display', Georgia, serif);
+    font-size: calc(2.2rem * var(--sp-font-scale, 1));
+    font-weight: 500;
+    margin-bottom: 10px;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
 }
 
 .entry-title a {
     color: var(--sp-color-primary, #1e3a5f);
     text-decoration: none;
+    transition: color 0.2s ease;
 }
 
 .entry-title a:hover {
-    text-decoration: underline;
+    color: var(--sp-color-primary-hover, #2c5282);
 }
 
 .entry-meta {
-    font-size: 0.85rem;
-    color: #6c757d;
+    font-size: 0.8rem;
+    color: #8a8f98;
     margin-bottom: 16px;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
 }
 
 .entry-content {
-    margin-bottom: 30px;
+    margin-bottom: 40px;
+    font-size: 1rem;
+    line-height: 1.8;
 }
 
-/* Give content elements consistent spacing */
+/* Give content elements consistent vertical rhythm */
 .entry-content > * + * {
-    margin-top: 1em;
+    margin-top: 1.2em;
 }
 
 .entry-content ul,
@@ -708,26 +743,38 @@ img {
 }
 
 .entry-content blockquote {
-    border-left: 4px solid var(--sp-color-primary, #1e3a5f);
-    padding: 12px 20px;
-    margin: 1.5em 0;
-    background: #f8f9fa;
+    border-left: 4px solid var(--sp-color-accent, #667eea);
+    padding: 16px 24px;
+    margin: 2em 0;
+    background: #f8f9fb;
     font-style: italic;
+    font-size: 1.05rem;
+    color: #444;
+    border-radius: 0 4px 4px 0;
 }
 
 /* "Read more" link styling */
 .read-more {
     display: inline-block;
-    margin-top: 8px;
+    margin-top: 12px;
     font-weight: 600;
+    font-size: 0.85rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
     color: var(--sp-color-primary, #1e3a5f);
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.read-more:hover {
+    color: var(--sp-color-accent, #667eea);
 }
 
 /* Post separator in archive/index views */
 article.post {
-    padding-bottom: 30px;
-    margin-bottom: 30px;
-    border-bottom: 1px solid #e9ecef;
+    padding-bottom: 40px;
+    margin-bottom: 40px;
+    border-bottom: 1px solid #eef0f2;
 }
 
 article.post:last-child {
@@ -736,7 +783,7 @@ article.post:last-child {
 
 /* Featured images */
 .post-thumbnail {
-    margin-bottom: 20px;
+    margin-bottom: 24px;
     border-radius: 8px;
     overflow: hidden;
 }
@@ -744,6 +791,11 @@ article.post:last-child {
 .post-thumbnail img {
     display: block;
     width: 100%;
+    transition: transform 0.3s ease;
+}
+
+.post-thumbnail:hover img {
+    transform: scale(1.02);
 }
 
 /* ============================================================================
@@ -819,19 +871,286 @@ article.post:last-child {
 .site-footer {
     background: var(--sp-color-footer-bg, #1e3a5f);
     color: var(--sp-color-footer-text, #fff);
-    padding: 24px 20px;
-    text-align: center;
+    padding: 0;
     font-size: 0.85rem;
+}
+
+.footer-inner {
+    max-width: var(--sp-content-width, 1100px);
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1.2fr 1fr 1fr;
+    gap: 40px;
+    padding: 50px 20px 40px;
+}
+
+.footer-heading {
+    font-family: var(--sp-font-heading, 'Playfair Display', Georgia, serif);
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--sp-color-footer-text, #fff);
+    margin: 0 0 16px 0;
+    letter-spacing: 0.02em;
+}
+
+.footer-text {
+    color: var(--sp-color-footer-text, rgba(255, 255, 255, 0.8));
+    line-height: 1.7;
+    margin: 0 0 6px 0;
+    font-size: 0.9rem;
+}
+
+.footer-tagline {
+    margin-top: 12px;
+    font-style: italic;
+    opacity: 0.7;
 }
 
 .site-footer a {
     color: var(--sp-color-footer-link, rgba(255, 255, 255, 0.85));
     text-decoration: none;
+    transition: color 0.2s ease;
 }
 
 .site-footer a:hover {
-    color: var(--sp-color-footer-text, #fff);
+    color: #fff;
     text-decoration: underline;
+}
+
+/* Footer navigation — vertical link list */
+.footer-nav ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.footer-nav li {
+    margin-bottom: 8px;
+}
+
+.footer-nav a {
+    font-size: 0.9rem;
+    color: var(--sp-color-footer-link, rgba(255, 255, 255, 0.85));
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.footer-nav a:hover {
+    color: #fff;
+}
+
+/* Footer bottom bar — copyright line */
+.footer-bottom {
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    text-align: center;
+    padding: 20px;
+    font-size: 0.8rem;
+    opacity: 0.7;
+}
+
+.footer-bottom p {
+    margin: 0;
+}
+
+/* Responsive: stack columns on mobile */
+@media screen and (max-width: 768px) {
+    .footer-inner {
+        grid-template-columns: 1fr;
+        gap: 30px;
+        padding: 40px 20px 30px;
+        text-align: center;
+    }
+}
+
+@media screen and (min-width: 769px) and (max-width: 1024px) {
+    .footer-inner {
+        grid-template-columns: 1fr 1fr;
+    }
+    .footer-col-social {
+        grid-column: 1 / -1;
+        text-align: center;
+    }
+}
+
+/* ============================================================================
+   FRONT PAGE HERO
+   WHY: A full-viewport cinematic hero is the first thing visitors see. It
+   needs to feel polished and intentional — this is the "wow" moment.
+   Video backgrounds, image backgrounds, and a gradient fallback are all
+   supported. The overlay ensures text is always readable regardless of
+   the background media. All values are configurable from Design settings.
+   ============================================================================ */
+
+.sp-front-hero {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    /* WHY negative margin: The hero needs to break out of the site-content
+       container and go edge-to-edge. The header sits above it; the hero
+       is the first thing inside the main page flow. */
+    margin-top: 0;
+}
+
+/* Height variants — fullscreen is the default, others available via settings */
+.sp-hero-fullscreen {
+    min-height: 100vh;
+}
+.sp-hero-large {
+    min-height: 80vh;
+}
+.sp-hero-medium {
+    min-height: 60vh;
+}
+.sp-hero-small {
+    min-height: 45vh;
+}
+
+/* Video background — fills the hero, object-fit:cover crops as needed */
+.sp-front-hero-video {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    min-width: 100%;
+    min-height: 100%;
+    width: auto;
+    height: auto;
+    transform: translate(-50%, -50%);
+    object-fit: cover;
+    z-index: 0;
+}
+
+/* Image background — same full-cover approach */
+.sp-front-hero-image {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+    background-position: center center;
+    background-repeat: no-repeat;
+    z-index: 0;
+}
+
+/* Gradient fallback when no media is configured — dignified, not empty */
+.sp-front-hero-gradient {
+    background: linear-gradient(135deg,
+        var(--sp-color-primary, #1e3a5f) 0%,
+        color-mix(in srgb, var(--sp-color-primary, #1e3a5f), #000 30%) 50%,
+        var(--sp-color-accent, #667eea) 100%
+    );
+}
+
+/* Dark overlay — opacity is set inline from settings */
+.sp-front-hero-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #000;
+    z-index: 1;
+}
+
+/* Content container — centered text above the overlay */
+.sp-front-hero-content {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    padding: 40px 20px;
+    max-width: 900px;
+}
+
+/* Headline — large, elegant serif (Playfair Display by default) */
+.sp-front-hero-headline {
+    font-family: var(--sp-font-heading, 'Playfair Display', Georgia, serif);
+    font-size: clamp(2.2rem, 5vw, 4rem);
+    font-weight: 400;
+    color: #fff;
+    line-height: 1.15;
+    margin: 0 0 16px 0;
+    letter-spacing: 0.02em;
+    /* WHY text-shadow: Ensures readability even if the overlay is light
+       or the background image has bright spots */
+    text-shadow: 0 2px 20px rgba(0, 0, 0, 0.3);
+}
+
+/* Subtitle — lighter weight, slightly smaller */
+.sp-front-hero-subtitle {
+    font-family: var(--sp-font-body, -apple-system, BlinkMacSystemFont, sans-serif);
+    font-size: clamp(1rem, 2vw, 1.35rem);
+    font-weight: 300;
+    color: rgba(255, 255, 255, 0.9);
+    line-height: 1.6;
+    margin: 0 0 32px 0;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.2);
+}
+
+/* CTA button — clean, outlined, stands out without being garish */
+.sp-front-hero-cta {
+    display: inline-block;
+    padding: 14px 36px;
+    font-family: var(--sp-font-body, -apple-system, BlinkMacSystemFont, sans-serif);
+    font-size: 0.95rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #fff;
+    background: transparent;
+    border: 2px solid rgba(255, 255, 255, 0.7);
+    text-decoration: none;
+    transition: all 0.3s ease;
+}
+
+.sp-front-hero-cta:hover {
+    background: #fff;
+    color: var(--sp-color-primary, #1e3a5f);
+    border-color: #fff;
+    text-decoration: none;
+}
+
+/* Scroll indicator — gentle bouncing chevron at the bottom */
+.sp-front-hero-scroll {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2;
+    color: rgba(255, 255, 255, 0.6);
+    animation: sp-hero-bounce 2s ease-in-out infinite;
+}
+
+@keyframes sp-hero-bounce {
+    0%, 20%, 50%, 80%, 100% {
+        transform: translateX(-50%) translateY(0);
+    }
+    40% {
+        transform: translateX(-50%) translateY(-8px);
+    }
+    60% {
+        transform: translateX(-50%) translateY(-4px);
+    }
+}
+
+/* When hero is present, the content below doesn't need extra top padding */
+.sp-front-has-hero {
+    padding-top: 0;
+}
+
+/* Responsive: reduce hero headline size on small screens */
+@media screen and (max-width: 768px) {
+    .sp-front-hero-content {
+        padding: 30px 16px;
+    }
+    .sp-front-hero-cta {
+        padding: 12px 28px;
+        font-size: 0.85rem;
+    }
 }
 
 /* ============================================================================

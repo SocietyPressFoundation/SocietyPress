@@ -33058,6 +33058,23 @@ function sp_render_builder_meta_box( WP_Post $post ): void {
 
     wp_nonce_field( 'sp_page_builder_save', 'sp_page_builder_nonce' );
 
+    // Show a signpost on the front page so Harold knows where the hero is controlled
+    // WHY: The homepage hero (video/image background, headline, CTA) is configured
+    //      in Design settings, not in the page builder. Without this notice, Harold
+    //      would stare at the page builder wondering where the video controls are.
+    $front_page_id = (int) get_option( 'page_on_front' );
+    if ( $post->ID === $front_page_id && $front_page_id > 0 ) {
+        $design_url = admin_url( 'admin.php?page=sp-settings-design' );
+        echo '<div style="padding: 12px 16px; background: #f0f6fc; border-left: 4px solid #2271b1; border-radius: 2px; margin-bottom: 16px;">';
+        echo '<p class="sp-m-0"><strong>' . esc_html__( 'Homepage Hero', 'societypress' ) . '</strong> — ';
+        echo sprintf(
+            /* translators: %s is a link to the Design settings page */
+            esc_html__( 'The hero section (background video/image, headline, and button) is configured in %s.', 'societypress' ),
+            '<a href="' . esc_url( $design_url ) . '">' . esc_html__( 'Settings → Design → Homepage Hero', 'societypress' ) . '</a>'
+        );
+        echo '</p></div>';
+    }
+
     if ( ! $is_builder ) {
         echo '<div style="padding: 10px; background: #f0f6fc; border-left: 4px solid #2271b1; border-radius: 2px;">';
         echo '<p class="sp-m-0">To use the Page Builder, select the <strong>"SocietyPress Builder"</strong> template from the Page Attributes panel on the right, then update the page.</p>';

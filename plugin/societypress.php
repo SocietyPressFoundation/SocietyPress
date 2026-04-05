@@ -29,7 +29,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // NOTE: This MUST match the "Version:" line in the plugin header comment above.
 // WordPress reads the version from the header; this constant is used for
 // cache-busting and comparison logic. They must stay in sync.
-define( 'SOCIETYPRESS_VERSION', '1.0.5' );
+define( 'SOCIETYPRESS_VERSION', '1.0.6' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -169,7 +169,7 @@ register_activation_hook( __FILE__, function () {
             'design_color_footer_bg'       => '#1e3a5f',
             'design_color_footer_text'     => '#ffffff',
             'design_font_body'             => 'system',
-            'design_font_heading'          => 'inherit',
+            'design_font_heading'          => 'playfair',
             'design_font_size'             => 'comfortable',
             'design_heading_scale'         => 'normal',
             'design_content_width'         => 'standard',
@@ -257,6 +257,10 @@ register_activation_hook( __FILE__, function () {
     // Seed default document categories (Meeting Minutes, Society Documents)
     // so the Documents module is ready to use on day one.
     sp_maybe_seed_document_categories();
+
+    // Seed default genealogy sites (Ancestry, FamilySearch, etc.) so the
+    // member directory profile linking feature works out of the box.
+    sp_maybe_seed_genealogy_sites();
 
     // Encrypt existing plaintext contact data in sp_members.
     // WHY: On first deploy of this feature, all contact data is plaintext.
@@ -2162,6 +2166,58 @@ function sp_create_tables(): void {
         KEY created_at (created_at)
     ) {$charset_collate};" );
 
+
+    // ========================================================================
+    // sp_genealogy_sites — Admin-configurable list of genealogy platforms
+    //
+    // WHY: Members link their profiles on external genealogy services (Ancestry,
+    //      FamilySearch, Find A Grave, etc.) so other members can find and
+    //      connect with them. Rather than hardcoding 8 services, this table
+    //      lets admins manage the available sites: activate/deactivate defaults,
+    //      add niche or regional services, reorder, and set custom icons.
+    //      Ships with 26 pre-seeded sites covering the major platforms.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}genealogy_sites (
+        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        name            VARCHAR(100)        NOT NULL,
+        slug            VARCHAR(100)        NOT NULL,
+        domain          VARCHAR(255)        NOT NULL DEFAULT '',
+        url_template    VARCHAR(500)        NULL,
+        icon_url        VARCHAR(500)        NULL,
+        category        VARCHAR(50)         NOT NULL DEFAULT 'general',
+        sort_order      INT                 NOT NULL DEFAULT 0,
+        active          TINYINT(1)          NOT NULL DEFAULT 1,
+        is_default      TINYINT(1)          NOT NULL DEFAULT 0,
+        created_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        UNIQUE KEY slug (slug),
+        KEY active_sort (active, sort_order)
+    ) {$charset_collate};" );
+
+
+    // ========================================================================
+    // sp_member_genealogy_profiles — Per-member links to genealogy platforms
+    //
+    // WHY: Each member can store a profile URL for any active genealogy site,
+    //      with a per-link privacy toggle. This replaces the old approach of
+    //      storing 8 hardcoded service URLs in user_meta. The separate table
+    //      supports unlimited sites without schema changes, enforces one link
+    //      per member per site via UNIQUE KEY, and enables efficient joins for
+    //      the directory modal and GDPR export.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}member_genealogy_profiles (
+        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        member_id       BIGINT(20) UNSIGNED NOT NULL,
+        site_id         BIGINT(20) UNSIGNED NOT NULL,
+        profile_url     VARCHAR(500)        NOT NULL,
+        is_public       TINYINT(1)          NOT NULL DEFAULT 1,
+        created_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        UNIQUE KEY member_site (member_id, site_id),
+        KEY site_id (site_id)
+    ) {$charset_collate};" );
+
+
     // Store the schema version so we can run migrations in future updates
     // without re-running the full dbDelta on every page load.
     update_option( 'societypress_db_version', '0.26d' );
@@ -2384,6 +2440,96 @@ function sp_maybe_seed_document_categories(): void {
 }
 
 
+/**
+ * Seed default genealogy sites if none exist yet.
+ *
+ * WHY: Members link their profiles on external genealogy platforms so other
+ *      members can find and connect with them across services. We ship with 26
+ *      widely-used sites covering major platforms, cemetery/memorial sites,
+ *      records repositories, DNA testing/analysis, genealogy software, and a
+ *      generic "Personal Website" entry. Admins can deactivate defaults they
+ *      don't want, reorder them, and add custom regional or niche sites.
+ *
+ * SAFETY: Only runs if the genealogy_sites table is empty. Deactivate/reactivate
+ *         won't re-create sites Harold has already customized.
+ */
+function sp_maybe_seed_genealogy_sites(): void {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_genealogy_sites';
+
+    // Don't overwrite existing sites
+    $count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" );
+    if ( $count > 0 ) {
+        return;
+    }
+
+    // Category labels for reference:
+    //   major        = Major Genealogy Platforms
+    //   cemetery     = Cemetery & Memorial
+    //   records      = Records & Newspapers
+    //   dna_testing  = DNA Testing
+    //   dna_analysis = DNA Analysis & Matching
+    //   software     = Genealogy Software
+    //   general      = General / Personal
+
+    $defaults = [
+        // Major Genealogy Platforms
+        [ 'name' => 'Ancestry',      'slug' => 'ancestry',      'domain' => 'www.ancestry.com',       'category' => 'major',        'url_template' => 'https://www.ancestry.com/family-tree/person/...',           'sort_order' => 1 ],
+        [ 'name' => 'FamilySearch',  'slug' => 'familysearch',  'domain' => 'www.familysearch.org',   'category' => 'major',        'url_template' => 'https://www.familysearch.org/tree/person/details/XXXX-XXX', 'sort_order' => 2 ],
+        [ 'name' => 'MyHeritage',    'slug' => 'myheritage',    'domain' => 'www.myheritage.com',     'category' => 'major',        'url_template' => 'https://www.myheritage.com/...',                           'sort_order' => 3 ],
+        [ 'name' => 'Findmypast',    'slug' => 'findmypast',    'domain' => 'www.findmypast.com',     'category' => 'major',        'url_template' => 'https://www.findmypast.com/...',                           'sort_order' => 4 ],
+        [ 'name' => 'WikiTree',      'slug' => 'wikitree',      'domain' => 'www.wikitree.com',       'category' => 'major',        'url_template' => 'https://www.wikitree.com/wiki/YourProfile',                'sort_order' => 5 ],
+        [ 'name' => 'Geni',          'slug' => 'geni',          'domain' => 'www.geni.com',           'category' => 'major',        'url_template' => 'https://www.geni.com/people/Your-Name/123456789',          'sort_order' => 6 ],
+        [ 'name' => 'WeRelate',      'slug' => 'werelate',      'domain' => 'www.werelate.org',       'category' => 'major',        'url_template' => 'https://www.werelate.org/wiki/Person:Your_Name',           'sort_order' => 7 ],
+        [ 'name' => 'Geneanet',      'slug' => 'geneanet',      'domain' => 'en.geneanet.org',        'category' => 'major',        'url_template' => 'https://en.geneanet.org/...',                              'sort_order' => 8 ],
+
+        // Cemetery & Memorial
+        [ 'name' => 'Find A Grave',  'slug' => 'findagrave',    'domain' => 'www.findagrave.com',     'category' => 'cemetery',     'url_template' => 'https://www.findagrave.com/memorial/...',                  'sort_order' => 9 ],
+        [ 'name' => 'BillionGraves', 'slug' => 'billiongraves', 'domain' => 'billiongraves.com',      'category' => 'cemetery',     'url_template' => 'https://billiongraves.com/...',                            'sort_order' => 10 ],
+
+        // Records & Newspapers
+        [ 'name' => 'Fold3',                        'slug' => 'fold3',              'domain' => 'www.fold3.com',            'category' => 'records',      'url_template' => 'https://www.fold3.com/...',            'sort_order' => 11 ],
+        [ 'name' => 'Newspapers.com',               'slug' => 'newspapers-com',     'domain' => 'www.newspapers.com',       'category' => 'records',      'url_template' => 'https://www.newspapers.com/...',       'sort_order' => 12 ],
+        [ 'name' => 'GenealogyBank',                'slug' => 'genealogybank',      'domain' => 'www.genealogybank.com',    'category' => 'records',      'url_template' => 'https://www.genealogybank.com/...',    'sort_order' => 13 ],
+        [ 'name' => 'American Ancestors (NEHGS)',    'slug' => 'american-ancestors', 'domain' => 'www.americanancestors.org','category' => 'records',      'url_template' => 'https://www.americanancestors.org/...','sort_order' => 14 ],
+
+        // DNA Testing
+        [ 'name' => 'AncestryDNA',     'slug' => 'ancestrydna',     'domain' => 'www.ancestry.com',       'category' => 'dna_testing',  'url_template' => 'https://www.ancestry.com/dna/...',       'sort_order' => 15 ],
+        [ 'name' => '23andMe',         'slug' => '23andme',         'domain' => 'www.23andme.com',        'category' => 'dna_testing',  'url_template' => 'https://you.23andme.com/...',            'sort_order' => 16 ],
+        [ 'name' => 'FamilyTreeDNA',   'slug' => 'familytreedna',   'domain' => 'www.familytreedna.com',  'category' => 'dna_testing',  'url_template' => 'https://www.familytreedna.com/...',      'sort_order' => 17 ],
+        [ 'name' => 'MyHeritage DNA',  'slug' => 'myheritage-dna',  'domain' => 'www.myheritage.com',     'category' => 'dna_testing',  'url_template' => 'https://www.myheritage.com/dna/...',     'sort_order' => 18 ],
+        [ 'name' => 'LivingDNA',       'slug' => 'livingdna',       'domain' => 'livingdna.com',          'category' => 'dna_testing',  'url_template' => 'https://livingdna.com/...',              'sort_order' => 19 ],
+
+        // DNA Analysis & Matching
+        [ 'name' => 'GEDmatch',    'slug' => 'gedmatch',    'domain' => 'www.gedmatch.com', 'category' => 'dna_analysis', 'url_template' => 'https://www.gedmatch.com/...', 'sort_order' => 20 ],
+        [ 'name' => 'DNAPainter',  'slug' => 'dnapainter',  'domain' => 'dnapainter.com',   'category' => 'dna_analysis', 'url_template' => 'https://dnapainter.com/...',    'sort_order' => 21 ],
+
+        // Genealogy Software (online components)
+        [ 'name' => 'RootsMagic',        'slug' => 'rootsmagic',        'domain' => 'www.rootsmagic.com',  'category' => 'software', 'url_template' => 'https://www.rootsmagic.com/...',  'sort_order' => 22 ],
+        [ 'name' => 'Legacy Family Tree', 'slug' => 'legacy-family-tree','domain' => 'legacyfamilytree.com','category' => 'software', 'url_template' => 'https://legacyfamilytree.com/...','sort_order' => 23 ],
+        [ 'name' => 'Gramps',            'slug' => 'gramps',            'domain' => 'gramps-project.org',  'category' => 'software', 'url_template' => 'https://gramps-project.org/...',  'sort_order' => 24 ],
+        [ 'name' => 'Family Tree Maker', 'slug' => 'family-tree-maker', 'domain' => 'www.mackiev.com',     'category' => 'software', 'url_template' => 'https://www.mackiev.com/ftm/...', 'sort_order' => 25 ],
+
+        // General
+        [ 'name' => 'Personal Website/Blog', 'slug' => 'personal-website', 'domain' => '', 'category' => 'general', 'url_template' => 'https://www.your-website.com', 'sort_order' => 26 ],
+    ];
+
+    foreach ( $defaults as $site ) {
+        $wpdb->insert( $table, [
+            'name'         => $site['name'],
+            'slug'         => $site['slug'],
+            'domain'       => $site['domain'],
+            'url_template' => $site['url_template'],
+            'icon_url'     => null,
+            'category'     => $site['category'],
+            'sort_order'   => $site['sort_order'],
+            'active'       => 1,
+            'is_default'   => 1,
+        ] );
+    }
+}
+
+
 // ============================================================================
 // DATABASE UPGRADE CHECK — Run migrations when the plugin version changes
 // ============================================================================
@@ -2412,6 +2558,7 @@ add_action( 'admin_init', function () {
         sp_maybe_seed_resource_categories();
         sp_maybe_seed_library_categories();
         sp_maybe_seed_document_categories();
+        sp_maybe_seed_genealogy_sites();
 
         // Backfill phonetic codes for any surnames added before this feature existed
         sp_maybe_backfill_surname_phonetics();
@@ -2422,6 +2569,88 @@ add_action( 'admin_init', function () {
         update_option( 'societypress_db_version', SOCIETYPRESS_VERSION );
     }
 });
+
+
+// ============================================================================
+// MIGRATION: Move genealogy profiles from user_meta to sp_member_genealogy_profiles
+//
+// WHY: The original implementation stored 8 hardcoded genealogy service URLs as
+//      user_meta (sp_genealogy_wikitree, sp_genealogy_ancestry, etc.). The new
+//      system uses a proper join table with admin-configurable sites and per-link
+//      privacy. This one-time migration copies existing data into the new table.
+//      Old user_meta is left intact as a safety net — it does no harm.
+// ============================================================================
+add_action( 'admin_init', function () {
+    // Only run once
+    if ( get_option( 'sp_genealogy_profiles_migrated' ) ) {
+        return;
+    }
+
+    global $wpdb;
+    $prefix      = $wpdb->prefix . 'sp_';
+    $sites_table = $prefix . 'genealogy_sites';
+
+    // Map old user_meta key suffixes to site slugs in the new table
+    $key_to_slug = [
+        'wikitree'     => 'wikitree',
+        'familysearch' => 'familysearch',
+        'geni'         => 'geni',
+        'werelate'     => 'werelate',
+        'ancestry'     => 'ancestry',
+        'myheritage'   => 'myheritage',
+        'findagrave'   => 'findagrave',
+        '23andme'      => '23andme',
+    ];
+
+    // Build a slug-to-id lookup from the sites table
+    $slug_to_id = [];
+    $sites = $wpdb->get_results( "SELECT id, slug FROM {$sites_table}" );
+    foreach ( $sites as $site ) {
+        $slug_to_id[ $site->slug ] = (int) $site->id;
+    }
+
+    // If the sites table is empty (seed hasn't run yet), bail — the upgrade
+    // check will re-run this on the next page load after seeding.
+    if ( empty( $slug_to_id ) ) {
+        return;
+    }
+
+    // Find all users who have any sp_genealogy_* meta with a non-empty value
+    $meta_keys_sql = implode( ',', array_map( function ( $key ) use ( $wpdb ) {
+        return $wpdb->prepare( '%s', 'sp_genealogy_' . $key );
+    }, array_keys( $key_to_slug ) ) );
+
+    $meta_rows = $wpdb->get_results(
+        "SELECT user_id, meta_key, meta_value
+         FROM {$wpdb->usermeta}
+         WHERE meta_key IN ({$meta_keys_sql})
+           AND meta_value != ''"
+    );
+
+    $profiles_table = $prefix . 'member_genealogy_profiles';
+
+    foreach ( $meta_rows as $row ) {
+        $suffix = str_replace( 'sp_genealogy_', '', $row->meta_key );
+        $slug   = $key_to_slug[ $suffix ] ?? null;
+
+        if ( ! $slug || ! isset( $slug_to_id[ $slug ] ) ) {
+            continue;
+        }
+
+        // Insert into new table (ignore duplicates — UNIQUE KEY member_site)
+        $wpdb->query( $wpdb->prepare(
+            "INSERT IGNORE INTO {$profiles_table}
+             (member_id, site_id, profile_url, is_public, created_at)
+             VALUES (%d, %d, %s, 1, NOW())",
+            (int) $row->user_id,
+            $slug_to_id[ $slug ],
+            esc_url_raw( $row->meta_value )
+        ) );
+    }
+
+    update_option( 'sp_genealogy_profiles_migrated', 1 );
+});
+
 
 // ============================================================================
 // MIGRATION: Add role_type column to sp_volunteer_roles for existing installs
@@ -3739,6 +3968,19 @@ add_action( 'admin_menu', function () {
         'sp_render_groups_page'
     );
 
+    // Genealogy Sites — admin-configurable list of external genealogy platforms
+    // WHY: Members link their profiles on these sites so other members can find
+    //      them. Admins manage the available sites: enable/disable defaults, add
+    //      regional or niche services, reorder, set custom icons.
+    add_submenu_page(
+        'societypress',
+        __( 'Genealogy Sites — SocietyPress', 'societypress' ),
+        __( 'Genealogy Sites', 'societypress' ),
+        'manage_options',
+        'sp-genealogy-sites',
+        'sp_render_genealogy_sites_page'
+    );
+
     // Hidden: Edit Group page
     add_submenu_page(
         null,
@@ -4674,6 +4916,7 @@ function sp_get_menu_capability_map(): array {
         'sp-member-edit'           => 'sp_manage_members',
         'sp-pending-changes'       => 'sp_manage_members',
         'sp-surname-variants'      => 'sp_manage_members',
+        'sp-genealogy-sites'       => 'sp_manage_members',
 
         // Events
         'sp-events'                => 'sp_manage_events',
@@ -4986,13 +5229,48 @@ function sp_get_font_family_options(): array {
         'garamond'     => "'EB Garamond', Georgia, serif",
         'merriweather' => "Merriweather, Georgia, serif",
         'lora'         => "Lora, Georgia, serif",
+        'playfair'     => "'Playfair Display', Georgia, serif",
+        'cormorant'    => "'Cormorant Garamond', Garamond, Georgia, serif",
+        'crimson'      => "'Crimson Text', Georgia, serif",
         'roboto'       => "Roboto, -apple-system, BlinkMacSystemFont, sans-serif",
         'open-sans'    => "'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif",
         'source-sans'  => "'Source Sans 3', -apple-system, BlinkMacSystemFont, sans-serif",
         'nunito'       => "Nunito, -apple-system, BlinkMacSystemFont, sans-serif",
         'lato'         => '"Lato", sans-serif',
+        'poppins'      => "Poppins, -apple-system, BlinkMacSystemFont, sans-serif",
     ];
 }
+
+/**
+ * Get human-readable display labels for font options.
+ *
+ * WHY: Every font dropdown in the admin (Design settings, theme builder,
+ *      style presets) needs the same list of labels. One source of truth
+ *      prevents drift when we add new fonts.
+ *
+ * @return array<string, string> Font key => Display label.
+ */
+function sp_get_font_display_labels(): array {
+    return [
+        'system'       => __( 'System Default', 'societypress' ),
+        'inter'        => 'Inter',
+        'georgia'      => 'Georgia',
+        'palatino'     => 'Palatino',
+        'garamond'     => 'EB Garamond',
+        'merriweather' => 'Merriweather',
+        'lora'         => 'Lora',
+        'playfair'     => 'Playfair Display',
+        'cormorant'    => 'Cormorant Garamond',
+        'crimson'      => 'Crimson Text',
+        'roboto'       => 'Roboto',
+        'open-sans'    => 'Open Sans',
+        'source-sans'  => 'Source Sans 3',
+        'nunito'       => 'Nunito',
+        'lato'         => 'Lato',
+        'poppins'      => 'Poppins',
+    ];
+}
+
 
 /**
  * Look up the CSS font-family string for a given font key.
@@ -5018,6 +5296,109 @@ function sp_get_font_family_css( ?string $font_key = null ): string {
 // ============================================================================
 // MEMBER STATUS HELPERS
 // ============================================================================
+// ============================================================================
+// GENEALOGY PROFILES — Helper functions
+//
+// WHY: Query helpers used by the My Account form, member detail modal, admin
+//      member edit page, and the Genealogy Sites admin page. Centralised here
+//      so every UI layer gets consistent data without duplicating SQL.
+// ============================================================================
+
+/**
+ * Get all active genealogy sites, ordered by sort_order.
+ *
+ * WHY: Used everywhere we display the list of available genealogy platforms —
+ *      My Account form, admin member edit, directory modal data. One query,
+ *      one sort, one place to change if we add filtering later.
+ *
+ * @return object[] Array of site rows from sp_genealogy_sites.
+ */
+function sp_get_active_genealogy_sites(): array {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_genealogy_sites';
+
+    return $wpdb->get_results(
+        "SELECT * FROM {$table} WHERE active = 1 ORDER BY sort_order ASC, name ASC"
+    );
+}
+
+/**
+ * Get a member's genealogy profile links, joined with site data.
+ *
+ * WHY: The directory modal and GDPR exporter both need profile URLs paired with
+ *      site names/icons. Joining here avoids N+1 queries in the rendering layer.
+ *
+ * @param int  $member_id  The WP user ID (sp_members.user_id).
+ * @param bool $public_only If true, only returns profiles where is_public = 1.
+ * @return object[] Array of profile rows with site name, domain, icon_url, etc.
+ */
+function sp_get_member_genealogy_profiles( int $member_id, bool $public_only = false ): array {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $public_clause = $public_only ? 'AND mgp.is_public = 1' : '';
+
+    return $wpdb->get_results( $wpdb->prepare(
+        "SELECT mgp.id, mgp.site_id, mgp.profile_url, mgp.is_public,
+                gs.name AS site_name, gs.slug, gs.domain, gs.icon_url, gs.category
+         FROM {$prefix}member_genealogy_profiles mgp
+         JOIN {$prefix}genealogy_sites gs ON gs.id = mgp.site_id
+         WHERE mgp.member_id = %d AND gs.active = 1 {$public_clause}
+         ORDER BY gs.sort_order ASC, gs.name ASC",
+        $member_id
+    ) );
+}
+
+/**
+ * Get the display icon URL for a genealogy site.
+ *
+ * WHY: Sites can have a custom admin-uploaded icon, or we auto-generate one
+ *      from Google's Favicon service using the site's domain. The "Personal
+ *      Website/Blog" entry has no domain, so it falls back to a dashicons globe.
+ *      This centralises the fallback chain so every rendering point shows the
+ *      same icon without duplicating the logic.
+ *
+ * @param object $site A row from sp_genealogy_sites.
+ * @return string URL to the icon image (or empty string if unavailable).
+ */
+function sp_get_genealogy_site_icon_url( object $site ): string {
+    // Admin uploaded a custom icon — use it
+    if ( ! empty( $site->icon_url ) ) {
+        return $site->icon_url;
+    }
+
+    // Auto-generate from Google Favicons API if we have a domain
+    if ( ! empty( $site->domain ) ) {
+        return 'https://www.google.com/s2/favicons?domain=' . urlencode( $site->domain ) . '&sz=32';
+    }
+
+    // No domain (e.g. "Personal Website/Blog") — return empty,
+    // let the rendering layer show a generic icon or dashicon
+    return '';
+}
+
+/**
+ * Get the human-readable category labels for genealogy site grouping.
+ *
+ * WHY: Used in the admin Genealogy Sites page and the My Account form to
+ *      group sites into logical sections (Major Platforms, DNA Testing, etc.)
+ *      instead of showing one flat list of 26+ entries.
+ *
+ * @return array<string, string> Category slug => Translated label.
+ */
+function sp_get_genealogy_site_categories(): array {
+    return [
+        'major'        => __( 'Major Genealogy Platforms', 'societypress' ),
+        'cemetery'     => __( 'Cemetery & Memorial', 'societypress' ),
+        'records'      => __( 'Records & Newspapers', 'societypress' ),
+        'dna_testing'  => __( 'DNA Testing', 'societypress' ),
+        'dna_analysis' => __( 'DNA Analysis & Matching', 'societypress' ),
+        'software'     => __( 'Genealogy Software', 'societypress' ),
+        'general'      => __( 'General', 'societypress' ),
+    ];
+}
+
+
 //
 // WHY: The list of valid member statuses was duplicated across the members list
 //      table filter, the member edit form dropdown, and the import mapper. A
@@ -5129,7 +5510,10 @@ function sp_get_design_override_css(): string {
 
     $font_map = sp_get_font_family_options();
     $body_key    = $settings['design_font_body']    ?? 'system';
-    $heading_key = $settings['design_font_heading']  ?? 'inherit';
+    // WHY playfair default: Playfair Display is an elegant serif that reads
+    // "heritage" without being stuffy — perfect for genealogical societies.
+    // Harold can change it to anything else from the Design tab.
+    $heading_key = $settings['design_font_heading']  ?? 'playfair';
     $font_body   = $font_map[ $body_key ] ?? $font_map['system'];
     $font_heading = ( $heading_key === 'inherit' ) ? 'inherit' : ( $font_map[ $heading_key ] ?? 'inherit' );
 
@@ -5168,7 +5552,13 @@ function sp_get_design_override_css(): string {
     . ( $footer_link ? "
     --sp-color-footer-link: " . esc_attr( $footer_link ) . ';' : '' )
     . ( $logo_height ? "
-    --sp-logo-height: " . $logo_height . 'px;' : '' ) . '
+    --sp-logo-height: " . $logo_height . 'px;' : '' )
+    . ( $nav_font_size ? "
+    --sp-nav-font-size: " . $nav_font_size . 'px;' : '' )
+    . ( $nav_font_weight ? "
+    --sp-nav-font-weight: " . esc_attr( $nav_font_weight ) . ';' : '' )
+    . ( $header_padding ? "
+    --sp-header-padding: " . $header_padding . 'px;' : '' ) . '
 }';
 
     // Direct property overrides — !important is safe here because this CSS
@@ -5232,13 +5622,17 @@ add_action( 'wp_head', function () {
         'garamond'     => 'EB+Garamond:wght@400;500;600;700',
         'merriweather' => 'Merriweather:wght@400;700',
         'lora'         => 'Lora:wght@400;500;600;700',
+        'playfair'     => 'Playfair+Display:wght@400;500;600;700',
+        'cormorant'    => 'Cormorant+Garamond:wght@300;400;500;600;700',
+        'crimson'      => 'Crimson+Text:wght@400;600;700',
         'roboto'       => 'Roboto:wght@400;500;700',
         'open-sans'    => 'Open+Sans:wght@400;500;600;700',
+        'poppins'      => 'Poppins:wght@300;400;500;600;700',
         'source-sans'  => 'Source+Sans+3:wght@400;500;600;700',
         'nunito'       => 'Nunito:wght@400;500;600;700',
     ];
     $body_key    = $settings['design_font_body']    ?? 'system';
-    $heading_key = $settings['design_font_heading']  ?? 'inherit';
+    $heading_key = $settings['design_font_heading']  ?? 'playfair';
     $families = [];
     if ( isset( $google_fonts[ $body_key ] ) ) $families[] = $google_fonts[ $body_key ];
     if ( $heading_key !== 'inherit' && $heading_key !== $body_key && isset( $google_fonts[ $heading_key ] ) ) {
@@ -5809,19 +6203,36 @@ function sp_handle_account_forms() {
     }
 
     // ---- Genealogy Service Profiles ----
-    // WHY: Members link their profiles on external genealogy platforms (WikiTree,
-    //      FamilySearch, etc.). Stored as user_meta because these are optional
-    //      supplemental links — adding 8 columns to sp_members would be wasteful.
+    // WHY: Members link their profiles on external genealogy platforms so other
+    //      members can find and connect with them. Stored in sp_member_genealogy_profiles
+    //      table (not user_meta) with per-link privacy toggles and admin-configurable sites.
     if ( $action === 'update_genealogy_services' ) {
         if ( ! wp_verify_nonce( $_POST['sp_genealogy_nonce'] ?? '', 'sp_update_genealogy_services' ) ) {
             wp_safe_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) );
             exit;
         }
-        $service_keys = [ 'wikitree', 'familysearch', 'geni', 'werelate', 'ancestry', 'myheritage', 'findagrave', '23andme' ];
-        foreach ( $service_keys as $key ) {
-            $value = esc_url_raw( $_POST[ 'genealogy_' . $key ] ?? '' );
-            update_user_meta( $user->ID, 'sp_genealogy_' . $key, $value );
+        $profiles_table = $wpdb->prefix . 'sp_member_genealogy_profiles';
+        $profiles_data  = $_POST['genealogy_profiles'] ?? [];
+
+        // Wipe existing and re-insert — same pattern as surnames. Simple,
+        // safe, and avoids tracking individual row edits for a lightweight dataset.
+        $wpdb->delete( $profiles_table, [ 'member_id' => $user->ID ], [ '%d' ] );
+
+        if ( is_array( $profiles_data ) ) {
+            foreach ( $profiles_data as $site_id => $fields ) {
+                $url = esc_url_raw( trim( $fields['url'] ?? '' ) );
+                if ( empty( $url ) ) {
+                    continue; // Skip sites with no URL entered
+                }
+                $wpdb->insert( $profiles_table, [
+                    'member_id'   => $user->ID,
+                    'site_id'     => absint( $site_id ),
+                    'profile_url' => $url,
+                    'is_public'   => isset( $fields['public'] ) ? 1 : 0,
+                ] );
+            }
         }
+
         wp_safe_redirect( add_query_arg( 'sp-updated', 'genealogy', $account_url . '#genealogy-services' ) );
         exit;
     }
@@ -6908,11 +7319,27 @@ add_action( 'wp_ajax_sp_save_account', function() {
         if ( ! wp_verify_nonce( $_POST['sp_genealogy_nonce'] ?? '', 'sp_update_genealogy_services' ) ) {
             wp_send_json_error( [ 'message' => __( 'Security check failed. Please reload the page.', 'societypress' ) ] );
         }
-        $service_keys = [ 'wikitree', 'familysearch', 'geni', 'werelate', 'ancestry', 'myheritage', 'findagrave', '23andme' ];
-        foreach ( $service_keys as $key ) {
-            $value = esc_url_raw( $_POST[ 'genealogy_' . $key ] ?? '' );
-            update_user_meta( $user->ID, 'sp_genealogy_' . $key, $value );
+        $profiles_table = $wpdb->prefix . 'sp_member_genealogy_profiles';
+        $profiles_data  = $_POST['genealogy_profiles'] ?? [];
+
+        // Wipe and re-insert — same pattern as the POST handler above
+        $wpdb->delete( $profiles_table, [ 'member_id' => $user->ID ], [ '%d' ] );
+
+        if ( is_array( $profiles_data ) ) {
+            foreach ( $profiles_data as $site_id => $fields ) {
+                $url = esc_url_raw( trim( $fields['url'] ?? '' ) );
+                if ( empty( $url ) ) {
+                    continue;
+                }
+                $wpdb->insert( $profiles_table, [
+                    'member_id'   => $user->ID,
+                    'site_id'     => absint( $site_id ),
+                    'profile_url' => $url,
+                    'is_public'   => isset( $fields['public'] ) ? 1 : 0,
+                ] );
+            }
         }
+
         wp_send_json_success( [ 'message' => __( 'Genealogy profiles saved.', 'societypress' ) ] );
     }
 
@@ -7516,7 +7943,7 @@ var spMenuConfig = {
             id:    'members',
             label: 'Members',
             icon:  'dashicons-id',
-            items: ['sp-members', 'sp-import', 'sp-export', 'sp-member-tiers', 'sp-groups', 'sp-pending-changes', 'sp-surname-variants']
+            items: ['sp-members', 'sp-import', 'sp-export', 'sp-member-tiers', 'sp-groups', 'sp-genealogy-sites', 'sp-pending-changes', 'sp-surname-variants']
         },
         {
             id:    'events',
@@ -10512,7 +10939,8 @@ function sp_cascade_delete_member_data( $user_id ) {
     $wpdb->delete( "{$prefix}member_notes",            [ 'user_id' => $uid ], [ '%d' ] );
 
     // Research & genealogy
-    $wpdb->delete( "{$prefix}member_research_areas",   [ 'user_id' => $uid ], [ '%d' ] );
+    $wpdb->delete( "{$prefix}member_research_areas",       [ 'user_id' => $uid ], [ '%d' ] );
+    $wpdb->delete( "{$prefix}member_genealogy_profiles",   [ 'member_id' => $uid ], [ '%d' ] );
     $wpdb->query( $wpdb->prepare(
         "DELETE FROM {$prefix}member_relationships WHERE user_id_a = %d OR user_id_b = %d",
         $uid, $uid
@@ -11413,6 +11841,33 @@ add_action( 'admin_init', function () {
                 'year_to'        => absint( $year_tos[ $i ] ?? 0 ) ?: null,
                 'soundex_code'   => soundex( $surname ),
                 'metaphone_code' => metaphone( $surname ),
+            ] );
+        }
+    }
+
+    // ================================================================
+    // GENEALOGY PROFILES — Delete all and re-insert from form
+    // ================================================================
+    // WHY: Same wipe-and-reinsert pattern as surnames. The form sends parallel
+    //      arrays of site_id and url. Simpler and safer than tracking individual
+    //      row changes for a lightweight, non-critical dataset.
+    $gen_profiles_table = $prefix . 'member_genealogy_profiles';
+    $wpdb->delete( $gen_profiles_table, [ 'member_id' => $user_id ], [ '%d' ] );
+
+    $gen_site_ids = $_POST['gen_profile_site_id'] ?? [];
+    $gen_urls     = $_POST['gen_profile_url'] ?? [];
+    if ( is_array( $gen_site_ids ) ) {
+        foreach ( $gen_site_ids as $i => $site_id ) {
+            $url = esc_url_raw( trim( $gen_urls[ $i ] ?? '' ) );
+            if ( empty( $url ) ) {
+                continue; // Skip sites with no URL entered
+            }
+            $is_public = isset( $_POST[ 'gen_profile_public_' . absint( $site_id ) ] ) ? 1 : 0;
+            $wpdb->insert( $gen_profiles_table, [
+                'member_id'   => $user_id,
+                'site_id'     => absint( $site_id ),
+                'profile_url' => $url,
+                'is_public'   => $is_public,
             ] );
         }
     }
@@ -12920,6 +13375,83 @@ function sp_render_member_edit_page(): void {
                             }
                         });
                     </script>
+                </div>
+            </div>
+
+            <!-- ============================================================ -->
+            <!-- SECTION: Genealogy Profiles -->
+            <!-- WHY: Admin can view and edit which genealogy platform profiles
+                 this member has linked. Same data the member manages via My
+                 Account, but accessible here for admins to help members who
+                 can't figure it out themselves (Harold's board members). -->
+            <!-- ============================================================ -->
+            <div class="sp-section">
+                <h2><?php esc_html_e( 'Genealogy Profiles', 'societypress' ); ?></h2>
+                <div class="sp-section-body">
+                    <?php
+                    $gen_sites      = sp_get_active_genealogy_sites();
+                    $gen_profiles   = sp_get_member_genealogy_profiles( $user_id );
+                    $gen_categories = sp_get_genealogy_site_categories();
+
+                    // Index by site_id
+                    $gen_by_site = [];
+                    foreach ( $gen_profiles as $gp ) {
+                        $gen_by_site[ (int) $gp->site_id ] = $gp;
+                    }
+
+                    // Group by category
+                    $gen_by_cat = [];
+                    foreach ( $gen_sites as $gs ) {
+                        $gen_by_cat[ $gs->category ][] = $gs;
+                    }
+                    ?>
+
+                    <?php foreach ( $gen_by_cat as $cat_slug => $cat_sites ) : ?>
+                    <div style="margin-bottom: 16px;">
+                        <h3 style="font-size: 13px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 8px 0; padding-bottom: 4px; border-bottom: 1px solid #e0e0e0;">
+                            <?php echo esc_html( $gen_categories[ $cat_slug ] ?? ucfirst( $cat_slug ) ); ?>
+                        </h3>
+
+                        <?php foreach ( $cat_sites as $gs ) :
+                            $sid     = (int) $gs->id;
+                            $existing = $gen_by_site[ $sid ] ?? null;
+                            $url_val  = $existing ? $existing->profile_url : '';
+                            $is_pub   = $existing ? (int) $existing->is_public : 1;
+                            $icon_url = sp_get_genealogy_site_icon_url( $gs );
+                        ?>
+                        <div class="sp-field" style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+                            <?php if ( $icon_url ) : ?>
+                                <img src="<?php echo esc_url( $icon_url ); ?>" alt="" width="16" height="16" style="border-radius: 2px;" loading="lazy" />
+                            <?php else : ?>
+                                <span class="dashicons dashicons-admin-site-alt3" style="font-size: 16px; width: 16px; height: 16px; color: #999;"></span>
+                            <?php endif; ?>
+
+                            <label style="flex: 0 0 180px; font-size: 13px;">
+                                <?php echo esc_html( $gs->name ); ?>
+                            </label>
+
+                            <input type="hidden" name="gen_profile_site_id[]" value="<?php echo esc_attr( $sid ); ?>" />
+                            <input type="url"
+                                   name="gen_profile_url[]"
+                                   value="<?php echo esc_attr( $url_val ); ?>"
+                                   placeholder="<?php echo esc_attr( $gs->url_template ?: 'https://...' ); ?>"
+                                   style="flex: 1; min-width: 0;" />
+
+                            <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: #666; white-space: nowrap;">
+                                <input type="checkbox"
+                                       name="gen_profile_public_<?php echo esc_attr( $sid ); ?>"
+                                       value="1"
+                                       <?php checked( $is_pub, 1 ); ?> />
+                                <?php esc_html_e( 'Visible', 'societypress' ); ?>
+                            </label>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php endforeach; ?>
+
+                    <p class="description" style="margin-top: 8px;">
+                        <?php esc_html_e( 'Profile URLs are shown in the member directory. Uncheck "Visible" to hide a link from other members.', 'societypress' ); ?>
+                    </p>
                 </div>
             </div>
 
@@ -18683,10 +19215,10 @@ function sp_sanitize_settings( array $input ): array {
         'design_color_header_text'    => fn() => sanitize_hex_color( $input['design_color_header_text'] ?? '' ) ?: '#ffffff',
         'design_color_footer_bg'      => fn() => sanitize_hex_color( $input['design_color_footer_bg'] ?? '' ) ?: '#1e3a5f',
         'design_color_footer_text'    => fn() => sanitize_hex_color( $input['design_color_footer_text'] ?? '' ) ?: '#ffffff',
-        'design_font_body'            => fn() => in_array( $input['design_font_body'] ?? '', [ 'system', 'georgia', 'palatino', 'garamond', 'merriweather', 'lora', 'roboto', 'open-sans', 'source-sans', 'nunito' ], true )
+        'design_font_body'            => fn() => in_array( $input['design_font_body'] ?? '', array_keys( sp_get_font_family_options() ), true )
                                                    ? $input['design_font_body'] : 'system',
-        'design_font_heading'         => fn() => in_array( $input['design_font_heading'] ?? '', [ 'inherit', 'system', 'georgia', 'palatino', 'garamond', 'merriweather', 'lora', 'roboto', 'open-sans', 'source-sans', 'nunito' ], true )
-                                                   ? $input['design_font_heading'] : 'inherit',
+        'design_font_heading'         => fn() => in_array( $input['design_font_heading'] ?? '', array_merge( [ 'inherit' ], array_keys( sp_get_font_family_options() ) ), true )
+                                                   ? $input['design_font_heading'] : 'playfair',
         'design_font_size'            => fn() => in_array( $input['design_font_size'] ?? '', [ 'compact', 'comfortable', 'large' ], true )
                                                    ? $input['design_font_size'] : 'comfortable',
         'design_heading_scale'        => fn() => in_array( $input['design_heading_scale'] ?? '', [ 'small', 'normal', 'large' ], true )
@@ -18720,6 +19252,17 @@ function sp_sanitize_settings( array $input ): array {
         'design_nav_font_weight'      => fn() => in_array( $input['design_nav_font_weight'] ?? '', [ '', '300', '400', '500', '600', '700' ], true ) ? ( $input['design_nav_font_weight'] ?? '' ) : '',
         'design_color_footer_link'    => fn() => sanitize_hex_color( $input['design_color_footer_link'] ?? '' ) ?: '',
         'design_show_social_icons'    => fn() => (int) ! empty( $input['design_show_social_icons'] ),
+
+        // Homepage Hero
+        'homepage_hero_type'          => fn() => in_array( $input['homepage_hero_type'] ?? '', [ 'image', 'video', 'none' ], true ) ? $input['homepage_hero_type'] : 'image',
+        'homepage_hero_media'         => fn() => esc_url_raw( $input['homepage_hero_media'] ?? '' ),
+        'homepage_hero_poster'        => fn() => esc_url_raw( $input['homepage_hero_poster'] ?? '' ),
+        'homepage_hero_headline'      => fn() => sanitize_text_field( $input['homepage_hero_headline'] ?? '' ),
+        'homepage_hero_subtitle'      => fn() => sanitize_text_field( $input['homepage_hero_subtitle'] ?? '' ),
+        'homepage_hero_cta_text'      => fn() => sanitize_text_field( $input['homepage_hero_cta_text'] ?? '' ),
+        'homepage_hero_cta_url'       => fn() => esc_url_raw( $input['homepage_hero_cta_url'] ?? '' ),
+        'homepage_hero_overlay'       => fn() => max( 0, min( 80, (int) ( $input['homepage_hero_overlay'] ?? 40 ) ) ),
+        'homepage_hero_height'        => fn() => in_array( $input['homepage_hero_height'] ?? '', [ 'fullscreen', 'large', 'medium', 'small' ], true ) ? $input['homepage_hero_height'] : 'fullscreen',
 
         // Mailchimp Integration
         // WHY: The API key is encrypted at rest just like Stripe/PayPal secrets —
@@ -19860,6 +20403,422 @@ function sp_maybe_auto_breadcrumbs(): void {
     }, 5 );
 }
 add_action( 'wp', 'sp_maybe_auto_breadcrumbs' );
+
+// ============================================================================
+// GENEALOGY SITES — Admin management page
+//
+// WHY: Members link their profiles on external genealogy platforms so other
+//      members can find and connect with them. This admin page lets Harold
+//      manage the available sites: see all defaults, activate/deactivate them,
+//      add custom regional or niche services, reorder, and set custom icons.
+//      Ships with 26 pre-seeded sites; admins can't delete defaults but can
+//      deactivate them. Custom (non-default) sites can be deleted if no
+//      members have profiles linked.
+// ============================================================================
+
+/**
+ * Render the Genealogy Sites admin page.
+ */
+function sp_render_genealogy_sites_page(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    $table  = $prefix . 'genealogy_sites';
+
+    $categories = sp_get_genealogy_site_categories();
+
+    // Get all sites (including inactive) for the admin view
+    $sites = $wpdb->get_results(
+        "SELECT gs.*,
+                (SELECT COUNT(*) FROM {$prefix}member_genealogy_profiles mgp WHERE mgp.site_id = gs.id) AS member_count
+         FROM {$table} gs
+         ORDER BY gs.sort_order ASC, gs.name ASC"
+    );
+
+    // Group by category for display
+    $sites_by_cat = [];
+    foreach ( $sites as $site ) {
+        $sites_by_cat[ $site->category ][] = $site;
+    }
+
+    ?>
+    <div class="wrap sp-admin-wrap">
+        <h1><?php esc_html_e( 'Genealogy Sites', 'societypress' ); ?></h1>
+        <p class="description" style="margin-bottom: 20px;">
+            <?php esc_html_e( 'Manage the genealogy platforms available for members to link their profiles. Deactivate sites you don\'t need; add custom ones for regional or niche services.', 'societypress' ); ?>
+        </p>
+
+        <!-- ============================================================ -->
+        <!-- ADD NEW SITE FORM -->
+        <!-- ============================================================ -->
+        <div class="sp-card" style="margin-bottom: 24px;">
+            <h2 style="margin-top: 0;"><?php esc_html_e( 'Add New Site', 'societypress' ); ?></h2>
+            <form id="sp-add-genealogy-site" style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;">
+                <?php wp_nonce_field( 'sp_genealogy_site_nonce', 'sp_gen_site_nonce' ); ?>
+
+                <div style="flex: 1; min-width: 180px;">
+                    <label for="sp-gen-new-name" style="display: block; font-weight: 600; margin-bottom: 4px;">
+                        <?php esc_html_e( 'Site Name', 'societypress' ); ?>
+                    </label>
+                    <input type="text" id="sp-gen-new-name" name="name" required
+                           placeholder="<?php esc_attr_e( 'e.g. Roots Ireland', 'societypress' ); ?>"
+                           style="width: 100%;" />
+                </div>
+
+                <div style="flex: 1; min-width: 180px;">
+                    <label for="sp-gen-new-domain" style="display: block; font-weight: 600; margin-bottom: 4px;">
+                        <?php esc_html_e( 'Domain', 'societypress' ); ?>
+                    </label>
+                    <input type="text" id="sp-gen-new-domain" name="domain"
+                           placeholder="<?php esc_attr_e( 'e.g. www.rootsireland.ie', 'societypress' ); ?>"
+                           style="width: 100%;" />
+                </div>
+
+                <div style="flex: 0 0 200px;">
+                    <label for="sp-gen-new-category" style="display: block; font-weight: 600; margin-bottom: 4px;">
+                        <?php esc_html_e( 'Category', 'societypress' ); ?>
+                    </label>
+                    <select id="sp-gen-new-category" name="category" style="width: 100%;">
+                        <?php foreach ( $categories as $slug => $label ) : ?>
+                            <option value="<?php echo esc_attr( $slug ); ?>"><?php echo esc_html( $label ); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div style="flex: 1; min-width: 200px;">
+                    <label for="sp-gen-new-template" style="display: block; font-weight: 600; margin-bottom: 4px;">
+                        <?php esc_html_e( 'URL Placeholder', 'societypress' ); ?>
+                    </label>
+                    <input type="text" id="sp-gen-new-template" name="url_template"
+                           placeholder="https://www.example.com/..."
+                           style="width: 100%;" />
+                </div>
+
+                <div style="flex: 0 0 auto;">
+                    <button type="submit" class="button button-primary">
+                        <?php esc_html_e( 'Add Site', 'societypress' ); ?>
+                    </button>
+                </div>
+            </form>
+            <div id="sp-gen-add-feedback" style="margin-top: 8px;"></div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- SITE LIST BY CATEGORY -->
+        <!-- ============================================================ -->
+        <?php foreach ( $categories as $cat_slug => $cat_label ) :
+            $cat_sites = $sites_by_cat[ $cat_slug ] ?? [];
+            if ( empty( $cat_sites ) ) continue;
+        ?>
+        <div class="sp-card" style="margin-bottom: 16px;">
+            <h2 style="margin-top: 0; font-size: 15px;">
+                <?php echo esc_html( $cat_label ); ?>
+                <span style="font-weight: 400; color: #999; font-size: 13px;">
+                    (<?php echo count( $cat_sites ); ?>)
+                </span>
+            </h2>
+
+            <table class="widefat striped" style="margin-top: 8px;">
+                <thead>
+                    <tr>
+                        <th style="width: 40px;"><?php esc_html_e( 'Icon', 'societypress' ); ?></th>
+                        <th><?php esc_html_e( 'Name', 'societypress' ); ?></th>
+                        <th><?php esc_html_e( 'Domain', 'societypress' ); ?></th>
+                        <th style="width: 80px; text-align: center;"><?php esc_html_e( 'Members', 'societypress' ); ?></th>
+                        <th style="width: 80px; text-align: center;"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                        <th style="width: 140px;"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ( $cat_sites as $site ) :
+                        $icon_url = sp_get_genealogy_site_icon_url( $site );
+                        $is_active = (int) $site->active;
+                    ?>
+                    <tr id="sp-gen-row-<?php echo (int) $site->id; ?>"
+                        style="<?php echo ! $is_active ? 'opacity: 0.5;' : ''; ?>">
+                        <td style="text-align: center;">
+                            <?php if ( $icon_url ) : ?>
+                                <img src="<?php echo esc_url( $icon_url ); ?>" alt="" width="20" height="20"
+                                     style="border-radius: 3px; vertical-align: middle;" loading="lazy" />
+                            <?php else : ?>
+                                <span class="dashicons dashicons-admin-site-alt3" style="color: #999;"></span>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <strong><?php echo esc_html( $site->name ); ?></strong>
+                            <?php if ( $site->is_default ) : ?>
+                                <span style="font-size: 11px; color: #999; margin-left: 4px;"><?php esc_html_e( '(default)', 'societypress' ); ?></span>
+                            <?php endif; ?>
+                        </td>
+                        <td style="color: #666;"><?php echo esc_html( $site->domain ?: '—' ); ?></td>
+                        <td style="text-align: center;">
+                            <?php if ( $site->member_count > 0 ) : ?>
+                                <span style="background: #e3f2fd; color: #1565c0; padding: 2px 8px; border-radius: 10px; font-size: 12px;">
+                                    <?php echo (int) $site->member_count; ?>
+                                </span>
+                            <?php else : ?>
+                                <span style="color: #ccc;">0</span>
+                            <?php endif; ?>
+                        </td>
+                        <td style="text-align: center;">
+                            <?php if ( $is_active ) : ?>
+                                <span style="color: #2e7d32; font-size: 12px; font-weight: 600;"><?php esc_html_e( 'Active', 'societypress' ); ?></span>
+                            <?php else : ?>
+                                <span style="color: #999; font-size: 12px;"><?php esc_html_e( 'Inactive', 'societypress' ); ?></span>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <button type="button" class="button button-small sp-gen-toggle-active"
+                                    data-id="<?php echo (int) $site->id; ?>"
+                                    data-active="<?php echo $is_active; ?>">
+                                <?php echo $is_active
+                                    ? esc_html__( 'Deactivate', 'societypress' )
+                                    : esc_html__( 'Activate', 'societypress' ); ?>
+                            </button>
+
+                            <?php if ( ! $site->is_default ) : ?>
+                                <button type="button" class="button button-small button-link-delete sp-gen-delete-site"
+                                        data-id="<?php echo (int) $site->id; ?>"
+                                        data-name="<?php echo esc_attr( $site->name ); ?>"
+                                        data-members="<?php echo (int) $site->member_count; ?>">
+                                    <?php esc_html_e( 'Delete', 'societypress' ); ?>
+                                </button>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php endforeach; ?>
+    </div>
+
+    <script>
+    (function() {
+        'use strict';
+
+        var ajaxUrl = '<?php echo esc_js( admin_url( 'admin-ajax.php' ) ); ?>';
+        var nonce   = '<?php echo esc_js( wp_create_nonce( 'sp_genealogy_site_nonce' ) ); ?>';
+
+        // ---- Add new site ----
+        var addForm = document.getElementById('sp-add-genealogy-site');
+        if (addForm) {
+            addForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                var formData = new FormData(addForm);
+                formData.append('action', 'sp_save_genealogy_site');
+                formData.append('_ajax_nonce', nonce);
+
+                fetch(ajaxUrl, { method: 'POST', body: formData, credentials: 'same-origin' })
+                    .then(function(r) { return r.json(); })
+                    .then(function(resp) {
+                        var fb = document.getElementById('sp-gen-add-feedback');
+                        if (resp.success) {
+                            fb.innerHTML = '<span style="color: #2e7d32;">' + resp.data.message + '</span>';
+                            // Reload to show the new site in the correct category table
+                            setTimeout(function() { location.reload(); }, 800);
+                        } else {
+                            fb.innerHTML = '<span style="color: #b32d2e;">' + (resp.data.message || 'Error') + '</span>';
+                        }
+                    });
+            });
+        }
+
+        // ---- Toggle active/inactive ----
+        document.querySelectorAll('.sp-gen-toggle-active').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var id     = btn.getAttribute('data-id');
+                var active = btn.getAttribute('data-active') === '1' ? 0 : 1;
+
+                var fd = new FormData();
+                fd.append('action', 'sp_toggle_genealogy_site');
+                fd.append('_ajax_nonce', nonce);
+                fd.append('site_id', id);
+                fd.append('active', active);
+
+                fetch(ajaxUrl, { method: 'POST', body: fd, credentials: 'same-origin' })
+                    .then(function(r) { return r.json(); })
+                    .then(function(resp) {
+                        if (resp.success) {
+                            location.reload();
+                        }
+                    });
+            });
+        });
+
+        // ---- Delete custom site ----
+        document.querySelectorAll('.sp-gen-delete-site').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var id      = btn.getAttribute('data-id');
+                var name    = btn.getAttribute('data-name');
+                var members = parseInt(btn.getAttribute('data-members'), 10);
+
+                if (members > 0) {
+                    // Use spConfirm if available, otherwise block deletion
+                    var msg = '<?php echo esc_js( __( 'This site has members with linked profiles. Remove their profile links first.', 'societypress' ) ); ?>';
+                    if (typeof spConfirm === 'function') {
+                        spConfirm(msg, function() {});
+                    } else {
+                        alert(msg);
+                    }
+                    return;
+                }
+
+                var confirmMsg = '<?php echo esc_js( __( 'Delete this genealogy site?', 'societypress' ) ); ?>' + ' (' + name + ')';
+
+                function doDelete() {
+                    var fd = new FormData();
+                    fd.append('action', 'sp_delete_genealogy_site');
+                    fd.append('_ajax_nonce', nonce);
+                    fd.append('site_id', id);
+
+                    fetch(ajaxUrl, { method: 'POST', body: fd, credentials: 'same-origin' })
+                        .then(function(r) { return r.json(); })
+                        .then(function(resp) {
+                            if (resp.success) {
+                                var row = document.getElementById('sp-gen-row-' + id);
+                                if (row) row.remove();
+                            }
+                        });
+                }
+
+                if (typeof spConfirm === 'function') {
+                    spConfirm(confirmMsg, doDelete);
+                } else {
+                    doDelete();
+                }
+            });
+        });
+    })();
+    </script>
+    <?php
+}
+
+
+// ============================================================================
+// GENEALOGY SITES — AJAX handlers
+// ============================================================================
+
+// ---- Save (create) a new genealogy site ----
+add_action( 'wp_ajax_sp_save_genealogy_site', function () {
+    check_ajax_referer( 'sp_genealogy_site_nonce' );
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Permission denied.', 'societypress' ) ] );
+    }
+
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_genealogy_sites';
+
+    $name         = sanitize_text_field( $_POST['name'] ?? '' );
+    $domain       = sanitize_text_field( $_POST['domain'] ?? '' );
+    $category     = sanitize_text_field( $_POST['category'] ?? 'general' );
+    $url_template = esc_url_raw( $_POST['url_template'] ?? '' );
+
+    if ( empty( $name ) ) {
+        wp_send_json_error( [ 'message' => __( 'Site name is required.', 'societypress' ) ] );
+    }
+
+    // Auto-generate slug from name
+    $slug = sanitize_title( $name );
+
+    // Ensure slug uniqueness
+    $exists = $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$table} WHERE slug = %s", $slug
+    ) );
+    if ( $exists ) {
+        $slug .= '-' . wp_rand( 100, 999 );
+    }
+
+    // Get the next sort order
+    $max_sort = (int) $wpdb->get_var( "SELECT MAX(sort_order) FROM {$table}" );
+
+    $wpdb->insert( $table, [
+        'name'         => $name,
+        'slug'         => $slug,
+        'domain'       => $domain,
+        'url_template' => $url_template ?: null,
+        'icon_url'     => null,
+        'category'     => $category,
+        'sort_order'   => $max_sort + 1,
+        'active'       => 1,
+        'is_default'   => 0,
+    ] );
+
+    wp_send_json_success( [
+        'message' => sprintf( __( '%s added.', 'societypress' ), $name ),
+        'id'      => $wpdb->insert_id,
+    ] );
+} );
+
+
+// ---- Toggle a genealogy site active/inactive ----
+add_action( 'wp_ajax_sp_toggle_genealogy_site', function () {
+    check_ajax_referer( 'sp_genealogy_site_nonce' );
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Permission denied.', 'societypress' ) ] );
+    }
+
+    global $wpdb;
+    $table   = $wpdb->prefix . 'sp_genealogy_sites';
+    $site_id = absint( $_POST['site_id'] ?? 0 );
+    $active  = absint( $_POST['active'] ?? 0 ) ? 1 : 0;
+
+    if ( ! $site_id ) {
+        wp_send_json_error( [ 'message' => __( 'Invalid site.', 'societypress' ) ] );
+    }
+
+    $wpdb->update( $table, [ 'active' => $active ], [ 'id' => $site_id ], [ '%d' ], [ '%d' ] );
+
+    wp_send_json_success( [ 'message' => __( 'Site updated.', 'societypress' ) ] );
+} );
+
+
+// ---- Delete a custom (non-default) genealogy site ----
+add_action( 'wp_ajax_sp_delete_genealogy_site', function () {
+    check_ajax_referer( 'sp_genealogy_site_nonce' );
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Permission denied.', 'societypress' ) ] );
+    }
+
+    global $wpdb;
+    $prefix  = $wpdb->prefix . 'sp_';
+    $table   = $prefix . 'genealogy_sites';
+    $site_id = absint( $_POST['site_id'] ?? 0 );
+
+    if ( ! $site_id ) {
+        wp_send_json_error( [ 'message' => __( 'Invalid site.', 'societypress' ) ] );
+    }
+
+    // Block deletion of default sites — they can only be deactivated
+    $site = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", $site_id ) );
+    if ( ! $site ) {
+        wp_send_json_error( [ 'message' => __( 'Site not found.', 'societypress' ) ] );
+    }
+    if ( $site->is_default ) {
+        wp_send_json_error( [ 'message' => __( 'Default sites cannot be deleted — deactivate them instead.', 'societypress' ) ] );
+    }
+
+    // Block deletion if members have profiles linked
+    $linked = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$prefix}member_genealogy_profiles WHERE site_id = %d",
+        $site_id
+    ) );
+    if ( $linked > 0 ) {
+        wp_send_json_error( [
+            'message' => sprintf(
+                __( 'Cannot delete: %d member(s) have profiles linked to this site.', 'societypress' ),
+                $linked
+            ),
+        ] );
+    }
+
+    $wpdb->delete( $table, [ 'id' => $site_id ], [ '%d' ] );
+
+    wp_send_json_success( [ 'message' => __( 'Site deleted.', 'societypress' ) ] );
+} );
+
 
 // ============================================================================
 // GROUPS — INTEREST GROUPS / SIGs (Admin + Frontend)
@@ -24667,20 +25626,7 @@ function sp_render_themes_page(): void {
     $custom_nonce  = wp_create_nonce( 'sp_custom_theme_nonce' );
 
     // Font options for the builder (same as Design settings)
-    $font_options = [
-        'system'       => __( 'System Default', 'societypress' ),
-        'inter'        => 'Inter',
-        'georgia'      => 'Georgia',
-        'palatino'     => 'Palatino',
-        'garamond'     => 'EB Garamond',
-        'merriweather' => 'Merriweather',
-        'lora'         => 'Lora',
-        'roboto'       => 'Roboto',
-        'open-sans'    => 'Open Sans',
-        'source-sans'  => 'Source Sans 3',
-        'nunito'       => 'Nunito',
-        'lato'         => 'Lato',
-    ];
+    $font_options = sp_get_font_display_labels();
     $heading_font_options = [ 'inherit' => __( 'Same as Body Font', 'societypress' ) ] + $font_options;
     ?>
 
@@ -26321,28 +27267,19 @@ function sp_render_settings_design_page(): void {
             $d_footer_bg     = $settings['design_color_footer_bg']     ?? '#1e3a5f';
             $d_footer_text   = $settings['design_color_footer_text']   ?? '#ffffff';
             $d_font_body     = $settings['design_font_body']           ?? 'system';
-            $d_font_heading  = $settings['design_font_heading']        ?? 'inherit';
+            $d_font_heading  = $settings['design_font_heading']        ?? 'playfair';
             $d_font_size     = $settings['design_font_size']           ?? 'comfortable';
             $d_heading_scale = $settings['design_heading_scale']       ?? 'normal';
             $d_content_width = $settings['design_content_width']       ?? 'standard';
 
             // Font options — curated list of web-safe + Google Fonts that are
             // clean, readable, and appropriate for a society website.
-            $font_options = [
-                'system'       => 'System Default',
-                'georgia'      => 'Georgia',
-                'palatino'     => 'Palatino',
-                'garamond'     => 'EB Garamond',
-                'merriweather' => 'Merriweather',
-                'lora'         => 'Lora',
-                'roboto'       => 'Roboto',
-                'open-sans'    => 'Open Sans',
-                'source-sans'  => 'Source Sans 3',
-                'nunito'       => 'Nunito',
-            ];
+            // WHY: Single source via sp_get_font_display_labels() so adding a
+            //      font to the master list automatically appears everywhere.
+            $font_options = sp_get_font_display_labels();
 
             // Heading font has an extra "Same as body" option
-            $heading_font_options = [ 'inherit' => 'Same as Body Font' ] + $font_options;
+            $heading_font_options = [ 'inherit' => __( 'Same as Body Font', 'societypress' ) ] + $font_options;
 
             // ---- STYLE PRESETS ----
             // WHY: Harold doesn't want to pick 7 colors and 2 fonts from scratch.
@@ -26782,6 +27719,124 @@ function sp_render_settings_design_page(): void {
                 </table>
             </div>
 
+            <!-- ---- HOMEPAGE HERO SECTION ---- -->
+            <!-- WHY: The front page hero is the first thing visitors see.
+                 Harold controls every aspect of it from here — background
+                 type (video, image, or none), headline, subtitle, CTA button,
+                 overlay darkness, and height. No code needed. -->
+            <div class="sp-design-section">
+                <h2 class="sp-design-section-heading"><?php esc_html_e( 'Homepage Hero', 'societypress' ); ?></h2>
+                <p class="description sp-design-section-desc"><?php esc_html_e( 'Configure the full-screen hero section on your homepage. This is the first thing visitors see.', 'societypress' ); ?></p>
+
+                <?php
+                $hero_type     = $settings['homepage_hero_type']      ?? 'image';
+                $hero_media    = $settings['homepage_hero_media']     ?? '';
+                $hero_poster   = $settings['homepage_hero_poster']    ?? '';
+                $hero_headline = $settings['homepage_hero_headline']  ?? '';
+                $hero_subtitle = $settings['homepage_hero_subtitle']  ?? '';
+                $hero_cta_text = $settings['homepage_hero_cta_text']  ?? '';
+                $hero_cta_url  = $settings['homepage_hero_cta_url']   ?? '';
+                $hero_overlay  = (int) ( $settings['homepage_hero_overlay'] ?? 40 );
+                $hero_height   = $settings['homepage_hero_height']    ?? 'fullscreen';
+                ?>
+
+                <table class="form-table" role="presentation">
+                    <tr>
+                        <th scope="row"><?php esc_html_e( 'Background Type', 'societypress' ); ?></th>
+                        <td>
+                            <select name="societypress_settings[homepage_hero_type]" class="sp-design-control">
+                                <option value="image" <?php selected( $hero_type, 'image' ); ?>><?php esc_html_e( 'Image', 'societypress' ); ?></option>
+                                <option value="video" <?php selected( $hero_type, 'video' ); ?>><?php esc_html_e( 'Video', 'societypress' ); ?></option>
+                                <option value="none" <?php selected( $hero_type, 'none' ); ?>><?php esc_html_e( 'No Hero', 'societypress' ); ?></option>
+                            </select>
+                            <p class="description"><?php esc_html_e( 'Choose the type of background for your homepage hero section.', 'societypress' ); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><?php esc_html_e( 'Background Media URL', 'societypress' ); ?></th>
+                        <td>
+                            <input type="url" name="societypress_settings[homepage_hero_media]"
+                                   value="<?php echo esc_attr( $hero_media ); ?>"
+                                   class="regular-text sp-design-control"
+                                   placeholder="<?php esc_attr_e( 'Upload or paste image/video URL', 'societypress' ); ?>">
+                            <button type="button" class="button sp-media-upload-btn"
+                                    data-target="societypress_settings[homepage_hero_media]"><?php esc_html_e( 'Upload', 'societypress' ); ?></button>
+                            <p class="description"><?php esc_html_e( 'For video, use .mp4, .webm, or .ogg. For images, use .jpg, .png, or .webp.', 'societypress' ); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><?php esc_html_e( 'Video Poster Image', 'societypress' ); ?></th>
+                        <td>
+                            <input type="url" name="societypress_settings[homepage_hero_poster]"
+                                   value="<?php echo esc_attr( $hero_poster ); ?>"
+                                   class="regular-text sp-design-control"
+                                   placeholder="<?php esc_attr_e( 'Shown while video loads', 'societypress' ); ?>">
+                            <button type="button" class="button sp-media-upload-btn"
+                                    data-target="societypress_settings[homepage_hero_poster]"><?php esc_html_e( 'Upload', 'societypress' ); ?></button>
+                            <p class="description"><?php esc_html_e( 'A still image shown while the video loads, and on mobile devices. Only used when Background Type is Video.', 'societypress' ); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><?php esc_html_e( 'Headline', 'societypress' ); ?></th>
+                        <td>
+                            <input type="text" name="societypress_settings[homepage_hero_headline]"
+                                   value="<?php echo esc_attr( $hero_headline ); ?>"
+                                   class="regular-text sp-design-control"
+                                   placeholder="<?php echo esc_attr( $settings['organization_name'] ?? get_bloginfo( 'name' ) ); ?>">
+                            <p class="description"><?php esc_html_e( 'Large text in the hero. Defaults to your organization name if left blank.', 'societypress' ); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><?php esc_html_e( 'Subtitle', 'societypress' ); ?></th>
+                        <td>
+                            <input type="text" name="societypress_settings[homepage_hero_subtitle]"
+                                   value="<?php echo esc_attr( $hero_subtitle ); ?>"
+                                   class="regular-text sp-design-control"
+                                   placeholder="<?php esc_attr_e( 'e.g. Preserving our heritage since 1965', 'societypress' ); ?>">
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><?php esc_html_e( 'CTA Button Text', 'societypress' ); ?></th>
+                        <td>
+                            <input type="text" name="societypress_settings[homepage_hero_cta_text]"
+                                   value="<?php echo esc_attr( $hero_cta_text ); ?>"
+                                   class="sp-design-control"
+                                   placeholder="<?php esc_attr_e( 'e.g. Learn More', 'societypress' ); ?>"
+                                   style="width: 200px;">
+                            <input type="url" name="societypress_settings[homepage_hero_cta_url]"
+                                   value="<?php echo esc_attr( $hero_cta_url ); ?>"
+                                   class="sp-design-control"
+                                   placeholder="<?php esc_attr_e( 'Button link URL', 'societypress' ); ?>"
+                                   style="width: 300px; margin-left: 8px;">
+                            <p class="description"><?php esc_html_e( 'Leave both blank to hide the button.', 'societypress' ); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><?php esc_html_e( 'Overlay Darkness', 'societypress' ); ?></th>
+                        <td>
+                            <input type="range" name="societypress_settings[homepage_hero_overlay]"
+                                   value="<?php echo esc_attr( $hero_overlay ); ?>"
+                                   min="0" max="80" step="5"
+                                   class="sp-design-control"
+                                   style="width: 200px; vertical-align: middle;">
+                            <span class="description" style="margin-left: 8px;"><?php echo esc_html( $hero_overlay ); ?>%</span>
+                            <p class="description"><?php esc_html_e( 'How dark the overlay is over the background. Higher = darker = easier to read text.', 'societypress' ); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><?php esc_html_e( 'Hero Height', 'societypress' ); ?></th>
+                        <td>
+                            <select name="societypress_settings[homepage_hero_height]" class="sp-design-control">
+                                <option value="fullscreen" <?php selected( $hero_height, 'fullscreen' ); ?>><?php esc_html_e( 'Full Screen (100vh)', 'societypress' ); ?></option>
+                                <option value="large" <?php selected( $hero_height, 'large' ); ?>><?php esc_html_e( 'Large (80vh)', 'societypress' ); ?></option>
+                                <option value="medium" <?php selected( $hero_height, 'medium' ); ?>><?php esc_html_e( 'Medium (60vh)', 'societypress' ); ?></option>
+                                <option value="small" <?php selected( $hero_height, 'small' ); ?>><?php esc_html_e( 'Small (45vh)', 'societypress' ); ?></option>
+                            </select>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+
             <!-- ---- LIVE PREVIEW ---- -->
             <!-- WHY a live preview: Harold needs to see what his changes
                  look like before committing to them. This iframe loads
@@ -26915,15 +27970,21 @@ function sp_render_settings_design_page(): void {
         // PHP version is critical — if you add a font, add it in both places.
         var fontMap = {
             'system':       "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif",
+            'inter':        '"Inter", sans-serif',
             'georgia':      "Georgia, 'Times New Roman', serif",
             'palatino':     "'Palatino Linotype', 'Book Antiqua', Palatino, serif",
             'garamond':     "'EB Garamond', Georgia, serif",
             'merriweather': "Merriweather, Georgia, serif",
             'lora':         "Lora, Georgia, serif",
+            'playfair':     "'Playfair Display', Georgia, serif",
+            'cormorant':    "'Cormorant Garamond', Garamond, Georgia, serif",
+            'crimson':      "'Crimson Text', Georgia, serif",
             'roboto':       "Roboto, -apple-system, BlinkMacSystemFont, sans-serif",
             'open-sans':    "'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif",
             'source-sans':  "'Source Sans 3', -apple-system, BlinkMacSystemFont, sans-serif",
-            'nunito':       "Nunito, -apple-system, BlinkMacSystemFont, sans-serif"
+            'nunito':       "Nunito, -apple-system, BlinkMacSystemFont, sans-serif",
+            'lato':         '"Lato", sans-serif',
+            'poppins':      "Poppins, -apple-system, BlinkMacSystemFont, sans-serif"
         };
 
         // Google Fonts that need loading via <link> tag (web-safe fonts don't)
@@ -26931,10 +27992,14 @@ function sp_render_settings_design_page(): void {
             'garamond':     'EB+Garamond:wght@400;500;600;700',
             'merriweather': 'Merriweather:wght@400;700',
             'lora':         'Lora:wght@400;500;600;700',
+            'playfair':     'Playfair+Display:wght@400;500;600;700',
+            'cormorant':    'Cormorant+Garamond:wght@300;400;500;600;700',
+            'crimson':      'Crimson+Text:wght@400;600;700',
             'roboto':       'Roboto:wght@400;500;700',
             'open-sans':    'Open+Sans:wght@400;500;600;700',
             'source-sans':  'Source+Sans+3:wght@400;500;600;700',
-            'nunito':       'Nunito:wght@400;500;600;700'
+            'nunito':       'Nunito:wght@400;500;600;700',
+            'poppins':      'Poppins:wght@300;400;500;600;700'
         };
 
         // Size/scale/width mappings (mirrors PHP)
@@ -27148,6 +28213,35 @@ function sp_render_settings_design_page(): void {
 
                 // Refresh the live preview
                 updatePreview();
+            });
+        });
+
+        // ---- Media upload buttons (for hero image/video) ----
+        // WHY: Harold needs to upload images and videos for the hero without
+        //      leaving the Design settings page. These buttons open the WordPress
+        //      media library and populate the adjacent URL input with the selected
+        //      file's URL. The data-target attribute tells us which input to fill.
+        document.querySelectorAll('.sp-media-upload-btn').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                var targetName = btn.getAttribute('data-target');
+                var targetInput = document.querySelector('input[name="' + targetName + '"]');
+
+                if (!targetInput || typeof wp === 'undefined' || !wp.media) return;
+
+                var frame = wp.media({
+                    title: '<?php echo esc_js( __( 'Select Media', 'societypress' ) ); ?>',
+                    multiple: false
+                });
+
+                frame.on('select', function() {
+                    var attachment = frame.state().get('selection').first().toJSON();
+                    targetInput.value = attachment.url;
+                    // Trigger change for live preview
+                    targetInput.dispatchEvent(new Event('change'));
+                });
+
+                frame.open();
             });
         });
 
@@ -30976,26 +32070,19 @@ function sp_ajax_member_detail(): void {
     }
 
     // Genealogy service profiles — links to external platforms.
-    // WHY: These are public-facing profile links that members chose to share.
-    // No privacy toggle needed — if they entered a URL, they want it shown.
-    $service_labels = [
-        'wikitree'     => 'WikiTree',
-        'familysearch' => 'FamilySearch',
-        'geni'         => 'Geni',
-        'werelate'     => 'WeRelate',
-        'ancestry'     => 'Ancestry',
-        'myheritage'   => 'MyHeritage',
-        'findagrave'   => 'Find A Grave',
-        '23andme'      => '23andMe',
-    ];
-    $gen_links = [];
-    foreach ( $service_labels as $key => $label ) {
-        $url = get_user_meta( $user_id, 'sp_genealogy_' . $key, true );
-        if ( $url ) {
-            $gen_links[] = [ 'label' => $label, 'url' => $url ];
+    // WHY: Members link their profiles on genealogy sites so other members can
+    //      find them. Only public profiles (is_public = 1) are shown in the modal.
+    //      Icons come from either a custom admin upload or Google Favicons API.
+    $gen_profiles = sp_get_member_genealogy_profiles( $user_id, true );
+    if ( $gen_profiles ) {
+        $gen_links = [];
+        foreach ( $gen_profiles as $gp ) {
+            $gen_links[] = [
+                'label'    => $gp->site_name,
+                'url'      => $gp->profile_url,
+                'icon_url' => sp_get_genealogy_site_icon_url( $gp ),
+            ];
         }
-    }
-    if ( $gen_links ) {
         $data['genealogy_services'] = $gen_links;
     }
 
@@ -31196,15 +32283,18 @@ function sp_directory_detail_script(): void {
                 html += '</div>';
             }
 
-            // Genealogy service profiles — external platform links
+            // Genealogy service profiles — external platform links with site icons
             if (d.genealogy_services && d.genealogy_services.length) {
                 html += '<div class="sp-member-detail-section">';
                 html += '<h3 class="sp-member-detail-section-title">Genealogy Profiles</h3>';
                 html += '<div class="sp-member-detail-gen-links">';
                 for (var gs = 0; gs < d.genealogy_services.length; gs++) {
                     var svc = d.genealogy_services[gs];
+                    var iconHtml = svc.icon_url
+                        ? '<img src="' + escHtml(svc.icon_url) + '" alt="" width="16" height="16" class="sp-gen-link-icon" loading="lazy" /> '
+                        : '';
                     html += '<a href="' + escHtml(svc.url) + '" target="_blank" rel="noopener noreferrer" class="sp-gen-link">'
-                          + escHtml(svc.label) + '</a>';
+                          + iconHtml + escHtml(svc.label) + '</a>';
                 }
                 html += '</div></div>';
             }
@@ -31423,7 +32513,9 @@ function sp_directory_detail_styles(): void {
             gap: 8px;
         }
         .sp-gen-link {
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
             padding: 4px 12px;
             font-size: 13px;
             background: var(--sp-color-primary, #0D1F3C);
@@ -31435,6 +32527,14 @@ function sp_directory_detail_styles(): void {
         .sp-gen-link:hover {
             opacity: 0.85;
             text-decoration: none !important;
+        }
+        .sp-gen-link-icon {
+            width: 16px;
+            height: 16px;
+            border-radius: 2px;
+            /* WHY: Slight brightness boost so favicons (often dark) are visible
+               against the dark primary-color pill background. */
+            filter: brightness(1.3);
         }
 
         /* ---- Clickable member name in the directory ---- */
@@ -33541,15 +34641,18 @@ add_filter( 'template_include', function ( $template ) {
         return $template;
     }
 
-    // If a child theme provides front-page.php and this IS the front page,
-    // let the child theme handle it — don't hijack with the Page Builder.
-    // WHY: Child themes need to be able to override the homepage layout.
-    //      The the society theme (and any future child theme) provides its own
-    //      front-page.php with a custom hero, sections, etc. Without this
-    //      check, the Page Builder always wins because it renders inline
-    //      before returning a blank template.
-    if ( is_front_page() && file_exists( get_stylesheet_directory() . '/front-page.php' ) && get_stylesheet() !== get_template() ) {
-        return $template;
+    // If front-page.php exists (parent or child theme) and this IS the front
+    // page, let the theme handle it — don't hijack with the Page Builder.
+    // WHY: The parent theme's front-page.php renders a cinematic hero section
+    //      above the page builder content. Child themes can override it too.
+    //      Without this check, the Page Builder always wins because it renders
+    //      inline before returning a blank template.
+    if ( is_front_page() ) {
+        $has_front_page = file_exists( get_stylesheet_directory() . '/front-page.php' )
+                       || file_exists( get_template_directory() . '/front-page.php' );
+        if ( $has_front_page ) {
+            return $template;
+        }
     }
 
     // Enqueue frontend styles
@@ -65909,6 +67012,17 @@ function sp_privacy_export_member_data( string $email_address, int $page = 1 ): 
     if ( $member->dir_show_photo )   $dir[] = __( 'Photo', 'societypress' );
     $data[] = [ 'name' => __( 'Directory Visibility', 'societypress' ), 'value' => $dir ? implode( ', ', $dir ) : __( '(all hidden)', 'societypress' ) ];
 
+    // Genealogy profile links — export all (public and private) for GDPR transparency
+    $gen_profiles = sp_get_member_genealogy_profiles( $user->ID, false );
+    if ( $gen_profiles ) {
+        $gen_values = [];
+        foreach ( $gen_profiles as $gp ) {
+            $visibility = $gp->is_public ? __( 'public', 'societypress' ) : __( 'private', 'societypress' );
+            $gen_values[] = $gp->site_name . ': ' . $gp->profile_url . ' (' . $visibility . ')';
+        }
+        $data[] = [ 'name' => __( 'Genealogy Profiles', 'societypress' ), 'value' => implode( "\n", $gen_values ) ];
+    }
+
     $export_items[] = [
         'group_id'          => 'societypress-member',
         'group_label'       => __( 'Membership Profile', 'societypress' ),
@@ -66101,6 +67215,13 @@ function sp_privacy_erase_member_data( string $email_address, int $page = 1 ): a
 
     $user = get_user_by( 'email', $email_address );
     if ( $user ) {
+        // Delete genealogy profile links (external URLs, no financial data to retain)
+        $wpdb->delete(
+            $wpdb->prefix . 'sp_member_genealogy_profiles',
+            [ 'member_id' => $user->ID ],
+            [ '%d' ]
+        );
+
         $deleted = $wpdb->delete(
             $wpdb->prefix . 'sp_members',
             [ 'user_id' => $user->ID ],

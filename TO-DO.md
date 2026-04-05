@@ -173,7 +173,31 @@ Architecture divergences from spec: function-based single-file (not OOP singleto
 
 ## Recently Completed
 
-### Completed This Session (v0.50d — 2026-04-02)
+### Completed This Session (v1.0.6 — 2026-04-04)
+
+**Genealogy Profiles Feature (new):**
+- [x] 2 new DB tables: sp_genealogy_sites (admin-configurable site list), sp_member_genealogy_profiles (per-member links with privacy)
+- [x] 26 default sites seeded across 7 categories (major platforms, cemetery/memorial, records, DNA testing, DNA analysis, software, general)
+- [x] One-time migration from old 8-service user_meta to new table structure
+- [x] 4 helper functions: sp_get_active_genealogy_sites, sp_get_member_genealogy_profiles, sp_get_genealogy_site_icon_url, sp_get_genealogy_site_categories
+- [x] Admin page (Members → Genealogy Sites): full CRUD, category grouping, activate/deactivate, delete protection for defaults, member count badges
+- [x] 3 AJAX handlers: save, toggle active, delete (nonce + capability checks)
+- [x] My Account rewritten: dynamic DB-driven form with category grouping, site favicons, per-profile visibility toggle
+- [x] Member detail modal: DB-driven with is_public filter, favicon icons in pill links
+- [x] Admin member edit: new Genealogy Profiles section with category grouping between Surnames and Preferences
+- [x] Cascade delete, GDPR export (all profiles with visibility status), GDPR erase all updated
+
+**Theme Polish:**
+- [x] Playfair Display added as default heading font (plus Cormorant Garamond, Crimson Text, Poppins)
+- [x] front-page.php: full-viewport cinematic hero with video/image/gradient, headline, subtitle, CTA, scroll indicator
+- [x] Footer rebuilt: 3-column layout (org info, quick links menu, social/tagline), copyright bar, footer menu registered
+- [x] Nav refined: uppercase, letter-spacing, CTA-style Join button treatment
+- [x] Typography polished: Playfair headings, font smoothing, tighter line-heights, refined blockquotes, hover transitions
+- [x] Homepage Hero settings section added to Design tab: type, media upload, poster, headline, subtitle, CTA, overlay slider, height
+- [x] CSS custom properties expanded: --sp-nav-font-size, --sp-nav-font-weight, --sp-header-padding wired to Design settings
+- [x] Font system unified: sp_get_font_display_labels() as single source for all dropdowns, 16-font list, all maps synced (PHP, Google Fonts, JS preview, builder)
+
+### Completed Previous Session (v0.50d — 2026-04-02)
 
 **Security Audit — 17 Issues Fixed:**
 - [x] CRIT: Settings JSON export now excludes all 6 payment credentials (was missing stripe_live_secret_key + all PayPal keys)

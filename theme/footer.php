@@ -2,16 +2,101 @@
 /**
  * Theme Footer
  *
- * WHY: Closes out the page structure opened in header.php. Includes a
- * simple copyright line and the wp_footer() call that WordPress needs
- * for scripts and admin bar functionality.
+ * WHY: A polished three-column footer that pulls from SocietyPress settings
+ * so it works out of the box without Harold configuring anything. Column 1
+ * shows the organization's name, address, and contact info (from Organization
+ * settings). Column 2 shows a footer navigation menu (registered in
+ * functions.php). Column 3 shows social media icons. Below all three,
+ * a copyright line and an optional "Powered by SocietyPress" credit.
+ *
+ * Everything is driven by CSS custom properties so colors and fonts are
+ * controllable from the Design settings page.
  *
  * @package SocietyPress
  */
+
+$sp = get_option( 'societypress_settings', [] );
+$org_name    = $sp['organization_name']    ?? get_bloginfo( 'name' );
+$org_address = $sp['organization_address'] ?? '';
+$org_phone   = $sp['organization_phone']   ?? '';
+$org_email   = $sp['organization_email']   ?? '';
 ?>
 
     <footer class="site-footer">
-        <p>&copy; <?php echo wp_date( 'Y' ); ?> <?php bloginfo( 'name' ); ?>. All rights reserved.</p>
+        <div class="footer-inner">
+
+            <!-- Column 1: Organization info -->
+            <div class="footer-col footer-col-info">
+                <h3 class="footer-heading"><?php echo esc_html( $org_name ); ?></h3>
+                <?php if ( $org_address ) : ?>
+                    <p class="footer-text"><?php echo nl2br( esc_html( $org_address ) ); ?></p>
+                <?php endif; ?>
+                <?php if ( $org_phone ) : ?>
+                    <p class="footer-text">
+                        <a href="tel:<?php echo esc_attr( preg_replace( '/[^0-9+]/', '', $org_phone ) ); ?>">
+                            <?php echo esc_html( $org_phone ); ?>
+                        </a>
+                    </p>
+                <?php endif; ?>
+                <?php if ( $org_email ) : ?>
+                    <p class="footer-text">
+                        <a href="mailto:<?php echo esc_attr( $org_email ); ?>">
+                            <?php echo esc_html( $org_email ); ?>
+                        </a>
+                    </p>
+                <?php endif; ?>
+            </div>
+
+            <!-- Column 2: Footer navigation menu -->
+            <div class="footer-col footer-col-nav">
+                <?php if ( has_nav_menu( 'footer' ) ) : ?>
+                    <h3 class="footer-heading"><?php esc_html_e( 'Quick Links', 'societypress' ); ?></h3>
+                    <?php
+                    wp_nav_menu([
+                        'theme_location' => 'footer',
+                        'container'      => 'nav',
+                        'container_class' => 'footer-nav',
+                        'depth'          => 1,
+                        'fallback_cb'    => false,
+                    ]);
+                    ?>
+                <?php elseif ( has_nav_menu( 'primary' ) ) : ?>
+                    <!-- WHY: Fall back to the primary menu if no footer menu is set.
+                         This way the footer has useful links on day one without
+                         Harold needing to create a second menu. -->
+                    <h3 class="footer-heading"><?php esc_html_e( 'Quick Links', 'societypress' ); ?></h3>
+                    <?php
+                    wp_nav_menu([
+                        'theme_location' => 'primary',
+                        'container'      => 'nav',
+                        'container_class' => 'footer-nav',
+                        'depth'          => 1,
+                        'fallback_cb'    => false,
+                    ]);
+                    ?>
+                <?php endif; ?>
+            </div>
+
+            <!-- Column 3: Social media & connect -->
+            <div class="footer-col footer-col-social">
+                <h3 class="footer-heading"><?php esc_html_e( 'Connect', 'societypress' ); ?></h3>
+                <?php if ( function_exists( 'sp_social_icons' ) ) : ?>
+                    <?php sp_social_icons( 'footer' ); ?>
+                <?php endif; ?>
+                <p class="footer-text footer-tagline">
+                    <?php echo esc_html( get_bloginfo( 'description' ) ?: '' ); ?>
+                </p>
+            </div>
+
+        </div>
+
+        <!-- Bottom bar: copyright + powered-by -->
+        <div class="footer-bottom">
+            <p>
+                &copy; <?php echo wp_date( 'Y' ); ?> <?php echo esc_html( $org_name ); ?>.
+                <?php esc_html_e( 'All rights reserved.', 'societypress' ); ?>
+            </p>
+        </div>
     </footer>
 
 </div><!-- .site -->
@@ -75,14 +160,6 @@
     trigger.setAttribute('aria-expanded', 'false');
 
     trigger.addEventListener('click', function(e) {
-        /* WHY preventDefault: The trigger is an <a> linking to My Account.
-           On touch devices we want the FIRST tap to open the dropdown, not
-           navigate away. Desktop mouse users can still hover to see the
-           dropdown and click the link to navigate — the click handler only
-           toggles the class, so if :hover already shows the dropdown, the
-           link still works on the second click. On touch, the first tap
-           opens the menu; tapping a menu item navigates. If users want
-           My Account, it's in the dropdown. */
         e.preventDefault();
 
         var isOpen = menu.classList.toggle('sp-user-open');

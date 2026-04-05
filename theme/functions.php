@@ -23,7 +23,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'SOCIETYPRESS_THEME_VERSION', '1.0.5' );
+define( 'SOCIETYPRESS_THEME_VERSION', '1.0.6' );
 
 
 // ============================================================================
@@ -64,9 +64,10 @@ add_action( 'after_setup_theme', function () {
         'flex-width'  => true,
     ]);
 
-    // Register the primary navigation menu (appears in the header)
+    // Register navigation menus
     register_nav_menus([
-        'primary' => 'Primary Navigation',
+        'primary' => __( 'Primary Navigation', 'societypress' ),
+        'footer'  => __( 'Footer Links', 'societypress' ),
     ]);
 });
 

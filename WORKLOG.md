@@ -1,4 +1,23 @@
 # SocietyPress — WORKLOG
+## v1.0.6 — 2026-04-04
+
+### Session: Genealogy Profiles + Theme Polish
+
+**Genealogy Profiles** — replaced the hardcoded 8-service user_meta system with a proper admin-configurable platform. 2 new tables (sp_genealogy_sites, sp_member_genealogy_profiles), 26 default sites across 7 categories, per-link privacy toggles, admin management page with CRUD, favicon icons in the member directory modal, My Account form rewritten with category grouping. Migration from old user_meta runs automatically. GDPR export/erase and cascade delete all updated.
+
+**Theme Overhaul** — built toward "polished enough to impress at first glance":
+- Created front-page.php with full-viewport cinematic hero (video/image/gradient backgrounds, dark overlay, headline, subtitle, CTA button, scroll indicator)
+- Rebuilt footer: 3-column grid (org info from settings, quick links menu, social icons), copyright bar, new footer menu location
+- Refined nav: uppercase with letter-spacing, CTA-style accent treatment for Join
+- Set Playfair Display as default heading font — elegant serif that reads "heritage"
+- Added 4 new Google Fonts: Playfair Display, Cormorant Garamond, Crimson Text, Poppins
+- Unified all font dropdowns via sp_get_font_display_labels() — one source of truth
+- Homepage Hero section added to Design settings: background type, media upload, poster, headline, subtitle, CTA, overlay darkness slider, height selector
+- CSS custom properties expanded for nav font/weight/header padding
+- Typography refined throughout: font smoothing, tighter heading line-heights, hover transitions, refined blockquotes
+
+---
+
 ## v1.0.4 — 2026-04-03
 
 ### Session: Remaining Accessibility + Security Fixes

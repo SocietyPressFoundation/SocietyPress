@@ -9682,6 +9682,480 @@ add_action( 'wp_ajax_sp_update_parent_theme', function () {
 
 
 // ============================================================================
+// GETTING STARTED CHECKLIST
+// ============================================================================
+
+/**
+ * Define the getting-started checklist steps.
+ *
+ * WHY: After a fresh install Harold lands on the dashboard with everything at
+ *      zero. This checklist walks him through the essential setup steps in a
+ *      logical order so he doesn't have to guess what to configure first.
+ *      Each step links directly to the relevant settings page.
+ *
+ * @return array Ordered array of step definitions.
+ */
+function sp_getting_started_steps(): array {
+    return [
+        'website' => [
+            'label' => __( 'Review your website settings', 'societypress' ),
+            'url'   => admin_url( 'admin.php?page=sp-settings-website' ),
+        ],
+        'organization' => [
+            'label' => __( 'Confirm your organization details', 'societypress' ),
+            'url'   => admin_url( 'admin.php?page=sp-settings-organization' ),
+        ],
+        'membership' => [
+            'label' => __( 'Set up membership rules', 'societypress' ),
+            'url'   => admin_url( 'admin.php?page=sp-settings-membership' ),
+        ],
+        'directory' => [
+            'label' => __( 'Configure your member directory', 'societypress' ),
+            'url'   => admin_url( 'admin.php?page=sp-settings-directory' ),
+        ],
+        'events' => [
+            'label' => __( 'Configure events', 'societypress' ),
+            'url'   => admin_url( 'admin.php?page=sp-settings-events' ),
+        ],
+        'privacy' => [
+            'label' => __( 'Set up your privacy policy', 'societypress' ),
+            'url'   => admin_url( 'admin.php?page=sp-settings-privacy' ),
+        ],
+        'modules' => [
+            'label' => __( 'Choose which features to enable', 'societypress' ),
+            'url'   => admin_url( 'admin.php?page=sp-settings-modules' ),
+        ],
+        'members' => [
+            'label'    => __( 'Import your members or create membership tiers', 'societypress' ),
+            'url'      => admin_url( 'admin.php?page=sp-import' ),
+            'alt_url'  => admin_url( 'admin.php?page=sp-member-tiers' ),
+            'alt_text' => __( 'Create tiers instead', 'societypress' ),
+        ],
+        'themes' => [
+            'label' => __( 'Pick a theme', 'societypress' ),
+            'url'   => admin_url( 'admin.php?page=sp-themes' ),
+        ],
+        'design' => [
+            'label' => __( 'Customize your design', 'societypress' ),
+            'url'   => admin_url( 'admin.php?page=sp-settings-design' ),
+        ],
+    ];
+}
+
+/**
+ * Check whether a getting-started step has been completed.
+ *
+ * WHY: Each step is marked complete when Harold explicitly saves that settings
+ *      page. Even though the installer pre-fills some data (org name, membership
+ *      period), we want Harold to visit each page and review the full settings.
+ *      Two exceptions use dynamic checks instead of explicit tracking:
+ *        - Privacy: checks if a published privacy policy page exists
+ *        - Members: checks if members or tiers exist in the database
+ *
+ * @param string $step Step slug.
+ * @return bool Whether the step is complete.
+ */
+function sp_is_getting_started_step_complete( string $step ): bool {
+    // All steps use explicit completion tracking. We deliberately avoid dynamic
+    // data checks (e.g., "do tiers exist?") because the activation hook seeds
+    // default data, and WordPress creates a draft privacy policy page during
+    // install. Those would give Harold false credit for steps he never reviewed.
+    $completed = get_option( 'sp_getting_started', [] );
+    return ! empty( $completed[ $step ] );
+}
+
+/**
+ * Mark a getting-started step as complete.
+ *
+ * @param string $step Step slug.
+ */
+function sp_complete_getting_started_step( string $step ): void {
+    $completed = get_option( 'sp_getting_started', [] );
+    if ( empty( $completed[ $step ] ) ) {
+        $completed[ $step ] = true;
+        update_option( 'sp_getting_started', $completed, false );
+    }
+}
+
+/**
+ * Detect settings page saves and mark the corresponding getting-started step.
+ *
+ * WHY: We hook into admin_init to catch the redirect after a successful save.
+ *      Settings API pages redirect with ?settings-updated=true, the modules
+ *      page uses ?saved=1, and the themes page uses ?activated=slug. Each of
+ *      these indicates Harold has explicitly reviewed and saved that page.
+ */
+add_action( 'admin_init', function () {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+
+    // Already dismissed — no point tracking further
+    if ( get_option( 'sp_getting_started_dismissed' ) ) {
+        return;
+    }
+
+    $page = $_GET['page'] ?? '';
+
+    // Settings API pages: WordPress redirects with ?settings-updated=true
+    if ( ! empty( $_GET['settings-updated'] ) ) {
+        $settings_map = [
+            'sp-settings-website'      => 'website',
+            'sp-settings-organization' => 'organization',
+            'sp-settings-membership'   => 'membership',
+            'sp-settings-directory'    => 'directory',
+            'sp-settings-events'       => 'events',
+            'sp-settings-privacy'      => 'privacy',
+            'sp-settings-design'       => 'design',
+        ];
+        if ( isset( $settings_map[ $page ] ) ) {
+            sp_complete_getting_started_step( $settings_map[ $page ] );
+        }
+    }
+
+    // Modules page: custom save handler redirects with ?saved=1
+    if ( $page === 'sp-settings-modules' && ! empty( $_GET['saved'] ) ) {
+        sp_complete_getting_started_step( 'modules' );
+    }
+
+    // Themes page: mark complete when Harold visits. Even if he doesn't
+    // switch themes, reviewing the options and keeping the default counts.
+    if ( $page === 'sp-themes' ) {
+        sp_complete_getting_started_step( 'themes' );
+    }
+}, 5 );
+
+/**
+ * After saving a checklist-related settings page, show a "Continue setting up"
+ * link that takes Harold back to the dashboard checklist.
+ *
+ * WHY: Harold is working through a checklist. After saving a settings page he
+ *      needs an easy way back to the checklist without hunting for the
+ *      SocietyPress menu item. This only shows while the getting-started
+ *      banner is still active — once dismissed, there's no checklist to
+ *      return to.
+ */
+add_action( 'admin_notices', function (): void {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+    if ( get_option( 'sp_getting_started_dismissed' ) ) {
+        return;
+    }
+
+    $page     = $_GET['page'] ?? '';
+    $is_save  = ! empty( $_GET['settings-updated'] ) || ! empty( $_GET['saved'] ) || ! empty( $_GET['activated'] );
+
+    // All pages that correspond to checklist steps
+    $checklist_pages = [
+        'sp-settings-website',
+        'sp-settings-organization',
+        'sp-settings-membership',
+        'sp-settings-directory',
+        'sp-settings-events',
+        'sp-settings-privacy',
+        'sp-settings-design',
+        'sp-settings-modules',
+        'sp-themes',
+    ];
+
+    if ( ! $is_save || ! in_array( $page, $checklist_pages, true ) ) {
+        return;
+    }
+
+    $dashboard_url = admin_url( 'admin.php?page=societypress' );
+    ?>
+    <div class="notice notice-info is-dismissible" style="padding: 8px 12px;">
+        <a href="<?php echo esc_url( $dashboard_url ); ?>" style="text-decoration: none;">
+            <?php esc_html_e( 'Continue setting up your site', 'societypress' ); ?> &rarr;
+        </a>
+    </div>
+    <?php
+}, 20 );
+
+/**
+ * AJAX: Dismiss the getting-started banner permanently.
+ *
+ * WHY: Harold can click "I've got this" to hide the banner at any time,
+ *      or it auto-dismisses after all steps are complete and shown once.
+ */
+add_action( 'wp_ajax_sp_dismiss_getting_started', function () {
+    if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_getting_started_nonce' ) ) {
+        wp_send_json_error();
+    }
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error();
+    }
+    update_option( 'sp_getting_started_dismissed', 1, false );
+    wp_send_json_success();
+} );
+
+/**
+ * Render the getting-started checklist banner on the dashboard.
+ *
+ * WHY: This is the first thing Harold sees after install. Instead of staring
+ *      at a blank dashboard with all-zero stats, he gets a clear, ordered list
+ *      of what to set up. Each item links to the relevant page. Items check
+ *      themselves off as Harold completes them. Once all items are checked,
+ *      the banner lingers one more page load so Harold can see the fully-
+ *      completed checklist, then auto-dismisses.
+ */
+function sp_render_getting_started_banner(): void {
+    // Don't show if dismissed or if user isn't an admin
+    if ( get_option( 'sp_getting_started_dismissed' ) || ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+
+    $steps      = sp_getting_started_steps();
+    $completed  = 0;
+    $total      = count( $steps );
+
+    foreach ( $steps as $slug => $step ) {
+        if ( sp_is_getting_started_step_complete( $slug ) ) {
+            $completed++;
+        }
+    }
+
+    $all_done = ( $completed === $total );
+
+    // Auto-dismiss: if all steps were already shown as complete on a previous
+    // load, dismiss the banner now. This gives Harold one page load to see
+    // the fully-checked list before it disappears.
+    if ( $all_done && get_option( 'sp_getting_started_all_shown' ) ) {
+        update_option( 'sp_getting_started_dismissed', 1, false );
+        return;
+    }
+
+    // If all done, set the flag so NEXT load auto-dismisses
+    if ( $all_done ) {
+        update_option( 'sp_getting_started_all_shown', 1, false );
+    }
+
+    $nonce = wp_create_nonce( 'sp_getting_started_nonce' );
+    ?>
+
+    <style>
+        .sp-getting-started {
+            background: #fff;
+            border: 1px solid #c3c4c7;
+            border-left: 4px solid #2271b1;
+            border-radius: 4px;
+            padding: 20px 24px;
+            margin: 16px 0;
+        }
+        .sp-getting-started-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 16px;
+        }
+        .sp-getting-started-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1d2327;
+            margin: 0 0 4px;
+        }
+        .sp-getting-started-subtitle {
+            font-size: 13px;
+            color: #646970;
+            margin: 0;
+        }
+        .sp-getting-started-dismiss {
+            background: none;
+            border: none;
+            color: #2271b1;
+            cursor: pointer;
+            font-size: 13px;
+            padding: 0;
+            text-decoration: underline;
+            white-space: nowrap;
+        }
+        .sp-getting-started-dismiss:hover {
+            color: #135e96;
+        }
+        .sp-getting-started-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        .sp-getting-started-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 0;
+            border-bottom: 1px solid #f0f0f1;
+            font-size: 13px;
+        }
+        .sp-getting-started-item:last-child {
+            border-bottom: none;
+        }
+        .sp-getting-started-check {
+            flex-shrink: 0;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+        .sp-getting-started-check-pending {
+            border: 2px solid #c3c4c7;
+            color: #c3c4c7;
+        }
+        .sp-getting-started-check-done {
+            background: #00a32a;
+            border: 2px solid #00a32a;
+            color: #fff;
+        }
+        .sp-getting-started-item-done .sp-getting-started-link {
+            color: #646970;
+            text-decoration: line-through;
+        }
+        .sp-getting-started-link {
+            color: #2271b1;
+            text-decoration: none;
+        }
+        .sp-getting-started-link:hover {
+            text-decoration: underline;
+        }
+        .sp-getting-started-alt {
+            color: #646970;
+            font-size: 12px;
+        }
+        .sp-getting-started-alt a {
+            color: #2271b1;
+        }
+        .sp-getting-started-progress {
+            margin-top: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .sp-getting-started-bar-track {
+            flex: 1;
+            height: 8px;
+            background: #f0f0f1;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .sp-getting-started-bar-fill {
+            height: 100%;
+            background: #00a32a;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+        .sp-getting-started-count {
+            font-size: 12px;
+            color: #646970;
+            white-space: nowrap;
+        }
+        .sp-getting-started-done-msg {
+            margin-top: 12px;
+            padding: 10px 14px;
+            background: #edfaef;
+            border: 1px solid #00a32a;
+            border-radius: 4px;
+            color: #00a32a;
+            font-size: 13px;
+            font-weight: 500;
+        }
+    </style>
+
+    <div id="sp-getting-started" class="sp-getting-started">
+        <div class="sp-getting-started-header">
+            <div>
+                <h2 class="sp-getting-started-title">
+                    <?php if ( $all_done ) : ?>
+                        <?php esc_html_e( 'Setup Complete', 'societypress' ); ?>
+                    <?php else : ?>
+                        <?php esc_html_e( 'Getting Started', 'societypress' ); ?>
+                    <?php endif; ?>
+                </h2>
+                <?php if ( ! $all_done ) : ?>
+                    <p class="sp-getting-started-subtitle">
+                        <?php esc_html_e( 'Walk through each step to get your site ready.', 'societypress' ); ?>
+                    </p>
+                <?php endif; ?>
+            </div>
+            <button type="button" class="sp-getting-started-dismiss" id="sp-dismiss-getting-started">
+                <?php if ( $all_done ) : ?>
+                    <?php esc_html_e( 'Close', 'societypress' ); ?>
+                <?php else : ?>
+                    <?php esc_html_e( "I've got this", 'societypress' ); ?>
+                <?php endif; ?>
+            </button>
+        </div>
+
+        <ol class="sp-getting-started-list">
+            <?php foreach ( $steps as $slug => $step ) :
+                $done = sp_is_getting_started_step_complete( $slug );
+            ?>
+                <li class="sp-getting-started-item <?php echo $done ? 'sp-getting-started-item-done' : ''; ?>">
+                    <span class="sp-getting-started-check <?php echo $done ? 'sp-getting-started-check-done' : 'sp-getting-started-check-pending'; ?>">
+                        <?php echo $done ? '&#10003;' : ''; ?>
+                    </span>
+                    <span>
+                        <a href="<?php echo esc_url( $step['url'] ); ?>" class="sp-getting-started-link">
+                            <?php echo esc_html( $step['label'] ); ?>
+                        </a>
+                        <?php if ( ! empty( $step['alt_url'] ) && ! $done ) : ?>
+                            <span class="sp-getting-started-alt">
+                                &mdash;
+                                <a href="<?php echo esc_url( $step['alt_url'] ); ?>">
+                                    <?php echo esc_html( $step['alt_text'] ); ?>
+                                </a>
+                            </span>
+                        <?php endif; ?>
+                    </span>
+                </li>
+            <?php endforeach; ?>
+        </ol>
+
+        <div class="sp-getting-started-progress">
+            <div class="sp-getting-started-bar-track">
+                <div class="sp-getting-started-bar-fill" style="width: <?php echo esc_attr( round( ( $completed / $total ) * 100 ) ); ?>%;"></div>
+            </div>
+            <span class="sp-getting-started-count">
+                <?php printf(
+                    esc_html__( '%1$d of %2$d', 'societypress' ),
+                    $completed,
+                    $total
+                ); ?>
+            </span>
+        </div>
+
+        <?php if ( $all_done ) : ?>
+            <div class="sp-getting-started-done-msg">
+                <?php esc_html_e( "You're all set! Your site is ready to go.", 'societypress' ); ?>
+            </div>
+        <?php endif; ?>
+    </div>
+
+    <script>
+    (function() {
+        'use strict';
+        var btn = document.getElementById('sp-dismiss-getting-started');
+        var banner = document.getElementById('sp-getting-started');
+        if ( ! btn || ! banner ) return;
+
+        btn.addEventListener('click', function() {
+            banner.style.transition = 'opacity 0.3s ease';
+            banner.style.opacity = '0';
+            setTimeout(function() { banner.style.display = 'none'; }, 300);
+
+            var data = new FormData();
+            data.append('action', 'sp_dismiss_getting_started');
+            data.append('nonce', <?php echo wp_json_encode( $nonce ); ?>);
+            fetch(ajaxurl, { method: 'POST', body: data });
+        });
+    })();
+    </script>
+    <?php
+}
+
+
+// ============================================================================
 // DASHBOARD PAGE
 // ============================================================================
 
@@ -10023,6 +10497,15 @@ function sp_render_dashboard_page(): void {
             <?php endif; ?>
 
         <?php endif; ?>
+
+        <?php
+        // ---- Getting Started checklist banner ----
+        // WHY: On a fresh install the dashboard is all zeros. This banner gives
+        //      Harold a clear, ordered list of what to configure first. It sits
+        //      between the update banners and the stat cards so it's prominent
+        //      but doesn't replace the dashboard itself.
+        sp_render_getting_started_banner();
+        ?>
 
         <style>
             /* Dashboard stat cards — consistent sizing, clean layout */
@@ -15861,6 +16344,9 @@ add_action( 'wp_ajax_sp_import_members_batch', function () {
     //      (which contains PII) sitting in the uploads directory.
     if ( ! empty( $results['done'] ) ) {
         wp_delete_file( $temp_file );
+        // Mark the getting-started members step as complete now that
+        // Harold has successfully imported members.
+        sp_complete_getting_started_step( 'members' );
     }
 
     wp_send_json_success( $results );
@@ -39783,6 +40269,10 @@ add_action( 'wp_ajax_sp_save_membership_tier', function () {
             $tier_id = $wpdb->insert_id;
         }
     }
+
+    // Mark the getting-started members step as complete — Harold has
+    // explicitly created or edited a membership tier.
+    sp_complete_getting_started_step( 'members' );
 
     wp_send_json_success( [ 'id' => $tier_id ] );
 });
@@ -81183,10 +81673,13 @@ add_action( 'admin_notices', function (): void {
     if ( class_exists( 'bbPress' ) ) {
         return;
     }
-    // Don't nag about dependencies until the setup wizard is complete —
-    // Harold shouldn't see "install bbPress" before he's even finished
-    // telling us what his society is called.
+    // Don't nag about dependencies until Harold has finished initial setup.
+    // The wizard check covers the manual wizard flow; the getting-started
+    // check covers the installer flow where the wizard is skipped.
     if ( ! get_option( 'sp_wizard_completed' ) ) {
+        return;
+    }
+    if ( ! get_option( 'sp_getting_started_dismissed' ) ) {
         return;
     }
     // Only show to users who can install plugins — no point confusing editors

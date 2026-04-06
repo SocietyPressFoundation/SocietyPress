@@ -889,7 +889,7 @@ GENRECORD spec exists (`Docs/GENRECORD-SPEC.md`) but no code yet.
 
 ## Committees — Remaining
 
-- [ ] Dedicated admin menu entry for Committees (currently accessed through Governance — Harold may not find it)
+- [x] Committees menu — DECIDED: stays under "Leadership & Committees" in Governance. Officers and committees are the same workflow.
 
 ## Documentation — Not Started
 

@@ -24,9 +24,9 @@ The project exists to replace EasyNetSites (ENS), the legacy vendor that most ge
 | Location | Path |
 |----------|------|
 | Local git clone | `~/Documents/Development/Web/WordPress/SocietyPress/` |
-| Plugin file | `plugin/societypress.php` |
-| Parent theme | `theme/societypress/` |
-| Child theme | `theme-society/society/` |
+| Plugin file | `Code/plugin/societypress.php` |
+| Parent theme | `Code/theme/` |
+| Child themes | `Code/theme-heritage/`, `Code/theme-coastline/`, etc. |
 | Task tracking | `TO-DO.md` |
 | Version history | `WORKLOG.md` |
 | Architecture ref | `Docs/ARCHITECTURE.md` |
@@ -52,7 +52,7 @@ NEVER trust PHP `-r` one-liners via SSH — use `wp eval` instead.
 ## GitHub
 
 Repository: `societypress/SocietyPress`
-Structure: `plugin/societypress.php` + `theme/` + `theme-society/`
+Structure: `Code/plugin/societypress.php` + `Code/theme/` + 5 child themes in `Code/theme-*/`
 
 ## Version Numbering
 

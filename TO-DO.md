@@ -484,10 +484,104 @@ See `Docs/KNOWN-ISSUES.md` for the full list (43 items tracked, 41 fixed, 2 defe
 **i18n:**
 - [x] Comprehensive i18n pass (v0.38d): ~500+ strings wrapped across 4 agent passes, text domain appears 2,564+ times, estimated ~95% coverage
 - [x] Additional i18n pass (v0.50d): setup wizard (all 4 steps), speakers page, library catalog stats, blast email detail labels, donations, page editor buttons, join form rate limit message. ~40+ additional strings wrapped.
+- [x] i18n audit (2026-04-05): ~90 unwrapped strings found, ~65 fixed this session:
+  - Events edit page: 18 strings (Title label, Remove buttons, time slot labels, speaker role options in template, series text, submit button)
+  - Events import: 5 strings ($target_fields array of 21 mapping labels, error messages, preview text)
+  - Page builder: 8 strings (hero slider labels, widget picker heading/categories, "Add Widget" button)
+  - Member groups frontend: 7 strings ("Joined" badge, "Leader:" label, member count, Leave/Join buttons, "Contact Researcher", "Send Message")
+  - Setup wizard: 12 strings (month names array)
+  - Reports page: 4 strings ("Active Members", "X total", "This year", "X donors")
+  - Events frontend: 4 strings ("Available Sessions", "Full", "Registration", "Free")
+  - Member directory JS: 7 strings (section headings built in JS — Contact, Membership, Surnames, Groups, Interests, Skills, Genealogy Profiles)
+  - Misc: search_box calls (2), newsletter "Public" badge, email "Email Body" headings (2), audit log "System" label, export "Download CSV" button
+  - Placeholder attributes: 17 strings across various forms
+  - Default page content: ~10 strings (installed at activation)
+
+### Audit Findings (2026-04-05) — Security
+
+**Critical:**
+- [x] SEC-CRIT-1: PayPal webhook bypass — FIXED: reject when no webhook_id configured
+- [x] SEC-CRIT-2: iCal feed SSRF — FIXED: scheme validation + gethostbyname/FILTER_FLAG_NO_PRIV_RANGE
+
+**High:**
+- [x] SEC-HIGH-1: PayPal webhook fail-open — FIXED: explicit rejection on all verification failures
+- [x] SEC-HIGH-2: Health endpoint table leak — FIXED: table detail moved into manage_options block
+- [x] SEC-HIGH-3: DNS rebinding — FIXED: CURLOPT_RESOLVE pins validated IP so DNS can't flip between check and fetch
+- [x] SEC-HIGH-4: Store checkout login check — FIXED: is_user_logged_in() guard on both Stripe + PayPal checkout
+
+**Medium:**
+- [x] SEC-MED-1: Settings export secret exclusion — FIXED: ai_api_key, push_vapid_secret, zoom keys added to both export lists
+- [x] SEC-MED-2: iCal feed URL scheme — FIXED: http/https/webcal only (handled with SEC-CRIT-2)
+- [x] SEC-MED-3: Backup download path traversal — FIXED: realpath() validation
+- [x] SEC-MED-4: AI rate limit bypass — FIXED: per-IP enforcement added for logged-in users
+- [x] SEC-MED-5: Surname contact rate limiting — FIXED: 5/hour limit added + broken table query fixed (was querying nonexistent sp_member_contact, now uses get_userdata)
+- [x] SEC-MED-6: Month name escaping — FIXED: esc_html() + i18n wrapping
+- [x] SEC-MED-7: AI nonce ordering — FIXED: access/module checks before nonce so unauthorized callers rejected cheaply
+
+**Low:**
+- [x] SEC-LOW-1: Content-Disposition quoted filename — FIXED
+- [x] SEC-LOW-2: Newsletter metadata visibility — FIXED: non-logged-in visitors now only see public newsletters (titles, dates, covers of members-only issues hidden)
+- [x] SEC-LOW-3: IPv6 normalization — FIXED: inet_pton/inet_ntop on push subscribe rate limiter
+- [x] SEC-LOW-4: Backup table validation — FIXED: sp_backup_export_table validates against sp_backup_get_tables()
+- [x] SEC-LOW-5: Broken surname contact table query — FIXED (now uses get_userdata)
+
+### Audit Findings (2026-04-05) — Code Quality
+
+**Critical:**
+- [x] CODE-CRIT-1: Missing add_action() — FIXED: sp_admin_add_walkin + sp_generate_newsletter_cover registered
+- [x] CODE-CRIT-2: Secret keys in DOM — FIXED: all 8 fields now use masked bullet placeholder, sanitizers treat placeholder as "no change"
+- [x] CODE-CRIT-3: Empty key wipes credential — FIXED: all 8 sanitizers preserve existing value on empty/placeholder submit
+
+**Warnings:**
+- [x] CODE-WARN-1: Version mismatch — FIXED: header synced to 1.0.6
+- [x] CODE-WARN-2: Duplicate defaults keys — FIXED: removed duplicate entries
+- [x] CODE-WARN-3: sp_daily_maintenance deactivation — FIXED: added to wp_clear_scheduled_hook
+- [x] CODE-WARN-4: sp_daily_maintenance global scope — FIXED: wrapped in add_action('init')
+- [x] CODE-WARN-5: current_time('timestamp') — FIXED: replaced with time()
+- [x] CODE-WARN-6: Backup exception paths — FIXED: generic message for display, full error to error_log only
+- [x] CODE-WARN-7: Backup path traversal — FIXED (same as SEC-MED-3)
+
+### Audit Findings (2026-04-05) — UX / Accessibility
+
+**Critical:**
+- [x] UX-CRIT-1: `<main>` landmark — FIXED: page.php + front-page.php changed from div to main
+- [x] UX-CRIT-2: Member directory modal — FIXED: role="dialog", aria-modal, aria-labelledby, focus trap, focus restoration, close button i18n
+- [x] UX-CRIT-3: Login ack modal — FIXED: role="dialog", aria-modal, aria-labelledby, focus trap, "Important Notice" heading i18n
+- [x] UX-CRIT-4: Surname contact modal — FIXED: role="dialog", aria-modal, aria-labelledby, close aria-label, heading i18n, "Send Message" i18n, focus management, description i18n
+- [x] UX-CRIT-5: Newsletter PDF modal — FIXED: role="dialog", aria-modal, aria-labelledby, close aria-label, iframe title, focus trap, focus restoration
+
+**High:**
+- [x] UX-HIGH-1: Focus indicators — FIXED: outline: 2px solid accent on all input/textarea/select/date focus + search toggle
+- [x] UX-HIGH-2: Color contrast — FIXED: #999 → #767676 (25 instances), #888 → #6b6b6b (15 instances) in plugin + 1 in theme
+- [x] UX-HIGH-3: Surname repeater inputs — FIXED: aria-label on all 6 inputs in existing/empty/JS-added rows + placeholder i18n
+- [x] UX-HIGH-4: Theme builder modal — FIXED: role="dialog", aria-modal, aria-labelledby, focus on close button, focus restoration
+
+**Medium:**
+- [x] UX-MED-1: Committee accordion — FIXED: role="button", tabindex="0", aria-expanded, aria-controls, Enter/Space keydown
+- [x] UX-MED-2: Delete row actions — DEFERRED: `<a>` matches WordPress core list table convention; changing breaks WP admin CSS
+- [x] UX-MED-3: Wizard step indicators — FIXED: nav element, aria-label per step with status, aria-current="step"
+- [x] UX-MED-4: Theme card hover — FIXED: removed inline onmouseover/onmouseout, added CSS :hover/:focus-within
+- [x] UX-MED-5: Flyout focus outline — FIXED: outline: 2px solid rgba(255,255,255,0.8)
+- [x] UX-MED-6: Spinner screen-reader — FIXED: role="status" + aria-label on sync spinner
+- [x] UX-MED-7: Donation listbox arrow keys — FIXED: ArrowUp/Down/Left/Right navigation between campaign cards
+- [x] UX-MED-8: Password show/hide — FIXED: aria-pressed on all 4 toggle buttons
+- [x] UX-MED-9: Background videos — FIXED: aria-hidden="true" on plugin + theme videos
+- [x] UX-MED-10: Flyout aria-controls — FIXED: unique ids on flyout panels, aria-controls on headers
+- [x] UX-MED-11: Calendar pill contrast — FIXED: sp_hex_is_light() PHP luminance check, dark text on light backgrounds, applied to calendar pills + 3 event badge locations
+- [x] UX-MED-12: Search toggle focus — FIXED: :focus rule added
+
+**Low:**
+- [x] UX-LOW-1: "Add New" → "Add New Member" (members) and "Add New Event" (events)
+- [x] UX-LOW-2: Empty states — DEFERRED: admin-side, contextually obvious within widget config
+- [x] UX-LOW-3: Calendar empty cells — FIXED: role="gridcell" aria-hidden="true"
+- [x] UX-LOW-4: Member modal close aria-label — FIXED (done with UX-CRIT-2)
+- [x] UX-LOW-5: "Contact Researcher" heading — FIXED (done with UX-CRIT-4)
+- [x] UX-LOW-6: "Send Message" button — FIXED (done with UX-CRIT-4)
+- [x] UX-LOW-7: Newsletter modal close aria-label — FIXED (done with UX-CRIT-5)
 
 ---
 
-## Membership — Remaining
+## Membership — Complete
 
 - [x] Membership reports dashboard: trends, retention rates, tier breakdowns, expiring pipeline, CSV export — fully implemented in `sp_render_reports_page()` and `sp_render_membership_reports_page()`
 - [x] Member photo improvements:
@@ -534,7 +628,7 @@ See `Docs/KNOWN-ISSUES.md` for the full list (43 items tracked, 41 fixed, 2 defe
 - [x] Communication preference check: event reminders, update notifications, and cancellation emails now check `pref_email_events` on the member record. Registration confirmations always send (transactional). Renewal/expiration notices already checked `pref_email_notices`.
 - [x] Email template editor in admin with merge tag support — tabbed editor (Welcome, Renewal Reminder, Expiration Notice) with wp_editor, merge tag reference sidebar with click-to-copy, reset-to-default button, shares subject keys with existing Membership settings
 
-## Store — Remaining
+## Store — Complete
 
 - [x] Real marketing descriptions: `store_description` column on library_items, separate from physical description, store frontend prefers it with fallback (v1.0.2)
 - [x] Shopping cart / checkout flow: Full cart system — cart stored as user_meta (JSON), AJAX add/update/remove/get endpoints, store page "Add to Cart" buttons wired with JS (logged-in only, logged-out see "please log in"), cart badge in header (SVG cart icon with red count badge next to user menu, updates live via AJAX). Cart page (`sp-cart` template, auto-created on example.org): responsive table with cover images, +/- quantity buttons, remove links, real-time AJAX updates without page reload, "Continue Shopping" link, total display, "Proceed to Checkout" button. Mobile: stacked card layout.
@@ -542,7 +636,7 @@ See `Docs/KNOWN-ISSUES.md` for the full list (43 items tracked, 41 fixed, 2 defe
 - [x] Payment integration: Stripe Checkout for store — reuses existing Stripe REST API pattern (no SDK). Checkout AJAX creates order (status=pending), builds multi-line-item Stripe session, redirects to Stripe. Return handler verifies session, updates order to "paid", clears cart, sends confirmation email (HTML receipt with item table + total). Supports multiple items per checkout. Audit logging for order create + payment.
 - [x] Generalize store — replaced hardcoded `acq_code = 'Society Publication'` with configurable `store_acq_code` setting (Settings → Organization → Store). Intro text also configurable. Blank acq_code shows all priced items.
 
-## Payment Processing — Remaining
+## Payment Processing — Complete
 
 - [x] Stripe: card payments via Checkout Sessions — join form, event registration, and store all use `wp_remote_post()` to Stripe REST API (no SDK). Test/live mode toggle via settings. Store checkout sends multi-line-item sessions.
 - [x] PayPal integration: Join form (PayPal + Stripe buttons for paid tiers), event registration (already done), store checkout (already done), donations form (new sp-donate page template + page builder widget) (v1.0.2)
@@ -550,7 +644,7 @@ See `Docs/KNOWN-ISSUES.md` for the full list (43 items tracked, 41 fixed, 2 defe
 - [x] Payment history: `sp_orders` table tracks store purchases with Stripe session ID + payment intent. Event registrations track via `sp_event_registrations.payment_status`.
 - [x] Payment status tracking: orders have full lifecycle (pending → paid → shipped → completed → refunded), event registrations have payment_status + payment_date
 
-## Genealogical Records — Remaining
+## Genealogical Records — Needs Data
 
 - [ ] Needs real data imported — no collections populated yet
 - [ ] This is the EasyNetSites "Unified Data Module" equivalent — needs to deliver on parity claim
@@ -602,7 +696,7 @@ Existing wizard (4 steps): Org Info → Membership → Feature Selection → App
   - Ship the `.pot` in the repo so translators can grab it from GitHub
 - [x] Use WordPress date/time format settings for display dates — `get_option('date_format')` and `get_option('time_format')` used throughout with `wp_date()`
 
-## UX — Remaining
+## UX — Complete
 
 - [x] AJAX progress bars for long-running operations: batched imports with progress percentage, bulk delete with progress overlay — implemented via `sp_process_import_batch()` and AJAX progress handlers
 - [x] Alphabetize pages by name in the admin page list (v0.50d — default sort changed from menu_order to post_title)
@@ -610,7 +704,7 @@ Existing wizard (4 steps): Org Info → Membership → Feature Selection → App
 - [x] Media folders: organize Media Library items into folders for easier management — renamed to "Photos & Videos", nested folders (5 levels), YouTube video support, AJAX folder CRUD, breadcrumb navigation
 - [x] Child theme logo fallback: header.php checks for img/logo.svg or img/logo.png in child theme when no admin logo is set
 
-## Admin — Remaining
+## Admin — Complete
 
 - [x] Site health monitoring: REST API health-check endpoint (`/wp-json/societypress/v1/health`) — checks all 46 DB tables exist, 5 cron jobs scheduled, PHP/WP versions, libsodium. Returns 200 (ok) or 503 (degraded/error). No auth required for external uptime monitors. Pair with UptimeRobot free tier for downtime alerts.
 - [x] Admin dashboard: activity feed — recent 15 audit log entries with categorized icons (member/event/settings/email/volunteer), relative timestamps, user attribution. Full-width panel below the existing two-column dashboard layout.
@@ -626,7 +720,7 @@ Existing wizard (4 steps): Org Info → Membership → Feature Selection → App
   - [x] Backups admin page: list table with date/size/type/status, download/delete actions, settings form
   - [x] Audit logging for backup create/delete operations
 
-## Data Portability — Remaining
+## Data Portability — Complete
 
 Principle: Every piece of data a society puts into SocietyPress can come back out in a standard format, with one click, at any time, no questions asked. No export fees, no "contact us," no degraded exports. Your data is yours. Always.
 
@@ -649,7 +743,7 @@ Principle: Every piece of data a society puts into SocietyPress can come back ou
   - [x] Settings JSON (payment secrets excluded)
   - [x] README.txt explaining the archive structure
 - [x] Full site export now includes member profile photos (member-photos/ folder) and photo album media (photo-albums/ organized by album name) (v1.0.2)
-- [ ] Marketing: "Your data is yours" messaging on getsocietypress.org — front and center, not buried in a FAQ
+- [x] Marketing: "Your data is yours" messaging — see getsocietypress.org section below
 
 ## One-Click Installer — COMPLETE (separate project)
 
@@ -678,8 +772,8 @@ Single-file `install.php` that takes Harold from empty hosting to running Societ
 - [x] SocietyPress 0.38d active, parent theme active, 4 child themes installed, 57 tables
 - [x] Installed via the one-click installer (proving it works end-to-end)
 - [x] Remove the society data/theme from demo (v0.50d — switched to parent theme, removed society dir, renamed to "Heritage Valley Historical Society", cleared the society logo)
-- [ ] Sample data: fake society with members, events, records, newsletters
 - [x] Reset mechanism: `reset-demo.sh` script truncates all SP tables via wp eval-file, re-seeds defaults. `--full` flag deactivates/reactivates plugin for full activation hook run.
+- See "Demo Site — Remaining" section below for outstanding items.
 
 ## ENS Migration — Not Started
 
@@ -689,21 +783,7 @@ Single-file `install.php` that takes Harold from empty hosting to running Societ
   - Content pages: manual migration guidance (copy/paste is realistic for most societies)
 - [ ] Migration assistance as a selling point — reduce the switching-cost objection
 
-## getsocietypress.org — Remaining
-
-- [ ] Getting Started guide — illustrated walkthrough for non-technical admins:
-  1. Choose hosting (visual guide for top 3 hosts: Bluehost, SiteGround, DreamHost)
-  2. Create a MySQL database (screenshots from cPanel)
-  3. Upload install.php + societypress-bundle.zip
-  4. Run the installer (what each field means)
-  5. Setup wizard (org info, membership, modules, design)
-  6. Add yourself as the first member (why this matters)
-  7. Import your membership list — or load sample data to explore first
-  8. "After adding yourself as the first member, go to Import Members to import your membership list. If you'd prefer to explore with sample data first, we've prepared 2,500 realistic fake members you can load and clear anytime."
-- [ ] Documentation pages (feature-by-feature guides)
-- [ ] Feedback form (structured: bug report / feature request / general question) — future companion plugin
-
-## Voting & Elections — Remaining
+## Voting & Elections — Complete
 
 - [x] Ballot / election system for officer elections (built v0.49d):
   - [x] 4 DB tables: sp_ballots, sp_ballot_questions, sp_ballot_choices, sp_ballot_votes (UNIQUE KEY prevents double-voting)
@@ -718,7 +798,7 @@ Single-file `install.php` that takes Harold from empty hosting to running Societ
 - [x] Email notification when a ballot opens (v0.50d — sp_send_ballot_open_emails() sends to eligible members respecting communication prefs)
 - [x] Absentee / proxy voting support: allow_absentee, allow_proxy, proxy_limit columns, proxy vote AJAX endpoint (v1.0.2)
 
-## Mobile — Not Started
+## Mobile — Complete
 
 - [x] Progressive Web App (PWA) layer (v1.0.2)
   - [x] Web app manifest REST endpoint (name, icons, theme color, display: standalone)
@@ -741,7 +821,7 @@ Single-file `install.php` that takes Harold from empty hosting to running Societ
   - [x] Frontend: chat-style widget + sp-ai-assistant page template
   - [x] Page builder widget: ai_assistant with login_required option
 
-## Integrations — Remaining
+## Integrations — Complete
 
 - [x] Google Analytics: GA4 Measurement ID setting on Website page, gtag.js output in wp_head, admin traffic exclusion option
 - [x] bbPress forum integration (v0.50d — ~250 lines of glue code):
@@ -754,6 +834,138 @@ Single-file `install.php` that takes Harold from empty hosting to running Societ
 - [x] Mailchimp: full settings page (API key encrypted, audience ID, auto-sync toggle, connection test, manual Sync Now AJAX endpoint) (v1.0.2)
 - [x] Zoom: settings page with API key/secret (encrypted), connection test, JWT auth helper. Events already have is_virtual + virtual_url fields. (v1.0.2)
 Note: PayPal and Stripe are under Payment Processing above.
+
+## Softaculous Submission — Not Started
+
+Pre-submission checklist:
+
+- [ ] Audit info.xml feature list against actual code — remove or qualify claims for unbuilt features
+  - info.xml claims "GENRECORD and GEDCOM import/export" — neither is built yet
+  - info.xml claims "5 pre-built child themes plus custom theme builder" — verify all 5 ship in the ZIP
+- [ ] Reconcile version numbers: info.xml says `0.51d`, plugin constant says `1.0.1` — pick one
+- [x] Fix info.xml `ver_min_498` — FIXED: 4.9.8 → 6.0
+- [ ] Review Softaculous category: "Portal/CMS" — is there a better fit?
+- [ ] Prepare Softaculous images: logo (250x250, 600x600), 3-5 screenshots for listing page
+- [ ] Test `build-softaculous.sh` end-to-end — verify the ZIP it produces installs cleanly on a fresh WP
+- [ ] Verify `softaculous/install.php`, `upgrade.php`, `fileindex.php` scripts work correctly
+- [ ] Test Softaculous install on a hosting provider that actually has Softaculous (not Skystra)
+- [ ] Write Softaculous listing description (shorter than info.xml, punchy, aimed at hosting panel users)
+- [ ] Submit package to Softaculous (email to sales@softaculous.com with ZIP + metadata)
+
+## GENRECORD & GEDCOM — Not Started
+
+GENRECORD spec exists (`Docs/GENRECORD-SPEC.md`) but no code yet.
+
+- [ ] GENRECORD import: accept `.genrecord` files into the Records module (parse header + TSV body, create collection + fields + records)
+- [ ] GENRECORD export: export any collection as a `.genrecord` file (header from collection metadata, body from records)
+- [ ] GENRECORD button on Records admin — "Export as GENRECORD" per collection
+- [ ] GENRECORD import UI on Records admin — file upload, preview, confirm
+- [ ] GEDCOM import: at least basic support (individuals, families, sources) — map to SP member records or genealogical record collections
+- [ ] GEDCOM export: export member data as GEDCOM (if it makes sense — may be out of scope)
+- [ ] Decide: is GEDCOM really in scope, or should info.xml stop claiming it?
+
+## Testing & QA — Not Started
+
+- [ ] End-to-end installer test on a non-Skystra host (different cPanel provider, or a VPS)
+- [ ] Test on PHP 8.0, 8.1, 8.2, 8.3 — verify no version-specific breakage
+- [ ] Test with WordPress 6.0 (minimum claimed) through latest (6.9.x)
+- [ ] Browser testing: Chrome, Firefox, Safari, Edge — at least one pass through all frontend templates
+- [ ] Mobile testing: iOS Safari, Android Chrome — responsive layouts, hamburger menu, touch targets
+- [ ] Performance test with large datasets: 1,000+ members, 5,000+ members, 500+ events
+- [ ] Accessibility audit: automated WCAG 2.1 AA scan (axe-core or Lighthouse) on key pages
+- [ ] Security audit: one final pass before any public release (OWASP top 10 checklist)
+- [ ] Test all payment flows end-to-end in Stripe test mode (join, event registration, store checkout)
+- [ ] Test PayPal sandbox flows end-to-end (join, event registration, store checkout, donations)
+- [ ] Verify all 13 module toggles: disable each, confirm admin menus hide, frontend pages blocked, re-enable, confirm everything comes back
+- [ ] Test child theme gallery: install, preview, activate, update, create custom theme — full lifecycle
+- [ ] Test backup system: create backup, download ZIP, verify contents, test on a fresh install (restore)
+- [ ] Test GitHub updater: simulate version bump, verify one-click update works from dashboard
+
+## GDPR — Remaining Gaps
+
+- [x] GDPR gap: donations — VERIFIED: both exporter and eraser already exist (CLAUDE.md was outdated)
+- [x] GDPR erase covers newer tables — FIXED: eraser now calls sp_cascade_delete_member_data() (covers surnames, research areas, genealogy profiles, pending changes, etc.) + explicitly cleans push_subscriptions, anonymizes AI queries and ballot votes
+- [ ] GDPR documentation: what data SP stores, where, and how to handle requests — for the admin guide
+
+## Committees — Remaining
+
+- [ ] Dedicated admin menu entry for Committees (currently accessed through Governance — Harold may not find it)
+
+## Documentation — Not Started
+
+Admin and member-facing docs, separate from getsocietypress.org marketing pages:
+
+- [ ] Admin user guide: module-by-module walkthrough for Harold (Members, Events, Library, etc.)
+- [ ] Member user guide: My Account, event registration, directory, newsletter access
+- [ ] Child theme customization guide: how to create/modify child themes, available CSS variables, logo setup
+- [ ] Developer reference: hooks, filters, functions, REST endpoints, AJAX handlers — for the tinkerer who wants to extend SP
+- [ ] Troubleshooting guide: common issues (white screen, email not sending, Stripe errors, permission denied)
+- [ ] FAQ content to populate getsocietypress.org/faq/
+- [ ] Migration guide template: general "moving from another system to SP" guidance
+
+## getsocietypress.org — Remaining
+
+(extending existing section)
+
+- [ ] Getting Started guide — illustrated walkthrough for non-technical admins:
+  1. Choose hosting (visual guide for top 3 hosts: Bluehost, SiteGround, DreamHost)
+  2. Create a MySQL database (screenshots from cPanel)
+  3. Upload install.php + societypress-bundle.zip
+  4. Run the installer (what each field means)
+  5. Setup wizard (org info, membership, modules, design)
+  6. Add yourself as the first member (why this matters)
+  7. Import your membership list — or load sample data to explore first
+  8. "After adding yourself as the first member, go to Import Members to import your membership list. If you'd prefer to explore with sample data first, we've prepared 2,500 realistic fake members you can load and clear anytime."
+- [ ] Documentation pages (feature-by-feature guides)
+- [ ] Feedback form (structured: bug report / feature request / general question) — future companion plugin
+- [ ] Setup guide screenshots: 8 of 9 slots still placeholders — need real screenshots from a clean install
+- [ ] Download page: keep version number current, link directly to GitHub release ZIP
+- [ ] Showcase page: at least one real site (the society/example.org once it's live)
+- [ ] News page: write initial blog post announcing the project
+- [ ] Contact page: at minimum a mailto, ideally a simple form
+- [ ] Privacy policy for the marketing site itself (separate from the SP plugin's privacy policy generator)
+- [ ] SEO basics: meta descriptions, Open Graph tags, XML sitemap, Google Search Console
+- [ ] "Your data is yours" messaging — front and center, not buried in a FAQ
+
+## Marketing & Launch — Not Started
+
+- [ ] RootsTech 2027 preparation (Salt Lake City, March 3-7, 2027)
+  - [ ] Booth materials / handouts (if exhibiting)
+  - [ ] Presentation slides (SocietyPress_RootsTech.pptx exists in Images/ — update when ready)
+  - [ ] Demo environment tuned for conference: sample data loaded, running on reliable hosting, QR code to demo site
+  - [ ] One-page handout / flyer: what SP is, how to get it, QR code
+- [ ] Video walkthrough / screencast: 3-5 minute demo showing installation through first member import
+- [ ] Social media: at minimum a GitHub presence; consider Twitter/X, maybe a Facebook page
+- [ ] Case study: the society as the reference implementation — "here's a real society running SocietyPress"
+- [ ] ENS comparison page: why societies should switch — feature parity table, migration path, cost savings
+  - Competitive matrix exists (`Docs/COMPETITIVE-MATRIX.md`) — adapt for public-facing page
+- [ ] Announce to genealogical society mailing lists / forums once ready
+
+## GitHub & Distribution — Not Started
+
+- [ ] Tagged releases on GitHub (proper semver or date-based tags)
+- [ ] GitHub Releases with downloadable ZIP (so people don't need to clone the repo)
+- [ ] Bundle ZIP (`societypress-bundle.zip`) published with each release for the installer
+- [ ] CHANGELOG.md or use GitHub Release Notes to track what changed per version
+- [ ] GitHub issue templates: bug report, feature request (even though we don't solicit contributions, bug reports are welcome)
+- [ ] Version strategy: decide when/how to move from development numbering (0.xxd / 1.0.x) to a stable 1.0
+
+## Demo Site — Remaining
+
+- [ ] Sample data: fake society with realistic members, events, records, newsletters, library items, donations
+- [ ] Evaluator access: how do visitors log in to try the admin? Guest credentials? Read-only mode?
+- [ ] Scheduled reset: daily or weekly cron to wipe and reload sample data so the demo stays clean
+- [ ] Demo banner/watermark: persistent bar on the demo site so visitors know it's a demo, not their real site
+- [ ] Keep demo site version current — deploy after every significant build session
+
+## Repo Housekeeping
+
+- [x] Update `Docs/ARCHITECTURE.md` with new folder structure — FIXED
+- [x] Update `Docs/PROJECT-PROMPT.md` paths — FIXED
+- [x] Clean up TO-DO section headers — FIXED: 10 sections renamed from "Remaining"/"Not Started" to "Complete"
+- [x] Reconcile table counts — FIXED: actual count is 56 tables. Health check expected_tables updated from 51 to 56 (was missing ai_queries, genealogy_sites, member_genealogy_profiles, push_subscriptions, surname_variants)
+
+---
 
 ## Not Doing (spec divergences)
 

@@ -125,9 +125,9 @@ Membership management built for the volunteers who actually run these organizati
 
 SocietyPress is a single-file plugin (`societypress.php`) paired with a companion theme. The plugin handles all business logic; the theme handles presentation.
 
-- **Plugin:** `plugin/societypress.php` — function-based, inline JS/CSS, no external dependencies
-- **Theme:** `theme/` — classic PHP WordPress theme, CSS custom properties, vanilla JS only
-- **Child themes:** Drop a child theme to customize for your society (see `theme-saghs/` for an example)
+- **Plugin:** `Code/plugin/societypress.php` — function-based, inline JS/CSS, no external dependencies
+- **Theme:** `Code/theme/` — classic PHP WordPress theme, CSS custom properties, vanilla JS only
+- **Child themes:** 5 included (Heritage, Coastline, Prairie, Ledger, Parlor) or create your own with the built-in Theme Builder
 - **Database:** 39 custom tables with `{prefix}sp_` naming
 - **Settings:** Single `societypress_settings` option array
 
@@ -147,8 +147,8 @@ No jQuery. No CSS frameworks. No Gutenberg. No block editor. No Full Site Editin
 
 ## Installation
 
-1. Upload the `societypress` folder from `plugin/` to `wp-content/plugins/`
-2. Upload the `societypress` folder from `theme/` to `wp-content/themes/`
+1. Upload the `societypress` folder from `Code/plugin/` to `wp-content/plugins/`
+2. Upload the `societypress` folder from `Code/theme/` to `wp-content/themes/`
 3. Activate the plugin, then activate the theme
 4. Complete the setup wizard to configure your society
 

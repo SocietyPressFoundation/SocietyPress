@@ -9,21 +9,33 @@ Plugin version: 0.38d | ~52,500 lines | Single-file, function-based
 
 ```
 SocietyPress/
-├── plugin/
-│   └── societypress.php          # The entire plugin (~52,500 lines)
-├── theme/
-│   └── societypress/             # Parent theme (CSS vars, fallback defaults)
-├── theme-saghs/
-│   └── saghs/                    # Child theme for kndgs.org (SAGHS-specific styling)
+├── Code/                             # All deployable code
+│   ├── plugin/
+│   │   └── societypress.php          # The entire plugin (~80,000 lines)
+│   ├── theme/                        # Parent theme (CSS vars, fallback defaults)
+│   ├── theme-coastline/              # Child theme
+│   ├── theme-heritage/               # Child theme
+│   ├── theme-ledger/                 # Child theme
+│   ├── theme-parlor/                 # Child theme
+│   ├── theme-prairie/                # Child theme
+│   ├── installer/                    # One-click installer (sp-installer.php)
+│   └── softaculous/                  # Softaculous packaging
 ├── Docs/
-│   ├── ARCHITECTURE.md           # This file
-│   ├── FEATURES.md               # Complete feature inventory
-│   ├── KNOWN-ISSUES.md           # Bugs and technical debt
-│   └── PROJECT-PROMPT.md         # Recreation prompt for new Claude sessions
-├── TO-DO.md                      # Task tracking
-├── WORKLOG.md                    # Version history and session notes
-├── README.md                     # Project overview
-├── LICENSE                       # GPL-2.0-or-later
+│   ├── ARCHITECTURE.md               # This file
+│   ├── FEATURES.md                   # Complete feature inventory
+│   ├── KNOWN-ISSUES.md               # Bugs and technical debt
+│   └── PROJECT-PROMPT.md             # Recreation prompt for new Claude sessions
+├── Images/                           # Logos, screenshots, marketing assets
+├── Sample Data/                      # Sample data for fresh installs
+├── scripts/                          # Shell scripts (deploy, nuke, reset, build)
+│   ├── deploy.sh
+│   ├── nuke-demo.sh
+│   ├── reset-demo.sh
+│   └── build-softaculous.sh
+├── TO-DO.md                          # Task tracking
+├── WORKLOG.md                        # Version history and session notes
+├── README.md                         # Project overview
+├── LICENSE                           # GPL-2.0-or-later
 └── .gitignore
 ```
 

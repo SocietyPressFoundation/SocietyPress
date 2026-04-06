@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.0.0
+ * Version:     1.0.7
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -29,7 +29,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // NOTE: This MUST match the "Version:" line in the plugin header comment above.
 // WordPress reads the version from the header; this constant is used for
 // cache-busting and comparison logic. They must stay in sync.
-define( 'SOCIETYPRESS_VERSION', '1.0.0' );
+define( 'SOCIETYPRESS_VERSION', '1.0.7' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -76649,21 +76649,39 @@ add_action( 'wp_ajax_sp_store_checkout', function () {
         wp_send_json_error( [ 'message' => __( 'No valid items in your cart.', 'societypress' ) ] );
     }
 
+    // Collect shipping address from the cart form
+    $ship_address_1 = sanitize_text_field( $_POST['shipping_address_1'] ?? '' );
+    $ship_address_2 = sanitize_text_field( $_POST['shipping_address_2'] ?? '' );
+    $ship_city      = sanitize_text_field( $_POST['shipping_city'] ?? '' );
+    $ship_state     = sanitize_text_field( $_POST['shipping_state'] ?? '' );
+    $ship_postal    = sanitize_text_field( $_POST['shipping_postal'] ?? '' );
+    $ship_country   = sanitize_text_field( $_POST['shipping_country'] ?? '' ) ?: 'US';
+
+    if ( ! $ship_address_1 || ! $ship_city || ! $ship_state || ! $ship_postal ) {
+        wp_send_json_error( [ 'message' => __( 'Please provide a shipping address.', 'societypress' ) ] );
+    }
+
     // Create the order record (pending payment)
     $now = current_time( 'mysql' );
     $wpdb->insert( $prefix . 'orders', [
-        'user_id'        => $user->ID,
-        'status'         => 'pending',
-        'subtotal'       => $subtotal,
-        'tax'            => 0.00,
-        'total'          => $subtotal,
-        'customer_name'  => $member
+        'user_id'            => $user->ID,
+        'status'             => 'pending',
+        'subtotal'           => $subtotal,
+        'tax'                => 0.00,
+        'total'              => $subtotal,
+        'customer_name'      => $member
             ? trim( ( $member->first_name ?? '' ) . ' ' . ( $member->last_name ?? '' ) )
             : $user->display_name,
-        'customer_email' => $user->user_email,
-        'customer_phone' => $member->phone ?? '',
-        'created_at'     => $now,
-        'updated_at'     => $now,
+        'customer_email'     => $user->user_email,
+        'customer_phone'     => $member->phone ?? '',
+        'shipping_address_1' => $ship_address_1,
+        'shipping_address_2' => $ship_address_2,
+        'shipping_city'      => $ship_city,
+        'shipping_state'     => $ship_state,
+        'shipping_postal'    => $ship_postal,
+        'shipping_country'   => $ship_country,
+        'created_at'         => $now,
+        'updated_at'         => $now,
     ] );
     $order_id = (int) $wpdb->insert_id;
 
@@ -76871,8 +76889,21 @@ add_action( 'wp_ajax_sp_store_checkout_paypal', function () {
         $subtotal += $line_total;
     }
     if ( empty( $order_items ) ) { wp_send_json_error( [ 'message' => __( 'No valid items in your cart.', 'societypress' ) ] ); }
+
+    // Collect shipping address from the cart form
+    $ship_address_1 = sanitize_text_field( $_POST['shipping_address_1'] ?? '' );
+    $ship_address_2 = sanitize_text_field( $_POST['shipping_address_2'] ?? '' );
+    $ship_city      = sanitize_text_field( $_POST['shipping_city'] ?? '' );
+    $ship_state     = sanitize_text_field( $_POST['shipping_state'] ?? '' );
+    $ship_postal    = sanitize_text_field( $_POST['shipping_postal'] ?? '' );
+    $ship_country   = sanitize_text_field( $_POST['shipping_country'] ?? '' ) ?: 'US';
+
+    if ( ! $ship_address_1 || ! $ship_city || ! $ship_state || ! $ship_postal ) {
+        wp_send_json_error( [ 'message' => __( 'Please provide a shipping address.', 'societypress' ) ] );
+    }
+
     $now = current_time( 'mysql' );
-    $wpdb->insert( $prefix . 'orders', [ 'user_id' => $user->ID, 'status' => 'pending', 'subtotal' => $subtotal, 'tax' => 0.00, 'total' => $subtotal, 'payment_method' => 'paypal', 'customer_name' => $member ? trim( ( $member->first_name ?? '' ) . ' ' . ( $member->last_name ?? '' ) ) : $user->display_name, 'customer_email' => $user->user_email, 'customer_phone' => $member->phone ?? '', 'created_at' => $now, 'updated_at' => $now ] );
+    $wpdb->insert( $prefix . 'orders', [ 'user_id' => $user->ID, 'status' => 'pending', 'subtotal' => $subtotal, 'tax' => 0.00, 'total' => $subtotal, 'payment_method' => 'paypal', 'customer_name' => $member ? trim( ( $member->first_name ?? '' ) . ' ' . ( $member->last_name ?? '' ) ) : $user->display_name, 'customer_email' => $user->user_email, 'customer_phone' => $member->phone ?? '', 'shipping_address_1' => $ship_address_1, 'shipping_address_2' => $ship_address_2, 'shipping_city' => $ship_city, 'shipping_state' => $ship_state, 'shipping_postal' => $ship_postal, 'shipping_country' => $ship_country, 'created_at' => $now, 'updated_at' => $now ] );
     $order_id = (int) $wpdb->insert_id;
     if ( ! $order_id ) { wp_send_json_error( [ 'message' => __( 'Could not create order. Please try again.', 'societypress' ) ] ); }
     foreach ( $order_items as $oi ) {
@@ -77091,7 +77122,16 @@ function sp_render_cart_page(): void {
         .sp-cart-success { background:#d4edda; border:1px solid #c3e6cb; color:#155724; padding:16px 20px; border-radius:6px; margin-bottom:20px; }
         .sp-cart-cancelled { background:#fff3cd; border:1px solid #ffeeba; color:#856404; padding:16px 20px; border-radius:6px; margin-bottom:20px; }
         .sp-cart-login-msg { text-align:center; padding:40px 20px; }
+        .sp-cart-shipping { margin:24px 0; padding:24px; border:1px solid var(--sp-border-color, #e5e7eb); border-radius:8px; background:#fafafa; display:none; }
+        .sp-cart-shipping h3 { margin:0 0 16px; font-size:16px; font-weight:600; }
+        .sp-cart-shipping-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+        .sp-cart-shipping-full { grid-column:1 / -1; }
+        .sp-cart-shipping label { display:block; font-size:13px; font-weight:500; color:#555; margin-bottom:4px; }
+        .sp-cart-shipping input { width:100%; padding:8px 10px; border:1px solid #ddd; border-radius:4px; font-size:14px; box-sizing:border-box; }
+        .sp-cart-shipping input:focus { border-color:var(--sp-accent-color, #C9973A); outline:none; box-shadow:0 0 0 2px rgba(201,151,58,0.15); }
+        .sp-cart-shipping-error { color:#c00; font-size:13px; margin-top:8px; display:none; }
         @media (max-width:600px) {
+            .sp-cart-shipping-grid { grid-template-columns:1fr; }
             .sp-cart-table thead { display:none; }
             .sp-cart-table tr { display:block; margin-bottom:16px; border:1px solid #eee; border-radius:6px; padding:12px; }
             .sp-cart-table td { display:flex; justify-content:space-between; align-items:center; padding:6px 0; border:none; }
@@ -77122,10 +77162,51 @@ function sp_render_cart_page(): void {
                     esc_url( wp_login_url( get_permalink() ) )
                 ); ?></p>
             </div>
-        <?php else : ?>
+        <?php else :
+            // Pre-fill shipping address from member record when available
+            $sp_member = sp_get_member_by_user_id( get_current_user_id() );
+        ?>
             <div id="sp-cart-content">
                 <!-- Populated by JavaScript from AJAX -->
                 <p style="text-align:center;color:#888;padding:40px 0;"><?php esc_html_e( 'Loading cart…', 'societypress' ); ?></p>
+            </div>
+
+            <!-- Shipping address form — shown/hidden by JS based on cart state -->
+            <div id="sp-cart-shipping" class="sp-cart-shipping">
+                <h3><?php esc_html_e( 'Shipping Address', 'societypress' ); ?></h3>
+                <div class="sp-cart-shipping-grid">
+                    <div class="sp-cart-shipping-full">
+                        <label for="sp-ship-address1"><?php esc_html_e( 'Address', 'societypress' ); ?> <span aria-hidden="true">*</span></label>
+                        <input type="text" id="sp-ship-address1" autocomplete="address-line1" required
+                               value="<?php echo esc_attr( $sp_member->address_1 ?? '' ); ?>">
+                    </div>
+                    <div class="sp-cart-shipping-full">
+                        <label for="sp-ship-address2"><?php esc_html_e( 'Address Line 2', 'societypress' ); ?></label>
+                        <input type="text" id="sp-ship-address2" autocomplete="address-line2"
+                               value="<?php echo esc_attr( $sp_member->address_2 ?? '' ); ?>">
+                    </div>
+                    <div>
+                        <label for="sp-ship-city"><?php esc_html_e( 'City', 'societypress' ); ?> <span aria-hidden="true">*</span></label>
+                        <input type="text" id="sp-ship-city" autocomplete="address-level2" required
+                               value="<?php echo esc_attr( $sp_member->city ?? '' ); ?>">
+                    </div>
+                    <div>
+                        <label for="sp-ship-state"><?php esc_html_e( 'State / Province', 'societypress' ); ?> <span aria-hidden="true">*</span></label>
+                        <input type="text" id="sp-ship-state" autocomplete="address-level1" required
+                               value="<?php echo esc_attr( $sp_member->state ?? '' ); ?>">
+                    </div>
+                    <div>
+                        <label for="sp-ship-postal"><?php esc_html_e( 'ZIP / Postal Code', 'societypress' ); ?> <span aria-hidden="true">*</span></label>
+                        <input type="text" id="sp-ship-postal" autocomplete="postal-code" required
+                               value="<?php echo esc_attr( $sp_member->postal_code ?? '' ); ?>">
+                    </div>
+                    <div>
+                        <label for="sp-ship-country"><?php esc_html_e( 'Country', 'societypress' ); ?></label>
+                        <input type="text" id="sp-ship-country" autocomplete="country-name"
+                               value="<?php echo esc_attr( $sp_member->country ?? 'US' ); ?>">
+                    </div>
+                </div>
+                <div id="sp-ship-error" class="sp-cart-shipping-error"></div>
             </div>
         <?php endif; ?>
     </div>
@@ -77140,6 +77221,7 @@ function sp_render_cart_page(): void {
             echo esc_js( ! empty( $store_pages ) ? get_permalink( $store_pages[0]->ID ) : home_url() );
         ?>';
         var container = document.getElementById('sp-cart-content');
+        var shipBox   = document.getElementById('sp-cart-shipping');
         var checkingOut = false;
         var stripeReady = <?php echo sp_stripe_is_configured( $settings ) ? 'true' : 'false'; ?>;
         var paypalReady = <?php echo sp_paypal_is_configured( $settings ) ? 'true' : 'false'; ?>;
@@ -77159,8 +77241,12 @@ function sp_render_cart_page(): void {
                     '<p><?php echo esc_js( __( 'Your cart is empty.', 'societypress' ) ); ?></p>' +
                     '<a href="' + storeUrl + '" style="color:var(--sp-link-color,#0066cc);"><?php echo esc_js( __( 'Continue Shopping', 'societypress' ) ); ?></a>' +
                     '</div>';
+                if (shipBox) shipBox.style.display = 'none';
                 return;
             }
+
+            // Show the shipping address form when cart has items
+            if (shipBox) shipBox.style.display = 'block';
 
             var html = '<table class="sp-cart-table"><thead><tr>' +
                 '<th><?php echo esc_js( __( 'Item', 'societypress' ) ); ?></th>' +
@@ -77220,6 +77306,29 @@ function sp_render_cart_page(): void {
                 .catch(function() {});
         }
 
+        // Validate and collect shipping address fields
+        function getShippingData() {
+            var addr1  = document.getElementById('sp-ship-address1').value.trim();
+            var city   = document.getElementById('sp-ship-city').value.trim();
+            var state  = document.getElementById('sp-ship-state').value.trim();
+            var postal = document.getElementById('sp-ship-postal').value.trim();
+            var errEl  = document.getElementById('sp-ship-error');
+            if (!addr1 || !city || !state || !postal) {
+                if (errEl) { errEl.textContent = '<?php echo esc_js( __( 'Please fill in the required shipping address fields.', 'societypress' ) ); ?>'; errEl.style.display = 'block'; }
+                if (shipBox) shipBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                return null;
+            }
+            if (errEl) errEl.style.display = 'none';
+            return {
+                shipping_address_1: addr1,
+                shipping_address_2: document.getElementById('sp-ship-address2').value.trim(),
+                shipping_city:      city,
+                shipping_state:     state,
+                shipping_postal:    postal,
+                shipping_country:   document.getElementById('sp-ship-country').value.trim() || 'US'
+            };
+        }
+
         function bindCartEvents() {
             // Quantity +/- buttons
             container.querySelectorAll('.sp-cart-minus').forEach(function(btn) {
@@ -77253,11 +77362,13 @@ function sp_render_cart_page(): void {
                 });
             });
 
-            // Checkout button
+            // Checkout button (Stripe)
             var checkoutBtn = document.getElementById('sp-checkout-btn');
             if (checkoutBtn) {
                 checkoutBtn.addEventListener('click', function() {
                     if (checkingOut) return;
+                    var ship = getShippingData();
+                    if (!ship) return;
                     checkingOut = true;
                     this.disabled = true;
                     this.textContent = '<?php echo esc_js( __( 'Processing…', 'societypress' ) ); ?>';
@@ -77265,6 +77376,7 @@ function sp_render_cart_page(): void {
                     var fd = new FormData();
                     fd.append('action', 'sp_store_checkout');
                     fd.append('_ajax_nonce', nonce);
+                    for (var sk in ship) fd.append(sk, ship[sk]);
 
                     fetch(ajaxUrl, { method: 'POST', body: fd, credentials: 'same-origin' })
                         .then(function(r) { return r.json(); })
@@ -77291,6 +77403,8 @@ function sp_render_cart_page(): void {
             if (ppBtn) {
                 ppBtn.addEventListener('click', function() {
                     if (checkingOut) return;
+                    var ship = getShippingData();
+                    if (!ship) return;
                     checkingOut = true;
                     this.disabled = true;
                     this.textContent = '<?php echo esc_js( __( "Redirecting to PayPal…", "societypress" ) ); ?>';
@@ -77298,6 +77412,7 @@ function sp_render_cart_page(): void {
                     var fd = new FormData();
                     fd.append('action', 'sp_store_checkout_paypal');
                     fd.append('_ajax_nonce', nonce);
+                    for (var sk in ship) fd.append(sk, ship[sk]);
 
                     fetch(ajaxUrl, { method: 'POST', body: fd, credentials: 'same-origin' })
                         .then(function(r) { return r.json(); })
@@ -77652,6 +77767,20 @@ function sp_render_order_detail_page(): void {
                     <?php if ( $order->customer_phone ) : ?>
                         <tr><th><?php esc_html_e( 'Phone', 'societypress' ); ?></th><td><?php echo esc_html( $order->customer_phone ); ?></td></tr>
                     <?php endif; ?>
+                    <?php if ( $order->shipping_address_1 ) : ?>
+                        <tr><th><?php esc_html_e( 'Ship To', 'societypress' ); ?></th><td>
+                            <?php
+                            echo esc_html( $order->shipping_address_1 );
+                            if ( $order->shipping_address_2 ) {
+                                echo '<br>' . esc_html( $order->shipping_address_2 );
+                            }
+                            echo '<br>' . esc_html( $order->shipping_city . ', ' . $order->shipping_state . ' ' . $order->shipping_postal );
+                            if ( $order->shipping_country && $order->shipping_country !== 'US' ) {
+                                echo '<br>' . esc_html( $order->shipping_country );
+                            }
+                            ?>
+                        </td></tr>
+                    <?php endif; ?>
                     <?php if ( $order->user_id ) : ?>
                         <tr><th><?php esc_html_e( 'Member', 'societypress' ); ?></th><td>
                             <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-member-edit&user_id=' . $order->user_id ) ); ?>">
@@ -77687,6 +77816,92 @@ function sp_render_order_detail_page(): void {
                 </tbody>
             </table>
         </div>
+
+        <?php
+        // ----------------------------------------------------------------
+        // SHIPPING LABEL — Avery 5160 (1" × 2-5/8", 30 per sheet)
+        //
+        // WHY: Harold needs to print a mailing label when fulfilling store
+        // orders. The button opens a clean popup window with just the label
+        // formatted for Avery 5160 stock, ready to print. Return address
+        // comes from org settings, ship-to from the order record.
+        // ----------------------------------------------------------------
+        if ( $order->shipping_address_1 ) :
+            $org_settings = get_option( 'societypress_settings', [] );
+            $return_name  = $org_settings['organization_name'] ?? get_bloginfo( 'name' );
+            $return_addr  = $org_settings['organization_address'] ?? '';
+        ?>
+        <div class="postbox sp-order-detail-box-mt">
+            <h3 class="sp-order-detail-box-heading"><?php esc_html_e( 'Shipping', 'societypress' ); ?></h3>
+            <p>
+                <button type="button" class="button button-secondary" id="sp-print-label-btn">
+                    <?php esc_html_e( 'Print Shipping Label', 'societypress' ); ?>
+                </button>
+            </p>
+        </div>
+        <script>
+        document.getElementById('sp-print-label-btn').addEventListener('click', function() {
+            var returnName = <?php echo wp_json_encode( $return_name ); ?>;
+            var returnAddr = <?php echo wp_json_encode( $return_addr ); ?>;
+            var shipName   = <?php echo wp_json_encode( $order->customer_name ); ?>;
+            var shipAddr1  = <?php echo wp_json_encode( $order->shipping_address_1 ); ?>;
+            var shipAddr2  = <?php echo wp_json_encode( $order->shipping_address_2 ?: '' ); ?>;
+            var shipCity   = <?php echo wp_json_encode( $order->shipping_city ); ?>;
+            var shipState  = <?php echo wp_json_encode( $order->shipping_state ); ?>;
+            var shipPostal = <?php echo wp_json_encode( $order->shipping_postal ); ?>;
+            var shipCountry = <?php echo wp_json_encode( $order->shipping_country ?: '' ); ?>;
+
+            var shipCityLine = shipCity + ', ' + shipState + ' ' + shipPostal;
+            var countryLine  = (shipCountry && shipCountry !== 'US') ? '<div>' + shipCountry + '</div>' : '';
+
+            // Return address — stored as a textarea, so split on newlines
+            var returnLines = returnAddr.split(/\r?\n/).filter(function(l) { return l.trim(); });
+            var returnHtml  = '<div class="sp-label-from-name">' + returnName + '</div>';
+            returnLines.forEach(function(line) {
+                returnHtml += '<div>' + line + '</div>';
+            });
+
+            // Ship-to address
+            var shipHtml = '<div class="sp-label-to-name">' + shipName + '</div>'
+                + '<div>' + shipAddr1 + '</div>'
+                + (shipAddr2 ? '<div>' + shipAddr2 + '</div>' : '')
+                + '<div>' + shipCityLine + '</div>'
+                + countryLine;
+
+            // Avery 5160: 1" × 2.625" labels, 3 across × 10 down
+            // Page margins: 0.5" top/bottom, ~0.19" side (letter size 8.5" × 11")
+            var html = '<!DOCTYPE html><html><head><title><?php echo esc_js( sprintf( __( 'Shipping Label — Order #%d', 'societypress' ), $order_id ) ); ?></title>'
+                + '<style>'
+                + '@page { size: letter; margin: 0.5in 0.19in; }'
+                + 'body { margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; }'
+                + '.sp-label-sheet { width: 100%; }'
+                + '.sp-label {'
+                + '  width: 2.625in; height: 1in;'
+                + '  box-sizing: border-box;'
+                + '  padding: 0.08in 0.12in;'
+                + '  overflow: hidden;'
+                + '  page-break-inside: avoid;'
+                + '}'
+                + '.sp-label-from { font-size: 7pt; line-height: 1.3; margin-bottom: 0.06in; }'
+                + '.sp-label-from-name { font-weight: bold; }'
+                + '.sp-label-to { font-size: 9pt; line-height: 1.3; padding-left: 0.25in; }'
+                + '.sp-label-to-name { font-weight: bold; }'
+                + '@media screen { .sp-label { border: 1px dashed #ccc; margin: 20px auto; } body { padding: 20px; text-align: center; } }'
+                + '</style></head><body>'
+                + '<div class="sp-label">'
+                + '<div class="sp-label-from">' + returnHtml + '</div>'
+                + '<div class="sp-label-to">' + shipHtml + '</div>'
+                + '</div>'
+                + '</body></html>';
+
+            var w = window.open('', '_blank', 'width=400,height=300');
+            w.document.write(html);
+            w.document.close();
+            w.focus();
+            w.print();
+        });
+        </script>
+        <?php endif; ?>
 
         <!-- Update Status -->
         <div class="postbox sp-order-detail-box-mt">

@@ -74593,7 +74593,9 @@ function sp_import_gedcom_individuals( array $gedcom, string $collection_name, s
 
     $wpdb->insert( $prefix . 'record_collections', [
         'name'         => $collection_name,
-        'type'         => 'CEN',  // Census is closest generic type for person records
+        'slug'         => sanitize_title( $collection_name ),
+        'record_type'  => 'CEN',  // Census is closest generic type for person records
+        'source_info'  => sprintf( 'GEDCOM %s (%s)', $version_info, $source_info ),
         'description'  => sprintf(
             /* translators: %1$s is the GEDCOM version, %2$s is the source software, %3$d is the individual count */
             __( 'Imported from GEDCOM %1$s file (source: %2$s). Contains %3$d individuals.', 'societypress' ),
@@ -74692,9 +74694,9 @@ function sp_import_gedcom_individuals( array $gedcom, string $collection_name, s
             if ( $val === '' ) continue;
             if ( ! isset( $field_ids[ $key ] ) ) continue;
             $wpdb->insert( $prefix . 'record_values', [
-                'record_id' => $record_id,
-                'field_id'  => $field_ids[ $key ],
-                'value'     => $val,
+                'record_id'   => $record_id,
+                'field_id'    => $field_ids[ $key ],
+                'field_value' => $val,
             ] );
         }
 
@@ -75349,11 +75351,11 @@ function sp_ajax_export_gedcom(): void {
     if ( $record_ids ) {
         $id_placeholders = implode( ',', array_fill( 0, count( $record_ids ), '%d' ) );
         $value_rows = $wpdb->get_results( $wpdb->prepare(
-            "SELECT record_id, field_id, value FROM {$prefix}record_values WHERE record_id IN ($id_placeholders)",
+            "SELECT record_id, field_id, field_value FROM {$prefix}record_values WHERE record_id IN ($id_placeholders)",
             ...$record_ids
         ) );
         foreach ( $value_rows as $vr ) {
-            $all_values[ (int) $vr->record_id ][ (int) $vr->field_id ] = $vr->value;
+            $all_values[ (int) $vr->record_id ][ (int) $vr->field_id ] = $vr->field_value;
         }
     }
 

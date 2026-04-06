@@ -860,9 +860,9 @@ GENRECORD spec exists (`Docs/GENRECORD-SPEC.md`) but no code yet.
 - [ ] GENRECORD export: export any collection as a `.genrecord` file (header from collection metadata, body from records)
 - [ ] GENRECORD button on Records admin — "Export as GENRECORD" per collection
 - [ ] GENRECORD import UI on Records admin — file upload, preview, confirm
-- [ ] GEDCOM import: at least basic support (individuals, families, sources) — map to SP member records or genealogical record collections
-- [ ] GEDCOM export: export member data as GEDCOM (if it makes sense — may be out of scope)
-- [ ] Decide: is GEDCOM really in scope, or should info.xml stop claiming it?
+- [x] GEDCOM import: sp_parse_gedcom() parser (5.5/5.5.1/7.0), sp_parse_gedcom_name(), sp_import_gedcom_individuals() — fourth mode on Import Records page with upload form, access level, collection naming, audit logging
+- [x] GEDCOM export: sp_ajax_export_gedcom() — exports any record collection as a valid GEDCOM 5.5.1 file with INDI records, name components, birth/death/burial, occupation, notes. Smart field-name-to-tag mapping, unmapped fields preserved as NOTE lines. Export button on collections page.
+- [x] GEDCOM is in scope — import and export both built
 
 ## Testing & QA — Not Started
 

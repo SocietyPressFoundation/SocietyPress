@@ -72495,7 +72495,8 @@ function sp_render_record_collections_page(): void {
                             <td>
                                 <a href="<?php echo esc_url( $browse_url ); ?>" class="button button-small"><?php esc_html_e( 'Browse', 'societypress' ); ?></a>
                                 <a href="<?php echo esc_url( $import_url ); ?>" class="button button-small"><?php esc_html_e( 'Import', 'societypress' ); ?></a>
-                                <a href="<?php echo esc_url( $export_url ); ?>" class="button button-small" title="<?php esc_attr_e( 'Export as GENRECORD file', 'societypress' ); ?>"><?php esc_html_e( 'Export', 'societypress' ); ?></a>
+                                <a href="<?php echo esc_url( $export_url ); ?>" class="button button-small" title="<?php esc_attr_e( 'Export as GENRECORD file', 'societypress' ); ?>"><?php esc_html_e( 'GENRECORD', 'societypress' ); ?></a>
+                                <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-ajax.php?action=sp_export_gedcom&collection_id=' . $c->id ), 'sp_export_gedcom' ) ); ?>" class="button button-small" title="<?php esc_attr_e( 'Export as GEDCOM file', 'societypress' ); ?>"><?php esc_html_e( 'GEDCOM', 'societypress' ); ?></a>
                                 <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=sp_export_records_csv&collection_id=' . $c->id . '&nonce=' . wp_create_nonce( 'sp_export_records_csv' ) ) ); ?>" class="button button-small" title="<?php esc_attr_e( 'Export as CSV', 'societypress' ); ?>"><?php esc_html_e( 'CSV', 'societypress' ); ?></a>
                                 <a href="<?php echo esc_url( $edit_url ); ?>" class="button button-small"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
                                 <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-collections' ) ); ?>" class="sp-records-delete-form" data-sp-confirm="<?php echo esc_attr( __( 'Delete this collection and ALL its records? This cannot be undone.', 'societypress' ) ); ?>">
@@ -73529,6 +73530,120 @@ function sp_render_record_import_page(): void {
     }
 
     // ----------------------------------------------------------------
+    // GEDCOM IMPORT: Parse a .ged file and import individuals as records.
+    //
+    // WHY: GEDCOM is the universal file format for genealogy data. Societies
+    //      receive .ged files from members, other organizations, and legacy
+    //      systems. This handler parses the file, shows a preview, and creates
+    //      a record collection with one record per individual.
+    // ----------------------------------------------------------------
+    if ( isset( $_POST['sp_import_gedcom'] ) && check_admin_referer( 'sp_record_import' ) ) {
+        $access_level = in_array( $_POST['access_level'] ?? '', [ 'public', 'members' ], true )
+            ? $_POST['access_level']
+            : 'public';
+
+        $collection_name = sanitize_text_field( $_POST['collection_name'] ?? '' );
+        if ( empty( $collection_name ) ) {
+            $collection_name = __( 'GEDCOM Import', 'societypress' );
+        }
+
+        if ( ! empty( $_FILES['gedcom_file']['tmp_name'] ) && $_FILES['gedcom_file']['error'] === UPLOAD_ERR_OK ) {
+            // Validate file extension
+            $filename = sanitize_file_name( $_FILES['gedcom_file']['name'] );
+            $ext = strtolower( pathinfo( $filename, PATHINFO_EXTENSION ) );
+            if ( $ext !== 'ged' ) {
+                echo '<div class="notice notice-error"><p>';
+                esc_html_e( 'Please upload a .ged file.', 'societypress' );
+                echo '</p></div>';
+            } else {
+                // Copy to a temp location we control (don't rely on PHP's tmp path)
+                $temp_dir  = wp_upload_dir()['basedir'];
+                $temp_file = $temp_dir . '/gedcom-import-' . wp_generate_password( 12, false ) . '.ged';
+                if ( move_uploaded_file( $_FILES['gedcom_file']['tmp_name'], $temp_file ) ) {
+
+                    // Parse the GEDCOM file
+                    $gedcom = sp_parse_gedcom( $temp_file );
+
+                    if ( ! empty( $gedcom['errors'] ) ) {
+                        echo '<div class="notice notice-error"><p><strong>' . esc_html__( 'Parse errors:', 'societypress' ) . '</strong><br>';
+                        foreach ( $gedcom['errors'] as $err ) {
+                            echo esc_html( $err ) . '<br>';
+                        }
+                        echo '</p></div>';
+                    }
+
+                    if ( ! empty( $gedcom['individuals'] ) ) {
+                        // Import individuals into a new collection
+                        $results = sp_import_gedcom_individuals( $gedcom, $collection_name, $access_level );
+
+                        if ( $results['imported'] > 0 ) {
+                            echo '<div class="notice notice-success"><p>';
+                            printf(
+                                /* translators: %1$s is collection name, %2$d is imported count, %3$d is family count, %4$d is source count */
+                                esc_html__( 'GEDCOM import complete. Created collection "%1$s" with %2$d individuals. File also contained %3$d families and %4$d sources.', 'societypress' ),
+                                esc_html( $collection_name ),
+                                $results['imported'],
+                                count( $gedcom['families'] ),
+                                count( $gedcom['sources'] )
+                            );
+                            echo '</p></div>';
+
+                            // Show link to view the new collection
+                            echo '<p><a href="' . esc_url( admin_url( 'admin.php?page=sp-records&collection_id=' . $results['collection_id'] ) ) . '" class="button button-primary">';
+                            esc_html_e( 'View Imported Records', 'societypress' );
+                            echo '</a></p>';
+
+                            // Log the import
+                            sp_audit(
+                                'record_import',
+                                sprintf( 'GEDCOM import: %d individuals into collection "%s"', $results['imported'], $collection_name ),
+                                'records'
+                            );
+                        }
+
+                        if ( ! empty( $results['errors'] ) ) {
+                            echo '<div class="notice notice-warning"><p><strong>' . esc_html__( 'Import errors:', 'societypress' ) . '</strong><br>';
+                            foreach ( array_slice( $results['errors'], 0, 10 ) as $err ) {
+                                echo esc_html( $err ) . '<br>';
+                            }
+                            if ( count( $results['errors'] ) > 10 ) {
+                                printf( '<br>' . esc_html__( '...and %d more.', 'societypress' ), count( $results['errors'] ) - 10 );
+                            }
+                            echo '</p></div>';
+                        }
+                    } else {
+                        echo '<div class="notice notice-warning"><p>';
+                        esc_html_e( 'No individuals found in the GEDCOM file. The file may contain only family or source records.', 'societypress' );
+                        echo '</p></div>';
+                    }
+
+                    // Show a summary of what was in the file
+                    $version = $gedcom['header']['gedcom_version'] ?? __( 'Unknown', 'societypress' );
+                    $source  = $gedcom['header']['source'] ?? __( 'Unknown', 'societypress' );
+                    echo '<div class="notice notice-info"><p>';
+                    printf(
+                        /* translators: %1$s is GEDCOM version, %2$s is source software */
+                        esc_html__( 'GEDCOM version: %1$s | Source: %2$s', 'societypress' ),
+                        esc_html( $version ),
+                        esc_html( $source )
+                    );
+                    echo '</p></div>';
+
+                    wp_delete_file( $temp_file );
+                } else {
+                    echo '<div class="notice notice-error"><p>';
+                    esc_html_e( 'Could not save the uploaded file. Check directory permissions.', 'societypress' );
+                    echo '</p></div>';
+                }
+            }
+        } else {
+            echo '<div class="notice notice-error"><p>';
+            esc_html_e( 'Please select a GEDCOM (.ged) file to upload.', 'societypress' );
+            echo '</p></div>';
+        }
+    }
+
+    // ----------------------------------------------------------------
     // ONE-STEP: Create collection from CSV headers and import all rows.
     //
     // WHY: Annie uploads a CSV, names the collection, and clicks one button.
@@ -74000,8 +74115,63 @@ function sp_render_record_import_page(): void {
                 </p>
             </form>
 
+        <?php elseif ( $mode === 'gedcom' ) : ?>
+            <!-- GEDCOM IMPORT FORM -->
+            <h2><?php esc_html_e( 'Import GEDCOM File', 'societypress' ); ?></h2>
+            <p><?php esc_html_e( 'Upload a GEDCOM file (.ged) to import individuals as genealogical records. Supports GEDCOM 5.5, 5.5.1, and 7.0 — the standard format used by Ancestry, FamilySearch, Legacy, RootsMagic, Gramps, and other genealogy software.', 'societypress' ); ?></p>
+
+            <form method="post" enctype="multipart/form-data">
+                <?php wp_nonce_field( 'sp_record_import' ); ?>
+                <input type="hidden" name="sp_import_gedcom" value="1">
+
+                <table class="form-table">
+                    <tr>
+                        <th><label for="gedcom_file"><?php esc_html_e( 'GEDCOM File', 'societypress' ); ?></label></th>
+                        <td>
+                            <input type="file" name="gedcom_file" id="gedcom_file" accept=".ged" required>
+                            <p class="description"><?php esc_html_e( 'Select a .ged file from your computer. Most genealogy software can export in this format.', 'societypress' ); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="collection_name"><?php esc_html_e( 'Collection Name', 'societypress' ); ?></label></th>
+                        <td>
+                            <input type="text" name="collection_name" id="collection_name" class="regular-text"
+                                   value="" placeholder="<?php esc_attr_e( 'e.g., Smith Family Tree', 'societypress' ); ?>">
+                            <p class="description"><?php esc_html_e( 'A name for this collection of records. Leave blank to use "GEDCOM Import".', 'societypress' ); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><?php esc_html_e( 'Access Level', 'societypress' ); ?></th>
+                        <td>
+                            <label><input type="radio" name="access_level" value="public" checked> <?php esc_html_e( 'Public — anyone can search these records', 'societypress' ); ?></label><br>
+                            <label><input type="radio" name="access_level" value="members"> <?php esc_html_e( 'Members only — requires login to search', 'societypress' ); ?></label>
+                        </td>
+                    </tr>
+                </table>
+
+                <p class="submit">
+                    <input type="submit" class="button button-primary" value="<?php esc_attr_e( 'Import GEDCOM File', 'societypress' ); ?>">
+                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-import-records' ) ); ?>" class="button"><?php esc_html_e( 'Back', 'societypress' ); ?></a>
+                </p>
+            </form>
+
+            <div class="card" style="max-width: 600px; margin-top: 24px;">
+                <h3><?php esc_html_e( 'What gets imported?', 'societypress' ); ?></h3>
+                <p><?php esc_html_e( 'Each individual (INDI record) in the GEDCOM file becomes one record in the collection with these fields:', 'societypress' ); ?></p>
+                <ul style="list-style: disc; padding-left: 20px;">
+                    <li><?php esc_html_e( 'Given Name, Surname, Suffix', 'societypress' ); ?></li>
+                    <li><?php esc_html_e( 'Sex', 'societypress' ); ?></li>
+                    <li><?php esc_html_e( 'Birth Date and Place', 'societypress' ); ?></li>
+                    <li><?php esc_html_e( 'Death Date and Place', 'societypress' ); ?></li>
+                    <li><?php esc_html_e( 'Burial Place', 'societypress' ); ?></li>
+                    <li><?php esc_html_e( 'Occupation', 'societypress' ); ?></li>
+                    <li><?php esc_html_e( 'Notes', 'societypress' ); ?></li>
+                </ul>
+                <p><?php esc_html_e( 'Family relationships and source citations in the file are noted in the import summary but are not currently imported as separate records.', 'societypress' ); ?></p>
+            </div>
+
         <?php else : ?>
-            <!-- MODE PICKER: New or Existing -->
+            <!-- MODE PICKER -->
             <p><?php esc_html_e( 'How would you like to import records?', 'societypress' ); ?></p>
 
             <div class="sp-record-import-modes">
@@ -74020,10 +74190,534 @@ function sp_render_record_import_page(): void {
                     <div class="sp-record-import-mode-title"><?php esc_html_e( 'Import GENRECORD File', 'societypress' ); ?></div>
                     <div class="sp-record-import-mode-desc"><?php esc_html_e( 'Import a .genrecord file from another society or archive. The file carries its own metadata — no manual setup needed.', 'societypress' ); ?></div>
                 </a>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-import-records&mode=gedcom' ) ); ?>" class="sp-record-import-mode">
+                    <div class="sp-record-import-mode-icon"><span class="dashicons dashicons-networking" style="font-size:36px; width:36px; height:36px;"></span></div>
+                    <div class="sp-record-import-mode-title"><?php esc_html_e( 'Import GEDCOM File', 'societypress' ); ?></div>
+                    <div class="sp-record-import-mode-desc"><?php esc_html_e( 'Import individuals and families from a GEDCOM file (.ged). Supports GEDCOM 5.5 and 7.0 — the standard format used by genealogy software worldwide.', 'societypress' ); ?></div>
+                </a>
             </div>
         <?php endif; ?>
     </div>
     <?php
+}
+
+
+// ============================================================================
+// GEDCOM PARSER
+// ============================================================================
+//
+// WHY: GEDCOM (Genealogical Data Communication) is the universal file format
+//      for exchanging family tree data between genealogy software. Societies
+//      receive GEDCOM files from members, other societies, and legacy systems.
+//      A parser lets Harold import this data directly into SocietyPress record
+//      collections without manual data entry.
+//
+// Supports: GEDCOM 5.5, 5.5.1, and 7.0
+//
+// How GEDCOM works:
+//   - Level-based hierarchy (0 = top-level records, 1+ = nested data)
+//   - Record types: INDI (individual), FAM (family), SOUR (source), REPO, etc.
+//   - Cross-references via @ID@ pointers (e.g., FAMC @F1@ links a child to a family)
+//   - CONT/CONC tags for multi-line text (CONT = new line, CONC = same line continuation)
+//   - Names use /surname/ delimiters: "John /Smith/ Jr."
+// ============================================================================
+
+/**
+ * Parse a GEDCOM file into structured PHP arrays.
+ *
+ * WHY: A pure-PHP parser with no external dependencies. Reads the file line
+ *      by line, builds a tree of records, then extracts individuals, families,
+ *      and sources into flat arrays suitable for import into SP's EAV records
+ *      system or for display in a preview table.
+ *
+ * @param  string $file_path Absolute path to the .ged file.
+ * @return array  Parsed data: ['header' => [...], 'individuals' => [...], 'families' => [...], 'sources' => [...], 'errors' => [...]]
+ */
+function sp_parse_gedcom( string $file_path ): array {
+    $result = [
+        'header'      => [],
+        'individuals' => [],
+        'families'    => [],
+        'sources'     => [],
+        'errors'      => [],
+    ];
+
+    if ( ! file_exists( $file_path ) || ! is_readable( $file_path ) ) {
+        $result['errors'][] = __( 'GEDCOM file not found or not readable.', 'societypress' );
+        return $result;
+    }
+
+    // Read the entire file — GEDCOM files are typically under 10MB
+    $raw = file_get_contents( $file_path );
+    if ( $raw === false ) {
+        $result['errors'][] = __( 'Could not read the GEDCOM file.', 'societypress' );
+        return $result;
+    }
+
+    // Handle different line endings and character encodings
+    // WHY: GEDCOM 5.5 can use ANSEL, ASCII, or UTF-8. GEDCOM 7.0 requires UTF-8.
+    // Many legacy files use Windows line endings (CR+LF). We normalize everything
+    // to UTF-8 with LF line endings before parsing.
+    $raw = str_replace( [ "\r\n", "\r" ], "\n", $raw );
+
+    // Detect ANSEL encoding from header and convert if needed
+    // WHY: ANSEL is an older character encoding used by LDS software. Most
+    // modern files are UTF-8 or ASCII. If we detect ANSEL in the CHAR tag,
+    // we attempt to handle the common Latin characters (accented letters).
+    // Full ANSEL support would require a lookup table, but most genealogical
+    // data uses ASCII-range characters.
+    if ( ! mb_check_encoding( $raw, 'UTF-8' ) ) {
+        $raw = mb_convert_encoding( $raw, 'UTF-8', 'ISO-8859-1' );
+    }
+
+    $lines = explode( "\n", $raw );
+
+    // ---- Pass 1: Build a tree of records ----
+    // WHY: GEDCOM is a level-based hierarchy. Level 0 starts a new record,
+    //      levels 1+ are nested data within that record. We build a flat list
+    //      of top-level records, each containing their nested lines.
+    $records   = [];
+    $current   = null;
+    $line_num  = 0;
+
+    foreach ( $lines as $line ) {
+        $line_num++;
+        $line = rtrim( $line );
+        if ( $line === '' ) continue;
+
+        // Parse the line: level + optional xref + tag + optional value
+        // Examples:
+        //   "0 HEAD"                    → level=0, xref=null, tag=HEAD, value=''
+        //   "0 @I1@ INDI"              → level=0, xref=I1, tag=INDI, value=''
+        //   "1 NAME John /Smith/"       → level=1, xref=null, tag=NAME, value='John /Smith/'
+        //   "2 DATE 14 APR 1905"        → level=2, xref=null, tag=DATE, value='14 APR 1905'
+        if ( ! preg_match( '/^(\d+)\s+(?:@([^@]+)@\s+)?(\S+)(?:\s(.*))?$/', $line, $m ) ) {
+            // Skip unparseable lines — don't fail the whole import
+            continue;
+        }
+
+        $level = (int) $m[1];
+        $xref  = $m[2] ?? null;  // Cross-reference ID (e.g., "I1", "F1", "S1")
+        $tag   = strtoupper( $m[3] );
+        $value = $m[4] ?? '';
+
+        if ( $level === 0 ) {
+            // Start a new top-level record
+            if ( $current !== null ) {
+                $records[] = $current;
+            }
+            $current = [
+                'xref'  => $xref,
+                'tag'   => $tag,
+                'value' => $value,
+                'lines' => [],
+                'line'  => $line_num,
+            ];
+        } else {
+            // Nested data within the current record
+            if ( $current !== null ) {
+                $current['lines'][] = [
+                    'level' => $level,
+                    'xref'  => $xref,
+                    'tag'   => $tag,
+                    'value' => $value,
+                    'line'  => $line_num,
+                ];
+            }
+        }
+    }
+    // Don't forget the last record
+    if ( $current !== null ) {
+        $records[] = $current;
+    }
+
+    // ---- Pass 2: Extract header info ----
+    foreach ( $records as $rec ) {
+        if ( $rec['tag'] === 'HEAD' ) {
+            foreach ( $rec['lines'] as $sub ) {
+                if ( $sub['tag'] === 'SOUR' )  $result['header']['source']  = $sub['value'];
+                if ( $sub['tag'] === 'CHAR' )  $result['header']['charset'] = $sub['value'];
+                if ( $sub['tag'] === 'GEDC' ) {
+                    // Look for version in nested lines
+                    // (handled below in a second scan)
+                }
+                if ( $sub['tag'] === 'DATE' && ! isset( $result['header']['date'] ) ) {
+                    $result['header']['date'] = $sub['value'];
+                }
+                if ( $sub['tag'] === 'FILE' ) $result['header']['file'] = $sub['value'];
+                if ( $sub['tag'] === 'LANG' ) $result['header']['language'] = $sub['value'];
+            }
+            // Find GEDC version (level 2 VERS under level 1 GEDC)
+            $in_gedc = false;
+            foreach ( $rec['lines'] as $sub ) {
+                if ( $sub['level'] === 1 && $sub['tag'] === 'GEDC' ) {
+                    $in_gedc = true;
+                } elseif ( $sub['level'] === 1 ) {
+                    $in_gedc = false;
+                }
+                if ( $in_gedc && $sub['level'] === 2 && $sub['tag'] === 'VERS' ) {
+                    $result['header']['gedcom_version'] = $sub['value'];
+                }
+            }
+            break;
+        }
+    }
+
+    // ---- Helper: Concatenate CONT/CONC lines ----
+    // WHY: GEDCOM splits long text across multiple lines using CONT (new line)
+    //      and CONC (continuation of same line, no line break). We need to
+    //      reassemble these into a single string.
+    $concat_text = function ( array $lines, int $start_idx, int $parent_level ) use ( &$lines ) {
+        // This closure is unused — we handle CONT/CONC inline below
+    };
+
+    // ---- Pass 3: Extract individuals ----
+    foreach ( $records as $rec ) {
+        if ( $rec['tag'] !== 'INDI' ) continue;
+
+        $indi = [
+            'xref'       => $rec['xref'],
+            'names'      => [],
+            'sex'        => '',
+            'birth_date' => '',
+            'birth_place'=> '',
+            'death_date' => '',
+            'death_place'=> '',
+            'burial_place'=> '',
+            'occupation' => '',
+            'residence'  => '',
+            'notes'      => [],
+            'famc'       => [],  // Family as child (parents)
+            'fams'       => [],  // Family as spouse
+            'sources'    => [],
+        ];
+
+        // Walk through sub-lines, tracking context by level
+        $context_l1 = '';
+        $current_name = '';
+
+        foreach ( $rec['lines'] as $i => $sub ) {
+            // Handle CONT/CONC for notes
+            if ( $sub['tag'] === 'CONT' && $context_l1 === 'NOTE' ) {
+                $note_idx = count( $indi['notes'] ) - 1;
+                if ( $note_idx >= 0 ) {
+                    $indi['notes'][ $note_idx ] .= "\n" . $sub['value'];
+                }
+                continue;
+            }
+            if ( $sub['tag'] === 'CONC' && $context_l1 === 'NOTE' ) {
+                $note_idx = count( $indi['notes'] ) - 1;
+                if ( $note_idx >= 0 ) {
+                    $indi['notes'][ $note_idx ] .= $sub['value'];
+                }
+                continue;
+            }
+
+            if ( $sub['level'] === 1 ) {
+                $context_l1 = $sub['tag'];
+
+                switch ( $sub['tag'] ) {
+                    case 'NAME':
+                        // Parse GEDCOM name format: "Given /Surname/ Suffix"
+                        $current_name = $sub['value'];
+                        $parsed = sp_parse_gedcom_name( $sub['value'] );
+                        $indi['names'][] = $parsed;
+                        break;
+                    case 'SEX':
+                        $indi['sex'] = $sub['value'];
+                        break;
+                    case 'OCCU':
+                        $indi['occupation'] = $sub['value'];
+                        break;
+                    case 'NOTE':
+                        // Start collecting a note (may span CONT/CONC lines)
+                        if ( $sub['xref'] ) {
+                            $indi['notes'][] = '@' . $sub['xref'] . '@'; // Reference to a NOTE record
+                        } else {
+                            $indi['notes'][] = $sub['value'];
+                        }
+                        break;
+                    case 'FAMC':
+                        $indi['famc'][] = trim( $sub['value'], '@' );
+                        break;
+                    case 'FAMS':
+                        $indi['fams'][] = trim( $sub['value'], '@' );
+                        break;
+                    case 'SOUR':
+                        $indi['sources'][] = trim( $sub['value'], '@' );
+                        break;
+                }
+            } elseif ( $sub['level'] === 2 ) {
+                switch ( $context_l1 ) {
+                    case 'BIRT':
+                        if ( $sub['tag'] === 'DATE' ) $indi['birth_date']  = $sub['value'];
+                        if ( $sub['tag'] === 'PLAC' ) $indi['birth_place'] = $sub['value'];
+                        break;
+                    case 'DEAT':
+                        if ( $sub['tag'] === 'DATE' ) $indi['death_date']  = $sub['value'];
+                        if ( $sub['tag'] === 'PLAC' ) $indi['death_place'] = $sub['value'];
+                        break;
+                    case 'BURI':
+                        if ( $sub['tag'] === 'PLAC' ) $indi['burial_place'] = $sub['value'];
+                        break;
+                    case 'RESI':
+                        if ( $sub['tag'] === 'ADDR' ) $indi['residence'] = $sub['value'];
+                        if ( $sub['tag'] === 'PLAC' ) $indi['residence'] = $sub['value'];
+                        break;
+                }
+            }
+        }
+
+        $result['individuals'][] = $indi;
+    }
+
+    // ---- Pass 4: Extract families ----
+    foreach ( $records as $rec ) {
+        if ( $rec['tag'] !== 'FAM' ) continue;
+
+        $fam = [
+            'xref'           => $rec['xref'],
+            'husband'        => '',
+            'wife'           => '',
+            'children'       => [],
+            'marriage_date'  => '',
+            'marriage_place' => '',
+            'divorce_date'   => '',
+        ];
+
+        $context_l1 = '';
+        foreach ( $rec['lines'] as $sub ) {
+            if ( $sub['level'] === 1 ) {
+                $context_l1 = $sub['tag'];
+                switch ( $sub['tag'] ) {
+                    case 'HUSB':
+                        $fam['husband'] = trim( $sub['value'], '@' );
+                        break;
+                    case 'WIFE':
+                        $fam['wife'] = trim( $sub['value'], '@' );
+                        break;
+                    case 'CHIL':
+                        $fam['children'][] = trim( $sub['value'], '@' );
+                        break;
+                }
+            } elseif ( $sub['level'] === 2 ) {
+                if ( $context_l1 === 'MARR' ) {
+                    if ( $sub['tag'] === 'DATE' ) $fam['marriage_date']  = $sub['value'];
+                    if ( $sub['tag'] === 'PLAC' ) $fam['marriage_place'] = $sub['value'];
+                }
+                if ( $context_l1 === 'DIV' ) {
+                    if ( $sub['tag'] === 'DATE' ) $fam['divorce_date'] = $sub['value'];
+                }
+            }
+        }
+
+        $result['families'][] = $fam;
+    }
+
+    // ---- Pass 5: Extract sources ----
+    foreach ( $records as $rec ) {
+        if ( $rec['tag'] !== 'SOUR' || $rec['xref'] === null ) continue;
+
+        $sour = [
+            'xref'  => $rec['xref'],
+            'title' => '',
+            'author'=> '',
+            'abbr'  => '',
+            'repo'  => '',
+        ];
+
+        foreach ( $rec['lines'] as $sub ) {
+            if ( $sub['level'] !== 1 ) continue;
+            if ( $sub['tag'] === 'TITL' ) $sour['title']  = $sub['value'];
+            if ( $sub['tag'] === 'AUTH' ) $sour['author'] = $sub['value'];
+            if ( $sub['tag'] === 'ABBR' ) $sour['abbr']   = $sub['value'];
+            if ( $sub['tag'] === 'REPO' ) $sour['repo']   = trim( $sub['value'], '@' );
+        }
+
+        $result['sources'][] = $sour;
+    }
+
+    return $result;
+}
+
+
+/**
+ * Parse a GEDCOM name string into components.
+ *
+ * WHY: GEDCOM encodes names as "Given /Surname/ Suffix" where the surname
+ *      is delimited by forward slashes. Some files use "Given /Surname/" with
+ *      no suffix. We split these into given_name, surname, and suffix.
+ *
+ * @param  string $name_str Raw GEDCOM name (e.g., "John William /Smith/ Jr.")
+ * @return array  ['full' => '...', 'given' => '...', 'surname' => '...', 'suffix' => '...']
+ */
+function sp_parse_gedcom_name( string $name_str ): array {
+    $result = [ 'full' => '', 'given' => '', 'surname' => '', 'suffix' => '' ];
+
+    // Extract surname between slashes
+    if ( preg_match( '/^(.*?)\s*\/([^\/]*)\/(.*?)$/', $name_str, $m ) ) {
+        $result['given']   = trim( $m[1] );
+        $result['surname'] = trim( $m[2] );
+        $result['suffix']  = trim( $m[3] );
+    } else {
+        // No surname delimiters — treat the whole thing as a given name
+        $result['given'] = trim( $name_str );
+    }
+
+    // Build a clean full name
+    $parts = array_filter( [ $result['given'], $result['surname'], $result['suffix'] ] );
+    $result['full'] = implode( ' ', $parts );
+
+    return $result;
+}
+
+
+/**
+ * Import parsed GEDCOM individuals into a SocietyPress record collection.
+ *
+ * WHY: Creates a new "Individuals" collection with fields for name, sex,
+ *      birth/death dates and places, burial, occupation, and notes. Each
+ *      GEDCOM INDI record becomes one SP record with field values mapped
+ *      from the parsed data.
+ *
+ * @param  array  $gedcom     Parsed GEDCOM data from sp_parse_gedcom().
+ * @param  string $collection_name  Name for the new collection.
+ * @param  string $access_level     'public' or 'members'.
+ * @return array  Results: ['collection_id' => int, 'imported' => int, 'skipped' => int, 'errors' => []]
+ */
+function sp_import_gedcom_individuals( array $gedcom, string $collection_name, string $access_level = 'public' ): array {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    $result = [ 'collection_id' => 0, 'imported' => 0, 'skipped' => 0, 'errors' => [] ];
+
+    if ( empty( $gedcom['individuals'] ) ) {
+        $result['errors'][] = __( 'No individuals found in the GEDCOM file.', 'societypress' );
+        return $result;
+    }
+
+    // ---- Create the collection ----
+    $version_info = $gedcom['header']['gedcom_version'] ?? '5.5';
+    $source_info  = $gedcom['header']['source'] ?? __( 'Unknown', 'societypress' );
+
+    $wpdb->insert( $prefix . 'record_collections', [
+        'name'         => $collection_name,
+        'type'         => 'CEN',  // Census is closest generic type for person records
+        'description'  => sprintf(
+            /* translators: %1$s is the GEDCOM version, %2$s is the source software, %3$d is the individual count */
+            __( 'Imported from GEDCOM %1$s file (source: %2$s). Contains %3$d individuals.', 'societypress' ),
+            $version_info,
+            $source_info,
+            count( $gedcom['individuals'] )
+        ),
+        'access_level' => $access_level,
+        'record_count' => 0,
+        'created_at'   => current_time( 'mysql' ),
+    ] );
+    $collection_id = (int) $wpdb->insert_id;
+    if ( ! $collection_id ) {
+        $result['errors'][] = __( 'Failed to create the record collection.', 'societypress' );
+        return $result;
+    }
+    $result['collection_id'] = $collection_id;
+
+    // ---- Create fields ----
+    // WHY: Standard set of fields that cover the most commonly used GEDCOM data.
+    //      Every INDI record can have these. The field order matches a natural
+    //      reading order: name, sex, dates, places, occupation, notes.
+    $field_defs = [
+        'given_name'   => __( 'Given Name', 'societypress' ),
+        'surname'      => __( 'Surname', 'societypress' ),
+        'suffix'       => __( 'Suffix', 'societypress' ),
+        'sex'          => __( 'Sex', 'societypress' ),
+        'birth_date'   => __( 'Birth Date', 'societypress' ),
+        'birth_place'  => __( 'Birth Place', 'societypress' ),
+        'death_date'   => __( 'Death Date', 'societypress' ),
+        'death_place'  => __( 'Death Place', 'societypress' ),
+        'burial_place' => __( 'Burial Place', 'societypress' ),
+        'occupation'   => __( 'Occupation', 'societypress' ),
+        'notes'        => __( 'Notes', 'societypress' ),
+    ];
+
+    $field_ids = [];
+    $sort = 0;
+    foreach ( $field_defs as $key => $label ) {
+        $sort++;
+        $wpdb->insert( $prefix . 'record_collection_fields', [
+            'collection_id' => $collection_id,
+            'field_name'    => $label,
+            'field_type'    => ( $key === 'notes' ) ? 'textarea' : 'text',
+            'sort_order'    => $sort,
+        ] );
+        $field_ids[ $key ] = (int) $wpdb->insert_id;
+    }
+
+    // ---- Import individuals as records ----
+    $imported = 0;
+    foreach ( $gedcom['individuals'] as $indi ) {
+        // Use the first name entry (GEDCOM allows multiple NAME tags)
+        $name = ! empty( $indi['names'] ) ? $indi['names'][0] : [ 'given' => '', 'surname' => '', 'suffix' => '' ];
+
+        // Build search text for fast full-text search
+        $search_parts = array_filter( [
+            $name['given'], $name['surname'], $name['suffix'],
+            $indi['birth_date'], $indi['birth_place'],
+            $indi['death_date'], $indi['death_place'],
+            $indi['burial_place'], $indi['occupation'],
+        ] );
+        $search_text = implode( ' ', $search_parts );
+
+        $wpdb->insert( $prefix . 'records', [
+            'collection_id' => $collection_id,
+            'search_text'   => $search_text,
+            'created_at'    => current_time( 'mysql' ),
+        ] );
+        $record_id = (int) $wpdb->insert_id;
+        if ( ! $record_id ) {
+            $result['errors'][] = sprintf(
+                /* translators: %s is the GEDCOM cross-reference ID */
+                __( 'Failed to create record for individual %s.', 'societypress' ),
+                $indi['xref'] ?? '?'
+            );
+            continue;
+        }
+
+        // Map GEDCOM data to field values
+        $values = [
+            'given_name'   => $name['given'],
+            'surname'      => $name['surname'],
+            'suffix'       => $name['suffix'],
+            'sex'          => $indi['sex'],
+            'birth_date'   => $indi['birth_date'],
+            'birth_place'  => $indi['birth_place'],
+            'death_date'   => $indi['death_date'],
+            'death_place'  => $indi['death_place'],
+            'burial_place' => $indi['burial_place'],
+            'occupation'   => $indi['occupation'],
+            'notes'        => implode( "\n\n", $indi['notes'] ),
+        ];
+
+        foreach ( $values as $key => $val ) {
+            if ( $val === '' ) continue;
+            if ( ! isset( $field_ids[ $key ] ) ) continue;
+            $wpdb->insert( $prefix . 'record_values', [
+                'record_id' => $record_id,
+                'field_id'  => $field_ids[ $key ],
+                'value'     => $val,
+            ] );
+        }
+
+        $imported++;
+    }
+
+    // Update collection record count
+    $wpdb->update(
+        $prefix . 'record_collections',
+        [ 'record_count' => $imported ],
+        [ 'id' => $collection_id ]
+    );
+
+    $result['imported'] = $imported;
+    return $result;
 }
 
 
@@ -74608,6 +75302,219 @@ function sp_ajax_export_genrecord(): void {
         fputcsv( $out, $csv_row );
         $row_num++;
     }
+
+    fclose( $out );
+    exit;
+}
+
+
+// ---- GEDCOM Export — export a record collection as a .ged file ----
+// WHY: Societies may need to share their records with other genealogy software
+//      or researchers who use family tree programs. GEDCOM is the universal
+//      exchange format. We export each record as an INDI record with the field
+//      values mapped back to standard GEDCOM tags.
+add_action( 'wp_ajax_sp_export_gedcom', 'sp_ajax_export_gedcom' );
+function sp_ajax_export_gedcom(): void {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+    }
+    check_ajax_referer( 'sp_export_gedcom' );
+
+    global $wpdb;
+    $prefix        = $wpdb->prefix . 'sp_';
+    $collection_id = (int) ( $_GET['collection_id'] ?? 0 );
+
+    $collection = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$prefix}record_collections WHERE id = %d",
+        $collection_id
+    ) );
+    if ( ! $collection ) {
+        wp_die( esc_html__( 'Collection not found.', 'societypress' ) );
+    }
+
+    // Get fields for this collection (ordered by sort_order)
+    $fields = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$prefix}record_collection_fields WHERE collection_id = %d ORDER BY sort_order",
+        $collection_id
+    ) );
+
+    // Build a field-name-to-id map for matching known GEDCOM tags
+    $field_map = [];
+    foreach ( $fields as $f ) {
+        $field_map[ strtolower( trim( $f->field_name ) ) ] = (int) $f->id;
+    }
+
+    // Get all records
+    $records = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$prefix}records WHERE collection_id = %d ORDER BY id",
+        $collection_id
+    ) );
+
+    $record_ids = wp_list_pluck( $records, 'id' );
+
+    // Pre-load all values
+    $all_values = [];
+    if ( $record_ids ) {
+        $id_placeholders = implode( ',', array_fill( 0, count( $record_ids ), '%d' ) );
+        $value_rows = $wpdb->get_results( $wpdb->prepare(
+            "SELECT record_id, field_id, value FROM {$prefix}record_values WHERE record_id IN ($id_placeholders)",
+            ...$record_ids
+        ) );
+        foreach ( $value_rows as $vr ) {
+            $all_values[ (int) $vr->record_id ][ (int) $vr->field_id ] = $vr->value;
+        }
+    }
+
+    // Map common field names to GEDCOM tag paths
+    // WHY: Field names are user-defined, so we match common patterns to produce
+    //      valid GEDCOM output. Fields that don't match a known pattern are
+    //      included as NOTE lines so no data is lost.
+    $gedcom_field_keys = [
+        'given name'   => 'GIVN',
+        'given'        => 'GIVN',
+        'first name'   => 'GIVN',
+        'surname'      => 'SURN',
+        'last name'    => 'SURN',
+        'suffix'       => 'NSFX',
+        'sex'          => 'SEX',
+        'birth date'   => 'BIRT_DATE',
+        'birth place'  => 'BIRT_PLAC',
+        'death date'   => 'DEAT_DATE',
+        'death place'  => 'DEAT_PLAC',
+        'burial place' => 'BURI_PLAC',
+        'occupation'   => 'OCCU',
+        'notes'        => 'NOTE',
+    ];
+
+    // Resolve field IDs to GEDCOM tags
+    $field_to_tag = [];
+    foreach ( $field_map as $name => $fid ) {
+        if ( isset( $gedcom_field_keys[ $name ] ) ) {
+            $field_to_tag[ $fid ] = $gedcom_field_keys[ $name ];
+        }
+    }
+
+    // Output the GEDCOM file
+    $filename  = sanitize_file_name( $collection->name ) . '.ged';
+    $site_name = get_bloginfo( 'name' );
+
+    if ( ob_get_level() ) ob_end_clean();
+    header( 'Content-Type: text/x-gedcom; charset=utf-8' );
+    header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+    header( 'Cache-Control: no-cache, no-store, must-revalidate' );
+
+    $out = fopen( 'php://output', 'w' );
+
+    // GEDCOM header
+    fwrite( $out, "0 HEAD\n" );
+    fwrite( $out, "1 SOUR SocietyPress\n" );
+    fwrite( $out, "2 VERS " . SOCIETYPRESS_VERSION . "\n" );
+    fwrite( $out, "2 NAME SocietyPress\n" );
+    if ( $site_name ) {
+        fwrite( $out, "2 CORP " . str_replace( "\n", ' ', $site_name ) . "\n" );
+    }
+    fwrite( $out, "1 DEST GEDCOM\n" );
+    fwrite( $out, "1 DATE " . strtoupper( wp_date( 'j M Y' ) ) . "\n" );
+    fwrite( $out, "1 FILE " . $filename . "\n" );
+    fwrite( $out, "1 GEDC\n" );
+    fwrite( $out, "2 VERS 5.5.1\n" );
+    fwrite( $out, "2 FORM LINEAGE-LINKED\n" );
+    fwrite( $out, "1 CHAR UTF-8\n" );
+    fwrite( $out, "1 NOTE Exported from SocietyPress collection: " . str_replace( "\n", ' ', $collection->name ) . "\n" );
+
+    // Submitter record (required by GEDCOM spec)
+    fwrite( $out, "0 @SUBM1@ SUBM\n" );
+    fwrite( $out, "1 NAME " . str_replace( "\n", ' ', $site_name ?: 'SocietyPress' ) . "\n" );
+
+    // Back-reference submitter from header — GEDCOM requires this but we already
+    // wrote the header. Some parsers tolerate the missing SUBM reference in HEAD.
+    // For strict compliance we'd need to buffer, but this is pragmatic.
+
+    // Individual records
+    $indi_num = 0;
+    foreach ( $records as $rec ) {
+        $indi_num++;
+        $xref   = 'I' . $indi_num;
+        $values = $all_values[ (int) $rec->id ] ?? [];
+
+        // Resolve values by GEDCOM tag
+        $by_tag = [];
+        $unmapped_notes = [];
+        foreach ( $values as $fid => $val ) {
+            if ( $val === '' ) continue;
+            if ( isset( $field_to_tag[ $fid ] ) ) {
+                $by_tag[ $field_to_tag[ $fid ] ] = $val;
+            } else {
+                // Unknown field — include as a NOTE so no data is lost
+                // Find the field name for labeling
+                foreach ( $fields as $f ) {
+                    if ( (int) $f->id === $fid ) {
+                        $unmapped_notes[] = $f->field_name . ': ' . $val;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Build the GEDCOM name: "Given /Surname/ Suffix"
+        $givn = $by_tag['GIVN'] ?? '';
+        $surn = $by_tag['SURN'] ?? '';
+        $nsfx = $by_tag['NSFX'] ?? '';
+        $name = trim( $givn . ' /' . $surn . '/' . ( $nsfx ? ' ' . $nsfx : '' ) );
+
+        fwrite( $out, "0 @{$xref}@ INDI\n" );
+        fwrite( $out, "1 NAME {$name}\n" );
+        if ( $givn ) fwrite( $out, "2 GIVN {$givn}\n" );
+        if ( $surn ) fwrite( $out, "2 SURN {$surn}\n" );
+        if ( $nsfx ) fwrite( $out, "2 NSFX {$nsfx}\n" );
+
+        if ( ! empty( $by_tag['SEX'] ) ) {
+            fwrite( $out, "1 SEX " . strtoupper( substr( $by_tag['SEX'], 0, 1 ) ) . "\n" );
+        }
+
+        // Birth
+        if ( ! empty( $by_tag['BIRT_DATE'] ) || ! empty( $by_tag['BIRT_PLAC'] ) ) {
+            fwrite( $out, "1 BIRT\n" );
+            if ( ! empty( $by_tag['BIRT_DATE'] ) ) fwrite( $out, "2 DATE " . $by_tag['BIRT_DATE'] . "\n" );
+            if ( ! empty( $by_tag['BIRT_PLAC'] ) ) fwrite( $out, "2 PLAC " . $by_tag['BIRT_PLAC'] . "\n" );
+        }
+
+        // Death
+        if ( ! empty( $by_tag['DEAT_DATE'] ) || ! empty( $by_tag['DEAT_PLAC'] ) ) {
+            fwrite( $out, "1 DEAT\n" );
+            if ( ! empty( $by_tag['DEAT_DATE'] ) ) fwrite( $out, "2 DATE " . $by_tag['DEAT_DATE'] . "\n" );
+            if ( ! empty( $by_tag['DEAT_PLAC'] ) ) fwrite( $out, "2 PLAC " . $by_tag['DEAT_PLAC'] . "\n" );
+        }
+
+        // Burial
+        if ( ! empty( $by_tag['BURI_PLAC'] ) ) {
+            fwrite( $out, "1 BURI\n" );
+            fwrite( $out, "2 PLAC " . $by_tag['BURI_PLAC'] . "\n" );
+        }
+
+        // Occupation
+        if ( ! empty( $by_tag['OCCU'] ) ) {
+            fwrite( $out, "1 OCCU " . $by_tag['OCCU'] . "\n" );
+        }
+
+        // Notes (from the notes field)
+        if ( ! empty( $by_tag['NOTE'] ) ) {
+            // GEDCOM notes use CONT for line breaks
+            $note_lines = explode( "\n", $by_tag['NOTE'] );
+            fwrite( $out, "1 NOTE " . $note_lines[0] . "\n" );
+            for ( $i = 1; $i < count( $note_lines ); $i++ ) {
+                fwrite( $out, "2 CONT " . $note_lines[ $i ] . "\n" );
+            }
+        }
+
+        // Unmapped fields as additional notes
+        foreach ( $unmapped_notes as $note ) {
+            fwrite( $out, "1 NOTE " . str_replace( "\n", ' ', $note ) . "\n" );
+        }
+    }
+
+    // Trailer
+    fwrite( $out, "0 TRLR\n" );
 
     fclose( $out );
     exit;

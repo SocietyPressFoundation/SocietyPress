@@ -36371,7 +36371,7 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
 </style>';
 
     echo '<form method="get" class="sp-surname-search-form">';
-    echo '<input type="text" name="sp_surname" value="' . esc_attr( $search ) . '" placeholder="<?php echo esc_attr__( 'Search surnames...', 'societypress' ); ?>" class="sp-surname-search-input">';
+    echo '<input type="text" name="sp_surname" value="' . esc_attr( $search ) . '" placeholder="' . esc_attr__( 'Search surnames...', 'societypress' ) . '" class="sp-surname-search-input">';
     echo '<button type="submit" class="sp-btn sp-btn-primary">' . esc_html__( 'Search', 'societypress' ) . '</button>';
     echo '</form>';
 
@@ -59144,7 +59144,7 @@ function sp_frontend_library_catalog(): void {
 
     echo '<h2>' . esc_html__( 'Library Catalog', 'societypress' ) . '</h2>';
     echo '<form method="get" class="sp-fe-catalog-form">';
-    echo '<input type="text" name="sp_lib_search" value="' . esc_attr( $search ) . '" placeholder="<?php echo esc_attr__( 'Search title, author, or call number...', 'societypress' ); ?>" class="sp-fe-catalog-search" aria-label="' . esc_attr__( 'Search the library catalog', 'societypress' ) . '">';
+    echo '<input type="text" name="sp_lib_search" value="' . esc_attr( $search ) . '" placeholder="' . esc_attr__( 'Search title, author, or call number...', 'societypress' ) . '" class="sp-fe-catalog-search" aria-label="' . esc_attr__( 'Search the library catalog', 'societypress' ) . '">';
     echo '<select name="category" class="sp-fe-catalog-cat-select" aria-label="' . esc_attr__( 'Filter by category', 'societypress' ) . '">';
     echo '<option value="0">' . esc_html__( 'All Categories', 'societypress' ) . '</option>';
     foreach ( $categories as $cat ) {
@@ -74362,14 +74362,6 @@ function sp_parse_gedcom( string $file_path ): array {
             break;
         }
     }
-
-    // ---- Helper: Concatenate CONT/CONC lines ----
-    // WHY: GEDCOM splits long text across multiple lines using CONT (new line)
-    //      and CONC (continuation of same line, no line break). We need to
-    //      reassemble these into a single string.
-    $concat_text = function ( array $lines, int $start_idx, int $parent_level ) use ( &$lines ) {
-        // This closure is unused — we handle CONT/CONC inline below
-    };
 
     // ---- Pass 3: Extract individuals ----
     foreach ( $records as $rec ) {

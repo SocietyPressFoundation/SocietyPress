@@ -6,7 +6,7 @@
         <name>SocietyPress</name>
         <softname>societypress</softname>
         <cat>Portal/CMS</cat>
-        <ver>0.51d</ver>
+        <ver>1.0.0</ver>
         <ver_min_498>6.0</ver_min_498>
         <desc>A free, open-source membership management platform built specifically for genealogical and historical societies. Manage members, events, a research library, genealogical records, newsletters, volunteers, a store, and more — all in one place. Built on WordPress.</desc>
         <features>

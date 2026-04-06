@@ -1,4 +1,16 @@
 # SocietyPress — WORKLOG
+## v1.0.7 — 2026-04-06
+
+### Session: Store Shipping Address + Label Printing
+
+**Shipping Address on Checkout** — the store cart page now collects a shipping address before allowing checkout. Six fields: address, address line 2, city, state/province, zip/postal code, country. Pre-fills from the member's address on file. Required field validation (address, city, state, zip) runs client-side and server-side. Both Stripe and PayPal checkout handlers save to the existing `shipping_*` columns on sp_orders (which existed in the schema but were never populated).
+
+**Order Detail — Shipping Display** — the admin order detail page now shows the shipping address in the Customer panel ("Ship To" row with formatted multi-line address, country shown only for non-US).
+
+**Print Shipping Label** — new "Shipping" section on the order detail page with a "Print Shipping Label" button. Opens a popup formatted for Avery 5160 labels (1" × 2-5/8", 30 per sheet). Return address from org settings (organization_name + organization_address), ship-to from the order record. 7pt return address, 9pt ship-to, Arial. @media print handles exact label dimensions; @media screen shows a dashed border preview. Harold clicks the button, hits Ctrl+P, sticks the label on the envelope.
+
+---
+
 ## v1.0.6 — 2026-04-05
 
 ### Session: Installer Auto-Login Fix + Getting Started Checklist

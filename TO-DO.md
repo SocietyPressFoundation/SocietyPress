@@ -635,6 +635,8 @@ See `Docs/KNOWN-ISSUES.md` for the full list (43 items tracked, 41 fixed, 2 defe
 - [x] Order tracking: `sp_orders` + `sp_order_items` tables (41 total DB tables now). Admin "Store Orders" page with status filter tabs (all/paid/pending/shipped/completed/refunded), colored status badges, item count, customer info, date. Order detail page: 2-column layout (order info + customer), items table, status update form with admin note. Added to Finances flyout menu.
 - [x] Payment integration: Stripe Checkout for store — reuses existing Stripe REST API pattern (no SDK). Checkout AJAX creates order (status=pending), builds multi-line-item Stripe session, redirects to Stripe. Return handler verifies session, updates order to "paid", clears cart, sends confirmation email (HTML receipt with item table + total). Supports multiple items per checkout. Audit logging for order create + payment.
 - [x] Generalize store — replaced hardcoded `acq_code = 'Society Publication'` with configurable `store_acq_code` setting (Settings → Organization → Store). Intro text also configurable. Blank acq_code shows all priced items.
+- [x] Shipping address collection: cart page collects address/city/state/zip/country before checkout, pre-fills from member record, validates client+server, saved to sp_orders shipping columns (both Stripe and PayPal flows)
+- [x] Shipping label printing: "Print Shipping Label" button on order detail page, opens Avery 5160 formatted popup (return address from org settings, ship-to from order), @media print for exact label dimensions
 
 ## Payment Processing — Complete
 

@@ -100,6 +100,7 @@ register_activation_hook( __FILE__, function () {
             'stripe_live_publishable_key'  => '',
             'stripe_live_secret_key'       => '',
             'stripe_currency'              => 'usd',
+            'stripe_webhook_secret'        => '',          // encrypted at rest — whsec_ from Stripe dashboard
             // Payments — PayPal integration for online payments
             'paypal_test_mode'             => 1,           // 1 = sandbox, 0 = live
             'paypal_sandbox_client_id'     => '',
@@ -19934,6 +19935,11 @@ function sp_sanitize_settings( array $input ): array {
         },
         'stripe_currency'             => fn() => in_array( $input['stripe_currency'] ?? '', [ 'usd', 'cad', 'gbp', 'eur', 'aud' ], true )
                                                    ? $input['stripe_currency'] : 'usd',
+        'stripe_webhook_secret'       => function() use ( $input, $existing ) {
+            $val = sanitize_text_field( $input['stripe_webhook_secret'] ?? '' );
+            if ( $val === '' || $val === str_repeat( "\u{2022}", 12 ) ) return $existing['stripe_webhook_secret'] ?? '';
+            return sp_encrypt( $val );
+        },
 
         // PayPal payment settings
         'paypal_test_mode'            => fn() => ! empty( $input['paypal_test_mode'] ) ? 1 : 0,
@@ -41240,6 +41246,39 @@ add_action( 'admin_init', function () {
         'sp_stripe_section'
     );
 
+    // --- Webhook Secret ---
+    // WHY: Stripe signs webhook deliveries with a secret (whsec_...) so we can
+    //      verify they're legitimate. Without this, the webhook endpoint rejects
+    //      all incoming events as a safety measure (never fail open).
+    add_settings_field(
+        'stripe_webhook_secret',
+        __( 'Webhook Signing Secret', 'societypress' ),
+        function () {
+            $settings  = get_option( 'societypress_settings', [] );
+            $wh_saved  = ! empty( $settings['stripe_webhook_secret'] );
+            ?>
+            <input type="password" name="societypress_settings[stripe_webhook_secret]"
+                   value="<?php echo esc_attr( $wh_saved ? str_repeat( "\u{2022}", 12 ) : '' ); ?>" class="large-text"
+                   placeholder="whsec_..." autocomplete="off" spellcheck="false">
+            <button type="button" class="button button-small sp-toggle-secret"
+                    aria-pressed="false" onclick="var i=this.previousElementSibling;if(i.type==='password'){i.type='text';this.textContent='<?php echo esc_js( __( 'Hide', 'societypress' ) ); ?>';this.setAttribute('aria-pressed','true');}else{i.type='password';this.textContent='<?php echo esc_js( __( 'Show', 'societypress' ) ); ?>';this.setAttribute('aria-pressed','false');}">
+                <?php esc_html_e( 'Show', 'societypress' ); ?>
+            </button>
+            <p class="description">
+                <?php
+                printf(
+                    /* translators: %s: webhook URL */
+                    esc_html__( 'From your Stripe Dashboard: Developers → Webhooks → Add endpoint. URL: %s — Event: checkout.session.completed', 'societypress' ),
+                    '<code>' . esc_html( home_url( '/wp-json/societypress/v1/webhooks/stripe' ) ) . '</code>'
+                );
+                ?>
+            </p>
+            <?php
+        },
+        'sp-settings-events',
+        'sp_stripe_section'
+    );
+
     // --- Test Connection Button ---
     // WHY: Harold just pasted two cryptic strings. A "Test Connection" button
     //      that immediately tells him "it works!" (or "it doesn't") is the
@@ -47602,7 +47641,7 @@ add_action( 'init', function () {
     $rate_key   = 'sp_join_rate_' . md5( $_SERVER['REMOTE_ADDR'] ?? 'unknown' );
     $attempts   = (int) get_transient( $rate_key );
     if ( $attempts >= 3 ) {
-        $org_email = get_option( 'societypress_settings', [] )['org_email'] ?? get_option( 'admin_email' );
+        $org_email = get_option( 'societypress_settings', [] )['organization_email'] ?? get_option( 'admin_email' );
         /* translators: %s: organization email address */
         $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => sprintf( __( 'Too many attempts. Please wait one hour and try again, or contact us at %s if you need help.', 'societypress' ), $org_email ) ];
         return;
@@ -51542,7 +51581,9 @@ function sp_backup_export_settings( string $output_dir ): void {
     // would be undecryptable on a restored/migrated site.
     $exclude = [
         'stripe_test_secret_key', 'stripe_live_secret_key',
+        'stripe_webhook_secret',
         'paypal_sandbox_secret',  'paypal_live_secret',
+        'ai_api_key',
     ];
     foreach ( $exclude as $key ) {
         unset( $settings[ $key ] );
@@ -53179,7 +53220,7 @@ add_action( 'template_redirect', function () {
     // WHY: We never trust the URL parameters alone — an attacker could craft a
     //      fake success URL. We call Stripe's API to confirm the session exists
     //      and payment actually succeeded before marking anything as paid.
-    $response = wp_remote_get( 'https://api.stripe.com/v1/checkout/sessions/' . $session_id, [
+    $response = wp_remote_get( 'https://api.stripe.com/v1/checkout/sessions/' . rawurlencode( $session_id ), [
         'timeout' => 15,
         'headers' => [
             'Authorization' => 'Bearer ' . $secret_key,
@@ -61435,7 +61476,9 @@ class SP_Volunteers_List_Table extends WP_List_Table {
             $wpdb->delete( $prefix . 'volunteer_roles', [ 'id' => $role_id ] );
         }
 
-        $orderby = sanitize_sql_orderby( $_GET['orderby'] ?? 'last_name' ) ?: 'last_name';
+        $allowed_orderby = [ 'last_name', 'first_name', 'role_title', 'committee' ];
+        $orderby = isset( $_GET['orderby'] ) && in_array( $_GET['orderby'], $allowed_orderby, true )
+                   ? $_GET['orderby'] : 'last_name';
         $order   = strtoupper( $_GET['order'] ?? 'ASC' ) === 'DESC' ? 'DESC' : 'ASC';
         $search  = isset( $_GET['s'] ) ? sanitize_text_field( $_GET['s'] ) : '';
 
@@ -61562,7 +61605,9 @@ class SP_VolunteerHours_List_Table extends WP_List_Table {
             $wpdb->delete( $prefix . 'volunteer_hours', [ 'id' => $hour_id ] );
         }
 
-        $orderby = sanitize_sql_orderby( $_GET['orderby'] ?? 'activity_date' ) ?: 'activity_date';
+        $allowed_orderby = [ 'activity_date', 'hours', 'activity', 'committee' ];
+        $orderby = isset( $_GET['orderby'] ) && in_array( $_GET['orderby'], $allowed_orderby, true )
+                   ? $_GET['orderby'] : 'activity_date';
         $order   = strtoupper( $_GET['order'] ?? 'DESC' ) === 'ASC' ? 'ASC' : 'DESC';
 
         $per_page = 20;
@@ -71193,6 +71238,14 @@ add_action( 'wp_ajax_sp_newsletter_download',        'sp_ajax_newsletter_downloa
 add_action( 'wp_ajax_nopriv_sp_newsletter_download', 'sp_ajax_newsletter_download' );
 
 function sp_ajax_newsletter_download(): void {
+    // WHY: Even though this is a file download (not JSON), nonce verification
+    // prevents CSRF — a malicious page on another origin could otherwise
+    // trigger a download of a members-only newsletter via a hidden <img> tag
+    // or <a> link clicked by a logged-in member.
+    if ( ! wp_verify_nonce( $_GET['_wpnonce'] ?? '', 'sp_newsletter_download' ) ) {
+        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+    }
+
     $newsletter_id = absint( $_GET['newsletter_id'] ?? 0 );
     if ( ! $newsletter_id ) {
         wp_die( esc_html__( 'Invalid newsletter.', 'societypress' ) );
@@ -71334,7 +71387,10 @@ function sp_frontend_newsletter_archive(): void {
                     // WHY: All PDF access goes through the AJAX endpoint so members-only
                     // access control is enforced. We never expose the direct attachment URL
                     // in HTML — a logged-in member could share it, bypassing the gate.
-                    $download_url = admin_url( 'admin-ajax.php?action=sp_newsletter_download&newsletter_id=' . $nl->id );
+                    $download_url = wp_nonce_url(
+                        admin_url( 'admin-ajax.php?action=sp_newsletter_download&newsletter_id=' . $nl->id ),
+                        'sp_newsletter_download'
+                    );
                     $preview_url  = add_query_arg( 'preview', '1', $download_url );
                 ?>
                     <div class="sp-newsletter-card" data-title="<?php echo esc_attr( strtolower( $nl->title ) ); ?>">
@@ -76809,7 +76865,7 @@ add_action( 'template_redirect', function () {
     if ( empty( $secret_key ) ) return;
 
     // Verify the Checkout Session with Stripe
-    $response = wp_remote_get( 'https://api.stripe.com/v1/checkout/sessions/' . $session_id, [
+    $response = wp_remote_get( 'https://api.stripe.com/v1/checkout/sessions/' . rawurlencode( $session_id ), [
         'timeout' => 15,
         'headers' => [ 'Authorization' => 'Bearer ' . $secret_key ],
     ] );
@@ -80476,6 +80532,18 @@ add_action( 'wp_ajax_sp_detach_event_from_feed', function () {
 // ============================================================================
 
 add_action( 'rest_api_init', function () {
+    // Stripe webhook endpoint — receives asynchronous payment notifications
+    // WHY: Stripe sends webhook events for completed Checkout Sessions. This is
+    //      the safety net that catches payments when the buyer closes their browser
+    //      before being redirected back to the site. Without this, the return URL
+    //      handler never fires and the payment record stays stuck in "pending"
+    //      forever — money taken, nothing recorded.
+    register_rest_route( 'societypress/v1', '/webhooks/stripe', [
+        'methods'             => 'POST',
+        'callback'            => 'sp_rest_stripe_webhook',
+        'permission_callback' => '__return_true',
+    ] );
+
     // PayPal webhook endpoint — receives asynchronous payment notifications
     // WHY: PayPal sends webhook events for payment captures, refunds, and disputes.
     //      This endpoint handles those notifications as a safety net — the primary
@@ -80493,6 +80561,244 @@ add_action( 'rest_api_init', function () {
         'permission_callback' => '__return_true',
     ] );
 } );
+
+
+/**
+ * REST handler: /wp-json/societypress/v1/webhooks/stripe
+ *
+ * WHY: Stripe sends webhook events when Checkout Sessions complete. This is the
+ *      safety net for payments where the buyer closes their browser before being
+ *      redirected back. The return URL handler is the primary confirmation path;
+ *      this webhook catches everything it misses.
+ *
+ *      We verify incoming requests using the Stripe-Signature header and the
+ *      webhook signing secret. We handle checkout.session.completed events and
+ *      route them to the appropriate payment handler (donation, event, store, join)
+ *      based on the session metadata.
+ *
+ *      IMPORTANT: This MUST reject if signature verification fails — never fail open.
+ *
+ * @param WP_REST_Request $request The incoming webhook request.
+ * @return WP_REST_Response
+ */
+function sp_rest_stripe_webhook( WP_REST_Request $request ): WP_REST_Response {
+    $settings   = get_option( 'societypress_settings', [] );
+    $secret_key = sp_stripe_get_secret_key( $settings );
+
+    if ( empty( $secret_key ) ) {
+        return new WP_REST_Response( [ 'status' => 'error', 'reason' => 'stripe not configured' ], 200 );
+    }
+
+    // Get the webhook signing secret — stored encrypted alongside other Stripe keys
+    $webhook_secret = ! empty( $settings['stripe_webhook_secret'] )
+        ? ( sp_decrypt( $settings['stripe_webhook_secret'] ) ?: '' )
+        : '';
+
+    if ( empty( $webhook_secret ) ) {
+        error_log( 'SocietyPress Stripe webhook: no webhook secret configured, rejecting request' );
+        return new WP_REST_Response( [ 'status' => 'error', 'reason' => 'webhook not configured' ], 200 );
+    }
+
+    // Verify the Stripe-Signature header
+    // WHY: Without verification, anyone could POST fake webhook data to this
+    //      endpoint and mark payments as completed. Stripe signs every webhook
+    //      delivery with HMAC-SHA256 using the webhook signing secret.
+    $sig_header = $request->get_header( 'stripe-signature' );
+    $body_raw   = $request->get_body();
+
+    if ( empty( $sig_header ) ) {
+        error_log( 'SocietyPress Stripe webhook: missing Stripe-Signature header' );
+        return new WP_REST_Response( [ 'status' => 'error', 'reason' => 'missing signature' ], 400 );
+    }
+
+    // Parse the signature header: "t=timestamp,v1=signature"
+    $sig_parts = [];
+    foreach ( explode( ',', $sig_header ) as $part ) {
+        $kv = explode( '=', $part, 2 );
+        if ( count( $kv ) === 2 ) {
+            $sig_parts[ $kv[0] ] = $kv[1];
+        }
+    }
+
+    $timestamp = $sig_parts['t'] ?? '';
+    $signature = $sig_parts['v1'] ?? '';
+
+    if ( empty( $timestamp ) || empty( $signature ) ) {
+        error_log( 'SocietyPress Stripe webhook: malformed signature header' );
+        return new WP_REST_Response( [ 'status' => 'error', 'reason' => 'malformed signature' ], 400 );
+    }
+
+    // Reject events older than 5 minutes to prevent replay attacks
+    if ( abs( time() - (int) $timestamp ) > 300 ) {
+        error_log( 'SocietyPress Stripe webhook: timestamp too old, possible replay attack' );
+        return new WP_REST_Response( [ 'status' => 'error', 'reason' => 'timestamp expired' ], 400 );
+    }
+
+    // Compute the expected signature
+    $signed_payload    = $timestamp . '.' . $body_raw;
+    $expected_signature = hash_hmac( 'sha256', $signed_payload, $webhook_secret );
+
+    if ( ! hash_equals( $expected_signature, $signature ) ) {
+        error_log( 'SocietyPress Stripe webhook: signature verification FAILED' );
+        return new WP_REST_Response( [ 'status' => 'error', 'reason' => 'signature verification failed' ], 400 );
+    }
+
+    // Signature verified — parse the event
+    $event = json_decode( $body_raw, true );
+
+    if ( empty( $event['type'] ) || empty( $event['data']['object'] ) ) {
+        return new WP_REST_Response( [ 'status' => 'ignored', 'reason' => 'unrecognized event structure' ], 200 );
+    }
+
+    sp_audit(
+        'stripe_webhook',
+        sprintf( 'Stripe webhook received: %s', $event['type'] ),
+        'payment'
+    );
+
+    // We only handle checkout.session.completed — the event that fires when
+    // a Checkout Session payment succeeds. All other events are acknowledged
+    // but not acted upon.
+    if ( $event['type'] !== 'checkout.session.completed' ) {
+        return new WP_REST_Response( [ 'status' => 'ok', 'reason' => 'event type not handled' ], 200 );
+    }
+
+    $session = $event['data']['object'];
+
+    // Only process paid sessions
+    if ( ( $session['payment_status'] ?? '' ) !== 'paid' ) {
+        return new WP_REST_Response( [ 'status' => 'ok', 'reason' => 'payment not completed' ], 200 );
+    }
+
+    global $wpdb;
+    $prefix   = $wpdb->prefix . 'sp_';
+    $metadata = $session['metadata'] ?? [];
+
+    // Route based on metadata — each payment flow stores identifying metadata
+    // when creating the Checkout Session.
+
+    // 1. Donations — metadata contains 'donation_id'
+    if ( ! empty( $metadata['donation_id'] ) ) {
+        $donation_id = (int) $metadata['donation_id'];
+        $don_table   = $prefix . 'donations';
+        $donation    = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$don_table} WHERE id = %d", $donation_id
+        ) );
+
+        if ( $donation && $donation->type === 'pending' ) {
+            $wpdb->update( $don_table, [
+                'type' => 'stripe',
+            ], [ 'id' => $donation_id ] );
+
+            sp_audit(
+                'donation_payment_webhook',
+                sprintf( 'Stripe webhook confirmed payment for donation #%d ($%s)', $donation_id, number_format( (float) $donation->amount, 2 ) ),
+                'donation',
+                $donation_id
+            );
+
+            sp_send_donation_acknowledgments( [ $donation_id ] );
+        }
+
+        return new WP_REST_Response( [ 'status' => 'ok', 'type' => 'donation' ], 200 );
+    }
+
+    // 2. Event registrations — client_reference_id contains registration ID
+    $client_ref = (int) ( $session['client_reference_id'] ?? 0 );
+
+    if ( $client_ref && ! empty( $metadata['sp_type'] ) && $metadata['sp_type'] === 'event' ) {
+        $reg_table = $prefix . 'event_registrations';
+        $reg       = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$reg_table} WHERE id = %d", $client_ref
+        ) );
+
+        if ( $reg && $reg->payment_status !== 'paid' ) {
+            $wpdb->update( $reg_table, [
+                'payment_status' => 'paid',
+                'payment_method' => 'stripe',
+                'payment_date'   => current_time( 'mysql' ),
+                'notes'          => ( $reg->notes ? $reg->notes . '|' : '' ) . 'stripe_webhook',
+            ], [ 'id' => $client_ref ] );
+
+            sp_audit(
+                'event_payment_webhook',
+                sprintf( 'Stripe webhook confirmed payment for registration #%d', $client_ref ),
+                'event_registration',
+                $client_ref
+            );
+        }
+
+        return new WP_REST_Response( [ 'status' => 'ok', 'type' => 'event' ], 200 );
+    }
+
+    // 3. Store orders — client_reference_id contains order ID
+    if ( $client_ref && ! empty( $metadata['sp_type'] ) && $metadata['sp_type'] === 'store' ) {
+        $order = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$prefix}orders WHERE id = %d", $client_ref
+        ) );
+
+        if ( $order && $order->status !== 'paid' ) {
+            $wpdb->update( $prefix . 'orders', [
+                'status'                => 'paid',
+                'payment_method'        => 'stripe',
+                'stripe_payment_intent' => $session['payment_intent'] ?? '',
+                'updated_at'            => current_time( 'mysql' ),
+            ], [ 'id' => $client_ref ] );
+
+            if ( $order->user_id ) {
+                sp_save_cart( [], (int) $order->user_id );
+            }
+
+            sp_audit(
+                'store_payment_webhook',
+                sprintf( 'Stripe webhook confirmed payment for order #%d', $client_ref ),
+                'order',
+                $client_ref
+            );
+
+            sp_send_store_order_email( $client_ref );
+        }
+
+        return new WP_REST_Response( [ 'status' => 'ok', 'type' => 'store' ], 200 );
+    }
+
+    // 4. Membership join — metadata contains 'sp_type' => 'join' and 'user_id'
+    if ( ! empty( $metadata['sp_type'] ) && $metadata['sp_type'] === 'join' && ! empty( $metadata['user_id'] ) ) {
+        $user_id = (int) $metadata['user_id'];
+        $member  = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$prefix}members WHERE user_id = %d", $user_id
+        ) );
+
+        if ( $member && $member->status === 'pending' ) {
+            $wpdb->update( $prefix . 'members', [
+                'status' => 'active',
+            ], [ 'user_id' => $user_id ] );
+
+            // Record the payment
+            $wpdb->insert( $prefix . 'member_payments', [
+                'member_id'      => $member->id,
+                'amount'         => $session['amount_total'] ? number_format( $session['amount_total'] / 100, 2, '.', '' ) : '0.00',
+                'payment_method' => 'stripe',
+                'payment_date'   => current_time( 'mysql' ),
+                'notes'          => 'stripe_webhook|' . ( $session['payment_intent'] ?? '' ),
+            ] );
+
+            delete_user_meta( $user_id, '_sp_join_stripe_session' );
+
+            sp_audit(
+                'member_join_webhook',
+                sprintf( 'Stripe webhook confirmed join payment for member #%d (user %d)', $member->id, $user_id ),
+                'member',
+                $member->id
+            );
+        }
+
+        return new WP_REST_Response( [ 'status' => 'ok', 'type' => 'join' ], 200 );
+    }
+
+    // Unrecognized session — acknowledge but don't process
+    return new WP_REST_Response( [ 'status' => 'ok', 'reason' => 'no matching handler' ], 200 );
+}
 
 
 /**
@@ -81789,7 +82095,9 @@ class SP_Ballots_List_Table extends WP_List_Table {
             $where .= $wpdb->prepare( ' AND title LIKE %s', $like );
         }
 
-        $orderby = sanitize_sql_orderby( $_GET['orderby'] ?? 'created_at' ) ?: 'created_at';
+        $allowed_orderby = [ 'created_at', 'title', 'status', 'start_date', 'end_date' ];
+        $orderby = isset( $_GET['orderby'] ) && in_array( $_GET['orderby'], $allowed_orderby, true )
+                   ? $_GET['orderby'] : 'created_at';
         $order   = strtoupper( $_GET['order'] ?? 'DESC' ) === 'ASC' ? 'ASC' : 'DESC';
 
         $per_page = 20;
@@ -85002,11 +85310,36 @@ function sp_rest_push_subscribe( WP_REST_Request $request ): WP_REST_Response {
     }
 
     // Validate the endpoint is a proper push service URL
-    // WHY: Prevent abuse — only accept URLs from known push services (Google FCM,
-    // Mozilla, Apple, Microsoft, etc.). All legitimate push endpoints use HTTPS.
+    // WHY: Prevent SSRF — only accept URLs from known push service domains.
+    // Without this allowlist, an attacker could store any HTTPS URL (including
+    // internal network addresses) and the server would POST to it when push
+    // notifications fire.
     if ( strpos( $endpoint, 'https://' ) !== 0 ) {
         return new WP_REST_Response(
             [ 'success' => false, 'message' => __( 'Push endpoint must use HTTPS.', 'societypress' ) ],
+            400
+        );
+    }
+
+    $allowed_push_hosts = [
+        'fcm.googleapis.com',
+        'updates.push.services.mozilla.com',
+        'wns2-bl2p.notify.windows.com',
+        'web.push.apple.com',
+        'api.push.apple.com',
+    ];
+    $parsed_endpoint = wp_parse_url( $endpoint );
+    $endpoint_host   = $parsed_endpoint['host'] ?? '';
+    $host_allowed    = false;
+    foreach ( $allowed_push_hosts as $allowed_host ) {
+        if ( $endpoint_host === $allowed_host || str_ends_with( $endpoint_host, '.' . $allowed_host ) ) {
+            $host_allowed = true;
+            break;
+        }
+    }
+    if ( ! $host_allowed ) {
+        return new WP_REST_Response(
+            [ 'success' => false, 'message' => __( 'Invalid push endpoint.', 'societypress' ) ],
             400
         );
     }

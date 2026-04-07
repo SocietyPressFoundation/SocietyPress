@@ -54,3 +54,4 @@ Sample Data/photos/
 
 # Large source data files (keep samples, exclude full datasets)
 Sample Data/nyc-marriage-certificates.csv
+Sample Data/untitled folder/nyc-marriage-certificates.csv

@@ -902,6 +902,23 @@ add_action( 'admin_init', function () {
             // Email from defaults to org name + email
             $sp_settings['email_from_name']  = $sp_settings['email_from_name'] ?: $sp_settings['organization_name'];
             $sp_settings['email_from_email'] = $sp_settings['email_from_email'] ?: $sp_settings['organization_email'];
+
+            // Video hero defaults — the theme ships with a cinematic background
+            // video that plays behind the society name on the home page. This is
+            // the "blow their minds" first impression after install.
+            $theme_url = get_template_directory_uri();
+            if ( empty( $sp_settings['homepage_hero_type'] ) ) {
+                $sp_settings['homepage_hero_type']     = 'video';
+                $sp_settings['homepage_hero_media']    = $theme_url . '/assets/hero-background.mp4';
+                $sp_settings['homepage_hero_poster']   = $theme_url . '/assets/hero-background-poster.jpg';
+                $sp_settings['homepage_hero_headline'] = '';
+                $sp_settings['homepage_hero_subtitle'] = 'Preserving Our Past. Connecting Our Present.';
+                $sp_settings['homepage_hero_cta_text'] = 'Upcoming Events';
+                $sp_settings['homepage_hero_cta_url']  = '/events/';
+                $sp_settings['homepage_hero_overlay']  = 35;
+                $sp_settings['homepage_hero_height']   = 'fullscreen';
+            }
+
             update_option( 'societypress_settings', $sp_settings );
 
             // Mark wizard as complete — Harold already provided everything

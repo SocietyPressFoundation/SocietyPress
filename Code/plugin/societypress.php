@@ -29,7 +29,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // NOTE: This MUST match the "Version:" line in the plugin header comment above.
 // WordPress reads the version from the header; this constant is used for
 // cache-busting and comparison logic. They must stay in sync.
-define( 'SOCIETYPRESS_VERSION', '1.0.7' );
+define( 'SOCIETYPRESS_VERSION', '1.0.8' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -199,6 +199,20 @@ register_activation_hook( __FILE__, function () {
             // NOTE: push_enabled, push_vapid_public, push_vapid_secret, zoom_api_key,
             // zoom_api_secret, and zoom_account_email are defined earlier in this array.
             // Do not duplicate them here.
+            // Homepage hero — full-viewport cinematic video background.
+            // WHY: The first thing anyone sees after install should be stunning.
+            // The theme ships with a 44-second loop of vintage photos, family
+            // memories, and library footage that sets the tone for a genealogy
+            // society. The organization name auto-displays as the headline.
+            'homepage_hero_type'           => 'video',
+            'homepage_hero_media'          => '',  // Set dynamically after theme is active
+            'homepage_hero_poster'         => '',  // Set dynamically after theme is active
+            'homepage_hero_headline'       => '',  // Falls back to organization_name
+            'homepage_hero_subtitle'       => 'Preserving Our Past. Connecting Our Present.',
+            'homepage_hero_cta_text'       => 'Upcoming Events',
+            'homepage_hero_cta_url'        => '/events/',
+            'homepage_hero_overlay'        => 35,
+            'homepage_hero_height'         => 'fullscreen',
         ]);
     }
 
@@ -766,6 +780,8 @@ function sp_create_tables(): void {
         dir_show_website    TINYINT(1)          NOT NULL DEFAULT 1,
         dir_show_photo      TINYINT(1)          NOT NULL DEFAULT 0,
         blast_email_opt_out TINYINT(1)          NOT NULL DEFAULT 0,
+        email_status        VARCHAR(20)         NOT NULL DEFAULT 'unchecked',
+        email_validated_at  DATETIME            NULL,
         created_at          DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at          DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY (user_id),
@@ -2563,6 +2579,21 @@ add_action( 'admin_init', function () {
         // a silent performance killer — every admin request did full schema reconciliation.
         update_option( 'societypress_db_version', SOCIETYPRESS_VERSION );
     }
+
+    // Fill in hero video URLs if the setting exists but the URL is empty.
+    // WHY: At plugin activation time, get_template_directory_uri() may not point
+    //      to the SocietyPress theme yet (WordPress might still be on twentytwenty*).
+    //      On the first admin_init after the theme is active, we resolve the URL.
+    $sp = get_option( 'societypress_settings', [] );
+    if ( ( $sp['homepage_hero_type'] ?? '' ) === 'video' && empty( $sp['homepage_hero_media'] ) ) {
+        $theme_url = get_template_directory_uri();
+        $video_path = get_template_directory() . '/assets/hero-background.mp4';
+        if ( file_exists( $video_path ) ) {
+            $sp['homepage_hero_media']  = $theme_url . '/assets/hero-background.mp4';
+            $sp['homepage_hero_poster'] = $theme_url . '/assets/hero-background-poster.jpg';
+            update_option( 'societypress_settings', $sp );
+        }
+    }
 });
 
 
@@ -4050,6 +4081,20 @@ add_action( 'admin_menu', function () {
         'manage_options',
         'sp-surname-variants',
         'sp_render_surname_variants_page'
+    );
+
+    // Email Validator — tool for checking member email addresses
+    // WHY: Bad emails mean bounced blasts, which gets the domain flagged
+    //      as spam. Harold needs a way to identify invalid addresses before
+    //      sending blast emails. Lives under the Members group because
+    //      that's where the data lives and where Harold goes to fix it.
+    add_submenu_page(
+        'societypress',
+        __( 'Email Validator — SocietyPress', 'societypress' ),
+        __( 'Email Validator', 'societypress' ),
+        'manage_options',
+        'sp-email-validator',
+        'sp_render_email_validator_page'
     );
 
     // -----------------------------------------------------------------
@@ -6167,12 +6212,20 @@ function sp_handle_account_forms() {
             wp_safe_redirect( add_query_arg( 'sp-pending', '1', $account_url . '#contact' ) ); exit;
         }
 
+        // Reset email validation if address changed
+        // WHY: Member changed their own email — previous validation no longer applies.
+        $email_changed = ( $user->user_email !== $email );
+
         wp_update_user([ 'ID' => $user->ID, 'user_email' => $email ]);
         if ( sp_user_has_member_record( $user->ID ) ) {
             $contact_data = [
                 'phone' => $phone, 'cell' => $cell, 'website' => $website,
                 'preferred_phone' => $preferred_phone, 'updated_at' => current_time( 'mysql' ),
             ];
+            if ( $email_changed ) {
+                $contact_data['email_status']      = 'unchecked';
+                $contact_data['email_validated_at'] = null;
+            }
             // Encrypt sensitive contact fields (cell) before writing to DB
             sp_member_encrypt_fields( $contact_data );
             $wpdb->update( $table, $contact_data, [ 'user_id' => $user->ID ] );
@@ -12328,6 +12381,16 @@ add_action( 'admin_init', function () {
             "SELECT status FROM {$prefix}members WHERE user_id = %d",
             $editing_user_id
         ) );
+
+        // Reset email validation status if the email address changed.
+        // WHY: A previously validated email is no longer trustworthy once the
+        //      admin changes it. Setting it back to 'unchecked' ensures it gets
+        //      re-validated before the next blast email send.
+        $old_email = get_userdata( $editing_user_id )->user_email ?? '';
+        if ( $old_email !== $email ) {
+            $member_data['email_status']       = 'unchecked';
+            $member_data['email_validated_at']  = null;
+        }
 
         // Update WordPress user email and display name
         // WHY: Orgs use their organization name as display_name instead of
@@ -20305,6 +20368,7 @@ add_action( 'admin_init', 'sp_maybe_redirect_to_wizard' );
 function sp_render_setup_wizard(): void {
     $settings = get_option( 'societypress_settings', [] );
     $step     = (int) ( $_GET['step'] ?? 1 );
+    $total_steps = 5; // Logo, Site Icon, Modules, Nav Menu, Theme
 
     // Handle form submission
     if ( $_SERVER['REQUEST_METHOD'] === 'POST' && isset( $_POST['sp_wizard_nonce'] ) ) {
@@ -20312,25 +20376,26 @@ function sp_render_setup_wizard(): void {
         $step = (int) ( $_POST['wizard_step'] ?? 1 );
 
         switch ( $step ) {
-            case 1: // Organization info
-                $settings['organization_name']    = sanitize_text_field( $_POST['organization_name'] ?? '' );
-                $settings['organization_email']   = sanitize_email( $_POST['organization_email'] ?? '' );
-                $settings['organization_address'] = sanitize_textarea_field( $_POST['organization_address'] ?? '' );
-                $settings['organization_phone']   = sanitize_text_field( $_POST['organization_phone'] ?? '' );
-                update_option( 'societypress_settings', $settings );
+            case 1: // Logo upload
+                // WHY: Logo is handled via the WordPress media uploader, which
+                //      stores the attachment ID. We save it as the custom logo
+                //      using set_theme_mod, the same way the Customizer does.
+                $logo_id = absint( $_POST['sp_logo_attachment_id'] ?? 0 );
+                if ( $logo_id ) {
+                    set_theme_mod( 'custom_logo', $logo_id );
+                }
                 wp_safe_redirect( admin_url( 'admin.php?page=sp-setup-wizard&step=2' ) );
                 exit;
 
-            case 2: // Membership settings
-                $settings['membership_period_type'] = sanitize_text_field( $_POST['membership_period_type'] ?? 'annual' );
-                $settings['membership_start_month'] = (int) ( $_POST['membership_start_month'] ?? 7 );
-                update_option( 'societypress_settings', $settings );
+            case 2: // Site icon (favicon)
+                $icon_id = absint( $_POST['sp_icon_attachment_id'] ?? 0 );
+                if ( $icon_id ) {
+                    update_option( 'site_icon', $icon_id );
+                }
                 wp_safe_redirect( admin_url( 'admin.php?page=sp-setup-wizard&step=3' ) );
                 exit;
 
-            case 3: // Feature selection
-                // WHY: Collect which modules the admin wants enabled. All are
-                // checked by default in the form. Unchecked modules get disabled.
+            case 3: // Module selection
                 $all_module_slugs = array_keys( sp_get_modules() );
                 $enabled = [];
                 foreach ( $all_module_slugs as $slug ) {
@@ -20342,22 +20407,70 @@ function sp_render_setup_wizard(): void {
                 wp_safe_redirect( admin_url( 'admin.php?page=sp-setup-wizard&step=4' ) );
                 exit;
 
-            case 4: // Appearance
+            case 4: // Navigation menu
+                $nav_items_json = sanitize_text_field( $_POST['sp_nav_items_order'] ?? '[]' );
+                $nav_items = json_decode( $nav_items_json, true );
+                if ( ! is_array( $nav_items ) ) {
+                    $nav_items = [];
+                }
+
+                $menu_name = 'Primary Menu';
+                $existing_menu = wp_get_nav_menu_object( $menu_name );
+                if ( $existing_menu ) {
+                    wp_delete_nav_menu( $existing_menu->term_id );
+                }
+
+                $menu_id = wp_create_nav_menu( $menu_name );
+                if ( $menu_id && ! is_wp_error( $menu_id ) ) {
+                    $position = 1;
+                    foreach ( $nav_items as $item ) {
+                        $slug  = sanitize_text_field( $item['slug'] ?? '' );
+                        $label = sanitize_text_field( $item['label'] ?? '' );
+                        if ( empty( $slug ) || empty( $label ) ) continue;
+
+                        $page = get_page_by_path( $slug );
+                        if ( ! $page ) continue;
+
+                        wp_update_nav_menu_item( $menu_id, 0, [
+                            'menu-item-title'     => $label,
+                            'menu-item-object'    => 'page',
+                            'menu-item-object-id' => $page->ID,
+                            'menu-item-type'      => 'post_type',
+                            'menu-item-status'    => 'publish',
+                            'menu-item-position'  => $position++,
+                        ] );
+                    }
+
+                    $locations = get_theme_mod( 'nav_menu_locations', [] );
+                    $locations['primary'] = $menu_id;
+                    set_theme_mod( 'nav_menu_locations', $locations );
+                }
+
+                wp_safe_redirect( admin_url( 'admin.php?page=sp-setup-wizard&step=5' ) );
+                exit;
+
+            case 5: // Theme / video background
+                // WHY: The video hero is the grand finale — the "blow their
+                //      minds" moment. Set it up and mark the wizard done.
+                $settings['homepage_hero_type']   = 'video';
+                $settings['homepage_hero_height'] = 'fullscreen';
+                $settings['homepage_hero_overlay'] = 35;
+                $settings['homepage_hero_subtitle'] = sanitize_text_field( $_POST['hero_subtitle'] ?? 'Preserving Our Past. Connecting Our Present.' );
+
+                // Resolve video URL from theme assets
+                $theme_url = get_template_directory_uri();
+                if ( file_exists( get_template_directory() . '/assets/hero-background.mp4' ) ) {
+                    $settings['homepage_hero_media']  = $theme_url . '/assets/hero-background.mp4';
+                    $settings['homepage_hero_poster'] = $theme_url . '/assets/hero-background-poster.jpg';
+                }
+
+                // Colors
                 $settings['design_color_primary'] = sanitize_hex_color( $_POST['design_color_primary'] ?? '#1e3a5f' );
                 $settings['design_color_accent']  = sanitize_hex_color( $_POST['design_color_accent'] ?? '#667eea' );
-                $settings['email_from_name']      = sanitize_text_field( $_POST['email_from_name'] ?? '' );
-                $settings['email_from_email']     = sanitize_email( $_POST['email_from_email'] ?? '' );
-
-                // Homepage style — Classic (none) or Cinematic (image)
-                $hero_type = $_POST['homepage_hero_type'] ?? 'image';
-                $settings['homepage_hero_type'] = in_array( $hero_type, [ 'none', 'image', 'video' ], true ) ? $hero_type : 'image';
 
                 update_option( 'societypress_settings', $settings );
-
-                // Mark wizard as complete
                 update_option( 'sp_wizard_completed', 1 );
 
-                // Log it
                 if ( function_exists( 'sp_audit' ) ) {
                     sp_audit( 'wizard_completed', 'Setup wizard completed.', 'settings' );
                 }
@@ -20367,7 +20480,7 @@ function sp_render_setup_wizard(): void {
         }
     }
 
-    // Prevent the default admin UI from wrapping our wizard
+    // ---- Wizard UI ----
     ?>
     <style>
         .sp-wizard-wrap { max-width: 640px; margin: 40px auto; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -20388,16 +20501,45 @@ function sp_render_setup_wizard(): void {
         .sp-wizard-field .hint { font-size: 12px; color: #646970; margin-top: 2px; }
         .sp-wizard-field input[type="text"],
         .sp-wizard-field input[type="email"],
-        .sp-wizard-field input[type="tel"],
         .sp-wizard-field input[type="color"],
-        .sp-wizard-field textarea,
         .sp-wizard-field select { width: 100%; padding: 8px 12px; border: 1px solid #8c8f94; border-radius: 4px; font-size: 14px; }
         .sp-wizard-field input[type="color"] { width: 60px; height: 36px; padding: 2px; cursor: pointer; }
-        .sp-wizard-field textarea { resize: vertical; }
         .sp-wizard-actions { display: flex; justify-content: space-between; margin-top: 24px; }
         .sp-wizard-actions .button { padding: 8px 24px; font-size: 14px; }
-        .sp-wizard-skip { color: #646970; text-decoration: none; font-size: 13px; align-self: center; }
-        .sp-wizard-skip:hover { color: #2271b1; }
+
+        /* Logo upload step */
+        .sp-wizard-logo-zone { border: 2px dashed #c3c4c7; border-radius: 8px; padding: 40px;
+                               text-align: center; cursor: pointer; transition: border-color 0.2s; background: #f9f9f9; }
+        .sp-wizard-logo-zone:hover { border-color: #2271b1; }
+        .sp-wizard-logo-zone.has-logo { border-style: solid; background: #fff; }
+        .sp-wizard-logo-preview { max-width: 300px; max-height: 150px; margin: 0 auto 12px; }
+        .sp-wizard-logo-placeholder { color: #646970; font-size: 14px; }
+        .sp-wizard-logo-placeholder .dashicons { font-size: 48px; width: 48px; height: 48px; color: #c3c4c7; display: block; margin: 0 auto 12px; }
+        .sp-wizard-logo-error { color: #d63638; font-size: 13px; margin-top: 8px; display: none; }
+        .sp-wizard-logo-change { margin-top: 8px; }
+
+        /* Nav menu step */
+        .sp-wizard-nav-picker    { display: flex; gap: 24px; }
+        .sp-wizard-nav-available { flex: 1; }
+        .sp-wizard-nav-order     { flex: 1; }
+        .sp-wizard-nav-section-title { font-weight: 600; font-size: 14px; margin-bottom: 8px; }
+        .sp-wizard-nav-item-cb   { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+        .sp-wizard-nav-item-cb label { font-size: 14px; cursor: pointer; }
+        .sp-wizard-nav-item-cb .sp-nav-locked { color: #646970; font-size: 11px; margin-left: 4px; }
+        .sp-wizard-nav-dropzone  { min-height: 80px; border: 2px dashed #c3c4c7; border-radius: 6px;
+                                   padding: 8px; background: #f9f9f9; }
+        .sp-wizard-nav-dropzone.sp-drag-over { border-color: #2271b1; background: #f0f6fc; }
+        .sp-wizard-nav-drag-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+                                   background: #fff; border: 1px solid #c3c4c7; border-radius: 4px;
+                                   margin-bottom: 4px; cursor: grab; font-size: 14px; user-select: none; }
+        .sp-wizard-nav-drag-item:active { cursor: grabbing; }
+        .sp-wizard-nav-drag-item .sp-nav-grip { color: #999; font-size: 16px; }
+        .sp-wizard-nav-drag-item.sp-dragging { opacity: 0.5; }
+        .sp-wizard-nav-empty     { text-align: center; color: #999; padding: 20px; font-size: 13px; }
+        @media (max-width: 600px) { .sp-wizard-nav-picker { flex-direction: column; } }
+
+        /* Theme step */
+        .sp-wizard-video-preview { width: 100%; border-radius: 8px; margin-bottom: 16px; }
     </style>
 
     <div class="sp-wizard-wrap">
@@ -20409,117 +20551,261 @@ function sp_render_setup_wizard(): void {
         <!-- Step indicators -->
         <?php
         $step_labels = [
-            1 => __( 'Organization', 'societypress' ),
-            2 => __( 'Membership', 'societypress' ),
+            1 => __( 'Logo', 'societypress' ),
+            2 => __( 'Site Icon', 'societypress' ),
             3 => __( 'Features', 'societypress' ),
-            4 => __( 'Appearance', 'societypress' ),
+            4 => __( 'Navigation', 'societypress' ),
+            5 => __( 'Theme', 'societypress' ),
         ];
         ?>
         <nav class="sp-wizard-steps" aria-label="<?php esc_attr_e( 'Setup progress', 'societypress' ); ?>">
             <?php foreach ( $step_labels as $num => $label ) : ?>
                 <?php if ( $num > 1 ) : ?><div class="sp-wizard-step-line"></div><?php endif; ?>
                 <div class="sp-wizard-step <?php echo $step === $num ? 'active' : ( $step > $num ? 'done' : 'pending' ); ?>"
-                     aria-label="<?php echo esc_attr( sprintf(
-                         /* translators: %1$d is step number, %2$s is step name, %3$s is step status */
-                         __( 'Step %1$d: %2$s (%3$s)', 'societypress' ),
-                         $num,
-                         $label,
-                         $step === $num ? __( 'current', 'societypress' ) : ( $step > $num ? __( 'complete', 'societypress' ) : __( 'upcoming', 'societypress' ) )
-                     ) ); ?>"
+                     aria-label="<?php echo esc_attr( sprintf( __( 'Step %1$d: %2$s', 'societypress' ), $num, $label ) ); ?>"
                      <?php echo $step === $num ? 'aria-current="step"' : ''; ?>><?php echo $num; ?></div>
             <?php endforeach; ?>
         </nav>
 
         <div class="sp-wizard-card">
-            <form method="post">
+            <form method="post" enctype="multipart/form-data">
                 <?php wp_nonce_field( 'sp_setup_wizard', 'sp_wizard_nonce' ); ?>
                 <input type="hidden" name="wizard_step" value="<?php echo esc_attr( $step ); ?>">
 
                 <?php if ( $step === 1 ) : ?>
-                    <!-- Step 1: Organization Info -->
-                    <h2><?php esc_html_e( 'Your Organization', 'societypress' ); ?></h2>
-                    <p class="desc"><?php esc_html_e( 'Tell us about your genealogical society.', 'societypress' ); ?></p>
+                    <!-- ============================================ -->
+                    <!-- STEP 1: LOGO UPLOAD                          -->
+                    <!-- ============================================ -->
+                    <h2><?php esc_html_e( 'Upload Your Logo', 'societypress' ); ?></h2>
+                    <p class="desc"><?php esc_html_e( 'Your logo appears in the site header. Use a transparent PNG or SVG for best results.', 'societypress' ); ?></p>
 
                     <?php
-                    // Pre-fill from what the installer already collected.
-                    // WHY: The installer asked for "Society Name" (stored as blogname)
-                    // and "Admin Email" (stored as admin_email). No point making Harold
-                    // type them again. He can change them here if needed.
-                    $prefill_name  = $settings['organization_name'] ?? get_bloginfo( 'name' );
-                    $prefill_email = $settings['organization_email'] ?? get_option( 'admin_email', '' );
+                    // Load the WP media uploader scripts
+                    wp_enqueue_media();
+                    $existing_logo_id = get_theme_mod( 'custom_logo', 0 );
+                    $existing_logo_url = $existing_logo_id ? wp_get_attachment_image_url( $existing_logo_id, 'medium' ) : '';
                     ?>
-                    <div class="sp-wizard-field">
-                        <label for="wiz-org-name"><?php esc_html_e( 'Society Name', 'societypress' ); ?></label>
-                        <input type="text" id="wiz-org-name" name="organization_name"
-                               value="<?php echo esc_attr( $prefill_name ); ?>"
-                               placeholder="<?php esc_attr_e( 'e.g., San Antonio Genealogical & Historical Society', 'societypress' ); ?>">
+
+                    <input type="hidden" name="sp_logo_attachment_id" id="sp-logo-attachment-id"
+                           value="<?php echo esc_attr( $existing_logo_id ); ?>">
+
+                    <div class="sp-wizard-logo-zone <?php echo $existing_logo_url ? 'has-logo' : ''; ?>" id="sp-logo-zone">
+                        <?php if ( $existing_logo_url ) : ?>
+                            <img src="<?php echo esc_url( $existing_logo_url ); ?>" class="sp-wizard-logo-preview" id="sp-logo-preview">
+                            <div class="sp-wizard-logo-change">
+                                <button type="button" class="button button-small" id="sp-logo-change-btn"><?php esc_html_e( 'Change Logo', 'societypress' ); ?></button>
+                                <button type="button" class="button button-small button-link-delete" id="sp-logo-remove-btn"><?php esc_html_e( 'Remove', 'societypress' ); ?></button>
+                            </div>
+                        <?php else : ?>
+                            <div class="sp-wizard-logo-placeholder" id="sp-logo-placeholder">
+                                <span class="dashicons dashicons-format-image"></span>
+                                <?php esc_html_e( 'Click to upload your logo', 'societypress' ); ?><br>
+                                <small><?php esc_html_e( 'PNG or SVG with transparent background. Max 2MB, at least 200px wide.', 'societypress' ); ?></small>
+                            </div>
+                            <img src="" class="sp-wizard-logo-preview" id="sp-logo-preview" style="display: none;">
+                            <div class="sp-wizard-logo-change" style="display: none;">
+                                <button type="button" class="button button-small" id="sp-logo-change-btn"><?php esc_html_e( 'Change Logo', 'societypress' ); ?></button>
+                                <button type="button" class="button button-small button-link-delete" id="sp-logo-remove-btn"><?php esc_html_e( 'Remove', 'societypress' ); ?></button>
+                            </div>
+                        <?php endif; ?>
                     </div>
-                    <div class="sp-wizard-field">
-                        <label for="wiz-org-email"><?php esc_html_e( 'Contact Email', 'societypress' ); ?></label>
-                        <input type="email" id="wiz-org-email" name="organization_email"
-                               value="<?php echo esc_attr( $prefill_email ); ?>"
-                               placeholder="<?php esc_attr_e( 'e.g., info@yoursociety.org', 'societypress' ); ?>">
-                    </div>
-                    <div class="sp-wizard-field">
-                        <label for="wiz-org-address"><?php esc_html_e( 'Mailing Address', 'societypress' ); ?></label>
-                        <textarea id="wiz-org-address" name="organization_address" rows="3"
-                                  placeholder="<?php esc_attr_e( 'Street address, city, state, zip', 'societypress' ); ?>"><?php echo esc_textarea( $settings['organization_address'] ?? '' ); ?></textarea>
-                    </div>
-                    <div class="sp-wizard-field">
-                        <label for="wiz-org-phone"><?php esc_html_e( 'Phone Number', 'societypress' ); ?></label>
-                        <input type="tel" id="wiz-org-phone" name="organization_phone"
-                               value="<?php echo esc_attr( $settings['organization_phone'] ?? '' ); ?>"
-                               placeholder="<?php esc_attr_e( 'Optional', 'societypress' ); ?>">
-                        <div class="hint"><?php esc_html_e( 'Optional — leave blank if your society doesn\'t have a public phone number.', 'societypress' ); ?></div>
+                    <div class="sp-wizard-logo-error" id="sp-logo-error"></div>
+                    <div class="hint" style="margin-top: 8px;">
+                        <?php esc_html_e( 'Recommended: 400–600px wide. The header scales it down to fit.', 'societypress' ); ?>
                     </div>
 
+                    <script>
+                    (function() {
+                        var frame = null;
+                        var zone       = document.getElementById('sp-logo-zone');
+                        var hiddenId   = document.getElementById('sp-logo-attachment-id');
+                        var preview    = document.getElementById('sp-logo-preview');
+                        var placeholder = document.getElementById('sp-logo-placeholder');
+                        var changeBtn  = document.getElementById('sp-logo-change-btn');
+                        var removeBtn  = document.getElementById('sp-logo-remove-btn');
+                        var errorEl    = document.getElementById('sp-logo-error');
+
+                        function openMediaFrame() {
+                            if (frame) { frame.open(); return; }
+
+                            frame = wp.media({
+                                title: '<?php echo esc_js( __( 'Choose Your Logo', 'societypress' ) ); ?>',
+                                button: { text: '<?php echo esc_js( __( 'Use This Logo', 'societypress' ) ); ?>' },
+                                multiple: false,
+                                library: { type: ['image/png', 'image/svg+xml'] }
+                            });
+
+                            frame.on('select', function() {
+                                var attachment = frame.state().get('selection').first().toJSON();
+
+                                // Validate size
+                                if (attachment.filesizeInBytes && attachment.filesizeInBytes > 2 * 1024 * 1024) {
+                                    errorEl.textContent = '<?php echo esc_js( __( 'File too large. Maximum size is 2MB.', 'societypress' ) ); ?>';
+                                    errorEl.style.display = 'block';
+                                    return;
+                                }
+                                if (attachment.width && attachment.width < 200) {
+                                    errorEl.textContent = '<?php echo esc_js( __( 'Image too small. Minimum width is 200px.', 'societypress' ) ); ?>';
+                                    errorEl.style.display = 'block';
+                                    return;
+                                }
+
+                                // Validate format
+                                var mime = attachment.mime || '';
+                                if (mime !== 'image/png' && mime !== 'image/svg+xml') {
+                                    errorEl.textContent = '<?php echo esc_js( __( 'Please use a PNG or SVG file with a transparent background.', 'societypress' ) ); ?>';
+                                    errorEl.style.display = 'block';
+                                    return;
+                                }
+
+                                errorEl.style.display = 'none';
+                                hiddenId.value = attachment.id;
+                                preview.src = attachment.url;
+                                preview.style.display = 'block';
+                                if (placeholder) placeholder.style.display = 'none';
+                                changeBtn.parentElement.style.display = 'block';
+                                zone.classList.add('has-logo');
+                            });
+
+                            frame.open();
+                        }
+
+                        zone.addEventListener('click', function(e) {
+                            if (e.target === changeBtn || e.target === removeBtn) return;
+                            openMediaFrame();
+                        });
+                        if (changeBtn) changeBtn.addEventListener('click', openMediaFrame);
+                        if (removeBtn) removeBtn.addEventListener('click', function() {
+                            hiddenId.value = '0';
+                            preview.style.display = 'none';
+                            preview.src = '';
+                            if (placeholder) placeholder.style.display = 'block';
+                            this.parentElement.style.display = 'none';
+                            zone.classList.remove('has-logo');
+                            errorEl.style.display = 'none';
+                        });
+                    })();
+                    </script>
+
                     <div class="sp-wizard-actions">
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-setup-wizard&step=2' ) ); ?>"
+                           class="sp-wizard-skip"><?php esc_html_e( 'Skip for now', 'societypress' ); ?></a>
                         <button type="submit" class="button button-primary"><?php esc_html_e( 'Continue', 'societypress' ); ?> &rarr;</button>
                     </div>
 
                 <?php elseif ( $step === 2 ) : ?>
-                    <!-- Step 2: Membership Settings -->
-                    <h2><?php esc_html_e( 'Membership', 'societypress' ); ?></h2>
-                    <p class="desc"><?php esc_html_e( 'How does your society handle membership periods?', 'societypress' ); ?></p>
+                    <!-- ============================================ -->
+                    <!-- STEP 2: SITE ICON (FAVICON)                  -->
+                    <!-- ============================================ -->
+                    <h2><?php esc_html_e( 'Site Icon', 'societypress' ); ?></h2>
+                    <p class="desc"><?php esc_html_e( 'This small square image appears in browser tabs, bookmarks, and mobile home screens.', 'societypress' ); ?></p>
 
-                    <div class="sp-wizard-field">
-                        <label for="wiz-period"><?php esc_html_e( 'Membership Period', 'societypress' ); ?></label>
-                        <select id="wiz-period" name="membership_period_type">
-                            <option value="annual" <?php selected( $settings['membership_period_type'] ?? 'annual', 'annual' ); ?>><?php esc_html_e( 'Annual (fixed year)', 'societypress' ); ?></option>
-                            <option value="rolling" <?php selected( $settings['membership_period_type'] ?? '', 'rolling' ); ?>><?php esc_html_e( 'Rolling (12 months from join date)', 'societypress' ); ?></option>
-                            <option value="lifetime" <?php selected( $settings['membership_period_type'] ?? '', 'lifetime' ); ?>><?php esc_html_e( 'Lifetime only', 'societypress' ); ?></option>
-                        </select>
-                        <div class="hint"><?php esc_html_e( 'Most societies use annual memberships with a fixed fiscal year.', 'societypress' ); ?></div>
+                    <?php
+                    wp_enqueue_media();
+                    $existing_icon_id  = (int) get_option( 'site_icon', 0 );
+                    $existing_icon_url = $existing_icon_id ? wp_get_attachment_image_url( $existing_icon_id, 'thumbnail' ) : '';
+                    ?>
+
+                    <input type="hidden" name="sp_icon_attachment_id" id="sp-icon-attachment-id"
+                           value="<?php echo esc_attr( $existing_icon_id ); ?>">
+
+                    <div class="sp-wizard-logo-zone <?php echo $existing_icon_url ? 'has-logo' : ''; ?>" id="sp-icon-zone">
+                        <?php if ( $existing_icon_url ) : ?>
+                            <img src="<?php echo esc_url( $existing_icon_url ); ?>" class="sp-wizard-logo-preview" id="sp-icon-preview" style="max-width: 128px; max-height: 128px;">
+                            <div class="sp-wizard-logo-change">
+                                <button type="button" class="button button-small" id="sp-icon-change-btn"><?php esc_html_e( 'Change Icon', 'societypress' ); ?></button>
+                                <button type="button" class="button button-small button-link-delete" id="sp-icon-remove-btn"><?php esc_html_e( 'Remove', 'societypress' ); ?></button>
+                            </div>
+                        <?php else : ?>
+                            <div class="sp-wizard-logo-placeholder" id="sp-icon-placeholder">
+                                <span class="dashicons dashicons-admin-site-alt3"></span>
+                                <?php esc_html_e( 'Click to upload your site icon', 'societypress' ); ?><br>
+                                <small><?php esc_html_e( 'Square image, at least 512x512 pixels. PNG recommended.', 'societypress' ); ?></small>
+                            </div>
+                            <img src="" class="sp-wizard-logo-preview" id="sp-icon-preview" style="display: none; max-width: 128px; max-height: 128px;">
+                            <div class="sp-wizard-logo-change" style="display: none;">
+                                <button type="button" class="button button-small" id="sp-icon-change-btn"><?php esc_html_e( 'Change Icon', 'societypress' ); ?></button>
+                                <button type="button" class="button button-small button-link-delete" id="sp-icon-remove-btn"><?php esc_html_e( 'Remove', 'societypress' ); ?></button>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                    <div class="sp-wizard-logo-error" id="sp-icon-error"></div>
+                    <div class="hint" style="margin-top: 8px;">
+                        <?php esc_html_e( 'Usually your society emblem, seal, or initials. Must be square.', 'societypress' ); ?>
                     </div>
 
-                    <div class="sp-wizard-field">
-                        <label for="wiz-start-month"><?php esc_html_e( 'Fiscal Year Start Month', 'societypress' ); ?></label>
-                        <select id="wiz-start-month" name="membership_start_month">
-                            <?php
-                            $months = [
-                                __( 'January', 'societypress' ), __( 'February', 'societypress' ),
-                                __( 'March', 'societypress' ),   __( 'April', 'societypress' ),
-                                __( 'May', 'societypress' ),     __( 'June', 'societypress' ),
-                                __( 'July', 'societypress' ),    __( 'August', 'societypress' ),
-                                __( 'September', 'societypress' ), __( 'October', 'societypress' ),
-                                __( 'November', 'societypress' ), __( 'December', 'societypress' ),
-                            ];
-                            foreach ( $months as $i => $m ) :
-                                $num = $i + 1;
-                            ?>
-                                <option value="<?php echo $num; ?>" <?php selected( (int) ( $settings['membership_start_month'] ?? 7 ), $num ); ?>><?php echo esc_html( $m ); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                        <div class="hint"><?php esc_html_e( 'When does your membership year begin? Many societies use July.', 'societypress' ); ?></div>
-                    </div>
+                    <script>
+                    (function() {
+                        var frame = null;
+                        var zone       = document.getElementById('sp-icon-zone');
+                        var hiddenId   = document.getElementById('sp-icon-attachment-id');
+                        var preview    = document.getElementById('sp-icon-preview');
+                        var placeholder = document.getElementById('sp-icon-placeholder');
+                        var changeBtn  = document.getElementById('sp-icon-change-btn');
+                        var removeBtn  = document.getElementById('sp-icon-remove-btn');
+                        var errorEl    = document.getElementById('sp-icon-error');
+
+                        function openMediaFrame() {
+                            if (frame) { frame.open(); return; }
+                            frame = wp.media({
+                                title: '<?php echo esc_js( __( 'Choose Your Site Icon', 'societypress' ) ); ?>',
+                                button: { text: '<?php echo esc_js( __( 'Use This Icon', 'societypress' ) ); ?>' },
+                                multiple: false,
+                                library: { type: 'image' }
+                            });
+                            frame.on('select', function() {
+                                var att = frame.state().get('selection').first().toJSON();
+                                if (att.width && att.height && att.width !== att.height) {
+                                    errorEl.textContent = '<?php echo esc_js( __( 'Site icons must be square. This image is ', 'societypress' ) ); ?>' + att.width + 'x' + att.height + '.';
+                                    errorEl.style.display = 'block';
+                                    return;
+                                }
+                                if (att.width && att.width < 512) {
+                                    errorEl.textContent = '<?php echo esc_js( __( 'Image too small. Minimum size is 512x512 pixels.', 'societypress' ) ); ?>';
+                                    errorEl.style.display = 'block';
+                                    return;
+                                }
+                                errorEl.style.display = 'none';
+                                hiddenId.value = att.id;
+                                preview.src = att.url;
+                                preview.style.display = 'block';
+                                if (placeholder) placeholder.style.display = 'none';
+                                changeBtn.parentElement.style.display = 'block';
+                                zone.classList.add('has-logo');
+                            });
+                            frame.open();
+                        }
+
+                        zone.addEventListener('click', function(e) {
+                            if (e.target === changeBtn || e.target === removeBtn) return;
+                            openMediaFrame();
+                        });
+                        if (changeBtn) changeBtn.addEventListener('click', openMediaFrame);
+                        if (removeBtn) removeBtn.addEventListener('click', function() {
+                            hiddenId.value = '0';
+                            preview.style.display = 'none';
+                            preview.src = '';
+                            if (placeholder) placeholder.style.display = 'block';
+                            this.parentElement.style.display = 'none';
+                            zone.classList.remove('has-logo');
+                            errorEl.style.display = 'none';
+                        });
+                    })();
+                    </script>
 
                     <div class="sp-wizard-actions">
                         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-setup-wizard&step=1' ) ); ?>" class="button"><span aria-hidden="true">&larr;</span> <?php esc_html_e( 'Back', 'societypress' ); ?></a>
-                        <button type="submit" class="button button-primary"><?php esc_html_e( 'Continue', 'societypress' ); ?> &rarr;</button>
+                        <span>
+                            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-setup-wizard&step=3' ) ); ?>"
+                               class="sp-wizard-skip"><?php esc_html_e( 'Skip for now', 'societypress' ); ?></a>
+                            <button type="submit" class="button button-primary"><?php esc_html_e( 'Continue', 'societypress' ); ?> &rarr;</button>
+                        </span>
                     </div>
 
                 <?php elseif ( $step === 3 ) : ?>
-                    <!-- Step 3: Feature Selection -->
+                    <!-- ============================================ -->
+                    <!-- STEP 3: MODULE SELECTION                     -->
+                    <!-- ============================================ -->
                     <h2><?php esc_html_e( 'Choose Your Features', 'societypress' ); ?></h2>
                     <p class="desc"><?php esc_html_e( 'Pick the features your society needs. You can always change this later from Settings.', 'societypress' ); ?></p>
 
@@ -20535,10 +20821,6 @@ function sp_render_setup_wizard(): void {
                     </style>
 
                     <?php
-                    // WHY all checked by default: The TO-DO spec says "All modules on
-                    // by default — admin unchecks what they don't need." A society
-                    // evaluating the platform should see everything it can do, then
-                    // simplify down to what they actually use.
                     $modules = sp_get_modules();
                     $enabled = sp_get_enabled_modules();
                     ?>
@@ -20566,48 +20848,175 @@ function sp_render_setup_wizard(): void {
                     </div>
 
                 <?php elseif ( $step === 4 ) : ?>
-                    <!-- Step 4: Appearance & Email -->
-                    <h2><?php esc_html_e( 'Finishing Touches', 'societypress' ); ?></h2>
-                    <p class="desc"><?php esc_html_e( 'Customize the look of your site and configure email.', 'societypress' ); ?></p>
+                    <!-- ============================================ -->
+                    <!-- STEP 4: NAVIGATION MENU                      -->
+                    <!-- ============================================ -->
+                    <h2><?php esc_html_e( 'Navigation Menu', 'societypress' ); ?></h2>
+                    <p class="desc"><?php esc_html_e( 'Choose which pages appear in your site\'s navigation bar, then drag to reorder.', 'societypress' ); ?></p>
 
-                    <!-- Homepage Style — Classic vs Cinematic -->
-                    <div class="sp-wizard-field">
-                        <label style="font-weight: 600; margin-bottom: 8px; display: block;"><?php esc_html_e( 'Homepage Style', 'societypress' ); ?></label>
-                        <div style="display: flex; gap: 16px;">
-                            <?php $hero_choice = $settings['homepage_hero_type'] ?? 'image'; ?>
+                    <?php
+                    $enabled_modules = get_option( 'sp_enabled_modules', [] );
 
-                            <label class="sp-wizard-style-card" style="flex: 1; cursor: pointer; border: 2px solid <?php echo $hero_choice === 'none' ? '#2271b1' : '#ddd'; ?>; border-radius: 8px; padding: 20px; text-align: center; transition: border-color 0.2s;">
-                                <input type="radio" name="homepage_hero_type" value="none"
-                                       <?php checked( $hero_choice, 'none' ); ?>
-                                       style="display: none;">
-                                <div style="font-size: 32px; margin-bottom: 8px;">📄</div>
-                                <div style="font-weight: 600; margin-bottom: 4px;"><?php esc_html_e( 'Classic', 'societypress' ); ?></div>
-                                <div style="font-size: 13px; color: #666;"><?php esc_html_e( 'Clean and simple. Your content front and center.', 'societypress' ); ?></div>
-                            </label>
+                    $all_nav_items = [
+                        'about'       => [ 'label' => __( 'About', 'societypress' ),        'module' => null,          'locked' => false, 'default' => true ],
+                        'events'      => [ 'label' => __( 'Events', 'societypress' ),       'module' => 'events',      'locked' => false, 'default' => false ],
+                        'library'     => [ 'label' => __( 'Library', 'societypress' ),      'module' => 'library',     'locked' => false, 'default' => false ],
+                        'newsletters' => [ 'label' => __( 'Newsletters', 'societypress' ),  'module' => 'newsletters', 'locked' => false, 'default' => false ],
+                        'directory'   => [ 'label' => __( 'Directory', 'societypress' ),    'module' => null,          'locked' => false, 'default' => false ],
+                        'store'       => [ 'label' => __( 'Store', 'societypress' ),        'module' => 'store',       'locked' => false, 'default' => false ],
+                        'search'      => [ 'label' => __( 'Search', 'societypress' ),       'module' => null,          'locked' => false, 'default' => false ],
+                        'contact-us'  => [ 'label' => __( 'Contact', 'societypress' ),      'module' => null,          'locked' => false, 'default' => false ],
+                        'my-account'  => [ 'label' => __( 'Log In / Profile', 'societypress' ), 'module' => null,      'locked' => true,  'default' => true ],
+                    ];
 
-                            <label class="sp-wizard-style-card" style="flex: 1; cursor: pointer; border: 2px solid <?php echo $hero_choice !== 'none' ? '#2271b1' : '#ddd'; ?>; border-radius: 8px; padding: 20px; text-align: center; transition: border-color 0.2s;">
-                                <input type="radio" name="homepage_hero_type" value="image"
-                                       <?php checked( in_array( $hero_choice, [ 'image', 'video' ], true ) ); ?>
-                                       style="display: none;">
-                                <div style="font-size: 32px; margin-bottom: 8px;">🎬</div>
-                                <div style="font-weight: 600; margin-bottom: 4px;"><?php esc_html_e( 'Cinematic', 'societypress' ); ?></div>
-                                <div style="font-size: 13px; color: #666;"><?php esc_html_e( 'Full-screen hero with headline and call-to-action.', 'societypress' ); ?></div>
-                            </label>
+                    $available_nav_items = [];
+                    foreach ( $all_nav_items as $slug => $info ) {
+                        if ( $info['module'] === null || in_array( $info['module'], $enabled_modules, true ) ) {
+                            $available_nav_items[ $slug ] = $info;
+                        }
+                    }
+                    ?>
+
+                    <input type="hidden" name="sp_nav_items_order" id="sp-nav-items-order" value="[]">
+
+                    <div class="sp-wizard-nav-picker">
+                        <div class="sp-wizard-nav-available">
+                            <div class="sp-wizard-nav-section-title"><?php esc_html_e( 'Available Pages', 'societypress' ); ?></div>
+                            <?php foreach ( $available_nav_items as $slug => $info ) : ?>
+                                <div class="sp-wizard-nav-item-cb">
+                                    <input type="checkbox"
+                                           id="sp-nav-cb-<?php echo esc_attr( $slug ); ?>"
+                                           class="sp-nav-checkbox"
+                                           data-slug="<?php echo esc_attr( $slug ); ?>"
+                                           data-label="<?php echo esc_attr( $info['label'] ); ?>"
+                                           <?php checked( $info['default'] || $info['locked'] ); ?>
+                                           <?php disabled( $info['locked'] ); ?>>
+                                    <label for="sp-nav-cb-<?php echo esc_attr( $slug ); ?>">
+                                        <?php echo esc_html( $info['label'] ); ?>
+                                        <?php if ( $info['locked'] ) : ?>
+                                            <span class="sp-nav-locked">(<?php esc_html_e( 'always on', 'societypress' ); ?>)</span>
+                                        <?php endif; ?>
+                                    </label>
+                                </div>
+                            <?php endforeach; ?>
+                            <p style="margin-top: 12px; font-size: 12px; color: #646970;">
+                                <?php esc_html_e( 'Home is accessed via the logo — it doesn\'t need a nav link.', 'societypress' ); ?>
+                            </p>
                         </div>
-                        <div class="hint"><?php esc_html_e( 'You can change this anytime in Settings → Design → Homepage Hero.', 'societypress' ); ?></div>
 
-                        <script>
-                        (function() {
-                            document.querySelectorAll('.sp-wizard-style-card').forEach(function(card) {
-                                card.addEventListener('click', function() {
-                                    document.querySelectorAll('.sp-wizard-style-card').forEach(function(c) {
-                                        c.style.borderColor = '#ddd';
-                                    });
-                                    this.style.borderColor = '#2271b1';
-                                });
+                        <div class="sp-wizard-nav-order">
+                            <div class="sp-wizard-nav-section-title"><?php esc_html_e( 'Menu Order (drag to reorder)', 'societypress' ); ?></div>
+                            <div class="sp-wizard-nav-dropzone" id="sp-nav-dropzone">
+                                <div class="sp-wizard-nav-empty" id="sp-nav-empty-msg">
+                                    <?php esc_html_e( 'Check items on the left to add them here.', 'societypress' ); ?>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <script>
+                    (function() {
+                        var dropzone = document.getElementById('sp-nav-dropzone');
+                        var emptyMsg = document.getElementById('sp-nav-empty-msg');
+                        var hiddenInput = document.getElementById('sp-nav-items-order');
+                        var checkboxes = document.querySelectorAll('.sp-nav-checkbox');
+                        var dragSrcEl = null;
+
+                        function syncHiddenInput() {
+                            var items = [];
+                            dropzone.querySelectorAll('.sp-wizard-nav-drag-item').forEach(function(el) {
+                                items.push({ slug: el.getAttribute('data-slug'), label: el.getAttribute('data-label') });
                             });
-                        })();
-                        </script>
+                            hiddenInput.value = JSON.stringify(items);
+                            emptyMsg.style.display = items.length > 0 ? 'none' : 'block';
+                        }
+
+                        function addDragItem(slug, label) {
+                            var item = document.createElement('div');
+                            item.className = 'sp-wizard-nav-drag-item';
+                            item.setAttribute('draggable', 'true');
+                            item.setAttribute('data-slug', slug);
+                            item.setAttribute('data-label', label);
+                            item.innerHTML = '<span class="sp-nav-grip">&#9776;</span> ' + escHtml(label);
+
+                            item.addEventListener('dragstart', function(e) {
+                                dragSrcEl = this;
+                                this.classList.add('sp-dragging');
+                                e.dataTransfer.effectAllowed = 'move';
+                                e.dataTransfer.setData('text/plain', '');
+                            });
+                            item.addEventListener('dragend', function() {
+                                this.classList.remove('sp-dragging');
+                                dragSrcEl = null;
+                                syncHiddenInput();
+                            });
+                            item.addEventListener('dragover', function(e) {
+                                e.preventDefault();
+                                e.dataTransfer.dropEffect = 'move';
+                                if (dragSrcEl && dragSrcEl !== this) {
+                                    var rect = this.getBoundingClientRect();
+                                    var midY = rect.top + rect.height / 2;
+                                    if (e.clientY < midY) {
+                                        dropzone.insertBefore(dragSrcEl, this);
+                                    } else {
+                                        dropzone.insertBefore(dragSrcEl, this.nextSibling);
+                                    }
+                                }
+                            });
+
+                            dropzone.insertBefore(item, emptyMsg);
+                            syncHiddenInput();
+                        }
+
+                        function removeDragItem(slug) {
+                            var el = dropzone.querySelector('[data-slug="' + slug + '"]');
+                            if (el) el.remove();
+                            syncHiddenInput();
+                        }
+
+                        function escHtml(str) {
+                            var d = document.createElement('div');
+                            d.appendChild(document.createTextNode(str));
+                            return d.innerHTML;
+                        }
+
+                        dropzone.addEventListener('dragover', function(e) { e.preventDefault(); this.classList.add('sp-drag-over'); });
+                        dropzone.addEventListener('dragleave', function() { this.classList.remove('sp-drag-over'); });
+                        dropzone.addEventListener('drop', function() { this.classList.remove('sp-drag-over'); });
+
+                        checkboxes.forEach(function(cb) {
+                            cb.addEventListener('change', function() {
+                                if (this.checked) addDragItem(this.getAttribute('data-slug'), this.getAttribute('data-label'));
+                                else removeDragItem(this.getAttribute('data-slug'));
+                            });
+                            if (cb.checked) addDragItem(cb.getAttribute('data-slug'), cb.getAttribute('data-label'));
+                        });
+                    })();
+                    </script>
+
+                    <div class="sp-wizard-actions">
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-setup-wizard&step=3' ) ); ?>" class="button"><span aria-hidden="true">&larr;</span> <?php esc_html_e( 'Back', 'societypress' ); ?></a>
+                        <button type="submit" class="button button-primary"><?php esc_html_e( 'Continue', 'societypress' ); ?> &rarr;</button>
+                    </div>
+
+                <?php elseif ( $step === $total_steps ) : ?>
+                    <!-- ============================================ -->
+                    <!-- LAST STEP: THEME / VIDEO BACKGROUND          -->
+                    <!-- ============================================ -->
+                    <h2><?php esc_html_e( 'Your Homepage', 'societypress' ); ?></h2>
+                    <p class="desc"><?php esc_html_e( 'Your home page will feature a cinematic full-screen video background with your society\'s name. Here\'s a preview.', 'societypress' ); ?></p>
+
+                    <video class="sp-wizard-video-preview" autoplay muted loop playsinline
+                           poster="<?php echo esc_url( get_template_directory_uri() . '/assets/hero-background-poster.jpg' ); ?>">
+                        <source src="<?php echo esc_url( get_template_directory_uri() . '/assets/hero-background.mp4' ); ?>" type="video/mp4">
+                    </video>
+
+                    <div class="sp-wizard-field">
+                        <label for="wiz-hero-subtitle"><?php esc_html_e( 'Tagline', 'societypress' ); ?></label>
+                        <input type="text" id="wiz-hero-subtitle" name="hero_subtitle"
+                               value="<?php echo esc_attr( $settings['homepage_hero_subtitle'] ?? 'Preserving Our Past. Connecting Our Present.' ); ?>"
+                               placeholder="<?php esc_attr_e( 'Preserving Our Past. Connecting Our Present.', 'societypress' ); ?>">
+                        <div class="hint"><?php esc_html_e( 'Appears below your society name on the home page. Leave blank for none.', 'societypress' ); ?></div>
                     </div>
 
                     <div class="sp-wizard-field" style="display: flex; gap: 20px;">
@@ -20623,23 +21032,8 @@ function sp_render_setup_wizard(): void {
                         </div>
                     </div>
 
-                    <div class="sp-wizard-field">
-                        <label for="wiz-email-name"><?php esc_html_e( 'Email "From" Name', 'societypress' ); ?></label>
-                        <input type="text" id="wiz-email-name" name="email_from_name"
-                               value="<?php echo esc_attr( $settings['email_from_name'] ?? '' ); ?>"
-                               placeholder="<?php esc_attr_e( 'e.g., Membership', 'societypress' ); ?>">
-                        <div class="hint"><?php esc_html_e( 'The name that appears in the "From" field of emails sent by SocietyPress.', 'societypress' ); ?></div>
-                    </div>
-                    <div class="sp-wizard-field">
-                        <label for="wiz-email-from"><?php esc_html_e( 'Email "From" Address', 'societypress' ); ?></label>
-                        <input type="email" id="wiz-email-from" name="email_from_email"
-                               value="<?php echo esc_attr( $settings['email_from_email'] ?? '' ); ?>"
-                               placeholder="<?php esc_attr_e( 'e.g., noreply@yoursociety.org', 'societypress' ); ?>">
-                        <div class="hint"><?php esc_html_e( 'The email address that SocietyPress sends from.', 'societypress' ); ?></div>
-                    </div>
-
                     <div class="sp-wizard-actions">
-                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-setup-wizard&step=3' ) ); ?>" class="button"><span aria-hidden="true">&larr;</span> <?php esc_html_e( 'Back', 'societypress' ); ?></a>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-setup-wizard&step=' . ( $total_steps - 1 ) ) ); ?>" class="button"><span aria-hidden="true">&larr;</span> <?php esc_html_e( 'Back', 'societypress' ); ?></a>
                         <button type="submit" class="button button-primary"><?php esc_html_e( 'Finish Setup', 'societypress' ); ?> &check;</button>
                     </div>
 
@@ -65162,6 +65556,761 @@ function sp_render_email_log_detail( int $log_id ): void {
 }
 
 // ============================================================================
+// EMAIL VALIDATOR — CHECK MEMBER EMAIL ADDRESSES
+// ============================================================================
+//
+// WHY: Bad email addresses mean bounced blast emails, and enough bounces get
+//      the society's domain flagged as spam. Harold needs a way to identify
+//      invalid addresses BEFORE sending blasts. This tool validates every
+//      member's email in two passes:
+//
+//      Pass 1 (fast): Format check via filter_var(FILTER_VALIDATE_EMAIL) plus
+//                     MX record lookup via checkdnsrr() to verify the domain
+//                     actually has a mail server.
+//
+//      Pass 2 (optional "Verify deeper"): SMTP handshake — connects to the
+//                     mail server's port 25 and issues RCPT TO to ask if the
+//                     mailbox exists. No email is sent. Some servers (Gmail,
+//                     Outlook) always say "yes" so this isn't 100%, but it
+//                     catches dead mailboxes on smaller providers.
+//
+//      Results are stored in sp_members.email_status so the blast email system
+//      can automatically exclude invalid addresses and warn Harold about the
+//      count on the compose screen.
+// ============================================================================
+
+
+/**
+ * Validate a single email address.
+ *
+ * WHY: Centralizes the validation logic so it can be called from the batch
+ *      AJAX handler, import routines, or anywhere else we need it.
+ *
+ * @param string $email       The email address to validate.
+ * @param bool   $deep_verify Whether to attempt SMTP mailbox verification.
+ * @return array{status: string, reason: string} The validation result.
+ */
+function sp_validate_email( string $email, bool $deep_verify = false ): array {
+    $email = trim( $email );
+
+    // ---- Check 1: Empty ----
+    if ( empty( $email ) ) {
+        return [ 'status' => 'invalid_format', 'reason' => __( 'No email address', 'societypress' ) ];
+    }
+
+    // ---- Check 2: Format ----
+    // WHY: filter_var catches all the RFC 5322 violations — consecutive dots,
+    //      invalid characters, missing @, etc. Same checks ENS runs.
+    if ( ! filter_var( $email, FILTER_VALIDATE_EMAIL ) ) {
+        // Provide specific reason when possible
+        $at_pos = strrpos( $email, '@' );
+        if ( $at_pos === false ) {
+            return [ 'status' => 'invalid_format', 'reason' => __( 'Missing @ symbol', 'societypress' ) ];
+        }
+        $local  = substr( $email, 0, $at_pos );
+        $domain = substr( $email, $at_pos + 1 );
+
+        if ( str_starts_with( $local, '.' ) || str_ends_with( $local, '.' ) ) {
+            return [ 'status' => 'invalid_format', 'reason' => __( 'Local part starts or ends with "."', 'societypress' ) ];
+        }
+        if ( str_contains( $local, '..' ) ) {
+            return [ 'status' => 'invalid_format', 'reason' => __( 'Local part has consecutive dots', 'societypress' ) ];
+        }
+        if ( str_contains( $domain, '..' ) ) {
+            return [ 'status' => 'invalid_format', 'reason' => __( 'Domain has consecutive dots', 'societypress' ) ];
+        }
+        return [ 'status' => 'invalid_format', 'reason' => __( 'Invalid email format', 'societypress' ) ];
+    }
+
+    // ---- Check 3: MX record (domain has a mail server) ----
+    // WHY: A syntactically valid email like user@nonexistent-domain.xyz will
+    //      bounce because there's no server to receive it. checkdnsrr() asks
+    //      DNS if the domain has MX records (or at least an A record fallback).
+    $domain = substr( $email, strrpos( $email, '@' ) + 1 );
+    if ( ! checkdnsrr( $domain, 'MX' ) && ! checkdnsrr( $domain, 'A' ) ) {
+        return [ 'status' => 'invalid_domain', 'reason' => sprintf( __( 'No mail server found for %s', 'societypress' ), $domain ) ];
+    }
+
+    // ---- Check 4 (optional): SMTP verification ----
+    // WHY: Even if the domain has MX records, the specific mailbox might not
+    //      exist. We connect to the mail server and ask "would you accept mail
+    //      for this address?" via RCPT TO. If the server rejects it, the
+    //      mailbox doesn't exist. Some servers (Gmail) always accept, so a
+    //      "yes" here isn't definitive — but a "no" is.
+    if ( $deep_verify ) {
+        $smtp_result = sp_smtp_verify_email( $email, $domain );
+        if ( $smtp_result === 'invalid' ) {
+            return [ 'status' => 'mailbox_unknown', 'reason' => __( 'Mail server rejected the address', 'societypress' ) ];
+        }
+        // 'valid' or 'inconclusive' — both pass as OK
+    }
+
+    return [ 'status' => 'valid', 'reason' => '' ];
+}
+
+
+/**
+ * SMTP-level mailbox verification (no email sent).
+ *
+ * WHY: Connects to the domain's MX server on port 25, introduces ourselves
+ *      with HELO, sends MAIL FROM + RCPT TO, then immediately quits. The
+ *      server's response to RCPT TO tells us if the mailbox exists. This is
+ *      the same technique ENS and other validators use.
+ *
+ * @param string $email  The full email address.
+ * @param string $domain The domain part of the email.
+ * @return string 'valid', 'invalid', or 'inconclusive'.
+ */
+function sp_smtp_verify_email( string $email, string $domain ): string {
+    // Get MX records sorted by priority
+    $mx_hosts = [];
+    $mx_weights = [];
+    if ( ! getmxrr( $domain, $mx_hosts, $mx_weights ) ) {
+        // No MX? Fall back to A record (the domain itself)
+        $mx_hosts = [ $domain ];
+    }
+
+    // Sort by priority (lowest = highest priority)
+    if ( ! empty( $mx_weights ) ) {
+        array_multisort( $mx_weights, SORT_ASC, SORT_NUMERIC, $mx_hosts );
+    }
+
+    // Try the highest-priority MX server
+    $mx_host = $mx_hosts[0];
+
+    // WHY: 5-second timeout keeps the batch from stalling on unresponsive
+    //      servers. Most legitimate mail servers respond in under 1 second.
+    $errno  = 0;
+    $errstr = '';
+    $socket = @fsockopen( $mx_host, 25, $errno, $errstr, 5 );
+
+    if ( ! $socket ) {
+        return 'inconclusive';
+    }
+
+    // Set stream timeout so reads don't block forever
+    stream_set_timeout( $socket, 5 );
+
+    // Read the greeting
+    $response = fgets( $socket, 1024 );
+    if ( ! $response || ! str_starts_with( trim( $response ), '220' ) ) {
+        fclose( $socket );
+        return 'inconclusive';
+    }
+
+    // HELO — introduce ourselves. Use the site's domain so it looks legitimate.
+    $our_domain = wp_parse_url( home_url(), PHP_URL_HOST ) ?: 'localhost';
+    fwrite( $socket, "HELO {$our_domain}\r\n" );
+    $response = fgets( $socket, 1024 );
+
+    // MAIL FROM — use a no-reply address from our domain
+    fwrite( $socket, "MAIL FROM:<noreply@{$our_domain}>\r\n" );
+    $response = fgets( $socket, 1024 );
+
+    // RCPT TO — this is the actual test
+    fwrite( $socket, "RCPT TO:<{$email}>\r\n" );
+    $response = fgets( $socket, 1024 );
+
+    // Quit immediately — we never send DATA
+    fwrite( $socket, "QUIT\r\n" );
+    fclose( $socket );
+
+    if ( ! $response ) {
+        return 'inconclusive';
+    }
+
+    $code = (int) substr( trim( $response ), 0, 3 );
+
+    // 250 = accepted, 251 = forwarded — both mean the address is valid
+    if ( $code === 250 || $code === 251 ) {
+        return 'valid';
+    }
+
+    // 550, 551, 552, 553 = mailbox doesn't exist or is disabled
+    if ( $code >= 550 && $code <= 553 ) {
+        return 'invalid';
+    }
+
+    // Anything else (450 = temp failure, 452 = mailbox full, etc.) is inconclusive
+    return 'inconclusive';
+}
+
+
+/**
+ * AJAX: Validate a batch of member email addresses.
+ *
+ * WHY: Validating 500+ emails sequentially would time out. We process them
+ *      in batches of 25 via AJAX, with a progress bar on the admin page.
+ *      Each batch does format + MX checks. SMTP verification is a separate
+ *      optional pass because it's slower (network I/O per address).
+ */
+add_action( 'wp_ajax_sp_validate_emails_batch', function () {
+    check_ajax_referer( 'sp_validate_emails_batch' );
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $offset     = absint( $_POST['offset'] ?? 0 );
+    $batch_size = min( absint( $_POST['batch_size'] ?? 25 ), 50 );
+    $deep       = ! empty( $_POST['deep_verify'] );
+    $mode       = sanitize_text_field( $_POST['mode'] ?? 'all' );
+
+    // Which members to validate?
+    // WHY: "all" re-checks everyone, "unchecked" only checks members that
+    //      haven't been validated yet (useful after importing new members),
+    //      "selected" checks specific user IDs the admin picked.
+    $where = "m.status = 'active'";
+    if ( $mode === 'unchecked' ) {
+        $where .= " AND m.email_status = 'unchecked'";
+    } elseif ( $mode === 'selected' ) {
+        $user_ids = array_map( 'absint', (array) ( $_POST['user_ids'] ?? [] ) );
+        if ( empty( $user_ids ) ) {
+            wp_send_json_error( __( 'No members selected.', 'societypress' ) );
+        }
+        $ids_list = implode( ',', $user_ids );
+        $where .= " AND m.user_id IN ({$ids_list})";
+    }
+
+    // Get total count on first batch (offset 0) for the progress bar
+    $total = 0;
+    if ( $offset === 0 ) {
+        $total = (int) $wpdb->get_var(
+            "SELECT COUNT(*) FROM {$prefix}members m
+             JOIN {$wpdb->users} u ON m.user_id = u.ID
+             WHERE {$where}"
+        );
+    }
+
+    // Fetch this batch
+    $members = $wpdb->get_results( $wpdb->prepare(
+        "SELECT m.user_id, u.user_email
+         FROM {$prefix}members m
+         JOIN {$wpdb->users} u ON m.user_id = u.ID
+         WHERE {$where}
+         ORDER BY m.user_id ASC
+         LIMIT %d OFFSET %d",
+        $batch_size, $offset
+    ) );
+
+    $validated = 0;
+    $invalid   = 0;
+    $results   = [];
+
+    foreach ( $members as $member ) {
+        $result = sp_validate_email( $member->user_email, $deep );
+
+        $wpdb->update(
+            $prefix . 'members',
+            [
+                'email_status'       => $result['status'],
+                'email_validated_at' => current_time( 'mysql' ),
+            ],
+            [ 'user_id' => $member->user_id ]
+        );
+
+        $validated++;
+        if ( $result['status'] !== 'valid' ) {
+            $invalid++;
+            $results[] = [
+                'user_id' => $member->user_id,
+                'email'   => $member->user_email,
+                'status'  => $result['status'],
+                'reason'  => $result['reason'],
+            ];
+        }
+    }
+
+    $done = count( $members ) < $batch_size;
+
+    $response = [
+        'validated'      => $validated,
+        'invalid'        => $invalid,
+        'errors'         => $results,
+        'rows_processed' => count( $members ),
+        'done'           => $done,
+    ];
+
+    // Include total on first batch so JS knows the denominator
+    if ( $offset === 0 ) {
+        $response['total'] = $total;
+    }
+
+    wp_send_json_success( $response );
+} );
+
+
+/**
+ * Render the Email Validator admin page.
+ *
+ * WHY: Shows all members with their email validation status in a filterable,
+ *      sortable table. The admin can validate all, validate unchecked only,
+ *      or validate selected members. Color-coded rows make it easy to spot
+ *      problems at a glance — same visual approach ENS uses.
+ */
+function sp_render_email_validator_page(): void {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You do not have permission to access this page.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // ---- Counts for the filter buttons ----
+    $count_all       = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$prefix}members m
+         JOIN {$wpdb->users} u ON m.user_id = u.ID
+         WHERE m.status = 'active'"
+    );
+    $count_valid     = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$prefix}members m
+         JOIN {$wpdb->users} u ON m.user_id = u.ID
+         WHERE m.status = 'active' AND m.email_status = 'valid'"
+    );
+    $count_invalid   = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$prefix}members m
+         JOIN {$wpdb->users} u ON m.user_id = u.ID
+         WHERE m.status = 'active' AND m.email_status IN ('invalid_format', 'invalid_domain', 'mailbox_unknown')"
+    );
+    $count_unchecked = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$prefix}members m
+         JOIN {$wpdb->users} u ON m.user_id = u.ID
+         WHERE m.status = 'active' AND m.email_status = 'unchecked'"
+    );
+
+    // ---- Current filter & sort ----
+    $filter  = sanitize_text_field( $_GET['filter'] ?? 'all' );
+    $orderby = sanitize_text_field( $_GET['orderby'] ?? 'last_name' );
+    $order   = strtoupper( sanitize_text_field( $_GET['order'] ?? 'ASC' ) );
+    if ( ! in_array( $order, [ 'ASC', 'DESC' ], true ) ) {
+        $order = 'ASC';
+    }
+
+    // Whitelist sortable columns to prevent SQL injection
+    $allowed_sort = [ 'last_name', 'first_name', 'user_email', 'email_status', 'email_validated_at' ];
+    if ( ! in_array( $orderby, $allowed_sort, true ) ) {
+        $orderby = 'last_name';
+    }
+
+    // Build WHERE clause based on filter
+    $where = "m.status = 'active'";
+    if ( $filter === 'valid' ) {
+        $where .= " AND m.email_status = 'valid'";
+    } elseif ( $filter === 'invalid' ) {
+        $where .= " AND m.email_status IN ('invalid_format', 'invalid_domain', 'mailbox_unknown')";
+    } elseif ( $filter === 'unchecked' ) {
+        $where .= " AND m.email_status = 'unchecked'";
+    }
+
+    // Resolve sort column — user_email lives in wp_users, the rest in sp_members
+    $sort_col = $orderby === 'user_email' ? 'u.user_email' : "m.{$orderby}";
+
+    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $sort_col and $order are whitelisted above
+    $members = $wpdb->get_results(
+        "SELECT m.user_id, m.first_name, m.last_name, m.email_status, m.email_validated_at,
+                u.user_email
+         FROM {$prefix}members m
+         JOIN {$wpdb->users} u ON m.user_id = u.ID
+         WHERE {$where}
+         ORDER BY {$sort_col} {$order}"
+    );
+
+    // Decrypt first/last names for display
+    foreach ( $members as $m ) {
+        $m->first_name = sp_decrypt( $m->first_name ) ?: $m->first_name;
+        $m->last_name  = sp_decrypt( $m->last_name ) ?: $m->last_name;
+    }
+
+    // Helper: build a sort URL for column headers
+    $base_url = admin_url( 'admin.php?page=sp-email-validator' );
+    $sort_url = function( string $col ) use ( $base_url, $filter, $orderby, $order ) {
+        $new_order = ( $orderby === $col && $order === 'ASC' ) ? 'DESC' : 'ASC';
+        return add_query_arg( [
+            'filter'  => $filter,
+            'orderby' => $col,
+            'order'   => $new_order,
+        ], $base_url );
+    };
+
+    // Helper: sort indicator arrow
+    $sort_arrow = function( string $col ) use ( $orderby, $order ) {
+        if ( $orderby !== $col ) return '';
+        return $order === 'ASC' ? ' &#9650;' : ' &#9660;';
+    };
+
+    ?>
+    <style>
+        /* sp-ev-* — Email Validator admin page styles.
+           WHY: All visual rules in one place, no inline styles in PHP. */
+
+        .sp-ev-actions      { margin: 16px 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .sp-ev-filters      { margin: 0 0 16px; display: flex; gap: 0; }
+        .sp-ev-filter-btn   { padding: 6px 14px; border: 1px solid #c3c4c7; background: #f6f7f7;
+                              color: #2c3338; text-decoration: none; font-size: 13px; line-height: 1.5; }
+        .sp-ev-filter-btn:first-child  { border-radius: 3px 0 0 3px; }
+        .sp-ev-filter-btn:last-child   { border-radius: 0 3px 3px 0; }
+        .sp-ev-filter-btn + .sp-ev-filter-btn { border-left: 0; }
+        .sp-ev-filter-btn.active       { background: #2271b1; color: #fff; border-color: #2271b1; }
+        .sp-ev-filter-count { font-weight: 600; }
+
+        .sp-ev-table        { border-collapse: collapse; width: 100%; }
+        .sp-ev-table th     { text-align: left; padding: 8px 10px; background: #f6f7f7; border-bottom: 1px solid #c3c4c7; }
+        .sp-ev-table th a   { text-decoration: none; color: #2c3338; }
+        .sp-ev-table td     { padding: 8px 10px; border-bottom: 1px solid #e2e4e7; }
+        .sp-ev-table .sp-ev-cb-col { width: 30px; }
+        .sp-ev-table .sp-ev-status-col { width: 160px; }
+        .sp-ev-table .sp-ev-date-col   { width: 140px; }
+
+        .sp-ev-row-valid         { background: #d4edda; }
+        .sp-ev-row-invalid       { background: #f8d7da; }
+        .sp-ev-row-unchecked     { background: #fff3cd; }
+
+        .sp-ev-status-badge      { display: inline-block; padding: 2px 8px; border-radius: 3px;
+                                   font-size: 12px; font-weight: 500; }
+        .sp-ev-badge-valid        { background: #198754; color: #fff; }
+        .sp-ev-badge-invalid      { background: #dc3545; color: #fff; }
+        .sp-ev-badge-unchecked    { background: #ffc107; color: #000; }
+
+        .sp-ev-empty             { padding: 40px; text-align: center; color: #6b7280; }
+
+        /* Progress overlay — same pattern as the member import */
+        .sp-ev-overlay           { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                                   background: rgba(0,0,0,0.6); z-index: 100000;
+                                   justify-content: center; align-items: center; }
+        .sp-ev-overlay-inner     { background: #fff; border-radius: 8px; padding: 40px;
+                                   text-align: center; max-width: 480px; width: 90%; }
+        .sp-ev-overlay-title     { font-size: 20px; font-weight: 600; margin: 0 0 16px; }
+        .sp-ev-overlay-message   { color: #50575e; margin: 0 0 20px; }
+        .sp-ev-progress-track    { background: #ddd; border-radius: 4px; height: 20px; overflow: hidden; }
+        .sp-ev-progress-fill     { background: #2271b1; height: 100%; width: 0; transition: width 0.3s ease; }
+        .sp-ev-progress-count    { margin-top: 12px; font-size: 14px; color: #50575e; }
+        .sp-ev-progress-errors   { margin-top: 16px; max-height: 200px; overflow-y: auto; text-align: left;
+                                   font-size: 12px; color: #b32d2e; }
+    </style>
+
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Email Validator', 'societypress' ); ?></h1>
+        <p class="description">
+            <?php esc_html_e( 'Check member email addresses for formatting errors and invalid domains. Run this before sending blast emails to reduce bounces.', 'societypress' ); ?>
+        </p>
+
+        <!-- Action buttons -->
+        <div class="sp-ev-actions">
+            <button type="button" class="button button-primary" id="sp-ev-validate-all">
+                <?php esc_html_e( 'Validate All', 'societypress' ); ?>
+            </button>
+            <?php if ( $count_unchecked > 0 ) : ?>
+                <button type="button" class="button" id="sp-ev-validate-unchecked">
+                    <?php printf( esc_html__( 'Validate Unchecked (%d)', 'societypress' ), $count_unchecked ); ?>
+                </button>
+            <?php endif; ?>
+            <button type="button" class="button" id="sp-ev-validate-selected" disabled>
+                <?php esc_html_e( 'Validate Selected', 'societypress' ); ?>
+            </button>
+            <label style="margin-left: 12px;">
+                <input type="checkbox" id="sp-ev-deep-verify" value="1">
+                <?php esc_html_e( 'SMTP verification (slower, more thorough)', 'societypress' ); ?>
+            </label>
+        </div>
+
+        <!-- Filter buttons -->
+        <div class="sp-ev-filters">
+            <a href="<?php echo esc_url( add_query_arg( 'filter', 'all', $base_url ) ); ?>"
+               class="sp-ev-filter-btn <?php echo $filter === 'all' ? 'active' : ''; ?>">
+                <?php esc_html_e( 'All', 'societypress' ); ?>
+                <span class="sp-ev-filter-count">(<?php echo (int) $count_all; ?>)</span>
+            </a>
+            <a href="<?php echo esc_url( add_query_arg( 'filter', 'valid', $base_url ) ); ?>"
+               class="sp-ev-filter-btn <?php echo $filter === 'valid' ? 'active' : ''; ?>">
+                <?php esc_html_e( 'Valid', 'societypress' ); ?>
+                <span class="sp-ev-filter-count">(<?php echo (int) $count_valid; ?>)</span>
+            </a>
+            <a href="<?php echo esc_url( add_query_arg( 'filter', 'invalid', $base_url ) ); ?>"
+               class="sp-ev-filter-btn <?php echo $filter === 'invalid' ? 'active' : ''; ?>">
+                <?php esc_html_e( 'Invalid', 'societypress' ); ?>
+                <span class="sp-ev-filter-count">(<?php echo (int) $count_invalid; ?>)</span>
+            </a>
+            <a href="<?php echo esc_url( add_query_arg( 'filter', 'unchecked', $base_url ) ); ?>"
+               class="sp-ev-filter-btn <?php echo $filter === 'unchecked' ? 'active' : ''; ?>">
+                <?php esc_html_e( 'Unchecked', 'societypress' ); ?>
+                <span class="sp-ev-filter-count">(<?php echo (int) $count_unchecked; ?>)</span>
+            </a>
+        </div>
+
+        <!-- Results table -->
+        <?php if ( empty( $members ) ) : ?>
+            <div class="sp-ev-empty">
+                <?php esc_html_e( 'No members match the current filter.', 'societypress' ); ?>
+            </div>
+        <?php else : ?>
+            <table class="sp-ev-table widefat">
+                <thead>
+                    <tr>
+                        <th class="sp-ev-cb-col"><input type="checkbox" id="sp-ev-select-all"></th>
+                        <th><a href="<?php echo esc_url( $sort_url( 'last_name' ) ); ?>">
+                            <?php esc_html_e( 'Last Name', 'societypress' ); echo $sort_arrow( 'last_name' ); ?>
+                        </a></th>
+                        <th><a href="<?php echo esc_url( $sort_url( 'first_name' ) ); ?>">
+                            <?php esc_html_e( 'First Name', 'societypress' ); echo $sort_arrow( 'first_name' ); ?>
+                        </a></th>
+                        <th><a href="<?php echo esc_url( $sort_url( 'user_email' ) ); ?>">
+                            <?php esc_html_e( 'Email', 'societypress' ); echo $sort_arrow( 'user_email' ); ?>
+                        </a></th>
+                        <th class="sp-ev-status-col"><a href="<?php echo esc_url( $sort_url( 'email_status' ) ); ?>">
+                            <?php esc_html_e( 'Status', 'societypress' ); echo $sort_arrow( 'email_status' ); ?>
+                        </a></th>
+                        <th class="sp-ev-date-col"><a href="<?php echo esc_url( $sort_url( 'email_validated_at' ) ); ?>">
+                            <?php esc_html_e( 'Checked', 'societypress' ); echo $sort_arrow( 'email_validated_at' ); ?>
+                        </a></th>
+                        <th><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ( $members as $m ) :
+                        // Row color class
+                        if ( $m->email_status === 'valid' ) {
+                            $row_class  = 'sp-ev-row-valid';
+                            $badge_class = 'sp-ev-badge-valid';
+                            $badge_text  = __( 'Valid', 'societypress' );
+                        } elseif ( in_array( $m->email_status, [ 'invalid_format', 'invalid_domain', 'mailbox_unknown' ], true ) ) {
+                            $row_class  = 'sp-ev-row-invalid';
+                            $badge_class = 'sp-ev-badge-invalid';
+                            $labels = [
+                                'invalid_format'  => __( 'Bad Format', 'societypress' ),
+                                'invalid_domain'  => __( 'Bad Domain', 'societypress' ),
+                                'mailbox_unknown' => __( 'Mailbox Unknown', 'societypress' ),
+                            ];
+                            $badge_text = $labels[ $m->email_status ] ?? $m->email_status;
+                        } else {
+                            $row_class  = 'sp-ev-row-unchecked';
+                            $badge_class = 'sp-ev-badge-unchecked';
+                            $badge_text  = __( 'Unchecked', 'societypress' );
+                        }
+                    ?>
+                        <tr class="<?php echo esc_attr( $row_class ); ?>">
+                            <td><input type="checkbox" class="sp-ev-member-cb" value="<?php echo esc_attr( $m->user_id ); ?>"></td>
+                            <td><?php echo esc_html( $m->last_name ); ?></td>
+                            <td><?php echo esc_html( $m->first_name ); ?></td>
+                            <td><?php echo esc_html( $m->user_email ); ?></td>
+                            <td><span class="sp-ev-status-badge <?php echo esc_attr( $badge_class ); ?>">
+                                <?php echo esc_html( $badge_text ); ?>
+                            </span></td>
+                            <td><?php echo $m->email_validated_at
+                                ? esc_html( date_i18n( 'M j, Y', strtotime( $m->email_validated_at ) ) )
+                                : '—'; ?></td>
+                            <td>
+                                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-member-edit&user_id=' . $m->user_id ) ); ?>"
+                                   class="button button-small">
+                                    <?php esc_html_e( 'Edit', 'societypress' ); ?>
+                                </a>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+
+        <!-- Progress overlay -->
+        <div class="sp-ev-overlay" id="sp-ev-overlay">
+            <div class="sp-ev-overlay-inner">
+                <div class="sp-spinner" id="sp-ev-spinner" role="status"
+                     aria-label="<?php echo esc_attr__( 'Loading…', 'societypress' ); ?>"></div>
+                <h2 class="sp-ev-overlay-title" id="sp-ev-overlay-title">
+                    <?php esc_html_e( 'Validating Emails...', 'societypress' ); ?>
+                </h2>
+                <p class="sp-ev-overlay-message" id="sp-ev-overlay-message">
+                    <?php esc_html_e( 'Please wait while email addresses are checked.', 'societypress' ); ?>
+                </p>
+                <div class="sp-ev-progress-track">
+                    <div class="sp-ev-progress-fill" id="sp-ev-progress-fill"></div>
+                </div>
+                <div class="sp-ev-progress-count" id="sp-ev-progress-count"></div>
+                <div class="sp-ev-progress-errors" id="sp-ev-progress-errors"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        var ajaxUrl   = '<?php echo esc_js( admin_url( 'admin-ajax.php' ) ); ?>';
+        var nonce     = '<?php echo esc_js( wp_create_nonce( 'sp_validate_emails_batch' ) ); ?>';
+        var batchSize = 25;
+
+        // ---- Select all / selected count ----
+        var selectAll  = document.getElementById('sp-ev-select-all');
+        var checkboxes = document.querySelectorAll('.sp-ev-member-cb');
+        var selBtn     = document.getElementById('sp-ev-validate-selected');
+
+        function updateSelectedBtn() {
+            var count = document.querySelectorAll('.sp-ev-member-cb:checked').length;
+            if (selBtn) {
+                selBtn.disabled = count === 0;
+                selBtn.textContent = count > 0
+                    ? '<?php echo esc_js( __( 'Validate Selected', 'societypress' ) ); ?> (' + count + ')'
+                    : '<?php echo esc_js( __( 'Validate Selected', 'societypress' ) ); ?>';
+            }
+        }
+
+        if (selectAll) {
+            selectAll.addEventListener('change', function() {
+                checkboxes.forEach(function(cb) { cb.checked = selectAll.checked; });
+                updateSelectedBtn();
+            });
+        }
+        checkboxes.forEach(function(cb) {
+            cb.addEventListener('change', updateSelectedBtn);
+        });
+
+        // ---- Validation batch runner ----
+        function runValidation(mode, userIds) {
+            var overlay     = document.getElementById('sp-ev-overlay');
+            var progressBar = document.getElementById('sp-ev-progress-fill');
+            var countEl     = document.getElementById('sp-ev-progress-count');
+            var titleEl     = document.getElementById('sp-ev-overlay-title');
+            var messageEl   = document.getElementById('sp-ev-overlay-message');
+            var errorsEl    = document.getElementById('sp-ev-progress-errors');
+            var spinnerEl   = document.getElementById('sp-ev-spinner');
+            var deep        = document.getElementById('sp-ev-deep-verify').checked;
+
+            overlay.style.display = 'flex';
+            progressBar.style.width = '0%';
+            countEl.textContent = '';
+            errorsEl.innerHTML = '';
+            titleEl.textContent = '<?php echo esc_js( __( 'Validating Emails...', 'societypress' ) ); ?>';
+            messageEl.textContent = '<?php echo esc_js( __( 'Please wait while email addresses are checked.', 'societypress' ) ); ?>';
+            spinnerEl.style.display = '';
+
+            var offset = 0;
+            var totalRows = 0;
+            var totals = { validated: 0, invalid: 0, errors: [] };
+
+            function updateProgress() {
+                var pct = totalRows > 0 ? Math.min(100, Math.round((totals.validated / totalRows) * 100)) : 0;
+                progressBar.style.width = pct + '%';
+                countEl.textContent = totals.validated + ' <?php echo esc_js( __( 'of', 'societypress' ) ); ?> ' + totalRows + ' <?php echo esc_js( __( 'checked', 'societypress' ) ); ?>';
+            }
+
+            function runBatch() {
+                var data = new FormData();
+                data.append('action', 'sp_validate_emails_batch');
+                data.append('_ajax_nonce', nonce);
+                data.append('offset', offset);
+                data.append('batch_size', batchSize);
+                data.append('mode', mode);
+                if (deep) data.append('deep_verify', '1');
+                if (userIds && userIds.length) {
+                    userIds.forEach(function(id) { data.append('user_ids[]', id); });
+                }
+
+                fetch(ajaxUrl, { method: 'POST', body: data, credentials: 'same-origin' })
+                    .then(function(r) { return r.json(); })
+                    .then(function(resp) {
+                        if (!resp.success) {
+                            titleEl.textContent = '<?php echo esc_js( __( 'Validation Failed', 'societypress' ) ); ?>';
+                            messageEl.textContent = resp.data || '<?php echo esc_js( __( 'An unexpected error occurred.', 'societypress' ) ); ?>';
+                            spinnerEl.style.display = 'none';
+                            addDoneButton();
+                            return;
+                        }
+                        var d = resp.data;
+                        if (d.total) totalRows = d.total;
+                        totals.validated += d.validated || 0;
+                        totals.invalid += d.invalid || 0;
+                        if (d.errors && d.errors.length) totals.errors = totals.errors.concat(d.errors);
+
+                        offset += d.rows_processed || batchSize;
+                        updateProgress();
+
+                        if (d.done) {
+                            showResults();
+                        } else {
+                            runBatch();
+                        }
+                    })
+                    .catch(function() {
+                        titleEl.textContent = '<?php echo esc_js( __( 'Validation Error', 'societypress' ) ); ?>';
+                        messageEl.textContent = '<?php echo esc_js( __( 'A network error occurred.', 'societypress' ) ); ?>';
+                        spinnerEl.style.display = 'none';
+                        addDoneButton();
+                    });
+            }
+
+            function showResults() {
+                spinnerEl.style.display = 'none';
+                progressBar.style.width = '100%';
+                titleEl.textContent = '<?php echo esc_js( __( 'Validation Complete', 'societypress' ) ); ?>';
+
+                var validCount = totals.validated - totals.invalid;
+                messageEl.textContent = validCount + ' <?php echo esc_js( __( 'valid', 'societypress' ) ); ?>, '
+                    + totals.invalid + ' <?php echo esc_js( __( 'invalid', 'societypress' ) ); ?>';
+
+                if (totals.errors.length > 0) {
+                    var html = '';
+                    var maxShow = Math.min(totals.errors.length, 100);
+                    for (var i = 0; i < maxShow; i++) {
+                        var e = totals.errors[i];
+                        html += '<div><strong>' + escHtml(e.email) + '</strong>: ' + escHtml(e.reason) + '</div>';
+                    }
+                    if (totals.errors.length > 100) {
+                        html += '<div>... <?php echo esc_js( __( 'and', 'societypress' ) ); ?> '
+                            + (totals.errors.length - 100) + ' <?php echo esc_js( __( 'more', 'societypress' ) ); ?></div>';
+                    }
+                    errorsEl.innerHTML = html;
+                }
+                addDoneButton();
+            }
+
+            function addDoneButton() {
+                var btn = document.createElement('button');
+                btn.className = 'button button-primary';
+                btn.textContent = '<?php echo esc_js( __( 'Done', 'societypress' ) ); ?>';
+                btn.style.marginTop = '20px';
+                btn.addEventListener('click', function() { location.reload(); });
+                document.querySelector('.sp-ev-overlay-inner').appendChild(btn);
+            }
+
+            function escHtml(str) {
+                var div = document.createElement('div');
+                div.appendChild(document.createTextNode(str));
+                return div.innerHTML;
+            }
+
+            updateProgress();
+            runBatch();
+        }
+
+        // ---- Button handlers ----
+        document.getElementById('sp-ev-validate-all').addEventListener('click', function() {
+            runValidation('all', null);
+        });
+
+        var uncheckedBtn = document.getElementById('sp-ev-validate-unchecked');
+        if (uncheckedBtn) {
+            uncheckedBtn.addEventListener('click', function() {
+                runValidation('unchecked', null);
+            });
+        }
+
+        if (selBtn) {
+            selBtn.addEventListener('click', function() {
+                var ids = [];
+                document.querySelectorAll('.sp-ev-member-cb:checked').forEach(function(cb) {
+                    ids.push(cb.value);
+                });
+                if (ids.length > 0) {
+                    runValidation('selected', ids);
+                }
+            });
+        }
+    })();
+    </script>
+    <?php
+}
+
+
+// ============================================================================
 // BLAST EMAIL — ADMIN PAGES + SENDING ENGINE
 // ============================================================================
 //
@@ -65571,6 +66720,17 @@ function sp_render_blast_email_compose_page(): void {
          AND u.user_email != '' AND u.user_email IS NOT NULL"
     );
 
+    // Count members with invalid email addresses who will be excluded.
+    // WHY: Harold needs to know if some members won't receive the blast so
+    //      he can fix their emails before sending. Shows as a warning banner.
+    $invalid_email_count = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$prefix}members m
+         JOIN {$wpdb->users} u ON m.user_id = u.ID
+         WHERE m.status = 'active' AND m.blast_email_opt_out = 0
+         AND u.user_email != '' AND u.user_email IS NOT NULL
+         AND m.email_status IN ('invalid_format', 'invalid_domain', 'mailbox_unknown')"
+    );
+
     ?>
     <style>
     /* sp_render_blast_email_compose_page styles
@@ -65591,6 +66751,25 @@ function sp_render_blast_email_compose_page(): void {
     <div class="wrap sp-admin-wrap">
         <h1><?php echo $blast_id ? esc_html__( 'Edit Blast Email', 'societypress' ) : esc_html__( 'Compose Blast Email', 'societypress' ); ?></h1>
         <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ); ?>"><span aria-hidden="true">&larr;</span> <?php esc_html_e( 'Back to Blast Email', 'societypress' ); ?></a></p>
+
+        <?php if ( $invalid_email_count > 0 ) : ?>
+            <div class="notice notice-warning" style="margin-bottom: 16px;">
+                <p>
+                    <strong><?php printf(
+                        esc_html( _n(
+                            '%d member has an invalid email address and will be excluded from sends.',
+                            '%d members have invalid email addresses and will be excluded from sends.',
+                            $invalid_email_count,
+                            'societypress'
+                        ) ),
+                        $invalid_email_count
+                    ); ?></strong>
+                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-email-validator&filter=invalid' ) ); ?>">
+                        <?php esc_html_e( 'View in Email Validator', 'societypress' ); ?> &rarr;
+                    </a>
+                </p>
+            </div>
+        <?php endif; ?>
 
         <form method="post" id="sp-blast-form">
             <?php wp_nonce_field( 'sp_save_blast', 'sp_blast_nonce' ); ?>
@@ -65714,9 +66893,14 @@ function sp_blast_count_recipients( string $recipient_type, ?string $recipient_f
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
-    // Base: active members with valid email who haven't opted out
+    // Base: active members with valid email who haven't opted out.
+    // WHY: Members with invalid_format, invalid_domain, or mailbox_unknown
+    //      email status are excluded to prevent bounces that damage the
+    //      society's sender reputation. Unchecked emails are still included
+    //      so Harold doesn't have to validate before every single send.
     $base_where = "m.status = 'active' AND m.blast_email_opt_out = 0
-                   AND u.user_email != '' AND u.user_email IS NOT NULL";
+                   AND u.user_email != '' AND u.user_email IS NOT NULL
+                   AND m.email_status NOT IN ('invalid_format', 'invalid_domain', 'mailbox_unknown')";
 
     if ( $recipient_type === 'group' && $recipient_filter ) {
         $filter = json_decode( $recipient_filter, true );
@@ -65768,8 +66952,11 @@ function sp_blast_get_recipients( string $recipient_type, ?string $recipient_fil
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
+    // WHY: Same exclusion as sp_blast_count_recipients — skip members whose
+    //      email addresses failed validation so they don't bounce.
     $base_where = "m.status = 'active' AND m.blast_email_opt_out = 0
-                   AND u.user_email != '' AND u.user_email IS NOT NULL";
+                   AND u.user_email != '' AND u.user_email IS NOT NULL
+                   AND m.email_status NOT IN ('invalid_format', 'invalid_domain', 'mailbox_unknown')";
 
     $base_select = "SELECT DISTINCT m.user_id, u.user_email AS email, m.first_name, m.last_name, u.display_name
                     FROM {$prefix}members m

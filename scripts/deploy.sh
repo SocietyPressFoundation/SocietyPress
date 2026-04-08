@@ -13,17 +13,22 @@
 
 HOST="skystra"
 DEMO_BASE="~/domains/getsocietypress.org/public_html/demo/wp-content"
+SAGHS_BASE="~/domains/txsaghs.com/public_html/wp-content"
 LOCAL_BASE="$(cd "$(dirname "$0")/.." && pwd)"
 
+deploy_plugin_to() {
+    local target_base="$1"
+    local label="$2"
+    echo "Deploying plugin to $label..."
+    scp "$LOCAL_BASE/Code/plugin/societypress.php" "$HOST:$target_base/plugins/societypress/societypress.php"
+    scp "$LOCAL_BASE/Code/plugin/languages/societypress.pot" "$HOST:$target_base/plugins/societypress/languages/societypress.pot" 2>/dev/null
+    scp -r "$LOCAL_BASE/Code/plugin/assets/"* "$HOST:$target_base/plugins/societypress/assets/" 2>/dev/null
+    echo "Plugin deployed to $label."
+}
+
 deploy_plugin() {
-    echo "Deploying plugin to demo site..."
-    # Main plugin file
-    scp "$LOCAL_BASE/Code/plugin/societypress.php" "$HOST:$DEMO_BASE/plugins/societypress/societypress.php"
-    # Translation template
-    scp "$LOCAL_BASE/Code/plugin/languages/societypress.pot" "$HOST:$DEMO_BASE/plugins/societypress/languages/societypress.pot" 2>/dev/null
-    # PWA icons and other assets
-    scp -r "$LOCAL_BASE/Code/plugin/assets/"* "$HOST:$DEMO_BASE/plugins/societypress/assets/" 2>/dev/null
-    echo "Plugin deployed."
+    deploy_plugin_to "$DEMO_BASE" "demo site"
+    deploy_plugin_to "$SAGHS_BASE" "txsaghs.com"
 }
 
 deploy_theme() {
@@ -47,11 +52,13 @@ case "${1:-plugin}" in
         ;;
     all)
         deploy_plugin
-        deploy_theme "theme" "societypress" "$DEMO_BASE"
-        for t in heritage coastline prairie ledger parlor; do
-            if [ -d "$LOCAL_BASE/Code/theme-$t" ]; then
-                deploy_theme "theme-$t" "societypress-$t" "$DEMO_BASE"
-            fi
+        for base in "$DEMO_BASE" "$SAGHS_BASE"; do
+            deploy_theme "theme" "societypress" "$base"
+            for t in heritage coastline prairie ledger parlor; do
+                if [ -d "$LOCAL_BASE/Code/theme-$t" ]; then
+                    deploy_theme "theme-$t" "societypress-$t" "$base"
+                fi
+            done
         done
         ;;
     installer)

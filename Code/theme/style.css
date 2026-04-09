@@ -658,24 +658,35 @@ img {
     background: rgba(255, 255, 255, 0.25);
 }
 
-/* Individual dropdown items */
-.sp-user-dropdown-item {
-    display: flex;
+/* Individual dropdown items.
+   WHY the !important overrides: sp_user_menu() outputs items inside a
+   nav.main-navigation wrapper (so the trigger link matches nav font rendering
+   exactly). That means .main-navigation a rules inherit to these items,
+   including color: var(--sp-color-header-text) which is usually white.
+   We force the dropdown items to render dark on the white dropdown background. */
+.sp-user-dropdown-item,
+.main-navigation .sp-user-dropdown-item {
+    display: flex !important;
     align-items: center;
     gap: 10px;
-    padding: 10px 16px;
-    color: #333;
+    padding: 10px 16px !important;
+    color: #333 !important;
     text-decoration: none;
-    font-size: 0.85rem;
-    font-weight: 500;
+    font-size: 0.85rem !important;
+    font-weight: 500 !important;
+    letter-spacing: normal !important;
+    text-transform: none !important;
     transition: background 0.15s ease;
     white-space: nowrap;
+    border-radius: 0 !important;
 }
 
 .sp-user-dropdown-item:hover,
-.sp-user-dropdown-item:focus {
-    background: #f0f4f8;
-    color: var(--sp-color-primary, #1e3a5f);
+.sp-user-dropdown-item:focus,
+.main-navigation .sp-user-dropdown-item:hover,
+.main-navigation .sp-user-dropdown-item:focus {
+    background: #f0f4f8 !important;
+    color: var(--sp-color-primary, #1e3a5f) !important;
 }
 
 /* Dashicon styling inside dropdown items */
@@ -700,9 +711,10 @@ img {
 }
 
 /* Logout item — subtle red on hover to indicate destructive action */
-.sp-user-dropdown-item--logout:hover {
-    background: #fef2f2;
-    color: #b91c1c;
+.sp-user-dropdown-item--logout:hover,
+.main-navigation .sp-user-dropdown-item--logout:hover {
+    background: #fef2f2 !important;
+    color: #b91c1c !important;
 }
 
 .sp-user-dropdown-item--logout:hover .sp-user-dropdown-icon {

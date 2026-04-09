@@ -258,7 +258,7 @@ img {
 .header-nav-area {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0;
 }
 
 /* ============================================================================
@@ -435,6 +435,13 @@ img {
     align-items: center;
 }
 
+/* WHY hidden by default: When the admin adds a "Search" page to the nav
+   menu, the magnifying glass toggle is redundant and creates a visual gap.
+   The search wrap is still available for child themes that want it. */
+.sp-header-search-wrap:not(.sp-search-open) {
+    display: none;
+}
+
 /* Toggle button — the magnifying glass icon that opens/closes the search */
 .sp-search-toggle {
     background: none;
@@ -547,16 +554,19 @@ img {
     position: relative;
 }
 
-/* Log In link for visitors — styled to match nav items */
+/* Log In / profile name link — styled identically to nav menu items */
 .sp-user-login-link {
     display: block;
-    padding: 10px 16px;
+    padding: 10px 18px;
     color: var(--sp-color-header-text, #fff);
     text-decoration: none;
-    font-size: 0.9rem;
-    font-weight: 500;
+    font-size: var(--sp-nav-font-size, 0.85rem);
+    font-weight: var(--sp-nav-font-weight, 500);
+    font-family: var(--sp-font-body, -apple-system, BlinkMacSystemFont, sans-serif);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
     border-radius: 4px;
-    transition: background 0.2s ease;
+    transition: background 0.2s ease, color 0.2s ease;
     white-space: nowrap;
 }
 

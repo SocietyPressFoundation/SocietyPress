@@ -292,8 +292,7 @@ img {
     font-size: var(--sp-nav-font-size, 0.85rem);
     font-weight: var(--sp-nav-font-weight, 500);
     font-family: var(--sp-font-body, -apple-system, BlinkMacSystemFont, sans-serif);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    letter-spacing: 0.02em;
     border-radius: 4px;
     transition: background 0.2s ease, color 0.2s ease;
 }
@@ -554,6 +553,11 @@ img {
     position: relative;
 }
 
+/* The dropdown anchors to the li inside the user menu nav */
+.sp-user-menu li {
+    position: relative;
+}
+
 /* Log In / profile name link — styled identically to nav menu items */
 .sp-user-login-link {
     display: block;
@@ -563,8 +567,7 @@ img {
     font-size: var(--sp-nav-font-size, 0.85rem);
     font-weight: var(--sp-nav-font-weight, 500);
     font-family: var(--sp-font-body, -apple-system, BlinkMacSystemFont, sans-serif);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    letter-spacing: 0.02em;
     border-radius: 4px;
     transition: background 0.2s ease, color 0.2s ease;
     white-space: nowrap;

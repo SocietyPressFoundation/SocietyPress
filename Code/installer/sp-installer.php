@@ -418,6 +418,20 @@ function sp_installer_show_form(): void {
                     </td>
                 </tr>
                 <tr>
+                    <th><label for="admin_first">Your First Name</label></th>
+                    <td>
+                        <input type="text" id="admin_first" name="admin_first" required
+                               placeholder="e.g., Harold">
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="admin_last">Your Last Name</label></th>
+                    <td>
+                        <input type="text" id="admin_last" name="admin_last" required
+                               placeholder="e.g., Whitfield">
+                    </td>
+                </tr>
+                <tr>
                     <th><label for="admin_user">Admin Username</label></th>
                     <td>
                         <input type="text" id="admin_user" name="admin_user" required
@@ -585,6 +599,8 @@ function sp_installer_process(): void {
 
     $site_title  = trim( $_POST['site_title'] ?? '' );
     $admin_email = trim( $_POST['admin_email'] ?? '' );
+    $admin_first = trim( $_POST['admin_first'] ?? '' );
+    $admin_last  = trim( $_POST['admin_last'] ?? '' );
     $admin_user  = trim( $_POST['admin_user'] ?? '' );
     $admin_pass  = $_POST['admin_pass'] ?? '';
     $admin_pass2 = $_POST['admin_pass2'] ?? '';
@@ -603,6 +619,8 @@ function sp_installer_process(): void {
     if ( empty( $admin_email ) || ! filter_var( $admin_email, FILTER_VALIDATE_EMAIL ) ) {
         $errors[] = 'A valid admin email address is required.';
     }
+    if ( empty( $admin_first ) ) $errors[] = 'First name is required.';
+    if ( empty( $admin_last ) )  $errors[] = 'Last name is required.';
     if ( empty( $admin_user ) || strlen( $admin_user ) < 3 ) {
         $errors[] = 'Admin username must be at least 3 characters.';
     }
@@ -921,17 +939,58 @@ add_action( 'admin_init', function () {
 
             update_option( 'societypress_settings', $sp_settings );
 
-            // Mark wizard as complete — Harold already provided everything
-            update_option( 'sp_wizard_completed', 1 );
+            // WHY: Don't mark wizard complete here — the wizard now handles
+            //      branding uploads, package selection, and nav menu setup.
+            //      The installer only covers org info and membership basics.
         }
         @unlink( $config_file );
+    }
+
+    // ---- Create a member record + set WP profile for the admin user ----
+    // WHY: The person installing SocietyPress is almost always a member.
+    // The installer collected their first/last name. We save it to the WP
+    // user profile (so WordPress knows their name) and create an SP member
+    // record (so the header shows their name instead of "Log In").
+    $admin_user = wp_get_current_user();
+    if ( $admin_user && $admin_user->ID && is_array( $installer_config ) ) {
+        $first = $installer_config['admin_first_name'] ?? '';
+        $last  = $installer_config['admin_last_name'] ?? '';
+
+        // Save to WordPress user profile
+        if ( $first ) update_user_meta( $admin_user->ID, 'first_name', $first );
+        if ( $last )  update_user_meta( $admin_user->ID, 'last_name', $last );
+        if ( $first || $last ) {
+            wp_update_user( [
+                'ID'           => $admin_user->ID,
+                'display_name' => trim( $first . ' ' . $last ),
+            ] );
+        }
+
+        // Create SP member record
+        global $wpdb;
+        $members_table = $wpdb->prefix . 'sp_members';
+        $exists = $wpdb->get_var( $wpdb->prepare(
+            "SELECT user_id FROM {$members_table} WHERE user_id = %d",
+            $admin_user->ID
+        ) );
+        if ( ! $exists ) {
+            if ( empty( $first ) ) $first = $admin_user->user_login;
+            $wpdb->insert( $members_table, [
+                'user_id'    => $admin_user->ID,
+                'first_name' => $first,
+                'last_name'  => $last,
+                'status'     => 'active',
+                'join_date'  => current_time( 'Y-m-d' ),
+            ] );
+        }
     }
 
     // Self-destruct
     @unlink( __FILE__ );
 
-    // Redirect to the SocietyPress dashboard
-    wp_safe_redirect( admin_url( 'admin.php?page=societypress' ) );
+    // Redirect to the setup wizard — Harold still needs to upload branding,
+    // choose packages, and set up navigation.
+    wp_safe_redirect( admin_url( 'admin.php?page=sp-setup-wizard' ) );
     exit;
 }, 1 );
 MUPLUGIN;
@@ -952,6 +1011,8 @@ MUPLUGIN;
         'organization_phone'   => $org_phone,
         'membership_period_type' => $membership_period,
         'membership_start_month' => $membership_start,
+        'admin_first_name'     => $admin_first,
+        'admin_last_name'      => $admin_last,
     ];
     file_put_contents( $install_dir . '/sp-installer-config.json', json_encode( $installer_config ) );
     $log[] = 'Installer config written.';

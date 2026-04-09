@@ -261,8 +261,21 @@ function sp_installer_show_form(): void {
     $nonce = bin2hex( random_bytes( 16 ) );
     $_SESSION['sp_install_nonce'] = $nonce;
 
-    sp_installer_render_page( 'Configure Your Site', function () use ( $nonce ) {
+    // Retrieve saved form data and errors from session (if returning from a failed attempt)
+    $saved = $_SESSION['sp_form_data'] ?? [];
+    $form_errors = $_SESSION['sp_form_errors'] ?? [];
+    unset( $_SESSION['sp_form_errors'] );
+    // Keep sp_form_data in session so it survives multiple error cycles
+
+    sp_installer_render_page( 'Configure Your Site', function () use ( $nonce, $saved, $form_errors ) {
         ?>
+        <?php if ( $form_errors ) : ?>
+            <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 16px 20px; margin-bottom: 24px;">
+                <?php foreach ( $form_errors as $err ) : ?>
+                    <p style="color: #991B1B; margin: 0 0 4px;"><?php echo htmlspecialchars( $err ); ?></p>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
         <?php if ( SP_INSTALLER_DEMO_MODE ) : ?>
             <p style="margin-bottom: 24px; color: #6B7280;">
                 This is what the SocietyPress installer looks like. The database fields below show
@@ -359,6 +372,7 @@ function sp_installer_show_form(): void {
                         <th><label for="db_name">Database Name</label></th>
                         <td>
                             <input type="text" id="db_name" name="db_name" required
+                                   value="<?php echo htmlspecialchars( $saved['db_name'] ?? '' ); ?>"
                                    placeholder="e.g., society_db" autocomplete="off">
                             <p class="desc">The name of the database you created for this site.</p>
                         </td>
@@ -367,6 +381,7 @@ function sp_installer_show_form(): void {
                         <th><label for="db_user">Database Username</label></th>
                         <td>
                             <input type="text" id="db_user" name="db_user" required
+                                   value="<?php echo htmlspecialchars( $saved['db_user'] ?? '' ); ?>"
                                    placeholder="e.g., society_user" autocomplete="off">
                         </td>
                     </tr>
@@ -380,14 +395,14 @@ function sp_installer_show_form(): void {
                     <tr>
                         <th><label for="db_host">Database Host</label></th>
                         <td>
-                            <input type="text" id="db_host" name="db_host" value="localhost">
+                            <input type="text" id="db_host" name="db_host" value="<?php echo htmlspecialchars( $saved['db_host'] ?? 'localhost' ); ?>">
                             <p class="desc">Almost always "localhost." Only change this if your host tells you to.</p>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="db_prefix">Table Prefix</label></th>
                         <td>
-                            <input type="text" id="db_prefix" name="db_prefix" value="wp_"
+                            <input type="text" id="db_prefix" name="db_prefix" value="<?php echo htmlspecialchars( $saved['db_prefix'] ?? 'wp_' ); ?>"
                                    pattern="[a-zA-Z_][a-zA-Z0-9_]*" maxlength="20">
                             <p class="desc">Leave as "wp_" unless you have a reason to change it.</p>
                         </td>
@@ -405,6 +420,7 @@ function sp_installer_show_form(): void {
                     <th><label for="site_title">Society Name</label></th>
                     <td>
                         <input type="text" id="site_title" name="site_title" required
+                               value="<?php echo htmlspecialchars( $saved['site_title'] ?? '' ); ?>"
                                placeholder="e.g., Elm County Genealogical Society">
                         <p class="desc">This appears as your site title. You can change it later.</p>
                     </td>
@@ -413,6 +429,7 @@ function sp_installer_show_form(): void {
                     <th><label for="admin_email">Admin Email</label></th>
                     <td>
                         <input type="email" id="admin_email" name="admin_email" required
+                               value="<?php echo htmlspecialchars( $saved['admin_email'] ?? '' ); ?>"
                                placeholder="you@example.com">
                         <p class="desc">Used for admin login and system notifications.</p>
                     </td>
@@ -421,6 +438,7 @@ function sp_installer_show_form(): void {
                     <th><label for="admin_first">Your First Name</label></th>
                     <td>
                         <input type="text" id="admin_first" name="admin_first" required
+                               value="<?php echo htmlspecialchars( $saved['admin_first'] ?? '' ); ?>"
                                placeholder="e.g., Harold">
                     </td>
                 </tr>
@@ -428,6 +446,7 @@ function sp_installer_show_form(): void {
                     <th><label for="admin_last">Your Last Name</label></th>
                     <td>
                         <input type="text" id="admin_last" name="admin_last" required
+                               value="<?php echo htmlspecialchars( $saved['admin_last'] ?? '' ); ?>"
                                placeholder="e.g., Whitfield">
                     </td>
                 </tr>
@@ -435,7 +454,7 @@ function sp_installer_show_form(): void {
                     <th><label for="admin_user">Admin Username</label></th>
                     <td>
                         <input type="text" id="admin_user" name="admin_user" required
-                               value="" pattern="[a-zA-Z0-9_\-\.]{3,60}"
+                               value="<?php echo htmlspecialchars( $saved['admin_user'] ?? '' ); ?>" pattern="[a-zA-Z0-9_\-\.]{3,60}"
                                placeholder="e.g. jsmith or harold.whitfield">
                         <p class="desc">Your login username. Choose something unique and memorable.</p>
                         <p id="sp-admin-warn" style="display:none; color: #DC2626; font-size: 13px; margin-top: 4px;">
@@ -481,7 +500,7 @@ function sp_installer_show_form(): void {
                     <th><label for="org_address">Mailing Address</label></th>
                     <td>
                         <textarea id="org_address" name="org_address" rows="3"
-                                  placeholder="Street address, city, state, zip"></textarea>
+                                  placeholder="Street address, city, state, zip"><?php echo htmlspecialchars( $saved['org_address'] ?? '' ); ?></textarea>
                         <p class="desc">Your society's mailing address. Shown on the contact page and in emails.</p>
                     </td>
                 </tr>
@@ -489,6 +508,7 @@ function sp_installer_show_form(): void {
                     <th><label for="org_phone">Phone Number</label></th>
                     <td>
                         <input type="tel" id="org_phone" name="org_phone"
+                               value="<?php echo htmlspecialchars( $saved['org_phone'] ?? '' ); ?>"
                                placeholder="Optional">
                         <p class="desc">Leave blank if your society doesn't have a public phone number.</p>
                     </td>
@@ -496,10 +516,11 @@ function sp_installer_show_form(): void {
                 <tr>
                     <th><label for="membership_period">Membership Period</label></th>
                     <td>
+                        <?php $mp = $saved['membership_period'] ?? 'annual'; ?>
                         <select id="membership_period" name="membership_period">
-                            <option value="annual">Annual (fixed year)</option>
-                            <option value="rolling">Rolling (12 months from join date)</option>
-                            <option value="lifetime">Lifetime only</option>
+                            <option value="annual" <?php echo $mp === 'annual' ? 'selected' : ''; ?>>Annual (fixed year)</option>
+                            <option value="rolling" <?php echo $mp === 'rolling' ? 'selected' : ''; ?>>Rolling (12 months from join date)</option>
+                            <option value="lifetime" <?php echo $mp === 'lifetime' ? 'selected' : ''; ?>>Lifetime only</option>
                         </select>
                         <p class="desc">Most societies use annual memberships with a fixed fiscal year.</p>
                     </td>
@@ -507,19 +528,16 @@ function sp_installer_show_form(): void {
                 <tr>
                     <th><label for="membership_start_month">Fiscal Year Starts</label></th>
                     <td>
+                        <?php $ms = (int) ( $saved['membership_start'] ?? 7 ); ?>
                         <select id="membership_start_month" name="membership_start_month">
-                            <option value="1">January</option>
-                            <option value="2">February</option>
-                            <option value="3">March</option>
-                            <option value="4">April</option>
-                            <option value="5">May</option>
-                            <option value="6">June</option>
-                            <option value="7" selected>July</option>
-                            <option value="8">August</option>
-                            <option value="9">September</option>
-                            <option value="10">October</option>
-                            <option value="11">November</option>
-                            <option value="12">December</option>
+                            <?php
+                            $months = [1=>'January',2=>'February',3=>'March',4=>'April',5=>'May',6=>'June',
+                                       7=>'July',8=>'August',9=>'September',10=>'October',11=>'November',12=>'December'];
+                            foreach ( $months as $num => $name ) {
+                                $sel = $num === $ms ? ' selected' : '';
+                                echo "<option value=\"{$num}\"{$sel}>{$name}</option>";
+                            }
+                            ?>
                         </select>
                         <p class="desc">When does your membership year begin? Many societies use July.</p>
                     </td>
@@ -611,6 +629,28 @@ function sp_installer_process(): void {
     $membership_period  = trim( $_POST['membership_period'] ?? 'annual' );
     $membership_start   = (int) ( $_POST['membership_start_month'] ?? 7 );
 
+    // WHY: Save all form values to the session so they survive errors.
+    // If the DB connection fails or anything else goes wrong, Harold gets
+    // sent back to the form with all his data still filled in. Nobody
+    // should have to retype 12 fields because of a wrong DB password.
+    $_SESSION['sp_form_data'] = [
+        'db_name'   => $db_name,
+        'db_user'   => $db_user,
+        'db_pass'   => $db_pass,
+        'db_host'   => $db_host,
+        'db_prefix' => $db_prefix,
+        'site_title'  => $site_title,
+        'admin_email' => $admin_email,
+        'admin_first' => $admin_first,
+        'admin_last'  => $admin_last,
+        'admin_user'  => $admin_user,
+        'org_address'        => $org_address,
+        'org_phone'          => $org_phone,
+        'membership_period'  => $membership_period,
+        'membership_start'   => $membership_start,
+        // Passwords deliberately NOT saved to session for security
+    ];
+
     // Validate
     $errors = [];
     if ( empty( $db_name ) )    $errors[] = 'Database name is required.';
@@ -634,7 +674,9 @@ function sp_installer_process(): void {
         $errors[] = 'Table prefix must start with a letter or underscore and contain only letters, numbers, and underscores.';
     }
     if ( $errors ) {
-        sp_installer_die( 'Validation Error', implode( '<br>', array_map( 'htmlspecialchars', $errors ) ) );
+        $_SESSION['sp_form_errors'] = $errors;
+        header( 'Location: ?step=configure' );
+        exit;
     }
 
     // Ensure prefix ends with underscore
@@ -651,28 +693,27 @@ function sp_installer_process(): void {
     //      catch exceptions, so without this try/catch the installer shows a raw
     //      fatal error instead of a friendly message.
     $log[] = 'Testing database connection...';
+    $db_error = '';
     try {
         $conn = new mysqli( $db_host, $db_user, $db_pass, $db_name );
+        if ( $conn->connect_error ) {
+            $db_error = $conn->connect_error;
+        } else {
+            $conn->close();
+        }
     } catch ( mysqli_sql_exception $e ) {
-        sp_installer_die(
-            'Database Connection Failed',
-            'Could not connect to the database. Please check your credentials.<br><br>'
-            . '<strong>Error:</strong> ' . htmlspecialchars( $e->getMessage() ) . '<br><br>'
-            . 'Common fixes:<ul style="margin: 8px 0 0 20px;">'
-            . '<li>Make sure the database name, username, and password are correct</li>'
-            . '<li>Make sure the database user has permission to access the database</li>'
-            . '<li>If your host uses a non-standard database host, enter it instead of &ldquo;localhost&rdquo;</li>'
-            . '</ul>'
-        );
+        $db_error = $e->getMessage();
     }
-    if ( $conn->connect_error ) {
-        sp_installer_die(
-            'Database Connection Failed',
-            'Could not connect to the database. Please check your credentials.<br><br>'
-            . '<strong>Error:</strong> ' . htmlspecialchars( $conn->connect_error )
-        );
+    if ( $db_error ) {
+        // Redirect back to the form with the error — all field values are
+        // already saved in the session so Harold doesn't retype anything.
+        $_SESSION['sp_form_errors'] = [
+            'Database connection failed: ' . $db_error,
+            'Check your database name, username, password, and host.',
+        ];
+        header( 'Location: ?step=configure' );
+        exit;
     }
-    $conn->close();
     $log[] = 'Database connection successful.';
 
     // ---- 2. Download WordPress ----

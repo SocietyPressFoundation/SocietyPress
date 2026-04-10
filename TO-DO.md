@@ -868,6 +868,7 @@ GENRECORD spec exists (`Docs/GENRECORD-SPEC.md`) but no code yet.
 
 ## Testing & QA — Not Started
 
+- [ ] Installer: preserve form data on failure — if the install fails and the user clicks "Go Back," all previously entered fields should be pre-populated so they don't have to re-enter everything
 - [ ] End-to-end installer test on a non-Skystra host (different cPanel provider, or a VPS)
 - [ ] Test on PHP 8.0, 8.1, 8.2, 8.3 — verify no version-specific breakage
 - [ ] Test with WordPress 6.0 (minimum claimed) through latest (6.9.x)

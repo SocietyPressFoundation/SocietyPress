@@ -23,7 +23,19 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'SOCIETYPRESS_THEME_VERSION', '1.0.6' );
+// WHY the defined() guard: Child themes (e.g. the SAGHS rebuild) were
+// cloned from the parent template and kept the same
+// SOCIETYPRESS_THEME_VERSION define at the top of their functions.php.
+// In WordPress, child theme functions.php loads BEFORE the parent's, so
+// the child defines the constant first and the parent's unguarded define()
+// triggers a PHP warning on every page load ("Constant already defined").
+// Wrapping the define in an if-not-defined is the standard defensive
+// pattern and keeps the parent theme safe against child theme copies.
+// If a child theme wants its own version it should define a
+// differently-named constant (e.g. SAGHS_THEME_VERSION).
+if ( ! defined( 'SOCIETYPRESS_THEME_VERSION' ) ) {
+	define( 'SOCIETYPRESS_THEME_VERSION', '1.0.6' );
+}
 
 
 // ============================================================================
@@ -99,6 +111,28 @@ add_action( 'wp_enqueue_scripts', function () {
         [],
         SOCIETYPRESS_THEME_VERSION
     );
+
+    // WHY wp_add_inline_style here: The SocietyPress plugin exposes a
+    // "Custom CSS" field on the Design settings page (Settings → Appearance
+    // → Custom CSS). The admin pastes CSS into that field and it's stored
+    // in societypress_settings['design_custom_css']. We attach it to our
+    // stylesheet handle via wp_add_inline_style, which prints it in a
+    // <style id="societypress-style-inline-css"> tag immediately after the
+    // main stylesheet is loaded. Because it comes AFTER the theme CSS in
+    // the cascade, it wins specificity ties without requiring !important,
+    // which is exactly what an admin expects when they "override" a style.
+    //
+    // The plugin's sanitizer scrubs </style> and PHP tags on save, so the
+    // value here is safe to print inline. We still check function_exists
+    // and get_option defensively — the theme has to work if the plugin is
+    // deactivated, even if the custom CSS disappears in that case.
+    if ( function_exists( 'get_option' ) ) {
+        $sp_settings      = get_option( 'societypress_settings', array() );
+        $sp_custom_css    = isset( $sp_settings['design_custom_css'] ) ? (string) $sp_settings['design_custom_css'] : '';
+        if ( $sp_custom_css !== '' ) {
+            wp_add_inline_style( 'societypress-style', $sp_custom_css );
+        }
+    }
 
     // WHY theme.js: Handles the hamburger menu toggle on mobile screens.
     // Loaded in the footer (true) so it doesn't block page rendering.

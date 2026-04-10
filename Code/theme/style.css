@@ -199,14 +199,29 @@ img {
     padding: 0 20px;
 }
 
+/* WHY no max-width: The header stretches edge-to-edge like Ancestry and
+   FamilySearch — logo flush left, user menu flush right, nav items spread
+   across the full viewport. Body content below stays at the readable
+   --sp-content-width. The horizontal padding scales down on smaller screens
+   so the nav doesn't crowd the edges on tablets. */
 .header-inner {
-    max-width: var(--sp-content-width, 1100px);
-    margin: 0 auto;
     display: flex;
     align-items: center;
     justify-content: space-between;
     min-height: 80px;
-    padding: var(--sp-header-padding, 8px) 0;
+    padding: var(--sp-header-padding, 8px) 20px;
+}
+
+@media (min-width: 1025px) {
+    .header-inner {
+        padding: var(--sp-header-padding, 8px) 40px;
+    }
+}
+
+@media (min-width: 1400px) {
+    .header-inner {
+        padding: var(--sp-header-padding, 8px) 60px;
+    }
 }
 
 .site-branding {
@@ -255,10 +270,15 @@ img {
    in the header. The nav items flow left, the user menu anchors to the right.
    ============================================================================ */
 
+/* WHY flex:1: The nav area fills all remaining space after the logo.
+   Nav items sit flush left, .sp-nav-right items (Store, Contact, Join)
+   push right via margin-left:auto on the first one. Search and Sign In
+   follow naturally after the nav. */
 .header-nav-area {
+    flex: 1;
     display: flex;
     align-items: center;
-    gap: 0;
+    gap: 4px;
 }
 
 /* ============================================================================
@@ -273,10 +293,32 @@ img {
    their display:none / display:block toggle can conflict with the flex context.
    Scoping to > ul keeps the top-level menu horizontal without affecting
    nested sub-menu lists that child themes style independently. */
+/* WHY flex:1 on nav and ul: The primary nav must stretch to fill the full
+   header width so margin-left:auto on right-aligned items (Store, Contact,
+   Join) can push them to the right edge. The :not(.sp-user-menu) exclusion
+   is critical — the Sign In menu is also nav.main-navigation, and giving
+   it flex:1 too would split the space 50/50, killing the gap. */
+/* WHY display:flex here: Without it, the nav is display:block — it gets
+   flex-sized by header-nav-area, but internally the ul's width:100% resolves
+   against the nav's content-based width, not its flex-assigned width.
+   Making the nav itself a flex container ensures the ul stretches fully,
+   giving margin-left:auto on .sp-nav-right items room to push right.
+   WHY desktop-only: On mobile (<= 1024px), the nav toggles between
+   display:none and display:block via .sp-nav-open. This rule must not
+   interfere with that toggle. */
+@media (min-width: 1281px) {
+    .main-navigation:not(.sp-user-menu) {
+        flex: 1;
+        display: flex;
+        min-width: 0;
+    }
+}
+
 .main-navigation > ul {
     list-style: none;
     display: flex;
     gap: 4px;
+    width: 100%;
 }
 
 /* Sub-menus inside child themes need list-style reset too */
@@ -318,6 +360,20 @@ img {
 .main-navigation .sp-nav-cta > a:hover {
     opacity: 0.9;
     background: var(--sp-color-accent, #667eea);
+}
+
+/* WHY: Secondary nav items (Store, Contact, Join) push to the right edge
+   of the header bar, matching the Ancestry pattern — primary nav flush left
+   next to the logo, utility/secondary items flush right next to Sign In.
+   All .sp-nav-right items get margin-left:auto (which absorbs remaining
+   space), then the sibling combinator resets subsequent ones to 0 so only
+   the first one creates the gap. !important overrides any gap/margin
+   reset from the flex container. */
+.main-navigation > ul > li.sp-nav-right {
+    margin-left: auto !important;
+}
+.main-navigation > ul > li.sp-nav-right ~ li.sp-nav-right {
+    margin-left: 0 !important;
 }
 
 /* ============================================================================
@@ -1643,7 +1699,7 @@ input[type="date"]:focus {
    prevents the nav from ever wrapping to two lines.
    ============================================================================ */
 
-@media (max-width: 1024px) {
+@media (max-width: 1280px) {
 
     /* === HAMBURGER + MOBILE NAV COLLAPSE ===
        WHY: The full horizontal nav wraps or overflows on narrow screens.
@@ -1659,9 +1715,10 @@ input[type="date"]:focus {
         padding: 16px 0;
     }
 
-    /* Show the hamburger button */
+    /* Show the hamburger button — on the right side */
     .sp-hamburger {
         display: block;
+        order: 99;
     }
 
     /* Nav area stays horizontal on mobile — hamburger, search toggle, and
@@ -1674,9 +1731,11 @@ input[type="date"]:focus {
         position: static;
     }
 
-    /* Hide the nav by default on mobile — revealed when sp-nav-open is added */
-    .main-navigation {
-        display: none;
+    /* Hide the PRIMARY nav on mobile — revealed when sp-nav-open is added.
+       The :not(.sp-user-menu) exclusion keeps the Sign In / user dropdown
+       visible in the header row alongside the hamburger. */
+    .main-navigation:not(.sp-user-menu) {
+        display: none !important;
         position: absolute;
         top: 100%;
         left: 0;
@@ -1689,7 +1748,7 @@ input[type="date"]:focus {
 
     /* Show the nav panel when JS adds sp-nav-open */
     .main-navigation.sp-nav-open {
-        display: block;
+        display: block !important;
     }
 
     /* Stack nav links vertically in the mobile panel */
@@ -1715,6 +1774,15 @@ input[type="date"]:focus {
     .main-navigation a:hover,
     .main-navigation .current-menu-item a {
         background: rgba(255, 255, 255, 0.1);
+    }
+
+    /* On mobile, shrink the site title so it doesn't stack into a column */
+    .site-title {
+        font-size: 1rem;
+    }
+
+    .site-description {
+        display: none;
     }
 
     /* On mobile, hide the name and just show the avatar to save space */

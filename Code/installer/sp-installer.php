@@ -911,9 +911,11 @@ add_action( 'admin_init', function () {
         wp_delete_comment( $c->comment_ID, true );
     }
 
-    // Delete Hello Dolly plugin file
-    $hello = WP_PLUGIN_DIR . '/hello.php';
-    if ( file_exists( $hello ) ) { @unlink( $hello ); }
+    // Delete Hello Dolly — both the single-file and directory variants
+    $hello_file = WP_PLUGIN_DIR . '/hello.php';
+    if ( file_exists( $hello_file ) ) { @unlink( $hello_file ); }
+    $hello_dir = WP_PLUGIN_DIR . '/hello-dolly';
+    if ( is_dir( $hello_dir ) ) { sp_installer_mu_rmdir( $hello_dir ); }
 
     // Delete default Twenty* themes — SocietyPress is the only theme needed
     $default_themes = [ 'twentytwentythree', 'twentytwentyfour', 'twentytwentyfive' ];

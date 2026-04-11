@@ -210,6 +210,7 @@ img {
     justify-content: space-between;
     min-height: 80px;
     padding: var(--sp-header-padding, 8px) 20px;
+    overflow: hidden;
 }
 
 @media (min-width: 1025px) {
@@ -1757,6 +1758,14 @@ input[type="date"]:focus {
         gap: 0;
     }
 
+    /* WHY: On desktop, .sp-nav-right items use margin-left:auto to push
+       Store/Contact/Join to the right edge. In the mobile panel the nav
+       is stacked vertically, so that auto margin shoves the item to the
+       far right instead of left-aligning with everything else. */
+    .main-navigation > ul > li.sp-nav-right {
+        margin-left: 0 !important;
+    }
+
     .main-navigation > ul > li {
         border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     }
@@ -1776,9 +1785,20 @@ input[type="date"]:focus {
         background: rgba(255, 255, 255, 0.1);
     }
 
-    /* On mobile, shrink the site title so it doesn't stack into a column */
+    /* WHY: On mobile the site title can be long enough to push the hamburger
+       off-screen (e.g. "Heritage Valley Historical Society" at 320px). We
+       shrink the font, allow the branding block to shrink via min-width:0,
+       and truncate with ellipsis so the hamburger always stays visible. */
+    .site-branding {
+        min-width: 0;
+        flex-shrink: 1;
+    }
+
     .site-title {
         font-size: 1rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     .site-description {
@@ -1807,7 +1827,7 @@ input[type="date"]:focus {
         transform: translateX(-50%) translateY(0);
     }
 
-} /* end 1024px nav collapse */
+} /* end 1280px nav collapse */
 
 
 @media (max-width: 768px) {

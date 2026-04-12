@@ -119,7 +119,7 @@
                     wp_nav_menu([
                         'theme_location' => 'primary',
                         'container'      => false,
-                        'depth'          => 1, // No dropdowns for now — keep it simple
+                        'depth'          => 2,
                     ]);
                     ?>
                 </nav>

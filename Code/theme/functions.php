@@ -34,7 +34,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // If a child theme wants its own version it should define a
 // differently-named constant (e.g. the society_THEME_VERSION).
 if ( ! defined( 'SOCIETYPRESS_THEME_VERSION' ) ) {
-	define( 'SOCIETYPRESS_THEME_VERSION', '1.0.17' );
+	define( 'SOCIETYPRESS_THEME_VERSION', '1.0.18' );
 }
 
 

@@ -15,6 +15,7 @@
 
     document.addEventListener('DOMContentLoaded', function () {
         initHamburger();
+        initSubMenus();
     });
 
 
@@ -67,6 +68,70 @@
                 nav.classList.remove('sp-nav-open');
                 hamburger.classList.remove('is-active');
                 hamburger.setAttribute('aria-expanded', 'false');
+            }
+        });
+    }
+
+
+    // =========================================================================
+    // SUB-MENU DROPDOWNS
+    // =========================================================================
+    // WHY: On desktop, CSS :hover shows sub-menus, but that doesn't work on
+    // touch screens and isn't keyboard-accessible. This JS adds click/tap
+    // toggle for parent items with sub-menus. On mobile (hamburger visible),
+    // tapping a parent item toggles its sub-menu instead of navigating.
+    // On desktop, clicking still toggles — hover handles the rest via CSS.
+
+    function initSubMenus() {
+        var parentItems = document.querySelectorAll('.main-navigation > ul > li.menu-item-has-children');
+
+        if (!parentItems.length) {
+            return;
+        }
+
+        parentItems.forEach(function (item) {
+            var link = item.querySelector(':scope > a');
+            if (!link) {
+                return;
+            }
+
+            link.addEventListener('click', function (e) {
+                // On mobile (hamburger visible) OR if the parent link is "#",
+                // toggle the sub-menu instead of navigating
+                var hamburger = document.querySelector('.sp-hamburger');
+                var isMobile = hamburger && hamburger.offsetParent !== null;
+                var isPlaceholder = link.getAttribute('href') === '#';
+
+                if (isMobile || isPlaceholder) {
+                    e.preventDefault();
+                    var isOpen = item.classList.toggle('sp-submenu-open');
+
+                    // Close other open sub-menus
+                    parentItems.forEach(function (other) {
+                        if (other !== item) {
+                            other.classList.remove('sp-submenu-open');
+                        }
+                    });
+                }
+            });
+        });
+
+        // Close sub-menus when clicking outside
+        document.addEventListener('click', function (e) {
+            var nav = document.querySelector('.main-navigation');
+            if (nav && !nav.contains(e.target)) {
+                parentItems.forEach(function (item) {
+                    item.classList.remove('sp-submenu-open');
+                });
+            }
+        });
+
+        // Close sub-menus on Escape
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                parentItems.forEach(function (item) {
+                    item.classList.remove('sp-submenu-open');
+                });
             }
         });
     }

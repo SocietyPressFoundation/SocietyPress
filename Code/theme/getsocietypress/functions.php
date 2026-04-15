@@ -148,6 +148,11 @@ remove_action( 'wp_head', 'rest_output_link_wp_head' );
  * plain <a> tags. This keeps the nav markup identical to what we had
  * when the links were hardcoded, so the existing CSS works unchanged.
  * Also adds a "current" class to the active page link.
+ *
+ * NOTE on OOP exception: the rest of this theme is function-based per
+ * the project convention. A class is required here only because
+ * WordPress's wp_nav_menu() Walker API mandates a class that extends
+ * Walker_Nav_Menu — there is no function-based alternative.
  */
 class GSP_Nav_Walker extends Walker_Nav_Menu {
 
@@ -303,6 +308,13 @@ function gsp_get_download_url() {
  * dashboard is admin-side and the query volume is trivial.
  */
 function gsp_dashboard_pulse_render() {
+    // Defense in depth: gsp_register_dashboard_widgets() already gates the
+    // callback registration on these caps, but a second check here means
+    // the query-and-render path is safe even if the function is ever
+    // called directly (e.g. by a misconfigured AJAX hook).
+    if ( ! current_user_can( 'moderate' ) && ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
     global $wpdb;
 
     // Latest 6 posts (topics + replies). 6 fits the widget column without scrolling.
@@ -437,7 +449,7 @@ function gsp_dashboard_pulse_saying_row( $post ) {
 
     $time_ago = function_exists( 'bbp_get_time_since' )
         ? bbp_get_time_since( get_gmt_from_date( $post->post_date ) )
-        : human_time_diff( strtotime( $post->post_date ), current_time( 'timestamp' ) ) . ' ago';
+        : human_time_diff( strtotime( $post->post_date ), time() ) . ' ago';
 
     if ( 'reply' === $post->post_type ) {
         $topic_id    = function_exists( 'bbp_get_reply_topic_id' )
@@ -473,7 +485,7 @@ function gsp_dashboard_pulse_topic_row( $topic, $reply_count = null ) {
     $forum  = $topic->post_parent ? get_post( $topic->post_parent ) : null;
     $time_ago = function_exists( 'bbp_get_time_since' )
         ? bbp_get_time_since( get_gmt_from_date( $topic->post_date ) )
-        : human_time_diff( strtotime( $topic->post_date ), current_time( 'timestamp' ) ) . ' ago';
+        : human_time_diff( strtotime( $topic->post_date ), time() ) . ' ago';
     ?>
     <li class="gsp-pulse__item">
         <a class="gsp-pulse__link" href="<?php echo esc_url( get_permalink( $topic->ID ) ); ?>">
@@ -673,6 +685,9 @@ function gsp_robots_txt( $output, $public ) {
         return $output;
     }
     $output .= "\nSitemap: " . home_url( '/sitemap.xml' ) . "\n";
+    // WP core's robots_txt output already emits "Disallow: /cms/wp-admin/"
+    // because siteurl is /cms (it respects the subdirectory install).
+    // We only add what WP doesn't already cover.
     $output .= "Disallow: /cms/wp-includes/\n";
     $output .= "Disallow: /cms/xmlrpc.php\n";
     $output .= "Disallow: /sp-installer.php\n";
@@ -794,7 +809,7 @@ function gsp_social_meta() {
     <?php endif; ?>
 
     <!-- Twitter Card -->
-    <meta name="twitter:card" content="<?php echo $image ? 'summary_large_image' : 'summary'; ?>">
+    <meta name="twitter:card" content="<?php echo esc_attr( $image ? 'summary_large_image' : 'summary' ); ?>">
     <meta name="twitter:title" content="<?php echo esc_attr( $title ); ?>">
     <meta name="twitter:description" content="<?php echo esc_attr( $desc ); ?>">
     <?php if ( $image ) : ?>

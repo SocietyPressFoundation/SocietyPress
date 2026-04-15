@@ -57,7 +57,7 @@ $gsp_overall_label = $gsp_any_ongoing ? 'Active incident' : 'All systems operati
             <div class="status-hero__indicator" aria-hidden="true"></div>
             <h1 class="status-hero__label"><?php echo esc_html( $gsp_overall_label ); ?></h1>
             <p class="status-hero__note">
-                Last checked <?php echo esc_html( date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), current_time( 'timestamp' ) ) ); ?>.
+                <?php esc_html_e( 'This page is updated manually when incidents occur. Check the incident history below for the most recent activity.', 'getsocietypress' ); ?>
             </p>
         </div>
     </div>
@@ -76,9 +76,9 @@ $gsp_overall_label = $gsp_any_ongoing ? 'Active incident' : 'All systems operati
                     <span class="status-component__state">
                         <?php
                         switch ( $component['status'] ) {
-                            case 'operational': echo 'Operational'; break;
-                            case 'degraded':    echo 'Degraded performance'; break;
-                            case 'outage':      echo 'Outage'; break;
+                            case 'operational': esc_html_e( 'Operational', 'getsocietypress' ); break;
+                            case 'degraded':    esc_html_e( 'Degraded performance', 'getsocietypress' ); break;
+                            case 'outage':      esc_html_e( 'Outage', 'getsocietypress' ); break;
                             default:            echo esc_html( $component['status'] );
                         }
                         ?>

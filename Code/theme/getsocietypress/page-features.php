@@ -245,7 +245,7 @@ get_header();
 
             <!-- Right column: image placeholder -->
             <div class="feat-detail__image">
-                <img src="/cms/wp-content/uploads/members-screenshot.jpg" alt="SocietyPress member management interface showing a list of members with names, emails, phone numbers, plans, and statuses" style="width:100%; border-radius:8px; box-shadow: 0 4px 20px rgba(0,0,0,0.12);">
+                <img src="/cms/wp-content/uploads/members-screenshot.jpg" alt="SocietyPress member management interface showing a list of members with names, emails, phone numbers, plans, and statuses">
             </div>
 
         </div>
@@ -275,7 +275,7 @@ get_header();
 
             <!-- Left column: image placeholder -->
             <div class="feat-detail__image">
-                <img src="/cms/wp-content/uploads/events-screenshot.jpg" alt="SocietyPress event management showing upcoming meetings, workshops, cemetery walks, and book sales with categories, locations, and registration counts" style="width:100%; border-radius:8px; box-shadow: 0 4px 20px rgba(0,0,0,0.12);">
+                <img src="/cms/wp-content/uploads/events-screenshot.jpg" alt="SocietyPress event management showing upcoming meetings, workshops, cemetery walks, and book sales with categories, locations, and registration counts">
             </div>
 
             <!-- Right column: text content -->
@@ -392,7 +392,7 @@ get_header();
 
             <!-- Right column: image placeholder -->
             <div class="feat-detail__image">
-                <img src="/cms/wp-content/uploads/records-screenshot.jpg" alt="SocietyPress record collections showing cemetery indexes, census transcriptions, military records, church records, and naturalization records with record counts and export buttons" style="width:100%; border-radius:8px; box-shadow: 0 4px 20px rgba(0,0,0,0.12);">
+                <img src="/cms/wp-content/uploads/records-screenshot.jpg" alt="SocietyPress record collections showing cemetery indexes, census transcriptions, military records, church records, and naturalization records with record counts and export buttons">
             </div>
 
         </div>
@@ -421,7 +421,7 @@ get_header();
 
             <!-- Left column: image placeholder -->
             <div class="feat-detail__image">
-                <img src="/cms/wp-content/uploads/pagebuilder-screenshot.jpg" alt="SocietyPress page builder showing a hero slider widget with overlay text controls, image selection, and slide configuration" style="width:100%; border-radius:8px; box-shadow: 0 4px 20px rgba(0,0,0,0.12);">
+                <img src="/cms/wp-content/uploads/pagebuilder-screenshot.jpg" alt="SocietyPress page builder showing a hero slider widget with overlay text controls, image selection, and slide configuration">
             </div>
 
             <!-- Right column: text content -->

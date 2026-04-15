@@ -144,7 +144,7 @@ foreach ( $gsp_screenshots as $group ) {
                 <a href="https://demo.getsocietypress.org" class="btn btn-primary btn-lg" target="_blank" rel="noopener">
                     Visit the Demo
                 </a>
-                <a href="<?php echo esc_url( home_url( '/features/' ) ); ?>" class="btn btn-secondary btn-lg">
+                <a href="<?php echo esc_url( home_url( '/features/' ) ); ?>" class="btn btn-outline btn-lg">
                     Read the Feature Tour
                 </a>
             </div>

@@ -33,19 +33,18 @@ get_header();
             <div class="grid-3">
                 <?php while ( have_posts() ) : the_post(); ?>
                     <article class="update-card">
-                        <div class="update-card__image">
-                            <?php if ( has_post_thumbnail() ) : ?>
+                        <?php if ( has_post_thumbnail() ) : ?>
+                            <a class="update-card__image" href="<?php the_permalink(); ?>">
                                 <?php the_post_thumbnail( 'medium_large' ); ?>
-                            <?php else : ?>
-                                [Post image]
-                            <?php endif; ?>
-                        </div>
+                            </a>
+                        <?php endif; ?>
                         <div class="update-card__body">
                             <div class="update-card__date">
                                 <?php echo esc_html( get_the_date( 'F j, Y' ) ); ?>
                             </div>
                             <h3><a href="<?php the_permalink(); ?>"><?php the_title(); ?></a></h3>
                             <p class="update-card__excerpt"><?php the_excerpt(); ?></p>
+                            <a href="<?php the_permalink(); ?>" class="update-card__more">Read more &rarr;</a>
                         </div>
                     </article>
                 <?php endwhile; ?>

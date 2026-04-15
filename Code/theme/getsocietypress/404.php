@@ -22,15 +22,37 @@ get_header();
             <h1 class="page-hero__title">Page not found</h1>
             <p class="page-hero__subtitle">
                 That URL doesn't exist on getsocietypress.org &mdash; at
-                least not anymore. Here's what most people in your situation
-                were actually looking for.
+                least not anymore. Search or pick a destination below.
             </p>
+
+            <!-- Search form — a real tool, not just decoration. Preserves
+                 the attempted URL as a hint seed if the router exposed it. -->
+            <form class="error-404__search" role="search" method="get" action="<?php echo esc_url( home_url( '/' ) ); ?>">
+                <label for="error-404-s" class="screen-reader-text">Search the site</label>
+                <input
+                    type="search"
+                    id="error-404-s"
+                    name="s"
+                    placeholder="Search the site&hellip;"
+                    value="<?php echo esc_attr( get_search_query() ); ?>"
+                    class="error-404__search-input"
+                    autofocus
+                >
+                <button type="submit" class="btn btn-primary">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <circle cx="11" cy="11" r="8"/>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                    Search
+                </button>
+            </form>
         </div>
     </div>
 </section>
 
 <section class="error-404 section">
     <div class="container container--narrow">
+        <h2 class="error-404__heading">Or jump to one of these</h2>
 
         <div class="error-404__grid">
 

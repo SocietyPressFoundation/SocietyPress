@@ -187,7 +187,9 @@ function gsp_md_inline( $text ) {
     // Italic — *foo* (after bold so we don't consume the ** markers)
     $text = preg_replace( '/(?<![*\w])\*([^*\n]+)\*(?![*\w])/', '<em>$1</em>', $text );
 
-    // Links — [text](url)
+    // Links — [text](url). Use esc_url() for href (strips javascript:,
+    // data:, and other dangerous schemes) rather than esc_attr() which
+    // only entity-encodes and would pass a javascript: URL through.
     $text = preg_replace_callback(
         '/\[([^\]]+)\]\(([^)]+)\)/',
         function( $m ) {
@@ -196,7 +198,7 @@ function gsp_md_inline( $text ) {
             if ( ! preg_match( '/^(https?:|mailto:|#|\/)/', $url ) ) {
                 $url = home_url( '/' ) . ltrim( $url, '/' );
             }
-            return '<a href="' . esc_attr( $url ) . '">' . $m[1] . '</a>';
+            return '<a href="' . esc_url( $url ) . '">' . $m[1] . '</a>';
         },
         $text
     );
@@ -205,7 +207,7 @@ function gsp_md_inline( $text ) {
     $text = preg_replace_callback(
         '/&lt;(https?:\/\/[^&]+)&gt;/',
         function( $m ) {
-            return '<a href="' . esc_attr( $m[1] ) . '">' . $m[1] . '</a>';
+            return '<a href="' . esc_url( $m[1] ) . '">' . esc_html( $m[1] ) . '</a>';
         },
         $text
     );
@@ -243,9 +245,9 @@ if ( false === $gsp_guide_html ) {
         <div class="page-hero__content">
             <nav class="page-breadcrumbs" aria-label="Breadcrumb">
                 <a href="<?php echo esc_url( home_url( '/docs/' ) ); ?>">Documentation</a>
-                <span>&rsaquo;</span>
+                <span aria-hidden="true">&rsaquo;</span>
                 <a href="<?php echo esc_url( home_url( '/ens-migration/' ) ); ?>">Moving from ENS</a>
-                <span>&rsaquo;</span>
+                <span aria-hidden="true">&rsaquo;</span>
                 <span>Full Migration Guide</span>
             </nav>
             <h1 class="page-hero__title">ENS to SocietyPress Migration Guide</h1>

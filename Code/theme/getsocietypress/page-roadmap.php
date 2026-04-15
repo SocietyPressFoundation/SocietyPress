@@ -50,7 +50,7 @@ $gsp_roadmap = array(
             'Long-form documentation articles (each module gets its own guide)',
             'Store checkout &mdash; catalog display works; Stripe checkout is the next ship',
             'Records imports for the more common historical record formats',
-            'Remaining i18n gaps across events, page builder, volunteers, store, donations, records, imports',
+            'More of the admin interface available in languages other than English (events, page builder, volunteers, store, donations, records, and imports are the last screens still partly English-only)',
             'Marketing site polish &mdash; you\'re reading some of it right now',
         ),
     ),

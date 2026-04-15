@@ -122,7 +122,7 @@ $gsp_testimonials = array(
                 </svg>
             </div>
 
-            <h2>Early days</h2>
+            <h2>Real quotes, coming soon</h2>
 
             <p>
                 SocietyPress is new. The first wave of societies is

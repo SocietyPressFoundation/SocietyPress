@@ -678,7 +678,7 @@ body {
 
 .hero__subtitle {
     font-size: var(--font-size-lg);
-    color: rgba(255, 255, 255, 0.75);
+    color: rgba(255, 255, 255, 0.9);
     line-height: var(--line-height-relaxed);
     margin-bottom: var(--spacing-2xl);
     max-width: 600px;
@@ -1047,7 +1047,7 @@ body {
 }
 
 .data-yours p {
-    color: rgba(255, 255, 255, 0.75);
+    color: rgba(255, 255, 255, 0.9);
     font-size: var(--font-size-base);
     line-height: var(--line-height-relaxed);
     margin-bottom: var(--spacing-md);
@@ -1101,7 +1101,7 @@ body {
 }
 
 .cta-banner p {
-    color: rgba(255, 255, 255, 0.75);
+    color: rgba(255, 255, 255, 0.9);
     font-size: var(--font-size-lg);
     margin-bottom: var(--spacing-2xl);
 }
@@ -1198,7 +1198,9 @@ body {
 }
 
 .footer-links a {
-    color: rgba(255, 255, 255, 0.6);
+    /* Bumped from 0.6 — previous ratio ~4.3:1 fell below WCAG AA for
+       normal body text on the footer's dark-navy background. */
+    color: rgba(255, 255, 255, 0.85);
     font-size: var(--font-size-sm);
     text-decoration: none;
     transition: color var(--transition-fast);
@@ -1288,7 +1290,7 @@ body {
 
 .feat-hero__subtitle {
     font-size: var(--font-size-lg);
-    color: rgba(255, 255, 255, 0.75);
+    color: rgba(255, 255, 255, 0.9);
     line-height: var(--line-height-relaxed);
     margin-bottom: var(--spacing-2xl);
     max-width: 600px;
@@ -1525,6 +1527,8 @@ body {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
 }
 
 
@@ -1604,7 +1608,7 @@ body {
 }
 
 .feat-final-cta p {
-    color: rgba(255, 255, 255, 0.75);
+    color: rgba(255, 255, 255, 0.9);
     font-size: var(--font-size-lg);
     margin-bottom: var(--spacing-2xl);
 }
@@ -1635,7 +1639,7 @@ body {
 }
 
 .page-header p {
-    color: rgba(255, 255, 255, 0.75);
+    color: rgba(255, 255, 255, 0.9);
     font-size: var(--font-size-lg);
     max-width: 600px;
     margin: 0 auto;
@@ -1721,7 +1725,7 @@ body {
 
 .page-hero__subtitle {
     font-size: var(--font-size-lg);
-    color: rgba(255, 255, 255, 0.75);
+    color: rgba(255, 255, 255, 0.9);
     line-height: var(--line-height-relaxed);
     max-width: 540px;
     margin: 0 auto;
@@ -1919,7 +1923,7 @@ body {
 }
 
 .req-cta p {
-    color: rgba(255, 255, 255, 0.75);
+    color: rgba(255, 255, 255, 0.9);
     font-size: var(--font-size-lg);
     margin-bottom: var(--spacing-2xl);
 }
@@ -1975,7 +1979,7 @@ body {
 
 .dl-hero__subtitle {
     font-size: var(--font-size-lg);
-    color: rgba(255, 255, 255, 0.75);
+    color: rgba(255, 255, 255, 0.9);
     margin-bottom: var(--spacing-2xl);
 }
 
@@ -2278,7 +2282,7 @@ body {
 }
 
 .faq-cta p {
-    color: rgba(255, 255, 255, 0.75);
+    color: rgba(255, 255, 255, 0.9);
     font-size: var(--font-size-lg);
     margin-bottom: var(--spacing-2xl);
 }
@@ -2381,7 +2385,7 @@ body {
 }
 
 .docs-cta p {
-    color: rgba(255, 255, 255, 0.75);
+    color: rgba(255, 255, 255, 0.9);
     font-size: var(--font-size-lg);
     margin-bottom: var(--spacing-2xl);
 }
@@ -2466,7 +2470,7 @@ body {
 }
 
 .about-cta p {
-    color: rgba(255, 255, 255, 0.75);
+    color: rgba(255, 255, 255, 0.9);
     font-size: var(--font-size-lg);
     margin-bottom: var(--spacing-2xl);
 }
@@ -2589,7 +2593,7 @@ body {
 }
 
 .comm-cta p {
-    color: rgba(255, 255, 255, 0.75);
+    color: rgba(255, 255, 255, 0.9);
     font-size: var(--font-size-lg);
     margin-bottom: var(--spacing-2xl);
 }
@@ -2829,19 +2833,19 @@ body {
 
     /* Community: cards to 1 column */
     .comm-involve__grid {
+        grid-template-columns: 1fr;
+    }
 
     /* Installation: setup cards to 2 columns */
     .inst-setup-grid {
         grid-template-columns: repeat(2, 1fr);
     }
-        grid-template-columns: 1fr;
 
     /* First-Time Setup: stack text/screenshot layout */
     .setup-step,
     .setup-step--reverse {
         grid-template-columns: 1fr;
         direction: ltr;
-    }
     }
 }
 
@@ -3381,7 +3385,7 @@ body {
 }
 
 .inst-cta p {
-    color: rgba(255, 255, 255, 0.75);
+    color: rgba(255, 255, 255, 0.9);
     font-size: var(--font-size-lg);
     margin-bottom: var(--spacing-2xl);
 }
@@ -3584,7 +3588,7 @@ body {
 }
 
 .setup-cta p {
-    color: rgba(255, 255, 255, 0.75);
+    color: rgba(255, 255, 255, 0.9);
     font-size: var(--font-size-lg);
     margin-bottom: var(--spacing-2xl);
 }
@@ -4000,7 +4004,7 @@ body {
 }
 
 .about-cta p {
-    color: rgba(255, 255, 255, 0.75);
+    color: rgba(255, 255, 255, 0.9);
     font-size: var(--font-size-lg);
     margin-bottom: var(--spacing-2xl);
     max-width: 640px;
@@ -4210,7 +4214,7 @@ body {
 }
 
 .ens-cta p {
-    color: rgba(255, 255, 255, 0.75);
+    color: rgba(255, 255, 255, 0.9);
     font-size: var(--font-size-lg);
     max-width: 640px;
     margin: 0 auto var(--spacing-2xl);

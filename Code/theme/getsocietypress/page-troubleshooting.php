@@ -23,7 +23,7 @@ get_header();
         <div class="page-hero__content">
             <nav class="page-breadcrumbs" aria-label="Breadcrumb">
                 <a href="<?php echo esc_url( home_url( '/docs/' ) ); ?>">Documentation</a>
-                <span>&rsaquo;</span>
+                <span aria-hidden="true">&rsaquo;</span>
                 <span>Troubleshooting</span>
             </nav>
             <h1 class="page-hero__title">When things go wrong</h1>

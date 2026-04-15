@@ -212,7 +212,7 @@ $sp_installer    = home_url( '/sp-installer.php' );
         </div>
 
         <div class="dl-quickstart__cta">
-            <a href="<?php echo esc_url( home_url( '/installation/' ) ); ?>" class="btn btn-secondary btn-lg">
+            <a href="<?php echo esc_url( home_url( '/installation/' ) ); ?>" class="btn btn-outline btn-lg">
                 Full Installation Guide &rarr;
             </a>
         </div>

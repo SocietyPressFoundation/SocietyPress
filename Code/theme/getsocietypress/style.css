@@ -5470,6 +5470,44 @@ body {
     word-wrap: normal !important;
 }
 
+/* Skip-to-content link — the first focusable element in the DOM. Hidden
+   off-screen until focused, then becomes visible at the top-left of the
+   viewport. Keyboard users (Tab on page load) land here first and can
+   bypass the nav to jump into the page content. */
+.skip-link {
+    position: absolute;
+    top: -40px;
+    left: 0;
+    background: var(--color-accent);
+    color: var(--color-nav-bg);
+    padding: 8px 16px;
+    font-weight: 600;
+    text-decoration: none;
+    z-index: 100000;
+    transition: top 0.2s;
+}
+
+.skip-link:focus {
+    top: 0;
+    outline: 3px solid var(--color-nav-bg);
+    outline-offset: 2px;
+}
+
+/* Strengthened global focus ring — the theme had focus states on some
+   buttons but not consistently on links or form controls. This gives
+   every keyboard-focused element a visible indicator that meets WCAG
+   2.1 Level AA for focus visibility. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+    outline: 3px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: var(--border-radius-sm);
+}
+
 
 /* ==========================================================================
    404 PAGE — search form additions
@@ -5728,4 +5766,160 @@ body {
     margin-top: var(--spacing-lg);
     font-size: var(--font-size-sm);
     color: var(--color-text-secondary);
+}
+
+
+/* ==========================================================================
+   BREADCRUMBS (used on guide pages)
+   ========================================================================== */
+
+.page-breadcrumbs {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+    margin-bottom: var(--spacing-md);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+
+.page-breadcrumbs a {
+    color: var(--color-accent);
+    text-decoration: none;
+}
+
+.page-breadcrumbs a:hover {
+    text-decoration: underline;
+}
+
+.page-breadcrumbs span {
+    color: var(--color-text-secondary);
+}
+
+
+/* ==========================================================================
+   GUIDE PAGE (markdown-rendered long-form content)
+   Typography tuned for reading: generous line-height, comfortable
+   measure, tighter heading hierarchy than hero pages.
+   ========================================================================== */
+
+.guide-page {
+    background: var(--color-background);
+}
+
+.guide-page__content {
+    line-height: 1.7;
+    color: var(--color-text);
+    font-size: var(--font-size-base);
+}
+
+.guide-page__content h2 {
+    margin-top: var(--spacing-2xl);
+    margin-bottom: var(--spacing-md);
+    padding-top: var(--spacing-md);
+    color: var(--color-primary);
+    border-top: 2px solid var(--color-border);
+    font-size: var(--font-size-2xl);
+}
+
+.guide-page__content h2:first-of-type {
+    border-top: none;
+    padding-top: 0;
+    margin-top: var(--spacing-xl);
+}
+
+.guide-page__content h3 {
+    margin-top: var(--spacing-xl);
+    margin-bottom: var(--spacing-sm);
+    color: var(--color-primary);
+    font-size: var(--font-size-lg);
+}
+
+.guide-page__content h4 {
+    margin-top: var(--spacing-lg);
+    margin-bottom: var(--spacing-xs);
+    color: var(--color-primary);
+    font-size: var(--font-size-md);
+}
+
+.guide-page__content p {
+    margin-bottom: var(--spacing-md);
+}
+
+.guide-page__content ul,
+.guide-page__content ol {
+    margin: var(--spacing-md) 0;
+    padding-left: var(--spacing-xl);
+}
+
+.guide-page__content li {
+    margin-bottom: var(--spacing-xs);
+    line-height: 1.6;
+}
+
+.guide-page__content blockquote {
+    margin: var(--spacing-lg) 0;
+    padding: var(--spacing-md) var(--spacing-lg);
+    background: var(--color-surface);
+    border-left: 4px solid var(--color-accent);
+    color: var(--color-text);
+    font-style: italic;
+}
+
+.guide-page__content blockquote p:last-child {
+    margin-bottom: 0;
+}
+
+.guide-page__content hr {
+    margin: var(--spacing-2xl) 0;
+    border: none;
+    border-top: 1px dashed var(--color-border);
+}
+
+.guide-page__content code {
+    background: var(--color-surface);
+    padding: 2px 6px;
+    border-radius: var(--border-radius-sm);
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
+    font-size: 0.9em;
+    color: var(--color-primary);
+}
+
+.guide-page__content pre {
+    margin: var(--spacing-lg) 0;
+    padding: var(--spacing-md);
+    background: var(--color-primary);
+    color: var(--color-nav-text);
+    border-radius: var(--border-radius);
+    overflow-x: auto;
+    font-size: var(--font-size-sm);
+    line-height: 1.5;
+}
+
+.guide-page__content pre code {
+    background: transparent;
+    color: inherit;
+    padding: 0;
+}
+
+.guide-page__content a {
+    color: var(--color-accent);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.guide-page__content a:hover {
+    text-decoration-thickness: 2px;
+}
+
+.guide-page__content strong {
+    color: var(--color-primary);
+}
+
+.guide-page__footer {
+    margin-top: var(--spacing-2xl);
+    padding-top: var(--spacing-xl);
+    border-top: 1px solid var(--color-border);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
 }

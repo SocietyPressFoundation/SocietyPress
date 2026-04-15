@@ -284,6 +284,444 @@ function gsp_get_download_url() {
 
 
 /**
+ * Community Pulse dashboard widget.
+ *
+ * Three-panel "what's happening in the forums" widget registered on the
+ * WordPress admin Dashboard. Answers the three questions a moderator has
+ * when they log in:
+ *
+ *   - What are people SAYING?       — latest topics & replies
+ *   - What are they ASKING?          — unanswered topics
+ *   - What are they TALKING ABOUT?   — most active threads (last 30 days)
+ *
+ * Gated to users with the `moderate` capability (bbPress moderators) and
+ * to administrators. Regular members don't see it when they log in — they
+ * have no reason to look at a moderation-oriented dashboard panel.
+ *
+ * Queries hit bbPress's native post types (topic, reply) and postmeta
+ * (_bbp_reply_count, _bbp_last_active_time). No caching layer — the
+ * dashboard is admin-side and the query volume is trivial.
+ */
+function gsp_dashboard_pulse_render() {
+    global $wpdb;
+
+    // Latest 6 posts (topics + replies). 6 fits the widget column without scrolling.
+    $saying = $wpdb->get_results(
+        "SELECT ID, post_type, post_title, post_date, post_parent, post_author
+           FROM {$wpdb->posts}
+          WHERE post_type IN ('topic', 'reply')
+            AND post_status = 'publish'
+          ORDER BY post_date DESC
+          LIMIT 6"
+    );
+
+    // Unanswered topics.
+    $asking = $wpdb->get_results(
+        "SELECT p.ID, p.post_title, p.post_date, p.post_parent, p.post_author
+           FROM {$wpdb->posts} p
+      LEFT JOIN {$wpdb->postmeta} m ON m.post_id = p.ID AND m.meta_key = '_bbp_reply_count'
+          WHERE p.post_type = 'topic'
+            AND p.post_status = 'publish'
+            AND ( m.meta_value IS NULL OR m.meta_value = '0' )
+          ORDER BY p.post_date DESC
+          LIMIT 6"
+    );
+
+    // Most-replied-to topics, last 30 days.
+    $talking = $wpdb->get_results(
+        "SELECT p.ID, p.post_title, p.post_date, p.post_parent, p.post_author,
+                CAST(rc.meta_value AS UNSIGNED) AS reply_count
+           FROM {$wpdb->posts} p
+           JOIN {$wpdb->postmeta} rc ON rc.post_id = p.ID AND rc.meta_key = '_bbp_reply_count'
+           JOIN {$wpdb->postmeta} la ON la.post_id = p.ID AND la.meta_key = '_bbp_last_active_time'
+          WHERE p.post_type = 'topic'
+            AND p.post_status = 'publish'
+            AND CAST(rc.meta_value AS UNSIGNED) > 0
+            AND la.meta_value >= DATE_SUB( NOW(), INTERVAL 30 DAY )
+          ORDER BY reply_count DESC, la.meta_value DESC
+          LIMIT 6"
+    );
+
+    /* Inline styles — kept here so the widget is self-contained.
+       Using admin-compatible tokens (not our marketing theme's CSS vars)
+       so the widget looks native inside /wp-admin/. */
+    ?>
+    <style>
+        .gsp-pulse { margin: -12px; }
+        .gsp-pulse__panel { border-top: 1px solid #dcdcde; padding: 10px 12px; }
+        .gsp-pulse__panel:first-child { border-top: none; }
+        .gsp-pulse__title { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: #1d2327; text-transform: uppercase; letter-spacing: 0.04em; }
+        .gsp-pulse__title small { display: block; font-size: 11px; font-weight: 400; color: #646970; text-transform: none; letter-spacing: 0; margin-top: 2px; }
+        .gsp-pulse__list { list-style: none; padding: 0; margin: 0; }
+        .gsp-pulse__item { padding: 6px 0; border-top: 1px solid #f0f0f1; }
+        .gsp-pulse__item:first-child { border-top: none; }
+        .gsp-pulse__link { display: block; color: #2271b1; text-decoration: none; font-weight: 500; line-height: 1.3; }
+        .gsp-pulse__link:hover { color: #135e96; text-decoration: underline; }
+        .gsp-pulse__meta { display: block; color: #646970; font-size: 11px; margin-top: 2px; }
+        .gsp-pulse__meta a { color: #646970; text-decoration: none; }
+        .gsp-pulse__meta a:hover { color: #135e96; }
+        .gsp-pulse__count { background: #dcdcde; color: #1d2327; padding: 1px 6px; border-radius: 10px; font-size: 10px; margin-left: 4px; }
+        .gsp-pulse__empty { color: #646970; font-size: 12px; font-style: italic; margin: 0; padding: 4px 0; }
+        .gsp-pulse__footer { border-top: 1px solid #dcdcde; padding: 10px 12px; text-align: right; background: #f6f7f7; margin-top: 0; }
+        .gsp-pulse__footer a { text-decoration: none; font-size: 12px; }
+    </style>
+
+    <div class="gsp-pulse">
+
+        <!-- SAYING -->
+        <div class="gsp-pulse__panel">
+            <h3 class="gsp-pulse__title">
+                What people are saying
+                <small>Latest posts across every forum</small>
+            </h3>
+            <?php if ( ! empty( $saying ) ) : ?>
+                <ul class="gsp-pulse__list">
+                    <?php foreach ( $saying as $p ) : ?>
+                        <?php gsp_dashboard_pulse_saying_row( $p ); ?>
+                    <?php endforeach; ?>
+                </ul>
+            <?php else : ?>
+                <p class="gsp-pulse__empty">Nothing posted yet.</p>
+            <?php endif; ?>
+        </div>
+
+        <!-- ASKING -->
+        <div class="gsp-pulse__panel">
+            <h3 class="gsp-pulse__title">
+                What they're asking
+                <small>Topics with no replies yet</small>
+            </h3>
+            <?php if ( ! empty( $asking ) ) : ?>
+                <ul class="gsp-pulse__list">
+                    <?php foreach ( $asking as $t ) : ?>
+                        <?php gsp_dashboard_pulse_topic_row( $t ); ?>
+                    <?php endforeach; ?>
+                </ul>
+            <?php else : ?>
+                <p class="gsp-pulse__empty">No open questions right now.</p>
+            <?php endif; ?>
+        </div>
+
+        <!-- TALKING ABOUT -->
+        <div class="gsp-pulse__panel">
+            <h3 class="gsp-pulse__title">
+                What they're talking about
+                <small>Most active threads, last 30 days</small>
+            </h3>
+            <?php if ( ! empty( $talking ) ) : ?>
+                <ul class="gsp-pulse__list">
+                    <?php foreach ( $talking as $t ) : ?>
+                        <?php gsp_dashboard_pulse_topic_row( $t, (int) $t->reply_count ); ?>
+                    <?php endforeach; ?>
+                </ul>
+            <?php else : ?>
+                <p class="gsp-pulse__empty">No active threads yet.</p>
+            <?php endif; ?>
+        </div>
+
+        <div class="gsp-pulse__footer">
+            <a href="<?php echo esc_url( home_url( '/forums/' ) ); ?>" target="_blank" rel="noopener">
+                Open the forums &rarr;
+            </a>
+        </div>
+
+    </div>
+    <?php
+}
+
+/**
+ * Render one row of the SAYING panel (topics + replies, mixed).
+ */
+function gsp_dashboard_pulse_saying_row( $post ) {
+    $author = get_the_author_meta( 'display_name', $post->post_author );
+
+    $time_ago = function_exists( 'bbp_get_time_since' )
+        ? bbp_get_time_since( get_gmt_from_date( $post->post_date ) )
+        : human_time_diff( strtotime( $post->post_date ), current_time( 'timestamp' ) ) . ' ago';
+
+    if ( 'reply' === $post->post_type ) {
+        $topic_id    = function_exists( 'bbp_get_reply_topic_id' )
+            ? bbp_get_reply_topic_id( $post->ID )
+            : $post->post_parent;
+        $topic       = get_post( $topic_id );
+        $topic_title = $topic ? $topic->post_title : '(topic)';
+        $link        = function_exists( 'bbp_get_reply_url' )
+            ? bbp_get_reply_url( $post->ID )
+            : get_permalink( $topic_id );
+        $action      = 'replied to';
+    } else {
+        $topic_title = $post->post_title;
+        $link        = get_permalink( $post->ID );
+        $action      = 'started';
+    }
+    ?>
+    <li class="gsp-pulse__item">
+        <a class="gsp-pulse__link" href="<?php echo esc_url( $link ); ?>"><?php echo esc_html( $topic_title ); ?></a>
+        <span class="gsp-pulse__meta">
+            <?php echo esc_html( $author ); ?> <?php echo esc_html( $action ); ?> &middot; <?php echo esc_html( $time_ago ); ?>
+        </span>
+    </li>
+    <?php
+}
+
+/**
+ * Render one row of the ASKING or TALKING panel (topic-only).
+ * Pass $reply_count to show it as a pill (used by TALKING).
+ */
+function gsp_dashboard_pulse_topic_row( $topic, $reply_count = null ) {
+    $author = get_the_author_meta( 'display_name', $topic->post_author );
+    $forum  = $topic->post_parent ? get_post( $topic->post_parent ) : null;
+    $time_ago = function_exists( 'bbp_get_time_since' )
+        ? bbp_get_time_since( get_gmt_from_date( $topic->post_date ) )
+        : human_time_diff( strtotime( $topic->post_date ), current_time( 'timestamp' ) ) . ' ago';
+    ?>
+    <li class="gsp-pulse__item">
+        <a class="gsp-pulse__link" href="<?php echo esc_url( get_permalink( $topic->ID ) ); ?>">
+            <?php echo esc_html( $topic->post_title ); ?>
+            <?php if ( null !== $reply_count ) : ?>
+                <span class="gsp-pulse__count"><?php echo (int) $reply_count; ?></span>
+            <?php endif; ?>
+        </a>
+        <span class="gsp-pulse__meta">
+            <?php if ( $forum ) : ?>
+                <?php echo esc_html( $forum->post_title ); ?> &middot;
+            <?php endif; ?>
+            <?php echo esc_html( $author ); ?> &middot; <?php echo esc_html( $time_ago ); ?>
+        </span>
+    </li>
+    <?php
+}
+
+/**
+ * Register the widget on the admin dashboard.
+ *
+ * Gated: only moderators and administrators see the Community Pulse. Any
+ * bbPress participant who logs into /wp-admin/ would otherwise see this,
+ * and it's a moderation tool, not a member-facing surface.
+ */
+function gsp_register_dashboard_widgets() {
+    if ( ! current_user_can( 'moderate' ) && ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+    wp_add_dashboard_widget(
+        'gsp_community_pulse',
+        'Community Pulse',
+        'gsp_dashboard_pulse_render'
+    );
+}
+add_action( 'wp_dashboard_setup', 'gsp_register_dashboard_widgets' );
+
+
+/**
+ * Social meta tags — Open Graph and Twitter Card.
+ *
+ * Every page gets a meaningful title, description, type, URL, and
+ * image for social-media shares (Facebook, LinkedIn, Twitter/X,
+ * Mastodon, Slack previews, iMessage link unfurling). Without these,
+ * shared links render as a bare URL with no preview.
+ *
+ * Strategy:
+ *   - Title: the post/page title, or the site name on the home page.
+ *   - Description: the post excerpt, a manual description (if set via
+ *     a page-by-page filter), or the site tagline as fallback.
+ *   - Image: the post's featured image, or the site logo PNG at 512×512
+ *     that we generated for the favicon.
+ *   - URL: canonical permalink.
+ *   - Type: "article" for single posts, "website" otherwise.
+ *
+ * Values are filterable so child code can override per page if needed.
+ */
+function gsp_social_meta() {
+
+    /* Title / description resolution order matters: the homepage must
+       check is_front_page() FIRST because it's also is_singular(). A
+       static front page would otherwise set og:title to "Home" (the
+       page's title) instead of the site name. */
+
+    // Title.
+    if ( is_front_page() || is_home() ) {
+        $title = get_bloginfo( 'name' );
+        $tagline = get_bloginfo( 'description' );
+        if ( ! empty( $tagline ) ) {
+            $title .= ' — ' . $tagline;
+        }
+    } elseif ( is_singular() ) {
+        $title = wp_strip_all_tags( get_the_title() );
+    } else {
+        $title = wp_get_document_title();
+    }
+    $title = apply_filters( 'gsp_social_title', $title );
+
+    // Description.
+    if ( is_front_page() || is_home() ) {
+        $desc = get_bloginfo( 'description' );
+    } elseif ( is_singular() ) {
+        $desc = get_the_excerpt();
+        if ( empty( $desc ) ) {
+            $desc = wp_trim_words( wp_strip_all_tags( get_post_field( 'post_content', get_the_ID() ) ), 30, '' );
+        }
+        // Fall back to the site tagline if the page genuinely has no
+        // content yet (empty template-driven pages would otherwise
+        // emit an empty description).
+        if ( empty( trim( $desc ) ) ) {
+            $desc = get_bloginfo( 'description' );
+        }
+    } else {
+        $desc = get_bloginfo( 'description' );
+    }
+    $desc = apply_filters( 'gsp_social_description', $desc );
+    $desc = trim( wp_strip_all_tags( $desc ) );
+    // Cap at ~300 chars to avoid awkward wrapping in previews.
+    if ( mb_strlen( $desc ) > 300 ) {
+        $desc = mb_substr( $desc, 0, 297 ) . '…';
+    }
+
+    // URL.
+    $url = is_singular() ? get_permalink() : home_url( add_query_arg( null, null ) );
+    $url = apply_filters( 'gsp_social_url', $url );
+
+    // Image — featured image on singles, site icon otherwise.
+    $image = '';
+    if ( is_singular() && has_post_thumbnail() ) {
+        $image_arr = wp_get_attachment_image_src( get_post_thumbnail_id(), 'full' );
+        if ( ! empty( $image_arr[0] ) ) {
+            $image = $image_arr[0];
+        }
+    }
+    if ( ! $image ) {
+        $site_icon_id = (int) get_option( 'site_icon' );
+        if ( $site_icon_id ) {
+            $icon_arr = wp_get_attachment_image_src( $site_icon_id, 'full' );
+            if ( ! empty( $icon_arr[0] ) ) {
+                $image = $icon_arr[0];
+            }
+        }
+    }
+    $image = apply_filters( 'gsp_social_image', $image );
+
+    // Type.
+    $og_type = ( is_singular( 'post' ) ) ? 'article' : 'website';
+
+    // Site name.
+    $site_name = get_bloginfo( 'name' );
+
+    ?>
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="<?php echo esc_attr( $title ); ?>">
+    <meta property="og:description" content="<?php echo esc_attr( $desc ); ?>">
+    <meta property="og:url" content="<?php echo esc_url( $url ); ?>">
+    <meta property="og:type" content="<?php echo esc_attr( $og_type ); ?>">
+    <meta property="og:site_name" content="<?php echo esc_attr( $site_name ); ?>">
+    <meta property="og:locale" content="<?php echo esc_attr( get_locale() ); ?>">
+    <?php if ( $image ) : ?>
+        <meta property="og:image" content="<?php echo esc_url( $image ); ?>">
+        <meta property="og:image:alt" content="<?php echo esc_attr( $site_name ); ?>">
+    <?php endif; ?>
+    <?php if ( is_singular( 'post' ) ) : ?>
+        <meta property="article:published_time" content="<?php echo esc_attr( get_the_date( 'c' ) ); ?>">
+        <meta property="article:modified_time" content="<?php echo esc_attr( get_the_modified_date( 'c' ) ); ?>">
+        <meta property="article:author" content="<?php echo esc_attr( get_the_author() ); ?>">
+    <?php endif; ?>
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="<?php echo $image ? 'summary_large_image' : 'summary'; ?>">
+    <meta name="twitter:title" content="<?php echo esc_attr( $title ); ?>">
+    <meta name="twitter:description" content="<?php echo esc_attr( $desc ); ?>">
+    <?php if ( $image ) : ?>
+        <meta name="twitter:image" content="<?php echo esc_url( $image ); ?>">
+    <?php endif; ?>
+
+    <!-- Canonical -->
+    <link rel="canonical" href="<?php echo esc_url( $url ); ?>">
+
+    <?php
+}
+add_action( 'wp_head', 'gsp_social_meta', 5 );
+
+
+/**
+ * JSON-LD Organization + WebSite structured data.
+ *
+ * Outputs on the homepage only. Helps search engines build the
+ * knowledge-graph card for SocietyPress and enables a sitelinks
+ * search box in Google results. The Organization block carries the
+ * project's canonical name, URL, logo, description, and links out to
+ * where SocietyPress also appears (GitHub, eventually Mastodon, etc.).
+ */
+function gsp_structured_data() {
+    if ( ! is_front_page() && ! is_home() ) {
+        return;
+    }
+
+    $site_name = get_bloginfo( 'name' );
+    $site_url  = home_url( '/' );
+    $tagline   = get_bloginfo( 'description' );
+
+    $logo_url = '';
+    $site_icon_id = (int) get_option( 'site_icon' );
+    if ( $site_icon_id ) {
+        $icon_arr = wp_get_attachment_image_src( $site_icon_id, 'full' );
+        if ( ! empty( $icon_arr[0] ) ) {
+            $logo_url = $icon_arr[0];
+        }
+    }
+
+    $organization = array(
+        '@context'    => 'https://schema.org',
+        '@type'       => 'Organization',
+        'name'        => $site_name,
+        'url'         => $site_url,
+        'description' => $tagline,
+        'sameAs'      => array(
+            'https://github.com/societypress/SocietyPress',
+        ),
+    );
+
+    if ( $logo_url ) {
+        $organization['logo'] = $logo_url;
+    }
+
+    $website = array(
+        '@context'      => 'https://schema.org',
+        '@type'         => 'WebSite',
+        'name'          => $site_name,
+        'url'           => $site_url,
+        'description'   => $tagline,
+        'potentialAction' => array(
+            '@type'        => 'SearchAction',
+            'target'       => array(
+                '@type'       => 'EntryPoint',
+                'urlTemplate' => $site_url . '?s={search_term_string}',
+            ),
+            'query-input'  => 'required name=search_term_string',
+        ),
+    );
+
+    $software = array(
+        '@context'     => 'https://schema.org',
+        '@type'        => 'SoftwareApplication',
+        'name'         => 'SocietyPress',
+        'url'          => $site_url,
+        'description'  => 'A free, open-source WordPress plugin and theme suite for genealogical and historical societies.',
+        'applicationCategory' => 'BusinessApplication',
+        'operatingSystem'     => 'Any (WordPress 6.0+)',
+        'offers'       => array(
+            '@type'    => 'Offer',
+            'price'    => '0',
+            'priceCurrency' => 'USD',
+        ),
+        'license'      => 'https://www.gnu.org/licenses/gpl-2.0.html',
+    );
+
+    echo "\n<script type=\"application/ld+json\">" . wp_json_encode( $organization, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT ) . "</script>\n";
+    echo "<script type=\"application/ld+json\">" . wp_json_encode( $website,      JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT ) . "</script>\n";
+    echo "<script type=\"application/ld+json\">" . wp_json_encode( $software,     JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT ) . "</script>\n";
+}
+add_action( 'wp_head', 'gsp_structured_data', 6 );
+
+
+/**
  * Fallback favicon.
  *
  * WordPress's Site Identity Customizer lets an admin upload a real site

@@ -194,7 +194,7 @@ case "${1:-plugin}" in
         ;;
     marketing)
         echo "Deploying marketing site theme..."
-        if ! scp -r "$LOCAL_BASE/Code/marketing-theme/"* "$HOST:~/domains/getsocietypress.org/public_html/cms/wp-content/themes/getsocietypress/"; then
+        if ! scp -r "$LOCAL_BASE/Code/theme/getsocietypress/"* "$HOST:~/domains/getsocietypress.org/public_html/cms/wp-content/themes/getsocietypress/"; then
             echo "  FAILED: marketing theme scp did not complete."
             OVERALL_STATUS=1
         else

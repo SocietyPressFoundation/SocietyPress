@@ -51,6 +51,8 @@ $gsp_sitemap = array(
             array( '/docs/', 'Documentation Hub', 'Category-by-category summaries and guides.' ),
             array( '/faq/', 'Frequently Asked Questions', null ),
             array( '/ens-migration/', 'Moving from ENS', 'Migration guide for EasyNetSites societies.' ),
+            array( '/docs/ens-migration-guide/', 'ENS Migration — Full Guide', 'Step-by-step walkthrough.' ),
+            array( '/docs/troubleshooting/', 'Troubleshooting', 'The ten issues society admins hit most, with fixes.' ),
         ),
     ),
 

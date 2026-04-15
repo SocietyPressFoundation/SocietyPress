@@ -98,6 +98,7 @@ get_header();
                     <li><a href="<?php echo esc_url( home_url( '/installation/' ) ); ?>">Installation Guide</a></li>
                     <li><a href="<?php echo esc_url( home_url( '/setup/' ) ); ?>">First-Time Setup</a></li>
                     <li><a href="<?php echo esc_url( home_url( '/requirements/' ) ); ?>">System Requirements</a></li>
+                    <li><a href="<?php echo esc_url( home_url( '/docs/troubleshooting/' ) ); ?>">Troubleshooting</a></li>
                 </ul>
             </div>
 

@@ -31,42 +31,47 @@ $gsp_child_themes = array(
     array(
         'slug'        => 'heritage',
         'name'        => 'Heritage',
-        'tagline'     => 'Classic, dignified, archival.',
-        'description' => 'A warm cream backdrop with navy type and a serif display face. Designed for societies that want the feel of a well-kept historical journal. The default recommendation for most genealogical societies.',
-        'palette'     => array( '#FDF8EE', '#1F2E4A', '#8B6B3D', '#6B3E1F', '#2D2D2D' ),
-        'font'        => 'Playfair Display + Lora',
+        'tagline'     => 'Warm, traditional, scholarly.',
+        'description' => 'Rich browns, soft cream, and antique gold — inspired by old library stacks and leather-bound journals. Classic single-column layout with generous whitespace. The default recommendation for genealogical societies that want to feel established and scholarly.',
+        /* Real values pulled from heritage/style.css (--heritage-*) */
+        'palette'     => array( '#FDF6EC', '#3E2723', '#B8860B', '#D4C5A9', '#8B7355' ),
+        'font'        => 'Merriweather (serif)',
     ),
     array(
         'slug'        => 'coastline',
         'name'        => 'Coastline',
-        'tagline'     => 'Airy, open, welcoming.',
-        'description' => 'Cool blues, generous whitespace, and a clean sans-serif. A modern look for coastal, maritime, or waterway-focused societies — or any group that wants their site to feel approachable and contemporary.',
-        'palette'     => array( '#F4F8FB', '#1D4E6B', '#4A90B8', '#E8B547', '#2D2D2D' ),
-        'font'        => 'Inter + Source Sans Pro',
+        'tagline'     => 'Clean, modern, magazine-style.',
+        'description' => 'Navy and white with soft sky-blue accents. Magazine-style layout with a right sidebar on desktop that collapses beneath content on mobile. Ideal for active societies with a lot happening — multiple monthly events, an ongoing record project, a busy newsletter.',
+        /* Real values from coastline/style.css (--coast-*) */
+        'palette'     => array( '#FFFFFF', '#1B3A5C', '#5B9BD5', '#EFF6FC', '#F5F0EB' ),
+        'font'        => 'Inter (sans-serif)',
     ),
     array(
         'slug'        => 'prairie',
         'name'        => 'Prairie',
-        'tagline'     => 'Earthy, rooted, regional.',
-        'description' => 'Warm greens and tans evoking open country. A natural fit for plains, prairie, agricultural, or rural-heritage societies. Comfortable and unpretentious.',
-        'palette'     => array( '#F5F1E8', '#3A5C3F', '#A67C52', '#8B5A3C', '#2D2D2D' ),
-        'font'        => 'Merriweather + Open Sans',
+        'tagline'     => 'Earthy, rooted, research-heavy.',
+        'description' => 'Forest greens, warm wheat, and clay accents. Explorer layout with a permanent left sidebar navigation — built for content-heavy societies with deep page structures. Big libraries, lots of records, multi-level research guides.',
+        /* Real values from prairie/style.css (--prairie-*) */
+        'palette'     => array( '#E8DCC8', '#2D5016', '#7A9A5E', '#C4A265', '#5C4033' ),
+        'font'        => 'Lora (serif)',
     ),
     array(
         'slug'        => 'ledger',
         'name'        => 'Ledger',
-        'tagline'     => 'Editorial, disciplined, archival.',
-        'description' => 'A newspaper-of-record feel — structured columns, precise typography, the look of a scholarly journal. Suited to societies that publish quarterlies or maintain serious research archives.',
-        'palette'     => array( '#FAFAF7', '#1A1A1A', '#8B0000', '#C49B6C', '#4A4A4A' ),
-        'font'        => 'Lora + Inter',
+        'tagline'     => 'Formal, archival, authoritative.',
+        'description' => 'Charcoal and ivory with a deep burgundy accent — evokes courthouses, ledger books, and official records. Dashboard-style theme with card-based layouts and clean, professional spacing. For societies that want to project authority and permanence.',
+        /* Real values from ledger/style.css (--ledger-*) */
+        'palette'     => array( '#F8F5F0', '#2C2C2C', '#7B2D3B', '#D4D0CB', '#808080' ),
+        'font'        => 'Source Sans 3 (sans-serif)',
     ),
     array(
         'slug'        => 'parlor',
         'name'        => 'Parlor',
-        'tagline'     => 'Stately, traditional, formal.',
-        'description' => 'Deep plum and gold on cream, with an old-world serif. Fits state societies, lineage societies (DAR, SAR, Colonial Dames), and historical societies with a formal membership tradition.',
-        'palette'     => array( '#F7F2EA', '#4A2C3E', '#B8935F', '#6B2C3F', '#2D2D2D' ),
-        'font'        => 'Cormorant Garamond + Raleway',
+        'tagline'     => 'Elegant, refined, ENS-familiar.',
+        'description' => 'Deep plum, warm ivory, and rose-gold accents. Traditional layout — centered banner, horizontal nav, optional right sidebar, "Next Meeting" callout at the top of the homepage. Designed so ENS migrants immediately feel at home.',
+        /* Real values from parlor/style.css (--parlor-*) */
+        'palette'     => array( '#FFF8F0', '#3C1053', '#B76E79', '#E8C4C4', '#8B6F8B' ),
+        'font'        => 'EB Garamond (serif)',
     ),
 );
 ?>

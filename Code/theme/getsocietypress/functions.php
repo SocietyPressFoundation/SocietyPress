@@ -254,33 +254,20 @@ add_filter( 'excerpt_length', 'gsp_excerpt_length' );
 /**
  * Current SocietyPress plugin version.
  *
- * Pulls the latest version from the raw plugin file on GitHub and caches it
- * for 12 hours. Falls back to the last known shipped version if the request
- * fails — the fallback MUST be kept current when a release ships so the site
- * never shows a stale version while GitHub is unreachable.
+ * Hardcoded here so every page can cite the same version without a network
+ * round-trip. Bump this constant whenever a new release ships — a fresh
+ * deploy is already part of the release flow, so this stays in sync
+ * naturally.
  *
- * Returns the version number as a plain string (e.g. "1.0.16"), no "v" prefix.
+ * We used to fetch this from GitHub's API, but the repo is private so the
+ * request always fell through to the fallback anyway. Removing the fetch
+ * saves a per-12h API miss (no log noise, no wasted HTTP timeout budget)
+ * and removes one reason for the page to hang if GitHub is slow.
+ *
+ * Returns the version as a plain string (e.g. "1.0.19"), no "v" prefix.
  */
 function gsp_get_sp_version() {
-    $ver = get_transient( 'sp_latest_version' );
-    if ( $ver ) {
-        return $ver;
-    }
-    $resp = wp_remote_get(
-        'https://api.github.com/repos/societypress/SocietyPress/contents/Code/plugin/societypress.php',
-        array(
-            'timeout' => 5,
-            'headers' => array( 'Accept' => 'application/vnd.github.v3.raw' ),
-        )
-    );
-    if ( ! is_wp_error( $resp ) && preg_match( '/Version:\s*([\d.]+\w*)/', wp_remote_retrieve_body( $resp ), $m ) ) {
-        $ver = $m[1];
-    } else {
-        // Last known shipped version — update on every release.
-        $ver = '1.0.19';
-    }
-    set_transient( 'sp_latest_version', $ver, 12 * HOUR_IN_SECONDS );
-    return $ver;
+    return '1.0.19';
 }
 
 
@@ -294,6 +281,37 @@ function gsp_get_sp_version() {
 function gsp_get_download_url() {
     return home_url( '/downloads/societypress-latest.zip' );
 }
+
+
+/**
+ * Fallback favicon.
+ *
+ * WordPress's Site Identity Customizer lets an admin upload a real site
+ * icon (PNG, generates the full favicon/apple-touch-icon/PWA set). If no
+ * site icon is uploaded, we output an inline SVG favicon using the same
+ * brand mark as the header's fallback logo. That way browser tabs always
+ * show a recognizable icon rather than the generic document glyph.
+ *
+ * The inline SVG is base64-encoded into a data URL so no extra HTTP
+ * request is needed.
+ */
+function gsp_fallback_favicon() {
+    if ( function_exists( 'has_site_icon' ) && has_site_icon() ) {
+        return; // Real site icon set in Customizer — WP outputs its own.
+    }
+
+    $svg =
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">' .
+        '<rect x="16" y="16" width="480" height="480" rx="68" ry="68" fill="#C9973A"/>' .
+        '<text x="256" y="384" font-family="Georgia, serif" font-size="360" font-weight="700" fill="#0D1F3C" text-anchor="middle">S</text>' .
+        '</svg>';
+
+    $data_url = 'data:image/svg+xml;base64,' . base64_encode( $svg );
+
+    echo '<link rel="icon" type="image/svg+xml" href="' . esc_attr( $data_url ) . '">' . "\n";
+    echo '<meta name="theme-color" content="#0D1F3C">' . "\n";
+}
+add_action( 'wp_head', 'gsp_fallback_favicon', 2 );
 
 
 /**

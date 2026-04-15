@@ -32,7 +32,7 @@ defined( 'ABSPATH' ) || exit;
  *   - Inline: **bold**, *italic*, `code`, [link](url), <url>
  *   - Paragraphs
  */
-function gsp_render_simple_markdown( $md ) {
+function gsp_render_simple_markdown( $md, $heading_offset = 0 ) {
     $md = str_replace( "\r\n", "\n", $md );
     $lines = explode( "\n", $md );
 
@@ -104,12 +104,14 @@ function gsp_render_simple_markdown( $md ) {
             continue;
         }
 
-        // Headers.
+        // Headers. Offset lets the caller shift the hierarchy down —
+        // useful when the page already has its own <h1> in the hero
+        // and the markdown's own top-level heading should become <h2>.
         if ( preg_match( '/^(#{1,6})\s+(.+)$/', $line, $m ) ) {
             $flush_para();
             $close_list();
             $close_blockquote();
-            $level = strlen( $m[1] );
+            $level = min( 6, strlen( $m[1] ) + $heading_offset );
             $out[] = '<h' . $level . '>' . gsp_md_inline( $m[2] ) . '</h' . $level . '>';
             continue;
         }
@@ -225,7 +227,10 @@ $gsp_guide_html = get_transient( 'gsp_ens_guide_html' );
 if ( false === $gsp_guide_html ) {
     if ( is_readable( $gsp_guide_path ) ) {
         $raw = file_get_contents( $gsp_guide_path );
-        $gsp_guide_html = gsp_render_simple_markdown( $raw );
+        // Offset 1: the page hero already carries the <h1>, so the
+        // markdown's own top-level "# Title" becomes <h2> and the rest
+        // shifts down accordingly.
+        $gsp_guide_html = gsp_render_simple_markdown( $raw, 1 );
     } else {
         $gsp_guide_html = '<p><em>The migration guide file is temporarily unavailable. Please try again, or email <a href="mailto:migrations@getsocietypress.org">migrations@getsocietypress.org</a> for a copy.</em></p>';
     }

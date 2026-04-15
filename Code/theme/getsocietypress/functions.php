@@ -513,6 +513,175 @@ add_action( 'wp_dashboard_setup', 'gsp_register_dashboard_widgets' );
 
 
 /**
+ * Custom /sitemap.xml endpoint.
+ *
+ * WHY: WordPress 5.5+'s built-in /wp-sitemap.xml registers its providers on
+ * the `init` action, but on this install the providers array comes back
+ * empty (something in the load order on this host prevents
+ * WP_Sitemaps::register_sitemaps() from running). That behavior is
+ * hard to chase down remotely, so instead of fixing core we publish our
+ * own sitemap — smaller, but sufficient for search engines on a
+ * marketing site with mostly static pages.
+ *
+ * Rewrite maps /sitemap.xml -> index.php?gsp_sitemap=1. template_redirect
+ * catches that query var, outputs the sitemap XML, and exits before WP
+ * tries (and fails) to serve any template.
+ */
+function gsp_sitemap_rewrite_rules() {
+    add_rewrite_rule( '^sitemap\.xml$', 'index.php?gsp_sitemap=1', 'top' );
+}
+add_action( 'init', 'gsp_sitemap_rewrite_rules' );
+
+function gsp_sitemap_query_vars( $vars ) {
+    $vars[] = 'gsp_sitemap';
+    return $vars;
+}
+add_filter( 'query_vars', 'gsp_sitemap_query_vars' );
+
+/*
+ * Prevent WP's canonical redirect from adding a trailing slash to
+ * /sitemap.xml — it would 301 the XML URL to /sitemap.xml/, which is
+ * not a valid sitemap path for most crawlers even if the body is the
+ * same XML. This runs early enough to short-circuit redirect_canonical.
+ */
+function gsp_sitemap_skip_canonical( $redirect_url ) {
+    if ( get_query_var( 'gsp_sitemap' ) ) {
+        return false;
+    }
+    return $redirect_url;
+}
+add_filter( 'redirect_canonical', 'gsp_sitemap_skip_canonical', 10, 1 );
+
+function gsp_sitemap_render() {
+    if ( ! get_query_var( 'gsp_sitemap' ) ) {
+        return;
+    }
+
+    // Collect every public, published page + post. Forums and bbPress
+    // topics get their own urlset so they appear in the crawl budget
+    // alongside the static pages.
+    $pages = get_posts( array(
+        'post_type'      => 'page',
+        'post_status'    => 'publish',
+        'numberposts'    => -1,
+        'orderby'        => 'modified',
+        'order'          => 'DESC',
+    ) );
+    $posts = get_posts( array(
+        'post_type'      => 'post',
+        'post_status'    => 'publish',
+        'numberposts'    => -1,
+        'orderby'        => 'modified',
+        'order'          => 'DESC',
+    ) );
+    $forums = get_posts( array(
+        'post_type'      => 'forum',
+        'post_status'    => 'publish',
+        'numberposts'    => -1,
+        'orderby'        => 'modified',
+        'order'          => 'DESC',
+    ) );
+    $topics = get_posts( array(
+        'post_type'      => 'topic',
+        'post_status'    => 'publish',
+        'numberposts'    => -1,
+        'orderby'        => 'modified',
+        'order'          => 'DESC',
+    ) );
+
+    $all = array_merge( $pages, $posts, $forums, $topics );
+
+    // Priority/frequency hints. Homepage and hubs rank highest; deep
+    // utility pages (privacy, terms) are lower-priority reference.
+    $high_priority_slugs = array(
+        'home', 'features', 'requirements', 'download', 'docs',
+        'installation', 'setup', 'faq', 'ens-migration',
+    );
+    $low_priority_slugs = array(
+        'privacy-policy', 'terms', 'accessibility', 'security-policy',
+        'sitemap', 'status',
+    );
+
+    header( 'Content-Type: application/xml; charset=UTF-8' );
+    echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
+    echo '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
+
+    // Homepage first, explicit so it gets the loudest priority even if
+    // its post_date is older than recent changes.
+    printf(
+        "  <url>\n    <loc>%s</loc>\n    <priority>1.0</priority>\n    <changefreq>weekly</changefreq>\n  </url>\n",
+        esc_url( home_url( '/' ) )
+    );
+
+    foreach ( $all as $p ) {
+        // Skip the "home" page since we emitted home_url('/') already.
+        if ( $p->post_name === 'home' ) {
+            continue;
+        }
+
+        $priority = '0.6';
+        if ( in_array( $p->post_name, $high_priority_slugs, true ) ) {
+            $priority = '0.9';
+        } elseif ( in_array( $p->post_name, $low_priority_slugs, true ) ) {
+            $priority = '0.3';
+        }
+
+        // Forum topics decay — recent ones are more interesting than
+        // months-old ones. Simple tier based on days since last modified.
+        if ( 'topic' === $p->post_type ) {
+            $days_old = ( time() - strtotime( $p->post_modified ) ) / DAY_IN_SECONDS;
+            if ( $days_old > 90 ) {
+                $priority = '0.3';
+            } elseif ( $days_old > 30 ) {
+                $priority = '0.5';
+            } else {
+                $priority = '0.7';
+            }
+        }
+
+        $changefreq = 'monthly';
+        if ( 'post' === $p->post_type || 'topic' === $p->post_type ) {
+            $changefreq = 'weekly';
+        }
+
+        printf(
+            "  <url>\n    <loc>%s</loc>\n    <lastmod>%s</lastmod>\n    <changefreq>%s</changefreq>\n    <priority>%s</priority>\n  </url>\n",
+            esc_url( get_permalink( $p->ID ) ),
+            esc_html( mysql2date( 'c', $p->post_modified_gmt ? $p->post_modified_gmt : $p->post_modified ) ),
+            esc_html( $changefreq ),
+            esc_html( $priority )
+        );
+    }
+
+    echo '</urlset>';
+    exit;
+}
+add_action( 'template_redirect', 'gsp_sitemap_render' );
+
+
+/**
+ * robots.txt enhancements.
+ *
+ * Points crawlers at our sitemap.xml (WP doesn't add this by default)
+ * and disallows a few non-public paths that don't need crawling —
+ * installer files, the wp-admin area (already default), and the
+ * /feedback/ form since its only purpose is submission, not indexing.
+ */
+function gsp_robots_txt( $output, $public ) {
+    if ( '0' === (string) $public ) {
+        // Site is set to "Discourage search engines" — respect that.
+        return $output;
+    }
+    $output .= "\nSitemap: " . home_url( '/sitemap.xml' ) . "\n";
+    $output .= "Disallow: /cms/wp-includes/\n";
+    $output .= "Disallow: /cms/xmlrpc.php\n";
+    $output .= "Disallow: /sp-installer.php\n";
+    return $output;
+}
+add_filter( 'robots_txt', 'gsp_robots_txt', 10, 2 );
+
+
+/**
  * Social meta tags — Open Graph and Twitter Card.
  *
  * Every page gets a meaningful title, description, type, URL, and

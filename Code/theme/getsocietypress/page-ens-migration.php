@@ -369,7 +369,7 @@ get_header();
                 what to tell your members. It's written for non-developers.
             </p>
             <div class="ens-cta__actions">
-                <a href="https://getsocietypress.org/Documentation/ENS-MIGRATION-GUIDE.md" class="btn btn-primary btn-lg">
+                <a href="<?php echo esc_url( home_url( '/docs/ens-migration-guide/' ) ); ?>" class="btn btn-primary btn-lg">
                     Read the Full Migration Guide
                 </a>
                 <a href="<?php echo esc_url( home_url( '/download/' ) ); ?>" class="btn btn-secondary btn-lg">

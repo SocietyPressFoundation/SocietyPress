@@ -82,9 +82,10 @@ get_header();
      3. MISSION
      One sentence, large and unambiguous.
      ========================================================================== -->
-<section class="about-mission">
+<section class="about-mission" aria-labelledby="about-mission-heading">
     <div class="container container--narrow">
         <div class="about-mission__content">
+            <h2 id="about-mission-heading" class="screen-reader-text">Mission</h2>
             <p class="about-mission__statement">
                 SocietyPress exists to give every genealogical and historical
                 society &mdash; no matter how small, no matter how broke &mdash;

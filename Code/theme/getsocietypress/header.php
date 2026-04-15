@@ -25,6 +25,11 @@ defined( 'ABSPATH' ) || exit;
 <body <?php body_class(); ?>>
 <?php wp_body_open(); ?>
 
+<!-- Skip-to-content link — first focusable element, visually hidden until
+     focused via keyboard. Lets screen-reader and keyboard users bypass
+     the nav and go straight to the page content. -->
+<a class="skip-link" href="#main-content">Skip to main content</a>
+
 <!-- ==========================================================================
      ANNOUNCEMENT BAR
      Pulled from Appearance > Customize > Site Announcement.
@@ -121,3 +126,8 @@ if ( $announce_enabled && ! empty( $announce_text ) ) :
     ?>
     <a href="<?php echo esc_url( home_url( '/download/' ) ); ?>" class="btn btn-primary">Download</a>
 </nav>
+
+<!-- Main content landmark — wraps all page template output so screen
+     readers can jump directly here via the "main" region. Closed in
+     footer.php. -->
+<main id="main-content" role="main">

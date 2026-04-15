@@ -1,0 +1,25 @@
+# SocietyPress security disclosure policy
+# Per RFC 9116. Also served at /.well-known/security.txt
+
+Contact: mailto:security@getsocietypress.org
+Expires: 2027-04-15T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://getsocietypress.org/.well-known/security.txt
+Policy: https://getsocietypress.org/security-policy/
+Acknowledgments: https://getsocietypress.org/sponsors/
+
+# Please report vulnerabilities privately first.
+# We commit to:
+#   - Acknowledge receipt within 3 business days
+#   - Provide an initial assessment within 7 business days
+#   - Credit you in release notes if you'd like to be credited
+#   - Not pursue legal action against good-faith security research
+#
+# Scope: the SocietyPress plugin, parent theme, bundled child themes,
+# and the sp-installer.php installer. Vulnerabilities in third-party
+# WordPress plugins or the WordPress core itself should be reported
+# to their respective projects.
+#
+# Out of scope: individual society installations we do not operate,
+# third-party hosting provider infrastructure, payment processor
+# (Stripe / PayPal) implementations.

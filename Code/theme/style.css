@@ -5,7 +5,7 @@ Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
 Description: A clean, readable theme for genealogical and historical societies.
              Designed for ease of use with large fonts, high contrast, and simple navigation.
-Version: 1.0.6
+Version: 1.0.19
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 8.0
@@ -292,11 +292,11 @@ img {
    ============================================================================ */
 
 /* WHY > ul (direct child only): The parent theme's nav is single-level, but
-   child themes like the society use multi-level dropdowns. If we apply display:flex
-   to ALL ul elements (.main-navigation ul), sub-menus inherit flex layout and
-   their display:none / display:block toggle can conflict with the flex context.
-   Scoping to > ul keeps the top-level menu horizontal without affecting
-   nested sub-menu lists that child themes style independently. */
+   some child themes use multi-level dropdowns. If we apply display:flex to
+   ALL ul elements (.main-navigation ul), sub-menus inherit flex layout and
+   their display:none / display:block toggle can conflict with the flex
+   context. Scoping to > ul keeps the top-level menu horizontal without
+   affecting nested sub-menu lists that child themes style independently. */
 /* WHY flex:1 on nav and ul: The primary nav must stretch to fill the full
    header width so margin-left:auto on right-aligned items (Store, Contact,
    Join) can push them to the right edge. The :not(.sp-user-menu) exclusion
@@ -364,6 +364,39 @@ img {
 .main-navigation .sp-nav-cta > a:hover {
     opacity: 0.9;
     background: var(--sp-color-accent, #667eea);
+}
+
+/* Renewal CTA — visually distinct from the Join CTA so it reads as
+   "action needed" rather than "optional." Uses --sp-color-warning with a
+   warm amber fallback; a society can override the variable in Design
+   settings (or a child theme) to match their palette. A subtle pulse
+   draws the eye without being obnoxious. */
+.main-navigation .sp-show-when-expiring > a {
+    background: var(--sp-color-warning, #c97b2a);
+    color: #fff;
+    border-radius: 4px;
+    font-weight: 600;
+    box-shadow: 0 0 0 0 rgba(201, 123, 42, 0.5);
+    animation: sp-renew-pulse 2.4s ease-out infinite;
+}
+
+.main-navigation .sp-show-when-expiring > a:hover {
+    opacity: 0.92;
+    background: var(--sp-color-warning, #c97b2a);
+    animation-play-state: paused;
+}
+
+@keyframes sp-renew-pulse {
+    0%   { box-shadow: 0 0 0 0   rgba(201, 123, 42, 0.55); }
+    70%  { box-shadow: 0 0 0 10px rgba(201, 123, 42, 0);    }
+    100% { box-shadow: 0 0 0 0   rgba(201, 123, 42, 0);    }
+}
+
+/* Respect the user's reduced-motion preference — accessibility first */
+@media (prefers-reduced-motion: reduce) {
+    .main-navigation .sp-show-when-expiring > a {
+        animation: none;
+    }
 }
 
 /* WHY: Secondary nav items (Store, Contact, Join) push to the right edge
@@ -450,6 +483,67 @@ img {
 /* Sub-menu item dividers */
 .main-navigation .sub-menu li + li {
     border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* ----------------------------------------------------------------------------
+   NESTED (LEVEL 2) SUB-MENUS
+   WHY: WordPress nav menus support arbitrary depth. We enabled depth: 3 so
+   Resources → Library → Catalog-style nesting works for societies with deep
+   information architectures. Level-2 flyouts drop to the right of their
+   parent rather than cascading further down, which would otherwise run
+   off the viewport.
+   ---------------------------------------------------------------------------- */
+
+/* Position each nested parent so its flyout anchors to it */
+.main-navigation .sub-menu li.menu-item-has-children {
+    position: relative;
+}
+
+/* Level-2 caret: right-pointing triangle, sitting at the end of the label */
+.main-navigation .sub-menu li.menu-item-has-children > a {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+.main-navigation .sub-menu li.menu-item-has-children > a::after {
+    content: '';
+    display: inline-block;
+    width: 0;
+    height: 0;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    border-left: 4px solid currentColor;
+    opacity: 0.7;
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+}
+
+/* Flyout panel — anchored to the right edge of the parent item */
+.main-navigation .sub-menu .sub-menu {
+    top: -4px;
+    left: 100%;
+    border-top: none;
+    border-left: 3px solid var(--sp-color-accent, rgba(255, 255, 255, 0.2));
+    border-radius: 0 4px 4px 0;
+}
+
+/* Reveal on hover or when JS toggles sp-submenu-open */
+.main-navigation .sub-menu li.menu-item-has-children:hover > .sub-menu,
+.main-navigation .sub-menu li.menu-item-has-children:focus-within > .sub-menu,
+.main-navigation .sub-menu li.menu-item-has-children.sp-submenu-open > .sub-menu {
+    display: block;
+}
+
+/* Rotate caret when open (tap-toggled on mobile) */
+.main-navigation .sub-menu li.menu-item-has-children.sp-submenu-open > a::after {
+    transform: rotate(90deg);
+}
+
+/* Open top-level dropdowns on keyboard focus too (accessibility) */
+.main-navigation > ul > li.menu-item-has-children:focus-within > .sub-menu {
+    display: block;
 }
 
 /* ============================================================================

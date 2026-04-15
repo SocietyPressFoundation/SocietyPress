@@ -18,7 +18,9 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'HERITAGE_THEME_VERSION', '1.1.0' );
+if ( ! defined( 'HERITAGE_THEME_VERSION' ) ) {
+    define( 'HERITAGE_THEME_VERSION', '1.1.0' );
+}
 
 /**
  * Push Heritage's palette into the plugin's design settings on activation.
@@ -89,9 +91,9 @@ add_action( 'widgets_init', function () {
 
     // Footer column 1 — typically "About" / organization description
     register_sidebar( [
-        'name'          => esc_html__( 'Footer Column 1', 'heritage' ),
+        'name'          => esc_html__( 'Footer Column 1', 'societypress' ),
         'id'            => 'heritage-footer-1',
-        'description'   => esc_html__( 'First footer column — typically organization description.', 'heritage' ),
+        'description'   => esc_html__( 'First footer column — typically organization description.', 'societypress' ),
         'before_widget' => '<div id="%1$s" class="widget %2$s">',
         'after_widget'  => '</div>',
         'before_title'  => '<h3 class="widget-title">',
@@ -100,9 +102,9 @@ add_action( 'widgets_init', function () {
 
     // Footer column 2 — typically quick links / navigation
     register_sidebar( [
-        'name'          => esc_html__( 'Footer Column 2', 'heritage' ),
+        'name'          => esc_html__( 'Footer Column 2', 'societypress' ),
         'id'            => 'heritage-footer-2',
-        'description'   => esc_html__( 'Second footer column — typically quick links.', 'heritage' ),
+        'description'   => esc_html__( 'Second footer column — typically quick links.', 'societypress' ),
         'before_widget' => '<div id="%1$s" class="widget %2$s">',
         'after_widget'  => '</div>',
         'before_title'  => '<h3 class="widget-title">',
@@ -111,9 +113,9 @@ add_action( 'widgets_init', function () {
 
     // Footer column 3 — typically contact info
     register_sidebar( [
-        'name'          => esc_html__( 'Footer Column 3', 'heritage' ),
+        'name'          => esc_html__( 'Footer Column 3', 'societypress' ),
         'id'            => 'heritage-footer-3',
-        'description'   => esc_html__( 'Third footer column — typically contact information.', 'heritage' ),
+        'description'   => esc_html__( 'Third footer column — typically contact information.', 'societypress' ),
         'before_widget' => '<div id="%1$s" class="widget %2$s">',
         'after_widget'  => '</div>',
         'before_title'  => '<h3 class="widget-title">',
@@ -122,9 +124,9 @@ add_action( 'widgets_init', function () {
 
     // Front page hero — optional widget area for admin-controlled hero content
     register_sidebar( [
-        'name'          => esc_html__( 'Front Page Hero', 'heritage' ),
+        'name'          => esc_html__( 'Front Page Hero', 'societypress' ),
         'id'            => 'heritage-hero',
-        'description'   => esc_html__( 'Hero section on the front page. Leave empty for the default hero (site name + tagline + button).', 'heritage' ),
+        'description'   => esc_html__( 'Hero section on the front page. Leave empty for the default hero (site name + tagline + button).', 'societypress' ),
         'before_widget' => '<div id="%1$s" class="widget heritage-hero-widget %2$s">',
         'after_widget'  => '</div>',
         'before_title'  => '<h2 class="heritage-hero-widget-title">',

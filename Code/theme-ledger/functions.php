@@ -19,7 +19,9 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'LEDGER_THEME_VERSION', '1.1.0' );
+if ( ! defined( 'LEDGER_THEME_VERSION' ) ) {
+    define( 'LEDGER_THEME_VERSION', '1.1.0' );
+}
 
 
 // ============================================================================
@@ -107,9 +109,9 @@ add_action( 'wp_enqueue_scripts', function () {
 add_action( 'widgets_init', function () {
 
     register_sidebar( [
-        'name'          => esc_html__( 'Footer Column 1 (About)', 'ledger' ),
+        'name'          => esc_html__( 'Footer Column 1 (About)', 'societypress' ),
         'id'            => 'ledger-footer-1',
-        'description'   => esc_html__( 'First footer column — typically organization info or mission.', 'ledger' ),
+        'description'   => esc_html__( 'First footer column — typically organization info or mission.', 'societypress' ),
         'before_widget' => '<div id="%1$s" class="widget %2$s">',
         'after_widget'  => '</div>',
         'before_title'  => '<h3 class="widget-title">',
@@ -117,9 +119,9 @@ add_action( 'widgets_init', function () {
     ] );
 
     register_sidebar( [
-        'name'          => esc_html__( 'Footer Column 2 (Navigation)', 'ledger' ),
+        'name'          => esc_html__( 'Footer Column 2 (Navigation)', 'societypress' ),
         'id'            => 'ledger-footer-2',
-        'description'   => esc_html__( 'Second footer column — typically quick links or navigation.', 'ledger' ),
+        'description'   => esc_html__( 'Second footer column — typically quick links or navigation.', 'societypress' ),
         'before_widget' => '<div id="%1$s" class="widget %2$s">',
         'after_widget'  => '</div>',
         'before_title'  => '<h3 class="widget-title">',
@@ -127,9 +129,9 @@ add_action( 'widgets_init', function () {
     ] );
 
     register_sidebar( [
-        'name'          => esc_html__( 'Footer Column 3 (Contact)', 'ledger' ),
+        'name'          => esc_html__( 'Footer Column 3 (Contact)', 'societypress' ),
         'id'            => 'ledger-footer-3',
-        'description'   => esc_html__( 'Third footer column — typically contact info or hours.', 'ledger' ),
+        'description'   => esc_html__( 'Third footer column — typically contact info or hours.', 'societypress' ),
         'before_widget' => '<div id="%1$s" class="widget %2$s">',
         'after_widget'  => '</div>',
         'before_title'  => '<h3 class="widget-title">',
@@ -179,7 +181,7 @@ class Ledger_Nav_Walker extends Walker_Nav_Menu {
         // If this item has children, add a toggle button for mobile
         if ( in_array( 'menu-item-has-children', $item->classes, true ) ) {
             $output .= '<button class="ledger-submenu-toggle" aria-expanded="false" aria-label="'
-                     . esc_attr__( 'Toggle submenu', 'ledger' ) . '">'
+                     . esc_attr__( 'Toggle submenu', 'societypress' ) . '">'
                      . '<span class="ledger-toggle-icon">&#9662;</span>'
                      . '</button>';
         }

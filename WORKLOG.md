@@ -1,4 +1,67 @@
 # SocietyPress — WORKLOG
+## v1.0.19 — 2026-04-13/14
+
+### Session: Ship-hardening, architecture cleanup, new modules
+
+**Cleanups and drift fixes**
+- Calendar bug — the standalone events-page template's `.sp-calendar-wrap` was missing `width:100%; box-sizing:border-box;` so non-current months rendered narrow while the widget (same class) was already fixed. Both render paths now share the fix.
+- Parent theme version drift — `style.css` was showing `1.0.6` in the Themes admin while the `SOCIETYPRESS_THEME_VERSION` constant read `1.0.19`. Synced to 1.0.19 in both places.
+- Child theme define guards — all five child themes now wrap their `*_THEME_VERSION` define in `if ( ! defined() )`.
+- Orphaned theme folders — removed five duplicate `societypress-*` directories plus stale `society` and `san-antonio-genealogical-historical-soci` from the local working copy. Live demo was never affected.
+
+**Installer (`sp-installer.php`) security pass** — every High/Medium/Low finding from the security audit patched.
+- DB password no longer saved to session (shared-host `/tmp/sess_*` read risk).
+- Auto-login now uses a time-limited WordPress transient + 256-bit random secret; the bridge redirects directly to `/wp-login.php?sp_token=…` and the mu-plugin verifies with `hash_equals`. No more "any hit to wp-login wins admin" race window.
+- Zip-slip mitigation on both WordPress core extraction and SocietyPress bundle extraction (closure-based safe-write helper; aborts on any traversal or absolute path).
+- `db_host` injection closed — `str_replace("localhost", $db_host, $config)` replaced with per-constant `preg_replace` + `addslashes`, plus a server-side hostname-pattern allowlist on input.
+- "Already installed" guard tightened — `file_exists(wp-config.php) && file_exists(wp-includes/version.php)` became `||` so partial-install state is caught.
+- Demo-config path hardcoded; no more `$_SERVER['HOME']` / `$_SERVER['USER']` walked candidate paths feeding `require_once`.
+- `admin_user` and `membership_period` now server-side validated against an allowlist/pattern.
+- Download-size cap (200 MB) via `CURLOPT_MAXFILESIZE` + progress-abort + `file_get_contents` length clamp.
+- `sp_installer_die()` now `htmlspecialchars()`-escapes the message (mysqli errors can leak server info).
+- PHP 8 version guard moved to the top of the file in PHP 5–compatible syntax.
+
+**i18n cleanup pass**
+- Child theme text domains unified — all four upgraded 1.1.0 child themes (Heritage, Coastline, Prairie, Ledger) were using their own domains (`'heritage'`, etc.) without shipping `.mo` files. Swapped to `'societypress'` so strings ride the plugin's translation.
+- ~50 bare user-facing strings wrapped across Donations (record button, back links, dropdowns, Donor Name), Blast Email (back links with `esc_url()` hygiene, filter prefixes, error state), Page Builder (meta box title, instructions, Add Widget, Choose a Widget, category labels), Events registration (Cancel), Library admin (page-title-action buttons, dropdown placeholders, year placeholders), Settings, Groups, Events slots, and the event confirmation email body.
+- `sp_localized_status()` helper introduced; ~25 bare `ucfirst()` call sites converted to it, and the labels-array-with-`?? ucfirst()` fallbacks upgraded to `?? sp_localized_status()`. Helper covers three contexts: default status, condition, payment_type — plus a dedicated email_type slug map.
+- WP_List_Table column header arrays verified clean across all seven list tables.
+- `.pot` files generated via `wp i18n make-pot` for both plugin (253 KB) and parent theme (15 KB); committed under each component's `languages/` directory.
+
+**Store architecture split** — `library_items` was the wrong home for non-book merchandise (polo shirts, lapel pins).
+- Added `store_description` column to `library_items` as marketing copy, distinct from the catalog's physical/bibliographic description. Storefront prefers `store_description` and falls back gracefully.
+- New `sp_store_products` table for pure merchandise (title, SKU, description, price, image_url, store_category, stock_qty, active, sort_order). Dedicated "Store Products" admin (list + add/edit).
+- `sp_order_items.library_item_id` is now nullable; new `product_id` column added (also nullable). A line references exactly one of the two sources.
+- Unified storefront listing merges library-for-sale rows with pure store products into one consistent shape. Cards emit `data-source` so the cart knows which table to look up at Add-to-Cart time.
+- Cart entries now `{source, id, qty}`; legacy `{item_id, qty}` entries auto-migrate on read. AJAX handlers (add, update, remove) all source-aware.
+- Checkout validates against the right table per entry, writes `library_item_id` OR `product_id` to the order line, and decrements product stock on purchase (library items never decremented — catalog stays intact). Storefront surfaces "Sold out" when stock hits zero.
+
+**Committees — first-class** — the code referenced `sp_committees` in several places but the table never existed (dead JOINs, "Committee #1" fallback labels).
+- New `sp_committees` table (name, slug, description, chair_user_id, active, sort_order, timestamps).
+- Dedicated "Committees" admin (list with member counts joined from `volunteer_roles`, add/edit form with chair picker).
+- Volunteer-opportunity edit form's committee dropdown now populates; volunteer-opportunity list shows committee names instead of numeric IDs.
+
+**Meetings & Minutes** — new module covering Board, Membership (general), and Committee meetings in one schema.
+- New `sp_meetings` table with a `meeting_type` discriminator and nullable `committee_id` (required only when type=committee).
+- Admin page at Governance → Meetings & Minutes — filter by type and committee, add/edit form captures title, date, location, attendance, agenda URL, minutes URL, inline notes (HTML), visibility (public / members-only / committee-only; the latter demotes to members-only for board/membership meetings).
+- File handling mirrors Newsletters and Documents — upload PDF via Media Library, paste URL.
+
+**Full-site export** (Settings → Export & Backup) — one-click ZIP containing `societypress.sql` (every `sp_*` table dumped; member fields decrypted to plaintext for portability) plus a `README.txt` with restore steps. Sane PHP timeout/memory bumps for larger societies. Uploads excluded by design (admin copies `wp-content/uploads/` separately).
+
+**GDPR donations** — exporter and eraser were already wired; cleaned up i18n and rewrote the eraser around pseudonymization: clears donor identifiers (name, email, user_id link, notes), flips `is_anonymous` → 1, retains amount/date/campaign/payment method per IRS recordkeeping rules (GDPR Article 17(3)(b) carve-out).
+
+**PWA — manifest + conservative service worker**
+- Web app manifest at `?sp_manifest=1` emits real society-branded JSON (name, theme color pulled from settings, icons).
+- `<head>` carries `rel="manifest"`, `theme-color`, `apple-mobile-web-app-capable`, `apple-touch-icon` — sites are installable to phone home screens.
+- Service worker at `?sp_sw=1` with a conservative cache strategy: pages network-first with a friendly offline fallback page only when the network is fully dead; static assets (CSS, JS, fonts, images) cache-first with version-stamp invalidation (cache name includes `SOCIETYPRESS_VERSION`); non-GET requests and admin/login/AJAX/REST/cron paths never intercepted; cross-origin requests passed through. Registered idempotently from `wp_footer`.
+
+**De-branded** — every society identifiers reference removed from the shippable plugin and parent theme. Theme registry entry deleted. `Society Publication` acq_code option replaced with `Society Publication`. Placeholders generalized. local cities kept in the Central Time label (plus Houston, Dallas, Austin, Chicago) because it's a city, not an organization. the society-specific work for samplesociety.com lives separately in its own child theme.
+
+**Documentation**
+- `Documentation/ENS-MIGRATION-GUIDE.md` — 230-line Harold-friendly walkthrough covering export from ENS, install of SocietyPress, import, verify, cutover, troubleshooting.
+
+---
+
 ## v1.0.7 — 2026-04-06
 
 ### Session: Store Shipping Address + Label Printing

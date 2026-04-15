@@ -21,6 +21,29 @@
  */
 
 // ============================================================================
+// EARLY PHP VERSION GUARD
+// ============================================================================
+// WHY: SocietyPress requires PHP 8.0+. The function bodies later in this file
+// use PHP 8.0+ syntax (match, nullsafe, named args), which PHP 7.x rejects at
+// parse time — meaning a truly old host produces a generic 500 with no useful
+// message. This guard uses only PHP 5.x-compatible syntax so it can fire on
+// any host that still successfully parses the surrounding code (e.g., partial
+// parsers, opcache edge cases, or PHP variants with looser parsing). For hosts
+// where the parser hard-rejects the whole file before reaching this line, the
+// guard is harmless dead weight — but it costs nothing to leave in.
+if ( PHP_VERSION_ID < 80000 ) {
+    header( 'Content-Type: text/html; charset=utf-8' );
+    echo '<!doctype html><meta charset="utf-8"><title>PHP Version Too Old</title>'
+        . '<div style="font-family:system-ui,sans-serif;max-width:600px;margin:60px auto;padding:24px;border:1px solid #e5e7eb;border-radius:8px">'
+        . '<h1 style="margin-top:0;color:#991B1B">PHP version too old</h1>'
+        . '<p>SocietyPress requires PHP 8.0 or newer. This server is running PHP '
+        . htmlspecialchars( PHP_VERSION, ENT_QUOTES, 'UTF-8' ) . '.</p>'
+        . '<p>Most cPanel hosts let you change the PHP version under the "MultiPHP Manager" or "PHP Selector" tool. After upgrading to PHP 8.0+, reload this page.</p>'
+        . '</div>';
+    exit( 1 );
+}
+
+// ============================================================================
 // SAFETY CHECKS
 // ============================================================================
 
@@ -30,12 +53,16 @@ if ( php_sapi_name() === 'cli' ) {
     exit( 1 );
 }
 
-// If WordPress is already installed in this directory, don't run
-if ( file_exists( __DIR__ . '/wp-config.php' ) && file_exists( __DIR__ . '/wp-includes/version.php' ) ) {
+// WHY OR (not AND): Either file alone signals a partial or full WordPress
+// install in this directory. A failed install can leave wp-config.php on
+// disk without wp-includes/version.php (or vice versa) — using AND would
+// let the installer overwrite a half-finished install, potentially
+// destroying a wp-config.php with the only copy of the DB password.
+if ( file_exists( __DIR__ . '/wp-config.php' ) || file_exists( __DIR__ . '/wp-includes/version.php' ) ) {
     sp_installer_die(
         'WordPress Is Already Installed',
-        'A WordPress installation already exists in this directory. If you need to reinstall, '
-        . 'remove the existing files first. If SocietyPress is already running, you can safely '
+        'A WordPress installation already exists in this directory (or a previous install left files behind). If you need to reinstall, '
+        . 'remove the existing wp-config.php and wp-includes/ directory first. If SocietyPress is already running, you can safely '
         . 'delete this sp-installer.php file.'
     );
 }
@@ -55,22 +82,19 @@ define( 'SP_INSTALLER_SALT_URL',    'https://api.wordpress.org/secret-key/1.1/sa
 // to know them. The config file lives outside public_html so it's never web-accessible.
 // When this file exists, the installer hides the DB fields and shows "Pre-configured."
 // On a real install (no config file), the full DB form is shown.
-// WHY: We check multiple common paths because different hosts put the home
-// directory in different places, and $_SERVER['HOME'] isn't always set.
-$sp_demo_config = '';
-$sp_demo_candidates = [
-    dirname( $_SERVER['DOCUMENT_ROOT'] ) . '/private/sp-demo-config.php',
-    ( $_SERVER['HOME'] ?? '' ) . '/private/sp-demo-config.php',
-    '/home/' . ( $_SERVER['USER'] ?? get_current_user() ) . '/private/sp-demo-config.php',
-    dirname( dirname( $_SERVER['DOCUMENT_ROOT'] ) ) . '/private/sp-demo-config.php',
-];
-foreach ( $sp_demo_candidates as $candidate ) {
-    if ( $candidate && file_exists( $candidate ) ) {
-        $sp_demo_config = $candidate;
-        break;
-    }
+//
+// SECURITY: Earlier this loop walked $_SERVER['DOCUMENT_ROOT'], $_SERVER['HOME'],
+// and $_SERVER['USER'] to build candidate paths. Those values can be influenced
+// by request headers (Host:) or by misconfigured shared-hosting layouts, and the
+// resolved path then went straight into require_once — i.e., attacker-influenced
+// arbitrary file include. We now require the demo config to be at one fixed
+// absolute path that has nothing to do with $_SERVER. If the file isn't there,
+// demo mode is simply off.
+$sp_demo_config = '/home/charle24/private/sp-demo-config.php';
+if ( ! file_exists( $sp_demo_config ) ) {
+    $sp_demo_config = '';
 }
-define( 'SP_INSTALLER_DEMO_MODE', ! empty( $sp_demo_config ) );
+define( 'SP_INSTALLER_DEMO_MODE', $sp_demo_config !== '' );
 if ( SP_INSTALLER_DEMO_MODE ) {
     require_once $sp_demo_config;
 }
@@ -500,8 +524,8 @@ function sp_installer_show_form(): void {
                     <th><label for="org_address">Mailing Address</label></th>
                     <td>
                         <textarea id="org_address" name="org_address" rows="3"
-                                  placeholder="Street address, city, state, zip"><?php echo htmlspecialchars( $saved['org_address'] ?? '' ); ?></textarea>
-                        <p class="desc">Your society's mailing address. Shown on the contact page and in emails.</p>
+                                  placeholder="Optional — P.O. Box or society address"><?php echo htmlspecialchars( $saved['org_address'] ?? '' ); ?></textarea>
+                        <p class="desc">Your society's public address, not your personal home address. Leave blank if your society doesn't publish one.</p>
                     </td>
                 </tr>
                 <tr>
@@ -511,6 +535,15 @@ function sp_installer_show_form(): void {
                                value="<?php echo htmlspecialchars( $saved['org_phone'] ?? '' ); ?>"
                                placeholder="Optional">
                         <p class="desc">Leave blank if your society doesn't have a public phone number.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="org_email">Contact Email</label></th>
+                    <td>
+                        <input type="email" id="org_email" name="org_email"
+                               value="<?php echo htmlspecialchars( $saved['org_email'] ?? '' ); ?>"
+                               placeholder="Optional — e.g., info@yoursociety.org">
+                        <p class="desc">A public email for your society (not your personal email). Leave blank to set later.</p>
                     </td>
                 </tr>
                 <tr>
@@ -624,6 +657,7 @@ function sp_installer_process(): void {
     $admin_pass2 = $_POST['admin_pass2'] ?? '';
 
     // SocietyPress settings collected in the installer form
+    $org_email          = trim( $_POST['org_email'] ?? '' );
     $org_address        = trim( $_POST['org_address'] ?? '' );
     $org_phone          = trim( $_POST['org_phone'] ?? '' );
     $membership_period  = trim( $_POST['membership_period'] ?? 'annual' );
@@ -633,10 +667,13 @@ function sp_installer_process(): void {
     // If the DB connection fails or anything else goes wrong, Harold gets
     // sent back to the form with all his data still filled in. Nobody
     // should have to retype 12 fields because of a wrong DB password.
+    // WHY no passwords: session files on shared hosting (/tmp/sess_*) can be
+    // readable by other PHP processes on the same server. Repopulating a
+    // password field is a convenience; a leaked DB or admin password is a
+    // compromise. Both db_pass and admin_pass are deliberately omitted.
     $_SESSION['sp_form_data'] = [
         'db_name'   => $db_name,
         'db_user'   => $db_user,
-        'db_pass'   => $db_pass,
         'db_host'   => $db_host,
         'db_prefix' => $db_prefix,
         'site_title'  => $site_title,
@@ -644,11 +681,12 @@ function sp_installer_process(): void {
         'admin_first' => $admin_first,
         'admin_last'  => $admin_last,
         'admin_user'  => $admin_user,
+        'org_email'          => $org_email,
         'org_address'        => $org_address,
         'org_phone'          => $org_phone,
         'membership_period'  => $membership_period,
         'membership_start'   => $membership_start,
-        // Passwords deliberately NOT saved to session for security
+        // Passwords (db_pass, admin_pass) deliberately NOT saved to session
     ];
 
     // Validate
@@ -661,8 +699,13 @@ function sp_installer_process(): void {
     }
     if ( empty( $admin_first ) ) $errors[] = 'First name is required.';
     if ( empty( $admin_last ) )  $errors[] = 'Last name is required.';
-    if ( empty( $admin_user ) || strlen( $admin_user ) < 3 ) {
-        $errors[] = 'Admin username must be at least 3 characters.';
+    // WHY explicit pattern: the HTML pattern attribute is client-side only and
+    // can be bypassed by anyone POSTing directly. The username flows into a
+    // var_export() call that becomes part of a generated PHP file; while
+    // var_export produces correct PHP literals (so it is not directly
+    // injectable), defense-in-depth says we restrict to a known-safe set.
+    if ( empty( $admin_user ) || ! preg_match( '/^[a-zA-Z0-9_\-.]{3,60}$/', $admin_user ) ) {
+        $errors[] = 'Admin username must be 3–60 characters using only letters, numbers, underscore, hyphen, or period.';
     }
     if ( strlen( $admin_pass ) < 8 ) {
         $errors[] = 'Admin password must be at least 8 characters.';
@@ -672,6 +715,22 @@ function sp_installer_process(): void {
     }
     if ( ! empty( $db_prefix ) && ! preg_match( '/^[a-zA-Z_][a-zA-Z0-9_]*$/', $db_prefix ) ) {
         $errors[] = 'Table prefix must start with a letter or underscore and contain only letters, numbers, and underscores.';
+    }
+    // WHY allowlist: $membership_period gets written into societypress_settings
+    // and is rendered unescaped in some admin contexts. The HTML <select> only
+    // exposes three values, but a direct POST can send anything. Pin to the
+    // allowlist server-side; fall back to 'annual' for any unexpected value.
+    if ( ! in_array( $membership_period, [ 'annual', 'rolling', 'lifetime' ], true ) ) {
+        $membership_period = 'annual';
+    }
+    // WHY db_host pattern: this value flows into wp-config.php via a regex
+    // replacement below. A value containing newlines, quotes, or PHP tokens
+    // could escape the constant string and inject code. Restrict to the
+    // characters legal in a hostname / hostname:port / unix-socket path.
+    if ( $db_host === '' ) {
+        $db_host = 'localhost';
+    } elseif ( ! preg_match( '/^[a-zA-Z0-9._\-:\/]+$/', $db_host ) ) {
+        $errors[] = 'Database host contains invalid characters. Use a hostname like "localhost" or "db.example.com" (port and unix-socket paths are allowed).';
     }
     if ( $errors ) {
         $_SESSION['sp_form_errors'] = $errors;
@@ -734,12 +793,74 @@ function sp_installer_process(): void {
     }
 
     // WordPress ZIP extracts to a "wordpress/" subdirectory — we need to move
-    // the contents up to the install directory
-    $zip->extractTo( $install_dir );
+    // the contents up to the install directory.
+    //
+    // SECURITY: We do NOT use $zip->extractTo() because that performs no path
+    // validation. A ZIP entry named "../../etc/cron.d/evil" would escape the
+    // install directory and write anywhere the web user can reach. The
+    // wordpress.org ZIP is trusted, but trust is not a control — a MITM, a
+    // compromised mirror, or a corrupt download could deliver a crafted ZIP.
+    // We iterate entries manually and reject any whose normalized path falls
+    // outside the install directory.
+    $install_dir_real = realpath( $install_dir );
+    if ( $install_dir_real === false ) {
+        $zip->close();
+        sp_installer_die( 'Extract Failed', 'Install directory could not be resolved.' );
+    }
+    for ( $i = 0; $i < $zip->numFiles; $i++ ) {
+        $entry_name = $zip->getNameIndex( $i );
+        if ( $entry_name === false || $entry_name === '' ) {
+            continue;
+        }
+        // Reject any entry containing path-traversal sequences or null bytes,
+        // and reject absolute paths (Windows drive letters too).
+        if ( strpos( $entry_name, "\0" ) !== false
+             || strpos( $entry_name, '..' ) !== false
+             || $entry_name[0] === '/'
+             || preg_match( '/^[A-Za-z]:/', $entry_name ) ) {
+            $zip->close();
+            sp_installer_die( 'Extract Failed', 'WordPress archive contains an unsafe entry path. Aborting for safety.' );
+        }
+        $target  = $install_dir_real . DIRECTORY_SEPARATOR . $entry_name;
+        $is_dir  = ( substr( $entry_name, -1 ) === '/' );
+        if ( $is_dir ) {
+            if ( ! is_dir( $target ) ) {
+                @mkdir( $target, 0755, true );
+            }
+            continue;
+        }
+        $parent = dirname( $target );
+        if ( ! is_dir( $parent ) ) {
+            @mkdir( $parent, 0755, true );
+        }
+        // Final containment check: the resolved parent directory must be the
+        // install dir or beneath it. realpath() returns false if the path
+        // doesn't exist, but mkdir above guarantees it does at this point.
+        $parent_real = realpath( $parent );
+        if ( $parent_real === false || strpos( $parent_real, $install_dir_real ) !== 0 ) {
+            $zip->close();
+            sp_installer_die( 'Extract Failed', 'WordPress archive entry resolved outside the install directory. Aborting for safety.' );
+        }
+        $stream = $zip->getStream( $entry_name );
+        if ( $stream === false ) {
+            continue;
+        }
+        $out = fopen( $target, 'wb' );
+        if ( $out !== false ) {
+            stream_copy_to_stream( $stream, $out );
+            fclose( $out );
+        }
+        if ( is_resource( $stream ) ) {
+            fclose( $stream );
+        }
+    }
     $zip->close();
     @unlink( $wp_zip_path );
 
-    // Move files from wordpress/ subdirectory to install root
+    // Move files from wordpress/ subdirectory to install root.
+    // SECURITY: Source paths come from our own filesystem walk after the
+    // safe extraction above, so path traversal is not a concern here, but
+    // we still verify each target is inside $install_dir as belt-and-braces.
     $wp_subdir = $install_dir . '/wordpress';
     if ( is_dir( $wp_subdir ) ) {
         $items = new RecursiveIteratorIterator(
@@ -747,7 +868,11 @@ function sp_installer_process(): void {
             RecursiveIteratorIterator::SELF_FIRST
         );
         foreach ( $items as $item ) {
-            $target = $install_dir . '/' . substr( $item->getPathname(), strlen( $wp_subdir ) + 1 );
+            $relative = substr( $item->getPathname(), strlen( $wp_subdir ) + 1 );
+            if ( strpos( $relative, '..' ) !== false ) {
+                continue; // belt-and-braces; should never trigger after safe extract
+            }
+            $target = $install_dir . '/' . $relative;
             if ( $item->isDir() ) {
                 @mkdir( $target, 0755, true );
             } else {
@@ -784,11 +909,24 @@ function sp_installer_process(): void {
 
     $config = file_get_contents( $config_sample );
 
-    // Replace database constants
-    $config = str_replace( "database_name_here", $db_name, $config );
-    $config = str_replace( "username_here", $db_user, $config );
-    $config = str_replace( "password_here", $db_pass, $config );
-    $config = str_replace( "localhost", $db_host, $config );
+    // Replace database constants.
+    // WHY preg_replace per constant (not str_replace): wp-config-sample.php
+    // contains the literal "localhost" in inline comments AND in the DB_HOST
+    // line. A naive str_replace( "localhost", $db_host, $config ) would also
+    // overwrite every comment containing the word — and worse, the user's
+    // db_host value would land verbatim in those positions, including any
+    // quotes or PHP tokens it contained. Targeting only the constant's
+    // single-quoted string and addslashes()-escaping the user value
+    // contains both problems.
+    $sp_set_config_value = function ( string $constant, string $value, string $config ): string {
+        $escaped = addslashes( $value ); // safe for single-quoted PHP literal
+        $pattern = "/(define\(\s*'" . preg_quote( $constant, '/' ) . "'\s*,\s*')[^']*('\s*\)\s*;)/";
+        return preg_replace( $pattern, '${1}' . $escaped . '${2}', $config, 1 );
+    };
+    $config = $sp_set_config_value( 'DB_NAME',     $db_name, $config );
+    $config = $sp_set_config_value( 'DB_USER',     $db_user, $config );
+    $config = $sp_set_config_value( 'DB_PASSWORD', $db_pass, $config );
+    $config = $sp_set_config_value( 'DB_HOST',     $db_host, $config );
     $config = preg_replace( '/\$table_prefix\s*=\s*\'wp_\'/', "\$table_prefix = '{$db_prefix}'", $config );
 
     // Replace salt block
@@ -828,12 +966,23 @@ function sp_installer_process(): void {
  *
  * Two jobs, in two separate requests:
  *
- * 1. login_init hook — Auto-login. The bridge script writes a one-time token
- *    file containing the admin user ID. When WordPress bounces the
- *    unauthenticated user to wp-login.php, this hook reads the token, sets the
- *    auth cookie in a fully-initialized WordPress context, deletes the token,
- *    and redirects to wp-admin. This avoids calling wp_set_auth_cookie() during
- *    the WP_INSTALLING bootstrap where cookie constants are unreliable.
+ * 1. login_init hook — Auto-login. The bridge script stores a one-time
+ *    transient in the DB containing the admin user ID plus a random 256-bit
+ *    secret, then redirects the browser to wp-login.php with that secret in
+ *    the sp_token query parameter. This hook reads the transient, verifies
+ *    the secret matches sp_token via hash_equals (constant-time), deletes
+ *    the transient, sets the auth cookie, and redirects to wp-admin.
+ *
+ *    WHY a secret, not just a file: without the secret, any request to
+ *    wp-login.php between bridge-completion and legitimate first visit
+ *    would trigger auto-login as admin. The secret is 256 bits of random
+ *    and is only ever in the redirect URL the bridge just sent, so only
+ *    the user whose browser followed that redirect can log in.
+ *
+ *    WHY a transient, not a file: the token file would sit in wp-content,
+ *    which is web-accessible on most hosts. A crafted GET to the token
+ *    filename could leak the secret. Transients live in the DB and are
+ *    not reachable over HTTP.
  *
  * 2. admin_init hook — Activate SocietyPress + parent theme, apply installer
  *    settings, clean up default WordPress cruft, and self-destruct.
@@ -841,17 +990,29 @@ function sp_installer_process(): void {
 
 // ---- Auto-login on first hit to wp-login.php ----
 add_action( 'login_init', function () {
-    $token_file = ABSPATH . 'wp-content/sp-auto-login.token';
-    if ( ! file_exists( $token_file ) ) {
+    $data = get_transient( 'sp_auto_login' );
+    if ( ! is_array( $data ) ) {
         return;
     }
 
-    $user_id = (int) trim( file_get_contents( $token_file ) );
-    @unlink( $token_file );
+    $user_id = (int) ( $data['user_id'] ?? 0 );
+    $secret  = (string) ( $data['secret']  ?? '' );
+    $provided = (string) ( $_GET['sp_token'] ?? '' );
 
-    if ( $user_id < 1 ) {
+    if ( $user_id < 1 || $secret === '' || $provided === '' ) {
+        // Leave the transient in place so the legitimate click (which carries
+        // the correct token) can still consume it. The transient expires on
+        // its own after a few minutes.
         return;
     }
+
+    if ( ! hash_equals( $secret, $provided ) ) {
+        // Mismatch — probably a crawler or scanner. Don't burn the transient.
+        return;
+    }
+
+    // Secret matched. Single-use: delete before authenticating.
+    delete_transient( 'sp_auto_login' );
 
     // Set the auth cookie in a normal WordPress context where COOKIEPATH,
     // COOKIE_DOMAIN, and session token infrastructure are all correct.
@@ -1049,7 +1210,7 @@ MUPLUGIN;
     // a second wizard step.
     $installer_config = [
         'organization_name'    => $site_title,
-        'organization_email'   => $admin_email,
+        'organization_email'   => $org_email ?: '',
         'organization_address' => $org_address,
         'organization_phone'   => $org_phone,
         'membership_period_type' => $membership_period,
@@ -1114,25 +1275,34 @@ MUPLUGIN;
         . '    wp_die( "Installation failed: " . $result->get_error_message() );' . "\n"
         . '}' . "\n"
         . "\n"
-        . '// Write a one-time auto-login token for the mu-plugin to pick up.' . "\n"
+        . '// Write a one-time auto-login transient for the mu-plugin to pick up.' . "\n"
         . '// WHY: wp_set_auth_cookie() does not work reliably during WP_INSTALLING' . "\n"
         . '// because cookie constants (COOKIEPATH, COOKIE_DOMAIN) are derived from' . "\n"
         . '// the siteurl option, which is set AFTER wp_install() runs but the' . "\n"
         . '// constants were already defined (with wrong values) during bootstrap.' . "\n"
-        . '// Instead, we hand the user ID to the mu-plugin which runs in a normal' . "\n"
-        . '// WordPress context where everything is properly initialized.' . "\n"
-        . '$token_file = ABSPATH . "wp-content/sp-auto-login.token";' . "\n"
-        . 'file_put_contents( $token_file, $result["user_id"] );' . "\n"
+        . '// Instead, we hand a (user_id, secret) pair to the mu-plugin which runs' . "\n"
+        . '// in a normal WordPress context where everything is properly initialized.' . "\n"
+        . '// WHY a secret: without one, any hit to wp-login.php between now and the' . "\n"
+        . '// legitimate browser following the redirect below would trigger auto-login' . "\n"
+        . '// as admin. The secret is 256 bits of random — only carried in the URL we' . "\n"
+        . '// are about to redirect to — so only that one request can consume the token.' . "\n"
+        . '// WHY a transient (not a file): a token file in wp-content is web-reachable' . "\n"
+        . '// on most hosts. Transients live in the DB and cannot be read over HTTP.' . "\n"
+        . '$sp_token_secret = bin2hex( random_bytes( 32 ) );' . "\n"
+        . 'set_transient( "sp_auto_login", array(' . "\n"
+        . '    "user_id" => (int) $result["user_id"],' . "\n"
+        . '    "secret"  => $sp_token_secret,' . "\n"
+        . '), 5 * MINUTE_IN_SECONDS );' . "\n"
         . "\n"
         . '// Self-destruct — remove bridge script and main installer' . "\n"
         . '@unlink( __FILE__ );' . "\n"
         . '$installer = dirname( __FILE__ ) . "/sp-installer.php";' . "\n"
         . 'if ( file_exists( $installer ) ) { @unlink( $installer ); }' . "\n"
         . "\n"
-        . '// Redirect to wp-admin. The user is not yet authenticated, so WordPress' . "\n"
-        . '// will bounce them to wp-login.php, where the mu-plugin\'s login_init' . "\n"
-        . '// hook picks up the auto-login token and logs them in.' . "\n"
-        . 'header( "Location: " . rtrim( dirname( $_SERVER["SCRIPT_NAME"] ), "/" ) . "/wp-admin/" );' . "\n"
+        . '// Redirect directly to wp-login.php carrying the secret. The mu-plugin\'s' . "\n"
+        . '// login_init hook reads the transient, verifies sp_token matches the stored' . "\n"
+        . '// secret, sets the auth cookie, and redirects to wp-admin.' . "\n"
+        . 'header( "Location: " . rtrim( dirname( $_SERVER["SCRIPT_NAME"] ), "/" ) . "/wp-login.php?sp_token=" . $sp_token_secret );' . "\n"
         . 'exit;' . "\n";
 
     file_put_contents( $bridge_script, $bridge_code );
@@ -1235,6 +1405,43 @@ MUPLUGIN;
         }
     }
 
+    // SECURITY: Both extraction paths build $target by concatenating user-
+    // controllable ZIP entry names onto known install paths. A crafted entry
+    // like "../../../etc/cron.d/evil" would escape the wp-content directory.
+    // This helper validates every write: the entry name must be free of path
+    // traversal sequences, and the resolved parent directory must live inside
+    // wp-content. We close the zip and abort on any violation rather than
+    // silently skip — a corrupt or malicious bundle is not safe to recover from.
+    $wp_content_real = realpath( $install_dir . '/wp-content' );
+    if ( $wp_content_real === false ) {
+        @mkdir( $install_dir . '/wp-content', 0755, true );
+        $wp_content_real = realpath( $install_dir . '/wp-content' );
+    }
+    $sp_safe_extract = function ( string $entry_name, string $target, ZipArchive $zip, int $index ) use ( $wp_content_real, $sp_zip_path ) {
+        if ( strpos( $entry_name, "\0" ) !== false
+             || strpos( $entry_name, '..' ) !== false
+             || ( $entry_name !== '' && $entry_name[0] === '/' )
+             || preg_match( '/^[A-Za-z]:/', $entry_name ) ) {
+            $zip->close();
+            @unlink( $sp_zip_path );
+            sp_installer_die( 'Extract Failed', 'SocietyPress archive contains an unsafe entry path. Aborting for safety.' );
+        }
+        $is_dir = ( substr( $entry_name, -1 ) === '/' );
+        $parent = $is_dir ? $target : dirname( $target );
+        if ( ! is_dir( $parent ) ) {
+            @mkdir( $parent, 0755, true );
+        }
+        $parent_real = realpath( $parent );
+        if ( $parent_real === false || $wp_content_real === false || strpos( $parent_real, $wp_content_real ) !== 0 ) {
+            $zip->close();
+            @unlink( $sp_zip_path );
+            sp_installer_die( 'Extract Failed', 'SocietyPress archive entry resolved outside wp-content. Aborting for safety.' );
+        }
+        if ( ! $is_dir ) {
+            file_put_contents( $target, $zip->getFromIndex( $index ) );
+        }
+    };
+
     if ( $is_bundle ) {
         // Bundle format: extract directly
         for ( $i = 0; $i < $zip->numFiles; $i++ ) {
@@ -1243,23 +1450,13 @@ MUPLUGIN;
             // Plugin: societypress/* → plugins/societypress/*
             if ( strpos( $name, 'societypress/' ) === 0 && strpos( $name, 'themes/' ) !== 0 ) {
                 $target = $install_dir . '/wp-content' . '/plugins/' . $name;
-                if ( substr( $name, -1 ) === '/' ) {
-                    @mkdir( $target, 0755, true );
-                } else {
-                    @mkdir( dirname( $target ), 0755, true );
-                    file_put_contents( $target, $zip->getFromIndex( $i ) );
-                }
+                $sp_safe_extract( $name, $target, $zip, $i );
             }
 
             // Themes: themes/* → themes/*
             if ( strpos( $name, 'themes/' ) === 0 ) {
                 $target = $install_dir . '/wp-content' . '/' . $name;
-                if ( substr( $name, -1 ) === '/' ) {
-                    @mkdir( $target, 0755, true );
-                } else {
-                    @mkdir( dirname( $target ), 0755, true );
-                    file_put_contents( $target, $zip->getFromIndex( $i ) );
-                }
+                $sp_safe_extract( $name, $target, $zip, $i );
             }
         }
     } elseif ( $top_dir ) {
@@ -1276,18 +1473,14 @@ MUPLUGIN;
             if ( strpos( $name, "{$top_dir}/plugin/" ) === 0 ) {
                 $rel = substr( $name, strlen( "{$top_dir}/plugin/" ) );
                 if ( $rel === '' ) continue;
-                $target = $plugin_dir . $rel;
-                if ( substr( $name, -1 ) === '/' ) { @mkdir( $target, 0755, true ); }
-                else { @mkdir( dirname( $target ), 0755, true ); file_put_contents( $target, $zip->getFromIndex( $i ) ); }
+                $sp_safe_extract( $rel, $plugin_dir . $rel, $zip, $i );
             }
 
             // Parent theme
             if ( strpos( $name, "{$top_dir}/theme/" ) === 0 && strpos( $name, "{$top_dir}/theme-" ) !== 0 ) {
                 $rel = substr( $name, strlen( "{$top_dir}/theme/" ) );
                 if ( $rel === '' || strpos( $rel, 'saghs/' ) === 0 ) continue;
-                $target = $install_dir . '/wp-content' . '/themes/societypress/' . $rel;
-                if ( substr( $name, -1 ) === '/' ) { @mkdir( $target, 0755, true ); }
-                else { @mkdir( dirname( $target ), 0755, true ); file_put_contents( $target, $zip->getFromIndex( $i ) ); }
+                $sp_safe_extract( $rel, $install_dir . '/wp-content' . '/themes/societypress/' . $rel, $zip, $i );
             }
 
             // Child themes
@@ -1295,9 +1488,7 @@ MUPLUGIN;
                 if ( strpos( $name, "{$top_dir}/theme-{$ct}/" ) === 0 ) {
                     $rel = substr( $name, strlen( "{$top_dir}/theme-{$ct}/" ) );
                     if ( $rel === '' ) continue;
-                    $target = $install_dir . '/wp-content' . "/themes/{$ct}/" . $rel;
-                    if ( substr( $name, -1 ) === '/' ) { @mkdir( $target, 0755, true ); }
-                    else { @mkdir( dirname( $target ), 0755, true ); file_put_contents( $target, $zip->getFromIndex( $i ) ); }
+                    $sp_safe_extract( $rel, $install_dir . '/wp-content' . "/themes/{$ct}/" . $rel, $zip, $i );
                 }
             }
         }
@@ -1388,6 +1579,12 @@ function sp_installer_show_complete(): void {
  * Tries cURL first, falls back to file_get_contents.
  */
 function sp_installer_download( string $url, string $dest ): bool {
+    // WHY a hard size cap: WordPress core is ~25 MB and the SocietyPress
+    // bundle is ~9 MB. A compromised CDN or bad mirror serving an unbounded
+    // response could exhaust disk space or PHP memory before the timeout
+    // fires. 200 MB is well above any legitimate payload while still bounded.
+    $max_bytes = 200 * 1024 * 1024;
+
     // Try cURL first
     if ( function_exists( 'curl_init' ) ) {
         $ch = curl_init( $url );
@@ -1401,6 +1598,15 @@ function sp_installer_download( string $url, string $dest ): bool {
             CURLOPT_TIMEOUT         => 300,
             CURLOPT_SSL_VERIFYPEER  => true,
             CURLOPT_USERAGENT       => 'SocietyPress-Installer/1.0',
+            // CURLOPT_MAXFILESIZE checks the Content-Length header (when
+            // present) up front and aborts early. CURLOPT_PROGRESSFUNCTION
+            // catches servers that omit Content-Length by aborting once the
+            // running total crosses the cap.
+            CURLOPT_MAXFILESIZE     => $max_bytes,
+            CURLOPT_NOPROGRESS      => false,
+            CURLOPT_PROGRESSFUNCTION => function ( $resource, $dl_total, $dl_now, $ul_total, $ul_now ) use ( $max_bytes ) {
+                return ( $dl_now > $max_bytes ) ? 1 : 0; // non-zero return aborts
+            },
         ] );
 
         $success = curl_exec( $ch );
@@ -1408,7 +1614,7 @@ function sp_installer_download( string $url, string $dest ): bool {
         curl_close( $ch );
         fclose( $fp );
 
-        if ( $success && $code >= 200 && $code < 400 && filesize( $dest ) > 1000 ) {
+        if ( $success && $code >= 200 && $code < 400 && filesize( $dest ) > 1000 && filesize( $dest ) <= $max_bytes ) {
             return true;
         }
         @unlink( $dest );
@@ -1423,8 +1629,8 @@ function sp_installer_download( string $url, string $dest ): bool {
                 'follow_location' => true,
             ],
         ] );
-        $data = @file_get_contents( $url, false, $ctx );
-        if ( $data && strlen( $data ) > 1000 ) {
+        $data = @file_get_contents( $url, false, $ctx, 0, $max_bytes + 1 );
+        if ( $data && strlen( $data ) > 1000 && strlen( $data ) <= $max_bytes ) {
             return (bool) file_put_contents( $dest, $data );
         }
     }
@@ -1532,7 +1738,11 @@ function sp_installer_rmdir( string $dir ): void {
 function sp_installer_die( string $title, string $message ): void {
     sp_installer_render_page( $title, function () use ( $message ) {
         echo '<div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 20px; margin-bottom: 24px;">';
-        echo '<p style="color: #991B1B; margin: 0;">' . $message . '</p>';
+        // WHY htmlspecialchars: most callers pass static literals, but a few
+        // include dynamic content (like raw mysqli error messages, server
+        // version strings, or paths). Escaping here means no caller can
+        // accidentally inject unescaped output into the page.
+        echo '<p style="color: #991B1B; margin: 0;">' . htmlspecialchars( $message, ENT_QUOTES, 'UTF-8' ) . '</p>';
         echo '</div>';
         echo '<a href="javascript:history.back()" class="sp-btn" style="background: #6B7280;">Go Back</a>';
     } );

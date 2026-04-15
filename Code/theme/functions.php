@@ -23,18 +23,17 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-// WHY the defined() guard: Child themes (e.g. the SAGHS rebuild) were
-// cloned from the parent template and kept the same
-// SOCIETYPRESS_THEME_VERSION define at the top of their functions.php.
-// In WordPress, child theme functions.php loads BEFORE the parent's, so
-// the child defines the constant first and the parent's unguarded define()
-// triggers a PHP warning on every page load ("Constant already defined").
-// Wrapping the define in an if-not-defined is the standard defensive
-// pattern and keeps the parent theme safe against child theme copies.
-// If a child theme wants its own version it should define a
-// differently-named constant (e.g. SAGHS_THEME_VERSION).
+// WHY the defined() guard: Child themes are sometimes cloned from the
+// parent template and inadvertently kept the same SOCIETYPRESS_THEME_VERSION
+// define at the top of their functions.php. In WordPress, child theme
+// functions.php loads BEFORE the parent's, so the child defines the
+// constant first and the parent's unguarded define() triggers a PHP
+// warning on every page load ("Constant already defined"). Wrapping the
+// define in an if-not-defined is the standard defensive pattern and keeps
+// the parent theme safe against child theme copies. If a child theme wants
+// its own version it should define a differently-named constant.
 if ( ! defined( 'SOCIETYPRESS_THEME_VERSION' ) ) {
-	define( 'SOCIETYPRESS_THEME_VERSION', '1.0.18' );
+	define( 'SOCIETYPRESS_THEME_VERSION', '1.0.19' );
 }
 
 
@@ -85,6 +84,83 @@ add_action( 'after_setup_theme', function () {
 
 
 // ============================================================================
+// CONDITIONAL MENU ITEMS — LOGIN / MEMBERSHIP STATE
+// ============================================================================
+/**
+ * Show or hide nav menu items based on the current visitor's login and
+ * membership state. Driven entirely by CSS classes set on each menu item
+ * via Appearance → Menus (enable the CSS Classes field under Screen
+ * Options if it isn't already visible).
+ *
+ * Supported classes:
+ *
+ *   sp-hide-when-logged-in
+ *     Item vanishes for anyone who is signed in. Pair with sp-nav-cta on a
+ *     "Become a Member" entry so prospective members see the CTA but
+ *     existing members don't get re-pitched on every page.
+ *
+ *   sp-show-when-expiring
+ *     Item ONLY appears when the current user is a member whose membership
+ *     is within the renewal window (or already expired). Use on a "Renew
+ *     Now" entry so members get a timely nudge without pestering members
+ *     who just paid. Renewal window reuses the longest enabled interval
+ *     from Settings → Renewals (30d / 15d / 7d), default 30.
+ *
+ * We also prune orphaned submenu items whose parent was removed, so we
+ * never leave dangling children rooted at a dropped ancestor.
+ */
+add_filter( 'wp_nav_menu_objects', function ( $items ) {
+
+    $is_logged_in = is_user_logged_in();
+
+    // Only compute renewal status if we actually have menu items that care,
+    // and only when someone is logged in (the check short-circuits for
+    // guests). Avoids a DB query on every menu render for the common case.
+    $renewal_status = null;
+    $needs_renewal_check = false;
+    foreach ( $items as $item ) {
+        $classes = isset( $item->classes ) && is_array( $item->classes ) ? $item->classes : [];
+        if ( in_array( 'sp-show-when-expiring', $classes, true ) ) {
+            $needs_renewal_check = true;
+            break;
+        }
+    }
+    if ( $needs_renewal_check && $is_logged_in && function_exists( 'sp_user_renewal_status' ) ) {
+        $renewal_status = sp_user_renewal_status();
+    }
+    $show_renewal = in_array( $renewal_status, [ 'expiring', 'expired' ], true );
+
+    $removed_ids = [];
+
+    foreach ( $items as $key => $item ) {
+        $classes = isset( $item->classes ) && is_array( $item->classes ) ? $item->classes : [];
+
+        $hide_self = false;
+
+        // Hide "Become a Member"-style items for signed-in visitors
+        if ( $is_logged_in && in_array( 'sp-hide-when-logged-in', $classes, true ) ) {
+            $hide_self = true;
+        }
+
+        // Show "Renew Now"-style items ONLY when the current member is
+        // within (or past) the renewal window. Hide otherwise.
+        if ( in_array( 'sp-show-when-expiring', $classes, true ) && ! $show_renewal ) {
+            $hide_self = true;
+        }
+
+        $parent_gone = in_array( (int) $item->menu_item_parent, $removed_ids, true );
+
+        if ( $hide_self || $parent_gone ) {
+            $removed_ids[] = (int) $item->ID;
+            unset( $items[ $key ] );
+        }
+    }
+
+    return $items;
+} );
+
+
+// ============================================================================
 // ENQUEUE STYLES & SCRIPTS
 // ============================================================================
 
@@ -98,7 +174,7 @@ add_action( 'after_setup_theme', function () {
  * NOTE: When a child theme is active, get_stylesheet_uri() returns the
  * CHILD theme's style.css, not the parent's. The child theme is
  * responsible for enqueuing the parent stylesheet if it needs it
- * (see the SAGHS child theme's functions.php for an example).
+ * (see any of the bundled child themes' functions.php for an example).
  */
 add_action( 'wp_enqueue_scripts', function () {
     // WHY get_template_directory_uri: When a child theme is active,
@@ -158,14 +234,14 @@ add_action( 'wp_enqueue_scripts', function () {
  * WHY: A sidebar gives site admins a place to add search, recent posts,
  * categories, and other widgets. It appears on single post pages by default.
  *
- * Child themes can register additional widget areas (like SAGHS's three
- * footer columns) in their own functions.php without conflicting with this.
+ * Child themes can register additional widget areas (e.g., a three-column
+ * footer) in their own functions.php without conflicting with this one.
  */
 add_action( 'widgets_init', function () {
     register_sidebar([
-        'name'          => 'Sidebar',
+        'name'          => esc_html__( 'Sidebar', 'societypress' ),
         'id'            => 'sidebar-1',
-        'description'   => 'Widgets in this area appear on blog posts and archive pages.',
+        'description'   => esc_html__( 'Widgets in this area appear on blog posts and archive pages.', 'societypress' ),
         'before_widget' => '<div id="%1$s" class="widget %2$s">',
         'after_widget'  => '</div>',
         'before_title'  => '<h3 class="widget-title">',

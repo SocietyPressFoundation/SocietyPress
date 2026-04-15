@@ -20,7 +20,9 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'COASTLINE_THEME_VERSION', '1.1.0' );
+if ( ! defined( 'COASTLINE_THEME_VERSION' ) ) {
+    define( 'COASTLINE_THEME_VERSION', '1.1.0' );
+}
 
 
 /* ============================================================================
@@ -95,9 +97,9 @@ add_action( 'wp_enqueue_scripts', function () {
 add_action( 'widgets_init', function () {
 
     register_sidebar( [
-        'name'          => esc_html__( 'Magazine Sidebar', 'coastline' ),
+        'name'          => esc_html__( 'Magazine Sidebar', 'societypress' ),
         'id'            => 'coastline-sidebar',
-        'description'   => esc_html__( 'Widgets in this area appear in the right sidebar on all pages. Great for upcoming events, newsletter covers, quick links, and calendars.', 'coastline' ),
+        'description'   => esc_html__( 'Widgets in this area appear in the right sidebar on all pages. Great for upcoming events, newsletter covers, quick links, and calendars.', 'societypress' ),
         'before_widget' => '<div id="%1$s" class="widget %2$s">',
         'after_widget'  => '</div>',
         'before_title'  => '<h3 class="widget-title">',
@@ -105,9 +107,9 @@ add_action( 'widgets_init', function () {
     ] );
 
     register_sidebar( [
-        'name'          => esc_html__( 'Footer Column 1', 'coastline' ),
+        'name'          => esc_html__( 'Footer Column 1', 'societypress' ),
         'id'            => 'coastline-footer-1',
-        'description'   => esc_html__( 'First footer column. Typically used for organization info, address, or an about blurb.', 'coastline' ),
+        'description'   => esc_html__( 'First footer column. Typically used for organization info, address, or an about blurb.', 'societypress' ),
         'before_widget' => '<div id="%1$s" class="widget %2$s">',
         'after_widget'  => '</div>',
         'before_title'  => '<h4 class="widget-title">',
@@ -115,9 +117,9 @@ add_action( 'widgets_init', function () {
     ] );
 
     register_sidebar( [
-        'name'          => esc_html__( 'Footer Column 2', 'coastline' ),
+        'name'          => esc_html__( 'Footer Column 2', 'societypress' ),
         'id'            => 'coastline-footer-2',
-        'description'   => esc_html__( 'Second footer column. Typically used for quick links, social media, or contact info.', 'coastline' ),
+        'description'   => esc_html__( 'Second footer column. Typically used for quick links, social media, or contact info.', 'societypress' ),
         'before_widget' => '<div id="%1$s" class="widget %2$s">',
         'after_widget'  => '</div>',
         'before_title'  => '<h4 class="widget-title">',

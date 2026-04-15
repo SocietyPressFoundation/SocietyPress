@@ -24,7 +24,9 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'PRAIRIE_THEME_VERSION', '1.1.0' );
+if ( ! defined( 'PRAIRIE_THEME_VERSION' ) ) {
+    define( 'PRAIRIE_THEME_VERSION', '1.1.0' );
+}
 
 
 /* =============================================================================
@@ -105,8 +107,8 @@ add_action( 'wp_enqueue_scripts', function () {
 
 add_action( 'after_setup_theme', function () {
     register_nav_menus( [
-        'prairie-sidebar-nav' => esc_html__( 'Sidebar Navigation', 'prairie' ),
-        'prairie-top-nav'     => esc_html__( 'Header Links', 'prairie' ),
+        'prairie-sidebar-nav' => esc_html__( 'Sidebar Navigation', 'societypress' ),
+        'prairie-top-nav'     => esc_html__( 'Header Links', 'societypress' ),
     ] );
 } );
 
@@ -123,9 +125,9 @@ add_action( 'after_setup_theme', function () {
 
 add_action( 'widgets_init', function () {
     register_sidebar( [
-        'name'          => esc_html__( 'Prairie Sidebar', 'prairie' ),
+        'name'          => esc_html__( 'Prairie Sidebar', 'societypress' ),
         'id'            => 'prairie-sidebar',
-        'description'   => esc_html__( 'Widgets appear in the left sidebar. Only used if no menu is assigned to the Sidebar Navigation location.', 'prairie' ),
+        'description'   => esc_html__( 'Widgets appear in the left sidebar. Only used if no menu is assigned to the Sidebar Navigation location.', 'societypress' ),
         'before_widget' => '<div id="%1$s" class="widget %2$s">',
         'after_widget'  => '</div>',
         'before_title'  => '<h3 class="widget-title">',

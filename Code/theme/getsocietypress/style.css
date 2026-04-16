@@ -4,7 +4,7 @@ Theme URI: https://getsocietypress.org
 Author: SocietyPress Contributors
 Author URI: https://getsocietypress.org
 Description: The official theme for getsocietypress.org — the home of SocietyPress, a free, open-source WordPress platform for genealogical society administrators.
-Version: 0.05d
+Version: 0.08d
 License: GNU General Public License v2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 Text Domain: getsocietypress
@@ -1651,6 +1651,93 @@ body {
 
 .page-content .container {
     max-width: 800px;
+}
+
+/* bbPress forum pages need the full container width so the forum table
+   isn't squeezed into the narrow text-page column. */
+body.bbpress .page-content .container {
+    max-width: var(--container-max-width);
+}
+
+/* Basic bbPress table styling so forums feel at home in the theme */
+#bbpress-forums {
+    font-size: var(--font-size-md);
+}
+
+#bbpress-forums li.bbp-header {
+    background: var(--color-background);
+    border-top: 2px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
+    padding: var(--spacing-sm) var(--spacing-md);
+    font-weight: 600;
+}
+
+/* The footer row is empty on the forum index — hide it so there's
+   no orphan line sitting below the last forum. */
+#bbpress-forums li.bbp-footer {
+    display: none;
+}
+
+#bbpress-forums li.bbp-body ul.forum,
+#bbpress-forums li.bbp-body ul.topic {
+    padding: var(--spacing-md);
+    border-bottom: 1px solid var(--color-border);
+}
+
+#bbpress-forums li.bbp-body ul.forum:hover,
+#bbpress-forums li.bbp-body ul.topic:hover {
+    background: rgba(0, 0, 0, 0.02);
+}
+
+#bbpress-forums .bbp-forum-title,
+#bbpress-forums .bbp-topic-permalink {
+    color: var(--color-accent);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: var(--font-size-lg);
+}
+
+#bbpress-forums .bbp-forum-title:hover,
+#bbpress-forums .bbp-topic-permalink:hover {
+    color: var(--color-primary);
+}
+
+#bbpress-forums .bbp-forum-info .bbp-forum-content {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-base);
+    margin-top: var(--spacing-xs);
+}
+
+#bbpress-forums div.bbp-search-form {
+    margin-bottom: var(--spacing-lg);
+}
+
+#bbpress-forums #bbp-search-form input[type="text"] {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    font-size: var(--font-size-sm);
+}
+
+#bbpress-forums .bbp-pagination {
+    border: none;
+    padding: var(--spacing-md) 0;
+}
+
+/* Breadcrumb styling */
+.bbp-breadcrumb {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    margin-bottom: var(--spacing-lg);
+}
+
+.bbp-breadcrumb a {
+    color: var(--color-accent);
+    text-decoration: none;
+}
+
+.bbp-breadcrumb a:hover {
+    color: var(--color-primary);
 }
 
 /* Long-form content typography — gives paragraphs and headings

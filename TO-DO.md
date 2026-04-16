@@ -1,8 +1,8 @@
 # SocietyPress — TO-DO
 Plugin: 1.0.19
 Parent theme: 1.0.19
-Marketing theme: 0.03d
-Last updated: 2026-04-14
+Marketing theme: 0.08d
+Last updated: 2026-04-15
 
 ---
 
@@ -19,7 +19,7 @@ Pages and features Charles called out:
 - [ ] Bug reports flow (link to GitHub Issues with a pre-filled template)
 - [ ] Feedback intake
 - [ ] Feature requests intake
-- [ ] Support forums (bbPress)
+- [x] Support forums (bbPress) — bbPress styled to match theme, full-width layout, font sizes bumped (2026-04-15)
 - [ ] FAQ
 - [ ] Feature list page (top 12 from the marketing list, with a "...and more" expansion)
 - [ ] Downloadable information sheets (PDF one-pagers per audience: society admin, board member, treasurer, librarian)
@@ -30,7 +30,7 @@ Additional pages worth adding while we're building it out:
 - [ ] Public roadmap (what's next, what's done, what's deferred)
 - [ ] Comparison page — SocietyPress vs. ENS / Blue Crab / Wild Apricot (the migration-pitch page)
 - [ ] Testimonials wall (when we have them — start with placeholder)
-- [ ] Showcase / case studies of real societies running SocietyPress (SAGHS first, others as they come)
+- [ ] Showcase / case studies of real societies running SocietyPress
 - [ ] Getting Started video walkthrough (5-min screencast: install → setup wizard → first member → first event)
 - [ ] Screenshot gallery — admin and frontend, organized by module
 - [ ] Prominent live-demo link on every page (currently demo.getsocietypress.org exists but isn't surfaced)

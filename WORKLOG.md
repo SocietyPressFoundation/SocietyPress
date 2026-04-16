@@ -1,4 +1,19 @@
 # SocietyPress — WORKLOG
+## v0.08d (marketing site) — 2026-04-15
+
+### Session: bbPress forum styling
+
+**bbPress theme integration**
+- Added full-width container override for bbPress pages — forums were rendering in the narrow 800px text-page column, now use the full 1200px container
+- Forum titles bumped to 20px (`--font-size-lg`), body text to 18px (`--font-size-md`), descriptions to 16px (`--font-size-base`)
+- Forum link colors match site accent/primary palette
+- Hidden empty bbPress footer row that left an orphan line under the last forum
+- Breadcrumb, search input, pagination, and hover states styled to match the rest of the marketing site
+- Version bumped 0.05d → 0.08d (three cache-bust increments during live iteration)
+
+**Competition notes updated**
+- ENS-R April 12 announcement: all modules now complete, billing starts June 1, incentives ending May, ENS-C takedown notices going out to holdouts
+
 ## v1.0.19 — 2026-04-13/14
 
 ### Session: Ship-hardening, architecture cleanup, new modules

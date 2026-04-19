@@ -23,7 +23,7 @@ set -o pipefail
 
 HOST="skystra"
 DEMO_BASE="~/domains/getsocietypress.org/public_html/demo/wp-content"
-the society_BASE="~/domains/samplesociety.com/public_html/wp-content"
+TXthe society_BASE="~/domains/samplesociety.com/public_html/wp-content"
 LOCAL_BASE="$(cd "$(dirname "$0")/.." && pwd)"
 
 # Track overall exit status — any failed site-level deploy flips this to 1
@@ -99,14 +99,14 @@ deploy_theme_to() {
 # ----------------------------------------------------------------------------
 deploy_plugin_all_sites() {
     deploy_plugin_to "$DEMO_BASE" "demo.getsocietypress.org"
-    deploy_plugin_to "$the society_BASE" "samplesociety.com"
+    deploy_plugin_to "$TXthe society_BASE" "samplesociety.com"
 }
 
 deploy_theme_all_sites() {
     local local_dir="$1"
     local theme_name="$2"
     deploy_theme_to "$local_dir" "$theme_name" "$DEMO_BASE" "demo.getsocietypress.org"
-    deploy_theme_to "$local_dir" "$theme_name" "$the society_BASE" "samplesociety.com"
+    deploy_theme_to "$local_dir" "$theme_name" "$TXthe society_BASE" "samplesociety.com"
 }
 
 # ----------------------------------------------------------------------------

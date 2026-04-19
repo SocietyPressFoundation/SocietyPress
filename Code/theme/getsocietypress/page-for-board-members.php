@@ -113,7 +113,7 @@ get_header();
                 <dd>Same as any self-hosted website, no more. Your hosting provider's terms of service apply. SocietyPress itself is distributed as-is with no warranty, like all open-source software.</dd>
 
                 <dt>Who's behind this?</dt>
-                <dd>Charles Stricklin &mdash; a software developer and Education Committee Chair at the society. The project is backed by a working society, not a venture-funded startup. Speaking at TSGS Leadership Conference 2026.</dd>
+                <dd>Charles Stricklin &mdash; a software developer who created, writes, and maintains SocietyPress entirely on his own. Speaking at TSGS Leadership Conference 2026.</dd>
 
                 <dt>How do we evaluate it?</dt>
                 <dd>Visit the fully-functional demo at demo.getsocietypress.org. Log in, click around, break things. No account, no form, no demo-request call required.</dd>

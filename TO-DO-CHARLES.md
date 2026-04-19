@@ -16,12 +16,11 @@ These items require decisions, content, credentials, external accounts, or visua
 ## Content / Creative
 
 - [ ] **Setup guide screenshots**: 8 of 9 slots are placeholders — need real screenshots from a clean install (you driving the installer)
-- [ ] **Showcase page**: Which sites to feature? the society/example.org once live?
+- [ ] **Showcase page**: Which sites to feature once live?
 - [ ] **Blog post**: Initial announcement post for getsocietypress.org/news/
 - [ ] **Video walkthrough**: 3-5 min screencast showing install → first member import
 - [ ] **RootsTech materials**: Presentation slides, handouts, booth plan
 - [ ] **SocietyPress-Overview.docx**: Keep current or replace with web content?
-- [ ] **the society logo redo**: Remove internal whitespace (noted as in progress)
 - [ ] **Softaculous images**: Logo (250x250, 600x600) + 3-5 screenshots for their listing
 
 ## External Accounts / Services
@@ -43,5 +42,4 @@ These items require decisions, content, credentials, external accounts, or visua
 
 - [ ] **ENS migration guide**: How to export from ENS, what maps where — you have the ENS expertise
 - [ ] **Getting Started guide**: Hosting provider recommendations (which 3? pricing? reliability?)
-- [ ] **FAQ content**: What questions do real society admins ask? (a contributor feedback, your the society experience)
-- [ ] **Case study**: the society story — why you built this, what it replaced, results
+- [ ] **FAQ content**: What questions do real society admins ask?

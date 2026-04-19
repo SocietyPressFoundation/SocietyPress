@@ -11,7 +11,7 @@
  * 1. Hero — "About SocietyPress"
  * 2. The Origin — why this exists
  * 3. Mission — one sentence, clearly stated
- * 4. Who's Behind It — Charles, the society, TSGS, RootsTech
+ * 4. Who's Behind It — Charles, speaking engagements, milestones
  * 5. Why Open Source — the commitment
  * 6. Roadmap — where we're headed
  * 7. CTA — get involved
@@ -119,10 +119,12 @@ get_header();
                 <p>
                     Charles is a software developer and genealogist,
                     Texas, with a BBA in Business Information Systems from Midwestern
-                    State University. He serves as Education Committee Chair at the
-                    <strong>the society</strong>
-                    (the society), where SocietyPress was originally built to solve the
-                    society's own website and membership problems.
+                    State University. He serves as Chairman of the Education Committee
+                    at the the society &mdash;
+                    a personal volunteer role only. the society had no hand in creating
+                    SocietyPress, does not use it, and has no control, income, or
+                    funding from the project. Everything SocietyPress is Charles's
+                    own work, start to finish.
                 </p>
                 <p>
                     He speaks about society technology at community events and
@@ -143,10 +145,6 @@ get_header();
                     <li>
                         <strong>RootsTech 2027</strong>
                         <span>Target launch milestone &mdash; Salt Lake City, March 3&ndash;7, 2027</span>
-                    </li>
-                    <li>
-                        <strong>the society</strong>
-                        <span>Education Committee Chair &mdash; ongoing</span>
                     </li>
                 </ul>
             </div>

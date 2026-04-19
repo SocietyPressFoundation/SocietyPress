@@ -18,24 +18,11 @@ get_header();
  * Contributor lists. Edit these arrays to add people and organizations.
  * Kept in code (not WP admin) so recognition travels with the repo.
  */
-$gsp_founding_society = array(
-    array(
-        'name' => 'the society',
-        'url'  => 'https://www.rootsweb.com/~upstream-society/',
-        'role' => 'Founding society &mdash; the organization whose needs prompted SocietyPress to exist in the first place, and whose members are the primary field-test site.',
-    ),
-);
-
 $gsp_contributors = array(
     array(
         'name'        => 'Charles Stricklin',
-        'role'        => 'Creator and lead developer',
-        'description' => 'Writes the code, runs the project, attends the conferences.',
-    ),
-    array(
-        'name'        => 'a contributor',
-        'role'        => 'ENS feedback and field testing',
-        'description' => 'the society webmaster whose experience on ENS informed the ENS migration path and the 73-field CSV importer.',
+        'role'        => 'Creator, developer, and sole maintainer',
+        'description' => 'Writes every line of code, runs the project, attends the conferences. SocietyPress is his work, start to finish.',
     ),
 );
 
@@ -64,34 +51,6 @@ $gsp_sponsors = array(
             group of dedicated people and the societies that put it to work.
             This page exists to recognize them.
         </p>
-    </div>
-</section>
-
-<!-- Founding society -->
-<section class="sponsors-section section">
-    <div class="container container--narrow">
-
-        <h2 class="sponsors-section__heading">Founding Society</h2>
-        <p class="sponsors-section__lede">
-            SocietyPress started inside a working genealogical society, not
-            an incubator or a venture fund.
-        </p>
-
-        <div class="sponsors-list">
-            <?php foreach ( $gsp_founding_society as $org ) : ?>
-                <div class="sponsors-card sponsors-card--featured">
-                    <h3 class="sponsors-card__name">
-                        <?php if ( ! empty( $org['url'] ) ) : ?>
-                            <a href="<?php echo esc_url( $org['url'] ); ?>" target="_blank" rel="noopener"><?php echo esc_html( $org['name'] ); ?></a>
-                        <?php else : ?>
-                            <?php echo esc_html( $org['name'] ); ?>
-                        <?php endif; ?>
-                    </h3>
-                    <p class="sponsors-card__role"><?php echo wp_kses_post( $org['role'] ); ?></p>
-                </div>
-            <?php endforeach; ?>
-        </div>
-
     </div>
 </section>
 

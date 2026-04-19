@@ -88,12 +88,10 @@ get_header();
 
         <p>
             By using this website or downloading SocietyPress, you agree
-            that the project maintainers, contributors, and affiliated
-            organizations (including the Sample Genealogical and
-            Historical Society) are not liable for any loss, damage, data
-            corruption, downtime, lost revenue, or other claim arising from
-            use of the software or the website. This is standard open-source
-            practice and is not optional.
+            that the project maintainers and contributors are not liable
+            for any loss, damage, data corruption, downtime, lost revenue,
+            or other claim arising from use of the software or the website.
+            This is standard open-source practice and is not optional.
         </p>
 
         <h2>Third-party services</h2>

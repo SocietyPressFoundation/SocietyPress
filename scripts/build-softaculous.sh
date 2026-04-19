@@ -3,7 +3,7 @@
 # build-softaculous.sh — Assemble a clean SocietyPress ZIP for Softaculous
 #
 # WHY: The Softaculous package needs a pristine WordPress + SocietyPress bundle
-# with no the society data, no child themes, no credentials, no personal info.
+# with no site-specific data, no private child themes, no credentials, no personal info.
 # This script downloads fresh WordPress, copies the plugin and parent theme,
 # and creates the final societypress.zip ready for submission.
 #
@@ -81,18 +81,17 @@ for CHILD_DIR in "$PROJECT_ROOT"/Code/theme-*/; do
     cp -r "$CHILD_DIR" "$BUILD_DIR/wp-content/themes/$THEME_SLUG"
 done
 
-# ---- Verify no the society or personal data leaked in ----
+# ---- Verify no personal or site-specific data leaked in ----
 echo "Scanning for personal data leaks..."
 LEAKS=0
 
-# Check for the society references in the plugin (excluding comments and the ENS import mapping)
-if grep -l "kndgs\.org\|society.*secret\|charle24\|charles@" "$BUILD_DIR/wp-content/plugins/societypress/societypress.php" 2>/dev/null; then
+# Check for personal or site-specific references in the plugin
+if grep -l "kndgs\.org\|upstream-society\.com\|charle24\|charles@" "$BUILD_DIR/wp-content/plugins/societypress/societypress.php" 2>/dev/null; then
     echo "  WARNING: Found potential personal references in plugin file."
     LEAKS=1
 fi
 
-# Check no child themes snuck in
-# No site-specific themes to check for anymore (the society removed 2026-04-05)
+# Check no private child themes snuck in
 
 # Check no wp-config with credentials exists
 if [ -f "$BUILD_DIR/wp-config.php" ]; then

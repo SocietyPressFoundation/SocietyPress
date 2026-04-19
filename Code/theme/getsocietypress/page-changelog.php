@@ -2,10 +2,8 @@
 /**
  * Changelog Page Template (page-changelog.php)
  *
- * User-facing release notes. Hand-written from the engineering WORKLOG.md,
- * translated into language a society administrator (not a developer) will
- * actually find useful. If you're a developer looking for the full technical
- * worklog, it lives in the repo's Documentation/WORKLOG.md.
+ * User-facing release notes for society administrators. The technical
+ * release log for developers is in the repo's CHANGELOG.md.
  *
  * Structure: most recent release at the top. Each release is:
  *   - Version number + date
@@ -182,8 +180,8 @@ $gsp_releases = array(
                 Looking for the full technical log? Every commit since day one
                 is public on
                 <a href="https://github.com/SocietyPressFoundation/SocietyPress/commits/main">GitHub</a>,
-                and the engineering worklog ships in the download under
-                <code>Documentation/WORKLOG.md</code>.
+                and structured release notes live in
+                <a href="https://github.com/SocietyPressFoundation/SocietyPress/blob/main/CHANGELOG.md"><code>CHANGELOG.md</code></a>.
             </p>
         </div>
 

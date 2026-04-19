@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Community forums
+    url: https://getsocietypress.org/community
+    about: Ask usage questions or discuss SocietyPress with other administrators. General "how do I…" questions belong here, not in GitHub Issues.
+  - name: Documentation
+    url: https://getsocietypress.org/docs
+    about: Installation, setup, and module-by-module guides for society administrators.
+  - name: Security report (private)
+    url: https://github.com/SocietyPressFoundation/SocietyPress/security/advisories/new
+    about: Report a security vulnerability privately. Do NOT file security issues publicly.
+  - name: Feedback (general)
+    url: https://getsocietypress.org/feedback
+    about: Share feedback, suggestions, or anything that isn't a specific bug or feature request.

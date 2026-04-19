@@ -1,7 +1,7 @@
 # SocietyPress — Architecture Reference
 
-Last updated: March 18, 2026 (updated from full codebase audit)
-Plugin version: 0.38d | ~52,500 lines | Single-file, function-based
+Last updated: April 19, 2026
+Plugin version: 1.0.19 | ~72,640 lines | Single-file, function-based
 
 ---
 
@@ -11,7 +11,7 @@ Plugin version: 0.38d | ~52,500 lines | Single-file, function-based
 SocietyPress/
 ├── Code/                             # All deployable code
 │   ├── plugin/
-│   │   └── societypress.php          # The entire plugin (~80,000 lines)
+│   │   └── societypress.php          # The entire plugin (~72,640 lines)
 │   ├── theme/                        # Parent theme (CSS vars, fallback defaults)
 │   ├── theme-coastline/              # Child theme
 │   ├── theme-heritage/               # Child theme
@@ -20,20 +20,22 @@ SocietyPress/
 │   ├── theme-prairie/                # Child theme
 │   ├── installer/                    # One-click installer (sp-installer.php)
 │   └── softaculous/                  # Softaculous packaging
-├── Docs/
+├── docs/
 │   ├── ARCHITECTURE.md               # This file
 │   ├── FEATURES.md                   # Complete feature inventory
-│   ├── KNOWN-ISSUES.md               # Bugs and technical debt
-│   └── PROJECT-PROMPT.md             # Recreation prompt for new Claude sessions
-├── Images/                           # Logos, screenshots, marketing assets
-├── Sample Data/                      # Sample data for fresh installs
+│   └── ENS-MIGRATION-GUIDE.md        # Migrating from EasyNetSites
+├── .github/                          # Issue/PR templates, funding, workflows
 ├── scripts/                          # Shell scripts (deploy, nuke, reset, build)
 │   ├── deploy.sh
 │   ├── nuke-demo.sh
 │   ├── reset-demo.sh
 │   └── build-softaculous.sh
-├── TO-DO.md                          # Task tracking
-├── WORKLOG.md                        # Version history and session notes
+├── CHANGELOG.md                      # Release history
+├── CODE_OF_CONDUCT.md                # Contributor Covenant
+├── CONTRIBUTING.md                   # Contribution policy
+├── ROADMAP.md                        # Planned work
+├── SECURITY.md                       # Vulnerability reporting
+├── SUPPORT.md                        # Where to get help
 ├── README.md                         # Project overview
 ├── LICENSE                           # GPL-2.0-or-later
 └── .gitignore
@@ -44,7 +46,7 @@ SocietyPress/
 ## Constants
 
 ```php
-SOCIETYPRESS_VERSION      // '0.37d' (current release)
+SOCIETYPRESS_VERSION      // '1.0.19' (current release)
 SOCIETYPRESS_PLUGIN_DIR   // plugin_dir_path(__FILE__)
 SOCIETYPRESS_PLUGIN_URL   // plugin_dir_url(__FILE__)
 SOCIETYPRESS_PLUGIN_FILE  // __FILE__
@@ -65,18 +67,18 @@ Single option: `get_option('societypress_settings', [])`
 5. **Events** — default_capacity, allow_waitlist, reminder_days, calendar options
 6. **Privacy** — data_retention, cookie_notice, GDPR toggles
 7. **Design** — 7 color pickers, font_family, font_size, heading_font, content_width, sidebar_width, custom_css, style presets
-8. **Modules** — enable/disable 12 feature modules (card grid with toggle switches, Enable All / Disable All)
+8. **Modules** — enable/disable 14 feature modules (card grid with toggle switches, Enable All / Disable All)
 
 Settings sanitized via `sp_sanitize_settings()` callback registered with `register_setting()`.
 
 Additional standalone options:
 - `societypress_db_version` — tracks schema version for migrations
 - `sp_wizard_completed` — marks setup wizard as done
-- `sp_enabled_modules` — array of enabled module slugs (12 modules)
+- `sp_enabled_modules` — array of enabled module slugs (14 modules)
 
 ---
 
-## Database Tables (43)
+## Database Tables (54)
 
 All prefixed with `{$wpdb->prefix}sp_`.
 
@@ -91,94 +93,94 @@ All prefixed with `{$wpdb->prefix}sp_`.
 | `sp_member_relationships` | Member-to-member relationships (spouse, family, referral) |
 
 ### Membership (1 table)
-| Table | Description | Row Count |
-|-------|-------------|-----------|
-| `sp_membership_tiers` | Tier definitions with pricing and duration | 14 |
+| Table | Description |
+|-------|-------------|
+| `sp_membership_tiers` | Tier definitions with pricing and duration |
 
 ### Events (6 tables)
-| Table | Description | Row Count |
-|-------|-------------|-----------|
-| `sp_events` | Event records | ~20 |
-| `sp_event_categories` | Event category taxonomy | ~5 |
-| `sp_event_category_assignments` | Many-to-many: events ↔ categories | varies |
-| `sp_event_registrations` | Registration records with status + attendance | varies |
-| `sp_event_speakers` | Speaker profiles per event | varies |
-| `sp_event_time_slots` | Multiple time slots per event | varies |
+| Table | Description |
+|-------|-------------|
+| `sp_events` | Event records |
+| `sp_event_categories` | Event category taxonomy |
+| `sp_event_category_assignments` | Many-to-many: events ↔ categories |
+| `sp_event_registrations` | Registration records with status + attendance |
+| `sp_event_speakers` | Speaker profiles per event |
+| `sp_event_time_slots` | Multiple time slots per event |
 
 ### Library (2 tables)
-| Table | Description | Row Count |
-|-------|-------------|-----------|
-| `sp_library_items` | Catalog items (books, maps, periodicals, etc.) | 19,418 |
-| `sp_library_categories` | Library categories (unused — real taxonomy is media_type/subject fields) | 7 (0 items assigned) |
+| Table | Description |
+|-------|-------------|
+| `sp_library_items` | Catalog items (books, maps, periodicals, etc.) |
+| `sp_library_categories` | Library categories (unused — real taxonomy is media_type/subject fields) |
 
 ### Committees & Leadership (4 tables)
-| Table | Description | Row Count |
-|-------|-------------|-----------|
-| `sp_committees` | Committee definitions | varies |
-| `sp_committee_members` | Many-to-many: members ↔ committees with roles | varies |
-| `sp_leadership_positions` | Named positions (President, VP, etc.) | varies |
-| `sp_leadership_terms` | Term records linking members to positions with date ranges | varies |
+| Table | Description |
+|-------|-------------|
+| `sp_committees` | Committee definitions |
+| `sp_committee_members` | Many-to-many: members ↔ committees with roles |
+| `sp_leadership_positions` | Named positions (President, VP, etc.) |
+| `sp_leadership_terms` | Term records linking members to positions with date ranges |
 
 ### Volunteers (4 tables)
-| Table | Description | Row Count |
-|-------|-------------|-----------|
-| `sp_volunteer_opportunities` | Posted volunteer opportunities | varies |
-| `sp_volunteer_signups` | Member signups for opportunities (with status) | varies |
-| `sp_volunteer_roles` | Standing volunteer role assignments | varies |
-| `sp_volunteer_hours` | Logged volunteer hours per member | varies |
+| Table | Description |
+|-------|-------------|
+| `sp_volunteer_opportunities` | Posted volunteer opportunities |
+| `sp_volunteer_signups` | Member signups for opportunities (with status) |
+| `sp_volunteer_roles` | Standing volunteer role assignments |
+| `sp_volunteer_hours` | Logged volunteer hours per member |
 
 ### Communications (4 tables)
-| Table | Description | Row Count |
-|-------|-------------|-----------|
-| `sp_email_log` | All outgoing emails logged via `pre_wp_mail` | varies |
-| `sp_blast_emails` | Blast email campaigns | varies |
-| `sp_blast_email_recipients` | Per-recipient delivery tracking for blasts | varies |
-| `sp_renewal_reminders` | Dedup table for renewal reminder emails | varies |
+| Table | Description |
+|-------|-------------|
+| `sp_email_log` | All outgoing emails logged via `pre_wp_mail` |
+| `sp_blast_emails` | Blast email campaigns |
+| `sp_blast_email_recipients` | Per-recipient delivery tracking for blasts |
+| `sp_renewal_reminders` | Dedup table for renewal reminder emails |
 
 ### Finances (2 tables)
-| Table | Description | Row Count |
-|-------|-------------|-----------|
-| `sp_donations` | Individual donation records | varies |
-| `sp_campaigns` | Fundraising campaign definitions | varies |
+| Table | Description |
+|-------|-------------|
+| `sp_donations` | Individual donation records |
+| `sp_campaigns` | Fundraising campaign definitions |
 
 ### Content (4 tables)
-| Table | Description | Row Count |
-|-------|-------------|-----------|
-| `sp_newsletters` | Newsletter archive (PDF + cover metadata) | 13 |
-| `sp_resources` | External resource links | 157 |
-| `sp_resource_categories` | Resource link categories | ~15 |
-| `sp_pages` | Plugin-managed pages (internal tracking) | varies |
+| Table | Description |
+|-------|-------------|
+| `sp_newsletters` | Newsletter archive (PDF + cover metadata) |
+| `sp_resources` | External resource links |
+| `sp_resource_categories` | Resource link categories |
+| `sp_pages` | Plugin-managed pages (internal tracking) |
 
 ### Genealogical Records (4 tables, EAV architecture)
-| Table | Description | Row Count |
-|-------|-------------|-----------|
-| `sp_record_collections` | Collection definitions (Cemetery, Census, etc.) | 0 |
-| `sp_record_collection_fields` | Field definitions per collection (drag-reorderable) | 0 |
-| `sp_records` | Individual record entries with `search_text` column | 0 |
-| `sp_record_values` | EAV value storage: record_id + field_id + value | 0 |
+| Table | Description |
+|-------|-------------|
+| `sp_record_collections` | Collection definitions (Cemetery, Census, etc.) |
+| `sp_record_collection_fields` | Field definitions per collection (drag-reorderable) |
+| `sp_records` | Individual record entries with `search_text` column |
+| `sp_record_values` | EAV value storage: record_id + field_id + value |
 
 ### Documents (2 tables)
-| Table | Description | Row Count |
-|-------|-------------|-----------|
-| `sp_documents` | Document records with file metadata, access level, category | varies |
-| `sp_document_categories` | Document categories (Meeting Minutes, Society Documents, etc.) | varies |
+| Table | Description |
+|-------|-------------|
+| `sp_documents` | Document records with file metadata, access level, category |
+| `sp_document_categories` | Document categories (Meeting Minutes, Society Documents, etc.) |
 
 ### Store (2 tables)
-| Table | Description | Row Count |
-|-------|-------------|-----------|
-| `sp_store_orders` | Order records with status, totals, Stripe session/payment IDs | varies |
-| `sp_store_order_items` | Line items per order (product, quantity, price) | varies |
+| Table | Description |
+|-------|-------------|
+| `sp_store_orders` | Order records with status, totals, Stripe session/payment IDs |
+| `sp_store_order_items` | Line items per order (product, quantity, price) |
 
 ### Members — Additional (1 table)
-| Table | Description | Row Count |
-|-------|-------------|-----------|
-| `sp_pending_profile_changes` | Queued profile changes awaiting admin approval | varies |
+| Table | Description |
+|-------|-------------|
+| `sp_pending_profile_changes` | Queued profile changes awaiting admin approval |
 
 ### System (2 tables)
-| Table | Description | Row Count |
-|-------|-------------|-----------|
-| `sp_audit_log` | Audit trail for member/status/position changes | varies |
-| `sp_help_requests` | Member help request submissions | varies |
+| Table | Description |
+|-------|-------------|
+| `sp_audit_log` | Audit trail for member/status/position changes |
+| `sp_help_requests` | Member help request submissions |
 
 ---
 

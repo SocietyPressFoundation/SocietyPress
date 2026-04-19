@@ -3,7 +3,7 @@
  * ENS Migration Guide Page Template (page-ens-migration-guide.php)
  *
  * Renders the canonical ENS migration guide (stored as Markdown in
- * Documentation/ENS-MIGRATION-GUIDE.md on the server) as a styled HTML
+ * docs/ENS-MIGRATION-GUIDE.md on the server) as a styled HTML
  * page. Lives at /docs/ens-migration-guide/ — linked from the
  * /ens-migration/ landing page's "Read the Full Migration Guide" CTA.
  *
@@ -219,11 +219,15 @@ get_header();
 
 /*
  * Load the guide. Canonical source: the .md file on the server at
- * ~/domains/getsocietypress.org/public_html/Documentation/ENS-MIGRATION-GUIDE.md
+ * ~/domains/getsocietypress.org/public_html/docs/ENS-MIGRATION-GUIDE.md
  * Cached in a transient for 1 hour so we're not hitting the filesystem
  * on every page load.
  */
-$gsp_guide_path = ABSPATH . '../Documentation/ENS-MIGRATION-GUIDE.md';
+$gsp_guide_path = ABSPATH . '../docs/ENS-MIGRATION-GUIDE.md';
+// Fallback for legacy server path (kept during migration window).
+if ( ! file_exists( $gsp_guide_path ) ) {
+    $gsp_guide_path = ABSPATH . '../Documentation/ENS-MIGRATION-GUIDE.md';
+}
 $gsp_guide_html = get_transient( 'gsp_ens_guide_html' );
 
 if ( false === $gsp_guide_html ) {

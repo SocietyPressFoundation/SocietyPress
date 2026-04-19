@@ -4,7 +4,7 @@
  *
  * Front door for the 170+ societies currently running on Easynet Solutions
  * (ENS / EasyNetSites) who are considering SocietyPress. The full step-by-step
- * migration guide lives in Documentation/ENS-MIGRATION-GUIDE.md; this page
+ * migration guide lives in docs/ENS-MIGRATION-GUIDE.md; this page
  * is the marketing-framed summary that gets them to commit.
  *
  * Sections:

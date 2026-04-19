@@ -1,170 +1,155 @@
+<div align="center">
+
 # SocietyPress
 
-**Free, open-source WordPress platform for genealogical societies, historical societies, and heritage organizations.**
+**A complete WordPress platform for genealogical and historical societies.**
 
-No pricing. No paid tiers. No upgrades. Community software, freely given.
+Free and open source under the GPL. No pricing tiers, no upgrades, no lock-in —
+just the whole thing, given away.
 
-**Current version: 0.30d**
+[![License: GPL v2+](https://img.shields.io/badge/License-GPL%20v2%2B-blue.svg)](LICENSE)
+[![WordPress: 6.0+](https://img.shields.io/badge/WordPress-6.0%2B-21759b.svg)](https://wordpress.org/)
+[![PHP: 8.0+](https://img.shields.io/badge/PHP-8.0%2B-777bb4.svg)](https://www.php.net/)
+[![Version](https://img.shields.io/badge/Plugin-v1.0.19-brightgreen.svg)](CHANGELOG.md)
 
----
+[**getsocietypress.org**](https://getsocietypress.org) &nbsp;·&nbsp;
+[**Live demo**](https://demo.getsocietypress.org) &nbsp;·&nbsp;
+[**Documentation**](docs/) &nbsp;·&nbsp;
+[**Report a bug**](https://github.com/SocietyPressFoundation/SocietyPress/issues)
 
-## What It Does
-
-Membership management built for the volunteers who actually run these organizations. Senior-friendly by default. Your society, your server, your control.
-
-### Members
-- Full member CRUD with custom fields for genealogical research
-- Individual and organizational member support
-- 14 membership tiers with configurable pricing and duration
-- Statuses: Active, Expired, Pending, Cancelled, Deceased
-- CSV import (86+ EasyNetSites column mappings), CSV export with filters
-- Searchable member directory (frontend, members-only, configurable privacy)
-- Named member groups with bulk assignment
-- Member portal (My Account): profile photo, personal info, contact, address, seasonal address, communication preferences, directory privacy, interests & skills, research surnames, registered events, change password
-- Frontend email obfuscation (anti-scraper protection)
-
-### Events
-- Event management with categories, speakers, time slots
-- Recurring events (weekly, monthly nth-day)
-- Registration system with capacity limits and waitlists
-- Walk-in tracking and attendance management
-- Dual pricing display (member + non-member rates)
-- Monthly calendar grid (page builder widget or standalone page)
-- iCal export, event CSV import
-
-### Library Catalog
-- Full catalog management (tested with 19,000+ items)
-- OPAC-style frontend: tabbed search (keyword/title/author/subject/call number), browse-by-type cards, popular subjects tag cloud, expandable detail rows, smart pagination
-- CSV import/export with field mapping
-- Admin stats dashboard (collection value, breakdowns by type/source)
-- Open Library API enrichment: batch cover image lookup with admin progress bar
-
-### Newsletters
-- PDF newsletter archive with automatic cover image thumbnails (Imagick)
-- Admin card grid, frontend grid with inline PDF viewer modal
-- Access-controlled downloads (members only)
-- Search across the newsletter archive
-
-### Resource Links
-- CSV import (supports EasyNetSites format)
-- Automatic category creation from imported data
-- Frontend directory with search and category filtering
-- Integrated with site-wide unified search
-
-### Committees & Leadership
-- Committee management with delegated permissions
-- Chairperson frontend management, co-chair support
-- Leadership positions and terms tracking
-
-### Volunteer System
-- Volunteer opportunities with capacity, skills, scheduling
-- Frontend signup/cancel via shortcode
-- Waitlist with auto-promotion
-- Hours tracking with CSV export
-
-### Donations & Campaigns
-- Campaign-based donation tracking
-- Cash, check, online, in-kind support
-- Anonymous donors, progress bars
-- Bulk acknowledgment emails
-
-### Blast Email
-- Compose and send mass emails to members by group, tier, or all
-- Batch sending via WP cron
-- Merge tags, opt-out support, per-recipient delivery tracking
-
-### Genealogical Records
-- EAV-based flexible record system
-- 13 record type templates (Cemetery, Census, Church, Court, Immigration, Land, Marriage, Military, Newspaper, Obituary, Probate, Tax, Vital)
-- Admin collection manager with drag-reorder field configurator
-- CSV import with field mapping
-- Frontend search with per-field access control
-
-### Store
-- Public storefront with category sidebar and product grid
-- Products sourced from library catalog
-- Checkout/payments coming soon
-
-### Page Builder
-- 19 widget types for building society pages
-- Hero slider with per-line text styling
-- Events calendar, member directory, library catalog, and more
-- No Gutenberg required — works with the classic editor
-
-### Design System
-- CSS custom properties throughout
-- 7 color pickers, font/size/width controls, live preview
-- Theme uses design system values with sensible fallback defaults
-
-### Email System
-- All outgoing emails logged with status tracking
-- Dev mode blocks sending (for testing)
-- Welcome emails, renewal reminders, registration confirmations, event reminders
-- Configurable From/Reply-To headers
-
-### Admin
-- Unified sidebar menu with flyout groups
-- WordPress branding hidden — your members see your society's name
-- Custom login page, site lockdown
-- Dashboard with stat cards, upcoming events, expiring members, recent signups
-- Setup wizard on first activation
-
-### Security & Privacy
-- XChaCha20-Poly1305 encryption for sensitive fields
-- GDPR compliance: 5 data exporters + 5 data erasers
-- Nonce verification on all forms and AJAX endpoints
-- Frontend email obfuscation
-
-### Search
-- Unified search across events, library, resources, members, newsletters, and pages
-- Per-module result sections with appropriate access controls
+</div>
 
 ---
 
-## Architecture
+## What it is
 
-SocietyPress is a single-file plugin (`societypress.php`) paired with a companion theme. The plugin handles all business logic; the theme handles presentation.
+SocietyPress is a single-file WordPress plugin paired with a purpose-built
+parent theme and five ready-to-use child themes. Together they give a
+genealogical or historical society everything it needs to run itself online:
+members, dues, events, a library catalog, newsletters, a records repository,
+volunteer coordination, donations, a blast-email system, committees, voting,
+a page builder, and a frontend that's legible for non-technical volunteers
+by default.
 
-- **Plugin:** `Code/plugin/societypress.php` — function-based, inline JS/CSS, no external dependencies
-- **Theme:** `Code/theme/` — classic PHP WordPress theme, CSS custom properties, vanilla JS only
-- **Child themes:** 5 included (Heritage, Coastline, Prairie, Ledger, Parlor) or create your own with the built-in Theme Builder
-- **Database:** 39 custom tables with `{prefix}sp_` naming
-- **Settings:** Single `societypress_settings` option array
+It was written for the people who actually keep these organizations
+running — committee chairs, long-serving volunteers, librarians — not
+for agencies or developers. Everything is biased toward "a senior volunteer
+can do this" over "a developer will figure it out."
 
-No jQuery. No CSS frameworks. No Gutenberg. No block editor. No Full Site Editing.
+---
+
+## What's in the bundle
+
+| Module | Status | Purpose |
+|---|---|---|
+| **Members** | Always on | Profiles, tiers, dues, groups, surname research, member portal |
+| **Events** | Toggleable | Scheduling, registration, waitlists, recurring, calendars, iCal |
+| **Library** | Toggleable | Full OPAC-style catalog (tested at 19,000+ items) |
+| **Newsletters** | Toggleable | PDF archive with auto-generated cover thumbnails |
+| **Resources** | Toggleable | Curated external links, searchable |
+| **Committees** | Toggleable | Committees, chairs, delegated permissions |
+| **Volunteers** | Toggleable | Opportunities, signups, waitlists, hours tracking |
+| **Donations** | Toggleable | Campaign-based tracking, progress bars, acknowledgments |
+| **Blast Email** | Toggleable | Mass email with merge tags, batching, delivery tracking |
+| **Records** | Toggleable | Genealogical records repository (cemetery, census, marriage, etc.) |
+| **Store** | Toggleable | Public storefront for products and library items |
+| **Documents** | Toggleable | Board documents, policies, forms with per-doc access |
+| **Photos & Videos** | Toggleable | Nested galleries plus YouTube embeds, frontend lightbox |
+| **Voting** | Toggleable | Elections, ballots, results |
+
+Plus: page builder (21 widgets), design system (live-preview color and
+typography controls), email system (logged, merge-tagged, dev-mode), unified
+admin sidebar, a setup wizard, a custom login page, full site lockdown,
+field-level encryption for sensitive data (XChaCha20-Poly1305), GDPR
+exporters and erasers, and search across every module.
+
+A complete breakdown lives in [`docs/FEATURES.md`](docs/FEATURES.md).
 
 ---
 
 ## Requirements
 
-- WordPress 6.0+
-- PHP 8.0+
-- MySQL 5.7+ or MariaDB 10.3+
-- Imagick PHP extension (for newsletter cover thumbnails)
-- libsodium PHP extension (for field encryption — included in PHP 7.2+)
+- WordPress **6.0** or later
+- PHP **8.0** or later
+- MySQL **5.7+** or MariaDB **10.3+**
+- PHP `libsodium` extension (present in PHP 7.2+) — for field encryption
+- PHP `imagick` extension — for newsletter cover thumbnails (optional)
 
 ---
 
-## Installation
+## Installing
 
-1. Upload the `societypress` folder from `Code/plugin/` to `wp-content/plugins/`
-2. Upload the `societypress` folder from `Code/theme/` to `wp-content/themes/`
-3. Activate the plugin, then activate the theme
-4. Complete the setup wizard to configure your society
+### One-click (recommended)
+
+On any cPanel host with Softaculous, pick **SocietyPress** from the catalog
+and install. This provisions a fresh WordPress, installs the plugin, activates
+the theme, and runs the setup wizard automatically.
+
+*Submission to Softaculous is in progress — see the
+[roadmap](ROADMAP.md).*
+
+### Manual install
+
+Download the latest `societypress.zip` from the
+[Releases](https://github.com/SocietyPressFoundation/SocietyPress/releases)
+page, extract it, and upload the contents to your existing WordPress site.
+
+### From source
+
+```
+git clone https://github.com/SocietyPressFoundation/SocietyPress.git
+# Plugin:          Code/plugin/societypress.php  →  wp-content/plugins/societypress/
+# Parent theme:    Code/theme/                    →  wp-content/themes/societypress/
+# Child themes:    Code/theme-<name>/             →  wp-content/themes/<name>/
+```
+
+Activate the plugin, then activate either the parent theme or a child theme.
+The setup wizard will open on first activation.
 
 ---
 
 ## Documentation
 
-- `Docs/ARCHITECTURE.md` — Full technical reference (tables, hooks, AJAX, crons, templates)
-- `Docs/FEATURES.md` — Complete feature inventory
-- `Docs/KNOWN-ISSUES.md` — Known bugs and technical debt
-- `Docs/PROJECT-PROMPT.md` — Context prompt for development sessions
+| Document | What's in it |
+|---|---|
+| [`docs/FEATURES.md`](docs/FEATURES.md) | Complete module-by-module feature reference |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Technical reference: tables, hooks, AJAX, crons, templates |
+| [`docs/ENS-MIGRATION-GUIDE.md`](docs/ENS-MIGRATION-GUIDE.md) | Migrating from EasyNetSites, step by step |
+| [`ROADMAP.md`](ROADMAP.md) | What's next, organized by theme |
+| [`CHANGELOG.md`](CHANGELOG.md) | Release history |
+
+End-user guides (setup walkthroughs, module-by-module how-tos) live at
+[getsocietypress.org/docs](https://getsocietypress.org/docs).
+
+---
+
+## Getting help
+
+- **Support forums** — [getsocietypress.org/community](https://getsocietypress.org/community)
+- **Documentation** — [getsocietypress.org/docs](https://getsocietypress.org/docs)
+- **Bug reports** — [GitHub Issues](https://github.com/SocietyPressFoundation/SocietyPress/issues)
+- **Security issues** — see [SECURITY.md](SECURITY.md) (please do **not** file these publicly)
+- **Everything else** — the [feedback form](https://getsocietypress.org/feedback)
+
+See also [`SUPPORT.md`](SUPPORT.md).
+
+---
+
+## Contributing
+
+SocietyPress is open source but **not open to external contributions** at this
+time — it's designed, written, and maintained by one person, and the
+pace/direction is set accordingly. You are welcome to fork, modify, and
+deploy it under the terms of the GPL. Bug reports and well-described feature
+requests via [GitHub Issues](https://github.com/SocietyPressFoundation/SocietyPress/issues)
+are very welcome.
+
+Full policy in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ---
 
 ## License
 
-SocietyPress is released under the [GNU General Public License v2.0](LICENSE) (or later).
+Released under the [GNU General Public License v2.0 or later](LICENSE).
 
 Free as in freedom. Free as in beer.

@@ -81,14 +81,14 @@ Additional standalone options:
 All prefixed with `{$wpdb->prefix}sp_`.
 
 ### Members (6 tables)
-| Table | Description | Row Count (example.org) |
-|-------|-------------|----------------------|
-| `sp_members` | Core member records (individual + org) | 386 |
-| `sp_member_groups` | Named groups for organizing members | ~5 |
-| `sp_member_group_assignments` | Many-to-many: members ↔ groups | varies |
-| `sp_member_surnames` | Surnames being researched (per member) | varies |
-| `sp_member_research_areas` | Geographic research areas with time periods | varies |
-| `sp_member_relationships` | Member-to-member relationships (spouse, family, referral) | 0 |
+| Table | Description |
+|-------|-------------|
+| `sp_members` | Core member records (individual + org) |
+| `sp_member_groups` | Named groups for organizing members |
+| `sp_member_group_assignments` | Many-to-many: members ↔ groups |
+| `sp_member_surnames` | Surnames being researched (per member) |
+| `sp_member_research_areas` | Geographic research areas with time periods |
+| `sp_member_relationships` | Member-to-member relationships (spouse, family, referral) |
 
 ### Membership (1 table)
 | Table | Description | Row Count |

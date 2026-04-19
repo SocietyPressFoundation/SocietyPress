@@ -117,14 +117,12 @@ get_header();
                     Creator, developer, and lead maintainer.
                 </p>
                 <p>
-                    Charles is a software developer and genealogist,
-                    Texas, with a BBA in Business Information Systems from Midwestern
-                    State University. He serves as Chairman of the Education Committee
-                    at the the society &mdash;
-                    a personal volunteer role only. the society had no hand in creating
-                    SocietyPress, does not use it, and has no control, income, or
-                    funding from the project. Everything SocietyPress is Charles's
-                    own work, start to finish.
+                    Charles is a software developer and genealogist in Texas
+                    with a BBA in Business Information Systems from Midwestern
+                    State University. Everything SocietyPress is his own work,
+                    start to finish &mdash; designed, coded, documented, and
+                    maintained by one person who cares that the result is
+                    right.
                 </p>
                 <p>
                     He speaks about society technology at community events and

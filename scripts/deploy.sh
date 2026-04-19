@@ -1,6 +1,6 @@
 #!/bin/bash
 # SocietyPress Deploy Script
-# Deploys plugin and/or themes to demo.getsocietypress.org and samplesociety.com.
+# Deploys plugin and/or themes to demo.getsocietypress.org.
 #
 # Usage:
 #   ./scripts/deploy.sh              Deploy plugin only
@@ -12,24 +12,35 @@
 #   ./scripts/deploy.sh bundle       Build and upload societypress-latest.zip for the installer
 #   ./scripts/deploy.sh marketing    Deploy the getsocietypress.org theme
 #
-# WHY the structure: each target deploys to BOTH active sites (demo + upstream-society)
-# via a per-site helper function. Helpers check the scp exit code so a failed
-# copy is reported as FAILED rather than silently swallowed — an earlier
+# WHY the structure: each per-site helper checks scp's exit code so a failed
+# copy is reported as FAILED rather than silently swallowed. An earlier
 # version of this script echoed success on every call regardless of scp's
-# return code, which masked the fact that the demo site is currently empty
-# and every demo deploy was silently failing.
+# return code.
+#
+# Second deploy target (optional):
+# If you maintain a secondary site (e.g. a private testbed), drop a
+# scripts/deploy.local.sh file (gitignored) that defines SECONDARY_BASE and
+# SECONDARY_LABEL. When present, every target also deploys to that site.
+# See scripts/deploy.local.example.sh for the format.
 
 set -o pipefail
 
 HOST="skystra"
 DEMO_BASE="~/domains/getsocietypress.org/public_html/demo/wp-content"
-TXthe society_BASE="~/domains/samplesociety.com/public_html/wp-content"
 LOCAL_BASE="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Optional secondary deploy target — sourced from a gitignored local file.
+SECONDARY_BASE=""
+SECONDARY_LABEL=""
+if [ -f "$LOCAL_BASE/scripts/deploy.local.sh" ]; then
+    # shellcheck source=/dev/null
+    source "$LOCAL_BASE/scripts/deploy.local.sh"
+fi
 
 # Track overall exit status — any failed site-level deploy flips this to 1
 # so the script exits non-zero at the end. Individual per-site failures still
 # print a clear FAILED line but don't abort the rest of the run (so a dead
-# demo doesn't prevent the upstream-society deploy from completing).
+# primary site doesn't prevent the secondary deploy from completing).
 OVERALL_STATUS=0
 
 # ----------------------------------------------------------------------------
@@ -94,19 +105,23 @@ deploy_theme_to() {
 }
 
 # ----------------------------------------------------------------------------
-# Both-sites wrappers. These call the per-site helpers for demo + upstream-society so
-# every target naturally hits both environments without special-casing.
+# All-sites wrappers. Call the per-site helpers for the primary target, plus
+# the optional secondary target if one is configured via deploy.local.sh.
 # ----------------------------------------------------------------------------
 deploy_plugin_all_sites() {
     deploy_plugin_to "$DEMO_BASE" "demo.getsocietypress.org"
-    deploy_plugin_to "$TXthe society_BASE" "samplesociety.com"
+    if [ -n "$SECONDARY_BASE" ] && [ -n "$SECONDARY_LABEL" ]; then
+        deploy_plugin_to "$SECONDARY_BASE" "$SECONDARY_LABEL"
+    fi
 }
 
 deploy_theme_all_sites() {
     local local_dir="$1"
     local theme_name="$2"
     deploy_theme_to "$local_dir" "$theme_name" "$DEMO_BASE" "demo.getsocietypress.org"
-    deploy_theme_to "$local_dir" "$theme_name" "$TXthe society_BASE" "samplesociety.com"
+    if [ -n "$SECONDARY_BASE" ] && [ -n "$SECONDARY_LABEL" ]; then
+        deploy_theme_to "$local_dir" "$theme_name" "$SECONDARY_BASE" "$SECONDARY_LABEL"
+    fi
 }
 
 # ----------------------------------------------------------------------------
@@ -117,7 +132,7 @@ case "${1:-plugin}" in
         deploy_plugin_all_sites
         ;;
     theme)
-        # Parent theme deploys to themes/societypress/ on both sites.
+        # Parent theme deploys to themes/societypress/ on every configured site.
         deploy_theme_all_sites "theme" "societypress"
         ;;
     heritage|coastline|prairie|ledger|parlor)

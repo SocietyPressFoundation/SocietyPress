@@ -53,3 +53,5 @@ Misc/
 
 # Sample/seed data — kept local only, never committed
 Sample Data/
+scripts/deploy.local.sh
+scripts/build.local.sh

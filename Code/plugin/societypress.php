@@ -7068,7 +7068,7 @@ function sp_generate_initial_avatar_url( int $user_id ): string {
 //      never see the word "WordPress" — they should see the organization name.
 //      These filters change the sender to the site's configured name and admin
 //      email, so emails read "Fictional Genealogy Society <admin@example.com>"
-//      instead of "WordPress <wordpress@example.org>."
+//      instead of "WordPress <wordpress@yoursociety.org>."
 // ============================================================================
 
 // FROM name: "WordPress" → the site's name (Settings → General → Site Title)
@@ -36925,7 +36925,7 @@ function sp_render_import_events_page(): void {
                         <tr><td><code>location_address</code></td><td>No</td><td>19100 Goldenwest St, HB, CA</td></tr>
                         <tr><td><code>description</code></td><td>No</td><td>Full event description...</td></tr>
                         <tr><td><code>contact_name</code></td><td>No</td><td>Martha Colvin</td></tr>
-                        <tr><td><code>contact_email</code></td><td>No</td><td>programs@example.org</td></tr>
+                        <tr><td><code>contact_email</code></td><td>No</td><td>programs@yoursociety.org</td></tr>
                         <tr><td><code>registration_enabled</code></td><td>No</td><td>1 <em>or</em> yes</td></tr>
                         <tr><td><code>registration_limit</code></td><td>No</td><td>25 (blank = unlimited)</td></tr>
                         <tr><td><code>member_price</code></td><td>No</td><td>5.00 (0 = free)</td></tr>

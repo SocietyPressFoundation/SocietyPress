@@ -82,13 +82,24 @@ for CHILD_DIR in "$PROJECT_ROOT"/Code/theme-*/; do
 done
 
 # ---- Verify no personal or site-specific data leaked in ----
-echo "Scanning for personal data leaks..."
+echo "Scanning for data leaks..."
 LEAKS=0
 
-# Check for personal or site-specific references in the plugin
-if grep -l "kndgs\.org\|upstream-society\.com\|charle24\|charles@" "$BUILD_DIR/wp-content/plugins/societypress/societypress.php" 2>/dev/null; then
-    echo "  WARNING: Found potential personal references in plugin file."
-    LEAKS=1
+# Patterns of strings that should never appear in a shippable bundle. Extend
+# this list in scripts/build.local.sh (gitignored) with names, emails, or
+# domains that are specific to your development environment. See
+# scripts/build.local.example.sh for the format.
+LEAK_PATTERNS=""
+if [ -f "$PROJECT_ROOT/scripts/build.local.sh" ]; then
+    # shellcheck source=/dev/null
+    source "$PROJECT_ROOT/scripts/build.local.sh"
+fi
+
+if [ -n "$LEAK_PATTERNS" ]; then
+    if grep -l "$LEAK_PATTERNS" "$BUILD_DIR/wp-content/plugins/societypress/societypress.php" 2>/dev/null; then
+        echo "  WARNING: Found potential leak patterns in plugin file."
+        LEAKS=1
+    fi
 fi
 
 # Check no private child themes snuck in

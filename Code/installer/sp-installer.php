@@ -1479,7 +1479,7 @@ MUPLUGIN;
             // Parent theme
             if ( strpos( $name, "{$top_dir}/theme/" ) === 0 && strpos( $name, "{$top_dir}/theme-" ) !== 0 ) {
                 $rel = substr( $name, strlen( "{$top_dir}/theme/" ) );
-                if ( $rel === '' || strpos( $rel, 'society/' ) === 0 ) continue;
+                if ( $rel === '' ) continue;
                 $sp_safe_extract( $rel, $install_dir . '/wp-content' . '/themes/societypress/' . $rel, $zip, $i );
             }
 

@@ -858,7 +858,7 @@ function gsp_structured_data() {
         'url'         => $site_url,
         'description' => $tagline,
         'sameAs'      => array(
-            'https://github.com/charles-stricklin/SocietyPress',
+            'https://github.com/SocietyPressFoundation/SocietyPress',
         ),
     );
 

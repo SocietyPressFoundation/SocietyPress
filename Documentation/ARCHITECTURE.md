@@ -48,7 +48,7 @@ SOCIETYPRESS_VERSION      // '0.37d' (current release)
 SOCIETYPRESS_PLUGIN_DIR   // plugin_dir_path(__FILE__)
 SOCIETYPRESS_PLUGIN_URL   // plugin_dir_url(__FILE__)
 SOCIETYPRESS_PLUGIN_FILE  // __FILE__
-SOCIETYPRESS_GITHUB_REPO  // 'charles-stricklin/SocietyPress'
+SOCIETYPRESS_GITHUB_REPO  // 'SocietyPressFoundation/SocietyPress'
 ```
 
 ---

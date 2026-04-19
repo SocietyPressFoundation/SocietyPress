@@ -51,7 +51,7 @@ NEVER trust PHP `-r` one-liners via SSH — use `wp eval` instead.
 
 ## GitHub
 
-Repository: `charles-stricklin/SocietyPress`
+Repository: `SocietyPressFoundation/SocietyPress`
 Structure: `Code/plugin/societypress.php` + `Code/theme/` + 5 child themes in `Code/theme-*/`
 
 ## Version Numbering

@@ -30,7 +30,7 @@ define( 'SOCIETYPRESS_VERSION', '1.0.19' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
-define( 'SOCIETYPRESS_GITHUB_REPO', 'charles-stricklin/SocietyPress' );
+define( 'SOCIETYPRESS_GITHUB_REPO', 'SocietyPressFoundation/SocietyPress' );
 
 
 /**
@@ -60576,7 +60576,7 @@ add_action( 'wp_ajax_sp_export_full_site', function () {
     $readme .= "5. Visit the WordPress admin once. SocietyPress will detect the data\n";
     $readme .= "   and run any pending schema upgrades automatically.\n\n";
     $readme .= "SUPPORT\n-------\n";
-    $readme .= "https://github.com/charles-stricklin/SocietyPress/issues\n";
+    $readme .= "https://github.com/SocietyPressFoundation/SocietyPress/issues\n";
 
     // Build the ZIP entirely in memory via a temporary file (ZipArchive needs
     // a real path) and stream it to the browser as the response.

@@ -56,7 +56,7 @@ Additional pages worth adding while we're building it out:
 
 ### GitHub releases pipeline (prerequisite for #3 working)
 
-- [ ] Make the `charles-stricklin/SocietyPress` GitHub repo public (or create it if it doesn't exist yet)
+- [ ] Make the `SocietyPressFoundation/SocietyPress` GitHub repo public (or create it if it doesn't exist yet)
 - [ ] Cut the first tagged release (`v1.0.18` matching the current plugin) with a properly-named `societypress.zip` asset attached
 - [ ] Document the release process so each version bump produces a release artifact
 - [ ] Once releases exist, update notifications will start surfacing inside SocietyPress sites automatically — no further code change required

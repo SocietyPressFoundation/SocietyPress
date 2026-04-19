@@ -181,7 +181,7 @@ $gsp_releases = array(
             <p>
                 Looking for the full technical log? Every commit since day one
                 is public on
-                <a href="https://github.com/societypress/SocietyPress/commits/main">GitHub</a>,
+                <a href="https://github.com/charles-stricklin/SocietyPress/commits/main">GitHub</a>,
                 and the engineering worklog ships in the download under
                 <code>Documentation/WORKLOG.md</code>.
             </p>

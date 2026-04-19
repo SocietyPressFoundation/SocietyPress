@@ -14,7 +14,7 @@ The project exists to replace EasyNetSites (ENS), the legacy vendor that most ge
 
 - **Single-file plugin:** `societypress.php` (~52,500 lines, function-based, inline JS/CSS, no external dependencies)
 - **Parent theme:** `societypress/` (classic PHP, CSS custom properties, vanilla JS — no jQuery, no frameworks, no Gutenberg, no FSE)
-- **Child theme:** `society/` (for example.org — the society)
+- **Child themes (public):** Heritage, Coastline, Prairie, Ledger, Parlor — shipped in the bundle
 - **Database:** 43 custom tables with `{prefix}sp_` naming
 - **Settings:** Single `societypress_settings` option array (70+ keys, 8 tabs including Modules)
 - **License:** GPL-2.0-or-later
@@ -51,7 +51,7 @@ NEVER trust PHP `-r` one-liners via SSH — use `wp eval` instead.
 
 ## GitHub
 
-Repository: `societypress/SocietyPress`
+Repository: `charles-stricklin/SocietyPress`
 Structure: `Code/plugin/societypress.php` + `Code/theme/` + 5 child themes in `Code/theme-*/`
 
 ## Version Numbering

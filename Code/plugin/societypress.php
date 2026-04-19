@@ -60576,7 +60576,7 @@ add_action( 'wp_ajax_sp_export_full_site', function () {
     $readme .= "5. Visit the WordPress admin once. SocietyPress will detect the data\n";
     $readme .= "   and run any pending schema upgrades automatically.\n\n";
     $readme .= "SUPPORT\n-------\n";
-    $readme .= "https://github.com/societypress/SocietyPress/issues\n";
+    $readme .= "https://github.com/charles-stricklin/SocietyPress/issues\n";
 
     // Build the ZIP entirely in memory via a temporary file (ZipArchive needs
     // a real path) and stream it to the browser as the response.

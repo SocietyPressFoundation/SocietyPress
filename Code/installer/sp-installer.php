@@ -74,7 +74,7 @@ if ( file_exists( __DIR__ . '/wp-config.php' ) || file_exists( __DIR__ . '/wp-in
 // Where to download WordPress and SocietyPress from
 define( 'SP_INSTALLER_WP_URL',     'https://wordpress.org/latest.zip' );
 define( 'SP_INSTALLER_BUNDLE_URL', 'https://getsocietypress.org/downloads/societypress-latest.zip' );
-define( 'SP_INSTALLER_GITHUB_REPO', 'societypress/SocietyPress' );
+define( 'SP_INSTALLER_GITHUB_REPO', 'charles-stricklin/SocietyPress' );
 define( 'SP_INSTALLER_SALT_URL',    'https://api.wordpress.org/secret-key/1.1/salt/' );
 
 // Demo mode: if a config file exists outside the web root, load it.

@@ -97,7 +97,7 @@ defined( 'ABSPATH' ) || exit;
         <div class="footer-bottom">
             <span>&copy; <?php echo esc_html( date( 'Y' ) ); ?> SocietyPress. Released under the GPL v2 license.</span>
             <div class="footer-bottom__links">
-                <a href="https://github.com/societypress/SocietyPress" rel="noopener">GitHub</a>
+                <a href="https://github.com/charles-stricklin/SocietyPress" rel="noopener">GitHub</a>
                 <a href="<?php echo esc_url( home_url( '/wp-sitemap.xml' ) ); ?>">XML Sitemap</a>
             </div>
         </div>

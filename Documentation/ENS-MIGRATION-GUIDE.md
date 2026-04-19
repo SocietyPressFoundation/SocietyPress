@@ -212,7 +212,7 @@ When you're ready to make SocietyPress your live site:
 ## Getting help
 
 - **Documentation:** `https://getsocietypress.org/docs`
-- **GitHub issues** (for technical questions and bug reports): `https://github.com/societypress/SocietyPress/issues`
+- **GitHub issues** (for technical questions and bug reports): `https://github.com/charles-stricklin/SocietyPress/issues`
 - **Email:** the contact form on getsocietypress.org
 
 When you ask for help, tell us:

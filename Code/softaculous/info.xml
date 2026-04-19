@@ -26,7 +26,7 @@
         </features>
         <demo>https://demo.getsocietypress.org</demo>
         <support>https://getsocietypress.org/feedback/</support>
-        <ratings>https://github.com/societypress/SocietyPress</ratings>
+        <ratings>https://github.com/charles-stricklin/SocietyPress</ratings>
         <space>104857600</space><!-- 100 MB -->
         <type>php</type>
         <lang>

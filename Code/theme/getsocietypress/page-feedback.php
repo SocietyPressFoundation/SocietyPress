@@ -170,7 +170,7 @@ get_header();
                         If you're technical, you can also file bugs and feature
                         requests directly on GitHub.
                     </p>
-                    <a href="https://github.com/societypress/SocietyPress/issues"
+                    <a href="https://github.com/charles-stricklin/SocietyPress/issues"
                        class="btn btn-outline" target="_blank" rel="noopener">
                         Open an Issue
                     </a>

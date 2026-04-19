@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.0.19
+ * Version:     1.0.20
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.19' );
+define( 'SOCIETYPRESS_VERSION', '1.0.20' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -66434,36 +66434,27 @@ add_action( 'wp_ajax_sp_cart_remove', function () {
 } );
 
 /**
- * AJAX: Checkout — create order, redirect to Stripe.
+ * Create a pending order row from the logged-in buyer's current cart.
  *
- * WHY: The checkout flow creates an sp_orders record (status=pending), then
- *      redirects to Stripe Checkout for payment. When payment succeeds, the
- *      Stripe return handler updates the order to "paid" and clears the cart.
+ * WHY: Both payment flows (Stripe Payment Element + PayPal Smart Buttons) need
+ *      the same preflight: validate cart, compute totals, write the sp_orders
+ *      and sp_order_items rows, decrement stock. Centralizing keeps the two
+ *      flows from drifting apart and guarantees identical accounting no matter
+ *      which processor the buyer picks.
+ *
+ * @return array|WP_Error [ 'order_id' => int, 'subtotal' => float, 'items' => [...] ]
  */
-add_action( 'wp_ajax_sp_store_checkout', function () {
-    check_ajax_referer( 'sp_store_cart' );
-
+function sp_store_create_pending_order() {
     $cart = sp_get_cart();
     if ( empty( $cart ) ) {
-        wp_send_json_error( [ 'message' => __( 'Your cart is empty.', 'societypress' ) ] );
+        return new WP_Error( 'empty_cart', __( 'Your cart is empty.', 'societypress' ) );
     }
 
     global $wpdb;
-    $prefix   = $wpdb->prefix . 'sp_';
-    $settings = get_option( 'societypress_settings', [] );
+    $prefix = $wpdb->prefix . 'sp_';
+    $user   = wp_get_current_user();
+    $member = sp_get_member_by_user_id( $user->ID );
 
-    // Verify Stripe is configured
-    if ( ! sp_stripe_is_configured( $settings ) ) {
-        wp_send_json_error( [ 'message' => __( 'Payment processing is not configured. Please contact the site administrator.', 'societypress' ) ] );
-    }
-
-    $user    = wp_get_current_user();
-    $member  = sp_get_member_by_user_id( $user->ID );
-
-    // Validate all cart items and calculate totals.
-    // Each entry is looked up against its source table (library_items or
-    // store_products). Out-of-stock products are skipped, not failed — the
-    // remaining items can still proceed.
     $order_items = [];
     $subtotal    = 0;
 
@@ -66480,9 +66471,6 @@ add_action( 'wp_ajax_sp_store_checkout', function () {
         $line_total = round( $unit_price * $qty, 2 );
 
         $order_items[] = [
-            // Exactly one of these is set per row; the other stays null so
-            // the order_items table tracks where the line came from without
-            // a separate polymorphic-type column.
             'library_item_id' => ( $source === 'library' ) ? $lookup['id'] : null,
             'product_id'      => ( $source === 'product' ) ? $lookup['id'] : null,
             'title'           => $lookup['title'],
@@ -66490,15 +66478,13 @@ add_action( 'wp_ajax_sp_store_checkout', function () {
             'unit_price'      => $unit_price,
             'line_total'      => $line_total,
         ];
-
         $subtotal += $line_total;
     }
 
     if ( empty( $order_items ) ) {
-        wp_send_json_error( [ 'message' => __( 'No valid items in your cart.', 'societypress' ) ] );
+        return new WP_Error( 'no_valid_items', __( 'No valid items in your cart.', 'societypress' ) );
     }
 
-    // Create the order record (pending payment)
     $now = current_time( 'mysql' );
     $wpdb->insert( $prefix . 'orders', [
         'user_id'        => $user->ID,
@@ -66517,10 +66503,9 @@ add_action( 'wp_ajax_sp_store_checkout', function () {
     $order_id = (int) $wpdb->insert_id;
 
     if ( ! $order_id ) {
-        wp_send_json_error( [ 'message' => __( 'Could not create order. Please try again.', 'societypress' ) ] );
+        return new WP_Error( 'order_insert_failed', __( 'Could not create order. Please try again.', 'societypress' ) );
     }
 
-    // Insert order line items
     foreach ( $order_items as $oi ) {
         $wpdb->insert( $prefix . 'order_items', [
             'order_id'        => $order_id,
@@ -66532,9 +66517,10 @@ add_action( 'wp_ajax_sp_store_checkout', function () {
             'line_total'      => $oi['line_total'],
         ] );
 
-        // Decrement product stock if this line came from sp_store_products
-        // and the product has stock tracking enabled (stock_qty IS NOT NULL).
-        // Library items are never decremented — the catalog stays intact.
+        // Decrement stock immediately so a second buyer doesn't race past the
+        // last unit while this buyer is on the payment sheet. If payment fails
+        // the buyer can retry with the same stock reservation, or abandon —
+        // abandoned stock restocks via the failed-order cleanup cron.
         if ( $oi['product_id'] ) {
             $wpdb->query( $wpdb->prepare(
                 "UPDATE {$prefix}store_products
@@ -66545,56 +66531,99 @@ add_action( 'wp_ajax_sp_store_checkout', function () {
         }
     }
 
-    // Create Stripe Checkout Session with all line items
-    $secret_key = sp_stripe_get_secret_key( $settings );
-    $currency   = $settings['stripe_currency'] ?? 'usd';
-
-    // Build the return URLs — use the cart page for the return
-    $cart_pages = get_pages( [ 'meta_key' => '_wp_page_template', 'meta_value' => 'sp-cart' ] );
-    $cart_url   = ! empty( $cart_pages ) ? get_permalink( $cart_pages[0]->ID ) : home_url();
-
-    $success_url = add_query_arg( [
-        'sp_store_payment' => 'success',
-        'sp_session'       => '{CHECKOUT_SESSION_ID}',
-    ], $cart_url );
-
-    $cancel_url = add_query_arg( [
-        'sp_store_payment' => 'cancelled',
-    ], $cart_url );
-
-    // Build Stripe line_items array — one entry per order item
-    $stripe_body = [
-        'mode'                    => 'payment',
-        'success_url'             => $success_url,
-        'cancel_url'              => $cancel_url,
-        'client_reference_id'     => (string) $order_id,
-        'customer_email'          => $user->user_email,
-        'metadata[order_id]'      => (string) $order_id,
-        'metadata[site_url]'      => home_url(),
+    return [
+        'order_id' => $order_id,
+        'subtotal' => $subtotal,
+        'items'    => $order_items,
     ];
+}
 
-    // Add each line item to the Stripe session
-    foreach ( $order_items as $idx => $oi ) {
-        $name = $oi['title'];
-        if ( strlen( $name ) > 100 ) $name = substr( $name, 0, 97 ) . '...';
 
-        $stripe_body["line_items[{$idx}][price_data][currency]"]                   = $currency;
-        $stripe_body["line_items[{$idx}][price_data][unit_amount]"]                 = (int) round( $oi['unit_price'] * 100 );
-        $stripe_body["line_items[{$idx}][price_data][product_data][name]"]          = $name;
-        $stripe_body["line_items[{$idx}][quantity]"]                                = $oi['quantity'];
+/**
+ * Mark an order paid, clear the buyer's cart, and email the receipt.
+ *
+ * WHY: Stripe and PayPal have different success signals but identical
+ *      post-payment bookkeeping. One helper keeps them consistent.
+ */
+function sp_store_finalize_paid_order( int $order_id, string $payment_method, array $extra_fields = [] ): bool {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $order = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$prefix}orders WHERE id = %d", $order_id ) );
+    if ( ! $order ) return false;
+    if ( $order->status === 'paid' ) return true;
+
+    $update = array_merge( [
+        'status'         => 'paid',
+        'payment_method' => $payment_method,
+        'updated_at'     => current_time( 'mysql' ),
+    ], $extra_fields );
+
+    $wpdb->update( $prefix . 'orders', $update, [ 'id' => $order_id ] );
+
+    if ( $order->user_id ) {
+        sp_save_cart( [], (int) $order->user_id );
     }
 
-    $response = wp_remote_post( 'https://api.stripe.com/v1/checkout/sessions', [
+    sp_audit(
+        'store_order_paid',
+        sprintf( 'Order #%d paid via %s ($%s)', $order_id, $payment_method, number_format( (float) $order->total, 2 ) ),
+        'order',
+        $order_id
+    );
+
+    sp_send_store_order_email( $order_id );
+    return true;
+}
+
+
+/**
+ * AJAX: Create a Stripe PaymentIntent for the current cart.
+ *
+ * WHY: Stripe's Payment Element flow needs a PaymentIntent client_secret to
+ *      mount card + wallet inputs on our cart page. We build the pending
+ *      order first so the PaymentIntent metadata can reference it — that way
+ *      the post-payment finalize step can verify the PaymentIntent server-to-
+ *      server before trusting client-side success signals.
+ */
+add_action( 'wp_ajax_sp_store_create_payment_intent', function () {
+    check_ajax_referer( 'sp_store_cart' );
+
+    $settings = get_option( 'societypress_settings', [] );
+    if ( ! sp_stripe_is_configured( $settings ) ) {
+        wp_send_json_error( [ 'message' => __( 'Card payments are not set up on this site.', 'societypress' ) ] );
+    }
+
+    $created = sp_store_create_pending_order();
+    if ( is_wp_error( $created ) ) {
+        wp_send_json_error( [ 'message' => $created->get_error_message() ] );
+    }
+
+    global $wpdb;
+    $prefix     = $wpdb->prefix . 'sp_';
+    $order_id   = $created['order_id'];
+    $subtotal   = $created['subtotal'];
+    $secret_key = sp_stripe_get_secret_key( $settings );
+    $currency   = $settings['stripe_currency'] ?? 'usd';
+    $user       = wp_get_current_user();
+
+    $response = wp_remote_post( 'https://api.stripe.com/v1/payment_intents', [
         'timeout' => 30,
         'headers' => [
             'Authorization' => 'Bearer ' . $secret_key,
             'Content-Type'  => 'application/x-www-form-urlencoded',
         ],
-        'body' => $stripe_body,
+        'body' => [
+            'amount'                        => (int) round( $subtotal * 100 ),
+            'currency'                      => $currency,
+            'automatic_payment_methods[enabled]' => 'true',
+            'receipt_email'                 => $user->user_email,
+            'metadata[order_id]'            => (string) $order_id,
+            'metadata[site_url]'            => home_url(),
+        ],
     ] );
 
     if ( is_wp_error( $response ) ) {
-        // Mark order as failed
         $wpdb->update( $prefix . 'orders', [ 'status' => 'failed' ], [ 'id' => $order_id ] );
         wp_send_json_error( [ 'message' => __( 'Could not connect to payment processor. Please try again.', 'societypress' ) ] );
     }
@@ -66602,105 +66631,235 @@ add_action( 'wp_ajax_sp_store_checkout', function () {
     $body = json_decode( wp_remote_retrieve_body( $response ), true );
     $code = wp_remote_retrieve_response_code( $response );
 
-    if ( $code !== 200 || empty( $body['url'] ) ) {
+    if ( $code !== 200 || empty( $body['client_secret'] ) ) {
         $wpdb->update( $prefix . 'orders', [ 'status' => 'failed' ], [ 'id' => $order_id ] );
-        $error_msg = $body['error']['message'] ?? 'Payment setup failed.';
-        error_log( 'SocietyPress Store Stripe error: ' . $error_msg );
-        wp_send_json_error( [ 'message' => __( 'Could not set up payment. Please try again.', 'societypress' ) ] );
+        $error_msg = $body['error']['message'] ?? __( 'Payment setup failed.', 'societypress' );
+        error_log( 'SocietyPress Store PaymentIntent error: ' . $error_msg );
+        wp_send_json_error( [ 'message' => $error_msg ] );
     }
 
-    // Store Stripe session ID on the order
     $wpdb->update( $prefix . 'orders', [
-        'stripe_session_id' => $body['id'],
-        'payment_method'    => 'stripe',
+        'stripe_payment_intent' => $body['id'],
+        'payment_method'        => 'stripe',
     ], [ 'id' => $order_id ] );
 
     sp_audit(
         'store_order_created',
-        sprintf( 'Order #%d created ($%s, %d items) — redirecting to Stripe', $order_id, number_format( $subtotal, 2 ), count( $order_items ) ),
+        sprintf( 'Order #%d created ($%s) — Stripe PaymentIntent %s', $order_id, number_format( $subtotal, 2 ), $body['id'] ),
         'order',
         $order_id
     );
 
-    wp_send_json_success( [ 'checkout_url' => $body['url'] ] );
+    wp_send_json_success( [
+        'order_id'      => $order_id,
+        'client_secret' => $body['client_secret'],
+    ] );
 } );
 
 
 /**
- * Handle the return from Stripe Checkout for store orders.
+ * AJAX: Finalize a Stripe payment after the client-side confirm resolved.
  *
- * WHY: After paying on Stripe's page, the customer is redirected back to the
- *      cart page with ?sp_store_payment=success&sp_session=cs_xxx. We verify
- *      the session with Stripe, confirm payment, update the order to "paid",
- *      clear the cart, and send a confirmation email.
+ * WHY: stripe.confirmPayment() can succeed inline (no redirect) for many card
+ *      charges. When that happens the client hits this endpoint with the
+ *      PaymentIntent id; we verify it server-to-server to make sure nobody is
+ *      forging a success signal, then mark the order paid.
+ */
+add_action( 'wp_ajax_sp_store_finalize_stripe', function () {
+    check_ajax_referer( 'sp_store_cart' );
+
+    $settings   = get_option( 'societypress_settings', [] );
+    $secret_key = sp_stripe_get_secret_key( $settings );
+    if ( empty( $secret_key ) ) {
+        wp_send_json_error( [ 'message' => __( 'Stripe is not configured.', 'societypress' ) ] );
+    }
+
+    $pi_id = sanitize_text_field( $_POST['payment_intent'] ?? '' );
+    if ( empty( $pi_id ) ) {
+        wp_send_json_error( [ 'message' => __( 'Missing payment reference.', 'societypress' ) ] );
+    }
+
+    $response = wp_remote_get( 'https://api.stripe.com/v1/payment_intents/' . urlencode( $pi_id ), [
+        'timeout' => 15,
+        'headers' => [ 'Authorization' => 'Bearer ' . $secret_key ],
+    ] );
+    if ( is_wp_error( $response ) ) {
+        wp_send_json_error( [ 'message' => __( 'Could not verify payment with Stripe.', 'societypress' ) ] );
+    }
+
+    $body = json_decode( wp_remote_retrieve_body( $response ), true );
+    if ( empty( $body['status'] ) || $body['status'] !== 'succeeded' ) {
+        wp_send_json_error( [ 'message' => __( 'Payment has not succeeded yet.', 'societypress' ) ] );
+    }
+
+    $order_id = (int) ( $body['metadata']['order_id'] ?? 0 );
+    if ( ! $order_id ) {
+        wp_send_json_error( [ 'message' => __( 'Payment has no matching order.', 'societypress' ) ] );
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    $order  = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$prefix}orders WHERE id = %d", $order_id ) );
+    if ( ! $order || ( is_user_logged_in() && (int) $order->user_id !== get_current_user_id() ) ) {
+        wp_send_json_error( [ 'message' => __( 'Order ownership check failed.', 'societypress' ) ] );
+    }
+
+    sp_store_finalize_paid_order( $order_id, 'stripe', [ 'stripe_payment_intent' => $pi_id ] );
+    wp_send_json_success( [ 'order_id' => $order_id ] );
+} );
+
+
+/**
+ * Template redirect: handle the return from a Stripe-hosted 3DS challenge.
+ *
+ * WHY: Most Payment Element confirms resolve inline. Some (bank-triggered 3D
+ *      Secure, iDEAL-style bank redirects, etc.) have to leave the site. Stripe
+ *      sends the buyer back to our cart page with payment_intent + client
+ *      secret query args. We verify and finalize the order the same way the
+ *      inline AJAX finalize does, so the experience looks identical either way.
  */
 add_action( 'template_redirect', function () {
-    if ( ! is_page() ) return;
-
-    $payment_status = sanitize_text_field( $_GET['sp_store_payment'] ?? '' );
-    $session_id     = sanitize_text_field( $_GET['sp_session'] ?? '' );
-
-    if ( ! $payment_status ) return;
-
-    // Handle cancelled — just show a message, don't touch anything
-    if ( $payment_status === 'cancelled' ) return;
-
-    // Only process success with a session ID
-    if ( $payment_status !== 'success' || empty( $session_id ) ) return;
+    if ( ! is_page() || is_admin() ) return;
+    $pi_id = sanitize_text_field( $_GET['payment_intent'] ?? '' );
+    if ( empty( $pi_id ) ) return;
 
     $settings   = get_option( 'societypress_settings', [] );
     $secret_key = sp_stripe_get_secret_key( $settings );
     if ( empty( $secret_key ) ) return;
 
-    // Verify the Checkout Session with Stripe
-    $response = wp_remote_get( 'https://api.stripe.com/v1/checkout/sessions/' . $session_id, [
+    $response = wp_remote_get( 'https://api.stripe.com/v1/payment_intents/' . urlencode( $pi_id ), [
         'timeout' => 15,
         'headers' => [ 'Authorization' => 'Bearer ' . $secret_key ],
     ] );
-
     if ( is_wp_error( $response ) ) return;
 
     $body = json_decode( wp_remote_retrieve_body( $response ), true );
-    if ( empty( $body['payment_status'] ) || $body['payment_status'] !== 'paid' ) return;
+    if ( empty( $body['status'] ) || $body['status'] !== 'succeeded' ) return;
 
-    $order_id = (int) ( $body['client_reference_id'] ?? 0 );
+    $order_id = (int) ( $body['metadata']['order_id'] ?? 0 );
     if ( ! $order_id ) return;
 
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
-
-    // Only update if still pending — prevents double-processing on page refresh
-    $order = $wpdb->get_row( $wpdb->prepare(
-        "SELECT * FROM {$prefix}orders WHERE id = %d", $order_id
-    ) );
-
-    if ( ! $order || $order->status === 'paid' ) return;
-
-    // Verify that the current user owns this order to prevent one user from
-    // confirming payment on another user's order by crafting a return URL
+    $order  = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$prefix}orders WHERE id = %d", $order_id ) );
+    if ( ! $order ) return;
     if ( is_user_logged_in() && (int) $order->user_id !== get_current_user_id() ) return;
 
-    $wpdb->update( $prefix . 'orders', [
-        'status'                => 'paid',
-        'payment_method'        => 'stripe',
-        'stripe_payment_intent' => $body['payment_intent'] ?? '',
-        'updated_at'            => current_time( 'mysql' ),
-    ], [ 'id' => $order_id ] );
+    sp_store_finalize_paid_order( $order_id, 'stripe', [ 'stripe_payment_intent' => $pi_id ] );
+} );
 
-    // Clear the buyer's cart
-    if ( $order->user_id ) {
-        sp_save_cart( [], (int) $order->user_id );
+
+/**
+ * AJAX: Create a PayPal order for the current cart.
+ *
+ * WHY: The PayPal JS SDK's Smart Buttons call this when the buyer clicks
+ *      "PayPal" or "Venmo". We write a pending order row (same as the Stripe
+ *      flow), then ask PayPal to create their side of the order and return
+ *      the PayPal order id so the SDK can pop the approval sheet.
+ */
+add_action( 'wp_ajax_sp_store_create_paypal_order', function () {
+    check_ajax_referer( 'sp_store_cart' );
+
+    $settings = get_option( 'societypress_settings', [] );
+    if ( ! sp_paypal_is_configured( $settings ) ) {
+        wp_send_json_error( [ 'message' => __( 'PayPal is not set up on this site.', 'societypress' ) ] );
     }
 
+    $created = sp_store_create_pending_order();
+    if ( is_wp_error( $created ) ) {
+        wp_send_json_error( [ 'message' => $created->get_error_message() ] );
+    }
+
+    global $wpdb;
+    $prefix   = $wpdb->prefix . 'sp_';
+    $order_id = $created['order_id'];
+    $subtotal = $created['subtotal'];
+    $currency = strtoupper( $settings['stripe_currency'] ?? 'usd' );
+
+    $description_parts = array_map( fn( $oi ) => $oi['quantity'] . '× ' . $oi['title'], $created['items'] );
+    $description = mb_substr( implode( ', ', $description_parts ), 0, 127 );
+
+    $cart_pages = get_pages( [ 'meta_key' => '_wp_page_template', 'meta_value' => 'sp-cart' ] );
+    $cart_url   = ! empty( $cart_pages ) ? get_permalink( $cart_pages[0]->ID ) : home_url();
+
+    $paypal = sp_paypal_create_order(
+        (float) $subtotal,
+        $currency,
+        $description,
+        $cart_url,
+        $cart_url,
+        [ 'sp_order_id' => $order_id, 'site_url' => home_url() ],
+        $settings
+    );
+
+    if ( is_wp_error( $paypal ) ) {
+        $wpdb->update( $prefix . 'orders', [ 'status' => 'failed' ], [ 'id' => $order_id ] );
+        wp_send_json_error( [ 'message' => $paypal->get_error_message() ] );
+    }
+
+    $wpdb->update( $prefix . 'orders', [
+        'paypal_order_id' => $paypal['id'],
+        'payment_method'  => 'paypal',
+    ], [ 'id' => $order_id ] );
+
     sp_audit(
-        'store_order_paid',
-        sprintf( 'Order #%d paid via Stripe ($%s)', $order_id, number_format( (float) $order->total, 2 ) ),
+        'store_order_created',
+        sprintf( 'Order #%d created ($%s) — PayPal order %s', $order_id, number_format( $subtotal, 2 ), $paypal['id'] ),
         'order',
         $order_id
     );
 
-    // Send order confirmation email
-    sp_send_store_order_email( $order_id );
+    wp_send_json_success( [
+        'order_id'        => $order_id,
+        'paypal_order_id' => $paypal['id'],
+    ] );
+} );
+
+
+/**
+ * AJAX: Capture a PayPal order after the buyer has approved it.
+ *
+ * WHY: Second half of PayPal's two-step flow. The SDK fires onApprove and
+ *      hands us the PayPal order id; we capture (actually charge) and mark
+ *      the order paid.
+ */
+add_action( 'wp_ajax_sp_store_capture_paypal_order', function () {
+    check_ajax_referer( 'sp_store_cart' );
+
+    $settings = get_option( 'societypress_settings', [] );
+    if ( ! sp_paypal_is_configured( $settings ) ) {
+        wp_send_json_error( [ 'message' => __( 'PayPal is not set up on this site.', 'societypress' ) ] );
+    }
+
+    $paypal_order_id = sanitize_text_field( $_POST['paypal_order_id'] ?? '' );
+    if ( empty( $paypal_order_id ) ) {
+        wp_send_json_error( [ 'message' => __( 'Missing PayPal order reference.', 'societypress' ) ] );
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $order = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$prefix}orders WHERE paypal_order_id = %s",
+        $paypal_order_id
+    ) );
+    if ( ! $order ) {
+        wp_send_json_error( [ 'message' => __( 'No matching order on this site.', 'societypress' ) ] );
+    }
+    if ( is_user_logged_in() && (int) $order->user_id !== get_current_user_id() ) {
+        wp_send_json_error( [ 'message' => __( 'Order ownership check failed.', 'societypress' ) ] );
+    }
+
+    $capture = sp_paypal_capture_order( $paypal_order_id, $settings );
+    if ( is_wp_error( $capture ) ) {
+        wp_send_json_error( [ 'message' => $capture->get_error_message() ] );
+    }
+
+    sp_store_finalize_paid_order( (int) $order->id, 'paypal', [
+        'paypal_capture_id' => $capture['capture_id'],
+    ] );
+
+    wp_send_json_success( [ 'order_id' => (int) $order->id ] );
 } );
 
 
@@ -66777,6 +66936,150 @@ function sp_send_store_order_email( int $order_id ): void {
 }
 
 
+// ============================================================================
+// STORE — ADMIN NOTICE: PAYMENT PROCESSOR MISSING
+//
+// WHY: If the Store module is on but no payment processor is configured, the
+//      storefront is a dead end — members can fill a cart and hit a wall.
+//      Surface a loud, persistent admin notice so the administrator fixes it
+//      before shoppers notice. Links straight to the Payments settings tab.
+// ============================================================================
+
+add_action( 'admin_notices', function () {
+    if ( ! current_user_can( 'manage_options' ) ) return;
+    if ( ! function_exists( 'sp_module_enabled' ) || ! sp_module_enabled( 'store' ) ) return;
+
+    $settings = get_option( 'societypress_settings', [] );
+    $stripe   = function_exists( 'sp_stripe_is_configured' ) && sp_stripe_is_configured( $settings );
+    $paypal   = function_exists( 'sp_paypal_is_configured' ) && sp_paypal_is_configured( $settings );
+    if ( $stripe || $paypal ) return;
+
+    $settings_url = admin_url( 'admin.php?page=sp-settings-events' );
+    ?>
+    <div class="notice notice-error" style="border-left-width:6px;">
+        <p style="font-size:14px;margin:10px 0;">
+            <strong><?php esc_html_e( 'SocietyPress Store:', 'societypress' ); ?></strong>
+            <?php esc_html_e( 'The Store module is enabled, but no payment processor is set up. Members can add items to their cart but cannot check out.', 'societypress' ); ?>
+            <a href="<?php echo esc_url( $settings_url ); ?>" class="button button-primary" style="margin-left:8px;"><?php esc_html_e( 'Set up payments now', 'societypress' ); ?></a>
+        </p>
+    </div>
+    <?php
+} );
+
+
+// ============================================================================
+// STORE — REFUND HANDLERS (STRIPE + PAYPAL)
+//
+// WHY: Sometimes an order has to be refunded — wrong item, buyer changed their
+//      mind, stock problem. Changing the status field alone just relabels the
+//      row; the money is still with the processor. These handlers call the
+//      real refund APIs so the money actually goes back, then mark the order
+//      refunded and audit-log it.
+// ============================================================================
+
+add_action( 'wp_ajax_sp_admin_refund_store_order', function () {
+    if ( ! check_ajax_referer( 'sp_store_order_refund', 'nonce', false ) ) {
+        wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ] );
+    }
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Permission denied.', 'societypress' ) ] );
+    }
+
+    global $wpdb;
+    $prefix   = $wpdb->prefix . 'sp_';
+    $order_id = (int) ( $_POST['order_id'] ?? 0 );
+    $order    = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$prefix}orders WHERE id = %d", $order_id ) );
+
+    if ( ! $order ) {
+        wp_send_json_error( [ 'message' => __( 'Order not found.', 'societypress' ) ] );
+    }
+    if ( $order->status !== 'paid' ) {
+        wp_send_json_error( [ 'message' => __( 'Only paid orders can be refunded.', 'societypress' ) ] );
+    }
+
+    $settings = get_option( 'societypress_settings', [] );
+
+    if ( $order->payment_method === 'stripe' && ! empty( $order->stripe_payment_intent ) ) {
+        $secret_key = sp_stripe_get_secret_key( $settings );
+        if ( empty( $secret_key ) ) {
+            wp_send_json_error( [ 'message' => __( 'Stripe is not configured.', 'societypress' ) ] );
+        }
+
+        $response = wp_remote_post( 'https://api.stripe.com/v1/refunds', [
+            'timeout' => 30,
+            'headers' => [
+                'Authorization' => 'Bearer ' . $secret_key,
+                'Content-Type'  => 'application/x-www-form-urlencoded',
+            ],
+            'body'    => [ 'payment_intent' => $order->stripe_payment_intent ],
+        ] );
+
+        if ( is_wp_error( $response ) ) {
+            wp_send_json_error( [ 'message' => __( 'Could not reach Stripe. Please try again.', 'societypress' ) ] );
+        }
+
+        $body = json_decode( wp_remote_retrieve_body( $response ), true );
+        $code = wp_remote_retrieve_response_code( $response );
+        $ok   = ( $code === 200 ) && ! empty( $body['status'] ) && in_array( $body['status'], [ 'succeeded', 'pending' ], true );
+
+        if ( ! $ok ) {
+            $msg = $body['error']['message'] ?? __( 'Stripe refund failed.', 'societypress' );
+            error_log( 'SocietyPress store Stripe refund error: ' . $msg );
+            wp_send_json_error( [ 'message' => $msg ] );
+        }
+
+    } elseif ( $order->payment_method === 'paypal' && ! empty( $order->paypal_capture_id ) ) {
+        $token = sp_paypal_get_access_token( $settings );
+        if ( is_wp_error( $token ) ) {
+            wp_send_json_error( [ 'message' => $token->get_error_message() ] );
+        }
+
+        $response = wp_remote_post(
+            sp_paypal_api_base( $settings ) . '/v2/payments/captures/' . urlencode( $order->paypal_capture_id ) . '/refund',
+            [
+                'timeout' => 30,
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $token,
+                    'Content-Type'  => 'application/json',
+                ],
+                'body'    => '{}',
+            ]
+        );
+
+        if ( is_wp_error( $response ) ) {
+            wp_send_json_error( [ 'message' => __( 'Could not reach PayPal. Please try again.', 'societypress' ) ] );
+        }
+
+        $body = json_decode( wp_remote_retrieve_body( $response ), true );
+        $code = wp_remote_retrieve_response_code( $response );
+        $ok   = ( $code === 201 ) && ! empty( $body['status'] ) && in_array( $body['status'], [ 'COMPLETED', 'PENDING' ], true );
+
+        if ( ! $ok ) {
+            $msg = $body['message'] ?? __( 'PayPal refund failed.', 'societypress' );
+            error_log( 'SocietyPress store PayPal refund error: ' . wp_json_encode( $body ) );
+            wp_send_json_error( [ 'message' => $msg ] );
+        }
+
+    } else {
+        wp_send_json_error( [ 'message' => __( 'This order has no refundable payment on file.', 'societypress' ) ] );
+    }
+
+    $wpdb->update( $prefix . 'orders', [
+        'status'     => 'refunded',
+        'updated_at' => current_time( 'mysql' ),
+    ], [ 'id' => $order_id ] );
+
+    sp_audit(
+        'store_order_refunded',
+        sprintf( 'Order #%d refunded via %s ($%s)', $order_id, $order->payment_method, number_format( (float) $order->total, 2 ) ),
+        'order',
+        $order_id
+    );
+
+    wp_send_json_success( [ 'message' => __( 'Refund issued. The buyer will see it on their statement within a few business days.', 'societypress' ) ] );
+} );
+
+
 /**
  * Build a cart response array for AJAX endpoints.
  *
@@ -66828,25 +67131,25 @@ function sp_build_cart_response(): array {
 // ============================================================================
 // STORE — CART PAGE (Frontend)
 //
-// WHY: Members need a page to review their cart contents, adjust quantities,
-//      remove items, and proceed to checkout. This renders the full cart
-//      page with a responsive table layout, quantity controls, and a
-//      checkout button that triggers the Stripe flow.
+// WHY: Members review their cart, then pay inline via Stripe Payment Element
+//      (card + Apple Pay + Google Pay + Link, all on our page) or PayPal
+//      Smart Buttons (PayPal + Venmo, also inline). No redirect to a hosted
+//      checkout page unless the card issuer forces a 3-D Secure challenge.
 // ============================================================================
 
 /**
  * Render the shopping cart page.
- *
- * WHY: The cart page is a frontend template (sp-cart) that shows the member
- *      their current cart contents with the ability to change quantities,
- *      remove items, and check out. All interactions are AJAX-driven for a
- *      smooth experience — no page reloads when adjusting quantities.
  */
 function sp_render_cart_page(): void {
-    $settings = get_option( 'societypress_settings', [] );
-
-    // Handle payment return messages
-    $payment_status = sanitize_text_field( $_GET['sp_store_payment'] ?? '' );
+    $settings          = get_option( 'societypress_settings', [] );
+    $stripe_configured = sp_stripe_is_configured( $settings );
+    $paypal_configured = sp_paypal_is_configured( $settings );
+    $stripe_test_mode  = ! empty( $settings['stripe_test_mode'] );
+    $stripe_pub_key    = $stripe_test_mode
+        ? ( $settings['stripe_test_publishable_key'] ?? '' )
+        : ( $settings['stripe_live_publishable_key'] ?? '' );
+    $paypal_client_id  = sp_paypal_get_client_id( $settings );
+    $paypal_currency   = strtoupper( $settings['stripe_currency'] ?? 'usd' );
     ?>
     <style>
         .sp-cart-wrap { max-width:800px; margin:0 auto; }
@@ -66876,8 +67179,20 @@ function sp_render_cart_page(): void {
         .sp-cart-checkout-btn:hover { opacity:.9; }
         .sp-cart-checkout-btn:disabled { opacity:.5; cursor:not-allowed; }
         .sp-cart-success { background:#d4edda; border:1px solid #c3e6cb; color:#155724; padding:16px 20px; border-radius:6px; margin-bottom:20px; }
-        .sp-cart-cancelled { background:#fff3cd; border:1px solid #ffeeba; color:#856404; padding:16px 20px; border-radius:6px; margin-bottom:20px; }
+        .sp-cart-unavailable { background:#fff3cd; border:1px solid #ffeeba; color:#856404; padding:16px 20px; border-radius:6px; margin:20px 0; }
         .sp-cart-login-msg { text-align:center; padding:40px 20px; }
+        .sp-pay-panel { border:1px solid var(--sp-border-color,#e5e7eb); border-radius:8px; padding:24px; margin-top:20px; background:#fafafa; }
+        .sp-pay-panel h3 { margin:0 0 6px 0; font-size:18px; }
+        .sp-pay-panel .sp-pay-sub { color:#666; font-size:13px; margin:0 0 18px 0; }
+        .sp-pay-section { background:#fff; border:1px solid var(--sp-border-color,#e5e7eb); border-radius:6px; padding:16px; margin-bottom:14px; }
+        .sp-pay-section-label { display:block; font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:#666; margin-bottom:10px; }
+        .sp-pay-divider { text-align:center; color:#999; font-size:12px; text-transform:uppercase; letter-spacing:1px; margin:8px 0; position:relative; }
+        .sp-pay-divider:before,.sp-pay-divider:after { content:""; position:absolute; top:50%; width:calc(50% - 30px); height:1px; background:#e5e7eb; }
+        .sp-pay-divider:before { left:0; }
+        .sp-pay-divider:after { right:0; }
+        .sp-pay-error { color:#d63638; font-size:13px; margin-top:10px; min-height:18px; }
+        .sp-pay-cancel { display:inline-block; margin-top:10px; color:var(--sp-link-color,#0066cc); text-decoration:none; font-size:13px; cursor:pointer; background:none; border:none; padding:0; }
+        .sp-pay-cancel:hover { text-decoration:underline; }
         @media (max-width:600px) {
             .sp-cart-table thead { display:none; }
             .sp-cart-table tr { display:block; margin-bottom:16px; border:1px solid #eee; border-radius:6px; padding:12px; }
@@ -66891,52 +67206,133 @@ function sp_render_cart_page(): void {
     <div class="sp-cart-wrap">
         <h2><?php esc_html_e( 'Shopping Cart', 'societypress' ); ?></h2>
 
-        <?php if ( $payment_status === 'success' ) : ?>
-            <div class="sp-cart-success">
-                <strong><?php esc_html_e( 'Payment received!', 'societypress' ); ?></strong>
-                <?php esc_html_e( 'Thank you for your purchase. A confirmation email has been sent to your address on file.', 'societypress' ); ?>
-            </div>
-        <?php elseif ( $payment_status === 'cancelled' ) : ?>
-            <div class="sp-cart-cancelled">
-                <?php esc_html_e( 'Payment was cancelled. Your cart items are still saved — you can check out when ready.', 'societypress' ); ?>
+        <div id="sp-cart-success-banner" class="sp-cart-success" style="display:none;">
+            <strong><?php esc_html_e( 'Payment received!', 'societypress' ); ?></strong>
+            <?php esc_html_e( 'Thank you for your purchase. A confirmation email has been sent to your address on file.', 'societypress' ); ?>
+        </div>
+
+        <?php if ( ! $stripe_configured && ! $paypal_configured ) : ?>
+            <div class="sp-cart-unavailable">
+                <strong><?php esc_html_e( 'Online checkout is not available on this site yet.', 'societypress' ); ?></strong>
+                <?php esc_html_e( 'Please contact the administrator to complete your order.', 'societypress' ); ?>
             </div>
         <?php endif; ?>
 
         <?php if ( ! is_user_logged_in() ) : ?>
             <div class="sp-cart-login-msg">
                 <p><?php printf(
+                    /* translators: %s: login URL */
                     __( 'Please <a href="%s">log in</a> to view your cart and make purchases.', 'societypress' ),
                     esc_url( wp_login_url( get_permalink() ) )
                 ); ?></p>
             </div>
         <?php else : ?>
             <div id="sp-cart-content">
-                <!-- Populated by JavaScript from AJAX -->
                 <p style="text-align:center;color:#888;padding:40px 0;"><?php esc_html_e( 'Loading cart…', 'societypress' ); ?></p>
+            </div>
+
+            <div id="sp-pay-panel" class="sp-pay-panel" style="display:none;">
+                <h3><?php esc_html_e( 'Payment', 'societypress' ); ?></h3>
+                <p class="sp-pay-sub" id="sp-pay-total-line"></p>
+
+                <?php if ( $stripe_configured ) : ?>
+                <div class="sp-pay-section">
+                    <span class="sp-pay-section-label"><?php esc_html_e( 'Pay with card', 'societypress' ); ?></span>
+                    <div id="sp-stripe-element"></div>
+                    <button type="button" id="sp-stripe-pay-btn" class="sp-cart-checkout-btn" style="margin-top:14px;width:100%;">
+                        <?php esc_html_e( 'Pay', 'societypress' ); ?>
+                    </button>
+                    <div class="sp-pay-error" id="sp-stripe-error"></div>
+                </div>
+                <?php endif; ?>
+
+                <?php if ( $stripe_configured && $paypal_configured ) : ?>
+                <div class="sp-pay-divider"><?php esc_html_e( 'or', 'societypress' ); ?></div>
+                <?php endif; ?>
+
+                <?php if ( $paypal_configured ) : ?>
+                <div class="sp-pay-section">
+                    <span class="sp-pay-section-label"><?php esc_html_e( 'Pay with PayPal or Venmo', 'societypress' ); ?></span>
+                    <div id="sp-paypal-buttons"></div>
+                    <div class="sp-pay-error" id="sp-paypal-error"></div>
+                </div>
+                <?php endif; ?>
+
+                <button type="button" class="sp-pay-cancel" id="sp-pay-cancel-btn">&larr; <?php esc_html_e( 'Back to cart', 'societypress' ); ?></button>
             </div>
         <?php endif; ?>
     </div>
 
+    <?php if ( is_user_logged_in() && ( $stripe_configured || $paypal_configured ) ) : ?>
+    <?php if ( $stripe_configured ) : ?>
+        <script src="https://js.stripe.com/v3/"></script>
+    <?php endif; ?>
+    <?php if ( $paypal_configured ) : ?>
+        <script src="https://www.paypal.com/sdk/js?client-id=<?php echo esc_attr( $paypal_client_id ); ?>&currency=<?php echo esc_attr( $paypal_currency ); ?>&components=buttons&enable-funding=venmo"></script>
+    <?php endif; ?>
+    <?php endif; ?>
+
     <?php if ( is_user_logged_in() ) : ?>
     <script>
     (function() {
-        var ajaxUrl  = '<?php echo esc_js( admin_url( 'admin-ajax.php' ) ); ?>';
-        var nonce    = '<?php echo esc_js( wp_create_nonce( 'sp_store_cart' ) ); ?>';
-        var storeUrl = '<?php
+        var ajaxUrl  = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
+        var nonce    = <?php echo wp_json_encode( wp_create_nonce( 'sp_store_cart' ) ); ?>;
+        var storeUrl = <?php
             $store_pages = get_pages( [ 'meta_key' => '_wp_page_template', 'meta_value' => 'sp-store' ] );
-            echo esc_js( ! empty( $store_pages ) ? get_permalink( $store_pages[0]->ID ) : home_url() );
-        ?>';
-        var container = document.getElementById('sp-cart-content');
-        var checkingOut = false;
+            echo wp_json_encode( ! empty( $store_pages ) ? get_permalink( $store_pages[0]->ID ) : home_url() );
+        ?>;
+        var stripeConfigured = <?php echo $stripe_configured ? 'true' : 'false'; ?>;
+        var paypalConfigured = <?php echo $paypal_configured ? 'true' : 'false'; ?>;
+        var stripePubKey     = <?php echo wp_json_encode( $stripe_pub_key ); ?>;
+        var spCurrencySym    = <?php echo wp_json_encode( sp_get_currency_symbol() ); ?>;
+        var spCurrencyPos    = <?php echo wp_json_encode( sp_get_currency_position() ); ?>;
 
-        // Currency symbol and position from settings
-        var spCurrencySym = <?php echo wp_json_encode( sp_get_currency_symbol() ); ?>;
-        var spCurrencyPos = <?php echo wp_json_encode( sp_get_currency_position() ); ?>;
-        function spCartFmtCurrency(amount) {
-            return spCurrencyPos === 'before' ? spCurrencySym + amount : amount + spCurrencySym;
+        var container   = document.getElementById('sp-cart-content');
+        var panel       = document.getElementById('sp-pay-panel');
+        var totalLine   = document.getElementById('sp-pay-total-line');
+        var successBanner = document.getElementById('sp-cart-success-banner');
+        var cartTotal   = 0;
+
+        // Payment flow state — reset each time the buyer enters checkout
+        var stripeObj   = null;
+        var elementsObj = null;
+        var stripeOrderId = null;
+        var paypalRendered = false;
+
+        function fmtCurrency(amount) {
+            var s = (typeof amount === 'number' ? amount : parseFloat(amount)).toFixed(2);
+            return spCurrencyPos === 'before' ? spCurrencySym + s : s + spCurrencySym;
+        }
+
+        function escHtml(str) {
+            var d = document.createElement('div');
+            d.textContent = str == null ? '' : String(str);
+            return d.innerHTML;
+        }
+
+        function cartAjax(action, data, cb, errCb) {
+            var fd = new FormData();
+            fd.append('action', action);
+            fd.append('_ajax_nonce', nonce);
+            for (var k in data) fd.append(k, data[k]);
+            fetch(ajaxUrl, { method: 'POST', body: fd, credentials: 'same-origin' })
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    if (d.success) { if (cb) cb(d.data); }
+                    else { if (errCb) errCb( (d.data && d.data.message) ? d.data.message : '' ); }
+                })
+                .catch(function() { if (errCb) errCb(''); });
+        }
+
+        function showSuccess() {
+            panel.style.display = 'none';
+            container.innerHTML = '';
+            successBanner.style.display = 'block';
+            cartAjax('sp_cart_get', {}, renderCart);
         }
 
         function renderCart(data) {
+            cartTotal = (data && typeof data.total === 'number') ? data.total : 0;
             if (!data.items || data.items.length === 0) {
                 container.innerHTML =
                     '<div class="sp-cart-empty">' +
@@ -66944,6 +67340,7 @@ function sp_render_cart_page(): void {
                     '<p><?php echo esc_js( __( 'Your cart is empty.', 'societypress' ) ); ?></p>' +
                     '<a href="' + storeUrl + '" style="color:var(--sp-link-color,#0066cc);"><?php echo esc_js( __( 'Continue Shopping', 'societypress' ) ); ?></a>' +
                     '</div>';
+                panel.style.display = 'none';
                 return;
             }
 
@@ -66959,8 +67356,6 @@ function sp_render_cart_page(): void {
                 var cover = item.cover_url
                     ? '<img class="sp-cart-item-cover" src="' + item.cover_url + '" alt="">'
                     : '<div class="sp-cart-item-cover-placeholder"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg></div>';
-                // data-source on each row distinguishes a library item from a
-                // pure store product when the user changes qty or removes it.
                 html += '<tr data-item-id="' + item.item_id + '" data-source="' + (item.source || 'library') + '">' +
                     '<td data-label="<?php echo esc_js( __( 'Item', 'societypress' ) ); ?>"><div class="sp-cart-item-info">' + cover +
                     '<div><div class="sp-cart-item-title">' + escHtml(item.title) + '</div>' +
@@ -66971,8 +67366,8 @@ function sp_render_cart_page(): void {
                     '<span class="sp-cart-qty-val">' + item.qty + '</span>' +
                     '<button class="sp-cart-qty-btn sp-cart-plus" type="button">+</button>' +
                     '</div></td>' +
-                    '<td data-label="<?php echo esc_js( __( 'Price', 'societypress' ) ); ?>" class="sp-cart-price">' + spCartFmtCurrency(item.unit_price.toFixed(2)) + '</td>' +
-                    '<td data-label="<?php echo esc_js( __( 'Total', 'societypress' ) ); ?>" class="sp-cart-price">' + spCartFmtCurrency(item.line_total.toFixed(2)) + '</td>' +
+                    '<td data-label="<?php echo esc_js( __( 'Price', 'societypress' ) ); ?>" class="sp-cart-price">' + fmtCurrency(item.unit_price) + '</td>' +
+                    '<td data-label="<?php echo esc_js( __( 'Total', 'societypress' ) ); ?>" class="sp-cart-price">' + fmtCurrency(item.line_total) + '</td>' +
                     '<td><a href="#" class="sp-cart-remove"><?php echo esc_js( __( 'Remove', 'societypress' ) ); ?></a></td>' +
                     '</tr>';
             });
@@ -66981,33 +67376,19 @@ function sp_render_cart_page(): void {
             html += '<div class="sp-cart-footer">' +
                 '<a href="' + storeUrl + '" class="sp-cart-continue">&larr; <?php echo esc_js( __( 'Continue Shopping', 'societypress' ) ); ?></a>' +
                 '<div class="sp-cart-actions">' +
-                '<div class="sp-cart-total"><span><?php echo esc_js( __( 'Total:', 'societypress' ) ); ?></span>' + spCartFmtCurrency(data.total.toFixed(2)) + '</div>' +
-                '<button class="sp-cart-checkout-btn" id="sp-checkout-btn"><?php echo esc_js( __( 'Proceed to Checkout', 'societypress' ) ); ?></button>' +
-                '</div></div>';
+                '<div class="sp-cart-total"><span><?php echo esc_js( __( 'Total:', 'societypress' ) ); ?></span>' + fmtCurrency(data.total) + '</div>';
+
+            if (stripeConfigured || paypalConfigured) {
+                html += '<button class="sp-cart-checkout-btn" id="sp-checkout-btn"><?php echo esc_js( __( 'Proceed to Checkout', 'societypress' ) ); ?></button>';
+            }
+
+            html += '</div></div>';
 
             container.innerHTML = html;
             bindCartEvents();
         }
 
-        function escHtml(str) {
-            var d = document.createElement('div');
-            d.textContent = str;
-            return d.innerHTML;
-        }
-
-        function cartAjax(action, data, cb) {
-            var fd = new FormData();
-            fd.append('action', action);
-            fd.append('_ajax_nonce', nonce);
-            for (var k in data) fd.append(k, data[k]);
-            fetch(ajaxUrl, { method: 'POST', body: fd, credentials: 'same-origin' })
-                .then(function(r) { return r.json(); })
-                .then(function(d) { if (d.success && cb) cb(d.data); })
-                .catch(function() {});
-        }
-
         function bindCartEvents() {
-            // Quantity +/- buttons
             container.querySelectorAll('.sp-cart-minus').forEach(function(btn) {
                 btn.addEventListener('click', function() {
                     var row    = this.closest('tr');
@@ -67032,7 +67413,6 @@ function sp_render_cart_page(): void {
                 });
             });
 
-            // Remove links
             container.querySelectorAll('.sp-cart-remove').forEach(function(link) {
                 link.addEventListener('click', function(e) {
                     e.preventDefault();
@@ -67043,41 +67423,134 @@ function sp_render_cart_page(): void {
                 });
             });
 
-            // Checkout button
             var checkoutBtn = document.getElementById('sp-checkout-btn');
             if (checkoutBtn) {
-                checkoutBtn.addEventListener('click', function() {
-                    if (checkingOut) return;
-                    checkingOut = true;
-                    this.disabled = true;
-                    this.textContent = '<?php echo esc_js( __( 'Processing…', 'societypress' ) ); ?>';
-
-                    var fd = new FormData();
-                    fd.append('action', 'sp_store_checkout');
-                    fd.append('_ajax_nonce', nonce);
-
-                    fetch(ajaxUrl, { method: 'POST', body: fd, credentials: 'same-origin' })
-                        .then(function(r) { return r.json(); })
-                        .then(function(d) {
-                            if (d.success && d.data.checkout_url) {
-                                window.location.href = d.data.checkout_url;
-                            } else {
-                                alert(d.data && d.data.message ? d.data.message : '<?php echo esc_js( __( 'Checkout failed. Please try again.', 'societypress' ) ); ?>');
-                                checkingOut = false;
-                                checkoutBtn.disabled = false;
-                                checkoutBtn.textContent = '<?php echo esc_js( __( 'Proceed to Checkout', 'societypress' ) ); ?>';
-                            }
-                        })
-                        .catch(function() {
-                            checkingOut = false;
-                            checkoutBtn.disabled = false;
-                            checkoutBtn.textContent = '<?php echo esc_js( __( 'Proceed to Checkout', 'societypress' ) ); ?>';
-                        });
-                });
+                checkoutBtn.addEventListener('click', enterCheckout);
             }
         }
 
-        // Load cart on page init
+        function enterCheckout() {
+            container.style.display = 'none';
+            panel.style.display = 'block';
+            totalLine.textContent = <?php echo wp_json_encode( __( 'Total due:', 'societypress' ) ); ?> + ' ' + fmtCurrency(cartTotal);
+
+            if (stripeConfigured) mountStripe();
+            if (paypalConfigured) mountPaypal();
+        }
+
+        function exitCheckout() {
+            panel.style.display = 'none';
+            container.style.display = '';
+        }
+
+        // ---- Stripe Payment Element ----
+        function mountStripe() {
+            var errEl = document.getElementById('sp-stripe-error');
+            errEl.textContent = '';
+
+            cartAjax('sp_store_create_payment_intent', {}, function(data) {
+                stripeOrderId = data.order_id;
+                try {
+                    stripeObj = Stripe(stripePubKey);
+                    elementsObj = stripeObj.elements({
+                        clientSecret: data.client_secret,
+                        appearance: { theme: 'stripe' }
+                    });
+                    var el = elementsObj.create('payment', { layout: 'tabs' });
+                    var target = document.getElementById('sp-stripe-element');
+                    target.innerHTML = '';
+                    el.mount(target);
+                } catch (e) {
+                    errEl.textContent = <?php echo wp_json_encode( __( 'Could not load the card form. Please refresh and try again.', 'societypress' ) ); ?>;
+                }
+            }, function(msg) {
+                errEl.textContent = msg || <?php echo wp_json_encode( __( 'Could not start checkout. Please try again.', 'societypress' ) ); ?>;
+            });
+
+            var payBtn = document.getElementById('sp-stripe-pay-btn');
+            payBtn.onclick = function() {
+                errEl.textContent = '';
+                payBtn.disabled = true;
+                payBtn.textContent = <?php echo wp_json_encode( __( 'Processing…', 'societypress' ) ); ?>;
+                if (!stripeObj || !elementsObj) {
+                    errEl.textContent = <?php echo wp_json_encode( __( 'Card form is not ready yet.', 'societypress' ) ); ?>;
+                    payBtn.disabled = false;
+                    payBtn.textContent = <?php echo wp_json_encode( __( 'Pay', 'societypress' ) ); ?>;
+                    return;
+                }
+                stripeObj.confirmPayment({
+                    elements: elementsObj,
+                    confirmParams: { return_url: window.location.href },
+                    redirect: 'if_required'
+                }).then(function(result) {
+                    if (result.error) {
+                        errEl.textContent = result.error.message || <?php echo wp_json_encode( __( 'Payment failed. Please try again.', 'societypress' ) ); ?>;
+                        payBtn.disabled = false;
+                        payBtn.textContent = <?php echo wp_json_encode( __( 'Pay', 'societypress' ) ); ?>;
+                        return;
+                    }
+                    // Inline success — confirm with server and show receipt
+                    var pi = (result.paymentIntent && result.paymentIntent.id) ? result.paymentIntent.id : '';
+                    cartAjax('sp_store_finalize_stripe', { payment_intent: pi }, showSuccess, function(msg) {
+                        errEl.textContent = msg || <?php echo wp_json_encode( __( 'Payment succeeded but finalizing failed. Please contact the administrator.', 'societypress' ) ); ?>;
+                    });
+                });
+            };
+        }
+
+        // ---- PayPal Smart Buttons ----
+        function mountPaypal() {
+            if (paypalRendered) return;
+            var errEl = document.getElementById('sp-paypal-error');
+            var target = document.getElementById('sp-paypal-buttons');
+            if (typeof paypal === 'undefined' || !paypal.Buttons) {
+                errEl.textContent = <?php echo wp_json_encode( __( 'PayPal did not load. Please refresh and try again.', 'societypress' ) ); ?>;
+                return;
+            }
+            paypalRendered = true;
+            target.innerHTML = '';
+            paypal.Buttons({
+                style: { layout: 'vertical', shape: 'rect', color: 'gold', label: 'paypal' },
+                createOrder: function() {
+                    errEl.textContent = '';
+                    return new Promise(function(resolve, reject) {
+                        cartAjax('sp_store_create_paypal_order', {}, function(data) {
+                            resolve(data.paypal_order_id);
+                        }, function(msg) {
+                            errEl.textContent = msg || <?php echo wp_json_encode( __( 'Could not start PayPal checkout.', 'societypress' ) ); ?>;
+                            reject(new Error(msg || 'paypal_create_failed'));
+                        });
+                    });
+                },
+                onApprove: function(data) {
+                    return new Promise(function(resolve, reject) {
+                        cartAjax('sp_store_capture_paypal_order', { paypal_order_id: data.orderID }, function() {
+                            showSuccess();
+                            resolve();
+                        }, function(msg) {
+                            errEl.textContent = msg || <?php echo wp_json_encode( __( 'PayPal payment could not be finalized.', 'societypress' ) ); ?>;
+                            reject(new Error(msg || 'paypal_capture_failed'));
+                        });
+                    });
+                },
+                onError: function() {
+                    errEl.textContent = <?php echo wp_json_encode( __( 'PayPal reported an error. Please try again.', 'societypress' ) ); ?>;
+                }
+            }).render(target);
+        }
+
+        document.getElementById('sp-pay-cancel-btn').addEventListener('click', exitCheckout);
+
+        // If we returned from a Stripe 3DS redirect, the server-side template
+        // redirect has already finalized the order — show the receipt banner.
+        var params = new URLSearchParams(window.location.search);
+        if (params.has('payment_intent') && params.get('redirect_status') === 'succeeded') {
+            successBanner.style.display = 'block';
+            if (window.history.replaceState) {
+                window.history.replaceState({}, '', window.location.pathname);
+            }
+        }
+
         cartAjax('sp_cart_get', {}, renderCart);
     })();
     </script>
@@ -67712,6 +68185,75 @@ function sp_render_order_detail_page(): void {
                 <?php submit_button( __( 'Update Order', 'societypress' ) ); ?>
             </form>
         </div>
+
+        <?php
+        // Refund panel — only render when this paid order has a real processor
+        // reference we can call. Changing the status manually doesn't move the
+        // money; clicking this button does.
+        $can_refund_stripe = $order->status === 'paid' && $order->payment_method === 'stripe' && ! empty( $order->stripe_payment_intent );
+        $can_refund_paypal = $order->status === 'paid' && $order->payment_method === 'paypal' && ! empty( $order->paypal_capture_id );
+        if ( $can_refund_stripe || $can_refund_paypal ) :
+            $processor_label = $can_refund_stripe ? __( 'Stripe', 'societypress' ) : __( 'PayPal', 'societypress' );
+        ?>
+        <div class="postbox sp-order-detail-box-mt">
+            <h3 class="sp-order-detail-box-heading"><?php esc_html_e( 'Refund', 'societypress' ); ?></h3>
+            <p>
+                <?php printf(
+                    /* translators: %1$s: payment processor name, %2$s: formatted amount */
+                    esc_html__( 'Issue a full refund of %2$s via %1$s. The buyer will see the credit on their statement within a few business days.', 'societypress' ),
+                    '<strong>' . esc_html( $processor_label ) . '</strong>',
+                    '<strong>' . esc_html( sp_format_currency( $order->total ) ) . '</strong>'
+                ); ?>
+            </p>
+            <button type="button" id="sp-order-refund-btn" class="button button-secondary" data-order-id="<?php echo (int) $order_id; ?>">
+                <?php printf( esc_html__( 'Refund %s', 'societypress' ), esc_html( sp_format_currency( $order->total ) ) ); ?>
+            </button>
+            <span id="sp-order-refund-status" style="margin-left:10px;"></span>
+            <script>
+            (function(){
+                var btn = document.getElementById('sp-order-refund-btn');
+                if (!btn) return;
+                var status = document.getElementById('sp-order-refund-status');
+                var ajaxUrl = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
+                var nonce   = <?php echo wp_json_encode( wp_create_nonce( 'sp_store_order_refund' ) ); ?>;
+                btn.addEventListener('click', function(){
+                    var doRefund = function(){
+                        btn.disabled = true;
+                        btn.textContent = <?php echo wp_json_encode( __( 'Processing…', 'societypress' ) ); ?>;
+                        var fd = new FormData();
+                        fd.append('action', 'sp_admin_refund_store_order');
+                        fd.append('nonce', nonce);
+                        fd.append('order_id', btn.getAttribute('data-order-id'));
+                        fetch(ajaxUrl, { method: 'POST', body: fd, credentials: 'same-origin' })
+                            .then(function(r){ return r.json(); })
+                            .then(function(d){
+                                if (d.success) {
+                                    status.style.color = '#00a32a';
+                                    status.textContent = d.data.message || <?php echo wp_json_encode( __( 'Refund issued.', 'societypress' ) ); ?>;
+                                    setTimeout(function(){ window.location.reload(); }, 1200);
+                                } else {
+                                    status.style.color = '#d63638';
+                                    status.textContent = (d.data && d.data.message) ? d.data.message : <?php echo wp_json_encode( __( 'Refund failed.', 'societypress' ) ); ?>;
+                                    btn.disabled = false;
+                                    btn.textContent = <?php echo wp_json_encode( sprintf( __( 'Refund %s', 'societypress' ), sp_format_currency( $order->total ) ) ); ?>;
+                                }
+                            })
+                            .catch(function(){
+                                status.style.color = '#d63638';
+                                status.textContent = <?php echo wp_json_encode( __( 'Network error. Try again.', 'societypress' ) ); ?>;
+                                btn.disabled = false;
+                            });
+                    };
+                    if (typeof spConfirm === 'function') {
+                        spConfirm(<?php echo wp_json_encode( sprintf( __( 'Issue a full refund of %s? This cannot be undone.', 'societypress' ), sp_format_currency( $order->total ) ) ); ?>, doRefund);
+                    } else if (confirm(<?php echo wp_json_encode( sprintf( __( 'Issue a full refund of %s? This cannot be undone.', 'societypress' ), sp_format_currency( $order->total ) ) ); ?>)) {
+                        doRefund();
+                    }
+                });
+            })();
+            </script>
+        </div>
+        <?php endif; ?>
     </div>
     <?php
 }

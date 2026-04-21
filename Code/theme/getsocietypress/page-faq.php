@@ -144,7 +144,7 @@ get_header();
                         PHP 8.1+, WordPress 6.0+, and MySQL 8.0+ (or MariaDB 10.6+). Any
                         current shared-hosting plan that supports WordPress will work.
                         See the full
-                        <a href="<?php echo esc_url( home_url( '/requirements/' ) ); ?>">requirements page</a>
+                        <a href="<?php echo esc_url( home_url( '/docs/requirements/' ) ); ?>">requirements page</a>
                         for details.
                     </p>
                 </div>
@@ -333,7 +333,7 @@ get_header();
                         automatically, detects organizational members, and handles
                         duplicates. Events, surname research, and library catalogs
                         all have CSV importers too.
-                        See the <a href="<?php echo esc_url( home_url( '/ens-migration/' ) ); ?>">ENS migration guide</a>
+                        See the <a href="<?php echo esc_url( home_url( '/docs/ens-migration/' ) ); ?>">ENS migration guide</a>
                         for the full walkthrough.
                     </p>
                 </div>

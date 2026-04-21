@@ -406,7 +406,7 @@ get_header();
                 <a href="<?php echo esc_url( home_url( '/download/' ) ); ?>" class="btn btn-primary btn-lg">
                     Download SocietyPress
                 </a>
-                <a href="<?php echo esc_url( home_url( '/installation/' ) ); ?>" class="btn btn-secondary btn-lg">
+                <a href="<?php echo esc_url( home_url( '/docs/installation/' ) ); ?>" class="btn btn-secondary btn-lg">
                     Installation Guide
                 </a>
             </div>

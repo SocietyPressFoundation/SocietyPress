@@ -218,16 +218,16 @@ function gsp_md_inline( $text ) {
 get_header();
 
 /*
- * Load the guide. Canonical source: the .md file on the server at
- * ~/domains/getsocietypress.org/public_html/docs/ENS-MIGRATION-GUIDE.md
+ * Load the guide. Canonical source on the server:
+ *   ~/domains/getsocietypress.org/public_html/sp-docs-source/ENS-MIGRATION-GUIDE.md
+ *
+ * The directory is intentionally not called "docs/" — WordPress owns
+ * the /docs/ URL (it's the Documentation hub page), and a real server
+ * directory at that path would shadow the WP route and produce a 403.
  * Cached in a transient for 1 hour so we're not hitting the filesystem
  * on every page load.
  */
-$gsp_guide_path = ABSPATH . '../docs/ENS-MIGRATION-GUIDE.md';
-// Fallback for legacy server path (kept during migration window).
-if ( ! file_exists( $gsp_guide_path ) ) {
-    $gsp_guide_path = ABSPATH . '../Documentation/ENS-MIGRATION-GUIDE.md';
-}
+$gsp_guide_path = ABSPATH . '../sp-docs-source/ENS-MIGRATION-GUIDE.md';
 $gsp_guide_html = get_transient( 'gsp_ens_guide_html' );
 
 if ( false === $gsp_guide_html ) {
@@ -250,7 +250,7 @@ if ( false === $gsp_guide_html ) {
             <nav class="page-breadcrumbs" aria-label="Breadcrumb">
                 <a href="<?php echo esc_url( home_url( '/docs/' ) ); ?>">Documentation</a>
                 <span aria-hidden="true">&rsaquo;</span>
-                <a href="<?php echo esc_url( home_url( '/ens-migration/' ) ); ?>">Moving from ENS</a>
+                <a href="<?php echo esc_url( home_url( '/docs/ens-migration/' ) ); ?>">Moving from ENS</a>
                 <span aria-hidden="true">&rsaquo;</span>
                 <span>Full Migration Guide</span>
             </nav>
@@ -276,7 +276,7 @@ if ( false === $gsp_guide_html ) {
         <div class="guide-page__footer">
             <p>
                 <strong>See also:</strong>
-                <a href="<?php echo esc_url( home_url( '/ens-migration/' ) ); ?>">ENS migration overview</a> &middot;
+                <a href="<?php echo esc_url( home_url( '/docs/ens-migration/' ) ); ?>">ENS migration overview</a> &middot;
                 <a href="<?php echo esc_url( home_url( '/docs/' ) ); ?>">Documentation hub</a> &middot;
                 <a href="<?php echo esc_url( home_url( '/contact/' ) ); ?>">Migration help</a>
             </p>

@@ -47,17 +47,17 @@ get_header();
     <div class="container">
         <div class="docs-quick__grid">
 
-            <a class="docs-quick__link" href="<?php echo esc_url( home_url( '/installation/' ) ); ?>">
+            <a class="docs-quick__link" href="<?php echo esc_url( home_url( '/docs/installation/' ) ); ?>">
                 <div class="docs-quick__link-title">Installation</div>
                 <p>Get SocietyPress onto your server in about 30 minutes.</p>
             </a>
 
-            <a class="docs-quick__link" href="<?php echo esc_url( home_url( '/setup/' ) ); ?>">
+            <a class="docs-quick__link" href="<?php echo esc_url( home_url( '/docs/setup/' ) ); ?>">
                 <div class="docs-quick__link-title">First-Time Setup</div>
                 <p>The 3-step wizard that gets your site to usable.</p>
             </a>
 
-            <a class="docs-quick__link" href="<?php echo esc_url( home_url( '/ens-migration/' ) ); ?>">
+            <a class="docs-quick__link" href="<?php echo esc_url( home_url( '/docs/ens-migration/' ) ); ?>">
                 <div class="docs-quick__link-title">ENS Migration</div>
                 <p>Coming from EasyNetSites? Start here.</p>
             </a>
@@ -95,9 +95,9 @@ get_header();
                     <li>Publish your homepage and add your first event</li>
                 </ul>
                 <ul class="docs-card__links">
-                    <li><a href="<?php echo esc_url( home_url( '/installation/' ) ); ?>">Installation Guide</a></li>
-                    <li><a href="<?php echo esc_url( home_url( '/setup/' ) ); ?>">First-Time Setup</a></li>
-                    <li><a href="<?php echo esc_url( home_url( '/requirements/' ) ); ?>">System Requirements</a></li>
+                    <li><a href="<?php echo esc_url( home_url( '/docs/installation/' ) ); ?>">Installation Guide</a></li>
+                    <li><a href="<?php echo esc_url( home_url( '/docs/setup/' ) ); ?>">First-Time Setup</a></li>
+                    <li><a href="<?php echo esc_url( home_url( '/docs/requirements/' ) ); ?>">System Requirements</a></li>
                     <li><a href="<?php echo esc_url( home_url( '/docs/troubleshooting/' ) ); ?>">Troubleshooting</a></li>
                 </ul>
             </div>
@@ -122,8 +122,8 @@ get_header();
                     <li>Control per-field privacy in the public member directory</li>
                 </ul>
                 <ul class="docs-card__links">
-                    <li><a href="<?php echo esc_url( home_url( '/ens-migration/' ) ); ?>">CSV Import from ENS</a></li>
-                    <li><a href="<?php echo esc_url( home_url( '/faq/' ) ); ?>">Role templates &amp; access areas (FAQ)</a></li>
+                    <li><a href="<?php echo esc_url( home_url( '/docs/ens-migration/' ) ); ?>">CSV Import from ENS</a></li>
+                    <li><a href="<?php echo esc_url( home_url( '/docs/faq/' ) ); ?>">Role templates &amp; access areas (FAQ)</a></li>
                 </ul>
             </div>
 
@@ -283,7 +283,7 @@ get_header();
                 try the demo, check the FAQ, or reach out through the community.
             </p>
             <div class="docs-cta__actions">
-                <a href="<?php echo esc_url( home_url( '/faq/' ) ); ?>" class="btn btn-primary btn-lg">
+                <a href="<?php echo esc_url( home_url( '/docs/faq/' ) ); ?>" class="btn btn-primary btn-lg">
                     Check the FAQ
                 </a>
                 <a href="https://demo.getsocietypress.org" class="btn btn-outline btn-lg" target="_blank" rel="noopener">

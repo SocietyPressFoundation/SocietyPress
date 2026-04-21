@@ -105,7 +105,7 @@ get_header();
                     </svg>
                     FAQ
                 </h3>
-                <p>Check the <a href="<?php echo esc_url( home_url( '/faq/' ) ); ?>">frequently asked questions</a> for quick answers to common questions.</p>
+                <p>Check the <a href="<?php echo esc_url( home_url( '/docs/faq/' ) ); ?>">frequently asked questions</a> for quick answers to common questions.</p>
             </div>
 
         </div>

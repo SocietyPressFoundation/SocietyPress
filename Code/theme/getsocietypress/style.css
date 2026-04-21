@@ -4,7 +4,7 @@ Theme URI: https://getsocietypress.org
 Author: SocietyPress Contributors
 Author URI: https://getsocietypress.org
 Description: The official theme for getsocietypress.org — the home of SocietyPress, a free, open-source WordPress platform for genealogical society administrators.
-Version: 0.10d
+Version: 0.11d
 License: GNU General Public License v2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 Text Domain: getsocietypress
@@ -325,16 +325,51 @@ p {
     color: var(--color-primary);
 }
 
-/* Outline on dark backgrounds (hero + CTA banner) — white text */
+/* Outline on dark backgrounds — white text, faint border. Applies to
+   every dark-gradient CTA section in the theme; the default navy
+   outline-button text is invisible on these backgrounds otherwise.
+   Keep this selector list in sync with any new .*-cta section that
+   uses the dark hero gradient. */
 .hero .btn-outline,
-.cta-banner .btn-outline {
+.cta-banner .btn-outline,
+.feat-final-cta .btn-outline,
+.req-cta .btn-outline,
+.faq-cta .btn-outline,
+.docs-cta .btn-outline,
+.about-cta .btn-outline,
+.comm-cta .btn-outline,
+.inst-cta .btn-outline,
+.setup-cta .btn-outline {
     color: #FFFFFF;
     border-color: rgba(255, 255, 255, 0.35);
 }
 
 .hero .btn-outline:hover,
-.cta-banner .btn-outline:hover {
+.cta-banner .btn-outline:hover,
+.feat-final-cta .btn-outline:hover,
+.req-cta .btn-outline:hover,
+.faq-cta .btn-outline:hover,
+.docs-cta .btn-outline:hover,
+.about-cta .btn-outline:hover,
+.comm-cta .btn-outline:hover,
+.inst-cta .btn-outline:hover,
+.setup-cta .btn-outline:hover {
     border-color: rgba(255, 255, 255, 0.7);
+    color: #FFFFFF;
+}
+
+/* Download hero's secondary card also has a translucent-white card
+   behind it, so a faint outline button disappears into the card. Give
+   the button a real silhouette: stronger border and a subtle fill. */
+.dl-hero .btn-outline {
+    color: #FFFFFF;
+    background-color: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.6);
+}
+
+.dl-hero .btn-outline:hover {
+    background-color: rgba(255, 255, 255, 0.18);
+    border-color: #FFFFFF;
     color: #FFFFFF;
 }
 
@@ -2053,7 +2088,7 @@ body.bbpress .page-content .container {
 .dl-hero__content {
     position: relative;
     z-index: 1;
-    max-width: 640px;
+    max-width: 960px;
     margin: 0 auto;
 }
 
@@ -2070,7 +2105,17 @@ body.bbpress .page-content .container {
     margin-bottom: var(--spacing-2xl);
 }
 
-/* Download box — the main action area */
+/* Two-choice grid: installer card + full-bundle card, side by side on
+   desktop, stacked on tablet/mobile. */
+.dl-hero__choices {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-lg);
+    margin-top: var(--spacing-xl);
+    text-align: left;
+}
+
+/* Download box — each choice card */
 .dl-hero__box {
     background-color: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.12);
@@ -2078,8 +2123,32 @@ body.bbpress .page-content .container {
     padding: var(--spacing-2xl);
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: var(--spacing-lg);
+    align-items: flex-start;
+    gap: var(--spacing-md);
+}
+
+.dl-hero__box--primary {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.25);
+}
+
+.dl-hero__box-title {
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-bold);
+    color: var(--color-nav-text);
+    margin: 0;
+}
+
+.dl-hero__box-blurb {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: var(--font-size-base);
+    margin: 0;
+    flex: 1;
+}
+
+.dl-hero__box .dl-hero__btn {
+    align-self: stretch;
+    justify-content: center;
 }
 
 .dl-hero__version {
@@ -2087,6 +2156,7 @@ body.bbpress .page-content .container {
     flex-direction: column;
     align-items: center;
     gap: var(--spacing-xs);
+    margin-bottom: var(--spacing-md);
 }
 
 .dl-hero__version-number {
@@ -2116,6 +2186,20 @@ body.bbpress .page-content .container {
     gap: var(--spacing-sm);
     font-size: var(--font-size-sm);
     color: rgba(255, 255, 255, 0.5);
+}
+
+.dl-hero__meta--footer {
+    justify-content: center;
+    margin-top: var(--spacing-xl);
+}
+
+.dl-hero__meta--footer a {
+    color: var(--color-accent);
+    text-decoration: none;
+}
+
+.dl-hero__meta--footer a:hover {
+    text-decoration: underline;
 }
 
 /* What's Included section */
@@ -3077,6 +3161,11 @@ body.bbpress .page-content .container {
         justify-content: center;
     }
 
+    /* Download: two-choice grid stacks */
+    .dl-hero__choices {
+        grid-template-columns: 1fr;
+    }
+
     /* Single post: nav stacks */
     .single-post__nav {
         grid-template-columns: 1fr;
@@ -4009,6 +4098,17 @@ body.bbpress .page-content .container {
 .about-who__bio p {
     line-height: 1.7;
     margin-bottom: var(--spacing-md);
+}
+
+/* Affiliation disclosure — visually set apart without looking like a
+   legal warning box. Slightly smaller text, muted color, thin left
+   border to signal "this is context, not the main narrative." */
+.about-who__disclosure {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+    border-left: 3px solid var(--color-border);
+    padding-left: var(--spacing-md);
+    margin-top: var(--spacing-lg);
 }
 
 .about-who__credentials {

@@ -489,8 +489,8 @@ get_header();
 
             <p>
                 I built SocietyPress because I was watching small historical societies struggling to
-                pay $100+/month for SaaS platforms that were overkill for their needs. Our history
-                belongs to everyone, and the tools to preserve it should be accessible.
+                pay hundreds of dollars a year for SaaS platforms that were overkill for their needs.
+                Our history belongs to everyone, and the tools to preserve it should be accessible.
             </p>
 
             <p>

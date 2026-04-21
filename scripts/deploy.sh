@@ -186,6 +186,10 @@ case "${1:-plugin}" in
 
         # Upload
         ssh "$HOST" "mkdir -p ~/domains/getsocietypress.org/public_html/downloads"
+        if ! scp "$LOCAL_BASE/scripts/downloads.htaccess" "$HOST:~/domains/getsocietypress.org/public_html/downloads/.htaccess"; then
+            echo "  FAILED: downloads/.htaccess scp did not complete."
+            OVERALL_STATUS=1
+        fi
         if ! scp "$BUNDLE_ZIP" "$HOST:~/domains/getsocietypress.org/public_html/downloads/societypress-latest.zip"; then
             echo "  FAILED: bundle upload did not complete."
             OVERALL_STATUS=1
@@ -199,8 +203,17 @@ case "${1:-plugin}" in
         rm -rf "$BUNDLE_DIR"
         ;;
     installer)
-        echo "Deploying installer..."
-        if ! scp "$LOCAL_BASE/Code/installer/sp-installer.php" "$HOST:~/domains/getsocietypress.org/public_html/sp-installer.php"; then
+        # The installer is distributed as a downloadable file from
+        # getsocietypress.org/downloads/sp-installer.php. The /downloads/
+        # directory has a .htaccess that disables PHP parsing there, so
+        # the file is served as a download rather than executed.
+        echo "Deploying installer to downloads/..."
+        ssh "$HOST" "mkdir -p ~/domains/getsocietypress.org/public_html/downloads"
+        if ! scp "$LOCAL_BASE/scripts/downloads.htaccess" "$HOST:~/domains/getsocietypress.org/public_html/downloads/.htaccess"; then
+            echo "  FAILED: downloads/.htaccess scp did not complete."
+            OVERALL_STATUS=1
+        fi
+        if ! scp "$LOCAL_BASE/Code/installer/sp-installer.php" "$HOST:~/domains/getsocietypress.org/public_html/downloads/sp-installer.php"; then
             echo "  FAILED: installer scp did not complete."
             OVERALL_STATUS=1
         else
@@ -214,6 +227,19 @@ case "${1:-plugin}" in
             OVERALL_STATUS=1
         else
             echo "  OK: marketing theme deployed."
+        fi
+
+        # Sync the user-facing markdown docs the theme renders as pages.
+        # They live outside the WP tree (in sp-docs-source/ next to cms/)
+        # because /docs/ is a WordPress route — a same-named directory
+        # inside the webroot would shadow it and cause a 403.
+        echo "Deploying user-facing markdown docs..."
+        ssh "$HOST" "mkdir -p ~/domains/getsocietypress.org/public_html/sp-docs-source"
+        if ! scp "$LOCAL_BASE/docs/ENS-MIGRATION-GUIDE.md" "$HOST:~/domains/getsocietypress.org/public_html/sp-docs-source/ENS-MIGRATION-GUIDE.md"; then
+            echo "  FAILED: ENS-MIGRATION-GUIDE.md scp did not complete."
+            OVERALL_STATUS=1
+        else
+            echo "  OK: markdown docs deployed."
         fi
         ;;
     *)

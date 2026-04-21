@@ -66,12 +66,12 @@ get_header();
                 <p>Latest release of the SocietyPress plugin and themes.</p>
             </a>
 
-            <a class="error-404__card" href="<?php echo esc_url( home_url( '/installation/' ) ); ?>">
+            <a class="error-404__card" href="<?php echo esc_url( home_url( '/docs/installation/' ) ); ?>">
                 <h3>Installation Guide</h3>
                 <p>Step-by-step setup for a fresh install.</p>
             </a>
 
-            <a class="error-404__card" href="<?php echo esc_url( home_url( '/faq/' ) ); ?>">
+            <a class="error-404__card" href="<?php echo esc_url( home_url( '/docs/faq/' ) ); ?>">
                 <h3>FAQ</h3>
                 <p>Quick answers to the most common questions.</p>
             </a>
@@ -81,7 +81,7 @@ get_header();
                 <p>Guides for every part of the platform.</p>
             </a>
 
-            <a class="error-404__card" href="<?php echo esc_url( home_url( '/ens-migration/' ) ); ?>">
+            <a class="error-404__card" href="<?php echo esc_url( home_url( '/docs/ens-migration/' ) ); ?>">
                 <h3>Moving from ENS</h3>
                 <p>Migration guide for EasyNetSites societies.</p>
             </a>

@@ -289,6 +289,18 @@ function gsp_get_download_url() {
 
 
 /**
+ * Download URL for the one-click installer.
+ *
+ * Lives at /downloads/sp-installer.php. The /downloads/ directory has an
+ * .htaccess that disables PHP parsing and forces Content-Disposition:
+ * attachment, so clicking this link downloads the file instead of running it.
+ */
+function gsp_get_installer_url() {
+    return home_url( '/downloads/sp-installer.php' );
+}
+
+
+/**
  * Community Pulse dashboard widget.
  *
  * Three-panel "what's happening in the forums" widget registered on the
@@ -690,7 +702,6 @@ function gsp_robots_txt( $output, $public ) {
     // We only add what WP doesn't already cover.
     $output .= "Disallow: /cms/wp-includes/\n";
     $output .= "Disallow: /cms/xmlrpc.php\n";
-    $output .= "Disallow: /sp-installer.php\n";
     return $output;
 }
 add_filter( 'robots_txt', 'gsp_robots_txt', 10, 2 );

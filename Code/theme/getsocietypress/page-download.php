@@ -19,14 +19,15 @@ defined( 'ABSPATH' ) || exit;
 
 get_header();
 
-$sp_ver          = gsp_get_sp_version();
-$sp_download_url = gsp_get_download_url();
-$sp_installer    = home_url( '/sp-installer.php' );
+$sp_ver           = gsp_get_sp_version();
+$sp_download_url  = gsp_get_download_url();
+$sp_installer_url = gsp_get_installer_url();
 ?>
 
 <!-- ==========================================================================
      1. DOWNLOAD HERO
-     Big, prominent download section. This is the whole point.
+     Two equal paths side-by-side: the installer (recommended for most) and
+     the full bundle (for anyone who'd rather upload files by hand).
      ========================================================================== -->
 <section class="dl-hero">
     <div class="container">
@@ -38,34 +39,69 @@ $sp_installer    = home_url( '/sp-installer.php' );
                 Free. Open source. No account required.
             </p>
 
-            <!-- Primary download box -->
-            <div class="dl-hero__box">
-                <div class="dl-hero__version">
-                    <span class="dl-hero__version-number">v<?php echo esc_html( $sp_ver ); ?></span>
-                    <span class="dl-hero__version-label">Latest Release</span>
-                </div>
-
-                <a href="<?php echo esc_url( $sp_download_url ); ?>" class="btn btn-primary btn-xl dl-hero__btn">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                        <polyline points="7 10 12 15 17 10"/>
-                        <line x1="12" y1="15" x2="12" y2="3"/>
-                    </svg>
-                    Download .zip
-                </a>
-
-                <div class="dl-hero__meta">
-                    <span>GPL v2 License</span>
-                    <span>&middot;</span>
-                    <span>About 8 MB</span>
-                    <span>&middot;</span>
-                    <span>Plugin + 6 themes</span>
-                </div>
-
-                <p class="dl-hero__changelog-link">
-                    <a href="<?php echo esc_url( home_url( '/changelog/' ) ); ?>">What's new in v<?php echo esc_html( $sp_ver ); ?> &rarr;</a>
-                </p>
+            <div class="dl-hero__version">
+                <span class="dl-hero__version-number">v<?php echo esc_html( $sp_ver ); ?></span>
+                <span class="dl-hero__version-label">Latest Release</span>
             </div>
+
+            <!-- Two-choice grid -->
+            <div class="dl-hero__choices">
+
+                <!-- Installer (recommended) -->
+                <div class="dl-hero__box dl-hero__box--primary">
+                    <h2 class="dl-hero__box-title">One-Click Installer</h2>
+                    <p class="dl-hero__box-blurb">
+                        Recommended. Upload one small file to your site and point
+                        your browser at it. The installer handles the rest.
+                    </p>
+
+                    <a href="<?php echo esc_url( $sp_installer_url ); ?>" class="btn btn-primary btn-xl dl-hero__btn">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        Download sp-installer.php
+                    </a>
+
+                    <div class="dl-hero__meta">
+                        <span>Single PHP file</span>
+                        <span>&middot;</span>
+                        <span>Under 100 KB</span>
+                    </div>
+                </div>
+
+                <!-- Full bundle -->
+                <div class="dl-hero__box dl-hero__box--secondary">
+                    <h2 class="dl-hero__box-title">Full Platform (.zip)</h2>
+                    <p class="dl-hero__box-blurb">
+                        The complete bundle: plugin and all six themes. For manual
+                        uploads via SFTP or your host's file manager.
+                    </p>
+
+                    <a href="<?php echo esc_url( $sp_download_url ); ?>" class="btn btn-outline btn-xl dl-hero__btn">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        Download .zip
+                    </a>
+
+                    <div class="dl-hero__meta">
+                        <span>Plugin + 6 themes</span>
+                        <span>&middot;</span>
+                        <span>About 8 MB</span>
+                    </div>
+                </div>
+
+            </div>
+
+            <p class="dl-hero__meta dl-hero__meta--footer">
+                <span>GPL v2 License</span>
+                <span>&middot;</span>
+                <a href="<?php echo esc_url( home_url( '/changelog/' ) ); ?>">What's new in v<?php echo esc_html( $sp_ver ); ?> &rarr;</a>
+            </p>
 
         </div>
     </div>
@@ -167,7 +203,7 @@ $sp_installer    = home_url( '/sp-installer.php' );
                         wizard &mdash; no SSH, no FTP, no cPanel gymnastics.
                     </p>
                     <p class="dl-step__note">
-                        <a href="<?php echo esc_url( home_url( '/installation/' ) ); ?>">Full installer guide &rarr;</a>
+                        <a href="<?php echo esc_url( home_url( '/docs/installation/' ) ); ?>">Full installer guide &rarr;</a>
                     </p>
                 </div>
             </div>
@@ -212,7 +248,7 @@ $sp_installer    = home_url( '/sp-installer.php' );
         </div>
 
         <div class="dl-quickstart__cta">
-            <a href="<?php echo esc_url( home_url( '/installation/' ) ); ?>" class="btn btn-outline btn-lg">
+            <a href="<?php echo esc_url( home_url( '/docs/installation/' ) ); ?>" class="btn btn-outline btn-lg">
                 Full Installation Guide &rarr;
             </a>
         </div>
@@ -243,7 +279,7 @@ $sp_installer    = home_url( '/sp-installer.php' );
             <h3>Before you install</h3>
             <p>
                 Make sure your hosting environment meets the
-                <a href="<?php echo esc_url( home_url( '/requirements/' ) ); ?>">minimum requirements</a>.
+                <a href="<?php echo esc_url( home_url( '/docs/requirements/' ) ); ?>">minimum requirements</a>.
                 Short version: PHP 8.1+, WordPress 6.0+, and MySQL 8.0+ (or MariaDB 10.6+).
                 If your host runs a current version of WordPress, you're almost certainly fine.
             </p>

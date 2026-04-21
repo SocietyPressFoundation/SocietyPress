@@ -215,8 +215,8 @@ define( 'WP_DEBUG_DISPLAY', false );</code></pre>
             <p>
                 <strong>See also:</strong>
                 <a href="<?php echo esc_url( home_url( '/docs/' ) ); ?>">Documentation hub</a> &middot;
-                <a href="<?php echo esc_url( home_url( '/faq/' ) ); ?>">FAQ</a> &middot;
-                <a href="<?php echo esc_url( home_url( '/requirements/' ) ); ?>">System requirements</a>
+                <a href="<?php echo esc_url( home_url( '/docs/faq/' ) ); ?>">FAQ</a> &middot;
+                <a href="<?php echo esc_url( home_url( '/docs/requirements/' ) ); ?>">System requirements</a>
             </p>
         </div>
 

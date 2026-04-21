@@ -1,0 +1,22 @@
+# Served as /downloads/.htaccess on getsocietypress.org by scripts/deploy.sh.
+#
+# The /downloads/ directory holds release artifacts that users download:
+# the full platform zip (societypress-latest.zip) and the one-click
+# installer (sp-installer.php). Both must be delivered as-is — the
+# installer is meant to run on the user's WordPress site, not on ours.
+#
+# This file does two things:
+#   1. Disables PHP parsing for the whole directory so nothing in here
+#      ever executes on getsocietypress.org, no matter how it got there.
+#   2. Forces Content-Disposition: attachment for sp-installer.php so
+#      clicking the Download button saves the file instead of opening it.
+
+<FilesMatch "\.(php|phtml|php3|php4|php5|php7|phps)$">
+    SetHandler default-handler
+    ForceType application/octet-stream
+    RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .phps
+</FilesMatch>
+
+<Files "sp-installer.php">
+    Header set Content-Disposition "attachment; filename=sp-installer.php"
+</Files>

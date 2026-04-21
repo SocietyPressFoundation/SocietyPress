@@ -45,7 +45,7 @@ defined( 'ABSPATH' ) || exit;
                 <h4>Product</h4>
                 <ul>
                     <li><a href="<?php echo esc_url( home_url( '/features/' ) ); ?>">Features</a></li>
-                    <li><a href="<?php echo esc_url( home_url( '/requirements/' ) ); ?>">Requirements</a></li>
+                    <li><a href="<?php echo esc_url( home_url( '/docs/requirements/' ) ); ?>">Requirements</a></li>
                     <li><a href="<?php echo esc_url( home_url( '/download/' ) ); ?>">Download</a></li>
                     <li><a href="<?php echo esc_url( home_url( '/showcase/' ) ); ?>">Showcase</a></li>
                     <li><a href="<?php echo esc_url( home_url( '/changelog/' ) ); ?>">Changelog</a></li>
@@ -58,10 +58,10 @@ defined( 'ABSPATH' ) || exit;
                 <h4>Resources</h4>
                 <ul>
                     <li><a href="<?php echo esc_url( home_url( '/docs/' ) ); ?>">Documentation</a></li>
-                    <li><a href="<?php echo esc_url( home_url( '/faq/' ) ); ?>">FAQ</a></li>
-                    <li><a href="<?php echo esc_url( home_url( '/installation/' ) ); ?>">Installation</a></li>
-                    <li><a href="<?php echo esc_url( home_url( '/setup/' ) ); ?>">First-Time Setup</a></li>
-                    <li><a href="<?php echo esc_url( home_url( '/ens-migration/' ) ); ?>">ENS Migration</a></li>
+                    <li><a href="<?php echo esc_url( home_url( '/docs/faq/' ) ); ?>">FAQ</a></li>
+                    <li><a href="<?php echo esc_url( home_url( '/docs/installation/' ) ); ?>">Installation</a></li>
+                    <li><a href="<?php echo esc_url( home_url( '/docs/setup/' ) ); ?>">First-Time Setup</a></li>
+                    <li><a href="<?php echo esc_url( home_url( '/docs/ens-migration/' ) ); ?>">ENS Migration</a></li>
                     <li><a href="<?php echo esc_url( home_url( '/status/' ) ); ?>">Status</a></li>
                 </ul>
             </div>

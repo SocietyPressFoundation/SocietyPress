@@ -50,28 +50,26 @@ get_header();
         <h2>Why This Exists</h2>
 
         <p>
-            Genealogical and historical societies have always been run by
-            volunteers &mdash; dedicated people doing meaningful work on
-            evenings and weekends, usually with tools that were never designed
-            for what they're actually doing. Spreadsheets tracking memberships.
-            Generic event plugins awkwardly bent to fit monthly meetings. SaaS
-            platforms that cost hundreds a month and still don't understand
-            what a surname research database is.
+            Genealogical and historical societies rely on volunteers &mdash;
+            people working evenings and weekends, often with inadequate tools.
+            Memberships tracked in spreadsheets. Event plugins awkwardly
+            adapted for meetings. SaaS platforms costing hundreds per year
+            still overlook surname research databases.
         </p>
 
         <p>
-            SocietyPress started because that gap was frustrating to live with.
-            Every society's administrator was reinventing the same wheel &mdash;
-            roster management, dues tracking, event calendars, newsletter
-            archives, cemetery transcription publishing &mdash; and paying for
-            the privilege.
+            SocietyPress began from frustration with this gap. Every
+            administrator reinvented roster management, dues tracking, event
+            calendars, newsletter archives, cemetery transcription publishing
+            &mdash; and paid for it.
         </p>
 
         <p>
-            It didn't need to be that way. Genealogical and historical societies
-            share a set of problems distinct enough to deserve their own software,
-            specific enough to build once and share with all of them, and
-            important enough that the tools to solve them should be free.
+            Too often, important needs go unmet. Genealogical and historical
+            societies face unique challenges that require software solutions
+            tailored to their needs. SocietyPress is developed once, shared
+            collectively, and made freely available so every group can access
+            and benefit from the right tools without barriers.
         </p>
 
     </div>
@@ -118,8 +116,9 @@ get_header();
                 </p>
                 <p>
                     Charles is a software developer and genealogist in Texas
-                    with a BBA in Business Information Systems from Midwestern
-                    State University. Everything SocietyPress is his own work,
+                    with a BBA in Business Information Systems from
+                    <a href="https://msstate.edu" target="_blank" rel="noopener">Mississippi State University</a>.
+                    Everything SocietyPress is his own work,
                     start to finish &mdash; designed, coded, documented, and
                     maintained by one person who cares that the result is
                     right.
@@ -130,6 +129,16 @@ get_header();
                     plugin's design choices, feature priorities, and rough edges
                     all come from sustained conversation with society administrators
                     who are actually running the thing.
+                </p>
+                <p class="about-who__disclosure">
+                    Charles also serves as Chairman of the Education Committee
+                    at the
+                    <a href="https://samplesociety.org" target="_blank" rel="noopener">Sample Genealogical Society</a>
+                    &mdash; a volunteer role unrelated to SocietyPress. Society
+                    did not fund, sponsor, or contribute to this project.
+                    SocietyPress is his independent work, built on his own
+                    time with his own resources; Society has no ownership,
+                    control, or financial interest in it.
                 </p>
             </div>
 
@@ -183,17 +192,18 @@ get_header();
             </li>
             <li>
                 <strong>Legal protection.</strong>
-                The GPL license is legally binding. SocietyPress cannot be made
-                proprietary, cannot be bought and closed off, and cannot be
-                turned into a subscription service. Past versions remain free
-                forever, and the license guarantees future versions will too.
+                The GPL license is legally binding. The code stays open,
+                past versions remain free forever, and the license guarantees
+                future versions will too. Anyone &mdash; including us &mdash;
+                is free to fork SocietyPress and keep it going, so the
+                project can never be closed off.
             </li>
         </ul>
 
         <p>
-            Donations are always welcome and never required. They fund continued
-            development, server costs, and conference attendance &mdash; nothing
-            more and nothing less.
+            <a href="<?php echo esc_url( home_url( '/donate/' ) ); ?>">Donations are always welcome and never required.</a>
+            They fund continued development, server costs, and conference
+            attendance &mdash; nothing more and nothing less.
         </p>
 
     </div>
@@ -219,7 +229,7 @@ get_header();
                 <strong>Documentation.</strong>
                 Comprehensive written guides, video walkthroughs, and migration
                 guides &mdash; especially for societies coming from
-                <a href="<?php echo esc_url( home_url( '/ens-migration/' ) ); ?>">EasyNetSites (ENS)</a>,
+                <a href="<?php echo esc_url( home_url( '/docs/ens-migration/' ) ); ?>">EasyNetSites (ENS)</a>,
                 which is the most common platform SocietyPress replaces.
             </li>
             <li>

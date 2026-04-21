@@ -197,18 +197,32 @@ img {
     background: var(--sp-color-header-bg, #1e3a5f);
     color: var(--sp-color-header-text, #fff);
     padding: 0 20px;
+    /* WHY box-shadow: the header's background pulls from Design settings.
+       On dark colors, the edge between header and page is obvious. On
+       light or white headers, the header bleeds into the white page body
+       and the nav looks like it's floating mid-page with no container.
+       A faint shadow draws a subtle separator that's visible against a
+       white body but invisible against a dark one — works at every
+       header color without special-casing. No layout shift (unlike a
+       border-bottom, which would add a pixel). */
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
 }
 
-/* WHY no max-width: The header stretches edge-to-edge like Ancestry and
-   FamilySearch — logo flush left, user menu flush right, nav items spread
-   across the full viewport. Body content below stays at the readable
-   --sp-content-width. The horizontal padding scales down on smaller screens
-   so the nav doesn't crowd the edges on tablets. */
+/* WHY max-width on the inner and not on .site-header: the header's
+   background color (and the hairline shadow below it) should still
+   span the full viewport so the page reads as a clean banded layout.
+   But the nav, logo, and user menu inside should align with the
+   content column below so the header feels like part of the page,
+   not a disconnected ribbon. The inner matches --sp-content-width
+   (same variable the body content uses). On narrower viewports the
+   horizontal padding keeps the items from crowding the edges. */
 /* WHY overflow: visible instead of hidden: The user dropdown menu renders
    absolutely positioned below the header. overflow:hidden would clip it.
    The original hidden was added to contain floats, but flexbox doesn't
    need that — all children are flex items already. */
 .header-inner {
+    max-width: var(--sp-content-width, 1100px);
+    margin: 0 auto;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -346,6 +360,69 @@ img {
 .main-navigation a:hover,
 .main-navigation .current-menu-item a {
     background: rgba(255, 255, 255, 0.12);
+}
+
+/* User account menu — "Charles" / "Log Out" etc. Sits alongside the main
+   nav in the header, not inside it, so .main-navigation rules don't
+   reach it. WHY we set both :link and :visited: the logout URL carries
+   a nonce that changes every page load, so it's never "visited" in the
+   browser's history; the my-account URL is stable and therefore IS. On
+   a light header, the browser's default purple-ish visited color makes
+   the two user-menu links look mismatched. Pinning both to the header
+   text color keeps them consistent. */
+.sp-user-nav-link,
+.sp-user-nav-link:link,
+.sp-user-nav-link:visited {
+    display: inline-block;
+    padding: 10px 14px;
+    color: var(--sp-color-header-text, #fff);
+    text-decoration: none;
+    /* WHY font-family is explicit: without it, sp-user-nav-link inherits
+       from an upstream rule that's serif on some themes, which makes
+       "Charles" and "Log Out" look like a different typeface from the
+       main nav. Pin it to the same body-font var the main nav uses. */
+    font-family: var(--sp-font-body, -apple-system, BlinkMacSystemFont, sans-serif);
+    font-size: var(--sp-nav-font-size, 0.85rem);
+    font-weight: var(--sp-nav-font-weight, 500);
+    /* WHY line-height: 1: lets the optical center of the text sit at the
+       flex-item center, so an adjacent avatar aligns to the visual
+       middle of the word rather than to the line-box center (which
+       includes descender space the word "Charles" doesn't use). */
+    line-height: 1;
+    letter-spacing: 0.02em;
+    border-radius: 4px;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.sp-user-nav-link:hover,
+.sp-user-nav-link:focus {
+    background: rgba(128, 128, 128, 0.12);
+    color: var(--sp-color-header-text, #fff);
+}
+
+/* Avatar-with-name variant — small round photo to the left of the
+   member's name. Inherits link color/size from .sp-user-nav-link.
+   !important on display because the base .sp-user-nav-link rule (which
+   includes :link/:visited pseudo-classes, bumping its specificity) was
+   winning the cascade and keeping display: inline-block. That stacked
+   the avatar above the name instead of beside it. Forcing the flex
+   layout here removes any possibility of another rule overriding it. */
+.sp-user-nav-link--with-avatar {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 12px;
+}
+
+.sp-user-avatar {
+    /* display: block removes the inline-baseline gap that pushes <img>
+       slightly off-center from adjacent text. flex-shrink: 0 keeps it
+       a perfect circle even if the header runs out of room. */
+    display: block;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
 }
 
 /* WHY: The "Join" link is the primary CTA — it should stand out from
@@ -823,13 +900,6 @@ img {
 
 .sp-user-trigger:hover {
     background: rgba(255, 255, 255, 0.2);
-}
-
-/* Round avatar thumbnail */
-.sp-user-avatar {
-    border-radius: 50%;
-    width: 28px;
-    height: 28px;
 }
 
 /* Small downward caret */

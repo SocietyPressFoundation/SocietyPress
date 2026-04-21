@@ -82,6 +82,7 @@ $gsp_roadmap = array(
             'AI-assisted record parsing (only if it stays local and doesn\'t send member data to third parties)',
             'Native Spanish, French, and German translations (helped along by better i18n coverage)',
             'Accessibility statement at WCAG 2.2 AAA for a subset of pages',
+            'A hosted version where we run your site for you &mdash; alongside the free self-hosted option, the way WordPress.com sits alongside WordPress.org',
         ),
     ),
 
@@ -90,7 +91,6 @@ $gsp_roadmap = array(
         'description' => 'Things we\'ve considered and chosen against, so you know where we stand.',
         'items'       => array(
             'A paid &ldquo;Pro&rdquo; version &mdash; the project is GPL forever',
-            'A hosted SaaS version where we run your site for you',
             'An app store for paid add-ons',
             'Gutenberg block editor support (conflicts with the page builder)',
             'Cross-site tracking or &ldquo;phone home&rdquo; analytics',

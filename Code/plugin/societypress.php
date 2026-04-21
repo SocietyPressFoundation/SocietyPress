@@ -5180,7 +5180,15 @@ add_action( 'wp_enqueue_scripts', function () {
     // Register with no src (false) — just a handle for attaching inline CSS.
     // Depends on the parent theme stylesheet so it loads after it.
     // If a child theme is active, the child's stylesheet also loads before this.
-    wp_register_style( 'sp-design-overrides', false, [ 'societypress-parent-style' ], SOCIETYPRESS_VERSION );
+    // WHY the dep handle: the parent theme enqueues its stylesheet as
+    // 'societypress-style' (see theme/functions.php). An earlier version of
+    // this file used 'societypress-parent-style' — a handle that doesn't
+    // exist — which silently broke the dependency chain and prevented this
+    // inline style from printing at all. The result was that every Design
+    // settings color change was silently ignored, masked only because the
+    // widget CSS elsewhere references var(--sp-color-*, <default-fallback>)
+    // and those hardcoded fallbacks match the defaults.
+    wp_register_style( 'sp-design-overrides', false, [ 'societypress-style' ], SOCIETYPRESS_VERSION );
     wp_enqueue_style( 'sp-design-overrides' );
     wp_add_inline_style( 'sp-design-overrides', sp_get_design_override_css() );
 }, 999 );
@@ -5517,7 +5525,31 @@ add_action( 'wp_enqueue_scripts', function () {
 function sp_get_my_account_url() {
     static $url = null;
     if ( $url !== null ) return $url;
-    $pages = get_pages([ 'meta_key' => '_wp_page_template', 'meta_value' => 'page-my-account.php', 'number' => 1 ]);
+    // WHY 'sp-my-account': the plugin plants this template slug when it
+    // auto-creates the My Account page on activation (see the $sp_pages
+    // array in the activation handler), and uses the same string
+    // elsewhere in this file to detect the template. Previously this
+    // function searched for 'page-my-account.php' — a file-path variant
+    // that never appears as a meta value — so it always fell back to
+    // home_url('/'). That broke every form on the account page: the
+    // handlers do wp_redirect($account_url), which should have returned
+    // the user to /my-account/ but instead punted them to the home page
+    // with no feedback on whether the action succeeded.
+    $pages = get_pages( [
+        'meta_key'   => '_wp_page_template',
+        'meta_value' => 'sp-my-account',
+        'number'     => 1,
+    ] );
+    if ( empty( $pages ) ) {
+        // Fall back to the slug-based lookup so the function still works
+        // on sites where the template meta wasn't set (e.g., pages
+        // created by older versions or restored from a CSV import).
+        $by_slug = get_page_by_path( 'my-account' );
+        if ( $by_slug && 'publish' === $by_slug->post_status ) {
+            $url = get_permalink( $by_slug->ID );
+            return $url;
+        }
+    }
     $url = ! empty( $pages ) ? get_permalink( $pages[0]->ID ) : home_url( '/' );
     return $url;
 }
@@ -5799,14 +5831,17 @@ function sp_user_menu() {
     $display_name = esc_html( $short_name ?: $user->display_name );
     $account_url  = sp_get_my_account_url();
     $logout_url   = wp_logout_url( home_url( '/' ) );
+    $avatar_url   = get_avatar_url( $user->ID, [ 'size' => 56 ] );
 
-    // Logged in: name link + Log Out link, both styled like nav items.
-    // WHY no avatar, no dropdown: Charles wants these to look like regular
-    //      nav menu items — same font, size, weight, spacing. The avatar
-    //      and dropdown created a visual break from the nav. This approach
-    //      makes the header read as one cohesive navigation bar.
-    echo '<a href="' . esc_url( $account_url ) . '" class="sp-user-nav-link">'
-         . $display_name . '</a>';
+    // Logged in: small round avatar + name link + Log Out link.
+    // The avatar is inside the same <a> as the name so clicking either
+    // the image or the text takes you to My Account.
+    echo '<a href="' . esc_url( $account_url ) . '" class="sp-user-nav-link sp-user-nav-link--with-avatar">';
+    if ( $avatar_url ) {
+        echo '<img class="sp-user-avatar" src="' . esc_url( $avatar_url ) . '" alt="" width="28" height="28" loading="lazy">';
+    }
+    echo '<span class="sp-user-name">' . $display_name . '</span>';
+    echo '</a>';
     echo '<a href="' . esc_url( $logout_url ) . '" class="sp-user-nav-link">'
          . esc_html__( 'Log Out', 'societypress' ) . '</a>';
 }
@@ -6014,8 +6049,31 @@ function sp_handle_account_forms() {
 
     if ( $action === 'update_photo' ) {
         if ( ! wp_verify_nonce( $_POST['sp_photo_nonce'] ?? '', 'sp_update_photo' ) ) { wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
-        if ( empty( $_FILES['sp_profile_photo']['tmp_name'] ) ) { wp_redirect( $account_url ); exit; }
-        $file = $_FILES['sp_profile_photo'];
+
+        // WHY we check the PHP upload error code here: an empty tmp_name can
+        // mean "no file selected" (UPLOAD_ERR_NO_FILE) or any of the other
+        // PHP-layer upload failures — file exceeded ini_size, partial upload,
+        // no temp dir, disk full, etc. Previously we redirected silently on
+        // empty tmp_name, leaving the admin staring at an unchanged page
+        // with no feedback. Now every PHP-layer failure produces a specific
+        // error query string so the admin sees what went wrong.
+        $upload = $_FILES['sp_profile_photo'] ?? null;
+        $upload_err = is_array( $upload ) ? (int) ( $upload['error'] ?? UPLOAD_ERR_NO_FILE ) : UPLOAD_ERR_NO_FILE;
+        if ( $upload_err !== UPLOAD_ERR_OK || empty( $upload['tmp_name'] ) ) {
+            $err_map = [
+                UPLOAD_ERR_INI_SIZE   => 'photo-too-large-ini',
+                UPLOAD_ERR_FORM_SIZE  => 'photo-too-large-form',
+                UPLOAD_ERR_PARTIAL    => 'photo-partial',
+                UPLOAD_ERR_NO_FILE    => 'photo-no-file',
+                UPLOAD_ERR_NO_TMP_DIR => 'photo-no-tmp',
+                UPLOAD_ERR_CANT_WRITE => 'photo-cant-write',
+                UPLOAD_ERR_EXTENSION  => 'photo-ext-blocked',
+            ];
+            $err_slug = $err_map[ $upload_err ] ?? 'photo-upload';
+            wp_redirect( add_query_arg( 'sp-error', $err_slug, $account_url ) );
+            exit;
+        }
+        $file = $upload;
         $allowed_types = [ 'image/jpeg', 'image/png', 'image/gif' ];
         $finfo = finfo_open( FILEINFO_MIME_TYPE );
         $mime  = finfo_file( $finfo, $file['tmp_name'] );
@@ -7999,7 +8057,18 @@ add_action( 'login_enqueue_scripts', function () {
         }
 
         .login h1::before {
-            content: '<?php echo esc_js( $settings['organization_name'] ?? get_bloginfo( 'name' ) ); ?>';
+            <?php
+            // WHY: CSS `content:` strings render verbatim — they don't
+            // interpret HTML entities the way HTML does. esc_js() turns
+            // `&` into `&amp;`, which CSS would then display as the five
+            // literal characters "&amp;". Decode any stored entities,
+            // then escape for CSS string context (backslash, quote,
+            // newline) — not for HTML or JS.
+            $sp_login_title = $settings['organization_name'] ?? get_bloginfo( 'name' );
+            $sp_login_title = html_entity_decode( $sp_login_title, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+            $sp_login_title = addcslashes( $sp_login_title, "\\'\"\n\r" );
+            ?>
+            content: '<?php echo $sp_login_title; ?>';
             display: block;
             text-align: center;
             font-size: 1.5rem;
@@ -8286,7 +8355,21 @@ add_filter( 'login_headerurl', function () {
 
 add_filter( 'login_headertext', function () {
     $settings = get_option( 'societypress_settings', [] );
-    return $settings['organization_name'] ?? get_bloginfo( 'name' );
+    $name     = $settings['organization_name'] ?? get_bloginfo( 'name' );
+
+    // WHY: WP core echoes login_headertext without escaping it (by design —
+    // the filter is allowed to return HTML). If the stored value ever got
+    // HTML-entity-encoded upstream (migration from another system, a stray
+    // esc_html() pass, pasting from HTML), the raw &amp; would render as
+    // literal "&amp;" text. Decode until idempotent, then escape once so
+    // the output is always valid HTML regardless of how the value was
+    // stored.
+    $prev = null;
+    while ( $prev !== $name ) {
+        $prev = $name;
+        $name = wp_specialchars_decode( $name, ENT_QUOTES );
+    }
+    return esc_html( $name );
 } );
 
 
@@ -11887,6 +11970,19 @@ function sp_render_member_edit_page(): void {
                 .sp-admin-photo-remove {
                     margin-top: 6px;
                 }
+                .sp-admin-photo-pending {
+                    margin-top: 10px;
+                    padding: 10px 12px;
+                    background: #fff8e1;
+                    border-left: 3px solid #ffb900;
+                    border-radius: 2px;
+                    font-size: 13px;
+                    line-height: 1.4;
+                    max-width: 420px;
+                }
+                .sp-admin-photo-pending[hidden] {
+                    display: none;
+                }
             </style>
 
             <!-- ============================================================ -->
@@ -12180,9 +12276,9 @@ function sp_render_member_edit_page(): void {
                 <div class="sp-admin-photo-wrap">
                     <div class="sp-admin-photo-preview">
                         <?php if ( $admin_photo_url ) : ?>
-                            <img src="<?php echo esc_url( $admin_photo_url ); ?>" alt="">
+                            <img id="sp-admin-photo-preview-img" src="<?php echo esc_url( $admin_photo_url ); ?>" alt="">
                         <?php else : ?>
-                            <img src="<?php echo esc_url( get_avatar_url( 0, [ 'size' => 120 ] ) ); ?>" alt="">
+                            <img id="sp-admin-photo-preview-img" src="<?php echo esc_url( get_avatar_url( 0, [ 'size' => 120 ] ) ); ?>" alt="">
                         <?php endif; ?>
                     </div>
                     <div class="sp-admin-photo-controls">
@@ -12204,8 +12300,52 @@ function sp_render_member_edit_page(): void {
                             </div>
                         <?php endif; ?>
                         <p class="description"><?php esc_html_e( 'JPG, PNG, or GIF. Max 2 MB.', 'societypress' ); ?></p>
+
+                        <!--
+                            WHY this notice exists: the photo field lives inside the larger
+                            Member form. Picking a file does NOT auto-upload — the photo is
+                            only written to disk when "Save Member" is clicked. Without this
+                            visible feedback, users select a file, see nothing happen, and
+                            assume it's broken (confirmed user report). JS fills in the
+                            filename and reveals the notice the instant a file is chosen.
+                        -->
+                        <div id="sp-admin-photo-pending" class="sp-admin-photo-pending" hidden>
+                            <strong><?php esc_html_e( 'Ready to upload:', 'societypress' ); ?></strong>
+                            <span id="sp-admin-photo-pending-name"></span>
+                            <br>
+                            <em><?php esc_html_e( 'Click "Save Member" at the bottom of this page to apply.', 'societypress' ); ?></em>
+                        </div>
                     </div>
                 </div>
+                <script>
+                (function () {
+                    var input   = document.getElementById( 'sp-admin-photo-input' );
+                    var preview = document.getElementById( 'sp-admin-photo-preview-img' );
+                    var notice  = document.getElementById( 'sp-admin-photo-pending' );
+                    var nameEl  = document.getElementById( 'sp-admin-photo-pending-name' );
+                    if ( ! input || ! preview || ! notice || ! nameEl ) return;
+
+                    // WHY URL.createObjectURL: lets us show the selected file as
+                    // the preview immediately, no upload round-trip needed.
+                    // Revoke the previous URL so we don't leak memory on repeated
+                    // selections.
+                    var prevObjectUrl = null;
+                    input.addEventListener( 'change', function () {
+                        var file = input.files && input.files[0];
+                        if ( ! file ) {
+                            notice.hidden = true;
+                            return;
+                        }
+                        if ( prevObjectUrl ) {
+                            URL.revokeObjectURL( prevObjectUrl );
+                        }
+                        prevObjectUrl  = URL.createObjectURL( file );
+                        preview.src    = prevObjectUrl;
+                        nameEl.textContent = file.name;
+                        notice.hidden  = false;
+                    } );
+                })();
+                </script>
             </div>
             <?php endif; ?>
 

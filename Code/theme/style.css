@@ -5,7 +5,7 @@ Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
 Description: A clean, readable theme for genealogical and historical societies.
              Designed for ease of use with large fonts, high contrast, and simple navigation.
-Version: 1.0.20
+Version: 1.0.28
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 8.0
@@ -158,7 +158,7 @@ img {
 
 .site-content {
     flex: 1;
-    max-width: var(--sp-content-width, 1100px);
+    max-width: var(--sp-content-width, 1500px);
     margin: 0 auto;
     padding: 40px 20px;
     width: 100%;
@@ -180,9 +180,14 @@ img {
     flex-shrink: 0;
 }
 
-/* Single-column layout for pages */
+/* Single-column layout for pages.
+   WHY no max-width: .content-area-full is always nested inside .site-content
+   (page.php, page-my-account.php, front-page.php, 404.php, and the plugin-
+   rendered pages all wrap it that way), and .site-content already caps at
+   --sp-content-width. Re-asserting the cap here was redundant and set a
+   maintenance trap — any later attempt to make this container narrower than
+   .site-content would have to fight the outer cap. */
 .content-area-full {
-    max-width: 800px;
     margin: 0 auto;
 }
 
@@ -221,7 +226,7 @@ img {
    The original hidden was added to contain floats, but flexbox doesn't
    need that — all children are flex items already. */
 .header-inner {
-    max-width: var(--sp-content-width, 1100px);
+    max-width: var(--sp-content-width, 1500px);
     margin: 0 auto;
     display: flex;
     align-items: center;
@@ -331,6 +336,7 @@ img {
         min-width: 0;
     }
 }
+
 
 .main-navigation > ul {
     list-style: none;
@@ -682,7 +688,7 @@ img {
 }
 
 .header-top-bar-inner {
-    max-width: var(--sp-content-width, 1100px);
+    max-width: var(--sp-content-width, 1500px);
     margin: 0 auto;
     display: flex;
     justify-content: flex-end;
@@ -1202,7 +1208,7 @@ article.post:last-child {
 }
 
 .footer-inner {
-    max-width: var(--sp-content-width, 1100px);
+    max-width: var(--sp-content-width, 1500px);
     margin: 0 auto;
     display: grid;
     grid-template-columns: 1.2fr 1fr 1fr;
@@ -1643,7 +1649,15 @@ input[type="submit"]:hover {
    ============================================================================ */
 
 /* Each section (Photo, Info, Password) gets its own card */
+/* WHY cap at 860px: Form inputs scale with the flex row they live in. When
+   the page wrapper is 1100px+ and the section card fills it, "First Name"
+   becomes as wide as "Street Address" and the eye loses the affordance that
+   input width signals expected answer length. 860px keeps three-across rows
+   at a comfortable form-scanning size on desktops. */
 .sp-account-section {
+    max-width: 860px;
+    margin-left: auto;
+    margin-right: auto;
     background: #f8f9fa;
     border-radius: 8px;
     padding: 30px;

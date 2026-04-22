@@ -8,7 +8,7 @@ Description: A warm, traditional theme inspired by old library stacks and leathe
              Pairs beautifully with genealogical and historical societies that want to feel
              established and scholarly. Classic layout: single-column, generous whitespace,
              full-width hero, 3-column footer.
-Version: 1.1.0
+Version: 1.1.2
 Template: societypress
 Requires at least: 6.0
 Tested up to: 6.7
@@ -151,13 +151,38 @@ hr,
    we narrow the inner content area.
    ============================================================================ */
 
-/* WHY override content-area-full: The parent sets this to 800px. We narrow
-   it further to 720px for the Classic reading column, and add vertical
-   padding to create the generous whitespace the archetype demands. */
+/* WHY match --heritage-content-width: The page wrapper has to be at least as
+   wide as the header's nav bar, or the menu visibly overshoots the page
+   container. The Classic reading column (720px) is still applied inside —
+   to .entry-content paragraphs — so text stays comfortably narrow while the
+   outer container encapsulates the full-width menu above. */
 .content-area-full {
-    max-width: var(--heritage-reading-width);
+    max-width: var(--heritage-content-width);
     margin: 0 auto;
     padding: 60px var(--heritage-section-pad-x);
+}
+
+/* Narrow reading column applies to prose inside content-area-full,
+   preserving the Classic archetype's 720px optimal reading width without
+   shrinking the outer container.
+
+   WHY body:not(.home): the front page template wraps page-builder widgets
+   in .entry-content as a layout shell, not prose. Squeezing those widgets
+   to 720px breaks hero/grid/card layouts. The home page is excluded so the
+   builder keeps the full content-area-full width. */
+body:not(.home) .content-area-full .entry-header,
+body:not(.home) .content-area-full .entry-content {
+    max-width: var(--heritage-reading-width);
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* 404 prose also wants the reading column so error copy doesn't strand
+   itself across a 1100px container. */
+.error-404 {
+    max-width: var(--heritage-reading-width);
+    margin-left: auto;
+    margin-right: auto;
 }
 
 /* WHY .entry-content spacing: Paragraphs, lists, and block-level elements

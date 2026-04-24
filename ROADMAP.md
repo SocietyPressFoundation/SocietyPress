@@ -14,22 +14,38 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 
 ---
 
+## Recently shipped
+
+Items that were on this roadmap and have now landed. Kept here for a
+release cycle or two so visitors can see momentum before being pruned
+into the changelog.
+
+### First tagged GitHub release — `v1.0.19`
+
+Shipped 2026-04-19. The repository now carries a semver tag, unblocking
+the in-plugin update checker, the Softaculous submission flow, and the
+planned homepage activity feed.
+
+### Native store checkout
+
+Shipped 2026-04-19 (plugin 1.0.20). The cart now mounts the Stripe
+Payment Element (card, Apple Pay, Google Pay, Link) and PayPal Smart
+Buttons (PayPal, Venmo) inline, with real refund buttons on the order
+detail page and a persistent admin notice when neither processor is
+configured.
+
+### `security.txt` at `/.well-known/security.txt`
+
+Shipped 2026-04-15. RFC 9116 disclosure file live at
+`https://getsocietypress.org/.well-known/security.txt`, pointing at the
+[Security Policy](https://getsocietypress.org/security-policy/) page.
+
+---
+
 ## Distribution & Releases
 
 Getting SocietyPress into the hands of actual societies with as little
 friction as possible.
-
-### Cut the first tagged GitHub release
-
-**Motivation:** The in-plugin update checker, the marketing site's
-changelog feed, and third-party installers all look for GitHub Releases
-tagged with semver versions. Without tagged releases, none of those
-surface updates.
-**Scope:** Tag `v1.0.19` on the current `main`, attach a pre-built
-`societypress.zip` bundle and a release note summarizing the changes,
-and document the cut-a-release procedure so every version bump produces
-one.
-**Blockers:** None.
 
 ### Softaculous one-click install
 
@@ -41,8 +57,7 @@ an afternoon to three minutes.
 (`info.xml`, screenshots, bundle ZIP layout), validate it with
 `scripts/build-softaculous.sh` end-to-end, and submit through the
 partner program.
-**Blockers:** First tagged GitHub release (the package points at
-release assets).
+**Blockers:** None.
 
 ### In-app update checker surfacing
 
@@ -52,7 +67,7 @@ to check GitHub manually.
 **Scope:** The plugin already has `SOCIETYPRESS_GITHUB_REPO` wired to
 the release-checking endpoint — verify that the notice appears, the
 update ZIP downloads, and the extraction is zip-slip-safe.
-**Blockers:** Tagged releases.
+**Blockers:** None.
 
 ---
 
@@ -127,22 +142,13 @@ sitemap.
 pages, blog posts, docs, and the showcase.
 **Blockers:** None.
 
-### `security.txt` at `/.well-known/security.txt`
-
-**Motivation:** RFC 9116 standardizes where security researchers look
-for disclosure instructions. Having a valid file signals that reports
-will be handled professionally.
-**Scope:** A static file at `/.well-known/security.txt` pointing at the
-SECURITY.md process.
-**Blockers:** None.
-
 ### Inline GitHub Releases feed on homepage
 
 **Motivation:** Showing activity on the homepage — "v1.0.19 released
 three days ago" — signals the project is alive.
 **Scope:** Cached fetch of the GitHub Releases API, rendered as a
 compact feed in the homepage footer or sidebar.
-**Blockers:** Tagged releases.
+**Blockers:** None.
 
 ---
 
@@ -225,17 +231,6 @@ handle overlapping memberships), and a rollback plan.
 ## Platform Features
 
 New capabilities for the software itself.
-
-### Complete the Store module's checkout
-
-**Motivation:** The storefront and cart work; checkout and payment
-capture are the remaining gap. Societies want to sell publications and
-merchandise through their site, not a separate storefront.
-**Scope:** Wire up Stripe and PayPal checkout for store orders with the
-same flow already used by the join form and event registration. Order
-confirmation emails, refund handling, basic stock management.
-**Blockers:** None technical; priority call about whether the
-checkout-less store is a near-term blocker for any society.
 
 ### Events recurring-series improvements
 

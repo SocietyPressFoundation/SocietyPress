@@ -1138,7 +1138,7 @@ function sp_create_tables(): void {
         active          TINYINT(1)          NOT NULL DEFAULT 1,
         sort_order      INT UNSIGNED        NOT NULL DEFAULT 0,
         created_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         KEY active (active),
         KEY sort_order (sort_order)
@@ -1188,7 +1188,7 @@ function sp_create_tables(): void {
         visibility      VARCHAR(20)         NOT NULL DEFAULT 'members_only',
         author_user_id  BIGINT(20) UNSIGNED NULL,
         created_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         KEY meeting_type (meeting_type),
         KEY committee_id (committee_id),
@@ -2491,6 +2491,33 @@ add_action( 'admin_init', function () {
 
 
 // ============================================================================
+// MIGRATION: Add ON UPDATE CURRENT_TIMESTAMP to updated_at on committees and meetings
+//
+// WHY: Both tables originally defined updated_at as DEFAULT CURRENT_TIMESTAMP only,
+//      so the column was set on insert and never moved. Any "recently modified"
+//      sort or filter would be wrong. The CREATE TABLE statements have been
+//      corrected; this block fixes existing installs. Re-running the MODIFY is
+//      safe and idempotent — MySQL is a no-op when the definition already matches.
+// ============================================================================
+add_action( 'admin_init', function () {
+    global $wpdb;
+
+    foreach ( [ 'sp_committees', 'sp_meetings' ] as $suffix ) {
+        $table = $wpdb->prefix . $suffix;
+
+        if ( $wpdb->get_var( "SHOW TABLES LIKE '{$table}'" ) !== $table ) {
+            continue;
+        }
+
+        $col = $wpdb->get_row( "SHOW COLUMNS FROM {$table} LIKE 'updated_at'" );
+        if ( $col && stripos( $col->Extra ?? '', 'on update' ) === false ) {
+            $wpdb->query( "ALTER TABLE {$table} MODIFY updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP" );
+        }
+    }
+} );
+
+
+// ============================================================================
 // DEACTIVATION — Clean up cron jobs on plugin deactivation
 // ============================================================================
 
@@ -2540,13 +2567,25 @@ register_deactivation_hook( __FILE__, function () {
  * @return string 32-byte binary key.
  */
 function sp_get_encryption_key(): string {
-    // Combine two WordPress secrets so that knowing just one isn't enough.
-    // AUTH_KEY and SECURE_AUTH_KEY are defined in wp-config.php and are
-    // unique per installation (WordPress generates them during setup).
-    $material = ( defined( 'AUTH_KEY' ) ? AUTH_KEY : 'sp-fallback-auth' )
-              . ( defined( 'SECURE_AUTH_KEY' ) ? SECURE_AUTH_KEY : 'sp-fallback-secure' );
+    // Standard path: derive from wp-config secrets. Per-install, private to
+    // the server, no DB round-trip. Both must be present and non-empty —
+    // a properly-set-up WordPress install always has them.
+    if ( defined( 'AUTH_KEY' ) && defined( 'SECURE_AUTH_KEY' )
+         && AUTH_KEY !== '' && SECURE_AUTH_KEY !== '' ) {
+        return hash( 'sha256', AUTH_KEY . SECURE_AUTH_KEY, true );
+    }
 
-    return hash( 'sha256', $material, true ); // 32 bytes, binary
+    // Fallback for misconfigured installs where wp-config secrets are
+    // missing or empty: generate and persist a random 32-byte key. NEVER
+    // derive from a hardcoded constant — those are public in this
+    // open-source file and would produce a guessable key.
+    $stored = get_option( 'sp_encryption_key_b64' );
+    if ( $stored ) {
+        return base64_decode( $stored );
+    }
+    $key = random_bytes( 32 );
+    update_option( 'sp_encryption_key_b64', base64_encode( $key ), false );
+    return $key;
 }
 
 /**
@@ -4734,7 +4773,10 @@ function sp_get_menu_capability_map(): array {
         'privacy-policy-guide.php' => 'sp_manage_settings',
         'sp-design'                => 'sp_manage_settings',
         'sp-settings-modules'      => 'sp_manage_settings',
-        'sp-user-access'           => 'sp_manage_settings',
+        // sp-user-access deliberately uses manage_options rather than
+        // sp_manage_settings — granting capabilities to other users is
+        // privilege escalation and must be reserved for WordPress admins.
+        'sp-user-access'           => 'manage_options',
         'sp-audit-log'             => 'sp_manage_settings',
     ];
 }
@@ -8405,6 +8447,7 @@ add_action( 'wp_login', function ( $user_login, $user ) {
  *      on subsequent page loads within the same session.
  */
 add_action( 'wp_ajax_sp_dismiss_login_ack', function () {
+    check_ajax_referer( 'sp_dismiss_login_ack' );
     $user_id = get_current_user_id();
     if ( $user_id ) {
         delete_transient( 'sp_login_ack_' . $user_id );
@@ -11118,7 +11161,7 @@ add_action( 'admin_init', function () {
     if ( ! isset( $_POST['sp_member_nonce'] ) ) {
         return;
     }
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_members' ) ) {
         wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
     }
     if ( ! wp_verify_nonce( $_POST['sp_member_nonce'], 'sp_save_member' ) ) {
@@ -15277,7 +15320,7 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
  */
 add_action( 'wp_ajax_sp_import_members_batch', function () {
     check_ajax_referer( 'sp_import_members_batch' );
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_members' ) ) {
         wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
     }
 
@@ -15321,7 +15364,7 @@ add_action( 'wp_ajax_sp_import_members_batch', function () {
  */
 add_action( 'wp_ajax_sp_delete_all_others_ids', function () {
     check_ajax_referer( 'sp_delete_all_others' );
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_members' ) ) {
         wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
     }
 
@@ -15367,7 +15410,7 @@ add_action( 'wp_ajax_sp_delete_all_others_ids', function () {
  */
 add_action( 'wp_ajax_sp_delete_members_batch', function () {
     check_ajax_referer( 'sp_delete_all_others' );
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_members' ) ) {
         wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
     }
 
@@ -15400,6 +15443,29 @@ add_action( 'wp_ajax_sp_delete_members_batch', function () {
 
 
 /**
+ * Confirm an uploaded import file is actually a CSV/spreadsheet by inspecting
+ * its real MIME type — not just trusting the browser-supplied filename or
+ * extension. Defends against an admin (or compromised admin account) uploading
+ * a PHP file disguised as a .csv.
+ */
+function sp_is_valid_import_upload( string $tmp_name ): bool {
+    if ( ! is_uploaded_file( $tmp_name ) ) {
+        return false;
+    }
+    $finfo = finfo_open( FILEINFO_MIME_TYPE );
+    $mime  = finfo_file( $finfo, $tmp_name );
+    finfo_close( $finfo );
+    $allowed = [
+        'text/plain',
+        'text/csv',
+        'application/csv',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ];
+    return in_array( $mime, $allowed, true );
+}
+
+/**
  * Render the Import page — a two-step process:
  *
  * STEP 1 (Upload): User picks a CSV file and clicks "Upload & Preview."
@@ -15416,7 +15482,7 @@ add_action( 'wp_ajax_sp_delete_members_batch', function () {
  *     catches the case where someone uploads the wrong file entirely.
  */
 function sp_render_import_page(): void {
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_members' ) ) {
         wp_die( esc_html__( 'You do not have permission to access this page.', 'societypress' ) );
     }
 
@@ -15437,6 +15503,10 @@ function sp_render_import_page(): void {
         check_admin_referer( 'sp_import_members' );
 
         if ( ! empty( $_FILES['import_file']['tmp_name'] ) ) {
+            if ( ! sp_is_valid_import_upload( $_FILES['import_file']['tmp_name'] ) ) {
+                echo '<div class="notice notice-error"><p>' . esc_html__( 'That file does not look like a CSV or spreadsheet. Please upload a .csv, .tsv, or .xlsx file.', 'societypress' ) . '</p></div>';
+                return;
+            }
             // Move the upload to a temp file that persists between requests.
             // WHY: PHP deletes the upload temp file when the request ends.
             //      We need it to survive until Step 2. Store it in the WP
@@ -16712,7 +16782,7 @@ function sp_get_export_columns(): array {
 add_action( 'wp_ajax_sp_export_count', function () {
     check_ajax_referer( 'sp_export_count' );
 
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_members' ) ) {
         wp_send_json_error( __( 'Unauthorized', 'societypress' ), 403 );
     }
 
@@ -19326,7 +19396,7 @@ function sp_get_member_spouse( int $user_id ): ?object {
 function sp_ajax_add_relationship(): void {
     check_ajax_referer( 'sp_relationship_nonce', 'nonce' );
 
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_members' ) ) {
         wp_send_json_error( [ 'message' => __( 'Permission denied.', 'societypress' ) ] );
     }
 
@@ -19357,7 +19427,7 @@ add_action( 'wp_ajax_sp_add_relationship', 'sp_ajax_add_relationship' );
 function sp_ajax_remove_relationship(): void {
     check_ajax_referer( 'sp_relationship_nonce', 'nonce' );
 
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_members' ) ) {
         wp_send_json_error( [ 'message' => __( 'Permission denied.', 'societypress' ) ] );
     }
 
@@ -20622,7 +20692,7 @@ function sp_render_pages_page(): void {
 function sp_handle_quick_edit_page(): void {
     check_ajax_referer( 'sp_quick_edit_page' );
 
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_content' ) ) {
         wp_send_json_error( __( 'Permission denied.', 'societypress' ) );
     }
 
@@ -20900,8 +20970,7 @@ function sp_handle_page_save(): void {
         wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
     }
 
-    // Only admins can manage pages
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_content' ) ) {
         wp_die( esc_html__( 'You do not have permission to manage pages.', 'societypress' ) );
     }
 
@@ -21598,7 +21667,7 @@ function sp_render_settings_website_page(): void {
  *      that must be re-entered on the target site for security reasons.
  */
 add_action( 'wp_ajax_sp_export_settings_json', function () {
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_settings' ) ) {
         wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
     }
     if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_settings_json' ) ) {
@@ -21608,10 +21677,16 @@ add_action( 'wp_ajax_sp_export_settings_json', function () {
     $settings = get_option( 'societypress_settings', [] );
     $modules  = get_option( 'sp_enabled_modules', [] );
 
-    // WHY: Stripe secret keys are encrypted at rest, but exporting the
-    // encrypted blob is useless on a different installation (different
-    // encryption key). Exclude them so Harold re-enters them fresh.
-    $secret_keys = [ 'stripe_secret_key', 'stripe_test_secret_key' ];
+    // WHY: Payment processor secrets are encrypted at rest, but the encrypted
+    // blob is useless on a different installation (different encryption key).
+    // Exclude them so Harold re-enters them fresh on the target site.
+    $secret_keys = [
+        'stripe_secret_key',
+        'stripe_test_secret_key',
+        'stripe_live_secret_key',
+        'paypal_sandbox_secret',
+        'paypal_live_secret',
+    ];
     foreach ( $secret_keys as $key ) {
         unset( $settings[ $key ] );
     }
@@ -21951,8 +22026,7 @@ function sp_preview_get_slug(): ?string {
     $candidate = sanitize_text_field( $_GET['sp_preview_theme'] );
     if ( empty( $candidate ) ) return null;
 
-    // Only admins can preview themes
-    if ( ! current_user_can( 'manage_options' ) ) return null;
+    if ( ! current_user_can( 'sp_manage_settings' ) ) return null;
 
     // Previewing the parent theme itself
     if ( $candidate === 'societypress' ) {
@@ -22134,7 +22208,7 @@ add_filter( 'show_admin_bar', function ( $show ) {
  */
 add_action( 'admin_init', function () {
     if ( ! isset( $_POST['sp_activate_theme'] ) ) return;
-    if ( ! current_user_can( 'manage_options' ) ) return;
+    if ( ! current_user_can( 'sp_manage_settings' ) ) return;
     if ( ! wp_verify_nonce( $_POST['_sp_theme_nonce'] ?? '', 'sp_switch_theme' ) ) {
         wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
     }
@@ -22229,7 +22303,7 @@ add_action( 'wp_ajax_sp_install_theme', function () {
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_install_theme_nonce' ) ) {
         wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ] );
     }
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_settings' ) ) {
         wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ] );
     }
 
@@ -22538,7 +22612,7 @@ add_action( 'wp_ajax_sp_create_custom_theme', function () {
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_custom_theme_nonce' ) ) {
         wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ] );
     }
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_settings' ) ) {
         wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ] );
     }
 
@@ -22635,7 +22709,7 @@ add_action( 'wp_ajax_sp_update_custom_theme', function () {
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_custom_theme_nonce' ) ) {
         wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ] );
     }
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_settings' ) ) {
         wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ] );
     }
 
@@ -22703,7 +22777,7 @@ add_action( 'wp_ajax_sp_delete_custom_theme', function () {
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_custom_theme_nonce' ) ) {
         wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ] );
     }
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_settings' ) ) {
         wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ] );
     }
 
@@ -23296,7 +23370,7 @@ add_action( 'wp_ajax_sp_extract_site_colors', function () {
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_custom_theme_nonce' ) ) {
         wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ] );
     }
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_settings' ) ) {
         wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ] );
     }
 
@@ -25942,7 +26016,7 @@ function sp_render_settings_modules_page(): void {
     // societypress_settings array. Processing the POST ourselves keeps it
     // simple — one nonce check, one update_option call, done.
     if ( $_SERVER['REQUEST_METHOD'] === 'POST' && isset( $_POST['_sp_modules_nonce'] ) ) {
-        if ( wp_verify_nonce( $_POST['_sp_modules_nonce'], 'sp_save_modules' ) && current_user_can( 'manage_options' ) ) {
+        if ( wp_verify_nonce( $_POST['_sp_modules_nonce'], 'sp_save_modules' ) && current_user_can( 'sp_manage_settings' ) ) {
             $all_module_slugs = array_keys( sp_get_modules() );
             $enabled = [];
             foreach ( $all_module_slugs as $slug ) {
@@ -31274,13 +31348,13 @@ function sp_render_builder_widget_membership_tiers( array $s ): void {
     foreach ( $tiers as $tier ) {
         $opacity = $tier->active ? '' : ' opacity:0.6;';
         echo '<div style="background:#fff; border:1px solid #e0e0e0; border-radius:8px; padding:20px; text-align:center;' . $opacity . '">';
-        echo '<h3 style="margin:0 0 8px; color:#1e3a5f;">' . esc_html( $tier->name ) . '</h3>';
+        echo '<h3 style="margin:0 0 8px; color:var(--sp-color-primary, #1e3a5f);">' . esc_html( $tier->name ) . '</h3>';
         if ( $show_prices ) {
             $price = floatval( $tier->price );
-            echo '<div style="font-size:24px; font-weight:700; color:var(--sp-color-primary);">' . ( $price > 0 ? esc_html( sp_format_currency( $price ) ) : esc_html__( 'Free', 'societypress' ) ) . '</div>';
+            echo '<div style="font-size:24px; font-weight:700; color:var(--sp-color-primary, #1e3a5f);">' . ( $price > 0 ? esc_html( sp_format_currency( $price ) ) : esc_html__( 'Free', 'societypress' ) ) . '</div>';
             if ( $price > 0 && $tier->duration_months ) {
                 $d = intval( $tier->duration_months );
-                echo '<div style="font-size:14px; color:#666;">' . ( $d === 12 ? esc_html__( 'per year', 'societypress' ) : esc_html( sprintf( __( 'per %d months', 'societypress' ), $d ) ) ) . '</div>';
+                echo '<div style="font-size:14px; color:var(--sp-color-text-secondary, #666);">' . ( $d === 12 ? esc_html__( 'per year', 'societypress' ) : esc_html( sprintf( __( 'per %d months', 'societypress' ), $d ) ) ) . '</div>';
             }
         }
         if ( ! $tier->active ) {
@@ -31308,7 +31382,7 @@ function sp_render_builder_widget_contact_card( array $s ): void {
     $hours    = $settings['organization_hours'] ?? '';
 
     echo '<div style="background:#f9f9f9; border:1px solid #e0e0e0; border-radius:8px; padding:24px;">';
-    echo '<h3 style="margin:0 0 16px; color:#1e3a5f;">' . esc_html( $org_name ) . '</h3>';
+    echo '<h3 style="margin:0 0 16px; color:var(--sp-color-primary, #1e3a5f);">' . esc_html( $org_name ) . '</h3>';
 
     if ( $show_address && $address ) {
         echo '<div style="display:flex; align-items:flex-start; gap:12px; margin-bottom:12px;">';
@@ -31431,9 +31505,9 @@ function sp_render_builder_widget_heading( array $s ): void {
 
     $align = $alignment !== 'left' ? ' style="text-align:' . $alignment . ';"' : '';
     echo '<div class="sp-widget-heading"' . $align . '>';
-    echo '<' . $level . ' style="margin:0 0 8px; color:#1e3a5f;">' . esc_html( $text ) . '</' . $level . '>';
+    echo '<' . $level . ' style="margin:0 0 8px; color:var(--sp-color-primary, #1e3a5f);">' . esc_html( $text ) . '</' . $level . '>';
     if ( $subtitle ) {
-        echo '<p style="margin:0 0 12px; color:#666; font-size:18px;">' . esc_html( $subtitle ) . '</p>';
+        echo '<p style="margin:0 0 12px; color:var(--sp-color-text-secondary, #666); font-size:18px;">' . esc_html( $subtitle ) . '</p>';
     }
     if ( $show_divider ) {
         $hr_margin = $alignment === 'center' ? 'auto' : ( $alignment === 'right' ? '0 0 0 auto' : '0' );
@@ -32661,7 +32735,7 @@ add_action( 'admin_init', function () {
     if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'sp-events' ) {
         return;
     }
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_events' ) ) {
         return;
     }
 
@@ -32884,7 +32958,7 @@ add_action( 'admin_init', function () {
     if ( ! wp_verify_nonce( $_POST['sp_event_nonce'], 'sp_save_event' ) ) {
         wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
     }
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_events' ) ) {
         wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
     }
 
@@ -35380,7 +35454,7 @@ add_action( 'wp_ajax_sp_save_membership_tier', function () {
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_membership_tier_nonce' ) ) {
         wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ] );
     }
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_members' ) ) {
         wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ] );
     }
 
@@ -35463,7 +35537,7 @@ add_action( 'wp_ajax_sp_delete_membership_tier', function () {
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_membership_tier_nonce' ) ) {
         wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ] );
     }
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_members' ) ) {
         wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ] );
     }
 
@@ -36694,6 +36768,10 @@ function sp_render_import_events_page(): void {
         check_admin_referer( 'sp_import_events' );
 
         if ( ! empty( $_FILES['import_file']['tmp_name'] ) ) {
+            if ( ! sp_is_valid_import_upload( $_FILES['import_file']['tmp_name'] ) ) {
+                echo '<div class="notice notice-error"><p>' . esc_html__( 'That file does not look like a CSV or spreadsheet. Please upload a .csv, .tsv, or .xlsx file.', 'societypress' ) . '</p></div>';
+                return;
+            }
             $upload_dir = wp_upload_dir();
             $temp_dir   = $upload_dir['basedir'] . '/sp-import-temp';
             if ( ! is_dir( $temp_dir ) ) {
@@ -40865,8 +40943,8 @@ function sp_ajax_cancel_registration(): void {
 
     // WHY: Guest registrations have user_id = NULL. Without this check, any logged-in
     // member could cancel a guest's registration by guessing the registration ID.
-    // Only admins should be able to cancel guest registrations.
-    if ( ! $reg->user_id && ! current_user_can( 'manage_options' ) ) {
+    // Only event managers should be able to cancel guest registrations.
+    if ( ! $reg->user_id && ! current_user_can( 'sp_manage_events' ) ) {
         wp_send_json_error( [ 'message' => __( 'You cannot cancel this registration.', 'societypress' ) ] );
     }
 
@@ -41740,7 +41818,7 @@ function sp_render_event_registrations_section( object $event ): void {
 }
 // END sp_render_event_registrations_section
 function sp_ajax_admin_add_walkin(): void {
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_events' ) ) {
         wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
     }
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_admin_registration' ) ) {
@@ -41792,7 +41870,7 @@ function sp_ajax_admin_add_walkin(): void {
 add_action( 'wp_ajax_sp_admin_cancel_registration', 'sp_ajax_admin_cancel_registration' );
 
 function sp_ajax_admin_cancel_registration(): void {
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_events' ) ) {
         wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
     }
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_admin_registration' ) ) {
@@ -41846,7 +41924,7 @@ function sp_ajax_admin_cancel_registration(): void {
 add_action( 'wp_ajax_sp_admin_update_attendance', 'sp_ajax_admin_update_attendance' );
 
 function sp_ajax_admin_update_attendance(): void {
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_events' ) ) {
         wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
     }
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_admin_registration' ) ) {
@@ -41886,7 +41964,7 @@ function sp_ajax_admin_update_attendance(): void {
 add_action( 'wp_ajax_sp_admin_bulk_attendance', 'sp_ajax_admin_bulk_attendance' );
 
 function sp_ajax_admin_bulk_attendance(): void {
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_events' ) ) {
         wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
     }
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_admin_registration' ) ) {
@@ -41925,7 +42003,7 @@ function sp_ajax_admin_bulk_attendance(): void {
 add_action( 'wp_ajax_sp_export_registrations', 'sp_ajax_export_registrations' );
 
 function sp_ajax_export_registrations(): void {
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_events' ) ) {
         wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
     }
     if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_registrations' ) ) {
@@ -42696,7 +42774,10 @@ function sp_bulk_convert_to_member_role(): array {
 add_filter( 'show_admin_bar', function ( $show ) {
     if ( is_user_logged_in() ) {
         $user = wp_get_current_user();
-        if ( in_array( 'sp_member', $user->roles, true ) && ! current_user_can( 'manage_options' ) ) {
+        // A delegated event/library/etc. manager who also holds the sp_member role
+        // still needs the toolbar to reach the SP admin. sp_access_admin is granted
+        // to anyone with any SP delegated capability.
+        if ( in_array( 'sp_member', $user->roles, true ) && ! current_user_can( 'sp_access_admin' ) ) {
             return false;
         }
     }
@@ -42711,7 +42792,9 @@ add_filter( 'show_admin_bar', function ( $show ) {
  *      in the WordPress backend. Admins are exempted.
  */
 add_action( 'admin_init', function () {
-    if ( ! current_user_can( 'manage_options' ) && ! wp_doing_ajax() ) {
+    // Only bounce members who have NO SP admin access. A delegated manager who
+    // also holds the sp_member role still needs to reach /wp-admin/admin.php?page=sp-...
+    if ( ! current_user_can( 'sp_access_admin' ) && ! wp_doing_ajax() ) {
         $user = wp_get_current_user();
         if ( in_array( 'sp_member', $user->roles, true ) ) {
             wp_safe_redirect( home_url() );
@@ -43823,7 +43906,7 @@ add_action( 'admin_init', function () {
     if ( ! wp_verify_nonce( $_POST['sp_speaker_nonce'], 'sp_save_speaker' ) ) {
         wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
     }
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_events' ) ) {
         wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
     }
 
@@ -44046,7 +44129,7 @@ function sp_render_speaker_edit_page(): void {
 add_action( 'wp_ajax_sp_regenerate_occurrences', 'sp_ajax_regenerate_occurrences' );
 
 function sp_ajax_regenerate_occurrences(): void {
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_events' ) ) {
         wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
     }
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_recurrence' ) ) {
@@ -44221,7 +44304,7 @@ function sp_ajax_regenerate_occurrences(): void {
 add_action( 'wp_ajax_sp_detach_from_series', 'sp_ajax_detach_from_series' );
 
 function sp_ajax_detach_from_series(): void {
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_events' ) ) {
         wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
     }
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_recurrence' ) ) {
@@ -45242,7 +45325,7 @@ function sp_paypal_capture_order( string $paypal_order_id, array $settings ) {
  *      Stripe test connection handler.
  */
 add_action( 'wp_ajax_sp_test_paypal_connection', function(): void {
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_finances' ) ) {
         wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
     }
     check_ajax_referer( 'sp_test_paypal' );
@@ -46605,7 +46688,7 @@ add_action( 'wp_ajax_sp_test_stripe_connection', function () {
         wp_send_json_error( __( 'Security check failed.', 'societypress' ) );
     }
 
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_finances' ) ) {
         wp_send_json_error( __( 'Permission denied.', 'societypress' ) );
     }
 
@@ -46662,7 +46745,7 @@ add_action( 'wp_ajax_sp_admin_refund_payment', function () {
         wp_send_json_error( __( 'Security check failed.', 'societypress' ) );
     }
 
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_finances' ) ) {
         wp_send_json_error( __( 'Permission denied.', 'societypress' ) );
     }
 
@@ -48419,9 +48502,9 @@ function sp_handle_surname_contact(): void {
         wp_send_json_error( __( 'Please enter a valid email address.', 'societypress' ) );
     }
 
-    // Look up the researcher's email from the contact table
+    // Members link to WP users via user_id; the WP user record holds the email.
     $researcher_email = $wpdb->get_var( $wpdb->prepare(
-        "SELECT email FROM {$prefix}member_contact WHERE user_id = %d",
+        "SELECT user_email FROM {$wpdb->users} WHERE ID = %d",
         $researcher_id
     ) );
 
@@ -49226,7 +49309,7 @@ function sp_render_annual_report_page(): void {
  */
 add_action( 'wp_ajax_sp_export_membership_report', 'sp_ajax_export_membership_report' );
 function sp_ajax_export_membership_report(): void {
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_members' ) ) {
         wp_die( esc_html__( 'You do not have permission to export reports.', 'societypress' ) );
     }
 
@@ -50288,12 +50371,13 @@ function sp_frontend_help_requests(): void {
                 $request_id
             ) );
 
-            // Notify the question author
+            // Notify the question author. Members link to WP users via user_id;
+            // the WP user record holds the email.
             $request = $wpdb->get_row( $wpdb->prepare(
-                "SELECT hr.*, mc.email, m.first_name
+                "SELECT hr.*, u.user_email AS email, m.first_name
                  FROM {$prefix}help_requests hr
                  INNER JOIN {$prefix}members m ON hr.user_id = m.user_id
-                 INNER JOIN {$prefix}member_contact mc ON hr.user_id = mc.user_id
+                 INNER JOIN {$wpdb->users} u ON hr.user_id = u.ID
                  WHERE hr.id = %d", $request_id
             ) );
             if ( $request && $request->email && $request->user_id !== $current_user_id ) {
@@ -54375,7 +54459,7 @@ function sp_render_meetings_page(): void {
                                 <strong><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $m->title ); ?></a></strong>
                                 <div class="row-actions">
                                     <span class="edit"><a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> | </span>
-                                    <span class="delete"><a href="<?php echo esc_url( $del_url ); ?>" class="sp-text-danger" onclick="return confirm('<?php echo esc_js( __( 'Delete this meeting record? Attached files in the Media Library are kept.', 'societypress' ) ); ?>');"><?php esc_html_e( 'Delete', 'societypress' ); ?></a></span>
+                                    <span class="delete"><a href="<?php echo esc_url( $del_url ); ?>" class="sp-text-danger" onclick="spConfirm(<?php echo wp_json_encode( __( 'Delete this meeting record? Attached files in the Media Library are kept.', 'societypress' ) ); ?>, function(){window.location=this.href;}.bind(this));return false;"><?php esc_html_e( 'Delete', 'societypress' ); ?></a></span>
                                 </div>
                             </td>
                             <td><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $m->meeting_date ) ) ); ?></td>
@@ -54661,7 +54745,7 @@ function sp_render_committees_page(): void {
                                 <div class="row-actions">
                                     <span class="edit"><a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> | </span>
                                     <span class="toggle"><a href="<?php echo esc_url( $toggle_url ); ?>"><?php echo (int) $c->active ? esc_html__( 'Deactivate', 'societypress' ) : esc_html__( 'Activate', 'societypress' ); ?></a> | </span>
-                                    <span class="delete"><a href="<?php echo esc_url( $delete_url ); ?>" class="sp-text-danger" onclick="return confirm('<?php echo esc_js( __( 'Delete this committee? Member assignments are preserved.', 'societypress' ) ); ?>');"><?php esc_html_e( 'Delete', 'societypress' ); ?></a></span>
+                                    <span class="delete"><a href="<?php echo esc_url( $delete_url ); ?>" class="sp-text-danger" onclick="spConfirm(<?php echo wp_json_encode( __( 'Delete this committee? Member assignments are preserved.', 'societypress' ) ); ?>, function(){window.location=this.href;}.bind(this));return false;"><?php esc_html_e( 'Delete', 'societypress' ); ?></a></span>
                                 </div>
                             </td>
                             <td><?php echo esc_html( $chair_name ); ?></td>
@@ -55927,7 +56011,7 @@ function sp_render_volunteer_hours_page(): void {
 // Handle volunteer hours CSV export
 add_action( 'admin_init', function() {
     if ( ( $_GET['page'] ?? '' ) !== 'sp-volunteer-hours' || ( $_GET['action'] ?? '' ) !== 'export_csv' ) return;
-    if ( ! current_user_can( 'manage_options' ) ) return;
+    if ( ! current_user_can( 'sp_manage_governance' ) ) return;
     check_admin_referer( 'sp_export_volunteer_hours' );
 
     global $wpdb;
@@ -56664,7 +56748,7 @@ function sp_render_email_templates_page(): void {
 add_action( 'wp_ajax_sp_get_default_template', function() {
     check_ajax_referer( 'sp_default_template' );
 
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_communications' ) ) {
         wp_send_json_error( __( 'Unauthorized', 'societypress' ), 403 );
     }
 
@@ -57989,7 +58073,7 @@ add_action( 'sp_blast_email_send_batch', 'sp_blast_email_send_batch', 10, 2 );
  *      the email. This endpoint returns the count without a full page reload.
  */
 function sp_ajax_blast_recipient_count(): void {
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_communications' ) ) {
         wp_send_json_error( __( 'Unauthorized', 'societypress' ) );
     }
 
@@ -60156,10 +60240,10 @@ function sp_ajax_library_item_detail(): void {
     ];
 
     // WHY: item_value, librarian_notes, donor, and acquisition_number are internal
-    // administrative data that regular members should not see. Only admins need
+    // administrative data that regular members should not see. Only librarians need
     // these for catalog management. Leaking item_value could cause awkward
     // conversations; librarian_notes may contain internal commentary.
-    if ( current_user_can( 'manage_options' ) ) {
+    if ( current_user_can( 'sp_manage_library' ) ) {
         $response['donor']              = $item->donor ?: '';
         $response['item_value']         = $item->item_value ? sp_format_currency( $item->item_value ) : '';
         $response['librarian_notes']    = $item->librarian_notes ?: '';
@@ -60178,7 +60262,7 @@ function sp_ajax_library_item_detail(): void {
 // ============================================================================
 add_action( 'wp_ajax_sp_export_library', 'sp_ajax_export_library' );
 function sp_ajax_export_library(): void {
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_library' ) ) {
         wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
     }
 
@@ -60302,7 +60386,7 @@ function sp_ajax_export_library(): void {
  *      them for migration.
  */
 add_action( 'wp_ajax_sp_export_events', function () {
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_events' ) ) {
         wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
     }
     if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_events' ) ) {
@@ -60361,7 +60445,7 @@ add_action( 'wp_ajax_sp_export_events', function () {
  *      tracking. Societies switching platforms need their full giving history.
  */
 add_action( 'wp_ajax_sp_export_donations', function () {
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_finances' ) ) {
         wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
     }
     if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_donations' ) ) {
@@ -60417,7 +60501,7 @@ add_action( 'wp_ajax_sp_export_donations', function () {
  *      for society records and officer transition documentation.
  */
 add_action( 'wp_ajax_sp_export_leadership', function () {
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_governance' ) ) {
         wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
     }
     if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_leadership' ) ) {
@@ -60471,7 +60555,7 @@ add_action( 'wp_ajax_sp_export_leadership', function () {
  *      spreadsheet or accounting system.
  */
 add_action( 'wp_ajax_sp_export_orders', function () {
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_finances' ) ) {
         wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
     }
     if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_orders' ) ) {
@@ -60534,7 +60618,7 @@ add_action( 'wp_ajax_sp_export_orders', function () {
  *      Body content is excluded (too large for CSV) — this exports metadata.
  */
 add_action( 'wp_ajax_sp_export_email_log', function () {
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_communications' ) ) {
         wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
     }
     if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_email_log' ) ) {
@@ -60600,7 +60684,7 @@ add_action( 'wp_ajax_sp_export_email_log', function () {
  *      system can read every value as plaintext — there is no key dance.
  */
 add_action( 'wp_ajax_sp_export_full_site', function () {
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_settings' ) ) {
         wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
     }
     if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_full_site' ) ) {
@@ -60752,7 +60836,7 @@ add_action( 'wp_ajax_sp_export_full_site', function () {
  *      should never lose that work to a platform change.
  */
 add_action( 'wp_ajax_sp_export_resources', function () {
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_content' ) ) {
         wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
     }
     if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_resources' ) ) {
@@ -61175,7 +61259,7 @@ function sp_render_library_enrich_page(): void {
 function sp_ajax_library_enrich_batch(): void {
     check_ajax_referer( 'sp_library_enrich' );
 
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_library' ) ) {
         wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
     }
 
@@ -61580,7 +61664,7 @@ add_action( 'admin_init', function () {
     // Only run on the newsletter edit page when the save button was clicked.
     if ( ! isset( $_POST['sp_save_newsletter'] ) ) return;
     if ( ( $_GET['page'] ?? '' ) !== 'sp-newsletter-edit' ) return;
-    if ( ! current_user_can( 'manage_options' ) ) return;
+    if ( ! current_user_can( 'sp_manage_communications' ) ) return;
 
     check_admin_referer( 'sp_newsletter_save' );
 
@@ -61876,7 +61960,7 @@ function sp_render_newsletter_edit_page(): void {
 function sp_ajax_generate_newsletter_cover(): void {
     check_ajax_referer( 'sp_newsletter_cover' );
 
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_communications' ) ) {
         wp_send_json_error( __( 'Permission denied.', 'societypress' ) );
     }
 
@@ -61983,8 +62067,10 @@ function sp_ajax_newsletter_download(): void {
         wp_die( esc_html__( 'Newsletter not found.', 'societypress' ) );
     }
 
-    // Members-only newsletters require login
-    if ( $nl->visibility === 'members_only' && ! is_user_logged_in() ) {
+    // Anything that isn't explicitly public requires login. Fail closed —
+    // a missing or unrecognized visibility value gates behind login rather
+    // than serving the file to anyone with a guessed integer ID.
+    if ( $nl->visibility !== 'public' && ! is_user_logged_in() ) {
         wp_redirect( wp_login_url( add_query_arg( [] ) ) );
         exit;
     }
@@ -64279,6 +64365,8 @@ function sp_render_record_import_page(): void {
             echo '<div class="notice notice-error"><p>' . esc_html__( 'Please enter a collection name.', 'societypress' ) . '</p></div>';
         } elseif ( empty( $_FILES['csv_file']['tmp_name'] ) ) {
             echo '<div class="notice notice-error"><p>' . esc_html__( 'Please select a CSV file.', 'societypress' ) . '</p></div>';
+        } elseif ( ! sp_is_valid_import_upload( $_FILES['csv_file']['tmp_name'] ) ) {
+            echo '<div class="notice notice-error"><p>' . esc_html__( 'That file does not look like a CSV. Please upload a .csv file.', 'societypress' ) . '</p></div>';
         } else {
             // Save the upload to a temp file
             $upload_dir = wp_upload_dir();
@@ -64443,6 +64531,8 @@ function sp_render_record_import_page(): void {
             echo '<div class="notice notice-error"><p>' . esc_html__( 'Please select a collection.', 'societypress' ) . '</p></div>';
         } elseif ( empty( $_FILES['csv_file']['tmp_name'] ) ) {
             echo '<div class="notice notice-error"><p>' . esc_html__( 'Please select a CSV file.', 'societypress' ) . '</p></div>';
+        } elseif ( ! sp_is_valid_import_upload( $_FILES['csv_file']['tmp_name'] ) ) {
+            echo '<div class="notice notice-error"><p>' . esc_html__( 'That file does not look like a CSV. Please upload a .csv file.', 'societypress' ) . '</p></div>';
         } else {
             $collection = $wpdb->get_row( $wpdb->prepare(
                 "SELECT * FROM {$prefix}record_collections WHERE id = %d", $collection_id
@@ -65182,7 +65272,7 @@ function sp_parse_genrecord_file( string $file_path ) {
  */
 add_action( 'wp_ajax_sp_export_genrecord', 'sp_ajax_export_genrecord' );
 function sp_ajax_export_genrecord(): void {
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_records' ) ) {
         wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
     }
     check_ajax_referer( 'sp_export_genrecord' );
@@ -66883,7 +66973,9 @@ add_action( 'template_redirect', function () {
     $prefix = $wpdb->prefix . 'sp_';
     $order  = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$prefix}orders WHERE id = %d", $order_id ) );
     if ( ! $order ) return;
-    if ( is_user_logged_in() && (int) $order->user_id !== get_current_user_id() ) return;
+    // Fail closed: anonymous returns and ownership mismatches both bail. Store
+    // checkout requires login, so a logged-out finalize is never legitimate.
+    if ( (int) $order->user_id !== get_current_user_id() ) return;
 
     sp_store_finalize_paid_order( $order_id, 'stripe', [ 'stripe_payment_intent' => $pi_id ] );
 } );
@@ -67121,7 +67213,7 @@ add_action( 'wp_ajax_sp_admin_refund_store_order', function () {
     if ( ! check_ajax_referer( 'sp_store_order_refund', 'nonce', false ) ) {
         wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ] );
     }
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_finances' ) ) {
         wp_send_json_error( [ 'message' => __( 'Permission denied.', 'societypress' ) ] );
     }
 
@@ -67790,7 +67882,7 @@ function sp_render_store_products_page(): void {
                                 <div class="row-actions">
                                     <span class="edit"><a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> | </span>
                                     <span class="toggle"><a href="<?php echo esc_url( $toggle_url ); ?>"><?php echo (int) $p->active ? esc_html__( 'Deactivate', 'societypress' ) : esc_html__( 'Activate', 'societypress' ); ?></a> | </span>
-                                    <span class="delete"><a href="<?php echo esc_url( $delete_url ); ?>" class="sp-text-danger" onclick="return confirm('<?php echo esc_js( __( 'Permanently delete this product? Past order history is preserved.', 'societypress' ) ); ?>');"><?php esc_html_e( 'Delete', 'societypress' ); ?></a></span>
+                                    <span class="delete"><a href="<?php echo esc_url( $delete_url ); ?>" class="sp-text-danger" onclick="spConfirm(<?php echo wp_json_encode( __( 'Permanently delete this product? Past order history is preserved.', 'societypress' ) ); ?>, function(){window.location=this.href;}.bind(this));return false;"><?php esc_html_e( 'Delete', 'societypress' ); ?></a></span>
                                 </div>
                             </td>
                             <td><?php echo $p->sku ? esc_html( $p->sku ) : '—'; ?></td>
@@ -68429,7 +68521,7 @@ add_action( 'admin_init', function () {
         wp_die( __( 'Security check failed.', 'societypress' ) );
     }
 
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_content' ) ) {
         wp_die( __( 'You do not have permission to manage documents.', 'societypress' ) );
     }
 
@@ -68488,7 +68580,7 @@ add_action( 'admin_init', function () {
         wp_die( __( 'Security check failed.', 'societypress' ) );
     }
 
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_content' ) ) {
         wp_die( __( 'You do not have permission to delete documents.', 'societypress' ) );
     }
 
@@ -68511,7 +68603,7 @@ add_action( 'admin_init', function () {
         wp_die( __( 'Security check failed.', 'societypress' ) );
     }
 
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_content' ) ) {
         wp_die( __( 'You do not have permission to manage document categories.', 'societypress' ) );
     }
 
@@ -68558,7 +68650,7 @@ add_action( 'admin_init', function () {
         wp_die( __( 'Security check failed.', 'societypress' ) );
     }
 
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_content' ) ) {
         wp_die( __( 'You do not have permission to delete categories.', 'societypress' ) );
     }
 
@@ -69002,7 +69094,7 @@ add_action( 'admin_init', function () {
         wp_die( __( 'Security check failed.', 'societypress' ) );
     }
 
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_content' ) ) {
         wp_die( __( 'You do not have permission to manage documents.', 'societypress' ) );
     }
 
@@ -70005,7 +70097,7 @@ add_action( 'sp_ical_feed_sync_cron', function () {
 // ============================================================================
 
 function sp_render_external_calendars_page(): void {
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_events' ) ) {
         wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
     }
 
@@ -70540,7 +70632,7 @@ function sp_render_external_calendars_page(): void {
 add_action( 'wp_ajax_sp_sync_ical_feed_now', function () {
     check_ajax_referer( 'sp_ical_feed_sync' );
 
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_events' ) ) {
         wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
     }
 
@@ -70572,7 +70664,7 @@ add_action( 'wp_ajax_sp_sync_ical_feed_now', function () {
 add_action( 'wp_ajax_sp_delete_ical_feed', function () {
     check_ajax_referer( 'sp_ical_feed_delete' );
 
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_events' ) ) {
         wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
     }
 
@@ -70621,7 +70713,7 @@ add_action( 'wp_ajax_sp_delete_ical_feed', function () {
 add_action( 'wp_ajax_sp_toggle_ical_feed', function () {
     check_ajax_referer( 'sp_ical_feed_toggle' );
 
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_events' ) ) {
         wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
     }
 
@@ -70669,7 +70761,7 @@ add_action( 'wp_ajax_sp_detach_event_from_feed', function () {
         wp_send_json_error( __( 'Security check failed.', 'societypress' ) );
     }
 
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_events' ) ) {
         wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
     }
 
@@ -70867,7 +70959,7 @@ add_action( 'admin_init', function () {
     if ( ! wp_verify_nonce( $_POST['sp_ballot_nonce'], 'sp_save_ballot' ) ) {
         wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
     }
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_governance' ) ) {
         wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
     }
 
@@ -72606,7 +72698,7 @@ add_action( 'wp_ajax_sp_submit_vote', function () {
 //      opened in Excel, Google Sheets, or any spreadsheet tool.
 // --------------------------------------------------------------------------
 add_action( 'wp_ajax_sp_export_ballot_results', function () {
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_governance' ) ) {
         wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
     }
 

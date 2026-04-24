@@ -13,6 +13,12 @@ Entries describe user-visible changes only. For the underlying commits, see
 ## [Unreleased]
 
 ### Added
+- **Username display on the member edit page.** A read-only "Username"
+  field now sits at the top of the Contact Information section so admins
+  can see the WordPress login name without leaving SocietyPress. Useful
+  for password resets, login troubleshooting, and identity verification
+  over the phone. Display-only — WordPress doesn't allow usernames to
+  be changed once an account is created.
 - **Committee chair dashboard.** Anyone set as `chair_user_id` on an
   active committee now sees a "My Committee" item in the SocietyPress
   menu, landing on a scoped view of their committee(s): upcoming

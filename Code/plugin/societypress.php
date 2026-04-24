@@ -12577,6 +12577,19 @@ function sp_render_member_edit_page(): void {
                 .sp-member-edit-required {
                     color: #d63638;
                 }
+                /* Read-only username display — monospace so the login name
+                   is visually distinct from editable text fields around it. */
+                .sp-member-edit-username {
+                    font-family: Menlo, Consolas, Monaco, monospace;
+                    font-size: 13px;
+                    margin: 2px 0 4px;
+                    padding: 6px 8px;
+                    background: #f6f7f7;
+                    border: 1px solid #dcdcde;
+                    border-radius: 3px;
+                    display: inline-block;
+                    color: #1d2327;
+                }
                 /* Section intro paragraph (Seasonal Address, Research Surnames) */
                 .sp-member-edit-intro {
                     margin-top: 0;
@@ -13134,6 +13147,14 @@ function sp_render_member_edit_page(): void {
                 <h2><?php esc_html_e( 'Contact Information', 'societypress' ); ?></h2>
                 <div class="sp-section-body">
                     <div class="sp-fields">
+
+                        <?php if ( $wp_user && ! empty( $wp_user->user_login ) ) : ?>
+                        <div class="sp-field">
+                            <label><?php esc_html_e( 'Username', 'societypress' ); ?></label>
+                            <p class="sp-member-edit-username"><?php echo esc_html( $wp_user->user_login ); ?></p>
+                            <p class="description"><?php esc_html_e( "This is the login name. WordPress doesn't allow usernames to be changed after the account is created — they can log in with their email address too.", 'societypress' ); ?></p>
+                        </div>
+                        <?php endif; ?>
 
                         <div class="sp-field">
                             <label for="sp-email"><?php esc_html_e( 'Email Address', 'societypress' ); ?> <span class="sp-member-edit-required">*</span></label>

@@ -16,6 +16,16 @@ Nothing yet.
 
 ---
 
+## [1.0.29] — 2026-04-24
+
+### Fixed
+- Parent-theme update notifications now announce the correct version.
+  `sp_latest_parent_theme_version()` had been hardcoded at `1.0.4`,
+  silently going stale as the plugin moved forward. It now reads from
+  `SOCIETYPRESS_VERSION` so plugin and theme stay in lockstep.
+
+---
+
 ## [1.0.28] — 2026-04-21
 
 ### Added

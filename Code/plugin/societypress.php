@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.0.28
+ * Version:     1.0.29
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.28' );
+define( 'SOCIETYPRESS_VERSION', '1.0.29' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -9024,19 +9024,20 @@ add_action( 'wp_ajax_sp_check_update', function () {
 /**
  * The latest parent theme version available in the repo.
  *
- * WHY: This value ships with each plugin release. When you update the
- *      parent theme in the repo and release a new plugin version, bump
- *      this value. Harold's dashboard will then show "Theme update
- *      available" and the one-click updater will pull the new theme files.
+ * WHY tied to SOCIETYPRESS_VERSION: Plugin and parent theme are bumped
+ *      together on every release (see CLAUDE.md). Hardcoding a separate
+ *      version here created a 24-release drift — the plugin kept moving
+ *      while this function kept returning "1.0.4", silently breaking
+ *      parent-theme update notifications for everyone running >= 1.0.4.
+ *      Reading from SOCIETYPRESS_VERSION removes the whole class of bug.
  *
  * WHY a function, not a constant: The theme's functions.php also defines
  *      SOCIETYPRESS_THEME_VERSION (for cache-busting its enqueued assets).
- *      That constant reflects the INSTALLED version. We need to track the
- *      LATEST AVAILABLE version separately so update detection works.
- *      A function avoids the naming collision entirely.
+ *      That constant reflects the INSTALLED version. A function avoids
+ *      the naming collision entirely.
  */
 function sp_latest_parent_theme_version(): string {
-    return '1.0.4';
+    return SOCIETYPRESS_VERSION;
 }
 
 /**

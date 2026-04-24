@@ -30,6 +30,18 @@ Entries describe user-visible changes only. For the underlying commits, see
   and `sp_build_recurrence_rule()` helpers so the save path, the
   regeneration path, and the live preview can't drift.
 
+### Fixed
+- Widget sanitizer and renderer no longer emit "Undefined array key"
+  warnings when a setting is missing. The old pattern was
+  `in_array( $settings['x'] ?? 'default', $whitelist, true ) ? $settings['x'] : 'default'`:
+  the `??` protected the `in_array` check, but when the default was
+  itself in the whitelist the check passed and the true branch then
+  reached back into the array without a default, warning loudly. Fix
+  is mechanical — use a sentinel default that isn't in the whitelist
+  (`''` for strings, `-1` for ints) so a missing key routes to the
+  safe else branch. Applied to all widget settings, the page-builder
+  sanitizer, and a handful of settings-page sanitizers.
+
 ---
 
 ## [1.0.29] — 2026-04-24

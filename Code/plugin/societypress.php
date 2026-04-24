@@ -18778,7 +18778,7 @@ function sp_sanitize_settings( array $input ): array {
         'dir_show_tier'           => fn() => ! empty( $input['dir_show_tier'] ) ? 1 : 0,
         'dir_show_join_date'      => fn() => ! empty( $input['dir_show_join_date'] ) ? 1 : 0,
         'dir_show_surnames'       => fn() => ! empty( $input['dir_show_surnames'] ) ? 1 : 0,
-        'dir_per_page'            => fn() => in_array( (int) ( $input['dir_per_page'] ?? 25 ), [ 10, 25, 50, 100, 250, 500 ], true )
+        'dir_per_page'            => fn() => in_array( (int) ( $input['dir_per_page'] ?? -1 ), [ 10, 25, 50, 100, 250, 500 ], true )
                                               ? (int) $input['dir_per_page'] : 25,
         'profile_changes_require_approval' => fn() => ! empty( $input['profile_changes_require_approval'] ) ? 1 : 0,
 
@@ -18787,9 +18787,9 @@ function sp_sanitize_settings( array $input ): array {
                                                    ? $input['events_default_visibility'] : 'public',
         'events_default_registration' => fn() => ! empty( $input['events_default_registration'] ) ? 1 : 0,
         'events_guest_registration'   => fn() => ! empty( $input['events_guest_registration'] ) ? 1 : 0,
-        'events_per_page'             => fn() => in_array( (int) ( $input['events_per_page'] ?? 12 ), [ 6, 12, 24, 48 ], true )
+        'events_per_page'             => fn() => in_array( (int) ( $input['events_per_page'] ?? -1 ), [ 6, 12, 24, 48 ], true )
                                                    ? (int) $input['events_per_page'] : 12,
-        'events_calendar_start_day'   => fn() => in_array( (int) ( $input['events_calendar_start_day'] ?? 0 ), [ 0, 1 ], true )
+        'events_calendar_start_day'   => fn() => in_array( (int) ( $input['events_calendar_start_day'] ?? -1 ), [ 0, 1 ], true )
                                                    ? (int) $input['events_calendar_start_day'] : 0,
         'events_ical_feed_enabled'    => fn() => ! empty( $input['events_ical_feed_enabled'] ) ? 1 : 0,
         'events_reminder_1_day'       => fn() => ! empty( $input['events_reminder_1_day'] ) ? 1 : 0,
@@ -30335,9 +30335,9 @@ function sp_sanitize_builder_widget( string $type, array $settings ): array {
             return [
                 'text'         => sanitize_text_field( $settings['text'] ?? '' ),
                 'subtitle'     => sanitize_text_field( $settings['subtitle'] ?? '' ),
-                'level'        => in_array( $settings['level'] ?? 'h2', [ 'h1', 'h2', 'h3', 'h4' ], true ) ? $settings['level'] : 'h2',
+                'level'        => in_array( $settings['level'] ?? '', [ 'h1', 'h2', 'h3', 'h4' ], true ) ? $settings['level'] : 'h2',
                 'show_divider' => ! empty( $settings['show_divider'] ),
-                'alignment'    => in_array( $settings['alignment'] ?? 'left', [ 'left', 'center', 'right' ], true ) ? $settings['alignment'] : 'left',
+                'alignment'    => in_array( $settings['alignment'] ?? '', [ 'left', 'center', 'right' ], true ) ? $settings['alignment'] : 'left',
             ];
 
         case 'image':
@@ -30345,16 +30345,16 @@ function sp_sanitize_builder_widget( string $type, array $settings ): array {
                 'image_id'  => absint( $settings['image_id'] ?? 0 ),
                 'caption'   => sanitize_text_field( $settings['caption'] ?? '' ),
                 'link_url'  => esc_url_raw( $settings['link_url'] ?? '' ),
-                'size'      => in_array( $settings['size'] ?? 'large', [ 'medium', 'large', 'full' ], true ) ? $settings['size'] : 'large',
-                'alignment' => in_array( $settings['alignment'] ?? 'center', [ 'left', 'center', 'right' ], true ) ? $settings['alignment'] : 'center',
+                'size'      => in_array( $settings['size'] ?? '', [ 'medium', 'large', 'full' ], true ) ? $settings['size'] : 'large',
+                'alignment' => in_array( $settings['alignment'] ?? '', [ 'left', 'center', 'right' ], true ) ? $settings['alignment'] : 'center',
             ];
 
         case 'button':
             return [
                 'text'       => sanitize_text_field( $settings['text'] ?? '' ),
                 'url'        => esc_url_raw( $settings['url'] ?? '' ),
-                'style'      => in_array( $settings['style'] ?? 'primary', [ 'primary', 'secondary', 'outline' ], true ) ? $settings['style'] : 'primary',
-                'alignment'  => in_array( $settings['alignment'] ?? 'left', [ 'left', 'center', 'right' ], true ) ? $settings['alignment'] : 'left',
+                'style'      => in_array( $settings['style'] ?? '', [ 'primary', 'secondary', 'outline' ], true ) ? $settings['style'] : 'primary',
+                'alignment'  => in_array( $settings['alignment'] ?? '', [ 'left', 'center', 'right' ], true ) ? $settings['alignment'] : 'left',
                 'new_window' => ! empty( $settings['new_window'] ),
             ];
 
@@ -30363,10 +30363,10 @@ function sp_sanitize_builder_widget( string $type, array $settings ): array {
 
         case 'upcoming_events':
             return [
-                'count'         => in_array( (int) ( $settings['count'] ?? 5 ), [ 3, 5, 10, 15, 20 ], true )
+                'count'         => in_array( (int) ( $settings['count'] ?? -1 ), [ 3, 5, 10, 15, 20 ], true )
                                    ? (int) $settings['count'] : 5,
                 'category_id'   => absint( $settings['category_id'] ?? 0 ),
-                'layout'        => in_array( $settings['layout'] ?? 'list', [ 'list', 'cards' ], true )
+                'layout'        => in_array( $settings['layout'] ?? '', [ 'list', 'cards' ], true )
                                    ? $settings['layout'] : 'list',
                 'show_date'     => ! empty( $settings['show_date'] ) ? 1 : 0,
                 'show_time'     => ! empty( $settings['show_time'] ) ? 1 : 0,
@@ -30383,13 +30383,13 @@ function sp_sanitize_builder_widget( string $type, array $settings ): array {
             return [
                 'label'       => sanitize_text_field( $settings['label'] ?? 'Join the Discussion' ),
                 'description' => sanitize_text_field( $settings['description'] ?? '' ),
-                'style'       => in_array( $settings['style'] ?? 'primary', [ 'primary', 'secondary', 'outline' ], true )
+                'style'       => in_array( $settings['style'] ?? '', [ 'primary', 'secondary', 'outline' ], true )
                                  ? $settings['style'] : 'primary',
             ];
 
         case 'newsletter_archive':
             return [
-                'count'          => in_array( (int) ( $settings['count'] ?? 10 ), [ 5, 10, 15, 20, 50 ], true )
+                'count'          => in_array( (int) ( $settings['count'] ?? -1 ), [ 5, 10, 15, 20, 50 ], true )
                                     ? (int) $settings['count'] : 10,
                 'show_excerpt'   => ! empty( $settings['show_excerpt'] ),
                 'show_date'      => ! empty( $settings['show_date'] ),
@@ -30401,18 +30401,18 @@ function sp_sanitize_builder_widget( string $type, array $settings ): array {
                 'show_count'          => ! empty( $settings['show_count'] ),
                 'show_hours'          => ! empty( $settings['show_hours'] ),
                 'show_top_volunteers' => ! empty( $settings['show_top_volunteers'] ),
-                'time_period'         => in_array( $settings['time_period'] ?? 'year', [ 'year', 'all' ], true )
+                'time_period'         => in_array( $settings['time_period'] ?? '', [ 'year', 'all' ], true )
                                          ? $settings['time_period'] : 'year',
             ];
 
         case 'photo_gallery':
             return [
-                'display_mode'   => in_array( $settings['display_mode'] ?? 'albums', [ 'albums', 'single' ], true )
+                'display_mode'   => in_array( $settings['display_mode'] ?? '', [ 'albums', 'single' ], true )
                                     ? $settings['display_mode'] : 'albums',
                 'album_id'       => absint( $settings['album_id'] ?? 0 ),
-                'columns'        => in_array( (int) ( $settings['columns'] ?? 3 ), [ 2, 3, 4, 5 ], true )
+                'columns'        => in_array( (int) ( $settings['columns'] ?? -1 ), [ 2, 3, 4, 5 ], true )
                                     ? (int) $settings['columns'] : 3,
-                'count'          => in_array( (int) ( $settings['count'] ?? 12 ), [ 6, 12, 24, 48 ], true )
+                'count'          => in_array( (int) ( $settings['count'] ?? -1 ), [ 6, 12, 24, 48 ], true )
                                     ? (int) $settings['count'] : 12,
                 'login_required' => ! empty( $settings['login_required'] ),
             ];
@@ -30421,7 +30421,7 @@ function sp_sanitize_builder_widget( string $type, array $settings ): array {
             return [
                 'category_id'       => absint( $settings['category_id'] ?? 0 ),
                 'featured_only'     => ! empty( $settings['featured_only'] ),
-                'count'             => in_array( (int) ( $settings['count'] ?? 20 ), [ 10, 20, 50, 100 ], true )
+                'count'             => in_array( (int) ( $settings['count'] ?? -1 ), [ 10, 20, 50, 100 ], true )
                                        ? (int) $settings['count'] : 20,
                 'show_descriptions' => ! empty( $settings['show_descriptions'] ),
                 'login_required'    => ! empty( $settings['login_required'] ),
@@ -30432,7 +30432,7 @@ function sp_sanitize_builder_widget( string $type, array $settings ): array {
                 'show_search'    => ! empty( $settings['show_search'] ),
                 'category_id'    => absint( $settings['category_id'] ?? 0 ),
                 'available_only' => ! empty( $settings['available_only'] ),
-                'count'          => in_array( (int) ( $settings['count'] ?? 25 ), [ 10, 25, 50, 100 ], true )
+                'count'          => in_array( (int) ( $settings['count'] ?? -1 ), [ 10, 25, 50, 100 ], true )
                                     ? (int) $settings['count'] : 25,
                 'login_required' => ! empty( $settings['login_required'] ),
             ];
@@ -30464,9 +30464,9 @@ function sp_sanitize_builder_widget( string $type, array $settings ): array {
                             if ( '' === $text ) continue; // WHY: skip blank lines
                             $lines[] = [
                                 'text'   => $text,
-                                'size'   => in_array( $line['size'] ?? 'medium', $valid_sizes, true ) ? $line['size'] : 'medium',
-                                'weight' => in_array( $line['weight'] ?? 'light', $valid_weights, true ) ? $line['weight'] : 'light',
-                                'color'  => in_array( $line['color'] ?? 'white', $valid_colors, true ) ? $line['color'] : 'white',
+                                'size'   => in_array( $line['size'] ?? '', $valid_sizes, true ) ? $line['size'] : 'medium',
+                                'weight' => in_array( $line['weight'] ?? '', $valid_weights, true ) ? $line['weight'] : 'light',
+                                'color'  => in_array( $line['color'] ?? '', $valid_colors, true ) ? $line['color'] : 'white',
                             ];
                         }
                     }
@@ -30508,7 +30508,7 @@ function sp_sanitize_builder_widget( string $type, array $settings ): array {
                 }
             }
             return [
-                'columns' => in_array( (int) ( $settings['columns'] ?? 2 ), [ 2, 3, 4 ], true )
+                'columns' => in_array( (int) ( $settings['columns'] ?? -1 ), [ 2, 3, 4 ], true )
                              ? (int) $settings['columns'] : 2,
                 'cards'   => $cards,
             ];
@@ -31566,7 +31566,7 @@ function sp_render_builder_widget_member_stats( array $s ): void {
 function sp_render_builder_widget_heading( array $s ): void {
     $text         = $s['text'] ?? '';
     $subtitle     = $s['subtitle'] ?? '';
-    $level        = in_array( $s['level'] ?? 'h2', [ 'h1', 'h2', 'h3', 'h4' ], true ) ? $s['level'] : 'h2';
+    $level        = in_array( $s['level'] ?? '', [ 'h1', 'h2', 'h3', 'h4' ], true ) ? $s['level'] : 'h2';
     $show_divider = $s['show_divider'] ?? true;
     $alignment    = $s['alignment'] ?? 'left';
 

@@ -6817,6 +6817,30 @@ add_action( 'wp_ajax_sp_save_account', function() {
     global $wpdb;
 
     $action = sanitize_text_field( $_POST['sp_action'] ?? '' );
+
+    // Top-level dispatch validation. Each branch below verifies its own
+    // per-action nonce; this registry is the central contract that says
+    // "here are the actions this handler accepts and the nonce each
+    // requires." Adding a branch without registering it makes the
+    // branch unreachable — by design, so a future change can't ship a
+    // sub-action that escapes nonce coverage.
+    $sp_account_nonce_map = [
+        'update_profile'            => [ 'sp_profile_nonce',     'sp_update_profile' ],
+        'update_contact'            => [ 'sp_contact_nonce',     'sp_update_contact' ],
+        'update_address'            => [ 'sp_address_nonce',     'sp_update_address' ],
+        'update_preferences'        => [ 'sp_preferences_nonce', 'sp_update_preferences' ],
+        'update_privacy'            => [ 'sp_privacy_nonce',     'sp_update_privacy' ],
+        'update_interests'          => [ 'sp_interests_nonce',   'sp_update_interests' ],
+        'update_genealogy_services' => [ 'sp_genealogy_nonce',   'sp_update_genealogy_services' ],
+    ];
+    if ( ! isset( $sp_account_nonce_map[ $action ] ) ) {
+        wp_send_json_error( [ 'message' => __( 'Unknown action.', 'societypress' ) ] );
+    }
+    [ $sp_nonce_key, $sp_nonce_action ] = $sp_account_nonce_map[ $action ];
+    if ( ! wp_verify_nonce( $_POST[ $sp_nonce_key ] ?? '', $sp_nonce_action ) ) {
+        wp_send_json_error( [ 'message' => __( 'Security check failed. Please reload the page.', 'societypress' ) ] );
+    }
+
     $user   = wp_get_current_user();
     $table  = $wpdb->prefix . 'sp_members';
 
@@ -17355,6 +17379,31 @@ add_action( 'admin_init', function () {
         ]
     );
 
+    // ====================================================================
+    // SETTINGS-PAGE CAPABILITY — Allow delegated sp_manage_settings users
+    // to save these forms.
+    //
+    // WHY: WordPress's options.php gates form submission on manage_options
+    //      by default. The menu cap map already lets sp_manage_settings
+    //      users see the settings pages, but without this filter their
+    //      saves get a "you do not have permission" error. The filter
+    //      runs per option-page group; we wire one for each SP page.
+    //      WordPress admins (manage_options) implicitly satisfy any cap.
+    // ====================================================================
+    foreach ( [
+        'societypress_settings_group',
+        'sp-settings-org',
+        'sp-settings-membership',
+        'sp-settings-directory',
+        'sp-settings-events',
+        'sp-settings-privacy',
+        'sp-settings-design',
+    ] as $sp_settings_group ) {
+        add_filter( "option_page_capability_{$sp_settings_group}", function () {
+            return 'sp_manage_settings';
+        } );
+    }
+
 
     // ====================================================================
     // SECTION: Your Website
@@ -18651,10 +18700,11 @@ function sp_render_textarea_field( array $args ): void {
  */
 function sp_sanitize_settings( array $input ): array {
 
-    // WHY belt-and-suspenders: The WP Settings API gates options.php behind
-    // manage_options, but an explicit check here ensures no code path ever
-    // reaches the sanitizer without the right capability.
-    if ( ! current_user_can( 'manage_options' ) ) {
+    // Belt-and-suspenders cap check. The Settings API now gates each SP
+    // settings page on sp_manage_settings via option_page_capability_*
+    // filters; this guards the sanitizer in case a caller invokes it
+    // outside the normal Settings API flow.
+    if ( ! current_user_can( 'sp_manage_settings' ) ) {
         add_settings_error( 'societypress_settings', 'unauthorized', __( 'Unauthorized.', 'societypress' ) );
         return get_option( 'societypress_settings', [] );
     }
@@ -23394,11 +23444,29 @@ add_action( 'wp_ajax_sp_extract_site_colors', function () {
         wp_send_json_error( [ 'message' => __( 'That URL could not be reached. Please check the address and try again.', 'societypress' ) ] );
     }
 
+    // Pin host->IP for the actual fetch via CURLOPT_RESOLVE. Closes the
+    // DNS-rebinding window where an attacker-controlled domain could
+    // resolve to a public IP for the gethostbyname() check above and then
+    // flip to 127.0.0.1 before the wp_remote_get() socket connect. Also
+    // disable redirect-following so a 3xx to a different host can't
+    // bypass the pin. Only effective when WP's HTTP API uses the cURL
+    // transport (the default on every host we care about).
+    $port           = wp_parse_url( $url, PHP_URL_SCHEME ) === 'https' ? 443 : 80;
+    $resolve_pin    = "{$host}:{$port}:{$resolved_ip}";
+    $sp_curl_pin_cb = function ( $handle ) use ( $resolve_pin ) {
+        curl_setopt( $handle, CURLOPT_RESOLVE, [ $resolve_pin ] );
+        curl_setopt( $handle, CURLOPT_FOLLOWLOCATION, false );
+    };
+    add_action( 'http_api_curl', $sp_curl_pin_cb );
+
     // Fetch the page
     $response = wp_remote_get( $url, [
-        'timeout'   => 15,
-        'headers'   => [ 'User-Agent' => 'SocietyPress/' . SOCIETYPRESS_VERSION . ' (theme-builder color extraction)' ],
+        'timeout'     => 15,
+        'redirection' => 0,
+        'headers'     => [ 'User-Agent' => 'SocietyPress/' . SOCIETYPRESS_VERSION . ' (theme-builder color extraction)' ],
     ] );
+
+    remove_action( 'http_api_curl', $sp_curl_pin_cb );
 
     if ( is_wp_error( $response ) ) {
         wp_send_json_error( [
@@ -46474,27 +46542,32 @@ add_action( 'template_redirect', function () {
     }
 
     global $wpdb;
-    $prefix             = $wpdb->prefix . 'sp_';
-    $include_members_only = false;
-    $transient_key      = 'sp_ical_feed_public';
+    $prefix = $wpdb->prefix . 'sp_';
 
-    if ( $feed_param !== 'public' ) {
-        // Authenticated feed — look up the token in user_meta.
-        // WHY: Calendar apps can't send WordPress auth cookies, so each member
-        //      gets an opaque token in their feed URL. We validate it here by
-        //      checking if any user has this token stored as sp_ical_token.
-        $users = get_users( [
-            'meta_key'   => 'sp_ical_token',
-            'meta_value' => $feed_param,
-            'number'     => 1,
-            'fields'     => 'ID',
-        ] );
-        if ( empty( $users ) ) {
-            status_header( 403 );
-            wp_die( esc_html__( 'Invalid calendar feed URL.', 'societypress' ) );
-        }
+    // Always run the token lookup, even for the literal 'public' sentinel,
+    // so the validation path takes constant time. Tokens are 64 hex chars
+    // (wp_generate_password), so 'public' will never match a real token —
+    // the lookup is a no-op cost in that case but keeps timing flat for
+    // anyone probing the endpoint.
+    // WHY: Calendar apps can't send WordPress auth cookies, so each member
+    //      gets an opaque token in their feed URL. We validate it here by
+    //      checking if any user has this token stored as sp_ical_token.
+    $users = get_users( [
+        'meta_key'   => 'sp_ical_token',
+        'meta_value' => $feed_param,
+        'number'     => 1,
+        'fields'     => 'ID',
+    ] );
+
+    if ( $feed_param === 'public' ) {
+        $include_members_only = false;
+        $transient_key        = 'sp_ical_feed_public';
+    } elseif ( ! empty( $users ) ) {
         $include_members_only = true;
         $transient_key        = 'sp_ical_feed_members';
+    } else {
+        status_header( 403 );
+        wp_die( esc_html__( 'Invalid calendar feed URL.', 'societypress' ) );
     }
 
     // Check transient cache — avoid regenerating the feed on every poll

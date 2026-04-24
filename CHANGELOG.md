@@ -13,6 +13,25 @@ Entries describe user-visible changes only. For the underlying commits, see
 ## [Unreleased]
 
 ### Added
+- **Committee chair dashboard.** Anyone set as `chair_user_id` on an
+  active committee now sees a "My Committee" item in the SocietyPress
+  menu, landing on a scoped view of their committee(s): upcoming
+  meetings, upcoming events, open volunteer opportunities, and recent
+  minutes, with one-click links to create or edit each. Chair-ness is
+  derived live from the committees table — no role assignment step to
+  forget. A chair can chair multiple committees; the view aggregates
+  across all of them. Admins still see the full dashboard, unchanged.
+- **Events can be tagged to a committee.** The event editor has a new
+  optional "Committee" dropdown; setting it lets chairs manage the
+  event and unlocks a "Committee Members Only" visibility option that
+  hides the event from everyone except members of the tagged committee.
+  Same visibility rule already used for committee meetings.
+- **Auto-scoped admin list pages.** When a committee chair (not a full
+  admin) opens the Events, Meetings, or Volunteer Opportunities list
+  pages, those pages automatically filter to their committees. Edit
+  screens enforce the same scope — a chair can't edit another
+  committee's events, meetings, or opportunities even via a crafted
+  URL.
 - **Live recurrence preview on the event editor.** Picking a recurrence
   type now shows a plain-English summary ("Every 2nd Wednesday through
   December 31, 2026 — 7 occurrences"), a collapsible list of the

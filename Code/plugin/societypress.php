@@ -882,6 +882,7 @@ function sp_create_tables(): void {
         slug                  VARCHAR(255)        NOT NULL,
         description           LONGTEXT            NULL,
         category_id           BIGINT(20) UNSIGNED NULL,
+        committee_id          BIGINT(20) UNSIGNED NULL,
         status                VARCHAR(20)         NOT NULL DEFAULT 'scheduled',
         event_date            DATE                NOT NULL,
         start_time            TIME                NULL,
@@ -916,6 +917,7 @@ function sp_create_tables(): void {
         PRIMARY KEY (id),
         KEY event_date (event_date),
         KEY category_id (category_id),
+        KEY committee_id (committee_id),
         KEY status (status),
         KEY slug (slug),
         KEY recurrence_parent_id (recurrence_parent_id),
@@ -2487,6 +2489,14 @@ add_action( 'admin_init', function () {
         $wpdb->query( "ALTER TABLE {$table} ADD COLUMN feed_id BIGINT(20) UNSIGNED NULL DEFAULT NULL AFTER external_uid" );
         $wpdb->query( "ALTER TABLE {$table} ADD KEY feed_id (feed_id)" );
     }
+
+    // committee_id — links an event to a committee so chairs can manage
+    // their committee's events and committee-only visibility works.
+    $col = $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE 'committee_id'" );
+    if ( empty( $col ) ) {
+        $wpdb->query( "ALTER TABLE {$table} ADD COLUMN committee_id BIGINT(20) UNSIGNED NULL AFTER category_id" );
+        $wpdb->query( "ALTER TABLE {$table} ADD KEY committee_id (committee_id)" );
+    }
 } );
 
 
@@ -3531,7 +3541,191 @@ function sp_user_can_access_admin(): bool {
     }
 
     $user_areas = get_user_meta( get_current_user_id(), 'sp_access_areas', true );
-    return is_array( $user_areas ) && ! empty( $user_areas );
+    if ( is_array( $user_areas ) && ! empty( $user_areas ) ) {
+        return true;
+    }
+
+    return sp_user_is_chair();
+}
+
+/**
+ * IDs of every active committee the given user chairs.
+ *
+ * WHY dynamic, not a role template: Committee chairs change often — end of
+ *      term, committee folds, someone steps down. Making chair-ness a user
+ *      meta role template means every change requires a sync step that
+ *      admins will forget. Reading live from sp_committees.chair_user_id
+ *      keeps the source of truth in one place: the committee record.
+ *
+ * WHY a static cache: This is called from the user_has_cap filter, which
+ *      fires many times per admin request. A single query per request is
+ *      enough.
+ *
+ * @param int|null $user_id Defaults to the current user.
+ * @return int[] Committee IDs this user chairs (empty if none).
+ */
+function sp_user_chaired_committee_ids( ?int $user_id = null ): array {
+    static $cache = [];
+
+    if ( $user_id === null ) {
+        $user_id = get_current_user_id();
+    }
+    if ( ! $user_id ) {
+        return [];
+    }
+    if ( isset( $cache[ $user_id ] ) ) {
+        return $cache[ $user_id ];
+    }
+
+    global $wpdb;
+    $rows = $wpdb->get_col( $wpdb->prepare(
+        "SELECT id FROM {$wpdb->prefix}sp_committees
+         WHERE chair_user_id = %d AND active = 1
+         ORDER BY sort_order ASC, name ASC",
+        $user_id
+    ) );
+
+    $cache[ $user_id ] = array_map( 'intval', $rows ?: [] );
+    return $cache[ $user_id ];
+}
+
+/**
+ * True if the given user chairs at least one active committee.
+ */
+function sp_user_is_chair( ?int $user_id = null ): bool {
+    return ! empty( sp_user_chaired_committee_ids( $user_id ) );
+}
+
+/**
+ * Every committee the user is affiliated with — as chair or as committee member.
+ *
+ * WHY the name-based join: Committee membership lives in sp_volunteer_roles
+ *      rows with role_type='committee', where `committee` is a free-text
+ *      VARCHAR(200) — not a foreign key to sp_committees.id. We match on
+ *      committee name rather than introduce a new FK, since that's how the
+ *      rest of the plugin already resolves committee membership.
+ *
+ * @return int[] Committee IDs (active committees only, chair + member combined).
+ */
+function sp_user_committee_ids( ?int $user_id = null ): array {
+    static $cache = [];
+
+    if ( $user_id === null ) {
+        $user_id = get_current_user_id();
+    }
+    if ( ! $user_id ) {
+        return [];
+    }
+    if ( isset( $cache[ $user_id ] ) ) {
+        return $cache[ $user_id ];
+    }
+
+    global $wpdb;
+    $ids = sp_user_chaired_committee_ids( $user_id );
+
+    $names = $wpdb->get_col( $wpdb->prepare(
+        "SELECT DISTINCT committee FROM {$wpdb->prefix}sp_volunteer_roles
+         WHERE user_id = %d AND status = 'active'
+           AND role_type = 'committee'
+           AND committee IS NOT NULL AND committee <> ''",
+        $user_id
+    ) );
+
+    if ( $names ) {
+        $placeholders = implode( ',', array_fill( 0, count( $names ), '%s' ) );
+        $member_ids = $wpdb->get_col( $wpdb->prepare(
+            "SELECT id FROM {$wpdb->prefix}sp_committees
+             WHERE active = 1 AND name IN ({$placeholders})",
+            ...$names
+        ) );
+        $ids = array_merge( $ids, array_map( 'intval', $member_ids ) );
+    }
+
+    $ids = array_values( array_unique( $ids ) );
+    $cache[ $user_id ] = $ids;
+    return $ids;
+}
+
+/**
+ * Build the visibility WHERE clause for an sp_events query.
+ *
+ * Encapsulates the three rules so every public-facing events query gets the
+ * same treatment:
+ *   - admins see everything
+ *   - logged-out visitors see only public events
+ *   - logged-in users see public + members_only, plus committee_only events
+ *     for committees they're a chair or member of
+ *
+ * @param string   $alias   Table alias for sp_events in the query.
+ * @param int|null $user_id Defaults to the current user.
+ * @return string SQL fragment safe to drop into a WHERE clause, or '1=1' if
+ *                the caller shouldn't apply a visibility filter (admin user).
+ */
+/**
+ * Can the given user view this specific event?
+ *
+ * Row-level counterpart to sp_event_visibility_sql(). Apply this on single-
+ * event pages (detail view, iCal download), where we already have the event
+ * object and just need a yes/no.
+ *
+ * @param object $event   Row from sp_events — must include visibility and committee_id.
+ * @param int|null $user_id Defaults to the current user.
+ */
+function sp_user_can_view_event( object $event, ?int $user_id = null ): bool {
+    if ( $user_id === null ) {
+        $user_id = get_current_user_id();
+    }
+    if ( $user_id && user_can( $user_id, 'manage_options' ) ) {
+        return true;
+    }
+
+    $visibility = $event->visibility ?? 'public';
+
+    if ( $visibility === 'public' ) {
+        return true;
+    }
+    if ( ! $user_id ) {
+        return false;
+    }
+    if ( $visibility === 'members_only' ) {
+        return true;
+    }
+    if ( $visibility === 'committee_only' ) {
+        $committee_id = (int) ( $event->committee_id ?? 0 );
+        if ( ! $committee_id ) {
+            return false;
+        }
+        return in_array( $committee_id, sp_user_committee_ids( $user_id ), true );
+    }
+    return false;
+}
+
+function sp_event_visibility_sql( string $alias = 'e', ?int $user_id = null ): string {
+    if ( $user_id === null ) {
+        $user_id = get_current_user_id();
+    }
+
+    // Empty alias → unqualified column names (single-table queries)
+    $p = $alias === '' ? '' : $alias . '.';
+
+    if ( $user_id && user_can( $user_id, 'manage_options' ) ) {
+        return '1=1';
+    }
+
+    if ( ! $user_id ) {
+        return "{$p}visibility = 'public'";
+    }
+
+    $committee_ids = sp_user_committee_ids( $user_id );
+    if ( ! $committee_ids ) {
+        return "{$p}visibility IN ('public', 'members_only')";
+    }
+
+    $id_list = implode( ',', array_map( 'intval', $committee_ids ) );
+    return "(
+        {$p}visibility IN ('public', 'members_only')
+        OR ({$p}visibility = 'committee_only' AND {$p}committee_id IN ({$id_list}))
+    )";
 }
 
 /**
@@ -3582,6 +3776,40 @@ add_filter( 'user_has_cap', function ( array $allcaps, array $caps, array $args,
 
     return $allcaps;
 }, 10, 4 );
+
+/**
+ * Grant committee chairs the caps they need to manage their committees.
+ *
+ * WHY a separate filter: Chair-ness is derived from sp_committees.chair_user_id
+ *      rather than sp_access_areas user meta, so it lives outside the main
+ *      access-areas filter. Keeping it separate also makes it easy to turn
+ *      off or reason about independently.
+ *
+ *      The list and edit pages for events, meetings, and volunteer
+ *      opportunities enforce the per-row scope — these caps only unlock the
+ *      door, they don't let a chair wander into another committee's records.
+ */
+add_filter( 'user_has_cap', function ( array $allcaps, array $caps, array $args, $user ): array {
+    // Admins already got everything from the prior filter.
+    if ( ! empty( $allcaps['manage_options'] ) ) {
+        return $allcaps;
+    }
+    $user_id = $user->ID ?? 0;
+    if ( ! $user_id ) {
+        return $allcaps;
+    }
+    if ( ! sp_user_is_chair( $user_id ) ) {
+        return $allcaps;
+    }
+
+    $allcaps['read']                  = true;
+    $allcaps['sp_access_admin']       = true;
+    $allcaps['sp_chair']              = true;
+    $allcaps['sp_manage_events']      = true;
+    $allcaps['sp_manage_governance']  = true;
+
+    return $allcaps;
+}, 11, 4 );
 
 /**
  * Allow non-admin SP staff to access wp-admin.
@@ -3699,6 +3927,18 @@ add_action( 'admin_menu', function () {
             unset( $item );
         }
     } );
+
+    // -----------------------------------------------------------------
+    // MY COMMITTEE — shown only to users who chair at least one committee
+    // -----------------------------------------------------------------
+    add_submenu_page(
+        'societypress',
+        'My Committee — SocietyPress',
+        'My Committee',
+        'sp_chair',
+        'sp-chair',
+        'sp_render_chair_page'
+    );
 
     // -----------------------------------------------------------------
     // MEMBERS GROUP — All Members, Add New (hidden), Import
@@ -4666,6 +4906,9 @@ function sp_get_menu_capability_map(): array {
         // Dashboard — anyone with any SP access
         'societypress'             => 'sp_access_admin',
 
+        // Chair view — only users who chair at least one active committee
+        'sp-chair'                 => 'sp_chair',
+
         // Members
         'sp-members'               => 'sp_manage_members',
         'sp-import'                => 'sp_manage_members',
@@ -4847,6 +5090,47 @@ add_action( 'admin_menu', function () {
         }
     }
 }, 1000 ); // Priority 1000 = after all menus are registered AND after WP cleanup
+
+
+// ============================================================================
+// CHAIR MENU SCOPE — Hide admin items that aren't relevant to a chair's job
+//
+// WHY: A committee chair is granted sp_manage_events and sp_manage_governance
+//      so they can create/edit events, meetings, and volunteer opportunities
+//      for their committee. Those caps would ordinarily also surface a pile
+//      of admin-only management screens (Speakers, Event Categories, Import
+//      Events, Ballots, the Committees admin, etc.) that they have no
+//      business using. This hook trims the menu back down to just the things
+//      a chair needs: their "My Committee" page plus filtered list pages for
+//      events, meetings, and volunteer opportunities.
+// ============================================================================
+add_action( 'admin_menu', function () {
+    // Only affects non-admin chairs. Admins keep the full menu.
+    if ( current_user_can( 'manage_options' ) || ! sp_user_is_chair() ) {
+        return;
+    }
+
+    $chair_visible = [
+        'societypress',                    // Dashboard
+        'sp-chair',                        // My Committee
+        'sp-events',                       // Events list (filtered)
+        'sp-event-edit',                   // Event editor (guard enforces committee)
+        'sp-meetings',                     // Meetings list (filtered)
+        'sp-meeting-edit',                 // Meeting editor (guard enforces committee)
+        'sp-volunteer-opportunities',      // Volunteer opportunities (filtered)
+        'sp-volunteer-opportunity-edit',   // Opportunity editor (guard enforces committee)
+    ];
+
+    global $submenu;
+    if ( isset( $submenu['societypress'] ) ) {
+        foreach ( $submenu['societypress'] as $key => $item ) {
+            $slug = $item[2] ?? '';
+            if ( $slug && ! in_array( $slug, $chair_visible, true ) ) {
+                remove_submenu_page( 'societypress', $slug );
+            }
+        }
+    }
+}, 1001 ); // After module filtering (1000) so module-disabled pages are already gone
 
 
 // ============================================================================
@@ -10880,6 +11164,347 @@ add_action( 'admin_init', function () {
     //      batches with a progress bar so the browser doesn't time out on
     //      large member counts (1,500+ members = 24,000+ DB queries).
 } );
+
+
+/**
+ * Render the "My Committee" page — the landing page for committee chairs.
+ *
+ * WHY: A committee chair isn't a full admin. Their job is narrow: run their
+ *      committee. Rather than drop them into the regular dashboard (noisy,
+ *      full of things they can't act on), give them a page focused entirely
+ *      on their committees — stat cards that summarize what's outstanding,
+ *      then panels listing the actual upcoming meetings, events, and open
+ *      volunteer slots with direct "Edit" links.
+ *
+ *      Admins can also view this page (useful for testing and for seeing
+ *      what a chair sees), but it pivots off whatever committees the
+ *      currently logged-in user chairs — so for an admin who doesn't chair
+ *      anything, the page is empty by design.
+ */
+function sp_render_chair_page(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $chair_ids = sp_user_chaired_committee_ids();
+    if ( empty( $chair_ids ) ) {
+        ?>
+        <div class="wrap">
+            <h1><?php esc_html_e( 'My Committee', 'societypress' ); ?></h1>
+            <p><?php esc_html_e( "You aren't currently listed as the chair of any active committee. When someone sets you as a committee's chair in Governance → Committees, this page will show your committee's upcoming meetings, events, and volunteer signups.", 'societypress' ); ?></p>
+        </div>
+        <?php
+        return;
+    }
+
+    $id_list = implode( ',', array_map( 'intval', $chair_ids ) );
+    $today   = current_time( 'Y-m-d' );
+
+    $committees = $wpdb->get_results(
+        "SELECT id, name FROM {$prefix}committees
+         WHERE id IN ({$id_list}) AND active = 1
+         ORDER BY sort_order ASC, name ASC"
+    );
+
+    // ---- Stat counts ----
+    $upcoming_meetings = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$prefix}meetings
+         WHERE meeting_type = 'committee'
+           AND committee_id IN ({$id_list})
+           AND meeting_date >= %s",
+        $today
+    ) );
+
+    $upcoming_events = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$prefix}events
+         WHERE committee_id IN ({$id_list})
+           AND status = 'scheduled'
+           AND event_date >= %s",
+        $today
+    ) );
+
+    $open_slots = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$prefix}volunteer_opportunities
+         WHERE committee_id IN ({$id_list}) AND status = 'open'"
+    );
+
+    // Pending sign-ups — volunteer signups in 'waitlisted' status count as
+    // "needs attention" on the chair's committee opportunities.
+    $pending_signups = (int) $wpdb->get_var(
+        "SELECT COUNT(*)
+         FROM {$prefix}volunteer_signups s
+         INNER JOIN {$prefix}volunteer_opportunities o ON o.id = s.opportunity_id
+         WHERE o.committee_id IN ({$id_list})
+           AND s.status = 'waitlisted'"
+    );
+
+    // ---- Upcoming meetings (next 5) ----
+    $meeting_rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT m.id, m.title, m.meeting_date, m.minutes_url, m.agenda_url,
+                c.name AS committee_name
+         FROM {$prefix}meetings m
+         LEFT JOIN {$prefix}committees c ON c.id = m.committee_id
+         WHERE m.meeting_type = 'committee'
+           AND m.committee_id IN ({$id_list})
+           AND m.meeting_date >= %s
+         ORDER BY m.meeting_date ASC
+         LIMIT 5",
+        $today
+    ) );
+
+    // ---- Upcoming events (next 5) ----
+    $event_rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT e.id, e.title, e.event_date, e.start_time, e.visibility,
+                c.name AS committee_name
+         FROM {$prefix}events e
+         LEFT JOIN {$prefix}committees c ON c.id = e.committee_id
+         WHERE e.committee_id IN ({$id_list})
+           AND e.status = 'scheduled'
+           AND e.event_date >= %s
+         ORDER BY e.event_date ASC, e.start_time ASC
+         LIMIT 5",
+        $today
+    ) );
+
+    // ---- Open volunteer opportunities ----
+    $opp_rows = $wpdb->get_results(
+        "SELECT o.id, o.title, o.event_date, o.capacity,
+                c.name AS committee_name,
+                (SELECT COUNT(*) FROM {$prefix}volunteer_signups s
+                 WHERE s.opportunity_id = o.id AND s.status = 'confirmed') AS confirmed_count
+         FROM {$prefix}volunteer_opportunities o
+         LEFT JOIN {$prefix}committees c ON c.id = o.committee_id
+         WHERE o.committee_id IN ({$id_list}) AND o.status = 'open'
+         ORDER BY o.event_date ASC, o.sort_order ASC
+         LIMIT 10"
+    );
+
+    // ---- Recent minutes ----
+    $minutes_rows = $wpdb->get_results(
+        "SELECT m.id, m.title, m.meeting_date, m.minutes_url,
+                c.name AS committee_name
+         FROM {$prefix}meetings m
+         LEFT JOIN {$prefix}committees c ON c.id = m.committee_id
+         WHERE m.meeting_type = 'committee'
+           AND m.committee_id IN ({$id_list})
+           AND m.minutes_url IS NOT NULL AND m.minutes_url <> ''
+         ORDER BY m.meeting_date DESC
+         LIMIT 5"
+    );
+
+    $date_format = get_option( 'date_format', 'F j, Y' );
+    $time_format = get_option( 'time_format', 'g:i a' );
+
+    $meeting_edit = function ( int $id ): string {
+        return admin_url( 'admin.php?page=sp-meeting-edit&meeting_id=' . $id );
+    };
+    $event_edit = function ( int $id ): string {
+        return admin_url( 'admin.php?page=sp-event-edit&event_id=' . $id );
+    };
+    $opp_edit = function ( int $id ): string {
+        return admin_url( 'admin.php?page=sp-volunteer-opportunity-edit&opp_id=' . $id );
+    };
+
+    ?>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'My Committee', 'societypress' ); ?></h1>
+        <p class="sp-dash-subtitle">
+            <?php
+            $names = wp_list_pluck( $committees, 'name' );
+            echo esc_html( implode( ' · ', $names ) );
+            ?>
+        </p>
+
+        <div class="sp-dash-stats">
+            <div class="sp-dash-stat">
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-meetings' ) ); ?>" class="sp-dash-stat-link">
+                    <div class="sp-dash-stat-number"><?php echo esc_html( $upcoming_meetings ); ?></div>
+                    <div class="sp-dash-stat-label"><?php esc_html_e( 'Upcoming Meetings', 'societypress' ); ?></div>
+                </a>
+            </div>
+            <div class="sp-dash-stat sp-dash-stat-active">
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-events' ) ); ?>" class="sp-dash-stat-link">
+                    <div class="sp-dash-stat-number"><?php echo esc_html( $upcoming_events ); ?></div>
+                    <div class="sp-dash-stat-label"><?php esc_html_e( 'Upcoming Events', 'societypress' ); ?></div>
+                </a>
+            </div>
+            <div class="sp-dash-stat sp-dash-stat-new">
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-volunteer-opportunities' ) ); ?>" class="sp-dash-stat-link">
+                    <div class="sp-dash-stat-number"><?php echo esc_html( $open_slots ); ?></div>
+                    <div class="sp-dash-stat-label"><?php esc_html_e( 'Open Volunteer Slots', 'societypress' ); ?></div>
+                </a>
+            </div>
+            <div class="sp-dash-stat sp-dash-stat-expiring">
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-volunteer-opportunities' ) ); ?>" class="sp-dash-stat-link">
+                    <div class="sp-dash-stat-number"><?php echo esc_html( $pending_signups ); ?></div>
+                    <div class="sp-dash-stat-label"><?php esc_html_e( 'Waitlisted Sign-ups', 'societypress' ); ?></div>
+                </a>
+            </div>
+        </div>
+
+        <div class="sp-dash-links">
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-meeting-edit' ) ); ?>">
+                <span class="dashicons dashicons-plus-alt"></span> <?php esc_html_e( 'Record a Meeting', 'societypress' ); ?>
+            </a>
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-event-edit' ) ); ?>">
+                <span class="dashicons dashicons-plus-alt"></span> <?php esc_html_e( 'Add an Event', 'societypress' ); ?>
+            </a>
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-volunteer-opportunity-edit' ) ); ?>">
+                <span class="dashicons dashicons-plus-alt"></span> <?php esc_html_e( 'Post a Volunteer Opportunity', 'societypress' ); ?>
+            </a>
+        </div>
+
+        <div class="sp-chair-panels">
+
+            <div class="sp-chair-panel">
+                <h2><?php esc_html_e( 'Upcoming Meetings', 'societypress' ); ?></h2>
+                <?php if ( empty( $meeting_rows ) ) : ?>
+                    <p class="sp-chair-empty"><?php esc_html_e( 'No meetings scheduled.', 'societypress' ); ?></p>
+                <?php else : ?>
+                    <ul class="sp-chair-list">
+                        <?php foreach ( $meeting_rows as $m ) : ?>
+                            <li>
+                                <a href="<?php echo esc_url( $meeting_edit( (int) $m->id ) ); ?>"><strong><?php echo esc_html( $m->title ); ?></strong></a>
+                                <span class="sp-chair-meta">
+                                    <?php echo esc_html( wp_date( $date_format, strtotime( $m->meeting_date . ' 12:00:00' ) ) ); ?>
+                                    <?php if ( count( $committees ) > 1 && $m->committee_name ) : ?>
+                                        · <?php echo esc_html( $m->committee_name ); ?>
+                                    <?php endif; ?>
+                                </span>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+            </div>
+
+            <div class="sp-chair-panel">
+                <h2><?php esc_html_e( 'Upcoming Events', 'societypress' ); ?></h2>
+                <?php if ( empty( $event_rows ) ) : ?>
+                    <p class="sp-chair-empty"><?php esc_html_e( 'No events scheduled.', 'societypress' ); ?></p>
+                <?php else : ?>
+                    <ul class="sp-chair-list">
+                        <?php foreach ( $event_rows as $e ) : ?>
+                            <li>
+                                <a href="<?php echo esc_url( $event_edit( (int) $e->id ) ); ?>"><strong><?php echo esc_html( $e->title ); ?></strong></a>
+                                <span class="sp-chair-meta">
+                                    <?php echo esc_html( wp_date( $date_format, strtotime( $e->event_date . ' 12:00:00' ) ) ); ?>
+                                    <?php if ( $e->start_time ) : ?>
+                                        @ <?php echo esc_html( wp_date( $time_format, strtotime( $e->event_date . ' ' . $e->start_time ) ) ); ?>
+                                    <?php endif; ?>
+                                    <?php if ( $e->visibility === 'committee_only' ) : ?>
+                                        · <em><?php esc_html_e( 'Committee only', 'societypress' ); ?></em>
+                                    <?php endif; ?>
+                                </span>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+            </div>
+
+            <div class="sp-chair-panel">
+                <h2><?php esc_html_e( 'Open Volunteer Opportunities', 'societypress' ); ?></h2>
+                <?php if ( empty( $opp_rows ) ) : ?>
+                    <p class="sp-chair-empty"><?php esc_html_e( 'No open opportunities.', 'societypress' ); ?></p>
+                <?php else : ?>
+                    <ul class="sp-chair-list">
+                        <?php foreach ( $opp_rows as $o ) :
+                            $cap_label = $o->capacity
+                                ? sprintf(
+                                    /* translators: 1: confirmed count, 2: capacity */
+                                    __( '%1$d of %2$d filled', 'societypress' ),
+                                    (int) $o->confirmed_count,
+                                    (int) $o->capacity
+                                )
+                                : sprintf(
+                                    /* translators: %d: confirmed count */
+                                    __( '%d signed up', 'societypress' ),
+                                    (int) $o->confirmed_count
+                                );
+                            ?>
+                            <li>
+                                <a href="<?php echo esc_url( $opp_edit( (int) $o->id ) ); ?>"><strong><?php echo esc_html( $o->title ); ?></strong></a>
+                                <span class="sp-chair-meta">
+                                    <?php echo esc_html( $cap_label ); ?>
+                                    <?php if ( $o->event_date ) : ?>
+                                        · <?php echo esc_html( wp_date( $date_format, strtotime( $o->event_date . ' 12:00:00' ) ) ); ?>
+                                    <?php endif; ?>
+                                </span>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+            </div>
+
+            <div class="sp-chair-panel">
+                <h2><?php esc_html_e( 'Recent Minutes', 'societypress' ); ?></h2>
+                <?php if ( empty( $minutes_rows ) ) : ?>
+                    <p class="sp-chair-empty"><?php esc_html_e( 'No minutes published yet.', 'societypress' ); ?></p>
+                <?php else : ?>
+                    <ul class="sp-chair-list">
+                        <?php foreach ( $minutes_rows as $m ) : ?>
+                            <li>
+                                <a href="<?php echo esc_url( $m->minutes_url ); ?>" target="_blank" rel="noopener"><strong><?php echo esc_html( $m->title ); ?></strong></a>
+                                <span class="sp-chair-meta">
+                                    <?php echo esc_html( wp_date( $date_format, strtotime( $m->meeting_date . ' 12:00:00' ) ) ); ?>
+                                    · <a href="<?php echo esc_url( $meeting_edit( (int) $m->id ) ); ?>"><?php esc_html_e( 'edit', 'societypress' ); ?></a>
+                                </span>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+            </div>
+
+        </div>
+
+        <style>
+        .sp-chair-panels {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+            gap: 16px;
+            margin-top: 20px;
+        }
+        .sp-chair-panel {
+            background: #fff;
+            border: 1px solid #dcdcde;
+            border-radius: 4px;
+            padding: 16px 20px;
+        }
+        .sp-chair-panel h2 {
+            font-size: 14px;
+            margin: 0 0 10px;
+            color: #1d2327;
+            border-bottom: 1px solid #f0f0f1;
+            padding-bottom: 8px;
+        }
+        .sp-chair-list {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        .sp-chair-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid #f6f7f7;
+        }
+        .sp-chair-list li:last-child {
+            border-bottom: none;
+        }
+        .sp-chair-list a {
+            text-decoration: none;
+        }
+        .sp-chair-meta {
+            display: block;
+            font-size: 12px;
+            color: #646970;
+            margin-top: 2px;
+        }
+        .sp-chair-empty {
+            margin: 0;
+            color: #646970;
+            font-style: italic;
+        }
+        </style>
+    </div>
+    <?php
+}
 
 
 /**
@@ -32716,6 +33341,17 @@ class SP_Events_List_Table extends WP_List_Table {
         }
         // 'all' — no date filter
 
+        // Chair scope: non-admin chairs see only events tagged to one of
+        // their committees. Admins see everything. This is the same scope
+        // rule enforced on the edit pages.
+        if ( ! current_user_can( 'manage_options' ) && sp_user_is_chair() ) {
+            $chair_ids = sp_user_chaired_committee_ids();
+            if ( ! empty( $chair_ids ) ) {
+                $id_list   = implode( ',', array_map( 'intval', $chair_ids ) );
+                $where[]   = "e.committee_id IN ({$id_list})";
+            }
+        }
+
         $where_sql = ! empty( $where ) ? 'WHERE ' . implode( ' AND ', $where ) : '';
 
         // Sorting — default to event_date ASC for upcoming, DESC for past
@@ -33035,6 +33671,34 @@ add_action( 'admin_init', function () {
     $events_table = $wpdb->prefix . 'sp_events';
     $event_id     = (int) ( $_POST['event_id'] ?? 0 );
 
+    // Chair scope: non-admin chairs may only save events tagged to a committee
+    // they chair, and may only edit events that already belong to one. Admins
+    // skip this check entirely.
+    if ( ! current_user_can( 'manage_options' ) && sp_user_is_chair() ) {
+        $chair_ids        = sp_user_chaired_committee_ids();
+        $posted_committee = (int) ( $_POST['event_committee_id'] ?? 0 );
+
+        if ( ! $posted_committee || ! in_array( $posted_committee, $chair_ids, true ) ) {
+            wp_die(
+                esc_html__( 'As a committee chair you must pick one of your committees for this event.', 'societypress' ),
+                esc_html__( 'Not Authorized', 'societypress' ),
+                [ 'response' => 403, 'back_link' => true ]
+            );
+        }
+        if ( $event_id > 0 ) {
+            $existing_cid = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT committee_id FROM {$events_table} WHERE id = %d", $event_id
+            ) );
+            if ( $existing_cid && ! in_array( $existing_cid, $chair_ids, true ) ) {
+                wp_die(
+                    esc_html__( 'You can only edit events belonging to a committee you chair.', 'societypress' ),
+                    esc_html__( 'Not Authorized', 'societypress' ),
+                    [ 'response' => 403, 'back_link' => true ]
+                );
+            }
+        }
+    }
+
     // Generate a URL-safe slug from the title
     // WHY: Slugs are used in frontend event URLs (?sp_event=slug). We create
     //      them from the title automatically so Harold doesn't have to think
@@ -33058,6 +33722,7 @@ add_action( 'admin_init', function () {
         'slug'                 => $slug,
         'description'          => wp_kses_post( $_POST['event_description'] ?? '' ),
         'category_id'          => ! empty( $_POST['event_category_id'] ) ? (int) $_POST['event_category_id'] : null,
+        'committee_id'         => ! empty( $_POST['event_committee_id'] ) ? (int) $_POST['event_committee_id'] : null,
         'status'               => in_array( $_POST['event_status'] ?? '', [ 'scheduled', 'cancelled', 'postponed', 'completed' ], true )
                                   ? $_POST['event_status'] : 'scheduled',
         'event_date'           => sanitize_text_field( $_POST['event_date'] ?? '' ),
@@ -33068,7 +33733,7 @@ add_action( 'admin_init', function () {
         'is_virtual'           => ! empty( $_POST['event_is_virtual'] ) ? 1 : 0,
         'virtual_url'          => esc_url_raw( $_POST['event_virtual_url'] ?? '' ),
         'image_id'             => ! empty( $_POST['event_image_id'] ) ? (int) $_POST['event_image_id'] : null,
-        'visibility'           => in_array( $_POST['event_visibility'] ?? '', [ 'public', 'members_only' ], true )
+        'visibility'           => in_array( $_POST['event_visibility'] ?? '', [ 'public', 'members_only', 'committee_only' ], true )
                                   ? $_POST['event_visibility'] : 'public',
         'notice_only'          => ! empty( $_POST['event_notice_only'] ) ? 1 : 0,
         'registration_enabled' => ! empty( $_POST['event_registration_enabled'] ) ? 1 : 0,
@@ -33299,6 +33964,22 @@ function sp_render_event_edit_page(): void {
         }
     }
 
+    // Chair scope guard: a chair who isn't an admin can only edit events
+    // tagged to committees they chair. A chair creating a new event is fine —
+    // the edit form restricts the committee dropdown, and save will reject an
+    // unauthorized committee_id anyway.
+    if ( $event && ! current_user_can( 'manage_options' ) && sp_user_is_chair() ) {
+        $chair_ids = sp_user_chaired_committee_ids();
+        $event_cid = (int) ( $event->committee_id ?? 0 );
+        if ( ! $event_cid || ! in_array( $event_cid, $chair_ids, true ) ) {
+            wp_die(
+                esc_html__( 'You can only edit events belonging to a committee you chair.', 'societypress' ),
+                esc_html__( 'Not Authorized', 'societypress' ),
+                [ 'response' => 403, 'back_link' => true ]
+            );
+        }
+    }
+
     // Helper to get field value: from event if editing, or default
     $val = function ( string $field, $default = '' ) use ( $event ) {
         if ( $event && isset( $event->$field ) ) {
@@ -33311,6 +33992,24 @@ function sp_render_event_edit_page(): void {
     $categories = $wpdb->get_results(
         "SELECT id, name FROM {$wpdb->prefix}sp_event_categories WHERE active = 1 ORDER BY sort_order"
     );
+
+    // Committees are optional on events. When the current user is a chair
+    // (and not an admin), restrict the dropdown to committees they chair so
+    // they can't assign an event to someone else's committee. Admins see all.
+    $is_admin_user = current_user_can( 'manage_options' );
+    $chair_ids     = sp_user_chaired_committee_ids();
+    if ( $is_admin_user ) {
+        $committees = $wpdb->get_results(
+            "SELECT id, name FROM {$wpdb->prefix}sp_committees WHERE active = 1 ORDER BY sort_order, name"
+        );
+    } elseif ( ! empty( $chair_ids ) ) {
+        $id_list = implode( ',', array_map( 'intval', $chair_ids ) );
+        $committees = $wpdb->get_results(
+            "SELECT id, name FROM {$wpdb->prefix}sp_committees WHERE active = 1 AND id IN ({$id_list}) ORDER BY sort_order, name"
+        );
+    } else {
+        $committees = [];
+    }
 
     $page_title = $event ? 'Edit Event' : 'Add New Event';
 
@@ -33399,6 +34098,24 @@ function sp_render_event_edit_page(): void {
                            class="sp-event-edit-manage-link"><?php esc_html_e( 'Manage Categories', 'societypress' ); ?></a>
                     </td>
                 </tr>
+
+                <?php if ( ! empty( $committees ) || $val( 'committee_id' ) ) : ?>
+                <tr>
+                    <th scope="row"><label for="event_committee_id"><?php esc_html_e( 'Committee', 'societypress' ); ?></label></th>
+                    <td>
+                        <select id="event_committee_id" name="event_committee_id">
+                            <option value=""><?php esc_html_e( '— Society-wide (no committee) —', 'societypress' ); ?></option>
+                            <?php foreach ( $committees as $com ) : ?>
+                                <option value="<?php echo esc_attr( $com->id ); ?>"
+                                    <?php selected( (int) $val( 'committee_id' ), (int) $com->id ); ?>>
+                                    <?php echo esc_html( $com->name ); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <p class="description"><?php esc_html_e( 'Tag this event to a committee. Setting a committee lets chairs manage the event and unlocks the "Committee members only" visibility option below.', 'societypress' ); ?></p>
+                    </td>
+                </tr>
+                <?php endif; ?>
 
                 <tr>
                     <th scope="row"><label for="event_status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
@@ -33598,6 +34315,9 @@ function sp_render_event_edit_page(): void {
                             </option>
                             <option value="members_only" <?php selected( $val( 'visibility', $default_visibility ), 'members_only' ); ?>>
                                 <?php esc_html_e( 'Members Only — only logged-in members can see and register', 'societypress' ); ?>
+                            </option>
+                            <option value="committee_only" <?php selected( $val( 'visibility', $default_visibility ), 'committee_only' ); ?>>
+                                <?php esc_html_e( 'Committee Members Only — only members of the committee tagged above can see this event', 'societypress' ); ?>
                             </option>
                         </select>
                     </td>
@@ -37789,9 +38509,7 @@ function sp_render_calendar_grid( int $category_id = 0, string $base_url = '', a
         $cal_params[] = $category_id;
     }
 
-    if ( ! is_user_logged_in() ) {
-        $cal_where[] = "e.visibility = 'public'";
-    }
+    $cal_where[] = sp_event_visibility_sql( 'e' );
 
     $cal_sql = "SELECT e.id, e.title, e.slug, e.event_date, e.start_time,
                        e.notice_only, e.external_url,
@@ -38252,10 +38970,8 @@ function sp_render_events_listing( array $settings ): void {
     //      just create dead-end cards members can't click into.
     $where[] = "(e.notice_only = 0 OR e.notice_only IS NULL)";
 
-    // Visibility filter — hide members_only events from non-logged-in visitors
-    if ( ! is_user_logged_in() ) {
-        $where[] = "e.visibility = 'public'";
-    }
+    // Visibility filter — public, members_only, and committee_only all in one.
+    $where[] = sp_event_visibility_sql( 'e' );
 
     // Search
     if ( $search !== '' ) {
@@ -38783,15 +39499,22 @@ function sp_render_event_detail( string $slug, array $settings ): void {
         return;
     }
 
-    // Visibility check — members_only events require login
-    if ( $event->visibility === 'members_only' && ! is_user_logged_in() ) {
-        echo '<div class="sp-event-login-required">';
-        echo '<h2>' . esc_html__( 'Members Only', 'societypress' ) . '</h2>';
-        echo '<p>' . sprintf(
-            esc_html__( 'This event is only visible to logged-in members. Please %s to view details.', 'societypress' ),
-            '<a href="' . esc_url( wp_login_url( add_query_arg( 'sp_event', $slug, get_permalink() ) ) ) . '">' . esc_html__( 'log in', 'societypress' ) . '</a>'
-        ) . '</p>';
-        echo '</div>';
+    // Visibility check — members_only and committee_only events are gated.
+    if ( ! sp_user_can_view_event( $event ) ) {
+        if ( ! is_user_logged_in() ) {
+            echo '<div class="sp-event-login-required">';
+            echo '<h2>' . esc_html__( 'Members Only', 'societypress' ) . '</h2>';
+            echo '<p>' . sprintf(
+                esc_html__( 'This event is only visible to logged-in members. Please %s to view details.', 'societypress' ),
+                '<a href="' . esc_url( wp_login_url( add_query_arg( 'sp_event', $slug, get_permalink() ) ) ) . '">' . esc_html__( 'log in', 'societypress' ) . '</a>'
+            ) . '</p>';
+            echo '</div>';
+        } else {
+            echo '<div class="sp-event-login-required">';
+            echo '<h2>' . esc_html__( 'Not Available', 'societypress' ) . '</h2>';
+            echo '<p>' . esc_html__( 'This event is restricted to the members of a specific committee.', 'societypress' ) . '</p>';
+            echo '</div>';
+        }
         return;
     }
 
@@ -44910,8 +45633,8 @@ function sp_render_builder_widget_upcoming_events( array $s ): void {
     $show_time     = ! empty( $s['show_time'] );
     $show_location = ! empty( $s['show_location'] );
 
-    // Build the query — only future, scheduled, public events
-    $where  = "WHERE e.event_date >= CURDATE() AND e.status = 'scheduled' AND e.visibility = 'public'";
+    // Build the query — future, scheduled events the current viewer can see.
+    $where  = "WHERE e.event_date >= CURDATE() AND e.status = 'scheduled' AND " . sp_event_visibility_sql( 'e' );
     $params = [];
 
     if ( $category_id > 0 ) {
@@ -46912,9 +47635,12 @@ add_action( 'template_redirect', function () {
         wp_die( __( 'Event not found.', 'societypress' ), 404 );
     }
 
-    // Visibility check — members_only events require login
-    if ( $event->visibility === 'members_only' && ! is_user_logged_in() ) {
-        wp_die( __( 'You must be logged in to download this event.', 'societypress' ), 403 );
+    // Visibility check — members_only and committee_only events are gated.
+    if ( ! sp_user_can_view_event( $event ) ) {
+        if ( ! is_user_logged_in() ) {
+            wp_die( __( 'You must be logged in to download this event.', 'societypress' ), 403 );
+        }
+        wp_die( __( 'This event is restricted to the members of a specific committee.', 'societypress' ), 403 );
     }
 
     // Build date/time, location, and description using shared helpers
@@ -47076,8 +47802,12 @@ add_action( 'template_redirect', function () {
     $date_start = wp_date( 'Y-m-d', strtotime( '-30 days' ) );
     $date_end   = wp_date( 'Y-m-d', strtotime( '+12 months' ) );
 
+    // committee_only events never appear in the iCal feed — the feed URL is
+    // shared by whoever subscribes, and there's no per-subscriber scope to
+    // safely filter on a committee basis. Members feed shows public +
+    // members_only; public feed shows only public.
     $visibility_sql = $include_members_only
-        ? ""
+        ? " AND e.visibility IN ('public', 'members_only')"
         : " AND e.visibility = 'public'";
 
     // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $visibility_sql is static
@@ -54608,6 +55338,19 @@ function sp_render_volunteer_opportunities_page(): void {
         }
     }
 
+    // Chair scope: non-admin chairs see only opportunities tagged to their
+    // committees. Admins see everything including society-wide (null committee).
+    $chair_scope_sql = '';
+    if ( ! current_user_can( 'manage_options' ) && sp_user_is_chair() ) {
+        $chair_ids = sp_user_chaired_committee_ids();
+        if ( ! empty( $chair_ids ) ) {
+            $id_list         = implode( ',', array_map( 'intval', $chair_ids ) );
+            $chair_scope_sql = "WHERE o.committee_id IN ({$id_list})";
+        } else {
+            $chair_scope_sql = 'WHERE 0=1';
+        }
+    }
+
     // Join to sp_committees so we can show the committee name (not just an
     // opaque numeric id) on each opportunity row. LEFT JOIN tolerates rows
     // whose committee_id points at a deleted or never-existed committee —
@@ -54619,6 +55362,7 @@ function sp_render_volunteer_opportunities_page(): void {
                 (SELECT COUNT(*) FROM {$prefix}volunteer_signups s WHERE s.opportunity_id = o.id AND s.status = 'waitlisted') AS waitlist_count
          FROM {$prefix}volunteer_opportunities o
          LEFT JOIN {$prefix}committees c ON c.id = o.committee_id
+         {$chair_scope_sql}
          ORDER BY o.status ASC, o.event_date ASC, o.sort_order ASC"
     );
 
@@ -54701,12 +55445,42 @@ function sp_render_volunteer_opportunity_edit_page(): void {
     $opp_id = (int) ( $_GET['opp_id'] ?? 0 );
     $opp    = null;
 
+    // Chair scope: non-admin chairs only see/edit opportunities tagged to
+    // committees they chair.
+    $is_chair_only = ! current_user_can( 'manage_options' ) && sp_user_is_chair();
+    $chair_ids     = $is_chair_only ? sp_user_chaired_committee_ids() : [];
+
+    if ( $is_chair_only && $opp_id > 0 ) {
+        $existing_cid = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT committee_id FROM {$prefix}volunteer_opportunities WHERE id = %d", $opp_id
+        ) );
+        if ( ! $existing_cid || ! in_array( $existing_cid, $chair_ids, true ) ) {
+            wp_die(
+                esc_html__( 'You can only edit volunteer opportunities for a committee you chair.', 'societypress' ),
+                esc_html__( 'Not Authorized', 'societypress' ),
+                [ 'response' => 403, 'back_link' => true ]
+            );
+        }
+    }
+
     // Handle save
     if ( isset( $_POST['sp_save_opp_nonce'] ) && wp_verify_nonce( $_POST['sp_save_opp_nonce'], 'sp_save_opportunity' ) ) {
+        $posted_cid = ! empty( $_POST['opp_committee_id'] ) ? (int) $_POST['opp_committee_id'] : null;
+
+        if ( $is_chair_only ) {
+            if ( ! $posted_cid || ! in_array( $posted_cid, $chair_ids, true ) ) {
+                wp_die(
+                    esc_html__( 'As a committee chair you must post volunteer opportunities for a committee you chair.', 'societypress' ),
+                    esc_html__( 'Not Authorized', 'societypress' ),
+                    [ 'response' => 403, 'back_link' => true ]
+                );
+            }
+        }
+
         $data = [
             'title'            => sanitize_text_field( $_POST['opp_title'] ?? '' ),
             'description'      => wp_kses_post( $_POST['opp_description'] ?? '' ),
-            'committee_id'     => ! empty( $_POST['opp_committee_id'] ) ? (int) $_POST['opp_committee_id'] : null,
+            'committee_id'     => $posted_cid,
             'opportunity_type' => in_array( $_POST['opp_type'] ?? '', [ 'one_time', 'recurring', 'ongoing' ], true )
                                   ? $_POST['opp_type'] : 'one_time',
             'event_date'       => ! empty( $_POST['opp_date'] ) ? sanitize_text_field( $_POST['opp_date'] ) : null,
@@ -54743,9 +55517,16 @@ function sp_render_volunteer_opportunity_edit_page(): void {
         return $default;
     };
 
-    $committees = $wpdb->get_results(
-        "SELECT id, name FROM {$prefix}committees WHERE active = 1 ORDER BY name"
-    );
+    if ( $is_chair_only && ! empty( $chair_ids ) ) {
+        $id_list    = implode( ',', array_map( 'intval', $chair_ids ) );
+        $committees = $wpdb->get_results(
+            "SELECT id, name FROM {$prefix}committees WHERE active = 1 AND id IN ({$id_list}) ORDER BY name"
+        );
+    } else {
+        $committees = $wpdb->get_results(
+            "SELECT id, name FROM {$prefix}committees WHERE active = 1 ORDER BY name"
+        );
+    }
     $members = $wpdb->get_results(
         "SELECT user_id, first_name, last_name FROM {$prefix}members WHERE status = 'active' ORDER BY last_name"
     );
@@ -54941,6 +55722,17 @@ function sp_render_meetings_page(): void {
         $params[] = $filter_committee;
     }
 
+    // Chair scope: non-admin chairs see only meetings tied to committees
+    // they chair. Admins see all three meeting types across every committee.
+    $is_chair_only = ! current_user_can( 'manage_options' ) && sp_user_is_chair();
+    if ( $is_chair_only ) {
+        $chair_ids = sp_user_chaired_committee_ids();
+        if ( ! empty( $chair_ids ) ) {
+            $id_list = implode( ',', array_map( 'intval', $chair_ids ) );
+            $where  .= " AND m.meeting_type = 'committee' AND m.committee_id IN ({$id_list})";
+        }
+    }
+
     $sql = "SELECT m.*, c.name AS committee_name
             FROM {$prefix}meetings m
             LEFT JOIN {$prefix}committees c ON c.id = m.committee_id
@@ -54950,7 +55742,13 @@ function sp_render_meetings_page(): void {
         ? $wpdb->get_results( $wpdb->prepare( $sql, $params ) )
         : $wpdb->get_results( $sql );
 
-    $committees = $wpdb->get_results( "SELECT id, name FROM {$prefix}committees WHERE active = 1 ORDER BY name" );
+    // Committee dropdown — chairs only see their own committees
+    if ( $is_chair_only && ! empty( $chair_ids ) ) {
+        $id_list    = implode( ',', array_map( 'intval', $chair_ids ) );
+        $committees = $wpdb->get_results( "SELECT id, name FROM {$prefix}committees WHERE active = 1 AND id IN ({$id_list}) ORDER BY name" );
+    } else {
+        $committees = $wpdb->get_results( "SELECT id, name FROM {$prefix}committees WHERE active = 1 ORDER BY name" );
+    }
 
     $type_labels = [
         'board'      => __( 'Board', 'societypress' ),
@@ -55053,11 +55851,44 @@ function sp_render_meeting_edit_page(): void {
     $mid     = (int) ( $_GET['meeting_id'] ?? 0 );
     $meeting = null;
 
+    // Chair scope: non-admin chairs may only view/edit committee meetings for
+    // committees they chair. Load the row early so the guard can check it.
+    $is_chair_only = ! current_user_can( 'manage_options' ) && sp_user_is_chair();
+    $chair_ids     = $is_chair_only ? sp_user_chaired_committee_ids() : [];
+    if ( $is_chair_only && $mid ) {
+        $existing = $wpdb->get_row( $wpdb->prepare(
+            "SELECT meeting_type, committee_id FROM {$prefix}meetings WHERE id = %d", $mid
+        ) );
+        if ( ! $existing
+            || $existing->meeting_type !== 'committee'
+            || ! $existing->committee_id
+            || ! in_array( (int) $existing->committee_id, $chair_ids, true )
+        ) {
+            wp_die(
+                esc_html__( 'You can only edit committee meetings for a committee you chair.', 'societypress' ),
+                esc_html__( 'Not Authorized', 'societypress' ),
+                [ 'response' => 403, 'back_link' => true ]
+            );
+        }
+    }
+
     if ( isset( $_POST['sp_save_meeting'] ) && check_admin_referer( 'sp_meeting_save' ) ) {
         $meeting_type = in_array( $_POST['meeting_type'] ?? '', [ 'board', 'membership', 'committee' ], true )
             ? $_POST['meeting_type'] : 'committee';
         $committee_id = ( $meeting_type === 'committee' && ! empty( $_POST['committee_id'] ) )
             ? (int) $_POST['committee_id'] : null;
+
+        // Chair scope guard on save — force committee meeting for a committee
+        // they chair; reject anything else. Matches the scope enforced on load.
+        if ( $is_chair_only ) {
+            if ( $meeting_type !== 'committee' || ! $committee_id || ! in_array( $committee_id, $chair_ids, true ) ) {
+                wp_die(
+                    esc_html__( 'As a committee chair you must record meetings for a committee you chair.', 'societypress' ),
+                    esc_html__( 'Not Authorized', 'societypress' ),
+                    [ 'response' => 403, 'back_link' => true ]
+                );
+            }
+        }
         $visibility = in_array( $_POST['visibility'] ?? '', [ 'public', 'members_only', 'committee_only' ], true )
             ? $_POST['visibility'] : 'members_only';
         // 'committee_only' is only meaningful for committee meetings —
@@ -55103,9 +55934,16 @@ function sp_render_meeting_edit_page(): void {
         ) );
     }
 
-    $committees = $wpdb->get_results(
-        "SELECT id, name FROM {$prefix}committees WHERE active = 1 ORDER BY name"
-    );
+    if ( $is_chair_only && ! empty( $chair_ids ) ) {
+        $id_list    = implode( ',', array_map( 'intval', $chair_ids ) );
+        $committees = $wpdb->get_results(
+            "SELECT id, name FROM {$prefix}committees WHERE active = 1 AND id IN ({$id_list}) ORDER BY name"
+        );
+    } else {
+        $committees = $wpdb->get_results(
+            "SELECT id, name FROM {$prefix}committees WHERE active = 1 ORDER BY name"
+        );
+    }
 
     $back_url = admin_url( 'admin.php?page=sp-meetings' );
     $current_type       = $meeting->meeting_type ?? 'board';
@@ -63026,10 +63864,9 @@ function sp_do_unified_search( string $query, int $per_module = 5 ): array {
         $like, $like, $like
     );
 
-    // Non-logged-in visitors only see public events
-    if ( ! $logged_in ) {
-        $events_where .= " AND visibility = 'public'";
-    }
+    // Visibility: public for logged-out, public+members_only for members, plus
+    // committee_only for users in the event's committee.
+    $events_where .= ' AND ' . sp_event_visibility_sql( '' );
 
     $events_total = (int) $wpdb->get_var(
         "SELECT COUNT(*) FROM {$prefix}events {$events_where}"

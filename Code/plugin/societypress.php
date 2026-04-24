@@ -33885,16 +33885,16 @@ function sp_render_event_edit_page(): void {
                         <select id="sp-recurrence-type" name="event_recurrence_type" class="sp-event-edit-recurrence-select">
                             <option value=""><?php esc_html_e( 'No recurrence (one-time event)', 'societypress' ); ?></option>
                             <option value="weekly" <?php echo $is_parent && strpos( $event->recurrence_rule ?? '', 'weekly:' ) === 0 ? 'selected' : ''; ?>>
-                                <?php esc_html_e( 'Weekly (same day each week)', 'societypress' ); ?>
+                                <?php esc_html_e( 'Every week on the same day', 'societypress' ); ?>
                             </option>
                             <option value="monthly-nth" <?php echo $is_parent && strpos( $event->recurrence_rule ?? '', 'monthly-nth:' ) === 0 ? 'selected' : ''; ?>>
-                                <?php esc_html_e( 'Monthly (e.g., 2nd Saturday)', 'societypress' ); ?>
+                                <?php esc_html_e( 'Every month on the same weekday', 'societypress' ); ?>
                             </option>
                             <option value="monthly-date" <?php echo $is_parent && strpos( $event->recurrence_rule ?? '', 'monthly-date:' ) === 0 ? 'selected' : ''; ?>>
-                                <?php esc_html_e( 'Monthly (same date each month)', 'societypress' ); ?>
+                                <?php esc_html_e( 'Every month on the same date', 'societypress' ); ?>
                             </option>
                         </select>
-                        <p class="description"><?php esc_html_e( 'The recurrence is calculated from the event date above.', 'societypress' ); ?></p>
+                        <p class="description"><?php esc_html_e( 'The pattern is derived from the event date above — change the date to change the pattern.', 'societypress' ); ?></p>
                     </td>
                 </tr>
 
@@ -33904,6 +33904,16 @@ function sp_render_event_edit_page(): void {
                         <input type="date" id="event_recurrence_end" name="event_recurrence_end"
                                value="<?php echo esc_attr( $val( 'recurrence_end_date' ) ); ?>">
                         <p class="description"><?php esc_html_e( 'Generate occurrences through this date. Leave blank for 12 months.', 'societypress' ); ?></p>
+                    </td>
+                </tr>
+
+                <tr id="sp-recurrence-preview-row" style="<?php echo $is_parent ? '' : 'display: none;'; ?>">
+                    <th scope="row"><?php esc_html_e( 'Preview', 'societypress' ); ?></th>
+                    <td>
+                        <div class="sp-recurrence-preview" id="sp-recurrence-preview" aria-live="polite">
+                            <p class="sp-recurrence-preview-loading"><?php esc_html_e( 'Calculating…', 'societypress' ); ?></p>
+                        </div>
+                        <p class="description"><?php esc_html_e( 'The event date itself counts as the first occurrence. Generation skips any dates that have already passed.', 'societypress' ); ?></p>
                     </td>
                 </tr>
 
@@ -34268,6 +34278,93 @@ function sp_render_event_edit_page(): void {
     .sp-event-edit-detach-note {
         margin-top: 4px;
     }
+
+    /* sp-recurrence-preview
+       Live preview shown below the Repeat Until field — summary line,
+       collapsible date list, and a 3-month mini-calendar with occurrence
+       dates highlighted. */
+    .sp-recurrence-preview {
+        background: #f6f7f7;
+        border: 1px solid #dcdcde;
+        border-radius: 4px;
+        padding: 10px 12px;
+        max-width: 720px;
+    }
+    .sp-recurrence-preview p {
+        margin: 0 0 8px;
+    }
+    .sp-recurrence-preview-loading {
+        color: #646970;
+        font-style: italic;
+    }
+    .sp-recurrence-prev-summary {
+        font-size: 14px;
+        color: #1d2327;
+    }
+    .sp-recurrence-prev-list {
+        font-size: 13px;
+        color: #1d2327;
+        line-height: 1.6;
+    }
+    .sp-recurrence-prev-toggle {
+        margin-left: 4px;
+    }
+    .sp-recurrence-cal {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        margin-top: 10px;
+    }
+    .sp-recurrence-cal-month {
+        background: #fff;
+        border: 1px solid #dcdcde;
+        border-radius: 3px;
+        padding: 8px;
+    }
+    .sp-recurrence-cal-title {
+        font-size: 12px;
+        font-weight: 600;
+        text-align: center;
+        margin-bottom: 6px;
+        color: #1d2327;
+    }
+    .sp-recurrence-cal-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 2px;
+    }
+    .sp-recurrence-cal-dow {
+        font-size: 10px;
+        color: #646970;
+        text-align: center;
+        font-weight: 600;
+        padding: 2px 0;
+    }
+    .sp-recurrence-cal-day {
+        font-size: 11px;
+        text-align: center;
+        padding: 3px 0;
+        border-radius: 2px;
+        color: #50575e;
+    }
+    .sp-recurrence-cal-day-empty {
+        visibility: hidden;
+    }
+    .sp-recurrence-cal-hit {
+        background: #dbeafe;
+        color: #1e40af;
+        font-weight: 600;
+    }
+    .sp-recurrence-cal-anchor {
+        background: #2271b1;
+        color: #fff;
+        font-weight: 700;
+    }
+    @media (max-width: 900px) {
+        .sp-recurrence-cal {
+            grid-template-columns: 1fr;
+        }
+    }
     </style>
 
     <!-- Event Edit Page JavaScript -->
@@ -34460,13 +34557,214 @@ function sp_render_event_edit_page(): void {
             });
         });
 
-        // ---- Recurrence toggle: show/hide end date row ----
-        var recurrenceType = document.getElementById('sp-recurrence-type');
-        var recurrenceEnd  = document.getElementById('sp-recurrence-end-row');
-        if (recurrenceType && recurrenceEnd) {
+        // ---- Recurrence toggle + live preview ----
+        var recurrenceType    = document.getElementById('sp-recurrence-type');
+        var recurrenceEndRow  = document.getElementById('sp-recurrence-end-row');
+        var recurrencePrevRow = document.getElementById('sp-recurrence-preview-row');
+        var recurrencePrevEl  = document.getElementById('sp-recurrence-preview');
+        var eventDateInput    = document.getElementById('event_date');
+        var recurrenceEndInput= document.getElementById('event_recurrence_end');
+
+        var MONTHS = <?php echo wp_json_encode( [
+            __( 'January', 'societypress' ), __( 'February', 'societypress' ), __( 'March', 'societypress' ),
+            __( 'April', 'societypress' ),   __( 'May', 'societypress' ),      __( 'June', 'societypress' ),
+            __( 'July', 'societypress' ),    __( 'August', 'societypress' ),   __( 'September', 'societypress' ),
+            __( 'October', 'societypress' ), __( 'November', 'societypress' ), __( 'December', 'societypress' ),
+        ] ); ?>;
+        var WEEKDAYS_SHORT = <?php echo wp_json_encode( [
+            __( 'Su', 'societypress' ), __( 'Mo', 'societypress' ), __( 'Tu', 'societypress' ),
+            __( 'We', 'societypress' ), __( 'Th', 'societypress' ), __( 'Fr', 'societypress' ),
+            __( 'Sa', 'societypress' ),
+        ] ); ?>;
+        var I18N = <?php echo wp_json_encode( [
+            'no_dates'     => __( 'No occurrences — check the event date and end date.', 'societypress' ),
+            'count_one'    => __( '%d occurrence', 'societypress' ),
+            'count_many'   => __( '%d occurrences', 'societypress' ),
+            'showing_list' => __( 'Dates', 'societypress' ),
+            'show_all'     => __( 'Show all', 'societypress' ),
+            'show_less'    => __( 'Show less', 'societypress' ),
+            'loading'      => __( 'Calculating…', 'societypress' ),
+            'error'        => __( 'Could not calculate preview.', 'societypress' ),
+        ] ); ?>;
+        var PREVIEW_NONCE = '<?php echo esc_js( wp_create_nonce( 'sp_recurrence' ) ); ?>';
+        var AJAX_URL      = '<?php echo esc_js( admin_url( 'admin-ajax.php' ) ); ?>';
+
+        function toggleRecurrenceRows() {
+            var on = recurrenceType && recurrenceType.value;
+            if (recurrenceEndRow)  recurrenceEndRow.style.display  = on ? '' : 'none';
+            if (recurrencePrevRow) recurrencePrevRow.style.display = on ? '' : 'none';
+        }
+
+        function parseYmd(s) {
+            var parts = (s || '').split('-');
+            if (parts.length !== 3) return null;
+            var d = new Date(+parts[0], +parts[1] - 1, +parts[2]);
+            return isNaN(d) ? null : d;
+        }
+
+        function formatShort(date) {
+            return MONTHS[date.getMonth()].substr(0, 3) + ' ' + date.getDate();
+        }
+
+        function renderCalendar(dateStrs, anchorYmd) {
+            // Show 3 mini-months starting from the month of the anchor date.
+            var anchor = parseYmd(anchorYmd);
+            if (!anchor) return '';
+            var set = {};
+            dateStrs.forEach(function(s) { set[s] = true; });
+            if (anchorYmd) set[anchorYmd] = 'anchor';
+
+            var html = '<div class="sp-recurrence-cal">';
+            for (var i = 0; i < 3; i++) {
+                var yr = anchor.getFullYear();
+                var mo = anchor.getMonth() + i;
+                var d  = new Date(yr, mo, 1);
+                html += renderMiniMonth(d, set);
+            }
+            html += '</div>';
+            return html;
+        }
+
+        function renderMiniMonth(firstOfMonth, highlightSet) {
+            var year  = firstOfMonth.getFullYear();
+            var month = firstOfMonth.getMonth();
+            var daysInMonth = new Date(year, month + 1, 0).getDate();
+            var startDow    = firstOfMonth.getDay();
+            var html = '<div class="sp-recurrence-cal-month">';
+            html += '<div class="sp-recurrence-cal-title">' + MONTHS[month] + ' ' + year + '</div>';
+            html += '<div class="sp-recurrence-cal-grid">';
+            for (var w = 0; w < 7; w++) {
+                html += '<div class="sp-recurrence-cal-dow">' + WEEKDAYS_SHORT[w] + '</div>';
+            }
+            for (var b = 0; b < startDow; b++) {
+                html += '<div class="sp-recurrence-cal-day sp-recurrence-cal-day-empty"></div>';
+            }
+            for (var d = 1; d <= daysInMonth; d++) {
+                var ymd = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+                var cls = 'sp-recurrence-cal-day';
+                if (highlightSet[ymd] === 'anchor') cls += ' sp-recurrence-cal-anchor';
+                else if (highlightSet[ymd])        cls += ' sp-recurrence-cal-hit';
+                html += '<div class="' + cls + '">' + d + '</div>';
+            }
+            html += '</div></div>';
+            return html;
+        }
+
+        function renderPreview(resp) {
+            if (!recurrencePrevEl) return;
+            var dates = resp && resp.dates ? resp.dates : [];
+            var count = resp && resp.count ? resp.count : (dates.length + (resp && resp.event_date ? 1 : 0));
+            var summary = resp && resp.summary ? resp.summary : '';
+
+            if (!summary) {
+                recurrencePrevEl.innerHTML = '<p>' + I18N.no_dates + '</p>';
+                return;
+            }
+
+            var countLabel = (count === 1) ? I18N.count_one.replace('%d', count) : I18N.count_many.replace('%d', count);
+
+            // Build the inline list: parent date first, then computed dates.
+            var all = [];
+            if (resp.event_date) all.push(resp.event_date);
+            dates.forEach(function(d) { all.push(d); });
+
+            var LIMIT = 8;
+            var listHtml = '<div class="sp-recurrence-prev-list"><strong>' + I18N.showing_list + ':</strong> ';
+            var shown = all.slice(0, LIMIT).map(function(s) {
+                var dt = parseYmd(s);
+                return dt ? formatShort(dt) : s;
+            }).join(', ');
+            listHtml += shown;
+            if (all.length > LIMIT) {
+                var extra = all.slice(LIMIT).map(function(s) {
+                    var dt = parseYmd(s);
+                    return dt ? formatShort(dt) : s;
+                }).join(', ');
+                listHtml += '<span class="sp-recurrence-prev-more" hidden>, ' + extra + '</span>';
+                listHtml += ' <a href="#" class="sp-recurrence-prev-toggle" data-expanded="0">' +
+                            I18N.show_all.replace('%d', all.length - LIMIT) + '</a>';
+            }
+            listHtml += '</div>';
+
+            var calHtml = renderCalendar(dates, resp.event_date);
+
+            recurrencePrevEl.innerHTML =
+                '<p class="sp-recurrence-prev-summary"><strong>' + summary + '</strong> — ' + countLabel + '</p>' +
+                listHtml +
+                calHtml;
+
+            var toggle = recurrencePrevEl.querySelector('.sp-recurrence-prev-toggle');
+            if (toggle) {
+                toggle.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    var more = recurrencePrevEl.querySelector('.sp-recurrence-prev-more');
+                    var expanded = toggle.getAttribute('data-expanded') === '1';
+                    if (expanded) {
+                        more.hidden = true;
+                        toggle.textContent = I18N.show_all;
+                        toggle.setAttribute('data-expanded', '0');
+                    } else {
+                        more.hidden = false;
+                        toggle.textContent = I18N.show_less;
+                        toggle.setAttribute('data-expanded', '1');
+                    }
+                });
+            }
+        }
+
+        var previewTimer = null;
+        var previewInFlight = null;
+        function fetchPreview() {
+            if (!recurrenceType || !recurrenceType.value || !eventDateInput || !eventDateInput.value) {
+                if (recurrencePrevEl) recurrencePrevEl.innerHTML = '';
+                return;
+            }
+            if (recurrencePrevEl) {
+                recurrencePrevEl.innerHTML = '<p class="sp-recurrence-preview-loading">' + I18N.loading + '</p>';
+            }
+
+            var fd = new FormData();
+            fd.append('action', 'sp_preview_recurrence');
+            fd.append('nonce', PREVIEW_NONCE);
+            fd.append('event_date', eventDateInput.value);
+            fd.append('recurrence_type', recurrenceType.value);
+            fd.append('recurrence_end', recurrenceEndInput ? recurrenceEndInput.value : '');
+
+            // Cancel any previous in-flight request by ignoring its response.
+            var myRequest = {};
+            previewInFlight = myRequest;
+
+            fetch(AJAX_URL, { method: 'POST', body: fd, credentials: 'same-origin' })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (previewInFlight !== myRequest) return;
+                    if (data && data.success) renderPreview(data.data);
+                    else if (recurrencePrevEl) recurrencePrevEl.innerHTML = '<p>' + I18N.error + '</p>';
+                })
+                .catch(function() {
+                    if (previewInFlight !== myRequest) return;
+                    if (recurrencePrevEl) recurrencePrevEl.innerHTML = '<p>' + I18N.error + '</p>';
+                });
+        }
+
+        function schedulePreview() {
+            clearTimeout(previewTimer);
+            previewTimer = setTimeout(fetchPreview, 200);
+        }
+
+        if (recurrenceType) {
             recurrenceType.addEventListener('change', function() {
-                recurrenceEnd.style.display = this.value ? '' : 'none';
+                toggleRecurrenceRows();
+                schedulePreview();
             });
+        }
+        if (eventDateInput)     eventDateInput.addEventListener('change', schedulePreview);
+        if (recurrenceEndInput) recurrenceEndInput.addEventListener('change', schedulePreview);
+
+        // Fetch an initial preview if the page loaded with a rule already set.
+        toggleRecurrenceRows();
+        if (recurrenceType && recurrenceType.value) {
+            fetchPreview();
         }
 
         // ---- Regenerate occurrences (AJAX) ----
@@ -44195,6 +44493,122 @@ function sp_render_speaker_edit_page(): void {
  *      so each occurrence can be independently edited (different speaker for
  *      the April meeting, cancelled the December one, etc.).
  */
+/**
+ * Compute the list of occurrence dates a recurrence rule produces.
+ *
+ * Pure function — no database, no side effects. Takes the same rule format
+ * stored on the event parent ('weekly:N', 'monthly-nth:W-D', 'monthly-date:D')
+ * and returns every date the rule produces between start_date and end_date,
+ * exclusive of start_date itself (the parent event's date isn't a repeat).
+ *
+ * WHY centralized: The save path, the regeneration path, and the live
+ *      preview all need to agree on what dates a rule produces. A separate
+ *      helper keeps them in lockstep; drift between them would confuse Harold
+ *      when the preview shows one schedule and generation produces another.
+ *
+ * @param string $start_date_ymd Y-m-d string; the parent event's date.
+ * @param string $rule           Rule string, e.g. 'weekly:3' for Wednesday.
+ * @param string $end_date_ymd   Y-m-d string; inclusive upper bound.
+ * @return array List of Y-m-d date strings, in chronological order.
+ */
+function sp_compute_recurrence_dates( string $start_date_ymd, string $rule, string $end_date_ymd ): array {
+    $start_ts = strtotime( $start_date_ymd );
+    $end_ts   = strtotime( $end_date_ymd );
+    if ( ! $start_ts || ! $end_ts || $end_ts < $start_ts ) {
+        return [];
+    }
+
+    $dates = [];
+
+    if ( strpos( $rule, 'weekly:' ) === 0 ) {
+        $interval_ts = $start_ts;
+        while ( true ) {
+            $interval_ts = strtotime( '+1 week', $interval_ts );
+            if ( $interval_ts > $end_ts ) break;
+            $dates[] = date( 'Y-m-d', $interval_ts );
+        }
+    } elseif ( strpos( $rule, 'monthly-nth:' ) === 0 ) {
+        // monthly-nth:W-D — Wth day-D of each month (e.g., 2nd Saturday = 2-6)
+        $parts = explode( ':', $rule );
+        $wd    = explode( '-', $parts[1] ?? '' );
+        $week_num    = (int) ( $wd[0] ?? 0 );
+        $day_of_week = (int) ( $wd[1] ?? 0 );
+        $day_names   = [ 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday' ];
+        $day_name    = $day_names[ $day_of_week ] ?? 'Monday';
+
+        $month_ts = strtotime( 'first day of +1 month', $start_ts );
+        while ( $month_ts && $month_ts <= $end_ts ) {
+            $month = (int) date( 'n', $month_ts );
+
+            // "Nth Saturday": find the first Saturday of the month, add (N-1) weeks.
+            // If the result rolls into the next month (e.g., 5th Saturday when
+            // there are only 4), skip it rather than emit a wrong date.
+            $first_target_day = strtotime( "first {$day_name} of " . date( 'F Y', $month_ts ) );
+            if ( $first_target_day ) {
+                $target_date = strtotime( '+' . ( $week_num - 1 ) . ' weeks', $first_target_day );
+                if ( (int) date( 'n', $target_date ) === $month && $target_date <= $end_ts ) {
+                    $dates[] = date( 'Y-m-d', $target_date );
+                }
+            }
+
+            $month_ts = strtotime( 'first day of +1 month', $month_ts );
+        }
+    } elseif ( strpos( $rule, 'monthly-date:' ) === 0 ) {
+        // monthly-date:D — same day of each month (e.g., the 15th)
+        $parts      = explode( ':', $rule );
+        $target_day = (int) ( $parts[1] ?? 0 );
+
+        $month_ts = strtotime( 'first day of +1 month', $start_ts );
+        while ( $month_ts && $month_ts <= $end_ts ) {
+            $year       = (int) date( 'Y', $month_ts );
+            $month      = (int) date( 'n', $month_ts );
+            $days_in_mo = (int) date( 't', $month_ts );
+
+            // Day 31 in a 30-day month clamps to day 30 rather than skipping.
+            $actual_day = min( $target_day, $days_in_mo );
+            $target_ts  = mktime( 0, 0, 0, $month, $actual_day, $year );
+
+            if ( $target_ts <= $end_ts ) {
+                $dates[] = date( 'Y-m-d', $target_ts );
+            }
+
+            $month_ts = strtotime( 'first day of +1 month', $month_ts );
+        }
+    }
+
+    return $dates;
+}
+
+/**
+ * Build the rule string from the form inputs.
+ *
+ * WHY centralized: The event save path and the live preview both need to
+ *      turn (event_date, recurrence_type) into the same rule string.
+ *      Duplicating the logic in JS would drift.
+ *
+ * @return string Rule string, or '' if the type is unrecognized.
+ */
+function sp_build_recurrence_rule( string $recurrence_type, string $event_date_ymd ): string {
+    $ts = strtotime( $event_date_ymd );
+    if ( ! $ts ) {
+        return '';
+    }
+
+    if ( $recurrence_type === 'weekly' ) {
+        return 'weekly:' . date( 'w', $ts );
+    }
+    if ( $recurrence_type === 'monthly-nth' ) {
+        $day_of_week  = (int) date( 'w', $ts );
+        $day_of_month = (int) date( 'j', $ts );
+        $week_num     = (int) ceil( $day_of_month / 7 );
+        return 'monthly-nth:' . $week_num . '-' . $day_of_week;
+    }
+    if ( $recurrence_type === 'monthly-date' ) {
+        return 'monthly-date:' . date( 'j', $ts );
+    }
+    return '';
+}
+
 add_action( 'wp_ajax_sp_regenerate_occurrences', 'sp_ajax_regenerate_occurrences' );
 
 function sp_ajax_regenerate_occurrences(): void {
@@ -44217,11 +44631,10 @@ function sp_ajax_regenerate_occurrences(): void {
         wp_send_json_error( __( 'Event has no recurrence rule.', 'societypress' ) );
     }
 
-    // Parse the recurrence rule
-    $rule = $parent->recurrence_rule;
-    $end_date = $parent->recurrence_end_date
-        ? strtotime( $parent->recurrence_end_date )
-        : strtotime( '+12 months', strtotime( $parent->event_date ) );
+    $end_date_ymd = $parent->recurrence_end_date
+        ?: date( 'Y-m-d', strtotime( '+12 months', strtotime( $parent->event_date ) ) );
+
+    $dates = sp_compute_recurrence_dates( $parent->event_date, $parent->recurrence_rule, $end_date_ymd );
 
     // Get existing child dates so we don't duplicate
     $existing_dates = $wpdb->get_col( $wpdb->prepare(
@@ -44229,75 +44642,7 @@ function sp_ajax_regenerate_occurrences(): void {
         $event_id
     ) );
     $existing_set = array_flip( $existing_dates );
-
-    // Also skip the parent's own date
-    $existing_set[ $parent->event_date ] = true;
-
-    // Generate dates based on rule type
-    $dates = [];
-    $start_ts = strtotime( $parent->event_date );
-
-    if ( strpos( $rule, 'weekly:' ) === 0 ) {
-        // weekly:N — every week on day N (0=Sun through 6=Sat)
-        $interval_ts = $start_ts;
-        while ( true ) {
-            $interval_ts = strtotime( '+1 week', $interval_ts );
-            if ( $interval_ts > $end_date ) break;
-            $dates[] = date( 'Y-m-d', $interval_ts );
-        }
-    } elseif ( strpos( $rule, 'monthly-nth:' ) === 0 ) {
-        // monthly-nth:W-D — Wth day-D of each month (e.g., 2nd Saturday = 2-6)
-        $parts = explode( ':', $rule );
-        $wd    = explode( '-', $parts[1] );
-        $week_num    = (int) $wd[0]; // 1-5
-        $day_of_week = (int) $wd[1]; // 0-6
-        $day_names   = [ 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday' ];
-        $day_name    = $day_names[ $day_of_week ] ?? 'Monday';
-
-        // Start from the month after the parent event
-        $month_ts = strtotime( 'first day of +1 month', $start_ts );
-        while ( $month_ts <= $end_date ) {
-            $year  = date( 'Y', $month_ts );
-            $month = date( 'n', $month_ts );
-
-            // Find the Nth day_name of this month
-            // WHY: "2nd Saturday" means we find the first Saturday, then add
-            //      (N-1) weeks. If that's still in the same month, it's valid.
-            $first_of_month = mktime( 0, 0, 0, $month, 1, $year );
-            $first_target_day = strtotime( "first {$day_name} of " . date( 'F Y', $first_of_month ) );
-
-            if ( $first_target_day ) {
-                $target_date = strtotime( '+' . ( $week_num - 1 ) . ' weeks', $first_target_day );
-                // Make sure it's still in the same month
-                if ( (int) date( 'n', $target_date ) === $month && $target_date <= $end_date ) {
-                    $dates[] = date( 'Y-m-d', $target_date );
-                }
-            }
-
-            $month_ts = strtotime( 'first day of +1 month', $month_ts );
-        }
-    } elseif ( strpos( $rule, 'monthly-date:' ) === 0 ) {
-        // monthly-date:D — same day of each month (e.g., the 15th)
-        $parts     = explode( ':', $rule );
-        $target_day = (int) $parts[1];
-
-        $month_ts = strtotime( 'first day of +1 month', $start_ts );
-        while ( $month_ts <= $end_date ) {
-            $year       = (int) date( 'Y', $month_ts );
-            $month      = (int) date( 'n', $month_ts );
-            $days_in_mo = (int) date( 't', $month_ts );
-
-            // If the target day exceeds this month's length, use last day
-            $actual_day = min( $target_day, $days_in_mo );
-            $target_ts  = mktime( 0, 0, 0, $month, $actual_day, $year );
-
-            if ( $target_ts <= $end_date ) {
-                $dates[] = date( 'Y-m-d', $target_ts );
-            }
-
-            $month_ts = strtotime( 'first day of +1 month', $month_ts );
-        }
-    }
+    $existing_set[ $parent->event_date ] = true; // parent's own date
 
     // Only keep future dates that don't already exist
     $today = current_time( 'Y-m-d' );
@@ -44359,6 +44704,150 @@ function sp_ajax_regenerate_occurrences(): void {
     }
 
     wp_send_json_success( [ 'created' => $created ] );
+}
+
+
+/**
+ * AJAX: Preview the dates a recurrence rule would produce.
+ *
+ * WHY: Harold fills in the event date and picks a recurrence type. Before
+ *      saving, he wants to see what that actually means — which dates will
+ *      be generated, and whether the pattern lines up with his intent.
+ *      The save-then-regenerate round-trip is too long a loop to iterate on.
+ *
+ *      Returns both the machine-readable date list and a plain-English
+ *      summary so the admin-page JS doesn't need to know English rules.
+ */
+add_action( 'wp_ajax_sp_preview_recurrence', 'sp_ajax_preview_recurrence' );
+
+function sp_ajax_preview_recurrence(): void {
+    if ( ! current_user_can( 'sp_manage_events' ) ) {
+        wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
+    }
+    if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_recurrence' ) ) {
+        wp_send_json_error( __( 'Security check failed.', 'societypress' ) );
+    }
+
+    $event_date      = sanitize_text_field( $_POST['event_date'] ?? '' );
+    $recurrence_type = sanitize_text_field( $_POST['recurrence_type'] ?? '' );
+    $recurrence_end  = sanitize_text_field( $_POST['recurrence_end'] ?? '' );
+
+    if ( ! $event_date || ! $recurrence_type ) {
+        wp_send_json_success( [ 'dates' => [], 'summary' => '' ] );
+    }
+
+    $rule = sp_build_recurrence_rule( $recurrence_type, $event_date );
+    if ( ! $rule ) {
+        wp_send_json_success( [ 'dates' => [], 'summary' => '' ] );
+    }
+
+    // Default: 12 months from the event date if no end supplied (matches save path)
+    $end_ymd = $recurrence_end ?: date( 'Y-m-d', strtotime( '+12 months', strtotime( $event_date ) ) );
+
+    $dates = sp_compute_recurrence_dates( $event_date, $rule, $end_ymd );
+    $summary = sp_describe_recurrence_rule( $rule, $event_date, $end_ymd );
+    $count   = count( $dates ) + 1; // +1 for the parent event's own date
+
+    wp_send_json_success( [
+        'dates'      => $dates,
+        'event_date' => $event_date,
+        'summary'    => $summary,
+        'count'      => $count,
+    ] );
+}
+
+/**
+ * Turn a day-of-month integer into an English ordinal ("1st", "21st", "23rd").
+ *
+ * WHY not a translation: English ordinal rules are hardcoded ("1st, 2nd, 3rd,
+ *      then -th") and don't have clean i18n equivalents — other languages
+ *      express ordinals differently. The surrounding sprintf pattern is
+ *      translatable, so a translator can reword "The %1$s of every month..."
+ *      to fit their language's conventions and drop the ordinal entirely
+ *      if needed.
+ */
+function sp_english_ordinal( int $n ): string {
+    $mod100 = $n % 100;
+    if ( $mod100 >= 11 && $mod100 <= 13 ) {
+        return $n . 'th';
+    }
+    switch ( $n % 10 ) {
+        case 1:  return $n . 'st';
+        case 2:  return $n . 'nd';
+        case 3:  return $n . 'rd';
+        default: return $n . 'th';
+    }
+}
+
+/**
+ * Render a recurrence rule as a plain-English summary.
+ *
+ * Examples:
+ *   "Every Wednesday through June 10, 2027"
+ *   "Every 2nd Saturday through December 31, 2026"
+ *   "The 15th of every month through March 1, 2027"
+ *
+ * WHY: The dropdown labels are deliberately generic ("Every month on the
+ *      same weekday") so they don't lie when the event date changes. The
+ *      preview provides the specificity instead.
+ */
+function sp_describe_recurrence_rule( string $rule, string $start_date_ymd, string $end_date_ymd ): string {
+    $start_ts = strtotime( $start_date_ymd );
+    $end_ts   = strtotime( $end_date_ymd );
+    if ( ! $start_ts || ! $end_ts ) {
+        return '';
+    }
+
+    $date_format = get_option( 'date_format', 'F j, Y' );
+    // Anchor to noon so wp_date's UTC→site-timezone conversion can't roll
+    // the displayed date back a day for sites west of UTC.
+    $end_human   = wp_date( $date_format, strtotime( $end_date_ymd . ' 12:00:00' ) );
+
+    $day_names = [
+        __( 'Sunday', 'societypress' ),
+        __( 'Monday', 'societypress' ),
+        __( 'Tuesday', 'societypress' ),
+        __( 'Wednesday', 'societypress' ),
+        __( 'Thursday', 'societypress' ),
+        __( 'Friday', 'societypress' ),
+        __( 'Saturday', 'societypress' ),
+    ];
+
+    if ( strpos( $rule, 'weekly:' ) === 0 ) {
+        $dow = (int) substr( $rule, 7 );
+        return sprintf(
+            /* translators: 1: day of week, 2: end date */
+            __( 'Every %1$s through %2$s', 'societypress' ),
+            $day_names[ $dow ] ?? '',
+            $end_human
+        );
+    }
+
+    if ( strpos( $rule, 'monthly-nth:' ) === 0 ) {
+        $parts = explode( '-', substr( $rule, 12 ) );
+        $week  = (int) ( $parts[0] ?? 0 );
+        $dow   = (int) ( $parts[1] ?? 0 );
+        return sprintf(
+            /* translators: 1: ordinal week (1st, 2nd), 2: day of week, 3: end date */
+            __( 'Every %1$s %2$s through %3$s', 'societypress' ),
+            sp_english_ordinal( $week ),
+            $day_names[ $dow ] ?? '',
+            $end_human
+        );
+    }
+
+    if ( strpos( $rule, 'monthly-date:' ) === 0 ) {
+        $day     = (int) substr( $rule, 13 );
+        $ordinal = sp_english_ordinal( $day );
+        return sprintf(
+            /* translators: 1: ordinal day (15th), 2: end date */
+            __( 'The %1$s of every month through %2$s', 'societypress' ),
+            $ordinal,
+            $end_human
+        );
+    }
+
+    return '';
 }
 
 

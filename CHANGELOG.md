@@ -12,7 +12,23 @@ Entries describe user-visible changes only. For the underlying commits, see
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+- **Live recurrence preview on the event editor.** Picking a recurrence
+  type now shows a plain-English summary ("Every 2nd Wednesday through
+  December 31, 2026 — 7 occurrences"), a collapsible list of the
+  actual dates, and a 3-month mini-calendar with the occurrence dates
+  highlighted. Updates live as the event date, recurrence type, or
+  repeat-until date change — no save-and-regenerate round-trip needed.
+
+### Changed
+- Recurrence dropdown labels reworded to match what the feature
+  actually does ("Every month on the same weekday" rather than
+  "Monthly (e.g., 2nd Saturday)"), since the specific weekday is
+  derived from the event date, not picked separately. The preview
+  carries the specificity.
+- Date generation logic extracted into shared `sp_compute_recurrence_dates()`
+  and `sp_build_recurrence_rule()` helpers so the save path, the
+  regeneration path, and the live preview can't drift.
 
 ---
 

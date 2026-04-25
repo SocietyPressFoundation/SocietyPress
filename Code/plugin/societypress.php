@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.0.29
+ * Version:     1.0.30
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.29' );
+define( 'SOCIETYPRESS_VERSION', '1.0.30' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -1302,6 +1302,28 @@ function sp_create_tables(): void {
         KEY user_id (user_id),
         KEY action (action),
         KEY object_type (object_type, object_id),
+        KEY created_at (created_at)
+    ) {$charset_collate};" );
+
+    // ========================================================================
+    // sp_access_log — Per-request URL access trail
+    //
+    // WHY: The audit log captures admin/CRUD actions; this captures plain
+    //      page views. Kept in its own table because volume can dwarf the
+    //      audit log even on a small site, and the two have different
+    //      retention windows. Logging is gated by Privacy → Activity Logging
+    //      so an admin who doesn't want this can leave it off.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}access_log (
+        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        user_id         BIGINT(20) UNSIGNED NULL,
+        url             VARCHAR(2048)       NOT NULL,
+        referer         VARCHAR(2048)       NULL,
+        user_agent      VARCHAR(500)        NULL,
+        ip_address      VARCHAR(45)         NULL,
+        created_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY user_id (user_id),
         KEY created_at (created_at)
     ) {$charset_collate};" );
 
@@ -18012,9 +18034,17 @@ add_action( 'admin_init', function () {
         ]
     );
 
-    // ---- PRIVACY page — just the privacy policy page picker ----
+    // ---- PRIVACY page — privacy policy picker + activity logging ----
     register_setting( 'sp-settings-privacy', 'wp_page_for_privacy_policy',
         [ 'sanitize_callback' => 'absint' ] );
+    register_setting(
+        'sp-settings-privacy',
+        'societypress_settings',
+        [
+            'type'              => 'array',
+            'sanitize_callback' => 'sp_sanitize_settings',
+        ]
+    );
 
     // ---- DESIGN page — saves to societypress_settings array ----
     register_setting(
@@ -18984,6 +19014,134 @@ add_action( 'admin_init', function () {
         'sp_privacy_section'
     );
 
+    // ====================================================================
+    // SECTION: Activity Logging (Privacy tab)
+    //
+    // WHY: Logins and admin actions are already tracked in the Audit Log
+    //      regardless of these settings. This section lets the admin opt
+    //      into two additional kinds of tracking: logout events and plain
+    //      page-view ("URL access") tracking. Both go into the existing
+    //      logs (logouts → Audit Log, page views → Access Log under
+    //      Reports). Defaults are tuned for "useful but not intrusive."
+    // ====================================================================
+    add_settings_section(
+        'sp_activity_logging_section',
+        __( 'Activity Logging', 'societypress' ),
+        function () {
+            echo '<p>' . esc_html__( 'Login attempts and admin actions are always recorded in the Audit Log. The settings below add optional tracking for logouts and page views.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-privacy'
+    );
+
+    $sp_logging = get_option( 'societypress_settings', [] );
+
+    // --- Log Logouts ---
+    add_settings_field(
+        'log_logouts',
+        __( 'Log Logouts', 'societypress' ),
+        function () use ( $sp_logging ) {
+            $val = $sp_logging['log_logouts'] ?? 1;
+            ?>
+            <label>
+                <input type="checkbox" name="societypress_settings[log_logouts]" value="1" <?php checked( $val, 1 ); ?>>
+                <?php esc_html_e( 'Record an entry in the Audit Log when a user signs out.', 'societypress' ); ?>
+            </label>
+            <?php
+        },
+        'sp-settings-privacy',
+        'sp_activity_logging_section'
+    );
+
+    // --- Log URL Access (master) ---
+    add_settings_field(
+        'log_url_access',
+        __( 'Log Page Views', 'societypress' ),
+        function () use ( $sp_logging ) {
+            $val = $sp_logging['log_url_access'] ?? 1;
+            ?>
+            <label>
+                <input type="checkbox" name="societypress_settings[log_url_access]" value="1" <?php checked( $val, 1 ); ?>>
+                <?php esc_html_e( 'Record which pages are visited. Viewable under Reports → Access Log.', 'societypress' ); ?>
+            </label>
+            <?php
+        },
+        'sp-settings-privacy',
+        'sp_activity_logging_section'
+    );
+
+    // --- URL Log Audience ---
+    add_settings_field(
+        'url_log_audience',
+        __( 'Whose Visits to Log', 'societypress' ),
+        function () use ( $sp_logging ) {
+            $val = $sp_logging['url_log_audience'] ?? 'members_only';
+            ?>
+            <label style="display:block; margin-bottom:4px;">
+                <input type="radio" name="societypress_settings[url_log_audience]" value="members_only" <?php checked( $val, 'members_only' ); ?>>
+                <?php esc_html_e( 'Logged-in members only', 'societypress' ); ?>
+            </label>
+            <label style="display:block;">
+                <input type="radio" name="societypress_settings[url_log_audience]" value="all_visitors" <?php checked( $val, 'all_visitors' ); ?>>
+                <?php esc_html_e( 'All visitors (including anonymous)', 'societypress' ); ?>
+            </label>
+            <p class="description"><?php esc_html_e( 'Anonymous logging produces a much higher volume of entries.', 'societypress' ); ?></p>
+            <?php
+        },
+        'sp-settings-privacy',
+        'sp_activity_logging_section'
+    );
+
+    // --- URL Log Scope ---
+    add_settings_field(
+        'url_log_scope',
+        __( 'Which Pages to Log', 'societypress' ),
+        function () use ( $sp_logging ) {
+            $val = $sp_logging['url_log_scope'] ?? 'sp_pages';
+            ?>
+            <label style="display:block; margin-bottom:4px;">
+                <input type="radio" name="societypress_settings[url_log_scope]" value="sp_pages" <?php checked( $val, 'sp_pages' ); ?>>
+                <?php esc_html_e( 'SocietyPress pages only (members, library, events, records, etc.)', 'societypress' ); ?>
+            </label>
+            <label style="display:block; margin-bottom:4px;">
+                <input type="radio" name="societypress_settings[url_log_scope]" value="all_frontend" <?php checked( $val, 'all_frontend' ); ?>>
+                <?php esc_html_e( 'All public pages (including blog, custom pages)', 'societypress' ); ?>
+            </label>
+            <label style="display:block;">
+                <input type="radio" name="societypress_settings[url_log_scope]" value="all_including_admin" <?php checked( $val, 'all_including_admin' ); ?>>
+                <?php esc_html_e( 'All pages including the admin dashboard', 'societypress' ); ?>
+            </label>
+            <p class="description"><?php esc_html_e( 'Static assets, REST endpoints, and admin-ajax requests are never logged.', 'societypress' ); ?></p>
+            <?php
+        },
+        'sp-settings-privacy',
+        'sp_activity_logging_section'
+    );
+
+    // --- URL Log Retention ---
+    add_settings_field(
+        'url_log_retention_days',
+        __( 'Keep Page View Entries For', 'societypress' ),
+        function () use ( $sp_logging ) {
+            $val = (int) ( $sp_logging['url_log_retention_days'] ?? 90 );
+            $opts = [
+                30  => __( '30 days', 'societypress' ),
+                90  => __( '90 days', 'societypress' ),
+                365 => __( '1 year', 'societypress' ),
+                0   => __( 'Forever (no automatic deletion)', 'societypress' ),
+            ];
+            ?>
+            <select name="societypress_settings[url_log_retention_days]">
+                <?php foreach ( $opts as $k => $label ) : ?>
+                    <option value="<?php echo esc_attr( $k ); ?>" <?php selected( $val, $k ); ?>><?php echo esc_html( $label ); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <p class="description"><?php esc_html_e( 'Older entries are pruned automatically by the daily maintenance cron.', 'societypress' ); ?></p>
+            <?php
+        },
+        'sp-settings-privacy',
+        'sp_activity_logging_section'
+    );
+
 
     // ====================================================================
     // SECTION: Directory
@@ -19390,6 +19548,16 @@ function sp_sanitize_settings( array $input ): array {
         'analytics_google_id'     => fn() => preg_match( '/^(G|UA|GT)-[A-Z0-9-]+$/i', $input['analytics_google_id'] ?? '' )
                                               ? sanitize_text_field( $input['analytics_google_id'] ) : '',
         'analytics_exclude_admins'=> fn() => ! empty( $input['analytics_exclude_admins'] ) ? 1 : 0,
+
+        // Activity Logging (Privacy tab)
+        'log_logouts'             => fn() => ! empty( $input['log_logouts'] ) ? 1 : 0,
+        'log_url_access'          => fn() => ! empty( $input['log_url_access'] ) ? 1 : 0,
+        'url_log_audience'        => fn() => in_array( $input['url_log_audience'] ?? '', [ 'members_only', 'all_visitors' ], true )
+                                              ? $input['url_log_audience'] : 'members_only',
+        'url_log_scope'           => fn() => in_array( $input['url_log_scope'] ?? '', [ 'sp_pages', 'all_frontend', 'all_including_admin' ], true )
+                                              ? $input['url_log_scope'] : 'sp_pages',
+        'url_log_retention_days'  => fn() => in_array( (int) ( $input['url_log_retention_days'] ?? -1 ), [ 0, 30, 90, 365 ], true )
+                                              ? (int) $input['url_log_retention_days'] : 90,
 
         // Organization
         'organization_name'       => fn() => sanitize_text_field( $input['organization_name'] ?? '' ),
@@ -20372,6 +20540,297 @@ add_action( 'wp_login', function( $user_login, $user ) {
 add_action( 'wp_login_failed', function( $username ) {
     sp_audit( 'login_failed', "Failed login attempt for: {$username}", 'user' );
 } );
+
+// Log logouts (opt-in via Privacy → Activity Logging)
+add_action( 'wp_logout', function( $user_id ) {
+    $sp = get_option( 'societypress_settings', [] );
+    if ( empty( $sp['log_logouts'] ) ) {
+        return;
+    }
+    $user = $user_id ? get_userdata( $user_id ) : null;
+    $name = $user ? $user->user_login : '(unknown)';
+    sp_audit( 'user_logout', "User signed out: {$name}", 'user', $user_id ?: null );
+} );
+
+// ============================================================================
+// ACCESS LOG — Page-view tracking (opt-in)
+//
+// WHY: Some societies want to know which pages members visit — not for
+//      surveillance, but for understanding what content gets used and what
+//      doesn't. Kept entirely separate from the audit log because volume
+//      is fundamentally different. Gated three ways from Privacy →
+//      Activity Logging: master toggle, audience (members/all), scope
+//      (SP pages / all frontend / + admin). REST, AJAX, cron, and
+//      assets are never logged regardless of settings — they're not
+//      meaningful "page views."
+// ============================================================================
+
+/**
+ * Record one access-log row for the current request.
+ *
+ * Wired to template_redirect on the frontend and admin_init on the dashboard
+ * (gated by scope). Returns silently if logging is disabled or the request
+ * doesn't match the configured audience/scope.
+ */
+function sp_log_url_access(): void {
+    // Bail on non-pageview requests no matter the settings.
+    if ( ( defined( 'DOING_AJAX' ) && DOING_AJAX )
+      || ( defined( 'DOING_CRON' ) && DOING_CRON )
+      || ( defined( 'REST_REQUEST' ) && REST_REQUEST )
+      || ( defined( 'WP_CLI' ) && WP_CLI ) ) {
+        return;
+    }
+
+    $sp = get_option( 'societypress_settings', [] );
+    if ( empty( $sp['log_url_access'] ) ) {
+        return;
+    }
+
+    // Audience filter
+    $audience = $sp['url_log_audience'] ?? 'members_only';
+    $user_id  = get_current_user_id();
+    if ( $audience === 'members_only' && ! $user_id ) {
+        return;
+    }
+
+    // Scope filter — sp_pages narrows to URLs that look like SP frontend pages.
+    $scope = $sp['url_log_scope'] ?? 'sp_pages';
+    $is_admin_request = is_admin();
+    if ( $is_admin_request && $scope !== 'all_including_admin' ) {
+        return;
+    }
+    if ( ! $is_admin_request && $scope === 'sp_pages' ) {
+        // The SP "frontend pages" set: anything served by an SP shortcode,
+        // SP page slug, or SP query var. Cheapest reliable test is the URL
+        // path against a list of known SP slugs/segments.
+        $path = strtolower( wp_parse_url( $_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH ) ?? '' );
+        $sp_segments = [
+            '/members', '/member', '/directory', '/profile', '/account',
+            '/library', '/records', '/events', '/event', '/donate', '/donations',
+            '/store', '/cart', '/checkout', '/orders',
+            '/newsletters', '/newsletter', '/blast', '/documents', '/photos',
+            '/gallery', '/help', '/help-requests', '/voting', '/ballots',
+            '/committees', '/committee', '/volunteer', '/volunteers',
+            '/join', '/login', '/logout', '/register', '/dashboard',
+        ];
+        $matched = false;
+        foreach ( $sp_segments as $seg ) {
+            if ( strpos( $path, $seg ) === 0 || strpos( $path, $seg . '/' ) !== false ) {
+                $matched = true;
+                break;
+            }
+        }
+        if ( ! $matched ) {
+            return;
+        }
+    }
+
+    // Ignore static assets just in case something upstream routed one through PHP.
+    $req = $_SERVER['REQUEST_URI'] ?? '';
+    if ( preg_match( '/\.(jpg|jpeg|png|gif|webp|svg|ico|css|js|map|woff2?|ttf|otf|mp4|webm|pdf)(\?|$)/i', $req ) ) {
+        return;
+    }
+
+    global $wpdb;
+    $wpdb->insert( $wpdb->prefix . 'sp_access_log', [
+        'user_id'    => $user_id ?: null,
+        'url'        => substr( esc_url_raw( home_url( $req ) ), 0, 2048 ),
+        'referer'    => isset( $_SERVER['HTTP_REFERER'] ) ? substr( esc_url_raw( $_SERVER['HTTP_REFERER'] ), 0, 2048 ) : null,
+        'user_agent' => isset( $_SERVER['HTTP_USER_AGENT'] ) ? substr( sanitize_text_field( $_SERVER['HTTP_USER_AGENT'] ), 0, 500 ) : null,
+        'ip_address' => isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( $_SERVER['REMOTE_ADDR'] ) : null,
+        'created_at' => current_time( 'mysql' ),
+    ] );
+}
+add_action( 'template_redirect', 'sp_log_url_access' );
+add_action( 'admin_init',        'sp_log_url_access' );
+
+/**
+ * Prune access-log entries past the configured retention window.
+ *
+ * WHY: Page-view logging is the highest-volume thing the plugin writes.
+ *      Without aggressive pruning the table swamps the database. Honors
+ *      the retention setting (30 / 90 / 365 days, or 0 = forever).
+ */
+function sp_prune_access_log(): void {
+    $sp   = get_option( 'societypress_settings', [] );
+    $days = (int) ( $sp['url_log_retention_days'] ?? 90 );
+    if ( $days <= 0 ) {
+        return; // "Forever" — never prune.
+    }
+    global $wpdb;
+    $wpdb->query( $wpdb->prepare(
+        "DELETE FROM {$wpdb->prefix}sp_access_log WHERE created_at < DATE_SUB(NOW(), INTERVAL %d DAY)",
+        $days
+    ) );
+}
+add_action( 'sp_daily_maintenance', 'sp_prune_access_log' );
+
+/**
+ * Add Access Log admin menu item under Reports.
+ */
+function sp_register_access_log_menu(): void {
+    add_submenu_page(
+        'societypress',
+        'Access Log — SocietyPress',
+        'Access Log',
+        'manage_options',
+        'sp-access-log',
+        'sp_render_access_log_page'
+    );
+}
+add_action( 'admin_menu', 'sp_register_access_log_menu', 99 );
+
+/**
+ * Render the Access Log admin page.
+ */
+function sp_render_access_log_page(): void {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_access_log';
+
+    $filter_user = (int) ( $_GET['user_filter'] ?? 0 );
+    $search      = sanitize_text_field( $_GET['s'] ?? '' );
+    $per_page    = 50;
+    $paged       = max( 1, (int) ( $_GET['paged'] ?? 1 ) );
+    $offset      = ( $paged - 1 ) * $per_page;
+
+    $where = [ '1=1' ];
+    $args  = [];
+
+    if ( $filter_user ) {
+        $where[] = 'a.user_id = %d';
+        $args[]  = $filter_user;
+    }
+    if ( $search ) {
+        $like    = '%' . $wpdb->esc_like( $search ) . '%';
+        $where[] = '(a.url LIKE %s OR a.referer LIKE %s)';
+        $args[]  = $like;
+        $args[]  = $like;
+    }
+
+    $where_sql = implode( ' AND ', $where );
+
+    $count_sql = "SELECT COUNT(*) FROM {$table} a WHERE {$where_sql}";
+    $total = $args
+        ? (int) $wpdb->get_var( $wpdb->prepare( $count_sql, ...$args ) )
+        : (int) $wpdb->get_var( $count_sql );
+    $total_pages = $total ? (int) ceil( $total / $per_page ) : 0;
+
+    $rows_sql = "SELECT a.*, u.display_name AS user_name
+                 FROM {$table} a
+                 LEFT JOIN {$wpdb->users} u ON a.user_id = u.ID
+                 WHERE {$where_sql}
+                 ORDER BY a.created_at DESC
+                 LIMIT %d OFFSET %d";
+    $query_args = array_merge( $args, [ $per_page, $offset ] );
+    $rows = $wpdb->get_results( $wpdb->prepare( $rows_sql, ...$query_args ) );
+
+    $sp        = get_option( 'societypress_settings', [] );
+    $enabled   = ! empty( $sp['log_url_access'] );
+    $retention = (int) ( $sp['url_log_retention_days'] ?? 90 );
+    ?>
+    <div class="wrap sp-admin-wrap">
+        <h1><?php esc_html_e( 'Access Log', 'societypress' ); ?></h1>
+
+        <?php if ( ! $enabled ) : ?>
+            <div class="notice notice-warning"><p>
+                <?php
+                printf(
+                    /* translators: %s: link to Privacy settings */
+                    wp_kses( __( 'Page-view logging is currently <strong>off</strong>. Turn it on under %s to start recording.', 'societypress' ), [ 'strong' => [] ] ),
+                    '<a href="' . esc_url( admin_url( 'admin.php?page=sp-settings-privacy' ) ) . '">' . esc_html__( 'Privacy → Activity Logging', 'societypress' ) . '</a>'
+                );
+                ?>
+            </p></div>
+        <?php endif; ?>
+
+        <style>
+            .sp-access-filters { background: #fff; border: 1px solid #c3c4c7; padding: 12px; margin: 12px 0; display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
+            .sp-access-filters label { font-size: 12px; display: block; margin-bottom: 2px; color: #646970; }
+            .sp-access-filters input { padding: 4px 8px; }
+            .sp-access-url { font-family: monospace; font-size: 12px; word-break: break-all; }
+            .sp-access-ua { color: #646970; font-size: 11px; word-break: break-all; }
+        </style>
+
+        <form method="get" class="sp-access-filters">
+            <input type="hidden" name="page" value="sp-access-log">
+            <div>
+                <label for="sp-acf-search"><?php esc_html_e( 'Search URL', 'societypress' ); ?></label>
+                <input type="search" name="s" id="sp-acf-search" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php echo esc_attr__( '/members, /events…', 'societypress' ); ?>">
+            </div>
+            <div>
+                <button type="submit" class="button"><?php esc_html_e( 'Filter', 'societypress' ); ?></button>
+                <?php if ( $filter_user || $search ) : ?>
+                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-access-log' ) ); ?>" class="button"><?php esc_html_e( 'Clear', 'societypress' ); ?></a>
+                <?php endif; ?>
+            </div>
+        </form>
+
+        <table class="widefat striped">
+            <thead>
+                <tr>
+                    <th><?php esc_html_e( 'Date/Time', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'User', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'URL', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Referer', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'IP', 'societypress' ); ?></th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if ( empty( $rows ) ) : ?>
+                    <tr><td colspan="5" style="text-align:center; padding:20px;"><?php esc_html_e( 'No log entries found.', 'societypress' ); ?></td></tr>
+                <?php else : ?>
+                    <?php foreach ( $rows as $row ) : ?>
+                        <tr>
+                            <td style="white-space: nowrap;"><?php echo esc_html( wp_date( 'M j, Y g:i A', strtotime( $row->created_at ) ) ); ?></td>
+                            <td><?php echo $row->user_name ? esc_html( $row->user_name ) : '<span style="color:#787c82;">' . esc_html__( 'Anonymous', 'societypress' ) . '</span>'; ?></td>
+                            <td class="sp-access-url"><?php echo esc_html( $row->url ); ?>
+                                <?php if ( ! empty( $row->user_agent ) ) : ?>
+                                    <div class="sp-access-ua"><?php echo esc_html( $row->user_agent ); ?></div>
+                                <?php endif; ?>
+                            </td>
+                            <td class="sp-access-url"><?php echo $row->referer ? esc_html( $row->referer ) : ''; ?></td>
+                            <td style="font-size: 12px; color: #787c82;"><?php echo $row->ip_address ? esc_html( $row->ip_address ) : ''; ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
+
+        <?php if ( $total_pages > 1 ) : ?>
+            <div class="tablenav bottom">
+                <div class="tablenav-pages">
+                    <span class="displaying-num"><?php echo number_format( $total ); ?> entries</span>
+                    <?php
+                    echo paginate_links( [
+                        'base'    => add_query_arg( 'paged', '%#%' ),
+                        'format'  => '',
+                        'current' => $paged,
+                        'total'   => $total_pages,
+                        'prev_text' => '&laquo;',
+                        'next_text' => '&raquo;',
+                    ] );
+                    ?>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <p style="margin-top: 16px; color: #646970; font-size: 12px;">
+            <?php
+            if ( $retention > 0 ) {
+                printf(
+                    /* translators: %d: number of days */
+                    esc_html__( 'Entries older than %d days are automatically pruned.', 'societypress' ),
+                    $retention
+                );
+            } else {
+                esc_html_e( 'Retention is set to "Forever" — entries are never pruned automatically.', 'societypress' );
+            }
+            echo ' ' . number_format( $total ) . ' ' . esc_html__( 'total entries.', 'societypress' );
+            ?>
+        </p>
+    </div>
+    <?php
+}
 
 // ============================================================================
 // BREADCRUMBS NAVIGATION

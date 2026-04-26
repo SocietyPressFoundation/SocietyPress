@@ -4252,8 +4252,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        'Photo Gallery — SocietyPress',
-        'Photo Gallery',
+        'Add Images — SocietyPress',
+        'Add Images',
         'manage_options',
         'sp-gallery',
         'sp_render_gallery_page'
@@ -4688,6 +4688,21 @@ add_action( 'admin_menu', function () {
         'widgets.php'
     );
 
+    // Customize — links to the WordPress Customizer (themes register front-end
+    // editing surfaces here). WHY: SocietyPress strips the default WP
+    // Appearance menu and the front-end admin-bar "Customize" was previously
+    // removed, so without an explicit entry there is no path for a volunteer
+    // to find theme-level editing. Themes (parent + child) extend the
+    // Customizer with their own panels, so this entry stays useful no matter
+    // which theme is active.
+    add_submenu_page(
+        'societypress',
+        'Customize',
+        'Customize',
+        'edit_theme_options',
+        'customize.php'
+    );
+
     // -----------------------------------------------------------------
     // REPORTS GROUP — Dashboard + Annual Report
     // WHY: Quick stat cards and detailed annual report generation.
@@ -5021,6 +5036,7 @@ function sp_get_menu_capability_map(): array {
         'upload.php'               => 'sp_manage_content',
         'nav-menus.php'            => 'sp_manage_settings',
         'widgets.php'              => 'sp_manage_settings',
+        'customize.php'            => 'sp_manage_settings',
 
         // Reports
         'sp-reports'               => 'sp_view_reports',
@@ -5171,10 +5187,12 @@ add_action( 'admin_menu', function () {
 add_action( 'admin_bar_menu', function ( $wp_admin_bar ) {
 
     // Remove the default site-name dropdown children
-    // (Dashboard, Themes, Customize, Widgets, Menus, Plugins)
+    // (Dashboard, Themes, Widgets, Menus, Plugins). We deliberately keep
+    // 'customize' — it's the entry point a logged-in admin sees from the
+    // front-end of the site to edit theme content. Without it Harold has
+    // no obvious way to change anything he sees on the page.
     $wp_admin_bar->remove_node( 'dashboard' );
     $wp_admin_bar->remove_node( 'themes' );
-    $wp_admin_bar->remove_node( 'customize' );
     $wp_admin_bar->remove_node( 'widgets' );
     $wp_admin_bar->remove_node( 'menus' );
 
@@ -7963,7 +7981,7 @@ var spMenuConfig = {
         },
         {
             id:    'gallery',
-            label: 'Gallery',
+            label: 'Add Images',
             icon:  'dashicons-format-gallery',
             items: ['sp-gallery']
         },
@@ -7995,7 +8013,7 @@ var spMenuConfig = {
             id:    'appearance',
             label: 'Appearance',
             icon:  'dashicons-admin-appearance',
-            items: ['sp-themes', 'sp-pages', 'upload.php', 'nav-menus.php', 'widgets.php', 'sp-settings-design']
+            items: ['sp-themes', 'sp-pages', 'upload.php', 'nav-menus.php', 'widgets.php', 'customize.php', 'sp-settings-design']
         },
         {
             id:    'reports',
@@ -8114,6 +8132,22 @@ var spMenuConfig = {
                     }
                 }
             });
+
+            // Empty groups (e.g. when every feature module they contain is
+            // disabled) shouldn't render at all.
+            if (childItems.length === 0) {
+                return;
+            }
+
+            // Single-item groups render as a flat sidebar link instead of a
+            // flyout. WHY: a flyout that opens to reveal one identical-looking
+            // link is two clicks for nothing — Harold should land on the page
+            // in one click. The item keeps its configured group position.
+            if (childItems.length === 1) {
+                if (hasCurrent) childItems[0].el.classList.add('sp-group-has-current');
+                builtGroups[gc.id] = childItems[0].el;
+                return;
+            }
 
             // Group header in the sidebar
             var headerLink = document.createElement('a');

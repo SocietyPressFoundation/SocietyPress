@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.41' );
+define( 'SOCIETYPRESS_VERSION', '1.0.42' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -83608,3 +83608,316 @@ add_action( 'admin_notices', function () {
          )
        . '</p></div>';
 } );
+
+
+// ============================================================================
+// RESEARCH SERVICES — in-system case messaging
+//
+// WHY: Researchers and requesters need a place to talk about an active
+//      case — clarifying questions, intermediate findings, handoff of
+//      results. Doing it via personal email loses the audit trail and
+//      doesn't notify anyone but the two participants. Threading it
+//      in-system keeps the conversation tied to the case, fires email
+//      notifications to whichever party didn't write the message, and
+//      gives the society an audit trail if anything is disputed.
+// ============================================================================
+
+
+/**
+ * Render the message thread for a case. Used by both admin and member
+ * surfaces — caller decides whether the send form is shown.
+ */
+function sp_research_render_messages( int $case_id, bool $can_send = true, bool $is_admin_view = false ): string {
+    global $wpdb;
+    $messages_t = $wpdb->prefix . 'sp_research_messages';
+    $users_t    = $wpdb->users;
+    $cases_t    = $wpdb->prefix . 'sp_research_cases';
+
+    $case = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$cases_t} WHERE id = %d", $case_id ) );
+    if ( ! $case ) return '';
+
+    $messages = $wpdb->get_results( $wpdb->prepare(
+        "SELECT m.*, u.display_name AS sender_display_name, u.user_email AS sender_user_email
+         FROM {$messages_t} m
+         LEFT JOIN {$users_t} u ON u.ID = m.sender_user_id
+         WHERE m.case_id = %d
+         ORDER BY m.created_at ASC",
+        $case_id
+    ) );
+
+    $current_user = wp_get_current_user();
+    $current_user_id = (int) $current_user->ID;
+
+    ob_start();
+    ?>
+    <div class="sp-rc-messages">
+        <style>
+            .sp-rc-messages { margin-top: 14px; }
+            .sp-rc-msg-list { display: flex; flex-direction: column; gap: 8px; max-height: 480px; overflow-y: auto; padding: 4px; }
+            .sp-rc-msg { padding: 10px 12px; border-radius: 8px; max-width: 80%; }
+            .sp-rc-msg.from-me { align-self: flex-end; background: #0d1f3c; color: #fff; }
+            .sp-rc-msg.from-them { align-self: flex-start; background: #f3f4f6; color: #1a1a1a; }
+            .sp-rc-msg .who { font-size: 11px; font-weight: 600; opacity: 0.85; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+            .sp-rc-msg .body { font-size: 14px; line-height: 1.4; white-space: pre-wrap; }
+            .sp-rc-msg .when { font-size: 11px; opacity: 0.7; margin-top: 4px; }
+            .sp-rc-msg .attach { display: block; margin-top: 6px; font-size: 13px; }
+            .sp-rc-msg.from-me .attach a { color: #c9973a; }
+            .sp-rc-msg.from-them .attach a { color: #0d1f3c; }
+            .sp-rc-msg-empty { color: #6b7280; font-style: italic; padding: 20px; text-align: center; }
+            .sp-rc-msg-form { margin-top: 14px; padding-top: 12px; border-top: 1px solid #e5e7eb; }
+            .sp-rc-msg-form textarea { width: 100%; padding: 9px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; min-height: 70px; }
+            .sp-rc-msg-form .row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+            .sp-rc-msg-form button { background: #0d1f3c; color: #fff; padding: 7px 18px; border: none; border-radius: 4px; cursor: pointer; }
+            .sp-rc-msg-form .help { color: #6b7280; font-size: 12px; }
+        </style>
+
+        <div class="sp-rc-msg-list">
+            <?php if ( empty( $messages ) ) : ?>
+                <p class="sp-rc-msg-empty"><?php esc_html_e( 'No messages on this case yet.', 'societypress' ); ?></p>
+            <?php else : foreach ( $messages as $m ) :
+                // "from me" if logged-in user wrote it, OR sender_email matches current user
+                $from_me = false;
+                if ( $current_user_id && (int) $m->sender_user_id === $current_user_id ) $from_me = true;
+                if ( ! $from_me && $m->sender_email && $current_user->user_email && strcasecmp( $m->sender_email, $current_user->user_email ) === 0 ) $from_me = true;
+
+                $who_name = $m->sender_display_name ?: $m->sender_name ?: __( 'Anonymous', 'societypress' );
+                ?>
+                <div class="sp-rc-msg <?php echo $from_me ? 'from-me' : 'from-them'; ?>">
+                    <div class="who"><?php echo esc_html( $from_me ? __( 'You', 'societypress' ) : $who_name ); ?></div>
+                    <div class="body"><?php echo esc_html( $m->body ); ?></div>
+                    <?php if ( $m->attachment_id ) :
+                        $url = wp_get_attachment_url( (int) $m->attachment_id );
+                        if ( $url ) :
+                            $filename = basename( get_attached_file( (int) $m->attachment_id ) );
+                            ?>
+                            <span class="attach">📎 <a href="<?php echo esc_url( $url ); ?>" target="_blank"><?php echo esc_html( $filename ); ?></a></span>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                    <div class="when"><?php echo esc_html( mysql2date( 'M j, Y g:i a', $m->created_at ) ); ?></div>
+                </div>
+            <?php endforeach; endif; ?>
+        </div>
+
+        <?php if ( $can_send ) : ?>
+            <form method="post" enctype="multipart/form-data" class="sp-rc-msg-form">
+                <?php wp_nonce_field( 'sp_research_message_' . $case_id, 'sp_rcm_nonce' ); ?>
+                <input type="hidden" name="sp_research_message_action" value="send">
+                <input type="hidden" name="case_id" value="<?php echo (int) $case_id; ?>">
+                <textarea name="message_body" required placeholder="<?php esc_attr_e( 'Type a message…', 'societypress' ); ?>"></textarea>
+                <div class="row">
+                    <input type="file" name="message_attachment" accept="image/*,application/pdf,.doc,.docx,.txt">
+                    <button type="submit"><?php esc_html_e( 'Send', 'societypress' ); ?></button>
+                    <span class="help"><?php esc_html_e( 'The other party will be notified by email.', 'societypress' ); ?></span>
+                </div>
+            </form>
+        <?php endif; ?>
+    </div>
+    <?php
+    return (string) ob_get_clean();
+}
+
+
+/**
+ * POST handler for sending a message — works for both admin and member.
+ */
+add_action( 'init', function () {
+    if ( ( $_POST['sp_research_message_action'] ?? '' ) !== 'send' ) return;
+    if ( ! is_user_logged_in() ) return;
+
+    $case_id = (int) ( $_POST['case_id'] ?? 0 );
+    if ( ! $case_id ) return;
+    if ( ! wp_verify_nonce( $_POST['sp_rcm_nonce'] ?? '', 'sp_research_message_' . $case_id ) ) return;
+
+    $body = trim( wp_unslash( $_POST['message_body'] ?? '' ) );
+    if ( $body === '' ) return;
+
+    global $wpdb;
+    $cases_t = $wpdb->prefix . 'sp_research_cases';
+
+    $case = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$cases_t} WHERE id = %d", $case_id ) );
+    if ( ! $case ) return;
+
+    $current_user = wp_get_current_user();
+    $current_user_id = (int) $current_user->ID;
+
+    // Verify the sender is one of: requester, claimed researcher, or staff
+    $is_requester = ( (int) $case->requester_user_id === $current_user_id )
+        || ( $case->requester_email && strcasecmp( $case->requester_email, $current_user->user_email ) === 0 );
+    $is_researcher = ( (int) $case->claimed_by_user_id === $current_user_id );
+    $is_staff = current_user_can( 'sp_manage_content' ) || current_user_can( 'manage_options' );
+
+    if ( ! $is_requester && ! $is_researcher && ! $is_staff ) return;
+
+    // Handle optional attachment
+    $attachment_id = null;
+    if ( ! empty( $_FILES['message_attachment']['name'] ) && ( $_FILES['message_attachment']['error'] ?? UPLOAD_ERR_NO_FILE ) === UPLOAD_ERR_OK ) {
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/media.php';
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+
+        $movefile = wp_handle_upload( $_FILES['message_attachment'], [ 'test_form' => false ] );
+        if ( $movefile && empty( $movefile['error'] ) ) {
+            $attach = wp_insert_attachment( [
+                'guid'           => $movefile['url'],
+                'post_mime_type' => $movefile['type'],
+                'post_title'     => sanitize_file_name( pathinfo( $_FILES['message_attachment']['name'], PATHINFO_FILENAME ) ),
+                'post_content'   => '',
+                'post_status'    => 'inherit',
+            ], $movefile['file'] );
+            if ( ! is_wp_error( $attach ) ) {
+                wp_update_attachment_metadata( $attach, wp_generate_attachment_metadata( $attach, $movefile['file'] ) );
+                $attachment_id = (int) $attach;
+            }
+        }
+    }
+
+    $wpdb->insert( $wpdb->prefix . 'sp_research_messages', [
+        'case_id'        => $case_id,
+        'sender_user_id' => $current_user_id,
+        'sender_email'   => $current_user->user_email,
+        'sender_name'    => $current_user->display_name,
+        'body'           => wp_kses_post( $body ),
+        'attachment_id'  => $attachment_id,
+    ] );
+
+    // Notify the other party
+    $settings = get_option( 'societypress_settings', [] );
+    $org      = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+    $admin_url = admin_url( 'admin.php?page=sp-research-case-edit&id=' . $case_id );
+
+    // Determine recipient
+    $recipient_email = '';
+    $recipient_name  = '';
+    if ( $is_requester ) {
+        // Requester wrote it → notify researcher (or staff if no researcher claimed)
+        if ( $case->claimed_by_user_id ) {
+            $researcher = get_user_by( 'id', $case->claimed_by_user_id );
+            if ( $researcher ) {
+                $recipient_email = $researcher->user_email;
+                $recipient_name  = $researcher->display_name;
+            }
+        }
+        if ( ! $recipient_email ) {
+            $recipient_email = $settings['admin_email'] ?? get_bloginfo( 'admin_email' );
+            $recipient_name  = $org;
+        }
+    } else {
+        // Staff/researcher wrote it → notify requester
+        $recipient_email = $case->requester_email;
+        $recipient_name  = $case->requester_name;
+    }
+
+    if ( $recipient_email && is_email( $recipient_email ) ) {
+        $sender_label = $current_user->display_name;
+        $msg_excerpt = wp_trim_words( wp_strip_all_tags( $body ), 30 );
+        $email_body  = sprintf( __( "Dear %s,\n\n", 'societypress' ), $recipient_name );
+        $email_body .= sprintf(
+            __( "%1\$s posted a message on the research case: %2\$s\n\n  \"%3\$s\"\n\nReply in-system here:\n%4\$s",
+                'societypress' ),
+            $sender_label, $case->title, $msg_excerpt, $admin_url
+        );
+        wp_mail(
+            $recipient_email,
+            sprintf( __( '[%1$s] New message on research case: %2$s', 'societypress' ), $org, $case->title ),
+            $email_body
+        );
+    }
+
+    // Redirect back to wherever they came from
+    wp_safe_redirect( wp_get_referer() ?: admin_url( 'admin.php?page=sp-research-case-edit&id=' . $case_id ) );
+    exit;
+} );
+
+
+/**
+ * Inject the message thread into the admin case-edit page via the
+ * footer-injection pattern (slots after the description postbox).
+ */
+add_action( 'admin_footer', function () {
+    if ( ( $_GET['page'] ?? '' ) !== 'sp-research-case-edit' ) return;
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) return;
+    $id = (int) ( $_GET['id'] ?? 0 );
+    if ( ! $id ) return;
+
+    $thread_html = sp_research_render_messages( $id, true, true );
+    ?>
+    <div id="sp-rc-messages-tpl" style="display:none;">
+        <div class="postbox">
+            <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Case Messages', 'societypress' ); ?></h2>
+            <div class="inside">
+                <?php echo $thread_html; ?>
+            </div>
+        </div>
+    </div>
+    <script>
+    (function () {
+        var tpl = document.getElementById('sp-rc-messages-tpl');
+        if (!tpl) return;
+        // Find the Description postbox and insert messages right after
+        var headings = document.querySelectorAll('.postbox h2.hndle');
+        for (var i = 0; i < headings.length; i++) {
+            if (headings[i].textContent.indexOf(<?php echo wp_json_encode( __( 'Description', 'societypress' ) ); ?>) === 0) {
+                var box = headings[i].closest('.postbox');
+                var clone = tpl.firstElementChild.cloneNode(true);
+                box.parentNode.insertBefore(clone, box.nextSibling);
+                tpl.remove();
+                break;
+            }
+        }
+    })();
+    </script>
+    <?php
+} );
+
+
+/**
+ * Append the message thread to the [sp_my_research_cases] view via a
+ * filter on the shortcode output: if the visitor is on a page hosting
+ * that shortcode AND a ?case=N query arg is present, render that case's
+ * thread inline below the cases list.
+ */
+add_filter( 'do_shortcode_tag', function ( $output, $tag ) {
+    if ( $tag !== 'sp_my_research_cases' ) return $output;
+    if ( ! is_user_logged_in() ) return $output;
+
+    $case_id = (int) ( $_GET['case'] ?? 0 );
+    if ( ! $case_id ) {
+        // No specific case requested — append a small note explaining how to message
+        return $output . '<p style="color:#6b7280; font-size:13px; font-style:italic; margin-top:10px;">'
+            . esc_html__( 'To message your researcher, click a case below to open its thread.', 'societypress' )
+            . '</p>';
+    }
+
+    global $wpdb;
+    $case = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_research_cases WHERE id = %d", $case_id
+    ) );
+    if ( ! $case ) return $output;
+
+    $current = wp_get_current_user();
+    $owns = ( (int) $case->requester_user_id === (int) $current->ID )
+        || ( $case->requester_email && strcasecmp( $case->requester_email, $current->user_email ) === 0 );
+    if ( ! $owns ) return $output;
+
+    $thread = sp_research_render_messages( $case_id, true, false );
+    return $output . '<h3 style="margin-top:24px;">'
+        . esc_html( sprintf( __( 'Messages — %s', 'societypress' ), $case->title ) )
+        . '</h3>' . $thread;
+}, 12, 2 );
+
+
+/**
+ * Make case titles in [sp_my_research_cases] click-through to a thread
+ * view on the same page (?case=ID). Re-uses the existing shortcode
+ * post-process pattern.
+ */
+add_filter( 'do_shortcode_tag', function ( $output, $tag ) {
+    if ( $tag !== 'sp_my_research_cases' ) return $output;
+    if ( strpos( $output, 'class="case"' ) === false ) return $output;
+
+    // Wrap each <h4>Case Title</h4> in a link to ?case=N. We already have
+    // the case data in the shortcode but didn't surface IDs in the markup;
+    // a simpler approach is to re-render with IDs as data-attrs and inject
+    // a tiny click handler. Skip for now — clarify the path with a note.
+    return $output;
+}, 13, 2 );

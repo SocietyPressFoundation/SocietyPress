@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.37' );
+define( 'SOCIETYPRESS_VERSION', '1.0.38' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -80805,3 +80805,547 @@ add_filter( 'sp_builder_widget_types', function ( array $types ): array {
 function sp_render_builder_widget_my_volunteer_hours( array $s ): void {
     echo do_shortcode( '[sp_my_volunteer_hours]' );
 }
+
+
+// ============================================================================
+// HELP REQUESTS — PUBLIC SUBMISSION + EMAIL VERIFICATION + ARCHIVE
+//
+// WHY: Visitors (not just members) should be able to ask a research
+//      question — that's the "duty librarian" model. To prevent abuse:
+//      a math captcha on the form, email verification before the request
+//      goes live, and a per-email/IP rate limit. The submission form is
+//      a shortcode embeddable anywhere; the archive is a separate
+//      shortcode that lists open + resolved threads (resolved threads
+//      are SEO content gold — searchable answers to genealogy questions).
+//
+// SETTINGS used:
+//   help_requests_public_submission   (bool, default 1)
+//   help_requests_require_approval    (bool, default 0 — when 1, even
+//                                      verified requests need a moderator
+//                                      to publish)
+//   help_requests_per_email_per_day   (int, default 3)
+// ============================================================================
+
+
+/**
+ * Cheap math captcha — generates a "what's A + B?" challenge that's
+ * good enough to stop drive-by spam but doesn't require external
+ * services. Two server-stored values (a transient) match the user's
+ * answer; the form carries an opaque token, not the values themselves.
+ */
+function sp_help_make_captcha(): array {
+    $a = wp_rand( 2, 9 );
+    $b = wp_rand( 2, 9 );
+    $token = wp_generate_password( 24, false, false );
+    set_transient( 'sp_help_captcha_' . $token, $a + $b, 30 * MINUTE_IN_SECONDS );
+    return [ 'token' => $token, 'a' => $a, 'b' => $b ];
+}
+
+function sp_help_verify_captcha( string $token, int $answer ): bool {
+    if ( ! $token ) return false;
+    $expected = get_transient( 'sp_help_captcha_' . $token );
+    if ( $expected === false ) return false;
+    delete_transient( 'sp_help_captcha_' . $token );
+    return (int) $expected === $answer;
+}
+
+
+/**
+ * Rate-limit check — N submissions per email or IP per 24h.
+ */
+function sp_help_rate_limit_ok( string $email, string $ip ): bool {
+    $settings = get_option( 'societypress_settings', [] );
+    $max = max( 1, (int) ( $settings['help_requests_per_email_per_day'] ?? 3 ) );
+
+    $email_key = 'sp_help_rl_e_' . md5( strtolower( $email ) );
+    $ip_key    = 'sp_help_rl_i_' . md5( $ip );
+
+    $email_count = (int) ( get_transient( $email_key ) ?: 0 );
+    $ip_count    = (int) ( get_transient( $ip_key ) ?: 0 );
+
+    if ( $email_count >= $max ) return false;
+    if ( $ip_count    >= $max * 3 ) return false; // IP cap is more generous
+
+    set_transient( $email_key, $email_count + 1, DAY_IN_SECONDS );
+    set_transient( $ip_key,    $ip_count + 1,    DAY_IN_SECONDS );
+    return true;
+}
+
+
+/**
+ * Shortcode: [sp_help_request_submit]
+ *
+ * Public submission form. Visitor enters name + email + title +
+ * description (+ optional tags). Form posts back to itself with a
+ * captcha; on success, the request lands in pending_verification,
+ * a verification email goes out, the visitor sees a "check your
+ * email" notice. The verification link flips email_verified=1 and
+ * either auto-publishes (default) or queues for moderator approval.
+ */
+add_shortcode( 'sp_help_request_submit', function () {
+    if ( ! sp_module_enabled( 'help_requests' ) ) {
+        return '<p>' . esc_html__( 'Help Requests is not enabled.', 'societypress' ) . '</p>';
+    }
+    $settings = get_option( 'societypress_settings', [] );
+    if ( empty( $settings['help_requests_public_submission'] ) && ! isset( $settings['help_requests_public_submission'] ) ) {
+        // Setting absent: default-on. Setting explicitly 0: respect it.
+    }
+    if ( isset( $settings['help_requests_public_submission'] ) && (int) $settings['help_requests_public_submission'] === 0 ) {
+        return '<p>' . esc_html__( 'Public research-help submissions are not currently accepted on this site.', 'societypress' ) . '</p>';
+    }
+
+    $msg     = sanitize_text_field( $_GET['sp_help_msg'] ?? '' );
+    $current = wp_get_current_user();
+
+    $captcha = sp_help_make_captcha();
+
+    ob_start();
+    ?>
+    <div class="sp-help-public-submit">
+        <style>
+            .sp-help-public-submit { max-width: 640px; margin: 1.5em auto; }
+            .sp-help-public-submit form { background: #fafafa; border: 1px solid #ddd; border-radius: 8px; padding: 22px; }
+            .sp-help-public-submit label { display: block; font-weight: 600; margin: 12px 0 4px; }
+            .sp-help-public-submit input[type=text], .sp-help-public-submit input[type=email], .sp-help-public-submit textarea {
+                width: 100%; padding: 9px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 15px;
+            }
+            .sp-help-public-submit textarea { min-height: 110px; }
+            .sp-help-public-submit .help { color: #666; font-size: 13px; }
+            .sp-help-public-submit .row { display: flex; gap: 10px; }
+            .sp-help-public-submit .row > div { flex: 1; }
+            .sp-help-public-submit button { background: #0d1f3c; color: #fff; padding: 11px 20px; border: none; border-radius: 4px; font-size: 15px; cursor: pointer; margin-top: 14px; }
+            .sp-help-public-submit .notice { padding: 12px 14px; border-radius: 6px; margin-bottom: 14px; }
+            .sp-help-public-submit .notice-success { background: #e8f5e9; border-left: 4px solid #166534; color: #1f4d2c; }
+            .sp-help-public-submit .notice-error { background: #fde8e8; border-left: 4px solid #b91c1c; color: #7d1414; }
+            .sp-help-public-submit .captcha-row { background: #f0f0f0; padding: 10px 14px; border-radius: 4px; display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+            .sp-help-public-submit .captcha-row input { width: 80px; }
+        </style>
+
+        <?php if ( $msg === 'submitted' ) : ?>
+            <div class="notice notice-success">
+                <strong><?php esc_html_e( 'Almost there.', 'societypress' ); ?></strong>
+                <?php esc_html_e( 'We sent a verification link to the email you provided. Click it to publish your question. Check your spam folder if it does not arrive within a minute.', 'societypress' ); ?>
+            </div>
+        <?php elseif ( $msg === 'verified' ) : ?>
+            <div class="notice notice-success">
+                <strong><?php esc_html_e( 'Verified.', 'societypress' ); ?></strong>
+                <?php esc_html_e( 'Your question is now visible. You will receive an email when someone responds.', 'societypress' ); ?>
+            </div>
+        <?php elseif ( $msg === 'pending_review' ) : ?>
+            <div class="notice notice-success">
+                <strong><?php esc_html_e( 'Verified — awaiting review.', 'societypress' ); ?></strong>
+                <?php esc_html_e( 'Your question has been verified and is now in the moderation queue. A volunteer will publish it shortly.', 'societypress' ); ?>
+            </div>
+        <?php elseif ( $msg === 'rate_limited' ) : ?>
+            <div class="notice notice-error"><?php esc_html_e( 'Too many submissions in the past day. Please try again tomorrow or contact us directly.', 'societypress' ); ?></div>
+        <?php elseif ( $msg === 'captcha_failed' ) : ?>
+            <div class="notice notice-error"><?php esc_html_e( 'The math check did not match. Please try again.', 'societypress' ); ?></div>
+        <?php elseif ( $msg === 'invalid' ) : ?>
+            <div class="notice notice-error"><?php esc_html_e( 'Please fill in name, email, title, and description.', 'societypress' ); ?></div>
+        <?php elseif ( $msg === 'verify_invalid' ) : ?>
+            <div class="notice notice-error"><?php esc_html_e( 'That verification link is invalid or expired. You can submit your question again below.', 'societypress' ); ?></div>
+        <?php endif; ?>
+
+        <h2><?php esc_html_e( 'Ask a Research Question', 'societypress' ); ?></h2>
+        <p class="help"><?php esc_html_e( 'You don\'t need to be a member. Our volunteer researchers help when they can — out of comradery, not for a fee. Be specific about what you\'re looking for.', 'societypress' ); ?></p>
+
+        <form method="post">
+            <?php wp_nonce_field( 'sp_help_public_submit', 'sp_help_nonce' ); ?>
+            <input type="hidden" name="sp_help_action" value="public_submit">
+            <input type="hidden" name="captcha_token" value="<?php echo esc_attr( $captcha['token'] ); ?>">
+
+            <div class="row">
+                <div>
+                    <label><?php esc_html_e( 'Your name', 'societypress' ); ?></label>
+                    <input type="text" name="requester_name" value="<?php echo esc_attr( $current->display_name ); ?>" required>
+                </div>
+                <div>
+                    <label><?php esc_html_e( 'Email', 'societypress' ); ?></label>
+                    <input type="email" name="requester_email" value="<?php echo esc_attr( $current->user_email ); ?>" required>
+                </div>
+            </div>
+
+            <label><?php esc_html_e( 'Question title', 'societypress' ); ?></label>
+            <input type="text" name="question_title" maxlength="200" required placeholder="<?php esc_attr_e( 'e.g. Looking for Smith family in Sample County 1850-1870', 'societypress' ); ?>">
+
+            <label><?php esc_html_e( 'Details', 'societypress' ); ?></label>
+            <textarea name="question_description" required placeholder="<?php esc_attr_e( 'What do you know? What are you trying to find? Where have you already looked?', 'societypress' ); ?>"></textarea>
+
+            <label><?php esc_html_e( 'Tags (optional)', 'societypress' ); ?> <span class="help"><?php esc_html_e( 'comma-separated, e.g. "sample county, marriage records, 1850s"', 'societypress' ); ?></span></label>
+            <input type="text" name="question_tags" maxlength="500">
+
+            <div class="captcha-row">
+                <span><?php printf( esc_html__( 'Quick check: what is %1$d + %2$d?', 'societypress' ), (int) $captcha['a'], (int) $captcha['b'] ); ?></span>
+                <input type="number" name="captcha_answer" required>
+            </div>
+
+            <button type="submit"><?php esc_html_e( 'Post Question', 'societypress' ); ?></button>
+        </form>
+    </div>
+    <?php
+    return (string) ob_get_clean();
+} );
+
+
+/**
+ * POST handler for public submissions.
+ */
+add_action( 'init', function () {
+    if ( ( $_POST['sp_help_action'] ?? '' ) !== 'public_submit' ) return;
+
+    $referer = wp_get_referer() ?: home_url();
+    if ( ! wp_verify_nonce( $_POST['sp_help_nonce'] ?? '', 'sp_help_public_submit' ) ) {
+        wp_safe_redirect( add_query_arg( 'sp_help_msg', 'invalid', $referer ) );
+        exit;
+    }
+
+    $name  = sanitize_text_field( wp_unslash( $_POST['requester_name']  ?? '' ) );
+    $email = sanitize_email( wp_unslash( $_POST['requester_email']      ?? '' ) );
+    $title = sanitize_text_field( wp_unslash( $_POST['question_title']  ?? '' ) );
+    $desc  = sanitize_textarea_field( wp_unslash( $_POST['question_description'] ?? '' ) );
+    $tags  = sanitize_text_field( wp_unslash( $_POST['question_tags']   ?? '' ) );
+
+    if ( ! $name || ! is_email( $email ) || ! $title || ! $desc ) {
+        wp_safe_redirect( add_query_arg( 'sp_help_msg', 'invalid', $referer ) );
+        exit;
+    }
+
+    // Captcha
+    $captcha_token  = sanitize_text_field( $_POST['captcha_token']  ?? '' );
+    $captcha_answer = (int) ( $_POST['captcha_answer'] ?? -1 );
+    if ( ! sp_help_verify_captcha( $captcha_token, $captcha_answer ) ) {
+        wp_safe_redirect( add_query_arg( 'sp_help_msg', 'captcha_failed', $referer ) );
+        exit;
+    }
+
+    // Rate limit
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+    if ( ! sp_help_rate_limit_ok( $email, $ip ) ) {
+        wp_safe_redirect( add_query_arg( 'sp_help_msg', 'rate_limited', $referer ) );
+        exit;
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // Match to a member if the email belongs to a registered user
+    $matched_user = get_user_by( 'email', $email );
+    $user_id      = $matched_user ? (int) $matched_user->ID : null;
+
+    $token = wp_generate_password( 32, false, false );
+
+    $wpdb->insert( $prefix . 'help_requests', [
+        'user_id'            => $user_id,
+        'requester_name'     => $name,
+        'requester_email'    => $email,
+        'title'              => $title,
+        'description'        => $desc,
+        'tags'               => $tags ?: null,
+        'status'             => 'pending_verification',
+        'is_public'          => 1,
+        'email_verified'     => 0,
+        'verification_token' => $token,
+    ] );
+    $request_id = (int) $wpdb->insert_id;
+
+    // Send verification email
+    $verify_url = add_query_arg( [
+        'sp_help_verify' => $token,
+    ], $referer );
+
+    $org = trim( get_option( 'societypress_settings', [] )['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+    $body = sprintf( __( 'Hi %s,', 'societypress' ), $name ) . "\n\n";
+    $body .= sprintf(
+        __( "We received your research question on %1\$s:\n\n  %2\$s\n\nClick the link below to publish it. The link is valid for 24 hours.\n\n%3\$s\n\nIf you did not submit this question, ignore this email.", 'societypress' ),
+        $org, $title, $verify_url
+    );
+    wp_mail(
+        $email,
+        sprintf( __( '[%s] Verify your research question', 'societypress' ), $org ),
+        $body
+    );
+
+    wp_safe_redirect( add_query_arg( 'sp_help_msg', 'submitted', $referer ) );
+    exit;
+} );
+
+
+/**
+ * Verification link handler — runs early so the redirect lands cleanly.
+ */
+add_action( 'init', function () {
+    $token = sanitize_text_field( $_GET['sp_help_verify'] ?? '' );
+    if ( ! $token ) return;
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    $row = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$prefix}help_requests WHERE verification_token = %s AND email_verified = 0 LIMIT 1",
+        $token
+    ) );
+
+    $base_url = remove_query_arg( 'sp_help_verify' );
+    if ( ! $row ) {
+        wp_safe_redirect( add_query_arg( 'sp_help_msg', 'verify_invalid', $base_url ) );
+        exit;
+    }
+
+    // 24-hour token expiry
+    if ( strtotime( $row->created_at ) < ( time() - DAY_IN_SECONDS ) ) {
+        wp_safe_redirect( add_query_arg( 'sp_help_msg', 'verify_invalid', $base_url ) );
+        exit;
+    }
+
+    $settings = get_option( 'societypress_settings', [] );
+    $needs_review = ! empty( $settings['help_requests_require_approval'] );
+
+    $update = [
+        'email_verified'     => 1,
+        'verification_token' => null,
+    ];
+    if ( $needs_review ) {
+        $update['status']       = 'pending_review';
+        $update['published_at'] = null;
+    } else {
+        $update['status']       = 'open';
+        $update['published_at'] = current_time( 'mysql' );
+    }
+    $wpdb->update( $prefix . 'help_requests', $update, [ 'id' => $row->id ] );
+
+    // Notify staff that a new question is published / awaiting review
+    $admin_email = $settings['admin_email'] ?? get_bloginfo( 'admin_email' );
+    if ( $admin_email ) {
+        $org = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+        $admin_url = admin_url( 'admin.php?page=sp-help-requests&action=view&request_id=' . (int) $row->id );
+        $verb = $needs_review ? __( 'awaiting moderation', 'societypress' ) : __( 'published', 'societypress' );
+        wp_mail(
+            $admin_email,
+            sprintf( __( '[%1$s] Research question %2$s: %3$s', 'societypress' ), $org, $verb, $row->title ),
+            sprintf(
+                __( "%1\$s asked: %2\$s\n\n%3\$s\n\nReview / respond:\n%4\$s", 'societypress' ),
+                $row->requester_name, $row->title, $row->description, $admin_url
+            )
+        );
+    }
+
+    wp_safe_redirect( add_query_arg( 'sp_help_msg', $needs_review ? 'pending_review' : 'verified', $base_url ) );
+    exit;
+} );
+
+
+/**
+ * Shortcode: [sp_help_requests_archive]
+ *
+ * Public archive — lists open + resolved threads with their tags and
+ * response counts. Open threads link to the response thread; resolved
+ * threads link to the SEO-friendly archive view (which is the same
+ * thread page, but the resolved label tells visitors "this is the
+ * answer to a question someone already asked").
+ */
+add_shortcode( 'sp_help_requests_archive', function ( $atts ) {
+    if ( ! sp_module_enabled( 'help_requests' ) ) {
+        return '<p>' . esc_html__( 'Help Requests is not enabled.', 'societypress' ) . '</p>';
+    }
+    $atts = shortcode_atts( [
+        'per_page' => '20',
+        'show_search' => '1',
+    ], $atts, 'sp_help_requests_archive' );
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $search = sanitize_text_field( $_GET['sp_help_q'] ?? '' );
+    $page   = max( 1, (int) ( $_GET['sp_help_pg'] ?? 1 ) );
+    $per    = max( 5, min( 100, (int) $atts['per_page'] ) );
+    $offset = ( $page - 1 ) * $per;
+
+    $where  = [ "is_public = 1", "email_verified = 1", "status IN ('open','resolved')" ];
+    $params = [];
+    if ( $search !== '' ) {
+        $where[] = '(title LIKE %s OR description LIKE %s OR tags LIKE %s)';
+        $like = '%' . $wpdb->esc_like( $search ) . '%';
+        $params[] = $like; $params[] = $like; $params[] = $like;
+    }
+    $where_sql = implode( ' AND ', $where );
+
+    $count_sql = "SELECT COUNT(*) FROM {$prefix}help_requests WHERE {$where_sql}";
+    $list_sql  = "SELECT * FROM {$prefix}help_requests
+                  WHERE {$where_sql}
+                  ORDER BY (status = 'open') DESC, created_at DESC
+                  LIMIT %d OFFSET %d";
+
+    $total = $params
+        ? (int) $wpdb->get_var( $wpdb->prepare( $count_sql, ...$params ) )
+        : (int) $wpdb->get_var( $count_sql );
+
+    $list_params = array_merge( $params, [ $per, $offset ] );
+    $rows = $wpdb->get_results( $wpdb->prepare( $list_sql, ...$list_params ) );
+
+    $total_pages = max( 1, (int) ceil( $total / $per ) );
+
+    ob_start();
+    ?>
+    <div class="sp-help-archive">
+        <style>
+            .sp-help-archive { margin: 1.5em 0; }
+            .sp-help-archive form.sp-help-search { display: flex; gap: 8px; margin-bottom: 16px; }
+            .sp-help-archive form.sp-help-search input[type=search] { flex: 1; padding: 9px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 15px; }
+            .sp-help-archive form.sp-help-search button { background: #0d1f3c; color: #fff; padding: 9px 18px; border: none; border-radius: 4px; cursor: pointer; }
+            .sp-help-archive .sp-help-thread { background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; padding: 14px 16px; margin-bottom: 10px; }
+            .sp-help-archive .sp-help-thread h3 { margin: 0 0 6px; font-size: 17px; }
+            .sp-help-archive .sp-help-thread h3 a { text-decoration: none; color: #0d1f3c; }
+            .sp-help-archive .sp-help-thread h3 a:hover { text-decoration: underline; }
+            .sp-help-archive .sp-help-meta { color: #6b7280; font-size: 13px; }
+            .sp-help-archive .sp-help-tag { display: inline-block; padding: 1px 8px; background: #f3f4f6; color: #4b5563; border-radius: 10px; font-size: 12px; margin-right: 4px; }
+            .sp-help-archive .sp-help-status-resolved { background: #166534; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+            .sp-help-archive .sp-help-status-open { background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+            .sp-help-archive .sp-help-empty { color: #6b7280; font-style: italic; padding: 30px; text-align: center; }
+            .sp-help-archive .sp-help-pagination { margin-top: 14px; display: flex; gap: 6px; justify-content: center; }
+            .sp-help-archive .sp-help-pagination a, .sp-help-archive .sp-help-pagination span {
+                padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px; text-decoration: none; color: #374151; font-size: 13px;
+            }
+            .sp-help-archive .sp-help-pagination .current { background: #0d1f3c; color: #fff; border-color: #0d1f3c; }
+        </style>
+
+        <?php if ( $atts['show_search'] === '1' ) : ?>
+            <form method="get" class="sp-help-search">
+                <input type="search" name="sp_help_q" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php esc_attr_e( 'Search questions and answers…', 'societypress' ); ?>">
+                <button type="submit"><?php esc_html_e( 'Search', 'societypress' ); ?></button>
+            </form>
+        <?php endif; ?>
+
+        <?php if ( empty( $rows ) ) : ?>
+            <p class="sp-help-empty">
+                <?php
+                echo $search !== ''
+                    ? esc_html__( 'No matching questions found.', 'societypress' )
+                    : esc_html__( 'No public questions yet.', 'societypress' );
+                ?>
+            </p>
+        <?php else : ?>
+            <?php foreach ( $rows as $r ) :
+                $thread_url = add_query_arg( [ 'sp_help' => 'view', 'id' => $r->id ], home_url() );
+                $tags = array_filter( array_map( 'trim', explode( ',', (string) $r->tags ) ) );
+                ?>
+                <div class="sp-help-thread">
+                    <h3><a href="<?php echo esc_url( $thread_url ); ?>"><?php echo esc_html( $r->title ); ?></a></h3>
+                    <p class="sp-help-meta">
+                        <?php
+                        printf(
+                            esc_html__( 'Asked %1$s · %2$d response%3$s', 'societypress' ),
+                            esc_html( human_time_diff( strtotime( $r->created_at ), time() ) . ' ago' ),
+                            (int) $r->responses_count,
+                            (int) $r->responses_count === 1 ? '' : 's'
+                        );
+                        ?>
+                        <?php if ( $r->status === 'resolved' ) : ?>
+                            <span class="sp-help-status-resolved"><?php esc_html_e( 'RESOLVED', 'societypress' ); ?></span>
+                        <?php else : ?>
+                            <span class="sp-help-status-open"><?php esc_html_e( 'OPEN', 'societypress' ); ?></span>
+                        <?php endif; ?>
+                    </p>
+                    <?php if ( ! empty( $tags ) ) : ?>
+                        <p style="margin: 6px 0 0;">
+                            <?php foreach ( $tags as $tag ) : ?>
+                                <span class="sp-help-tag"><?php echo esc_html( $tag ); ?></span>
+                            <?php endforeach; ?>
+                        </p>
+                    <?php endif; ?>
+                </div>
+            <?php endforeach; ?>
+
+            <?php if ( $total_pages > 1 ) : ?>
+                <div class="sp-help-pagination">
+                    <?php for ( $p = 1; $p <= $total_pages; $p++ ) :
+                        if ( $p === $page ) :
+                            echo '<span class="current">' . (int) $p . '</span>';
+                        else :
+                            $pg_url = add_query_arg( 'sp_help_pg', $p );
+                            echo '<a href="' . esc_url( $pg_url ) . '">' . (int) $p . '</a>';
+                        endif;
+                    endfor; ?>
+                </div>
+            <?php endif; ?>
+        <?php endif; ?>
+    </div>
+    <?php
+    return (string) ob_get_clean();
+} );
+
+
+/**
+ * Page-builder widgets for the new shortcodes.
+ */
+add_filter( 'sp_builder_widget_types', function ( array $types ): array {
+    $types['help_request_submit'] = [
+        'label'       => __( 'Help Request Submission Form', 'societypress' ),
+        'description' => __( 'Public form where visitors (members or not) submit research questions. Includes a math captcha and email verification.', 'societypress' ),
+        'fields'      => [],
+    ];
+    $types['help_requests_archive'] = [
+        'label'       => __( 'Help Requests Archive', 'societypress' ),
+        'description' => __( 'Searchable list of open and resolved research questions — the public-facing FAQ that grows with every answered question.', 'societypress' ),
+        'fields'      => [
+            'per_page' => [
+                'label'   => __( 'Questions per page', 'societypress' ),
+                'type'    => 'number',
+                'default' => 20,
+            ],
+            'show_search' => [
+                'label'   => __( 'Show search box', 'societypress' ),
+                'type'    => 'checkbox',
+                'default' => true,
+            ],
+        ],
+    ];
+    return $types;
+} );
+
+function sp_render_builder_widget_help_request_submit( array $s ): void {
+    echo do_shortcode( '[sp_help_request_submit]' );
+}
+
+function sp_render_builder_widget_help_requests_archive( array $s ): void {
+    $atts = [
+        'per_page'    => (string) max( 5, min( 100, (int) ( $s['per_page'] ?? 20 ) ) ),
+        'show_search' => ! empty( $s['show_search'] ) ? '1' : '0',
+    ];
+    echo do_shortcode( '[sp_help_requests_archive ' . sp_builder_atts_to_string( $atts ) . ']' );
+}
+
+
+/**
+ * Admin: Show pending-verification + pending-review counts on the
+ * Research Help Requests admin page so moderators see incoming work.
+ */
+add_action( 'admin_notices', function () {
+    $screen = get_current_screen();
+    if ( ! $screen || ( $_GET['page'] ?? '' ) !== 'sp-help-requests' ) return;
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) return;
+
+    global $wpdb;
+    $counts = $wpdb->get_results(
+        "SELECT status, COUNT(*) AS cnt FROM {$wpdb->prefix}sp_help_requests
+         WHERE status IN ('pending_verification','pending_review') GROUP BY status",
+        OBJECT_K
+    );
+    $pv = (int) ( $counts['pending_verification']->cnt ?? 0 );
+    $pr = (int) ( $counts['pending_review']->cnt ?? 0 );
+
+    if ( $pv === 0 && $pr === 0 ) return;
+
+    $msgs = [];
+    if ( $pr > 0 ) {
+        $msgs[] = sprintf(
+            esc_html( _n( '%d question is awaiting moderator approval.', '%d questions are awaiting moderator approval.', $pr, 'societypress' ) ),
+            $pr
+        );
+    }
+    if ( $pv > 0 ) {
+        $msgs[] = sprintf(
+            esc_html( _n( '%d submitter has not yet clicked the email-verification link.', '%d submitters have not yet clicked the email-verification link.', $pv, 'societypress' ) ),
+            $pv
+        );
+    }
+    echo '<div class="notice notice-info"><p>' . implode( ' ', $msgs ) . '</p></div>';
+} );

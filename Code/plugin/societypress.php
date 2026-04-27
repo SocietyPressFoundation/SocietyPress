@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.38' );
+define( 'SOCIETYPRESS_VERSION', '1.0.39' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -2336,10 +2336,103 @@ function sp_create_tables(): void {
         KEY application_id (application_id)
     ) {$charset_collate};" );
 
+    // ========================================================================
+    // sp_research_cases — Paid research-services intake
+    //
+    // WHY: Comradery (Help Requests) is the default; a small number of cases
+    //      genuinely require many hours of focused work — pulling stacks of
+    //      records, transcribing dozens of documents, professional-grade
+    //      reports. Those become research cases here. Society sets the rate;
+    //      Stripe handles payment up front; researcher claims the case;
+    //      hours logged via sp_volunteer_hours (source_type='research_case').
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}research_cases (
+        id                       BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        requester_user_id        BIGINT(20) UNSIGNED NULL,
+        requester_name           VARCHAR(255)        NOT NULL,
+        requester_email          VARCHAR(255)        NOT NULL,
+        requester_phone          VARCHAR(50)         NULL,
+        title                    VARCHAR(500)        NOT NULL,
+        description              LONGTEXT            NOT NULL,
+        ancestor_name            VARCHAR(255)        NULL,
+        surname                  VARCHAR(100)        NULL,
+        time_period              VARCHAR(150)        NULL,
+        location                 VARCHAR(255)        NULL,
+        additional_details       LONGTEXT            NULL,
+        source_help_request_id   BIGINT(20) UNSIGNED NULL,
+        hourly_rate              DECIMAL(10,2)       NOT NULL DEFAULT 30.00,
+        max_hours_authorized     DECIMAL(5,2)        NOT NULL DEFAULT 1.00,
+        paid_amount              DECIMAL(10,2)       NOT NULL DEFAULT 0.00,
+        status                   VARCHAR(30)         NOT NULL DEFAULT 'pending_payment',
+        claimed_by_user_id       BIGINT(20) UNSIGNED NULL,
+        assigned_at              DATETIME            NULL,
+        started_at               DATETIME            NULL,
+        completed_at             DATETIME            NULL,
+        due_date                 DATE                NULL,
+        sla_days                 INT UNSIGNED        NOT NULL DEFAULT 14,
+        admin_note               LONGTEXT            NULL,
+        stripe_session_id        VARCHAR(255)        NULL,
+        created_at               DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at               DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY requester_user_id (requester_user_id),
+        KEY requester_email (requester_email),
+        KEY status (status),
+        KEY claimed_by_user_id (claimed_by_user_id),
+        KEY due_date (due_date),
+        KEY source_help_request_id (source_help_request_id)
+    ) {$charset_collate};" );
+
+    // ========================================================================
+    // sp_research_invoices — Per-case Stripe charges
+    //
+    // WHY: A case may need additional hours beyond the initial authorization.
+    //      Each new charge is a row here so the case's billing history is
+    //      auditable and refunds can target a specific invoice.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}research_invoices (
+        id                    BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        case_id               BIGINT(20) UNSIGNED NOT NULL,
+        hours                 DECIMAL(5,2)        NOT NULL DEFAULT 0.00,
+        amount                DECIMAL(10,2)       NOT NULL DEFAULT 0.00,
+        description           VARCHAR(500)        NULL,
+        status                VARCHAR(20)         NOT NULL DEFAULT 'pending',
+        stripe_session_id     VARCHAR(255)        NULL,
+        stripe_payment_intent VARCHAR(255)        NULL,
+        paid_at               DATETIME            NULL,
+        created_at            DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY case_id (case_id),
+        KEY status (status)
+    ) {$charset_collate};" );
+
+    // ========================================================================
+    // sp_research_messages — Threaded communication on a case
+    //
+    // WHY: Researcher and requester need to talk during the case (clarifying
+    //      questions, intermediate findings, handoff of results). Keeping
+    //      messages in-system rather than over email means the society has
+    //      a record if there's a dispute, and a non-member requester doesn't
+    //      need a WP login to participate (sender_email + sender_name).
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}research_messages (
+        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        case_id         BIGINT(20) UNSIGNED NOT NULL,
+        sender_user_id  BIGINT(20) UNSIGNED NULL,
+        sender_email    VARCHAR(255)        NULL,
+        sender_name     VARCHAR(255)        NULL,
+        body            LONGTEXT            NOT NULL,
+        attachment_id   BIGINT(20) UNSIGNED NULL,
+        created_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY case_id (case_id),
+        KEY sender_user_id (sender_user_id)
+    ) {$charset_collate};" );
+
 
     // Store the schema version so we can run migrations in future updates
     // without re-running the full dbDelta on every page load.
-    update_option( 'societypress_db_version', '0.31d' );
+    update_option( 'societypress_db_version', '0.32d' );
 }
 
 
@@ -3385,6 +3478,12 @@ function sp_get_modules(): array {
             'description' => __( 'Recognize members who document descent from historically significant ancestors — First Families, Pioneer Settlers, Civil War veterans, and similar lineage / heritage programs.', 'societypress' ),
             'icon'        => 'dashicons-awards',
             'menu_slugs'  => [ 'sp-lineage-programs', 'sp-lineage-program-edit', 'sp-lineage-applications', 'sp-lineage-application-edit' ],
+        ],
+        'research_services' => [
+            'name'        => __( 'Paid Research Services', 'societypress' ),
+            'description' => __( 'Optional paid research-case workflow for the rare extensive case that needs many hours of focused work. Stripe-billed up front, additional hours invoiced as needed. Comradery via the Help Requests module is the default; this is the opt-in escalation.', 'societypress' ),
+            'icon'        => 'dashicons-clipboard',
+            'menu_slugs'  => [ 'sp-research-cases', 'sp-research-case-edit' ],
         ],
     ];
 }
@@ -4632,6 +4731,29 @@ add_action( 'admin_menu', function () {
         'sp_render_lineage_application_edit_page'
     );
 
+    // -----------------------------------------------------------------
+    // RESEARCH SERVICES — Paid research-case workflow (opt-in)
+    // -----------------------------------------------------------------
+
+    add_submenu_page(
+        'societypress',
+        __( 'Research Cases', 'societypress' ) . ' — SocietyPress',
+        __( 'Research Cases', 'societypress' ),
+        'manage_options',
+        'sp-research-cases',
+        'sp_render_research_cases_page'
+    );
+
+    // Hidden — Single case review (accessed via row action)
+    add_submenu_page(
+        '',
+        __( 'Review Research Case', 'societypress' ) . ' — SocietyPress',
+        __( 'Review Research Case', 'societypress' ),
+        'manage_options',
+        'sp-research-case-edit',
+        'sp_render_research_case_edit_page'
+    );
+
     // Library item edit — hidden (accessed via row actions)
     add_submenu_page(
         '',
@@ -5235,6 +5357,10 @@ function sp_get_menu_capability_map(): array {
         'sp-lineage-program-edit'     => 'sp_manage_content',
         'sp-lineage-applications'     => 'sp_manage_content',
         'sp-lineage-application-edit' => 'sp_manage_content',
+
+        // Research Services
+        'sp-research-cases'           => 'sp_manage_content',
+        'sp-research-case-edit'       => 'sp_manage_content',
 
         // Finances
         'sp-finances'              => 'sp_manage_finances',
@@ -81349,3 +81475,1101 @@ add_action( 'admin_notices', function () {
     }
     echo '<div class="notice notice-info"><p>' . implode( ' ', $msgs ) . '</p></div>';
 } );
+
+
+// ============================================================================
+// HELP REQUESTS — admin bulk actions + tag filter on archive
+//
+// WHY: The admin list page now sees public submissions arriving. Bulk
+//      actions (approve from pending_review, hide, mark resolved,
+//      delete) make moderation cheap. The archive shortcode collects
+//      free-form tags from submissions; surfacing the top tags as
+//      clickable filter pills turns the archive into a navigable
+//      knowledge base instead of a chronological list.
+// ============================================================================
+
+
+/**
+ * POST handler for admin bulk actions on help requests.
+ */
+add_action( 'admin_init', function () {
+    if ( ( $_POST['sp_help_bulk_action'] ?? '' ) === '' ) return;
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) return;
+
+    check_admin_referer( 'sp_help_bulk' );
+
+    $action = sanitize_text_field( $_POST['sp_help_bulk_action'] );
+    $ids    = array_map( 'intval', (array) ( $_POST['help_ids'] ?? [] ) );
+    $ids    = array_filter( $ids );
+
+    if ( empty( $ids ) ) {
+        wp_safe_redirect( add_query_arg( 'sp_help_msg', 'no_selection', admin_url( 'admin.php?page=sp-help-requests' ) ) );
+        exit;
+    }
+
+    global $wpdb;
+    $prefix      = $wpdb->prefix . 'sp_';
+    $placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+
+    switch ( $action ) {
+        case 'approve':
+            // For pending_review: flip to open + set published_at
+            $wpdb->query( $wpdb->prepare(
+                "UPDATE {$prefix}help_requests
+                 SET status = 'open', published_at = %s
+                 WHERE id IN ({$placeholders}) AND status = 'pending_review'",
+                array_merge( [ current_time( 'mysql' ) ], $ids )
+            ) );
+            $msg = 'approved';
+            break;
+
+        case 'mark_resolved':
+            $wpdb->query( $wpdb->prepare(
+                "UPDATE {$prefix}help_requests
+                 SET status = 'resolved', resolved_at = %s
+                 WHERE id IN ({$placeholders})",
+                array_merge( [ current_time( 'mysql' ) ], $ids )
+            ) );
+            $msg = 'resolved';
+            break;
+
+        case 'hide':
+            $wpdb->query( $wpdb->prepare(
+                "UPDATE {$prefix}help_requests SET status = 'hidden' WHERE id IN ({$placeholders})",
+                ...$ids
+            ) );
+            $msg = 'hidden';
+            break;
+
+        case 'delete':
+            $wpdb->query( $wpdb->prepare(
+                "DELETE FROM {$prefix}help_responses WHERE request_id IN ({$placeholders})",
+                ...$ids
+            ) );
+            $wpdb->query( $wpdb->prepare(
+                "DELETE FROM {$prefix}help_requests WHERE id IN ({$placeholders})",
+                ...$ids
+            ) );
+            $msg = 'deleted';
+            break;
+
+        default:
+            $msg = 'unknown_action';
+    }
+
+    wp_safe_redirect( add_query_arg( [
+        'sp_help_msg'   => $msg,
+        'sp_help_count' => count( $ids ),
+    ], admin_url( 'admin.php?page=sp-help-requests' ) ) );
+    exit;
+} );
+
+
+/**
+ * Top-tags filter pills on the public archive.
+ *
+ * WHY: Tags are stored free-form on each request. Computing the top N
+ *      tags on archive load gives visitors a click-to-filter path
+ *      without needing a tags table. Counts come from a single GROUP BY.
+ */
+function sp_help_get_top_tags( int $limit = 12 ): array {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $rows = $wpdb->get_col(
+        "SELECT tags FROM {$prefix}help_requests
+         WHERE is_public = 1 AND email_verified = 1
+         AND status IN ('open','resolved')
+         AND tags IS NOT NULL AND tags <> ''"
+    );
+
+    $counts = [];
+    foreach ( $rows as $tag_str ) {
+        foreach ( explode( ',', (string) $tag_str ) as $tag ) {
+            $tag = strtolower( trim( $tag ) );
+            if ( $tag === '' ) continue;
+            $counts[ $tag ] = ( $counts[ $tag ] ?? 0 ) + 1;
+        }
+    }
+    arsort( $counts );
+    return array_slice( $counts, 0, $limit, true );
+}
+
+
+/**
+ * Filter the archive query by tag when ?sp_help_tag=... is present.
+ * Hooks via a wrapper around the existing shortcode output that prepends
+ * the filter pills and re-runs the inner query when a tag is selected.
+ */
+add_action( 'init', function () {
+    // No-op — filter is read directly inside the archive shortcode below.
+}, 999 );
+
+
+/**
+ * Replace the [sp_help_requests_archive] shortcode with a tag-aware
+ * version (re-registers, last registration wins).
+ */
+add_action( 'init', function () {
+    // Remove the previous registration before adding the upgraded one
+    remove_shortcode( 'sp_help_requests_archive' );
+
+    add_shortcode( 'sp_help_requests_archive', function ( $atts ) {
+        if ( ! sp_module_enabled( 'help_requests' ) ) {
+            return '<p>' . esc_html__( 'Help Requests is not enabled.', 'societypress' ) . '</p>';
+        }
+        $atts = shortcode_atts( [
+            'per_page'     => '20',
+            'show_search'  => '1',
+            'show_tags'    => '1',
+        ], $atts, 'sp_help_requests_archive' );
+
+        global $wpdb;
+        $prefix = $wpdb->prefix . 'sp_';
+
+        $search    = sanitize_text_field( $_GET['sp_help_q']   ?? '' );
+        $tag_filter = strtolower( sanitize_text_field( $_GET['sp_help_tag'] ?? '' ) );
+        $page      = max( 1, (int) ( $_GET['sp_help_pg'] ?? 1 ) );
+        $per       = max( 5, min( 100, (int) $atts['per_page'] ) );
+        $offset    = ( $page - 1 ) * $per;
+
+        $where  = [ "is_public = 1", "email_verified = 1", "status IN ('open','resolved')" ];
+        $params = [];
+        if ( $search !== '' ) {
+            $where[] = '(title LIKE %s OR description LIKE %s OR tags LIKE %s)';
+            $like = '%' . $wpdb->esc_like( $search ) . '%';
+            $params[] = $like; $params[] = $like; $params[] = $like;
+        }
+        if ( $tag_filter !== '' ) {
+            $where[] = 'tags LIKE %s';
+            $params[] = '%' . $wpdb->esc_like( $tag_filter ) . '%';
+        }
+        $where_sql = implode( ' AND ', $where );
+
+        $count_sql = "SELECT COUNT(*) FROM {$prefix}help_requests WHERE {$where_sql}";
+        $list_sql  = "SELECT * FROM {$prefix}help_requests
+                      WHERE {$where_sql}
+                      ORDER BY (status = 'open') DESC, created_at DESC
+                      LIMIT %d OFFSET %d";
+
+        $total = $params
+            ? (int) $wpdb->get_var( $wpdb->prepare( $count_sql, ...$params ) )
+            : (int) $wpdb->get_var( $count_sql );
+
+        $list_params = array_merge( $params, [ $per, $offset ] );
+        $rows = $wpdb->get_results( $wpdb->prepare( $list_sql, ...$list_params ) );
+        $total_pages = max( 1, (int) ceil( $total / $per ) );
+
+        $top_tags = ( $atts['show_tags'] === '1' ) ? sp_help_get_top_tags( 12 ) : [];
+
+        ob_start();
+        ?>
+        <div class="sp-help-archive">
+            <style>
+                .sp-help-archive { margin: 1.5em 0; }
+                .sp-help-archive form.sp-help-search { display: flex; gap: 8px; margin-bottom: 16px; }
+                .sp-help-archive form.sp-help-search input[type=search] { flex: 1; padding: 9px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 15px; }
+                .sp-help-archive form.sp-help-search button { background: #0d1f3c; color: #fff; padding: 9px 18px; border: none; border-radius: 4px; cursor: pointer; }
+                .sp-help-archive .sp-help-tag-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+                .sp-help-archive .sp-help-tag-filter { padding: 4px 12px; background: #f3f4f6; color: #374151; border-radius: 14px; font-size: 13px; text-decoration: none; border: 1px solid transparent; }
+                .sp-help-archive .sp-help-tag-filter:hover { background: #e5e7eb; }
+                .sp-help-archive .sp-help-tag-filter.active { background: #0d1f3c; color: #fff; border-color: #0d1f3c; }
+                .sp-help-archive .sp-help-tag-filter .count { color: #6b7280; font-size: 11px; margin-left: 4px; }
+                .sp-help-archive .sp-help-tag-filter.active .count { color: rgba(255,255,255,0.7); }
+                .sp-help-archive .sp-help-thread { background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; padding: 14px 16px; margin-bottom: 10px; }
+                .sp-help-archive .sp-help-thread h3 { margin: 0 0 6px; font-size: 17px; }
+                .sp-help-archive .sp-help-thread h3 a { text-decoration: none; color: #0d1f3c; }
+                .sp-help-archive .sp-help-thread h3 a:hover { text-decoration: underline; }
+                .sp-help-archive .sp-help-meta { color: #6b7280; font-size: 13px; }
+                .sp-help-archive .sp-help-tag { display: inline-block; padding: 1px 8px; background: #f3f4f6; color: #4b5563; border-radius: 10px; font-size: 12px; margin-right: 4px; }
+                .sp-help-archive .sp-help-status-resolved { background: #166534; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+                .sp-help-archive .sp-help-status-open { background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+                .sp-help-archive .sp-help-empty { color: #6b7280; font-style: italic; padding: 30px; text-align: center; }
+                .sp-help-archive .sp-help-pagination { margin-top: 14px; display: flex; gap: 6px; justify-content: center; }
+                .sp-help-archive .sp-help-pagination a, .sp-help-archive .sp-help-pagination span {
+                    padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px; text-decoration: none; color: #374151; font-size: 13px;
+                }
+                .sp-help-archive .sp-help-pagination .current { background: #0d1f3c; color: #fff; border-color: #0d1f3c; }
+            </style>
+
+            <?php if ( $atts['show_search'] === '1' ) : ?>
+                <form method="get" class="sp-help-search">
+                    <?php if ( $tag_filter !== '' ) : ?>
+                        <input type="hidden" name="sp_help_tag" value="<?php echo esc_attr( $tag_filter ); ?>">
+                    <?php endif; ?>
+                    <input type="search" name="sp_help_q" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php esc_attr_e( 'Search questions and answers…', 'societypress' ); ?>">
+                    <button type="submit"><?php esc_html_e( 'Search', 'societypress' ); ?></button>
+                </form>
+            <?php endif; ?>
+
+            <?php if ( ! empty( $top_tags ) ) : ?>
+                <div class="sp-help-tag-filters">
+                    <?php
+                    $base = remove_query_arg( [ 'sp_help_tag', 'sp_help_pg' ] );
+                    if ( $tag_filter !== '' ) {
+                        echo '<a href="' . esc_url( $base ) . '" class="sp-help-tag-filter">' . esc_html__( '× Clear filter', 'societypress' ) . '</a>';
+                    }
+                    foreach ( $top_tags as $tag => $count ) :
+                        $tag_url = add_query_arg( [ 'sp_help_tag' => $tag, 'sp_help_pg' => 1 ] );
+                        $is_active = ( $tag === $tag_filter );
+                        ?>
+                        <a href="<?php echo esc_url( $tag_url ); ?>" class="sp-help-tag-filter <?php echo $is_active ? 'active' : ''; ?>">
+                            <?php echo esc_html( $tag ); ?> <span class="count"><?php echo (int) $count; ?></span>
+                        </a>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if ( empty( $rows ) ) : ?>
+                <p class="sp-help-empty">
+                    <?php
+                    echo $search !== '' || $tag_filter !== ''
+                        ? esc_html__( 'No matching questions found.', 'societypress' )
+                        : esc_html__( 'No public questions yet.', 'societypress' );
+                    ?>
+                </p>
+            <?php else : ?>
+                <?php foreach ( $rows as $r ) :
+                    $thread_url = add_query_arg( [ 'sp_help' => 'view', 'id' => $r->id ], home_url() );
+                    $tags = array_filter( array_map( 'trim', explode( ',', (string) $r->tags ) ) );
+                    ?>
+                    <div class="sp-help-thread">
+                        <h3><a href="<?php echo esc_url( $thread_url ); ?>"><?php echo esc_html( $r->title ); ?></a></h3>
+                        <p class="sp-help-meta">
+                            <?php
+                            printf(
+                                esc_html__( 'Asked %1$s · %2$d response%3$s', 'societypress' ),
+                                esc_html( human_time_diff( strtotime( $r->created_at ), time() ) . ' ago' ),
+                                (int) $r->responses_count,
+                                (int) $r->responses_count === 1 ? '' : 's'
+                            );
+                            ?>
+                            <?php if ( $r->status === 'resolved' ) : ?>
+                                <span class="sp-help-status-resolved"><?php esc_html_e( 'RESOLVED', 'societypress' ); ?></span>
+                            <?php else : ?>
+                                <span class="sp-help-status-open"><?php esc_html_e( 'OPEN', 'societypress' ); ?></span>
+                            <?php endif; ?>
+                        </p>
+                        <?php if ( ! empty( $tags ) ) : ?>
+                            <p style="margin: 6px 0 0;">
+                                <?php foreach ( $tags as $tag ) : ?>
+                                    <span class="sp-help-tag"><?php echo esc_html( $tag ); ?></span>
+                                <?php endforeach; ?>
+                            </p>
+                        <?php endif; ?>
+                    </div>
+                <?php endforeach; ?>
+
+                <?php if ( $total_pages > 1 ) : ?>
+                    <div class="sp-help-pagination">
+                        <?php for ( $p = 1; $p <= $total_pages; $p++ ) :
+                            if ( $p === $page ) :
+                                echo '<span class="current">' . (int) $p . '</span>';
+                            else :
+                                $pg_url = add_query_arg( 'sp_help_pg', $p );
+                                echo '<a href="' . esc_url( $pg_url ) . '">' . (int) $p . '</a>';
+                            endif;
+                        endfor; ?>
+                    </div>
+                <?php endif; ?>
+            <?php endif; ?>
+        </div>
+        <?php
+        return (string) ob_get_clean();
+    } );
+}, 1000 ); // Run after the original shortcode registration
+
+
+// ============================================================================
+// RESEARCH SERVICES — admin, intake, Stripe payment, hours logging
+//
+// WHY: Comradery via Help Requests is the default; Research Services is the
+//      opt-in escalation for cases that need substantial paid work. Society
+//      enables the module, sets a default rate, and visitors submit a paid
+//      research case via the public intake form. Stripe handles the up-front
+//      payment; researchers claim cases from the admin queue; hours flow
+//      into sp_volunteer_hours like everything else (paid hours are still
+//      logged hours).
+// ============================================================================
+
+
+/**
+ * Centralized POST/AJAX handler for research-case admin actions.
+ */
+add_action( 'admin_init', function () {
+    if ( empty( $_POST ) ) return;
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) return;
+
+    global $wpdb;
+    $cases_t  = $wpdb->prefix . 'sp_research_cases';
+
+    // Save admin review/edit
+    if ( ! empty( $_POST['sp_save_research_case'] ) ) {
+        $id = (int) ( $_POST['case_id'] ?? 0 );
+        check_admin_referer( 'sp_save_research_case_' . $id, 'sp_rc_nonce' );
+        if ( ! $id ) {
+            wp_safe_redirect( admin_url( 'admin.php?page=sp-research-cases' ) );
+            exit;
+        }
+
+        $valid_statuses = [ 'pending_payment','open','claimed','in_progress','needs_more_hours','completed','cancelled','refunded' ];
+        $new_status = in_array( $_POST['status'] ?? '', $valid_statuses, true ) ? $_POST['status'] : 'open';
+
+        $data = [
+            'status'             => $new_status,
+            'admin_note'         => wp_kses_post( wp_unslash( $_POST['admin_note'] ?? '' ) ),
+            'claimed_by_user_id' => (int) ( $_POST['claimed_by_user_id'] ?? 0 ) ?: null,
+            'hourly_rate'        => max( 0, round( (float) ( $_POST['hourly_rate'] ?? 0 ), 2 ) ),
+            'max_hours_authorized' => max( 0, round( (float) ( $_POST['max_hours_authorized'] ?? 0 ), 2 ) ),
+            'sla_days'           => max( 1, min( 365, (int) ( $_POST['sla_days'] ?? 14 ) ) ),
+        ];
+
+        // Status timestamp side-effects
+        $existing = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$cases_t} WHERE id = %d", $id ) );
+        if ( $existing ) {
+            if ( $new_status === 'claimed' && empty( $existing->assigned_at ) ) {
+                $data['assigned_at'] = current_time( 'mysql' );
+            }
+            if ( $new_status === 'in_progress' && empty( $existing->started_at ) ) {
+                $data['started_at'] = current_time( 'mysql' );
+            }
+            if ( $new_status === 'completed' && empty( $existing->completed_at ) ) {
+                $data['completed_at'] = current_time( 'mysql' );
+            }
+        }
+
+        $wpdb->update( $cases_t, $data, [ 'id' => $id ] );
+
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-research-case-edit&id=' . $id . '&sp_updated=1' ) );
+        exit;
+    }
+
+    // Researcher logs hours on a case
+    if ( ! empty( $_POST['sp_log_research_hours'] ) ) {
+        $id = (int) ( $_POST['case_id'] ?? 0 );
+        check_admin_referer( 'sp_log_research_hours_' . $id, 'sp_rh_nonce' );
+
+        $hours = max( 0.25, round( (float) ( $_POST['hours'] ?? 0 ), 2 ) );
+        $note  = sanitize_text_field( wp_unslash( $_POST['note'] ?? '' ) );
+        $researcher_id = get_current_user_id();
+
+        $case = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$cases_t} WHERE id = %d", $id ) );
+        if ( ! $case ) {
+            wp_safe_redirect( admin_url( 'admin.php?page=sp-research-cases' ) );
+            exit;
+        }
+
+        $activity = sprintf(
+            __( 'Research case: %s', 'societypress' ),
+            wp_trim_words( $case->title, 12 )
+        );
+        $wpdb->insert( $wpdb->prefix . 'sp_volunteer_hours', [
+            'user_id'       => $researcher_id,
+            'activity'      => $activity . ( $note ? ' — ' . $note : '' ),
+            'committee'     => null,
+            'hours'         => $hours,
+            'activity_date' => current_time( 'Y-m-d' ),
+            'source_type'   => 'research_case',
+            'source_id'     => $id,
+            'recorded_by'   => $researcher_id,
+        ] );
+
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-research-case-edit&id=' . $id . '&sp_hours_logged=1' ) );
+        exit;
+    }
+} );
+
+
+/**
+ * ADMIN: Research Cases list with status filters.
+ */
+function sp_render_research_cases_page(): void {
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) {
+        wp_die( __( 'Insufficient permissions.', 'societypress' ) );
+    }
+    global $wpdb;
+    $cases_t = $wpdb->prefix . 'sp_research_cases';
+    $users_t = $wpdb->users;
+
+    $status_filter = sanitize_text_field( $_GET['status'] ?? '' );
+    $search        = sanitize_text_field( $_GET['s']      ?? '' );
+
+    $where  = [ '1=1' ];
+    $params = [];
+    if ( $status_filter !== '' && $status_filter !== 'all' ) {
+        $where[] = 'c.status = %s';
+        $params[] = $status_filter;
+    }
+    if ( $search !== '' ) {
+        $where[] = '(c.title LIKE %s OR c.requester_name LIKE %s OR c.requester_email LIKE %s OR c.surname LIKE %s)';
+        $like = '%' . $wpdb->esc_like( $search ) . '%';
+        $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
+    }
+    $where_sql = implode( ' AND ', $where );
+
+    $sql = "SELECT c.*, u.display_name AS researcher_name
+            FROM {$cases_t} c
+            LEFT JOIN {$users_t} u ON u.ID = c.claimed_by_user_id
+            WHERE {$where_sql}
+            ORDER BY c.created_at DESC
+            LIMIT 200";
+    $rows = $params
+        ? $wpdb->get_results( $wpdb->prepare( $sql, ...$params ) )
+        : $wpdb->get_results( $sql );
+
+    $status_labels = [
+        'pending_payment'   => __( 'Pending Payment', 'societypress' ),
+        'open'              => __( 'Open (awaiting claim)', 'societypress' ),
+        'claimed'           => __( 'Claimed', 'societypress' ),
+        'in_progress'       => __( 'In Progress', 'societypress' ),
+        'needs_more_hours'  => __( 'Needs More Hours', 'societypress' ),
+        'completed'         => __( 'Completed', 'societypress' ),
+        'cancelled'         => __( 'Cancelled', 'societypress' ),
+        'refunded'          => __( 'Refunded', 'societypress' ),
+    ];
+
+    ?>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Research Cases', 'societypress' ); ?></h1>
+        <p class="description" style="max-width:780px;">
+            <?php esc_html_e( 'Paid research cases with up-front Stripe billing. For free comradery-style help, see the Research Help Requests module instead.', 'societypress' ); ?>
+        </p>
+
+        <form method="get" style="margin:16px 0; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <input type="hidden" name="page" value="sp-research-cases">
+            <select name="status">
+                <option value=""><?php esc_html_e( 'All statuses', 'societypress' ); ?></option>
+                <?php foreach ( $status_labels as $key => $label ) : ?>
+                    <option value="<?php echo esc_attr( $key ); ?>" <?php selected( $status_filter, $key ); ?>><?php echo esc_html( $label ); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <input type="search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php esc_attr_e( 'Search title / requester / surname…', 'societypress' ); ?>" class="regular-text">
+            <?php submit_button( __( 'Filter', 'societypress' ), 'secondary', '', false ); ?>
+            <?php if ( $status_filter || $search ) : ?>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-research-cases' ) ); ?>" class="button"><?php esc_html_e( 'Clear', 'societypress' ); ?></a>
+            <?php endif; ?>
+        </form>
+
+        <table class="widefat striped">
+            <thead>
+                <tr>
+                    <th><?php esc_html_e( 'Title', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Requester', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Researcher', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Paid', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Submitted', 'societypress' ); ?></th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if ( empty( $rows ) ) : ?>
+                    <tr><td colspan="7" style="padding:30px; text-align:center; color:#777;">
+                        <?php esc_html_e( 'No research cases yet. The intake form lives at any page that embeds [sp_research_request].', 'societypress' ); ?>
+                    </td></tr>
+                <?php else : foreach ( $rows as $r ) : ?>
+                    <tr>
+                        <td><strong><?php echo esc_html( $r->title ); ?></strong>
+                            <?php if ( $r->surname ) : ?><br><span style="color:#777; font-size:12px;">Surname: <?php echo esc_html( $r->surname ); ?></span><?php endif; ?>
+                        </td>
+                        <td><?php echo esc_html( $r->requester_name ); ?>
+                            <?php if ( $r->requester_email ) : ?><br><span style="color:#777; font-size:12px;"><?php echo esc_html( $r->requester_email ); ?></span><?php endif; ?>
+                        </td>
+                        <td><?php echo esc_html( $r->researcher_name ?: '—' ); ?></td>
+                        <td><?php echo esc_html( $status_labels[ $r->status ] ?? $r->status ); ?></td>
+                        <td>$<?php echo esc_html( number_format( (float) $r->paid_amount, 2 ) ); ?></td>
+                        <td><?php echo esc_html( mysql2date( 'M j, Y', $r->created_at ) ); ?></td>
+                        <td>
+                            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-research-case-edit&id=' . $r->id ) ); ?>" class="button button-small"><?php esc_html_e( 'Review', 'societypress' ); ?></a>
+                        </td>
+                    </tr>
+                <?php endforeach; endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+}
+
+
+/**
+ * ADMIN: Single case review page with status workflow + hours logging.
+ */
+function sp_render_research_case_edit_page(): void {
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) {
+        wp_die( __( 'Insufficient permissions.', 'societypress' ) );
+    }
+    global $wpdb;
+    $cases_t = $wpdb->prefix . 'sp_research_cases';
+    $users_t = $wpdb->users;
+    $hours_t = $wpdb->prefix . 'sp_volunteer_hours';
+    $invoices_t = $wpdb->prefix . 'sp_research_invoices';
+
+    $id = (int) ( $_GET['id'] ?? 0 );
+    if ( ! $id ) {
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-research-cases' ) );
+        exit;
+    }
+
+    $case = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$cases_t} WHERE id = %d", $id ) );
+    if ( ! $case ) {
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-research-cases' ) );
+        exit;
+    }
+
+    $researcher = $case->claimed_by_user_id ? get_user_by( 'id', $case->claimed_by_user_id ) : null;
+
+    // All members who could be researchers (members module always-on)
+    $member_options = $wpdb->get_results(
+        "SELECT m.user_id, m.first_name, m.last_name FROM {$wpdb->prefix}sp_members m
+         WHERE m.status = 'active' ORDER BY m.last_name, m.first_name LIMIT 500"
+    );
+
+    // Hours logged on this case
+    $hours_logged = $wpdb->get_results( $wpdb->prepare(
+        "SELECT vh.*, u.display_name AS user_name
+         FROM {$hours_t} vh
+         LEFT JOIN {$users_t} u ON u.ID = vh.user_id
+         WHERE vh.source_type = 'research_case' AND vh.source_id = %d
+         ORDER BY vh.activity_date DESC, vh.id DESC",
+        $id
+    ) );
+    $hours_total = 0.0;
+    foreach ( $hours_logged as $h ) $hours_total += (float) $h->hours;
+
+    // Invoices
+    $invoices = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$invoices_t} WHERE case_id = %d ORDER BY created_at ASC", $id
+    ) );
+
+    $status_labels = [
+        'pending_payment'   => __( 'Pending Payment', 'societypress' ),
+        'open'              => __( 'Open (awaiting claim)', 'societypress' ),
+        'claimed'           => __( 'Claimed', 'societypress' ),
+        'in_progress'       => __( 'In Progress', 'societypress' ),
+        'needs_more_hours'  => __( 'Needs More Hours', 'societypress' ),
+        'completed'         => __( 'Completed', 'societypress' ),
+        'cancelled'         => __( 'Cancelled', 'societypress' ),
+        'refunded'          => __( 'Refunded', 'societypress' ),
+    ];
+
+    ?>
+    <div class="wrap">
+        <h1>
+            <?php esc_html_e( 'Research Case', 'societypress' ); ?>
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-research-cases' ) ); ?>" class="page-title-action">← <?php esc_html_e( 'Back to list', 'societypress' ); ?></a>
+        </h1>
+
+        <?php if ( ! empty( $_GET['sp_updated'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Case updated.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+        <?php if ( ! empty( $_GET['sp_hours_logged'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Hours logged.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+
+        <div style="display:flex; gap:30px; flex-wrap:wrap; align-items:flex-start; margin-top:20px;">
+
+            <!-- Case detail -->
+            <div style="flex:1 1 600px; min-width:400px;">
+                <div class="postbox">
+                    <h2 class="hndle" style="padding:10px 14px;"><?php echo esc_html( $case->title ); ?></h2>
+                    <div class="inside">
+                        <table class="form-table" style="margin-top:0;">
+                            <tr><th><?php esc_html_e( 'Requester', 'societypress' ); ?></th>
+                                <td><?php echo esc_html( $case->requester_name ); ?>
+                                    <?php if ( $case->requester_email ) : ?><br><a href="mailto:<?php echo esc_attr( $case->requester_email ); ?>"><?php echo esc_html( $case->requester_email ); ?></a><?php endif; ?>
+                                    <?php if ( $case->requester_phone ) : ?><br><?php echo esc_html( $case->requester_phone ); ?><?php endif; ?>
+                                </td></tr>
+                            <tr><th><?php esc_html_e( 'Surname / ancestor', 'societypress' ); ?></th>
+                                <td><?php echo esc_html( $case->surname ?: '—' ); ?>
+                                    <?php if ( $case->ancestor_name ) : ?> · <?php echo esc_html( $case->ancestor_name ); ?><?php endif; ?>
+                                </td></tr>
+                            <tr><th><?php esc_html_e( 'Time period', 'societypress' ); ?></th>
+                                <td><?php echo esc_html( $case->time_period ?: '—' ); ?></td></tr>
+                            <tr><th><?php esc_html_e( 'Location', 'societypress' ); ?></th>
+                                <td><?php echo esc_html( $case->location ?: '—' ); ?></td></tr>
+                            <tr><th><?php esc_html_e( 'Submitted', 'societypress' ); ?></th>
+                                <td><?php echo esc_html( mysql2date( 'M j, Y g:i a', $case->created_at ) ); ?></td></tr>
+                            <tr><th><?php esc_html_e( 'Source Help Request', 'societypress' ); ?></th>
+                                <td><?php echo $case->source_help_request_id
+                                    ? '<a href="' . esc_url( admin_url( 'admin.php?page=sp-help-requests&action=view&request_id=' . (int) $case->source_help_request_id ) ) . '">#' . (int) $case->source_help_request_id . '</a>'
+                                    : '—'; ?></td></tr>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="postbox">
+                    <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Description', 'societypress' ); ?></h2>
+                    <div class="inside">
+                        <div style="background:#f9f9f9; border:1px solid #eee; padding:10px; border-radius:4px;">
+                            <?php echo wp_kses_post( wpautop( $case->description ) ); ?>
+                        </div>
+                        <?php if ( $case->additional_details ) : ?>
+                            <h4 style="margin-top:14px;"><?php esc_html_e( 'Additional details', 'societypress' ); ?></h4>
+                            <div style="background:#f9f9f9; border:1px solid #eee; padding:10px; border-radius:4px;">
+                                <?php echo wp_kses_post( wpautop( $case->additional_details ) ); ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <div class="postbox">
+                    <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Hours Logged', 'societypress' ); ?> (<?php echo esc_html( number_format( $hours_total, 2 ) ); ?> <?php esc_html_e( 'hrs', 'societypress' ); ?>)</h2>
+                    <div class="inside">
+                        <?php if ( ! empty( $hours_logged ) ) : ?>
+                            <table class="widefat striped" style="margin-bottom:12px;">
+                                <thead><tr><th><?php esc_html_e( 'Date', 'societypress' ); ?></th><th><?php esc_html_e( 'Researcher', 'societypress' ); ?></th><th><?php esc_html_e( 'Hours', 'societypress' ); ?></th><th><?php esc_html_e( 'Notes', 'societypress' ); ?></th></tr></thead>
+                                <tbody>
+                                    <?php foreach ( $hours_logged as $h ) : ?>
+                                        <tr>
+                                            <td><?php echo esc_html( mysql2date( 'M j, Y', $h->activity_date ) ); ?></td>
+                                            <td><?php echo esc_html( $h->user_name ?: '—' ); ?></td>
+                                            <td><?php echo esc_html( number_format( (float) $h->hours, 2 ) ); ?></td>
+                                            <td><?php echo esc_html( $h->activity ); ?></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        <?php endif; ?>
+
+                        <h4><?php esc_html_e( 'Log hours', 'societypress' ); ?></h4>
+                        <form method="post">
+                            <?php wp_nonce_field( 'sp_log_research_hours_' . $id, 'sp_rh_nonce' ); ?>
+                            <input type="hidden" name="sp_log_research_hours" value="1">
+                            <input type="hidden" name="case_id" value="<?php echo (int) $id; ?>">
+                            <p>
+                                <input type="number" step="0.25" min="0.25" max="24" name="hours" placeholder="<?php esc_attr_e( 'hours', 'societypress' ); ?>" required style="width:90px;">
+                                <input type="text" name="note" placeholder="<?php esc_attr_e( 'short note about this work', 'societypress' ); ?>" class="regular-text">
+                                <?php submit_button( __( 'Log Hours', 'societypress' ), 'secondary', 'submit', false ); ?>
+                            </p>
+                            <p class="description"><?php esc_html_e( 'Logged hours flow into the volunteer-hours ledger like all other contributions, attributed to the current logged-in user.', 'societypress' ); ?></p>
+                        </form>
+                    </div>
+                </div>
+
+                <?php if ( ! empty( $invoices ) ) : ?>
+                <div class="postbox">
+                    <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Invoices', 'societypress' ); ?> (<?php echo count( $invoices ); ?>)</h2>
+                    <div class="inside">
+                        <table class="widefat striped">
+                            <thead><tr><th><?php esc_html_e( 'Date', 'societypress' ); ?></th><th><?php esc_html_e( 'Hours', 'societypress' ); ?></th><th><?php esc_html_e( 'Amount', 'societypress' ); ?></th><th><?php esc_html_e( 'Status', 'societypress' ); ?></th></tr></thead>
+                            <tbody>
+                                <?php foreach ( $invoices as $inv ) : ?>
+                                    <tr>
+                                        <td><?php echo esc_html( mysql2date( 'M j, Y', $inv->created_at ) ); ?></td>
+                                        <td><?php echo esc_html( number_format( (float) $inv->hours, 2 ) ); ?></td>
+                                        <td>$<?php echo esc_html( number_format( (float) $inv->amount, 2 ) ); ?></td>
+                                        <td><?php echo esc_html( ucfirst( $inv->status ) ); ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <?php endif; ?>
+            </div>
+
+            <!-- Decision sidebar -->
+            <div style="flex:0 0 360px;">
+                <div class="postbox">
+                    <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Case Decisions', 'societypress' ); ?></h2>
+                    <div class="inside">
+                        <form method="post">
+                            <?php wp_nonce_field( 'sp_save_research_case_' . $id, 'sp_rc_nonce' ); ?>
+                            <input type="hidden" name="sp_save_research_case" value="1">
+                            <input type="hidden" name="case_id" value="<?php echo (int) $id; ?>">
+
+                            <p>
+                                <label><strong><?php esc_html_e( 'Status', 'societypress' ); ?></strong></label>
+                                <select name="status" style="width:100%;">
+                                    <?php foreach ( $status_labels as $key => $label ) : ?>
+                                        <option value="<?php echo esc_attr( $key ); ?>" <?php selected( $case->status, $key ); ?>><?php echo esc_html( $label ); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </p>
+
+                            <p>
+                                <label><strong><?php esc_html_e( 'Researcher', 'societypress' ); ?></strong></label>
+                                <select name="claimed_by_user_id" style="width:100%;">
+                                    <option value=""><?php esc_html_e( '— Unassigned —', 'societypress' ); ?></option>
+                                    <?php foreach ( $member_options as $m ) : ?>
+                                        <option value="<?php echo (int) $m->user_id; ?>" <?php selected( (int) $case->claimed_by_user_id, (int) $m->user_id ); ?>>
+                                            <?php echo esc_html( trim( $m->first_name . ' ' . $m->last_name ) ); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </p>
+
+                            <p>
+                                <label><strong><?php esc_html_e( 'Hourly rate', 'societypress' ); ?></strong></label>
+                                <input type="number" step="0.01" min="0" name="hourly_rate" value="<?php echo esc_attr( number_format( (float) $case->hourly_rate, 2, '.', '' ) ); ?>" style="width:100%;">
+                            </p>
+
+                            <p>
+                                <label><strong><?php esc_html_e( 'Hours authorized', 'societypress' ); ?></strong></label>
+                                <input type="number" step="0.25" min="0" name="max_hours_authorized" value="<?php echo esc_attr( number_format( (float) $case->max_hours_authorized, 2, '.', '' ) ); ?>" style="width:100%;">
+                            </p>
+
+                            <p>
+                                <label><strong><?php esc_html_e( 'SLA (days)', 'societypress' ); ?></strong></label>
+                                <input type="number" min="1" max="365" name="sla_days" value="<?php echo (int) $case->sla_days; ?>" style="width:100%;">
+                            </p>
+
+                            <p>
+                                <label><strong><?php esc_html_e( 'Internal admin note', 'societypress' ); ?></strong></label>
+                                <textarea name="admin_note" rows="3" style="width:100%;"><?php echo esc_textarea( $case->admin_note ?? '' ); ?></textarea>
+                            </p>
+
+                            <?php submit_button( __( 'Save Case', 'societypress' ), 'primary', 'submit', false ); ?>
+                        </form>
+
+                        <hr style="margin:14px 0;">
+                        <p style="color:#666; font-size:13px; margin:0;">
+                            <strong><?php esc_html_e( 'Paid', 'societypress' ); ?>:</strong>
+                            $<?php echo esc_html( number_format( (float) $case->paid_amount, 2 ) ); ?><br>
+                            <strong><?php esc_html_e( 'Hours logged', 'societypress' ); ?>:</strong>
+                            <?php echo esc_html( number_format( $hours_total, 2 ) ); ?><br>
+                            <?php if ( $case->assigned_at ) : ?>
+                                <strong><?php esc_html_e( 'Assigned', 'societypress' ); ?>:</strong>
+                                <?php echo esc_html( mysql2date( 'M j, Y', $case->assigned_at ) ); ?><br>
+                            <?php endif; ?>
+                            <?php if ( $case->due_date ) : ?>
+                                <strong><?php esc_html_e( 'Due', 'societypress' ); ?>:</strong>
+                                <?php echo esc_html( mysql2date( 'M j, Y', $case->due_date ) ); ?><br>
+                            <?php endif; ?>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <?php
+}
+
+
+/**
+ * Shortcode: [sp_research_request]
+ *
+ * Public intake form. Visitor describes the case; on submit a pending_payment
+ * row is created and the visitor is redirected to Stripe Checkout for the
+ * up-front fee (rate × max_hours_authorized). Webhook at the existing
+ * Stripe webhook endpoint flips status to 'open' on payment.success.
+ */
+add_shortcode( 'sp_research_request', function () {
+    if ( ! sp_module_enabled( 'research_services' ) ) {
+        return '<p>' . esc_html__( 'Paid Research Services is not currently offered.', 'societypress' ) . '</p>';
+    }
+
+    $settings = get_option( 'societypress_settings', [] );
+    $rate     = (float) ( $settings['research_default_rate'] ?? 30.00 );
+    $hours    = (float) ( $settings['research_default_max_hours'] ?? 1.00 );
+    $sla_days = (int)   ( $settings['research_sla_days'] ?? 14 );
+    $org      = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+    $current  = wp_get_current_user();
+
+    $msg = sanitize_text_field( $_GET['sp_research_msg'] ?? '' );
+    $err = sanitize_text_field( $_GET['sp_research_err'] ?? '' );
+
+    ob_start();
+    ?>
+    <div class="sp-research-request">
+        <style>
+            .sp-research-request { max-width: 720px; margin: 1.5em auto; }
+            .sp-research-request form { background: #fafafa; border: 1px solid #ddd; border-radius: 8px; padding: 24px; }
+            .sp-research-request label { display: block; font-weight: 600; margin: 12px 0 4px; }
+            .sp-research-request input[type=text], .sp-research-request input[type=email], .sp-research-request input[type=tel], .sp-research-request textarea {
+                width: 100%; padding: 9px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 15px;
+            }
+            .sp-research-request textarea { min-height: 100px; }
+            .sp-research-request .row { display: flex; gap: 10px; }
+            .sp-research-request .row > div { flex: 1; }
+            .sp-research-request .help { color: #666; font-size: 13px; }
+            .sp-research-request .quote-box { background: #f0f0f0; padding: 12px 14px; border-radius: 4px; margin-top: 14px; }
+            .sp-research-request .quote-box strong { color: #0d1f3c; }
+            .sp-research-request button { background: #0d1f3c; color: #fff; padding: 11px 22px; border: none; border-radius: 4px; font-size: 15px; cursor: pointer; margin-top: 16px; }
+            .sp-research-request .notice { padding: 12px 14px; border-radius: 6px; margin-bottom: 14px; }
+            .sp-research-request .notice-success { background: #e8f5e9; border-left: 4px solid #166534; color: #1f4d2c; }
+            .sp-research-request .notice-error { background: #fde8e8; border-left: 4px solid #b91c1c; color: #7d1414; }
+        </style>
+
+        <?php if ( $msg === 'paid' ) : ?>
+            <div class="notice notice-success">
+                <strong><?php esc_html_e( 'Payment received.', 'societypress' ); ?></strong>
+                <?php esc_html_e( 'Your research case is now in the queue. A volunteer researcher will be assigned and you will be contacted via email.', 'societypress' ); ?>
+            </div>
+        <?php elseif ( $msg === 'cancelled' ) : ?>
+            <div class="notice notice-error"><?php esc_html_e( 'Payment cancelled. Your case was not submitted.', 'societypress' ); ?></div>
+        <?php endif; ?>
+        <?php if ( $err === 'stripe_unconfigured' ) : ?>
+            <div class="notice notice-error"><?php esc_html_e( 'Payment processing is not configured yet. Please contact us to make arrangements.', 'societypress' ); ?></div>
+        <?php elseif ( $err === 'invalid' ) : ?>
+            <div class="notice notice-error"><?php esc_html_e( 'Please fill in all required fields.', 'societypress' ); ?></div>
+        <?php elseif ( $err === 'checkout_failed' ) : ?>
+            <div class="notice notice-error"><?php esc_html_e( 'We could not connect to Stripe. Please try again in a moment.', 'societypress' ); ?></div>
+        <?php endif; ?>
+
+        <h2><?php esc_html_e( 'Request Paid Research', 'societypress' ); ?></h2>
+        <p class="help">
+            <?php esc_html_e( 'For most quick questions, the free Research Help forum is the right place — our volunteers help out of comradery. This form is for cases that genuinely need many hours of focused work: deep ancestor traces, full record-set transcriptions, professional-grade reports.', 'societypress' ); ?>
+        </p>
+
+        <form method="post">
+            <?php wp_nonce_field( 'sp_research_submit', 'sp_research_nonce' ); ?>
+            <input type="hidden" name="sp_research_action" value="submit">
+
+            <div class="row">
+                <div>
+                    <label><?php esc_html_e( 'Your name', 'societypress' ); ?></label>
+                    <input type="text" name="requester_name" value="<?php echo esc_attr( $current->display_name ); ?>" required>
+                </div>
+                <div>
+                    <label><?php esc_html_e( 'Email', 'societypress' ); ?></label>
+                    <input type="email" name="requester_email" value="<?php echo esc_attr( $current->user_email ); ?>" required>
+                </div>
+            </div>
+            <div class="row">
+                <div>
+                    <label><?php esc_html_e( 'Phone (optional)', 'societypress' ); ?></label>
+                    <input type="tel" name="requester_phone">
+                </div>
+            </div>
+
+            <label><?php esc_html_e( 'Case title', 'societypress' ); ?></label>
+            <input type="text" name="title" maxlength="200" required placeholder="<?php esc_attr_e( 'e.g. Document descent of Smith line in Sample County 1840-1900', 'societypress' ); ?>">
+
+            <label><?php esc_html_e( 'Description — what are you trying to find?', 'societypress' ); ?></label>
+            <textarea name="description" required></textarea>
+
+            <div class="row">
+                <div>
+                    <label><?php esc_html_e( 'Surname', 'societypress' ); ?></label>
+                    <input type="text" name="surname" maxlength="100">
+                </div>
+                <div>
+                    <label><?php esc_html_e( 'Specific ancestor (if any)', 'societypress' ); ?></label>
+                    <input type="text" name="ancestor_name" maxlength="200">
+                </div>
+            </div>
+            <div class="row">
+                <div>
+                    <label><?php esc_html_e( 'Time period', 'societypress' ); ?></label>
+                    <input type="text" name="time_period" placeholder="<?php esc_attr_e( 'e.g. 1840-1900', 'societypress' ); ?>">
+                </div>
+                <div>
+                    <label><?php esc_html_e( 'Location', 'societypress' ); ?></label>
+                    <input type="text" name="location" placeholder="<?php esc_attr_e( 'e.g. Sample County, Texas', 'societypress' ); ?>">
+                </div>
+            </div>
+
+            <label><?php esc_html_e( 'What have you already tried?', 'societypress' ); ?> <span class="help">(<?php esc_html_e( 'optional but helps the researcher', 'societypress' ); ?>)</span></label>
+            <textarea name="additional_details"></textarea>
+
+            <div class="quote-box">
+                <strong><?php esc_html_e( 'Estimated cost up front:', 'societypress' ); ?></strong>
+                <?php
+                $estimate = $rate * $hours;
+                printf(
+                    esc_html__( '$%1$.2f for %2$.2f hour(s) at $%3$.2f/hour', 'societypress' ),
+                    $estimate, $hours, $rate
+                );
+                ?>
+                <br>
+                <span class="help"><?php printf( esc_html__( 'You will receive an initial response within %d days. If additional hours are required, we will request authorization for the extra time before continuing.', 'societypress' ), $sla_days ); ?></span>
+            </div>
+
+            <button type="submit"><?php esc_html_e( 'Submit & Pay →', 'societypress' ); ?></button>
+        </form>
+    </div>
+    <?php
+    return (string) ob_get_clean();
+} );
+
+
+/**
+ * Public intake POST handler — creates the case + redirects to Stripe Checkout.
+ */
+add_action( 'init', function () {
+    if ( ( $_POST['sp_research_action'] ?? '' ) !== 'submit' ) return;
+
+    $referer = wp_get_referer() ?: home_url();
+    if ( ! wp_verify_nonce( $_POST['sp_research_nonce'] ?? '', 'sp_research_submit' ) ) {
+        wp_safe_redirect( add_query_arg( 'sp_research_err', 'invalid', $referer ) );
+        exit;
+    }
+    if ( ! sp_module_enabled( 'research_services' ) ) {
+        wp_safe_redirect( $referer );
+        exit;
+    }
+
+    $name  = sanitize_text_field( wp_unslash( $_POST['requester_name']  ?? '' ) );
+    $email = sanitize_email( wp_unslash( $_POST['requester_email']      ?? '' ) );
+    $title = sanitize_text_field( wp_unslash( $_POST['title']           ?? '' ) );
+    $desc  = sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) );
+    if ( ! $name || ! is_email( $email ) || ! $title || ! $desc ) {
+        wp_safe_redirect( add_query_arg( 'sp_research_err', 'invalid', $referer ) );
+        exit;
+    }
+
+    $settings   = get_option( 'societypress_settings', [] );
+    $rate       = (float) ( $settings['research_default_rate'] ?? 30.00 );
+    $max_hours  = (float) ( $settings['research_default_max_hours'] ?? 1.00 );
+    $sla_days   = (int)   ( $settings['research_sla_days'] ?? 14 );
+    $secret_key = function_exists( 'sp_stripe_get_secret_key' ) ? sp_stripe_get_secret_key( $settings ) : '';
+    if ( empty( $secret_key ) ) {
+        wp_safe_redirect( add_query_arg( 'sp_research_err', 'stripe_unconfigured', $referer ) );
+        exit;
+    }
+    $currency = strtolower( $settings['stripe_currency'] ?? 'usd' );
+    $org_name = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+
+    global $wpdb;
+    $cases_t = $wpdb->prefix . 'sp_research_cases';
+
+    $matched_user = get_user_by( 'email', $email );
+    $wpdb->insert( $cases_t, [
+        'requester_user_id'    => $matched_user ? (int) $matched_user->ID : null,
+        'requester_name'       => $name,
+        'requester_email'      => $email,
+        'requester_phone'      => sanitize_text_field( wp_unslash( $_POST['requester_phone'] ?? '' ) ),
+        'title'                => $title,
+        'description'          => $desc,
+        'ancestor_name'        => sanitize_text_field( wp_unslash( $_POST['ancestor_name']      ?? '' ) ),
+        'surname'              => sanitize_text_field( wp_unslash( $_POST['surname']            ?? '' ) ),
+        'time_period'          => sanitize_text_field( wp_unslash( $_POST['time_period']        ?? '' ) ),
+        'location'             => sanitize_text_field( wp_unslash( $_POST['location']           ?? '' ) ),
+        'additional_details'   => sanitize_textarea_field( wp_unslash( $_POST['additional_details'] ?? '' ) ),
+        'hourly_rate'          => $rate,
+        'max_hours_authorized' => $max_hours,
+        'sla_days'             => $sla_days,
+        'status'               => 'pending_payment',
+    ] );
+    $case_id = (int) $wpdb->insert_id;
+
+    $amount = round( $rate * $max_hours, 2 );
+    $success_url = add_query_arg( [
+        'sp_research_msg'  => 'paid',
+        'sp_research_case' => $case_id,
+        'sp_session'       => '{CHECKOUT_SESSION_ID}',
+    ], $referer );
+    $cancel_url = add_query_arg( [
+        'sp_research_msg'  => 'cancelled',
+        'sp_research_case' => $case_id,
+    ], $referer );
+
+    $line_name = sprintf( __( 'Research case: %s', 'societypress' ), $title );
+    if ( strlen( $line_name ) > 100 ) $line_name = substr( $line_name, 0, 97 ) . '...';
+
+    $response = wp_remote_post( 'https://api.stripe.com/v1/checkout/sessions', [
+        'timeout' => 30,
+        'headers' => [
+            'Authorization' => 'Bearer ' . $secret_key,
+            'Content-Type'  => 'application/x-www-form-urlencoded',
+        ],
+        'body' => [
+            'mode'                       => 'payment',
+            'success_url'                => $success_url,
+            'cancel_url'                 => $cancel_url,
+            'client_reference_id'        => 'research_' . $case_id,
+            'customer_email'             => $email,
+            'metadata[research_case_id]' => (string) $case_id,
+            'metadata[site_url]'         => home_url(),
+            'payment_method_types[0]'    => 'card',
+            'line_items[0][quantity]'    => 1,
+            'line_items[0][price_data][currency]'                  => $currency,
+            'line_items[0][price_data][unit_amount]'               => (int) round( $amount * 100 ),
+            'line_items[0][price_data][product_data][name]'        => $line_name,
+            'line_items[0][price_data][product_data][description]' => sprintf( __( 'Up-front payment for %1$.2f hour(s) at $%2$.2f/hour — %3$s', 'societypress' ), $max_hours, $rate, $org_name ),
+        ],
+    ] );
+
+    if ( is_wp_error( $response ) || wp_remote_retrieve_response_code( $response ) !== 200 ) {
+        error_log( 'SocietyPress research case Stripe error: ' . wp_remote_retrieve_body( $response ) );
+        $wpdb->update( $cases_t, [ 'status' => 'cancelled' ], [ 'id' => $case_id ] );
+        wp_safe_redirect( add_query_arg( 'sp_research_err', 'checkout_failed', $referer ) );
+        exit;
+    }
+
+    $resp = json_decode( wp_remote_retrieve_body( $response ), true );
+    if ( empty( $resp['url'] ) ) {
+        $wpdb->update( $cases_t, [ 'status' => 'cancelled' ], [ 'id' => $case_id ] );
+        wp_safe_redirect( add_query_arg( 'sp_research_err', 'checkout_failed', $referer ) );
+        exit;
+    }
+
+    $wpdb->update( $cases_t, [ 'stripe_session_id' => $resp['id'] ], [ 'id' => $case_id ] );
+    wp_redirect( $resp['url'] );
+    exit;
+} );
+
+
+/**
+ * Stripe success-URL handler for research-case payments.
+ */
+add_action( 'template_redirect', function () {
+    $case_id    = (int) ( $_GET['sp_research_case'] ?? 0 );
+    $msg        = sanitize_text_field( $_GET['sp_research_msg'] ?? '' );
+    $session_id = sanitize_text_field( $_GET['sp_session']      ?? '' );
+    if ( ! $case_id || $msg !== 'paid' || empty( $session_id ) ) return;
+
+    global $wpdb;
+    $cases_t = $wpdb->prefix . 'sp_research_cases';
+    $case = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$cases_t} WHERE id = %d", $case_id ) );
+    if ( ! $case ) return;
+    if ( $case->status === 'open' || $case->status === 'claimed' || $case->status === 'in_progress' ) return;
+
+    $settings   = get_option( 'societypress_settings', [] );
+    $secret_key = function_exists( 'sp_stripe_get_secret_key' ) ? sp_stripe_get_secret_key( $settings ) : '';
+    if ( empty( $secret_key ) ) return;
+
+    $resp = wp_remote_get( 'https://api.stripe.com/v1/checkout/sessions/' . $session_id, [
+        'timeout' => 15,
+        'headers' => [ 'Authorization' => 'Bearer ' . $secret_key ],
+    ] );
+    if ( is_wp_error( $resp ) ) return;
+
+    $session = json_decode( wp_remote_retrieve_body( $resp ), true );
+    if ( empty( $session ) ) return;
+    if ( ( $session['payment_status'] ?? '' ) !== 'paid' ) return;
+    if ( (int) ( $session['metadata']['research_case_id'] ?? 0 ) !== $case_id ) return;
+
+    $paid = round( ( (int) ( $session['amount_total'] ?? 0 ) ) / 100, 2 );
+
+    $wpdb->update( $cases_t, [
+        'status'      => 'open',
+        'paid_amount' => $paid,
+    ], [ 'id' => $case_id ] );
+
+    // Notify staff
+    $admin_email = $settings['admin_email'] ?? get_bloginfo( 'admin_email' );
+    if ( $admin_email ) {
+        $org = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+        $review_url = admin_url( 'admin.php?page=sp-research-case-edit&id=' . $case_id );
+        wp_mail(
+            $admin_email,
+            sprintf( __( '[%s] New paid research case', 'societypress' ), $org ),
+            sprintf(
+                __( "%1\$s paid \$%2\$s for a research case:\n\n%3\$s\n\nReview / assign:\n%4\$s", 'societypress' ),
+                $case->requester_name,
+                number_format( $paid, 2 ),
+                $case->title,
+                $review_url
+            )
+        );
+    }
+} );
+
+
+/**
+ * Page-builder widget for the intake form.
+ */
+add_filter( 'sp_builder_widget_types', function ( array $types ): array {
+    $types['research_request'] = [
+        'label'       => __( 'Research Case Request', 'societypress' ),
+        'description' => __( 'Public intake form for paid research cases. Visitor describes the work, gets a Stripe checkout for the up-front fee.', 'societypress' ),
+        'fields'      => [],
+    ];
+    return $types;
+} );
+
+function sp_render_builder_widget_research_request( array $s ): void {
+    echo do_shortcode( '[sp_research_request]' );
+}

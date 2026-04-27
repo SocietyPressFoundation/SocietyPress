@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.43' );
+define( 'SOCIETYPRESS_VERSION', '1.0.45' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -84319,3 +84319,531 @@ function sp_render_theme_presets_page(): void {
     </div>
     <?php
 }
+
+
+// ============================================================================
+// SOCIETY SIDEBAR WIDGET — auto-assembled member-portal nav
+//
+// WHY: ENS sites have a fixed left rail with every section a member needs
+//      one click away (Home, Search, About, Join, Events, Galleries,
+//      Newsletters, Library, Photocopy Requests, Surname Research, etc.).
+//      SocietyPress has all the same pieces but Harold has to assemble
+//      the nav by hand in WordPress's menu editor. This widget builds
+//      the same kind of dense, scannable sidebar automatically from
+//      enabled modules — drop it into any column and the nav appears.
+//
+// Customization: each entry is overridable via filter. Want to rename
+// "Library" to "Bookshelf" on your site? Hook 'sp_society_sidebar_items'
+// and re-label.
+// ============================================================================
+
+
+/**
+ * Build the default sidebar items list from enabled modules + standard
+ * member-portal pages.
+ *
+ * Each item: [ 'label' => '', 'url' => '', 'module' => '', 'icon' => '',
+ *              'login_required' => bool ]
+ */
+function sp_society_sidebar_default_items(): array {
+    // The list is in the order most ENS sites use it — public/about
+    // first, then activities, then resources, then member tools.
+    $items = [
+        [ 'label' => __( 'Home', 'societypress' ),                'url' => home_url( '/' ),                  'module' => null,             'icon' => 'dashicons-admin-home',     'login_required' => false ],
+        [ 'label' => __( 'About Us', 'societypress' ),            'url' => home_url( '/about/' ),            'module' => null,             'icon' => 'dashicons-info-outline',   'login_required' => false ],
+        [ 'label' => __( 'Join', 'societypress' ),                'url' => home_url( '/join/' ),             'module' => null,             'icon' => 'dashicons-id',             'login_required' => false ],
+        [ 'label' => __( 'Donate', 'societypress' ),              'url' => home_url( '/donate/' ),           'module' => 'donations',      'icon' => 'dashicons-heart',          'login_required' => false ],
+        [ 'label' => __( 'Events', 'societypress' ),              'url' => home_url( '/events/' ),           'module' => 'events',         'icon' => 'dashicons-calendar-alt',   'login_required' => false ],
+        [ 'label' => __( 'Galleries', 'societypress' ),           'url' => home_url( '/galleries/' ),        'module' => 'gallery',        'icon' => 'dashicons-format-gallery', 'login_required' => false ],
+        [ 'label' => __( 'Newsletters', 'societypress' ),         'url' => home_url( '/newsletters/' ),      'module' => 'newsletters',    'icon' => 'dashicons-media-document', 'login_required' => false ],
+        [ 'label' => __( 'Library', 'societypress' ),             'url' => home_url( '/library/' ),          'module' => 'library',        'icon' => 'dashicons-book-alt',       'login_required' => false ],
+        [ 'label' => __( 'Records', 'societypress' ),             'url' => home_url( '/records/' ),          'module' => 'records',        'icon' => 'dashicons-database',       'login_required' => false ],
+        [ 'label' => __( 'Surname Research', 'societypress' ),    'url' => home_url( '/surname-research/' ), 'module' => null,             'icon' => 'dashicons-search',         'login_required' => false ],
+        [ 'label' => __( 'Research Help', 'societypress' ),       'url' => home_url( '/research-help/' ),    'module' => 'help_requests',  'icon' => 'dashicons-sos',            'login_required' => false ],
+        [ 'label' => __( 'Paid Research', 'societypress' ),       'url' => home_url( '/research-services/' ),'module' => 'research_services','icon' => 'dashicons-clipboard',    'login_required' => false ],
+        [ 'label' => __( 'First Families', 'societypress' ),      'url' => home_url( '/lineage/' ),          'module' => 'lineage',        'icon' => 'dashicons-awards',         'login_required' => false ],
+        [ 'label' => __( 'Picture Wall', 'societypress' ),        'url' => home_url( '/picture-wall/' ),     'module' => 'gallery',        'icon' => 'dashicons-format-image',   'login_required' => false ],
+        [ 'label' => __( 'Resources', 'societypress' ),           'url' => home_url( '/resources/' ),        'module' => 'resources',      'icon' => 'dashicons-admin-links',    'login_required' => false ],
+        [ 'label' => __( 'Documents', 'societypress' ),           'url' => home_url( '/documents/' ),        'module' => 'documents',      'icon' => 'dashicons-media-text',     'login_required' => true  ],
+        [ 'label' => __( 'Store', 'societypress' ),               'url' => home_url( '/store/' ),            'module' => 'store',          'icon' => 'dashicons-cart',           'login_required' => false ],
+        [ 'label' => __( 'My Account', 'societypress' ),          'url' => home_url( '/my-account/' ),       'module' => null,             'icon' => 'dashicons-admin-users',    'login_required' => true  ],
+    ];
+
+    return $items;
+}
+
+
+/**
+ * Resolve the final sidebar items: defaults filtered by enabled modules,
+ * extensible via the 'sp_society_sidebar_items' filter for sites that
+ * want to add / remove / rename entries.
+ */
+function sp_society_sidebar_items(): array {
+    $items = sp_society_sidebar_default_items();
+
+    // Filter out items whose module is disabled
+    $items = array_values( array_filter( $items, function ( $item ) {
+        if ( empty( $item['module'] ) ) return true; // Always show no-module items
+        return sp_module_enabled( $item['module'] );
+    } ) );
+
+    // Filter out login-required items when not logged in
+    if ( ! is_user_logged_in() ) {
+        $items = array_values( array_filter( $items, fn( $i ) => empty( $i['login_required'] ) ) );
+    }
+
+    /**
+     * Filter the final sidebar items array.
+     *
+     * Hook this filter to add custom entries, remove default entries,
+     * rename labels, or change URLs. Each item is an associative array
+     * with label, url, module (slug or null), icon (dashicon class),
+     * and login_required (bool).
+     */
+    return apply_filters( 'sp_society_sidebar_items', $items );
+}
+
+
+/**
+ * Render the society sidebar as HTML. Used by both the shortcode and
+ * the page-builder widget.
+ */
+function sp_render_society_sidebar( array $args = [] ): string {
+    $defaults = [
+        'show_icons'       => true,
+        'show_login_link'  => true,
+        'highlight_current'=> true,
+    ];
+    $args = array_merge( $defaults, $args );
+
+    $items = sp_society_sidebar_items();
+    if ( empty( $items ) ) return '';
+
+    $current_url = home_url( $_SERVER['REQUEST_URI'] ?? '/' );
+
+    ob_start();
+    ?>
+    <nav class="sp-society-sidebar" aria-label="<?php esc_attr_e( 'Society navigation', 'societypress' ); ?>">
+        <style>
+            .sp-society-sidebar { background: var(--color-primary, #0d1f3c); border-radius: 6px; overflow: hidden; }
+            .sp-society-sidebar ul { list-style: none; margin: 0; padding: 0; }
+            .sp-society-sidebar li { border-bottom: 1px solid rgba(255,255,255,0.08); }
+            .sp-society-sidebar li:last-child { border-bottom: none; }
+            .sp-society-sidebar a {
+                display: flex; align-items: center; gap: 10px;
+                padding: 10px 16px;
+                color: rgba(255,255,255,0.92);
+                text-decoration: none;
+                font-size: 15px;
+                font-weight: 500;
+                transition: background 0.12s, color 0.12s;
+            }
+            .sp-society-sidebar a:hover { background: rgba(255,255,255,0.08); color: #fff; }
+            .sp-society-sidebar a.is-current { background: var(--color-accent, #c9973a); color: #1a1a1a; font-weight: 600; }
+            .sp-society-sidebar .dashicons { font-size: 18px; width: 18px; height: 18px; opacity: 0.85; }
+            .sp-society-sidebar a.is-current .dashicons { opacity: 1; }
+            .sp-society-sidebar .sp-sidebar-footer {
+                padding: 10px 16px;
+                background: rgba(0,0,0,0.15);
+                font-size: 13px;
+                color: rgba(255,255,255,0.7);
+            }
+            .sp-society-sidebar .sp-sidebar-footer a {
+                display: inline; padding: 0; color: var(--color-accent, #c9973a);
+            }
+            .sp-society-sidebar .sp-sidebar-footer a:hover { color: #fff; background: transparent; }
+        </style>
+        <ul>
+            <?php foreach ( $items as $item ) :
+                $is_current = $args['highlight_current'] && rtrim( $item['url'], '/' ) === rtrim( $current_url, '/' );
+                ?>
+                <li>
+                    <a href="<?php echo esc_url( $item['url'] ); ?>" class="<?php echo $is_current ? 'is-current' : ''; ?>">
+                        <?php if ( $args['show_icons'] && ! empty( $item['icon'] ) ) : ?>
+                            <span class="dashicons <?php echo esc_attr( $item['icon'] ); ?>"></span>
+                        <?php endif; ?>
+                        <span><?php echo esc_html( $item['label'] ); ?></span>
+                    </a>
+                </li>
+            <?php endforeach; ?>
+        </ul>
+        <?php if ( $args['show_login_link'] ) : ?>
+            <div class="sp-sidebar-footer">
+                <?php if ( is_user_logged_in() ) :
+                    $user = wp_get_current_user();
+                    printf(
+                        /* translators: 1: member name, 2: logout URL */
+                        wp_kses(
+                            __( 'Signed in as %1$s · <a href="%2$s">Sign out</a>', 'societypress' ),
+                            [ 'a' => [ 'href' => [] ] ]
+                        ),
+                        esc_html( $user->display_name ),
+                        esc_url( wp_logout_url( home_url() ) )
+                    );
+                else :
+                    printf(
+                        /* translators: %s is login URL */
+                        wp_kses(
+                            __( '<a href="%s">Sign in</a> to your member account', 'societypress' ),
+                            [ 'a' => [ 'href' => [] ] ]
+                        ),
+                        esc_url( wp_login_url( home_url( $_SERVER['REQUEST_URI'] ?? '/' ) ) )
+                    );
+                endif; ?>
+            </div>
+        <?php endif; ?>
+
+        <?php // Load dashicons on the front-end so the icons render.
+        wp_enqueue_style( 'dashicons' ); ?>
+    </nav>
+    <?php
+    return (string) ob_get_clean();
+}
+
+
+/**
+ * Shortcode: [sp_society_sidebar]
+ */
+add_shortcode( 'sp_society_sidebar', function ( $atts ) {
+    $atts = shortcode_atts( [
+        'show_icons'        => '1',
+        'show_login_link'   => '1',
+        'highlight_current' => '1',
+    ], $atts, 'sp_society_sidebar' );
+
+    return sp_render_society_sidebar( [
+        'show_icons'        => filter_var( $atts['show_icons'],        FILTER_VALIDATE_BOOLEAN ),
+        'show_login_link'   => filter_var( $atts['show_login_link'],   FILTER_VALIDATE_BOOLEAN ),
+        'highlight_current' => filter_var( $atts['highlight_current'], FILTER_VALIDATE_BOOLEAN ),
+    ] );
+} );
+
+
+/**
+ * Page-builder widget wrapper.
+ */
+add_filter( 'sp_builder_widget_types', function ( array $types ): array {
+    $types['society_sidebar'] = [
+        'label'       => __( 'Society Sidebar', 'societypress' ),
+        'description' => __( 'Auto-assembled member-portal navigation. Lists every enabled module section as a clickable entry. ENS-style left rail, configurable.', 'societypress' ),
+        'fields'      => [
+            'show_icons' => [
+                'label'   => __( 'Show icons', 'societypress' ),
+                'type'    => 'checkbox',
+                'default' => true,
+            ],
+            'show_login_link' => [
+                'label'   => __( 'Show sign-in / sign-out at the bottom', 'societypress' ),
+                'type'    => 'checkbox',
+                'default' => true,
+            ],
+            'highlight_current' => [
+                'label'   => __( 'Highlight the current page', 'societypress' ),
+                'type'    => 'checkbox',
+                'default' => true,
+            ],
+        ],
+    ];
+    return $types;
+} );
+
+function sp_render_builder_widget_society_sidebar( array $s ): void {
+    echo sp_render_society_sidebar( [
+        'show_icons'        => ! empty( $s['show_icons'] ),
+        'show_login_link'   => ! empty( $s['show_login_link'] ),
+        'highlight_current' => ! empty( $s['highlight_current'] ),
+    ] );
+}
+
+
+// ============================================================================
+// HELP REQUESTS — email lifecycle for askers + tags taxonomy admin
+//
+// WHY: Research Cases fire status emails on every transition; Help
+//      Requests should too for consistency. Plus a Tags admin page so
+//      Harold can rename / merge / delete the free-form tags that
+//      accumulate from public submissions, before they sprawl beyond
+//      the top-12 the archive surfaces.
+// ============================================================================
+
+
+/**
+ * Send a status-change email to the asker of a help request.
+ *
+ * Used for resolved / closed transitions (the new-response email is
+ * already wired in the existing response-submission handler).
+ */
+function sp_help_send_status_email( int $request_id, string $new_status ): void {
+    global $wpdb;
+    $req = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_help_requests WHERE id = %d", $request_id
+    ) );
+    if ( ! $req ) return;
+
+    // Resolve recipient — registered user OR public submitter
+    $email = '';
+    $name  = '';
+    if ( $req->user_id ) {
+        $user = get_user_by( 'id', $req->user_id );
+        if ( $user ) {
+            $email = $user->user_email;
+            $name  = $user->display_name;
+        }
+    }
+    if ( ! $email && $req->requester_email ) {
+        $email = $req->requester_email;
+        $name  = $req->requester_name ?: '';
+    }
+    if ( ! $email || ! is_email( $email ) ) return;
+
+    $settings = get_option( 'societypress_settings', [] );
+    $org      = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+
+    $subjects = [
+        'resolved' => sprintf( __( '[%s] Your research question is resolved', 'societypress' ), $org ),
+        'closed'   => sprintf( __( '[%s] Your research question is closed', 'societypress' ), $org ),
+    ];
+    $bodies = [
+        'resolved' => __( "Your research question has been marked resolved. Thank you to everyone who responded — the thread will stay on our public archive so future researchers can find it.", 'societypress' ),
+        'closed'   => __( "Your research question has been closed. If you still need help, please post a new question with any additional context you've gathered since.", 'societypress' ),
+    ];
+    if ( ! isset( $subjects[ $new_status ] ) ) return;
+
+    $thread_url = add_query_arg( [ 'sp_help' => 'view', 'id' => $request_id ], home_url() );
+
+    $body  = sprintf( __( "Dear %s,\n\n", 'societypress' ), $name ?: __( 'Friend', 'societypress' ) );
+    $body .= sprintf( __( "Question: %s\n\n", 'societypress' ), $req->title );
+    $body .= $bodies[ $new_status ] . "\n\n";
+    $body .= sprintf( __( "Read the full thread:\n%s\n\n", 'societypress' ), $thread_url );
+    $body .= sprintf( __( '— The %s team', 'societypress' ), $org );
+
+    wp_mail( $email, $subjects[ $new_status ], $body );
+}
+
+
+/**
+ * Hook the existing close/reopen admin handler so status changes fire
+ * the email automatically. Both close and reopen are GET actions on
+ * the admin page — we detect the transition and queue the email.
+ */
+add_action( 'admin_init', function () {
+    $action = sanitize_text_field( $_GET['action'] ?? '' );
+    if ( ! in_array( $action, [ 'close', 'reopen' ], true ) ) return;
+    if ( ( $_GET['page'] ?? '' ) !== 'sp-help-requests' ) return;
+
+    $req_id = (int) ( $_GET['request_id'] ?? 0 );
+    if ( ! $req_id ) return;
+
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) return;
+
+    // Only fire for the close transition (closed status).
+    // The existing handler runs at default priority; we run later.
+    if ( $action === 'close' ) {
+        sp_help_send_status_email( $req_id, 'closed' );
+    }
+}, 20 );
+
+
+/**
+ * Hook the AJAX mark-resolved handler — fire the resolved-status email.
+ * The existing handler at sp_handle_help_mark_resolved doesn't email;
+ * we hook in via the wp_ajax action just before the existing handler
+ * runs and capture the request_id, then fire the email after.
+ */
+add_action( 'wp_ajax_sp_help_mark_resolved', function () {
+    if ( empty( $_POST['request_id'] ) ) return;
+    $request_id = (int) $_POST['request_id'];
+    // Grab the current status before the existing handler updates it
+    global $wpdb;
+    $current = $wpdb->get_var( $wpdb->prepare(
+        "SELECT status FROM {$wpdb->prefix}sp_help_requests WHERE id = %d", $request_id
+    ) );
+    // Stash for our after-hook
+    $GLOBALS['_sp_help_status_was'] = $current;
+}, 5 ); // Priority 5 — runs before the main handler at default 10
+
+add_action( 'wp_ajax_sp_help_mark_resolved', function () {
+    if ( empty( $_POST['request_id'] ) ) return;
+    $request_id = (int) $_POST['request_id'];
+    $previous   = $GLOBALS['_sp_help_status_was'] ?? '';
+    if ( $previous === 'resolved' ) return; // No transition
+
+    global $wpdb;
+    $current = $wpdb->get_var( $wpdb->prepare(
+        "SELECT status FROM {$wpdb->prefix}sp_help_requests WHERE id = %d", $request_id
+    ) );
+    if ( $current === 'resolved' ) {
+        sp_help_send_status_email( $request_id, 'resolved' );
+    }
+}, 20 ); // Priority 20 — runs after the main handler
+
+
+// ============================================================================
+// HELP REQUESTS — Tags taxonomy admin
+//
+// WHY: Tags on Help Requests are stored as comma-separated free text on
+//      each request row. Members typing tags freely produces casing
+//      drift ("Sample County" vs "sample county" vs "Sample Co."). This
+//      admin page lists every unique tag with its usage count and lets
+//      Harold rename or merge variants into the canonical form.
+// ============================================================================
+
+add_action( 'admin_menu', function () {
+    add_submenu_page(
+        '',
+        __( 'Help Request Tags', 'societypress' ) . ' — SocietyPress',
+        __( 'Help Request Tags', 'societypress' ),
+        'manage_options',
+        'sp-help-tags',
+        'sp_render_help_tags_admin_page'
+    );
+}, 30 );
+
+
+/**
+ * Render the Tags admin page.
+ */
+function sp_render_help_tags_admin_page(): void {
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) {
+        wp_die( __( 'Insufficient permissions.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $reqs_t = $wpdb->prefix . 'sp_help_requests';
+
+    // Handle rename / merge / delete
+    if ( ! empty( $_POST['sp_tags_action'] ) ) {
+        check_admin_referer( 'sp_help_tags' );
+        $action = sanitize_text_field( $_POST['sp_tags_action'] );
+        $from   = strtolower( trim( wp_unslash( $_POST['from_tag'] ?? '' ) ) );
+        $to     = strtolower( trim( wp_unslash( $_POST['to_tag']   ?? '' ) ) );
+
+        if ( $from && in_array( $action, [ 'rename', 'merge', 'delete' ], true ) ) {
+            // Pull every request whose tags column contains the from_tag (case-insensitive)
+            $like = '%' . $wpdb->esc_like( $from ) . '%';
+            $rows = $wpdb->get_results( $wpdb->prepare(
+                "SELECT id, tags FROM {$reqs_t} WHERE tags LIKE %s",
+                $like
+            ) );
+
+            $touched = 0;
+            foreach ( $rows as $r ) {
+                $tags = array_map( 'trim', explode( ',', strtolower( (string) $r->tags ) ) );
+                $tags = array_filter( $tags );
+
+                $new_tags = [];
+                foreach ( $tags as $t ) {
+                    if ( $t === $from ) {
+                        if ( $action === 'delete' ) continue;            // drop it
+                        if ( $action === 'rename' ) { $new_tags[] = $to; continue; }
+                        if ( $action === 'merge'  ) { $new_tags[] = $to; continue; }
+                    } else {
+                        $new_tags[] = $t;
+                    }
+                }
+                $new_tags = array_values( array_unique( $new_tags ) );
+                $new = implode( ', ', $new_tags );
+                if ( $new !== $r->tags ) {
+                    $wpdb->update( $reqs_t, [ 'tags' => $new ], [ 'id' => $r->id ] );
+                    $touched++;
+                }
+            }
+
+            $msg = $action === 'rename' ? sprintf( __( 'Renamed "%1$s" to "%2$s" in %3$d threads.', 'societypress' ), $from, $to, $touched )
+                : ( $action === 'merge'  ? sprintf( __( 'Merged "%1$s" into "%2$s" in %3$d threads.', 'societypress' ), $from, $to, $touched )
+                : sprintf( __( 'Removed "%1$s" from %2$d threads.', 'societypress' ), $from, $touched ) );
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html( $msg ) . '</p></div>';
+        }
+    }
+
+    // Compute tag usage counts
+    $rows = $wpdb->get_col( "SELECT tags FROM {$reqs_t} WHERE tags IS NOT NULL AND tags <> ''" );
+    $counts = [];
+    foreach ( $rows as $tag_str ) {
+        foreach ( explode( ',', strtolower( (string) $tag_str ) ) as $t ) {
+            $t = trim( $t );
+            if ( $t === '' ) continue;
+            $counts[ $t ] = ( $counts[ $t ] ?? 0 ) + 1;
+        }
+    }
+    arsort( $counts );
+
+    ?>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Help Request Tags', 'societypress' ); ?></h1>
+        <p class="description" style="max-width:780px;">
+            <?php esc_html_e( 'Tags accumulate from member-submitted research questions. Use this page to rename casing variants, merge duplicates ("sample co." into "sample county"), or delete tags that don\'t belong.', 'societypress' ); ?>
+        </p>
+
+        <div style="display:flex; gap:30px; flex-wrap:wrap; align-items:flex-start; margin-top:20px;">
+
+            <!-- Action form -->
+            <div style="flex:0 0 360px;">
+                <div class="postbox">
+                    <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Rename / Merge / Delete', 'societypress' ); ?></h2>
+                    <div class="inside">
+                        <form method="post">
+                            <?php wp_nonce_field( 'sp_help_tags' ); ?>
+                            <table class="form-table">
+                                <tr>
+                                    <th><label for="from_tag"><?php esc_html_e( 'Source tag', 'societypress' ); ?></label></th>
+                                    <td><input type="text" id="from_tag" name="from_tag" class="regular-text" placeholder="<?php esc_attr_e( 'sample co.', 'societypress' ); ?>"></td>
+                                </tr>
+                                <tr>
+                                    <th><label for="to_tag"><?php esc_html_e( 'Destination tag', 'societypress' ); ?></label></th>
+                                    <td><input type="text" id="to_tag" name="to_tag" class="regular-text" placeholder="<?php esc_attr_e( 'sample county', 'societypress' ); ?>">
+                                        <p class="description"><?php esc_html_e( 'Required for Rename and Merge. Leave blank for Delete.', 'societypress' ); ?></p></td>
+                                </tr>
+                                <tr>
+                                    <th><?php esc_html_e( 'Action', 'societypress' ); ?></th>
+                                    <td>
+                                        <button type="submit" name="sp_tags_action" value="rename" class="button button-primary"><?php esc_html_e( 'Rename', 'societypress' ); ?></button>
+                                        <button type="submit" name="sp_tags_action" value="merge" class="button"><?php esc_html_e( 'Merge', 'societypress' ); ?></button>
+                                        <button type="submit" name="sp_tags_action" value="delete" class="button button-link-delete"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                                    </td>
+                                </tr>
+                            </table>
+                            <p class="description">
+                                <strong><?php esc_html_e( 'Rename:', 'societypress' ); ?></strong> <?php esc_html_e( 'changes the source tag to the destination tag in every thread.', 'societypress' ); ?><br>
+                                <strong><?php esc_html_e( 'Merge:', 'societypress' ); ?></strong> <?php esc_html_e( 'same as Rename, but if a thread already had the destination tag the duplicate is removed.', 'societypress' ); ?><br>
+                                <strong><?php esc_html_e( 'Delete:', 'societypress' ); ?></strong> <?php esc_html_e( 'removes the source tag from every thread.', 'societypress' ); ?>
+                            </p>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tag list -->
+            <div style="flex:1; min-width:400px;">
+                <h2 style="margin-top:0;"><?php printf( esc_html__( 'All Tags (%d unique)', 'societypress' ), count( $counts ) ); ?></h2>
+                <?php if ( empty( $counts ) ) : ?>
+                    <p style="color:#6b7280; font-style:italic; padding:20px;"><?php esc_html_e( 'No tags yet. Tags appear once members submit questions with them.', 'societypress' ); ?></p>
+                <?php else : ?>
+                    <table class="widefat striped">
+                        <thead><tr><th><?php esc_html_e( 'Tag', 'societypress' ); ?></th><th><?php esc_html_e( 'Usage', 'societypress' ); ?></th></tr></thead>
+                        <tbody>
+                            <?php foreach ( $counts as $tag => $count ) : ?>
+                                <tr>
+                                    <td><code><?php echo esc_html( $tag ); ?></code></td>
+                                    <td><?php echo (int) $count; ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+    <?php
+}
+
+
+/**
+ * Surface a "Tags" link on the Help Requests admin page so Harold can
+ * find this without hunting.
+ */
+add_action( 'admin_notices', function () {
+    if ( ( $_GET['page'] ?? '' ) !== 'sp-help-requests' ) return;
+    if ( ( $_GET['action'] ?? '' ) !== '' ) return; // Only on the list view
+    echo '<p style="margin-top:0;"><a href="' . esc_url( admin_url( 'admin.php?page=sp-help-tags' ) ) . '" class="button">' . esc_html__( 'Manage Tags', 'societypress' ) . '</a></p>';
+} );

@@ -13,6 +13,69 @@ Entries describe user-visible changes only. For the underlying commits, see
 ## [Unreleased]
 
 ### Added
+- **Society Sidebar widget.** Auto-assembled member-portal nav from enabled
+  modules — ENS-style left rail without the manual menu-builder work. Drop
+  the "Society Sidebar" widget into any page-builder column or use the
+  `[sp_society_sidebar]` shortcode. Items are filtered by which modules are
+  enabled (no Library entry if Library is off) and by login state (My
+  Account is hidden for visitors). Filter `sp_society_sidebar_items` lets
+  child themes add, rename, or remove entries.
+- **Theme Exchange — Tier 1 (preset export/import).** Societies can package
+  their site's design tokens (palette, fonts, spacing, layout) as a small
+  JSON preset and share it with other societies. Admin page at SocietyPress
+  → Theme Presets handles export and import; tokens are sanitized through
+  the existing design-page validators on import. Companion Theme Gallery at
+  `getsocietypress.org/themes/` ships five curated starter presets (one per
+  child theme).
+- **Help Requests upgrade — comradery model.** The module pivots from
+  member-only Q&A to a public "duty librarian" forum:
+  - Public submission via `[sp_help_request_submit]` with math captcha,
+    email verification, and per-email/IP rate limiting.
+  - Time-entry on every response — picker captures minutes spent,
+    auto-writes a row to `sp_volunteer_hours` with `source_type='help_request'`.
+  - Endorse-helpful (★) on responses with toggle-on/off per member.
+  - Mark-resolved + Accept-as-answer (asker or staff). Accepted answers
+    get a green left-border + "ACCEPTED ANSWER" badge.
+  - Public archive via `[sp_help_requests_archive]` with tag-filter pills
+    (top 12 tags surfaced as click-to-filter chips).
+  - Admin bulk actions on the queue: approve / mark-resolved / hide / delete.
+  - Tags taxonomy admin at SocietyPress → Help Request Tags for renaming /
+    merging / deleting accumulated free-text tags.
+  - Status-change emails to the asker on close + resolved (the new-response
+    email was already wired).
+  - Admin notice on the queue page surfaces pending-verification +
+    pending-review counts so moderators see incoming work.
+- **Paid Research Services module (opt-in).** Companion to Help Requests for
+  the rare extensive case that warrants paid work:
+  - Public intake via `[sp_research_request]` — visitor describes the case,
+    Stripe Checkout for the up-front fee (rate × max_hours_authorized).
+  - Admin queue at SocietyPress → Research Cases with status filter, search,
+    bulk-friendly list view.
+  - Single-case admin with status workflow (pending_payment / open / claimed
+    / in_progress / needs_more_hours / completed / cancelled / refunded),
+    researcher assignment, rate + SLA + max-hours overrides, internal
+    admin notes, hours-logging ledger, invoices list.
+  - Hours flow into the unified `sp_volunteer_hours` ledger with
+    `source_type='research_case'`.
+  - Researcher dashboard via `[sp_my_research_assignments]`: cards for
+    active cases (with inline log-hours form) plus open cases anyone can
+    claim with a one-click "I can take this case" button.
+  - Member-facing my-cases via `[sp_my_research_cases]` with pending-
+    invoice authorize-and-pay buttons.
+  - Additional-hours billing flow: researcher requests extra hours, system
+    creates a pending invoice, requester gets a payment-link email, paying
+    bumps the case's authorized hours and returns it to in_progress.
+  - In-system case messaging with file attachments + email notifications
+    to the other party.
+  - Convert-from-Help-Request flow: staff promote a free thread into a
+    paid case, original conversation preserved as the source.
+  - Status-change emails on every transition (claimed, in_progress,
+    needs_more_hours, completed, cancelled, refunded).
+- **Volunteer-hours source linking.** New `source_type` + `source_id` columns
+  on `sp_volunteer_hours` so every helping action traces back to its source
+  (help_request / research_case / committee / event / meeting / library_duty
+  / other). Member volunteer-hours summary widget (`[sp_my_volunteer_hours]`)
+  groups by source with per-source counts.
 - **Lineage Programs module (First Families, Pioneer Settlers, etc.).** New
   toggleable module for societies that recognize members documenting descent
   from historically significant ancestors. Each program defines its own

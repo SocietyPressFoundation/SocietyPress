@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.36' );
+define( 'SOCIETYPRESS_VERSION', '1.0.37' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -1106,11 +1106,15 @@ function sp_create_tables(): void {
         committee       VARCHAR(200)        NULL,
         hours           DECIMAL(5,2)        NOT NULL DEFAULT 0.00,
         activity_date   DATE                NOT NULL,
+        source_type     VARCHAR(30)         NULL,
+        source_id       BIGINT(20) UNSIGNED NULL,
         recorded_by     BIGINT(20) UNSIGNED NULL,
         created_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         KEY user_id (user_id),
-        KEY activity_date (activity_date)
+        KEY activity_date (activity_date),
+        KEY source_type (source_type),
+        KEY source_lookup (source_type, source_id)
     ) {$charset_collate};" );
 
     // ========================================================================
@@ -1603,18 +1607,30 @@ function sp_create_tables(): void {
     //      other members. Deliberately simple — no threading, no voting.
     // ========================================================================
     dbDelta( "CREATE TABLE {$prefix}help_requests (
-        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-        user_id         BIGINT(20) UNSIGNED NOT NULL,
-        title           VARCHAR(500)        NOT NULL,
-        description     LONGTEXT            NOT NULL,
-        status          VARCHAR(20)         NOT NULL DEFAULT 'open',
-        responses_count INT UNSIGNED        NOT NULL DEFAULT 0,
-        created_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        id                  BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        user_id             BIGINT(20) UNSIGNED NULL,
+        requester_name      VARCHAR(255)        NULL,
+        requester_email     VARCHAR(255)        NULL,
+        title               VARCHAR(500)        NOT NULL,
+        description         LONGTEXT            NOT NULL,
+        tags                VARCHAR(500)        NULL,
+        status              VARCHAR(20)         NOT NULL DEFAULT 'open',
+        is_public           TINYINT(1)          NOT NULL DEFAULT 1,
+        email_verified      TINYINT(1)          NOT NULL DEFAULT 1,
+        verification_token  VARCHAR(64)         NULL,
+        published_at        DATETIME            NULL,
+        resolved_at         DATETIME            NULL,
+        flagged_count       INT UNSIGNED        NOT NULL DEFAULT 0,
+        responses_count     INT UNSIGNED        NOT NULL DEFAULT 0,
+        created_at          DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at          DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         KEY user_id (user_id),
         KEY status (status),
-        KEY created_at (created_at)
+        KEY is_public (is_public),
+        KEY published_at (published_at),
+        KEY created_at (created_at),
+        KEY requester_email (requester_email)
     ) {$charset_collate};" );
 
     // ========================================================================
@@ -1626,14 +1642,19 @@ function sp_create_tables(): void {
     //      responses are displayed in chronological order.
     // ========================================================================
     dbDelta( "CREATE TABLE {$prefix}help_responses (
-        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-        request_id      BIGINT(20) UNSIGNED NOT NULL,
-        user_id         BIGINT(20) UNSIGNED NOT NULL,
-        content         LONGTEXT            NOT NULL,
-        created_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        id                 BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        request_id         BIGINT(20) UNSIGNED NOT NULL,
+        user_id            BIGINT(20) UNSIGNED NOT NULL,
+        content            LONGTEXT            NOT NULL,
+        minutes_spent      INT UNSIGNED        NOT NULL DEFAULT 0,
+        helpful_count      INT UNSIGNED        NOT NULL DEFAULT 0,
+        is_resolved_answer TINYINT(1)          NOT NULL DEFAULT 0,
+        volunteer_hours_id BIGINT(20) UNSIGNED NULL,
+        created_at         DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         KEY request_id (request_id),
-        KEY user_id (user_id)
+        KEY user_id (user_id),
+        KEY is_resolved_answer (is_resolved_answer)
     ) {$charset_collate};" );
 
 
@@ -2318,7 +2339,7 @@ function sp_create_tables(): void {
 
     // Store the schema version so we can run migrations in future updates
     // without re-running the full dbDelta on every page load.
-    update_option( 'societypress_db_version', '0.30d' );
+    update_option( 'societypress_db_version', '0.31d' );
 }
 
 
@@ -52364,12 +52385,55 @@ function sp_frontend_help_requests(): void {
         $request_id = absint( $_POST['request_id'] ?? 0 );
         $content    = sanitize_textarea_field( $_POST['response_content'] ?? '' );
 
+        // Volunteer-hours capture — required, defaults to 15 min if missing
+        $minutes_pick = $_POST['response_minutes'] ?? '15';
+        if ( $minutes_pick === 'custom' ) {
+            $minutes = (int) ( $_POST['response_minutes_custom'] ?? 0 );
+        } else {
+            $minutes = (int) $minutes_pick;
+        }
+        $minutes = max( 1, min( 600, $minutes ) ); // sane bounds
+
         if ( $request_id && $content ) {
             $wpdb->insert( $prefix . 'help_responses', [
-                'request_id' => $request_id,
-                'user_id'    => $current_user_id,
-                'content'    => $content,
+                'request_id'    => $request_id,
+                'user_id'       => $current_user_id,
+                'content'       => $content,
+                'minutes_spent' => $minutes,
             ] );
+            $response_id = (int) $wpdb->insert_id;
+
+            // Look up the request title for the volunteer-hours activity label
+            $req_row = $wpdb->get_row( $wpdb->prepare(
+                "SELECT title FROM {$prefix}help_requests WHERE id = %d", $request_id
+            ) );
+            $activity = sprintf(
+                __( 'Help Request response: %s', 'societypress' ),
+                $req_row ? wp_trim_words( $req_row->title, 12 ) : '#' . $request_id
+            );
+
+            // Log the volunteer hours
+            $wpdb->insert( $prefix . 'volunteer_hours', [
+                'user_id'       => $current_user_id,
+                'activity'      => $activity,
+                'committee'     => null,
+                'hours'         => round( $minutes / 60, 2 ),
+                'activity_date' => current_time( 'Y-m-d' ),
+                'source_type'   => 'help_request',
+                'source_id'     => $request_id,
+                'recorded_by'   => $current_user_id,
+            ] );
+            $hours_id = (int) $wpdb->insert_id;
+
+            // Cross-reference the hours entry on the response
+            if ( $hours_id && $response_id ) {
+                $wpdb->update(
+                    $prefix . 'help_responses',
+                    [ 'volunteer_hours_id' => $hours_id ],
+                    [ 'id' => $response_id ]
+                );
+            }
+
             // Update response count
             $wpdb->query( $wpdb->prepare(
                 "UPDATE {$prefix}help_requests SET responses_count = responses_count + 1 WHERE id = %d",
@@ -52660,9 +52724,12 @@ function sp_frontend_help_requests(): void {
         //      is determined at runtime by PHP — 'open' maps to green, anything else
         //      to grey. A static CSS class cannot express this conditional.
         $help_status_labels = [
-            'open'   => __( 'Open', 'societypress' ),
-            'closed' => __( 'Closed', 'societypress' ),
+            'open'     => __( 'Open', 'societypress' ),
+            'resolved' => __( 'Resolved', 'societypress' ),
+            'closed'   => __( 'Closed', 'societypress' ),
         ];
+        $status_color = ( $request->status === 'open' ) ? '#0a6b2e'
+                      : ( ( $request->status === 'resolved' ) ? '#1e40af' : '#666' );
         echo '<p class="sp-help-question-meta">'
            . sprintf(
                 /* translators: %1$s = author name, %2$s = date */
@@ -52670,35 +52737,196 @@ function sp_frontend_help_requests(): void {
                 esc_html( $request->first_name . ' ' . $request->last_name ),
                 esc_html( wp_date( 'F j, Y', strtotime( $request->created_at ) ) )
              )
-           . ' — <span style="color:' . ( $request->status === 'open' ? '#0a6b2e' : '#666' ) . ';">' . esc_html( $help_status_labels[ $request->status ] ?? sp_localized_status( $request->status ) ) . '</span></p>';
+           . ' — <span style="color:' . $status_color . ';">' . esc_html( $help_status_labels[ $request->status ] ?? sp_localized_status( $request->status ) ) . '</span></p>';
         echo '<div class="sp-help-question-body">' . wpautop( esc_html( $request->description ) ) . '</div>';
+
+        // Mark-resolved button — visible only to the asker (when open) or to staff
+        $can_resolve = $request->status === 'open' && (
+            (int) $request->user_id === $current_user_id
+            || current_user_can( 'sp_manage_content' )
+            || current_user_can( 'manage_options' )
+        );
+        if ( $can_resolve ) {
+            $resolve_nonce = wp_create_nonce( 'sp_help_resolve' );
+            echo '<p style="margin:8px 0 16px;">'
+               . '<button type="button" class="sp-btn sp-btn-outline sp-help-resolve-btn" '
+               . 'data-request-id="' . (int) $req_id . '" '
+               . 'data-nonce="' . esc_attr( $resolve_nonce ) . '" '
+               . 'style="padding:6px 14px; font-size:13px;">'
+               . esc_html__( 'Mark this question resolved', 'societypress' )
+               . '</button>'
+               . '</p>';
+        }
 
         // Responses
         echo '<h3>' . sprintf( _n( '%d Response', '%d Responses', count( $responses ), 'societypress' ), count( $responses ) ) . '</h3>';
+
+        // Endorsement nonce — single nonce reused for every response
+        $endorse_nonce = wp_create_nonce( 'sp_help_endorse' );
+        // Look up which responses the current user already endorsed
+        $endorsed_ids = [];
+        if ( $current_user_id ) {
+            $endorse_keys = $wpdb->get_col( $wpdb->prepare(
+                "SELECT meta_key FROM {$prefix}member_meta WHERE user_id = %d AND meta_key LIKE %s",
+                $current_user_id, 'sp_help_endorse_%'
+            ) );
+            foreach ( $endorse_keys as $k ) {
+                $endorsed_ids[] = (int) substr( $k, strlen( 'sp_help_endorse_' ) );
+            }
+        }
+
         foreach ( $responses as $resp ) {
-            echo '<div class="sp-help-response-card">';
+            $is_resolved_answer = ! empty( $resp->is_resolved_answer );
+            $is_own_response    = ( (int) $resp->user_id === $current_user_id );
+            $already_endorsed   = in_array( (int) $resp->id, $endorsed_ids, true );
+            $card_style         = $is_resolved_answer
+                ? ' style="border-left:4px solid #166534; background:#f0fdf4;"'
+                : '';
+
+            echo '<div class="sp-help-response-card"' . $card_style . '>';
             echo '<p class="sp-help-response-byline">'
                . '<strong>' . esc_html( $resp->first_name . ' ' . $resp->last_name ) . '</strong>'
-               . ' — ' . esc_html( wp_date( 'M j, Y g:i A', strtotime( $resp->created_at ) ) ) . '</p>';
+               . ' — ' . esc_html( wp_date( 'M j, Y g:i A', strtotime( $resp->created_at ) ) );
+            if ( $is_resolved_answer ) {
+                echo ' &nbsp;<span style="background:#166534; color:#fff; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;">' . esc_html__( 'ACCEPTED ANSWER', 'societypress' ) . '</span>';
+            }
+            echo '</p>';
             echo '<div class="sp-help-response-body">' . wpautop( esc_html( $resp->content ) ) . '</div>';
+
+            // Endorse + helpful count + (asker only) accept-as-answer
+            echo '<div style="display:flex; align-items:center; gap:14px; margin-top:8px; padding-top:8px; border-top:1px solid #eee; font-size:13px;">';
+            if ( $current_user_id && ! $is_own_response ) {
+                echo '<button type="button" class="sp-help-endorse-btn" '
+                   . 'data-response-id="' . (int) $resp->id . '" '
+                   . 'data-nonce="' . esc_attr( $endorse_nonce ) . '" '
+                   . 'data-endorsed="' . ( $already_endorsed ? '1' : '0' ) . '" '
+                   . 'style="background:none; border:1px solid ' . ( $already_endorsed ? '#0d1f3c' : '#ccc' ) . '; padding:4px 12px; border-radius:14px; cursor:pointer; color:' . ( $already_endorsed ? '#0d1f3c' : '#666' ) . '; font-weight:' . ( $already_endorsed ? '600' : '400' ) . ';">'
+                   . ( $already_endorsed ? '★ ' : '☆ ' )
+                   . esc_html__( 'Helpful', 'societypress' )
+                   . ' <span class="sp-help-endorse-count">' . (int) $resp->helpful_count . '</span>'
+                   . '</button>';
+            } else {
+                echo '<span style="color:#999;">★ <span class="sp-help-endorse-count">' . (int) $resp->helpful_count . '</span> ' . esc_html__( 'helpful', 'societypress' ) . '</span>';
+            }
+
+            // Asker can accept this as the resolving answer (only when open and not own response)
+            $can_accept = $request->status === 'open'
+                       && (int) $request->user_id === $current_user_id
+                       && ! $is_own_response
+                       && ! $is_resolved_answer;
+            if ( $can_accept ) {
+                $accept_nonce = wp_create_nonce( 'sp_help_resolve' );
+                echo '<button type="button" class="sp-help-accept-btn" '
+                   . 'data-request-id="' . (int) $req_id . '" '
+                   . 'data-response-id="' . (int) $resp->id . '" '
+                   . 'data-nonce="' . esc_attr( $accept_nonce ) . '" '
+                   . 'style="background:none; border:1px solid #166534; color:#166534; padding:4px 12px; border-radius:14px; cursor:pointer; font-size:12px;">'
+                   . esc_html__( 'Accept as answer', 'societypress' )
+                   . '</button>';
+            }
             echo '</div>';
+
+            echo '</div>';
+        }
+
+        // JS — endorse + resolve interactions
+        if ( $current_user_id ) {
+            $ajax_url = admin_url( 'admin-ajax.php' );
+            ?>
+            <script>
+            (function () {
+                var ajaxUrl = <?php echo wp_json_encode( $ajax_url ); ?>;
+                document.querySelectorAll('.sp-help-endorse-btn').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        var fd = new URLSearchParams();
+                        fd.append('action', 'sp_help_endorse');
+                        fd.append('_wpnonce', btn.dataset.nonce);
+                        fd.append('response_id', btn.dataset.responseId);
+                        btn.disabled = true;
+                        fetch(ajaxUrl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd.toString() })
+                            .then(function (r) { return r.json(); })
+                            .then(function (resp) {
+                                btn.disabled = false;
+                                if (!resp || !resp.success) { alert((resp && resp.data && resp.data.message) || 'Could not record endorsement.'); return; }
+                                var endorsed = resp.data.endorsed;
+                                btn.dataset.endorsed = endorsed ? '1' : '0';
+                                btn.innerHTML = (endorsed ? '★ ' : '☆ ') + <?php echo wp_json_encode( __( 'Helpful', 'societypress' ) ); ?> + ' <span class="sp-help-endorse-count">' + resp.data.count + '</span>';
+                                btn.style.borderColor = endorsed ? '#0d1f3c' : '#ccc';
+                                btn.style.color       = endorsed ? '#0d1f3c' : '#666';
+                                btn.style.fontWeight  = endorsed ? '600' : '400';
+                            });
+                    });
+                });
+                document.querySelectorAll('.sp-help-resolve-btn, .sp-help-accept-btn').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        var msg = btn.classList.contains('sp-help-accept-btn')
+                            ? <?php echo wp_json_encode( __( 'Mark this response as the accepted answer? The thread will close.', 'societypress' ) ); ?>
+                            : <?php echo wp_json_encode( __( 'Mark this question as resolved? The thread will stop accepting new responses.', 'societypress' ) ); ?>;
+                        if (!confirm(msg)) return;
+                        var fd = new URLSearchParams();
+                        fd.append('action', 'sp_help_mark_resolved');
+                        fd.append('_wpnonce', btn.dataset.nonce);
+                        fd.append('request_id', btn.dataset.requestId);
+                        if (btn.dataset.responseId) fd.append('resolved_response_id', btn.dataset.responseId);
+                        btn.disabled = true;
+                        fetch(ajaxUrl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd.toString() })
+                            .then(function (r) { return r.json(); })
+                            .then(function (resp) {
+                                if (resp && resp.success) {
+                                    location.reload();
+                                } else {
+                                    btn.disabled = false;
+                                    alert((resp && resp.data && resp.data.message) || 'Could not mark resolved.');
+                                }
+                            });
+                    });
+                });
+            })();
+            </script>
+            <?php
         }
 
         // Reply form (only if open)
         if ( $request->status === 'open' ) {
             ?>
             <div class="sp-help-reply-section">
-                <h4>Add a Response</h4>
+                <h4><?php esc_html_e( 'Add a Response', 'societypress' ); ?></h4>
                 <form method="post">
                     <?php wp_nonce_field( 'sp_help_response' ); ?>
                     <input type="hidden" name="request_id" value="<?php echo $req_id; ?>">
                     <textarea name="response_content" rows="4" required class="sp-help-reply-textarea" placeholder="<?php echo esc_attr__( 'Share what you know...', 'societypress' ); ?>"></textarea>
-                    <button type="submit" name="sp_submit_response" class="sp-btn sp-btn-primary">Post Response</button>
+
+                    <!-- Volunteer-hours capture: every helping action is logged -->
+                    <fieldset style="margin-top:14px; padding:12px 14px; background:#f6f6f6; border:1px solid #e0e0e0; border-radius:6px;">
+                        <legend style="padding:0 8px; font-weight:600; font-size:14px;"><?php esc_html_e( 'How long did this take?', 'societypress' ); ?></legend>
+                        <p style="color:#666; font-size:13px; margin:4px 0 10px;"><?php esc_html_e( 'Logged to your volunteer hours so the society can recognize your contributions.', 'societypress' ); ?></p>
+                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                            <?php
+                            $picks = [ 5, 15, 30, 60 ];
+                            foreach ( $picks as $i => $m ) {
+                                $checked = ( $m === 15 ) ? 'checked' : '';
+                                $label   = $m < 60 ? sprintf( __( '%d min', 'societypress' ), $m ) : __( '1 hour', 'societypress' );
+                                echo '<label style="cursor:pointer; padding:6px 14px; border:1px solid #ccc; border-radius:4px; background:#fff;">'
+                                   . '<input type="radio" name="response_minutes" value="' . (int) $m . '" ' . $checked . ' style="margin-right:4px;"> '
+                                   . esc_html( $label ) . '</label>';
+                            }
+                            ?>
+                            <label style="cursor:pointer; padding:6px 14px; border:1px solid #ccc; border-radius:4px; background:#fff; display:flex; align-items:center; gap:6px;">
+                                <input type="radio" name="response_minutes" value="custom"> <?php esc_html_e( 'Custom:', 'societypress' ); ?>
+                                <input type="number" name="response_minutes_custom" min="1" max="600" placeholder="min" style="width:64px; padding:2px 6px;">
+                            </label>
+                        </div>
+                    </fieldset>
+
+                    <button type="submit" name="sp_submit_response" class="sp-btn sp-btn-primary" style="margin-top:14px;"><?php esc_html_e( 'Post Response', 'societypress' ); ?></button>
                 </form>
             </div>
             <?php
         } else {
-            echo '<p class="sp-help-closed-notice">This question has been closed and is no longer accepting responses.</p>';
+            $closed_msg = ( $request->status === 'resolved' )
+                ? __( 'This question has been resolved. Browse other open questions to lend a hand.', 'societypress' )
+                : __( 'This question has been closed and is no longer accepting responses.', 'societypress' );
+            echo '<p class="sp-help-closed-notice">' . esc_html( $closed_msg ) . '</p>';
         }
 
     } else {
@@ -80271,4 +80499,309 @@ function sp_render_builder_widget_picture_wall( array $s ): void {
 function sp_render_builder_widget_picture_wall_submit( array $s ): void {
     $atts = [ 'album' => sanitize_title( $s['album'] ?? '' ) ];
     echo do_shortcode( '[sp_picture_wall_submit ' . sp_builder_atts_to_string( $atts ) . ']' );
+}
+
+
+// ============================================================================
+// MIGRATION: Help Requests upgrade + volunteer-hours source linking
+//
+// WHY: The Help Requests module is being upgraded with public submission,
+//      moderation, resolved status, abuse signals, and (critically)
+//      every response now writes a row to sp_volunteer_hours so the
+//      society can recognize comradery contributions. dbDelta sometimes
+//      misses ALTER COLUMN on existing tables, so we do explicit checks.
+// ============================================================================
+
+add_action( 'admin_init', function () {
+    global $wpdb;
+
+    $migrations = [
+        'sp_help_requests'  => [
+            'requester_name'      => "ALTER TABLE {$wpdb->prefix}sp_help_requests ADD COLUMN requester_name VARCHAR(255) NULL AFTER user_id",
+            'requester_email'     => "ALTER TABLE {$wpdb->prefix}sp_help_requests ADD COLUMN requester_email VARCHAR(255) NULL AFTER requester_name, ADD KEY requester_email (requester_email)",
+            'tags'                => "ALTER TABLE {$wpdb->prefix}sp_help_requests ADD COLUMN tags VARCHAR(500) NULL AFTER description",
+            'is_public'           => "ALTER TABLE {$wpdb->prefix}sp_help_requests ADD COLUMN is_public TINYINT(1) NOT NULL DEFAULT 1 AFTER status, ADD KEY is_public (is_public)",
+            'email_verified'      => "ALTER TABLE {$wpdb->prefix}sp_help_requests ADD COLUMN email_verified TINYINT(1) NOT NULL DEFAULT 1 AFTER is_public",
+            'verification_token'  => "ALTER TABLE {$wpdb->prefix}sp_help_requests ADD COLUMN verification_token VARCHAR(64) NULL AFTER email_verified",
+            'published_at'        => "ALTER TABLE {$wpdb->prefix}sp_help_requests ADD COLUMN published_at DATETIME NULL AFTER verification_token, ADD KEY published_at (published_at)",
+            'resolved_at'         => "ALTER TABLE {$wpdb->prefix}sp_help_requests ADD COLUMN resolved_at DATETIME NULL AFTER published_at",
+            'flagged_count'       => "ALTER TABLE {$wpdb->prefix}sp_help_requests ADD COLUMN flagged_count INT UNSIGNED NOT NULL DEFAULT 0 AFTER resolved_at",
+        ],
+        'sp_help_responses' => [
+            'minutes_spent'      => "ALTER TABLE {$wpdb->prefix}sp_help_responses ADD COLUMN minutes_spent INT UNSIGNED NOT NULL DEFAULT 0 AFTER content",
+            'helpful_count'      => "ALTER TABLE {$wpdb->prefix}sp_help_responses ADD COLUMN helpful_count INT UNSIGNED NOT NULL DEFAULT 0 AFTER minutes_spent",
+            'is_resolved_answer' => "ALTER TABLE {$wpdb->prefix}sp_help_responses ADD COLUMN is_resolved_answer TINYINT(1) NOT NULL DEFAULT 0 AFTER helpful_count, ADD KEY is_resolved_answer (is_resolved_answer)",
+            'volunteer_hours_id' => "ALTER TABLE {$wpdb->prefix}sp_help_responses ADD COLUMN volunteer_hours_id BIGINT(20) UNSIGNED NULL AFTER is_resolved_answer",
+        ],
+        'sp_volunteer_hours' => [
+            'source_type' => "ALTER TABLE {$wpdb->prefix}sp_volunteer_hours ADD COLUMN source_type VARCHAR(30) NULL AFTER activity_date, ADD KEY source_type (source_type)",
+            'source_id'   => "ALTER TABLE {$wpdb->prefix}sp_volunteer_hours ADD COLUMN source_id BIGINT(20) UNSIGNED NULL AFTER source_type, ADD KEY source_lookup (source_type, source_id)",
+        ],
+    ];
+
+    foreach ( $migrations as $suffix => $cols ) {
+        $table = $wpdb->prefix . $suffix;
+        if ( $wpdb->get_var( "SHOW TABLES LIKE '{$table}'" ) !== $table ) continue;
+        foreach ( $cols as $col => $sql ) {
+            $exists = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM {$table} LIKE %s", $col ) );
+            if ( empty( $exists ) ) {
+                $wpdb->query( $sql );
+            }
+        }
+    }
+
+    // Loosen user_id NOT NULL on sp_help_requests so public (non-member)
+    // submissions can land. Only run if it's currently NOT NULL.
+    $table = $wpdb->prefix . 'sp_help_requests';
+    if ( $wpdb->get_var( "SHOW TABLES LIKE '{$table}'" ) === $table ) {
+        $col = $wpdb->get_row( "SHOW COLUMNS FROM {$table} LIKE 'user_id'" );
+        if ( $col && stripos( $col->Null ?? '', 'NO' ) !== false ) {
+            $wpdb->query( "ALTER TABLE {$table} MODIFY user_id BIGINT(20) UNSIGNED NULL" );
+        }
+    }
+} );
+
+
+// ============================================================================
+// HELP REQUESTS UPGRADE — endorse, mark-resolved, volunteer-hours summary
+//
+// WHY: Building on the new schema columns. Endorsements give helpful
+//      members a visible reputation signal. Mark-resolved closes a thread
+//      cleanly so it stops accumulating answers. Volunteer-hours summary
+//      surfaces the comradery contributions in the directory.
+// ============================================================================
+
+
+/**
+ * AJAX: Endorse a help response as helpful.
+ *
+ * One endorsement per (response, member) — stored as a member_meta row
+ * keyed `sp_help_endorse_<response_id>` to avoid a new table for one
+ * boolean fact. Increments helpful_count on the response when toggled on.
+ */
+add_action( 'wp_ajax_sp_help_endorse', 'sp_handle_help_endorse' );
+function sp_handle_help_endorse(): void {
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => __( 'Please log in to endorse responses.', 'societypress' ) ] );
+    }
+    check_ajax_referer( 'sp_help_endorse', '_wpnonce' );
+
+    $response_id = (int) ( $_POST['response_id'] ?? 0 );
+    if ( $response_id <= 0 ) {
+        wp_send_json_error( [ 'message' => __( 'Bad response id.', 'societypress' ) ] );
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    $user_id = get_current_user_id();
+
+    // Verify the response exists and the endorser isn't the author
+    $resp = $wpdb->get_row( $wpdb->prepare(
+        "SELECT id, user_id FROM {$prefix}help_responses WHERE id = %d", $response_id
+    ) );
+    if ( ! $resp ) wp_send_json_error( [ 'message' => __( 'Response not found.', 'societypress' ) ] );
+    if ( (int) $resp->user_id === $user_id ) {
+        wp_send_json_error( [ 'message' => __( 'You cannot endorse your own response.', 'societypress' ) ] );
+    }
+
+    $meta_key = 'sp_help_endorse_' . $response_id;
+    $existing = $wpdb->get_var( $wpdb->prepare(
+        "SELECT id FROM {$prefix}member_meta WHERE user_id = %d AND meta_key = %s",
+        $user_id, $meta_key
+    ) );
+
+    if ( $existing ) {
+        // Toggle off: remove the meta and decrement
+        $wpdb->delete( $prefix . 'member_meta', [ 'id' => $existing ] );
+        $wpdb->query( $wpdb->prepare(
+            "UPDATE {$prefix}help_responses SET helpful_count = GREATEST(0, helpful_count - 1) WHERE id = %d",
+            $response_id
+        ) );
+        $endorsed = false;
+    } else {
+        $wpdb->insert( $prefix . 'member_meta', [
+            'user_id'    => $user_id,
+            'meta_key'   => $meta_key,
+            'meta_value' => '1',
+        ] );
+        $wpdb->query( $wpdb->prepare(
+            "UPDATE {$prefix}help_responses SET helpful_count = helpful_count + 1 WHERE id = %d",
+            $response_id
+        ) );
+        $endorsed = true;
+    }
+
+    $count = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT helpful_count FROM {$prefix}help_responses WHERE id = %d", $response_id
+    ) );
+
+    wp_send_json_success( [
+        'endorsed' => $endorsed,
+        'count'    => $count,
+    ] );
+}
+
+
+/**
+ * AJAX: Mark a help request as resolved (closes the thread cleanly).
+ *
+ * Allowed only for the original asker or a content manager.
+ */
+add_action( 'wp_ajax_sp_help_mark_resolved', 'sp_handle_help_mark_resolved' );
+function sp_handle_help_mark_resolved(): void {
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => __( 'Login required.', 'societypress' ) ], 403 );
+    }
+    check_ajax_referer( 'sp_help_resolve', '_wpnonce' );
+
+    $request_id = (int) ( $_POST['request_id'] ?? 0 );
+    $resolved_response_id = (int) ( $_POST['resolved_response_id'] ?? 0 ); // optional
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    $user_id = get_current_user_id();
+
+    $request = $wpdb->get_row( $wpdb->prepare(
+        "SELECT id, user_id, status FROM {$prefix}help_requests WHERE id = %d", $request_id
+    ) );
+    if ( ! $request ) wp_send_json_error( [ 'message' => __( 'Request not found.', 'societypress' ) ] );
+
+    $can_resolve = ( (int) $request->user_id === $user_id )
+        || current_user_can( 'sp_manage_content' )
+        || current_user_can( 'manage_options' );
+    if ( ! $can_resolve ) wp_send_json_error( [ 'message' => __( 'Only the asker or staff can mark this resolved.', 'societypress' ) ], 403 );
+
+    $wpdb->update( $prefix . 'help_requests', [
+        'status'      => 'resolved',
+        'resolved_at' => current_time( 'mysql' ),
+    ], [ 'id' => $request_id ] );
+
+    if ( $resolved_response_id ) {
+        // Verify the response belongs to this request
+        $belongs = $wpdb->get_var( $wpdb->prepare(
+            "SELECT id FROM {$prefix}help_responses WHERE id = %d AND request_id = %d",
+            $resolved_response_id, $request_id
+        ) );
+        if ( $belongs ) {
+            $wpdb->update( $prefix . 'help_responses', [ 'is_resolved_answer' => 1 ], [ 'id' => $resolved_response_id ] );
+        }
+    }
+
+    wp_send_json_success( [ 'message' => __( 'Marked resolved.', 'societypress' ) ] );
+}
+
+
+/**
+ * Render: Volunteer-hours summary widget for a single member.
+ *
+ * Pulls from sp_volunteer_hours grouped by source_type so the directory
+ * can show "Mary Smith — 47 hours volunteered (12 help responses,
+ * 8 committee meetings, 24 hours library duty)" with each source type
+ * linkable back to its detail.
+ */
+function sp_render_member_volunteer_hours_summary( int $user_id, int $year = 0 ): string {
+    if ( $user_id <= 0 ) return '';
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $year = $year ?: (int) wp_date( 'Y' );
+
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT COALESCE(source_type, 'other') AS source_type,
+                SUM(hours) AS total_hours,
+                COUNT(*) AS entries
+         FROM {$prefix}volunteer_hours
+         WHERE user_id = %d AND YEAR(activity_date) = %d
+         GROUP BY COALESCE(source_type, 'other')
+         ORDER BY total_hours DESC",
+        $user_id, $year
+    ) );
+
+    $grand_hours   = 0.0;
+    $grand_entries = 0;
+    foreach ( $rows as $r ) {
+        $grand_hours   += (float) $r->total_hours;
+        $grand_entries += (int) $r->entries;
+    }
+
+    if ( empty( $rows ) || $grand_entries === 0 ) {
+        return '';
+    }
+
+    $labels = [
+        'help_request'  => __( 'help responses', 'societypress' ),
+        'research_case' => __( 'research cases', 'societypress' ),
+        'committee'     => __( 'committee work', 'societypress' ),
+        'event'         => __( 'event volunteering', 'societypress' ),
+        'meeting'       => __( 'meetings attended', 'societypress' ),
+        'library_duty'  => __( 'library duty hours', 'societypress' ),
+        'other'         => __( 'other contributions', 'societypress' ),
+    ];
+
+    ob_start();
+    ?>
+    <div class="sp-vh-summary">
+        <style>
+            .sp-vh-summary { background: #f9f9f9; border-left: 4px solid #c9973a; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; }
+            .sp-vh-summary h4 { margin: 0 0 8px; font-size: 15px; color: #0d1f3c; }
+            .sp-vh-summary .sp-vh-total { font-size: 22px; font-weight: 700; color: #0d1f3c; }
+            .sp-vh-summary .sp-vh-period { font-size: 13px; color: #666; margin-left: 6px; }
+            .sp-vh-summary ul { margin: 8px 0 0; padding: 0 0 0 18px; font-size: 14px; color: #333; }
+            .sp-vh-summary li { margin: 2px 0; }
+        </style>
+        <h4><?php esc_html_e( 'Volunteer Hours', 'societypress' ); ?></h4>
+        <div>
+            <span class="sp-vh-total"><?php echo esc_html( number_format( $grand_hours, 1 ) ); ?></span>
+            <span class="sp-vh-period"><?php echo esc_html( sprintf( __( 'hours in %d', 'societypress' ), $year ) ); ?></span>
+        </div>
+        <ul>
+            <?php foreach ( $rows as $r ) :
+                $label = $labels[ $r->source_type ] ?? $r->source_type;
+                printf(
+                    '<li>%1$s — %2$s</li>',
+                    esc_html( number_format( (float) $r->total_hours, 1 ) . ' ' . __( 'hrs', 'societypress' ) ),
+                    esc_html( $label . ' (' . (int) $r->entries . ')' )
+                );
+            endforeach; ?>
+        </ul>
+    </div>
+    <?php
+    return (string) ob_get_clean();
+}
+
+
+/**
+ * Shortcode: [sp_my_volunteer_hours]
+ *
+ * Member-facing: shows the logged-in user's hours summary. Embeddable on
+ * the member portal "My Account" page.
+ */
+add_shortcode( 'sp_my_volunteer_hours', function () {
+    if ( ! is_user_logged_in() ) {
+        return '<p>' . esc_html__( 'Please log in to see your volunteer hours.', 'societypress' ) . '</p>';
+    }
+    $html = sp_render_member_volunteer_hours_summary( get_current_user_id() );
+    if ( $html === '' ) {
+        return '<div class="sp-vh-summary" style="background:#f9f9f9; border-left:4px solid #ddd; padding:12px 16px; border-radius:0 6px 6px 0; margin:16px 0; color:#666; font-style:italic;">'
+             . esc_html__( 'No volunteer hours logged yet this year. Helping out on a research question or committee meeting will add to your total.', 'societypress' )
+             . '</div>';
+    }
+    return $html;
+} );
+
+
+/**
+ * Page-builder widget wrappers for the new shortcodes.
+ */
+add_filter( 'sp_builder_widget_types', function ( array $types ): array {
+    $types['my_volunteer_hours'] = [
+        'label'       => __( 'My Volunteer Hours', 'societypress' ),
+        'description' => __( 'Logged-in member\'s volunteer-hours summary, broken down by source (help responses, committee work, library duty, etc.).', 'societypress' ),
+        'fields'      => [],
+    ];
+    return $types;
+} );
+
+function sp_render_builder_widget_my_volunteer_hours( array $s ): void {
+    echo do_shortcode( '[sp_my_volunteer_hours]' );
 }

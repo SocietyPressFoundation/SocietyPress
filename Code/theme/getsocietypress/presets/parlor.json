@@ -1,0 +1,31 @@
+{
+    "format": "societypress.preset.v1",
+    "exported_at": "2026-04-26T00:00:00Z",
+    "exported_by": "SocietyPress",
+    "name": "Parlor — Vintage Burgundy",
+    "description": "Deep burgundy and aged ivory. Display serif for headings, easy reading sizes. Evokes 19th-century parlor portraits and bound-leather society journals. Pairs with the Parlor child theme.",
+    "tokens": {
+        "design_color_primary": "#6b1f3a",
+        "design_color_primary_hover": "#8a2c4a",
+        "design_color_accent": "#c4a05c",
+        "design_color_header_bg": "#3d1424",
+        "design_color_header_text": "#fdf8f0",
+        "design_color_footer_bg": "#3d1424",
+        "design_color_footer_text": "#fdf8f0",
+        "design_color_footer_link": "#c4a05c",
+        "design_font_body": "palatino",
+        "design_font_heading": "palatino",
+        "design_font_size": "comfortable",
+        "design_heading_scale": "large",
+        "design_content_width": "standard",
+        "design_content_width_px": 1100,
+        "design_show_header_title": 1,
+        "design_header_height": 0,
+        "design_logo_height": 80,
+        "design_header_padding": 16,
+        "design_nav_font_size": 16,
+        "design_nav_spacing": 24,
+        "design_nav_font_weight": "500",
+        "design_show_social_icons": 1
+    }
+}

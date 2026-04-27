@@ -4,7 +4,7 @@ Theme URI: https://getsocietypress.org
 Author: SocietyPress Contributors
 Author URI: https://getsocietypress.org
 Description: The official theme for getsocietypress.org — the home of SocietyPress, a free, open-source WordPress platform for genealogical society administrators.
-Version: 0.18d
+Version: 0.19d
 License: GNU General Public License v2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 Text Domain: getsocietypress
@@ -6399,4 +6399,131 @@ select:focus-visible,
 
 @media print {
     .gsp-print-btn { display: none !important; }
+}
+
+/* ==========================================================================
+   THEME GALLERY (page-theme-gallery.php)
+   Public catalog of importable design presets
+   ========================================================================== */
+
+.tg-hero { padding: var(--spacing-3xl) 0; }
+.tg-section { padding: var(--spacing-4xl) 0; background: var(--color-background); }
+.tg-section--alt { background: #f7f6f2; }
+
+/* --- Preset grid --- */
+.tg-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: var(--spacing-lg);
+    margin-top: var(--spacing-xl);
+}
+.tg-card {
+    background: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-lg);
+    padding: var(--spacing-xl);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    display: flex;
+    flex-direction: column;
+}
+.tg-swatches {
+    display: flex;
+    gap: 6px;
+    margin-bottom: var(--spacing-md);
+}
+.tg-swatch {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1px solid rgba(0,0,0,0.08);
+    box-shadow: inset 0 0 0 2px #fff;
+}
+.tg-name {
+    margin: 0 0 4px;
+    font-size: var(--font-size-lg);
+    color: var(--color-primary);
+}
+.tg-by {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    margin: 0 0 var(--spacing-md);
+    font-style: italic;
+}
+.tg-desc {
+    color: var(--color-text);
+    font-size: var(--font-size-base);
+    line-height: 1.5;
+    margin: 0 0 var(--spacing-md);
+    flex: 1;
+}
+.tg-fonts {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    margin: 0 0 var(--spacing-lg);
+    padding-top: var(--spacing-sm);
+    border-top: 1px solid #f0f0f0;
+}
+.tg-download {
+    align-self: flex-start;
+}
+
+.tg-empty {
+    text-align: center;
+    color: var(--color-text-secondary);
+    padding: var(--spacing-2xl);
+    font-style: italic;
+}
+
+/* --- How-it-works steps --- */
+.tg-how-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--spacing-xl);
+    margin-top: var(--spacing-xl);
+}
+.tg-how-step {
+    text-align: center;
+}
+.tg-how-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--color-primary);
+    color: #fff;
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-bold);
+    margin-bottom: var(--spacing-md);
+}
+.tg-how-step h3 { margin: 0 0 var(--spacing-sm); color: var(--color-primary); }
+.tg-how-step p { color: var(--color-text); line-height: 1.6; max-width: 320px; margin: 0 auto; }
+
+.tg-safety {
+    margin-top: var(--spacing-2xl);
+    background: #fff;
+    border-left: 4px solid var(--color-accent);
+    padding: var(--spacing-md) var(--spacing-xl);
+    border-radius: 0 var(--border-radius-md) var(--border-radius-md) 0;
+    color: var(--color-text);
+    font-size: var(--font-size-sm);
+    line-height: 1.6;
+}
+
+/* --- Final CTA --- */
+.tg-cta {
+    background: linear-gradient(135deg, var(--color-hero-gradient-start) 0%, var(--color-hero-gradient-end) 100%);
+    color: #fff;
+    padding: var(--spacing-4xl) 0;
+    text-align: center;
+}
+.tg-cta__content { max-width: 720px; margin: 0 auto; }
+.tg-cta h2 { color: #fff; margin: 0 0 var(--spacing-md); }
+.tg-cta p { color: rgba(255,255,255,0.85); margin-bottom: var(--spacing-lg); font-size: var(--font-size-lg); }
+
+/* --- Responsive --- */
+@media (max-width: 900px) {
+    .tg-grid { grid-template-columns: 1fr; }
+    .tg-how-grid { grid-template-columns: 1fr; }
 }

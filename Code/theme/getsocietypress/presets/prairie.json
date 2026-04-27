@@ -1,0 +1,31 @@
+{
+    "format": "societypress.preset.v1",
+    "exported_at": "2026-04-26T00:00:00Z",
+    "exported_by": "SocietyPress",
+    "name": "Prairie — Earth Tones",
+    "description": "Warm terracotta and field greens. Slab-serif headings, generous line height. Built for societies serving farming counties and prairie heritage. Pairs with the Prairie child theme.",
+    "tokens": {
+        "design_color_primary": "#7a3e1f",
+        "design_color_primary_hover": "#9a522d",
+        "design_color_accent": "#5b7a3e",
+        "design_color_header_bg": "#5b3a1f",
+        "design_color_header_text": "#fdf6e9",
+        "design_color_footer_bg": "#3d2a17",
+        "design_color_footer_text": "#fdf6e9",
+        "design_color_footer_link": "#e8c89a",
+        "design_font_body": "merriweather",
+        "design_font_heading": "merriweather",
+        "design_font_size": "large",
+        "design_heading_scale": "large",
+        "design_content_width": "standard",
+        "design_content_width_px": 1100,
+        "design_show_header_title": 1,
+        "design_header_height": 0,
+        "design_logo_height": 80,
+        "design_header_padding": 18,
+        "design_nav_font_size": 17,
+        "design_nav_spacing": 26,
+        "design_nav_font_weight": "600",
+        "design_show_social_icons": 1
+    }
+}

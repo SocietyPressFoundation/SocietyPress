@@ -1,0 +1,31 @@
+{
+    "format": "societypress.preset.v1",
+    "exported_at": "2026-04-26T00:00:00Z",
+    "exported_by": "SocietyPress",
+    "name": "Ledger — Slate & Cream",
+    "description": "Cool slate gray with cream accents. Modern sans-serif throughout, tight nav spacing. Subdued and professional — looks at home for genealogical libraries and research-focused societies. Pairs with the Ledger child theme.",
+    "tokens": {
+        "design_color_primary": "#2d3a47",
+        "design_color_primary_hover": "#42525f",
+        "design_color_accent": "#9b6a45",
+        "design_color_header_bg": "#2d3a47",
+        "design_color_header_text": "#ffffff",
+        "design_color_footer_bg": "#1f2730",
+        "design_color_footer_text": "#ffffff",
+        "design_color_footer_link": "#c4a577",
+        "design_font_body": "source-sans",
+        "design_font_heading": "source-sans",
+        "design_font_size": "comfortable",
+        "design_heading_scale": "small",
+        "design_content_width": "standard",
+        "design_content_width_px": 1100,
+        "design_show_header_title": 1,
+        "design_header_height": 0,
+        "design_logo_height": 60,
+        "design_header_padding": 12,
+        "design_nav_font_size": 14,
+        "design_nav_spacing": 18,
+        "design_nav_font_weight": "600",
+        "design_show_social_icons": 1
+    }
+}

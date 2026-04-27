@@ -20,6 +20,69 @@ Items that were on this roadmap and have now landed. Kept here for a
 release cycle or two so visitors can see momentum before being pruned
 into the changelog.
 
+### Theme Exchange — Tier 1
+
+Shipped 2026-04-26. Societies can export their site's design tokens
+(palette, fonts, spacing, layout) as a portable JSON preset and import
+presets from other societies. Admin page at SocietyPress → Theme
+Presets handles both directions; tokens are sanitized through the
+existing design-page validators on import. Public Theme Gallery at
+`/themes/` lists curated presets (Heritage, Coastline, Prairie, Parlor,
+Ledger to start).
+
+### Lineage Programs (First Families, Pioneer Settlers, etc.)
+
+Shipped 2026-04-26. Multi-program lineage / heritage recognition
+module. Members apply through a public form, staff review in an admin
+queue with status workflow, approved members appear on a public roster
+with auto-generated certificate numbers and printable certificates at
+`/?sp_certificate=NNN`. Optional application-fee Stripe redirect.
+GDPR exporters/erasers wired.
+
+### Public Donation form + Stripe recurring + PayPal one-time
+
+Shipped 2026-04-26. New `[sp_donate]` shortcode delivers preset
+amounts, custom amount, one-time / monthly / annual frequency, cover-
+the-fee toggle, anonymous donations, in-honor-of dedications. Stripe
+Checkout end-to-end for all three frequencies with a signature-
+verified webhook handling renewals. PayPal Smart Buttons handle
+one-time donations.
+
+### Help Requests upgrade — public submission + comradery model
+
+Shipped 2026-04-26. The Help Requests module pivots to "free by
+default" comradery. Public submission with math captcha + email
+verification + per-email rate limiting. Time-entry on every response
+auto-writes to a unified volunteer-hours ledger keyed by source. Mark-
+resolved + endorse-helpful + accept-as-answer. Public archive with
+tag-filter pills. Admin bulk actions (approve / mark-resolved / hide /
+delete). Member volunteer-hours summary widget.
+
+### Paid Research Services (opt-in escalation)
+
+Shipped 2026-04-26. The companion module for the rare case that
+genuinely needs many hours of focused work. Public intake + Stripe
+up-front payment, admin queue + single-case review, researcher
+dashboard with one-click claim and inline log-hours, additional-hours
+billing flow (researcher requests → Stripe-billed → case bumps
+authorized hours), in-system case messaging with attachments and
+email notifications, status-change emails on every transition,
+convert-from-Help-Request escalation path.
+
+### Comparison page — SocietyPress vs. ENS / Wild Apricot / custom WP
+
+Shipped 2026-04-26 at `/comparison/`. Quick at-a-glance matrix, honest
+"where we're weaker" section, full feature matrix, 5-year cost-of-
+ownership comparison, ENS migration callout.
+
+### Downloadable PDF info sheets (one-pagers)
+
+Shipped 2026-04-26. Four print-optimized audience pages —
+`/for-administrators/`, `/for-board-members/`, `/for-librarians/`,
+`/for-treasurers/` — with a floating "Print as PDF" button on each
+that triggers `window.print()`. Print CSS hides nav/footer/button so
+the saved PDF is clean.
+
 ### First tagged GitHub release — `v1.0.19`
 
 Shipped 2026-04-19. The repository now carries a semver tag, unblocking
@@ -76,17 +139,20 @@ update ZIP downloads, and the extraction is zip-slip-safe.
 The front door. The templates exist for most of these; many need content
 or final polish.
 
-### Comparison page — SocietyPress vs. ENS / Blue Crab / Wild Apricot
+### Theme Exchange — Tier 2 (themed bundles) and Tier 3 (full child themes)
 
-**Motivation:** The most common question from societies considering a
-move is "how does this compare to what I already have?" A direct
-matrix answers it faster than prose.
-**Scope:** A new `page-comparison.php` template with a side-by-side
-feature matrix, pricing column, and honest "where we're weaker"
-section. Anchor links from the migration-pitch pages.
-**Blockers:** Research on the competition's current feature set.
+**Motivation:** Tier 1 (design-token JSON presets) shipped. Tier 2
+adds custom CSS + asset files inside a sandboxed `.spchildtheme`
+archive — fancier customization without crossing the PHP-execution
+boundary. Tier 3 adds full WordPress child themes via curated review
+with a "Reviewed by SocietyPress" badge for trust.
+**Scope:** Tier 2 — bundle parser, CSS sanitizer, image-only asset
+allowlist, admin import flow extension. Tier 3 — submission queue,
+manual review process, badge system on the gallery.
+**Blockers:** None for Tier 2. Tier 3 wants a documented review
+checklist before launch.
 
-### Donations / tip jar page
+### Donations / tip jar page on getsocietypress.org
 
 **Motivation:** SocietyPress is free forever, but voluntary donations
 keep the lights on. The `.github/FUNDING.yml` points at this page.
@@ -94,16 +160,6 @@ keep the lights on. The `.github/FUNDING.yml` points at this page.
 options (Stripe, PayPal, check), and recognition language for
 contributors who want it.
 **Blockers:** Payment-processing decision (Stripe account, etc.).
-
-### Downloadable PDF info sheets
-
-**Motivation:** Society boards often want a one-page handout to pass
-around before making a decision. PDFs travel better than URLs in that
-context.
-**Scope:** Four one-pagers — one each for administrator, board member,
-treasurer, and librarian — covering the features most relevant to that
-role.
-**Blockers:** None (pure content work).
 
 ### 5-minute Getting Started screencast
 

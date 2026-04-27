@@ -1,0 +1,31 @@
+{
+    "format": "societypress.preset.v1",
+    "exported_at": "2026-04-26T00:00:00Z",
+    "exported_by": "SocietyPress",
+    "name": "Coastline — Blue & Sand",
+    "description": "Sea-glass blue and warm sand. Clean sans-serif, comfortable reading rhythm. For coastal historical societies and barrier-island communities. Pairs with the Coastline child theme.",
+    "tokens": {
+        "design_color_primary": "#2c5b7a",
+        "design_color_primary_hover": "#3d7396",
+        "design_color_accent": "#e8c89a",
+        "design_color_header_bg": "#2c5b7a",
+        "design_color_header_text": "#ffffff",
+        "design_color_footer_bg": "#1d3e57",
+        "design_color_footer_text": "#ffffff",
+        "design_color_footer_link": "#e8c89a",
+        "design_font_body": "open-sans",
+        "design_font_heading": "lora",
+        "design_font_size": "comfortable",
+        "design_heading_scale": "normal",
+        "design_content_width": "standard",
+        "design_content_width_px": 1100,
+        "design_show_header_title": 1,
+        "design_header_height": 0,
+        "design_logo_height": 70,
+        "design_header_padding": 14,
+        "design_nav_font_size": 15,
+        "design_nav_spacing": 22,
+        "design_nav_font_weight": "500",
+        "design_show_social_icons": 1
+    }
+}

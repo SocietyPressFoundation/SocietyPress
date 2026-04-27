@@ -1,0 +1,31 @@
+{
+    "format": "societypress.preset.v1",
+    "exported_at": "2026-04-26T00:00:00Z",
+    "exported_by": "SocietyPress",
+    "name": "Heritage — Navy & Gold",
+    "description": "Classic navy and warm gold. Generous spacing, Garamond headings — the look of a society with hardbound minutes and brass plaques. Pairs well with the Heritage child theme.",
+    "tokens": {
+        "design_color_primary": "#0d1f3c",
+        "design_color_primary_hover": "#1a3a6c",
+        "design_color_accent": "#c9973a",
+        "design_color_header_bg": "#0d1f3c",
+        "design_color_header_text": "#ffffff",
+        "design_color_footer_bg": "#0d1f3c",
+        "design_color_footer_text": "#ffffff",
+        "design_color_footer_link": "#c9973a",
+        "design_font_body": "garamond",
+        "design_font_heading": "garamond",
+        "design_font_size": "comfortable",
+        "design_heading_scale": "normal",
+        "design_content_width": "standard",
+        "design_content_width_px": 1100,
+        "design_show_header_title": 1,
+        "design_header_height": 0,
+        "design_logo_height": 80,
+        "design_header_padding": 16,
+        "design_nav_font_size": 16,
+        "design_nav_spacing": 24,
+        "design_nav_font_weight": "500",
+        "design_show_social_icons": 1
+    }
+}

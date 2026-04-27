@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.40' );
+define( 'SOCIETYPRESS_VERSION', '1.0.41' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -83124,4 +83124,487 @@ add_action( 'admin_footer', function () {
     })();
     </script>
     <?php
+} );
+
+
+// ============================================================================
+// RESEARCH SERVICES — researcher dashboard + convert-from-help-request
+//
+// WHY: Researchers need a single view of cases they've claimed (or could
+//      claim) so they aren't hunting through the admin queue. The
+//      conversion flow lets a free Help Request escalate cleanly into a
+//      paid case when a thread reveals it's bigger than free comradery
+//      can handle — preserves the original conversation as the source.
+// ============================================================================
+
+
+/**
+ * Shortcode: [sp_my_research_assignments]
+ *
+ * Researcher-facing dashboard. Lists open cases the researcher could
+ * claim + cases they have claimed. Inline "Log hours" form per active
+ * case. Designed to live on a member-area dashboard page.
+ */
+add_shortcode( 'sp_my_research_assignments', function () {
+    if ( ! sp_module_enabled( 'research_services' ) ) {
+        return '<p>' . esc_html__( 'Paid Research Services is not enabled.', 'societypress' ) . '</p>';
+    }
+    if ( ! is_user_logged_in() ) {
+        return '<p>' . sprintf(
+            wp_kses(
+                __( 'Please <a href="%s">log in</a> to view your research assignments.', 'societypress' ),
+                [ 'a' => [ 'href' => [] ] ]
+            ),
+            esc_url( wp_login_url( get_permalink() ) )
+        ) . '</p>';
+    }
+
+    $user_id = get_current_user_id();
+
+    global $wpdb;
+    $cases_t = $wpdb->prefix . 'sp_research_cases';
+
+    // Cases this user has claimed
+    $claimed = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$cases_t}
+         WHERE claimed_by_user_id = %d
+         AND status IN ('claimed','in_progress','needs_more_hours','completed')
+         ORDER BY (status = 'completed') ASC, created_at DESC
+         LIMIT 100",
+        $user_id
+    ) );
+
+    // Open cases anyone can claim
+    $open = $wpdb->get_results(
+        "SELECT * FROM {$cases_t}
+         WHERE status = 'open' AND (claimed_by_user_id IS NULL OR claimed_by_user_id = 0)
+         ORDER BY created_at ASC
+         LIMIT 50"
+    );
+
+    // Hours totals per claimed case
+    $hours_by_case = [];
+    if ( ! empty( $claimed ) ) {
+        $ids = wp_list_pluck( $claimed, 'id' );
+        $placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+        $hours_rows = $wpdb->get_results( $wpdb->prepare(
+            "SELECT source_id, SUM(hours) AS total
+             FROM {$wpdb->prefix}sp_volunteer_hours
+             WHERE source_type = 'research_case' AND source_id IN ({$placeholders})
+             GROUP BY source_id",
+            ...array_map( 'intval', $ids )
+        ) );
+        foreach ( $hours_rows as $h ) {
+            $hours_by_case[ (int) $h->source_id ] = (float) $h->total;
+        }
+    }
+
+    $status_labels = [
+        'open'             => __( 'Open', 'societypress' ),
+        'claimed'          => __( 'Claimed', 'societypress' ),
+        'in_progress'      => __( 'In Progress', 'societypress' ),
+        'needs_more_hours' => __( 'Awaiting authorization', 'societypress' ),
+        'completed'        => __( 'Completed', 'societypress' ),
+    ];
+
+    // Handle inline claim or log-hours actions (member-side, NOT the admin handlers)
+    $msg = '';
+    if ( ! empty( $_POST['sp_research_member_action'] ) ) {
+        $member_action = sanitize_text_field( $_POST['sp_research_member_action'] );
+        $case_id       = (int) ( $_POST['case_id'] ?? 0 );
+
+        if ( $member_action === 'claim' && wp_verify_nonce( $_POST['_wpnonce'] ?? '', 'sp_research_claim_' . $case_id ) ) {
+            $case = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$cases_t} WHERE id = %d", $case_id ) );
+            if ( $case && $case->status === 'open' && empty( $case->claimed_by_user_id ) ) {
+                $wpdb->update( $cases_t, [
+                    'claimed_by_user_id' => $user_id,
+                    'status'             => 'claimed',
+                    'assigned_at'        => current_time( 'mysql' ),
+                ], [ 'id' => $case_id ] );
+                sp_research_send_status_email( $case_id, 'claimed' );
+                $msg = '<div class="notice-claimed">' . esc_html__( 'Claimed. The requester has been notified.', 'societypress' ) . '</div>';
+                // Re-fetch lists
+                $claimed = $wpdb->get_results( $wpdb->prepare(
+                    "SELECT * FROM {$cases_t} WHERE claimed_by_user_id = %d AND status IN ('claimed','in_progress','needs_more_hours','completed') ORDER BY (status = 'completed') ASC, created_at DESC LIMIT 100",
+                    $user_id
+                ) );
+                $open = $wpdb->get_results(
+                    "SELECT * FROM {$cases_t} WHERE status = 'open' AND (claimed_by_user_id IS NULL OR claimed_by_user_id = 0) ORDER BY created_at ASC LIMIT 50"
+                );
+            }
+        }
+
+        if ( $member_action === 'log_hours' && wp_verify_nonce( $_POST['_wpnonce'] ?? '', 'sp_research_member_log_' . $case_id ) ) {
+            $case = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$cases_t} WHERE id = %d", $case_id ) );
+            if ( $case && (int) $case->claimed_by_user_id === $user_id ) {
+                $hours = max( 0.25, round( (float) ( $_POST['hours'] ?? 0 ), 2 ) );
+                $note  = sanitize_text_field( wp_unslash( $_POST['note'] ?? '' ) );
+                $wpdb->insert( $wpdb->prefix . 'sp_volunteer_hours', [
+                    'user_id'       => $user_id,
+                    'activity'      => sprintf( __( 'Research case: %s', 'societypress' ), wp_trim_words( $case->title, 12 ) ) . ( $note ? ' — ' . $note : '' ),
+                    'committee'     => null,
+                    'hours'         => $hours,
+                    'activity_date' => current_time( 'Y-m-d' ),
+                    'source_type'   => 'research_case',
+                    'source_id'     => $case_id,
+                    'recorded_by'   => $user_id,
+                ] );
+                // Auto-transition claimed → in_progress on first hour logged
+                if ( $case->status === 'claimed' ) {
+                    $wpdb->update( $cases_t, [
+                        'status'     => 'in_progress',
+                        'started_at' => current_time( 'mysql' ),
+                    ], [ 'id' => $case_id ] );
+                    sp_research_send_status_email( $case_id, 'in_progress' );
+                }
+                $msg = '<div class="notice-claimed">' . esc_html__( 'Hours logged.', 'societypress' ) . '</div>';
+                // Refresh hours total
+                $hours_by_case[ $case_id ] = (float) $wpdb->get_var( $wpdb->prepare(
+                    "SELECT COALESCE(SUM(hours),0) FROM {$wpdb->prefix}sp_volunteer_hours WHERE source_type = 'research_case' AND source_id = %d", $case_id
+                ) );
+            }
+        }
+    }
+
+    ob_start();
+    ?>
+    <div class="sp-my-research-assignments">
+        <style>
+            .sp-my-research-assignments { margin: 1.5em 0; }
+            .sp-my-research-assignments h3 { margin: 0 0 12px; font-size: 18px; }
+            .sp-my-research-assignments h3 .count { color: #6b7280; font-size: 14px; font-weight: 400; margin-left: 6px; }
+            .sp-my-research-assignments .case { background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; padding: 14px 16px; margin-bottom: 10px; }
+            .sp-my-research-assignments .case h4 { margin: 0 0 4px; font-size: 16px; }
+            .sp-my-research-assignments .meta { color: #6b7280; font-size: 13px; margin: 4px 0 8px; }
+            .sp-my-research-assignments .status { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 600; color: #fff; background: #1e40af; margin-left: 4px; }
+            .sp-my-research-assignments .status.completed { background: #166534; }
+            .sp-my-research-assignments .status.needs { background: #b45309; }
+            .sp-my-research-assignments form.inline { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid #f0f0f0; }
+            .sp-my-research-assignments form.inline input[type=number] { width: 80px; padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; }
+            .sp-my-research-assignments form.inline input[type=text] { flex: 1; min-width: 200px; padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; }
+            .sp-my-research-assignments form.inline button { background: #0d1f3c; color: #fff; padding: 5px 14px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
+            .sp-my-research-assignments .claim-btn { background: #166534; color: #fff; padding: 6px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+            .sp-my-research-assignments .empty { color: #6b7280; font-style: italic; padding: 18px; text-align: center; background: #f9f9f9; border-radius: 6px; }
+            .sp-my-research-assignments .notice-claimed { background: #e8f5e9; border-left: 4px solid #166534; color: #1f4d2c; padding: 10px 14px; border-radius: 0 4px 4px 0; margin-bottom: 14px; }
+        </style>
+
+        <?php echo $msg; // safe — built from translatable strings only ?>
+
+        <h3>
+            <?php esc_html_e( 'My Active Cases', 'societypress' ); ?>
+            <span class="count"><?php echo (int) count( $claimed ); ?></span>
+        </h3>
+
+        <?php if ( empty( $claimed ) ) : ?>
+            <p class="empty"><?php esc_html_e( 'You have no active cases. Claim one from the open queue below.', 'societypress' ); ?></p>
+        <?php else : foreach ( $claimed as $c ) :
+            $logged = $hours_by_case[ $c->id ] ?? 0.0;
+            $authorized = (float) $c->max_hours_authorized;
+            $remaining = max( 0, $authorized - $logged );
+            $status_class = $c->status === 'completed' ? 'completed'
+                : ( in_array( $c->status, [ 'needs_more_hours' ], true ) ? 'needs' : '' );
+            ?>
+            <div class="case">
+                <h4><?php echo esc_html( $c->title ); ?>
+                    <span class="status <?php echo esc_attr( $status_class ); ?>"><?php echo esc_html( $status_labels[ $c->status ] ?? $c->status ); ?></span>
+                </h4>
+                <p class="meta">
+                    <?php
+                    printf(
+                        esc_html__( 'Requester: %1$s · Authorized: %2$s hr · Logged: %3$s hr · Remaining: %4$s hr', 'societypress' ),
+                        esc_html( $c->requester_name ),
+                        esc_html( number_format( $authorized, 2 ) ),
+                        esc_html( number_format( $logged, 2 ) ),
+                        esc_html( number_format( $remaining, 2 ) )
+                    );
+                    ?>
+                </p>
+                <details>
+                    <summary style="cursor:pointer; color:#0d1f3c; font-size:13px; margin-bottom:6px;"><?php esc_html_e( 'Case details', 'societypress' ); ?></summary>
+                    <div style="background:#f9f9f9; padding:10px; border-radius:4px; margin-top:6px; font-size:14px;">
+                        <?php if ( $c->surname ) : ?><p><strong><?php esc_html_e( 'Surname:', 'societypress' ); ?></strong> <?php echo esc_html( $c->surname ); ?></p><?php endif; ?>
+                        <?php if ( $c->time_period ) : ?><p><strong><?php esc_html_e( 'Time period:', 'societypress' ); ?></strong> <?php echo esc_html( $c->time_period ); ?></p><?php endif; ?>
+                        <?php if ( $c->location ) : ?><p><strong><?php esc_html_e( 'Location:', 'societypress' ); ?></strong> <?php echo esc_html( $c->location ); ?></p><?php endif; ?>
+                        <?php echo wp_kses_post( wpautop( $c->description ) ); ?>
+                        <?php if ( $c->additional_details ) : ?>
+                            <p><strong><?php esc_html_e( 'Already tried:', 'societypress' ); ?></strong></p>
+                            <?php echo wp_kses_post( wpautop( $c->additional_details ) ); ?>
+                        <?php endif; ?>
+                    </div>
+                </details>
+                <?php if ( in_array( $c->status, [ 'claimed', 'in_progress', 'needs_more_hours' ], true ) ) : ?>
+                    <form method="post" class="inline">
+                        <?php wp_nonce_field( 'sp_research_member_log_' . $c->id ); ?>
+                        <input type="hidden" name="sp_research_member_action" value="log_hours">
+                        <input type="hidden" name="case_id" value="<?php echo (int) $c->id; ?>">
+                        <input type="number" step="0.25" min="0.25" max="24" name="hours" placeholder="<?php esc_attr_e( 'hours', 'societypress' ); ?>" required>
+                        <input type="text" name="note" placeholder="<?php esc_attr_e( 'short note about this work', 'societypress' ); ?>">
+                        <button type="submit"><?php esc_html_e( 'Log Hours', 'societypress' ); ?></button>
+                    </form>
+                <?php endif; ?>
+            </div>
+        <?php endforeach; endif; ?>
+
+        <h3 style="margin-top:24px;">
+            <?php esc_html_e( 'Open Cases (Available to Claim)', 'societypress' ); ?>
+            <span class="count"><?php echo (int) count( $open ); ?></span>
+        </h3>
+
+        <?php if ( empty( $open ) ) : ?>
+            <p class="empty"><?php esc_html_e( 'No open cases right now. Check back later.', 'societypress' ); ?></p>
+        <?php else : foreach ( $open as $c ) : ?>
+            <div class="case">
+                <h4><?php echo esc_html( $c->title ); ?></h4>
+                <p class="meta">
+                    <?php
+                    printf(
+                        esc_html__( 'Requested %1$s · Authorized: %2$s hr at $%3$s/hr · SLA: %4$d days', 'societypress' ),
+                        esc_html( human_time_diff( strtotime( $c->created_at ), time() ) . ' ago' ),
+                        esc_html( number_format( (float) $c->max_hours_authorized, 2 ) ),
+                        esc_html( number_format( (float) $c->hourly_rate, 2 ) ),
+                        (int) $c->sla_days
+                    );
+                    ?>
+                </p>
+                <details>
+                    <summary style="cursor:pointer; color:#0d1f3c; font-size:13px; margin-bottom:6px;"><?php esc_html_e( 'Case details', 'societypress' ); ?></summary>
+                    <div style="background:#f9f9f9; padding:10px; border-radius:4px; margin-top:6px; font-size:14px;">
+                        <?php if ( $c->surname ) : ?><p><strong><?php esc_html_e( 'Surname:', 'societypress' ); ?></strong> <?php echo esc_html( $c->surname ); ?></p><?php endif; ?>
+                        <?php if ( $c->time_period ) : ?><p><strong><?php esc_html_e( 'Time period:', 'societypress' ); ?></strong> <?php echo esc_html( $c->time_period ); ?></p><?php endif; ?>
+                        <?php if ( $c->location ) : ?><p><strong><?php esc_html_e( 'Location:', 'societypress' ); ?></strong> <?php echo esc_html( $c->location ); ?></p><?php endif; ?>
+                        <?php echo wp_kses_post( wpautop( $c->description ) ); ?>
+                    </div>
+                </details>
+                <form method="post" style="margin-top:8px;">
+                    <?php wp_nonce_field( 'sp_research_claim_' . $c->id ); ?>
+                    <input type="hidden" name="sp_research_member_action" value="claim">
+                    <input type="hidden" name="case_id" value="<?php echo (int) $c->id; ?>">
+                    <button type="submit" class="claim-btn"><?php esc_html_e( 'I can take this case →', 'societypress' ); ?></button>
+                </form>
+            </div>
+        <?php endforeach; endif; ?>
+    </div>
+    <?php
+    return (string) ob_get_clean();
+} );
+
+
+/**
+ * Page-builder widget for [sp_my_research_assignments].
+ */
+add_filter( 'sp_builder_widget_types', function ( array $types ): array {
+    $types['my_research_assignments'] = [
+        'label'       => __( 'My Research Assignments', 'societypress' ),
+        'description' => __( 'Researcher dashboard: cases the logged-in member has claimed plus open cases available to claim. Inline log-hours form per active case.', 'societypress' ),
+        'fields'      => [],
+    ];
+    return $types;
+} );
+
+function sp_render_builder_widget_my_research_assignments( array $s ): void {
+    echo do_shortcode( '[sp_my_research_assignments]' );
+}
+
+
+// ============================================================================
+// CONVERT FROM HELP REQUEST → RESEARCH CASE
+//
+// WHY: A free Help Request thread sometimes reveals "this is too much
+//      for free comradery." A one-click conversion preserves the
+//      original conversation as the source, pre-fills the case form
+//      with what's already known, and routes the asker through the
+//      paid intake.
+// ============================================================================
+
+
+/**
+ * Add a "Convert to paid research case" button on the admin Help Request
+ * view page. Available to staff only.
+ */
+add_action( 'admin_footer', function () {
+    if ( ( $_GET['page'] ?? '' ) !== 'sp-help-requests' ) return;
+    if ( ( $_GET['action'] ?? '' ) !== 'view' ) return;
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) return;
+    if ( ! sp_module_enabled( 'research_services' ) ) return;
+
+    $req_id = (int) ( $_GET['request_id'] ?? 0 );
+    if ( ! $req_id ) return;
+
+    global $wpdb;
+    $existing_case = $wpdb->get_var( $wpdb->prepare(
+        "SELECT id FROM {$wpdb->prefix}sp_research_cases WHERE source_help_request_id = %d LIMIT 1",
+        $req_id
+    ) );
+
+    if ( $existing_case ) {
+        ?>
+        <div id="sp-help-convert-link" style="display:none;">
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-research-case-edit&id=' . $existing_case ) ); ?>" class="button button-secondary">
+                <?php esc_html_e( '→ View linked Research Case', 'societypress' ); ?>
+            </a>
+        </div>
+        <?php
+    } else {
+        $convert_url = wp_nonce_url(
+            admin_url( 'admin.php?page=sp-help-requests&sp_help_convert=' . $req_id ),
+            'sp_help_convert_' . $req_id
+        );
+        ?>
+        <div id="sp-help-convert-link" style="display:none;">
+            <a href="<?php echo esc_url( $convert_url ); ?>" class="button button-secondary"
+               onclick="return confirm(<?php echo wp_json_encode( __( 'Convert this Help Request into a paid Research Case? The original thread will stay; the new case will be pre-filled from this thread and ready for the requester to authorize payment.', 'societypress' ) ); ?>);">
+                <?php esc_html_e( '↑ Convert to paid Research Case', 'societypress' ); ?>
+            </a>
+        </div>
+        <?php
+    }
+    ?>
+    <script>
+    (function () {
+        var src = document.getElementById('sp-help-convert-link');
+        if (!src) return;
+        var anchor = document.querySelector('.wrap a[href*="sp-help-requests"]');
+        // Append after the back-link so it sits naturally in the page actions row
+        if (anchor && anchor.parentNode) {
+            var span = document.createElement('span');
+            span.style.marginLeft = '12px';
+            span.appendChild(src.firstElementChild);
+            anchor.parentNode.insertBefore(span, anchor.nextSibling);
+            src.remove();
+        }
+    })();
+    </script>
+    <?php
+} );
+
+
+/**
+ * Convert handler — creates a research case from a help request.
+ */
+add_action( 'admin_init', function () {
+    $req_id = (int) ( $_GET['sp_help_convert'] ?? 0 );
+    if ( ! $req_id ) return;
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) return;
+    if ( ! sp_module_enabled( 'research_services' ) ) return;
+    check_admin_referer( 'sp_help_convert_' . $req_id );
+
+    global $wpdb;
+
+    // Don't double-convert
+    $existing = $wpdb->get_var( $wpdb->prepare(
+        "SELECT id FROM {$wpdb->prefix}sp_research_cases WHERE source_help_request_id = %d LIMIT 1",
+        $req_id
+    ) );
+    if ( $existing ) {
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-research-case-edit&id=' . $existing ) );
+        exit;
+    }
+
+    $req = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_help_requests WHERE id = %d", $req_id
+    ) );
+    if ( ! $req ) {
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-help-requests' ) );
+        exit;
+    }
+
+    // Resolve requester contact (member or non-member)
+    $name  = $req->requester_name  ?: '';
+    $email = $req->requester_email ?: '';
+    if ( ( ! $name || ! $email ) && $req->user_id ) {
+        $user = get_user_by( 'id', $req->user_id );
+        if ( $user ) {
+            if ( ! $name )  $name  = $user->display_name;
+            if ( ! $email ) $email = $user->user_email;
+        }
+    }
+
+    $settings = get_option( 'societypress_settings', [] );
+    $rate     = (float) ( $settings['research_default_rate']      ?? 30.00 );
+    $hours    = (float) ( $settings['research_default_max_hours'] ?? 1.00 );
+    $sla_days = (int)   ( $settings['research_sla_days']          ?? 14 );
+
+    $wpdb->insert( $wpdb->prefix . 'sp_research_cases', [
+        'requester_user_id'      => $req->user_id ?: null,
+        'requester_name'         => $name,
+        'requester_email'        => $email,
+        'title'                  => $req->title,
+        'description'            => $req->description,
+        'source_help_request_id' => $req_id,
+        'hourly_rate'            => $rate,
+        'max_hours_authorized'   => $hours,
+        'sla_days'               => $sla_days,
+        'status'                 => 'pending_payment',
+    ] );
+    $case_id = (int) $wpdb->insert_id;
+
+    // Drop a note on the help request so the thread carries a link forward
+    $wpdb->insert( $wpdb->prefix . 'sp_help_responses', [
+        'request_id'    => $req_id,
+        'user_id'       => get_current_user_id(),
+        'content'       => sprintf(
+            __( 'This question has been escalated to a paid Research Case (#%d). The requester has been emailed a payment link to authorize formal research.', 'societypress' ),
+            $case_id
+        ),
+        'minutes_spent' => 0,
+    ] );
+    $wpdb->query( $wpdb->prepare(
+        "UPDATE {$wpdb->prefix}sp_help_requests SET responses_count = responses_count + 1 WHERE id = %d",
+        $req_id
+    ) );
+
+    // Email the requester with the payment link
+    if ( $email ) {
+        $org = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+        // Find a page that hosts [sp_research_request] — fall back to home
+        $intake_pages = get_posts( [
+            'post_type'   => 'page',
+            'post_status' => 'publish',
+            's'           => '[sp_research_request',
+            'numberposts' => 1,
+        ] );
+        $intake_url = $intake_pages ? get_permalink( $intake_pages[0]->ID ) : home_url();
+        // Direct payment link via the existing intake POST is awkward; for v1
+        // we point them at the intake page with a note that staff have
+        // pre-prepared a case for them.
+        $body  = sprintf( __( "Dear %s,\n\n", 'societypress' ), $name );
+        $body .= sprintf(
+            __( "We talked through your research question on the free Help Forum:\n\n  %s\n\nIt looks like the work needs more time than free volunteer help can provide. We've prepared a paid Research Case at $%s/hour. To authorize and pay for the initial %s hour(s), reply to this email or visit:\n\n%s\n\nWe will assign a researcher as soon as the initial fee is in.\n\n— The %s team",
+                'societypress' ),
+            $req->title,
+            number_format( $rate, 2 ),
+            number_format( $hours, 2 ),
+            $intake_url,
+            $org
+        );
+        wp_mail(
+            $email,
+            sprintf( __( '[%s] Your research question has been escalated', 'societypress' ), $org ),
+            $body
+        );
+    }
+
+    wp_safe_redirect( admin_url( 'admin.php?page=sp-research-case-edit&id=' . $case_id . '&sp_converted_from=' . $req_id ) );
+    exit;
+} );
+
+
+/**
+ * Show a notice on the new case page when it was converted from a Help Request.
+ */
+add_action( 'admin_notices', function () {
+    if ( ( $_GET['page'] ?? '' ) !== 'sp-research-case-edit' ) return;
+    $from = (int) ( $_GET['sp_converted_from'] ?? 0 );
+    if ( ! $from ) return;
+    $help_url = admin_url( 'admin.php?page=sp-help-requests&action=view&request_id=' . $from );
+    echo '<div class="notice notice-success is-dismissible"><p>'
+       . sprintf(
+            wp_kses(
+                __( 'Case created from <a href="%s">Help Request #%d</a>. The requester has been emailed an authorization link.', 'societypress' ),
+                [ 'a' => [ 'href' => [] ] ]
+            ),
+            esc_url( $help_url ),
+            $from
+         )
+       . '</p></div>';
 } );

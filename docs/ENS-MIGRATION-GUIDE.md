@@ -4,6 +4,8 @@ A step-by-step guide for genealogical and historical society webmasters who are 
 
 This guide assumes you are not a developer. You don't need to know PHP, MySQL, or anything about WordPress to follow it. You **do** need access to your current ENS site as an administrator, and access to a web hosting account where SocietyPress will live.
 
+**Coming from ENS-Classic or the new ENS-Responsive?** Both paths are supported. ENS-Classic is being sunset (Blue Crab's official end date is 5/31/2027 with no guarantee of extension), and ENS-R societies who'd rather own their data than keep paying tiered annual fees are also welcome — the export format is similar enough that the same CSV importer reads both. If you're still deciding which way to go, see the [side-by-side comparison](https://getsocietypress.org/comparison/) first.
+
 ---
 
 ## Before you start
@@ -63,7 +65,7 @@ These fields exist in ENS but have no equivalent in SocietyPress, so they'll be 
 - **Toll Free Phone, International Phone, Preferred Phone, Fax, Business Phone, Alt. International Phone, Alt. Preferred Phone, Alt. Email** — extra phone/email slots. Most societies have used only one or two of these, so the importer keeps the primary phone/email and writes the rest into the member's notes.
 - **Quarterly, Volunteering?, Joint Member** — Yes/No flags. Volunteering preference can be re-collected via the Volunteers module after migration.
 - **Your Skills, Your Interests, Your Education** — free-form text fields. The importer combines these into a single "About this member" note.
-- **Surname Inquiry** — ENS's surname-research feature. SocietyPress tracks surnames inside the Records module instead.
+- **Surname Inquiry** — ENS's surname-research feature. SocietyPress has a dedicated Surname Research Database (with Soundex and Metaphone phonetic search) under Members → Surname Research. Each member's surname inquiries can be re-entered there, or imported via CSV if you have a clean export.
 - **Last Updated By, Last Updated Date** — audit metadata. SocietyPress starts a fresh audit history at import time.
 - **Deceased** — if a record is marked deceased in ENS, the importer marks the SocietyPress member as inactive and adds a "Deceased per ENS export" note.
 
@@ -220,6 +222,21 @@ When you ask for help, tell us:
 - What you expected to happen
 - What actually happened
 - Any error messages, exactly as they appeared (a screenshot is great)
+
+---
+
+## What you might want to enable next
+
+Once your members are imported and the front page looks right, these modules are typically the highest-leverage next steps. Each one is a setting toggle (Settings → Modules) — turn on what fits your society, leave the rest off.
+
+- **First Families / Lineage Programs** — If your society recognizes descendants of historically significant ancestors (First Families of [your county], Pioneer Settlers, Civil War veterans descendants, etc.), enable Lineage Programs. Members apply through a public form, you review proofs in an admin queue, and approved members appear on a public roster with a printable certificate.
+- **Picture Wall** — Member-submitted ancestor portrait gallery, distinct from regular event photo albums. Members upload a portrait + ancestor name + relationship; staff approve in a moderation queue.
+- **Online Donations** — A complete `[sp_donate]` form with preset amounts, monthly / annual recurring giving, anonymous donations, in-honor-of dedications, and a "cover the processing fee" option. Stripe is wired end-to-end for one-time and recurring; PayPal handles one-time. Receipts include 501(c)(3) language if you've entered your EIN.
+- **Online Voting** — Election ballots and bylaw amendments with tier-based eligibility. Replace the paper proxy or the SurveyMonkey workaround with something the board actually trusts.
+- **Surname Research Database** — A members-only inquiry index where each member lists the surnames they're researching plus county, state, and year range. Visitors search with Soundex + Metaphone phonetic matching and contact the researching member through an anti-spam form.
+- **Database Subscriptions** — A members-area panel that gateways the genealogy databases your society pays for (Ancestry, Fold3, FamilySearch affiliate, NEHGS). One-click handoff with members-only access controls.
+
+These were all added in the run-up to the 2026 Texas State Genealogical Society conference; if you've evaluated SocietyPress before and these weren't there, they are now. See `https://getsocietypress.org/features/` for the full module list.
 
 ---
 

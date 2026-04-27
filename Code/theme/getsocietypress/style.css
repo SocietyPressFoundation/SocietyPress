@@ -4,7 +4,7 @@ Theme URI: https://getsocietypress.org
 Author: SocietyPress Contributors
 Author URI: https://getsocietypress.org
 Description: The official theme for getsocietypress.org — the home of SocietyPress, a free, open-source WordPress platform for genealogical society administrators.
-Version: 0.15d
+Version: 0.18d
 License: GNU General Public License v2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 Text Domain: getsocietypress
@@ -6113,4 +6113,290 @@ select:focus-visible,
     border-top: 1px solid var(--color-border);
     color: var(--color-text-secondary);
     font-size: var(--font-size-sm);
+}
+
+
+/* ==========================================================================
+   COMPARISON PAGE (page-comparison.php)
+   Side-by-side comparison: SocietyPress vs ENS-R / Wild Apricot / Custom WP
+   ========================================================================== */
+
+.cmp-section {
+    padding: var(--spacing-4xl) 0;
+    background: var(--color-background);
+}
+.cmp-section--alt {
+    background: #f7f6f2;
+}
+
+/* --- Quick matrix: 4 cards --- */
+.cmp-quick-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--spacing-lg);
+    margin-top: var(--spacing-xl);
+}
+.cmp-card {
+    background: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-lg);
+    padding: var(--spacing-xl);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.cmp-card--featured {
+    border-color: var(--color-primary);
+    border-width: 2px;
+    box-shadow: 0 4px 16px rgba(13,31,60,0.08);
+}
+.cmp-card__badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-bold);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    background: var(--color-primary);
+    color: #fff;
+    margin-bottom: var(--spacing-md);
+}
+.cmp-card__badge--alt {
+    background: #ddd;
+    color: #333;
+}
+.cmp-card__list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.cmp-card__list li {
+    padding: 8px 0;
+    border-bottom: 1px solid #eee;
+    font-size: var(--font-size-sm);
+    line-height: 1.5;
+}
+.cmp-card__list li:last-child { border-bottom: none; }
+.cmp-card__list strong { display: block; color: var(--color-primary); margin-bottom: 2px; }
+
+
+/* --- Honest weaknesses grid --- */
+.cmp-honest-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--spacing-xl);
+    margin-top: var(--spacing-xl);
+}
+.cmp-honest {
+    background: #fff;
+    border-left: 4px solid var(--color-accent);
+    padding: var(--spacing-lg) var(--spacing-xl);
+    border-radius: 0 var(--border-radius-md) var(--border-radius-md) 0;
+}
+.cmp-honest h3 {
+    margin: 0 0 8px;
+    color: var(--color-primary);
+    font-size: var(--font-size-lg);
+}
+.cmp-honest p {
+    margin: 0;
+    color: var(--color-text);
+    line-height: 1.6;
+}
+
+
+/* --- Detailed feature matrix --- */
+.cmp-matrix-wrap {
+    overflow-x: auto;
+    margin-top: var(--spacing-xl);
+    border-radius: var(--border-radius-md);
+    border: 1px solid var(--color-border);
+    background: #fff;
+}
+.cmp-matrix {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-sm);
+}
+.cmp-matrix th,
+.cmp-matrix td {
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+}
+.cmp-matrix thead th {
+    background: var(--color-primary);
+    color: #fff;
+    font-weight: var(--font-weight-bold);
+    text-align: center;
+    border-bottom: none;
+}
+.cmp-matrix thead th:first-child { text-align: left; }
+.cmp-matrix tbody tr:hover { background: #fafafa; }
+
+.cmp-matrix__group td {
+    background: #f0eee8;
+    color: var(--color-primary);
+    font-weight: var(--font-weight-bold);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: var(--font-size-xs);
+    padding: 8px 14px;
+}
+
+.cmp-matrix td:not(:first-child),
+.cmp-matrix th:not(:first-child) {
+    text-align: center;
+    width: 14%;
+}
+.cmp-matrix__sp {
+    background: rgba(13,31,60,0.04);
+    color: var(--color-primary);
+    font-weight: var(--font-weight-semibold);
+}
+.cmp-matrix__legend {
+    margin-top: var(--spacing-md);
+    text-align: center;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+}
+
+
+/* --- Pricing comparison --- */
+.cmp-pricing-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--spacing-lg);
+    margin-top: var(--spacing-xl);
+}
+.cmp-pricing {
+    background: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-lg);
+    padding: var(--spacing-xl);
+    text-align: center;
+}
+.cmp-pricing:first-child {
+    border-color: var(--color-primary);
+    border-width: 2px;
+}
+.cmp-pricing__name {
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-bold);
+    color: var(--color-primary);
+    margin-bottom: var(--spacing-md);
+}
+.cmp-pricing__total {
+    font-size: var(--font-size-4xl);
+    font-weight: var(--font-weight-extrabold);
+    color: var(--color-text);
+    line-height: 1;
+}
+.cmp-pricing__period {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+    margin-top: 4px;
+    margin-bottom: var(--spacing-lg);
+}
+.cmp-pricing__breakdown {
+    margin: var(--spacing-lg) 0 0;
+    padding: var(--spacing-md) 0 0;
+    list-style: none;
+    border-top: 1px solid #eee;
+    text-align: left;
+}
+.cmp-pricing__breakdown li {
+    padding: 4px 0;
+    font-size: var(--font-size-sm);
+    color: var(--color-text);
+}
+.cmp-pricing__note {
+    margin-top: var(--spacing-lg);
+    text-align: center;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    max-width: 760px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+
+/* --- Migration callout --- */
+.cmp-migration {
+    background: var(--color-primary);
+    color: #fff;
+    padding: var(--spacing-2xl) var(--spacing-xl);
+    border-radius: var(--border-radius-lg);
+    text-align: center;
+    max-width: 800px;
+    margin: 0 auto;
+}
+.cmp-migration h2 {
+    color: #fff;
+    margin: 0 0 var(--spacing-md);
+}
+.cmp-migration p {
+    color: rgba(255,255,255,0.9);
+    max-width: 600px;
+    margin: 0 auto var(--spacing-lg);
+    line-height: 1.6;
+}
+
+
+/* --- Final CTA --- */
+.cmp-cta {
+    background: linear-gradient(135deg, var(--color-hero-gradient-start) 0%, var(--color-hero-gradient-end) 100%);
+    color: #fff;
+    padding: var(--spacing-4xl) 0;
+    text-align: center;
+}
+.cmp-cta__content { max-width: 720px; margin: 0 auto; }
+.cmp-cta h2 { color: #fff; margin: 0 0 var(--spacing-md); }
+.cmp-cta p { color: rgba(255,255,255,0.85); margin-bottom: var(--spacing-lg); font-size: var(--font-size-lg); }
+.cmp-cta__actions { display: flex; gap: var(--spacing-md); justify-content: center; flex-wrap: wrap; }
+
+
+/* --- Responsive --- */
+@media (max-width: 1100px) {
+    .cmp-quick-grid { grid-template-columns: repeat(2, 1fr); }
+    .cmp-pricing-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 768px) {
+    .cmp-quick-grid { grid-template-columns: 1fr; }
+    .cmp-honest-grid { grid-template-columns: 1fr; }
+    .cmp-matrix { font-size: var(--font-size-xs); }
+    .cmp-matrix th, .cmp-matrix td { padding: 8px 10px; }
+}
+
+/* ==========================================================================
+   PRINT-AS-PDF BUTTON for one-pager role pages
+   Fixed bottom-right call-to-action that triggers window.print(), hidden
+   during print itself via @media print.
+   ========================================================================== */
+.gsp-print-btn {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 999;
+    background: var(--color-primary);
+    color: #fff;
+    border: none;
+    padding: 12px 22px;
+    border-radius: 999px;
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-semibold);
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(13,31,60,0.25);
+    transition: transform 0.15s, box-shadow 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+.gsp-print-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(13,31,60,0.35);
+}
+.gsp-print-btn span { font-size: 1.1em; }
+
+@media print {
+    .gsp-print-btn { display: none !important; }
 }

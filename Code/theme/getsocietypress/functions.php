@@ -956,3 +956,27 @@ function gsp_excerpt_more( $more ) {
     return '&hellip;';
 }
 add_filter( 'excerpt_more', 'gsp_excerpt_more' );
+
+
+/**
+ * Inject a "Print as PDF" button on each one-pager / role-specific page.
+ *
+ * WHY: The four for-* pages (administrator, board members, librarians,
+ *      treasurers) double as the role-specific PDF info sheets called
+ *      out on the marketing roadmap. Print CSS already exists; this
+ *      hook surfaces a clear "Print as PDF" button so visitors don't
+ *      have to discover File → Print on their own. The button itself
+ *      is hidden during print via @media print.
+ */
+add_action( 'wp_footer', function () {
+    // Match by page slug — WordPress's template hierarchy auto-uses
+    // page-{slug}.php for matching slugs, so most installs won't have
+    // _wp_page_template meta set even though the right template renders.
+    if ( ! is_page( [ 'for-administrators', 'for-board-members', 'for-librarians', 'for-treasurers' ] ) ) return;
+    ?>
+    <button class="gsp-print-btn" type="button" onclick="window.print()" aria-label="<?php esc_attr_e( 'Print as PDF', 'getsocietypress' ); ?>">
+        <span aria-hidden="true">↓</span>
+        <?php esc_html_e( 'Print as PDF', 'getsocietypress' ); ?>
+    </button>
+    <?php
+} );

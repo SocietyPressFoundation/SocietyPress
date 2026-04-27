@@ -6,23 +6,29 @@
         <name>SocietyPress</name>
         <softname>societypress</softname>
         <cat>Portal/CMS</cat>
-        <ver>1.0.19</ver>
+        <ver>1.0.35</ver>
         <ver_min_498>6.0</ver_min_498>
-        <desc>A free, open-source membership management platform built specifically for genealogical and historical societies. Manage members, events, a research library, genealogical records, newsletters, volunteers, a store, and more — all in one place. Built on WordPress.</desc>
+        <desc>A free, open-source membership management platform built specifically for genealogical and historical societies. Manage members, events, a research library, genealogical records, newsletters, volunteers, lineage programs, donations, a store, and more — all in one place. Built on WordPress.</desc>
         <features>
             <feature>Membership management with tiers, renewals, and self-service portal</feature>
             <feature>Event calendar with registration, waitlists, and Stripe/PayPal payments</feature>
             <feature>Research library with OPAC-style catalog and Open Library covers</feature>
             <feature>Genealogical record collections with GENRECORD and GEDCOM import/export</feature>
+            <feature>Surname Research Database with Soundex and Metaphone phonetic search</feature>
+            <feature>Lineage Programs (First Families, Pioneer Settlers, etc.) with public roster and printable certificates</feature>
+            <feature>Picture Wall — member-submitted ancestor portraits with admin moderation</feature>
             <feature>Newsletter archive with PDF upload and automatic cover thumbnails</feature>
             <feature>Volunteer management with opportunities, signups, and hours tracking</feature>
-            <feature>Online store with Stripe checkout</feature>
-            <feature>Secure online voting and elections</feature>
-            <feature>Page builder with 21 widget types</feature>
+            <feature>Online donations with Stripe (one-time, monthly, annual) and PayPal (one-time)</feature>
+            <feature>Cover-the-fee toggle and recurring giving with automatic receipts</feature>
+            <feature>Online store with Stripe checkout, per-item shipping, and PayPal Smart Buttons</feature>
+            <feature>Secure online voting and elections with tier-based eligibility</feature>
+            <feature>Page builder with 24+ widget types including Research Guides and Database Subscriptions</feature>
             <feature>5 pre-built child themes plus custom theme builder</feature>
             <feature>One-click full-site export (members, events, library, records, donations)</feature>
+            <feature>Full GDPR data exporters and erasers (members, donations, lineage, registrations, etc.)</feature>
             <feature>Role-based access control with 10 access areas and 8 role templates</feature>
-            <feature>14 toggleable feature modules</feature>
+            <feature>15 toggleable feature modules</feature>
         </features>
         <demo>https://demo.getsocietypress.org</demo>
         <support>https://getsocietypress.org/feedback/</support>

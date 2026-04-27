@@ -13,6 +13,67 @@ Entries describe user-visible changes only. For the underlying commits, see
 ## [Unreleased]
 
 ### Added
+- **Lineage Programs module (First Families, Pioneer Settlers, etc.).** New
+  toggleable module for societies that recognize members documenting descent
+  from historically significant ancestors. Each program defines its own
+  cutoff year, geographic scope, requirements, and optional application fee.
+  Members apply through a public form (`[sp_lineage_apply]`), staff review
+  in an admin queue with status workflow, approved members appear on a
+  public roster (`[sp_lineage_roster]`), and each approval generates a
+  unique certificate number plus a printable certificate page at
+  `/?sp_certificate=NNN`. Status changes auto-email the applicant. Paid
+  programs route the submitter through Stripe Checkout. Page-builder
+  widgets and full GDPR exporters/erasers included.
+- **Picture Wall (member-submitted ancestor portraits).** New gallery type
+  extending the existing Photo Albums module. Members upload an ancestor
+  photo plus name, relationship, and optional caption via
+  `[sp_picture_wall_submit]`; staff approve in a moderation inbox at
+  SocietyPress → Picture Wall Pending; approved photos display via
+  `[sp_picture_wall]` with submitter credits. Email notifications to staff
+  on submission and to the submitter on approval.
+- **Public Donation form (Stripe + PayPal).** New `[sp_donate]` shortcode
+  delivers a complete online giving form: preset amounts, custom amount,
+  one-time / monthly / annual frequency, "cover the processing fee"
+  toggle, anonymous donations, in-honor-of dedications, optional message,
+  and auto-fill from the logged-in user. Stripe Checkout handles all three
+  frequencies (one-time + monthly + annual) end to end, with a
+  signature-verified webhook at
+  `/wp-json/societypress/v1/webhooks/stripe` that handles
+  `checkout.session.completed`, `invoice.paid` (auto-creates donation rows
+  for renewals), and `customer.subscription.deleted`. Receipt emails fire
+  immediately on success and include 501(c)(3) language when the EIN is
+  configured. PayPal Smart Buttons handle one-time donations; PayPal
+  recurring is a follow-up.
+- **Surname Research Database backfill.** The existing `sp_member_surnames`
+  table and `surname_lookup` page-builder widget were verified end-to-end
+  for parity with the EasyNetSites Surname Inquiry feature.
+- **Database Subscriptions panel.** New admin page at SocietyPress →
+  Database Subscriptions to manage genealogy databases the society pays
+  for (Ancestry, Fold3, FamilySearch affiliate, NEHGS, etc.). Display
+  via `[sp_database_subscriptions]` shortcode or page-builder widget,
+  with optional members-only access control per entry.
+- **Research Guides authoring.** New admin page at SocietyPress → Research
+  Guides for building structured resource guides (e.g., "Researching Sample
+  County" with sections for births, marriages, cemeteries, etc., each with
+  local + external resource links). JS-driven category/resource editor.
+  Display via the new "Research Guide" page-builder widget keyed by guide
+  slug.
+- **Per-item shipping on the store.** New `shipping_fee` columns on
+  `sp_store_products` and `sp_library_items`, plus `shipping_total` on
+  `sp_orders`. Admin forms for both inventory tables now expose the
+  shipping fee field. Cart totals show a Subtotal / Shipping / Total
+  breakdown when shipping > 0. Stripe and PayPal cart checkouts both
+  charge the shipping-inclusive total.
+- **Subscription membership tier seeded by default.** Fresh installs now
+  receive a sixth default tier ("Subscription") for societies that offer
+  newsletter-only non-voting memberships. Voting eligibility is enforced
+  per ballot via `eligible_tiers` JSON, so excluding the Subscription
+  tier from bylaw votes is a configuration choice (no code change
+  needed). Existing installs are not affected.
+- **GDPR exporters and erasers for Lineage applications.** Hooked into
+  WordPress's privacy-tools framework alongside members, donations,
+  registrations, etc. Erasure pseudonymizes (keeps the lineage record
+  for organizational integrity, scrubs applicant link and narrative).
 - **Username display on the member edit page.** A read-only "Username"
   field now sits at the top of the Contact Information section so admins
   can see the WordPress login name without leaving SocietyPress. Useful

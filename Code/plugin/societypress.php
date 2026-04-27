@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.30' );
+define( 'SOCIETYPRESS_VERSION', '1.0.35' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -1408,21 +1408,25 @@ function sp_create_tables(): void {
     //      The cover_image_id points to a WP media attachment for the thumbnail.
     // ========================================================================
     dbDelta( "CREATE TABLE {$prefix}photo_albums (
-        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-        title           VARCHAR(255)        NOT NULL,
-        slug            VARCHAR(255)        NOT NULL,
-        description     TEXT                NULL,
-        cover_image_id  BIGINT(20) UNSIGNED NULL,
-        event_id        BIGINT(20) UNSIGNED NULL,
-        visibility      VARCHAR(20)         NOT NULL DEFAULT 'public',
-        sort_order      INT                 NOT NULL DEFAULT 0,
-        created_by      BIGINT(20) UNSIGNED NULL,
-        created_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        id                      BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        title                   VARCHAR(255)        NOT NULL,
+        slug                    VARCHAR(255)        NOT NULL,
+        description             TEXT                NULL,
+        cover_image_id          BIGINT(20) UNSIGNED NULL,
+        event_id                BIGINT(20) UNSIGNED NULL,
+        visibility              VARCHAR(20)         NOT NULL DEFAULT 'public',
+        submission_type         VARCHAR(20)         NOT NULL DEFAULT 'curated',
+        accepts_submissions     TINYINT(1)          NOT NULL DEFAULT 0,
+        submission_instructions TEXT                NULL,
+        sort_order              INT                 NOT NULL DEFAULT 0,
+        created_by              BIGINT(20) UNSIGNED NULL,
+        created_at              DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at              DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         KEY slug (slug),
         KEY event_id (event_id),
-        KEY visibility (visibility)
+        KEY visibility (visibility),
+        KEY submission_type (submission_type)
     ) {$charset_collate};" );
 
     // ========================================================================
@@ -1434,15 +1438,22 @@ function sp_create_tables(): void {
     //      metadata displayed in the lightbox.
     // ========================================================================
     dbDelta( "CREATE TABLE {$prefix}photo_album_items (
-        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-        album_id        BIGINT(20) UNSIGNED NOT NULL,
-        attachment_id   BIGINT(20) UNSIGNED NOT NULL,
-        caption         VARCHAR(500)        NULL,
-        sort_order      INT                 NOT NULL DEFAULT 0,
-        created_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        id                BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        album_id          BIGINT(20) UNSIGNED NOT NULL,
+        attachment_id     BIGINT(20) UNSIGNED NOT NULL,
+        caption           VARCHAR(500)        NULL,
+        sort_order        INT                 NOT NULL DEFAULT 0,
+        submitter_user_id BIGINT(20) UNSIGNED NULL,
+        ancestor_name     VARCHAR(255)        NULL,
+        relationship      VARCHAR(150)        NULL,
+        submission_status VARCHAR(20)         NOT NULL DEFAULT 'approved',
+        submission_note   TEXT                NULL,
+        created_at        DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         KEY album_id (album_id),
-        KEY sort_order (sort_order)
+        KEY sort_order (sort_order),
+        KEY submission_status (submission_status),
+        KEY submitter_user_id (submitter_user_id)
     ) {$charset_collate};" );
 
     // ========================================================================
@@ -1555,6 +1566,7 @@ function sp_create_tables(): void {
         acq_code            VARCHAR(30)         NULL,
         donor               VARCHAR(100)        NULL,
         item_value          DECIMAL(8,2)        NULL,
+        shipping_fee        DECIMAL(10,2)       NOT NULL DEFAULT 0.00,
         county              VARCHAR(200)        NULL,
         state               VARCHAR(100)        NULL,
         surname             VARCHAR(255)        NULL,
@@ -1715,30 +1727,42 @@ function sp_create_tables(): void {
     //      heavily for annual reporting and acknowledgment letters.
     // ========================================================================
     dbDelta( "CREATE TABLE {$prefix}donations (
-        id                  BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-        campaign_id         BIGINT(20) UNSIGNED NULL,
-        user_id             BIGINT(20) UNSIGNED NULL,
-        donor_name          VARCHAR(255)        NOT NULL,
-        donor_email         VARCHAR(255)        NULL,
-        amount              DECIMAL(10,2)       NOT NULL DEFAULT 0.00,
-        type                VARCHAR(30)         NOT NULL DEFAULT 'cash',
-        in_kind_description TEXT                NULL,
-        date                DATE                NOT NULL,
-        note                TEXT                NULL,
-        is_anonymous        TINYINT(1)          NOT NULL DEFAULT 0,
-        acknowledgment_sent TINYINT(1)          NOT NULL DEFAULT 0,
-        acknowledgment_date DATETIME            NULL,
-        recorded_by         BIGINT(20) UNSIGNED NULL,
-        stripe_session_id   VARCHAR(255)        NULL,
-        paypal_order_id     VARCHAR(255)        NULL,
-        paypal_capture_id   VARCHAR(255)        NULL,
-        created_at          DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        id                     BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        campaign_id            BIGINT(20) UNSIGNED NULL,
+        user_id                BIGINT(20) UNSIGNED NULL,
+        donor_name             VARCHAR(255)        NOT NULL,
+        donor_email            VARCHAR(255)        NULL,
+        amount                 DECIMAL(10,2)       NOT NULL DEFAULT 0.00,
+        frequency              VARCHAR(20)         NOT NULL DEFAULT 'one_time',
+        cover_fees             TINYINT(1)          NOT NULL DEFAULT 0,
+        fee_amount             DECIMAL(10,2)       NOT NULL DEFAULT 0.00,
+        gross_amount           DECIMAL(10,2)       NOT NULL DEFAULT 0.00,
+        dedication             VARCHAR(255)        NULL,
+        donation_message       TEXT                NULL,
+        payment_method         VARCHAR(20)         NULL,
+        status                 VARCHAR(30)         NOT NULL DEFAULT 'recorded',
+        type                   VARCHAR(30)         NOT NULL DEFAULT 'cash',
+        in_kind_description    TEXT                NULL,
+        date                   DATE                NOT NULL,
+        note                   TEXT                NULL,
+        is_anonymous           TINYINT(1)          NOT NULL DEFAULT 0,
+        acknowledgment_sent    TINYINT(1)          NOT NULL DEFAULT 0,
+        acknowledgment_date    DATETIME            NULL,
+        recorded_by            BIGINT(20) UNSIGNED NULL,
+        stripe_session_id      VARCHAR(255)        NULL,
+        stripe_subscription_id VARCHAR(255)        NULL,
+        paypal_order_id        VARCHAR(255)        NULL,
+        paypal_capture_id      VARCHAR(255)        NULL,
+        paypal_subscription_id VARCHAR(255)        NULL,
+        created_at             DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         KEY campaign_id (campaign_id),
         KEY user_id (user_id),
         KEY date (date),
         KEY type (type),
-        KEY is_anonymous (is_anonymous)
+        KEY status (status),
+        KEY is_anonymous (is_anonymous),
+        KEY stripe_subscription_id (stripe_subscription_id)
     ) {$charset_collate};" );
 
     // ========================================================================
@@ -1757,6 +1781,7 @@ function sp_create_tables(): void {
         user_id             BIGINT(20) UNSIGNED NULL,
         status              VARCHAR(20)         NOT NULL DEFAULT 'pending',
         subtotal            DECIMAL(10,2)       NOT NULL DEFAULT 0.00,
+        shipping_total      DECIMAL(10,2)       NOT NULL DEFAULT 0.00,
         tax                 DECIMAL(10,2)       NOT NULL DEFAULT 0.00,
         total               DECIMAL(10,2)       NOT NULL DEFAULT 0.00,
         payment_method      VARCHAR(30)         NULL,
@@ -1805,6 +1830,7 @@ function sp_create_tables(): void {
         sku             VARCHAR(60)         NULL,
         description     TEXT                NULL,
         price           DECIMAL(10,2)       NOT NULL DEFAULT 0.00,
+        shipping_fee    DECIMAL(10,2)       NOT NULL DEFAULT 0.00,
         image_url       VARCHAR(500)        NULL,
         store_category  VARCHAR(50)         NULL,
         stock_qty       INT                 NULL,
@@ -2176,10 +2202,123 @@ function sp_create_tables(): void {
         KEY created_at (created_at)
     ) {$charset_collate};" );
 
+    // ========================================================================
+    // sp_lineage_programs — Definitions of lineage / heritage programs
+    //
+    // WHY: Many societies recognize members who can document descent from
+    //      historically significant ancestors — "First Families of Sample County
+    //      County" (pre-1850 settlers), "Pioneer Settlers" (pre-1900),
+    //      Civil War veterans descendants, Mayflower descendants, etc. Each
+    //      program has its own cutoff year, geographic scope, requirements,
+    //      and (often) a one-time application fee that funds certificate
+    //      printing. A society can run zero, one, or many programs in
+    //      parallel; this table defines them.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}lineage_programs (
+        id                   BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        name                 VARCHAR(200)        NOT NULL,
+        slug                 VARCHAR(200)        NOT NULL,
+        description          TEXT                NULL,
+        requirements         LONGTEXT            NULL,
+        cutoff_year          INT UNSIGNED        NULL,
+        geographic_scope     VARCHAR(255)        NULL,
+        application_fee      DECIMAL(10,2)       NOT NULL DEFAULT 0.00,
+        badge_label          VARCHAR(100)        NULL,
+        badge_color          VARCHAR(7)          NOT NULL DEFAULT '#0d1f3c',
+        public_roster        TINYINT(1)          NOT NULL DEFAULT 1,
+        accepts_applications TINYINT(1)          NOT NULL DEFAULT 1,
+        active               TINYINT(1)          NOT NULL DEFAULT 1,
+        sort_order           INT UNSIGNED        NOT NULL DEFAULT 0,
+        created_at           DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at           DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        UNIQUE KEY slug (slug),
+        KEY active (active),
+        KEY sort_order (sort_order)
+    ) {$charset_collate};" );
+
+    // ========================================================================
+    // sp_lineage_applications — One application per (program, ancestor, member)
+    //
+    // WHY: A member documents one ancestor at a time. They may apply to
+    //      multiple programs (one for each provable lineage). Each row tracks
+    //      ancestor identity, the relationship chain, the narrative, status
+    //      through the review workflow, optional payment, and — once
+    //      approved — a certificate number used for the public roster and
+    //      printed/PDF certificates.
+    //
+    //      Date fields are VARCHAR not DATE because genealogy dates are
+    //      messy: "abt 1820", "before 1850", "circa 1830s" are common and
+    //      strict DATE columns would force fake-precision conversions.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}lineage_applications (
+        id                    BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        program_id            BIGINT(20) UNSIGNED NOT NULL,
+        user_id               BIGINT(20) UNSIGNED NOT NULL,
+        relationship          VARCHAR(150)        NULL,
+        ancestor_first_name   VARCHAR(100)        NULL,
+        ancestor_middle_name  VARCHAR(100)        NULL,
+        ancestor_last_name    VARCHAR(100)        NULL,
+        ancestor_maiden_name  VARCHAR(100)        NULL,
+        ancestor_birth_date   VARCHAR(50)         NULL,
+        ancestor_birth_place  VARCHAR(255)        NULL,
+        ancestor_death_date   VARCHAR(50)         NULL,
+        ancestor_death_place  VARCHAR(255)        NULL,
+        arrival_year          INT UNSIGNED        NULL,
+        arrival_evidence      TEXT                NULL,
+        narrative             LONGTEXT            NULL,
+        sources               LONGTEXT            NULL,
+        status                VARCHAR(20)         NOT NULL DEFAULT 'draft',
+        review_note           LONGTEXT            NULL,
+        internal_note         LONGTEXT            NULL,
+        reviewer_user_id      BIGINT(20) UNSIGNED NULL,
+        submitted_at          DATETIME            NULL,
+        decided_at            DATETIME            NULL,
+        payment_status        VARCHAR(20)         NOT NULL DEFAULT 'none',
+        payment_amount        DECIMAL(10,2)       NOT NULL DEFAULT 0.00,
+        stripe_session_id     VARCHAR(255)        NULL,
+        paid_at               DATETIME            NULL,
+        public_listing        TINYINT(1)          NOT NULL DEFAULT 1,
+        certificate_number    VARCHAR(50)         NULL,
+        created_at            DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at            DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY program_id (program_id),
+        KEY user_id (user_id),
+        KEY status (status),
+        KEY submitted_at (submitted_at),
+        UNIQUE KEY certificate_number (certificate_number)
+    ) {$charset_collate};" );
+
+    // ========================================================================
+    // sp_lineage_proofs — Supporting documents attached to an application
+    //
+    // WHY: Lineage proof requires multiple documents — birth records, census
+    //      pages, marriage certificates, will excerpts, cemetery photos.
+    //      Each row labels one piece of evidence. Files live in the WordPress
+    //      media library (attachment_id) or, when the member already
+    //      uploaded them through the Documents module, by reference to a
+    //      sp_documents row (document_id). Exactly one of the two should be
+    //      set; both nullable so either source works without a polymorphic
+    //      type column.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}lineage_proofs (
+        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        application_id  BIGINT(20) UNSIGNED NOT NULL,
+        label           VARCHAR(255)        NOT NULL,
+        description     TEXT                NULL,
+        attachment_id   BIGINT(20) UNSIGNED NULL,
+        document_id     BIGINT(20) UNSIGNED NULL,
+        sort_order      INT UNSIGNED        NOT NULL DEFAULT 0,
+        created_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY application_id (application_id)
+    ) {$charset_collate};" );
+
 
     // Store the schema version so we can run migrations in future updates
     // without re-running the full dbDelta on every page load.
-    update_option( 'societypress_db_version', '0.26d' );
+    update_option( 'societypress_db_version', '0.30d' );
 }
 
 
@@ -3220,6 +3359,12 @@ function sp_get_modules(): array {
             'icon'        => 'dashicons-yes-alt',
             'menu_slugs'  => [ 'sp-ballots', 'sp-ballot-edit', 'sp-ballot-results' ],
         ],
+        'lineage' => [
+            'name'        => __( 'Lineage Programs', 'societypress' ),
+            'description' => __( 'Recognize members who document descent from historically significant ancestors — First Families, Pioneer Settlers, Civil War veterans, and similar lineage / heritage programs.', 'societypress' ),
+            'icon'        => 'dashicons-awards',
+            'menu_slugs'  => [ 'sp-lineage-programs', 'sp-lineage-program-edit', 'sp-lineage-applications', 'sp-lineage-application-edit' ],
+        ],
     ];
 }
 
@@ -3303,6 +3448,9 @@ function sp_template_module_map(): array {
         'sp-help-requests'      => 'help_requests',
         'sp-documents'          => 'documents',
         'sp-voting'             => 'voting',
+        'sp-lineage'            => 'lineage',
+        'sp-lineage-roster'     => 'lineage',
+        'sp-lineage-apply'      => 'lineage',
     ];
 }
 
@@ -4419,6 +4567,50 @@ add_action( 'admin_menu', function () {
         'sp_render_document_bulk_upload_page'
     );
 
+    // -----------------------------------------------------------------
+    // LINEAGE PROGRAMS — First Families, Pioneer Settlers, etc.
+    // Recognize members who document descent from historically
+    // significant ancestors. One module covers any number of programs.
+    // -----------------------------------------------------------------
+
+    add_submenu_page(
+        'societypress',
+        __( 'Lineage Programs', 'societypress' ) . ' — SocietyPress',
+        __( 'Lineage Programs', 'societypress' ),
+        'manage_options',
+        'sp-lineage-programs',
+        'sp_render_lineage_programs_page'
+    );
+
+    add_submenu_page(
+        'societypress',
+        __( 'Lineage Applications', 'societypress' ) . ' — SocietyPress',
+        __( 'Lineage Applications', 'societypress' ),
+        'manage_options',
+        'sp-lineage-applications',
+        'sp_render_lineage_applications_page'
+    );
+
+    // Hidden — Edit / add a lineage program (accessed via row action)
+    add_submenu_page(
+        '',
+        __( 'Edit Lineage Program', 'societypress' ) . ' — SocietyPress',
+        __( 'Edit Lineage Program', 'societypress' ),
+        'manage_options',
+        'sp-lineage-program-edit',
+        'sp_render_lineage_program_edit_page'
+    );
+
+    // Hidden — Review / edit a single lineage application
+    add_submenu_page(
+        '',
+        __( 'Review Lineage Application', 'societypress' ) . ' — SocietyPress',
+        __( 'Review Lineage Application', 'societypress' ),
+        'manage_options',
+        'sp-lineage-application-edit',
+        'sp_render_lineage_application_edit_page'
+    );
+
     // Library item edit — hidden (accessed via row actions)
     add_submenu_page(
         '',
@@ -5016,6 +5208,12 @@ function sp_get_menu_capability_map(): array {
         'sp-record-collection-edit'=> 'sp_manage_records',
         'sp-record-browse'         => 'sp_manage_records',
         'sp-record-edit'           => 'sp_manage_records',
+
+        // Lineage Programs
+        'sp-lineage-programs'         => 'sp_manage_content',
+        'sp-lineage-program-edit'     => 'sp_manage_content',
+        'sp-lineage-applications'     => 'sp_manage_content',
+        'sp-lineage-application-edit' => 'sp_manage_content',
 
         // Finances
         'sp-finances'              => 'sp_manage_finances',
@@ -53205,6 +53403,7 @@ function sp_render_library_item_edit_page(): void {
             'acq_code'            => sanitize_text_field( $_POST['acq_code'] ?? '' ) ?: null,
             'donor'               => sanitize_text_field( $_POST['donor'] ?? '' ) ?: null,
             'item_value'          => $parse_decimal( $_POST['item_value'] ?? '' ),
+            'shipping_fee'        => max( 0, round( (float) ( $_POST['shipping_fee'] ?? 0 ), 2 ) ),
             'county'              => sanitize_text_field( $_POST['county'] ?? '' ) ?: null,
             'state'               => sanitize_text_field( $_POST['state'] ?? '' ) ?: null,
             'surname'             => sanitize_text_field( $_POST['surname'] ?? '' ) ?: null,
@@ -53474,6 +53673,11 @@ function sp_render_library_item_edit_page(): void {
                     <th><label for="store_category"><?php esc_html_e( 'Store Category', 'societypress' ); ?></label></th>
                     <td><input type="text" name="store_category" id="store_category" class="regular-text" value="<?php echo esc_attr( $item->store_category ?? '' ); ?>" placeholder="<?php esc_attr_e( 'e.g., Books, Apparel, Pins, Maps', 'societypress' ); ?>">
                     <p class="description"><?php esc_html_e( 'Groups items in the storefront sidebar. Free-form — type the same value across items to group them.', 'societypress' ); ?></p></td>
+                </tr>
+                <tr>
+                    <th><label for="shipping_fee"><?php esc_html_e( 'Shipping (per unit)', 'societypress' ); ?></label></th>
+                    <td><input type="number" name="shipping_fee" id="shipping_fee" value="<?php echo esc_attr( number_format( (float) ( $item->shipping_fee ?? 0 ), 2, '.', '' ) ); ?>" step="0.01" min="0" class="sp-lib-edit-short-input">
+                    <p class="description"><?php esc_html_e( 'Shipping fee per copy. Multiplied by quantity at checkout. Set to 0 for digital or shipping-included items.', 'societypress' ); ?></p></td>
                 </tr>
                 <tr>
                     <th><label for="store_description"><?php esc_html_e( 'Store Description', 'societypress' ); ?></label></th>
@@ -67894,7 +68098,7 @@ function sp_store_lookup( string $source, int $id ): ?array {
 
     if ( $source === 'product' ) {
         $row = $wpdb->get_row( $wpdb->prepare(
-            "SELECT id, title, sku, description, price, image_url, store_category, stock_qty
+            "SELECT id, title, sku, description, price, shipping_fee, image_url, store_category, stock_qty
              FROM {$prefix}store_products
              WHERE id = %d AND active = 1",
             $id
@@ -67908,6 +68112,7 @@ function sp_store_lookup( string $source, int $id ): ?array {
             'pub_year'       => null,
             'description'    => (string) ( $row->description ?? '' ),
             'price'          => (float) $row->price,
+            'shipping_fee'   => (float) ( $row->shipping_fee ?? 0 ),
             'image_url'      => $row->image_url ?: null,
             'store_category' => $row->store_category ?: null,
             'sku'            => $row->sku ?: null,
@@ -67918,7 +68123,7 @@ function sp_store_lookup( string $source, int $id ): ?array {
 
     // Default: library source
     $row = $wpdb->get_row( $wpdb->prepare(
-        "SELECT id, title, author, pub_year, description, store_description, item_value, cover_url, store_category
+        "SELECT id, title, author, pub_year, description, store_description, item_value, shipping_fee, cover_url, store_category
          FROM {$prefix}library_items
          WHERE id = %d AND item_value IS NOT NULL AND item_value > 0",
         $id
@@ -67936,6 +68141,7 @@ function sp_store_lookup( string $source, int $id ): ?array {
         'pub_year'       => $row->pub_year ? (int) $row->pub_year : null,
         'description'    => $desc,
         'price'          => (float) $row->item_value,
+        'shipping_fee'   => (float) ( $row->shipping_fee ?? 0 ),
         'image_url'      => $row->cover_url ?: null,
         'store_category' => $row->store_category ?: null,
         'sku'            => null,
@@ -68599,8 +68805,9 @@ function sp_store_create_pending_order() {
     $user   = wp_get_current_user();
     $member = sp_get_member_by_user_id( $user->ID );
 
-    $order_items = [];
-    $subtotal    = 0;
+    $order_items    = [];
+    $subtotal       = 0;
+    $shipping_total = 0;
 
     foreach ( $cart as $entry ) {
         $source  = ( $entry['source'] ?? 'library' );
@@ -68610,9 +68817,10 @@ function sp_store_create_pending_order() {
             continue;
         }
 
-        $qty        = max( 1, min( 99, (int) ( $entry['qty'] ?? 1 ) ) );
-        $unit_price = (float) $lookup['price'];
-        $line_total = round( $unit_price * $qty, 2 );
+        $qty           = max( 1, min( 99, (int) ( $entry['qty'] ?? 1 ) ) );
+        $unit_price    = (float) $lookup['price'];
+        $line_total    = round( $unit_price * $qty, 2 );
+        $line_shipping = round( (float) ( $lookup['shipping_fee'] ?? 0 ) * $qty, 2 );
 
         $order_items[] = [
             'library_item_id' => ( $source === 'library' ) ? $lookup['id'] : null,
@@ -68622,20 +68830,25 @@ function sp_store_create_pending_order() {
             'unit_price'      => $unit_price,
             'line_total'      => $line_total,
         ];
-        $subtotal += $line_total;
+        $subtotal       += $line_total;
+        $shipping_total += $line_shipping;
     }
 
     if ( empty( $order_items ) ) {
         return new WP_Error( 'no_valid_items', __( 'No valid items in your cart.', 'societypress' ) );
     }
 
+    $shipping_total = round( $shipping_total, 2 );
+    $total          = round( $subtotal + $shipping_total, 2 );
+
     $now = current_time( 'mysql' );
     $wpdb->insert( $prefix . 'orders', [
         'user_id'        => $user->ID,
         'status'         => 'pending',
         'subtotal'       => $subtotal,
+        'shipping_total' => $shipping_total,
         'tax'            => 0.00,
-        'total'          => $subtotal,
+        'total'          => $total,
         'customer_name'  => $member
             ? trim( ( $member->first_name ?? '' ) . ' ' . ( $member->last_name ?? '' ) )
             : $user->display_name,
@@ -68676,9 +68889,11 @@ function sp_store_create_pending_order() {
     }
 
     return [
-        'order_id' => $order_id,
-        'subtotal' => $subtotal,
-        'items'    => $order_items,
+        'order_id'       => $order_id,
+        'subtotal'       => $subtotal,
+        'shipping_total' => $shipping_total,
+        'total'          => $total,
+        'items'          => $order_items,
     ];
 }
 
@@ -68746,7 +68961,7 @@ add_action( 'wp_ajax_sp_store_create_payment_intent', function () {
     global $wpdb;
     $prefix     = $wpdb->prefix . 'sp_';
     $order_id   = $created['order_id'];
-    $subtotal   = $created['subtotal'];
+    $total      = $created['total'];
     $secret_key = sp_stripe_get_secret_key( $settings );
     $currency   = $settings['stripe_currency'] ?? 'usd';
     $user       = wp_get_current_user();
@@ -68758,7 +68973,7 @@ add_action( 'wp_ajax_sp_store_create_payment_intent', function () {
             'Content-Type'  => 'application/x-www-form-urlencoded',
         ],
         'body' => [
-            'amount'                        => (int) round( $subtotal * 100 ),
+            'amount'                        => (int) round( $total * 100 ),
             'currency'                      => $currency,
             'automatic_payment_methods[enabled]' => 'true',
             'receipt_email'                 => $user->user_email,
@@ -68919,7 +69134,7 @@ add_action( 'wp_ajax_sp_store_create_paypal_order', function () {
     global $wpdb;
     $prefix   = $wpdb->prefix . 'sp_';
     $order_id = $created['order_id'];
-    $subtotal = $created['subtotal'];
+    $total    = $created['total'];
     $currency = strtoupper( $settings['stripe_currency'] ?? 'usd' );
 
     $description_parts = array_map( fn( $oi ) => $oi['quantity'] . '× ' . $oi['title'], $created['items'] );
@@ -68929,7 +69144,7 @@ add_action( 'wp_ajax_sp_store_create_paypal_order', function () {
     $cart_url   = ! empty( $cart_pages ) ? get_permalink( $cart_pages[0]->ID ) : home_url();
 
     $paypal = sp_paypal_create_order(
-        (float) $subtotal,
+        (float) $total,
         $currency,
         $description,
         $cart_url,
@@ -69237,9 +69452,10 @@ function sp_build_cart_response(): array {
     $prefix = $wpdb->prefix . 'sp_';
     $cart   = sp_get_cart();
 
-    $items       = [];
-    $subtotal    = 0;
-    $total_items = 0;
+    $items          = [];
+    $subtotal       = 0;
+    $shipping_total = 0;
+    $total_items    = 0;
 
     foreach ( $cart as $entry ) {
         $source  = ( $entry['source'] ?? 'library' );
@@ -69247,29 +69463,34 @@ function sp_build_cart_response(): array {
         $lookup  = sp_store_lookup( $source, $item_id );
         if ( ! $lookup ) continue;
 
-        $qty        = (int) ( $entry['qty'] ?? 0 );
-        $line_total = round( (float) $lookup['price'] * $qty, 2 );
+        $qty           = (int) ( $entry['qty'] ?? 0 );
+        $line_total    = round( (float) $lookup['price'] * $qty, 2 );
+        $line_shipping = round( (float) ( $lookup['shipping_fee'] ?? 0 ) * $qty, 2 );
 
         $items[] = [
-            'source'     => $source,
-            'item_id'    => $lookup['id'],
-            'title'      => $lookup['title'],
-            'author'     => $lookup['author'],
-            'unit_price' => (float) $lookup['price'],
-            'qty'        => $qty,
-            'line_total' => $line_total,
-            'cover_url'  => $lookup['image_url'] ?: '',
+            'source'        => $source,
+            'item_id'       => $lookup['id'],
+            'title'         => $lookup['title'],
+            'author'        => $lookup['author'],
+            'unit_price'    => (float) $lookup['price'],
+            'shipping_fee'  => (float) ( $lookup['shipping_fee'] ?? 0 ),
+            'qty'           => $qty,
+            'line_total'    => $line_total,
+            'line_shipping' => $line_shipping,
+            'cover_url'     => $lookup['image_url'] ?: '',
         ];
 
-        $subtotal    += $line_total;
-        $total_items += $qty;
+        $subtotal       += $line_total;
+        $shipping_total += $line_shipping;
+        $total_items    += $qty;
     }
 
     return [
-        'items'       => $items,
-        'subtotal'    => $subtotal,
-        'total'       => $subtotal,
-        'total_items' => $total_items,
+        'items'          => $items,
+        'subtotal'       => $subtotal,
+        'shipping_total' => round( $shipping_total, 2 ),
+        'total'          => round( $subtotal + $shipping_total, 2 ),
+        'total_items'    => $total_items,
     ];
 }
 
@@ -69319,6 +69540,8 @@ function sp_render_cart_page(): void {
         .sp-cart-footer { display:flex; justify-content:space-between; align-items:center; padding:20px 0; flex-wrap:wrap; gap:12px; }
         .sp-cart-total { font-size:18px; font-weight:700; }
         .sp-cart-total span { color:#666; font-weight:400; font-size:14px; margin-right:8px; }
+        .sp-cart-subtotal, .sp-cart-shipping { font-size:14px; color:#444; margin-bottom:4px; }
+        .sp-cart-subtotal span, .sp-cart-shipping span { color:#666; margin-right:8px; }
         .sp-cart-actions { display:flex; gap:10px; align-items:center; }
         .sp-cart-continue { color:var(--sp-link-color, #0066cc); text-decoration:none; font-size:14px; }
         .sp-cart-checkout-btn { display:inline-block; padding:12px 28px; background:var(--sp-accent-color, #C9973A); color:#fff; font-weight:600; font-size:15px; border:none; border-radius:6px; cursor:pointer; text-decoration:none; }
@@ -69519,10 +69742,15 @@ function sp_render_cart_page(): void {
             });
 
             html += '</tbody></table>';
+            var shippingTotal = (data && typeof data.shipping_total === 'number') ? data.shipping_total : 0;
             html += '<div class="sp-cart-footer">' +
                 '<a href="' + storeUrl + '" class="sp-cart-continue">&larr; <?php echo esc_js( __( 'Continue Shopping', 'societypress' ) ); ?></a>' +
-                '<div class="sp-cart-actions">' +
-                '<div class="sp-cart-total"><span><?php echo esc_js( __( 'Total:', 'societypress' ) ); ?></span>' + fmtCurrency(data.total) + '</div>';
+                '<div class="sp-cart-actions">';
+            if (shippingTotal > 0) {
+                html += '<div class="sp-cart-subtotal"><span><?php echo esc_js( __( 'Subtotal:', 'societypress' ) ); ?></span>' + fmtCurrency(data.subtotal) + '</div>' +
+                    '<div class="sp-cart-shipping"><span><?php echo esc_js( __( 'Shipping:', 'societypress' ) ); ?></span>' + fmtCurrency(shippingTotal) + '</div>';
+            }
+            html += '<div class="sp-cart-total"><span><?php echo esc_js( __( 'Total:', 'societypress' ) ); ?></span>' + fmtCurrency(data.total) + '</div>';
 
             if (stripeConfigured || paypalConfigured) {
                 html += '<button class="sp-cart-checkout-btn" id="sp-checkout-btn"><?php echo esc_js( __( 'Proceed to Checkout', 'societypress' ) ); ?></button>';
@@ -69842,6 +70070,7 @@ function sp_render_store_product_edit_page(): void {
             'sku'            => sanitize_text_field( $_POST['sku'] ?? '' ) ?: null,
             'description'    => sanitize_textarea_field( $_POST['description'] ?? '' ) ?: null,
             'price'          => round( (float) ( $_POST['price'] ?? 0 ), 2 ),
+            'shipping_fee'   => max( 0, round( (float) ( $_POST['shipping_fee'] ?? 0 ), 2 ) ),
             'image_url'      => esc_url_raw( $_POST['image_url'] ?? '' ) ?: null,
             'store_category' => sanitize_text_field( $_POST['store_category'] ?? '' ) ?: null,
             // NULL stock_qty means unlimited / untracked. Empty string in
@@ -69910,6 +70139,13 @@ function sp_render_store_product_edit_page(): void {
                     <th><label for="sp-prod-price"><?php esc_html_e( 'Price', 'societypress' ); ?></label></th>
                     <td>
                         <input type="number" name="price" id="sp-prod-price" value="<?php echo esc_attr( number_format( (float) ( $product->price ?? 0 ), 2, '.', '' ) ); ?>" step="0.01" min="0" class="sp-w-150">
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="sp-prod-shipping"><?php esc_html_e( 'Shipping (per unit)', 'societypress' ); ?></label></th>
+                    <td>
+                        <input type="number" name="shipping_fee" id="sp-prod-shipping" value="<?php echo esc_attr( number_format( (float) ( $product->shipping_fee ?? 0 ), 2, '.', '' ) ); ?>" step="0.01" min="0" class="sp-w-150">
+                        <p class="description"><?php esc_html_e( 'Shipping fee per unit of this item. Multiplied by quantity at checkout. Set to 0 for no shipping (digital, pickup-only, or shipping-included pricing).', 'societypress' ); ?></p>
                     </td>
                 </tr>
                 <tr>
@@ -75325,3 +75561,4623 @@ add_action( 'admin_footer', function () {
     </script>
     <?php
 } );
+
+
+// ============================================================================
+// LINEAGE PROGRAMS — ADMIN
+//
+// WHY: Multi-program lineage / heritage recognition. Each program (e.g.
+//      "First Families of Sample County County") is a row in sp_lineage_programs.
+//      Member applications live in sp_lineage_applications and are reviewed
+//      by staff with sp_manage_content. Approved applications optionally
+//      surface on a public roster.
+// ============================================================================
+
+/**
+ * Centralized POST handler for lineage admin forms.
+ *
+ * WHY: Saves/deletes for programs and applications run via standard form
+ *      POST so we can use wp_nonce_field + sp-confirm without AJAX. One
+ *      handler keeps redirects, capability checks, and notice flags
+ *      consistent.
+ */
+add_action( 'admin_init', function () {
+    if ( empty( $_POST ) ) return;
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) return;
+
+    global $wpdb;
+    $programs_table     = $wpdb->prefix . 'sp_lineage_programs';
+    $applications_table = $wpdb->prefix . 'sp_lineage_applications';
+    $proofs_table       = $wpdb->prefix . 'sp_lineage_proofs';
+
+    // ----- Save program -----
+    if ( ! empty( $_POST['sp_save_lineage_program'] ) ) {
+        check_admin_referer( 'sp_save_lineage_program', 'sp_lp_nonce' );
+
+        $program_id = (int) ( $_POST['program_id'] ?? 0 );
+        $name       = sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) );
+        if ( $name === '' ) {
+            wp_safe_redirect( admin_url( 'admin.php?page=sp-lineage-programs&sp_error=missing_name' ) );
+            exit;
+        }
+
+        $slug = sanitize_title( $_POST['slug'] ?? $name );
+        // Ensure slug uniqueness when adding/changing
+        $existing = $wpdb->get_var( $wpdb->prepare(
+            "SELECT id FROM {$programs_table} WHERE slug = %s AND id <> %d",
+            $slug, $program_id
+        ) );
+        if ( $existing ) {
+            $slug = $slug . '-' . wp_generate_password( 4, false, false );
+        }
+
+        $data = [
+            'name'                 => $name,
+            'slug'                 => $slug,
+            'description'          => wp_kses_post( wp_unslash( $_POST['description'] ?? '' ) ),
+            'requirements'         => wp_kses_post( wp_unslash( $_POST['requirements'] ?? '' ) ),
+            'cutoff_year'          => $_POST['cutoff_year'] !== '' ? (int) $_POST['cutoff_year'] : null,
+            'geographic_scope'     => sanitize_text_field( wp_unslash( $_POST['geographic_scope'] ?? '' ) ),
+            'application_fee'      => max( 0, (float) ( $_POST['application_fee'] ?? 0 ) ),
+            'badge_label'          => sanitize_text_field( wp_unslash( $_POST['badge_label'] ?? '' ) ),
+            'badge_color'          => preg_match( '/^#[0-9a-fA-F]{6}$/', $_POST['badge_color'] ?? '' )
+                                        ? $_POST['badge_color'] : '#0d1f3c',
+            'public_roster'        => empty( $_POST['public_roster'] ) ? 0 : 1,
+            'accepts_applications' => empty( $_POST['accepts_applications'] ) ? 0 : 1,
+            'active'               => empty( $_POST['active'] ) ? 0 : 1,
+            'sort_order'           => (int) ( $_POST['sort_order'] ?? 0 ),
+        ];
+
+        if ( $program_id ) {
+            $wpdb->update( $programs_table, $data, [ 'id' => $program_id ] );
+        } else {
+            $wpdb->insert( $programs_table, $data );
+        }
+
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-lineage-programs&sp_updated=1' ) );
+        exit;
+    }
+
+    // ----- Delete program -----
+    if ( ( $_POST['action'] ?? '' ) === 'delete_lineage_program' ) {
+        $id = (int) ( $_POST['id'] ?? 0 );
+        check_admin_referer( 'sp_delete_lineage_program_' . $id );
+
+        // Block deletion if applications exist — preserve audit trail
+        $app_count = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$applications_table} WHERE program_id = %d",
+            $id
+        ) );
+        if ( $app_count > 0 ) {
+            wp_safe_redirect( admin_url( 'admin.php?page=sp-lineage-programs&sp_error=has_applications' ) );
+            exit;
+        }
+
+        $wpdb->delete( $programs_table, [ 'id' => $id ] );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-lineage-programs&sp_deleted=1' ) );
+        exit;
+    }
+
+    // ----- Save application review (status change + notes) -----
+    if ( ! empty( $_POST['sp_review_lineage_application'] ) ) {
+        $app_id = (int) ( $_POST['application_id'] ?? 0 );
+        check_admin_referer( 'sp_review_lineage_application_' . $app_id, 'sp_la_nonce' );
+
+        $valid_statuses = [ 'draft', 'submitted', 'in_review', 'info_requested', 'approved', 'rejected', 'withdrawn' ];
+        $new_status = in_array( $_POST['status'] ?? '', $valid_statuses, true ) ? $_POST['status'] : 'in_review';
+
+        // Look up current application for the comparison
+        $app = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$applications_table} WHERE id = %d", $app_id ) );
+        if ( ! $app ) {
+            wp_safe_redirect( admin_url( 'admin.php?page=sp-lineage-applications&sp_error=missing' ) );
+            exit;
+        }
+
+        $data = [
+            'status'           => $new_status,
+            'review_note'      => wp_kses_post( wp_unslash( $_POST['review_note'] ?? '' ) ),
+            'internal_note'    => wp_kses_post( wp_unslash( $_POST['internal_note'] ?? '' ) ),
+            'reviewer_user_id' => get_current_user_id(),
+        ];
+
+        // Decision timestamps + certificate number
+        $decided_states = [ 'approved', 'rejected' ];
+        if ( in_array( $new_status, $decided_states, true ) && $app->status !== $new_status ) {
+            $data['decided_at'] = current_time( 'mysql' );
+        }
+        if ( $new_status === 'approved' && empty( $app->certificate_number ) ) {
+            // Format: PROGRAM-SLUG-YEAR-NNNN, padded
+            $program = $wpdb->get_row( $wpdb->prepare(
+                "SELECT slug FROM {$programs_table} WHERE id = %d", $app->program_id
+            ) );
+            $year = wp_date( 'Y' );
+            $seq  = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) + 1 FROM {$applications_table}
+                 WHERE program_id = %d AND status = 'approved' AND YEAR(decided_at) = %d",
+                $app->program_id, $year
+            ) );
+            $cert = strtoupper( substr( $program->slug ?? 'LIN', 0, 8 ) ) . '-' . $year . '-' . str_pad( $seq, 4, '0', STR_PAD_LEFT );
+            $data['certificate_number'] = $cert;
+        }
+
+        $wpdb->update( $applications_table, $data, [ 'id' => $app_id ] );
+
+        // Optional email notification on status change
+        if ( $app->status !== $new_status && in_array( $new_status, [ 'approved', 'rejected', 'info_requested' ], true ) ) {
+            sp_lineage_notify_status_change( $app_id, $new_status );
+        }
+
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-lineage-application-edit&id=' . $app_id . '&sp_updated=1' ) );
+        exit;
+    }
+} );
+
+
+/**
+ * Email the applicant when status changes to approved / rejected /
+ * info_requested. Uses the existing email log so admins can see what went out.
+ */
+function sp_lineage_notify_status_change( int $application_id, string $new_status ): void {
+    global $wpdb;
+    $app = $wpdb->get_row( $wpdb->prepare(
+        "SELECT a.*, p.name AS program_name
+         FROM {$wpdb->prefix}sp_lineage_applications a
+         JOIN {$wpdb->prefix}sp_lineage_programs p ON p.id = a.program_id
+         WHERE a.id = %d",
+        $application_id
+    ) );
+    if ( ! $app ) return;
+
+    $user = get_user_by( 'id', $app->user_id );
+    if ( ! $user || ! $user->user_email ) return;
+
+    $org_name = trim( get_option( 'societypress_settings', [] )['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+    $ancestor = trim( $app->ancestor_first_name . ' ' . $app->ancestor_last_name );
+
+    $subjects = [
+        'approved'       => sprintf( __( '%s — Lineage application APPROVED', 'societypress' ), $app->program_name ),
+        'rejected'       => sprintf( __( '%s — Lineage application not approved', 'societypress' ), $app->program_name ),
+        'info_requested' => sprintf( __( '%s — More information requested', 'societypress' ), $app->program_name ),
+    ];
+
+    $subject = $subjects[ $new_status ] ?? sprintf( __( 'Update on your %s application', 'societypress' ), $app->program_name );
+
+    $body  = sprintf( __( 'Dear %s,', 'societypress' ), esc_html( $user->display_name ) ) . "\n\n";
+
+    if ( $new_status === 'approved' ) {
+        $body .= sprintf(
+            __( 'Your application to %1$s for ancestor %2$s has been APPROVED. Your certificate number is: %3$s', 'societypress' ),
+            $app->program_name, $ancestor ?: __( '(unnamed ancestor)', 'societypress' ), $app->certificate_number
+        ) . "\n\n";
+    } elseif ( $new_status === 'rejected' ) {
+        $body .= sprintf(
+            __( 'After review, your application to %1$s for ancestor %2$s was not approved at this time.', 'societypress' ),
+            $app->program_name, $ancestor ?: __( '(unnamed ancestor)', 'societypress' )
+        ) . "\n\n";
+    } else {
+        $body .= sprintf(
+            __( 'The reviewers need additional information for your application to %1$s for ancestor %2$s.', 'societypress' ),
+            $app->program_name, $ancestor ?: __( '(unnamed ancestor)', 'societypress' )
+        ) . "\n\n";
+    }
+
+    if ( ! empty( $app->review_note ) ) {
+        $body .= __( 'Reviewer notes:', 'societypress' ) . "\n" . wp_strip_all_tags( $app->review_note ) . "\n\n";
+    }
+
+    $body .= sprintf( __( '— %s', 'societypress' ), $org_name );
+
+    wp_mail( $user->user_email, $subject, $body );
+}
+
+
+/**
+ * ADMIN: Lineage Programs — list + add/edit form
+ */
+function sp_render_lineage_programs_page(): void {
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) {
+        wp_die( __( 'Insufficient permissions.', 'societypress' ) );
+    }
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_lineage_programs';
+    $apps  = $wpdb->prefix . 'sp_lineage_applications';
+
+    $edit_id  = (int) ( $_GET['edit'] ?? 0 );
+    $editing  = $edit_id ? $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", $edit_id ) ) : null;
+
+    $programs = $wpdb->get_results( "SELECT * FROM {$table} ORDER BY sort_order, name" );
+
+    $app_counts = $wpdb->get_results(
+        "SELECT program_id, status, COUNT(*) AS cnt
+         FROM {$apps}
+         GROUP BY program_id, status",
+        OBJECT
+    );
+    $by_program = [];
+    foreach ( $app_counts as $row ) {
+        $by_program[ $row->program_id ][ $row->status ] = (int) $row->cnt;
+    }
+
+    ?>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Lineage Programs', 'societypress' ); ?></h1>
+        <p class="description" style="max-width:780px;">
+            <?php esc_html_e( 'Define the lineage / heritage recognition programs your society offers — for example, "First Families" (pre-1850 settlers), "Pioneer Settlers" (pre-1900), Civil War veterans descendants, or any program with documented ancestor requirements. Members apply through the public Apply page once a program is active.', 'societypress' ); ?>
+        </p>
+
+        <?php if ( ! empty( $_GET['sp_updated'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Program saved.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+        <?php if ( ! empty( $_GET['sp_deleted'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Program deleted.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+        <?php if ( ( $_GET['sp_error'] ?? '' ) === 'has_applications' ) : ?>
+            <div class="notice notice-error is-dismissible"><p><?php esc_html_e( 'Cannot delete a program that has applications. Mark it inactive instead.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+        <?php if ( ( $_GET['sp_error'] ?? '' ) === 'missing_name' ) : ?>
+            <div class="notice notice-error is-dismissible"><p><?php esc_html_e( 'Program name is required.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+
+        <div style="display:flex; gap:30px; flex-wrap:wrap; margin-top:20px; align-items:flex-start;">
+
+            <!-- Add/Edit form -->
+            <div style="flex:0 0 460px;">
+                <h2><?php echo $editing ? esc_html__( 'Edit Program', 'societypress' ) : esc_html__( 'Add Program', 'societypress' ); ?></h2>
+                <form method="post">
+                    <?php wp_nonce_field( 'sp_save_lineage_program', 'sp_lp_nonce' ); ?>
+                    <input type="hidden" name="sp_save_lineage_program" value="1">
+                    <?php if ( $editing ) : ?>
+                        <input type="hidden" name="program_id" value="<?php echo (int) $editing->id; ?>">
+                    <?php endif; ?>
+
+                    <table class="form-table">
+                        <tr>
+                            <th><label for="lp_name"><?php esc_html_e( 'Name', 'societypress' ); ?></label></th>
+                            <td><input type="text" id="lp_name" name="name" value="<?php echo esc_attr( $editing->name ?? '' ); ?>" class="regular-text" required>
+                                <p class="description"><?php esc_html_e( 'e.g. "First Families of Sample County County"', 'societypress' ); ?></p></td>
+                        </tr>
+                        <tr>
+                            <th><label for="lp_slug"><?php esc_html_e( 'Slug', 'societypress' ); ?></label></th>
+                            <td><input type="text" id="lp_slug" name="slug" value="<?php echo esc_attr( $editing->slug ?? '' ); ?>" class="regular-text">
+                                <p class="description"><?php esc_html_e( 'URL-safe identifier. Auto-generated if left blank.', 'societypress' ); ?></p></td>
+                        </tr>
+                        <tr>
+                            <th><label for="lp_desc"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
+                            <td><textarea id="lp_desc" name="description" rows="3" class="large-text"><?php echo esc_textarea( $editing->description ?? '' ); ?></textarea>
+                                <p class="description"><?php esc_html_e( 'Public-facing summary shown on the program page.', 'societypress' ); ?></p></td>
+                        </tr>
+                        <tr>
+                            <th><label for="lp_req"><?php esc_html_e( 'Requirements', 'societypress' ); ?></label></th>
+                            <td><textarea id="lp_req" name="requirements" rows="6" class="large-text"><?php echo esc_textarea( $editing->requirements ?? '' ); ?></textarea>
+                                <p class="description"><?php esc_html_e( 'What documentation must the applicant provide? Markdown is supported.', 'societypress' ); ?></p></td>
+                        </tr>
+                        <tr>
+                            <th><label for="lp_cutoff"><?php esc_html_e( 'Cutoff Year', 'societypress' ); ?></label></th>
+                            <td><input type="number" id="lp_cutoff" name="cutoff_year" value="<?php echo esc_attr( $editing->cutoff_year ?? '' ); ?>" min="1500" max="2100" class="small-text">
+                                <p class="description"><?php esc_html_e( 'e.g. 1850 — ancestor must have been in the area by this year.', 'societypress' ); ?></p></td>
+                        </tr>
+                        <tr>
+                            <th><label for="lp_scope"><?php esc_html_e( 'Geographic Scope', 'societypress' ); ?></label></th>
+                            <td><input type="text" id="lp_scope" name="geographic_scope" value="<?php echo esc_attr( $editing->geographic_scope ?? '' ); ?>" class="regular-text">
+                                <p class="description"><?php esc_html_e( 'e.g. "Sample County, Texas". Leave blank if not geographic.', 'societypress' ); ?></p></td>
+                        </tr>
+                        <tr>
+                            <th><label for="lp_fee"><?php esc_html_e( 'Application Fee', 'societypress' ); ?></label></th>
+                            <td><input type="number" id="lp_fee" name="application_fee" value="<?php echo esc_attr( number_format( (float) ( $editing->application_fee ?? 0 ), 2, '.', '' ) ); ?>" min="0" step="0.01" class="small-text">
+                                <p class="description"><?php esc_html_e( 'Set to 0 for no fee. If > 0, applicant pays before the application is submitted for review.', 'societypress' ); ?></p></td>
+                        </tr>
+                        <tr>
+                            <th><label for="lp_badge"><?php esc_html_e( 'Badge Label', 'societypress' ); ?></label></th>
+                            <td><input type="text" id="lp_badge" name="badge_label" value="<?php echo esc_attr( $editing->badge_label ?? '' ); ?>" class="regular-text" maxlength="100">
+                                <p class="description"><?php esc_html_e( 'Short label shown on approved members\' profiles, e.g. "First Families".', 'societypress' ); ?></p></td>
+                        </tr>
+                        <tr>
+                            <th><label for="lp_color"><?php esc_html_e( 'Badge Color', 'societypress' ); ?></label></th>
+                            <td><input type="color" id="lp_color" name="badge_color" value="<?php echo esc_attr( $editing->badge_color ?? '#0d1f3c' ); ?>"></td>
+                        </tr>
+                        <tr>
+                            <th><?php esc_html_e( 'Options', 'societypress' ); ?></th>
+                            <td>
+                                <label><input type="checkbox" name="active" value="1" <?php checked( ! $editing || (int) $editing->active === 1 ); ?>> <?php esc_html_e( 'Active', 'societypress' ); ?></label><br>
+                                <label><input type="checkbox" name="accepts_applications" value="1" <?php checked( ! $editing || (int) $editing->accepts_applications === 1 ); ?>> <?php esc_html_e( 'Accepting new applications', 'societypress' ); ?></label><br>
+                                <label><input type="checkbox" name="public_roster" value="1" <?php checked( ! $editing || (int) $editing->public_roster === 1 ); ?>> <?php esc_html_e( 'Show approved members on a public roster', 'societypress' ); ?></label>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th><label for="lp_sort"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label></th>
+                            <td><input type="number" id="lp_sort" name="sort_order" value="<?php echo (int) ( $editing->sort_order ?? 0 ); ?>" min="0" class="small-text"></td>
+                        </tr>
+                    </table>
+
+                    <?php submit_button( $editing ? __( 'Update Program', 'societypress' ) : __( 'Add Program', 'societypress' ) ); ?>
+
+                    <?php if ( $editing ) : ?>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-lineage-programs' ) ); ?>"><?php esc_html_e( 'Cancel editing', 'societypress' ); ?></a>
+                    <?php endif; ?>
+                </form>
+            </div>
+
+            <!-- Programs table -->
+            <div style="flex:1; min-width:520px;">
+                <table class="widefat striped">
+                    <thead>
+                        <tr>
+                            <th><?php esc_html_e( 'Name', 'societypress' ); ?></th>
+                            <th><?php esc_html_e( 'Cutoff', 'societypress' ); ?></th>
+                            <th><?php esc_html_e( 'Fee', 'societypress' ); ?></th>
+                            <th><?php esc_html_e( 'Applications', 'societypress' ); ?></th>
+                            <th><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                            <th><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if ( empty( $programs ) ) : ?>
+                            <tr><td colspan="6" class="sp-empty-state" style="padding:40px; text-align:center; color:#777;">
+                                <?php esc_html_e( 'No lineage programs yet. Add your first one on the left to get started.', 'societypress' ); ?>
+                            </td></tr>
+                        <?php else : foreach ( $programs as $p ) :
+                            $counts   = $by_program[ $p->id ] ?? [];
+                            $approved = (int) ( $counts['approved'] ?? 0 );
+                            $pending  = (int) ( ( $counts['submitted'] ?? 0 ) + ( $counts['in_review'] ?? 0 ) + ( $counts['info_requested'] ?? 0 ) );
+                            ?>
+                            <tr>
+                                <td>
+                                    <strong><?php echo esc_html( $p->name ); ?></strong>
+                                    <?php if ( $p->geographic_scope ) : ?>
+                                        <br><span style="color:#777; font-size:12px;"><?php echo esc_html( $p->geographic_scope ); ?></span>
+                                    <?php endif; ?>
+                                </td>
+                                <td><?php echo $p->cutoff_year ? (int) $p->cutoff_year : '—'; ?></td>
+                                <td><?php echo (float) $p->application_fee > 0 ? '$' . number_format( (float) $p->application_fee, 2 ) : '—'; ?></td>
+                                <td>
+                                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-lineage-applications&program=' . $p->id ) ); ?>">
+                                        <?php
+                                        printf(
+                                            /* translators: 1=approved count, 2=pending count */
+                                            esc_html__( '%1$d approved, %2$d pending', 'societypress' ),
+                                            $approved,
+                                            $pending
+                                        );
+                                        ?>
+                                    </a>
+                                </td>
+                                <td>
+                                    <?php if ( ! (int) $p->active ) : ?>
+                                        <span style="color:#999;"><?php esc_html_e( 'Inactive', 'societypress' ); ?></span>
+                                    <?php elseif ( ! (int) $p->accepts_applications ) : ?>
+                                        <span style="color:#b45309;"><?php esc_html_e( 'Closed to new', 'societypress' ); ?></span>
+                                    <?php else : ?>
+                                        <span style="color:#166534;"><?php esc_html_e( 'Active', 'societypress' ); ?></span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-lineage-programs&edit=' . $p->id ) ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
+                                    |
+                                    <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-lineage-programs' ) ); ?>" class="sp-inline" data-sp-confirm="<?php echo esc_attr( __( 'Delete this program permanently? This is only possible when no applications exist.', 'societypress' ) ); ?>">
+                                        <?php wp_nonce_field( 'sp_delete_lineage_program_' . $p->id ); ?>
+                                        <input type="hidden" name="action" value="delete_lineage_program">
+                                        <input type="hidden" name="id" value="<?php echo (int) $p->id; ?>">
+                                        <button type="submit" class="sp-link-btn"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                                    </form>
+                                </td>
+                            </tr>
+                        <?php endforeach; endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <?php
+}
+
+
+/**
+ * ADMIN: Standalone "Edit Program" page (unused for now — combined view above
+ * handles edit. Kept as a simple redirect so the registered submenu slug
+ * resolves correctly when accessed via direct URL.)
+ */
+function sp_render_lineage_program_edit_page(): void {
+    $id = (int) ( $_GET['id'] ?? 0 );
+    wp_safe_redirect( admin_url( 'admin.php?page=sp-lineage-programs' . ( $id ? '&edit=' . $id : '' ) ) );
+    exit;
+}
+
+
+/**
+ * ADMIN: Lineage Applications — review queue
+ *
+ * WHY: Officers and reviewers see all applications across all programs with
+ *      filters for status and program. Clicking a row opens the single
+ *      application review page where status changes happen.
+ */
+function sp_render_lineage_applications_page(): void {
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) {
+        wp_die( __( 'Insufficient permissions.', 'societypress' ) );
+    }
+    global $wpdb;
+    $apps_t  = $wpdb->prefix . 'sp_lineage_applications';
+    $prog_t  = $wpdb->prefix . 'sp_lineage_programs';
+    $users_t = $wpdb->users;
+
+    $programs = $wpdb->get_results( "SELECT id, name FROM {$prog_t} ORDER BY sort_order, name" );
+
+    $status_filter  = sanitize_text_field( $_GET['status']  ?? '' );
+    $program_filter = (int) ( $_GET['program'] ?? 0 );
+    $search         = sanitize_text_field( $_GET['s']       ?? '' );
+
+    $where  = [ '1=1' ];
+    $params = [];
+    if ( $status_filter !== '' && $status_filter !== 'all' ) {
+        $where[] = 'a.status = %s';
+        $params[] = $status_filter;
+    }
+    if ( $program_filter > 0 ) {
+        $where[] = 'a.program_id = %d';
+        $params[] = $program_filter;
+    }
+    if ( $search !== '' ) {
+        $where[] = '(a.ancestor_first_name LIKE %s OR a.ancestor_last_name LIKE %s OR u.display_name LIKE %s OR u.user_email LIKE %s)';
+        $like     = '%' . $wpdb->esc_like( $search ) . '%';
+        $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
+    }
+    $where_sql = implode( ' AND ', $where );
+
+    $sql = "SELECT a.*, p.name AS program_name, u.display_name AS applicant_name, u.user_email AS applicant_email
+            FROM {$apps_t} a
+            JOIN {$prog_t} p ON p.id = a.program_id
+            LEFT JOIN {$users_t} u ON u.ID = a.user_id
+            WHERE {$where_sql}
+            ORDER BY a.submitted_at DESC, a.id DESC
+            LIMIT 200";
+
+    $rows = $params
+        ? $wpdb->get_results( $wpdb->prepare( $sql, ...$params ) )
+        : $wpdb->get_results( $sql );
+
+    $status_labels = [
+        'draft'          => __( 'Draft', 'societypress' ),
+        'submitted'      => __( 'Submitted', 'societypress' ),
+        'in_review'      => __( 'In Review', 'societypress' ),
+        'info_requested' => __( 'Info Requested', 'societypress' ),
+        'approved'       => __( 'Approved', 'societypress' ),
+        'rejected'       => __( 'Rejected', 'societypress' ),
+        'withdrawn'      => __( 'Withdrawn', 'societypress' ),
+    ];
+
+    $status_colors = [
+        'draft'          => '#999',
+        'submitted'      => '#1a56db',
+        'in_review'      => '#b45309',
+        'info_requested' => '#b45309',
+        'approved'       => '#166534',
+        'rejected'       => '#b91c1c',
+        'withdrawn'      => '#777',
+    ];
+
+    ?>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Lineage Applications', 'societypress' ); ?></h1>
+
+        <form method="get" style="margin:16px 0; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <input type="hidden" name="page" value="sp-lineage-applications">
+
+            <select name="status">
+                <option value=""><?php esc_html_e( 'All statuses', 'societypress' ); ?></option>
+                <?php foreach ( $status_labels as $key => $label ) : ?>
+                    <option value="<?php echo esc_attr( $key ); ?>" <?php selected( $status_filter, $key ); ?>><?php echo esc_html( $label ); ?></option>
+                <?php endforeach; ?>
+            </select>
+
+            <select name="program">
+                <option value="0"><?php esc_html_e( 'All programs', 'societypress' ); ?></option>
+                <?php foreach ( $programs as $p ) : ?>
+                    <option value="<?php echo (int) $p->id; ?>" <?php selected( $program_filter, $p->id ); ?>><?php echo esc_html( $p->name ); ?></option>
+                <?php endforeach; ?>
+            </select>
+
+            <input type="search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php esc_attr_e( 'Search ancestor or applicant…', 'societypress' ); ?>" class="regular-text">
+
+            <?php submit_button( __( 'Filter', 'societypress' ), 'secondary', '', false ); ?>
+
+            <?php if ( $status_filter || $program_filter || $search ) : ?>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-lineage-applications' ) ); ?>" class="button"><?php esc_html_e( 'Clear', 'societypress' ); ?></a>
+            <?php endif; ?>
+        </form>
+
+        <table class="widefat striped">
+            <thead>
+                <tr>
+                    <th><?php esc_html_e( 'Submitted', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Applicant', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Program', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Ancestor', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Cert #', 'societypress' ); ?></th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if ( empty( $rows ) ) : ?>
+                    <tr><td colspan="7" style="padding:40px; text-align:center; color:#777;">
+                        <?php esc_html_e( 'No applications match.', 'societypress' ); ?>
+                    </td></tr>
+                <?php else : foreach ( $rows as $r ) :
+                    $ancestor = trim( $r->ancestor_first_name . ' ' . $r->ancestor_last_name );
+                    $color    = $status_colors[ $r->status ] ?? '#777';
+                    ?>
+                    <tr>
+                        <td><?php echo esc_html( $r->submitted_at ? mysql2date( 'M j, Y', $r->submitted_at ) : '—' ); ?></td>
+                        <td>
+                            <?php echo esc_html( $r->applicant_name ?: __( '(unknown)', 'societypress' ) ); ?>
+                            <?php if ( $r->applicant_email ) : ?>
+                                <br><span style="color:#777; font-size:12px;"><?php echo esc_html( $r->applicant_email ); ?></span>
+                            <?php endif; ?>
+                        </td>
+                        <td><?php echo esc_html( $r->program_name ); ?></td>
+                        <td><?php echo $ancestor ? esc_html( $ancestor ) : '<em>' . esc_html__( '(unnamed)', 'societypress' ) . '</em>'; ?></td>
+                        <td><span style="color:<?php echo esc_attr( $color ); ?>; font-weight:600;"><?php echo esc_html( $status_labels[ $r->status ] ?? $r->status ); ?></span></td>
+                        <td><?php echo $r->certificate_number ? '<code>' . esc_html( $r->certificate_number ) . '</code>' : '—'; ?></td>
+                        <td>
+                            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-lineage-application-edit&id=' . $r->id ) ); ?>" class="button button-small"><?php esc_html_e( 'Review', 'societypress' ); ?></a>
+                        </td>
+                    </tr>
+                <?php endforeach; endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+}
+
+
+/**
+ * ADMIN: Single application review page.
+ */
+function sp_render_lineage_application_edit_page(): void {
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) {
+        wp_die( __( 'Insufficient permissions.', 'societypress' ) );
+    }
+    global $wpdb;
+    $apps_t   = $wpdb->prefix . 'sp_lineage_applications';
+    $prog_t   = $wpdb->prefix . 'sp_lineage_programs';
+    $proofs_t = $wpdb->prefix . 'sp_lineage_proofs';
+
+    $id = (int) ( $_GET['id'] ?? 0 );
+    if ( ! $id ) {
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-lineage-applications' ) );
+        exit;
+    }
+
+    $app = $wpdb->get_row( $wpdb->prepare(
+        "SELECT a.*, p.name AS program_name, p.cutoff_year, p.geographic_scope
+         FROM {$apps_t} a
+         JOIN {$prog_t} p ON p.id = a.program_id
+         WHERE a.id = %d",
+        $id
+    ) );
+    if ( ! $app ) {
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-lineage-applications&sp_error=missing' ) );
+        exit;
+    }
+
+    $applicant = get_user_by( 'id', $app->user_id );
+    $proofs    = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$proofs_t} WHERE application_id = %d ORDER BY sort_order, id",
+        $id
+    ) );
+    $reviewer = $app->reviewer_user_id ? get_user_by( 'id', $app->reviewer_user_id ) : null;
+
+    $status_labels = [
+        'draft'          => __( 'Draft', 'societypress' ),
+        'submitted'      => __( 'Submitted', 'societypress' ),
+        'in_review'      => __( 'In Review', 'societypress' ),
+        'info_requested' => __( 'Info Requested', 'societypress' ),
+        'approved'       => __( 'Approved', 'societypress' ),
+        'rejected'       => __( 'Rejected', 'societypress' ),
+        'withdrawn'      => __( 'Withdrawn', 'societypress' ),
+    ];
+
+    ?>
+    <div class="wrap">
+        <h1>
+            <?php esc_html_e( 'Review Application', 'societypress' ); ?>
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-lineage-applications' ) ); ?>" class="page-title-action"><?php esc_html_e( '← Back to list', 'societypress' ); ?></a>
+        </h1>
+
+        <?php if ( ! empty( $_GET['sp_updated'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Application updated. Notifications sent if status changed.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+
+        <div style="display:flex; gap:30px; flex-wrap:wrap; align-items:flex-start; margin-top:20px;">
+
+            <!-- Application detail -->
+            <div style="flex:1 1 600px; min-width:400px;">
+                <div class="postbox">
+                    <h2 class="hndle" style="padding:10px 14px;"><?php echo esc_html( $app->program_name ); ?></h2>
+                    <div class="inside">
+                        <table class="form-table" style="margin-top:0;">
+                            <tr>
+                                <th><?php esc_html_e( 'Applicant', 'societypress' ); ?></th>
+                                <td>
+                                    <?php echo esc_html( $applicant ? $applicant->display_name : __( '(unknown user)', 'societypress' ) ); ?>
+                                    <?php if ( $applicant && $applicant->user_email ) : ?>
+                                        <br><a href="mailto:<?php echo esc_attr( $applicant->user_email ); ?>"><?php echo esc_html( $applicant->user_email ); ?></a>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><?php esc_html_e( 'Relationship to ancestor', 'societypress' ); ?></th>
+                                <td><?php echo esc_html( $app->relationship ?: '—' ); ?></td>
+                            </tr>
+                            <tr>
+                                <th><?php esc_html_e( 'Ancestor', 'societypress' ); ?></th>
+                                <td>
+                                    <strong><?php echo esc_html( trim( $app->ancestor_first_name . ' ' . $app->ancestor_middle_name . ' ' . $app->ancestor_last_name ) ?: __( '(unnamed)', 'societypress' ) ); ?></strong>
+                                    <?php if ( $app->ancestor_maiden_name ) : ?>
+                                        <br><span style="color:#777;">(<?php echo esc_html__( 'née', 'societypress' ) . ' ' . esc_html( $app->ancestor_maiden_name ); ?>)</span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><?php esc_html_e( 'Birth', 'societypress' ); ?></th>
+                                <td>
+                                    <?php echo esc_html( $app->ancestor_birth_date ?: '—' ); ?>
+                                    <?php if ( $app->ancestor_birth_place ) : ?> — <?php echo esc_html( $app->ancestor_birth_place ); ?><?php endif; ?>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><?php esc_html_e( 'Death', 'societypress' ); ?></th>
+                                <td>
+                                    <?php echo esc_html( $app->ancestor_death_date ?: '—' ); ?>
+                                    <?php if ( $app->ancestor_death_place ) : ?> — <?php echo esc_html( $app->ancestor_death_place ); ?><?php endif; ?>
+                                </td>
+                            </tr>
+                            <?php if ( $app->cutoff_year ) : ?>
+                            <tr>
+                                <th><?php esc_html_e( 'Arrival', 'societypress' ); ?></th>
+                                <td>
+                                    <?php echo $app->arrival_year ? esc_html( (int) $app->arrival_year ) : '—'; ?>
+                                    <?php if ( $app->cutoff_year && $app->arrival_year ) : ?>
+                                        <span style="margin-left:8px; <?php echo $app->arrival_year <= $app->cutoff_year ? 'color:#166534' : 'color:#b91c1c'; ?>; font-weight:600;">
+                                            <?php
+                                            echo $app->arrival_year <= $app->cutoff_year
+                                                ? '✓ ' . esc_html__( 'meets cutoff', 'societypress' )
+                                                : '✗ ' . sprintf( esc_html__( 'after cutoff (%d)', 'societypress' ), (int) $app->cutoff_year );
+                                            ?>
+                                        </span>
+                                    <?php endif; ?>
+                                    <?php if ( $app->arrival_evidence ) : ?>
+                                        <br><span style="color:#666; font-size:13px;"><?php echo esc_html( $app->arrival_evidence ); ?></span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                            <?php endif; ?>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="postbox">
+                    <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Narrative & Sources', 'societypress' ); ?></h2>
+                    <div class="inside">
+                        <h4><?php esc_html_e( 'Narrative', 'societypress' ); ?></h4>
+                        <div style="background:#f9f9f9; border:1px solid #eee; padding:10px; border-radius:4px;">
+                            <?php echo $app->narrative ? wp_kses_post( wpautop( $app->narrative ) ) : '<em style="color:#777;">' . esc_html__( 'No narrative provided.', 'societypress' ) . '</em>'; ?>
+                        </div>
+                        <h4 style="margin-top:14px;"><?php esc_html_e( 'Sources', 'societypress' ); ?></h4>
+                        <div style="background:#f9f9f9; border:1px solid #eee; padding:10px; border-radius:4px;">
+                            <?php echo $app->sources ? wp_kses_post( wpautop( $app->sources ) ) : '<em style="color:#777;">' . esc_html__( 'No sources cited.', 'societypress' ) . '</em>'; ?>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="postbox">
+                    <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Proofs', 'societypress' ); ?> (<?php echo count( $proofs ); ?>)</h2>
+                    <div class="inside">
+                        <?php if ( empty( $proofs ) ) : ?>
+                            <p style="color:#777;"><em><?php esc_html_e( 'No proof documents attached.', 'societypress' ); ?></em></p>
+                        <?php else : ?>
+                            <ol style="margin:0; padding-left:18px;">
+                                <?php foreach ( $proofs as $pr ) :
+                                    $url = '';
+                                    if ( $pr->attachment_id ) {
+                                        $url = wp_get_attachment_url( (int) $pr->attachment_id );
+                                    }
+                                    ?>
+                                    <li style="margin-bottom:6px;">
+                                        <strong><?php echo esc_html( $pr->label ); ?></strong>
+                                        <?php if ( $url ) : ?>
+                                            — <a href="<?php echo esc_url( $url ); ?>" target="_blank" rel="noopener"><?php esc_html_e( 'View', 'societypress' ); ?></a>
+                                        <?php endif; ?>
+                                        <?php if ( $pr->description ) : ?>
+                                            <br><span style="color:#666; font-size:13px;"><?php echo esc_html( $pr->description ); ?></span>
+                                        <?php endif; ?>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ol>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Decision sidebar -->
+            <div style="flex:0 0 360px;">
+                <div class="postbox">
+                    <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Review Decision', 'societypress' ); ?></h2>
+                    <div class="inside">
+                        <form method="post">
+                            <?php wp_nonce_field( 'sp_review_lineage_application_' . $id, 'sp_la_nonce' ); ?>
+                            <input type="hidden" name="sp_review_lineage_application" value="1">
+                            <input type="hidden" name="application_id" value="<?php echo (int) $id; ?>">
+
+                            <p>
+                                <label><strong><?php esc_html_e( 'Status', 'societypress' ); ?></strong></label>
+                                <select name="status" style="width:100%;">
+                                    <?php foreach ( $status_labels as $key => $label ) : ?>
+                                        <option value="<?php echo esc_attr( $key ); ?>" <?php selected( $app->status, $key ); ?>><?php echo esc_html( $label ); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </p>
+
+                            <p>
+                                <label><strong><?php esc_html_e( 'Notes for applicant', 'societypress' ); ?></strong></label>
+                                <textarea name="review_note" rows="4" style="width:100%;"><?php echo esc_textarea( $app->review_note ?? '' ); ?></textarea>
+                                <span class="description"><?php esc_html_e( 'Sent in the email when status changes to Approved, Rejected, or Info Requested.', 'societypress' ); ?></span>
+                            </p>
+
+                            <p>
+                                <label><strong><?php esc_html_e( 'Internal notes (staff only)', 'societypress' ); ?></strong></label>
+                                <textarea name="internal_note" rows="3" style="width:100%;"><?php echo esc_textarea( $app->internal_note ?? '' ); ?></textarea>
+                            </p>
+
+                            <?php submit_button( __( 'Save Review', 'societypress' ), 'primary', 'submit', false ); ?>
+                        </form>
+
+                        <hr style="margin:14px 0;">
+                        <p style="color:#666; font-size:13px; margin:0;">
+                            <strong><?php esc_html_e( 'Submitted', 'societypress' ); ?>:</strong>
+                            <?php echo esc_html( $app->submitted_at ? mysql2date( 'M j, Y g:i a', $app->submitted_at ) : '—' ); ?><br>
+                            <strong><?php esc_html_e( 'Decided', 'societypress' ); ?>:</strong>
+                            <?php echo esc_html( $app->decided_at ? mysql2date( 'M j, Y g:i a', $app->decided_at ) : '—' ); ?><br>
+                            <?php if ( $reviewer ) : ?>
+                                <strong><?php esc_html_e( 'Reviewer', 'societypress' ); ?>:</strong>
+                                <?php echo esc_html( $reviewer->display_name ); ?><br>
+                            <?php endif; ?>
+                            <?php if ( $app->certificate_number ) : ?>
+                                <strong><?php esc_html_e( 'Certificate #', 'societypress' ); ?>:</strong>
+                                <code><?php echo esc_html( $app->certificate_number ); ?></code><br>
+                            <?php endif; ?>
+                            <?php if ( (float) $app->payment_amount > 0 ) : ?>
+                                <strong><?php esc_html_e( 'Fee paid', 'societypress' ); ?>:</strong>
+                                $<?php echo esc_html( number_format( (float) $app->payment_amount, 2 ) ); ?>
+                                (<?php echo esc_html( $app->payment_status ); ?>)<br>
+                            <?php endif; ?>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <?php
+}
+
+
+// ============================================================================
+// LINEAGE PROGRAMS — PUBLIC ROSTER (shortcode + page-builder widget)
+//
+// WHY: Once members are approved, the society wants to display them publicly
+//      as recognition. Each program with public_roster=1 surfaces its
+//      approved applications (where the applicant has not opted out via
+//      public_listing=0). This is the parity feature for the upstream-society
+//      "First Families" listing — and the visible reward that motivates
+//      members to apply.
+// ============================================================================
+
+/**
+ * Render the public roster for a single program (or all programs if blank).
+ *
+ * Used by both the [sp_lineage_roster] shortcode and the page-builder widget.
+ *
+ * @param array $args {
+ *     @type string $program  Program slug to filter to. Empty = all public programs.
+ *     @type bool   $show_program_name  When listing all, prepend the program name.
+ *     @type string $sort     'last_name' (default) or 'date_approved'
+ *     @type bool   $show_dates  Include ancestor birth/death dates.
+ *     @type bool   $show_certificate  Show certificate number.
+ * }
+ */
+function sp_render_lineage_roster( array $args = [] ): string {
+    global $wpdb;
+    $apps_t = $wpdb->prefix . 'sp_lineage_applications';
+    $prog_t = $wpdb->prefix . 'sp_lineage_programs';
+    $users_t = $wpdb->users;
+
+    $defaults = [
+        'program'           => '',
+        'show_program_name' => true,
+        'sort'              => 'last_name',
+        'show_dates'        => true,
+        'show_certificate'  => false,
+    ];
+    $args = array_merge( $defaults, $args );
+
+    $where  = [ "a.status = 'approved'", 'a.public_listing = 1', 'p.public_roster = 1', 'p.active = 1' ];
+    $params = [];
+    if ( ! empty( $args['program'] ) ) {
+        $where[]  = 'p.slug = %s';
+        $params[] = sanitize_title( $args['program'] );
+    }
+    $where_sql = implode( ' AND ', $where );
+
+    $order = $args['sort'] === 'date_approved'
+        ? 'a.decided_at DESC'
+        : 'a.ancestor_last_name ASC, a.ancestor_first_name ASC';
+
+    $sql = "SELECT a.*, p.name AS program_name, p.slug AS program_slug,
+                   p.badge_label, p.badge_color, p.geographic_scope,
+                   u.display_name AS member_name
+            FROM {$apps_t} a
+            JOIN {$prog_t} p ON p.id = a.program_id
+            LEFT JOIN {$users_t} u ON u.ID = a.user_id
+            WHERE {$where_sql}
+            ORDER BY {$order}";
+
+    $rows = $params
+        ? $wpdb->get_results( $wpdb->prepare( $sql, ...$params ) )
+        : $wpdb->get_results( $sql );
+
+    if ( empty( $rows ) ) {
+        return '<p class="sp-lineage-roster-empty">' . esc_html__( 'No approved members yet.', 'societypress' ) . '</p>';
+    }
+
+    // Group by program when no specific program is requested
+    $grouped = [];
+    foreach ( $rows as $row ) {
+        $key = $row->program_slug;
+        if ( ! isset( $grouped[ $key ] ) ) {
+            $grouped[ $key ] = [
+                'program' => $row,
+                'rows'    => [],
+            ];
+        }
+        $grouped[ $key ]['rows'][] = $row;
+    }
+
+    ob_start();
+    ?>
+    <div class="sp-lineage-roster">
+        <style>
+            .sp-lineage-roster { margin: 1.5em 0; }
+            .sp-lineage-roster-program { margin-bottom: 2em; }
+            .sp-lineage-roster-program h3 {
+                display: inline-block;
+                padding: 6px 14px;
+                color: #fff;
+                border-radius: 4px;
+                margin-bottom: 12px;
+                font-size: 18px;
+            }
+            .sp-lineage-roster-scope { color: #666; font-size: 14px; margin-left: 8px; }
+            .sp-lineage-roster-table { width: 100%; border-collapse: collapse; }
+            .sp-lineage-roster-table th, .sp-lineage-roster-table td {
+                padding: 8px 12px;
+                border-bottom: 1px solid #eee;
+                text-align: left;
+                vertical-align: top;
+            }
+            .sp-lineage-roster-table th {
+                background: #f8f8f8;
+                border-bottom: 2px solid #ddd;
+                font-weight: 600;
+            }
+            .sp-lineage-roster-ancestor { font-weight: 600; }
+            .sp-lineage-roster-dates { color: #666; font-size: 13px; }
+            .sp-lineage-roster-member { color: #555; }
+            .sp-lineage-roster-cert { font-family: monospace; color: #888; font-size: 12px; }
+        </style>
+        <?php foreach ( $grouped as $group ) :
+            $p = $group['program'];
+            ?>
+            <div class="sp-lineage-roster-program">
+                <?php if ( $args['show_program_name'] || count( $grouped ) > 1 ) : ?>
+                    <h3 style="background: <?php echo esc_attr( $p->badge_color ); ?>;">
+                        <?php echo esc_html( $p->program_name ); ?>
+                    </h3>
+                    <?php if ( $p->geographic_scope ) : ?>
+                        <span class="sp-lineage-roster-scope"><?php echo esc_html( $p->geographic_scope ); ?></span>
+                    <?php endif; ?>
+                <?php endif; ?>
+
+                <table class="sp-lineage-roster-table">
+                    <thead>
+                        <tr>
+                            <th><?php esc_html_e( 'Ancestor', 'societypress' ); ?></th>
+                            <?php if ( $args['show_dates'] ) : ?>
+                                <th><?php esc_html_e( 'Lifespan', 'societypress' ); ?></th>
+                            <?php endif; ?>
+                            <th><?php esc_html_e( 'Member', 'societypress' ); ?></th>
+                            <?php if ( $args['show_certificate'] ) : ?>
+                                <th><?php esc_html_e( 'Certificate', 'societypress' ); ?></th>
+                            <?php endif; ?>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ( $group['rows'] as $r ) :
+                            $name = trim( $r->ancestor_first_name . ' ' . $r->ancestor_last_name );
+                            $birth = trim( (string) $r->ancestor_birth_date );
+                            $death = trim( (string) $r->ancestor_death_date );
+                            $lifespan = trim( $birth . ( $birth || $death ? ' – ' : '' ) . $death );
+                            ?>
+                            <tr>
+                                <td>
+                                    <span class="sp-lineage-roster-ancestor"><?php echo esc_html( $name ?: __( '(unnamed)', 'societypress' ) ); ?></span>
+                                    <?php if ( $r->ancestor_maiden_name ) : ?>
+                                        <br><span class="sp-lineage-roster-dates"><?php echo esc_html__( 'née', 'societypress' ) . ' ' . esc_html( $r->ancestor_maiden_name ); ?></span>
+                                    <?php endif; ?>
+                                </td>
+                                <?php if ( $args['show_dates'] ) : ?>
+                                    <td class="sp-lineage-roster-dates"><?php echo esc_html( $lifespan ?: '—' ); ?></td>
+                                <?php endif; ?>
+                                <td class="sp-lineage-roster-member"><?php echo esc_html( $r->member_name ?: __( '(member)', 'societypress' ) ); ?></td>
+                                <?php if ( $args['show_certificate'] ) : ?>
+                                    <td class="sp-lineage-roster-cert"><?php echo esc_html( $r->certificate_number ?: '—' ); ?></td>
+                                <?php endif; ?>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endforeach; ?>
+    </div>
+    <?php
+    return (string) ob_get_clean();
+}
+
+
+/**
+ * Shortcode: [sp_lineage_roster program="first-families" show_dates="1" show_certificate="0"]
+ */
+add_shortcode( 'sp_lineage_roster', function ( $atts ) {
+    if ( ! sp_module_enabled( 'lineage' ) ) {
+        return '<p>' . esc_html__( 'Lineage Programs is not enabled.', 'societypress' ) . '</p>';
+    }
+    $atts = shortcode_atts(
+        [
+            'program'          => '',
+            'show_dates'       => '1',
+            'show_certificate' => '0',
+            'sort'             => 'last_name',
+        ],
+        $atts,
+        'sp_lineage_roster'
+    );
+    return sp_render_lineage_roster( [
+        'program'          => sanitize_title( $atts['program'] ),
+        'show_dates'       => filter_var( $atts['show_dates'], FILTER_VALIDATE_BOOLEAN ),
+        'show_certificate' => filter_var( $atts['show_certificate'], FILTER_VALIDATE_BOOLEAN ),
+        'sort'             => in_array( $atts['sort'], [ 'last_name', 'date_approved' ], true ) ? $atts['sort'] : 'last_name',
+    ] );
+} );
+
+
+// ============================================================================
+// LINEAGE PROGRAMS — MEMBER-SIDE FRONT END
+//
+// WHY: Members need to apply for lineage programs and track their submissions.
+//      Two shortcodes give Harold flexibility: he embeds [sp_lineage_apply]
+//      on an "Apply" page and [sp_lineage_my_applications] on the member
+//      portal. Both gate behind login and behind the lineage module being
+//      enabled. File uploads are handled via wp_handle_upload into the
+//      WordPress media library so files inherit standard permissions and
+//      Documents/GDPR exporters can find them.
+// ============================================================================
+
+/**
+ * Centralized member-side POST handler. Saves drafts, submits applications,
+ * and uploads proof files.
+ */
+add_action( 'init', function () {
+    if ( empty( $_POST['sp_lineage_action'] ) ) return;
+    if ( ! is_user_logged_in() ) return;
+    if ( ! sp_module_enabled( 'lineage' ) ) return;
+
+    $user_id = get_current_user_id();
+    $action  = sanitize_text_field( $_POST['sp_lineage_action'] );
+
+    global $wpdb;
+    $apps_t   = $wpdb->prefix . 'sp_lineage_applications';
+    $prog_t   = $wpdb->prefix . 'sp_lineage_programs';
+    $proofs_t = $wpdb->prefix . 'sp_lineage_proofs';
+
+    // ----- Save draft / Submit application -----
+    if ( $action === 'save_draft' || $action === 'submit_application' ) {
+        $app_id     = (int) ( $_POST['application_id'] ?? 0 );
+        $program_id = (int) ( $_POST['program_id'] ?? 0 );
+
+        check_admin_referer( 'sp_lineage_submit_' . ( $app_id ?: 'new' ), 'sp_lineage_nonce' );
+
+        $program = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$prog_t} WHERE id = %d AND active = 1",
+            $program_id
+        ) );
+        if ( ! $program ) {
+            wp_safe_redirect( add_query_arg( 'sp_lineage_error', 'invalid_program', wp_get_referer() ?: home_url() ) );
+            exit;
+        }
+        if ( $action === 'submit_application' && ! (int) $program->accepts_applications ) {
+            wp_safe_redirect( add_query_arg( 'sp_lineage_error', 'closed', wp_get_referer() ?: home_url() ) );
+            exit;
+        }
+
+        // Verify ownership when editing existing
+        if ( $app_id ) {
+            $owner = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT user_id FROM {$apps_t} WHERE id = %d", $app_id
+            ) );
+            if ( $owner !== $user_id ) {
+                wp_safe_redirect( add_query_arg( 'sp_lineage_error', 'forbidden', wp_get_referer() ?: home_url() ) );
+                exit;
+            }
+        }
+
+        $data = [
+            'program_id'           => $program_id,
+            'user_id'              => $user_id,
+            'relationship'         => sanitize_text_field( wp_unslash( $_POST['relationship'] ?? '' ) ),
+            'ancestor_first_name'  => sanitize_text_field( wp_unslash( $_POST['ancestor_first_name'] ?? '' ) ),
+            'ancestor_middle_name' => sanitize_text_field( wp_unslash( $_POST['ancestor_middle_name'] ?? '' ) ),
+            'ancestor_last_name'   => sanitize_text_field( wp_unslash( $_POST['ancestor_last_name'] ?? '' ) ),
+            'ancestor_maiden_name' => sanitize_text_field( wp_unslash( $_POST['ancestor_maiden_name'] ?? '' ) ),
+            'ancestor_birth_date'  => sanitize_text_field( wp_unslash( $_POST['ancestor_birth_date'] ?? '' ) ),
+            'ancestor_birth_place' => sanitize_text_field( wp_unslash( $_POST['ancestor_birth_place'] ?? '' ) ),
+            'ancestor_death_date'  => sanitize_text_field( wp_unslash( $_POST['ancestor_death_date'] ?? '' ) ),
+            'ancestor_death_place' => sanitize_text_field( wp_unslash( $_POST['ancestor_death_place'] ?? '' ) ),
+            'arrival_year'         => $_POST['arrival_year'] !== '' ? (int) $_POST['arrival_year'] : null,
+            'arrival_evidence'     => sanitize_textarea_field( wp_unslash( $_POST['arrival_evidence'] ?? '' ) ),
+            'narrative'            => wp_kses_post( wp_unslash( $_POST['narrative'] ?? '' ) ),
+            'sources'              => wp_kses_post( wp_unslash( $_POST['sources'] ?? '' ) ),
+            'public_listing'       => empty( $_POST['public_listing'] ) ? 0 : 1,
+        ];
+
+        if ( $action === 'submit_application' ) {
+            $data['status']       = 'submitted';
+            $data['submitted_at'] = current_time( 'mysql' );
+        } elseif ( ! $app_id ) {
+            $data['status'] = 'draft';
+        }
+
+        if ( $app_id ) {
+            $wpdb->update( $apps_t, $data, [ 'id' => $app_id ] );
+        } else {
+            $wpdb->insert( $apps_t, $data );
+            $app_id = $wpdb->insert_id;
+        }
+
+        // Handle uploaded proofs (multi-file)
+        if ( ! empty( $_FILES['proofs']['name'] ) && is_array( $_FILES['proofs']['name'] ) ) {
+            require_once ABSPATH . 'wp-admin/includes/file.php';
+            require_once ABSPATH . 'wp-admin/includes/media.php';
+            require_once ABSPATH . 'wp-admin/includes/image.php';
+
+            $labels = $_POST['proof_labels'] ?? [];
+            $labels = is_array( $labels ) ? $labels : [];
+
+            foreach ( $_FILES['proofs']['name'] as $i => $name ) {
+                if ( empty( $name ) || ( $_FILES['proofs']['error'][ $i ] ?? UPLOAD_ERR_NO_FILE ) !== UPLOAD_ERR_OK ) {
+                    continue;
+                }
+
+                // Reformat to single-file structure for media_handle_sideload
+                $single = [
+                    'name'     => $_FILES['proofs']['name'][ $i ],
+                    'type'     => $_FILES['proofs']['type'][ $i ],
+                    'tmp_name' => $_FILES['proofs']['tmp_name'][ $i ],
+                    'error'    => $_FILES['proofs']['error'][ $i ],
+                    'size'     => $_FILES['proofs']['size'][ $i ],
+                ];
+
+                $overrides = [ 'test_form' => false ];
+                $movefile  = wp_handle_upload( $single, $overrides );
+
+                if ( $movefile && empty( $movefile['error'] ) ) {
+                    $attachment = [
+                        'guid'           => $movefile['url'],
+                        'post_mime_type' => $movefile['type'],
+                        'post_title'     => sanitize_file_name( pathinfo( $name, PATHINFO_FILENAME ) ),
+                        'post_content'   => '',
+                        'post_status'    => 'inherit',
+                    ];
+                    $attach_id = wp_insert_attachment( $attachment, $movefile['file'] );
+
+                    if ( ! is_wp_error( $attach_id ) ) {
+                        $attach_data = wp_generate_attachment_metadata( $attach_id, $movefile['file'] );
+                        wp_update_attachment_metadata( $attach_id, $attach_data );
+
+                        $wpdb->insert( $proofs_t, [
+                            'application_id' => $app_id,
+                            'label'          => sanitize_text_field( $labels[ $i ] ?? $name ),
+                            'attachment_id'  => $attach_id,
+                            'sort_order'     => $i,
+                        ] );
+                    }
+                }
+            }
+        }
+
+        // Notify staff that an application was submitted (only on submit, not draft)
+        if ( $action === 'submit_application' ) {
+            $org = trim( get_option( 'societypress_settings', [] )['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+            $admin_email = get_option( 'societypress_settings', [] )['admin_email'] ?? get_bloginfo( 'admin_email' );
+            $user = get_user_by( 'id', $user_id );
+            $review_url = admin_url( 'admin.php?page=sp-lineage-application-edit&id=' . $app_id );
+            $subject = sprintf( __( '[%1$s] New lineage application — %2$s', 'societypress' ), $org, $program->name );
+            $body = sprintf(
+                __( "%1\$s submitted an application for %2\$s.\n\nReview it here:\n%3\$s", 'societypress' ),
+                $user ? $user->display_name : __( 'A member', 'societypress' ),
+                $program->name,
+                $review_url
+            );
+            if ( $admin_email ) {
+                wp_mail( $admin_email, $subject, $body );
+            }
+        }
+
+        // Paid program: route through Stripe Checkout before completing the
+        // submission. The application row already exists with status='submitted';
+        // we add payment metadata and bump the donor through Stripe.
+        if ( $action === 'submit_application' && (float) $program->application_fee > 0 ) {
+            $fee = (float) $program->application_fee;
+
+            $settings   = get_option( 'societypress_settings', [] );
+            $secret_key = function_exists( 'sp_stripe_get_secret_key' ) ? sp_stripe_get_secret_key( $settings ) : '';
+
+            if ( empty( $secret_key ) ) {
+                // No Stripe — leave the application submitted with payment_status 'unconfigured'
+                // so staff can take payment manually. Don't block the submission flow.
+                $wpdb->update( $apps_t, [
+                    'payment_status' => 'unconfigured',
+                    'payment_amount' => $fee,
+                ], [ 'id' => $app_id ] );
+
+                wp_safe_redirect( add_query_arg( [
+                    'sp_lineage_app' => $app_id,
+                    'sp_lineage_msg' => 'submitted_payment_due',
+                ], wp_get_referer() ?: home_url() ) );
+                exit;
+            }
+
+            // Mark pending and kick off Stripe Checkout
+            $wpdb->update( $apps_t, [
+                'payment_status' => 'pending',
+                'payment_amount' => $fee,
+            ], [ 'id' => $app_id ] );
+
+            $referer     = wp_get_referer() ?: home_url();
+            $success_url = add_query_arg( [
+                'sp_lineage_app'  => $app_id,
+                'sp_lineage_msg'  => 'paid',
+                'sp_lineage_sess' => '{CHECKOUT_SESSION_ID}',
+            ], $referer );
+            $cancel_url  = add_query_arg( [
+                'sp_lineage_app' => $app_id,
+                'sp_lineage_msg' => 'payment_cancelled',
+            ], $referer );
+
+            $org_name = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+            $currency = strtolower( $settings['stripe_currency'] ?? 'usd' );
+
+            $response = wp_remote_post( 'https://api.stripe.com/v1/checkout/sessions', [
+                'timeout' => 30,
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $secret_key,
+                    'Content-Type'  => 'application/x-www-form-urlencoded',
+                ],
+                'body' => [
+                    'mode'                                 => 'payment',
+                    'success_url'                          => $success_url,
+                    'cancel_url'                           => $cancel_url,
+                    'client_reference_id'                  => 'lineage_' . $app_id,
+                    'customer_email'                       => $user_email_for_checkout = ( $user_id && ( $u = get_user_by( 'id', $user_id ) ) ) ? $u->user_email : '',
+                    'metadata[lineage_application_id]'     => (string) $app_id,
+                    'metadata[lineage_program_id]'         => (string) $program->id,
+                    'metadata[site_url]'                   => home_url(),
+                    'payment_method_types[0]'              => 'card',
+                    'line_items[0][quantity]'              => 1,
+                    'line_items[0][price_data][currency]'  => $currency,
+                    'line_items[0][price_data][unit_amount]' => (int) round( $fee * 100 ),
+                    'line_items[0][price_data][product_data][name]' => sprintf( __( '%1$s — Application Fee (%2$s)', 'societypress' ), $org_name, $program->name ),
+                ],
+            ] );
+
+            if ( is_wp_error( $response ) || wp_remote_retrieve_response_code( $response ) !== 200 ) {
+                error_log( 'SocietyPress lineage Stripe error: ' . wp_remote_retrieve_body( $response ) );
+                wp_safe_redirect( add_query_arg( [
+                    'sp_lineage_app' => $app_id,
+                    'sp_lineage_msg' => 'payment_error',
+                ], $referer ) );
+                exit;
+            }
+
+            $resp = json_decode( wp_remote_retrieve_body( $response ), true );
+            if ( empty( $resp['url'] ) ) {
+                wp_safe_redirect( add_query_arg( [
+                    'sp_lineage_app' => $app_id,
+                    'sp_lineage_msg' => 'payment_error',
+                ], $referer ) );
+                exit;
+            }
+
+            $wpdb->update( $apps_t, [
+                'stripe_session_id' => $resp['id'],
+            ], [ 'id' => $app_id ] );
+
+            wp_redirect( $resp['url'] );
+            exit;
+        }
+
+        $redirect = $action === 'submit_application' ? 'submitted' : 'saved';
+        wp_safe_redirect( add_query_arg( [
+            'sp_lineage_app' => $app_id,
+            'sp_lineage_msg' => $redirect,
+        ], wp_get_referer() ?: home_url() ) );
+        exit;
+    }
+
+    // ----- Withdraw application -----
+    if ( $action === 'withdraw_application' ) {
+        $app_id = (int) ( $_POST['application_id'] ?? 0 );
+        check_admin_referer( 'sp_lineage_withdraw_' . $app_id, 'sp_lineage_nonce' );
+
+        $owner = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT user_id FROM {$apps_t} WHERE id = %d", $app_id
+        ) );
+        if ( $owner === $user_id ) {
+            $wpdb->update( $apps_t, [ 'status' => 'withdrawn' ], [ 'id' => $app_id ] );
+        }
+
+        wp_safe_redirect( add_query_arg( 'sp_lineage_msg', 'withdrawn', wp_get_referer() ?: home_url() ) );
+        exit;
+    }
+} );
+
+
+/**
+ * Shortcode: [sp_lineage_apply]
+ * Member-facing form to apply to a lineage program. Lists active programs
+ * and lets the member fill in ancestor details, narrative, sources, and
+ * upload proof documents.
+ */
+add_shortcode( 'sp_lineage_apply', function ( $atts ) {
+    if ( ! sp_module_enabled( 'lineage' ) ) {
+        return '<p>' . esc_html__( 'Lineage Programs is not enabled.', 'societypress' ) . '</p>';
+    }
+    if ( ! is_user_logged_in() ) {
+        return '<p>' . sprintf(
+            wp_kses(
+                /* translators: %s is login URL */
+                __( 'Please <a href="%s">log in</a> to apply for a lineage program.', 'societypress' ),
+                [ 'a' => [ 'href' => [] ] ]
+            ),
+            esc_url( wp_login_url( get_permalink() ) )
+        ) . '</p>';
+    }
+
+    global $wpdb;
+    $apps_t = $wpdb->prefix . 'sp_lineage_applications';
+    $prog_t = $wpdb->prefix . 'sp_lineage_programs';
+
+    $programs = $wpdb->get_results(
+        "SELECT * FROM {$prog_t} WHERE active = 1 AND accepts_applications = 1 ORDER BY sort_order, name"
+    );
+
+    if ( empty( $programs ) ) {
+        return '<p>' . esc_html__( 'No lineage programs are currently accepting applications.', 'societypress' ) . '</p>';
+    }
+
+    $user_id   = get_current_user_id();
+    $editing_id = (int) ( $_GET['edit'] ?? 0 );
+    $editing    = null;
+    if ( $editing_id ) {
+        $editing = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$apps_t} WHERE id = %d AND user_id = %d",
+            $editing_id, $user_id
+        ) );
+        // Only let members edit drafts and info-requested applications
+        if ( $editing && ! in_array( $editing->status, [ 'draft', 'info_requested' ], true ) ) {
+            $editing = null;
+        }
+    }
+
+    $msg = sanitize_text_field( $_GET['sp_lineage_msg'] ?? '' );
+    $err = sanitize_text_field( $_GET['sp_lineage_error'] ?? '' );
+
+    ob_start();
+    ?>
+    <div class="sp-lineage-apply">
+        <style>
+            .sp-lineage-apply { max-width: 760px; margin: 1.5em auto; }
+            .sp-lineage-apply form { background: #fafafa; border: 1px solid #ddd; border-radius: 8px; padding: 24px; margin-top: 16px; }
+            .sp-lineage-apply h3 { margin-top: 0; }
+            .sp-lineage-apply label { display: block; font-weight: 600; margin: 12px 0 4px; }
+            .sp-lineage-apply input[type=text], .sp-lineage-apply input[type=number], .sp-lineage-apply select, .sp-lineage-apply textarea {
+                width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px;
+            }
+            .sp-lineage-apply textarea { min-height: 80px; }
+            .sp-lineage-apply .row { display: flex; gap: 12px; }
+            .sp-lineage-apply .row > div { flex: 1; }
+            .sp-lineage-apply .actions { margin-top: 18px; display: flex; gap: 10px; flex-wrap: wrap; }
+            .sp-lineage-apply .btn { padding: 10px 18px; border: none; border-radius: 4px; cursor: pointer; font-size: 15px; }
+            .sp-lineage-apply .btn-primary { background: #0d1f3c; color: #fff; }
+            .sp-lineage-apply .btn-secondary { background: #ddd; color: #222; }
+            .sp-lineage-apply .help { color: #666; font-size: 13px; font-weight: 400; }
+            .sp-lineage-apply .notice { padding: 10px 14px; border-radius: 4px; margin-bottom: 16px; }
+            .sp-lineage-apply .notice-success { background: #e8f5e9; border-left: 4px solid #166534; color: #1f4d2c; }
+            .sp-lineage-apply .notice-error { background: #fde8e8; border-left: 4px solid #b91c1c; color: #7d1414; }
+        </style>
+
+        <?php if ( $msg === 'submitted' ) : ?>
+            <div class="notice notice-success"><?php esc_html_e( 'Your application has been submitted for review. You will be notified by email when there is an update.', 'societypress' ); ?></div>
+        <?php elseif ( $msg === 'saved' ) : ?>
+            <div class="notice notice-success"><?php esc_html_e( 'Draft saved.', 'societypress' ); ?></div>
+        <?php endif; ?>
+        <?php if ( $err === 'invalid_program' ) : ?>
+            <div class="notice notice-error"><?php esc_html_e( 'That program is not currently available.', 'societypress' ); ?></div>
+        <?php elseif ( $err === 'closed' ) : ?>
+            <div class="notice notice-error"><?php esc_html_e( 'That program is closed to new applications.', 'societypress' ); ?></div>
+        <?php elseif ( $err === 'forbidden' ) : ?>
+            <div class="notice notice-error"><?php esc_html_e( 'You can only edit your own applications.', 'societypress' ); ?></div>
+        <?php endif; ?>
+
+        <h2><?php echo $editing ? esc_html__( 'Edit Lineage Application', 'societypress' ) : esc_html__( 'Apply for a Lineage Program', 'societypress' ); ?></h2>
+
+        <form method="post" enctype="multipart/form-data">
+            <?php wp_nonce_field( 'sp_lineage_submit_' . ( $editing_id ?: 'new' ), 'sp_lineage_nonce' ); ?>
+            <input type="hidden" name="sp_lineage_action" id="sp_lineage_action" value="save_draft">
+            <?php if ( $editing ) : ?>
+                <input type="hidden" name="application_id" value="<?php echo (int) $editing->id; ?>">
+            <?php endif; ?>
+
+            <h3><?php esc_html_e( 'Program', 'societypress' ); ?></h3>
+            <label for="lp_program_id"><?php esc_html_e( 'Which program are you applying to?', 'societypress' ); ?></label>
+            <select name="program_id" id="lp_program_id" required>
+                <option value=""><?php esc_html_e( '— Select a program —', 'societypress' ); ?></option>
+                <?php foreach ( $programs as $p ) : ?>
+                    <option value="<?php echo (int) $p->id; ?>" <?php selected( $editing->program_id ?? 0, $p->id ); ?>>
+                        <?php echo esc_html( $p->name ); ?>
+                        <?php if ( (float) $p->application_fee > 0 ) : ?>
+                            (<?php echo esc_html( '$' . number_format( (float) $p->application_fee, 2 ) ); ?> <?php esc_html_e( 'fee', 'societypress' ); ?>)
+                        <?php endif; ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+
+            <h3 style="margin-top:24px;"><?php esc_html_e( 'Your Ancestor', 'societypress' ); ?></h3>
+
+            <label for="lp_relationship"><?php esc_html_e( 'Your relationship to the ancestor', 'societypress' ); ?></label>
+            <input type="text" id="lp_relationship" name="relationship" value="<?php echo esc_attr( $editing->relationship ?? '' ); ?>" placeholder="<?php esc_attr_e( 'e.g. great-great-grandfather', 'societypress' ); ?>">
+
+            <div class="row">
+                <div>
+                    <label><?php esc_html_e( 'First name', 'societypress' ); ?></label>
+                    <input type="text" name="ancestor_first_name" value="<?php echo esc_attr( $editing->ancestor_first_name ?? '' ); ?>">
+                </div>
+                <div>
+                    <label><?php esc_html_e( 'Middle', 'societypress' ); ?></label>
+                    <input type="text" name="ancestor_middle_name" value="<?php echo esc_attr( $editing->ancestor_middle_name ?? '' ); ?>">
+                </div>
+                <div>
+                    <label><?php esc_html_e( 'Last name', 'societypress' ); ?></label>
+                    <input type="text" name="ancestor_last_name" value="<?php echo esc_attr( $editing->ancestor_last_name ?? '' ); ?>">
+                </div>
+            </div>
+
+            <label><?php esc_html_e( 'Maiden name (if applicable)', 'societypress' ); ?></label>
+            <input type="text" name="ancestor_maiden_name" value="<?php echo esc_attr( $editing->ancestor_maiden_name ?? '' ); ?>">
+
+            <div class="row">
+                <div>
+                    <label><?php esc_html_e( 'Birth date', 'societypress' ); ?> <span class="help"><?php esc_html_e( '(any format, e.g. "abt 1820")', 'societypress' ); ?></span></label>
+                    <input type="text" name="ancestor_birth_date" value="<?php echo esc_attr( $editing->ancestor_birth_date ?? '' ); ?>">
+                </div>
+                <div>
+                    <label><?php esc_html_e( 'Birth place', 'societypress' ); ?></label>
+                    <input type="text" name="ancestor_birth_place" value="<?php echo esc_attr( $editing->ancestor_birth_place ?? '' ); ?>">
+                </div>
+            </div>
+            <div class="row">
+                <div>
+                    <label><?php esc_html_e( 'Death date', 'societypress' ); ?></label>
+                    <input type="text" name="ancestor_death_date" value="<?php echo esc_attr( $editing->ancestor_death_date ?? '' ); ?>">
+                </div>
+                <div>
+                    <label><?php esc_html_e( 'Death place', 'societypress' ); ?></label>
+                    <input type="text" name="ancestor_death_place" value="<?php echo esc_attr( $editing->ancestor_death_place ?? '' ); ?>">
+                </div>
+            </div>
+
+            <label><?php esc_html_e( 'Year ancestor arrived in / settled in the area', 'societypress' ); ?></label>
+            <input type="number" name="arrival_year" value="<?php echo esc_attr( $editing->arrival_year ?? '' ); ?>" min="1500" max="2100">
+
+            <label><?php esc_html_e( 'Evidence of arrival / residence', 'societypress' ); ?></label>
+            <textarea name="arrival_evidence"><?php echo esc_textarea( $editing->arrival_evidence ?? '' ); ?></textarea>
+
+            <h3 style="margin-top:24px;"><?php esc_html_e( 'Lineage Narrative', 'societypress' ); ?></h3>
+            <label><?php esc_html_e( 'Narrative — describe the chain of descent from the ancestor to you', 'societypress' ); ?></label>
+            <textarea name="narrative" rows="6"><?php echo esc_textarea( $editing->narrative ?? '' ); ?></textarea>
+
+            <label><?php esc_html_e( 'Sources cited', 'societypress' ); ?> <span class="help"><?php esc_html_e( '(census, vital records, wills, etc.)', 'societypress' ); ?></span></label>
+            <textarea name="sources" rows="4"><?php echo esc_textarea( $editing->sources ?? '' ); ?></textarea>
+
+            <h3 style="margin-top:24px;"><?php esc_html_e( 'Proof Documents', 'societypress' ); ?></h3>
+            <p class="help"><?php esc_html_e( 'Upload supporting documents — birth/marriage/death certificates, census pages, will excerpts, etc. You can attach more documents on subsequent edits.', 'societypress' ); ?></p>
+
+            <div id="sp-lineage-proof-list">
+                <div class="row">
+                    <div>
+                        <label><?php esc_html_e( 'Document label', 'societypress' ); ?></label>
+                        <input type="text" name="proof_labels[]" placeholder="<?php esc_attr_e( 'e.g. 1850 census page', 'societypress' ); ?>">
+                    </div>
+                    <div>
+                        <label><?php esc_html_e( 'File', 'societypress' ); ?></label>
+                        <input type="file" name="proofs[]">
+                    </div>
+                </div>
+            </div>
+
+            <p style="margin-top:18px;">
+                <label><input type="checkbox" name="public_listing" value="1" <?php checked( ! $editing || (int) ( $editing->public_listing ?? 1 ) === 1 ); ?>>
+                    <?php esc_html_e( 'List my approved ancestor publicly on the program roster', 'societypress' ); ?></label>
+            </p>
+
+            <div class="actions">
+                <button type="submit" class="btn btn-secondary" onclick="document.getElementById('sp_lineage_action').value='save_draft';"><?php esc_html_e( 'Save Draft', 'societypress' ); ?></button>
+                <button type="submit" class="btn btn-primary" onclick="document.getElementById('sp_lineage_action').value='submit_application';"><?php esc_html_e( 'Submit for Review', 'societypress' ); ?></button>
+            </div>
+        </form>
+    </div>
+    <?php
+    return (string) ob_get_clean();
+} );
+
+
+/**
+ * Shortcode: [sp_lineage_my_applications]
+ * Lists the current member's applications across all programs with status,
+ * dates, and edit / withdraw actions.
+ */
+add_shortcode( 'sp_lineage_my_applications', function ( $atts ) {
+    if ( ! sp_module_enabled( 'lineage' ) ) {
+        return '<p>' . esc_html__( 'Lineage Programs is not enabled.', 'societypress' ) . '</p>';
+    }
+    if ( ! is_user_logged_in() ) {
+        return '<p>' . sprintf(
+            wp_kses(
+                /* translators: %s is login URL */
+                __( 'Please <a href="%s">log in</a> to view your applications.', 'societypress' ),
+                [ 'a' => [ 'href' => [] ] ]
+            ),
+            esc_url( wp_login_url( get_permalink() ) )
+        ) . '</p>';
+    }
+
+    global $wpdb;
+    $apps_t = $wpdb->prefix . 'sp_lineage_applications';
+    $prog_t = $wpdb->prefix . 'sp_lineage_programs';
+
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT a.*, p.name AS program_name, p.badge_label, p.badge_color
+         FROM {$apps_t} a JOIN {$prog_t} p ON p.id = a.program_id
+         WHERE a.user_id = %d
+         ORDER BY a.created_at DESC",
+        get_current_user_id()
+    ) );
+
+    $atts = shortcode_atts( [ 'apply_url' => '' ], $atts, 'sp_lineage_my_applications' );
+    $apply_url = $atts['apply_url'] ?: '';
+
+    $status_labels = [
+        'draft'          => __( 'Draft', 'societypress' ),
+        'submitted'      => __( 'Submitted', 'societypress' ),
+        'in_review'      => __( 'In Review', 'societypress' ),
+        'info_requested' => __( 'More Info Requested', 'societypress' ),
+        'approved'       => __( 'Approved', 'societypress' ),
+        'rejected'       => __( 'Not Approved', 'societypress' ),
+        'withdrawn'      => __( 'Withdrawn', 'societypress' ),
+    ];
+
+    ob_start();
+    ?>
+    <div class="sp-lineage-my">
+        <style>
+            .sp-lineage-my { margin: 1.5em 0; }
+            .sp-lineage-my-empty { color: #666; font-style: italic; }
+            .sp-lineage-my table { width: 100%; border-collapse: collapse; }
+            .sp-lineage-my th, .sp-lineage-my td {
+                padding: 10px 12px; border-bottom: 1px solid #eee; text-align: left; vertical-align: top;
+            }
+            .sp-lineage-my th { background: #f6f6f6; }
+            .sp-lineage-my .review-note { color: #555; font-size: 13px; margin-top: 4px; }
+            .sp-lineage-my .actions a, .sp-lineage-my .actions button {
+                font-size: 13px; margin-right: 6px;
+            }
+        </style>
+
+        <h2><?php esc_html_e( 'My Lineage Applications', 'societypress' ); ?></h2>
+
+        <?php if ( empty( $rows ) ) : ?>
+            <p class="sp-lineage-my-empty">
+                <?php esc_html_e( 'You have not applied to any lineage programs yet.', 'societypress' ); ?>
+                <?php if ( $apply_url ) : ?>
+                    <a href="<?php echo esc_url( $apply_url ); ?>"><?php esc_html_e( 'Start an application →', 'societypress' ); ?></a>
+                <?php endif; ?>
+            </p>
+        <?php else : ?>
+            <table>
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e( 'Program', 'societypress' ); ?></th>
+                        <th><?php esc_html_e( 'Ancestor', 'societypress' ); ?></th>
+                        <th><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                        <th><?php esc_html_e( 'Submitted', 'societypress' ); ?></th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ( $rows as $r ) :
+                        $name = trim( $r->ancestor_first_name . ' ' . $r->ancestor_last_name );
+                        $can_edit = in_array( $r->status, [ 'draft', 'info_requested' ], true );
+                        $can_withdraw = in_array( $r->status, [ 'draft', 'submitted', 'in_review', 'info_requested' ], true );
+                        ?>
+                        <tr>
+                            <td><strong><?php echo esc_html( $r->program_name ); ?></strong></td>
+                            <td><?php echo esc_html( $name ?: __( '(unnamed)', 'societypress' ) ); ?></td>
+                            <td>
+                                <?php echo esc_html( $status_labels[ $r->status ] ?? $r->status ); ?>
+                                <?php if ( $r->review_note && in_array( $r->status, [ 'info_requested', 'rejected' ], true ) ) : ?>
+                                    <div class="review-note"><strong><?php esc_html_e( 'Reviewer:', 'societypress' ); ?></strong> <?php echo esc_html( wp_strip_all_tags( $r->review_note ) ); ?></div>
+                                <?php endif; ?>
+                                <?php if ( $r->status === 'approved' && $r->certificate_number ) : ?>
+                                    <div class="review-note"><strong><?php esc_html_e( 'Cert #:', 'societypress' ); ?></strong> <code><?php echo esc_html( $r->certificate_number ); ?></code></div>
+                                <?php endif; ?>
+                            </td>
+                            <td><?php echo esc_html( $r->submitted_at ? mysql2date( 'M j, Y', $r->submitted_at ) : '—' ); ?></td>
+                            <td class="actions">
+                                <?php if ( $can_edit && $apply_url ) : ?>
+                                    <a href="<?php echo esc_url( add_query_arg( 'edit', $r->id, $apply_url ) ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
+                                <?php endif; ?>
+                                <?php if ( $can_withdraw ) : ?>
+                                    <form method="post" style="display:inline;" data-sp-confirm="<?php echo esc_attr( __( 'Withdraw this application? You can submit a new one later.', 'societypress' ) ); ?>">
+                                        <?php wp_nonce_field( 'sp_lineage_withdraw_' . $r->id, 'sp_lineage_nonce' ); ?>
+                                        <input type="hidden" name="sp_lineage_action" value="withdraw_application">
+                                        <input type="hidden" name="application_id" value="<?php echo (int) $r->id; ?>">
+                                        <button type="submit" class="sp-link-btn"><?php esc_html_e( 'Withdraw', 'societypress' ); ?></button>
+                                    </form>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+    </div>
+    <?php
+    return (string) ob_get_clean();
+} );
+
+
+// ============================================================================
+// PICTURE WALL — Member-submitted ancestor photo galleries (extends Gallery)
+//
+// WHY: Many societies run an "ancestor wall" — members submit a portrait of
+//      a notable ancestor along with a name, relationship, and brief story.
+//      It's a public-facing gallery distinct from event-photo albums because
+//      content comes from members (with moderation), not staff. We extend
+//      the existing sp_photo_albums + sp_photo_album_items tables with
+//      submission columns rather than introducing a parallel table —
+//      submissions are still album items, just flagged as such.
+// ============================================================================
+
+/**
+ * MIGRATION: Add submission columns to sp_photo_albums for existing installs.
+ */
+add_action( 'admin_init', function () {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_photo_albums';
+    if ( $wpdb->get_var( "SHOW TABLES LIKE '{$table}'" ) !== $table ) return;
+
+    $cols = [
+        'submission_type'         => "ALTER TABLE {$table} ADD COLUMN submission_type VARCHAR(20) NOT NULL DEFAULT 'curated' AFTER visibility, ADD KEY submission_type (submission_type)",
+        'accepts_submissions'     => "ALTER TABLE {$table} ADD COLUMN accepts_submissions TINYINT(1) NOT NULL DEFAULT 0 AFTER submission_type",
+        'submission_instructions' => "ALTER TABLE {$table} ADD COLUMN submission_instructions TEXT NULL AFTER accepts_submissions",
+    ];
+    foreach ( $cols as $col => $sql ) {
+        $exists = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM {$table} LIKE %s", $col ) );
+        if ( empty( $exists ) ) {
+            $wpdb->query( $sql );
+        }
+    }
+} );
+
+/**
+ * MIGRATION: Add submission columns to sp_photo_album_items for existing installs.
+ */
+add_action( 'admin_init', function () {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_photo_album_items';
+    if ( $wpdb->get_var( "SHOW TABLES LIKE '{$table}'" ) !== $table ) return;
+
+    $cols = [
+        'submitter_user_id' => "ALTER TABLE {$table} ADD COLUMN submitter_user_id BIGINT(20) UNSIGNED NULL AFTER sort_order, ADD KEY submitter_user_id (submitter_user_id)",
+        'ancestor_name'     => "ALTER TABLE {$table} ADD COLUMN ancestor_name VARCHAR(255) NULL AFTER submitter_user_id",
+        'relationship'      => "ALTER TABLE {$table} ADD COLUMN relationship VARCHAR(150) NULL AFTER ancestor_name",
+        'submission_status' => "ALTER TABLE {$table} ADD COLUMN submission_status VARCHAR(20) NOT NULL DEFAULT 'approved' AFTER relationship, ADD KEY submission_status (submission_status)",
+        'submission_note'   => "ALTER TABLE {$table} ADD COLUMN submission_note TEXT NULL AFTER submission_status",
+    ];
+    foreach ( $cols as $col => $sql ) {
+        $exists = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM {$table} LIKE %s", $col ) );
+        if ( empty( $exists ) ) {
+            $wpdb->query( $sql );
+        }
+    }
+} );
+
+
+/**
+ * Member-side POST handler: submit an ancestor photo to a Picture Wall album.
+ */
+add_action( 'init', function () {
+    if ( empty( $_POST['sp_picture_wall_action'] ) ) return;
+    if ( ! is_user_logged_in() ) return;
+
+    $action = sanitize_text_field( $_POST['sp_picture_wall_action'] );
+
+    if ( $action === 'submit' ) {
+        global $wpdb;
+        $albums_t = $wpdb->prefix . 'sp_photo_albums';
+        $items_t  = $wpdb->prefix . 'sp_photo_album_items';
+
+        $album_id = (int) ( $_POST['album_id'] ?? 0 );
+        check_admin_referer( 'sp_picture_wall_submit_' . $album_id, 'sp_pw_nonce' );
+
+        $album = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$albums_t} WHERE id = %d AND submission_type = 'submissions' AND accepts_submissions = 1",
+            $album_id
+        ) );
+        if ( ! $album ) {
+            wp_safe_redirect( add_query_arg( 'sp_pw_error', 'closed', wp_get_referer() ?: home_url() ) );
+            exit;
+        }
+
+        if ( empty( $_FILES['photo']['name'] ) || ( $_FILES['photo']['error'] ?? UPLOAD_ERR_NO_FILE ) !== UPLOAD_ERR_OK ) {
+            wp_safe_redirect( add_query_arg( 'sp_pw_error', 'no_file', wp_get_referer() ?: home_url() ) );
+            exit;
+        }
+
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/media.php';
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+
+        $movefile = wp_handle_upload( $_FILES['photo'], [ 'test_form' => false ] );
+        if ( ! $movefile || ! empty( $movefile['error'] ) ) {
+            wp_safe_redirect( add_query_arg( 'sp_pw_error', 'upload_failed', wp_get_referer() ?: home_url() ) );
+            exit;
+        }
+        // Reject non-images
+        if ( strpos( (string) $movefile['type'], 'image/' ) !== 0 ) {
+            @unlink( $movefile['file'] );
+            wp_safe_redirect( add_query_arg( 'sp_pw_error', 'not_image', wp_get_referer() ?: home_url() ) );
+            exit;
+        }
+
+        $attach_id = wp_insert_attachment( [
+            'guid'           => $movefile['url'],
+            'post_mime_type' => $movefile['type'],
+            'post_title'     => sanitize_file_name( pathinfo( $_FILES['photo']['name'], PATHINFO_FILENAME ) ),
+            'post_content'   => '',
+            'post_status'    => 'inherit',
+        ], $movefile['file'] );
+
+        if ( is_wp_error( $attach_id ) ) {
+            wp_safe_redirect( add_query_arg( 'sp_pw_error', 'attach_failed', wp_get_referer() ?: home_url() ) );
+            exit;
+        }
+        wp_update_attachment_metadata( $attach_id, wp_generate_attachment_metadata( $attach_id, $movefile['file'] ) );
+
+        $wpdb->insert( $items_t, [
+            'album_id'          => $album_id,
+            'attachment_id'     => $attach_id,
+            'caption'           => sanitize_text_field( wp_unslash( $_POST['caption'] ?? '' ) ),
+            'submitter_user_id' => get_current_user_id(),
+            'ancestor_name'     => sanitize_text_field( wp_unslash( $_POST['ancestor_name'] ?? '' ) ),
+            'relationship'      => sanitize_text_field( wp_unslash( $_POST['relationship'] ?? '' ) ),
+            'submission_status' => 'pending',
+            'submission_note'   => sanitize_textarea_field( wp_unslash( $_POST['submission_note'] ?? '' ) ),
+        ] );
+
+        // Notify staff
+        $admin_email = get_option( 'societypress_settings', [] )['admin_email'] ?? get_bloginfo( 'admin_email' );
+        if ( $admin_email ) {
+            $org = trim( get_option( 'societypress_settings', [] )['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+            $user = get_user_by( 'id', get_current_user_id() );
+            wp_mail(
+                $admin_email,
+                sprintf( __( '[%s] New Picture Wall submission', 'societypress' ), $org ),
+                sprintf(
+                    __( "%1\$s submitted a photo to %2\$s.\n\nReview pending submissions:\n%3\$s", 'societypress' ),
+                    $user ? $user->display_name : __( 'A member', 'societypress' ),
+                    $album->title,
+                    admin_url( 'admin.php?page=sp-picture-wall-pending' )
+                )
+            );
+        }
+
+        wp_safe_redirect( add_query_arg( 'sp_pw_msg', 'submitted', wp_get_referer() ?: home_url() ) );
+        exit;
+    }
+} );
+
+
+/**
+ * Shortcode: [sp_picture_wall album="ancestor-portraits"]
+ * Displays approved items from a submission-type album with ancestor name
+ * and submitter credit.
+ */
+add_shortcode( 'sp_picture_wall', function ( $atts ) {
+    if ( ! sp_module_enabled( 'gallery' ) ) {
+        return '<p>' . esc_html__( 'Gallery module is not enabled.', 'societypress' ) . '</p>';
+    }
+    $atts = shortcode_atts(
+        [
+            'album'         => '',
+            'columns'       => '4',
+            'show_submitter'=> '1',
+        ],
+        $atts,
+        'sp_picture_wall'
+    );
+
+    if ( ! $atts['album'] ) {
+        return '<p>' . esc_html__( 'Specify an album slug, e.g. [sp_picture_wall album="ancestor-portraits"]', 'societypress' ) . '</p>';
+    }
+
+    global $wpdb;
+    $albums_t = $wpdb->prefix . 'sp_photo_albums';
+    $items_t  = $wpdb->prefix . 'sp_photo_album_items';
+    $users_t  = $wpdb->users;
+
+    $album = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$albums_t} WHERE slug = %s",
+        sanitize_title( $atts['album'] )
+    ) );
+    if ( ! $album ) {
+        return '<p>' . esc_html__( 'Album not found.', 'societypress' ) . '</p>';
+    }
+
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT i.*, u.display_name AS submitter_name
+         FROM {$items_t} i
+         LEFT JOIN {$users_t} u ON u.ID = i.submitter_user_id
+         WHERE i.album_id = %d AND i.submission_status = 'approved'
+         ORDER BY i.sort_order ASC, i.created_at DESC",
+        $album->id
+    ) );
+
+    $columns = max( 1, min( 6, (int) $atts['columns'] ) );
+
+    ob_start();
+    ?>
+    <div class="sp-picture-wall">
+        <style>
+            .sp-picture-wall { margin: 1.5em 0; }
+            .sp-picture-wall-grid {
+                display: grid;
+                grid-template-columns: repeat(<?php echo (int) $columns; ?>, 1fr);
+                gap: 18px;
+            }
+            @media (max-width: 900px) { .sp-picture-wall-grid { grid-template-columns: repeat(2, 1fr); } }
+            @media (max-width: 480px) { .sp-picture-wall-grid { grid-template-columns: 1fr; } }
+            .sp-pw-tile { background: #fff; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+            .sp-pw-tile img { display: block; width: 100%; height: auto; }
+            .sp-pw-meta { padding: 10px 12px 12px; }
+            .sp-pw-name { font-weight: 700; margin: 0 0 4px; font-size: 15px; }
+            .sp-pw-relationship { color: #666; font-size: 13px; margin: 0 0 6px; }
+            .sp-pw-caption { color: #333; font-size: 14px; margin: 0; }
+            .sp-pw-submitter { color: #888; font-size: 12px; margin-top: 6px; font-style: italic; }
+            .sp-picture-wall-empty { color: #777; font-style: italic; padding: 20px; text-align: center; }
+        </style>
+
+        <?php if ( empty( $rows ) ) : ?>
+            <p class="sp-picture-wall-empty"><?php esc_html_e( 'No photos on the wall yet.', 'societypress' ); ?></p>
+        <?php else : ?>
+            <div class="sp-picture-wall-grid">
+                <?php foreach ( $rows as $r ) :
+                    $img_url = wp_get_attachment_image_url( (int) $r->attachment_id, 'medium_large' );
+                    if ( ! $img_url ) continue;
+                    ?>
+                    <figure class="sp-pw-tile">
+                        <img src="<?php echo esc_url( $img_url ); ?>" alt="<?php echo esc_attr( $r->ancestor_name ?: $r->caption ); ?>" loading="lazy">
+                        <figcaption class="sp-pw-meta">
+                            <?php if ( $r->ancestor_name ) : ?>
+                                <h4 class="sp-pw-name"><?php echo esc_html( $r->ancestor_name ); ?></h4>
+                            <?php endif; ?>
+                            <?php if ( $r->relationship ) : ?>
+                                <p class="sp-pw-relationship"><?php echo esc_html( $r->relationship ); ?></p>
+                            <?php endif; ?>
+                            <?php if ( $r->caption ) : ?>
+                                <p class="sp-pw-caption"><?php echo esc_html( $r->caption ); ?></p>
+                            <?php endif; ?>
+                            <?php if ( $atts['show_submitter'] === '1' && $r->submitter_name ) : ?>
+                                <p class="sp-pw-submitter"><?php printf( esc_html__( 'Submitted by %s', 'societypress' ), esc_html( $r->submitter_name ) ); ?></p>
+                            <?php endif; ?>
+                        </figcaption>
+                    </figure>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+    </div>
+    <?php
+    return (string) ob_get_clean();
+} );
+
+
+/**
+ * Shortcode: [sp_picture_wall_submit album="ancestor-portraits"]
+ * Member-facing submission form — uploads photo + ancestor info, sets status
+ * to 'pending' for moderation.
+ */
+add_shortcode( 'sp_picture_wall_submit', function ( $atts ) {
+    if ( ! sp_module_enabled( 'gallery' ) ) {
+        return '<p>' . esc_html__( 'Gallery module is not enabled.', 'societypress' ) . '</p>';
+    }
+    if ( ! is_user_logged_in() ) {
+        return '<p>' . sprintf(
+            wp_kses(
+                __( 'Please <a href="%s">log in</a> to submit a photo.', 'societypress' ),
+                [ 'a' => [ 'href' => [] ] ]
+            ),
+            esc_url( wp_login_url( get_permalink() ) )
+        ) . '</p>';
+    }
+
+    $atts = shortcode_atts( [ 'album' => '' ], $atts, 'sp_picture_wall_submit' );
+    if ( ! $atts['album'] ) {
+        return '<p>' . esc_html__( 'Specify an album slug.', 'societypress' ) . '</p>';
+    }
+
+    global $wpdb;
+    $albums_t = $wpdb->prefix . 'sp_photo_albums';
+    $album = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$albums_t} WHERE slug = %s",
+        sanitize_title( $atts['album'] )
+    ) );
+    if ( ! $album ) {
+        return '<p>' . esc_html__( 'Album not found.', 'societypress' ) . '</p>';
+    }
+    if ( $album->submission_type !== 'submissions' || ! (int) $album->accepts_submissions ) {
+        return '<p>' . esc_html__( 'This album is not accepting submissions.', 'societypress' ) . '</p>';
+    }
+
+    $msg = sanitize_text_field( $_GET['sp_pw_msg'] ?? '' );
+    $err = sanitize_text_field( $_GET['sp_pw_error'] ?? '' );
+
+    ob_start();
+    ?>
+    <div class="sp-picture-wall-submit">
+        <style>
+            .sp-picture-wall-submit { max-width: 560px; margin: 1.5em auto; }
+            .sp-picture-wall-submit form { background: #fafafa; border: 1px solid #ddd; border-radius: 8px; padding: 22px; }
+            .sp-picture-wall-submit label { display: block; font-weight: 600; margin: 12px 0 4px; }
+            .sp-picture-wall-submit input[type=text], .sp-picture-wall-submit textarea, .sp-picture-wall-submit input[type=file] {
+                width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 15px;
+            }
+            .sp-picture-wall-submit textarea { min-height: 70px; }
+            .sp-picture-wall-submit .help { color: #666; font-size: 13px; }
+            .sp-picture-wall-submit button { background: #0d1f3c; color: #fff; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 15px; margin-top: 14px; }
+            .sp-picture-wall-submit .notice { padding: 10px 14px; border-radius: 4px; margin-bottom: 14px; }
+            .sp-picture-wall-submit .notice-success { background: #e8f5e9; border-left: 4px solid #166534; color: #1f4d2c; }
+            .sp-picture-wall-submit .notice-error { background: #fde8e8; border-left: 4px solid #b91c1c; color: #7d1414; }
+        </style>
+
+        <?php if ( $msg === 'submitted' ) : ?>
+            <div class="notice notice-success"><?php esc_html_e( 'Thank you. Your photo has been submitted for review.', 'societypress' ); ?></div>
+        <?php endif; ?>
+        <?php if ( $err === 'no_file' ) : ?>
+            <div class="notice notice-error"><?php esc_html_e( 'Please choose a photo to upload.', 'societypress' ); ?></div>
+        <?php elseif ( $err === 'not_image' ) : ?>
+            <div class="notice notice-error"><?php esc_html_e( 'The file must be an image (JPG, PNG, etc.).', 'societypress' ); ?></div>
+        <?php elseif ( $err === 'upload_failed' ) : ?>
+            <div class="notice notice-error"><?php esc_html_e( 'Upload failed. Please try again or contact us.', 'societypress' ); ?></div>
+        <?php elseif ( $err === 'closed' ) : ?>
+            <div class="notice notice-error"><?php esc_html_e( 'Submissions are currently closed for this album.', 'societypress' ); ?></div>
+        <?php endif; ?>
+
+        <h3><?php echo esc_html( $album->title ); ?></h3>
+        <?php if ( $album->submission_instructions ) : ?>
+            <div class="help" style="margin-bottom:14px;"><?php echo wp_kses_post( wpautop( $album->submission_instructions ) ); ?></div>
+        <?php endif; ?>
+
+        <form method="post" enctype="multipart/form-data">
+            <?php wp_nonce_field( 'sp_picture_wall_submit_' . $album->id, 'sp_pw_nonce' ); ?>
+            <input type="hidden" name="sp_picture_wall_action" value="submit">
+            <input type="hidden" name="album_id" value="<?php echo (int) $album->id; ?>">
+
+            <label><?php esc_html_e( 'Photo', 'societypress' ); ?></label>
+            <input type="file" name="photo" accept="image/*" required>
+
+            <label><?php esc_html_e( 'Ancestor name', 'societypress' ); ?></label>
+            <input type="text" name="ancestor_name" placeholder="<?php esc_attr_e( 'e.g. Mary Smith Roberts', 'societypress' ); ?>" required>
+
+            <label><?php esc_html_e( 'Your relationship', 'societypress' ); ?></label>
+            <input type="text" name="relationship" placeholder="<?php esc_attr_e( 'e.g. great-grandmother', 'societypress' ); ?>">
+
+            <label><?php esc_html_e( 'Caption', 'societypress' ); ?></label>
+            <input type="text" name="caption" placeholder="<?php esc_attr_e( 'e.g. born 1890 in Waco, Texas', 'societypress' ); ?>">
+
+            <label><?php esc_html_e( 'Notes for reviewer', 'societypress' ); ?> <span class="help">(<?php esc_html_e( 'optional', 'societypress' ); ?>)</span></label>
+            <textarea name="submission_note"></textarea>
+
+            <button type="submit"><?php esc_html_e( 'Submit Photo for Review', 'societypress' ); ?></button>
+        </form>
+    </div>
+    <?php
+    return (string) ob_get_clean();
+} );
+
+
+/**
+ * ADMIN: Pending Picture Wall submissions queue.
+ *
+ * Listed under SocietyPress → Picture Wall Pending. Hidden submenu —
+ * accessed via the Notifications dot or direct URL.
+ */
+add_action( 'admin_menu', function () {
+    add_submenu_page(
+        '',
+        __( 'Picture Wall — Pending Submissions', 'societypress' ),
+        __( 'Picture Wall Pending', 'societypress' ),
+        'manage_options',
+        'sp-picture-wall-pending',
+        'sp_render_picture_wall_pending_page'
+    );
+}, 20 );
+
+
+/**
+ * POST handler for approve / reject.
+ */
+add_action( 'admin_init', function () {
+    if ( empty( $_POST['sp_pw_moderate'] ) ) return;
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) return;
+
+    $item_id = (int) ( $_POST['item_id'] ?? 0 );
+    check_admin_referer( 'sp_pw_moderate_' . $item_id );
+
+    $action = $_POST['sp_pw_moderate'];
+    $valid = [ 'approved', 'rejected' ];
+    if ( ! in_array( $action, $valid, true ) ) return;
+
+    global $wpdb;
+    $items_t  = $wpdb->prefix . 'sp_photo_album_items';
+    $albums_t = $wpdb->prefix . 'sp_photo_albums';
+
+    $item = $wpdb->get_row( $wpdb->prepare(
+        "SELECT i.*, a.title AS album_title FROM {$items_t} i
+         JOIN {$albums_t} a ON a.id = i.album_id
+         WHERE i.id = %d", $item_id
+    ) );
+    if ( ! $item ) {
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-picture-wall-pending' ) );
+        exit;
+    }
+
+    $wpdb->update( $items_t, [ 'submission_status' => $action ], [ 'id' => $item_id ] );
+
+    // Notify the submitter
+    if ( $item->submitter_user_id ) {
+        $user = get_user_by( 'id', $item->submitter_user_id );
+        if ( $user && $user->user_email ) {
+            $org = trim( get_option( 'societypress_settings', [] )['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+            $subject = $action === 'approved'
+                ? sprintf( __( '[%s] Your Picture Wall submission was approved', 'societypress' ), $org )
+                : sprintf( __( '[%s] Your Picture Wall submission was not approved', 'societypress' ), $org );
+            $body = $action === 'approved'
+                ? sprintf( __( 'Your photo of %1$s has been approved and is now visible on %2$s.', 'societypress' ), $item->ancestor_name ?: __( 'your ancestor', 'societypress' ), $item->album_title )
+                : sprintf( __( 'Thank you for your submission to %s. After review, the photo was not approved at this time. Please contact us if you would like more information.', 'societypress' ), $item->album_title );
+            wp_mail( $user->user_email, $subject, $body );
+        }
+    }
+
+    wp_safe_redirect( admin_url( 'admin.php?page=sp-picture-wall-pending&sp_updated=1' ) );
+    exit;
+} );
+
+
+function sp_render_picture_wall_pending_page(): void {
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) {
+        wp_die( __( 'Insufficient permissions.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $items_t  = $wpdb->prefix . 'sp_photo_album_items';
+    $albums_t = $wpdb->prefix . 'sp_photo_albums';
+    $users_t  = $wpdb->users;
+
+    $rows = $wpdb->get_results(
+        "SELECT i.*, a.title AS album_title, a.slug AS album_slug, u.display_name AS submitter_name, u.user_email
+         FROM {$items_t} i
+         JOIN {$albums_t} a ON a.id = i.album_id
+         LEFT JOIN {$users_t} u ON u.ID = i.submitter_user_id
+         WHERE i.submission_status = 'pending'
+         ORDER BY i.created_at DESC"
+    );
+
+    ?>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Picture Wall — Pending Submissions', 'societypress' ); ?></h1>
+
+        <?php if ( ! empty( $_GET['sp_updated'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Submission updated.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+
+        <?php if ( empty( $rows ) ) : ?>
+            <p style="color:#777; padding: 30px 0;"><?php esc_html_e( 'No pending submissions.', 'societypress' ); ?></p>
+        <?php else : ?>
+            <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; margin-top: 20px;">
+                <?php foreach ( $rows as $r ) :
+                    $img = wp_get_attachment_image_url( (int) $r->attachment_id, 'medium_large' );
+                    ?>
+                    <div style="background:#fff; border:1px solid #ddd; border-radius:8px; overflow:hidden;">
+                        <?php if ( $img ) : ?>
+                            <a href="<?php echo esc_url( wp_get_attachment_url( (int) $r->attachment_id ) ); ?>" target="_blank">
+                                <img src="<?php echo esc_url( $img ); ?>" style="width:100%; height:auto; display:block;" alt="">
+                            </a>
+                        <?php endif; ?>
+                        <div style="padding:12px;">
+                            <p style="margin:0 0 4px; font-weight:600;"><?php echo esc_html( $r->ancestor_name ?: __( '(no name given)', 'societypress' ) ); ?></p>
+                            <?php if ( $r->relationship ) : ?>
+                                <p style="margin:0 0 4px; color:#666; font-size:13px;"><?php echo esc_html( $r->relationship ); ?></p>
+                            <?php endif; ?>
+                            <?php if ( $r->caption ) : ?>
+                                <p style="margin:0 0 8px; font-size:14px;"><?php echo esc_html( $r->caption ); ?></p>
+                            <?php endif; ?>
+                            <p style="margin:0; color:#888; font-size:12px;">
+                                <?php esc_html_e( 'Album:', 'societypress' ); ?> <strong><?php echo esc_html( $r->album_title ); ?></strong><br>
+                                <?php esc_html_e( 'By:', 'societypress' ); ?> <?php echo esc_html( $r->submitter_name ?: __( '(unknown)', 'societypress' ) ); ?>
+                                <?php if ( $r->user_email ) : ?>(<?php echo esc_html( $r->user_email ); ?>)<?php endif; ?>
+                                <br>
+                                <?php echo esc_html( mysql2date( 'M j, Y', $r->created_at ) ); ?>
+                            </p>
+                            <?php if ( $r->submission_note ) : ?>
+                                <p style="margin:8px 0 0; padding:8px; background:#f6f6f6; border-radius:4px; font-size:13px;"><?php echo esc_html( $r->submission_note ); ?></p>
+                            <?php endif; ?>
+                            <div style="margin-top:10px; display:flex; gap:6px;">
+                                <form method="post" style="flex:1;">
+                                    <?php wp_nonce_field( 'sp_pw_moderate_' . $r->id ); ?>
+                                    <input type="hidden" name="item_id" value="<?php echo (int) $r->id; ?>">
+                                    <button type="submit" name="sp_pw_moderate" value="approved" class="button button-primary" style="width:100%;"><?php esc_html_e( 'Approve', 'societypress' ); ?></button>
+                                </form>
+                                <form method="post" style="flex:1;" data-sp-confirm="<?php echo esc_attr( __( 'Reject this submission? The submitter will be notified.', 'societypress' ) ); ?>">
+                                    <?php wp_nonce_field( 'sp_pw_moderate_' . $r->id ); ?>
+                                    <input type="hidden" name="item_id" value="<?php echo (int) $r->id; ?>">
+                                    <button type="submit" name="sp_pw_moderate" value="rejected" class="button" style="width:100%;"><?php esc_html_e( 'Reject', 'societypress' ); ?></button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+
+        <p style="margin-top: 30px; color:#888; font-size:13px;">
+            <?php esc_html_e( 'To enable submissions: edit any photo album and set its type to "Member submissions".', 'societypress' ); ?>
+        </p>
+    </div>
+    <?php
+}
+
+
+/**
+ * Show a count of pending Picture Wall submissions in the SocietyPress
+ * admin sidebar so it's discoverable.
+ */
+add_action( 'admin_notices', function () {
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) return;
+    $screen = get_current_screen();
+    if ( ! $screen || strpos( (string) $screen->id, 'societypress' ) === false ) return;
+    if ( ! sp_module_enabled( 'gallery' ) ) return;
+
+    global $wpdb;
+    $count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}sp_photo_album_items WHERE submission_status = 'pending'" );
+    if ( $count <= 0 ) return;
+
+    // Don't pester on every admin screen — only show if not already on the page
+    if ( ( $_GET['page'] ?? '' ) === 'sp-picture-wall-pending' ) return;
+
+    printf(
+        '<div class="notice notice-info"><p>%s <a href="%s">%s</a></p></div>',
+        esc_html( sprintf( _n( '%d Picture Wall submission is pending review.', '%d Picture Wall submissions are pending review.', $count, 'societypress' ), $count ) ),
+        esc_url( admin_url( 'admin.php?page=sp-picture-wall-pending' ) ),
+        esc_html__( 'Review now →', 'societypress' )
+    );
+} );
+
+
+// ============================================================================
+// SUBSCRIPTION-TIER SEED — non-voting newsletter-only membership level
+//
+// WHY: ENS societies often offer a low-cost non-voting tier so non-members
+//      can receive the journal/newsletter without committing to full
+//      membership. Adding it as seed data (only when the tier doesn't
+//      already exist by name) means Harold sees it offered out of the box.
+//      Voting eligibility is enforced per-ballot via eligible_tiers JSON,
+//      so excluding this tier from bylaw votes is a config choice, not code.
+// ============================================================================
+
+add_action( 'admin_init', function () {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_membership_tiers';
+    if ( $wpdb->get_var( "SHOW TABLES LIKE '{$table}'" ) !== $table ) return;
+
+    // Only seed when there are NO membership tiers at all (fresh install
+    // path mirrors sp_maybe_seed_default_tiers — which seeds Individual /
+    // Joint / Student / Lifetime / Honorary). After fresh-install seeding,
+    // we add Subscription as #6. We never add it on an established install
+    // because the society may have intentionally chosen not to offer it.
+    $count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" );
+    if ( $count !== 5 ) return;
+
+    // Avoid double-add if Charles already has a "Subscription" by name
+    $exists = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$table} WHERE name = %s", 'Subscription'
+    ) );
+    if ( $exists > 0 ) return;
+
+    // Only seed once — track via option
+    if ( get_option( 'sp_subscription_tier_seeded' ) ) return;
+
+    $wpdb->insert( $table, [
+        'name'            => 'Subscription',
+        'price'           => 25.00,
+        'duration_months' => 12,
+        'allows_joint'    => 0,
+        'sort_order'      => 6,
+        'active'          => 1,
+    ] );
+    update_option( 'sp_subscription_tier_seeded', 1 );
+} );
+
+
+// ============================================================================
+// DATABASE SUBSCRIPTIONS PANEL — Member-area gateway to paid databases
+//
+// WHY: Many societies pay for institutional access to Ancestry, Fold3,
+//      FamilySearch (affiliate), NEHGS, and similar resources, then make
+//      that access available to members. The panel surfaces those links
+//      in the members area with one-click handoff. Settings are stored
+//      under the unified societypress_settings option.
+// ============================================================================
+
+/**
+ * Get the configured database subscriptions list.
+ * Each entry: name, login_url, description, members_only (bool).
+ */
+function sp_get_database_subscriptions(): array {
+    $settings = get_option( 'societypress_settings', [] );
+    $list     = $settings['database_subscriptions'] ?? [];
+    return is_array( $list ) ? $list : [];
+}
+
+
+/**
+ * Shortcode: [sp_database_subscriptions]
+ */
+add_shortcode( 'sp_database_subscriptions', function () {
+    $list = sp_get_database_subscriptions();
+    if ( empty( $list ) ) {
+        return '<p>' . esc_html__( 'No database subscriptions configured yet.', 'societypress' ) . '</p>';
+    }
+
+    $is_member = is_user_logged_in(); // simple gate; refined with member-status check if needed
+    $login_url = wp_login_url( get_permalink() );
+
+    ob_start();
+    ?>
+    <div class="sp-database-subscriptions">
+        <style>
+            .sp-database-subscriptions { margin: 1.5em 0; }
+            .sp-db-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+            .sp-db-card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 16px; }
+            .sp-db-card h4 { margin: 0 0 8px; font-size: 16px; }
+            .sp-db-card p { margin: 0 0 10px; color: #555; font-size: 14px; }
+            .sp-db-card a.sp-db-go { display: inline-block; padding: 8px 14px; background: #0d1f3c; color: #fff; text-decoration: none; border-radius: 4px; font-size: 14px; }
+            .sp-db-card .sp-db-locked { color: #888; font-style: italic; font-size: 13px; }
+        </style>
+        <div class="sp-db-grid">
+            <?php foreach ( $list as $sub ) :
+                $name        = sanitize_text_field( $sub['name']        ?? '' );
+                $url         = esc_url_raw( $sub['login_url']           ?? '' );
+                $description = sanitize_textarea_field( $sub['description'] ?? '' );
+                $members_only = ! empty( $sub['members_only'] );
+                if ( ! $name || ! $url ) continue;
+                ?>
+                <div class="sp-db-card">
+                    <h4><?php echo esc_html( $name ); ?></h4>
+                    <?php if ( $description ) : ?>
+                        <p><?php echo esc_html( $description ); ?></p>
+                    <?php endif; ?>
+                    <?php if ( $members_only && ! $is_member ) : ?>
+                        <span class="sp-db-locked"><?php esc_html_e( 'Members only —', 'societypress' ); ?>
+                            <a href="<?php echo esc_url( $login_url ); ?>"><?php esc_html_e( 'log in', 'societypress' ); ?></a>
+                        </span>
+                    <?php else : ?>
+                        <a class="sp-db-go" href="<?php echo esc_url( $url ); ?>" target="_blank" rel="noopener">
+                            <?php esc_html_e( 'Open →', 'societypress' ); ?>
+                        </a>
+                    <?php endif; ?>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <?php
+    return (string) ob_get_clean();
+} );
+
+
+/**
+ * Render: Database Subscriptions page-builder widget.
+ * Wraps the shortcode for use inside the page builder.
+ */
+function sp_render_builder_widget_database_subscriptions( array $s ): void {
+    echo do_shortcode( '[sp_database_subscriptions]' );
+}
+
+
+// ============================================================================
+// RESEARCH-GUIDE PAGE-BUILDER WIDGET — Categorized resource overview
+//
+// WHY: Pages like the upstream society's "Researching Sample County" group resources by
+//      record type (Births, Marriages, Cemeteries, etc.) with a mix of
+//      local and external links. Building this as a single static page
+//      makes it hard to maintain. This widget accepts a structured list
+//      of categories and resources and renders a navigable guide page —
+//      anchor nav at the top, then per-category sections with linked
+//      resources. The widget definition lives in widget settings so
+//      Harold edits it through the page builder, no template changes.
+// ============================================================================
+
+/**
+ * Render: Research Guide widget.
+ *
+ * Settings shape:
+ *   $s['intro']      - Markdown intro text
+ *   $s['categories'] - JSON array of:
+ *     [{
+ *        "label": "Births",
+ *        "intro": "Texas began civil registration in 1903...",
+ *        "resources": [
+ *           { "label": "Sample County birth records 1903–1910", "url": "...", "type": "local" },
+ *           { "label": "FamilySearch Texas Births", "url": "...", "type": "external" }
+ *        ]
+ *     }, ...]
+ */
+function sp_render_builder_widget_research_guide( array $s ): void {
+    $intro      = $s['intro']      ?? '';
+    $categories = $s['categories'] ?? '';
+
+    if ( is_string( $categories ) ) {
+        $decoded = json_decode( $categories, true );
+        $categories = is_array( $decoded ) ? $decoded : [];
+    }
+    if ( ! is_array( $categories ) ) $categories = [];
+
+    if ( empty( $categories ) ) {
+        echo '<p style="color:#888;">' . esc_html__( 'No research-guide categories configured.', 'societypress' ) . '</p>';
+        return;
+    }
+
+    ?>
+    <div class="sp-research-guide">
+        <style>
+            .sp-research-guide { margin: 1.5em 0; }
+            .sp-rg-intro { margin-bottom: 18px; }
+            .sp-rg-toc { background: #f6f6f6; border: 1px solid #ddd; border-radius: 6px; padding: 14px 18px; margin-bottom: 24px; }
+            .sp-rg-toc h4 { margin: 0 0 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; color: #555; }
+            .sp-rg-toc ul { margin: 0; padding: 0; list-style: none; columns: 2; }
+            .sp-rg-toc li { margin: 4px 0; padding-right: 12px; break-inside: avoid; }
+            .sp-rg-section { margin-bottom: 30px; padding-top: 12px; border-top: 1px solid #eee; }
+            .sp-rg-section h3 { margin: 0 0 10px; }
+            .sp-rg-section .sp-rg-section-intro { color: #555; margin-bottom: 12px; }
+            .sp-rg-resources { margin: 0; padding-left: 20px; }
+            .sp-rg-resources li { margin-bottom: 6px; }
+            .sp-rg-tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; vertical-align: middle; margin-left: 6px; }
+            .sp-rg-tag-local { background: #e0e7ff; color: #1e3a8a; }
+            .sp-rg-tag-external { background: #f3f4f6; color: #555; }
+        </style>
+
+        <?php if ( $intro ) : ?>
+            <div class="sp-rg-intro"><?php echo wp_kses_post( wpautop( $intro ) ); ?></div>
+        <?php endif; ?>
+
+        <div class="sp-rg-toc">
+            <h4><?php esc_html_e( 'In this guide', 'societypress' ); ?></h4>
+            <ul>
+                <?php foreach ( $categories as $i => $cat ) :
+                    $label = sanitize_text_field( $cat['label'] ?? '' );
+                    if ( ! $label ) continue;
+                    $anchor = 'sp-rg-' . sanitize_title( $label ) . '-' . $i;
+                    ?>
+                    <li><a href="#<?php echo esc_attr( $anchor ); ?>"><?php echo esc_html( $label ); ?></a></li>
+                <?php endforeach; ?>
+            </ul>
+        </div>
+
+        <?php foreach ( $categories as $i => $cat ) :
+            $label = sanitize_text_field( $cat['label'] ?? '' );
+            if ( ! $label ) continue;
+            $anchor    = 'sp-rg-' . sanitize_title( $label ) . '-' . $i;
+            $sec_intro = $cat['intro']     ?? '';
+            $resources = $cat['resources'] ?? [];
+            if ( ! is_array( $resources ) ) $resources = [];
+            ?>
+            <section class="sp-rg-section" id="<?php echo esc_attr( $anchor ); ?>">
+                <h3><?php echo esc_html( $label ); ?></h3>
+                <?php if ( $sec_intro ) : ?>
+                    <div class="sp-rg-section-intro"><?php echo wp_kses_post( wpautop( $sec_intro ) ); ?></div>
+                <?php endif; ?>
+                <?php if ( ! empty( $resources ) ) : ?>
+                    <ul class="sp-rg-resources">
+                        <?php foreach ( $resources as $res ) :
+                            $r_label = sanitize_text_field( $res['label'] ?? '' );
+                            $r_url   = esc_url_raw( $res['url'] ?? '' );
+                            $r_type  = in_array( ( $res['type'] ?? '' ), [ 'local', 'external' ], true ) ? $res['type'] : 'external';
+                            $r_note  = sanitize_text_field( $res['note'] ?? '' );
+                            if ( ! $r_label ) continue;
+                            ?>
+                            <li>
+                                <?php if ( $r_url ) : ?>
+                                    <a href="<?php echo esc_url( $r_url ); ?>" <?php if ( $r_type === 'external' ) : ?>target="_blank" rel="noopener"<?php endif; ?>><?php echo esc_html( $r_label ); ?></a>
+                                <?php else : ?>
+                                    <?php echo esc_html( $r_label ); ?>
+                                <?php endif; ?>
+                                <span class="sp-rg-tag <?php echo $r_type === 'local' ? 'sp-rg-tag-local' : 'sp-rg-tag-external'; ?>">
+                                    <?php echo $r_type === 'local' ? esc_html__( 'Local', 'societypress' ) : esc_html__( 'External', 'societypress' ); ?>
+                                </span>
+                                <?php if ( $r_note ) : ?>
+                                    — <span style="color:#666; font-size:14px;"><?php echo esc_html( $r_note ); ?></span>
+                                <?php endif; ?>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+            </section>
+        <?php endforeach; ?>
+    </div>
+    <?php
+}
+
+
+// ============================================================================
+// PUBLIC DONATION FORM — Stripe-backed online giving
+//
+// WHY: Until now SocietyPress only recorded donations admins entered by hand.
+//      Genealogical societies need an online "Give" button for visitors and
+//      members alike. This module adds a public donation form (preset
+//      amounts, custom amount, frequency, fee-cover toggle, anonymous,
+//      dedication, message), a Stripe Checkout redirect for both one-time
+//      and recurring (monthly/annual) gifts, a webhook endpoint that's the
+//      source of truth for paid status, and an immediate receipt email.
+//
+// PAYPAL: Schema reserves columns (paypal_order_id, paypal_capture_id,
+//         paypal_subscription_id) and the form has a placeholder button
+//         spot. Wiring the PayPal SDK is a follow-up.
+// ============================================================================
+
+
+/**
+ * MIGRATION: Add online-donation columns to sp_donations for existing installs.
+ *
+ * On fresh installs the CREATE TABLE statement above already includes them.
+ */
+add_action( 'admin_init', function () {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_donations';
+    if ( $wpdb->get_var( "SHOW TABLES LIKE '{$table}'" ) !== $table ) return;
+
+    $cols = [
+        'frequency'              => "ALTER TABLE {$table} ADD COLUMN frequency VARCHAR(20) NOT NULL DEFAULT 'one_time' AFTER amount",
+        'cover_fees'             => "ALTER TABLE {$table} ADD COLUMN cover_fees TINYINT(1) NOT NULL DEFAULT 0 AFTER frequency",
+        'fee_amount'             => "ALTER TABLE {$table} ADD COLUMN fee_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER cover_fees",
+        'gross_amount'           => "ALTER TABLE {$table} ADD COLUMN gross_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER fee_amount",
+        'dedication'             => "ALTER TABLE {$table} ADD COLUMN dedication VARCHAR(255) NULL AFTER gross_amount",
+        'donation_message'       => "ALTER TABLE {$table} ADD COLUMN donation_message TEXT NULL AFTER dedication",
+        'payment_method'         => "ALTER TABLE {$table} ADD COLUMN payment_method VARCHAR(20) NULL AFTER donation_message",
+        'status'                 => "ALTER TABLE {$table} ADD COLUMN status VARCHAR(30) NOT NULL DEFAULT 'recorded' AFTER payment_method, ADD KEY status (status)",
+        'stripe_subscription_id' => "ALTER TABLE {$table} ADD COLUMN stripe_subscription_id VARCHAR(255) NULL AFTER stripe_session_id, ADD KEY stripe_subscription_id (stripe_subscription_id)",
+        'paypal_subscription_id' => "ALTER TABLE {$table} ADD COLUMN paypal_subscription_id VARCHAR(255) NULL AFTER paypal_capture_id",
+    ];
+    foreach ( $cols as $col => $sql ) {
+        $exists = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM {$table} LIKE %s", $col ) );
+        if ( empty( $exists ) ) {
+            $wpdb->query( $sql );
+        }
+    }
+} );
+
+
+/**
+ * Calculate Stripe processing fee on a given amount.
+ * Standard Stripe US rate: 2.9% + $0.30. Returns the fee a society
+ * would absorb if cover_fees is OFF — i.e., the amount the donor would
+ * need to add on top to make the society whole.
+ */
+function sp_donation_calculate_fee( float $amount ): float {
+    if ( $amount <= 0 ) return 0.0;
+    // Solve: gross such that gross - (0.029 * gross + 0.30) = amount
+    // => gross * (1 - 0.029) = amount + 0.30
+    // => gross = (amount + 0.30) / 0.971
+    $gross = ( $amount + 0.30 ) / 0.971;
+    return round( $gross - $amount, 2 );
+}
+
+
+/**
+ * Get configured preset donation amounts. Default is reasonable for a small
+ * society; admins override via societypress_settings['donation_presets'].
+ */
+function sp_donation_presets(): array {
+    $settings = get_option( 'societypress_settings', [] );
+    $raw = $settings['donation_presets'] ?? '';
+    if ( $raw ) {
+        $values = array_filter( array_map( 'floatval', array_map( 'trim', explode( ',', (string) $raw ) ) ) );
+        if ( ! empty( $values ) ) return $values;
+    }
+    return [ 25, 50, 100, 250, 500 ];
+}
+
+
+/**
+ * Shortcode: [sp_donate]
+ *
+ * Public donation form. Accepts attributes:
+ *   campaign     - campaign slug or id to attribute the gift
+ *   show_dedication - "0" to hide the in-honor-of field
+ *   default_frequency - one_time | monthly | annually
+ */
+add_shortcode( 'sp_donate', function ( $atts ) {
+    if ( ! sp_module_enabled( 'donations' ) ) {
+        return '<p>' . esc_html__( 'Donations module is not enabled.', 'societypress' ) . '</p>';
+    }
+    $atts = shortcode_atts( [
+        'campaign'          => '',
+        'show_dedication'   => '1',
+        'default_frequency' => 'one_time',
+    ], $atts, 'sp_donate' );
+
+    $settings = get_option( 'societypress_settings', [] );
+    $presets  = sp_donation_presets();
+    $org_name = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+
+    // Resolve campaign if provided
+    $campaign = null;
+    if ( $atts['campaign'] !== '' ) {
+        global $wpdb;
+        $campaign = is_numeric( $atts['campaign'] )
+            ? $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}sp_campaigns WHERE id = %d", (int) $atts['campaign'] ) )
+            : $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}sp_campaigns WHERE slug = %s", sanitize_title( $atts['campaign'] ) ) );
+    }
+
+    // Auto-fill from logged-in user
+    $current_user = wp_get_current_user();
+    $name  = $current_user->ID ? trim( $current_user->display_name ) : '';
+    $email = $current_user->ID ? $current_user->user_email : '';
+
+    // Status messaging back from Stripe
+    $msg = sanitize_text_field( $_GET['sp_donate_msg'] ?? '' );
+    $err = sanitize_text_field( $_GET['sp_donate_err'] ?? '' );
+
+    ob_start();
+    ?>
+    <div class="sp-donate-wrap">
+        <style>
+            .sp-donate-wrap { max-width: 560px; margin: 1.5em auto; }
+            .sp-donate-form { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+            .sp-donate-form h3 { margin: 0 0 6px; }
+            .sp-donate-form .sp-donate-sub { color: #555; margin: 0 0 18px; font-size: 14px; }
+            .sp-donate-section { margin-bottom: 18px; }
+            .sp-donate-label { display: block; font-weight: 600; margin-bottom: 6px; }
+            .sp-donate-amounts { display: flex; gap: 8px; flex-wrap: wrap; }
+            .sp-donate-amounts label {
+                flex: 1 1 70px; cursor: pointer; padding: 10px 6px; text-align: center;
+                border: 2px solid #ddd; border-radius: 6px; font-weight: 600;
+                background: #fafafa; user-select: none;
+            }
+            .sp-donate-amounts input[type=radio] { display: none; }
+            .sp-donate-amounts input[type=radio]:checked + label,
+            .sp-donate-amounts label.is-checked { border-color: #0d1f3c; background: #0d1f3c; color: #fff; }
+            .sp-donate-custom-row { margin-top: 8px; display: flex; align-items: center; gap: 6px; }
+            .sp-donate-custom-row span { font-weight: 600; color: #555; }
+            .sp-donate-custom-row input { flex: 1; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; }
+            .sp-donate-frequency { display: flex; gap: 8px; flex-wrap: wrap; }
+            .sp-donate-frequency label {
+                flex: 1 1 100px; cursor: pointer; padding: 8px 4px; text-align: center;
+                border: 2px solid #ddd; border-radius: 6px; user-select: none; background: #fafafa;
+            }
+            .sp-donate-frequency input[type=radio] { display: none; }
+            .sp-donate-frequency input[type=radio]:checked + label { border-color: #0d1f3c; background: #0d1f3c; color: #fff; }
+            .sp-donate-form input[type=text], .sp-donate-form input[type=email], .sp-donate-form textarea {
+                width: 100%; padding: 9px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 15px;
+            }
+            .sp-donate-form textarea { min-height: 60px; }
+            .sp-donate-row { display: flex; gap: 10px; }
+            .sp-donate-row > div { flex: 1; }
+            .sp-donate-cover { background: #f6f6f6; border-left: 3px solid #c9973a; padding: 10px 12px; border-radius: 0 4px 4px 0; }
+            .sp-donate-cover label { display: block; cursor: pointer; }
+            .sp-donate-cover .sp-donate-cover-help { color: #666; font-size: 13px; margin-top: 2px; }
+            .sp-donate-summary {
+                background: #f6f6f6; padding: 12px 14px; border-radius: 6px;
+                font-size: 15px; margin-top: 10px;
+            }
+            .sp-donate-summary .total { font-weight: 700; color: #0d1f3c; }
+            .sp-donate-submit {
+                background: #0d1f3c; color: #fff; padding: 12px; width: 100%;
+                border: none; border-radius: 6px; cursor: pointer; font-size: 16px;
+                font-weight: 600; margin-top: 14px;
+            }
+            .sp-donate-submit:hover { background: #1a3a6c; }
+            .sp-donate-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+            .sp-donate-paypal-soon { font-size: 13px; color: #888; text-align: center; margin-top: 12px; }
+            .sp-donate-or { text-align: center; color: #888; font-size: 13px; margin: 14px 0 8px; text-transform: uppercase; letter-spacing: 0.1em; position: relative; }
+            .sp-donate-or:before, .sp-donate-or:after { content: ''; position: absolute; top: 50%; width: 42%; height: 1px; background: #ddd; }
+            .sp-donate-or:before { left: 0; }
+            .sp-donate-or:after { right: 0; }
+            #sp-donate-paypal-buttons { margin-top: 6px; }
+            .sp-donate-paypal-note { padding: 10px 12px; background: #f6f6f6; color: #555; border-radius: 6px; font-size: 13px; margin-top: 6px; text-align: center; }
+            .sp-donate-paypal-error { color: #b91c1c; font-size: 13px; margin-top: 6px; text-align: center; }
+            .sp-donate-notice { padding: 12px 14px; border-radius: 6px; margin-bottom: 14px; }
+            .sp-donate-notice-success { background: #e8f5e9; border-left: 4px solid #166534; color: #1f4d2c; }
+            .sp-donate-notice-error { background: #fde8e8; border-left: 4px solid #b91c1c; color: #7d1414; }
+            .sp-donate-anonymous label { font-weight: normal; }
+        </style>
+
+        <?php if ( $msg === 'success' ) : ?>
+            <div class="sp-donate-notice sp-donate-notice-success">
+                <strong><?php esc_html_e( 'Thank you!', 'societypress' ); ?></strong>
+                <?php esc_html_e( 'Your gift has been received. A receipt will be emailed to you.', 'societypress' ); ?>
+            </div>
+        <?php elseif ( $msg === 'cancelled' ) : ?>
+            <div class="sp-donate-notice sp-donate-notice-error">
+                <?php esc_html_e( 'Your donation was cancelled. No payment was taken.', 'societypress' ); ?>
+            </div>
+        <?php endif; ?>
+        <?php if ( $err === 'stripe_unconfigured' ) : ?>
+            <div class="sp-donate-notice sp-donate-notice-error">
+                <?php esc_html_e( 'The payment processor is not configured yet. Please contact us to give by check.', 'societypress' ); ?>
+            </div>
+        <?php elseif ( $err === 'invalid_amount' ) : ?>
+            <div class="sp-donate-notice sp-donate-notice-error">
+                <?php esc_html_e( 'Please enter a donation amount of at least $1.', 'societypress' ); ?>
+            </div>
+        <?php elseif ( $err === 'checkout_failed' ) : ?>
+            <div class="sp-donate-notice sp-donate-notice-error">
+                <?php esc_html_e( 'We could not connect to the payment processor. Please try again in a moment.', 'societypress' ); ?>
+            </div>
+        <?php endif; ?>
+
+        <form method="post" class="sp-donate-form" id="sp-donate-form">
+            <?php wp_nonce_field( 'sp_donate_submit', 'sp_donate_nonce' ); ?>
+            <input type="hidden" name="sp_donate_action" value="checkout">
+            <?php if ( $campaign ) : ?>
+                <input type="hidden" name="campaign_id" value="<?php echo (int) $campaign->id; ?>">
+            <?php endif; ?>
+
+            <h3><?php echo esc_html( $campaign ? sprintf( __( 'Support %s', 'societypress' ), $campaign->name ) : sprintf( __( 'Support %s', 'societypress' ), $org_name ) ); ?></h3>
+            <?php if ( $campaign && $campaign->description ) : ?>
+                <p class="sp-donate-sub"><?php echo esc_html( wp_strip_all_tags( $campaign->description ) ); ?></p>
+            <?php else : ?>
+                <p class="sp-donate-sub"><?php esc_html_e( 'Your gift helps preserve our shared genealogical heritage.', 'societypress' ); ?></p>
+            <?php endif; ?>
+
+            <div class="sp-donate-section">
+                <span class="sp-donate-label"><?php esc_html_e( 'Choose an amount', 'societypress' ); ?></span>
+                <div class="sp-donate-amounts">
+                    <?php foreach ( $presets as $i => $amount ) : ?>
+                        <input type="radio" name="amount_preset" id="sp-amt-<?php echo (int) $i; ?>" value="<?php echo esc_attr( $amount ); ?>" <?php checked( $i, 1 ); ?> class="sp-donate-preset-input">
+                        <label for="sp-amt-<?php echo (int) $i; ?>">$<?php echo esc_html( number_format( $amount, 0 ) ); ?></label>
+                    <?php endforeach; ?>
+                    <input type="radio" name="amount_preset" id="sp-amt-custom" value="custom" class="sp-donate-preset-input">
+                    <label for="sp-amt-custom"><?php esc_html_e( 'Other', 'societypress' ); ?></label>
+                </div>
+                <div class="sp-donate-custom-row" id="sp-donate-custom-row" style="display:none;">
+                    <span>$</span>
+                    <input type="number" name="custom_amount" id="sp-donate-custom" min="1" step="0.01" placeholder="<?php esc_attr_e( 'Custom amount', 'societypress' ); ?>">
+                </div>
+            </div>
+
+            <div class="sp-donate-section">
+                <span class="sp-donate-label"><?php esc_html_e( 'How often?', 'societypress' ); ?></span>
+                <div class="sp-donate-frequency">
+                    <input type="radio" name="frequency" id="sp-freq-one" value="one_time" <?php checked( $atts['default_frequency'], 'one_time' ); ?>>
+                    <label for="sp-freq-one"><?php esc_html_e( 'One-Time', 'societypress' ); ?></label>
+                    <input type="radio" name="frequency" id="sp-freq-mo" value="monthly" <?php checked( $atts['default_frequency'], 'monthly' ); ?>>
+                    <label for="sp-freq-mo"><?php esc_html_e( 'Monthly', 'societypress' ); ?></label>
+                    <input type="radio" name="frequency" id="sp-freq-yr" value="annually" <?php checked( $atts['default_frequency'], 'annually' ); ?>>
+                    <label for="sp-freq-yr"><?php esc_html_e( 'Annually', 'societypress' ); ?></label>
+                </div>
+            </div>
+
+            <div class="sp-donate-section sp-donate-cover">
+                <label>
+                    <input type="checkbox" name="cover_fees" value="1" id="sp-donate-cover">
+                    <strong><?php esc_html_e( 'Add a little to cover processing fees', 'societypress' ); ?></strong>
+                </label>
+                <p class="sp-donate-cover-help"><?php esc_html_e( 'Card processors keep about 3% + $0.30 of every gift. Adding the fee means 100% of your donation reaches us.', 'societypress' ); ?></p>
+            </div>
+
+            <div class="sp-donate-section sp-donate-row">
+                <div>
+                    <label class="sp-donate-label" for="sp-donate-name"><?php esc_html_e( 'Your name', 'societypress' ); ?></label>
+                    <input type="text" id="sp-donate-name" name="donor_name" value="<?php echo esc_attr( $name ); ?>" required>
+                </div>
+                <div>
+                    <label class="sp-donate-label" for="sp-donate-email"><?php esc_html_e( 'Email', 'societypress' ); ?></label>
+                    <input type="email" id="sp-donate-email" name="donor_email" value="<?php echo esc_attr( $email ); ?>" required>
+                </div>
+            </div>
+
+            <?php if ( $atts['show_dedication'] === '1' ) : ?>
+                <div class="sp-donate-section">
+                    <label class="sp-donate-label" for="sp-donate-dedication"><?php esc_html_e( 'In honor or memory of (optional)', 'societypress' ); ?></label>
+                    <input type="text" id="sp-donate-dedication" name="dedication" placeholder="<?php esc_attr_e( 'e.g. In memory of John Smith', 'societypress' ); ?>">
+                </div>
+            <?php endif; ?>
+
+            <div class="sp-donate-section">
+                <label class="sp-donate-label" for="sp-donate-message"><?php esc_html_e( 'A note to us (optional)', 'societypress' ); ?></label>
+                <textarea id="sp-donate-message" name="donation_message" rows="2"></textarea>
+            </div>
+
+            <div class="sp-donate-section sp-donate-anonymous">
+                <label>
+                    <input type="checkbox" name="is_anonymous" value="1">
+                    <?php esc_html_e( 'Make this donation anonymous (do not list publicly)', 'societypress' ); ?>
+                </label>
+            </div>
+
+            <div class="sp-donate-summary" id="sp-donate-summary">
+                <span><?php esc_html_e( 'Total today:', 'societypress' ); ?></span>
+                <span class="total" id="sp-donate-total">$0.00</span>
+            </div>
+
+            <button type="submit" class="sp-donate-submit" id="sp-donate-submit">
+                <?php esc_html_e( 'Donate with Card →', 'societypress' ); ?>
+            </button>
+
+            <?php
+            $paypal_configured = function_exists( 'sp_paypal_is_configured' ) && sp_paypal_is_configured( $settings );
+            $paypal_client_id  = $paypal_configured && function_exists( 'sp_paypal_get_client_id' ) ? sp_paypal_get_client_id( $settings ) : '';
+            $paypal_currency   = strtoupper( $settings['paypal_currency'] ?? ( $settings['stripe_currency'] ?? 'USD' ) );
+            ?>
+
+            <?php if ( $paypal_configured && $paypal_client_id ) : ?>
+                <div class="sp-donate-or"><?php esc_html_e( 'or', 'societypress' ); ?></div>
+                <div id="sp-donate-paypal-buttons"></div>
+                <div id="sp-donate-paypal-note" class="sp-donate-paypal-note" style="display:none;">
+                    <?php esc_html_e( 'PayPal supports one-time donations only. For Monthly or Annual giving, please use the card option above.', 'societypress' ); ?>
+                </div>
+                <div id="sp-donate-paypal-error" class="sp-donate-paypal-error"></div>
+            <?php else : ?>
+                <p class="sp-donate-paypal-soon"><?php esc_html_e( 'Secure payment via Stripe.', 'societypress' ); ?></p>
+            <?php endif; ?>
+        </form>
+
+        <?php if ( $paypal_configured && $paypal_client_id ) : ?>
+            <script src="https://www.paypal.com/sdk/js?client-id=<?php echo esc_attr( $paypal_client_id ); ?>&currency=<?php echo esc_attr( $paypal_currency ); ?>&components=buttons&enable-funding=venmo"></script>
+        <?php endif; ?>
+
+        <script>
+        (function () {
+            var form = document.getElementById('sp-donate-form');
+            if (!form) return;
+            var presetInputs = form.querySelectorAll('.sp-donate-preset-input');
+            var customRow    = document.getElementById('sp-donate-custom-row');
+            var customInput  = document.getElementById('sp-donate-custom');
+            var coverInput   = document.getElementById('sp-donate-cover');
+            var totalEl      = document.getElementById('sp-donate-total');
+            var freqInputs   = form.querySelectorAll('input[name="frequency"]');
+            var paypalTarget = document.getElementById('sp-donate-paypal-buttons');
+            var paypalNote   = document.getElementById('sp-donate-paypal-note');
+            var paypalError  = document.getElementById('sp-donate-paypal-error');
+            var paypalRendered = false;
+
+            var ajaxUrl = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
+            var donateNonce = <?php echo wp_json_encode( wp_create_nonce( 'sp_donate_paypal' ) ); ?>;
+
+            function getAmount() {
+                var checked = form.querySelector('.sp-donate-preset-input:checked');
+                if (!checked) return 0;
+                if (checked.value === 'custom') return parseFloat(customInput.value || 0);
+                return parseFloat(checked.value || 0);
+            }
+            function calculateFee(amount) {
+                if (amount <= 0) return 0;
+                var gross = (amount + 0.30) / 0.971;
+                return Math.round((gross - amount) * 100) / 100;
+            }
+            function getFrequency() {
+                return (form.querySelector('input[name="frequency"]:checked') || {}).value || 'one_time';
+            }
+            function updateTotal() {
+                var amount = getAmount();
+                var fee = coverInput.checked ? calculateFee(amount) : 0;
+                var total = amount + fee;
+                var freq = getFrequency();
+                var freqLabel = freq === 'monthly' ? '/mo' : (freq === 'annually' ? '/yr' : '');
+                totalEl.textContent = '$' + total.toFixed(2) + freqLabel;
+                togglePaypal();
+            }
+            function togglePaypal() {
+                if (!paypalTarget) return;
+                var freq = getFrequency();
+                if (freq === 'one_time') {
+                    paypalTarget.style.display = '';
+                    if (paypalNote) paypalNote.style.display = 'none';
+                    mountPaypal();
+                } else {
+                    paypalTarget.style.display = 'none';
+                    if (paypalNote) paypalNote.style.display = '';
+                }
+            }
+
+            // Serialize the donation form into a flat object PayPal AJAX can pass through
+            function collectFormFields() {
+                var data = new FormData(form);
+                var out = {};
+                data.forEach(function (v, k) { out[k] = v; });
+                return out;
+            }
+
+            function mountPaypal() {
+                if (paypalRendered || !paypalTarget) return;
+                if (typeof paypal === 'undefined' || !paypal.Buttons) return;
+                paypalRendered = true;
+                paypalTarget.innerHTML = '';
+                paypal.Buttons({
+                    style: { layout: 'vertical', shape: 'rect', color: 'gold', label: 'paypal' },
+                    createOrder: function () {
+                        if (paypalError) paypalError.textContent = '';
+                        var fields = collectFormFields();
+                        fields.action = 'sp_donate_paypal_create_order';
+                        fields._wpnonce = donateNonce;
+                        var body = new URLSearchParams();
+                        Object.keys(fields).forEach(function (k) { body.append(k, fields[k]); });
+                        return fetch(ajaxUrl, {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: body.toString()
+                        })
+                        .then(function (r) { return r.json(); })
+                        .then(function (resp) {
+                            if (!resp || !resp.success || !resp.data || !resp.data.paypal_order_id) {
+                                var msg = (resp && resp.data && resp.data.message) ? resp.data.message : 'Could not start PayPal checkout.';
+                                if (paypalError) paypalError.textContent = msg;
+                                throw new Error(msg);
+                            }
+                            return resp.data.paypal_order_id;
+                        });
+                    },
+                    onApprove: function (data) {
+                        var body = new URLSearchParams();
+                        body.append('action', 'sp_donate_paypal_capture');
+                        body.append('_wpnonce', donateNonce);
+                        body.append('paypal_order_id', data.orderID);
+                        return fetch(ajaxUrl, {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: body.toString()
+                        })
+                        .then(function (r) { return r.json(); })
+                        .then(function (resp) {
+                            if (!resp || !resp.success || !resp.data || !resp.data.redirect_url) {
+                                var msg = (resp && resp.data && resp.data.message) ? resp.data.message : 'Payment could not be finalized.';
+                                if (paypalError) paypalError.textContent = msg;
+                                throw new Error(msg);
+                            }
+                            window.location = resp.data.redirect_url;
+                        });
+                    },
+                    onError: function () {
+                        if (paypalError) paypalError.textContent = 'PayPal reported an error. Please try again.';
+                    }
+                }).render(paypalTarget);
+            }
+
+            presetInputs.forEach(function (el) {
+                el.addEventListener('change', function () {
+                    customRow.style.display = (el.value === 'custom' && el.checked) ? 'flex' : 'none';
+                    if (el.value === 'custom' && el.checked) customInput.focus();
+                    updateTotal();
+                });
+            });
+            customInput.addEventListener('input', updateTotal);
+            coverInput.addEventListener('change', updateTotal);
+            freqInputs.forEach(function (el) { el.addEventListener('change', updateTotal); });
+            updateTotal();
+        })();
+        </script>
+    </div>
+    <?php
+    return (string) ob_get_clean();
+} );
+
+
+/**
+ * Process the donation form POST: create donation row, redirect to Stripe.
+ */
+add_action( 'init', function () {
+    if ( ( $_POST['sp_donate_action'] ?? '' ) !== 'checkout' ) return;
+
+    $referer = wp_get_referer() ?: home_url();
+
+    if ( ! wp_verify_nonce( $_POST['sp_donate_nonce'] ?? '', 'sp_donate_submit' ) ) {
+        wp_safe_redirect( add_query_arg( 'sp_donate_err', 'invalid_nonce', $referer ) );
+        exit;
+    }
+
+    // Resolve amount
+    $preset = sanitize_text_field( $_POST['amount_preset'] ?? '' );
+    $amount = $preset === 'custom'
+        ? (float) ( $_POST['custom_amount'] ?? 0 )
+        : (float) $preset;
+    $amount = round( max( 0, $amount ), 2 );
+    if ( $amount < 1 ) {
+        wp_safe_redirect( add_query_arg( 'sp_donate_err', 'invalid_amount', $referer ) );
+        exit;
+    }
+
+    $frequency  = in_array( $_POST['frequency'] ?? 'one_time', [ 'one_time', 'monthly', 'annually' ], true )
+        ? $_POST['frequency'] : 'one_time';
+    $cover_fees = ! empty( $_POST['cover_fees'] );
+    $fee_amount = $cover_fees ? sp_donation_calculate_fee( $amount ) : 0.0;
+    $gross      = round( $amount + $fee_amount, 2 );
+
+    // Settings & Stripe key
+    $settings   = get_option( 'societypress_settings', [] );
+    $secret_key = function_exists( 'sp_stripe_get_secret_key' ) ? sp_stripe_get_secret_key( $settings ) : '';
+    if ( empty( $secret_key ) ) {
+        wp_safe_redirect( add_query_arg( 'sp_donate_err', 'stripe_unconfigured', $referer ) );
+        exit;
+    }
+    $currency = strtolower( $settings['stripe_currency'] ?? 'usd' );
+
+    $donor_name  = sanitize_text_field( wp_unslash( $_POST['donor_name'] ?? '' ) );
+    $donor_email = sanitize_email( $_POST['donor_email'] ?? '' );
+    $is_anon     = ! empty( $_POST['is_anonymous'] );
+    $dedication  = sanitize_text_field( wp_unslash( $_POST['dedication'] ?? '' ) );
+    $message     = sanitize_textarea_field( wp_unslash( $_POST['donation_message'] ?? '' ) );
+    $campaign_id = (int) ( $_POST['campaign_id'] ?? 0 ) ?: null;
+    $user_id     = get_current_user_id() ?: null;
+
+    // Create the donation row in pending state
+    global $wpdb;
+    $wpdb->insert( $wpdb->prefix . 'sp_donations', [
+        'campaign_id'      => $campaign_id,
+        'user_id'          => $user_id,
+        'donor_name'       => $donor_name,
+        'donor_email'      => $donor_email,
+        'amount'           => $amount,
+        'frequency'        => $frequency,
+        'cover_fees'       => $cover_fees ? 1 : 0,
+        'fee_amount'       => $fee_amount,
+        'gross_amount'     => $gross,
+        'type'             => 'online',
+        'date'             => current_time( 'Y-m-d' ),
+        'is_anonymous'     => $is_anon ? 1 : 0,
+        'dedication'       => $dedication,
+        'donation_message' => $message,
+        'payment_method'   => 'stripe',
+        'status'           => 'pending',
+    ] );
+    $donation_id = (int) $wpdb->insert_id;
+
+    // Build success/cancel URLs back to the donate page
+    $success_url = add_query_arg( [
+        'sp_donate_msg' => 'success',
+        'sp_donation'   => $donation_id,
+        'sp_session'    => '{CHECKOUT_SESSION_ID}',
+    ], $referer );
+    $cancel_url = add_query_arg( [
+        'sp_donate_msg' => 'cancelled',
+        'sp_donation'   => $donation_id,
+    ], $referer );
+
+    $org_name = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+    $line_name = $frequency === 'one_time'
+        ? sprintf( __( 'Donation to %s', 'societypress' ), $org_name )
+        : sprintf( __( 'Recurring donation to %s', 'societypress' ), $org_name );
+
+    $body = [
+        'mode'                       => $frequency === 'one_time' ? 'payment' : 'subscription',
+        'success_url'                => $success_url,
+        'cancel_url'                 => $cancel_url,
+        'client_reference_id'        => (string) $donation_id,
+        'customer_email'             => $donor_email,
+        'metadata[donation_id]'      => (string) $donation_id,
+        'metadata[frequency]'        => $frequency,
+        'metadata[site_url]'         => home_url(),
+        'payment_method_types[0]'    => 'card',
+        'line_items[0][quantity]'    => 1,
+        'line_items[0][price_data][currency]' => $currency,
+        'line_items[0][price_data][unit_amount]' => (int) round( $gross * 100 ),
+        'line_items[0][price_data][product_data][name]' => $line_name,
+    ];
+
+    if ( $frequency !== 'one_time' ) {
+        $body['line_items[0][price_data][recurring][interval]'] = $frequency === 'monthly' ? 'month' : 'year';
+    }
+
+    $response = wp_remote_post( 'https://api.stripe.com/v1/checkout/sessions', [
+        'timeout' => 30,
+        'headers' => [
+            'Authorization' => 'Bearer ' . $secret_key,
+            'Content-Type'  => 'application/x-www-form-urlencoded',
+        ],
+        'body' => $body,
+    ] );
+
+    if ( is_wp_error( $response ) ) {
+        $wpdb->update( $wpdb->prefix . 'sp_donations', [ 'status' => 'failed' ], [ 'id' => $donation_id ] );
+        wp_safe_redirect( add_query_arg( 'sp_donate_err', 'checkout_failed', $referer ) );
+        exit;
+    }
+
+    $code = wp_remote_retrieve_response_code( $response );
+    $resp = json_decode( wp_remote_retrieve_body( $response ), true );
+
+    if ( $code !== 200 || empty( $resp['url'] ) ) {
+        error_log( 'SocietyPress donation Stripe error: ' . wp_remote_retrieve_body( $response ) );
+        $wpdb->update( $wpdb->prefix . 'sp_donations', [ 'status' => 'failed' ], [ 'id' => $donation_id ] );
+        wp_safe_redirect( add_query_arg( 'sp_donate_err', 'checkout_failed', $referer ) );
+        exit;
+    }
+
+    // Persist the session id so the success-URL handler and webhook can match
+    $wpdb->update( $wpdb->prefix . 'sp_donations', [
+        'stripe_session_id' => $resp['id'],
+    ], [ 'id' => $donation_id ] );
+
+    wp_redirect( $resp['url'] );
+    exit;
+} );
+
+
+/**
+ * Handle the return from Stripe Checkout for donations.
+ *
+ * WHY: The webhook is the source of truth, but the donor lands on a page
+ *      via success_url right after paying — we want to verify and mark
+ *      paid synchronously so the thank-you message is honest and the
+ *      receipt email goes out immediately, even before the webhook fires.
+ */
+add_action( 'template_redirect', function () {
+    $donation_id = (int) ( $_GET['sp_donation'] ?? 0 );
+    $session_id  = sanitize_text_field( $_GET['sp_session'] ?? '' );
+    $msg         = sanitize_text_field( $_GET['sp_donate_msg'] ?? '' );
+    if ( ! $donation_id || $msg !== 'success' || empty( $session_id ) ) return;
+
+    global $wpdb;
+    $donation = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_donations WHERE id = %d", $donation_id
+    ) );
+    if ( ! $donation ) return;
+
+    // Already processed (webhook fired first)?
+    if ( in_array( $donation->status, [ 'paid', 'subscription_active' ], true ) ) return;
+
+    $settings   = get_option( 'societypress_settings', [] );
+    $secret_key = function_exists( 'sp_stripe_get_secret_key' ) ? sp_stripe_get_secret_key( $settings ) : '';
+    if ( empty( $secret_key ) ) return;
+
+    $response = wp_remote_get( 'https://api.stripe.com/v1/checkout/sessions/' . $session_id, [
+        'timeout' => 15,
+        'headers' => [ 'Authorization' => 'Bearer ' . $secret_key ],
+    ] );
+    if ( is_wp_error( $response ) ) return;
+
+    $session = json_decode( wp_remote_retrieve_body( $response ), true );
+    if ( empty( $session ) ) return;
+
+    sp_donation_mark_paid_from_session( $donation_id, $session );
+} );
+
+
+/**
+ * Mark a donation paid based on a Stripe session payload. Called from both
+ * the success-URL handler and the webhook so logic stays single-source.
+ */
+function sp_donation_mark_paid_from_session( int $donation_id, array $session ): void {
+    global $wpdb;
+    $donation = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_donations WHERE id = %d", $donation_id
+    ) );
+    if ( ! $donation ) return;
+
+    $payment_status = $session['payment_status'] ?? '';
+    $mode           = $session['mode'] ?? 'payment';
+
+    if ( $mode === 'subscription' ) {
+        $sub_id = $session['subscription'] ?? '';
+        $wpdb->update( $wpdb->prefix . 'sp_donations', [
+            'status'                 => 'subscription_active',
+            'stripe_subscription_id' => $sub_id ?: null,
+        ], [ 'id' => $donation_id ] );
+    } elseif ( $payment_status === 'paid' ) {
+        $wpdb->update( $wpdb->prefix . 'sp_donations', [
+            'status' => 'paid',
+        ], [ 'id' => $donation_id ] );
+    } else {
+        return; // Don't fire a receipt for non-paid sessions
+    }
+
+    sp_donation_send_receipt( $donation_id );
+}
+
+
+/**
+ * Send an immediate receipt email for a paid donation.
+ */
+function sp_donation_send_receipt( int $donation_id ): void {
+    global $wpdb;
+    $d = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_donations WHERE id = %d", $donation_id
+    ) );
+    if ( ! $d || ! $d->donor_email ) return;
+    if ( (int) $d->acknowledgment_sent === 1 ) return;
+
+    $settings = get_option( 'societypress_settings', [] );
+    $org_name = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+    $tax_id   = trim( $settings['tax_id'] ?? '' );
+
+    $freq_label = $d->frequency === 'monthly' ? __( 'monthly', 'societypress' )
+        : ( $d->frequency === 'annually' ? __( 'annual', 'societypress' ) : __( 'one-time', 'societypress' ) );
+
+    $subject = sprintf( __( '[%s] Thank you for your donation', 'societypress' ), $org_name );
+
+    $body  = sprintf( __( 'Dear %s,', 'societypress' ), $d->donor_name ) . "\n\n";
+    $body .= sprintf(
+        __( "Thank you for your %1\$s donation of \$%2\$s.", 'societypress' ),
+        $freq_label,
+        number_format( (float) $d->gross_amount, 2 )
+    ) . "\n\n";
+
+    if ( (float) $d->fee_amount > 0 ) {
+        $body .= sprintf(
+            __( "Your gift breaks down as \$%1\$s to %2\$s plus \$%3\$s to cover processing fees.", 'societypress' ),
+            number_format( (float) $d->amount, 2 ),
+            $org_name,
+            number_format( (float) $d->fee_amount, 2 )
+        ) . "\n\n";
+    }
+
+    if ( $d->dedication ) {
+        $body .= sprintf( __( 'Dedication: %s', 'societypress' ), $d->dedication ) . "\n\n";
+    }
+
+    if ( $tax_id ) {
+        $body .= sprintf(
+            __( "%1\$s is a 501(c)(3) tax-exempt organization. EIN: %2\$s. No goods or services were provided in exchange for this contribution.", 'societypress' ),
+            $org_name, $tax_id
+        ) . "\n\n";
+    }
+
+    if ( $d->frequency !== 'one_time' ) {
+        $body .= __( 'This is a recurring donation. You can cancel at any time by replying to this email.', 'societypress' ) . "\n\n";
+    }
+
+    $body .= sprintf( __( 'With gratitude,%1$sThe %2$s team', 'societypress' ), "\n", $org_name );
+
+    wp_mail( $d->donor_email, $subject, $body );
+
+    $wpdb->update( $wpdb->prefix . 'sp_donations', [
+        'acknowledgment_sent' => 1,
+        'acknowledgment_date' => current_time( 'mysql' ),
+    ], [ 'id' => $donation_id ] );
+}
+
+
+/**
+ * REST: Stripe webhook endpoint.
+ *
+ * URL: /wp-json/societypress/v1/webhooks/stripe
+ *
+ * Handles:
+ *  - checkout.session.completed   — first payment / subscription start
+ *  - invoice.paid                 — recurring renewal (creates a new donation row)
+ *  - customer.subscription.deleted — sub cancellation
+ */
+add_action( 'rest_api_init', function () {
+    register_rest_route( 'societypress/v1', '/webhooks/stripe', [
+        'methods'             => WP_REST_Server::CREATABLE,
+        'callback'            => 'sp_donations_handle_stripe_webhook',
+        'permission_callback' => '__return_true', // signature is the auth
+    ] );
+} );
+
+
+function sp_donations_handle_stripe_webhook( WP_REST_Request $request ) {
+    $payload = $request->get_body();
+    $sig     = $request->get_header( 'stripe_signature' );
+
+    $settings = get_option( 'societypress_settings', [] );
+    $secret   = function_exists( 'sp_setting_decrypt' )
+        ? sp_setting_decrypt( 'stripe_webhook_secret' )
+        : ( $settings['stripe_webhook_secret'] ?? '' );
+
+    if ( $secret && $sig ) {
+        if ( ! sp_stripe_verify_webhook_signature( $payload, $sig, $secret ) ) {
+            return new WP_REST_Response( [ 'error' => 'invalid_signature' ], 401 );
+        }
+    }
+    // If no secret is configured we accept the payload — useful for early
+    // dev/sandbox setups where Stripe Connect isn't wired yet. Set a webhook
+    // secret in production.
+
+    $event = json_decode( $payload, true );
+    if ( ! $event || empty( $event['type'] ) ) {
+        return new WP_REST_Response( [ 'error' => 'bad_payload' ], 400 );
+    }
+
+    global $wpdb;
+    $type = $event['type'];
+    $obj  = $event['data']['object'] ?? [];
+
+    if ( $type === 'checkout.session.completed' ) {
+        $donation_id = (int) ( $obj['metadata']['donation_id'] ?? 0 );
+        if ( $donation_id ) {
+            sp_donation_mark_paid_from_session( $donation_id, $obj );
+        }
+    } elseif ( $type === 'invoice.paid' ) {
+        // Recurring renewal — create a new donation row tied to the original sub
+        $sub_id = $obj['subscription'] ?? '';
+        if ( $sub_id ) {
+            $original = $wpdb->get_row( $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}sp_donations WHERE stripe_subscription_id = %s ORDER BY id ASC LIMIT 1",
+                $sub_id
+            ) );
+            // Skip if this is the very first invoice (already created at checkout)
+            $billing_reason = $obj['billing_reason'] ?? '';
+            if ( $original && $billing_reason !== 'subscription_create' ) {
+                $amount_paid = ( (int) ( $obj['amount_paid'] ?? 0 ) ) / 100;
+                $insert_id = null;
+                $wpdb->insert( $wpdb->prefix . 'sp_donations', [
+                    'campaign_id'            => $original->campaign_id,
+                    'user_id'                => $original->user_id,
+                    'donor_name'             => $original->donor_name,
+                    'donor_email'            => $original->donor_email,
+                    'amount'                 => $amount_paid - (float) $original->fee_amount,
+                    'frequency'              => $original->frequency,
+                    'cover_fees'             => $original->cover_fees,
+                    'fee_amount'             => $original->fee_amount,
+                    'gross_amount'           => $amount_paid,
+                    'type'                   => 'online',
+                    'date'                   => current_time( 'Y-m-d' ),
+                    'is_anonymous'           => $original->is_anonymous,
+                    'payment_method'         => 'stripe',
+                    'status'                 => 'paid',
+                    'stripe_subscription_id' => $sub_id,
+                ] );
+                $insert_id = (int) $wpdb->insert_id;
+                if ( $insert_id ) sp_donation_send_receipt( $insert_id );
+            }
+        }
+    } elseif ( $type === 'customer.subscription.deleted' ) {
+        $sub_id = $obj['id'] ?? '';
+        if ( $sub_id ) {
+            $wpdb->query( $wpdb->prepare(
+                "UPDATE {$wpdb->prefix}sp_donations SET status = 'subscription_canceled' WHERE stripe_subscription_id = %s AND status = 'subscription_active'",
+                $sub_id
+            ) );
+        }
+    }
+
+    return new WP_REST_Response( [ 'received' => true ], 200 );
+}
+
+
+/**
+ * HMAC-SHA256 verification of the Stripe-Signature header.
+ *
+ * Stripe-Signature format: t=<timestamp>,v1=<hex_signature>[,v0=...]
+ * We only check v1. Tolerance window: 5 minutes.
+ */
+function sp_stripe_verify_webhook_signature( string $payload, string $sig_header, string $secret ): bool {
+    $parts = [];
+    foreach ( explode( ',', $sig_header ) as $piece ) {
+        $kv = explode( '=', $piece, 2 );
+        if ( count( $kv ) !== 2 ) continue;
+        $parts[ trim( $kv[0] ) ] = trim( $kv[1] );
+    }
+    $ts  = $parts['t']  ?? '';
+    $sig = $parts['v1'] ?? '';
+    if ( ! $ts || ! $sig ) return false;
+    if ( abs( time() - (int) $ts ) > 300 ) return false;
+
+    $signed_payload = $ts . '.' . $payload;
+    $expected = hash_hmac( 'sha256', $signed_payload, $secret );
+    return hash_equals( $expected, $sig );
+}
+
+
+// ============================================================================
+// DATABASE SUBSCRIPTIONS — ADMIN
+//
+// WHY: The display side (shortcode + widget) renders subscriptions from
+//      societypress_settings.database_subscriptions, but Harold needs a UI
+//      to add/edit/delete entries without touching the database. This admin
+//      page is a simple list + add/edit form.
+// ============================================================================
+
+add_action( 'admin_menu', function () {
+    add_submenu_page(
+        'societypress',
+        __( 'Database Subscriptions — SocietyPress', 'societypress' ),
+        __( 'Database Subscriptions', 'societypress' ),
+        'manage_options',
+        'sp-database-subscriptions',
+        'sp_render_database_subscriptions_page'
+    );
+}, 25 );
+
+
+add_action( 'admin_init', function () {
+    if ( ! current_user_can( 'manage_options' ) ) return;
+
+    if ( ! empty( $_POST['sp_save_db_subscription'] ) ) {
+        check_admin_referer( 'sp_save_db_subscription', 'sp_dbs_nonce' );
+        $idx         = isset( $_POST['edit_index'] ) && $_POST['edit_index'] !== '' ? (int) $_POST['edit_index'] : null;
+        $name        = sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) );
+        $url         = esc_url_raw( $_POST['login_url'] ?? '' );
+        $description = sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) );
+        $members_only= ! empty( $_POST['members_only'] );
+
+        if ( ! $name || ! $url ) {
+            wp_safe_redirect( admin_url( 'admin.php?page=sp-database-subscriptions&sp_error=missing' ) );
+            exit;
+        }
+
+        $settings = get_option( 'societypress_settings', [] );
+        $list     = $settings['database_subscriptions'] ?? [];
+        if ( ! is_array( $list ) ) $list = [];
+
+        $entry = [
+            'name'         => $name,
+            'login_url'    => $url,
+            'description'  => $description,
+            'members_only' => $members_only ? 1 : 0,
+        ];
+
+        if ( $idx !== null && isset( $list[ $idx ] ) ) {
+            $list[ $idx ] = $entry;
+        } else {
+            $list[] = $entry;
+        }
+        $settings['database_subscriptions'] = array_values( $list );
+        update_option( 'societypress_settings', $settings );
+
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-database-subscriptions&sp_updated=1' ) );
+        exit;
+    }
+
+    if ( ( $_POST['action'] ?? '' ) === 'delete_db_subscription' ) {
+        $idx = (int) ( $_POST['index'] ?? -1 );
+        check_admin_referer( 'sp_delete_db_subscription_' . $idx );
+        $settings = get_option( 'societypress_settings', [] );
+        $list     = $settings['database_subscriptions'] ?? [];
+        if ( is_array( $list ) && isset( $list[ $idx ] ) ) {
+            unset( $list[ $idx ] );
+            $settings['database_subscriptions'] = array_values( $list );
+            update_option( 'societypress_settings', $settings );
+        }
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-database-subscriptions&sp_deleted=1' ) );
+        exit;
+    }
+} );
+
+
+function sp_render_database_subscriptions_page(): void {
+    if ( ! current_user_can( 'manage_options' ) ) wp_die( __( 'Insufficient permissions.', 'societypress' ) );
+
+    $settings = get_option( 'societypress_settings', [] );
+    $list     = $settings['database_subscriptions'] ?? [];
+    if ( ! is_array( $list ) ) $list = [];
+
+    $edit_idx = isset( $_GET['edit'] ) && $_GET['edit'] !== '' ? (int) $_GET['edit'] : null;
+    $editing  = ( $edit_idx !== null && isset( $list[ $edit_idx ] ) ) ? $list[ $edit_idx ] : null;
+
+    ?>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Database Subscriptions', 'societypress' ); ?></h1>
+        <p class="description" style="max-width:760px;">
+            <?php esc_html_e( 'Genealogy databases your society pays for and shares with members — Ancestry, Fold3, FamilySearch (affiliate), NEHGS, etc. Add an entry here, then embed [sp_database_subscriptions] on your members area page or use the page-builder widget.', 'societypress' ); ?>
+        </p>
+
+        <?php if ( ! empty( $_GET['sp_updated'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Subscription saved.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+        <?php if ( ! empty( $_GET['sp_deleted'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Subscription removed.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+        <?php if ( ( $_GET['sp_error'] ?? '' ) === 'missing' ) : ?>
+            <div class="notice notice-error is-dismissible"><p><?php esc_html_e( 'Both name and login URL are required.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+
+        <div style="display:flex; gap:30px; flex-wrap:wrap; margin-top:20px; align-items:flex-start;">
+            <div style="flex:0 0 380px;">
+                <h2><?php echo $editing ? esc_html__( 'Edit Subscription', 'societypress' ) : esc_html__( 'Add Subscription', 'societypress' ); ?></h2>
+                <form method="post">
+                    <?php wp_nonce_field( 'sp_save_db_subscription', 'sp_dbs_nonce' ); ?>
+                    <input type="hidden" name="sp_save_db_subscription" value="1">
+                    <input type="hidden" name="edit_index" value="<?php echo $edit_idx !== null ? (int) $edit_idx : ''; ?>">
+
+                    <table class="form-table">
+                        <tr>
+                            <th><label for="dbs-name"><?php esc_html_e( 'Name', 'societypress' ); ?></label></th>
+                            <td><input type="text" id="dbs-name" name="name" value="<?php echo esc_attr( $editing['name'] ?? '' ); ?>" class="regular-text" required></td>
+                        </tr>
+                        <tr>
+                            <th><label for="dbs-url"><?php esc_html_e( 'Login URL', 'societypress' ); ?></label></th>
+                            <td><input type="url" id="dbs-url" name="login_url" value="<?php echo esc_attr( $editing['login_url'] ?? '' ); ?>" class="regular-text" required placeholder="https://www.ancestry.com/account/signin"></td>
+                        </tr>
+                        <tr>
+                            <th><label for="dbs-desc"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
+                            <td><textarea id="dbs-desc" name="description" rows="3" class="large-text"><?php echo esc_textarea( $editing['description'] ?? '' ); ?></textarea></td>
+                        </tr>
+                        <tr>
+                            <th><?php esc_html_e( 'Access', 'societypress' ); ?></th>
+                            <td><label><input type="checkbox" name="members_only" value="1" <?php checked( ! empty( $editing['members_only'] ) ); ?>> <?php esc_html_e( 'Members only', 'societypress' ); ?></label></td>
+                        </tr>
+                    </table>
+
+                    <?php submit_button( $editing ? __( 'Update', 'societypress' ) : __( 'Add', 'societypress' ) ); ?>
+                    <?php if ( $editing ) : ?>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-database-subscriptions' ) ); ?>"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
+                    <?php endif; ?>
+                </form>
+            </div>
+
+            <div style="flex:1; min-width:400px;">
+                <table class="widefat striped">
+                    <thead>
+                        <tr>
+                            <th><?php esc_html_e( 'Name', 'societypress' ); ?></th>
+                            <th><?php esc_html_e( 'URL', 'societypress' ); ?></th>
+                            <th><?php esc_html_e( 'Members only', 'societypress' ); ?></th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if ( empty( $list ) ) : ?>
+                            <tr><td colspan="4" style="text-align:center; padding:30px; color:#777;"><?php esc_html_e( 'No subscriptions yet.', 'societypress' ); ?></td></tr>
+                        <?php else : foreach ( $list as $i => $entry ) : ?>
+                            <tr>
+                                <td><strong><?php echo esc_html( $entry['name'] ?? '' ); ?></strong>
+                                    <?php if ( ! empty( $entry['description'] ) ) : ?>
+                                        <br><span style="color:#666; font-size:12px;"><?php echo esc_html( $entry['description'] ); ?></span>
+                                    <?php endif; ?>
+                                </td>
+                                <td><a href="<?php echo esc_url( $entry['login_url'] ?? '' ); ?>" target="_blank" style="font-size:12px;"><?php echo esc_html( wp_parse_url( $entry['login_url'] ?? '', PHP_URL_HOST ) ); ?></a></td>
+                                <td><?php echo ! empty( $entry['members_only'] ) ? '✓' : ''; ?></td>
+                                <td>
+                                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-database-subscriptions&edit=' . $i ) ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
+                                    |
+                                    <form method="post" class="sp-inline" data-sp-confirm="<?php echo esc_attr( __( 'Remove this subscription?', 'societypress' ) ); ?>">
+                                        <?php wp_nonce_field( 'sp_delete_db_subscription_' . $i ); ?>
+                                        <input type="hidden" name="action" value="delete_db_subscription">
+                                        <input type="hidden" name="index" value="<?php echo (int) $i; ?>">
+                                        <button type="submit" class="sp-link-btn"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                                    </form>
+                                </td>
+                            </tr>
+                        <?php endforeach; endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <?php
+}
+
+
+// ============================================================================
+// RESEARCH GUIDES — ADMIN
+//
+// WHY: The Research-guide page-builder widget renders structured category
+//      sections from a saved data structure. Harold needs a UI to author
+//      that structure. Each guide has a slug (used by the widget to look
+//      up which guide to render), title, intro, and a flat list of
+//      categories — each category has a label, intro, and resources.
+//      Stored under societypress_settings.research_guides keyed by slug.
+// ============================================================================
+
+add_action( 'admin_menu', function () {
+    add_submenu_page(
+        'societypress',
+        __( 'Research Guides — SocietyPress', 'societypress' ),
+        __( 'Research Guides', 'societypress' ),
+        'manage_options',
+        'sp-research-guides',
+        'sp_render_research_guides_page'
+    );
+}, 26 );
+
+
+add_action( 'admin_init', function () {
+    if ( ! current_user_can( 'manage_options' ) ) return;
+
+    if ( ! empty( $_POST['sp_save_research_guide'] ) ) {
+        check_admin_referer( 'sp_save_research_guide', 'sp_rg_nonce' );
+        $orig_slug = sanitize_title( $_POST['orig_slug'] ?? '' );
+        $slug      = sanitize_title( $_POST['slug'] ?? '' );
+        $title     = sanitize_text_field( wp_unslash( $_POST['title'] ?? '' ) );
+        $intro     = wp_kses_post( wp_unslash( $_POST['intro'] ?? '' ) );
+
+        if ( ! $slug || ! $title ) {
+            wp_safe_redirect( admin_url( 'admin.php?page=sp-research-guides&sp_error=missing' ) );
+            exit;
+        }
+
+        // Decode categories from posted JSON
+        $cats_json = wp_unslash( $_POST['categories_json'] ?? '[]' );
+        $cats      = json_decode( $cats_json, true );
+        if ( ! is_array( $cats ) ) $cats = [];
+
+        // Sanitize each category and resource
+        $clean_cats = [];
+        foreach ( $cats as $c ) {
+            if ( ! is_array( $c ) || empty( $c['label'] ) ) continue;
+            $resources = [];
+            foreach ( ( $c['resources'] ?? [] ) as $r ) {
+                if ( ! is_array( $r ) || empty( $r['label'] ) ) continue;
+                $resources[] = [
+                    'label' => sanitize_text_field( $r['label'] ),
+                    'url'   => esc_url_raw( $r['url'] ?? '' ),
+                    'type'  => in_array( ( $r['type'] ?? '' ), [ 'local', 'external' ], true ) ? $r['type'] : 'external',
+                    'note'  => sanitize_text_field( $r['note'] ?? '' ),
+                ];
+            }
+            $clean_cats[] = [
+                'label'     => sanitize_text_field( $c['label'] ),
+                'intro'     => wp_kses_post( $c['intro'] ?? '' ),
+                'resources' => $resources,
+            ];
+        }
+
+        $settings = get_option( 'societypress_settings', [] );
+        $guides   = $settings['research_guides'] ?? [];
+        if ( ! is_array( $guides ) ) $guides = [];
+
+        // Slug change: remove the old entry
+        if ( $orig_slug && $orig_slug !== $slug && isset( $guides[ $orig_slug ] ) ) {
+            unset( $guides[ $orig_slug ] );
+        }
+
+        $guides[ $slug ] = [
+            'title'      => $title,
+            'intro'      => $intro,
+            'categories' => $clean_cats,
+        ];
+        $settings['research_guides'] = $guides;
+        update_option( 'societypress_settings', $settings );
+
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-research-guides&edit=' . urlencode( $slug ) . '&sp_updated=1' ) );
+        exit;
+    }
+
+    if ( ( $_POST['action'] ?? '' ) === 'delete_research_guide' ) {
+        $slug = sanitize_title( $_POST['slug'] ?? '' );
+        check_admin_referer( 'sp_delete_research_guide_' . $slug );
+        $settings = get_option( 'societypress_settings', [] );
+        $guides   = $settings['research_guides'] ?? [];
+        if ( is_array( $guides ) && isset( $guides[ $slug ] ) ) {
+            unset( $guides[ $slug ] );
+            $settings['research_guides'] = $guides;
+            update_option( 'societypress_settings', $settings );
+        }
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-research-guides&sp_deleted=1' ) );
+        exit;
+    }
+} );
+
+
+function sp_render_research_guides_page(): void {
+    if ( ! current_user_can( 'manage_options' ) ) wp_die( __( 'Insufficient permissions.', 'societypress' ) );
+
+    $settings = get_option( 'societypress_settings', [] );
+    $guides   = $settings['research_guides'] ?? [];
+    if ( ! is_array( $guides ) ) $guides = [];
+
+    $edit_slug = sanitize_title( $_GET['edit'] ?? '' );
+    $editing   = $edit_slug && isset( $guides[ $edit_slug ] ) ? $guides[ $edit_slug ] : null;
+    $is_new    = ! $edit_slug && isset( $_GET['new'] );
+
+    if ( $editing || $is_new ) {
+        // Edit/new screen
+        $cats_json = htmlspecialchars( wp_json_encode( $editing['categories'] ?? [] ), ENT_QUOTES, 'UTF-8' );
+        ?>
+        <div class="wrap">
+            <h1>
+                <?php echo $editing ? esc_html__( 'Edit Research Guide', 'societypress' ) : esc_html__( 'New Research Guide', 'societypress' ); ?>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-research-guides' ) ); ?>" class="page-title-action">← <?php esc_html_e( 'All Guides', 'societypress' ); ?></a>
+            </h1>
+
+            <?php if ( ! empty( $_GET['sp_updated'] ) ) : ?>
+                <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Guide saved.', 'societypress' ); ?></p></div>
+            <?php endif; ?>
+
+            <form method="post">
+                <?php wp_nonce_field( 'sp_save_research_guide', 'sp_rg_nonce' ); ?>
+                <input type="hidden" name="sp_save_research_guide" value="1">
+                <input type="hidden" name="orig_slug" value="<?php echo esc_attr( $edit_slug ); ?>">
+
+                <table class="form-table">
+                    <tr>
+                        <th><label for="rg-title"><?php esc_html_e( 'Title', 'societypress' ); ?></label></th>
+                        <td><input type="text" id="rg-title" name="title" value="<?php echo esc_attr( $editing['title'] ?? '' ); ?>" class="regular-text" required></td>
+                    </tr>
+                    <tr>
+                        <th><label for="rg-slug"><?php esc_html_e( 'Slug', 'societypress' ); ?></label></th>
+                        <td><input type="text" id="rg-slug" name="slug" value="<?php echo esc_attr( $edit_slug ); ?>" class="regular-text" required>
+                            <p class="description"><?php esc_html_e( 'URL-safe identifier used by the widget to look up this guide. e.g. "researching-sample-county".', 'societypress' ); ?></p></td>
+                    </tr>
+                    <tr>
+                        <th><label for="rg-intro"><?php esc_html_e( 'Intro', 'societypress' ); ?></label></th>
+                        <td><textarea id="rg-intro" name="intro" rows="3" class="large-text"><?php echo esc_textarea( $editing['intro'] ?? '' ); ?></textarea></td>
+                    </tr>
+                </table>
+
+                <h2 style="margin-top:24px;"><?php esc_html_e( 'Categories', 'societypress' ); ?></h2>
+                <p class="description"><?php esc_html_e( 'Each category has a label, optional intro, and a list of linked resources (local or external). Drag the handle to reorder. Drag resources within a category to reorder them.', 'societypress' ); ?></p>
+
+                <input type="hidden" name="categories_json" id="categories_json" value="">
+                <div id="rg-categories"></div>
+                <button type="button" id="rg-add-category" class="button" style="margin-top:10px;">+ <?php esc_html_e( 'Add Category', 'societypress' ); ?></button>
+
+                <?php submit_button( $editing ? __( 'Update Guide', 'societypress' ) : __( 'Create Guide', 'societypress' ) ); ?>
+            </form>
+
+            <script>
+            (function () {
+                var initialData = JSON.parse(<?php echo wp_json_encode( $cats_json ); ?>) || [];
+                var container = document.getElementById('rg-categories');
+                var hidden    = document.getElementById('categories_json');
+
+                function el(tag, attrs, children) {
+                    var e = document.createElement(tag);
+                    if (attrs) for (var k in attrs) {
+                        if (k === 'style') e.style.cssText = attrs[k];
+                        else if (k === 'className') e.className = attrs[k];
+                        else e.setAttribute(k, attrs[k]);
+                    }
+                    (children || []).forEach(function (c) {
+                        if (typeof c === 'string') e.appendChild(document.createTextNode(c));
+                        else if (c) e.appendChild(c);
+                    });
+                    return e;
+                }
+
+                function syncHidden() {
+                    var data = [];
+                    container.querySelectorAll('[data-category]').forEach(function (catEl) {
+                        var label = catEl.querySelector('[data-cat-label]').value.trim();
+                        var intro = catEl.querySelector('[data-cat-intro]').value;
+                        if (!label) return;
+                        var resources = [];
+                        catEl.querySelectorAll('[data-resource]').forEach(function (r) {
+                            var rLabel = r.querySelector('[data-r-label]').value.trim();
+                            if (!rLabel) return;
+                            resources.push({
+                                label: rLabel,
+                                url:   r.querySelector('[data-r-url]').value.trim(),
+                                type:  r.querySelector('[data-r-type]').value,
+                                note:  r.querySelector('[data-r-note]').value.trim()
+                            });
+                        });
+                        data.push({ label: label, intro: intro, resources: resources });
+                    });
+                    hidden.value = JSON.stringify(data);
+                }
+
+                function makeResource(data) {
+                    data = data || { label: '', url: '', type: 'external', note: '' };
+                    var lbl = el('input', { type: 'text', placeholder: 'Resource label', value: data.label, 'data-r-label': '1', style: 'width:100%' });
+                    var url = el('input', { type: 'url', placeholder: 'https://…', value: data.url, 'data-r-url': '1', style: 'width:100%' });
+                    var type = el('select', { 'data-r-type': '1' }, [
+                        el('option', { value: 'external' }, ['External']),
+                        el('option', { value: 'local' }, ['Local'])
+                    ]);
+                    type.value = data.type || 'external';
+                    var note = el('input', { type: 'text', placeholder: 'Optional note', value: data.note, 'data-r-note': '1', style: 'width:100%' });
+                    var del = el('button', { type: 'button', className: 'button-link-delete' }, ['Remove']);
+                    var row = el('div', {
+                        'data-resource': '1',
+                        style: 'display:grid; grid-template-columns: 1.5fr 2fr 100px 1.5fr 70px; gap:6px; padding:6px; background:#fff; border:1px solid #eee; border-radius:4px; margin-bottom:4px; align-items:center;'
+                    }, [ lbl, url, type, note, del ]);
+                    del.onclick = function () { row.remove(); syncHidden(); };
+                    [lbl, url, type, note].forEach(function (i) { i.addEventListener('input', syncHidden); i.addEventListener('change', syncHidden); });
+                    return row;
+                }
+
+                function makeCategory(data) {
+                    data = data || { label: '', intro: '', resources: [] };
+                    var lbl = el('input', { type: 'text', placeholder: 'Category label, e.g. Births', value: data.label, 'data-cat-label': '1', style: 'flex:1; padding:6px 8px; font-size:15px; font-weight:600;' });
+                    var del = el('button', { type: 'button', className: 'button button-link-delete' }, ['Delete category']);
+                    var header = el('div', { style: 'display:flex; gap:8px; align-items:center; margin-bottom:6px;' }, [ lbl, del ]);
+
+                    var intro = el('textarea', { rows: '2', placeholder: 'Optional intro for this category', 'data-cat-intro': '1', style: 'width:100%; margin-bottom:8px;' });
+                    intro.value = data.intro;
+
+                    var resWrap = el('div');
+                    (data.resources || []).forEach(function (r) { resWrap.appendChild(makeResource(r)); });
+
+                    var addRes = el('button', { type: 'button', className: 'button button-small', style: 'margin-top:4px;' }, ['+ Add resource']);
+                    addRes.onclick = function () { resWrap.appendChild(makeResource()); syncHidden(); };
+
+                    var card = el('div', { 'data-category': '1', style: 'background:#f8f8f8; border:1px solid #ddd; border-radius:6px; padding:12px; margin-bottom:14px;' }, [ header, intro, resWrap, addRes ]);
+                    del.onclick = function () { card.remove(); syncHidden(); };
+                    [lbl, intro].forEach(function (i) { i.addEventListener('input', syncHidden); });
+                    return card;
+                }
+
+                if (initialData.length === 0) {
+                    initialData = [{ label: '', intro: '', resources: [] }];
+                }
+                initialData.forEach(function (c) { container.appendChild(makeCategory(c)); });
+
+                document.getElementById('rg-add-category').onclick = function () {
+                    container.appendChild(makeCategory());
+                    syncHidden();
+                };
+
+                document.querySelector('form').addEventListener('submit', syncHidden);
+                syncHidden();
+            })();
+            </script>
+        </div>
+        <?php
+        return;
+    }
+
+    // List screen
+    ?>
+    <div class="wrap">
+        <h1>
+            <?php esc_html_e( 'Research Guides', 'societypress' ); ?>
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-research-guides&new=1' ) ); ?>" class="page-title-action">+ <?php esc_html_e( 'New Guide', 'societypress' ); ?></a>
+        </h1>
+        <p class="description" style="max-width:760px;">
+            <?php esc_html_e( 'Categorized resource guides for visitors — for example, "Researching Sample County" with sections for Births, Marriages, Cemeteries, etc., each containing local and external resource links. Authored here, displayed via the page-builder Research Guide widget.', 'societypress' ); ?>
+        </p>
+
+        <?php if ( ! empty( $_GET['sp_deleted'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Guide deleted.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+
+        <table class="widefat striped" style="margin-top:20px;">
+            <thead>
+                <tr>
+                    <th><?php esc_html_e( 'Title', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Slug', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Categories', 'societypress' ); ?></th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if ( empty( $guides ) ) : ?>
+                    <tr><td colspan="4" style="padding:30px; text-align:center; color:#777;"><?php esc_html_e( 'No research guides yet.', 'societypress' ); ?></td></tr>
+                <?php else : foreach ( $guides as $slug => $g ) : ?>
+                    <tr>
+                        <td><strong><?php echo esc_html( $g['title'] ?? '' ); ?></strong></td>
+                        <td><code><?php echo esc_html( $slug ); ?></code></td>
+                        <td><?php echo (int) count( $g['categories'] ?? [] ); ?></td>
+                        <td>
+                            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-research-guides&edit=' . urlencode( $slug ) ) ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
+                            |
+                            <form method="post" class="sp-inline" data-sp-confirm="<?php echo esc_attr( __( 'Delete this guide?', 'societypress' ) ); ?>">
+                                <?php wp_nonce_field( 'sp_delete_research_guide_' . $slug ); ?>
+                                <input type="hidden" name="action" value="delete_research_guide">
+                                <input type="hidden" name="slug" value="<?php echo esc_attr( $slug ); ?>">
+                                <button type="submit" class="sp-link-btn"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                            </form>
+                        </td>
+                    </tr>
+                <?php endforeach; endif; ?>
+            </tbody>
+        </table>
+
+        <p style="margin-top:20px; color:#888; font-size:13px;">
+            <?php esc_html_e( 'To embed: add the "Research Guide" widget in the page builder and select a guide by slug.', 'societypress' ); ?>
+        </p>
+    </div>
+    <?php
+}
+
+
+/**
+ * Update the Research-guide page-builder widget renderer to look up data
+ * from the saved guide by slug. Also register it as a widget type so it
+ * appears in the page-builder picker.
+ */
+add_filter( 'sp_builder_widget_types', function ( array $types ): array {
+    $types['research_guide'] = [
+        'label'       => __( 'Research Guide', 'societypress' ),
+        'description' => __( 'Categorized resource guide (e.g. "Researching Sample County"). Authored under SocietyPress → Research Guides.', 'societypress' ),
+        'fields'      => [
+            'guide_slug' => [
+                'label'   => __( 'Guide slug', 'societypress' ),
+                'type'    => 'text',
+                'default' => '',
+            ],
+        ],
+    ];
+    $types['database_subscriptions'] = [
+        'label'       => __( 'Database Subscriptions', 'societypress' ),
+        'description' => __( 'Members-area panel listing genealogy databases your society subscribes to (Ancestry, Fold3, etc.).', 'societypress' ),
+        'fields'      => [],
+    ];
+    return $types;
+} );
+
+
+/**
+ * Override the basic Research-guide widget renderer to read from saved guide
+ * data when a slug is supplied. Falls back to the inline categories field.
+ */
+function sp_render_builder_widget_research_guide_v2( array $s ): void {
+    $slug = sanitize_title( $s['guide_slug'] ?? '' );
+    if ( $slug ) {
+        $settings = get_option( 'societypress_settings', [] );
+        $guides   = $settings['research_guides'] ?? [];
+        $guide    = is_array( $guides ) && isset( $guides[ $slug ] ) ? $guides[ $slug ] : null;
+        if ( $guide ) {
+            $s['intro']      = $guide['intro']      ?? '';
+            $s['categories'] = $guide['categories'] ?? [];
+            sp_render_builder_widget_research_guide( $s );
+            return;
+        }
+        echo '<p style="color:#888;">' . sprintf(
+            esc_html__( 'Research guide "%s" not found.', 'societypress' ),
+            esc_html( $slug )
+        ) . '</p>';
+        return;
+    }
+    sp_render_builder_widget_research_guide( $s );
+}
+
+
+// ============================================================================
+// PUBLIC DONATIONS — PAYPAL (one-time)
+//
+// WHY: Stripe shipped with the donation form first; PayPal completes the
+//      "give online" promise the form makes. This handles ONE-TIME PayPal
+//      donations only — recurring (PayPal Subscriptions API with Plans +
+//      Products) is a follow-up. The donation form hides PayPal buttons
+//      and shows a one-time-only note when frequency is monthly/annual.
+//
+// FLOW:
+//   1. Donor fills form, clicks PayPal Smart Button
+//   2. JS calls sp_donate_paypal_create_order — server validates the form
+//      data, creates a pending donation row, then creates a PayPal Order
+//      via the Orders v2 API and returns the paypal_order_id
+//   3. PayPal SDK opens its overlay, donor approves
+//   4. JS calls sp_donate_paypal_capture — server captures the order via
+//      the Orders v2 API, marks the donation paid, sends the receipt,
+//      and returns the success URL the JS should navigate to
+// ============================================================================
+
+
+/**
+ * AJAX: Create a PayPal order for a one-time donation.
+ *
+ * Validates the form payload, creates a pending donation row, then creates
+ * a PayPal Order against the configured PayPal account. Returns the
+ * paypal_order_id which the JS hands to the PayPal Smart Button.
+ */
+add_action( 'wp_ajax_nopriv_sp_donate_paypal_create_order', 'sp_donate_paypal_create_order' );
+add_action( 'wp_ajax_sp_donate_paypal_create_order',         'sp_donate_paypal_create_order' );
+
+function sp_donate_paypal_create_order(): void {
+    if ( ! check_ajax_referer( 'sp_donate_paypal', '_wpnonce', false ) ) {
+        wp_send_json_error( [ 'message' => __( 'Bad request — please refresh the page.', 'societypress' ) ], 400 );
+    }
+
+    if ( ! sp_module_enabled( 'donations' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Donations are not enabled.', 'societypress' ) ] );
+    }
+
+    // PayPal donations are one-time only for now
+    $frequency = $_POST['frequency'] ?? 'one_time';
+    if ( $frequency !== 'one_time' ) {
+        wp_send_json_error( [ 'message' => __( 'PayPal supports one-time donations only at this time.', 'societypress' ) ] );
+    }
+
+    // Resolve amount (mirrors the Stripe handler)
+    $preset = sanitize_text_field( $_POST['amount_preset'] ?? '' );
+    $amount = $preset === 'custom'
+        ? (float) ( $_POST['custom_amount'] ?? 0 )
+        : (float) $preset;
+    $amount = round( max( 0, $amount ), 2 );
+    if ( $amount < 1 ) {
+        wp_send_json_error( [ 'message' => __( 'Please enter a donation amount of at least $1.', 'societypress' ) ] );
+    }
+
+    $cover_fees = ! empty( $_POST['cover_fees'] );
+    $fee_amount = $cover_fees ? sp_donation_calculate_fee( $amount ) : 0.0;
+    $gross      = round( $amount + $fee_amount, 2 );
+
+    $donor_name  = sanitize_text_field( wp_unslash( $_POST['donor_name'] ?? '' ) );
+    $donor_email = sanitize_email( $_POST['donor_email'] ?? '' );
+    if ( ! $donor_name || ! is_email( $donor_email ) ) {
+        wp_send_json_error( [ 'message' => __( 'Please provide your name and email.', 'societypress' ) ] );
+    }
+
+    $is_anon     = ! empty( $_POST['is_anonymous'] );
+    $dedication  = sanitize_text_field( wp_unslash( $_POST['dedication'] ?? '' ) );
+    $message     = sanitize_textarea_field( wp_unslash( $_POST['donation_message'] ?? '' ) );
+    $campaign_id = (int) ( $_POST['campaign_id'] ?? 0 ) ?: null;
+    $user_id     = get_current_user_id() ?: null;
+
+    $settings = get_option( 'societypress_settings', [] );
+    if ( ! function_exists( 'sp_paypal_is_configured' ) || ! sp_paypal_is_configured( $settings ) ) {
+        wp_send_json_error( [ 'message' => __( 'PayPal is not configured.', 'societypress' ) ] );
+    }
+    $org_name = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+    $currency = strtoupper( $settings['paypal_currency'] ?? ( $settings['stripe_currency'] ?? 'USD' ) );
+
+    // Create the pending donation row
+    global $wpdb;
+    $wpdb->insert( $wpdb->prefix . 'sp_donations', [
+        'campaign_id'      => $campaign_id,
+        'user_id'          => $user_id,
+        'donor_name'       => $donor_name,
+        'donor_email'      => $donor_email,
+        'amount'           => $amount,
+        'frequency'        => 'one_time',
+        'cover_fees'       => $cover_fees ? 1 : 0,
+        'fee_amount'       => $fee_amount,
+        'gross_amount'     => $gross,
+        'type'             => 'online',
+        'date'             => current_time( 'Y-m-d' ),
+        'is_anonymous'     => $is_anon ? 1 : 0,
+        'dedication'       => $dedication,
+        'donation_message' => $message,
+        'payment_method'   => 'paypal',
+        'status'           => 'pending',
+    ] );
+    $donation_id = (int) $wpdb->insert_id;
+
+    // Build the redirect URLs for after PayPal capture (used by JS, not PayPal itself)
+    $referer = wp_get_referer() ?: home_url();
+    $return_url = add_query_arg( [
+        'sp_donate_msg' => 'success',
+        'sp_donation'   => $donation_id,
+    ], $referer );
+    $cancel_url = add_query_arg( [
+        'sp_donate_msg' => 'cancelled',
+        'sp_donation'   => $donation_id,
+    ], $referer );
+
+    $description = sprintf( __( 'Donation to %s', 'societypress' ), $org_name );
+
+    $paypal_order = sp_paypal_create_order(
+        $gross,
+        $currency,
+        $description,
+        $return_url,
+        $cancel_url,
+        [
+            'donation_id' => (string) $donation_id,
+            'site_url'    => home_url(),
+        ],
+        $settings
+    );
+
+    if ( is_wp_error( $paypal_order ) ) {
+        $wpdb->update( $wpdb->prefix . 'sp_donations', [ 'status' => 'failed' ], [ 'id' => $donation_id ] );
+        wp_send_json_error( [ 'message' => $paypal_order->get_error_message() ] );
+    }
+
+    $paypal_order_id = is_array( $paypal_order ) ? ( $paypal_order['id'] ?? '' ) : '';
+    if ( ! $paypal_order_id ) {
+        $wpdb->update( $wpdb->prefix . 'sp_donations', [ 'status' => 'failed' ], [ 'id' => $donation_id ] );
+        wp_send_json_error( [ 'message' => __( 'PayPal did not return an order id.', 'societypress' ) ] );
+    }
+
+    $wpdb->update( $wpdb->prefix . 'sp_donations', [
+        'paypal_order_id' => $paypal_order_id,
+    ], [ 'id' => $donation_id ] );
+
+    wp_send_json_success( [
+        'paypal_order_id' => $paypal_order_id,
+        'donation_id'     => $donation_id,
+    ] );
+}
+
+
+/**
+ * AJAX: Capture an approved PayPal order, mark the donation paid, send receipt.
+ */
+add_action( 'wp_ajax_nopriv_sp_donate_paypal_capture', 'sp_donate_paypal_capture' );
+add_action( 'wp_ajax_sp_donate_paypal_capture',         'sp_donate_paypal_capture' );
+
+function sp_donate_paypal_capture(): void {
+    if ( ! check_ajax_referer( 'sp_donate_paypal', '_wpnonce', false ) ) {
+        wp_send_json_error( [ 'message' => __( 'Bad request — please refresh the page.', 'societypress' ) ], 400 );
+    }
+
+    $paypal_order_id = sanitize_text_field( $_POST['paypal_order_id'] ?? '' );
+    if ( ! $paypal_order_id ) {
+        wp_send_json_error( [ 'message' => __( 'Missing PayPal order id.', 'societypress' ) ] );
+    }
+
+    global $wpdb;
+    $donation = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_donations WHERE paypal_order_id = %s",
+        $paypal_order_id
+    ) );
+    if ( ! $donation ) {
+        wp_send_json_error( [ 'message' => __( 'Donation record not found.', 'societypress' ) ] );
+    }
+
+    // Idempotent: if already paid, just return the success redirect
+    if ( $donation->status === 'paid' ) {
+        wp_send_json_success( [ 'redirect_url' => add_query_arg( [
+            'sp_donate_msg' => 'success',
+            'sp_donation'   => $donation->id,
+        ], wp_get_referer() ?: home_url() ) ] );
+    }
+
+    $settings = get_option( 'societypress_settings', [] );
+    $capture  = sp_paypal_capture_order( $paypal_order_id, $settings );
+
+    if ( is_wp_error( $capture ) ) {
+        $wpdb->update( $wpdb->prefix . 'sp_donations', [ 'status' => 'failed' ], [ 'id' => $donation->id ] );
+        wp_send_json_error( [ 'message' => $capture->get_error_message() ] );
+    }
+
+    // Pull the capture id out of the response shape:
+    //   { id, purchase_units: [ { payments: { captures: [ { id, status } ] } } ] }
+    $capture_id = '';
+    $capture_status = '';
+    if ( is_array( $capture ) ) {
+        $units = $capture['purchase_units'] ?? [];
+        if ( ! empty( $units[0]['payments']['captures'] ) ) {
+            $cap0           = $units[0]['payments']['captures'][0];
+            $capture_id     = $cap0['id'] ?? '';
+            $capture_status = strtoupper( $cap0['status'] ?? '' );
+        }
+        // Order-level status as fallback
+        if ( ! $capture_status ) {
+            $capture_status = strtoupper( $capture['status'] ?? '' );
+        }
+    }
+
+    if ( $capture_status !== 'COMPLETED' ) {
+        $wpdb->update( $wpdb->prefix . 'sp_donations', [ 'status' => 'failed' ], [ 'id' => $donation->id ] );
+        wp_send_json_error( [ 'message' => __( 'PayPal could not finalize the payment.', 'societypress' ) ] );
+    }
+
+    $wpdb->update( $wpdb->prefix . 'sp_donations', [
+        'status'            => 'paid',
+        'paypal_capture_id' => $capture_id,
+    ], [ 'id' => $donation->id ] );
+
+    sp_donation_send_receipt( (int) $donation->id );
+
+    wp_send_json_success( [
+        'redirect_url' => add_query_arg( [
+            'sp_donate_msg' => 'success',
+            'sp_donation'   => $donation->id,
+        ], wp_get_referer() ?: home_url() ),
+    ] );
+}
+
+
+// ============================================================================
+// MIGRATION: Add shipping_fee column to library_items + store_products,
+//            and shipping_total to orders, for existing installs.
+//
+// WHY: Per-item shipping was added so societies can charge per-copy postage
+//      on books and merchandise (upstream-society and ENS societies typically charge
+//      $5–$10/item shipping on their publications). dbDelta sometimes fails
+//      to add columns to existing tables so we do explicit ALTERs here.
+// ============================================================================
+
+add_action( 'admin_init', function () {
+    global $wpdb;
+
+    $migrations = [
+        'sp_library_items'  => [
+            'shipping_fee' => "ALTER TABLE {$wpdb->prefix}sp_library_items ADD COLUMN shipping_fee DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER item_value",
+        ],
+        'sp_store_products' => [
+            'shipping_fee' => "ALTER TABLE {$wpdb->prefix}sp_store_products ADD COLUMN shipping_fee DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER price",
+        ],
+        'sp_orders'         => [
+            'shipping_total' => "ALTER TABLE {$wpdb->prefix}sp_orders ADD COLUMN shipping_total DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER subtotal",
+        ],
+    ];
+
+    foreach ( $migrations as $suffix => $cols ) {
+        $table = $wpdb->prefix . $suffix;
+        if ( $wpdb->get_var( "SHOW TABLES LIKE '{$table}'" ) !== $table ) continue;
+        foreach ( $cols as $col => $sql ) {
+            $exists = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM {$table} LIKE %s", $col ) );
+            if ( empty( $exists ) ) {
+                $wpdb->query( $sql );
+            }
+        }
+    }
+} );
+
+
+// ============================================================================
+// LINEAGE PROGRAMS — Stripe payment-return handler
+//
+// WHY: When a paid Lineage program submission completes Stripe Checkout,
+//      Stripe redirects back to the apply page with sp_lineage_msg=paid
+//      and the session id. We verify the session server-side and flip
+//      payment_status to paid so admins see the application is actually
+//      funded and ready to review.
+// ============================================================================
+
+add_action( 'template_redirect', function () {
+    $app_id     = (int) ( $_GET['sp_lineage_app']  ?? 0 );
+    $msg        = sanitize_text_field( $_GET['sp_lineage_msg']  ?? '' );
+    $session_id = sanitize_text_field( $_GET['sp_lineage_sess'] ?? '' );
+    if ( ! $app_id || $msg !== 'paid' || empty( $session_id ) ) return;
+
+    global $wpdb;
+    $apps_t = $wpdb->prefix . 'sp_lineage_applications';
+    $app = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$apps_t} WHERE id = %d",
+        $app_id
+    ) );
+    if ( ! $app ) return;
+    if ( $app->payment_status === 'paid' ) return; // idempotent
+
+    $settings   = get_option( 'societypress_settings', [] );
+    $secret_key = function_exists( 'sp_stripe_get_secret_key' ) ? sp_stripe_get_secret_key( $settings ) : '';
+    if ( empty( $secret_key ) ) return;
+
+    $response = wp_remote_get( 'https://api.stripe.com/v1/checkout/sessions/' . $session_id, [
+        'timeout' => 15,
+        'headers' => [ 'Authorization' => 'Bearer ' . $secret_key ],
+    ] );
+    if ( is_wp_error( $response ) ) return;
+    $session = json_decode( wp_remote_retrieve_body( $response ), true );
+    if ( empty( $session ) ) return;
+
+    // Confirm the session matches this application
+    $meta_app_id = (int) ( $session['metadata']['lineage_application_id'] ?? 0 );
+    if ( $meta_app_id !== $app_id ) return;
+    if ( ( $session['payment_status'] ?? '' ) !== 'paid' ) return;
+
+    $wpdb->update( $apps_t, [
+        'payment_status' => 'paid',
+        'paid_at'        => current_time( 'mysql' ),
+    ], [ 'id' => $app_id ] );
+
+    // Notify staff that payment cleared (in case the original submit notification
+    // arrived before payment did)
+    $admin_email = $settings['admin_email'] ?? get_bloginfo( 'admin_email' );
+    if ( $admin_email ) {
+        $org   = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+        $review_url = admin_url( 'admin.php?page=sp-lineage-application-edit&id=' . $app_id );
+        wp_mail(
+            $admin_email,
+            sprintf( __( '[%s] Lineage application — fee paid', 'societypress' ), $org ),
+            sprintf(
+                __( "Application fee for application #%1\$d cleared.\n\nReview:\n%2\$s", 'societypress' ),
+                $app_id, $review_url
+            )
+        );
+    }
+} );
+
+
+// ============================================================================
+// LINEAGE PROGRAMS — GDPR EXPORTER + ERASER
+//
+// WHY: WordPress's privacy tools let users request a copy of personal data
+//      held about them, and request erasure. Lineage applications include
+//      personal narrative, contact info via the user record, and the
+//      applicant's name on the public roster — all of which fall under
+//      personal-data scope. We mirror the existing exporter/eraser pattern
+//      used for members, registrations, donations, etc.
+//
+//      Erasure pseudonymizes rather than deletes: ancestor records and
+//      certificate numbers are organizational records (the society granted
+//      a recognition), so we keep the row but scrub the applicant link.
+// ============================================================================
+
+add_filter( 'wp_privacy_personal_data_exporters', function ( $exporters ) {
+    $exporters['societypress-lineage'] = [
+        'exporter_friendly_name' => 'SocietyPress Lineage Applications',
+        'callback'               => 'sp_privacy_export_lineage_data',
+    ];
+    return $exporters;
+} );
+
+add_filter( 'wp_privacy_personal_data_erasers', function ( $erasers ) {
+    $erasers['societypress-lineage'] = [
+        'eraser_friendly_name' => 'SocietyPress Lineage Applications',
+        'callback'             => 'sp_privacy_erase_lineage_data',
+    ];
+    return $erasers;
+} );
+
+
+function sp_privacy_export_lineage_data( string $email_address, int $page = 1 ): array {
+    global $wpdb;
+    $export_items = [];
+
+    $user = get_user_by( 'email', $email_address );
+    if ( ! $user ) {
+        return [ 'data' => $export_items, 'done' => true ];
+    }
+
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT a.*, p.name AS program_name
+         FROM {$wpdb->prefix}sp_lineage_applications a
+         JOIN {$wpdb->prefix}sp_lineage_programs p ON p.id = a.program_id
+         WHERE a.user_id = %d",
+        $user->ID
+    ) );
+
+    $none = __( '(none)', 'societypress' );
+    foreach ( $rows as $r ) {
+        $data = [
+            [ 'name' => __( 'Program', 'societypress' ),                 'value' => $r->program_name ],
+            [ 'name' => __( 'Application Status', 'societypress' ),      'value' => $r->status ],
+            [ 'name' => __( 'Submitted', 'societypress' ),               'value' => $r->submitted_at ?: $none ],
+            [ 'name' => __( 'Decided', 'societypress' ),                 'value' => $r->decided_at ?: $none ],
+            [ 'name' => __( 'Certificate Number', 'societypress' ),      'value' => $r->certificate_number ?: $none ],
+            [ 'name' => __( 'Relationship to Ancestor', 'societypress' ),'value' => $r->relationship ?: $none ],
+            [ 'name' => __( 'Ancestor Name', 'societypress' ),           'value' => trim( $r->ancestor_first_name . ' ' . $r->ancestor_middle_name . ' ' . $r->ancestor_last_name ) ?: $none ],
+            [ 'name' => __( 'Ancestor Maiden Name', 'societypress' ),    'value' => $r->ancestor_maiden_name ?: $none ],
+            [ 'name' => __( 'Ancestor Birth', 'societypress' ),          'value' => trim( $r->ancestor_birth_date . ' ' . $r->ancestor_birth_place ) ?: $none ],
+            [ 'name' => __( 'Ancestor Death', 'societypress' ),          'value' => trim( $r->ancestor_death_date . ' ' . $r->ancestor_death_place ) ?: $none ],
+            [ 'name' => __( 'Arrival Year', 'societypress' ),            'value' => $r->arrival_year ?: $none ],
+            [ 'name' => __( 'Arrival Evidence', 'societypress' ),        'value' => $r->arrival_evidence ?: $none ],
+            [ 'name' => __( 'Narrative', 'societypress' ),               'value' => $r->narrative ?: $none ],
+            [ 'name' => __( 'Sources', 'societypress' ),                 'value' => $r->sources ?: $none ],
+            [ 'name' => __( 'Public Listing Opt-In', 'societypress' ),   'value' => $r->public_listing ? __( 'Yes', 'societypress' ) : __( 'No', 'societypress' ) ],
+        ];
+        $export_items[] = [
+            'group_id'    => 'sp-lineage',
+            'group_label' => __( 'Lineage Application', 'societypress' ),
+            'item_id'     => 'sp-lineage-' . $r->id,
+            'data'        => $data,
+        ];
+    }
+
+    return [ 'data' => $export_items, 'done' => true ];
+}
+
+
+function sp_privacy_erase_lineage_data( string $email_address, int $page = 1 ): array {
+    global $wpdb;
+    $items_removed  = 0;
+    $items_retained = 0;
+
+    $user = get_user_by( 'email', $email_address );
+    if ( ! $user ) {
+        return [
+            'items_removed'  => 0,
+            'items_retained' => 0,
+            'messages'       => [],
+            'done'           => true,
+        ];
+    }
+
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT id FROM {$wpdb->prefix}sp_lineage_applications WHERE user_id = %d",
+        $user->ID
+    ) );
+
+    foreach ( $rows as $r ) {
+        $wpdb->update(
+            $wpdb->prefix . 'sp_lineage_applications',
+            [
+                'user_id'         => null,
+                'narrative'       => '',
+                'sources'         => '',
+                'arrival_evidence'=> '',
+                'public_listing'  => 0,
+            ],
+            [ 'id' => $r->id ]
+        );
+        $items_removed++;
+    }
+    if ( $items_removed > 0 ) $items_retained = $items_removed;
+
+    return [
+        'items_removed'  => $items_removed,
+        'items_retained' => $items_retained,
+        'messages'       => $items_removed
+            ? [ sprintf(
+                _n(
+                    '%d lineage application pseudonymized. Personal narrative and applicant link removed; ancestor record, program, and certificate number retained as organizational records.',
+                    '%d lineage applications pseudonymized. Personal narrative and applicant link removed; ancestor record, program, and certificate number retained as organizational records.',
+                    $items_removed,
+                    'societypress'
+                ),
+                $items_removed
+            ) ]
+            : [],
+        'done'           => true,
+    ];
+}
+
+
+// ============================================================================
+// LINEAGE PROGRAMS — Page-builder widget wrappers
+//
+// WHY: The lineage shortcodes are usable on any page, but page-builder users
+//      expect to drag a "Lineage Roster" widget into a column rather than
+//      typing a shortcode. These wrappers register the three lineage
+//      shortcodes as builder widgets with simple field configuration.
+// ============================================================================
+
+add_filter( 'sp_builder_widget_types', function ( array $types ): array {
+    $types['lineage_roster'] = [
+        'label'       => __( 'Lineage Roster', 'societypress' ),
+        'description' => __( 'Public list of approved lineage-program members (e.g., First Families). Authored under SocietyPress → Lineage Programs.', 'societypress' ),
+        'fields'      => [
+            'program' => [
+                'label'   => __( 'Program slug (blank = all)', 'societypress' ),
+                'type'    => 'text',
+                'default' => '',
+            ],
+            'show_dates' => [
+                'label'   => __( 'Show ancestor dates', 'societypress' ),
+                'type'    => 'checkbox',
+                'default' => true,
+            ],
+            'show_certificate' => [
+                'label'   => __( 'Show certificate number', 'societypress' ),
+                'type'    => 'checkbox',
+                'default' => false,
+            ],
+        ],
+    ];
+    $types['lineage_apply'] = [
+        'label'       => __( 'Lineage Application Form', 'societypress' ),
+        'description' => __( 'Member-facing form to apply for a lineage program.', 'societypress' ),
+        'fields'      => [
+            'show_dedication' => [
+                'label'   => __( 'Show "in honor/memory of" field', 'societypress' ),
+                'type'    => 'checkbox',
+                'default' => true,
+            ],
+        ],
+    ];
+    $types['lineage_my_applications'] = [
+        'label'       => __( 'My Lineage Applications', 'societypress' ),
+        'description' => __( 'Logged-in member\'s list of their own lineage applications with status and edit/withdraw actions.', 'societypress' ),
+        'fields'      => [
+            'apply_url' => [
+                'label'   => __( 'Apply page URL (for Edit links)', 'societypress' ),
+                'type'    => 'text',
+                'default' => '',
+            ],
+        ],
+    ];
+    return $types;
+} );
+
+
+function sp_render_builder_widget_lineage_roster( array $s ): void {
+    $atts = [
+        'program'          => $s['program'] ?? '',
+        'show_dates'       => ! empty( $s['show_dates'] ) ? '1' : '0',
+        'show_certificate' => ! empty( $s['show_certificate'] ) ? '1' : '0',
+    ];
+    echo do_shortcode( '[sp_lineage_roster ' . sp_builder_atts_to_string( $atts ) . ']' );
+}
+
+function sp_render_builder_widget_lineage_apply( array $s ): void {
+    $atts = [
+        'show_dedication' => ! empty( $s['show_dedication'] ) ? '1' : '0',
+    ];
+    echo do_shortcode( '[sp_lineage_apply ' . sp_builder_atts_to_string( $atts ) . ']' );
+}
+
+function sp_render_builder_widget_lineage_my_applications( array $s ): void {
+    $atts = [];
+    if ( ! empty( $s['apply_url'] ) ) $atts['apply_url'] = $s['apply_url'];
+    echo do_shortcode( '[sp_lineage_my_applications ' . sp_builder_atts_to_string( $atts ) . ']' );
+}
+
+// Helper used by the wrappers above to serialize widget settings into a shortcode atts string
+if ( ! function_exists( 'sp_builder_atts_to_string' ) ) {
+    function sp_builder_atts_to_string( array $atts ): string {
+        $out = [];
+        foreach ( $atts as $k => $v ) {
+            $v = (string) $v;
+            $out[] = $k . '="' . esc_attr( $v ) . '"';
+        }
+        return implode( ' ', $out );
+    }
+}
+
+
+// ============================================================================
+// LINEAGE PROGRAMS — Printable certificate page
+//
+// WHY: Approved members want a tangible recognition. Rather than bundle a
+//      PDF library and a 600-page TCPDF font directory, we render a
+//      print-optimized HTML page on a dedicated URL. Modern browsers all
+//      offer "Save as PDF" via the print dialog. Public URL via a query
+//      arg so it works on any page; the certificate page itself is
+//      self-contained (no theme chrome) so the print output is clean.
+//
+//      Access: anyone who has the certificate number can view the page.
+//      The cert number is non-guessable enough (PROGRAM-YEAR-NNNN) that
+//      a stable public URL is acceptable — it's no more sensitive than
+//      a name in a printed yearbook.
+// ============================================================================
+
+add_action( 'init', function () {
+    if ( empty( $_GET['sp_certificate'] ) ) return;
+
+    $cert = sanitize_text_field( wp_unslash( $_GET['sp_certificate'] ) );
+    if ( ! $cert ) return;
+
+    global $wpdb;
+    $app = $wpdb->get_row( $wpdb->prepare(
+        "SELECT a.*, p.name AS program_name, p.geographic_scope, p.cutoff_year, p.badge_color
+         FROM {$wpdb->prefix}sp_lineage_applications a
+         JOIN {$wpdb->prefix}sp_lineage_programs p ON p.id = a.program_id
+         WHERE a.certificate_number = %s AND a.status = 'approved'",
+        $cert
+    ) );
+
+    if ( ! $app ) {
+        status_header( 404 );
+        echo '<!DOCTYPE html><html><body><p style="font:20px sans-serif; padding:60px; text-align:center;">Certificate not found.</p></body></html>';
+        exit;
+    }
+
+    $settings = get_option( 'societypress_settings', [] );
+    $org_name = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+    $applicant = $app->user_id ? get_user_by( 'id', $app->user_id ) : null;
+    $applicant_name = $applicant ? $applicant->display_name : __( 'Member', 'societypress' );
+    $ancestor_name = trim( $app->ancestor_first_name . ' ' . $app->ancestor_middle_name . ' ' . $app->ancestor_last_name );
+    if ( $app->ancestor_maiden_name ) {
+        $ancestor_name .= ' (' . __( 'née', 'societypress' ) . ' ' . $app->ancestor_maiden_name . ')';
+    }
+    $decided = $app->decided_at ? mysql2date( 'F j, Y', $app->decided_at ) : '';
+    $color = $app->badge_color ?: '#0d1f3c';
+
+    nocache_headers();
+    header( 'Content-Type: text/html; charset=UTF-8' );
+
+    ?><!DOCTYPE html>
+<html lang="<?php echo esc_attr( get_locale() ); ?>">
+<head>
+<meta charset="UTF-8">
+<title><?php echo esc_html( sprintf( __( '%1$s — Certificate %2$s', 'societypress' ), $app->program_name, $app->certificate_number ) ); ?></title>
+<style>
+    @page { size: letter landscape; margin: 0.5in; }
+    * { box-sizing: border-box; }
+    body {
+        font-family: 'Garamond', 'Hoefler Text', Georgia, serif;
+        background: #f4f1ea;
+        margin: 0;
+        padding: 30px;
+        color: #1a1a1a;
+    }
+    .sp-cert-wrap {
+        max-width: 1100px;
+        margin: 0 auto;
+        background: #fff;
+        border: 12px solid <?php echo esc_attr( $color ); ?>;
+        padding: 60px 80px;
+        position: relative;
+        min-height: 700px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    }
+    .sp-cert-wrap::before, .sp-cert-wrap::after {
+        content: '';
+        position: absolute;
+        border: 2px solid <?php echo esc_attr( $color ); ?>;
+        opacity: 0.3;
+    }
+    .sp-cert-wrap::before { inset: 16px; }
+    .sp-cert-wrap::after  { inset: 28px; }
+    .sp-cert-org {
+        text-align: center;
+        font-size: 18px;
+        letter-spacing: 0.3em;
+        text-transform: uppercase;
+        color: <?php echo esc_attr( $color ); ?>;
+        margin-bottom: 12px;
+        font-weight: 700;
+        position: relative;
+        z-index: 1;
+    }
+    .sp-cert-program {
+        text-align: center;
+        font-size: 36px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        margin: 8px 0 30px;
+        color: #1a1a1a;
+        position: relative;
+        z-index: 1;
+    }
+    .sp-cert-citation {
+        text-align: center;
+        font-size: 18px;
+        line-height: 1.7;
+        margin: 16px 0;
+        position: relative;
+        z-index: 1;
+    }
+    .sp-cert-applicant {
+        text-align: center;
+        font-size: 36px;
+        font-weight: 700;
+        font-style: italic;
+        margin: 18px 0 6px;
+        color: <?php echo esc_attr( $color ); ?>;
+        position: relative;
+        z-index: 1;
+    }
+    .sp-cert-divider {
+        width: 200px;
+        height: 1px;
+        background: <?php echo esc_attr( $color ); ?>;
+        margin: 14px auto;
+        opacity: 0.6;
+        position: relative;
+        z-index: 1;
+    }
+    .sp-cert-ancestor {
+        text-align: center;
+        font-size: 24px;
+        font-weight: 600;
+        margin: 6px 0;
+        position: relative;
+        z-index: 1;
+    }
+    .sp-cert-ancestor-meta {
+        text-align: center;
+        font-size: 14px;
+        color: #666;
+        margin-bottom: 24px;
+        position: relative;
+        z-index: 1;
+    }
+    .sp-cert-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        font-size: 12px;
+        color: #444;
+        margin-top: 30px;
+        padding-top: 20px;
+        border-top: 1px solid #ddd;
+        position: relative;
+        z-index: 1;
+    }
+    .sp-cert-footer .label { display: block; text-transform: uppercase; letter-spacing: 0.1em; color: #888; margin-bottom: 4px; font-size: 10px; }
+    .sp-cert-footer .value { font-weight: 600; font-size: 13px; }
+    .sp-cert-print-btn {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        background: <?php echo esc_attr( $color ); ?>;
+        color: #fff;
+        padding: 10px 18px;
+        border: none;
+        border-radius: 4px;
+        font: 14px sans-serif;
+        cursor: pointer;
+        z-index: 100;
+    }
+    @media print {
+        body { background: #fff; padding: 0; }
+        .sp-cert-wrap { box-shadow: none; }
+        .sp-cert-print-btn { display: none; }
+    }
+</style>
+</head>
+<body>
+<button class="sp-cert-print-btn" onclick="window.print()"><?php esc_html_e( 'Print / Save as PDF', 'societypress' ); ?></button>
+<div class="sp-cert-wrap">
+    <div>
+        <div class="sp-cert-org"><?php echo esc_html( $org_name ); ?></div>
+        <div class="sp-cert-program"><?php echo esc_html( $app->program_name ); ?></div>
+
+        <div class="sp-cert-citation"><?php esc_html_e( 'This certifies that', 'societypress' ); ?></div>
+        <div class="sp-cert-applicant"><?php echo esc_html( $applicant_name ); ?></div>
+        <div class="sp-cert-divider"></div>
+
+        <div class="sp-cert-citation">
+            <?php esc_html_e( 'has documented descent from', 'societypress' ); ?>
+        </div>
+
+        <div class="sp-cert-ancestor"><?php echo esc_html( $ancestor_name ?: __( '(unnamed ancestor)', 'societypress' ) ); ?></div>
+        <div class="sp-cert-ancestor-meta">
+            <?php
+            $bits = [];
+            if ( $app->ancestor_birth_date ) $bits[] = esc_html__( 'b. ', 'societypress' ) . esc_html( $app->ancestor_birth_date );
+            if ( $app->ancestor_death_date ) $bits[] = esc_html__( 'd. ', 'societypress' ) . esc_html( $app->ancestor_death_date );
+            echo wp_kses( implode( ' &nbsp;·&nbsp; ', $bits ), [] );
+            if ( $app->geographic_scope ) {
+                echo $bits ? '<br>' : '';
+                echo esc_html( $app->geographic_scope );
+                if ( $app->cutoff_year && $app->arrival_year && $app->arrival_year <= $app->cutoff_year ) {
+                    echo ' &nbsp;·&nbsp; ' . esc_html( sprintf( __( 'in residence by %d', 'societypress' ), $app->arrival_year ) );
+                }
+            }
+            ?>
+        </div>
+
+        <?php if ( $app->relationship ) : ?>
+            <div class="sp-cert-citation" style="font-size:15px; color:#666;">
+                <?php printf( esc_html__( 'as %s', 'societypress' ), esc_html( $app->relationship ) ); ?>
+            </div>
+        <?php endif; ?>
+    </div>
+
+    <div class="sp-cert-footer">
+        <div>
+            <span class="label"><?php esc_html_e( 'Certificate #', 'societypress' ); ?></span>
+            <span class="value"><?php echo esc_html( $app->certificate_number ); ?></span>
+        </div>
+        <div style="text-align:center;">
+            <span class="label"><?php esc_html_e( 'Awarded', 'societypress' ); ?></span>
+            <span class="value"><?php echo esc_html( $decided ); ?></span>
+        </div>
+        <div style="text-align:right;">
+            <span class="label"><?php esc_html_e( 'Issued by', 'societypress' ); ?></span>
+            <span class="value"><?php echo esc_html( $org_name ); ?></span>
+        </div>
+    </div>
+</div>
+</body>
+</html><?php
+    exit;
+}, 1 ); // priority 1 — short-circuit before WP serves a 404
+
+
+/**
+ * Surface a "View Certificate" link on the My Lineage Applications view by
+ * post-processing the rendered output: we look for <code>CERT-NUMBER</code>
+ * and append a link to the certificate page next to it. Avoids touching
+ * the original shortcode.
+ */
+add_filter( 'do_shortcode_tag', function ( $output, $tag ) {
+    if ( $tag !== 'sp_lineage_my_applications' ) return $output;
+
+    // Match <code>CERT-NUMBER</code> and prepend a "View Certificate" link
+    return preg_replace_callback(
+        '#<code>([A-Z0-9\-]+)</code>#',
+        function ( $m ) {
+            $cert = $m[1];
+            $url  = add_query_arg( 'sp_certificate', $cert, home_url( '/' ) );
+            return sprintf(
+                '<code>%1$s</code> &nbsp; <a href="%2$s" target="_blank" style="color:#0d1f3c; font-size:12px;">%3$s →</a>',
+                esc_html( $cert ),
+                esc_url( $url ),
+                esc_html__( 'View / Print Certificate', 'societypress' )
+            );
+        },
+        $output
+    );
+}, 11, 2 );

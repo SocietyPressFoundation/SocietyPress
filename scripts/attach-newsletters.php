@@ -18,18 +18,18 @@ $base    = '/home/charle24/domains/getsocietypress.org/public_html/demo/sample-d
 
 // Map season/year to filenames — must match generate-newsletters.py output
 $file_map = [
-    'Winter 2026' => [ 'cover' => 'hvq-2026-winter-cover.jpg', 'pdf' => 'hvq-2026-winter.pdf' ],
-    'Fall 2025'   => [ 'cover' => 'hvq-2025-fall-cover.jpg',   'pdf' => 'hvq-2025-fall.pdf' ],
-    'Summer 2025' => [ 'cover' => 'hvq-2025-summer-cover.jpg', 'pdf' => 'hvq-2025-summer.pdf' ],
-    'Spring 2025' => [ 'cover' => 'hvq-2025-spring-cover.jpg', 'pdf' => 'hvq-2025-spring.pdf' ],
-    'Winter 2025' => [ 'cover' => 'hvq-2025-winter-cover.jpg', 'pdf' => 'hvq-2025-winter.pdf' ],
-    'Fall 2024'   => [ 'cover' => 'hvq-2024-fall-cover.jpg',   'pdf' => 'hvq-2024-fall.pdf' ],
-    'Summer 2024' => [ 'cover' => 'hvq-2024-summer-cover.jpg', 'pdf' => 'hvq-2024-summer.pdf' ],
-    'Spring 2024' => [ 'cover' => 'hvq-2024-spring-cover.jpg', 'pdf' => 'hvq-2024-spring.pdf' ],
-    'Winter 2024' => [ 'cover' => 'hvq-2024-winter-cover.jpg', 'pdf' => 'hvq-2024-winter.pdf' ],
-    'Fall 2023'   => [ 'cover' => 'hvq-2023-fall-cover.jpg',   'pdf' => 'hvq-2023-fall.pdf' ],
-    'Summer 2023' => [ 'cover' => 'hvq-2023-summer-cover.jpg', 'pdf' => 'hvq-2023-summer.pdf' ],
-    'Spring 2023' => [ 'cover' => 'hvq-2023-spring-cover.jpg', 'pdf' => 'hvq-2023-spring.pdf' ],
+    'Winter 2026' => [ 'cover' => 'kc-2026-winter-cover.jpg', 'pdf' => 'kc-2026-winter.pdf' ],
+    'Fall 2025'   => [ 'cover' => 'kc-2025-fall-cover.jpg',   'pdf' => 'kc-2025-fall.pdf' ],
+    'Summer 2025' => [ 'cover' => 'kc-2025-summer-cover.jpg', 'pdf' => 'kc-2025-summer.pdf' ],
+    'Spring 2025' => [ 'cover' => 'kc-2025-spring-cover.jpg', 'pdf' => 'kc-2025-spring.pdf' ],
+    'Winter 2025' => [ 'cover' => 'kc-2025-winter-cover.jpg', 'pdf' => 'kc-2025-winter.pdf' ],
+    'Fall 2024'   => [ 'cover' => 'kc-2024-fall-cover.jpg',   'pdf' => 'kc-2024-fall.pdf' ],
+    'Summer 2024' => [ 'cover' => 'kc-2024-summer-cover.jpg', 'pdf' => 'kc-2024-summer.pdf' ],
+    'Spring 2024' => [ 'cover' => 'kc-2024-spring-cover.jpg', 'pdf' => 'kc-2024-spring.pdf' ],
+    'Winter 2024' => [ 'cover' => 'kc-2024-winter-cover.jpg', 'pdf' => 'kc-2024-winter.pdf' ],
+    'Fall 2023'   => [ 'cover' => 'kc-2023-fall-cover.jpg',   'pdf' => 'kc-2023-fall.pdf' ],
+    'Summer 2023' => [ 'cover' => 'kc-2023-summer-cover.jpg', 'pdf' => 'kc-2023-summer.pdf' ],
+    'Spring 2023' => [ 'cover' => 'kc-2023-spring-cover.jpg', 'pdf' => 'kc-2023-spring.pdf' ],
 ];
 
 // Need this for wp_insert_attachment / media_handle_sideload
@@ -44,7 +44,7 @@ if ( empty( $newsletters ) ) {
 
 $attached = 0;
 foreach ( $newsletters as $nl ) {
-    // Extract "Season Year" from title like "Heritage Valley Quarterly — Winter 2026"
+    // Extract "Season Year" from title like "Kindred Chronicle — Winter 2026"
     if ( preg_match( '/—\s*(Winter|Spring|Summer|Fall)\s+(\d{4})/', $nl->title, $m ) ) {
         $key = $m[1] . ' ' . $m[2];
     } else {

@@ -12,6 +12,10 @@ Entries describe user-visible changes only. For the underlying commits, see
 
 ## [Unreleased]
 
+---
+
+## [1.0.47] — 2026-04-27
+
 ### Fixed
 - **Event detail page no longer logs an undefined-variable warning** for
   `$show_pay_btn` when a guest registration form is rendered for an event

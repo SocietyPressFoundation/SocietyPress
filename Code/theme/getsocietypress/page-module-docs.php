@@ -18,11 +18,8 @@
 
 defined( 'ABSPATH' ) || exit;
 
-// Required for the Markdown renderer; the ENS guide template defines it
-// but we may not have been loaded after that template. Pull it in.
-if ( ! function_exists( 'gsp_render_simple_markdown' ) ) {
-    require_once get_template_directory() . '/page-ens-migration-guide.php';
-}
+// gsp_render_simple_markdown() and gsp_md_inline() are defined in
+// functions.php (autoloaded by WordPress on every theme request).
 
 $docs_dir = ABSPATH . '../sp-docs-source/modules/';
 $requested = isset( $_GET['guide'] ) ? sanitize_file_name( $_GET['guide'] ) : '';

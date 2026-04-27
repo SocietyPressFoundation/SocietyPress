@@ -980,3 +980,139 @@ add_action( 'wp_footer', function () {
     </button>
     <?php
 } );
+
+
+/* ==========================================================================
+   MARKDOWN RENDERER — shared between page-ens-migration-guide.php and
+   page-module-docs.php. Lightweight, handles only the subset our docs
+   actually use; we're not shipping a 500KB library to render a few files.
+   ========================================================================== */
+
+if ( ! function_exists( 'gsp_render_simple_markdown' ) ) {
+    /**
+     * Render a Markdown string to HTML.
+     *
+     * Supported: ATX headers, horizontal rule, ordered/unordered lists,
+     * blockquotes, fenced code blocks, paragraphs. Inline: bold, italic,
+     * code, links, bare URLs in angle brackets.
+     *
+     * @param string $md             The Markdown source.
+     * @param int    $heading_offset Shift heading levels down by this many.
+     *                               Use 1 if the page hero already has an
+     *                               H1 and the markdown's "# Title" should
+     *                               become H2.
+     */
+    function gsp_render_simple_markdown( $md, $heading_offset = 0 ) {
+        $md    = str_replace( "\r\n", "\n", $md );
+        $lines = explode( "\n", $md );
+
+        $out             = array();
+        $in_list         = null;
+        $in_blockquote   = false;
+        $in_code         = false;
+        $code_buffer     = array();
+        $para_buffer     = array();
+
+        $flush_para = function () use ( &$para_buffer, &$out ) {
+            if ( empty( $para_buffer ) ) return;
+            $out[] = '<p>' . gsp_md_inline( implode( ' ', $para_buffer ) ) . '</p>';
+            $para_buffer = array();
+        };
+        $close_list = function () use ( &$in_list, &$out ) {
+            if ( $in_list ) { $out[] = '</' . $in_list . '>'; $in_list = null; }
+        };
+        $close_blockquote = function () use ( &$in_blockquote, &$out ) {
+            if ( $in_blockquote ) { $out[] = '</blockquote>'; $in_blockquote = false; }
+        };
+
+        foreach ( $lines as $raw ) {
+            $line = rtrim( $raw );
+
+            if ( preg_match( '/^```/', $line ) ) {
+                if ( $in_code ) {
+                    $flush_para(); $close_list(); $close_blockquote();
+                    $out[] = '<pre><code>' . esc_html( implode( "\n", $code_buffer ) ) . '</code></pre>';
+                    $code_buffer = array();
+                    $in_code = false;
+                } else {
+                    $flush_para(); $close_list(); $close_blockquote();
+                    $in_code = true;
+                }
+                continue;
+            }
+            if ( $in_code ) { $code_buffer[] = $raw; continue; }
+
+            if ( '' === trim( $line ) ) { $flush_para(); $close_list(); $close_blockquote(); continue; }
+
+            if ( preg_match( '/^-{3,}\s*$/', $line ) ) {
+                $flush_para(); $close_list(); $close_blockquote();
+                $out[] = '<hr>';
+                continue;
+            }
+
+            if ( preg_match( '/^(#{1,6})\s+(.+)$/', $line, $m ) ) {
+                $flush_para(); $close_list(); $close_blockquote();
+                $level = min( 6, strlen( $m[1] ) + $heading_offset );
+                $out[] = '<h' . $level . '>' . gsp_md_inline( $m[2] ) . '</h' . $level . '>';
+                continue;
+            }
+
+            if ( preg_match( '/^>\s?(.*)$/', $line, $m ) ) {
+                $flush_para(); $close_list();
+                if ( ! $in_blockquote ) { $out[] = '<blockquote>'; $in_blockquote = true; }
+                $out[] = '<p>' . gsp_md_inline( $m[1] ) . '</p>';
+                continue;
+            }
+
+            if ( preg_match( '/^\d+\.\s+(.+)$/', $line, $m ) ) {
+                $flush_para(); $close_blockquote();
+                if ( 'ol' !== $in_list ) { $close_list(); $out[] = '<ol>'; $in_list = 'ol'; }
+                $out[] = '<li>' . gsp_md_inline( $m[1] ) . '</li>';
+                continue;
+            }
+
+            if ( preg_match( '/^-\s+(.+)$/', $line, $m ) ) {
+                $flush_para(); $close_blockquote();
+                if ( 'ul' !== $in_list ) { $close_list(); $out[] = '<ul>'; $in_list = 'ul'; }
+                $out[] = '<li>' . gsp_md_inline( $m[1] ) . '</li>';
+                continue;
+            }
+
+            $para_buffer[] = $line;
+        }
+
+        $flush_para(); $close_list(); $close_blockquote();
+        if ( $in_code ) $out[] = '<pre><code>' . esc_html( implode( "\n", $code_buffer ) ) . '</code></pre>';
+        return implode( "\n", $out );
+    }
+}
+
+if ( ! function_exists( 'gsp_md_inline' ) ) {
+    /**
+     * Inline markdown — bold, italic, code, links. Order matters: code
+     * before italic/bold so backtick content isn't re-parsed.
+     */
+    function gsp_md_inline( $text ) {
+        $text = esc_html( $text );
+        $text = preg_replace( '/`([^`]+)`/', '<code>$1</code>', $text );
+        $text = preg_replace( '/\*\*([^*]+)\*\*/', '<strong>$1</strong>', $text );
+        $text = preg_replace( '/(?<![*\w])\*([^*\n]+)\*(?![*\w])/', '<em>$1</em>', $text );
+        $text = preg_replace_callback(
+            '/\[([^\]]+)\]\(([^)]+)\)/',
+            function ( $m ) {
+                $url = $m[2];
+                if ( ! preg_match( '/^(https?:|mailto:|#|\/)/', $url ) ) {
+                    $url = home_url( '/' ) . ltrim( $url, '/' );
+                }
+                return '<a href="' . esc_url( $url ) . '">' . $m[1] . '</a>';
+            },
+            $text
+        );
+        $text = preg_replace_callback(
+            '/&lt;(https?:\/\/[^&]+)&gt;/',
+            function ( $m ) { return '<a href="' . esc_url( $m[1] ) . '">' . esc_html( $m[1] ) . '</a>'; },
+            $text
+        );
+        return $text;
+    }
+}

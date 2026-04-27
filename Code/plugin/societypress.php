@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.42' );
+define( 'SOCIETYPRESS_VERSION', '1.0.43' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -83921,3 +83921,401 @@ add_filter( 'do_shortcode_tag', function ( $output, $tag ) {
     // a tiny click handler. Skip for now — clarify the path with a note.
     return $output;
 }, 13, 2 );
+
+
+// ============================================================================
+// THEME PRESETS — Tier 1 of the Theme Exchange
+//
+// WHY: Societies put real care into their site's look. A preset is the
+//      portable expression of that — a JSON of the design tokens (colors,
+//      fonts, spacing, layout choices) without any code, files, or PHP.
+//      Society A exports a preset; Society B imports it and looks like a
+//      sibling. Tier 2 (themed bundles with custom CSS + assets) and
+//      Tier 3 (full child themes) layer on top of this foundation.
+//
+// Format: societypress.preset.v1 — see sp_theme_preset_token_keys() for
+// the canonical token list. The format key is the version pin; future
+// breaking changes get a new version (.v2) and we keep parsers for both.
+// ============================================================================
+
+
+/**
+ * Canonical list of design-token keys included in a preset.
+ *
+ * Keys deliberately excluded:
+ *   - design_logo_id   (site-specific media library reference)
+ *   - any URL / id that ties to a particular install
+ */
+function sp_theme_preset_token_keys(): array {
+    return [
+        'design_color_primary',
+        'design_color_primary_hover',
+        'design_color_accent',
+        'design_color_header_bg',
+        'design_color_header_text',
+        'design_color_footer_bg',
+        'design_color_footer_text',
+        'design_color_footer_link',
+        'design_font_body',
+        'design_font_heading',
+        'design_font_size',
+        'design_heading_scale',
+        'design_content_width',
+        'design_content_width_px',
+        'design_show_header_title',
+        'design_header_height',
+        'design_logo_height',
+        'design_header_padding',
+        'design_nav_font_size',
+        'design_nav_spacing',
+        'design_nav_font_weight',
+        'design_show_social_icons',
+    ];
+}
+
+
+/**
+ * Build a preset payload from the current site's design settings.
+ */
+function sp_theme_preset_build( string $name, string $description ): array {
+    $settings = get_option( 'societypress_settings', [] );
+    $org      = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+
+    $tokens = [];
+    foreach ( sp_theme_preset_token_keys() as $key ) {
+        if ( array_key_exists( $key, $settings ) ) {
+            $tokens[ $key ] = $settings[ $key ];
+        }
+    }
+
+    return [
+        'format'      => 'societypress.preset.v1',
+        'exported_at' => gmdate( 'c' ),
+        'exported_by' => $org,
+        'name'        => $name ?: ( $org . ' theme' ),
+        'description' => $description,
+        'tokens'      => $tokens,
+    ];
+}
+
+
+/**
+ * Apply a parsed preset payload to the current site's settings.
+ *
+ * Tokens are sanitized through the existing settings save validators so
+ * an untrusted preset can't slip in a malformed value. Returns true on
+ * success, WP_Error on validation failure.
+ */
+function sp_theme_preset_apply( array $payload ) {
+    if ( ( $payload['format'] ?? '' ) !== 'societypress.preset.v1' ) {
+        return new WP_Error( 'preset_format', __( 'Preset format not recognized. Looking for societypress.preset.v1.', 'societypress' ) );
+    }
+    if ( empty( $payload['tokens'] ) || ! is_array( $payload['tokens'] ) ) {
+        return new WP_Error( 'preset_empty', __( 'Preset is empty.', 'societypress' ) );
+    }
+
+    $allowed_keys = array_flip( sp_theme_preset_token_keys() );
+
+    // Sanitization rules per token key — mirrors the design-page save handler.
+    // Anything we don't recognize is ignored (defense in depth).
+    $valid_fonts          = [ 'system', 'georgia', 'palatino', 'garamond', 'merriweather', 'lora', 'roboto', 'open-sans', 'source-sans', 'nunito' ];
+    $valid_heading_fonts  = array_merge( [ 'inherit' ], $valid_fonts );
+    $valid_font_sizes     = [ 'compact', 'comfortable', 'large' ];
+    $valid_heading_scales = [ 'small', 'normal', 'large' ];
+    $valid_content_widths = [ 'narrow', 'standard', 'wide', 'custom' ];
+    $valid_nav_weights    = [ '', '300', '400', '500', '600', '700' ];
+
+    $clean = [];
+    foreach ( $payload['tokens'] as $k => $v ) {
+        if ( ! isset( $allowed_keys[ $k ] ) ) continue;
+
+        switch ( $k ) {
+            case 'design_color_primary':
+            case 'design_color_primary_hover':
+            case 'design_color_accent':
+            case 'design_color_header_bg':
+            case 'design_color_header_text':
+            case 'design_color_footer_bg':
+            case 'design_color_footer_text':
+            case 'design_color_footer_link':
+                $sanitized = sanitize_hex_color( (string) $v );
+                if ( $sanitized ) $clean[ $k ] = $sanitized;
+                break;
+            case 'design_font_body':
+                if ( in_array( $v, $valid_fonts, true ) ) $clean[ $k ] = $v;
+                break;
+            case 'design_font_heading':
+                if ( in_array( $v, $valid_heading_fonts, true ) ) $clean[ $k ] = $v;
+                break;
+            case 'design_font_size':
+                if ( in_array( $v, $valid_font_sizes, true ) ) $clean[ $k ] = $v;
+                break;
+            case 'design_heading_scale':
+                if ( in_array( $v, $valid_heading_scales, true ) ) $clean[ $k ] = $v;
+                break;
+            case 'design_content_width':
+                if ( in_array( $v, $valid_content_widths, true ) ) $clean[ $k ] = $v;
+                break;
+            case 'design_nav_font_weight':
+                if ( in_array( (string) $v, $valid_nav_weights, true ) ) $clean[ $k ] = (string) $v;
+                break;
+            case 'design_show_header_title':
+            case 'design_show_social_icons':
+                $clean[ $k ] = empty( $v ) ? 0 : 1;
+                break;
+            case 'design_header_height':
+                $clean[ $k ] = max( 0, min( 500, (int) $v ) );
+                break;
+            case 'design_content_width_px':
+                $clean[ $k ] = max( 600, min( 2000, (int) $v ) );
+                break;
+            case 'design_logo_height':
+                $clean[ $k ] = max( 0, min( 300, (int) $v ) );
+                break;
+            case 'design_header_padding':
+                $clean[ $k ] = max( 0, min( 100, (int) $v ) );
+                break;
+            case 'design_nav_font_size':
+                $clean[ $k ] = max( 0, min( 72, (int) $v ) );
+                break;
+            case 'design_nav_spacing':
+                $clean[ $k ] = max( 0, min( 40, (int) $v ) );
+                break;
+        }
+    }
+
+    if ( empty( $clean ) ) {
+        return new WP_Error( 'preset_no_valid_tokens', __( 'Preset contained no valid design tokens.', 'societypress' ) );
+    }
+
+    $settings = get_option( 'societypress_settings', [] );
+    foreach ( $clean as $k => $v ) {
+        $settings[ $k ] = $v;
+    }
+    update_option( 'societypress_settings', $settings );
+
+    return true;
+}
+
+
+/**
+ * Admin menu — Theme Presets page under the SocietyPress menu.
+ */
+add_action( 'admin_menu', function () {
+    add_submenu_page(
+        'societypress',
+        __( 'Theme Presets', 'societypress' ) . ' — SocietyPress',
+        __( 'Theme Presets', 'societypress' ),
+        'manage_options',
+        'sp-theme-presets',
+        'sp_render_theme_presets_page'
+    );
+}, 25 );
+
+// Register slug in permission map (anyone with manage_options inherits)
+add_filter( 'sp_admin_capability_map', function ( array $map ): array {
+    $map['sp-theme-presets'] = 'sp_manage_settings';
+    return $map;
+} );
+
+
+/**
+ * Export handler — admin-post.php endpoint.
+ * Builds a preset payload and forces a JSON download.
+ */
+add_action( 'admin_post_sp_theme_preset_export', function () {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( __( 'Insufficient permissions.', 'societypress' ) );
+    }
+    check_admin_referer( 'sp_theme_preset_export' );
+
+    $name = sanitize_text_field( wp_unslash( $_POST['preset_name'] ?? '' ) );
+    $desc = sanitize_textarea_field( wp_unslash( $_POST['preset_description'] ?? '' ) );
+
+    $payload  = sp_theme_preset_build( $name, $desc );
+    $filename = sanitize_file_name(
+        ( $name ?: 'societypress-preset' ) . '-' . gmdate( 'Y-m-d' ) . '.json'
+    );
+
+    // Discard any prior output so the JSON is the body
+    while ( ob_get_level() ) ob_end_clean();
+
+    nocache_headers();
+    header( 'Content-Type: application/json; charset=utf-8' );
+    header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+    echo wp_json_encode( $payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
+    exit;
+} );
+
+
+/**
+ * Import handler — admin-post.php endpoint.
+ * Accepts an uploaded JSON file, validates, applies design tokens.
+ */
+add_action( 'admin_post_sp_theme_preset_import', function () {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( __( 'Insufficient permissions.', 'societypress' ) );
+    }
+    check_admin_referer( 'sp_theme_preset_import' );
+
+    $back = admin_url( 'admin.php?page=sp-theme-presets' );
+
+    if ( empty( $_FILES['preset_file']['tmp_name'] ) || ( $_FILES['preset_file']['error'] ?? UPLOAD_ERR_NO_FILE ) !== UPLOAD_ERR_OK ) {
+        wp_safe_redirect( add_query_arg( 'sp_preset_err', 'no_file', $back ) );
+        exit;
+    }
+
+    // Read directly from the upload tmp file — no need to move it into uploads/
+    $size = filesize( $_FILES['preset_file']['tmp_name'] );
+    if ( $size > 64 * 1024 ) { // 64KB cap — presets are tiny
+        wp_safe_redirect( add_query_arg( 'sp_preset_err', 'too_large', $back ) );
+        exit;
+    }
+    $raw = file_get_contents( $_FILES['preset_file']['tmp_name'] );
+    if ( ! $raw ) {
+        wp_safe_redirect( add_query_arg( 'sp_preset_err', 'unreadable', $back ) );
+        exit;
+    }
+
+    $payload = json_decode( $raw, true );
+    if ( ! is_array( $payload ) ) {
+        wp_safe_redirect( add_query_arg( 'sp_preset_err', 'bad_json', $back ) );
+        exit;
+    }
+
+    $result = sp_theme_preset_apply( $payload );
+    if ( is_wp_error( $result ) ) {
+        wp_safe_redirect( add_query_arg( [
+            'sp_preset_err'      => 'apply_failed',
+            'sp_preset_err_msg'  => urlencode( $result->get_error_message() ),
+        ], $back ) );
+        exit;
+    }
+
+    wp_safe_redirect( add_query_arg( [
+        'sp_preset_imported' => 1,
+        'sp_preset_name'     => urlencode( $payload['name'] ?? 'preset' ),
+    ], $back ) );
+    exit;
+} );
+
+
+/**
+ * The Theme Presets admin page.
+ */
+function sp_render_theme_presets_page(): void {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( __( 'Insufficient permissions.', 'societypress' ) );
+    }
+
+    $settings = get_option( 'societypress_settings', [] );
+    $org      = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+
+    $imported_name = isset( $_GET['sp_preset_imported'] ) ? sanitize_text_field( urldecode( $_GET['sp_preset_name'] ?? '' ) ) : '';
+    $err           = sanitize_text_field( $_GET['sp_preset_err'] ?? '' );
+    $err_msg       = sanitize_text_field( urldecode( $_GET['sp_preset_err_msg'] ?? '' ) );
+
+    ?>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Theme Presets', 'societypress' ); ?></h1>
+        <p class="description" style="max-width:780px;">
+            <?php esc_html_e( 'A theme preset is the portable expression of your site\'s look — colors, fonts, spacing, layout choices — packaged as a small JSON file. Export your current look to share with another society. Import a preset to instantly take on someone else\'s look (your content, members, and configuration are not touched).', 'societypress' ); ?>
+        </p>
+
+        <?php if ( $imported_name ) : ?>
+            <div class="notice notice-success is-dismissible"><p>
+                <?php printf( esc_html__( 'Preset "%s" applied. Your site\'s appearance has been updated.', 'societypress' ), esc_html( $imported_name ) ); ?>
+                <a href="<?php echo esc_url( home_url() ); ?>" target="_blank"><?php esc_html_e( 'View site →', 'societypress' ); ?></a>
+            </p></div>
+        <?php endif; ?>
+        <?php if ( $err === 'no_file' ) : ?>
+            <div class="notice notice-error is-dismissible"><p><?php esc_html_e( 'Please choose a preset file to import.', 'societypress' ); ?></p></div>
+        <?php elseif ( $err === 'too_large' ) : ?>
+            <div class="notice notice-error is-dismissible"><p><?php esc_html_e( 'Preset file is too large (over 64KB). Real presets are under 4KB; this file may not be a preset.', 'societypress' ); ?></p></div>
+        <?php elseif ( $err === 'bad_json' ) : ?>
+            <div class="notice notice-error is-dismissible"><p><?php esc_html_e( 'The file is not valid JSON. Make sure you uploaded a SocietyPress preset file (.json).', 'societypress' ); ?></p></div>
+        <?php elseif ( $err === 'apply_failed' ) : ?>
+            <div class="notice notice-error is-dismissible"><p>
+                <?php esc_html_e( 'Could not apply preset:', 'societypress' ); ?>
+                <strong><?php echo esc_html( $err_msg ); ?></strong>
+            </p></div>
+        <?php endif; ?>
+
+        <div style="display:flex; gap:30px; flex-wrap:wrap; margin-top:20px; align-items:flex-start;">
+
+            <!-- Export -->
+            <div style="flex:1 1 380px; min-width:340px;">
+                <div class="postbox">
+                    <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Export current look', 'societypress' ); ?></h2>
+                    <div class="inside">
+                        <p><?php esc_html_e( 'Download a JSON file of your current design tokens — palette, fonts, spacing, layout. Share it with another society, post it on the SocietyPress Theme Gallery (when launched), or keep it as a backup before experimenting with imports.', 'societypress' ); ?></p>
+                        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+                            <input type="hidden" name="action" value="sp_theme_preset_export">
+                            <?php wp_nonce_field( 'sp_theme_preset_export' ); ?>
+                            <table class="form-table">
+                                <tr>
+                                    <th><label for="preset_name"><?php esc_html_e( 'Name', 'societypress' ); ?></label></th>
+                                    <td><input type="text" id="preset_name" name="preset_name" class="regular-text" value="<?php echo esc_attr( $org . ' theme' ); ?>"></td>
+                                </tr>
+                                <tr>
+                                    <th><label for="preset_description"><?php esc_html_e( 'Description (optional)', 'societypress' ); ?></label></th>
+                                    <td><textarea id="preset_description" name="preset_description" rows="3" class="large-text" placeholder="<?php esc_attr_e( 'A short note for whoever imports this — e.g. "Navy + gold palette, Garamond headings, comfortable spacing for older readers."', 'societypress' ); ?>"></textarea></td>
+                                </tr>
+                            </table>
+                            <?php submit_button( __( 'Download Preset', 'societypress' ), 'primary' ); ?>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="postbox">
+                    <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( "What's in a preset", 'societypress' ); ?></h2>
+                    <div class="inside">
+                        <p style="font-size:13px; color:#555;"><?php esc_html_e( 'Presets contain only your site\'s design tokens. They do not include:', 'societypress' ); ?></p>
+                        <ul style="font-size:13px; color:#555; margin-left: 20px;">
+                            <li>📦 <?php esc_html_e( 'Your logo (site-specific media)', 'societypress' ); ?></li>
+                            <li>👥 <?php esc_html_e( 'Members, events, content, or any data', 'societypress' ); ?></li>
+                            <li>⚙️ <?php esc_html_e( 'Your organization\'s name, address, or contact info', 'societypress' ); ?></li>
+                            <li>🔐 <?php esc_html_e( 'Stripe / PayPal credentials, API keys, or any secrets', 'societypress' ); ?></li>
+                            <li>🧩 <?php esc_html_e( 'PHP code, templates, or files of any kind', 'societypress' ); ?></li>
+                        </ul>
+                        <p style="font-size:13px; color:#555;"><?php esc_html_e( 'A preset is just a small JSON file. You can open it in any text editor to see exactly what is in it before importing.', 'societypress' ); ?></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Import -->
+            <div style="flex:1 1 380px; min-width:340px;">
+                <div class="postbox">
+                    <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Import a preset', 'societypress' ); ?></h2>
+                    <div class="inside">
+                        <p><?php esc_html_e( 'Upload a SocietyPress preset (.json) you got from another society or downloaded from the Theme Gallery. Your site will instantly take on its look. Your content, members, and configuration are not touched.', 'societypress' ); ?></p>
+                        <p style="background:#fff3cd; border-left:4px solid #b45309; padding:10px 14px; border-radius:0 4px 4px 0; font-size:13px;">
+                            <strong><?php esc_html_e( 'Tip:', 'societypress' ); ?></strong>
+                            <?php esc_html_e( 'Export your current preset first as a backup. If you don\'t love the imported look, re-import your original to get back to where you were.', 'societypress' ); ?>
+                        </p>
+                        <form method="post" enctype="multipart/form-data" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+                            <input type="hidden" name="action" value="sp_theme_preset_import">
+                            <?php wp_nonce_field( 'sp_theme_preset_import' ); ?>
+                            <table class="form-table">
+                                <tr>
+                                    <th><label for="preset_file"><?php esc_html_e( 'Preset file', 'societypress' ); ?></label></th>
+                                    <td><input type="file" id="preset_file" name="preset_file" accept=".json,application/json" required></td>
+                                </tr>
+                            </table>
+                            <?php submit_button( __( 'Apply Preset', 'societypress' ), 'primary' ); ?>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="postbox">
+                    <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Theme Gallery', 'societypress' ); ?></h2>
+                    <div class="inside">
+                        <p style="color:#555;"><?php esc_html_e( 'A public Theme Gallery where societies share their presets is in the works at getsocietypress.org. Once it launches, you\'ll be able to browse looks from other societies and one-click install them here.', 'societypress' ); ?></p>
+                        <p><a href="https://getsocietypress.org/themes/" class="button" target="_blank"><?php esc_html_e( 'Open the Gallery →', 'societypress' ); ?></a></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <?php
+}

@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.39' );
+define( 'SOCIETYPRESS_VERSION', '1.0.40' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -82573,3 +82573,555 @@ add_filter( 'sp_builder_widget_types', function ( array $types ): array {
 function sp_render_builder_widget_research_request( array $s ): void {
     echo do_shortcode( '[sp_research_request]' );
 }
+
+
+// ============================================================================
+// RESEARCH SERVICES — requester loop: my-cases view, status emails,
+//                     additional-hours billing
+//
+// WHY: Without these, a requester submits a case and sits in the dark.
+//      The "my research cases" view gives them visibility on their open
+//      cases; status emails fire when something meaningful changes
+//      (assigned, in progress, more hours needed, completed); and the
+//      additional-hours flow lets a researcher request, and the
+//      requester authorize + pay for, time beyond the initial fee
+//      without leaving the system.
+// ============================================================================
+
+
+/**
+ * Send a status-change email to the requester.
+ */
+function sp_research_send_status_email( int $case_id, string $new_status ): void {
+    global $wpdb;
+    $case = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_research_cases WHERE id = %d", $case_id
+    ) );
+    if ( ! $case || ! $case->requester_email ) return;
+
+    $settings = get_option( 'societypress_settings', [] );
+    $org      = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+
+    $subjects = [
+        'open'             => sprintf( __( '[%s] Your research case is in the queue', 'societypress' ), $org ),
+        'claimed'          => sprintf( __( '[%s] A researcher has claimed your case', 'societypress' ), $org ),
+        'in_progress'      => sprintf( __( '[%s] Work has started on your research case', 'societypress' ), $org ),
+        'needs_more_hours' => sprintf( __( '[%s] Authorization needed for additional research hours', 'societypress' ), $org ),
+        'completed'        => sprintf( __( '[%s] Your research case is complete', 'societypress' ), $org ),
+        'cancelled'        => sprintf( __( '[%s] Research case cancelled', 'societypress' ), $org ),
+        'refunded'         => sprintf( __( '[%s] Research case refunded', 'societypress' ), $org ),
+    ];
+    if ( ! isset( $subjects[ $new_status ] ) ) return;
+
+    $bodies = [
+        'open'             => __( "Thanks for your payment. Your case is in the queue and a volunteer researcher will pick it up soon. We will email you when work begins.", 'societypress' ),
+        'claimed'          => __( "Good news — a volunteer has stepped forward to handle your case. They will reach out as soon as work begins.", 'societypress' ),
+        'in_progress'      => __( "Work has started on your case. We will email you when there is something to share or when we need to discuss next steps.", 'societypress' ),
+        'needs_more_hours' => __( "We made progress but the case needs more time than originally authorized. The researcher will be in touch with details and a payment link to authorize the extra hours.", 'societypress' ),
+        'completed'        => __( "Your research case is complete. Findings should be in your inbox separately. Thank you for trusting us with your family history work.", 'societypress' ),
+        'cancelled'        => __( "Your case has been cancelled. If you believe this is a mistake or have questions, please reply to this email.", 'societypress' ),
+        'refunded'         => __( "A refund has been issued for your case. Please allow 5–10 business days for it to appear on your card or bank statement.", 'societypress' ),
+    ];
+
+    $body  = sprintf( __( "Dear %s,\n\n", 'societypress' ), $case->requester_name );
+    $body .= sprintf( __( "Case: %s\n\n", 'societypress' ), $case->title );
+    $body .= $bodies[ $new_status ] . "\n\n";
+    $body .= sprintf( __( "— The %s team", 'societypress' ), $org );
+
+    wp_mail( $case->requester_email, $subjects[ $new_status ], $body );
+}
+
+/**
+ * Hook the existing case-save admin handler so any status change fires
+ * the requester email automatically.
+ */
+add_action( 'admin_init', function () {
+    if ( empty( $_POST['sp_save_research_case'] ) ) return;
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) return;
+
+    // We piggy-back on the existing case-save handler — it has already
+    // updated the row by the time other init handlers run. Detect the
+    // status change here and fire the email.
+    $id = (int) ( $_POST['case_id'] ?? 0 );
+    if ( ! $id ) return;
+
+    global $wpdb;
+    $case = $wpdb->get_row( $wpdb->prepare(
+        "SELECT status FROM {$wpdb->prefix}sp_research_cases WHERE id = %d", $id
+    ) );
+    if ( ! $case ) return;
+
+    $previous = sanitize_text_field( $_POST['_status_was'] ?? '' );
+    if ( $previous && $previous !== $case->status ) {
+        sp_research_send_status_email( $id, $case->status );
+    }
+}, 20 ); // Runs after the main save handler at default priority
+
+
+/**
+ * Inject a hidden _status_was field into the case-edit form so the
+ * post-save email handler can detect transitions. Uses the action that
+ * fires immediately before form output.
+ */
+add_action( 'admin_enqueue_scripts', function () {
+    if ( ( $_GET['page'] ?? '' ) !== 'sp-research-case-edit' ) return;
+    $id = (int) ( $_GET['id'] ?? 0 );
+    if ( ! $id ) return;
+
+    global $wpdb;
+    $case = $wpdb->get_row( $wpdb->prepare(
+        "SELECT status FROM {$wpdb->prefix}sp_research_cases WHERE id = %d", $id
+    ) );
+    if ( ! $case ) return;
+
+    // Inject a script that adds a hidden field to the save form once it loads.
+    wp_register_script( 'sp-research-status-was', '', [], false, true );
+    wp_enqueue_script( 'sp-research-status-was' );
+    wp_add_inline_script( 'sp-research-status-was', 'document.addEventListener("DOMContentLoaded",function(){var fs=document.querySelectorAll("form input[name=sp_save_research_case]");fs.forEach(function(f){var h=document.createElement("input");h.type="hidden";h.name="_status_was";h.value=' . wp_json_encode( $case->status ) . ';f.parentNode.insertBefore(h,f.nextSibling);});});' );
+} );
+
+
+/**
+ * Shortcode: [sp_my_research_cases]
+ *
+ * Member-facing list of research cases the current user submitted (or
+ * — for non-members — they can pass a per-case access token via email
+ * link in the case communications).
+ */
+add_shortcode( 'sp_my_research_cases', function () {
+    if ( ! sp_module_enabled( 'research_services' ) ) {
+        return '<p>' . esc_html__( 'Paid Research Services is not enabled.', 'societypress' ) . '</p>';
+    }
+    if ( ! is_user_logged_in() ) {
+        return '<p>' . sprintf(
+            wp_kses(
+                __( 'Please <a href="%s">log in</a> to see your research cases.', 'societypress' ),
+                [ 'a' => [ 'href' => [] ] ]
+            ),
+            esc_url( wp_login_url( get_permalink() ) )
+        ) . '</p>';
+    }
+
+    global $wpdb;
+    $user = wp_get_current_user();
+
+    // Match by user_id OR by requester_email so non-members who later created an account see their cases
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT c.*, u.display_name AS researcher_name
+         FROM {$wpdb->prefix}sp_research_cases c
+         LEFT JOIN {$wpdb->users} u ON u.ID = c.claimed_by_user_id
+         WHERE c.requester_user_id = %d OR c.requester_email = %s
+         ORDER BY c.created_at DESC",
+        $user->ID, $user->user_email
+    ) );
+
+    $status_labels = [
+        'pending_payment'  => __( 'Pending payment', 'societypress' ),
+        'open'             => __( 'In queue', 'societypress' ),
+        'claimed'          => __( 'Claimed by researcher', 'societypress' ),
+        'in_progress'      => __( 'In progress', 'societypress' ),
+        'needs_more_hours' => __( 'Needs more hours', 'societypress' ),
+        'completed'        => __( 'Completed', 'societypress' ),
+        'cancelled'        => __( 'Cancelled', 'societypress' ),
+        'refunded'         => __( 'Refunded', 'societypress' ),
+    ];
+    $status_colors = [
+        'pending_payment'  => '#b45309',
+        'open'             => '#1a56db',
+        'claimed'          => '#1e40af',
+        'in_progress'      => '#1e40af',
+        'needs_more_hours' => '#b45309',
+        'completed'        => '#166534',
+        'cancelled'        => '#777',
+        'refunded'         => '#777',
+    ];
+
+    ob_start();
+    ?>
+    <div class="sp-my-research-cases">
+        <style>
+            .sp-my-research-cases { margin: 1.5em 0; }
+            .sp-my-research-cases h3 { margin: 0 0 12px; }
+            .sp-my-research-cases .case { background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; padding: 14px 16px; margin-bottom: 10px; }
+            .sp-my-research-cases .case h4 { margin: 0 0 4px; font-size: 16px; }
+            .sp-my-research-cases .meta { color: #6b7280; font-size: 13px; }
+            .sp-my-research-cases .status { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 600; color: #fff; margin-left: 4px; }
+            .sp-my-research-cases .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+            .sp-my-research-cases .empty { color: #6b7280; font-style: italic; padding: 20px; text-align: center; }
+            .sp-my-research-cases .invoice-action { background: #fef3c7; border-left: 4px solid #b45309; padding: 10px 14px; margin-top: 8px; border-radius: 0 4px 4px 0; font-size: 14px; }
+            .sp-my-research-cases .invoice-action a { display: inline-block; background: #b45309; color: #fff; padding: 6px 14px; border-radius: 4px; text-decoration: none; font-size: 13px; margin-left: 8px; }
+        </style>
+
+        <h3><?php esc_html_e( 'My Research Cases', 'societypress' ); ?></h3>
+
+        <?php if ( empty( $rows ) ) : ?>
+            <p class="empty"><?php esc_html_e( 'You have not submitted any research cases yet.', 'societypress' ); ?></p>
+        <?php else : foreach ( $rows as $r ) :
+            $color = $status_colors[ $r->status ] ?? '#777';
+            // Pending invoices that need authorization
+            $pending_inv = $wpdb->get_row( $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}sp_research_invoices
+                 WHERE case_id = %d AND status = 'pending' ORDER BY created_at DESC LIMIT 1",
+                $r->id
+            ) );
+            ?>
+            <div class="case">
+                <div class="row">
+                    <div>
+                        <h4><?php echo esc_html( $r->title ); ?></h4>
+                        <p class="meta">
+                            <?php printf( esc_html__( 'Submitted %s', 'societypress' ), esc_html( human_time_diff( strtotime( $r->created_at ), time() ) . ' ago' ) ); ?>
+                            <?php if ( $r->researcher_name ) : ?>
+                                · <?php printf( esc_html__( 'Researcher: %s', 'societypress' ), esc_html( $r->researcher_name ) ); ?>
+                            <?php endif; ?>
+                        </p>
+                    </div>
+                    <div>
+                        <span class="status" style="background:<?php echo esc_attr( $color ); ?>;"><?php echo esc_html( $status_labels[ $r->status ] ?? $r->status ); ?></span>
+                    </div>
+                </div>
+                <?php if ( $pending_inv ) :
+                    $pay_url = add_query_arg( [
+                        'sp_research_invoice' => $pending_inv->id,
+                    ], get_permalink() );
+                    ?>
+                    <div class="invoice-action">
+                        <strong><?php esc_html_e( 'Authorization needed:', 'societypress' ); ?></strong>
+                        <?php
+                        printf(
+                            esc_html__( '%1$s additional hour(s) at $%2$s/hr — total $%3$s', 'societypress' ),
+                            esc_html( number_format( (float) $pending_inv->hours, 2 ) ),
+                            esc_html( number_format( (float) $r->hourly_rate, 2 ) ),
+                            esc_html( number_format( (float) $pending_inv->amount, 2 ) )
+                        );
+                        ?>
+                        <a href="<?php echo esc_url( $pay_url ); ?>"><?php esc_html_e( 'Authorize & Pay →', 'societypress' ); ?></a>
+                        <?php if ( $pending_inv->description ) : ?>
+                            <br><span style="color:#92400e; font-size:13px;"><?php echo esc_html( $pending_inv->description ); ?></span>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+                <p style="color:#6b7280; font-size:13px; margin:8px 0 0;">
+                    <?php
+                    printf(
+                        esc_html__( '$%1$s paid · %2$s hour(s) authorized · %3$d day SLA', 'societypress' ),
+                        esc_html( number_format( (float) $r->paid_amount, 2 ) ),
+                        esc_html( number_format( (float) $r->max_hours_authorized, 2 ) ),
+                        (int) $r->sla_days
+                    );
+                    ?>
+                </p>
+            </div>
+        <?php endforeach; endif; ?>
+    </div>
+    <?php
+    return (string) ob_get_clean();
+} );
+
+
+/**
+ * Page-builder widget for [sp_my_research_cases].
+ */
+add_filter( 'sp_builder_widget_types', function ( array $types ): array {
+    $types['my_research_cases'] = [
+        'label'       => __( 'My Research Cases', 'societypress' ),
+        'description' => __( 'Logged-in member\'s list of research cases they submitted, with status, researcher, and any pending additional-hours invoices to authorize.', 'societypress' ),
+        'fields'      => [],
+    ];
+    return $types;
+} );
+
+function sp_render_builder_widget_my_research_cases( array $s ): void {
+    echo do_shortcode( '[sp_my_research_cases]' );
+}
+
+
+/**
+ * Researcher (or staff) requests additional hours on a case.
+ *
+ * POST handler from the research-case admin page. Creates an invoice
+ * row in pending status, transitions the case to needs_more_hours,
+ * fires the requester email with a payment link.
+ */
+add_action( 'admin_init', function () {
+    if ( empty( $_POST['sp_request_more_hours'] ) ) return;
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) return;
+
+    $case_id = (int) ( $_POST['case_id'] ?? 0 );
+    check_admin_referer( 'sp_request_more_hours_' . $case_id, 'sp_more_nonce' );
+
+    $hours       = max( 0.25, round( (float) ( $_POST['additional_hours'] ?? 0 ), 2 ) );
+    $description = sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) );
+
+    global $wpdb;
+    $cases_t    = $wpdb->prefix . 'sp_research_cases';
+    $invoices_t = $wpdb->prefix . 'sp_research_invoices';
+
+    $case = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$cases_t} WHERE id = %d", $case_id ) );
+    if ( ! $case ) {
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-research-cases' ) );
+        exit;
+    }
+
+    $amount = round( $hours * (float) $case->hourly_rate, 2 );
+
+    $wpdb->insert( $invoices_t, [
+        'case_id'     => $case_id,
+        'hours'       => $hours,
+        'amount'      => $amount,
+        'description' => $description,
+        'status'      => 'pending',
+    ] );
+
+    $wpdb->update( $cases_t, [ 'status' => 'needs_more_hours' ], [ 'id' => $case_id ] );
+
+    sp_research_send_status_email( $case_id, 'needs_more_hours' );
+
+    wp_safe_redirect( admin_url( 'admin.php?page=sp-research-case-edit&id=' . $case_id . '&sp_more_requested=1' ) );
+    exit;
+} );
+
+
+/**
+ * Public additional-hours payment handler.
+ *
+ * Triggered when the requester clicks "Authorize & Pay" — creates a
+ * Stripe Checkout Session for the pending invoice and redirects.
+ */
+add_action( 'init', function () {
+    $invoice_id = (int) ( $_GET['sp_research_invoice'] ?? 0 );
+    if ( ! $invoice_id ) return;
+
+    if ( ! is_user_logged_in() ) return; // require login for now (matches my-cases gate)
+
+    global $wpdb;
+    $invoices_t = $wpdb->prefix . 'sp_research_invoices';
+    $cases_t    = $wpdb->prefix . 'sp_research_cases';
+
+    $inv = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$invoices_t} WHERE id = %d AND status = 'pending'", $invoice_id ) );
+    if ( ! $inv ) return;
+
+    $case = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$cases_t} WHERE id = %d", $inv->case_id ) );
+    if ( ! $case ) return;
+
+    // Verify this user owns the case
+    $user = wp_get_current_user();
+    if ( (int) $case->requester_user_id !== (int) $user->ID && strcasecmp( $case->requester_email, $user->user_email ) !== 0 ) {
+        return;
+    }
+
+    $settings   = get_option( 'societypress_settings', [] );
+    $secret_key = function_exists( 'sp_stripe_get_secret_key' ) ? sp_stripe_get_secret_key( $settings ) : '';
+    if ( empty( $secret_key ) ) return;
+
+    $referer = wp_get_referer() ?: home_url();
+    $success_url = add_query_arg( [
+        'sp_research_invoice_paid' => 1,
+        'sp_research_inv'          => $invoice_id,
+        'sp_session'               => '{CHECKOUT_SESSION_ID}',
+    ], $referer );
+    $cancel_url = add_query_arg( [
+        'sp_research_invoice_paid' => 0,
+    ], $referer );
+
+    $org = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+    $line_name = sprintf( __( 'Additional research hours: %s', 'societypress' ), $case->title );
+    if ( strlen( $line_name ) > 100 ) $line_name = substr( $line_name, 0, 97 ) . '...';
+
+    $response = wp_remote_post( 'https://api.stripe.com/v1/checkout/sessions', [
+        'timeout' => 30,
+        'headers' => [
+            'Authorization' => 'Bearer ' . $secret_key,
+            'Content-Type'  => 'application/x-www-form-urlencoded',
+        ],
+        'body' => [
+            'mode'                                  => 'payment',
+            'success_url'                           => $success_url,
+            'cancel_url'                            => $cancel_url,
+            'client_reference_id'                   => 'research_inv_' . $invoice_id,
+            'customer_email'                        => $case->requester_email,
+            'metadata[research_invoice_id]'         => (string) $invoice_id,
+            'metadata[research_case_id]'            => (string) $case->id,
+            'metadata[site_url]'                    => home_url(),
+            'payment_method_types[0]'               => 'card',
+            'line_items[0][quantity]'               => 1,
+            'line_items[0][price_data][currency]'   => strtolower( $settings['stripe_currency'] ?? 'usd' ),
+            'line_items[0][price_data][unit_amount]' => (int) round( (float) $inv->amount * 100 ),
+            'line_items[0][price_data][product_data][name]'        => $line_name,
+            'line_items[0][price_data][product_data][description]' => sprintf( __( '%1$s additional hour(s) at $%2$.2f/hour — %3$s', 'societypress' ), $inv->hours, (float) $case->hourly_rate, $org ),
+        ],
+    ] );
+
+    if ( is_wp_error( $response ) || wp_remote_retrieve_response_code( $response ) !== 200 ) return;
+    $resp = json_decode( wp_remote_retrieve_body( $response ), true );
+    if ( empty( $resp['url'] ) ) return;
+
+    $wpdb->update( $invoices_t, [ 'stripe_session_id' => $resp['id'] ], [ 'id' => $invoice_id ] );
+    wp_redirect( $resp['url'] );
+    exit;
+} );
+
+
+/**
+ * Stripe success-URL handler for additional-hours invoice payments.
+ */
+add_action( 'template_redirect', function () {
+    $inv_id     = (int) ( $_GET['sp_research_inv']      ?? 0 );
+    $session_id = sanitize_text_field( $_GET['sp_session'] ?? '' );
+    if ( ! $inv_id || empty( $session_id ) ) return;
+    if ( empty( $_GET['sp_research_invoice_paid'] ) ) return;
+
+    global $wpdb;
+    $invoices_t = $wpdb->prefix . 'sp_research_invoices';
+    $cases_t    = $wpdb->prefix . 'sp_research_cases';
+
+    $inv = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$invoices_t} WHERE id = %d", $inv_id ) );
+    if ( ! $inv || $inv->status === 'paid' ) return;
+
+    $settings   = get_option( 'societypress_settings', [] );
+    $secret_key = function_exists( 'sp_stripe_get_secret_key' ) ? sp_stripe_get_secret_key( $settings ) : '';
+    if ( empty( $secret_key ) ) return;
+
+    $resp = wp_remote_get( 'https://api.stripe.com/v1/checkout/sessions/' . $session_id, [
+        'timeout' => 15,
+        'headers' => [ 'Authorization' => 'Bearer ' . $secret_key ],
+    ] );
+    if ( is_wp_error( $resp ) ) return;
+
+    $session = json_decode( wp_remote_retrieve_body( $resp ), true );
+    if ( empty( $session ) ) return;
+    if ( ( $session['payment_status'] ?? '' ) !== 'paid' ) return;
+    if ( (int) ( $session['metadata']['research_invoice_id'] ?? 0 ) !== $inv_id ) return;
+
+    $wpdb->update( $invoices_t, [
+        'status'                => 'paid',
+        'stripe_payment_intent' => $session['payment_intent'] ?? null,
+        'paid_at'               => current_time( 'mysql' ),
+    ], [ 'id' => $inv_id ] );
+
+    // Bump the case's authorized hours and paid amount, return to in_progress
+    $wpdb->query( $wpdb->prepare(
+        "UPDATE {$cases_t}
+         SET max_hours_authorized = max_hours_authorized + %f,
+             paid_amount = paid_amount + %f,
+             status = 'in_progress'
+         WHERE id = %d",
+        (float) $inv->hours, (float) $inv->amount, (int) $inv->case_id
+    ) );
+
+    // Notify the assigned researcher
+    $case = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$cases_t} WHERE id = %d", $inv->case_id ) );
+    if ( $case && $case->claimed_by_user_id ) {
+        $researcher = get_user_by( 'id', $case->claimed_by_user_id );
+        if ( $researcher && $researcher->user_email ) {
+            $org = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+            wp_mail(
+                $researcher->user_email,
+                sprintf( __( '[%s] Additional hours authorized', 'societypress' ), $org ),
+                sprintf(
+                    __( "%1\$s authorized %2\$s additional hour(s) on:\n\n%3\$s\n\nThe case is back in progress.\n\n%4\$s",
+                        'societypress' ),
+                    $case->requester_name,
+                    number_format( (float) $inv->hours, 2 ),
+                    $case->title,
+                    admin_url( 'admin.php?page=sp-research-case-edit&id=' . $case->id )
+                )
+            );
+        }
+    }
+} );
+
+
+/**
+ * Add the "Request more hours" form to the admin case-edit page via a
+ * filter hook on the page render. We append a postbox after the
+ * existing hours-logged box by using output-buffering on the admin
+ * page render — but simpler: just print our own postbox via an action
+ * hook that fires inside the wrap.
+ *
+ * Since the existing renderer doesn't expose a hook, we use admin_notices
+ * to inject the postbox above the page (visible at the top, accomplishes
+ * the same thing).
+ */
+add_action( 'admin_notices', function () {
+    if ( ( $_GET['page'] ?? '' ) !== 'sp-research-case-edit' ) return;
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) return;
+    $id = (int) ( $_GET['id'] ?? 0 );
+    if ( ! $id ) return;
+
+    if ( ! empty( $_GET['sp_more_requested'] ) ) {
+        echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Additional-hours request sent to the requester. They will receive an email with a payment link.', 'societypress' ) . '</p></div>';
+    }
+} );
+
+
+/**
+ * Append a "Request additional hours" postbox to the case-edit page
+ * via a footer hook. Renders only when the screen is sp-research-case-edit.
+ */
+add_action( 'admin_footer', function () {
+    if ( ( $_GET['page'] ?? '' ) !== 'sp-research-case-edit' ) return;
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) return;
+
+    $id = (int) ( $_GET['id'] ?? 0 );
+    if ( ! $id ) return;
+
+    global $wpdb;
+    $case = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}sp_research_cases WHERE id = %d", $id ) );
+    if ( ! $case ) return;
+
+    $hours_total = (float) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COALESCE(SUM(hours), 0) FROM {$wpdb->prefix}sp_volunteer_hours
+         WHERE source_type = 'research_case' AND source_id = %d", $id
+    ) );
+
+    // Render the request-more-hours form via JS that injects after the
+    // hours-logged postbox (cleaner than overhauling the admin renderer).
+    ?>
+    <div id="sp-request-more-hours-tpl" style="display:none;">
+        <div class="postbox">
+            <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Request Additional Hours', 'societypress' ); ?></h2>
+            <div class="inside">
+                <p class="description"><?php
+                printf(
+                    esc_html__( 'Authorized: %1$s · Logged so far: %2$s. If the case needs more time, submit a request here and the requester will receive an email with a Stripe payment link.', 'societypress' ),
+                    esc_html( number_format( (float) $case->max_hours_authorized, 2 ) ),
+                    esc_html( number_format( $hours_total, 2 ) )
+                ); ?></p>
+                <form method="post">
+                    <?php wp_nonce_field( 'sp_request_more_hours_' . $id, 'sp_more_nonce' ); ?>
+                    <input type="hidden" name="sp_request_more_hours" value="1">
+                    <input type="hidden" name="case_id" value="<?php echo (int) $id; ?>">
+                    <p>
+                        <label><strong><?php esc_html_e( 'Additional hours', 'societypress' ); ?></strong></label>
+                        <input type="number" step="0.25" min="0.25" max="40" name="additional_hours" value="1.00" style="width:100px;">
+                        <span style="color:#666;"><?php printf( esc_html__( 'at $%s/hour', 'societypress' ), esc_html( number_format( (float) $case->hourly_rate, 2 ) ) ); ?></span>
+                    </p>
+                    <p>
+                        <label><strong><?php esc_html_e( 'Why is more time needed?', 'societypress' ); ?></strong></label>
+                        <textarea name="description" rows="3" style="width:100%;" placeholder="<?php esc_attr_e( 'Brief explanation the requester will see in the authorization email.', 'societypress' ); ?>"></textarea>
+                    </p>
+                    <?php submit_button( __( 'Send Authorization Request', 'societypress' ), 'secondary', 'submit', false ); ?>
+                </form>
+            </div>
+        </div>
+    </div>
+    <script>
+    (function () {
+        var tpl = document.getElementById('sp-request-more-hours-tpl');
+        if (!tpl) return;
+        // Find the hours-logged postbox heading and insert our postbox after its container
+        var headings = document.querySelectorAll('.postbox h2.hndle');
+        for (var i = 0; i < headings.length; i++) {
+            if (headings[i].textContent.indexOf(<?php echo wp_json_encode( __( 'Hours Logged', 'societypress' ) ); ?>) === 0) {
+                var box = headings[i].closest('.postbox');
+                var clone = tpl.firstElementChild.cloneNode(true);
+                box.parentNode.insertBefore(clone, box.nextSibling);
+                tpl.remove();
+                break;
+            }
+        }
+    })();
+    </script>
+    <?php
+} );

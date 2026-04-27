@@ -269,10 +269,10 @@ add_filter( 'excerpt_length', 'gsp_excerpt_length' );
  * saves a per-12h API miss (no log noise, no wasted HTTP timeout budget)
  * and removes one reason for the page to hang if GitHub is slow.
  *
- * Returns the version as a plain string (e.g. "1.0.19"), no "v" prefix.
+ * Returns the version as a plain string (e.g. "1.0.47"), no "v" prefix.
  */
 function gsp_get_sp_version() {
-    return '1.0.19';
+    return '1.0.47';
 }
 
 

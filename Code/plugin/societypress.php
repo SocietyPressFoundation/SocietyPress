@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.45' );
+define( 'SOCIETYPRESS_VERSION', '1.0.46' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -84652,6 +84652,12 @@ add_action( 'admin_init', function () {
  */
 add_action( 'wp_ajax_sp_help_mark_resolved', function () {
     if ( empty( $_POST['request_id'] ) ) return;
+    // Verify the same nonce the main handler checks. We're running at
+    // priority 5 (before the main handler), so this guard runs first
+    // and bails on missing/invalid nonces. Defense-in-depth — the main
+    // handler will also reject, but bailing here keeps a stale stashed
+    // global from being read by the priority-20 follow-up.
+    if ( ! check_ajax_referer( 'sp_help_resolve', '_wpnonce', false ) ) return;
     $request_id = (int) $_POST['request_id'];
     // Grab the current status before the existing handler updates it
     global $wpdb;
@@ -84664,6 +84670,7 @@ add_action( 'wp_ajax_sp_help_mark_resolved', function () {
 
 add_action( 'wp_ajax_sp_help_mark_resolved', function () {
     if ( empty( $_POST['request_id'] ) ) return;
+    if ( ! check_ajax_referer( 'sp_help_resolve', '_wpnonce', false ) ) return;
     $request_id = (int) $_POST['request_id'];
     $previous   = $GLOBALS['_sp_help_status_was'] ?? '';
     if ( $previous === 'resolved' ) return; // No transition

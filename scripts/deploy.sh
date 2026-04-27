@@ -247,6 +247,12 @@ case "${1:-plugin}" in
         else
             echo "  OK: module guides deployed."
         fi
+        if ! scp "$LOCAL_BASE/CHANGELOG.md" "$LOCAL_BASE/ROADMAP.md" "$HOST:~/domains/getsocietypress.org/public_html/sp-docs-source/"; then
+            echo "  FAILED: CHANGELOG/ROADMAP scp did not complete."
+            OVERALL_STATUS=1
+        else
+            echo "  OK: CHANGELOG + ROADMAP deployed."
+        fi
         ;;
     *)
         echo "Usage: $0 [plugin|theme|heritage|coastline|prairie|ledger|parlor|installer|bundle|marketing|all]"

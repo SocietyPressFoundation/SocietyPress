@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.35' );
+define( 'SOCIETYPRESS_VERSION', '1.0.36' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -80181,3 +80181,94 @@ add_filter( 'do_shortcode_tag', function ( $output, $tag ) {
         $output
     );
 }, 11, 2 );
+
+
+// ============================================================================
+// PAGE-BUILDER WIDGET WRAPPERS — close audit gaps
+//
+// WHY: Some shortcodes shipped this session without page-builder counterparts,
+//      so Harold can't drag them into a page-builder column. Each wrapper
+//      registers a widget type and renders by handing through to the
+//      shortcode's existing implementation.
+// ============================================================================
+
+add_filter( 'sp_builder_widget_types', function ( array $types ): array {
+    $types['donate'] = [
+        'label'       => __( 'Donation Form', 'societypress' ),
+        'description' => __( 'Public donation form with preset amounts, frequency selector, cover-the-fee toggle, and Stripe + PayPal checkout.', 'societypress' ),
+        'fields'      => [
+            'campaign' => [
+                'label'   => __( 'Campaign slug or ID (optional)', 'societypress' ),
+                'type'    => 'text',
+                'default' => '',
+            ],
+            'show_dedication' => [
+                'label'   => __( 'Show "in honor/memory of" field', 'societypress' ),
+                'type'    => 'checkbox',
+                'default' => true,
+            ],
+            'default_frequency' => [
+                'label'   => __( 'Default frequency (one_time / monthly / annually)', 'societypress' ),
+                'type'    => 'text',
+                'default' => 'one_time',
+            ],
+        ],
+    ];
+    $types['picture_wall'] = [
+        'label'       => __( 'Picture Wall', 'societypress' ),
+        'description' => __( 'Display approved member-submitted photos from a Picture Wall album (e.g., ancestor portraits).', 'societypress' ),
+        'fields'      => [
+            'album' => [
+                'label'   => __( 'Album slug', 'societypress' ),
+                'type'    => 'text',
+                'default' => 'ancestor-portraits',
+            ],
+            'columns' => [
+                'label'   => __( 'Columns (1-6)', 'societypress' ),
+                'type'    => 'number',
+                'default' => 4,
+            ],
+            'show_submitter' => [
+                'label'   => __( 'Show submitter credit under each photo', 'societypress' ),
+                'type'    => 'checkbox',
+                'default' => true,
+            ],
+        ],
+    ];
+    $types['picture_wall_submit'] = [
+        'label'       => __( 'Picture Wall — Submission Form', 'societypress' ),
+        'description' => __( 'Member-facing form to submit a photo to a Picture Wall album.', 'societypress' ),
+        'fields'      => [
+            'album' => [
+                'label'   => __( 'Album slug', 'societypress' ),
+                'type'    => 'text',
+                'default' => 'ancestor-portraits',
+            ],
+        ],
+    ];
+    return $types;
+} );
+
+
+function sp_render_builder_widget_donate( array $s ): void {
+    $atts = [];
+    if ( ! empty( $s['campaign'] ) )          $atts['campaign']          = $s['campaign'];
+    $atts['show_dedication']   = ! empty( $s['show_dedication'] ) ? '1' : '0';
+    $atts['default_frequency'] = in_array( $s['default_frequency'] ?? 'one_time', [ 'one_time', 'monthly', 'annually' ], true )
+        ? $s['default_frequency'] : 'one_time';
+    echo do_shortcode( '[sp_donate ' . sp_builder_atts_to_string( $atts ) . ']' );
+}
+
+function sp_render_builder_widget_picture_wall( array $s ): void {
+    $atts = [
+        'album'          => sanitize_title( $s['album'] ?? '' ),
+        'columns'        => (string) max( 1, min( 6, (int) ( $s['columns'] ?? 4 ) ) ),
+        'show_submitter' => ! empty( $s['show_submitter'] ) ? '1' : '0',
+    ];
+    echo do_shortcode( '[sp_picture_wall ' . sp_builder_atts_to_string( $atts ) . ']' );
+}
+
+function sp_render_builder_widget_picture_wall_submit( array $s ): void {
+    $atts = [ 'album' => sanitize_title( $s['album'] ?? '' ) ];
+    echo do_shortcode( '[sp_picture_wall_submit ' . sp_builder_atts_to_string( $atts ) . ']' );
+}

@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.46' );
+define( 'SOCIETYPRESS_VERSION', '1.0.47' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -40387,6 +40387,17 @@ function sp_render_event_detail( string $slug, array $settings ): void {
         ) );
     }
 
+    // Payment-button visibility, computed once for both the form template
+    // and the spRegData JS object further down. Keeping it up here means
+    // every branch that renders the form has these defined.
+    $sp_settings    = get_option( 'societypress_settings', [] );
+    $stripe_ready   = sp_stripe_is_configured( $sp_settings );
+    $payment_mode   = $event->payment_mode ?? 'none';
+    $has_fee        = ( (float) $event->member_price > 0 || (float) $event->nonmember_price > 0 );
+    $show_pay_btn   = $has_fee && $stripe_ready && in_array( $payment_mode, [ 'online', 'either' ], true );
+    $show_door_btn  = $has_fee && in_array( $payment_mode, [ 'at_door', 'either' ], true );
+    $pay_only       = $has_fee && $payment_mode === 'online' && $stripe_ready;
+
     // Check if current user is already registered
     // WHY: For events with slots, a user can be registered for some slots
     //      but not others. We need to know WHICH slots they're in, not just
@@ -41023,20 +41034,6 @@ function sp_render_event_detail( string $slug, array $settings ): void {
 
     <?php if ( $event->registration_enabled && $event->status === 'scheduled' ) : ?>
         <!-- Registration data for AJAX calls -->
-        <?php
-        // Determine if Stripe is available for this event
-        // WHY: The frontend JS needs to know whether to offer online payment
-        //      vs. just a plain registration. We check both the event's payment
-        //      mode AND whether Stripe keys are actually configured — no point
-        //      showing a "Pay Now" button if the society hasn't set up Stripe.
-        $sp_settings    = get_option( 'societypress_settings', [] );
-        $stripe_ready   = sp_stripe_is_configured( $sp_settings );
-        $payment_mode   = $event->payment_mode ?? 'none';
-        $has_fee        = ( (float) $event->member_price > 0 || (float) $event->nonmember_price > 0 );
-        $show_pay_btn   = $has_fee && $stripe_ready && in_array( $payment_mode, [ 'online', 'either' ], true );
-        $show_door_btn  = $has_fee && in_array( $payment_mode, [ 'at_door', 'either' ], true );
-        $pay_only       = $has_fee && $payment_mode === 'online' && $stripe_ready;
-        ?>
         <script>
         var spRegData = {
             ajaxUrl:      '<?php echo admin_url( "admin-ajax.php" ); ?>',

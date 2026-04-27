@@ -12,6 +12,13 @@ Entries describe user-visible changes only. For the underlying commits, see
 
 ## [Unreleased]
 
+### Fixed
+- **Event detail page no longer logs an undefined-variable warning** for
+  `$show_pay_btn` when a guest registration form is rendered for an event
+  with no fee. The payment-button visibility flags are now computed once,
+  near the top of the event template, so every render branch has them
+  defined whether the buttons are shown or not.
+
 ### Added
 - **Society Sidebar widget.** Auto-assembled member-portal nav from enabled
   modules — ENS-style left rail without the manual menu-builder work. Drop

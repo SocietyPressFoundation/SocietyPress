@@ -6,7 +6,7 @@
         <name>SocietyPress</name>
         <softname>societypress</softname>
         <cat>Portal/CMS</cat>
-        <ver>1.0.35</ver>
+        <ver>1.0.47</ver>
         <ver_min_498>6.0</ver_min_498>
         <desc>A free, open-source membership management platform built specifically for genealogical and historical societies. Manage members, events, a research library, genealogical records, newsletters, volunteers, lineage programs, donations, a store, and more — all in one place. Built on WordPress.</desc>
         <features>
@@ -23,8 +23,12 @@
             <feature>Cover-the-fee toggle and recurring giving with automatic receipts</feature>
             <feature>Online store with Stripe checkout, per-item shipping, and PayPal Smart Buttons</feature>
             <feature>Secure online voting and elections with tier-based eligibility</feature>
+            <feature>Public Help Requests forum with email-verified submission, time-tracking on every response, and accept-as-answer</feature>
+            <feature>Optional Paid Research Services with Stripe-billed up-front cases, researcher dashboard, and additional-hours invoicing</feature>
+            <feature>Committee chair dashboards with auto-scoped admin views for events, meetings, and volunteer opportunities</feature>
+            <feature>Theme Exchange — export and import design presets between societies</feature>
             <feature>Page builder with 24+ widget types including Research Guides and Database Subscriptions</feature>
-            <feature>5 pre-built child themes plus custom theme builder</feature>
+            <feature>5 pre-built child themes plus a Theme Gallery of importable design presets</feature>
             <feature>One-click full-site export (members, events, library, records, donations)</feature>
             <feature>Full GDPR data exporters and erasers (members, donations, lineage, registrations, etc.)</feature>
             <feature>Role-based access control with 10 access areas and 8 role templates</feature>

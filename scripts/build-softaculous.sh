@@ -115,6 +115,13 @@ if [ -d "$BUILD_DIR/.git" ]; then
     rm -rf "$BUILD_DIR/.git"
 fi
 
+# ---- Remove the WordPress download staging directory ----
+# WHY: The script downloads wordpress.zip into $BUILD_DIR/tmp/ and extracts it,
+# but neither file gets cleaned up before the zip step below. Without this,
+# the final package ends up shipping ~27 MB of duplicate WordPress core inside
+# itself.
+rm -rf "$BUILD_DIR/tmp"
+
 # ---- Create the ZIP ----
 echo "Creating societypress.zip..."
 cd "$BUILD_DIR"

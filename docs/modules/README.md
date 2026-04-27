@@ -43,6 +43,10 @@ If you just installed SocietyPress and the site is empty:
 - **[Child Themes](child-themes.md)** — Heritage, Coastline, Prairie, Ledger, Parlor — when to pick which.
 - **[Page Builder](page-builder.md)** — drag widgets into columns, no code.
 
+### For developers
+
+- **[Developer Reference](developer-reference.md)** — shortcodes, filters, AJAX endpoints, REST routes, custom tables, capabilities, encryption API. For technically-inclined webmasters extending the platform.
+
 ## Style
 
 These guides assume you're not technical. They assume you're busy. They assume the only reason you're reading is because something needs doing.

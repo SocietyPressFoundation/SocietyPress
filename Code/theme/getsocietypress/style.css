@@ -4,7 +4,7 @@ Theme URI: https://getsocietypress.org
 Author: SocietyPress Contributors
 Author URI: https://getsocietypress.org
 Description: The official theme for getsocietypress.org — the home of SocietyPress, a free, open-source WordPress platform for genealogical society administrators.
-Version: 0.19d
+Version: 0.20d
 License: GNU General Public License v2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 Text Domain: getsocietypress
@@ -6526,4 +6526,97 @@ select:focus-visible,
 @media (max-width: 900px) {
     .tg-grid { grid-template-columns: 1fr; }
     .tg-how-grid { grid-template-columns: 1fr; }
+}
+
+/* ==========================================================================
+   MODULE DOCS (page-module-docs.php)
+   ========================================================================== */
+
+.md-hero { padding: var(--spacing-2xl) 0 var(--spacing-xl); }
+.md-hero h1 { margin: 0 0 var(--spacing-sm); }
+.md-breadcrumb { margin: 0 0 var(--spacing-sm); }
+.md-breadcrumb a { color: rgba(255,255,255,0.85); text-decoration: none; font-size: var(--font-size-sm); }
+.md-breadcrumb a:hover { color: var(--color-accent); }
+
+.md-section { padding: var(--spacing-3xl) 0; background: var(--color-background); }
+
+.md-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: var(--spacing-lg);
+}
+.md-card {
+    background: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-lg);
+    padding: var(--spacing-xl);
+    text-decoration: none;
+    color: var(--color-text);
+    transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+    display: flex;
+    flex-direction: column;
+}
+.md-card:hover {
+    border-color: var(--color-primary);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(13,31,60,0.08);
+}
+.md-card h3 { margin: 0 0 var(--spacing-sm); color: var(--color-primary); font-size: var(--font-size-lg); }
+.md-card p { color: var(--color-text); line-height: 1.5; margin: 0 0 var(--spacing-md); font-size: var(--font-size-sm); flex: 1; }
+.md-card__more { color: var(--color-accent); font-weight: var(--font-weight-semibold); font-size: var(--font-size-sm); }
+
+.md-article {
+    max-width: 760px;
+    margin: 0 auto;
+    line-height: 1.65;
+    color: var(--color-text);
+}
+.md-article h2 {
+    color: var(--color-primary);
+    margin-top: var(--spacing-2xl);
+    padding-bottom: var(--spacing-xs);
+    border-bottom: 1px solid var(--color-border);
+}
+.md-article h3 {
+    color: var(--color-primary);
+    margin-top: var(--spacing-xl);
+}
+.md-article h4 {
+    color: var(--color-primary);
+    margin-top: var(--spacing-lg);
+    margin-bottom: var(--spacing-xs);
+}
+.md-article p { margin: 0 0 var(--spacing-md); }
+.md-article ul, .md-article ol { margin: 0 0 var(--spacing-md) var(--spacing-lg); }
+.md-article li { margin-bottom: var(--spacing-xs); }
+.md-article a { color: var(--color-primary); text-decoration: underline; }
+.md-article a:hover { color: var(--color-accent); }
+.md-article code {
+    background: #f3f4f6;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 0.92em;
+}
+.md-article pre {
+    background: #1f2937;
+    color: #e5e7eb;
+    padding: var(--spacing-md);
+    border-radius: var(--border-radius-md);
+    overflow-x: auto;
+    margin: 0 0 var(--spacing-md);
+}
+.md-article pre code { background: transparent; padding: 0; color: inherit; }
+.md-article blockquote {
+    border-left: 4px solid var(--color-accent);
+    padding: var(--spacing-sm) var(--spacing-lg);
+    margin: 0 0 var(--spacing-md);
+    background: #f9f9f9;
+    color: var(--color-text-secondary);
+}
+.md-article hr { margin: var(--spacing-2xl) 0; border: none; border-top: 1px solid var(--color-border); }
+.md-empty { color: var(--color-text-secondary); font-style: italic; padding: var(--spacing-2xl); text-align: center; }
+
+@media (max-width: 768px) {
+    .md-grid { grid-template-columns: 1fr; }
 }

@@ -234,12 +234,18 @@ case "${1:-plugin}" in
         # because /docs/ is a WordPress route — a same-named directory
         # inside the webroot would shadow it and cause a 403.
         echo "Deploying user-facing markdown docs..."
-        ssh "$HOST" "mkdir -p ~/domains/getsocietypress.org/public_html/sp-docs-source"
+        ssh "$HOST" "mkdir -p ~/domains/getsocietypress.org/public_html/sp-docs-source/modules"
         if ! scp "$LOCAL_BASE/docs/ENS-MIGRATION-GUIDE.md" "$HOST:~/domains/getsocietypress.org/public_html/sp-docs-source/ENS-MIGRATION-GUIDE.md"; then
             echo "  FAILED: ENS-MIGRATION-GUIDE.md scp did not complete."
             OVERALL_STATUS=1
         else
-            echo "  OK: markdown docs deployed."
+            echo "  OK: ENS migration guide deployed."
+        fi
+        if ! scp "$LOCAL_BASE/docs/modules/"*.md "$HOST:~/domains/getsocietypress.org/public_html/sp-docs-source/modules/"; then
+            echo "  FAILED: module-docs scp did not complete."
+            OVERALL_STATUS=1
+        else
+            echo "  OK: module guides deployed."
         fi
         ;;
     *)

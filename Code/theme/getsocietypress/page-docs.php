@@ -52,9 +52,9 @@ get_header();
                 <p>Get SocietyPress onto your server in about 30 minutes.</p>
             </a>
 
-            <a class="docs-quick__link" href="<?php echo esc_url( home_url( '/docs/setup/' ) ); ?>">
-                <div class="docs-quick__link-title">First-Time Setup</div>
-                <p>The 3-step wizard that gets your site to usable.</p>
+            <a class="docs-quick__link" href="<?php echo esc_url( home_url( '/docs/modules/' ) ); ?>">
+                <div class="docs-quick__link-title">Module Guides</div>
+                <p>One Harold-friendly guide per module — what it does, how to set it up, what to do when something looks wrong.</p>
             </a>
 
             <a class="docs-quick__link" href="<?php echo esc_url( home_url( '/docs/ens-migration/' ) ); ?>">

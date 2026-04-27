@@ -37,9 +37,11 @@ If you just installed SocietyPress and the site is empty:
 
 ### Cross-cutting
 
+- **[Installer](installer.md)** — the one-click `sp-installer.php` flow.
+- **[Setup Wizard](setup-wizard.md)** — the first-run configuration flow.
 - **[Theme Presets](theme-presets.md)** — export your look as JSON, import others'.
+- **[Child Themes](child-themes.md)** — Heritage, Coastline, Prairie, Ledger, Parlor — when to pick which.
 - **[Page Builder](page-builder.md)** — drag widgets into columns, no code.
-- **[Setup Wizard](setup-wizard.md)** — the first-run flow.
 
 ## Style
 

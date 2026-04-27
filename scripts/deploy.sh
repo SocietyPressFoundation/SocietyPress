@@ -95,8 +95,29 @@ deploy_theme_to() {
         return 0
     fi
 
-    if ! scp -r "$LOCAL_BASE/Code/$local_dir/"* "$HOST:$target_base/themes/$theme_name/"; then
-        echo "  FAILED: $theme_name theme scp to $label did not complete."
+    # rsync (instead of scp -r) so we can exclude `getsocietypress/`, which is
+    # the marketing theme nested inside Code/theme/. Without the exclude,
+    # the marketing theme ends up at themes/societypress/getsocietypress/ on
+    # the WP site and trips the "Theme without header.php" deprecation
+    # because WP scans every theme dir and the marketing theme isn't a
+    # valid WP child theme. The marketing theme has its own deploy target
+    # ("./scripts/deploy.sh marketing") that drops it on the public-facing
+    # cms/ site where it belongs.
+    # tar-pipe so we can exclude the nested marketing theme
+    # (`getsocietypress/`). Without the exclude, the marketing theme
+    # ends up at themes/societypress/getsocietypress/ on the WP site
+    # and trips the "Theme without header.php" deprecation because WP
+    # scans every theme dir and the marketing theme isn't a valid WP
+    # child theme. The marketing theme has its own deploy target
+    # (`./deploy.sh marketing`) that drops it on cms/ where it belongs.
+    # We use tar-pipe instead of rsync because Skystra's shared host
+    # doesn't ship rsync.
+    if ! tar czf - -C "$LOCAL_BASE/Code/$local_dir" \
+            --exclude='getsocietypress' \
+            --exclude='.DS_Store' \
+            . \
+        | ssh "$HOST" "tar xzf - -C $target_base/themes/$theme_name"; then
+        echo "  FAILED: $theme_name theme tar-pipe to $label did not complete."
         OVERALL_STATUS=1
         return 1
     fi

@@ -33,7 +33,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // the parent theme safe against child theme copies. If a child theme wants
 // its own version it should define a differently-named constant.
 if ( ! defined( 'SOCIETYPRESS_THEME_VERSION' ) ) {
-	define( 'SOCIETYPRESS_THEME_VERSION', '1.0.47' );
+	define( 'SOCIETYPRESS_THEME_VERSION', '1.0.50' );
 }
 
 

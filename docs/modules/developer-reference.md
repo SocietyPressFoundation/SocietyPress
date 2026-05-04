@@ -6,7 +6,7 @@ If you're not a developer, skip this. The other [module guides](README.md) cover
 
 ## Architecture in one paragraph
 
-SocietyPress is a single-file plugin (`societypress.php`, ~80,000 lines) plus a parent theme (`Code/theme/`) plus five child themes. Function-based PHP — there are a couple of unavoidable classes (the nav walker, the WP_List_Table subclasses, the Walker_Nav_Menu requirement) but the rest is functions. ~60 custom database tables prefixed `sp_`. Inline JS — no jQuery dependency except where wpColorPicker forces it. Inline CSS in admin pages, separate CSS file for the parent theme.
+SocietyPress is a single-file plugin (`societypress.php`, ~85,000 lines) plus a parent theme (`Code/theme/`) plus five child themes. Function-based PHP — there are a couple of unavoidable classes (the nav walker, the WP_List_Table subclasses, the Walker_Nav_Menu requirement) but the rest is functions. ~65 custom database tables prefixed `sp_`. Inline JS — no jQuery dependency except where wpColorPicker forces it. Inline CSS in admin pages, separate CSS file for the parent theme.
 
 ## Shortcodes
 
@@ -68,6 +68,39 @@ add_filter( 'sp_society_sidebar_items', function ( $items ) {
 ### `sp_admin_capability_map` — array
 
 Maps admin menu slugs to required capabilities. Hook to grant a custom capability access to a SocietyPress admin page.
+
+### `sp_insights_panels` — array
+
+Filters the registry of stat panels on the SocietyPress → Insights page. Hook to add a custom card (a metric your child theme tracks, an aggregate from a partner system, anything). Each entry has `name`, `icon` (Dashicon class), and `callback` — a function name receiving the resolved window array and returning `[label, value, value_kind, sparkline]`. Set `always_on => true` to bypass the per-module enabled gate.
+
+```php
+add_filter( 'sp_insights_panels', function ( array $panels ) {
+    $panels['banquet_rsvps'] = [
+        'name'      => 'Banquet RSVPs',
+        'icon'      => 'dashicons-cake',
+        'callback'  => 'my_child_theme_banquet_stats',
+        'always_on' => true,
+    ];
+    return $panels;
+} );
+
+function my_child_theme_banquet_stats( array $window ): array {
+    global $wpdb;
+    $total = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM my_banquet_rsvps WHERE created_at BETWEEN %s AND %s",
+        $window['start'] . ' 00:00:00',
+        $window['end']   . ' 23:59:59'
+    ) );
+    return [
+        'label'      => 'RSVPs received',
+        'value'      => $total,
+        'value_kind' => 'count',           // 'count' | 'currency' | 'hours'
+        'sparkline'  => [],                 // bucket counts; empty hides the trendline
+    ];
+}
+```
+
+The window array provides `start` (Y-m-d), `end` (Y-m-d), `buckets` (int), `unit` (`days`/`week`/`month`), and `label`. The `sp_insights_bucket_edges()` helper converts a window into per-bucket [start_ts, end_ts] tuples for sparkline queries.
 
 ### `sp_builder_widget_types` — array
 
@@ -136,7 +169,7 @@ Module slugs: `events`, `library`, `newsletters`, `resources`, `governance`, `st
 
 ## Custom tables
 
-`{$wpdb->prefix}sp_*` — about 60 tables. Highlights:
+`{$wpdb->prefix}sp_*` — about 65 tables. Highlights:
 
 - **Members:** `sp_members`, `sp_member_meta`, `sp_member_notes`, `sp_membership_tiers`, `sp_member_payments`, `sp_member_relationships`, `sp_member_research_areas`, `sp_member_surnames`, `sp_pending_profile_changes`, `sp_renewal_reminders`
 - **Events:** `sp_events`, `sp_event_categories`, `sp_event_registrations`, `sp_event_reminders`, `sp_event_slots`, `sp_event_speakers`, `sp_event_speaker_assignments`, `sp_ical_feeds`

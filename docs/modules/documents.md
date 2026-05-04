@@ -63,7 +63,7 @@ Members downloading the document always get the current version. Old versions ar
 
 **Bulk upload stalled.** Refresh and try again with a smaller batch. PHP timeouts kill long-running uploads.
 
-**Document download serves the wrong file.** If you replaced a file with a new version, the WP cache or browser cache may be serving the old one. Cmd+Shift+R / Ctrl+Shift+R to force-refresh; clear the Yoast / W3 / your-caching-plugin cache if you have one.
+**Document download serves the wrong file.** If you replaced a file with a new version, a cache layer is most likely serving the old one. Clear your caching plugin's cache (W3 Total Cache, WP Super Cache, LiteSpeed Cache, etc.) — that's almost always the real fix. Verify in an incognito window: if you get the new file there, it's local browser cache and a normal reload after a minute will catch up.
 
 ## Related guides
 

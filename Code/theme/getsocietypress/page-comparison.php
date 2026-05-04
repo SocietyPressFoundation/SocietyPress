@@ -73,7 +73,7 @@ get_header();
                 <ul class="cmp-card__list">
                     <li><strong>Free forever.</strong> GPL-2.0, no per-member pricing.</li>
                     <li><strong>You own everything.</strong> Files, database, code — on your hosting.</li>
-                    <li><strong>Built for societies.</strong> 14 modules, 21 page-builder widgets, 5 child themes.</li>
+                    <li><strong>Built for societies.</strong> 16 modules, 21 page-builder widgets, 5 child themes.</li>
                     <li><strong>One-click installer.</strong> No professional services bill.</li>
                     <li><strong>ENS migration built in.</strong> 86-column CSV importer.</li>
                     <li><strong>Open source.</strong> Code on GitHub. No vendor lock-in.</li>

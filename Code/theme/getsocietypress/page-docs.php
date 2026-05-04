@@ -243,7 +243,7 @@ get_header();
                     <li>Stripe and PayPal both supported &mdash; connect your own accounts, no middleman</li>
                     <li>Donation ledger with exports for your treasurer</li>
                     <li>Store catalog for polo shirts, lapel pins, printed publications, and other merchandise</li>
-                    <li>Checkout with Stripe coming in the next release; catalog display works today</li>
+                    <li>Native checkout: inline Stripe Payment Element (card, Apple Pay, Google Pay, Link) and PayPal Smart Buttons (PayPal, Venmo)</li>
                 </ul>
             </div>
 
@@ -265,6 +265,28 @@ get_header();
                 </ul>
             </div>
 
+            <!-- Insights -->
+            <div class="docs-card">
+                <div class="docs-card__icon" aria-hidden="true">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="20" x2="18" y2="10"/>
+                        <line x1="12" y1="20" x2="12" y2="4"/>
+                        <line x1="6" y1="20" x2="6" y2="14"/>
+                    </svg>
+                </div>
+                <h3>Insights</h3>
+                <p>"How alive is our society right now?" — answered, on one screen.</p>
+                <ul class="docs-card__summary">
+                    <li>Headline number per enabled module: active members, events held, donations raised, volunteer hours, records added, and more</li>
+                    <li>Sparkline trend on every card &mdash; up-and-to-the-right tells the story without reading anything</li>
+                    <li>Time-window dropdown: rolling 30 / 90 / 365 days, this fiscal year, last fiscal year</li>
+                    <li>Admin/board-only &mdash; grant the <strong>Reports</strong> access area to a treasurer or membership chair without giving full admin rights</li>
+                </ul>
+                <ul class="docs-card__links">
+                    <li><a href="<?php echo esc_url( home_url( '/docs/modules/?guide=insights' ) ); ?>">Insights guide</a></li>
+                </ul>
+            </div>
+
         </div>
 
     </div>
@@ -279,8 +301,9 @@ get_header();
         <div class="docs-cta__content">
             <h2>Can't find what you need?</h2>
             <p>
-                Long-form documentation is still being written. In the meantime:
-                try the demo, check the FAQ, or reach out through the community.
+                If something looks missing or wrong, tell us &mdash; the
+                docs evolve as fast as the software does. Try the demo,
+                check the FAQ, or reach out through the community.
             </p>
             <div class="docs-cta__actions">
                 <a href="<?php echo esc_url( home_url( '/docs/faq/' ) ); ?>" class="btn btn-primary btn-lg">

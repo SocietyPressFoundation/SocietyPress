@@ -130,6 +130,66 @@ Take five minutes to do this even if you're eager to import members. The setup w
 
 ---
 
+## Decisions you'll make during the import
+
+Before clicking the import button, six decisions worth making with intent rather than at the prompt. None are irreversible — the importer's "Recent Imports → Undo this import" will roll any of these back — but it's faster to think them through in advance than to re-do work.
+
+### 1. Joint members: combine or split
+
+ENS treats spouses as a single record with extra "Joint" name/email/phone fields. SocietyPress can either keep them combined (one member with both names listed) or split them into two linked household members (each with their own login and renewal track).
+
+- **Combine** is simpler. Membership renewal is one transaction, the directory shows one entry. Best for societies where one spouse handles all society interaction.
+- **Split** is more accurate. Each spouse can have their own email, log in independently, RSVP to events separately, and accumulate their own volunteer hours. Best when both spouses are active.
+
+You pick this on the import preview screen. Pick split if in doubt — combining later is harder than splitting later.
+
+### 2. Lapsed members: bring them or leave them
+
+ENS marks members as Active = No when they lapse. By default, the importer brings them in as inactive SocietyPress members. You can also:
+
+- **Filter the CSV** before import — open it in a spreadsheet, sort by Active, delete the No rows.
+- **Bulk-archive** after import — import everyone, then use Members → All Members → filter Inactive → bulk action → "Archive."
+
+Importing them and archiving is usually the right call. It preserves history (years they paid dues, events they attended) and lets you reach out one last time with a "we noticed you lapsed" email through the Blast Email module.
+
+### 3. Member numbers: keep or generate fresh
+
+ENS assigns each member a "Member Record ID." The importer keeps that as your member's primary number so cross-references in old records (newsletters citing "Member #284") still work.
+
+If you'd rather start clean — say, your Member Record IDs are not actually visible to anyone and you'd rather they be sequential 1, 2, 3 — clear the column from the CSV before importing and SocietyPress generates fresh numbers.
+
+Default: keep ENS IDs. Don't override unless you have a specific reason.
+
+### 4. Legacy fields: capture as notes or drop
+
+Several ENS fields don't have a direct SocietyPress equivalent (Toll-Free Phone, Alt. International Phone, Quarterly, Your Skills, Your Interests, Your Education, etc.). The importer's default is to combine the populated ones into a single "About this member" note on each member's record.
+
+- **Default (combine into notes)** preserves the data and keeps it searchable.
+- **Drop** these fields from the CSV before import if the data is mostly empty or out-of-date and you don't want noise on every member record.
+
+If a particular legacy field IS used heavily by your society and you want it as a real searchable field rather than buried in a note, tell us before you import — adding a one-time custom mapping for a specific society is a quick fix.
+
+### 5. Privacy defaults
+
+ENS stores per-field directory visibility (whether name, address, phone, email, photo show in the public directory). The importer brings those settings across. **Verify before going public**.
+
+A few societies have run with overly-loose ENS defaults for years without realizing — every member's home phone number visible to anyone. The migration is a good moment to default-tighten:
+
+- Open **SocietyPress → Settings → Privacy** before the import.
+- Set defaults to "members-only" or "private" for fields that shouldn't be visible to non-members.
+- Existing members can opt back to public visibility on their profile if they choose.
+
+### 6. Cutover timing: parallel run or hard switch
+
+Two options once the import is verified:
+
+- **Parallel run** (1–2 weeks). Keep your ENS site live at its current URL. Build out SocietyPress at a temporary URL (`new.yoursociety.org` or `societypress.yoursite.org`). Members keep using ENS while you finish setting up. When you're ready, swap DNS — SocietyPress takes over the main URL, ENS becomes read-only. Lower risk, more dual-maintenance work.
+- **Hard switch**. Schedule a maintenance window, do the cutover in one sitting, ENS goes dark immediately. Faster, more pressure on the day.
+
+Most societies pick parallel run. Hard switch only makes sense if you have a clean cutover date (end of fiscal year, post-AGM) and an ENS contract that's expiring anyway.
+
+---
+
 ## Step 4 — Import your members
 
 1. In the SocietyPress admin sidebar, go to **Members → Import**.

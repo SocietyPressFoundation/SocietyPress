@@ -51,7 +51,7 @@ get_header();
 
                 <div class="onepager__feature">
                     <h3>Member management that just works</h3>
-                    <p>Individual and organizational members in one database. Automatic renewal reminders. A self-service member portal where members update their own info. Import from a CSV &mdash; including the standard 73-field ENS export &mdash; in minutes.</p>
+                    <p>Individual and organizational members in one database. Automatic renewal reminders. A self-service member portal where members update their own info. Import from a CSV &mdash; including the standard 86-column ENS export &mdash; in minutes.</p>
                 </div>
 
                 <div class="onepager__feature">

@@ -22,7 +22,7 @@ If they should have a login, check "Create WordPress account" on the form. Socie
 
 **SocietyPress → Members → Import.** Upload a CSV. SocietyPress reads the column headers and shows you what it'll do — how many rows, the first few mapped to fields, any warnings.
 
-If you're coming from EasyNetSites, export your member roster as CSV from your ENS admin and upload it here. SocietyPress recognizes the ENS column layout (74+ columns) and maps them automatically. Joint members can be combined into one record or split into two linked household members — you pick during import.
+If you're coming from EasyNetSites, export your member roster as CSV from your ENS admin and upload it here. SocietyPress recognizes the ENS column layout (86 columns) and maps them automatically. Joint members can be combined into one record or split into two linked household members — you pick during import.
 
 For a 200-member society, the import takes about 30 seconds. For 2,000 members, about five minutes.
 

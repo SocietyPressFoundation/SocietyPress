@@ -131,7 +131,7 @@ get_header();
         <div class="section-header">
             <h2>What Comes Across</h2>
             <p>
-                SocietyPress supports the standard ENS 73-field CSV export
+                SocietyPress supports the standard ENS 86-column CSV export
                 directly. Here's the honest breakdown of what transfers
                 cleanly, what needs a bit of translation, and what simply
                 doesn't exist on the other side.

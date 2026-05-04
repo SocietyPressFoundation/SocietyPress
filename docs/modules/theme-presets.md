@@ -87,7 +87,7 @@ Tier 2 and Tier 3 don't exist yet. Tier 1 is what's shippable today.
 
 **The Import button says "Preset format not recognized."** The JSON file is from somewhere else (not a SocietyPress preset). Double-check you grabbed it from the Gallery or another SocietyPress site's export. The format key in a valid preset is `"format": "societypress.preset.v1"`.
 
-**I imported a preset and the site looks identical.** Either the preset's tokens matched your current ones (unlikely if you actually picked a different look), or browser cache. Hard-refresh the front-end with Cmd+Shift+R / Ctrl+Shift+R.
+**I imported a preset and the site looks identical.** Either the preset's tokens matched your current ones (unlikely if you actually picked a different look), or a cache layer is still serving the old stylesheet. Open the front-end in an incognito window to confirm — if the preset took effect there, purge any caching plugin's cache and the issue resolves.
 
 **My logo is gone after import.** It shouldn't be — presets don't touch the logo. Check **SocietyPress → Settings → Design → Logo** — the logo media-library reference is on that page.
 

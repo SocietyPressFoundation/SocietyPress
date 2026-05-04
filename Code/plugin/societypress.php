@@ -3,12 +3,13 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.0.47
+ * Version:     1.0.50
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
  * Text Domain: societypress
  * Requires at least: 6.0
+ * Tested up to: 6.9
  * Requires PHP: 8.0
  *
  * @package SocietyPress
@@ -26,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.47' );
+define( 'SOCIETYPRESS_VERSION', '1.0.50' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -10860,6 +10861,759 @@ function sp_render_dashboard_page(): void {
             <?php endif; ?>
         </div>
 
+    </div>
+    <?php
+}
+
+
+// ============================================================================
+// INSIGHTS — engagement & use metrics for the board
+//
+// WHY: Boards and officers want a single place to answer "how alive is our
+//      society right now?" — active members, events held, donations raised,
+//      newsletters published, volunteer hours logged. The Insights page
+//      collects one top-line number per enabled module across a chosen
+//      time window, with a tiny inline-SVG sparkline showing the trend.
+//
+//      Admin/board-only (sp_view_reports). Disabled modules are hidden.
+//      Module-facing panels (per-module embedded stats) are intentionally
+//      out of scope for v1; this is the rollup view only.
+// ============================================================================
+
+add_action( 'admin_menu', function () {
+    add_submenu_page(
+        'societypress',
+        __( 'Insights — SocietyPress', 'societypress' ),
+        __( 'Insights', 'societypress' ),
+        'sp_view_reports',
+        'sp-insights',
+        'sp_render_insights_page'
+    );
+}, 20 );
+
+/**
+ * Available time-window keys for the Insights page.
+ *
+ * WHY: Returned by both the dropdown renderer and the resolver, so the two
+ *      can never drift apart. Keys are stable; labels are translated.
+ */
+function sp_insights_window_options(): array {
+    return [
+        '30d'        => __( 'Last 30 days', 'societypress' ),
+        '90d'        => __( 'Last 90 days', 'societypress' ),
+        '365d'       => __( 'Last 365 days', 'societypress' ),
+        'fy_current' => __( 'This fiscal year', 'societypress' ),
+        'fy_last'    => __( 'Last fiscal year', 'societypress' ),
+    ];
+}
+
+/**
+ * Resolve a window key to a [start, end, buckets, unit, label] descriptor.
+ *
+ * WHY: Every stat callback needs the same window, so resolve it once. The
+ *      fiscal-year boundary reuses the existing membership_start_month
+ *      setting so societies don't configure the same month in two places.
+ */
+function sp_insights_resolve_window( string $key ): array {
+    $end_ts = strtotime( current_time( 'mysql' ) );
+    $today  = wp_date( 'Y-m-d', $end_ts );
+
+    $settings    = get_option( 'societypress_settings', [] );
+    $start_month = max( 1, min( 12, (int) ( $settings['membership_start_month'] ?? 7 ) ) );
+
+    switch ( $key ) {
+        case '30d':
+            return [
+                'start'   => wp_date( 'Y-m-d', strtotime( '-30 days', $end_ts ) ),
+                'end'     => $today,
+                'buckets' => 10,
+                'unit'    => 'days',
+                'label'   => __( 'Last 30 days', 'societypress' ),
+            ];
+
+        case '365d':
+            return [
+                'start'   => wp_date( 'Y-m-d', strtotime( '-365 days', $end_ts ) ),
+                'end'     => $today,
+                'buckets' => 12,
+                'unit'    => 'month',
+                'label'   => __( 'Last 365 days', 'societypress' ),
+            ];
+
+        case 'fy_current':
+        case 'fy_last':
+            // Pure-date arithmetic via DateTimeImmutable so we don't get
+            // bitten by server-vs-WP timezone offsets at the year boundary.
+            $year_now      = (int) wp_date( 'Y', $end_ts );
+            $month_now     = (int) wp_date( 'n', $end_ts );
+            $fy_start_year = ( $month_now >= $start_month ) ? $year_now : $year_now - 1;
+            if ( $key === 'fy_last' ) {
+                $fy_start_year--;
+            }
+            $fy_start_str = sprintf( '%04d-%02d-01', $fy_start_year, $start_month );
+            $fy_start_dt  = new DateTimeImmutable( $fy_start_str );
+            $fy_end_dt    = $fy_start_dt->modify( '+1 year -1 day' );
+            // For an in-progress fiscal year, clamp the end to today.
+            if ( $key === 'fy_current' && $fy_end_dt->format( 'Y-m-d' ) > $today ) {
+                $fy_end_str = $today;
+            } else {
+                $fy_end_str = $fy_end_dt->format( 'Y-m-d' );
+            }
+            return [
+                'start'   => $fy_start_str,
+                'end'     => $fy_end_str,
+                'buckets' => 12,
+                'unit'    => 'month',
+                'label'   => $key === 'fy_current'
+                    ? __( 'This fiscal year', 'societypress' )
+                    : __( 'Last fiscal year', 'societypress' ),
+            ];
+
+        case '90d':
+        default:
+            return [
+                'start'   => wp_date( 'Y-m-d', strtotime( '-90 days', $end_ts ) ),
+                'end'     => $today,
+                'buckets' => 12,
+                'unit'    => 'week',
+                'label'   => __( 'Last 90 days', 'societypress' ),
+            ];
+    }
+}
+
+/**
+ * Compute the right-exclusive [start_ts, end_ts] edges of every sparkline bucket.
+ *
+ * WHY: Buckets must tile the window exactly so weekly/monthly counts add up
+ *      to the total. Right-exclusive edges prevent double-counting events
+ *      that fall on a bucket boundary.
+ */
+function sp_insights_bucket_edges( array $window ): array {
+    $start_ts = strtotime( $window['start'] . ' 00:00:00' );
+    $end_ts   = strtotime( $window['end']   . ' 23:59:59' );
+    $buckets  = max( 1, (int) ( $window['buckets'] ?? 12 ) );
+    $span     = max( 1, $end_ts - $start_ts );
+    $step     = (int) ceil( $span / $buckets );
+
+    $edges  = [];
+    $cursor = $start_ts;
+    for ( $i = 0; $i < $buckets; $i++ ) {
+        $bucket_end = ( $i === $buckets - 1 ) ? $end_ts : $cursor + $step;
+        $edges[]    = [ 'start_ts' => $cursor, 'end_ts' => $bucket_end ];
+        $cursor     = $bucket_end;
+    }
+    return $edges;
+}
+
+/**
+ * Generic per-bucket COUNT helper.
+ *
+ * WHY: Twelve of the sixteen panels are simple "count rows in window grouped
+ *      into buckets." This helper handles the table-existence check, the
+ *      total query, and the per-bucket query in one place.
+ *
+ * @param string $table_suffix  Table name without the {$wpdb->prefix}sp_ prefix.
+ * @param string $date_col      Column to filter by (DATE or DATETIME).
+ * @param string $extra_where   Additional safe-static WHERE fragment, no leading AND.
+ * @return array{total:int, sparkline:int[]}
+ */
+function sp_insights_bucket_counts( string $table_suffix, string $date_col, array $window, string $extra_where = '' ): array {
+    global $wpdb;
+    $table  = $wpdb->prefix . 'sp_' . $table_suffix;
+    $zeroes = array_fill( 0, max( 1, (int) ( $window['buckets'] ?? 12 ) ), 0 );
+
+    // Defensive: if the module's table isn't installed, return zeroes.
+    $exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
+    if ( ! $exists ) {
+        return [ 'total' => 0, 'sparkline' => $zeroes ];
+    }
+
+    $extra = $extra_where !== '' ? " AND ({$extra_where})" : '';
+
+    $total = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$table} WHERE {$date_col} BETWEEN %s AND %s {$extra}",
+        $window['start'] . ' 00:00:00',
+        $window['end']   . ' 23:59:59'
+    ) );
+
+    $sparkline = [];
+    foreach ( sp_insights_bucket_edges( $window ) as $edge ) {
+        $sparkline[] = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$table} WHERE {$date_col} >= %s AND {$date_col} < %s {$extra}",
+            wp_date( 'Y-m-d H:i:s', $edge['start_ts'] ),
+            wp_date( 'Y-m-d H:i:s', $edge['end_ts'] )
+        ) );
+    }
+
+    return [ 'total' => $total, 'sparkline' => $sparkline ];
+}
+
+/**
+ * Render an inline-SVG sparkline for a bucket array.
+ *
+ * WHY: A trend line says more than a number alone. Inline SVG keeps the page
+ *      dependency-free — no chart library, no JavaScript, no extra CSS files.
+ */
+function sp_insights_render_sparkline( array $points, int $width = 96, int $height = 24 ): string {
+    if ( empty( $points ) ) {
+        return '';
+    }
+    $max = max( $points );
+    if ( $max <= 0 ) {
+        $y = $height - 1;
+        return sprintf(
+            '<svg class="sp-sparkline" width="%1$d" height="%2$d" viewBox="0 0 %1$d %2$d" aria-hidden="true"><line x1="0" y1="%3$d" x2="%1$d" y2="%3$d" stroke="currentColor" stroke-opacity="0.25" stroke-width="1.5"/></svg>',
+            $width,
+            $height,
+            $y
+        );
+    }
+    $count  = count( $points );
+    $step   = $count > 1 ? $width / ( $count - 1 ) : 0;
+    $coords = [];
+    foreach ( $points as $i => $v ) {
+        $x        = (int) round( $i * $step );
+        $y        = (int) round( $height - 1 - ( $v / $max ) * ( $height - 2 ) );
+        $coords[] = $x . ',' . $y;
+    }
+    return sprintf(
+        '<svg class="sp-sparkline" width="%1$d" height="%2$d" viewBox="0 0 %1$d %2$d" aria-hidden="true"><polyline fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" points="%3$s"/></svg>',
+        $width,
+        $height,
+        esc_attr( implode( ' ', $coords ) )
+    );
+}
+
+/**
+ * Format an Insights value for the card.
+ *
+ * WHY: Counts, currency, and hours all need different formatting but the
+ *      cards render uniformly. A single helper keeps display consistent
+ *      and i18n-aware.
+ */
+function sp_insights_format_value( $value, string $kind = 'count' ): string {
+    switch ( $kind ) {
+        case 'currency':
+            if ( function_exists( 'sp_format_currency' ) ) {
+                return sp_format_currency( (float) $value );
+            }
+            return number_format_i18n( (float) $value, 2 );
+
+        case 'hours':
+            $v       = (float) $value;
+            $rounded = ( $v == (int) $v ) ? (int) $v : round( $v, 1 );
+            return sprintf(
+                /* translators: %s: number of volunteer hours, already locale-formatted */
+                _n( '%s hour', '%s hours', (int) max( 1, round( $v ) ), 'societypress' ),
+                number_format_i18n( $rounded, ( $v == (int) $v ) ? 0 : 1 )
+            );
+
+        case 'count':
+        default:
+            return number_format_i18n( (int) $value );
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Per-module stat callbacks. Each returns:
+//   [ 'label' => string, 'value' => mixed, 'value_kind' => string, 'sparkline' => int[] ]
+// -----------------------------------------------------------------------------
+
+function sp_insights_stats_members( array $window ): array {
+    global $wpdb;
+    $access  = $wpdb->prefix . 'sp_access_log';
+    $members = $wpdb->prefix . 'sp_members';
+    $zeroes  = array_fill( 0, max( 1, (int) ( $window['buckets'] ?? 12 ) ), 0 );
+
+    $access_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $access ) );
+    if ( ! $access_exists ) {
+        return [
+            'label'      => __( 'Active members', 'societypress' ),
+            'value'      => 0,
+            'value_kind' => 'count',
+            'sparkline'  => $zeroes,
+        ];
+    }
+
+    $total = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(DISTINCT a.user_id)
+           FROM {$access} a
+     INNER JOIN {$members} m ON a.user_id = m.user_id
+          WHERE a.user_id IS NOT NULL
+            AND a.created_at BETWEEN %s AND %s",
+        $window['start'] . ' 00:00:00',
+        $window['end']   . ' 23:59:59'
+    ) );
+
+    $sparkline = [];
+    foreach ( sp_insights_bucket_edges( $window ) as $edge ) {
+        $sparkline[] = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(DISTINCT a.user_id)
+               FROM {$access} a
+         INNER JOIN {$members} m ON a.user_id = m.user_id
+              WHERE a.user_id IS NOT NULL
+                AND a.created_at >= %s
+                AND a.created_at <  %s",
+            wp_date( 'Y-m-d H:i:s', $edge['start_ts'] ),
+            wp_date( 'Y-m-d H:i:s', $edge['end_ts'] )
+        ) );
+    }
+
+    return [
+        'label'      => __( 'Active members', 'societypress' ),
+        'value'      => $total,
+        'value_kind' => 'count',
+        'sparkline'  => $sparkline,
+    ];
+}
+
+function sp_insights_stats_events( array $window ): array {
+    $r = sp_insights_bucket_counts( 'events', 'event_date', $window );
+    return [
+        'label'      => __( 'Events held', 'societypress' ),
+        'value'      => $r['total'],
+        'value_kind' => 'count',
+        'sparkline'  => $r['sparkline'],
+    ];
+}
+
+function sp_insights_stats_library( array $window ): array {
+    $r = sp_insights_bucket_counts( 'library_items', 'created_at', $window );
+    return [
+        'label'      => __( 'Catalog items added', 'societypress' ),
+        'value'      => $r['total'],
+        'value_kind' => 'count',
+        'sparkline'  => $r['sparkline'],
+    ];
+}
+
+function sp_insights_stats_newsletters( array $window ): array {
+    $r = sp_insights_bucket_counts( 'newsletters', 'pub_date', $window );
+    return [
+        'label'      => __( 'Issues published', 'societypress' ),
+        'value'      => $r['total'],
+        'value_kind' => 'count',
+        'sparkline'  => $r['sparkline'],
+    ];
+}
+
+function sp_insights_stats_resources( array $window ): array {
+    $r = sp_insights_bucket_counts( 'resources', 'created_at', $window );
+    return [
+        'label'      => __( 'Resources added', 'societypress' ),
+        'value'      => $r['total'],
+        'value_kind' => 'count',
+        'sparkline'  => $r['sparkline'],
+    ];
+}
+
+function sp_insights_stats_governance( array $window ): array {
+    global $wpdb;
+    $table  = $wpdb->prefix . 'sp_volunteer_hours';
+    $zeroes = array_fill( 0, max( 1, (int) ( $window['buckets'] ?? 12 ) ), 0 );
+
+    $exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
+    if ( ! $exists ) {
+        return [
+            'label'      => __( 'Volunteer hours', 'societypress' ),
+            'value'      => 0,
+            'value_kind' => 'hours',
+            'sparkline'  => $zeroes,
+        ];
+    }
+
+    $total = (float) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COALESCE(SUM(hours), 0) FROM {$table} WHERE activity_date BETWEEN %s AND %s",
+        $window['start'],
+        $window['end']
+    ) );
+
+    $sparkline = [];
+    foreach ( sp_insights_bucket_edges( $window ) as $edge ) {
+        $sparkline[] = (int) round( (float) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COALESCE(SUM(hours), 0) FROM {$table} WHERE activity_date >= %s AND activity_date < %s",
+            wp_date( 'Y-m-d', $edge['start_ts'] ),
+            wp_date( 'Y-m-d', $edge['end_ts'] )
+        ) ) );
+    }
+
+    return [
+        'label'      => __( 'Volunteer hours', 'societypress' ),
+        'value'      => $total,
+        'value_kind' => 'hours',
+        'sparkline'  => $sparkline,
+    ];
+}
+
+function sp_insights_stats_store( array $window ): array {
+    $r = sp_insights_bucket_counts(
+        'orders',
+        'created_at',
+        $window,
+        "status NOT IN ('pending','cancelled','refunded')"
+    );
+    return [
+        'label'      => __( 'Orders placed', 'societypress' ),
+        'value'      => $r['total'],
+        'value_kind' => 'count',
+        'sparkline'  => $r['sparkline'],
+    ];
+}
+
+function sp_insights_stats_records( array $window ): array {
+    $r = sp_insights_bucket_counts( 'records', 'created_at', $window );
+    return [
+        'label'      => __( 'Records added', 'societypress' ),
+        'value'      => $r['total'],
+        'value_kind' => 'count',
+        'sparkline'  => $r['sparkline'],
+    ];
+}
+
+function sp_insights_stats_donations( array $window ): array {
+    global $wpdb;
+    $table  = $wpdb->prefix . 'sp_donations';
+    $zeroes = array_fill( 0, max( 1, (int) ( $window['buckets'] ?? 12 ) ), 0 );
+
+    $exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
+    if ( ! $exists ) {
+        return [
+            'label'      => __( 'Total raised', 'societypress' ),
+            'value'      => 0,
+            'value_kind' => 'currency',
+            'sparkline'  => $zeroes,
+        ];
+    }
+
+    // Statuses we count as actual revenue. 'recorded' = manual cash/check entry,
+    // 'paid' = Stripe one-time, 'subscription_active' = Stripe recurring.
+    $exclude = "status NOT IN ('failed','pending','cancelled','refunded')";
+
+    $total = (float) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COALESCE(SUM(amount), 0) FROM {$table}
+          WHERE date BETWEEN %s AND %s
+            AND {$exclude}",
+        $window['start'],
+        $window['end']
+    ) );
+
+    $sparkline = [];
+    foreach ( sp_insights_bucket_edges( $window ) as $edge ) {
+        $sparkline[] = (int) round( (float) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COALESCE(SUM(amount), 0) FROM {$table}
+              WHERE date >= %s AND date < %s
+                AND {$exclude}",
+            wp_date( 'Y-m-d', $edge['start_ts'] ),
+            wp_date( 'Y-m-d', $edge['end_ts'] )
+        ) ) );
+    }
+
+    return [
+        'label'      => __( 'Total raised', 'societypress' ),
+        'value'      => $total,
+        'value_kind' => 'currency',
+        'sparkline'  => $sparkline,
+    ];
+}
+
+function sp_insights_stats_blast_email( array $window ): array {
+    $r = sp_insights_bucket_counts( 'blast_emails', 'sent_at', $window, "status = 'sent'" );
+    return [
+        'label'      => __( 'Blasts sent', 'societypress' ),
+        'value'      => $r['total'],
+        'value_kind' => 'count',
+        'sparkline'  => $r['sparkline'],
+    ];
+}
+
+function sp_insights_stats_gallery( array $window ): array {
+    $r = sp_insights_bucket_counts( 'photo_album_items', 'created_at', $window );
+    return [
+        'label'      => __( 'Photos uploaded', 'societypress' ),
+        'value'      => $r['total'],
+        'value_kind' => 'count',
+        'sparkline'  => $r['sparkline'],
+    ];
+}
+
+function sp_insights_stats_help_requests( array $window ): array {
+    $r = sp_insights_bucket_counts( 'help_requests', 'created_at', $window );
+    return [
+        'label'      => __( 'Research help requests', 'societypress' ),
+        'value'      => $r['total'],
+        'value_kind' => 'count',
+        'sparkline'  => $r['sparkline'],
+    ];
+}
+
+function sp_insights_stats_documents( array $window ): array {
+    $r = sp_insights_bucket_counts( 'documents', 'created_at', $window );
+    return [
+        'label'      => __( 'Documents uploaded', 'societypress' ),
+        'value'      => $r['total'],
+        'value_kind' => 'count',
+        'sparkline'  => $r['sparkline'],
+    ];
+}
+
+function sp_insights_stats_voting( array $window ): array {
+    $r = sp_insights_bucket_counts( 'ballots', 'created_at', $window );
+    return [
+        'label'      => __( 'Ballots opened', 'societypress' ),
+        'value'      => $r['total'],
+        'value_kind' => 'count',
+        'sparkline'  => $r['sparkline'],
+    ];
+}
+
+function sp_insights_stats_lineage( array $window ): array {
+    $r = sp_insights_bucket_counts( 'lineage_applications', 'created_at', $window );
+    return [
+        'label'      => __( 'Lineage applications', 'societypress' ),
+        'value'      => $r['total'],
+        'value_kind' => 'count',
+        'sparkline'  => $r['sparkline'],
+    ];
+}
+
+function sp_insights_stats_research_services( array $window ): array {
+    $r = sp_insights_bucket_counts( 'research_cases', 'created_at', $window );
+    return [
+        'label'      => __( 'Research cases opened', 'societypress' ),
+        'value'      => $r['total'],
+        'value_kind' => 'count',
+        'sparkline'  => $r['sparkline'],
+    ];
+}
+
+/**
+ * Registry of Insights panels in display order.
+ *
+ * WHY: One ordered list drives both the page layout and the rendering loop.
+ *      The Members panel always renders; module panels render only when the
+ *      module is enabled in Settings → Modules.
+ *
+ *      The list is filterable through `sp_insights_panels` so child themes
+ *      and third-party add-ons can append their own stat cards. Each entry
+ *      keys off the module slug (so the enabled-modules gate fires) and
+ *      provides `name`, `icon` (Dashicon class), `callback` (function name
+ *      taking the resolved window array, returning label/value/value_kind/
+ *      sparkline). Set `always_on => true` to bypass the module gate.
+ */
+function sp_insights_get_panels(): array {
+    $panels = [
+        'members' => [
+            'name'      => __( 'Members', 'societypress' ),
+            'icon'      => 'dashicons-groups',
+            'callback'  => 'sp_insights_stats_members',
+            'always_on' => true,
+        ],
+        'events' => [
+            'name'     => __( 'Events', 'societypress' ),
+            'icon'     => 'dashicons-calendar-alt',
+            'callback' => 'sp_insights_stats_events',
+        ],
+        'library' => [
+            'name'     => __( 'Library', 'societypress' ),
+            'icon'     => 'dashicons-book-alt',
+            'callback' => 'sp_insights_stats_library',
+        ],
+        'newsletters' => [
+            'name'     => __( 'Newsletters', 'societypress' ),
+            'icon'     => 'dashicons-media-document',
+            'callback' => 'sp_insights_stats_newsletters',
+        ],
+        'resources' => [
+            'name'     => __( 'Resources', 'societypress' ),
+            'icon'     => 'dashicons-admin-links',
+            'callback' => 'sp_insights_stats_resources',
+        ],
+        'governance' => [
+            'name'     => __( 'Volunteers', 'societypress' ),
+            'icon'     => 'dashicons-businessman',
+            'callback' => 'sp_insights_stats_governance',
+        ],
+        'store' => [
+            'name'     => __( 'Store', 'societypress' ),
+            'icon'     => 'dashicons-cart',
+            'callback' => 'sp_insights_stats_store',
+        ],
+        'records' => [
+            'name'     => __( 'Genealogical Records', 'societypress' ),
+            'icon'     => 'dashicons-database',
+            'callback' => 'sp_insights_stats_records',
+        ],
+        'donations' => [
+            'name'     => __( 'Donations', 'societypress' ),
+            'icon'     => 'dashicons-heart',
+            'callback' => 'sp_insights_stats_donations',
+        ],
+        'blast_email' => [
+            'name'     => __( 'Blast Email', 'societypress' ),
+            'icon'     => 'dashicons-email-alt',
+            'callback' => 'sp_insights_stats_blast_email',
+        ],
+        'gallery' => [
+            'name'     => __( 'Photo Gallery', 'societypress' ),
+            'icon'     => 'dashicons-format-gallery',
+            'callback' => 'sp_insights_stats_gallery',
+        ],
+        'help_requests' => [
+            'name'     => __( 'Research Help', 'societypress' ),
+            'icon'     => 'dashicons-sos',
+            'callback' => 'sp_insights_stats_help_requests',
+        ],
+        'documents' => [
+            'name'     => __( 'Documents', 'societypress' ),
+            'icon'     => 'dashicons-media-text',
+            'callback' => 'sp_insights_stats_documents',
+        ],
+        'voting' => [
+            'name'     => __( 'Voting', 'societypress' ),
+            'icon'     => 'dashicons-yes-alt',
+            'callback' => 'sp_insights_stats_voting',
+        ],
+        'lineage' => [
+            'name'     => __( 'Lineage Programs', 'societypress' ),
+            'icon'     => 'dashicons-awards',
+            'callback' => 'sp_insights_stats_lineage',
+        ],
+        'research_services' => [
+            'name'     => __( 'Paid Research', 'societypress' ),
+            'icon'     => 'dashicons-clipboard',
+            'callback' => 'sp_insights_stats_research_services',
+        ],
+    ];
+
+    /**
+     * Filter the registry of Insights panels.
+     *
+     * Add, remove, or re-order panels on the SocietyPress → Insights page.
+     * Each entry is an associative array with keys:
+     *   - name      (string)  Display name shown in the card header.
+     *   - icon      (string)  Dashicon CSS class (e.g. 'dashicons-chart-bar').
+     *   - callback  (string)  Function name; receives the window array,
+     *                         returns [label, value, value_kind, sparkline].
+     *   - always_on (bool)    Optional. Bypass the per-module enabled gate.
+     *
+     * Panels keyed off a module slug only render when that module is
+     * enabled, unless `always_on` is true.
+     *
+     * @param array $panels Registry of insights panels.
+     */
+    return apply_filters( 'sp_insights_panels', $panels );
+}
+
+/**
+ * Render a single Insights stat card.
+ */
+function sp_insights_render_card( string $module_slug, array $panel_meta, array $stats ): void {
+    ?>
+    <div class="sp-insights-card">
+        <div class="sp-insights-card__head">
+            <span class="dashicons <?php echo esc_attr( $panel_meta['icon'] ); ?>" aria-hidden="true"></span>
+            <span class="sp-insights-card__module"><?php echo esc_html( $panel_meta['name'] ); ?></span>
+        </div>
+        <div class="sp-insights-card__value">
+            <?php echo esc_html( sp_insights_format_value( $stats['value'], $stats['value_kind'] ) ); ?>
+        </div>
+        <div class="sp-insights-card__label"><?php echo esc_html( $stats['label'] ); ?></div>
+        <div class="sp-insights-card__spark"><?php echo sp_insights_render_sparkline( (array) $stats['sparkline'] ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped — built from int coords ?></div>
+    </div>
+    <?php
+}
+
+/**
+ * Render: Insights admin page.
+ *
+ * WHY: Single landing page where a board can answer "how alive is our
+ *      society?" — one card per enabled module across a chosen time window.
+ */
+function sp_render_insights_page(): void {
+    if ( ! sp_user_can( 'reports' ) ) {
+        wp_die( esc_html__( 'You do not have permission to view this page.', 'societypress' ) );
+    }
+
+    $window_keys = array_keys( sp_insights_window_options() );
+    $current_key = isset( $_GET['win'] ) ? sanitize_text_field( wp_unslash( $_GET['win'] ) ) : '90d';
+    if ( ! in_array( $current_key, $window_keys, true ) ) {
+        $current_key = '90d';
+    }
+    $window = sp_insights_resolve_window( $current_key );
+    ?>
+    <style>
+    .sp-insights-toolbar { display: flex; align-items: center; gap: 1em; flex-wrap: wrap; margin: 1em 0 1.5em; }
+    .sp-insights-toolbar label { font-weight: 600; }
+    .sp-insights-window-note { color: #646970; font-size: 13px; }
+    .sp-insights-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+    .sp-insights-card { background: #fff; border: 1px solid #dcdcde; border-radius: 6px; padding: 16px; display: flex; flex-direction: column; gap: 6px; min-height: 140px; }
+    .sp-insights-card__head { display: flex; align-items: center; gap: 6px; color: #50575e; font-size: 13px; }
+    .sp-insights-card__head .dashicons { color: #646970; }
+    .sp-insights-card__module { font-weight: 600; }
+    .sp-insights-card__value { font-size: 32px; line-height: 1.1; font-weight: 600; color: #1d2327; margin-top: 4px; }
+    .sp-insights-card__label { color: #50575e; font-size: 13px; }
+    .sp-insights-card__spark { margin-top: auto; color: #2271b1; }
+    .sp-insights-empty { color: #646970; font-style: italic; padding: 24px; background: #fff; border: 1px solid #dcdcde; border-radius: 6px; }
+    </style>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Insights', 'societypress' ); ?></h1>
+        <p class="description">
+            <?php esc_html_e( 'A snapshot of how engaged your members are and how much your modules are being used. Pick a time window to compare across periods.', 'societypress' ); ?>
+        </p>
+
+        <form method="get" class="sp-insights-toolbar">
+            <input type="hidden" name="page" value="sp-insights">
+            <label for="sp-insights-win"><?php esc_html_e( 'Time window:', 'societypress' ); ?></label>
+            <select id="sp-insights-win" name="win" onchange="this.form.submit()">
+                <?php foreach ( sp_insights_window_options() as $k => $label ) : ?>
+                    <option value="<?php echo esc_attr( $k ); ?>" <?php selected( $current_key, $k ); ?>><?php echo esc_html( $label ); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <span class="sp-insights-window-note">
+                <?php
+                printf(
+                    /* translators: 1: window start date, 2: window end date */
+                    esc_html__( '%1$s — %2$s', 'societypress' ),
+                    esc_html( wp_date( get_option( 'date_format', 'F j, Y' ), strtotime( $window['start'] ) ) ),
+                    esc_html( wp_date( get_option( 'date_format', 'F j, Y' ), strtotime( $window['end'] ) ) )
+                );
+                ?>
+            </span>
+        </form>
+
+        <?php
+        $panels       = sp_insights_get_panels();
+        $rendered_any = false;
+        ?>
+        <div class="sp-insights-grid">
+            <?php
+            foreach ( $panels as $slug => $meta ) :
+                $always = ! empty( $meta['always_on'] );
+                if ( ! $always && ! sp_module_enabled( $slug ) ) {
+                    continue;
+                }
+                if ( empty( $meta['callback'] ) || ! function_exists( $meta['callback'] ) ) {
+                    continue;
+                }
+                $stats = call_user_func( $meta['callback'], $window );
+                if ( ! is_array( $stats ) ) {
+                    continue;
+                }
+                $stats = wp_parse_args( $stats, [
+                    'label'      => '',
+                    'value'      => 0,
+                    'value_kind' => 'count',
+                    'sparkline'  => [],
+                ] );
+                $rendered_any = true;
+                sp_insights_render_card( $slug, $meta, $stats );
+            endforeach;
+            ?>
+        </div>
+
+        <?php if ( ! $rendered_any ) : ?>
+            <div class="sp-insights-empty"><?php esc_html_e( 'No modules are enabled. Enable some modules in Settings → Modules to start seeing insights here.', 'societypress' ); ?></div>
+        <?php endif; ?>
     </div>
     <?php
 }
@@ -24032,7 +24786,7 @@ function sp_generate_custom_theme_css( string $name, string $slug, array $colors
     $css .= "Version: 1.0.0\n";
     $css .= "Template: societypress\n";
     $css .= "Requires at least: 6.0\n";
-    $css .= "Tested up to: 6.7\n";
+    $css .= "Tested up to: 6.9\n";
     $css .= "Requires PHP: 8.0\n";
     $css .= "License: GPL-2.0-or-later\n";
     $css .= "Text Domain: {$slug}\n";
@@ -47582,6 +48336,25 @@ function sp_backup_get_tables(): array {
  */
 function sp_backup_export_table( string $table, string $output_dir ): int {
     global $wpdb;
+
+    // Defense in depth: every callsite today passes a table from
+    // sp_backup_get_tables() (SocietyPress sp_* tables plus the core WP user
+    // tables), but the name still flows into raw SQL via backticks because
+    // $wpdb->prepare() does not parameterize identifiers. A future caller
+    // that ever sourced this argument from user input — or a bug in
+    // sp_backup_get_tables() — would otherwise reach the queries below
+    // unchecked. We refuse anything that isn't an SP table or a WP user
+    // table, and we confirm the table actually exists before any SQL runs.
+    $sp_prefix     = $wpdb->prefix . 'sp_';
+    $allowed_extra = [ $wpdb->users, $wpdb->usermeta ];
+    $is_sp         = ( strpos( $table, $sp_prefix ) === 0 );
+    $is_wp_user    = in_array( $table, $allowed_extra, true );
+    if ( ! $is_sp && ! $is_wp_user ) {
+        return 0;
+    }
+    if ( ! $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) ) {
+        return 0;
+    }
 
     $file   = $output_dir . '/' . $table . '.sql';
     $handle = fopen( $file, 'w' );

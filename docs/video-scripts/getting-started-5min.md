@@ -210,7 +210,7 @@ populated. Footer shows society info.
 Once the 5-minute overview is published, these are the logical next
 videos for the channel:
 
-1. **Importing from ENS — 10 minutes.** Deeper dive on the 73-field CSV
+1. **Importing from ENS — 10 minutes.** Deeper dive on the 86-column CSV
    mapping, joint-member handling, verifying data after import.
 2. **Setting up membership tiers — 8 minutes.** Multi-tier societies,
    grace periods, family memberships, lifetime members.

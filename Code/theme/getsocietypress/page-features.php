@@ -471,6 +471,103 @@ get_header();
 
 
 <!-- ==========================================================================
+     6.5. THE REST OF THE TOOLBOX
+     A compact grid of additional modules — the ones not deep-dived above.
+     Each links to the matching Harold-friendly module guide.
+     ========================================================================== -->
+<section class="feat-more-modules section">
+    <div class="container">
+
+        <div class="section-header">
+            <h2>The rest of the toolbox</h2>
+            <p>
+                Beyond the four core areas above, SocietyPress ships with the
+                modules below. Each is a setting toggle &mdash; turn on what
+                fits your society, leave the rest off.
+            </p>
+        </div>
+
+        <div class="feat-cap-grid">
+
+            <div class="feat-cap-card">
+                <div class="feat-cap-card__icon" aria-hidden="true">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                </div>
+                <h3>Voting &amp; Elections</h3>
+                <p>Online ballots for board elections, bylaw amendments, and member surveys. Tier-based eligibility built in. <a href="<?php echo esc_url( home_url( '/docs/modules/?guide=voting' ) ); ?>">Voting guide</a>.</p>
+            </div>
+
+            <div class="feat-cap-card">
+                <div class="feat-cap-card__icon" aria-hidden="true">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>
+                </div>
+                <h3>Lineage Programs</h3>
+                <p>First Families, Pioneer Settlers, Mayflower Descendants &mdash; multi-program recognition with applications, review queue, public roster, and printable certificates. <a href="<?php echo esc_url( home_url( '/docs/modules/?guide=lineage-programs' ) ); ?>">Lineage guide</a>.</p>
+            </div>
+
+            <div class="feat-cap-card">
+                <div class="feat-cap-card__icon" aria-hidden="true">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                </div>
+                <h3>Research Help</h3>
+                <p>Public Q&amp;A archive on the duty-librarian model. Members respond with time-tracked answers; volunteer hours flow to one ledger. Optional paid escalation for deep cases. <a href="<?php echo esc_url( home_url( '/docs/modules/?guide=help-requests' ) ); ?>">Help Requests guide</a>.</p>
+            </div>
+
+            <div class="feat-cap-card">
+                <div class="feat-cap-card__icon" aria-hidden="true">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                </div>
+                <h3>Blast Email</h3>
+                <p>Send to all members or specific groups (tier, committee, custom). Delivery tracking, opt-out management, and template variables for personalization. <a href="<?php echo esc_url( home_url( '/docs/modules/?guide=blast-email' ) ); ?>">Blast Email guide</a>.</p>
+            </div>
+
+            <div class="feat-cap-card">
+                <div class="feat-cap-card__icon" aria-hidden="true">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="22" y1="11" x2="16" y2="11"/><line x1="19" y1="8" x2="19" y2="14"/></svg>
+                </div>
+                <h3>Volunteers &amp; Committees</h3>
+                <p>Officer positions, committees, meeting minutes, and volunteer hour tracking. Volunteer-opportunity board with shift signups and capacity limits. <a href="<?php echo esc_url( home_url( '/docs/modules/?guide=governance' ) ); ?>">Governance guide</a>.</p>
+            </div>
+
+            <div class="feat-cap-card">
+                <div class="feat-cap-card__icon" aria-hidden="true">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+                </div>
+                <h3>Online Store</h3>
+                <p>Sell publications, apparel, and pins. Inline Stripe (card, Apple Pay, Google Pay, Link) and PayPal Smart Buttons (PayPal, Venmo) checkout. Inventory and refund tools. <a href="<?php echo esc_url( home_url( '/docs/modules/?guide=store' ) ); ?>">Store guide</a>.</p>
+            </div>
+
+            <div class="feat-cap-card">
+                <div class="feat-cap-card__icon" aria-hidden="true">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                </div>
+                <h3>Photo Gallery</h3>
+                <p>Curated event albums plus member-submitted "Picture Wall" galleries (ancestor portraits) with admin moderation. <a href="<?php echo esc_url( home_url( '/docs/modules/?guide=gallery' ) ); ?>">Gallery guide</a>.</p>
+            </div>
+
+            <div class="feat-cap-card">
+                <div class="feat-cap-card__icon" aria-hidden="true">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+                </div>
+                <h3>Documents</h3>
+                <p>Upload bylaws, policies, meeting minutes. Per-document access control &mdash; some public, some members-only, some board-only. <a href="<?php echo esc_url( home_url( '/docs/modules/?guide=documents' ) ); ?>">Documents guide</a>.</p>
+            </div>
+
+            <div class="feat-cap-card">
+                <div class="feat-cap-card__icon" aria-hidden="true">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                </div>
+                <h3>Insights</h3>
+                <p>Engagement and use numbers across every active module on one admin/board-only screen. Time-window dropdown, sparkline trends, no exports needed. <a href="<?php echo esc_url( home_url( '/docs/modules/?guide=insights' ) ); ?>">Insights guide</a>.</p>
+            </div>
+
+        </div>
+
+    </div>
+</section>
+
+
+<!-- ==========================================================================
      7. ALWAYS FREE & OPEN SOURCE
      GPL commitment section with centered text and support CTA.
      ========================================================================== -->

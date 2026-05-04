@@ -39,6 +39,11 @@ If you just installed SocietyPress and the site is empty:
 
 - **[Installer](installer.md)** — the one-click `sp-installer.php` flow.
 - **[Setup Wizard](setup-wizard.md)** — the first-run configuration flow.
+- **[Insights](insights.md)** — engagement and use numbers across every module, on one admin/board-only page.
+- **[Backup & Restore](backup-restore.md)** — one-click full-site export and the recipe for restoring it.
+- **[User Access & Roles](user-access.md)** — give volunteers different levels of access without giving everyone admin rights.
+- **[Email Setup](email-setup.md)** — SMTP, transactional providers, SPF/DKIM, real cron — what to do once so renewal reminders and blast emails actually land.
+- **[Privacy & GDPR](privacy-gdpr.md)** — encryption at rest, the export/erasure tools, processing requests, what the law actually requires.
 - **[Theme Presets](theme-presets.md)** — export your look as JSON, import others'.
 - **[Child Themes](child-themes.md)** — Heritage, Coastline, Prairie, Ledger, Parlor — when to pick which.
 - **[Page Builder](page-builder.md)** — drag widgets into columns, no code.

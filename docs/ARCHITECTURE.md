@@ -67,18 +67,18 @@ Single option: `get_option('societypress_settings', [])`
 5. **Events** — default_capacity, allow_waitlist, reminder_days, calendar options
 6. **Privacy** — data_retention, cookie_notice, GDPR toggles
 7. **Design** — 7 color pickers, font_family, font_size, heading_font, content_width, sidebar_width, custom_css, style presets
-8. **Modules** — enable/disable 14 feature modules (card grid with toggle switches, Enable All / Disable All)
+8. **Modules** — enable/disable 15 toggleable feature modules (card grid with toggle switches, Enable All / Disable All); Members is always-on so total = 16
 
 Settings sanitized via `sp_sanitize_settings()` callback registered with `register_setting()`.
 
 Additional standalone options:
 - `societypress_db_version` — tracks schema version for migrations
 - `sp_wizard_completed` — marks setup wizard as done
-- `sp_enabled_modules` — array of enabled module slugs (14 modules)
+- `sp_enabled_modules` — array of enabled module slugs (15 toggleable; Members always-on)
 
 ---
 
-## Database Tables (54)
+## Database Tables (~65)
 
 All prefixed with `{$wpdb->prefix}sp_`.
 

@@ -78,13 +78,13 @@ Submit it to the [Theme Gallery](https://getsocietypress.org/themes/) for other 
 
 ## If something looks wrong
 
-**The colors didn't update after activation.** Browser cache. Hard-refresh (Cmd+Shift+R / Ctrl+Shift+R). If a caching plugin is installed (W3 Total Cache, WP Super Cache), purge it from the admin.
+**The colors didn't update after activation.** Caching. If a caching plugin is installed (W3 Total Cache, WP Super Cache, LiteSpeed Cache), purge it from the admin first — that's almost always the real culprit. Then check the page in an incognito window: if the new colors appear there but not in your regular browser, your browser is holding the old stylesheet and a normal reload after a minute or two will sort it.
 
 **My logo disappeared.** It shouldn't — child themes don't touch the logo. Check **SocietyPress → Settings → Design → Logo** to confirm the media-library reference is still there. The logo image lives in the WordPress Media Library, not in the theme.
 
 **Custom CSS I added isn't applying.** If you added CSS via Settings → Design → Custom CSS, that should still apply on top of the new child theme. If you added CSS by editing the previous child theme's `style.css` directly, that customization is lost — child theme files don't carry over. Use Settings → Design → Custom CSS or build a grandchild theme to keep customizations portable.
 
-**The page-builder layouts look broken.** Page-builder layouts are stored on the page, not in the theme. They follow the theme's design tokens (colors, fonts) but the structure stays. If something genuinely looks broken, the issue is most likely an old browser cache — hard-refresh first.
+**The page-builder layouts look broken.** Page-builder layouts are stored on the page, not in the theme. They follow the theme's design tokens (colors, fonts) but the structure stays. If something genuinely looks broken, check whether a caching plugin is serving stale CSS — purge any caching plugin's cache first, then verify in an incognito window before assuming it's a real layout issue.
 
 ## Related guides
 

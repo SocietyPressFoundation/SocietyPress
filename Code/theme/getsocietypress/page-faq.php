@@ -10,10 +10,11 @@
  * 2. General — what is it, who is it for, etc.
  * 3. Technical — installation, hosting, updates
  * 4. Licensing — GPL, cost, commercial use
- * 5. CTA — still have questions?
+ * 5. Features — module-level "can we..." questions
+ * 6. CTA — still have questions?
  *
  * @package getsocietypress
- * @version 0.02d
+ * @version 0.03d
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -257,10 +258,15 @@ get_header();
                     <p>
                         Yes. SocietyPress plugs into WordPress's built-in personal-data
                         export and erasure tools. Members, event registrations, library
-                        loans, newsletter access, and volunteer records all flow through
-                        the standard Tools &gt; Export Personal Data and Tools &gt;
-                        Erase Personal Data screens. Donations coverage is on the
-                        roadmap.
+                        loans, newsletter access, volunteer records, and donations all
+                        flow through the standard Tools &gt; Export Personal Data and
+                        Tools &gt; Erase Personal Data screens. Donations are
+                        <em>pseudonymized</em> on erasure rather than deleted &mdash;
+                        the dollar amount and date stay on the books for IRS
+                        recordkeeping; the name and contact information are wiped.
+                        See the
+                        <a href="<?php echo esc_url( home_url( '/docs/modules/?guide=privacy-gdpr' ) ); ?>">Privacy &amp; GDPR guide</a>
+                        for the full walkthrough.
                     </p>
                 </div>
             </details>
@@ -272,13 +278,16 @@ get_header();
                 </summary>
                 <div class="faq-item__answer">
                     <p>
-                        Yes. SocietyPress ships with 8 role templates (President,
-                        Membership Chair, Events Coordinator, Librarian, Editor, etc.)
+                        Yes. SocietyPress ships with 8 role templates (Webmaster,
+                        Membership Manager, Treasurer, Event Coordinator, Librarian,
+                        Communications Director, Records Manager, Content Editor)
                         across 10 access areas. You can assign a template with one
                         click, or toggle individual permissions per person. The
-                        Membership Chair can manage members without seeing the
-                        donation ledger; the Librarian can run the catalog without
-                        touching events.
+                        Treasurer can record donations without seeing the membership
+                        roster; the Librarian can run the catalog without touching
+                        events. See the
+                        <a href="<?php echo esc_url( home_url( '/docs/modules/?guide=user-access' ) ); ?>">User Access &amp; Roles guide</a>
+                        for the full breakdown.
                     </p>
                 </div>
             </details>
@@ -296,7 +305,9 @@ get_header();
                         comes back out. Your host's backup system handles the
                         WordPress files and database &mdash; SocietyPress doesn't
                         replace that, but it does make sure nothing important is
-                        trapped in a proprietary format.
+                        trapped in a proprietary format. The
+                        <a href="<?php echo esc_url( home_url( '/docs/modules/?guide=backup-restore' ) ); ?>">Backup &amp; Restore guide</a>
+                        walks through the full export and restore flow.
                     </p>
                 </div>
             </details>
@@ -314,7 +325,9 @@ get_header();
                         transactional email service &mdash; Amazon SES, Postmark, or
                         Mailgun all have free tiers that comfortably cover a society's
                         volume. SocietyPress sends through
-                        <code>wp_mail()</code>, so any SMTP plugin works.
+                        <code>wp_mail()</code>, so any SMTP plugin works. The
+                        <a href="<?php echo esc_url( home_url( '/docs/modules/?guide=email-setup' ) ); ?>">Email Setup guide</a>
+                        has step-by-step recipes (15 minutes including coffee).
                     </p>
                 </div>
             </details>
@@ -328,7 +341,7 @@ get_header();
                     <p>
                         SocietyPress was designed with ENS societies in mind. Export
                         your members as a CSV from ENS (SocietyPress supports the
-                        standard 73-field ENS export format directly), upload it
+                        standard 86-column ENS export format directly), upload it
                         through Members &gt; Import, and the importer maps fields
                         automatically, detects organizational members, and handles
                         duplicates. Events, surname research, and library catalogs
@@ -390,9 +403,9 @@ get_header();
                 </summary>
                 <div class="faq-item__answer">
                     <p>
-                        No. SocietyPress will always be free. There are no plans for premium tiers,
-                        paid add-ons, or "Pro" versions. The project is sustained by voluntary
-                        donations from societies that find it useful.
+                        For the foreseeable future, no. SocietyPress is free under
+                        the GPL v2 and there are no plans to change that. Every
+                        release is the full release.
                     </p>
                 </div>
             </details>
@@ -404,7 +417,163 @@ get_header();
 
 
 <!-- ==========================================================================
-     5. STILL HAVE QUESTIONS?
+     5. FEATURE QUESTIONS — what can the software actually do
+     ========================================================================== -->
+<section class="faq-section faq-section--alt section">
+    <div class="container container--narrow">
+
+        <h2 class="faq-section__heading">Features</h2>
+
+        <div class="faq-group">
+
+            <details class="faq-item">
+                <summary class="faq-item__question">
+                    Can I run online board elections and bylaw votes?
+                    <svg class="faq-item__chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <div class="faq-item__answer">
+                    <p>
+                        Yes. The Voting module supports board elections, bylaw
+                        amendments, and member surveys, with tier-based eligibility
+                        (e.g. only full members vote on bylaws; subscribers don't),
+                        configurable voting windows, and a results page the board
+                        can release publicly or keep admin-only. One member, one
+                        ballot &mdash; duplicates are blocked by default.
+                    </p>
+                </div>
+            </details>
+
+            <details class="faq-item">
+                <summary class="faq-item__question">
+                    Can we recognize members for First Families, Pioneer Settlers, etc.?
+                    <svg class="faq-item__chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <div class="faq-item__answer">
+                    <p>
+                        Yes. The Lineage Programs module is built for exactly this.
+                        Define any number of programs (First Families of [your
+                        county], Mayflower Descendants, Civil War Veterans
+                        Descendants &mdash; whatever your society recognizes), let
+                        members submit applications through a public form, review
+                        them in an admin queue, and approved members appear on a
+                        public roster with auto-numbered printable certificates.
+                        Optional Stripe application fee.
+                    </p>
+                </div>
+            </details>
+
+            <details class="faq-item">
+                <summary class="faq-item__question">
+                    Can members submit research help requests to each other?
+                    <svg class="faq-item__chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <div class="faq-item__answer">
+                    <p>
+                        Yes. The Help Requests module is a public Q&amp;A archive
+                        modeled on the duty-librarian system most societies already
+                        run informally. Anyone can submit a question (math captcha
+                        + email verification keep spam out); members respond with
+                        time-tracked answers that automatically log to the
+                        volunteer-hours ledger. Questions can be marked resolved,
+                        endorsed, or escalated to paid Research Services for cases
+                        that need many hours of focused work.
+                    </p>
+                </div>
+            </details>
+
+            <details class="faq-item">
+                <summary class="faq-item__question">
+                    Can we sell publications, merchandise, or back issues?
+                    <svg class="faq-item__chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <div class="faq-item__answer">
+                    <p>
+                        Yes. The Store module ships with a real shopping cart,
+                        inline Stripe and PayPal checkout (Apple Pay / Google Pay /
+                        Link / Venmo all work), inventory tracking, shipping
+                        addresses, and refund tools. Products can be physical
+                        (mugs, polos, society publications) or digital (PDFs).
+                    </p>
+                </div>
+            </details>
+
+            <details class="faq-item">
+                <summary class="faq-item__question">
+                    Can members upload photos from society events?
+                    <svg class="faq-item__chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <div class="faq-item__answer">
+                    <p>
+                        Yes. The Gallery module supports admin-curated albums and
+                        an optional member-submission flow (the "Picture Wall").
+                        Submissions land in a moderation queue so the webmaster
+                        approves photos before they go public.
+                    </p>
+                </div>
+            </details>
+
+            <details class="faq-item">
+                <summary class="faq-item__question">
+                    Can we publish searchable cemetery, census, or church record databases?
+                    <svg class="faq-item__chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <div class="faq-item__answer">
+                    <p>
+                        Yes. The Records module lets you build any number of
+                        record collections, each with its own custom fields
+                        (cemetery transcriptions, census extracts, church
+                        registers, obituary indexes &mdash; whatever your
+                        society holds). Records can be public or members-only
+                        per collection, with full-text search and per-field
+                        filtering. CSV import handles bulk loads.
+                    </p>
+                </div>
+            </details>
+
+            <details class="faq-item">
+                <summary class="faq-item__question">
+                    Can the board see how the society is doing without exporting reports?
+                    <svg class="faq-item__chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <div class="faq-item__answer">
+                    <p>
+                        Yes. The Insights page collects engagement and use numbers
+                        across every active module &mdash; active members,
+                        events held, donations raised, volunteer hours logged,
+                        records added &mdash; on a single admin/board-only screen.
+                        Pick a time window (last 30 / 90 / 365 days, this fiscal
+                        year, last fiscal year) and every number updates at once.
+                        Each card has a sparkline showing the trend.
+                    </p>
+                </div>
+            </details>
+
+            <details class="faq-item">
+                <summary class="faq-item__question">
+                    Can we send mass emails to members through the website?
+                    <svg class="faq-item__chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <div class="faq-item__answer">
+                    <p>
+                        Yes. The Blast Email module sends to all members or to
+                        specific groups (membership tier, committee, custom group),
+                        with delivery tracking, opt-out management, and template
+                        variables for personalization. For volume past a few
+                        hundred recipients we recommend pairing it with an SMTP
+                        plugin pointed at a transactional service (Amazon SES,
+                        Postmark, Mailgun) so deliverability stays clean.
+                    </p>
+                </div>
+            </details>
+
+        </div>
+
+    </div>
+</section>
+
+
+<!-- ==========================================================================
+     6. STILL HAVE QUESTIONS?
      ========================================================================== -->
 <section class="faq-cta">
     <div class="container">

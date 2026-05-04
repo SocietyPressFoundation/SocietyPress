@@ -159,7 +159,7 @@ Needs Translation / Doesn't Transfer. Could use the same structure as the
 *(Click "Choose file," select the ENS CSV.)*
 
 > Upload the CSV. SocietyPress reads the column headers, recognizes the
-> 73-field ENS format, and shows you a preview.
+> 86-column ENS format, and shows you a preview.
 
 *(Point to the preview panel.)*
 

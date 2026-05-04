@@ -16,9 +16,45 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Recently shipped
 
-Items that were on this roadmap and have now landed. Kept here for a
-release cycle or two so visitors can see momentum before being pruned
-into the changelog.
+Items that have landed recently. Kept here for a release cycle or two so
+visitors can see momentum before being pruned into the changelog.
+
+### End-user docs hub — five new cross-cutting guides
+
+Shipped 2026-05-03. The Harold-friendly module-guide library at
+`getsocietypress.org/docs/modules/` adds five new cross-cutting
+guides covering the questions every webmaster asks early:
+[Insights](https://getsocietypress.org/docs/modules/?guide=insights),
+[Backup & Restore](https://getsocietypress.org/docs/modules/?guide=backup-restore),
+[User Access & Roles](https://getsocietypress.org/docs/modules/?guide=user-access),
+[Email Setup](https://getsocietypress.org/docs/modules/?guide=email-setup),
+and [Privacy & GDPR](https://getsocietypress.org/docs/modules/?guide=privacy-gdpr).
+That brings the total to 28 guides spanning every toggleable module
+plus the recurring cross-cutting concerns. FAQ links into each
+where relevant.
+
+### ENS migration handbook — Decisions section
+
+Shipped 2026-05-03. The full ENS migration walkthrough now includes
+an explicit "Decisions you'll make during the import" section
+covering joint members (combine vs split), lapsed members, member
+numbers, legacy fields, privacy defaults, and cutover timing
+(parallel run vs hard switch). Closes the bulk-decision-points
+expansion ask from the Documentation section.
+
+### Insights — engagement & use metrics for boards
+
+Shipped 2026-05-03. A single admin/board-only page (SocietyPress →
+Insights) that pulls one headline number per enabled module across a
+chosen time window — active members, events held, donations raised,
+volunteer hours, records added, blasts sent, and so on — with a
+sparkline trend on every card. Time-window dropdown supports rolling
+30 / 90 / 365 days plus this and last fiscal year (the fiscal-year
+boundary reuses the existing membership-start-month setting, so
+societies don't configure it twice). Disabled modules are hidden;
+permission gate uses the existing `sp_view_reports` capability so a
+treasurer or membership chair can be granted access without giving
+them broader admin rights.
 
 ### Theme Exchange — Tier 1
 

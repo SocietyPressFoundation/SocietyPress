@@ -589,7 +589,7 @@ One unified search box, across everything:
 - **GENRECORD export** — the open genealogical records exchange format,
   for interoperability with other platforms
 - **EasyNetSites compatibility** — the Members importer understands
-  ENS's 73-field CSV format natively
+  ENS's 86-column CSV format natively
 
 ## Internationalization
 

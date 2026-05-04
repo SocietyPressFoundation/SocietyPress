@@ -14,6 +14,56 @@ Entries describe user-visible changes only. For the underlying commits, see
 
 ---
 
+## [1.0.50] — 2026-05-03
+
+### Added
+- **`sp_insights_panels` filter.** Child themes and add-ons can append
+  custom stat cards to the Insights page. Each panel supplies a name,
+  icon, and a callback that receives the resolved time window and
+  returns label/value/value_kind/sparkline. Documented in
+  `developer-reference.md`.
+
+---
+
+## [1.0.49] — 2026-05-03
+
+### Security
+- **`sp_backup_export_table` now whitelists table names.** The function only
+  ever ran on the output of `sp_backup_get_tables()` — but because the
+  argument flowed into raw SQL via backticks (table identifiers can't be
+  parameterized through `$wpdb->prepare()`), a future caller sourcing the
+  argument from outside that helper would have reached the queries
+  unchecked. The function now refuses anything that isn't an SP table or
+  a WordPress user table, and confirms the table exists via parameterized
+  `SHOW TABLES LIKE` before any other SQL runs. Closes the last item from
+  the security audit's low-risk tier.
+
+---
+
+## [1.0.48] — 2026-05-03
+
+### Added
+- **Insights — engagement & use metrics.** A single admin/board-only page
+  (SocietyPress → Insights) that pulls one headline number per enabled
+  module across a chosen time window. Active members, events held,
+  catalog items added, issues published, resources added, volunteer
+  hours, orders placed, records added, total raised, blasts sent,
+  photos uploaded, research help requests, documents uploaded, ballots
+  opened, lineage applications, research cases — all on one screen.
+  Sparkline trend on every card. Time-window dropdown supports last
+  30 / 90 / 365 days, this fiscal year, and last fiscal year (the
+  fiscal-year boundary reuses the existing membership-start-month
+  setting, so societies don't configure it twice). Disabled modules
+  are hidden, not greyed out. Permission gate uses the existing
+  `sp_view_reports` capability, so a board treasurer or membership
+  chair can be granted access without giving them broader admin rights.
+
+### Documentation
+- New end-user guide for Insights at `/docs/modules/?guide=insights`,
+  plus the README index entry.
+
+---
+
 ## [1.0.47] — 2026-04-27
 
 ### Fixed

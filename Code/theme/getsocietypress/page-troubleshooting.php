@@ -173,9 +173,10 @@ define( 'WP_DEBUG_DISPLAY', false );</code></pre>
 
             <p><strong>Fix:</strong> In order of likelihood:</p>
             <ol>
-                <li>Open the page in an incognito/private window. If your changes appear, it's browser-side caching &mdash; hard-refresh (<code>Cmd+Shift+R</code> on Mac, <code>Ctrl+Shift+R</code> on Windows).</li>
-                <li>If you have a caching plugin (W3 Total Cache, WP Super Cache, LiteSpeed Cache), clear its cache from the plugin's admin panel.</li>
+                <li>Open the page in an incognito/private window. If your changes appear there but not in your normal browser, the cache is stale.</li>
+                <li>If you have a caching plugin (W3 Total Cache, WP Super Cache, LiteSpeed Cache), clear its cache from the plugin's admin panel. This is almost always the real culprit on a society site.</li>
                 <li>If your host provides server-side caching (Cloudways, Kinsta, WP Engine), clear it from the hosting control panel.</li>
+                <li>Tell visitors who still see the old page to clear their browser cache (<strong>Settings &rarr; Privacy &rarr; Clear browsing data &rarr; Cached images and files</strong>) and reload. Asking them to "hard-refresh" is unreliable across browsers and not a fix &mdash; the fix is the cache layer, not the visitor.</li>
             </ol>
 
             <hr>

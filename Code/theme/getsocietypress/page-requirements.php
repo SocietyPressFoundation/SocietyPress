@@ -188,7 +188,7 @@ get_header();
             <h2>Database</h2>
             <p>
                 SocietyPress creates its own tables alongside your existing WordPress
-                data &mdash; never inside it. Roughly 60 tables across 14 feature
+                data &mdash; never inside it. Roughly 65 tables across 16 feature
                 modules, all prefixed so they're easy to identify and back up.
             </p>
         </div>

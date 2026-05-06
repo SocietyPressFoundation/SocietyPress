@@ -63,9 +63,9 @@
         <!-- Nothing configured yet — show a setup hint to admins only.
              WHY admin-only: Regular visitors shouldn't see configuration
              instructions. Admins need to know where to go to set this up. -->
-        <div class="widget-area" style="padding: 20px;">
+        <div class="widget-area widget-area--admin-hint">
             <p class="widget-title"><?php esc_html_e( 'Sidebar Setup', 'prairie' ); ?></p>
-            <p style="font-size: 0.85rem; color: var(--prairie-muted);">
+            <p class="widget-area__hint-text">
                 <?php
                 echo wp_kses(
                     sprintf(

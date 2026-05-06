@@ -4,7 +4,7 @@ Theme URI: https://getsocietypress.org
 Author: SocietyPress Contributors
 Author URI: https://getsocietypress.org
 Description: The official theme for getsocietypress.org — the home of SocietyPress, a free, open-source WordPress platform for genealogical society administrators.
-Version: 0.38d
+Version: 0.39d
 License: GNU General Public License v2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 Text Domain: getsocietypress
@@ -228,6 +228,13 @@ p {
 .section {
     padding-top: var(--spacing-4xl);
     padding-bottom: var(--spacing-4xl);
+}
+
+/* Tighter top padding — used by index/archive pagination wrappers
+ * that need a bit of separation from the post grid above. */
+.section.section--top-spaced {
+    padding-top: var(--spacing-xl);
+    padding-bottom: var(--spacing-xl);
 }
 
 .section-header {
@@ -5722,9 +5729,10 @@ select:focus-visible,
 }
 
 .error-404__search-input:focus {
-    outline: none;
     border-color: var(--color-accent);
-    box-shadow: 0 0 0 3px rgba(201, 151, 58, 0.15);
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 3px rgba(201, 151, 58, 0.5);
 }
 
 .error-404__heading {

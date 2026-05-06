@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.0.54
+ * Version:     1.0.55
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.54' );
+define( 'SOCIETYPRESS_VERSION', '1.0.55' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -155,6 +155,12 @@ register_activation_hook( __FILE__, function () {
             // Analytics — Google Analytics integration
             'analytics_google_id'          => '',
             'analytics_exclude_admins'     => 1,
+            // Login notices — society-specific privacy/acceptable-use text
+            // shown above the login form and in the post-login acknowledgment.
+            // Defaults are starting points; every society should review and
+            // adapt the wording on Settings → Privacy.
+            'login_pre_notice'             => "This information is for members only; please do not share your ID and password with non-members. Names and contact information are provided to assist members in collaborating on society projects and in genealogical research. The use of this information for commercial, political, personal, or religious purposes is strictly forbidden.\n\nJust as you would not share your private family conversations or your family financial matters with the general public, please do not share our financial reports, board meeting notes, etc. with non-members.",
+            'login_ack_text'               => "This information is for members only; please do not share your ID and password with non-members or other members. Each member in good standing has been provided their own individual ID and password. Names and contact information are provided to assist members in collaborating on society projects and in genealogical research. The use of this information for commercial, political, personal, or religious purposes is strictly forbidden.\n\nJust as you would not share your private family conversations or your family financial matters with the general public, please do not share our financial reports, board meeting notes, etc. with non-members.",
         ]);
     }
 
@@ -2907,12 +2913,16 @@ function sp_encrypt( string $plaintext ): string {
         return '';
     }
 
-    // sodium must be available (it is on PHP 7.2+ / 8.x)
+    // libsodium ships with PHP core since 7.2 and is always present on the
+    // versions SocietyPress supports. If it is somehow missing (stripped
+    // build, exotic environment), fail loud rather than silently storing
+    // payment credentials and member PII as base64 plaintext.
     if ( ! function_exists( 'sodium_crypto_secretbox' ) ) {
-        // Fallback: return the plaintext base64-encoded with a prefix so
-        // sp_decrypt() knows it wasn't actually encrypted. This should
-        // never happen on PHP 8.3, but better than crashing.
-        return 'noenc:' . base64_encode( $plaintext );
+        wp_die(
+            esc_html__( 'SocietyPress requires the libsodium PHP extension for encryption, which appears to be unavailable on this server. Please contact your hosting provider.', 'societypress' ),
+            esc_html__( 'Encryption Unavailable', 'societypress' ),
+            [ 'response' => 500 ]
+        );
     }
 
     $key   = sp_get_encryption_key();
@@ -2937,7 +2947,9 @@ function sp_decrypt( string $encrypted ) {
         return '';
     }
 
-    // Handle the "noenc:" fallback prefix
+    // Backward-compatibility only: legacy "noenc:" prefix from an earlier
+    // version that stored base64'd plaintext when libsodium was missing.
+    // sp_encrypt() no longer produces this prefix.
     if ( strpos( $encrypted, 'noenc:' ) === 0 ) {
         return base64_decode( substr( $encrypted, 6 ) );
     }
@@ -7372,7 +7384,7 @@ function sp_render_pending_changes_page(): void {
                 display: flex; justify-content: space-between; align-items: center;
             }
             .sp-pending-header-left { font-size: 14px; font-weight: 600; color: #1d2327; }
-            .sp-pending-header-right { font-size: 12px; color: #999; }
+            .sp-pending-header-right { font-size: 12px; color: #767676; }
             .sp-pending-diff { padding: 16px 20px; }
             .sp-pending-diff table { width: 100%; border-collapse: collapse; font-size: 13px; }
             .sp-pending-diff th { text-align: left; padding: 6px 12px; color: #646970; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #f0f0f0; }
@@ -7412,7 +7424,7 @@ function sp_render_pending_changes_page(): void {
         </div>
 
         <?php if ( empty( $changes ) ) : ?>
-            <div style="background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 40px; text-align: center; color: #999;">
+            <div style="background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 40px; text-align: center; color: #767676;">
                 <?php echo esc_html__( 'No change requests found.', 'societypress' ); ?>
             </div>
         <?php endif; ?>
@@ -7513,7 +7525,7 @@ function sp_render_pending_changes_page(): void {
                         <tr class="<?php echo $changed ? 'sp-changed' : ''; ?>">
                             <td style="font-weight: 500; width: 180px;"><?php echo esc_html( $label ); ?></td>
                             <td><?php echo esc_html( $old_display ); ?></td>
-                            <td><?php echo esc_html( $new_display ); ?><?php if ( $changed ) : ?> <strong style="color: #dba617; font-size: 11px;"><?php echo esc_html__( 'CHANGED', 'societypress' ); ?></strong><?php endif; ?></td>
+                            <td><?php echo esc_html( $new_display ); ?><?php if ( $changed ) : ?> <strong style="color: #dba617; font-size: 0.75rem;"><?php echo esc_html__( 'CHANGED', 'societypress' ); ?></strong><?php endif; ?></td>
                         </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -8148,9 +8160,45 @@ add_action( 'admin_head', function () {
 .sp-w-100  { width: 100px; }
 .sp-w-120  { width: 120px; }
 .sp-w-150  { width: 150px; }
+
+/* ---------- Responsive table scrolling ----------
+   WHY: SP admin pages have ~25 multi-column wp-list-tables. Below ~900px the
+   columns spill out of the viewport. Wrapping each table individually would
+   be tedious; instead, the JS at admin_footer adds .sp-table-scroll around
+   any wp-list-table that isn't already wrapped, and this rule makes that
+   wrapper scroll horizontally. */
+.sp-table-scroll { overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; }
 </style>
 <?php
 });
+
+/*
+ * Auto-wrap admin list tables in a horizontal-scroll container so they don't
+ * overflow the viewport on narrower admin layouts. WHY here, not at render time:
+ * there are 25+ tables; a single late-wrap is far less invasive than touching
+ * every render function. The wrap is idempotent and skips tables already inside
+ * a .sp-table-scroll parent.
+ */
+add_action( 'admin_footer', function () {
+    $screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+    if ( ! $screen || strpos( $screen->id ?? '', 'societypress' ) === false && strpos( $screen->id ?? '', 'sp-' ) === false ) {
+        return;
+    }
+    ?>
+    <script>
+    (function () {
+        var tables = document.querySelectorAll('.wrap .wp-list-table.widefat, .wrap table.widefat.striped');
+        tables.forEach(function (t) {
+            if (t.parentElement && t.parentElement.classList.contains('sp-table-scroll')) return;
+            var wrap = document.createElement('div');
+            wrap.className = 'sp-table-scroll';
+            t.parentNode.insertBefore(wrap, t);
+            wrap.appendChild(t);
+        });
+    })();
+    </script>
+    <?php
+} );
 
 
 // ============================================================================
@@ -8194,11 +8242,16 @@ add_action( 'admin_head', function () {
     white-space: nowrap;
 }
 
-.sp-menu-group-header:hover,
+.sp-menu-group-header:hover {
+    color: #fff !important;
+    background-color: rgba(255,255,255,0.08);
+}
+
 .sp-menu-group-header:focus {
     color: #fff !important;
     background-color: rgba(255,255,255,0.08);
-    outline: none;
+    outline: 2px solid rgba(255,255,255,0.7);
+    outline-offset: -2px;
 }
 
 /* Icon to the left of the label */
@@ -8796,7 +8849,7 @@ add_filter( 'the_content', function ( $content ) {
         : wp_login_url( get_permalink() );
 
     return '<div style="text-align:center; padding:60px 20px; max-width:500px; margin:0 auto;">'
-         . '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:#999; margin-bottom:16px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
+         . '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:#767676; margin-bottom:16px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
          . '<h2 style="margin:0 0 12px; font-size:1.4em;">' . esc_html__( 'Members Only', 'societypress' ) . '</h2>'
          . '<p style="color:#666; margin:0 0 24px;">' . esc_html__( 'This page is available to members only. Please log in to view this content.', 'societypress' ) . '</p>'
          . '<a href="' . esc_url( $login_url ) . '" style="display:inline-block; padding:10px 28px; background:var(--sp-color-primary, #0D1F3C); color:#fff; text-decoration:none; border-radius:4px; font-weight:600;">' . esc_html__( 'Log In', 'societypress' ) . '</a>'
@@ -9085,13 +9138,19 @@ add_filter( 'login_message', function ( $message ) {
         return $message;
     }
 
-    $settings = get_option( 'societypress_settings', [] );
+    $settings  = get_option( 'societypress_settings', [] );
     $org_email = $settings['organization_email'] ?? '';
+    $body      = (string) ( $settings['login_pre_notice'] ?? '' );
 
     $notice  = '<div class="sp-login-notice">';
-    $notice .= '<h2>Important Notice</h2>';
-    $notice .= '<p>This information is for members only; please do not share your ID and password with non-members. Names and contact information are provided to assist members in collaborating on society projects and in genealogical research. The use of this information for commercial, political, personal, or religious purposes is strictly forbidden. It would show a lack of respect for the privacy of our members and would reduce their willingness to share contact data. Any violation will be considered a serious offense and will have consequences.</p>';
-    $notice .= '<p>Just as you would not share your private family conversations or your family financial matters with the general public, please do not share our financial reports, board meeting notes, etc. with non-members. In an effort to keep our members well informed, we are exceptionally open with this data within our membership. However, it is not intended for public dissemination.</p>';
+    $notice .= '<h2>' . esc_html__( 'Important Notice', 'societypress' ) . '</h2>';
+
+    foreach ( preg_split( "/\n\s*\n/", trim( $body ) ) as $p ) {
+        if ( $p === '' ) {
+            continue;
+        }
+        $notice .= '<p>' . wp_kses_post( nl2br( $p ) ) . '</p>';
+    }
 
     if ( $org_email ) {
         $notice .= '<p>' . esc_html__( 'If you have any membership questions, please contact the Membership Chair at ', 'societypress' ) . sp_obfuscate_email( $org_email ) . '.</p>';
@@ -9121,11 +9180,8 @@ add_action( 'login_footer', function () {
     }
     ?>
     <div class="sp-login-help" id="sp-login-help" style="display:none;">
-        <strong>Login Problem?</strong><br>
-        Click the "Lost your password?" link above if you have forgotten your
-        password. Enter your login name or email address and password reset
-        instructions will be sent to the email address associated with your
-        membership profile.
+        <strong><?php esc_html_e( 'Login Problem?', 'societypress' ); ?></strong><br>
+        <?php esc_html_e( 'Click the "Lost your password?" link above if you have forgotten your password. Enter your login name or email address and password reset instructions will be sent to the email address associated with your membership profile.', 'societypress' ); ?>
     </div>
     <script>
         (function() {
@@ -9143,7 +9199,7 @@ add_action( 'login_footer', function () {
             if (label) {
                 var firstText = label.childNodes[0];
                 if (firstText && firstText.nodeType === 3) {
-                    firstText.textContent = 'Login Name';
+                    firstText.textContent = <?php echo wp_json_encode( __( 'Login Name', 'societypress' ) ); ?>;
                 }
             }
 
@@ -9254,19 +9310,32 @@ add_action( 'admin_footer', function () {
     // Use the canonical font map instead of a local duplicate
     $font_family = sp_get_font_family_css( $settings['design_font_body'] ?? null );
     ?>
-    <div class="sp-acknowledge-overlay" id="sp-login-ack-overlay">
-        <div class="sp-acknowledge-modal">
-            <h2>Important Notice</h2>
-            <p>This information is for members only; please do not share your ID and password with non-members or other members. Each member in good standing has been provided their own individual ID and password. Names and contact information are provided to assist members in collaborating on society projects and in genealogical research. The use of this information for commercial, political, personal, or religious purposes is strictly forbidden. It would show a lack of respect for the privacy of our dedicated members and would reduce their willingness to share contact data. Any violation will be considered a serious offense and will have legal consequences. Appropriate action will be taken immediately upon violation of this policy and will result in immediate loss of membership, in addition to legal consequences.</p>
-            <p>Just as you would not share your private family conversations or your family financial matters with the general public, please do not share our financial reports, board meeting notes, etc. with non-members. In an effort to keep our members well informed, we are open with this data within our membership. However, it is not intended for public dissemination for any reason. Individuals who violate the confidential nature of this information will be dealt with by the Board of Directors and appropriate action will be taken, including immediate loss of membership.</p>
+    <?php
+    // WHY: Body text comes from the login_ack_text setting so each society can
+    // adapt the wording on Settings → Privacy without editing PHP. The default
+    // is provided in the activation defaults and remains in place until changed.
+    $sp_ack_settings = get_option( 'societypress_settings', [] );
+    $sp_ack_email    = $sp_ack_settings['organization_email'] ?? ( $sp_ack_settings['org_email'] ?? '' );
+    $sp_ack_body     = (string) ( $sp_ack_settings['login_ack_text'] ?? '' );
+    ?>
+    <div class="sp-acknowledge-overlay" id="sp-login-ack-overlay" role="dialog" aria-modal="true" aria-labelledby="sp-login-ack-title">
+        <div class="sp-acknowledge-modal" tabindex="-1">
+            <h2 id="sp-login-ack-title"><?php esc_html_e( 'Important Notice', 'societypress' ); ?></h2>
             <?php
-            // WHY: Earlier this contact email was hardcoded. Every society
-            // needs their own here, so we pull from the org_email setting.
-            $sp_ack_settings = get_option( 'societypress_settings', [] );
-            $sp_ack_email    = $sp_ack_settings['org_email'] ?? '';
+            // Render each paragraph (split on blank lines) so admins can author
+            // the text naturally and we still produce semantic <p> elements.
+            $sp_ack_paragraphs = preg_split( "/\n\s*\n/", trim( $sp_ack_body ) );
+            foreach ( $sp_ack_paragraphs as $sp_ack_p ) {
+                if ( $sp_ack_p === '' ) {
+                    continue;
+                }
+                echo '<p>' . wp_kses_post( nl2br( $sp_ack_p ) ) . '</p>';
+            }
             ?>
-            <p><?php echo esc_html__( 'If you have any questions, please contact us at ', 'societypress' ); ?><?php echo $sp_ack_email ? sp_obfuscate_email( $sp_ack_email ) : ''; ?>.</p>
-            <button type="button" class="sp-acknowledge-btn" id="sp-login-ack-btn">I Understand</button>
+            <?php if ( $sp_ack_email ) : ?>
+                <p><?php echo esc_html__( 'If you have any questions, please contact us at ', 'societypress' ); ?><?php echo sp_obfuscate_email( $sp_ack_email ); ?>.</p>
+            <?php endif; ?>
+            <button type="button" class="sp-acknowledge-btn" id="sp-login-ack-btn"><?php esc_html_e( 'I Understand', 'societypress' ); ?></button>
         </div>
     </div>
     <style>
@@ -10150,7 +10219,7 @@ function sp_render_dashboard_page(): void {
                     <button type="button" id="sp-update-btn" class="button button-primary sp-dash-nowrap">
                         <?php esc_html_e( 'Update Now', 'societypress' ); ?>
                     </button>
-                    <span id="sp-update-status" class="sp-dash-update-status"></span>
+                    <span id="sp-update-status" class="sp-dash-update-status" role="status" aria-live="polite"></span>
                 </div>
             </div>
 
@@ -10455,7 +10524,7 @@ function sp_render_dashboard_page(): void {
             .sp-dash-empty {
                 padding: 30px 20px;
                 text-align: center;
-                color: #999;
+                color: #767676;
                 font-size: 13px;
             }
             /* Quick links row */
@@ -10519,7 +10588,7 @@ function sp_render_dashboard_page(): void {
             }
             .sp-dash-activity-meta {
                 font-size: 12px;
-                color: #999;
+                color: #767676;
                 margin-top: 2px;
             }
 
@@ -11071,30 +11140,58 @@ function sp_insights_bucket_counts( string $table_suffix, string $date_col, arra
     $table  = $wpdb->prefix . 'sp_' . $table_suffix;
     $zeroes = array_fill( 0, max( 1, (int) ( $window['buckets'] ?? 12 ) ), 0 );
 
+    // SECURITY: $extra_where is only ever passed hardcoded literals from this
+    //  file (e.g., "status IN ('paid','refunded')"). It MUST NOT receive
+    //  user-controlled data — it is concatenated directly into the SQL.
+    //  If you ever need dynamic conditions, refactor to accept a prepared
+    //  fragment array instead.
+
+    // Cache hot — the Insights dashboard fires a dozen of these per panel,
+    // ten or more panels per load. A short transient is enough to make the
+    // page viable on shared hosts with large datasets.
+    $cache_key = 'sp_insights_' . md5( $table_suffix . '|' . $date_col . '|' . wp_json_encode( $window ) . '|' . $extra_where );
+    $cached    = get_transient( $cache_key );
+    if ( is_array( $cached ) && isset( $cached['total'], $cached['sparkline'] ) ) {
+        return $cached;
+    }
+
     // Defensive: if the module's table isn't installed, return zeroes.
     $exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
     if ( ! $exists ) {
-        return [ 'total' => 0, 'sparkline' => $zeroes ];
+        $result = [ 'total' => 0, 'sparkline' => $zeroes ];
+        set_transient( $cache_key, $result, 5 * MINUTE_IN_SECONDS );
+        return $result;
     }
 
     $extra = $extra_where !== '' ? " AND ({$extra_where})" : '';
+    $edges = sp_insights_bucket_edges( $window );
 
-    $total = (int) $wpdb->get_var( $wpdb->prepare(
-        "SELECT COUNT(*) FROM {$table} WHERE {$date_col} BETWEEN %s AND %s {$extra}",
-        $window['start'] . ' 00:00:00',
-        $window['end']   . ' 23:59:59'
+    // WHY one query, not 13: previously this fired 1 total + 12 per-bucket
+    //  COUNT()s. With ~13 panels on the Insights page that's ~182 queries
+    //  per pageview. Pull every row in the window once, bucket in PHP.
+    $start_sql = wp_date( 'Y-m-d H:i:s', strtotime( $window['start'] . ' 00:00:00' ) );
+    $end_sql   = wp_date( 'Y-m-d H:i:s', strtotime( $window['end']   . ' 23:59:59' ) );
+    $rows = $wpdb->get_col( $wpdb->prepare(
+        "SELECT UNIX_TIMESTAMP({$date_col}) FROM {$table} WHERE {$date_col} BETWEEN %s AND %s {$extra}",
+        $start_sql,
+        $end_sql
     ) );
 
-    $sparkline = [];
-    foreach ( sp_insights_bucket_edges( $window ) as $edge ) {
-        $sparkline[] = (int) $wpdb->get_var( $wpdb->prepare(
-            "SELECT COUNT(*) FROM {$table} WHERE {$date_col} >= %s AND {$date_col} < %s {$extra}",
-            wp_date( 'Y-m-d H:i:s', $edge['start_ts'] ),
-            wp_date( 'Y-m-d H:i:s', $edge['end_ts'] )
-        ) );
+    $total     = count( $rows );
+    $sparkline = $zeroes;
+    foreach ( $rows as $ts ) {
+        $ts = (int) $ts;
+        foreach ( $edges as $i => $edge ) {
+            if ( $ts >= $edge['start_ts'] && $ts < $edge['end_ts'] ) {
+                $sparkline[ $i ]++;
+                break;
+            }
+        }
     }
 
-    return [ 'total' => $total, 'sparkline' => $sparkline ];
+    $result = [ 'total' => $total, 'sparkline' => $sparkline ];
+    set_transient( $cache_key, $result, 5 * MINUTE_IN_SECONDS );
+    return $result;
 }
 
 /**
@@ -11683,6 +11780,14 @@ function sp_render_insights_page(): void {
  * HOW: We extend WP_List_Table and tell it how to fetch our data, what
  *      columns to show, how to sort, and what actions to offer on each row.
  *      WordPress handles the rest (rendering, pagination math, nonces, etc.).
+ *
+ * CONVENTION EXEMPTION: SocietyPress is otherwise function-based with snake_case
+ *      naming. The handful of classes in this file (all named `SP_*_List_Table`
+ *      and the `SP_Society_Sidebar_Widget`) exist solely because they extend
+ *      WordPress core APIs (`WP_List_Table`, `WP_Widget`) that REQUIRE class
+ *      inheritance — there is no function-based alternative in WordPress. These
+ *      classes are accepted exceptions to the no-OOP convention; no other
+ *      classes should be introduced.
  */
 if ( ! class_exists( 'WP_List_Table' ) ) {
     require_once ABSPATH . 'wp-admin/includes/class-wp-list-table.php';
@@ -12896,8 +13001,8 @@ function sp_render_members_page(): void {
                 <div style="width:100%; max-width:400px; height:20px; background:#dcdcde; border-radius:10px; margin:20px auto 0; overflow:hidden;">
                     <div id="sp-delete-progress" style="height:100%; width:0; background:#d63638; border-radius:10px; transition:width 0.3s ease;"></div>
                 </div>
-                <p id="sp-delete-count" style="margin-top:12px; font-size:14px; color:#50575e;"></p>
-                <p id="sp-delete-message" style="color:#50575e; margin-top:8px; font-size:14px;"><?php esc_html_e( 'Please do not close or refresh this page.', 'societypress' ); ?></p>
+                <p id="sp-delete-count" style="margin-top:12px; font-size:14px; color:#50575e;" role="status" aria-live="polite"></p>
+                <p id="sp-delete-message" style="color:#50575e; margin-top:8px; font-size:14px;" role="alert" aria-live="assertive"><?php esc_html_e( 'Please do not close or refresh this page.', 'societypress' ); ?></p>
             </div>
         </div>
 
@@ -13107,7 +13212,7 @@ add_action( 'admin_init', function () {
     // Validate required fields — orgs need organization name, individuals need first+last
     if ( $member_type === 'organization' ) {
         if ( empty( $organization_name ) || empty( $email ) ) {
-            set_transient( 'sp_member_error', 'Organization name and email are required.', 30 );
+            set_transient( 'sp_member_error', __( 'Organization name and email are required.', 'societypress' ), 30 );
             $redirect_url = $_POST['user_id']
                 ? admin_url( 'admin.php?page=sp-member-edit&user_id=' . absint( $_POST['user_id'] ) . '&error=1' )
                 : admin_url( 'admin.php?page=sp-member-edit&error=1' );
@@ -13125,7 +13230,7 @@ add_action( 'admin_init', function () {
         }
     } elseif ( empty( $first_name ) || empty( $last_name ) || empty( $email ) ) {
         // Store error in transient so we can show it after redirect
-        set_transient( 'sp_member_error', 'First name, last name, and email are required.', 30 );
+        set_transient( 'sp_member_error', __( 'First name, last name, and email are required.', 'societypress' ), 30 );
         $redirect_url = $_POST['user_id']
             ? admin_url( 'admin.php?page=sp-member-edit&user_id=' . absint( $_POST['user_id'] ) . '&error=1' )
             : admin_url( 'admin.php?page=sp-member-edit&error=1' );
@@ -13226,13 +13331,24 @@ add_action( 'admin_init', function () {
         ] );
 
         // Update WordPress role if provided and not editing yourself.
-        // WHY: Admins need to promote/demote members (e.g., new board member
-        //      becomes an administrator). But we never let an admin change
-        //      their own role — that's how you accidentally lock yourself out.
+        // WHY: Site administrators need to promote/demote members. But role
+        //      assignment must be allowlisted: a delegate with sp_manage_members
+        //      (e.g., membership_manager) must NOT be able to set someone to
+        //      'administrator' and silently escalate them past their own
+        //      permissions. Only users with manage_options can assign elevated
+        //      WordPress roles; everyone else can only assign safe member-tier
+        //      roles. We also never let an admin change their own role —
+        //      that's how you accidentally lock yourself out.
         $new_role = sanitize_text_field( $_POST['wp_role'] ?? '' );
         if ( $new_role && (int) $editing_user_id !== get_current_user_id() ) {
-            $edit_user = new WP_User( $editing_user_id );
-            $edit_user->set_role( $new_role );
+            $safe_roles = [ 'subscriber', 'contributor' ];
+            $allowed_roles = current_user_can( 'manage_options' )
+                ? array_keys( wp_roles()->roles )
+                : $safe_roles;
+            if ( in_array( $new_role, $allowed_roles, true ) ) {
+                $edit_user = new WP_User( $editing_user_id );
+                $edit_user->set_role( $new_role );
+            }
         }
 
         // Encrypt sensitive contact fields before writing to DB
@@ -13275,7 +13391,7 @@ add_action( 'admin_init', function () {
                 $self_id
             ) );
             if ( $already_member ) {
-                set_transient( 'sp_member_error', 'You already have a member record.', 30 );
+                set_transient( 'sp_member_error', __( 'You already have a member record.', 'societypress' ), 30 );
                 wp_redirect( admin_url( 'admin.php?page=sp-member-edit&user_id=' . $self_id . '&error=1' ) );
                 exit;
             }
@@ -13298,7 +13414,7 @@ add_action( 'admin_init', function () {
                 $existing_user->ID
             ) );
             if ( $already_member ) {
-                set_transient( 'sp_member_error', 'A member with this email address already exists.', 30 );
+                set_transient( 'sp_member_error', __( 'A member with this email address already exists.', 'societypress' ), 30 );
                 wp_redirect( admin_url( 'admin.php?page=sp-member-edit&error=1' ) );
                 exit;
             }
@@ -14372,7 +14488,7 @@ function sp_render_member_edit_page(): void {
                         <div class="sp-field">
                             <label><?php esc_html_e( 'Username', 'societypress' ); ?></label>
                             <p class="sp-member-edit-username"><?php echo esc_html( $wp_user->user_login ); ?></p>
-                            <p class="description"><?php esc_html_e( "This is the login name. WordPress doesn't allow usernames to be changed after the account is created — they can log in with their email address too.", 'societypress' ); ?></p>
+                            <p class="description"><?php esc_html_e( 'This is the login name. Login names cannot be changed after an account is created — members can also sign in using their email address.', 'societypress' ); ?></p>
                         </div>
                         <?php endif; ?>
 
@@ -15352,7 +15468,7 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
     } elseif ( ! empty( $_FILES['import_file']['tmp_name'] ) ) {
         $file = $_FILES['import_file']['tmp_name'];
     } else {
-        $results['errors'][] = 'No file was uploaded.';
+        $results['errors'][] = __( 'No file was uploaded.', 'societypress' );
         return $results;
     }
 
@@ -15362,7 +15478,7 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
     //      multi-line renewal notes inside quoted fields.
     $handle = fopen( $file, 'r' );
     if ( ! $handle ) {
-        $results['errors'][] = 'Could not open the uploaded file.';
+        $results['errors'][] = __( 'Could not open the uploaded file.', 'societypress' );
         return $results;
     }
 
@@ -15370,7 +15486,7 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
     $headers = fgetcsv( $handle );
     if ( ! $headers ) {
         fclose( $handle );
-        $results['errors'][] = 'The file appears to be empty.';
+        $results['errors'][] = __( 'The file appears to be empty.', 'societypress' );
         return $results;
     }
 
@@ -15548,8 +15664,7 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
     $has_org_field   = isset( $target_to_csv['organization_name'] );
     if ( ! $has_name_fields && ! $has_org_field ) {
         fclose( $handle );
-        $results['errors'][] = 'No columns are mapped to "First Name" and "Last Name" or "Organization Name." '
-                             . 'Please go back and assign those fields in the mapping.';
+        $results['errors'][] = __( 'No columns are mapped to "First Name" and "Last Name" or "Organization Name." Please go back and assign those fields in the mapping.', 'societypress' );
         return $results;
     }
 
@@ -15731,7 +15846,8 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
             } else {
                 // Truly blank — no name at all, skip with an explanation
                 $results['skipped']++;
-                $results['errors'][] = "Row {$row_num}: Skipped — no first name, last name, or organization name found.";
+                /* translators: %d: CSV row number */
+                $results['errors'][] = sprintf( __( 'Row %d: Skipped — no first name, last name, or organization name found.', 'societypress' ), $row_num );
                 continue;
             }
         } elseif ( ! empty( $org_name ) ) {
@@ -15760,7 +15876,8 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
         if ( ! empty( $email ) && isset( $existing_members[ strtolower( $email ) ] ) ) {
             if ( $is_name_similar( $first_name, $last_name, $existing_members[ strtolower( $email ) ] ) ) {
                 $results['skipped']++;
-                $results['errors'][] = "Row {$row_num}: Skipped {$first_name} {$last_name} — already exists (same email and similar name).";
+                /* translators: 1: row number, 2: first name, 3: last name */
+                $results['errors'][] = sprintf( __( 'Row %1$d: Skipped %2$s %3$s — already exists (same email and similar name).', 'societypress' ), $row_num, $first_name, $last_name );
                 continue;
             }
         }
@@ -15899,7 +16016,8 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
                 ] ] ) ) {
                     // Same person, already imported — skip
                     $results['skipped']++;
-                    $results['errors'][] = "Row {$row_num}: Skipped {$first_name} {$last_name} — already imported.";
+                    /* translators: 1: row number, 2: first name, 3: last name */
+                    $results['errors'][] = sprintf( __( 'Row %1$d: Skipped %2$s %3$s — already imported.', 'societypress' ), $row_num, $first_name, $last_name );
                     continue;
                 }
 
@@ -15942,8 +16060,8 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
                 ] );
 
                 if ( is_wp_error( $user_id ) ) {
-                    $results['errors'][] = "Row {$row_num}: Could not create user for {$import_display} — "
-                                         . $user_id->get_error_message();
+                    /* translators: 1: row number, 2: name being imported, 3: technical error */
+                    $results['errors'][] = sprintf( __( 'Row %1$d: Could not create user for %2$s — %3$s', 'societypress' ), $row_num, $import_display, $user_id->get_error_message() );
                     $results['skipped']++;
                     continue;
                 }
@@ -15976,8 +16094,8 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
                 ] );
 
                 if ( is_wp_error( $user_id ) ) {
-                    $results['errors'][] = "Row {$row_num}: Could not create user for {$import_display} — "
-                                         . $user_id->get_error_message();
+                    /* translators: 1: row number, 2: name being imported, 3: technical error */
+                    $results['errors'][] = sprintf( __( 'Row %1$d: Could not create user for %2$s — %3$s', 'societypress' ), $row_num, $import_display, $user_id->get_error_message() );
                     $results['skipped']++;
                     continue;
                 }
@@ -16014,8 +16132,8 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
             ] );
 
             if ( is_wp_error( $user_id ) ) {
-                $results['errors'][] = "Row {$row_num}: Could not create user for {$import_display} (no email) — "
-                                     . $user_id->get_error_message();
+                /* translators: 1: row number, 2: name being imported, 3: technical error */
+                $results['errors'][] = sprintf( __( 'Row %1$d: Could not create user for %2$s (no email) — %3$s', 'societypress' ), $row_num, $import_display, $user_id->get_error_message() );
                 $results['skipped']++;
                 continue;
             }
@@ -16109,7 +16227,8 @@ function sp_process_import( string $file_path = '', array $field_map = [] ): arr
         sp_member_encrypt_fields( $member_data );
         $inserted = $wpdb->insert( $prefix . 'members', $member_data );
         if ( ! $inserted ) {
-            $results['errors'][] = "Row {$row_num}: Database error inserting {$first_name} {$last_name}. MySQL: {$wpdb->last_error}";
+            /* translators: 1: row number, 2: first name, 3: last name, 4: MySQL error */
+            $results['errors'][] = sprintf( __( 'Row %1$d: Database error inserting %2$s %3$s. MySQL: %4$s', 'societypress' ), $row_num, $first_name, $last_name, $wpdb->last_error );
             $results['skipped']++;
             continue;
         }
@@ -16292,7 +16411,7 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
     ];
 
     if ( empty( $file_path ) || ! file_exists( $file_path ) ) {
-        $results['errors'][] = 'No file was uploaded.';
+        $results['errors'][] = __( 'No file was uploaded.', 'societypress' );
         $results['done'] = true;
         return $results;
     }
@@ -16300,7 +16419,7 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
     // Parse the CSV header row and set up field mapping — same logic as sp_process_import().
     $handle = fopen( $file_path, 'r' );
     if ( ! $handle ) {
-        $results['errors'][] = 'Could not open the uploaded file.';
+        $results['errors'][] = __( 'Could not open the uploaded file.', 'societypress' );
         $results['done'] = true;
         return $results;
     }
@@ -16309,7 +16428,7 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
     $headers = fgetcsv( $handle );
     if ( ! $headers ) {
         fclose( $handle );
-        $results['errors'][] = 'The file appears to be empty.';
+        $results['errors'][] = __( 'The file appears to be empty.', 'societypress' );
         $results['done'] = true;
         return $results;
     }
@@ -16488,8 +16607,7 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
     $has_org_field   = isset( $target_to_csv['organization_name'] );
     if ( ! $has_name_fields && ! $has_org_field ) {
         fclose( $handle );
-        $results['errors'][] = 'No columns are mapped to "First Name" and "Last Name" or "Organization Name." '
-                             . 'Please go back and assign those fields in the mapping.';
+        $results['errors'][] = __( 'No columns are mapped to "First Name" and "Last Name" or "Organization Name." Please go back and assign those fields in the mapping.', 'societypress' );
         $results['done'] = true;
         return $results;
     }
@@ -16684,7 +16802,8 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
             } else {
                 // Truly blank — no name at all, skip with an explanation
                 $results['skipped']++;
-                $results['errors'][] = "Row {$row_num}: Skipped — no first name, last name, or organization name found.";
+                /* translators: %d: CSV row number */
+                $results['errors'][] = sprintf( __( 'Row %d: Skipped — no first name, last name, or organization name found.', 'societypress' ), $row_num );
                 continue;
             }
         } elseif ( ! empty( $org_name ) ) {
@@ -16713,7 +16832,8 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
         if ( ! empty( $email ) && isset( $existing_members[ strtolower( $email ) ] ) ) {
             if ( $is_name_similar( $first_name, $last_name, $existing_members[ strtolower( $email ) ] ) ) {
                 $results['skipped']++;
-                $results['errors'][] = "Row {$row_num}: Skipped {$first_name} {$last_name} — already exists (same email and similar name).";
+                /* translators: 1: row number, 2: first name, 3: last name */
+                $results['errors'][] = sprintf( __( 'Row %1$d: Skipped %2$s %3$s — already exists (same email and similar name).', 'societypress' ), $row_num, $first_name, $last_name );
                 continue;
             }
         }
@@ -16852,7 +16972,8 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
                 ] ] ) ) {
                     // Same person, already imported — skip
                     $results['skipped']++;
-                    $results['errors'][] = "Row {$row_num}: Skipped {$first_name} {$last_name} — already imported.";
+                    /* translators: 1: row number, 2: first name, 3: last name */
+                    $results['errors'][] = sprintf( __( 'Row %1$d: Skipped %2$s %3$s — already imported.', 'societypress' ), $row_num, $first_name, $last_name );
                     continue;
                 }
 
@@ -16895,8 +17016,8 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
                 ] );
 
                 if ( is_wp_error( $user_id ) ) {
-                    $results['errors'][] = "Row {$row_num}: Could not create user for {$import_display} — "
-                                         . $user_id->get_error_message();
+                    /* translators: 1: row number, 2: name being imported, 3: technical error */
+                    $results['errors'][] = sprintf( __( 'Row %1$d: Could not create user for %2$s — %3$s', 'societypress' ), $row_num, $import_display, $user_id->get_error_message() );
                     $results['skipped']++;
                     continue;
                 }
@@ -16929,8 +17050,8 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
                 ] );
 
                 if ( is_wp_error( $user_id ) ) {
-                    $results['errors'][] = "Row {$row_num}: Could not create user for {$import_display} — "
-                                         . $user_id->get_error_message();
+                    /* translators: 1: row number, 2: name being imported, 3: technical error */
+                    $results['errors'][] = sprintf( __( 'Row %1$d: Could not create user for %2$s — %3$s', 'societypress' ), $row_num, $import_display, $user_id->get_error_message() );
                     $results['skipped']++;
                     continue;
                 }
@@ -16967,8 +17088,8 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
             ] );
 
             if ( is_wp_error( $user_id ) ) {
-                $results['errors'][] = "Row {$row_num}: Could not create user for {$import_display} (no email) — "
-                                     . $user_id->get_error_message();
+                /* translators: 1: row number, 2: name being imported, 3: technical error */
+                $results['errors'][] = sprintf( __( 'Row %1$d: Could not create user for %2$s (no email) — %3$s', 'societypress' ), $row_num, $import_display, $user_id->get_error_message() );
                 $results['skipped']++;
                 continue;
             }
@@ -17062,7 +17183,8 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
         sp_member_encrypt_fields( $member_data );
         $inserted = $wpdb->insert( $prefix . 'members', $member_data );
         if ( ! $inserted ) {
-            $results['errors'][] = "Row {$row_num}: Database error inserting {$first_name} {$last_name}. MySQL: {$wpdb->last_error}";
+            /* translators: 1: row number, 2: first name, 3: last name, 4: MySQL error */
+            $results['errors'][] = sprintf( __( 'Row %1$d: Database error inserting %2$s %3$s. MySQL: %4$s', 'societypress' ), $row_num, $first_name, $last_name, $wpdb->last_error );
             $results['skipped']++;
             continue;
         }
@@ -17687,7 +17809,7 @@ function sp_render_import_page(): void {
            stacking; extra-small font keeps headers compact. */
         .sp-import-preview-th {
             white-space: nowrap;
-            font-size: 11px;
+            font-size: 0.75rem;
         }
 
         /* Preview table data cells — no-wrap keeps short values on one line
@@ -18287,8 +18409,8 @@ function sp_render_import_page(): void {
                 <div class="sp-import-progress-track">
                     <div class="sp-import-progress-fill" id="sp-import-progress-fill"></div>
                 </div>
-                <p class="sp-import-progress-count" id="sp-import-progress-count"></p>
-                <p class="sp-import-overlay-message" id="sp-import-overlay-message">
+                <p class="sp-import-progress-count" id="sp-import-progress-count" role="status" aria-live="polite"></p>
+                <p class="sp-import-overlay-message" id="sp-import-overlay-message" role="alert" aria-live="assertive">
                     <?php esc_html_e( 'Please do not close or refresh this page.', 'societypress' ); ?>
                 </p>
                 <div class="sp-import-progress-errors" id="sp-import-progress-errors"></div>
@@ -20113,7 +20235,7 @@ add_action( 'admin_init', function () {
         __( 'Email Subject', 'societypress' ),
         function () {
             $settings = get_option( 'societypress_settings', [] );
-            $value    = $settings['renewal_reminder_subject'] ?? 'Your membership expires soon';
+            $value    = $settings['renewal_reminder_subject'] ?? __( 'Your membership expires soon', 'societypress' );
             printf(
                 '<input type="text" name="societypress_settings[renewal_reminder_subject]" value="%s" class="regular-text">',
                 esc_attr( $value )
@@ -20161,7 +20283,7 @@ add_action( 'admin_init', function () {
         __( 'Email Subject', 'societypress' ),
         function () {
             $settings = get_option( 'societypress_settings', [] );
-            $value    = $settings['expired_notice_subject'] ?? 'Your membership has expired';
+            $value    = $settings['expired_notice_subject'] ?? __( 'Your membership has expired', 'societypress' );
             printf(
                 '<input type="text" name="societypress_settings[expired_notice_subject]" value="%s" class="regular-text">',
                 esc_attr( $value )
@@ -20338,6 +20460,54 @@ add_action( 'admin_init', function () {
         },
         'sp-settings-privacy',
         'sp_activity_logging_section'
+    );
+
+    // ====================================================================
+    // SECTION: Login Notices
+    //
+    // WHY: The login screen and the post-login acknowledgment modal both
+    //      show society-specific privacy/acceptable-use language. Defaults
+    //      ship with the plugin so brand-new sites aren't blank, but every
+    //      society should review and adapt the wording — these texts are
+    //      legal/cultural and shouldn't live in PHP.
+    // ====================================================================
+    add_settings_section(
+        'sp_login_notices_section',
+        __( 'Login Notices', 'societypress' ),
+        function () {
+            echo '<p>' . esc_html__( 'Wording shown above the login form and in the acknowledgment modal that appears after every successful login.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-privacy'
+    );
+
+    add_settings_field(
+        'login_pre_notice',
+        __( 'Pre-login notice', 'societypress' ),
+        function () {
+            $settings = get_option( 'societypress_settings', [] );
+            $val = (string) ( $settings['login_pre_notice'] ?? '' );
+            ?>
+            <textarea name="societypress_settings[login_pre_notice]" rows="6" cols="80" class="large-text"><?php echo esc_textarea( $val ); ?></textarea>
+            <p class="description"><?php esc_html_e( 'Shown above the login form. Separate paragraphs with a blank line.', 'societypress' ); ?></p>
+            <?php
+        },
+        'sp-settings-privacy',
+        'sp_login_notices_section'
+    );
+
+    add_settings_field(
+        'login_ack_text',
+        __( 'Post-login acknowledgment', 'societypress' ),
+        function () {
+            $settings = get_option( 'societypress_settings', [] );
+            $val = (string) ( $settings['login_ack_text'] ?? '' );
+            ?>
+            <textarea name="societypress_settings[login_ack_text]" rows="10" cols="80" class="large-text"><?php echo esc_textarea( $val ); ?></textarea>
+            <p class="description"><?php esc_html_e( 'Shown in a blocking modal after each member signs in. Separate paragraphs with a blank line. Members must click "I Understand" to dismiss.', 'societypress' ); ?></p>
+            <?php
+        },
+        'sp-settings-privacy',
+        'sp_login_notices_section'
     );
 
 
@@ -20746,6 +20916,11 @@ function sp_sanitize_settings( array $input ): array {
         'analytics_google_id'     => fn() => preg_match( '/^(G|UA|GT)-[A-Z0-9-]+$/i', $input['analytics_google_id'] ?? '' )
                                               ? sanitize_text_field( $input['analytics_google_id'] ) : '',
         'analytics_exclude_admins'=> fn() => ! empty( $input['analytics_exclude_admins'] ) ? 1 : 0,
+
+        // Login Notices (Privacy tab) — preserve newlines so paragraph splits
+        // survive a save round-trip. wp_kses_post on render protects on output.
+        'login_pre_notice'        => fn() => isset( $input['login_pre_notice'] ) ? wp_check_invalid_utf8( (string) $input['login_pre_notice'] ) : '',
+        'login_ack_text'          => fn() => isset( $input['login_ack_text'] ) ? wp_check_invalid_utf8( (string) $input['login_ack_text'] ) : '',
 
         // Activity Logging (Privacy tab)
         'log_logouts'             => fn() => ! empty( $input['log_logouts'] ) ? 1 : 0,
@@ -21174,7 +21349,7 @@ function sp_render_setup_wizard(): void {
     <div class="sp-wizard-wrap">
         <div class="sp-wizard-header">
             <h1><?php esc_html_e( 'Welcome to SocietyPress', 'societypress' ); ?></h1>
-            <p>Let's get your society website set up. This only takes a minute.</p>
+            <p><?php esc_html_e( "Let's get your society website set up. This only takes a minute.", 'societypress' ); ?></p>
         </div>
 
         <!-- Step indicators -->
@@ -21196,7 +21371,7 @@ function sp_render_setup_wizard(): void {
                 <?php if ( $step === 1 ) : ?>
                     <!-- Step 1: Organization Info -->
                     <h2><?php esc_html_e( 'Your Organization', 'societypress' ); ?></h2>
-                    <p class="desc">Tell us about your genealogical society.</p>
+                    <p class="desc"><?php esc_html_e( 'Tell us about your genealogical society.', 'societypress' ); ?></p>
 
                     <div class="sp-wizard-field">
                         <label for="wiz-org-name"><?php esc_html_e( 'Society Name', 'societypress' ); ?></label>
@@ -21208,58 +21383,71 @@ function sp_render_setup_wizard(): void {
                         <label for="wiz-org-email"><?php esc_html_e( 'Contact Email', 'societypress' ); ?></label>
                         <input type="email" id="wiz-org-email" name="organization_email"
                                value="<?php echo esc_attr( $settings['organization_email'] ?? '' ); ?>"
-                               placeholder="e.g., info@yoursociety.org">
+                               placeholder="<?php echo esc_attr__( 'e.g., info@yoursociety.org', 'societypress' ); ?>">
                     </div>
                     <div class="sp-wizard-field">
                         <label for="wiz-org-address"><?php esc_html_e( 'Mailing Address', 'societypress' ); ?></label>
                         <textarea id="wiz-org-address" name="organization_address" rows="3"
-                                  placeholder="Street address, city, state, zip"><?php echo esc_textarea( $settings['organization_address'] ?? '' ); ?></textarea>
+                                  placeholder="<?php echo esc_attr__( 'Street address, city, state, zip', 'societypress' ); ?>"><?php echo esc_textarea( $settings['organization_address'] ?? '' ); ?></textarea>
                     </div>
                     <div class="sp-wizard-field">
                         <label for="wiz-org-phone"><?php esc_html_e( 'Phone Number', 'societypress' ); ?></label>
                         <input type="tel" id="wiz-org-phone" name="organization_phone"
                                value="<?php echo esc_attr( $settings['organization_phone'] ?? '' ); ?>"
-                               placeholder="Optional">
-                        <div class="hint">Optional — leave blank if your society doesn't have a public phone number.</div>
+                               placeholder="<?php echo esc_attr__( 'Optional', 'societypress' ); ?>">
+                        <div class="hint"><?php esc_html_e( "Optional — leave blank if your society doesn't have a public phone number.", 'societypress' ); ?></div>
                     </div>
 
                     <div class="sp-wizard-actions">
-                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=societypress' ) ); ?>" class="sp-wizard-skip">Skip setup</a>
-                        <button type="submit" class="button button-primary">Continue &rarr;</button>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=societypress' ) ); ?>" class="sp-wizard-skip"><?php esc_html_e( 'Skip setup', 'societypress' ); ?></a>
+                        <button type="submit" class="button button-primary"><?php esc_html_e( 'Continue →', 'societypress' ); ?></button>
                     </div>
 
                 <?php elseif ( $step === 2 ) : ?>
                     <!-- Step 2: Membership Settings -->
                     <h2><?php esc_html_e( 'Membership', 'societypress' ); ?></h2>
-                    <p class="desc">How does your society handle membership periods?</p>
+                    <p class="desc"><?php esc_html_e( 'How does your society handle membership periods?', 'societypress' ); ?></p>
 
                     <div class="sp-wizard-field">
                         <label for="wiz-period"><?php esc_html_e( 'Membership Period', 'societypress' ); ?></label>
                         <select id="wiz-period" name="membership_period_type">
-                            <option value="annual" <?php selected( $settings['membership_period_type'] ?? 'annual', 'annual' ); ?>>Annual (fixed year)</option>
-                            <option value="rolling" <?php selected( $settings['membership_period_type'] ?? '', 'rolling' ); ?>>Rolling (12 months from join date)</option>
-                            <option value="lifetime" <?php selected( $settings['membership_period_type'] ?? '', 'lifetime' ); ?>>Lifetime only</option>
+                            <option value="annual" <?php selected( $settings['membership_period_type'] ?? 'annual', 'annual' ); ?>><?php esc_html_e( 'Annual (fixed year)', 'societypress' ); ?></option>
+                            <option value="rolling" <?php selected( $settings['membership_period_type'] ?? '', 'rolling' ); ?>><?php esc_html_e( 'Rolling (12 months from join date)', 'societypress' ); ?></option>
+                            <option value="lifetime" <?php selected( $settings['membership_period_type'] ?? '', 'lifetime' ); ?>><?php esc_html_e( 'Lifetime only', 'societypress' ); ?></option>
                         </select>
-                        <div class="hint">Most societies use annual memberships with a fixed fiscal year.</div>
+                        <div class="hint"><?php esc_html_e( 'Most societies use annual memberships with a fixed fiscal year.', 'societypress' ); ?></div>
                     </div>
 
                     <div class="sp-wizard-field">
                         <label for="wiz-start-month"><?php esc_html_e( 'Fiscal Year Start Month', 'societypress' ); ?></label>
                         <select id="wiz-start-month" name="membership_start_month">
                             <?php
-                            $months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+                            $months = [
+                                __( 'January', 'societypress' ),
+                                __( 'February', 'societypress' ),
+                                __( 'March', 'societypress' ),
+                                __( 'April', 'societypress' ),
+                                __( 'May', 'societypress' ),
+                                __( 'June', 'societypress' ),
+                                __( 'July', 'societypress' ),
+                                __( 'August', 'societypress' ),
+                                __( 'September', 'societypress' ),
+                                __( 'October', 'societypress' ),
+                                __( 'November', 'societypress' ),
+                                __( 'December', 'societypress' ),
+                            ];
                             foreach ( $months as $i => $m ) :
                                 $num = $i + 1;
                             ?>
-                                <option value="<?php echo $num; ?>" <?php selected( (int) ( $settings['membership_start_month'] ?? 7 ), $num ); ?>><?php echo $m; ?></option>
+                                <option value="<?php echo (int) $num; ?>" <?php selected( (int) ( $settings['membership_start_month'] ?? 7 ), $num ); ?>><?php echo esc_html( $m ); ?></option>
                             <?php endforeach; ?>
                         </select>
-                        <div class="hint">When does your membership year begin? Many societies use July.</div>
+                        <div class="hint"><?php esc_html_e( 'When does your membership year begin? Many societies use July.', 'societypress' ); ?></div>
                     </div>
 
                     <div class="sp-wizard-actions">
                         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-setup-wizard&step=1' ) ); ?>" class="button"><?php esc_html_e( '&larr; Back', 'societypress' ); ?></a>
-                        <button type="submit" class="button button-primary">Continue &rarr;</button>
+                        <button type="submit" class="button button-primary"><?php esc_html_e( 'Continue →', 'societypress' ); ?></button>
                     </div>
 
                 <?php elseif ( $step === 3 ) : ?>
@@ -21312,7 +21500,7 @@ function sp_render_setup_wizard(): void {
                 <?php elseif ( $step === 4 ) : ?>
                     <!-- Step 4: Appearance & Email -->
                     <h2><?php esc_html_e( 'Finishing Touches', 'societypress' ); ?></h2>
-                    <p class="desc">Customize the look of your site and configure email.</p>
+                    <p class="desc"><?php esc_html_e( 'Customize the look of your site and configure email.', 'societypress' ); ?></p>
 
                     <div class="sp-wizard-field" style="display: flex; gap: 20px;">
                         <div>
@@ -21332,14 +21520,14 @@ function sp_render_setup_wizard(): void {
                         <input type="text" id="wiz-email-name" name="email_from_name"
                                value="<?php echo esc_attr( $settings['email_from_name'] ?? '' ); ?>"
                                placeholder="<?php esc_attr_e( 'e.g., Annual Membership', 'societypress' ); ?>">
-                        <div class="hint">The name that appears in the "From" field of emails sent by SocietyPress.</div>
+                        <div class="hint"><?php esc_html_e( 'The name that appears in the "From" field of emails sent by SocietyPress.', 'societypress' ); ?></div>
                     </div>
                     <div class="sp-wizard-field">
                         <label for="wiz-email-from"><?php esc_html_e( 'Email "From" Address', 'societypress' ); ?></label>
                         <input type="email" id="wiz-email-from" name="email_from_email"
                                value="<?php echo esc_attr( $settings['email_from_email'] ?? '' ); ?>"
-                               placeholder="e.g., noreply@yoursociety.org">
-                        <div class="hint">The email address that SocietyPress sends from.</div>
+                               placeholder="<?php echo esc_attr__( 'e.g., noreply@yoursociety.org', 'societypress' ); ?>">
+                        <div class="hint"><?php esc_html_e( 'The email address that SocietyPress sends from.', 'societypress' ); ?></div>
                     </div>
 
                     <div class="sp-wizard-actions">
@@ -21948,7 +22136,7 @@ function sp_render_access_log_page(): void {
             .sp-access-filters label { font-size: 12px; display: block; margin-bottom: 2px; color: #646970; }
             .sp-access-filters input { padding: 4px 8px; }
             .sp-access-url { font-family: monospace; font-size: 12px; word-break: break-all; }
-            .sp-access-ua { color: #646970; font-size: 11px; word-break: break-all; }
+            .sp-access-ua { color: #646970; font-size: 0.75rem; word-break: break-all; }
         </style>
 
         <form method="get" class="sp-access-filters">
@@ -23516,7 +23704,7 @@ function sp_render_groups_frontend( $content ): string {
         .sp-group-card h3 { margin: 0 0 8px; font-size: 18px; }
         .sp-group-card .sp-group-meta { font-size: 13px; color: #646970; margin-bottom: 12px; }
         .sp-group-card .sp-group-desc { margin-bottom: 16px; }
-        .sp-group-card .sp-group-badge { display: inline-block; background: #00a32a; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
+        .sp-group-card .sp-group-badge { display: inline-block; background: #00a32a; color: #fff; font-size: 0.75rem; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
         .sp-group-btn { display: inline-block; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
         .sp-group-btn.join { background: #2271b1; color: #fff; }
         .sp-group-btn.join:hover { background: #135e96; }
@@ -23525,7 +23713,7 @@ function sp_render_groups_frontend( $content ): string {
     </style>
 
     <?php if ( empty( $groups ) ) : ?>
-        <p>No interest groups are available yet.</p>
+        <p><?php esc_html_e( 'No interest groups are available yet.', 'societypress' ); ?></p>
     <?php else : ?>
         <div class="sp-groups-grid">
             <?php foreach ( $groups as $g ) :
@@ -23535,14 +23723,20 @@ function sp_render_groups_frontend( $content ): string {
                     <h3>
                         <?php echo esc_html( $g->name ); ?>
                         <?php if ( $is_member ) : ?>
-                            <span class="sp-group-badge">Joined</span>
+                            <span class="sp-group-badge"><?php esc_html_e( 'Joined', 'societypress' ); ?></span>
                         <?php endif; ?>
                     </h3>
                     <div class="sp-group-meta">
                         <?php if ( $g->leader_name ) : ?>
-                            <span>Leader: <?php echo esc_html( $g->leader_name ); ?></span> &middot;
+                            <span><?php
+                                /* translators: %s: leader's full name */
+                                printf( esc_html__( 'Leader: %s', 'societypress' ), esc_html( $g->leader_name ) );
+                            ?></span> &middot;
                         <?php endif; ?>
-                        <span><?php echo (int) $g->member_count; ?> member(s)</span>
+                        <span><?php
+                            /* translators: %d: number of members in the group */
+                            printf( esc_html( _n( '%d member', '%d members', (int) $g->member_count, 'societypress' ) ), (int) $g->member_count );
+                        ?></span>
                         <?php if ( $g->meeting_info ) : ?>
                             &middot; <span><?php echo esc_html( $g->meeting_info ); ?></span>
                         <?php endif; ?>
@@ -23551,9 +23745,9 @@ function sp_render_groups_frontend( $content ): string {
                         <div class="sp-group-desc"><?php echo esc_html( $g->description ); ?></div>
                     <?php endif; ?>
                     <?php if ( $is_member ) : ?>
-                        <button type="button" class="sp-group-btn leave" data-action="leave" data-group-id="<?php echo esc_attr( $g->id ); ?>">Leave Group</button>
+                        <button type="button" class="sp-group-btn leave" data-action="leave" data-group-id="<?php echo esc_attr( $g->id ); ?>"><?php esc_html_e( 'Leave Group', 'societypress' ); ?></button>
                     <?php else : ?>
-                        <button type="button" class="sp-group-btn join" data-action="join" data-group-id="<?php echo esc_attr( $g->id ); ?>">Join Group</button>
+                        <button type="button" class="sp-group-btn join" data-action="join" data-group-id="<?php echo esc_attr( $g->id ); ?>"><?php esc_html_e( 'Join Group', 'societypress' ); ?></button>
                     <?php endif; ?>
                 </div>
             <?php endforeach; ?>
@@ -23564,6 +23758,14 @@ function sp_render_groups_frontend( $content ): string {
     (function() {
         var ajaxUrl = '<?php echo esc_url( admin_url( "admin-ajax.php" ) ); ?>';
         var nonce   = '<?php echo esc_js( $nonce ); ?>';
+        var spGroupI18n = {
+            joining:        <?php echo wp_json_encode( __( 'Joining…', 'societypress' ) ); ?>,
+            leaving:        <?php echo wp_json_encode( __( 'Leaving…', 'societypress' ) ); ?>,
+            joinGroup:      <?php echo wp_json_encode( __( 'Join Group', 'societypress' ) ); ?>,
+            leaveGroup:     <?php echo wp_json_encode( __( 'Leave Group', 'societypress' ) ); ?>,
+            somethingWrong: <?php echo wp_json_encode( __( 'Something went wrong.', 'societypress' ) ); ?>,
+            networkError:   <?php echo wp_json_encode( __( 'Network error. Please try again.', 'societypress' ) ); ?>
+        };
 
         document.querySelectorAll('.sp-group-btn').forEach(function(btn) {
             btn.addEventListener('click', function() {
@@ -23572,7 +23774,7 @@ function sp_render_groups_frontend( $content ): string {
                 var self    = this;
 
                 self.disabled = true;
-                self.textContent = action === 'join' ? 'Joining...' : 'Leaving...';
+                self.textContent = action === 'join' ? spGroupI18n.joining : spGroupI18n.leaving;
 
                 var fd = new FormData();
                 fd.append('action', action === 'join' ? 'sp_join_group' : 'sp_leave_group');
@@ -23585,15 +23787,15 @@ function sp_render_groups_frontend( $content ): string {
                         if (data.success) {
                             location.reload();
                         } else {
-                            alert(data.data.message || 'Something went wrong.');
+                            alert((data.data && data.data.message) || spGroupI18n.somethingWrong);
                             self.disabled = false;
-                            self.textContent = action === 'join' ? 'Join Group' : 'Leave Group';
+                            self.textContent = action === 'join' ? spGroupI18n.joinGroup : spGroupI18n.leaveGroup;
                         }
                     })
                     .catch(function() {
-                        alert('<?php echo esc_js( __( 'Network error. Please try again.', 'societypress' ) ); ?>');
+                        alert(spGroupI18n.networkError);
                         self.disabled = false;
-                        self.textContent = action === 'join' ? 'Join Group' : 'Leave Group';
+                        self.textContent = action === 'join' ? spGroupI18n.joinGroup : spGroupI18n.leaveGroup;
                     });
             });
         });
@@ -23684,7 +23886,14 @@ function sp_render_finances_page(): void {
     }
 
     // Paginated results
+    // WHY: sanitize_sql_orderby() strips dangerous characters but accepts
+    //      arbitrary column names. Restrict to known-safe columns to prevent
+    //      column enumeration via timing/order differences.
+    $orderby_allowed = [ 'p.date', 'p.amount', 'p.type', 'p.method', 'p.status', 'u.display_name' ];
     $order_by  = sanitize_sql_orderby( $_GET['orderby'] ?? 'p.date' ) ?: 'p.date';
+    if ( ! in_array( $order_by, $orderby_allowed, true ) ) {
+        $order_by = 'p.date';
+    }
     $order_dir = ( strtoupper( $_GET['order'] ?? 'DESC' ) === 'ASC' ) ? 'ASC' : 'DESC';
 
     $rows_sql = "SELECT p.*, u.display_name AS member_name, u.user_email AS member_email,
@@ -24312,7 +24521,7 @@ function sp_render_settings_export_page(): void {
             <tr>
                 <th><?php esc_html_e( 'Does NOT include', 'societypress' ); ?></th>
                 <td>
-                    <?php esc_html_e( 'WordPress core tables (use Tools > Export for those) and uploaded files like newsletter PDFs and photos. Copy wp-content/uploads/ separately via FTP or cPanel — too large to stream through PHP on shared hosting.', 'societypress' ); ?>
+                    <?php esc_html_e( 'Site-wide content like blog posts, and uploaded files such as newsletter PDFs, photos, and document attachments. To back up uploaded files, contact your hosting provider — they are too large to include in this export.', 'societypress' ); ?>
                 </td>
             </tr>
         </table>
@@ -26009,7 +26218,7 @@ function sp_render_themes_page(): void {
     /* Centered text + dashicon when no screenshot and no color data exist */
     .sp-themes-no-preview {
         text-align: center;
-        color: #999;
+        color: #767676;
     }
 
     /* ---- Placeholder dashicon sizing ---- */
@@ -26082,13 +26291,13 @@ function sp_render_themes_page(): void {
     .sp-themes-default-label {
         font-size: 0.75rem;
         font-weight: 400;
-        color: #888;
+        color: #767676;
     }
 
     /* ---- Version / author line ---- */
     .sp-themes-card-meta {
         font-size: 0.8rem;
-        color: #888;
+        color: #767676;
         margin: 0 0 8px;
     }
 
@@ -26114,7 +26323,7 @@ function sp_render_themes_page(): void {
         display: inline-block;
         padding: 8px 20px;
         background: #f0f0f0;
-        color: #888;
+        color: #767676;
         border-radius: 6px;
         font-size: 0.9rem;
         font-weight: 600;
@@ -26201,7 +26410,7 @@ function sp_render_themes_page(): void {
         border: none;
         font-size: 24px;
         cursor: pointer;
-        color: #999;
+        color: #767676;
         padding: 0;
         line-height: 1;
     }
@@ -26235,7 +26444,7 @@ function sp_render_themes_page(): void {
     /* ---- Small helper text below a field ---- */
     .sp-themes-field-hint {
         font-size: 0.8rem;
-        color: #888;
+        color: #767676;
         margin: 4px 0 0;
     }
 
@@ -26413,7 +26622,7 @@ function sp_render_themes_page(): void {
     /* ---- Color field description text ---- */
     .sp-themes-color-desc {
         font-size: 0.7rem;
-        color: #999;
+        color: #767676;
         margin: 2px 0 0;
     }
 
@@ -26710,8 +26919,8 @@ function sp_render_themes_page(): void {
     <!--      The live preview swatch updates as he picks colors so he can  -->
     <!--      see the result before committing.                             -->
     <!-- ================================================================== -->
-    <div id="sp-theme-builder-modal" class="sp-themes-modal-backdrop">
-        <div class="sp-themes-modal-dialog">
+    <div id="sp-theme-builder-modal" class="sp-themes-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="sp-builder-title">
+        <div class="sp-themes-modal-dialog" tabindex="-1">
 
             <!-- Modal header -->
             <div class="sp-themes-modal-header">
@@ -28814,7 +29023,7 @@ function sp_render_user_access_page(): void {
 
     <div class="wrap">
         <h1><?php esc_html_e( 'User Access', 'societypress' ); ?></h1>
-        <p><?php esc_html_e( 'Grant non-administrator users access to specific sections of the admin panel. WordPress administrators always have full access.', 'societypress' ); ?></p>
+        <p><?php esc_html_e( 'Grant individual users access to specific sections of the admin panel. Site administrators always have full access.', 'societypress' ); ?></p>
 
         <?php if ( $editing_user && ! user_can( $editing_user, 'manage_options' ) ) : ?>
             <?php
@@ -28944,7 +29153,7 @@ function sp_render_user_access_page(): void {
 
         <!-- Add New User -->
         <h2 class="sp-access-grant-heading"><?php esc_html_e( 'Grant Access to a User', 'societypress' ); ?></h2>
-        <p><?php esc_html_e( 'Search for a WordPress user to grant them SocietyPress admin access. WordPress administrators already have full access and don\'t need to be added here.', 'societypress' ); ?></p>
+        <p><?php esc_html_e( 'Search for a user to grant them SocietyPress admin access. Site administrators already have full access and don\'t need to be added here.', 'societypress' ); ?></p>
 
         <?php
         // Get all WP users who are NOT admins and NOT already SP staff
@@ -29287,7 +29496,11 @@ function sp_get_blank_template_path(): string {
     $upload_dir = wp_upload_dir();
     $blank_path = $upload_dir['basedir'] . '/sp-blank-template.php';
     if ( ! file_exists( $blank_path ) ) {
-        @file_put_contents( $blank_path, "<?php\n// Intentionally blank — SocietyPress template shim.\n" );
+        $bytes = file_put_contents( $blank_path, "<?php\n// Intentionally blank — SocietyPress template shim.\n" );
+        if ( false === $bytes ) {
+            // Surface the failure rather than silently breaking the template loader.
+            error_log( 'SocietyPress: failed to create blank template shim at ' . $blank_path . ' — uploads dir not writable?' );
+        }
     }
     return $blank_path;
 }
@@ -30081,11 +30294,12 @@ function sp_directory_styles(): void {
             font-size: 16px;
             border: 2px solid #ddd;
             border-radius: 6px;
-            outline: none;
-            transition: border-color 0.2s;
+            transition: border-color 0.2s, box-shadow 0.2s;
         }
         .sp-search-input:focus {
             border-color: var(--sp-color-primary);
+            outline: 2px solid var(--sp-color-primary);
+            outline-offset: 2px;
         }
         .sp-search-button {
             padding: 10px 24px;
@@ -30144,14 +30358,15 @@ function sp_directory_styles(): void {
             border: 1px solid #ddd;
             border-radius: 4px;
             background: #fff;
-            outline: none;
-            transition: border-color 0.2s;
+            transition: border-color 0.2s, box-shadow 0.2s;
             height: 38px;
             box-sizing: border-box;
         }
         .sp-filter-select:focus,
         .sp-filter-input:focus {
             border-color: var(--sp-color-primary);
+            outline: 2px solid var(--sp-color-primary);
+            outline-offset: 2px;
         }
 
         /* ---- Alphabetical letter filter ---- */
@@ -30287,7 +30502,7 @@ function sp_directory_styles(): void {
             margin-right: 4px;
         }
         .sp-surname-detail {
-            color: #888;
+            color: #767676;
             font-size: 12px;
         }
 
@@ -30358,7 +30573,7 @@ function sp_directory_styles(): void {
         }
         .sp-page-ellipsis {
             padding: 0 6px;
-            color: #999;
+            color: #767676;
         }
 
         /* ---- Mobile responsive: table → stacked cards ---- */
@@ -30693,18 +30908,35 @@ function sp_directory_detail_script(): void {
         var ajaxUrl = '<?php echo esc_js( admin_url( 'admin-ajax.php' ) ); ?>';
         var memberDetailNonce = '<?php echo esc_js( wp_create_nonce( 'sp_member_detail_nonce' ) ); ?>';
 
+        // ---- Localized strings (keep i18n out of innerHTML) ----
+        var spMemberModalI18n = {
+            closeLabel:  <?php echo wp_json_encode( __( 'Close', 'societypress' ) ); ?>,
+            loading:     <?php echo wp_json_encode( __( 'Loading…', 'societypress' ) ); ?>,
+            loadFailed:  <?php echo wp_json_encode( __( 'Could not load member profile.', 'societypress' ) ); ?>,
+            loadRetry:   <?php echo wp_json_encode( __( 'Could not load member profile. Please try again.', 'societypress' ) ); ?>
+        };
+
         // ---- Create modal overlay (once) ----
+        // WHY: Built dynamically so the directory page works without a PHP-side
+        //      template. ARIA dialog semantics let screen readers identify it
+        //      as a modal; aria-labelledby points to the dynamically-rendered
+        //      member name h2 once it exists.
         var overlay = document.createElement('div');
         overlay.className = 'sp-member-modal-overlay';
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-modal', 'true');
+        overlay.setAttribute('aria-labelledby', 'sp-member-detail-name');
         overlay.style.display = 'none';
-        overlay.innerHTML = '<div class="sp-member-modal">'
-            + '<button class="sp-member-modal-close" aria-label="Close">&times;</button>'
+        overlay.innerHTML = '<div class="sp-member-modal" tabindex="-1">'
+            + '<button class="sp-member-modal-close" aria-label="' + spMemberModalI18n.closeLabel + '">&times;</button>'
             + '<div class="sp-member-modal-body"></div>'
             + '</div>';
         document.body.appendChild(overlay);
 
         var modalBody = overlay.querySelector('.sp-member-modal-body');
         var closeBtn  = overlay.querySelector('.sp-member-modal-close');
+        var modalDialog = overlay.querySelector('.sp-member-modal');
+        var modalTrigger = null;
 
         // ---- Close handlers ----
         closeBtn.addEventListener('click', closeModal);
@@ -30712,17 +30944,22 @@ function sp_directory_detail_script(): void {
             if (e.target === overlay) closeModal();
         });
         document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') closeModal();
+            if (e.key === 'Escape' && overlay.style.display !== 'none') closeModal();
         });
 
         function closeModal() {
             overlay.style.display = 'none';
             document.body.style.overflow = '';
+            if (modalTrigger && typeof modalTrigger.focus === 'function') {
+                try { modalTrigger.focus(); } catch (e) {}
+            }
         }
 
         function openModal() {
+            modalTrigger = document.activeElement;
             overlay.style.display = 'flex';
             document.body.style.overflow = 'hidden';
+            if (modalDialog) modalDialog.focus();
         }
 
         // ---- Delegate clicks on member name links ----
@@ -30735,7 +30972,7 @@ function sp_directory_detail_script(): void {
             if (!userId) return;
 
             // Show loading state
-            modalBody.innerHTML = '<div class="sp-member-modal-loading">Loading&hellip;</div>';
+            modalBody.innerHTML = '<div class="sp-member-modal-loading">' + escHtml(spMemberModalI18n.loading) + '</div>';
             openModal();
 
             // Fetch member detail
@@ -30746,14 +30983,14 @@ function sp_directory_detail_script(): void {
             .then(function(json) {
                 if (!json.success) {
                     modalBody.innerHTML = '<div class="sp-member-modal-error">'
-                        + (json.data || 'Could not load member profile.') + '</div>';
+                        + escHtml(json.data || spMemberModalI18n.loadFailed) + '</div>';
                     return;
                 }
                 renderMemberDetail(json.data);
             })
             .catch(function() {
                 modalBody.innerHTML = '<div class="sp-member-modal-error">'
-                    + 'Could not load member profile. Please try again.</div>';
+                    + escHtml(spMemberModalI18n.loadRetry) + '</div>';
             });
         });
 
@@ -30770,7 +31007,7 @@ function sp_directory_detail_script(): void {
                 html += '<img src="' + escHtml(d.photo_url) + '" alt="" class="sp-member-detail-photo">';
             }
             html += '<div class="sp-member-detail-identity">';
-            html += '<h2 class="sp-member-detail-name">' + escHtml(d.display_name) + '</h2>';
+            html += '<h2 id="sp-member-detail-name" class="sp-member-detail-name">' + escHtml(d.display_name) + '</h2>';
             if (d.tier) {
                 html += '<span class="sp-member-detail-tier">' + escHtml(d.tier) + '</span>';
             }
@@ -30943,7 +31180,7 @@ function sp_directory_detail_styles(): void {
             border: none;
             font-size: 28px;
             line-height: 1;
-            color: #999;
+            color: #767676;
             cursor: pointer;
             padding: 4px 8px;
             border-radius: 4px;
@@ -31024,7 +31261,7 @@ function sp_directory_detail_styles(): void {
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            color: #888;
+            color: #767676;
             margin: 0 0 8px 0;
         }
 
@@ -31066,7 +31303,7 @@ function sp_directory_detail_styles(): void {
             line-height: 1.5;
         }
         .sp-surname-meta {
-            color: #888;
+            color: #767676;
             font-size: 13px;
         }
 
@@ -33436,7 +33673,7 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
 
 /* sp-surname-no-contact — Muted label shown when contact is unavailable or user is not logged in */
 .sp-surname-no-contact {
-    color: #999;
+    color: #767676;
     font-size: 12px;
 }
 
@@ -33477,7 +33714,7 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
     border: none;
     font-size: 24px;
     cursor: pointer;
-    color: #999;
+    color: #767676;
 }
 
 /* sp-surname-modal-title — The "Contact Researcher" heading inside the modal */
@@ -33658,11 +33895,19 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
                                 <label class="sp-surname-modal-label"><?php esc_html_e( 'Message', 'societypress' ); ?></label>
                                 <textarea name="message" rows="4" required class="sp-surname-modal-textarea" placeholder="<?php echo esc_attr__( 'Tell them about your research interest...', 'societypress' ); ?>"></textarea>
                             </div>
-                            <button type="submit" class="sp-btn sp-btn-primary sp-surname-modal-submit">Send Message</button>
+                            <button type="submit" class="sp-btn sp-btn-primary sp-surname-modal-submit"><?php esc_html_e( 'Send Message', 'societypress' ); ?></button>
                         </form>
                     </div>
                 </div>
                 <script>
+                var spSurnameI18n = {
+                    sending:        <?php echo wp_json_encode( __( 'Sending…', 'societypress' ) ); ?>,
+                    sendMessage:    <?php echo wp_json_encode( __( 'Send Message', 'societypress' ) ); ?>,
+                    messageSent:    <?php echo wp_json_encode( __( 'Message sent!', 'societypress' ) ); ?>,
+                    somethingWrong: <?php echo wp_json_encode( __( 'Something went wrong.', 'societypress' ) ); ?>,
+                    networkError:   <?php echo wp_json_encode( __( 'Network error. Please try again.', 'societypress' ) ); ?>,
+                    descTemplate:   <?php echo wp_json_encode( __( 'Send a message to %1$s about the surname "%2$s".', 'societypress' ) ); ?>
+                };
                 (function(){
                     // WHY: Event delegation from the parent container so buttons
                     //      added dynamically (unlikely here, but defensive) still work.
@@ -33672,7 +33917,9 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
                         var modal = document.getElementById('sp-surname-contact-modal');
                         document.getElementById('sp-surname-researcher-id').value = btn.dataset.researcherId;
                         document.getElementById('sp-surname-contact-desc').textContent =
-                            'Send a message to ' + btn.dataset.researcherName + ' about the surname "' + btn.dataset.surname + '".';
+                            spSurnameI18n.descTemplate
+                                .replace('%1$s', btn.dataset.researcherName)
+                                .replace('%2$s', btn.dataset.surname);
                         document.getElementById('sp-surname-contact-msg').style.display = 'none';
                         modal.style.display = 'flex';
                     });
@@ -33692,7 +33939,7 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
                         var msgBox = document.getElementById('sp-surname-contact-msg');
                         var submitBtn = form.querySelector('button[type="submit"]');
                         submitBtn.disabled = true;
-                        submitBtn.textContent = 'Sending...';
+                        submitBtn.textContent = spSurnameI18n.sending;
 
                         var formData = new FormData(form);
                         formData.append('action', 'sp_surname_contact');
@@ -33708,26 +33955,26 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
                             if (data.success) {
                                 msgBox.style.background = '#edfaef';
                                 msgBox.style.color = '#0a6b2e';
-                                msgBox.textContent = data.data.message || 'Message sent!';
+                                msgBox.textContent = (data.data && data.data.message) || spSurnameI18n.messageSent;
                                 form.querySelector('textarea[name="message"]').value = '';
                                 setTimeout(function() {
                                     document.getElementById('sp-surname-contact-modal').style.display = 'none';
                                 }, 2000);
                             } else {
                                 msgBox.style.background = '#fef0f0';
-                                msgBox.style.color = '#b32d2e';
-                                msgBox.textContent = data.data || 'Something went wrong.';
+                                msgBox.style.color = '#767676';
+                                msgBox.textContent = data.data || spSurnameI18n.somethingWrong;
                             }
                         })
                         .catch(function() {
                             msgBox.style.display = 'block';
                             msgBox.style.background = '#fef0f0';
-                            msgBox.style.color = '#b32d2e';
-                            msgBox.textContent = 'Network error. Please try again.';
+                            msgBox.style.color = '#767676';
+                            msgBox.textContent = spSurnameI18n.networkError;
                         })
                         .finally(function() {
                             submitBtn.disabled = false;
-                            submitBtn.textContent = 'Send Message';
+                            submitBtn.textContent = spSurnameI18n.sendMessage;
                         });
                     });
                 })();
@@ -33750,7 +33997,12 @@ function sp_render_builder_widget_membership_tiers( array $s ): void {
     $tiers = $wpdb->get_results( "SELECT name, price, duration_months, active FROM {$prefix}membership_tiers {$where} ORDER BY sort_order ASC, name ASC" );
 
     if ( empty( $tiers ) ) {
-        echo '<p>No membership tiers have been configured yet.</p>';
+        echo '<p class="sp-tiers-empty">' . esc_html__( 'No membership tiers have been configured yet.', 'societypress' );
+        if ( current_user_can( 'sp_manage_settings' ) ) {
+            echo ' <a href="' . esc_url( admin_url( 'admin.php?page=sp-membership-tiers' ) ) . '">'
+               . esc_html__( 'Set up tiers', 'societypress' ) . '</a>';
+        }
+        echo '</p>';
         return;
     }
 
@@ -33768,7 +34020,7 @@ function sp_render_builder_widget_membership_tiers( array $s ): void {
             }
         }
         if ( ! $tier->active ) {
-            echo '<div style="margin-top:8px; font-size:12px; color:#999; font-style:italic;">' . esc_html__( 'Not currently available', 'societypress' ) . '</div>';
+            echo '<div style="margin-top:8px; font-size:12px; color:#767676; font-style:italic;">' . esc_html__( 'Not currently available', 'societypress' ) . '</div>';
         }
         echo '</div>';
     }
@@ -33992,17 +34244,17 @@ function sp_render_builder_widget_contact_form( array $s ): void {
 
         <div class="sp-contact-row">
             <div class="sp-contact-field">
-                <label class="sp-contact-label"><?php echo esc_html__( 'Name', 'societypress' ); ?> <span class="sp-contact-required">*</span></label>
-                <input type="text" name="sp_contact_name" required class="sp-contact-input">
+                <label class="sp-contact-label" for="<?php echo esc_attr( $form_id ); ?>-name"><?php echo esc_html__( 'Name', 'societypress' ); ?> <span class="sp-contact-required">*</span></label>
+                <input type="text" id="<?php echo esc_attr( $form_id ); ?>-name" name="sp_contact_name" required class="sp-contact-input">
             </div>
             <div class="sp-contact-field">
-                <label class="sp-contact-label"><?php echo esc_html__( 'Email', 'societypress' ); ?> <span class="sp-contact-required">*</span></label>
-                <input type="email" name="sp_contact_email" required class="sp-contact-input">
+                <label class="sp-contact-label" for="<?php echo esc_attr( $form_id ); ?>-email"><?php echo esc_html__( 'Email', 'societypress' ); ?> <span class="sp-contact-required">*</span></label>
+                <input type="email" id="<?php echo esc_attr( $form_id ); ?>-email" name="sp_contact_email" required class="sp-contact-input">
             </div>
         </div>
         <div class="sp-contact-field-full">
-            <label class="sp-contact-label"><?php echo esc_html__( 'Message', 'societypress' ); ?> <span class="sp-contact-required">*</span></label>
-            <textarea name="sp_contact_message" rows="5" required class="sp-contact-input sp-contact-textarea"></textarea>
+            <label class="sp-contact-label" for="<?php echo esc_attr( $form_id ); ?>-message"><?php echo esc_html__( 'Message', 'societypress' ); ?> <span class="sp-contact-required">*</span></label>
+            <textarea id="<?php echo esc_attr( $form_id ); ?>-message" name="sp_contact_message" rows="5" required class="sp-contact-input sp-contact-textarea"></textarea>
         </div>
         <button type="submit" class="sp-btn sp-btn-primary"><?php echo esc_html__( 'Send Message', 'societypress' ); ?></button>
     </form>
@@ -34062,8 +34314,13 @@ function sp_handle_builder_contact_form(): void {
 
     $sent = wp_mail(
         $to,
-        sprintf( '[%s] Message from %s', $site_name, $safe_name ),
-        sprintf( "Name: %s\nEmail: %s\n\nMessage:\n%s\n\n---\nSent from %s contact form", $safe_name, $email, $message, $site_name ),
+        /* translators: 1: site/society name, 2: sender name */
+        sprintf( __( '[%1$s] Message from %2$s', 'societypress' ), $site_name, $safe_name ),
+        sprintf(
+            /* translators: 1: sender name, 2: sender email, 3: message body, 4: site/society name */
+            __( "Name: %1\$s\nEmail: %2\$s\n\nMessage:\n%3\$s\n\n---\nSent from %4\$s contact form", 'societypress' ),
+            $safe_name, $email, $message, $site_name
+        ),
         [ 'Content-Type: text/plain; charset=UTF-8', sprintf( 'Reply-To: %s <%s>', $safe_name, $email ) ]
     );
 
@@ -34173,7 +34430,7 @@ function sp_builder_frontend_styles(): void {
         .sp-upcoming-event-card { display: flex; align-items: flex-start; gap: 16px; padding: 16px 0; border-bottom: 1px solid #e5e7eb; }
         .sp-upcoming-event-card:last-child { border-bottom: none; }
         .sp-ue-date-block { flex-shrink: 0; width: 56px; text-align: center; background: #f0f4f8; border-radius: 8px; padding: 8px 4px; line-height: 1.2; }
-        .sp-ue-date-block .sp-ue-month { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--sp-color-primary); letter-spacing: 0.5px; }
+        .sp-ue-date-block .sp-ue-month { display: block; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--sp-color-primary); letter-spacing: 0.5px; }
         .sp-ue-date-block .sp-ue-day { display: block; font-size: 22px; font-weight: 700; color: #1d2327; }
         .sp-ue-date-block .sp-ue-weekday { display: block; font-size: 10px; color: #666; text-transform: uppercase; }
         .sp-ue-details { flex: 1; min-width: 0; }
@@ -34182,7 +34439,7 @@ function sp_builder_frontend_styles(): void {
         .sp-ue-title a:hover { color: var(--sp-color-primary); }
         .sp-ue-meta { font-size: 13px; color: #666; margin: 0; line-height: 1.5; }
         .sp-ue-meta span { display: inline-block; margin-right: 12px; }
-        .sp-ue-category-badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; color: #fff; margin-top: 4px; }
+        .sp-ue-category-badge { display: inline-block; font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 10px; color: #fff; margin-top: 4px; }
         .sp-ue-view-all { display: block; text-align: center; margin-top: 20px; padding: 10px 20px; font-size: 14px; font-weight: 600; color: var(--sp-color-primary); text-decoration: none; border: 2px solid var(--sp-color-primary); border-radius: 6px; transition: all 0.2s; }
         .sp-ue-view-all:hover { background: var(--sp-color-primary); color: #fff; }
         .sp-ue-empty { text-align: center; padding: 24px; color: #666; font-style: italic; }
@@ -34793,9 +35050,9 @@ class SP_Events_List_Table extends WP_List_Table {
         // events come from outside sources without opening each one.
         if ( ! empty( $item->external_source ) ) {
             if ( $item->external_source === 'ical_feed' ) {
-                $title .= ' <span style="background: #dbe9f4; color: #2271b1; padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 500; vertical-align: middle;" title="' . esc_attr__( 'Imported from iCal feed', 'societypress' ) . '">&#128279; ' . esc_html__( 'iCal', 'societypress' ) . '</span>';
+                $title .= ' <span style="background: #dbe9f4; color: #2271b1; padding: 1px 6px; border-radius: 3px; font-size: 0.75rem; font-weight: 500; vertical-align: middle;" title="' . esc_attr__( 'Imported from iCal feed', 'societypress' ) . '">&#128279; ' . esc_html__( 'iCal', 'societypress' ) . '</span>';
             } elseif ( $item->external_source === 'manual' ) {
-                $title .= ' <span style="background: #fef0e5; color: #b35a00; padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 500; vertical-align: middle;" title="' . esc_attr__( 'Links to external website', 'societypress' ) . '"><span aria-hidden="true">&#8599;</span> ' . esc_html__( 'External', 'societypress' ) . '</span>';
+                $title .= ' <span style="background: #fef0e5; color: #b35a00; padding: 1px 6px; border-radius: 3px; font-size: 0.75rem; font-weight: 500; vertical-align: middle;" title="' . esc_attr__( 'Links to external website', 'societypress' ) . '"><span aria-hidden="true">&#8599;</span> ' . esc_html__( 'External', 'societypress' ) . '</span>';
             }
         }
 
@@ -34860,12 +35117,12 @@ class SP_Events_List_Table extends WP_List_Table {
         if ( ! empty( $item->location_name ) ) {
             $output = esc_html( $item->location_name );
             if ( $item->is_virtual ) {
-                $output .= ' <span style="background: #dbe9f4; color: var(--sp-color-primary); padding: 2px 6px; border-radius: 3px; font-size: 11px;">+ Virtual</span>';
+                $output .= ' <span style="background: #dbe9f4; color: var(--sp-color-primary); padding: 2px 6px; border-radius: 3px; font-size: 0.75rem;">+ Virtual</span>';
             }
             return $output;
         }
         if ( $item->is_virtual ) {
-            return '<span style="background: #dbe9f4; color: var(--sp-color-primary); padding: 2px 6px; border-radius: 3px; font-size: 11px;">' . esc_html__( 'Virtual', 'societypress' ) . '</span>';
+            return '<span style="background: #dbe9f4; color: var(--sp-color-primary); padding: 2px 6px; border-radius: 3px; font-size: 0.75rem;">' . esc_html__( 'Virtual', 'societypress' ) . '</span>';
         }
         return '—';
     }
@@ -36777,7 +37034,7 @@ function sp_render_event_edit_page(): void {
         padding: 2px 0;
     }
     .sp-recurrence-cal-day {
-        font-size: 11px;
+        font-size: 0.75rem;
         text-align: center;
         padding: 3px 0;
         border-radius: 2px;
@@ -37300,6 +37557,17 @@ function sp_render_event_categories_page(): void {
         "SELECT * FROM {$wpdb->prefix}sp_event_categories ORDER BY sort_order ASC, name ASC"
     );
 
+    // Pre-fetch event counts per category — one GROUP BY beats N COUNT(*) queries
+    // when the table grows. Build a lookup keyed by category_id.
+    $category_event_counts = [];
+    $count_rows = $wpdb->get_results(
+        "SELECT category_id, COUNT(*) AS cnt FROM {$wpdb->prefix}sp_events
+         WHERE category_id IS NOT NULL GROUP BY category_id"
+    );
+    foreach ( $count_rows as $cr ) {
+        $category_event_counts[ (int) $cr->category_id ] = (int) $cr->cnt;
+    }
+
     ?>
     <style>
     /*
@@ -37473,11 +37741,7 @@ function sp_render_event_categories_page(): void {
                         </tr>
                     <?php else : ?>
                         <?php foreach ( $categories as $cat ) :
-                            // Count events using this category
-                            $event_count = (int) $wpdb->get_var( $wpdb->prepare(
-                                "SELECT COUNT(*) FROM {$wpdb->prefix}sp_events WHERE category_id = %d",
-                                $cat->id
-                            ) );
+                            $event_count = $category_event_counts[ (int) $cat->id ] ?? 0;
                         ?>
                         <tr data-cat-id="<?php echo esc_attr( $cat->id ); ?>">
                             <td>
@@ -37729,6 +37993,16 @@ function sp_render_member_tiers_page(): void {
         "SELECT * FROM {$wpdb->prefix}sp_membership_tiers ORDER BY sort_order ASC, name ASC"
     );
 
+    // Pre-fetch member counts per tier — single GROUP BY beats N COUNT()s.
+    $tier_member_counts = [];
+    $count_rows = $wpdb->get_results(
+        "SELECT tier_id, COUNT(*) AS cnt FROM {$wpdb->prefix}sp_members
+         WHERE tier_id IS NOT NULL GROUP BY tier_id"
+    );
+    foreach ( $count_rows as $cr ) {
+        $tier_member_counts[ (int) $cr->tier_id ] = (int) $cr->cnt;
+    }
+
     ?>
     <style>
     /**
@@ -37932,11 +38206,7 @@ function sp_render_member_tiers_page(): void {
                         </tr>
                     <?php else : ?>
                         <?php foreach ( $tiers as $tier ) :
-                            // Count members using this tier
-                            $member_count = (int) $wpdb->get_var( $wpdb->prepare(
-                                "SELECT COUNT(*) FROM {$wpdb->prefix}sp_members WHERE tier_id = %d",
-                                $tier->id
-                            ) );
+                            $member_count = $tier_member_counts[ (int) $tier->id ] ?? 0;
                             // Format duration for display
                             $duration_display = is_null( $tier->duration_months )
                                 ? __( 'Lifetime', 'societypress' )
@@ -39325,7 +39595,7 @@ function sp_process_event_import( string $file_path, array $field_map ): array {
     // Parse file using the multi-format helper (handles CSV, TSV, XLSX)
     $parsed = sp_parse_import_file( $file_path );
     if ( ! $parsed ) {
-        $results['errors'][] = 'Could not open or parse the uploaded file.';
+        $results['errors'][] = __( 'Could not open or parse the uploaded file.', 'societypress' );
         return $results;
     }
 
@@ -39333,7 +39603,7 @@ function sp_process_event_import( string $file_path, array $field_map ): array {
     $rows    = $parsed['rows'];
 
     if ( empty( $headers ) ) {
-        $results['errors'][] = 'File is empty or has no header row.';
+        $results['errors'][] = __( 'File is empty or has no header row.', 'societypress' );
         return $results;
     }
 
@@ -39374,7 +39644,8 @@ function sp_process_event_import( string $file_path, array $field_map ): array {
         $title = $data['title'] ?? '';
         if ( empty( $title ) ) {
             $results['skipped']++;
-            $results['errors'][] = "Row {$row_num}: Skipped — no title.";
+            /* translators: %d: row number */
+            $results['errors'][] = sprintf( __( 'Row %d: Skipped — no title.', 'societypress' ), $row_num );
             continue;
         }
 
@@ -39382,7 +39653,8 @@ function sp_process_event_import( string $file_path, array $field_map ): array {
         $event_date = $data['event_date'] ?? '';
         if ( empty( $event_date ) ) {
             $results['skipped']++;
-            $results['errors'][] = "Row {$row_num}: Skipped — no date for \"{$title}\".";
+            /* translators: 1: row number, 2: event title */
+            $results['errors'][] = sprintf( __( 'Row %1$d: Skipped — no date for "%2$s".', 'societypress' ), $row_num, $title );
             continue;
         }
 
@@ -39393,7 +39665,8 @@ function sp_process_event_import( string $file_path, array $field_map ): array {
         $parsed_date = strtotime( $event_date );
         if ( $parsed_date === false ) {
             $results['skipped']++;
-            $results['errors'][] = "Row {$row_num}: Skipped — could not parse date \"{$event_date}\" for \"{$title}\".";
+            /* translators: 1: row number, 2: date string from CSV, 3: event title */
+            $results['errors'][] = sprintf( __( 'Row %1$d: Skipped — could not parse date "%2$s" for "%3$s".', 'societypress' ), $row_num, $event_date, $title );
             continue;
         }
         $event_date = date( 'Y-m-d', $parsed_date );
@@ -39507,7 +39780,8 @@ function sp_process_event_import( string $file_path, array $field_map ): array {
             $results['imported']++;
         } else {
             $results['skipped']++;
-            $results['errors'][] = "Row {$row_num}: Database error inserting \"{$title}\".";
+            /* translators: 1: row number, 2: event title */
+            $results['errors'][] = sprintf( __( 'Row %1$d: Database error inserting "%2$s".', 'societypress' ), $row_num, $title );
         }
     }
 
@@ -41131,8 +41405,8 @@ function sp_render_event_detail( string $slug, array $settings ): void {
 
     if ( ! $event ) {
         echo '<div class="sp-event-not-found">';
-        echo '<h2>Event Not Found</h2>';
-        echo '<p>The event you\'re looking for doesn\'t exist or has been removed.</p>';
+        echo '<h2>' . esc_html__( 'Event Not Found', 'societypress' ) . '</h2>';
+        echo '<p>' . esc_html__( 'The event you\'re looking for doesn\'t exist or has been removed.', 'societypress' ) . '</p>';
         echo '<p><a href="' . esc_url( get_permalink() ) . '">' . esc_html__( '&larr; Back to Events', 'societypress' ) . '</a></p>';
         echo '</div>';
         return;
@@ -41756,7 +42030,7 @@ function sp_render_event_detail( string $slug, array $settings ): void {
                                         <?php esc_html_e( 'Register Now', 'societypress' ); ?>
                                     </button>
                                 <?php endif; ?>
-                                <div class="sp-reg-message" id="sp-reg-message" style="display: none;"></div>
+                                <div class="sp-reg-message" id="sp-reg-message" style="display: none;" role="status" aria-live="polite"></div>
                             </div>
                         <?php elseif ( $event->guest_registration ) : ?>
                             <!-- Guest registration form (not logged in, guest allowed) -->
@@ -41851,7 +42125,7 @@ function sp_render_event_detail( string $slug, array $settings ): void {
                                         <?php esc_html_e( 'Register Now', 'societypress' ); ?>
                                     </button>
                                 <?php endif; ?>
-                                <div class="sp-reg-message" id="sp-reg-message" style="display: none;"></div>
+                                <div class="sp-reg-message" id="sp-reg-message" style="display: none;" role="status" aria-live="polite"></div>
                             </div>
                         <?php else : ?>
                             <!-- Not logged in, no guest registration -->
@@ -41959,12 +42233,13 @@ function sp_events_frontend_styles(): void {
             font-size: 16px;
             border: 2px solid #ddd;
             border-radius: 6px;
-            outline: none;
-            transition: border-color 0.2s;
+            transition: border-color 0.2s, box-shadow 0.2s;
             box-sizing: border-box;
         }
         .sp-events-search-input:focus {
             border-color: var(--sp-color-primary);
+            outline: 2px solid var(--sp-color-primary);
+            outline-offset: 2px;
         }
         .sp-events-filter-select {
             padding: 10px 12px;
@@ -42214,7 +42489,7 @@ function sp_events_frontend_styles(): void {
             border-radius: 3px;
             color: #fff;
             text-decoration: none;
-            font-size: 11px;
+            font-size: 0.75rem;
             line-height: 1.3;
             overflow: hidden;
             white-space: nowrap;
@@ -42385,7 +42660,7 @@ function sp_events_frontend_styles(): void {
         /* Separator between "Add to Calendar" and "Subscribe" */
         .sp-detail-separator {
             margin: 0 8px;
-            color: #999;
+            color: #767676;
             font-size: 14px;
         }
         /* On the detail page, the subscribe dropdown should align inline */
@@ -42563,8 +42838,9 @@ function sp_events_frontend_styles(): void {
         }
         .sp-reg-form-row input:focus {
             border-color: var(--sp-color-primary);
-            outline: none;
-            box-shadow: 0 0 0 1px var(--sp-color-primary);
+            outline: 2px solid var(--sp-color-primary);
+            outline-offset: 2px;
+            box-shadow: 0 0 0 3px rgba(34, 113, 177, 0.25);
         }
         .sp-reg-form-row select {
             padding: 8px 12px;
@@ -42920,8 +43196,8 @@ function sp_events_frontend_styles(): void {
             background: #00a32a;
         }
         .sp-ical-hint {
-            font-size: 11px;
-            color: #888;
+            font-size: 0.75rem;
+            color: #767676;
             line-height: 1.4;
             margin-bottom: 6px;
         }
@@ -42993,7 +43269,7 @@ function sp_events_frontend_styles(): void {
             .sp-cal-events { display: none; }
             .sp-cal-dots { display: flex; flex-wrap: wrap; justify-content: center; }
             .sp-cal-day-num { font-size: 12px; text-align: center; }
-            .sp-cal-header { padding: 6px 2px; font-size: 11px; }
+            .sp-cal-header { padding: 6px 2px; font-size: 0.75rem; }
 
             /* Calendar day tap interaction */
             .sp-cal-has-events { cursor: pointer; }
@@ -44103,7 +44379,7 @@ function sp_render_event_registrations_section( object $event ): void {
         }
         /* Slot description sub-line */
         .sp-event-reg-slot-desc {
-            font-size: 11px;
+            font-size: 0.75rem;
             color: #787c82;
         }
         /* Em-dash shown in the slot cell when registrant has no slot */
@@ -44129,7 +44405,7 @@ function sp_render_event_registrations_section( object $event ): void {
             display: inline-block;
             padding: 1px 6px;
             border-radius: 3px;
-            font-size: 11px;
+            font-size: 0.75rem;
             font-weight: 500;
         }
 
@@ -44138,7 +44414,7 @@ function sp_render_event_registrations_section( object $event ): void {
          *      Color is static here because it's always the WP admin danger red. */
         .sp-event-reg-refund-btn {
             color: #d63638;
-            font-size: 11px;
+            font-size: 0.75rem;
             margin-left: 4px;
         }
 
@@ -44931,14 +45207,14 @@ add_action( 'init', function () {
 
     // Verify nonce
     if ( ! wp_verify_nonce( $_POST['sp_join_nonce'], 'sp_join_form' ) ) {
-        $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => 'Security check failed. Please try again.' ];
+        $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => __( 'Security check failed. Please try again.', 'societypress' ) ];
         return;
     }
 
     // Honeypot check — if the hidden field has content, it's a bot
     if ( ! empty( $_POST['sp_website_url'] ) ) {
         // Silently succeed to not tip off the bot
-        $GLOBALS['sp_join_result'] = [ 'success' => true, 'message' => 'Thank you! Your application has been submitted.' ];
+        $GLOBALS['sp_join_result'] = [ 'success' => true, 'message' => __( 'Thank you! Your application has been submitted.', 'societypress' ) ];
         return;
     }
 
@@ -44950,7 +45226,7 @@ add_action( 'init', function () {
     $rate_key   = 'sp_join_rate_' . md5( $_SERVER['REMOTE_ADDR'] ?? 'unknown' );
     $attempts   = (int) get_transient( $rate_key );
     if ( $attempts >= 3 ) {
-        $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => 'Too many attempts. Please try again later.' ];
+        $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => __( 'Too many attempts. Please try again later.', 'societypress' ) ];
         return;
     }
     set_transient( $rate_key, $attempts + 1, HOUR_IN_SECONDS );
@@ -44962,12 +45238,12 @@ add_action( 'init', function () {
     $tier_id    = absint( $_POST['tier_id'] ?? 0 );
 
     if ( ! $first_name || ! $last_name || ! $email || ! $tier_id ) {
-        $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => 'Please fill in all required fields.' ];
+        $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => __( 'Please fill in all required fields.', 'societypress' ) ];
         return;
     }
 
     if ( ! is_email( $email ) ) {
-        $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => 'Please enter a valid email address.' ];
+        $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => __( 'Please enter a valid email address.', 'societypress' ) ];
         return;
     }
 
@@ -44981,7 +45257,7 @@ add_action( 'init', function () {
         $email
     ) );
     if ( $existing ) {
-        $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => 'A member with this email address already exists. Please contact us if you need help.' ];
+        $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => __( 'A member with this email address already exists. Please contact us if you need help.', 'societypress' ) ];
         return;
     }
 
@@ -44990,14 +45266,18 @@ add_action( 'init', function () {
         "SELECT * FROM {$prefix}membership_tiers WHERE id = %d AND is_active = 1", $tier_id
     ) );
     if ( ! $tier ) {
-        $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => 'Invalid membership level selected.' ];
+        $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => __( 'Invalid membership level selected.', 'societypress' ) ];
         return;
     }
 
     // Create WordPress user (or link existing)
     $user_id = sp_create_or_link_user( $email, $first_name, $last_name );
     if ( is_wp_error( $user_id ) ) {
-        $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => 'Could not create your account: ' . $user_id->get_error_message() ];
+        $GLOBALS['sp_join_result'] = [
+            'success' => false,
+            /* translators: %s: technical error detail (untranslated) */
+            'message' => sprintf( __( 'Could not create your account: %s', 'societypress' ), $user_id->get_error_message() ),
+        ];
         return;
     }
 
@@ -45142,7 +45422,7 @@ function sp_render_join_form(): string {
         .sp-join-form input[type="tel"],
         .sp-join-form select { width: 100%; padding: 8px 10px; border: 1px solid #8c8f94; border-radius: 3px; font-size: 14px; }
         .sp-join-form input:focus,
-        .sp-join-form select:focus { border-color: #2271b1; box-shadow: 0 0 0 1px #2271b1; outline: none; }
+        .sp-join-form select:focus { border-color: #2271b1; box-shadow: 0 0 0 3px rgba(34, 113, 177, 0.4); outline: 2px solid #2271b1; outline-offset: 2px; }
         .sp-join-form .sp-field-row { display: flex; gap: 12px; }
         .sp-join-form .sp-field-row > .sp-field { flex: 1; }
         .sp-join-form .sp-tier-option { display: block; padding: 12px 16px; margin-bottom: 8px; border: 2px solid #e0e0e0; border-radius: 4px; cursor: pointer; transition: border-color 0.15s; }
@@ -45420,7 +45700,7 @@ add_action( 'init', function () {
 function sp_create_or_link_user( string $email, string $first_name, string $last_name ) {
     // Validate email
     if ( ! is_email( $email ) ) {
-        return new WP_Error( 'invalid_email', 'A valid email address is required to create a member account.' );
+        return new WP_Error( 'invalid_email', __( 'A valid email address is required to create a member account.', 'societypress' ) );
     }
 
     // Check if WP user already exists with this email
@@ -46121,14 +46401,15 @@ function sp_send_registration_email( object $event, int $registration_id, string
     $settings = get_option( 'societypress_settings', [] );
 
     if ( $status === 'waitlisted' ) {
-        $subject = 'Waitlist Confirmation: ' . $event->title;
-        $heading = 'You\'re on the Waitlist';
-        $intro   = '<p>Your waitlist registration has been received. We\'ll notify you by email if a spot opens up.</p>';
+        /* translators: %s: event title */
+        $subject = sprintf( __( 'Waitlist Confirmation: %s', 'societypress' ), $event->title );
+        $heading = __( 'You\'re on the Waitlist', 'societypress' );
+        $intro   = '<p>' . esc_html__( 'Your waitlist registration has been received. We\'ll notify you by email if a spot opens up.', 'societypress' ) . '</p>';
     } else {
-        $subject_template = $settings['events_confirmation_subject'] ?? 'Registration Confirmed: {event_title}';
+        $subject_template = $settings['events_confirmation_subject'] ?? __( 'Registration Confirmed: {event_title}', 'societypress' );
         $subject = str_replace( '{event_title}', $event->title, $subject_template );
-        $heading = 'Registration Confirmed';
-        $intro   = '<p>You\'re all set! Your registration has been confirmed.</p>';
+        $heading = __( 'Registration Confirmed', 'societypress' );
+        $intro   = '<p>' . esc_html__( 'You\'re all set! Your registration has been confirmed.', 'societypress' ) . '</p>';
     }
 
     $body = $intro;
@@ -46211,12 +46492,13 @@ function sp_send_waitlist_promotion_email( object $event, int $registration_id )
         return;
     }
 
-    $subject = 'Good News — You Got a Spot: ' . $event->title;
-    $heading = 'A Spot Opened Up!';
+    /* translators: %s: event title */
+    $subject = sprintf( __( 'Good News — You Got a Spot: %s', 'societypress' ), $event->title );
+    $heading = __( 'A Spot Opened Up!', 'societypress' );
 
-    $body = '<p>Great news! A spot has opened up and your registration has been moved from the waitlist to <strong>confirmed</strong>.</p>';
+    $body = '<p>' . wp_kses_post( __( 'Great news! A spot has opened up and your registration has been moved from the waitlist to <strong>confirmed</strong>.', 'societypress' ) ) . '</p>';
     $body .= sp_email_event_details_block( $event );
-    $body .= '<p>We look forward to seeing you!</p>';
+    $body .= '<p>' . esc_html__( 'We look forward to seeing you!', 'societypress' ) . '</p>';
 
     $html = sp_build_email_html( $heading, $body );
 
@@ -46260,18 +46542,23 @@ function sp_send_event_cancellation_emails( int $event_id, string $event_title )
         return;
     }
 
-    $subject = 'Event Cancelled: ' . $event_title;
-    $heading = 'Event Cancelled';
+    /* translators: %s: event title */
+    $subject = sprintf( __( 'Event Cancelled: %s', 'societypress' ), $event_title );
+    $heading = __( 'Event Cancelled', 'societypress' );
 
-    $body = '<p>We\'re sorry to let you know that the following event has been <strong>cancelled</strong>:</p>';
+    $body = '<p>' . wp_kses_post( __( 'We\'re sorry to let you know that the following event has been <strong>cancelled</strong>:', 'societypress' ) ) . '</p>';
     if ( $event ) {
         $body .= sp_email_event_details_block( $event );
     } else {
         $body .= '<p class="sp-fw-600">' . esc_html( $event_title ) . '</p>';
     }
-    $body .= '<p>If you have any questions, please contact the event organizer.';
+    $body .= '<p>' . esc_html__( 'If you have any questions, please contact the event organizer.', 'societypress' );
     if ( $event && ! empty( $event->contact_email ) ) {
-        $body .= ' You can reach them at <a href="mailto:' . esc_attr( $event->contact_email ) . '" class="sp-text-link">' . esc_html( $event->contact_email ) . '</a>.';
+        $body .= ' ' . sprintf(
+            /* translators: %s: contact email link */
+            esc_html__( 'You can reach them at %s.', 'societypress' ),
+            '<a href="mailto:' . esc_attr( $event->contact_email ) . '" class="sp-text-link">' . esc_html( $event->contact_email ) . '</a>'
+        );
     }
     $body .= '</p>';
 
@@ -46327,23 +46614,30 @@ function sp_send_event_update_emails( object $event, array $changed_fields ): vo
         return;
     }
 
-    $subject = 'Event Updated: ' . $event->title;
-    $heading = 'Event Details Updated';
+    /* translators: %s: event title */
+    $subject = sprintf( __( 'Event Updated: %s', 'societypress' ), $event->title );
+    $heading = __( 'Event Details Updated', 'societypress' );
 
     // Build a human-readable list of what changed
     $change_labels = [
-        'date'     => 'Date',
-        'time'     => 'Time',
-        'location' => 'Location',
+        'date'     => __( 'Date', 'societypress' ),
+        'time'     => __( 'Time', 'societypress' ),
+        'location' => __( 'Location', 'societypress' ),
     ];
     $changed_list = array_map( function ( $f ) use ( $change_labels ) {
         return $change_labels[ $f ] ?? $f;
     }, $changed_fields );
 
-    $body = '<p>The <strong>' . implode( ', ', $changed_list ) . '</strong> for this event ';
-    $body .= ( count( $changed_fields ) === 1 ? 'has' : 'have' ) . ' been updated:</p>';
+    $changed_text = '<strong>' . esc_html( implode( ', ', $changed_list ) ) . '</strong>';
+    if ( count( $changed_fields ) === 1 ) {
+        /* translators: %s: comma-separated list of changed fields (1 item, already wrapped in <strong>) */
+        $body = '<p>' . sprintf( wp_kses_post( __( 'The %s for this event has been updated:', 'societypress' ) ), $changed_text ) . '</p>';
+    } else {
+        /* translators: %s: comma-separated list of changed fields (already wrapped in <strong>) */
+        $body = '<p>' . sprintf( wp_kses_post( __( 'The %s for this event have been updated:', 'societypress' ) ), $changed_text ) . '</p>';
+    }
     $body .= sp_email_event_details_block( $event );
-    $body .= '<p>Please make note of the updated details. We look forward to seeing you!</p>';
+    $body .= '<p>' . esc_html__( 'Please make note of the updated details. We look forward to seeing you!', 'societypress' ) . '</p>';
 
     $html = sp_build_email_html( $heading, $body );
 
@@ -46449,7 +46743,7 @@ function sp_send_event_reminders(): void {
         return; // No reminders enabled — nothing to do
     }
 
-    $subject_template = $settings['events_reminder_subject'] ?? 'Reminder: {event_title} is coming up';
+    $subject_template = $settings['events_reminder_subject'] ?? __( 'Reminder: {event_title} is coming up', 'societypress' );
 
     foreach ( $timings as $reminder_type => $days_before ) {
         // Find events happening exactly $days_before days from now
@@ -46505,12 +46799,19 @@ function sp_send_event_reminders(): void {
                 // Build the reminder email
                 $subject = str_replace( '{event_title}', $event->title, $subject_template );
 
-                $time_label = $days_before === 1 ? 'tomorrow' : "in {$days_before} days";
-                $heading = 'Event Reminder';
+                $time_label = $days_before === 1
+                    ? __( 'tomorrow', 'societypress' )
+                    /* translators: %d: number of days */
+                    : sprintf( _n( 'in %d day', 'in %d days', $days_before, 'societypress' ), $days_before );
+                $heading = __( 'Event Reminder', 'societypress' );
 
-                $body = '<p>Just a friendly reminder that you\'re registered for an event coming up <strong>' . $time_label . '</strong>:</p>';
+                $body = '<p>' . sprintf(
+                    /* translators: %s: time label such as "tomorrow" or "in 3 days" (already bold) */
+                    wp_kses_post( __( 'Just a friendly reminder that you\'re registered for an event coming up %s:', 'societypress' ) ),
+                    '<strong>' . esc_html( $time_label ) . '</strong>'
+                ) . '</p>';
                 $body .= sp_email_event_details_block( $event );
-                $body .= '<p>We look forward to seeing you!</p>';
+                $body .= '<p>' . esc_html__( 'We look forward to seeing you!', 'societypress' ) . '</p>';
 
                 $html = sp_build_email_html( $heading, $body );
 
@@ -47696,7 +47997,7 @@ function sp_events_calendar_styles(): void {
             border-radius: 3px;
             color: #fff;
             text-decoration: none;
-            font-size: 11px;
+            font-size: 0.75rem;
             line-height: 1.3;
             overflow: hidden;
             white-space: nowrap;
@@ -47778,7 +48079,7 @@ function sp_events_calendar_styles(): void {
             .sp-cal-events { display: none; }
             .sp-cal-dots { display: flex; flex-wrap: wrap; justify-content: center; }
             .sp-cal-day-num { font-size: 12px; text-align: center; }
-            .sp-cal-header { padding: 6px 2px; font-size: 11px; }
+            .sp-cal-header { padding: 6px 2px; font-size: 0.75rem; }
             .sp-cal-has-events { cursor: pointer; }
         }
 
@@ -47879,8 +48180,8 @@ function sp_events_calendar_styles(): void {
         .sp-ical-copy-btn:hover { background: var(--sp-color-primary-hover, #2c5282); }
         .sp-ical-copy-btn.sp-ical-copied { background: #00a32a; }
         .sp-ical-hint {
-            font-size: 11px;
-            color: #888;
+            font-size: 0.75rem;
+            color: #767676;
             line-height: 1.4;
             margin-bottom: 6px;
         }
@@ -49943,7 +50244,7 @@ function sp_render_builder_widget_newsletter_archive( array $s ): void {
             echo '<a href="' . esc_url( get_permalink( $post ) ) . '" style="font-size:17px; font-weight:600; color:var(--sp-color-primary); text-decoration:none;">';
             echo esc_html( $post->post_title ) . '</a>';
             if ( $show_date ) {
-                echo '<span style="display:block; color:#999; font-size:13px; margin-top:2px;">'
+                echo '<span style="display:block; color:#767676; font-size:13px; margin-top:2px;">'
                    . esc_html( get_the_date( '', $post ) ) . '</span>';
             }
             if ( $show_excerpt && $post->post_excerpt ) {
@@ -50097,7 +50398,7 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
 .sp-gallery-no-cover           { aspect-ratio: 4/3; background: #f0f0f0;
                                   border-radius: 8px; margin-bottom: 8px;
                                   display: flex; align-items: center;
-                                  justify-content: center; color: #999; }
+                                  justify-content: center; color: #767676; }
 .sp-gallery-no-cover-icon      { font-size: 48px; width: 48px; height: 48px; }
 .sp-gallery-album-name         { margin: 0 0 4px; font-size: 16px; }
 .sp-gallery-photo-count        { color: #666; font-size: 13px; }
@@ -50300,7 +50601,7 @@ function sp_render_builder_widget_resource_links( array $s ): void {
                 echo '<a href="' . esc_url( $item->url ) . '" target="_blank" rel="noopener noreferrer" style="font-weight:600; color:var(--sp-color-primary); text-decoration:none; font-size:15px;">';
                 echo esc_html( $item->title );
                 if ( $item->featured ) {
-                    echo ' <span style="background:#fef0c7; color:#92400e; font-size:11px; padding:2px 6px; border-radius:4px; font-weight:500; margin-left:4px;">' . esc_html__( 'Featured', 'societypress' ) . '</span>';
+                    echo ' <span style="background:#fef0c7; color:#92400e; font-size: 0.75rem; padding:2px 6px; border-radius:4px; font-weight:500; margin-left:4px;">' . esc_html__( 'Featured', 'societypress' ) . '</span>';
                 }
                 echo '</a>';
                 if ( $show_desc && $item->description ) {
@@ -50554,8 +50855,10 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
             border-right: none; background: #fff;
         }
         .sp-catalog-search-form input[type="text"]:focus {
-            outline: none; border-color: var(--sp-color-accent, #667eea);
-            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+            border-color: var(--sp-color-accent, #667eea);
+            outline: 2px solid var(--sp-color-accent, #667eea);
+            outline-offset: 2px;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.4);
         }
         .sp-catalog-search-form button[type="submit"] {
             padding: 12px 24px; border: 1px solid var(--sp-color-primary, #1a1a2e);
@@ -50617,7 +50920,7 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
             color: var(--sp-color-primary, #1a1a2e);
         }
         .sp-catalog-type-count {
-            font-size: 13px; color: #888; display: block;
+            font-size: 13px; color: #767676; display: block;
         }
 
         /* Subject tag cloud */
@@ -50633,7 +50936,7 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
             border-color: var(--sp-color-primary, #1a1a2e);
         }
         .sp-catalog-subject-tag .sp-tag-count {
-            font-size: 11px; color: #999; margin-left: 4px;
+            font-size: 0.75rem; color: #767676; margin-left: 4px;
         }
         .sp-catalog-subject-tag:hover .sp-tag-count { color: rgba(255,255,255,0.7); }
 
@@ -50657,13 +50960,13 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
         .sp-catalog-table thead th { padding: 10px 14px; text-align: left; border-bottom: 2px solid #d0d5dd; background: #f8f9fa; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: #555; cursor: pointer; user-select: none; }
         .sp-catalog-table thead th:hover { color: var(--sp-color-primary, #1a1a2e); }
         .sp-catalog-table thead th.sorted { color: var(--sp-color-primary, #1a1a2e); }
-        .sp-catalog-table thead th .sp-sort-arrow { font-size: 11px; margin-left: 4px; opacity: 0.4; }
+        .sp-catalog-table thead th .sp-sort-arrow { font-size: 0.75rem; margin-left: 4px; opacity: 0.4; }
         .sp-catalog-table thead th.sorted .sp-sort-arrow { opacity: 1; }
         .sp-catalog-table tbody td { padding: 10px 14px; border-bottom: 1px solid #eee; font-size: 14px; vertical-align: top; }
         .sp-catalog-table tbody tr:hover { background: #f8f9fa; }
         .sp-catalog-table .sp-item-title { color: var(--sp-color-primary, #2271b1); cursor: pointer; font-weight: 600; text-decoration: none; }
         .sp-catalog-table .sp-item-title:hover { text-decoration: underline; }
-        .sp-catalog-table .sp-item-condition { font-size: 11px; font-weight: 500; }
+        .sp-catalog-table .sp-item-condition { font-size: 0.75rem; font-weight: 500; }
         .sp-catalog-table .sp-item-media-type { font-size: 12px; color: #666; background: #f0f0f0; padding: 2px 8px; border-radius: 10px; display: inline-block; }
 
         /* Expandable detail row */
@@ -50676,10 +50979,10 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
         .sp-catalog-detail-body { flex: 1; min-width: 0; }
         .sp-catalog-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 32px; }
         .sp-catalog-detail-field { }
-        .sp-catalog-detail-field dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #888; margin-bottom: 2px; font-weight: 600; }
+        .sp-catalog-detail-field dt { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #767676; margin-bottom: 2px; font-weight: 600; }
         .sp-catalog-detail-field dd { margin: 0; font-size: 14px; color: #333; }
         .sp-catalog-detail-desc { grid-column: 1 / -1; margin-top: 8px; }
-        .sp-catalog-detail-desc dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #888; margin-bottom: 4px; font-weight: 600; }
+        .sp-catalog-detail-desc dt { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #767676; margin-bottom: 4px; font-weight: 600; }
         .sp-catalog-detail-desc dd { margin: 0; font-size: 14px; color: #333; line-height: 1.6; }
 
         /* Subject / surname tags (in detail rows) */
@@ -50692,7 +50995,7 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
         .sp-catalog-pagination a, .sp-catalog-pagination span { display: inline-block; padding: 6px 12px; border: 1px solid #d0d5dd; border-radius: 4px; font-size: 14px; text-decoration: none; color: #333; }
         .sp-catalog-pagination a:hover { background: #f0f0f0; }
         .sp-catalog-pagination .current { background: var(--sp-color-primary, #2271b1); color: #fff; border-color: var(--sp-color-primary, #2271b1); }
-        .sp-catalog-pagination .dots { border: none; color: #999; }
+        .sp-catalog-pagination .dots { border: none; color: #767676; }
 
         /* ================================================================
            RESPONSIVE — mobile-first adjustments
@@ -50715,7 +51018,7 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
             .sp-catalog-table thead { display: none; }
             .sp-catalog-table tbody tr { display: block; padding: 12px 0; border-bottom: 1px solid #eee; }
             .sp-catalog-table tbody td { display: block; padding: 3px 0 !important; border-bottom: none !important; }
-            .sp-catalog-table tbody td:before { content: attr(data-label); font-weight: 600; font-size: 11px; text-transform: uppercase; color: #888; display: block; }
+            .sp-catalog-table tbody td:before { content: attr(data-label); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; color: #767676; display: block; }
             .sp-catalog-detail-grid { grid-template-columns: 1fr; }
             .sp-catalog-detail-layout { flex-direction: column; }
             .sp-catalog-detail-cover { text-align: center; }
@@ -51739,7 +52042,7 @@ function sp_render_album_edit_page(): void {
     .sp-album-edit-photos-grid   { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; min-height: 100px; background: #f9f9f9; border: 2px dashed #ddd; border-radius: 8px; padding: 16px; }
     .sp-album-edit-photo-tile    { position: relative; width: 120px; cursor: grab; }
     .sp-album-edit-photo-img     { width: 120px; height: 120px; object-fit: cover; border-radius: 6px; }
-    .sp-album-edit-caption-input { width: 120px; font-size: 11px; margin-top: 4px; padding: 2px 4px; border: 1px solid #ccc; border-radius: 3px; }
+    .sp-album-edit-caption-input { width: 120px; font-size: 0.75rem; margin-top: 4px; padding: 2px 4px; border: 1px solid #ccc; border-radius: 3px; }
     .sp-album-edit-remove-btn    { position: absolute; top: -6px; right: -6px; background: #b32d2e; color: #fff; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; font-size: 14px; line-height: 18px; }
     </style>
     <div class="wrap">
@@ -52021,7 +52324,7 @@ function sp_render_reports_page(): void {
 
             /* Reports page: secondary sub-label (e.g. "X total", "X donors") */
             .sp-reports-stat-sublabel {
-                color: #999;
+                color: #767676;
                 font-size: 12px;
             }
 
@@ -52180,7 +52483,7 @@ function sp_render_annual_report_page(): void {
             .sp-annual-events-chart   { display: flex; align-items: flex-end; gap: 8px; height: 200px; padding: 0 12px; }
             .sp-annual-month-col      { flex: 1; text-align: center; }
             .sp-annual-month-count    { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
-            .sp-annual-month-label    { font-size: 11px; color: #666; margin-top: 4px; }
+            .sp-annual-month-label    { font-size: 0.75rem; color: #666; margin-top: 4px; }
             .sp-annual-vol-name       { padding: 6px 12px; width: 200px; }
             .sp-annual-vol-hours      { padding: 6px 12px; width: 80px; text-align: right; }
             .sp-annual-vol-chart      { padding: 6px 12px; }
@@ -52690,7 +52993,7 @@ function sp_render_membership_reports_page(): void {
             font-size: 13px;
         }
         .sp-mr-table td.sp-mr-num { text-align: right; font-variant-numeric: tabular-nums; }
-        .sp-mr-sort-arrow { font-size: 11px; margin-left: 4px; }
+        .sp-mr-sort-arrow { font-size: 0.75rem; margin-left: 4px; }
 
         /* Pipeline cards */
         .sp-mr-pipeline {
@@ -52762,7 +53065,7 @@ function sp_render_membership_reports_page(): void {
         }
         .sp-mr-chart-bar--green { background: #00a32a; }
         .sp-mr-chart-value {
-            font-size: 11px;
+            font-size: 0.75rem;
             font-weight: 600;
             margin-bottom: 4px;
         }
@@ -53279,7 +53582,7 @@ function sp_render_help_requests_admin_page(): void {
                                 <strong><a href="<?php echo esc_url( $view_url ); ?>"><?php echo esc_html( $req->title ); ?></a></strong>
                                 <div class="row-actions">
                                     <span><a href="<?php echo esc_url( $view_url ); ?>"><?php esc_html_e( 'View', 'societypress' ); ?></a> | </span>
-                                    <span><form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-help-requests' ) ); ?>" class="sp-inline" data-sp-confirm="<?php echo esc_attr( __( 'Delete?', 'societypress' ) ); ?>"><?php wp_nonce_field( 'sp_delete_help_request_' . $req->id ); ?><input type="hidden" name="action" value="delete"><input type="hidden" name="request_id" value="<?php echo (int) $req->id; ?>"><button type="submit" class="sp-link-btn"><?php esc_html_e( 'Delete', 'societypress' ); ?></button></form></span>
+                                    <span><form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-help-requests' ) ); ?>" class="sp-inline" data-sp-confirm="<?php echo esc_attr__( 'Delete this request and all responses? This cannot be undone.', 'societypress' ); ?>"><?php wp_nonce_field( 'sp_delete_help_request_' . $req->id ); ?><input type="hidden" name="action" value="delete"><input type="hidden" name="request_id" value="<?php echo (int) $req->id; ?>"><button type="submit" class="sp-link-btn"><?php esc_html_e( 'Delete', 'societypress' ); ?></button></form></span>
                                 </div>
                             </td>
                             <td><?php echo esc_html( $req->first_name . ' ' . $req->last_name ); ?></td>
@@ -53452,26 +53755,32 @@ function sp_frontend_help_requests(): void {
                 $responder = $wpdb->get_row( $wpdb->prepare(
                     "SELECT first_name, last_name FROM {$prefix}members WHERE user_id = %d", $current_user_id
                 ) );
-                $resp_name = $responder ? $responder->first_name . ' ' . $responder->last_name : 'A member';
+                $resp_name = $responder ? $responder->first_name . ' ' . $responder->last_name : __( 'A member', 'societypress' );
 
                 // WHY: Email body uses inline styles intentionally — email clients
                 //      do not load external stylesheets, so inline is the only reliable
                 //      way to style HTML email across Gmail, Outlook, Apple Mail, etc.
-                $body = '<p>Dear ' . esc_html( $request->first_name ) . ',</p>'
-                      . '<p>' . esc_html( $resp_name ) . ' replied to your question: <strong>' . esc_html( $request->title ) . '</strong></p>'
+                $body = '<p>' . sprintf( esc_html__( 'Dear %s,', 'societypress' ), esc_html( $request->first_name ) ) . '</p>'
+                      . '<p>' . sprintf(
+                          /* translators: 1: responder name, 2: question title (already wrapped in <strong>) */
+                          wp_kses_post( __( '%1$s replied to your question: %2$s', 'societypress' ) ),
+                          esc_html( $resp_name ),
+                          '<strong>' . esc_html( $request->title ) . '</strong>'
+                      ) . '</p>'
                       . '<div style="background:#f6f7f7; border:1px solid #e0e0e0; border-radius:6px; padding:16px; margin:16px 0;">'
                       . '<p class="sp-m-0" class="sp-pre-wrap">' . esc_html( $content ) . '</p></div>'
-                      . '<p><a href="' . esc_url( get_permalink() . '?sp_help=view&id=' . $request_id ) . '" style="display:inline-block; padding:10px 20px; background:#2271b1; color:#fff; text-decoration:none; border-radius:6px;">View Full Discussion</a></p>';
+                      . '<p><a href="' . esc_url( get_permalink() . '?sp_help=view&id=' . $request_id ) . '" style="display:inline-block; padding:10px 20px; background:#2271b1; color:#fff; text-decoration:none; border-radius:6px;">' . esc_html__( 'View Full Discussion', 'societypress' ) . '</a></p>';
 
                 wp_mail(
                     $request->email,
-                    sprintf( '[%s] New response to your question', get_bloginfo( 'name' ) ),
-                    sp_build_email_html( 'New Response', $body ),
+                    /* translators: %s: site/society name */
+                    sprintf( __( '[%s] New response to your question', 'societypress' ), get_bloginfo( 'name' ) ),
+                    sp_build_email_html( __( 'New Response', 'societypress' ), $body ),
                     [ 'Content-Type: text/html; charset=UTF-8' ]
                 );
             }
 
-            echo '<div class="sp-help-notice sp-help-notice--success">Your response has been posted.</div>';
+            echo '<div class="sp-help-notice sp-help-notice--success">' . esc_html__( 'Your response has been posted.', 'societypress' ) . '</div>';
         }
     }
 
@@ -53500,28 +53809,33 @@ function sp_frontend_help_requests(): void {
                 $asker = $wpdb->get_row( $wpdb->prepare(
                     "SELECT first_name, last_name FROM {$prefix}members WHERE user_id = %d", $current_user_id
                 ) );
-                $asker_name = $asker ? $asker->first_name . ' ' . $asker->last_name : 'A member';
+                $asker_name = $asker ? $asker->first_name . ' ' . $asker->last_name : __( 'A member', 'societypress' );
 
                 foreach ( $admin_users as $admin ) {
                     if ( (int) $admin->ID === $current_user_id ) continue;
                     if ( ! is_email( $admin->user_email ) ) continue;
                     $admin_first = $admin->first_name ?: $admin->display_name;
                     // WHY: Email body uses inline styles intentionally — see note above.
-                    $body = '<p>Dear ' . esc_html( $admin_first ) . ',</p>'
-                          . '<p>' . esc_html( $asker_name ) . ' posted a research question:</p>'
+                    $body = '<p>' . sprintf( esc_html__( 'Dear %s,', 'societypress' ), esc_html( $admin_first ) ) . '</p>'
+                          . '<p>' . sprintf(
+                              /* translators: %s: name of the member who posted the question */
+                              esc_html__( '%s posted a research question:', 'societypress' ),
+                              esc_html( $asker_name )
+                          ) . '</p>'
                           . '<h3 style="margin:16px 0 8px;">' . esc_html( $title ) . '</h3>'
                           . '<p style="color:#555;">' . esc_html( wp_trim_words( $desc, 50 ) ) . '</p>'
-                          . '<p><a href="' . esc_url( get_permalink() . '?sp_help=view&id=' . $new_id ) . '" style="display:inline-block; padding:10px 20px; background:#2271b1; color:#fff; text-decoration:none; border-radius:6px;">View &amp; Respond</a></p>';
+                          . '<p><a href="' . esc_url( get_permalink() . '?sp_help=view&id=' . $new_id ) . '" style="display:inline-block; padding:10px 20px; background:#2271b1; color:#fff; text-decoration:none; border-radius:6px;">' . esc_html__( 'View & Respond', 'societypress' ) . '</a></p>';
                     wp_mail(
                         $admin->user_email,
-                        sprintf( '[%s] New research question: %s', get_bloginfo( 'name' ), $title ),
-                        sp_build_email_html( 'New Research Question', $body ),
+                        /* translators: 1: site/society name, 2: question title */
+                        sprintf( __( '[%1$s] New research question: %2$s', 'societypress' ), get_bloginfo( 'name' ), $title ),
+                        sp_build_email_html( __( 'New Research Question', 'societypress' ), $body ),
                         [ 'Content-Type: text/html; charset=UTF-8' ]
                     );
                 }
             }
 
-            echo '<div class="sp-help-notice sp-help-notice--success">Your question has been posted!</div>';
+            echo '<div class="sp-help-notice sp-help-notice--success">' . esc_html__( 'Your question has been posted!', 'societypress' ) . '</div>';
             $view = 'list'; // Show list after submission
         }
     }
@@ -53529,8 +53843,8 @@ function sp_frontend_help_requests(): void {
     // Sub-view routing
     if ( $view === 'submit' ) {
         // Submit question form
-        echo '<h2>Ask a Research Question</h2>';
-        echo '<p class="sp-help-intro-text">Describe your genealogy research challenge. Other members may be able to help!</p>';
+        echo '<h2>' . esc_html__( 'Ask a Research Question', 'societypress' ) . '</h2>';
+        echo '<p class="sp-help-intro-text">' . esc_html__( 'Describe your genealogy research challenge. Other members may be able to help!', 'societypress' ) . '</p>';
         ?>
         <style>
             /*
@@ -53683,11 +53997,11 @@ function sp_frontend_help_requests(): void {
             <?php wp_nonce_field( 'sp_help_question' ); ?>
             <div class="sp-help-form-group">
                 <label class="sp-help-form-label"><?php esc_html_e( 'Question Title', 'societypress' ); ?></label>
-                <input type="text" name="question_title" required class="sp-help-form-input" placeholder="e.g., Looking for Smith family records in Sample County">
+                <input type="text" name="question_title" required class="sp-help-form-input" placeholder="<?php echo esc_attr__( 'e.g., Looking for Smith family records in Sample County', 'societypress' ); ?>">
             </div>
             <div class="sp-help-form-group">
                 <label class="sp-help-form-label"><?php esc_html_e( 'Details', 'societypress' ); ?></label>
-                <textarea name="question_description" rows="6" required class="sp-help-form-textarea" placeholder="Provide details about what you're looking for, what you've already tried, and any specific time periods or locations..."></textarea>
+                <textarea name="question_description" rows="6" required class="sp-help-form-textarea" placeholder="<?php echo esc_attr__( 'Provide details about what you\'re looking for, what you\'ve already tried, and any specific time periods or locations...', 'societypress' ); ?>"></textarea>
             </div>
             <button type="submit" name="sp_submit_question" class="sp-btn sp-btn-primary"><?php esc_html_e( 'Submit Question', 'societypress' ); ?></button>
             <a href="<?php echo esc_url( get_permalink() ); ?>" class="sp-btn sp-btn-secondary sp-help-cancel-btn"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
@@ -53787,7 +54101,7 @@ function sp_frontend_help_requests(): void {
                . '<strong>' . esc_html( $resp->first_name . ' ' . $resp->last_name ) . '</strong>'
                . ' — ' . esc_html( wp_date( 'M j, Y g:i A', strtotime( $resp->created_at ) ) );
             if ( $is_resolved_answer ) {
-                echo ' &nbsp;<span style="background:#166534; color:#fff; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;">' . esc_html__( 'ACCEPTED ANSWER', 'societypress' ) . '</span>';
+                echo ' &nbsp;<span style="background:#166534; color:#fff; padding:2px 8px; border-radius:10px; font-size: 0.75rem; font-weight:600;">' . esc_html__( 'ACCEPTED ANSWER', 'societypress' ) . '</span>';
             }
             echo '</p>';
             echo '<div class="sp-help-response-body">' . wpautop( esc_html( $resp->content ) ) . '</div>';
@@ -53805,7 +54119,7 @@ function sp_frontend_help_requests(): void {
                    . ' <span class="sp-help-endorse-count">' . (int) $resp->helpful_count . '</span>'
                    . '</button>';
             } else {
-                echo '<span style="color:#999;">★ <span class="sp-help-endorse-count">' . (int) $resp->helpful_count . '</span> ' . esc_html__( 'helpful', 'societypress' ) . '</span>';
+                echo '<span style="color:#767676;">★ <span class="sp-help-endorse-count">' . (int) $resp->helpful_count . '</span> ' . esc_html__( 'helpful', 'societypress' ) . '</span>';
             }
 
             // Asker can accept this as the resolving answer (only when open and not own response)
@@ -53846,7 +54160,7 @@ function sp_frontend_help_requests(): void {
                             .then(function (r) { return r.json(); })
                             .then(function (resp) {
                                 btn.disabled = false;
-                                if (!resp || !resp.success) { alert((resp && resp.data && resp.data.message) || 'Could not record endorsement.'); return; }
+                                if (!resp || !resp.success) { alert((resp && resp.data && resp.data.message) || <?php echo wp_json_encode( __( 'Could not record endorsement.', 'societypress' ) ); ?>); return; }
                                 var endorsed = resp.data.endorsed;
                                 btn.dataset.endorsed = endorsed ? '1' : '0';
                                 btn.innerHTML = (endorsed ? '★ ' : '☆ ') + <?php echo wp_json_encode( __( 'Helpful', 'societypress' ) ); ?> + ' <span class="sp-help-endorse-count">' + resp.data.count + '</span>';
@@ -53861,23 +54175,24 @@ function sp_frontend_help_requests(): void {
                         var msg = btn.classList.contains('sp-help-accept-btn')
                             ? <?php echo wp_json_encode( __( 'Mark this response as the accepted answer? The thread will close.', 'societypress' ) ); ?>
                             : <?php echo wp_json_encode( __( 'Mark this question as resolved? The thread will stop accepting new responses.', 'societypress' ) ); ?>;
-                        if (!confirm(msg)) return;
-                        var fd = new URLSearchParams();
-                        fd.append('action', 'sp_help_mark_resolved');
-                        fd.append('_wpnonce', btn.dataset.nonce);
-                        fd.append('request_id', btn.dataset.requestId);
-                        if (btn.dataset.responseId) fd.append('resolved_response_id', btn.dataset.responseId);
-                        btn.disabled = true;
-                        fetch(ajaxUrl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd.toString() })
-                            .then(function (r) { return r.json(); })
-                            .then(function (resp) {
-                                if (resp && resp.success) {
-                                    location.reload();
-                                } else {
-                                    btn.disabled = false;
-                                    alert((resp && resp.data && resp.data.message) || 'Could not mark resolved.');
-                                }
-                            });
+                        spConfirm(msg, function () {
+                            var fd = new URLSearchParams();
+                            fd.append('action', 'sp_help_mark_resolved');
+                            fd.append('_wpnonce', btn.dataset.nonce);
+                            fd.append('request_id', btn.dataset.requestId);
+                            if (btn.dataset.responseId) fd.append('resolved_response_id', btn.dataset.responseId);
+                            btn.disabled = true;
+                            fetch(ajaxUrl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd.toString() })
+                                .then(function (r) { return r.json(); })
+                                .then(function (resp) {
+                                    if (resp && resp.success) {
+                                        location.reload();
+                                    } else {
+                                        btn.disabled = false;
+                                        alert((resp && resp.data && resp.data.message) || <?php echo wp_json_encode( __( 'Could not mark resolved.', 'societypress' ) ); ?>);
+                                    }
+                                });
+                        });
                     });
                 });
             })();
@@ -54049,11 +54364,11 @@ function sp_frontend_resources_directory(): void {
         echo '<div style="padding:12px 0; border-bottom:1px solid #f0f0f0;">';
         echo '<a href="' . esc_url( $item->url ) . '" target="_blank" rel="noopener noreferrer" style="font-weight:600; font-size:16px; color:var(--sp-color-primary);">' . esc_html( $item->title ) . '</a>';
         if ( $item->featured ) {
-            echo ' <span style="background:#fef0c7; color:#92400e; font-size:11px; padding:2px 6px; border-radius:4px;">' . esc_html__( 'Featured', 'societypress' ) . '</span>';
+            echo ' <span style="background:#fef0c7; color:#92400e; font-size: 0.75rem; padding:2px 6px; border-radius:4px;">' . esc_html__( 'Featured', 'societypress' ) . '</span>';
         }
         // Show category tag when viewing all categories so links have context
         if ( ! $cat_filter && ! empty( $item->category_name ) ) {
-            echo ' <span style="background:#f0f0f0; color:#555; font-size:11px; padding:2px 6px; border-radius:4px;">' . esc_html( $item->category_name ) . '</span>';
+            echo ' <span style="background:#f0f0f0; color:#555; font-size: 0.75rem; padding:2px 6px; border-radius:4px;">' . esc_html( $item->category_name ) . '</span>';
         }
         if ( $item->description ) {
             echo '<p style="margin:4px 0 0; color:#555; font-size:14px;">' . esc_html( $item->description ) . '</p>';
@@ -54150,7 +54465,7 @@ function sp_frontend_library_catalog(): void {
 
     echo '<h2>Library Catalog</h2>';
     echo '<form method="get" class="sp-fe-catalog-form">';
-    echo '<input type="text" name="sp_lib_search" value="' . esc_attr( $search ) . '" placeholder="Search title, author, or call number..." class="sp-fe-catalog-search">';
+    echo '<input type="text" name="sp_lib_search" value="' . esc_attr( $search ) . '" placeholder="' . esc_attr__( 'Search title, author, or call number…', 'societypress' ) . '" class="sp-fe-catalog-search">';
     echo '<select name="category" class="sp-fe-catalog-cat-select">';
     echo '<option value="0">' . esc_html__( 'All Categories', 'societypress' ) . '</option>';
     foreach ( $categories as $cat ) {
@@ -54199,7 +54514,7 @@ function sp_frontend_library_catalog(): void {
             echo '</div>';
         }
     } else {
-        echo '<p class="sp-fe-catalog-empty">' . esc_html__( 'No items found.', 'societypress' ) . '</p>';
+        echo '<p class="sp-fe-catalog-empty">' . esc_html__( 'No items found. Try a different search term, or browse the full catalog by clearing your filters.', 'societypress' ) . '</p>';
     }
 }
 
@@ -55024,10 +55339,10 @@ function sp_render_library_categories_page(): void {
                         ?>
                             <tr>
                                 <td><strong><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $cat->name ); ?></a></strong>
-                                    <div class="row-actions"><span><a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> | </span><span><form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-categories' ) ); ?>" class="sp-inline" data-sp-confirm="<?php echo esc_attr( __( 'Delete?', 'societypress' ) ); ?>"><?php wp_nonce_field( 'sp_delete_library_cat_' . $cat->id ); ?><input type="hidden" name="action" value="delete"><input type="hidden" name="cat_id" value="<?php echo (int) $cat->id; ?>"><button type="submit" class="sp-link-btn"><?php esc_html_e( 'Delete', 'societypress' ); ?></button></form></span></div>
+                                    <div class="row-actions"><span><a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> | </span><span><form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-categories' ) ); ?>" class="sp-inline" data-sp-confirm="<?php echo esc_attr__( 'Delete this library category? Items in it will become uncategorized.', 'societypress' ); ?>"><?php wp_nonce_field( 'sp_delete_library_cat_' . $cat->id ); ?><input type="hidden" name="action" value="delete"><input type="hidden" name="cat_id" value="<?php echo (int) $cat->id; ?>"><button type="submit" class="sp-link-btn"><?php esc_html_e( 'Delete', 'societypress' ); ?></button></form></span></div>
                                 </td>
                                 <td><?php echo esc_html( $cat->slug ); ?></td>
-                                <td><?php echo $cat->sort_order; ?></td>
+                                <td><?php echo (int) $cat->sort_order; ?></td>
                                 <td><?php echo $cat->active ? esc_html__( 'Yes', 'societypress' ) : esc_html__( 'No', 'societypress' ); ?></td>
                             </tr>
                         <?php endforeach; ?>
@@ -55077,7 +55392,7 @@ function sp_process_library_import( string $file_path, array $field_map ): array
 
     $handle = fopen( $file_path, 'r' );
     if ( ! $handle ) {
-        $results['errors'][] = 'Could not open the CSV file.';
+        $results['errors'][] = __( 'Could not open the CSV file.', 'societypress' );
         return $results;
     }
 
@@ -55085,7 +55400,7 @@ function sp_process_library_import( string $file_path, array $field_map ): array
     $headers = fgetcsv( $handle );
     if ( ! $headers ) {
         fclose( $handle );
-        $results['errors'][] = 'CSV file is empty or has no header row.';
+        $results['errors'][] = __( 'CSV file is empty or has no header row.', 'societypress' );
         return $results;
     }
 
@@ -55242,10 +55557,11 @@ function sp_process_library_import( string $file_path, array $field_map ): array
         $wpdb->insert( $prefix . 'library_items', $data );
 
         if ( $wpdb->last_error ) {
-            $results['errors'][] = "Row {$row_num}: " . $wpdb->last_error;
+            /* translators: 1: row number, 2: MySQL error */
+            $results['errors'][] = sprintf( __( 'Row %1$d: %2$s', 'societypress' ), $row_num, $wpdb->last_error );
             // Don't let errors pile up endlessly — cap at 50 reported
             if ( count( $results['errors'] ) >= 50 ) {
-                $results['errors'][] = '(Error reporting capped at 50. There may be more.)';
+                $results['errors'][] = __( '(Error reporting capped at 50. There may be more.)', 'societypress' );
                 break;
             }
         } else {
@@ -55777,7 +56093,7 @@ function sp_render_resources_page(): void {
                             <td><?php echo esc_html( $r->category_name ?: '—' ); ?></td>
                             <td><?php echo $r->featured ? '<span class="sp-text-success">Yes</span>' : '—'; ?></td>
                             <td><?php echo $r->active ? '<span class="sp-text-success">Yes</span>' : '<span class="sp-text-danger">No</span>'; ?></td>
-                            <td><?php echo $r->sort_order; ?></td>
+                            <td><?php echo (int) $r->sort_order; ?></td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -55876,11 +56192,11 @@ function sp_render_resource_categories_page(): void {
                                     <strong><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $cat->name ); ?></a></strong>
                                     <div class="row-actions">
                                         <span><a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> | </span>
-                                        <span><form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-resource-categories' ) ); ?>" class="sp-inline" data-sp-confirm="<?php echo esc_attr( __( 'Delete?', 'societypress' ) ); ?>"><?php wp_nonce_field( 'sp_delete_resource_cat_' . $cat->id ); ?><input type="hidden" name="action" value="delete"><input type="hidden" name="cat_id" value="<?php echo (int) $cat->id; ?>"><button type="submit" class="sp-link-btn"><?php esc_html_e( 'Delete', 'societypress' ); ?></button></form></span>
+                                        <span><form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-resource-categories' ) ); ?>" class="sp-inline" data-sp-confirm="<?php echo esc_attr__( 'Delete this resource category? Resources in it will become uncategorized.', 'societypress' ); ?>"><?php wp_nonce_field( 'sp_delete_resource_cat_' . $cat->id ); ?><input type="hidden" name="action" value="delete"><input type="hidden" name="cat_id" value="<?php echo (int) $cat->id; ?>"><button type="submit" class="sp-link-btn"><?php esc_html_e( 'Delete', 'societypress' ); ?></button></form></span>
                                     </div>
                                 </td>
                                 <td><?php echo esc_html( $cat->slug ); ?></td>
-                                <td><?php echo $cat->sort_order; ?></td>
+                                <td><?php echo (int) $cat->sort_order; ?></td>
                                 <td><?php echo $cat->active ? esc_html__( 'Yes', 'societypress' ) : esc_html__( 'No', 'societypress' ); ?></td>
                             </tr>
                         <?php endforeach; ?>
@@ -56065,7 +56381,8 @@ function sp_process_links_import( string $file_path, array $field_map ): array {
             // Track the URL so duplicate detection works within the same import
             $existing_url_set[ strtolower( $url ) ] = true;
         } else {
-            $errors[] = sprintf( 'Row %d: Database insert failed for "%s".', $row_num, $title );
+            /* translators: 1: row number, 2: title of the library item */
+            $errors[] = sprintf( __( 'Row %1$d: Database insert failed for "%2$s".', 'societypress' ), $row_num, $title );
         }
     }
 
@@ -56454,7 +56771,11 @@ class SP_Volunteers_List_Table extends WP_List_Table {
             $wpdb->delete( $prefix . 'volunteer_roles', [ 'id' => $role_id ] );
         }
 
+        $orderby_allowed = [ 'last_name', 'first_name', 'role_title', 'committee', 'created_at' ];
         $orderby = sanitize_sql_orderby( $_GET['orderby'] ?? 'last_name' ) ?: 'last_name';
+        if ( ! in_array( $orderby, $orderby_allowed, true ) ) {
+            $orderby = 'last_name';
+        }
         $order   = strtoupper( $_GET['order'] ?? 'ASC' ) === 'DESC' ? 'DESC' : 'ASC';
         $search  = isset( $_GET['s'] ) ? sanitize_text_field( $_GET['s'] ) : '';
 
@@ -56581,7 +56902,11 @@ class SP_VolunteerHours_List_Table extends WP_List_Table {
             $wpdb->delete( $prefix . 'volunteer_hours', [ 'id' => $hour_id ] );
         }
 
+        $orderby_allowed = [ 'activity_date', 'hours', 'last_name', 'activity', 'committee' ];
         $orderby = sanitize_sql_orderby( $_GET['orderby'] ?? 'activity_date' ) ?: 'activity_date';
+        if ( ! in_array( $orderby, $orderby_allowed, true ) ) {
+            $orderby = 'activity_date';
+        }
         $order   = strtoupper( $_GET['order'] ?? 'DESC' ) === 'ASC' ? 'ASC' : 'DESC';
 
         $per_page = 20;
@@ -56924,7 +57249,7 @@ function sp_render_volunteer_opportunities_frontend(): string {
         display: inline-block;
         padding: 2px 8px;
         border-radius: 12px;
-        font-size: 11px;
+        font-size: 0.75rem;
         font-weight: 600;
     }
     /* Meta rows (committee, date, location) --------------------------------- */
@@ -59097,7 +59422,7 @@ function sp_render_volunteers_page(): void {
                             <select name="user_id" id="user_id" required style="min-width:250px;">
                                 <option value=""><?php echo '— ' . esc_html__( 'Select Member', 'societypress' ) . ' —'; ?></option>
                                 <?php foreach ( $members as $m ) : ?>
-                                    <option value="<?php echo $m->user_id; ?>" <?php selected( $editing->user_id ?? 0, $m->user_id ); ?>>
+                                    <option value="<?php echo esc_attr( (int) $m->user_id ); ?>" <?php selected( $editing->user_id ?? 0, $m->user_id ); ?>>
                                         <?php echo esc_html( $m->last_name . ', ' . $m->first_name ); ?>
                                     </option>
                                 <?php endforeach; ?>
@@ -59319,7 +59644,7 @@ function sp_render_volunteer_hours_page(): void {
                     <select name="user_id" required class="sp-vol-hours-select-member">
                         <option value=""><?php esc_html_e( '— Select —', 'societypress' ); ?></option>
                         <?php foreach ( $members as $m ) : ?>
-                            <option value="<?php echo $m->user_id; ?>"><?php echo esc_html( $m->last_name . ', ' . $m->first_name ); ?></option>
+                            <option value="<?php echo esc_attr( (int) $m->user_id ); ?>"><?php echo esc_html( $m->last_name . ', ' . $m->first_name ); ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -59415,7 +59740,7 @@ function sp_process_renewal_reminders(): void {
     if ( ! empty( $settings['renewal_reminder_7d'] ) )  $intervals[] = 7;
 
     $site_name        = get_bloginfo( 'name' );
-    $subject_template = $settings['renewal_reminder_subject'] ?? 'Your membership expires soon';
+    $subject_template = $settings['renewal_reminder_subject'] ?? __( 'Your membership expires soon', 'societypress' );
 
     // ---- Send renewal reminders for each enabled interval ----
     foreach ( $intervals as $days ) {
@@ -59506,7 +59831,7 @@ function sp_process_expired_notices(): void {
     $yesterday    = date( 'Y-m-d', strtotime( '-1 day' ) );
     $reminder_key = 'expired_' . $yesterday;
     $site_name    = get_bloginfo( 'name' );
-    $subject      = $settings['expired_notice_subject'] ?? 'Your {{organization_name}} membership has expired';
+    $subject      = $settings['expired_notice_subject'] ?? __( 'Your {{organization_name}} membership has expired', 'societypress' );
 
     $members = $wpdb->get_results( $wpdb->prepare(
         "SELECT m.user_id, m.first_name, m.last_name, m.expiration_date,
@@ -59610,7 +59935,7 @@ function sp_send_welcome_email( int $user_id ): void {
     }
 
     $site_name = get_bloginfo( 'name' );
-    $subject   = $settings['welcome_email_subject'] ?? 'Welcome to {{organization_name}}!';
+    $subject   = $settings['welcome_email_subject'] ?? __( 'Welcome to {{organization_name}}!', 'societypress' );
     $subject   = sp_replace_merge_tags( $subject, $member );
 
     $template_body = $settings['email_template_welcome']
@@ -62207,7 +62532,7 @@ function sp_render_campaigns_page(): void {
                                     <div style="background: #e5e7eb; border-radius: 4px; height: 16px; overflow: hidden;">
                                         <div style="background: <?php echo $bar_color; ?>; height: 100%; width: <?php echo $pct; ?>%; border-radius: 4px;"></div>
                                     </div>
-                                    <span style="font-size: 11px; color: #787c82;"><?php echo $pct; ?>%</span>
+                                    <span style="font-size: 0.75rem; color: #787c82;"><?php echo $pct; ?>%</span>
                                 <?php else : ?>
                                     —
                                 <?php endif; ?>
@@ -65504,7 +65829,7 @@ function sp_frontend_newsletter_archive(): void {
         </div>
 
         <?php if ( empty( $newsletters ) ) : ?>
-            <p>No newsletters have been published yet. Check back soon!</p>
+            <p><?php esc_html_e( 'No newsletters have been published yet. Check back soon!', 'societypress' ); ?></p>
         <?php else : ?>
             <div class="sp-newsletter-grid" id="sp-nl-grid">
                 <?php foreach ( $newsletters as $nl ) :
@@ -66959,7 +67284,7 @@ function sp_render_record_collection_edit_page(): void {
         .sp-record-edit-handle-cell {
             cursor: grab;
             text-align: center;
-            color: #999;
+            color: #767676;
         }
 
         /* Centred checkbox cells in tbody */
@@ -67120,7 +67445,7 @@ function sp_render_record_collection_edit_page(): void {
                 typeOpts += '<option value="' + k + '"' + (k === type ? ' selected' : '') + '>' + fieldTypeOptions[k] + '</option>';
             }
             tr.innerHTML =
-                '<td style="cursor:grab; text-align:center; color:#999;">&#9776;</td>' +
+                '<td style="cursor:grab; text-align:center; color:#767676;">&#9776;</td>' +
                 '<td><input type="hidden" name="field_id[' + fieldIdx + ']" value="0">' +
                 '<input type="text" name="field_name[' + fieldIdx + ']" value="' + (name || '') + '" class="regular-text" required></td>' +
                 '<td><select name="field_type[' + fieldIdx + ']">' + typeOpts + '</select></td>' +
@@ -67289,7 +67614,15 @@ function sp_render_record_browse_page(): void {
         </form>
 
         <?php if ( empty( $records ) ) : ?>
-            <p class="sp-text-secondary" class="sp-italic"><?php esc_html_e( 'No records found.', 'societypress' ); ?></p>
+            <p class="sp-text-secondary sp-italic">
+                <?php
+                if ( $search ) {
+                    esc_html_e( 'No records matched your search. Try fewer keywords or different fields.', 'societypress' );
+                } else {
+                    esc_html_e( 'No records have been added to this collection yet.', 'societypress' );
+                }
+                ?>
+            </p>
         <?php else : ?>
             <table class="wp-list-table widefat fixed striped">
                 <thead>
@@ -68937,12 +69270,12 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
         .sp-records-table thead th { padding: 10px 14px; text-align: left; border-bottom: 2px solid #d0d5dd; background: #f8f9fa; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: #555; }
         .sp-records-table tbody td { padding: 10px 14px; border-bottom: 1px solid #eee; font-size: 14px; vertical-align: top; }
         .sp-records-table tbody tr:hover { background: #f8f9fa; cursor: pointer; }
-        .sp-records-coll-badge { font-size: 11px; color: #666; background: #f0f0f0; padding: 2px 8px; border-radius: 10px; display: inline-block; }
+        .sp-records-coll-badge { font-size: 0.75rem; color: #666; background: #f0f0f0; padding: 2px 8px; border-radius: 10px; display: inline-block; }
         .sp-records-detail-row td { padding: 0 !important; border-bottom: 2px solid var(--sp-color-accent, #667eea) !important; }
         .sp-records-detail { padding: 20px 24px; background: #fafbfc; animation: spRecDetailSlide 0.25s ease-out; }
         @keyframes spRecDetailSlide { from { opacity: 0; } to { opacity: 1; } }
         .sp-records-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 32px; }
-        .sp-records-detail-grid dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #888; margin-bottom: 2px; font-weight: 600; }
+        .sp-records-detail-grid dt { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #767676; margin-bottom: 2px; font-weight: 600; }
         .sp-records-detail-grid dd { margin: 0; font-size: 14px; color: #333; }
         .sp-records-pagination { display: flex; justify-content: center; gap: 4px; margin-top: 20px; flex-wrap: wrap; }
         .sp-records-pagination a, .sp-records-pagination span { display: inline-block; padding: 6px 12px; border: 1px solid #d0d5dd; border-radius: 4px; font-size: 14px; text-decoration: none; color: #333; }
@@ -68953,7 +69286,7 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
             .sp-records-table thead { display: none; }
             .sp-records-table tbody tr { display: block; padding: 12px 0; border-bottom: 1px solid #eee; }
             .sp-records-table tbody td { display: block; padding: 3px 0 !important; border-bottom: none !important; }
-            .sp-records-table tbody td:before { content: attr(data-label); font-weight: 600; font-size: 11px; text-transform: uppercase; color: #888; display: block; }
+            .sp-records-table tbody td:before { content: attr(data-label); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; color: #767676; display: block; }
             .sp-records-detail-grid { grid-template-columns: 1fr; }
         }
     </style>
@@ -69520,7 +69853,7 @@ function sp_render_store_frontend(): void {
             flex-direction: column;
         }
         .sp-store-cat-badge {
-            font-size: 11px;
+            font-size: 0.75rem;
             color: var(--sp-color-accent, #c9973a);
             font-weight: 600;
             text-transform: uppercase;
@@ -70756,7 +71089,7 @@ function sp_render_cart_page(): void {
         .sp-cart-item-cover { width:50px; height:65px; object-fit:cover; border-radius:3px; background:#f5f5f5; flex-shrink:0; }
         .sp-cart-item-cover-placeholder { width:50px; height:65px; background:#f0f0f0; border-radius:3px; display:flex; align-items:center; justify-content:center; color:#bbb; flex-shrink:0; }
         .sp-cart-item-title { font-weight:600; font-size:14px; }
-        .sp-cart-item-author { font-size:12px; color:#888; margin-top:2px; }
+        .sp-cart-item-author { font-size:12px; color:#767676; margin-top:2px; }
         .sp-cart-qty-wrap { display:flex; align-items:center; gap:6px; }
         .sp-cart-qty-btn { width:28px; height:28px; border:1px solid #ddd; border-radius:4px; background:#fff; cursor:pointer; font-size:16px; display:flex; align-items:center; justify-content:center; }
         .sp-cart-qty-btn:hover { background:#f5f5f5; }
@@ -70782,7 +71115,7 @@ function sp_render_cart_page(): void {
         .sp-pay-panel .sp-pay-sub { color:#666; font-size:13px; margin:0 0 18px 0; }
         .sp-pay-section { background:#fff; border:1px solid var(--sp-border-color,#e5e7eb); border-radius:6px; padding:16px; margin-bottom:14px; }
         .sp-pay-section-label { display:block; font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:#666; margin-bottom:10px; }
-        .sp-pay-divider { text-align:center; color:#999; font-size:12px; text-transform:uppercase; letter-spacing:1px; margin:8px 0; position:relative; }
+        .sp-pay-divider { text-align:center; color:#767676; font-size:12px; text-transform:uppercase; letter-spacing:1px; margin:8px 0; position:relative; }
         .sp-pay-divider:before,.sp-pay-divider:after { content:""; position:absolute; top:50%; width:calc(50% - 30px); height:1px; background:#e5e7eb; }
         .sp-pay-divider:before { left:0; }
         .sp-pay-divider:after { right:0; }
@@ -70824,7 +71157,7 @@ function sp_render_cart_page(): void {
             </div>
         <?php else : ?>
             <div id="sp-cart-content">
-                <p style="text-align:center;color:#888;padding:40px 0;"><?php esc_html_e( 'Loading cart…', 'societypress' ); ?></p>
+                <p style="text-align:center;color:#767676;padding:40px 0;"><?php esc_html_e( 'Loading cart…', 'societypress' ); ?></p>
             </div>
 
             <div id="sp-pay-panel" class="sp-pay-panel" style="display:none;">
@@ -71535,7 +71868,7 @@ function sp_render_orders_page(): void {
                             <td>
                                 <?php echo esc_html( $o->customer_name ?: $o->user_display_name ?: '—' ); ?>
                                 <?php if ( $o->customer_email ) : ?>
-                                    <br><small style="color:#888;"><?php echo esc_html( $o->customer_email ); ?></small>
+                                    <br><small style="color:#767676;"><?php echo esc_html( $o->customer_email ); ?></small>
                                 <?php endif; ?>
                             </td>
                             <td class="sp-text-center"><?php echo $o->item_count; ?></td>
@@ -71663,7 +71996,7 @@ function sp_render_order_detail_page(): void {
 
         /* Stripe Payment Intent ID — small monospace to fit in the cell */
         .sp-order-detail-stripe-pi {
-            font-size: 11px;
+            font-size: 0.75rem;
         }
 
         /* Items table: Unit Price column header */
@@ -71853,11 +72186,10 @@ function sp_render_order_detail_page(): void {
                                 btn.disabled = false;
                             });
                     };
-                    if (typeof spConfirm === 'function') {
-                        spConfirm(<?php echo wp_json_encode( sprintf( __( 'Issue a full refund of %s? This cannot be undone.', 'societypress' ), sp_format_currency( $order->total ) ) ); ?>, doRefund);
-                    } else if (confirm(<?php echo wp_json_encode( sprintf( __( 'Issue a full refund of %s? This cannot be undone.', 'societypress' ), sp_format_currency( $order->total ) ) ); ?>)) {
-                        doRefund();
-                    }
+                    spConfirm(
+                        <?php echo wp_json_encode( sprintf( __( 'Issue a full refund of %s? This cannot be undone.', 'societypress' ), sp_format_currency( $order->total ) ) ); ?>,
+                        doRefund
+                    );
                 });
             })();
             </script>
@@ -72836,7 +73168,7 @@ function sp_render_document_bulk_upload_page(): void {
                     '<input type="hidden" name="bulk_file_name[]" value="' + escAttr(attachment.filename) + '">' +
                     '<input type="hidden" name="bulk_file_size[]" value="' + (attachment.filesizeInBytes || 0) + '">' +
                     '<input type="hidden" name="bulk_file_type[]" value="' + escAttr(attachment.mime || '') + '">' +
-                    '<div style="font-size:0.8em; color:#999; margin-top:2px;">' + escHtml(attachment.filename) + '</div>' +
+                    '<div style="font-size:0.8em; color:#767676; margin-top:2px;">' + escHtml(attachment.filename) + '</div>' +
                 '</td>' +
                 '<td><input type="date" name="bulk_date[]" value="' + detectDate(attachment.filename) + '" class="sp-full-width"></td>' +
                 '<td>' + escHtml(ext) + '</td>' +
@@ -73613,13 +73945,13 @@ function sp_render_external_calendars_page(): void {
 
         /* URL cell: small monospace, allow long URLs to wrap */
         .sp-ext-cal-url-code {
-            font-size: 11px;
+            font-size: 0.75rem;
             word-break: break-all;
         }
 
         /* Em-dash placeholder when no category is assigned */
         .sp-ext-cal-no-value {
-            color: #999;
+            color: #767676;
         }
 
         /* Error detail below the status badge */
@@ -73629,7 +73961,7 @@ function sp_render_external_calendars_page(): void {
 
         /* "Never synced" label */
         .sp-ext-cal-never {
-            color: #999;
+            color: #767676;
         }
 
         /* Event count cell: centered and bold */
@@ -75097,7 +75429,11 @@ class SP_Ballots_List_Table extends WP_List_Table {
             $where .= $wpdb->prepare( ' AND title LIKE %s', $like );
         }
 
+        $orderby_allowed = [ 'created_at', 'title', 'status', 'opens_at', 'closes_at' ];
         $orderby = sanitize_sql_orderby( $_GET['orderby'] ?? 'created_at' ) ?: 'created_at';
+        if ( ! in_array( $orderby, $orderby_allowed, true ) ) {
+            $orderby = 'created_at';
+        }
         $order   = strtoupper( $_GET['order'] ?? 'DESC' ) === 'ASC' ? 'ASC' : 'DESC';
 
         $per_page = 20;
@@ -76713,6 +77049,11 @@ add_action( 'admin_footer', function () {
         var yesBtn     = document.getElementById('sp-confirm-yes');
         var noBtn      = document.getElementById('sp-confirm-no');
 
+        /* WHY: Remember the element that opened the dialog so we can return
+         * focus to it on close. Without this, keyboard users lose their place
+         * in the tab order whenever they cancel a destructive action. */
+        var trigger = document.activeElement;
+
         msgEl.textContent = message;
         if (opts.confirmText) yesBtn.textContent = opts.confirmText;
         if (opts.cancelText)  noBtn.textContent  = opts.cancelText;
@@ -76729,6 +77070,9 @@ add_action( 'admin_footer', function () {
         function close() {
             overlay.style.display = 'none';
             document.removeEventListener('keydown', keyHandler);
+            if (trigger && typeof trigger.focus === 'function') {
+                try { trigger.focus(); } catch (e) { /* element may have been removed */ }
+            }
         }
 
         freshYes.addEventListener('click', function () {
@@ -77139,7 +77483,7 @@ function sp_render_lineage_programs_page(): void {
                     </thead>
                     <tbody>
                         <?php if ( empty( $programs ) ) : ?>
-                            <tr><td colspan="6" class="sp-empty-state" style="padding:40px; text-align:center; color:#777;">
+                            <tr><td colspan="6" class="sp-empty-state" style="padding:40px; text-align:center; color:#767676;">
                                 <?php esc_html_e( 'No lineage programs yet. Add your first one on the left to get started.', 'societypress' ); ?>
                             </td></tr>
                         <?php else : foreach ( $programs as $p ) :
@@ -77151,7 +77495,7 @@ function sp_render_lineage_programs_page(): void {
                                 <td>
                                     <strong><?php echo esc_html( $p->name ); ?></strong>
                                     <?php if ( $p->geographic_scope ) : ?>
-                                        <br><span style="color:#777; font-size:12px;"><?php echo esc_html( $p->geographic_scope ); ?></span>
+                                        <br><span style="color:#767676; font-size:12px;"><?php echo esc_html( $p->geographic_scope ); ?></span>
                                     <?php endif; ?>
                                 </td>
                                 <td><?php echo $p->cutoff_year ? (int) $p->cutoff_year : '—'; ?></td>
@@ -77170,7 +77514,7 @@ function sp_render_lineage_programs_page(): void {
                                 </td>
                                 <td>
                                     <?php if ( ! (int) $p->active ) : ?>
-                                        <span style="color:#999;"><?php esc_html_e( 'Inactive', 'societypress' ); ?></span>
+                                        <span style="color:#767676;"><?php esc_html_e( 'Inactive', 'societypress' ); ?></span>
                                     <?php elseif ( ! (int) $p->accepts_applications ) : ?>
                                         <span style="color:#b45309;"><?php esc_html_e( 'Closed to new', 'societypress' ); ?></span>
                                     <?php else : ?>
@@ -77325,7 +77669,7 @@ function sp_render_lineage_applications_page(): void {
             </thead>
             <tbody>
                 <?php if ( empty( $rows ) ) : ?>
-                    <tr><td colspan="7" style="padding:40px; text-align:center; color:#777;">
+                    <tr><td colspan="7" style="padding:40px; text-align:center; color:#767676;">
                         <?php esc_html_e( 'No applications match.', 'societypress' ); ?>
                     </td></tr>
                 <?php else : foreach ( $rows as $r ) :
@@ -77337,7 +77681,7 @@ function sp_render_lineage_applications_page(): void {
                         <td>
                             <?php echo esc_html( $r->applicant_name ?: __( '(unknown)', 'societypress' ) ); ?>
                             <?php if ( $r->applicant_email ) : ?>
-                                <br><span style="color:#777; font-size:12px;"><?php echo esc_html( $r->applicant_email ); ?></span>
+                                <br><span style="color:#767676; font-size:12px;"><?php echo esc_html( $r->applicant_email ); ?></span>
                             <?php endif; ?>
                         </td>
                         <td><?php echo esc_html( $r->program_name ); ?></td>
@@ -77440,7 +77784,7 @@ function sp_render_lineage_application_edit_page(): void {
                                 <td>
                                     <strong><?php echo esc_html( trim( $app->ancestor_first_name . ' ' . $app->ancestor_middle_name . ' ' . $app->ancestor_last_name ) ?: __( '(unnamed)', 'societypress' ) ); ?></strong>
                                     <?php if ( $app->ancestor_maiden_name ) : ?>
-                                        <br><span style="color:#777;">(<?php echo esc_html__( 'née', 'societypress' ) . ' ' . esc_html( $app->ancestor_maiden_name ); ?>)</span>
+                                        <br><span style="color:#767676;">(<?php echo esc_html__( 'née', 'societypress' ) . ' ' . esc_html( $app->ancestor_maiden_name ); ?>)</span>
                                     <?php endif; ?>
                                 </td>
                             </tr>
@@ -77487,11 +77831,11 @@ function sp_render_lineage_application_edit_page(): void {
                     <div class="inside">
                         <h4><?php esc_html_e( 'Narrative', 'societypress' ); ?></h4>
                         <div style="background:#f9f9f9; border:1px solid #eee; padding:10px; border-radius:4px;">
-                            <?php echo $app->narrative ? wp_kses_post( wpautop( $app->narrative ) ) : '<em style="color:#777;">' . esc_html__( 'No narrative provided.', 'societypress' ) . '</em>'; ?>
+                            <?php echo $app->narrative ? wp_kses_post( wpautop( $app->narrative ) ) : '<em style="color:#767676;">' . esc_html__( 'No narrative provided.', 'societypress' ) . '</em>'; ?>
                         </div>
                         <h4 style="margin-top:14px;"><?php esc_html_e( 'Sources', 'societypress' ); ?></h4>
                         <div style="background:#f9f9f9; border:1px solid #eee; padding:10px; border-radius:4px;">
-                            <?php echo $app->sources ? wp_kses_post( wpautop( $app->sources ) ) : '<em style="color:#777;">' . esc_html__( 'No sources cited.', 'societypress' ) . '</em>'; ?>
+                            <?php echo $app->sources ? wp_kses_post( wpautop( $app->sources ) ) : '<em style="color:#767676;">' . esc_html__( 'No sources cited.', 'societypress' ) . '</em>'; ?>
                         </div>
                     </div>
                 </div>
@@ -77500,7 +77844,7 @@ function sp_render_lineage_application_edit_page(): void {
                     <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Proofs', 'societypress' ); ?> (<?php echo count( $proofs ); ?>)</h2>
                     <div class="inside">
                         <?php if ( empty( $proofs ) ) : ?>
-                            <p style="color:#777;"><em><?php esc_html_e( 'No proof documents attached.', 'societypress' ); ?></em></p>
+                            <p style="color:#767676;"><em><?php esc_html_e( 'No proof documents attached.', 'societypress' ); ?></em></p>
                         <?php else : ?>
                             <ol style="margin:0; padding-left:18px;">
                                 <?php foreach ( $proofs as $pr ) :
@@ -77698,7 +78042,7 @@ function sp_render_lineage_roster( array $args = [] ): string {
             .sp-lineage-roster-ancestor { font-weight: 600; }
             .sp-lineage-roster-dates { color: #666; font-size: 13px; }
             .sp-lineage-roster-member { color: #555; }
-            .sp-lineage-roster-cert { font-family: monospace; color: #888; font-size: 12px; }
+            .sp-lineage-roster-cert { font-family: monospace; color: #767676; font-size: 12px; }
         </style>
         <?php foreach ( $grouped as $group ) :
             $p = $group['program'];
@@ -78562,7 +78906,12 @@ add_shortcode( 'sp_picture_wall', function ( $atts ) {
     );
 
     if ( ! $atts['album'] ) {
-        return '<p>' . esc_html__( 'Specify an album slug, e.g. [sp_picture_wall album="ancestor-portraits"]', 'societypress' ) . '</p>';
+        // Anonymous visitors should see nothing meaningful here. Only show
+        // configuration guidance to admins who can act on it.
+        if ( current_user_can( 'manage_options' ) ) {
+            return '<p>' . esc_html__( 'Picture Wall: choose an album in the page builder widget settings.', 'societypress' ) . '</p>';
+        }
+        return '<p>' . esc_html__( 'Album not found.', 'societypress' ) . '</p>';
     }
 
     global $wpdb;
@@ -78607,8 +78956,8 @@ add_shortcode( 'sp_picture_wall', function ( $atts ) {
             .sp-pw-name { font-weight: 700; margin: 0 0 4px; font-size: 15px; }
             .sp-pw-relationship { color: #666; font-size: 13px; margin: 0 0 6px; }
             .sp-pw-caption { color: #333; font-size: 14px; margin: 0; }
-            .sp-pw-submitter { color: #888; font-size: 12px; margin-top: 6px; font-style: italic; }
-            .sp-picture-wall-empty { color: #777; font-style: italic; padding: 20px; text-align: center; }
+            .sp-pw-submitter { color: #767676; font-size: 12px; margin-top: 6px; font-style: italic; }
+            .sp-picture-wall-empty { color: #767676; font-style: italic; padding: 20px; text-align: center; }
         </style>
 
         <?php if ( empty( $rows ) ) : ?>
@@ -78845,7 +79194,7 @@ function sp_render_picture_wall_pending_page(): void {
         <?php endif; ?>
 
         <?php if ( empty( $rows ) ) : ?>
-            <p style="color:#777; padding: 30px 0;"><?php esc_html_e( 'No pending submissions.', 'societypress' ); ?></p>
+            <p style="color:#767676; padding: 30px 0;"><?php esc_html_e( 'No pending submissions.', 'societypress' ); ?></p>
         <?php else : ?>
             <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; margin-top: 20px;">
                 <?php foreach ( $rows as $r ) :
@@ -78865,7 +79214,7 @@ function sp_render_picture_wall_pending_page(): void {
                             <?php if ( $r->caption ) : ?>
                                 <p style="margin:0 0 8px; font-size:14px;"><?php echo esc_html( $r->caption ); ?></p>
                             <?php endif; ?>
-                            <p style="margin:0; color:#888; font-size:12px;">
+                            <p style="margin:0; color:#767676; font-size:12px;">
                                 <?php esc_html_e( 'Album:', 'societypress' ); ?> <strong><?php echo esc_html( $r->album_title ); ?></strong><br>
                                 <?php esc_html_e( 'By:', 'societypress' ); ?> <?php echo esc_html( $r->submitter_name ?: __( '(unknown)', 'societypress' ) ); ?>
                                 <?php if ( $r->user_email ) : ?>(<?php echo esc_html( $r->user_email ); ?>)<?php endif; ?>
@@ -78893,7 +79242,7 @@ function sp_render_picture_wall_pending_page(): void {
             </div>
         <?php endif; ?>
 
-        <p style="margin-top: 30px; color:#888; font-size:13px;">
+        <p style="margin-top: 30px; color:#767676; font-size:13px;">
             <?php esc_html_e( 'To enable submissions: edit any photo album and set its type to "Member submissions".', 'societypress' ); ?>
         </p>
     </div>
@@ -79015,7 +79364,7 @@ add_shortcode( 'sp_database_subscriptions', function () {
             .sp-db-card h4 { margin: 0 0 8px; font-size: 16px; }
             .sp-db-card p { margin: 0 0 10px; color: #555; font-size: 14px; }
             .sp-db-card a.sp-db-go { display: inline-block; padding: 8px 14px; background: #0d1f3c; color: #fff; text-decoration: none; border-radius: 4px; font-size: 14px; }
-            .sp-db-card .sp-db-locked { color: #888; font-style: italic; font-size: 13px; }
+            .sp-db-card .sp-db-locked { color: #767676; font-style: italic; font-size: 13px; }
         </style>
         <div class="sp-db-grid">
             <?php foreach ( $list as $sub ) :
@@ -79096,7 +79445,7 @@ function sp_render_builder_widget_research_guide( array $s ): void {
     if ( ! is_array( $categories ) ) $categories = [];
 
     if ( empty( $categories ) ) {
-        echo '<p style="color:#888;">' . esc_html__( 'No research-guide categories configured.', 'societypress' ) . '</p>';
+        echo '<p style="color:#767676;">' . esc_html__( 'No research-guide categories configured.', 'societypress' ) . '</p>';
         return;
     }
 
@@ -79114,7 +79463,7 @@ function sp_render_builder_widget_research_guide( array $s ): void {
             .sp-rg-section .sp-rg-section-intro { color: #555; margin-bottom: 12px; }
             .sp-rg-resources { margin: 0; padding-left: 20px; }
             .sp-rg-resources li { margin-bottom: 6px; }
-            .sp-rg-tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; vertical-align: middle; margin-left: 6px; }
+            .sp-rg-tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 0.75rem; vertical-align: middle; margin-left: 6px; }
             .sp-rg-tag-local { background: #e0e7ff; color: #1e3a8a; }
             .sp-rg-tag-external { background: #f3f4f6; color: #555; }
         </style>
@@ -79350,8 +79699,8 @@ add_shortcode( 'sp_donate', function ( $atts ) {
             }
             .sp-donate-submit:hover { background: #1a3a6c; }
             .sp-donate-submit:disabled { opacity: 0.5; cursor: not-allowed; }
-            .sp-donate-paypal-soon { font-size: 13px; color: #888; text-align: center; margin-top: 12px; }
-            .sp-donate-or { text-align: center; color: #888; font-size: 13px; margin: 14px 0 8px; text-transform: uppercase; letter-spacing: 0.1em; position: relative; }
+            .sp-donate-paypal-soon { font-size: 13px; color: #767676; text-align: center; margin-top: 12px; }
+            .sp-donate-or { text-align: center; color: #767676; font-size: 13px; margin: 14px 0 8px; text-transform: uppercase; letter-spacing: 0.1em; position: relative; }
             .sp-donate-or:before, .sp-donate-or:after { content: ''; position: absolute; top: 50%; width: 42%; height: 1px; background: #ddd; }
             .sp-donate-or:before { left: 0; }
             .sp-donate-or:after { right: 0; }
@@ -79584,7 +79933,7 @@ add_shortcode( 'sp_donate', function ( $atts ) {
                         .then(function (r) { return r.json(); })
                         .then(function (resp) {
                             if (!resp || !resp.success || !resp.data || !resp.data.paypal_order_id) {
-                                var msg = (resp && resp.data && resp.data.message) ? resp.data.message : 'Could not start PayPal checkout.';
+                                var msg = (resp && resp.data && resp.data.message) ? resp.data.message : <?php echo wp_json_encode( __( 'Could not start PayPal checkout.', 'societypress' ) ); ?>;
                                 if (paypalError) paypalError.textContent = msg;
                                 throw new Error(msg);
                             }
@@ -79605,7 +79954,7 @@ add_shortcode( 'sp_donate', function ( $atts ) {
                         .then(function (r) { return r.json(); })
                         .then(function (resp) {
                             if (!resp || !resp.success || !resp.data || !resp.data.redirect_url) {
-                                var msg = (resp && resp.data && resp.data.message) ? resp.data.message : 'Payment could not be finalized.';
+                                var msg = (resp && resp.data && resp.data.message) ? resp.data.message : <?php echo wp_json_encode( __( 'Payment could not be finalized.', 'societypress' ) ); ?>;
                                 if (paypalError) paypalError.textContent = msg;
                                 throw new Error(msg);
                             }
@@ -79613,7 +79962,7 @@ add_shortcode( 'sp_donate', function ( $atts ) {
                         });
                     },
                     onError: function () {
-                        if (paypalError) paypalError.textContent = 'PayPal reported an error. Please try again.';
+                        if (paypalError) paypalError.textContent = <?php echo wp_json_encode( __( 'PayPal reported an error. Please try again.', 'societypress' ) ); ?>;
                     }
                 }).render(paypalTarget);
             }
@@ -79939,14 +80288,15 @@ function sp_donations_handle_stripe_webhook( WP_REST_Request $request ) {
         ? sp_setting_decrypt( 'stripe_webhook_secret' )
         : ( $settings['stripe_webhook_secret'] ?? '' );
 
-    if ( $secret && $sig ) {
-        if ( ! sp_stripe_verify_webhook_signature( $payload, $sig, $secret ) ) {
-            return new WP_REST_Response( [ 'error' => 'invalid_signature' ], 401 );
-        }
+    // No secret = no auth. Reject rather than accept arbitrary payloads.
+    // Use the Stripe Dashboard's sandbox signing secret during dev/test.
+    if ( ! $secret ) {
+        error_log( 'SocietyPress: Stripe webhook received but stripe_webhook_secret is not configured. Payload rejected.' );
+        return new WP_REST_Response( [ 'error' => 'webhook_not_configured' ], 401 );
     }
-    // If no secret is configured we accept the payload — useful for early
-    // dev/sandbox setups where Stripe Connect isn't wired yet. Set a webhook
-    // secret in production.
+    if ( ! $sig || ! sp_stripe_verify_webhook_signature( $payload, $sig, $secret ) ) {
+        return new WP_REST_Response( [ 'error' => 'invalid_signature' ], 401 );
+    }
 
     $event = json_decode( $payload, true );
     if ( ! $event || empty( $event['type'] ) ) {
@@ -80124,7 +80474,7 @@ function sp_render_database_subscriptions_page(): void {
     <div class="wrap">
         <h1><?php esc_html_e( 'Database Subscriptions', 'societypress' ); ?></h1>
         <p class="description" style="max-width:760px;">
-            <?php esc_html_e( 'Genealogy databases your society pays for and shares with members — Ancestry, Fold3, FamilySearch (affiliate), NEHGS, etc. Add an entry here, then embed [sp_database_subscriptions] on your members area page or use the page-builder widget.', 'societypress' ); ?>
+            <?php esc_html_e( 'Genealogy databases your society pays for and shares with members — Ancestry, Fold3, FamilySearch (affiliate), NEHGS, etc. Add an entry here, then add the "Database Subscriptions" widget to a page in the page builder to display them.', 'societypress' ); ?>
         </p>
 
         <?php if ( ! empty( $_GET['sp_updated'] ) ) : ?>
@@ -80183,7 +80533,7 @@ function sp_render_database_subscriptions_page(): void {
                     </thead>
                     <tbody>
                         <?php if ( empty( $list ) ) : ?>
-                            <tr><td colspan="4" style="text-align:center; padding:30px; color:#777;"><?php esc_html_e( 'No subscriptions yet.', 'societypress' ); ?></td></tr>
+                            <tr><td colspan="4" style="text-align:center; padding:30px; color:#767676;"><?php esc_html_e( 'No subscriptions yet.', 'societypress' ); ?></td></tr>
                         <?php else : foreach ( $list as $i => $entry ) : ?>
                             <tr>
                                 <td><strong><?php echo esc_html( $entry['name'] ?? '' ); ?></strong>
@@ -80499,7 +80849,7 @@ function sp_render_research_guides_page(): void {
             </thead>
             <tbody>
                 <?php if ( empty( $guides ) ) : ?>
-                    <tr><td colspan="4" style="padding:30px; text-align:center; color:#777;"><?php esc_html_e( 'No research guides yet.', 'societypress' ); ?></td></tr>
+                    <tr><td colspan="4" style="padding:30px; text-align:center; color:#767676;"><?php esc_html_e( 'No research guides yet.', 'societypress' ); ?></td></tr>
                 <?php else : foreach ( $guides as $slug => $g ) : ?>
                     <tr>
                         <td><strong><?php echo esc_html( $g['title'] ?? '' ); ?></strong></td>
@@ -80520,8 +80870,8 @@ function sp_render_research_guides_page(): void {
             </tbody>
         </table>
 
-        <p style="margin-top:20px; color:#888; font-size:13px;">
-            <?php esc_html_e( 'To embed: add the "Research Guide" widget in the page builder and select a guide by slug.', 'societypress' ); ?>
+        <p style="margin-top:20px; color:#767676; font-size:13px;">
+            <?php esc_html_e( 'To display a guide on a page, add the "Research Guide" widget from the page builder and choose the guide you want.', 'societypress' ); ?>
         </p>
     </div>
     <?php
@@ -80570,7 +80920,7 @@ function sp_render_builder_widget_research_guide_v2( array $s ): void {
             sp_render_builder_widget_research_guide( $s );
             return;
         }
-        echo '<p style="color:#888;">' . sprintf(
+        echo '<p style="color:#767676;">' . sprintf(
             esc_html__( 'Research guide "%s" not found.', 'societypress' ),
             esc_html( $slug )
         ) . '</p>';
@@ -81301,7 +81651,7 @@ add_action( 'init', function () {
         position: relative;
         z-index: 1;
     }
-    .sp-cert-footer .label { display: block; text-transform: uppercase; letter-spacing: 0.1em; color: #888; margin-bottom: 4px; font-size: 10px; }
+    .sp-cert-footer .label { display: block; text-transform: uppercase; letter-spacing: 0.1em; color: #767676; margin-bottom: 4px; font-size: 10px; }
     .sp-cert-footer .value { font-weight: 600; font-size: 13px; }
     .sp-cert-print-btn {
         position: fixed;
@@ -82196,8 +82546,8 @@ add_shortcode( 'sp_help_requests_archive', function ( $atts ) {
             .sp-help-archive .sp-help-thread h3 a:hover { text-decoration: underline; }
             .sp-help-archive .sp-help-meta { color: #6b7280; font-size: 13px; }
             .sp-help-archive .sp-help-tag { display: inline-block; padding: 1px 8px; background: #f3f4f6; color: #4b5563; border-radius: 10px; font-size: 12px; margin-right: 4px; }
-            .sp-help-archive .sp-help-status-resolved { background: #166534; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
-            .sp-help-archive .sp-help-status-open { background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+            .sp-help-archive .sp-help-status-resolved { background: #166534; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
+            .sp-help-archive .sp-help-status-open { background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
             .sp-help-archive .sp-help-empty { color: #6b7280; font-style: italic; padding: 30px; text-align: center; }
             .sp-help-archive .sp-help-pagination { margin-top: 14px; display: flex; gap: 6px; justify-content: center; }
             .sp-help-archive .sp-help-pagination a, .sp-help-archive .sp-help-pagination span {
@@ -82547,7 +82897,7 @@ add_action( 'init', function () {
                 .sp-help-archive .sp-help-tag-filter { padding: 4px 12px; background: #f3f4f6; color: #374151; border-radius: 14px; font-size: 13px; text-decoration: none; border: 1px solid transparent; }
                 .sp-help-archive .sp-help-tag-filter:hover { background: #e5e7eb; }
                 .sp-help-archive .sp-help-tag-filter.active { background: #0d1f3c; color: #fff; border-color: #0d1f3c; }
-                .sp-help-archive .sp-help-tag-filter .count { color: #6b7280; font-size: 11px; margin-left: 4px; }
+                .sp-help-archive .sp-help-tag-filter .count { color: #6b7280; font-size: 0.75rem; margin-left: 4px; }
                 .sp-help-archive .sp-help-tag-filter.active .count { color: rgba(255,255,255,0.7); }
                 .sp-help-archive .sp-help-thread { background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; padding: 14px 16px; margin-bottom: 10px; }
                 .sp-help-archive .sp-help-thread h3 { margin: 0 0 6px; font-size: 17px; }
@@ -82555,8 +82905,8 @@ add_action( 'init', function () {
                 .sp-help-archive .sp-help-thread h3 a:hover { text-decoration: underline; }
                 .sp-help-archive .sp-help-meta { color: #6b7280; font-size: 13px; }
                 .sp-help-archive .sp-help-tag { display: inline-block; padding: 1px 8px; background: #f3f4f6; color: #4b5563; border-radius: 10px; font-size: 12px; margin-right: 4px; }
-                .sp-help-archive .sp-help-status-resolved { background: #166534; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
-                .sp-help-archive .sp-help-status-open { background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+                .sp-help-archive .sp-help-status-resolved { background: #166534; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
+                .sp-help-archive .sp-help-status-open { background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
                 .sp-help-archive .sp-help-empty { color: #6b7280; font-style: italic; padding: 30px; text-align: center; }
                 .sp-help-archive .sp-help-pagination { margin-top: 14px; display: flex; gap: 6px; justify-content: center; }
                 .sp-help-archive .sp-help-pagination a, .sp-help-archive .sp-help-pagination span {
@@ -82837,16 +83187,16 @@ function sp_render_research_cases_page(): void {
             </thead>
             <tbody>
                 <?php if ( empty( $rows ) ) : ?>
-                    <tr><td colspan="7" style="padding:30px; text-align:center; color:#777;">
-                        <?php esc_html_e( 'No research cases yet. The intake form lives at any page that embeds [sp_research_request].', 'societypress' ); ?>
+                    <tr><td colspan="7" style="padding:30px; text-align:center; color:#767676;">
+                        <?php esc_html_e( 'No research cases yet. Add the "Research Request Form" widget to a page to let members submit new requests.', 'societypress' ); ?>
                     </td></tr>
                 <?php else : foreach ( $rows as $r ) : ?>
                     <tr>
                         <td><strong><?php echo esc_html( $r->title ); ?></strong>
-                            <?php if ( $r->surname ) : ?><br><span style="color:#777; font-size:12px;">Surname: <?php echo esc_html( $r->surname ); ?></span><?php endif; ?>
+                            <?php if ( $r->surname ) : ?><br><span style="color:#767676; font-size:12px;">Surname: <?php echo esc_html( $r->surname ); ?></span><?php endif; ?>
                         </td>
                         <td><?php echo esc_html( $r->requester_name ); ?>
-                            <?php if ( $r->requester_email ) : ?><br><span style="color:#777; font-size:12px;"><?php echo esc_html( $r->requester_email ); ?></span><?php endif; ?>
+                            <?php if ( $r->requester_email ) : ?><br><span style="color:#767676; font-size:12px;"><?php echo esc_html( $r->requester_email ); ?></span><?php endif; ?>
                         </td>
                         <td><?php echo esc_html( $r->researcher_name ?: '—' ); ?></td>
                         <td><?php echo esc_html( $status_labels[ $r->status ] ?? $r->status ); ?></td>
@@ -84325,7 +84675,7 @@ add_action( 'admin_footer', function () {
         ?>
         <div id="sp-help-convert-link" style="display:none;">
             <a href="<?php echo esc_url( $convert_url ); ?>" class="button button-secondary"
-               onclick="return confirm(<?php echo wp_json_encode( __( 'Convert this Help Request into a paid Research Case? The original thread will stay; the new case will be pre-filled from this thread and ready for the requester to authorize payment.', 'societypress' ) ); ?>);">
+               data-sp-confirm="<?php echo esc_attr__( 'Convert this Help Request into a paid Research Case? The original thread will stay; the new case will be pre-filled from this thread and ready for the requester to authorize payment.', 'societypress' ); ?>">
                 <?php esc_html_e( '↑ Convert to paid Research Case', 'societypress' ); ?>
             </a>
         </div>
@@ -84530,9 +84880,9 @@ function sp_research_render_messages( int $case_id, bool $can_send = true, bool 
             .sp-rc-msg { padding: 10px 12px; border-radius: 8px; max-width: 80%; }
             .sp-rc-msg.from-me { align-self: flex-end; background: #0d1f3c; color: #fff; }
             .sp-rc-msg.from-them { align-self: flex-start; background: #f3f4f6; color: #1a1a1a; }
-            .sp-rc-msg .who { font-size: 11px; font-weight: 600; opacity: 0.85; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+            .sp-rc-msg .who { font-size: 0.75rem; font-weight: 600; opacity: 0.85; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
             .sp-rc-msg .body { font-size: 14px; line-height: 1.4; white-space: pre-wrap; }
-            .sp-rc-msg .when { font-size: 11px; opacity: 0.7; margin-top: 4px; }
+            .sp-rc-msg .when { font-size: 0.75rem; opacity: 0.7; margin-top: 4px; }
             .sp-rc-msg .attach { display: block; margin-top: 6px; font-size: 13px; }
             .sp-rc-msg.from-me .attach a { color: #c9973a; }
             .sp-rc-msg.from-them .attach a { color: #0d1f3c; }

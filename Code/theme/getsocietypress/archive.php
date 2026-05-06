@@ -51,7 +51,7 @@ get_header();
             </div>
 
             <!-- Pagination -->
-            <div class="section" style="padding-top: var(--spacing-xl);">
+            <div class="section section--top-spaced">
                 <?php
                 the_posts_pagination( array(
                     'mid_size'  => 2,

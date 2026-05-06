@@ -56,7 +56,10 @@ if ( $announce_enabled && ! empty( $announce_text ) ) :
     <div class="site-header__inner">
 
         <!-- Logo / Site Name -->
-        <a href="<?php echo esc_url( home_url( '/' ) ); ?>" class="site-brand" aria-label="SocietyPress home">
+        <a href="<?php echo esc_url( home_url( '/' ) ); ?>" class="site-brand" aria-label="<?php
+            /* translators: %s: site name */
+            echo esc_attr( sprintf( __( '%s home', 'getsocietypress' ), get_bloginfo( 'name' ) ) );
+        ?>">
             <?php if ( has_custom_logo() ) : ?>
                 <?php
                 /* Output just the <img> tag from the custom logo, no wrapping link */

@@ -777,3 +777,16 @@ hr,
     width: 100%;
     height: auto;
 }
+
+/* ============================================================================
+   ADMIN-HINT EMPTY STATE — sidebar setup prompt for editors only.
+   ============================================================================ */
+
+.widget-area--admin-hint {
+    padding: 20px;
+}
+
+.widget-area__hint-text {
+    font-size: 0.85rem;
+    color: var(--prairie-muted);
+}

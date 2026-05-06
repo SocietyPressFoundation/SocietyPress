@@ -1261,7 +1261,7 @@ function sp_m( $member, $field ) {
                                         ?>
                                     </span>
                                 <?php endif; ?>
-                                <form method="post" onsubmit="return confirm('<?php echo esc_js( __( 'Remove this surname?', 'societypress' ) ); ?>');">
+                                <form method="post" data-sp-confirm="<?php echo esc_attr__( 'Remove this surname?', 'societypress' ); ?>">
                                     <?php wp_nonce_field( 'sp_remove_surname', 'sp_surname_nonce' ); ?>
                                     <input type="hidden" name="sp_action" value="remove_surname">
                                     <input type="hidden" name="surname_id" value="<?php echo esc_attr( $sn->id ); ?>">
@@ -1380,7 +1380,7 @@ function sp_m( $member, $field ) {
                                 <?php if ( ! empty( $ra->note ) ) : ?>
                                     <span class="sp-surname-note"><?php echo esc_html( $ra->note ); ?></span>
                                 <?php endif; ?>
-                                <form method="post" onsubmit="return confirm('<?php echo esc_js( __( 'Remove this research area?', 'societypress' ) ); ?>');">
+                                <form method="post" data-sp-confirm="<?php echo esc_attr__( 'Remove this research area?', 'societypress' ); ?>">
                                     <?php wp_nonce_field( 'sp_remove_research_area', 'sp_research_area_nonce' ); ?>
                                     <input type="hidden" name="sp_action" value="remove_research_area">
                                     <input type="hidden" name="area_id" value="<?php echo esc_attr( $ra->id ); ?>">
@@ -1543,7 +1543,7 @@ function sp_m( $member, $field ) {
                                    title="<?php esc_attr_e( 'Download .ics file', 'societypress' ); ?>">
                                     <?php esc_html_e( 'Add to Calendar', 'societypress' ); ?>
                                 </a>
-                                <form method="post" onsubmit="return confirm('<?php echo esc_js( __( 'Cancel your registration for this event?', 'societypress' ) ); ?>');">
+                                <form method="post" data-sp-confirm="<?php echo esc_attr__( 'Cancel your registration for this event?', 'societypress' ); ?>">
                                     <?php wp_nonce_field( 'sp_cancel_event_reg', 'sp_event_nonce' ); ?>
                                     <input type="hidden" name="sp_action" value="cancel_event_registration">
                                     <input type="hidden" name="registration_id" value="<?php echo esc_attr( $reg->reg_id ); ?>">

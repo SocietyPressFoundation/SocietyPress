@@ -46,8 +46,18 @@ $show_hero = ( $hero_type !== 'none' );
      "wow" first impression. The overlay ensures text is always readable
      regardless of the background media. All values are configurable from
      the Design settings page — Harold never touches code.
+
+     Dynamic style values (background-image URL, overlay opacity) come
+     from settings, so they're emitted as CSS custom properties on the
+     section root. The actual CSS that consumes them lives in style.css.
      ================================================================ -->
-<section class="sp-front-hero <?php echo esc_attr( 'sp-hero-' . $hero_height ); ?>">
+<section class="sp-front-hero <?php echo esc_attr( 'sp-hero-' . $hero_height ); ?>"
+         style="<?php
+             if ( $hero_media ) {
+                 echo '--sp-hero-bg: url(' . esc_url( $hero_media ) . ');';
+             }
+             echo '--sp-hero-overlay-opacity: ' . esc_attr( $hero_overlay / 100 ) . ';';
+         ?>">
 
     <?php if ( $hero_type === 'video' && $hero_media ) : ?>
         <!-- WHY autoplay muted loop playsinline: All four attributes are required
@@ -62,14 +72,14 @@ $show_hero = ( $hero_type !== 'none' );
                     type="video/<?php echo esc_attr( pathinfo( parse_url( $hero_media, PHP_URL_PATH ), PATHINFO_EXTENSION ) ?: 'mp4' ); ?>">
         </video>
     <?php elseif ( $hero_media ) : ?>
-        <div class="sp-front-hero-image" style="background-image: url('<?php echo esc_url( $hero_media ); ?>');"></div>
+        <div class="sp-front-hero-image"></div>
     <?php else : ?>
         <!-- No media configured — use a gradient background as a dignified fallback -->
         <div class="sp-front-hero-image sp-front-hero-gradient"></div>
     <?php endif; ?>
 
     <!-- Overlay — opacity controlled by the homepage_hero_overlay setting -->
-    <div class="sp-front-hero-overlay" style="opacity: <?php echo esc_attr( $hero_overlay / 100 ); ?>;"></div>
+    <div class="sp-front-hero-overlay"></div>
 
     <div class="sp-front-hero-content">
         <?php if ( $hero_headline ) : ?>

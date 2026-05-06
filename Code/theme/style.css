@@ -5,7 +5,7 @@ Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
 Description: A clean, readable theme for genealogical and historical societies.
              Designed for ease of use with large fonts, high contrast, and simple navigation.
-Version: 1.0.54
+Version: 1.0.55
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.0
@@ -1399,6 +1399,10 @@ article.post:last-child {
     left: 0;
     width: 100%;
     height: 100%;
+    /* WHY var(): the URL comes from settings, emitted as --sp-hero-bg on
+     * the parent .sp-front-hero. Pulling it here keeps the inline style
+     * out of the markup. */
+    background-image: var(--sp-hero-bg, none);
     background-size: cover;
     background-position: center center;
     background-repeat: no-repeat;
@@ -1414,7 +1418,8 @@ article.post:last-child {
     );
 }
 
-/* Dark overlay — opacity is set inline from settings */
+/* Dark overlay — opacity comes from --sp-hero-overlay-opacity on the
+ * parent .sp-front-hero (set from the homepage_hero_overlay setting). */
 .sp-front-hero-overlay {
     position: absolute;
     top: 0;
@@ -1422,6 +1427,7 @@ article.post:last-child {
     width: 100%;
     height: 100%;
     background: #000;
+    opacity: var(--sp-hero-overlay-opacity, 0.4);
     z-index: 1;
 }
 

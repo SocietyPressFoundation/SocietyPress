@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.0.58
+ * Version:     1.0.59
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.58' );
+define( 'SOCIETYPRESS_VERSION', '1.0.59' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -33677,10 +33677,16 @@ function sp_builder_frontend_styles(): void {
         .sp-btn { display: inline-block; padding: 12px 24px; border-radius: 6px; font-size: 16px; font-weight: 600; text-decoration: none; cursor: pointer; border: 2px solid transparent; line-height: 1.4; transition: background-color 0.15s, border-color 0.15s, color 0.15s; }
         .sp-btn-primary { background: var(--sp-color-primary); color: #fff; border-color: var(--sp-color-primary); }
         .sp-btn-primary:hover { background: var(--sp-color-primary-hover); border-color: var(--sp-color-primary-hover); color: #fff; }
+        .sp-btn-primary:focus,
+        .sp-btn-primary:focus-visible { outline: 2px solid var(--sp-color-primary); outline-offset: 2px; box-shadow: 0 0 0 4px rgba(30, 58, 95, 0.25); }
         .sp-btn-secondary { background: #e0e0e0; color: #333; border-color: #e0e0e0; }
         .sp-btn-secondary:hover { background: #ccc; border-color: #ccc; }
+        .sp-btn-secondary:focus,
+        .sp-btn-secondary:focus-visible { outline: 2px solid #555; outline-offset: 2px; box-shadow: 0 0 0 4px rgba(85, 85, 85, 0.25); }
         .sp-btn-outline { background: transparent; color: var(--sp-color-primary); border-color: var(--sp-color-primary); }
         .sp-btn-outline:hover { background: var(--sp-color-primary); color: #fff; }
+        .sp-btn-outline:focus,
+        .sp-btn-outline:focus-visible { outline: 2px solid var(--sp-color-primary); outline-offset: 2px; box-shadow: 0 0 0 4px rgba(30, 58, 95, 0.2); }
 
         /* Login required notice */
         .sp-widget-login-required { background: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 8px; padding: 24px; text-align: center; }
@@ -75119,6 +75125,11 @@ function sp_voting_frontend_css(): void {
         transition: background-color 0.15s;
     }
     .sp-vote-choice-label:hover {
+        background: #e5e7eb;
+    }
+    .sp-vote-choice-label:focus-within {
+        outline: 2px solid var(--sp-color-primary);
+        outline-offset: 2px;
         background: #e5e7eb;
     }
     .sp-vote-choice-label input[type="radio"],

@@ -20,6 +20,32 @@ if ( ! defined( 'PARLOR_THEME_VERSION' ) ) {
     define( 'PARLOR_THEME_VERSION', '1.0.0' );
 }
 
+/**
+ * Push Parlor's palette into the SocietyPress design system on activation.
+ *
+ * WHY: The SP plugin reads `societypress_settings` for its design tokens
+ * (admin Design panel, plugin-rendered widgets like donation forms and
+ * member directory cards). Without this hook, switching to Parlor leaves
+ * those tokens at whatever the previous theme set them to, so plugin
+ * surfaces wouldn't match the front-end. Every other SP child theme has
+ * this same hook with its own palette.
+ */
+add_action( 'after_switch_theme', function () {
+    $settings = get_option( 'societypress_settings', [] );
+
+    $settings['design_color_primary']       = '#3C1053';
+    $settings['design_color_primary_hover'] = '#9A4F5A';
+    $settings['design_color_accent']        = '#9A4F5A';
+    $settings['design_color_header_bg']     = '#3C1053';
+    $settings['design_color_header_text']   = '#FFF8F0';
+    $settings['design_color_footer_bg']     = '#3C1053';
+    $settings['design_color_footer_text']   = '#FFF8F0';
+    $settings['design_font_body']           = 'eb-garamond';
+    $settings['design_font_heading']        = 'eb-garamond';
+
+    update_option( 'societypress_settings', $settings );
+} );
+
 add_action( 'wp_enqueue_scripts', function () {
 
     // Google Fonts — EB Garamond with italic support

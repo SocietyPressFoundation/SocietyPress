@@ -29,7 +29,7 @@ Tags: genealogy, historical-society, elegant, refined, serif, victorian, traditi
     /* Parlor brand colors */
     --parlor-plum:      #3C1053;
     --parlor-ivory:     #FFF8F0;
-    --parlor-rose:      #B76E79;
+    --parlor-rose:      #9A4F5A; /* WCAG-AA replacement for #B76E79 (was 3.61:1 on white) */
     --parlor-blush:     #E8C4C4;
     --parlor-mauve:     #8B6F8B;
     --parlor-text:      #2A1F2D;

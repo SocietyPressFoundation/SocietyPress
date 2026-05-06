@@ -482,6 +482,110 @@ member vote.
 
 ---
 
+## 15. Lineage Programs
+
+**Tables:** 3 (`sp_lineage_programs`, `sp_lineage_applications`,
+`sp_lineage_proofs`)
+
+Recognition programs for members who can document descent from
+historically significant ancestors — First Families, Pioneer Settlers,
+Civil War Veterans Descendants, Mayflower Descendants. Multi-program:
+a society can run any number of programs simultaneously.
+
+### What administrators can do
+
+- Define any number of programs with custom requirements per program
+- Review applications in an admin queue with a status workflow
+  (pending → under review → approved / rejected / needs more proof)
+- Approve applications and watch the public roster update with
+  auto-numbered printable certificates
+- Charge an optional Stripe-billed application fee
+- Export applications and roster as CSV
+
+### What members and visitors see
+
+- A public application form (`[sp_lineage_apply]`) with proof-document
+  upload
+- A logged-in member's submitted-applications view
+  (`[sp_lineage_my_applications]`)
+- The public roster (`[sp_lineage_roster]`) of approved members
+- Printable certificates at `/?sp_certificate=NNN`
+
+### Shortcodes / widgets
+
+- `[sp_lineage_apply]` — application form
+- `[sp_lineage_my_applications]` — member's own submissions
+- `[sp_lineage_roster]` — public approved-member list
+
+---
+
+## 16. Help Requests (Research Help)
+
+**Tables:** 2 (`sp_help_requests`, `sp_help_responses`)
+
+Public Q&A archive on the duty-librarian model. Anyone can submit a
+question; members respond with time-tracked answers. Responses
+automatically log to the unified volunteer-hours ledger.
+
+### What administrators can do
+
+- Approve incoming requests (math captcha + email verification + per-
+  email rate limiting filter most spam at submission)
+- Bulk actions: approve, mark-resolved, hide, delete
+- Endorse helpful responses; mark a response as the accepted answer
+- Convert a Help Request to a paid Research Case if it's beyond
+  comradery scope
+
+### What members and visitors see
+
+- Public submission form (`[sp_help_request_submit]`)
+- Public archive (`[sp_help_requests_archive]`) with tag-filter pills
+- Members can respond, edit their own responses, log time per response
+- A member's volunteer-hours summary widget
+  (`[sp_my_volunteer_hours]`)
+
+### Shortcodes / widgets
+
+- `[sp_help_request_submit]` — public submission form
+- `[sp_help_requests_archive]` — public archive
+- `[sp_my_volunteer_hours]` — logged-in member's hours summary
+
+---
+
+## 17. Research Services (Paid)
+
+**Tables:** 3 (`sp_research_cases`, `sp_research_invoices`,
+`sp_research_messages`)
+
+The opt-in escalation from Help Requests for cases that genuinely need
+many hours of focused work. Stripe-billed up front, additional hours
+invoiced as needed.
+
+### What administrators can do
+
+- Configure intake form, hourly rate, minimum hours, intake fee
+- Review case queue, assign a researcher, set status
+- Researcher dashboard with one-click claim and inline log-hours
+- Bill additional hours: researcher requests → Stripe-billed →
+  case bumps authorized hours
+- In-system case messaging with attachments and email notifications
+- Status-change emails on every transition
+
+### What members and visitors see
+
+- Public intake form (`[sp_research_request]`) with Stripe checkout
+- Logged-in member's submitted-cases view (`[sp_my_research_cases]`)
+- Researcher's claimed-cases dashboard
+  (`[sp_my_research_assignments]`)
+
+### Shortcodes / widgets
+
+- `[sp_research_request]` — public intake form
+- `[sp_my_research_cases]` — member's cases
+- `[sp_my_research_assignments]` — researcher dashboard
+
+---
+
 # Cross-cutting features
 
 These aren't modules — they're capabilities that show up everywhere.
@@ -516,6 +620,27 @@ A live-preview theme configurator under **Appearance → Design**:
 All values are written as CSS custom properties, consumed by the theme
 with sensible fallbacks, so a freshly activated theme looks good even
 before the wizard finishes.
+
+## Insights
+
+**Tables:** none (reads from existing module tables)
+
+A single admin/board-only landing page (**SocietyPress → Insights**)
+that pulls one headline number per enabled module across a chosen
+time window. Active members, events held, donations raised, volunteer
+hours, records added, blasts sent — all on one screen with sparkline
+trends.
+
+- 16-card grid (one per active module); disabled modules are hidden
+- Time-window dropdown: rolling 30 / 90 / 365 days, this fiscal year,
+  last fiscal year (the fiscal-year boundary reuses
+  `membership_start_month`)
+- Inline-SVG sparklines (no charting library, no JavaScript)
+- Permission gate uses the existing `sp_view_reports` access area, so
+  a treasurer or membership chair can be granted access without full
+  admin rights
+- Filterable through `sp_insights_panels` so child themes can append
+  custom stat cards
 
 ## Email System
 

@@ -119,9 +119,9 @@ get_header();
             <table class="req-table">
                 <thead>
                     <tr>
-                        <th>Requirement</th>
-                        <th>Minimum</th>
-                        <th>Recommended</th>
+                        <th scope="col">Requirement</th>
+                        <th scope="col">Minimum</th>
+                        <th scope="col">Recommended</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -197,8 +197,8 @@ get_header();
             <table class="req-table req-table--schema">
                 <thead>
                     <tr>
-                        <th>Area</th>
-                        <th>What it stores</th>
+                        <th scope="col">Area</th>
+                        <th scope="col">What it stores</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -296,7 +296,7 @@ get_header();
                 <span class="req-capacity__stat-label">library catalog items</span>
             </div>
             <div class="req-capacity__stat">
-                <span class="req-capacity__stat-number">14</span>
+                <span class="req-capacity__stat-number">15</span>
                 <span class="req-capacity__stat-label">feature modules running simultaneously</span>
             </div>
         </div>

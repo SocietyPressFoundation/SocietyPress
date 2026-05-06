@@ -137,7 +137,7 @@ $sp_installer_url = gsp_get_installer_url();
                     other WordPress plugin.
                 </p>
                 <ul class="dl-included__list">
-                    <li>14 toggleable feature modules</li>
+                    <li>15 toggleable feature modules</li>
                     <li>Page builder with 21 widget types</li>
                     <li>Design system with live preview</li>
                     <li>Member directory with privacy controls</li>
@@ -255,7 +255,7 @@ $sp_installer_url = gsp_get_installer_url();
 
         <!-- Manual-upload fallback — discreet, for people who want it -->
         <div class="dl-manual">
-            <h4>Prefer to upload manually?</h4>
+            <h3>Prefer to upload manually?</h3>
             <p>
                 Unzip the download. Upload the <code>societypress</code> folder to
                 <code>wp-content/plugins/</code> and each theme folder to

@@ -63,7 +63,7 @@ get_header();
 
         <p>
             This isn't a call for contributors or pull requests. SocietyPress is
-            developed and maintained by a small team. Open source, to us, means
+            developed and maintained by one person. Open source, to us, means
             transparency and freedom — not crowdsourced development.
         </p>
 

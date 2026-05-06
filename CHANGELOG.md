@@ -14,6 +14,149 @@ Entries describe user-visible changes only. For the underlying commits, see
 
 ---
 
+## [1.0.59] — 2026-05-06
+
+### Accessibility
+- Page-builder primary, secondary, and outline buttons gained
+  `:focus`/`:focus-visible` rulesets in the frontend stylesheet so
+  keyboard users can see focus on every CTA the builder emits. Voting
+  choices got matching `:focus-within` ring on the radio/checkbox
+  label — picking up keyboard focus inside the wrapper now lights the
+  whole option.
+
+### Marketing site
+- Hardcoded `/cms/wp-content/uploads/` paths in `page-features.php`
+  replaced with `wp_upload_dir()` lookups. Image references now move
+  with the install.
+- Comparison and requirements tables: every `<th>` carries
+  `scope="col"` so screen readers announce row context correctly.
+- Footer column headings promoted from `<h4>` to `<h2>` (`.footer-links__heading`)
+  to fix the heading-level skip; CSS selector updated.
+- Manual-upload helper on the download page promoted from `<h4>` to
+  `<h3>` to sit cleanly under the section's `<h2>`.
+- "Events &rarr; Add New" wording in the installation guide changed
+  to the SocietyPress-native "Events &rarr; Add Event" — "Add New"
+  is WordPress core chrome.
+- "Harold-friendly" internal-persona phrase removed from the public
+  docs page and replaced with "plain-English."
+- "No shortcodes to memorize" replaced with "No codes, no templates,
+  no technical knowledge required" on the for-administrators page.
+
+### Other
+- Parlor child theme regained its `after_switch_theme` palette-push
+  hook (the only child theme that was missing one). Activating Parlor
+  now writes its rose/plum palette into SocietyPress design settings.
+- Installer security hardening: stream-context SSL verification
+  enforced explicitly; mysqli error messages logged via `error_log()`
+  with a generic message shown to the user; trailing-separator path
+  comparison fixed; session strict-mode + httponly cookies; randomized
+  config filename with mu-plugin glob lookup; cleanup now removes
+  `.htaccess.sp-bak`; `preg_replace_callback` used everywhere user
+  values land in regex replacements (no more `$1` backreference
+  injection).
+
+Plugin + parent theme: 1.0.59. Marketing theme: 0.43d.
+
+---
+
+## [1.0.58] — 2026-05-06
+
+### Security
+- HIGH Stripe `session_id` path-injection closed at all 5
+  `wp_remote_get` sites. `sanitize_text_field()` doesn't strip slashes,
+  so a crafted `?sp_session=../v1/charges/ch_xxx` would have hit a
+  different Stripe API endpoint. New `sp_stripe_session_id_is_valid()`
+  helper enforces the documented `cs_(test|live)_[A-Za-z0-9]{20,}`
+  shape; called from the events, donations, lineage, research-case,
+  and research-invoice return handlers.
+- `$wpdb->last_error` stripped from library/records/collection import
+  error displays — leaked schema details to admins. Replaced with
+  `error_log()` plus a generic admin message.
+- `sp_admin_capability_map` filter now actually fires.
+  `sp_get_menu_capability_map()` previously returned a hardcoded
+  array, so theme-presets and help-tags capability filters were
+  dead. Restructured to `$map = [...]; return apply_filters(...);`.
+- Capability guards added to `sp_render_audit_log_page()` and
+  `sp_render_access_log_page()` for defense-in-depth.
+- iCal SSRF helper distinguishes "hostname could not be resolved"
+  from "private/reserved IP" so admins get actionable error messages.
+- Two raw `date()` concatenations in Reports SQL routed through
+  `$wpdb->prepare()` to keep the codebase pattern consistent.
+- One unescaped `$total_volunteers` echo cast to `(int)`.
+
+### Code review follow-ups
+- Critical `spConfirm` Enter-key fix: pressing Enter with focus on
+  Cancel used to fire `onConfirm` regardless. Enter now delegates to
+  whichever button has focus, so Cancel-then-Enter doesn't silently
+  complete a destructive action.
+- 13 `add_submenu_page` calls had split-string i18n
+  (`__('Foo', 'societypress') . ' — SocietyPress'`) — translators
+  only saw `Foo`. Merged into single-string form. Affects External
+  Calendars, Documents, Document Categories, Edit Document, Bulk
+  Upload Documents, Lineage Programs, Lineage Applications, Edit
+  Lineage Program, Review Lineage Application, Research Cases, Review
+  Research Case, Theme Presets, Help Request Tags.
+- Media/Menus/Widgets/Customize submenu titles wrapped in `__()`.
+
+### Accessibility
+- Five modal dialogs gained `role="dialog"` + `aria-modal` +
+  `aria-labelledby`: the newsletter PDF viewer, surname-contact
+  modal, plus focus-trap work on `spConfirm`.
+- Three payment error containers (`#sp-stripe-error`,
+  `#sp-paypal-error`, `#sp-donate-paypal-error`) gained
+  `role="alert" aria-live="assertive" aria-atomic="true"` so screen
+  readers announce card declines.
+- Library catalog search-tab buttons carry `aria-selected` (initial
+  PHP + click-handler toggle).
+- Bulk delete + import progressbars update `aria-valuenow` as fill
+  width changes.
+- 13 icon-only buttons switched from `title=` to `aria-label=` —
+  `title` isn't reliably exposed by screen readers on interactive
+  elements.
+- Newsletter PDF, email-log, and newsletter-blast-preview iframes
+  gained `title` attributes; admin design-page logo preview gained
+  `alt`; surname contact modal fields gained id/for label
+  associations.
+- `#dba617` amber text replaced with `#8a6500` (4.5:1 on white) at
+  three sites; `.sp-text-muted` tightened from `#787c82` to `#6d7175`.
+
+### i18n
+- Member-facing: newsletter widget Download / Members Only / Public
+  badges, events listing pagination Previous/Next, registrations
+  refund button, surname search placeholder, certificate-not-found
+  page, Yes/No-show attended dropdown options, library catalog
+  Featured/Active badges.
+- Admin: Reports dashboard stat labels (Active Members, Events This
+  Year, Volunteer Hours, Library Items, Open Help Requests, Donations
+  This Year, Top Campaign — with translator-comment plurals), email
+  log stat labels (Sent/Blocked/Failed/Total (30d)), library catalog
+  item-condition options, builder pages publish/draft options,
+  campaigns active/draft/closed, Stripe currency labels (USD/CAD/GBP/
+  EUR/AUD), volunteer-opportunities waitlist count plural,
+  pending-changes "CHANGED" flag.
+- Picture-wall slug-error message now shows admin-only configuration
+  guidance and a friendly fallback to public visitors.
+- Help requests "Request not found." wrapped.
+
+### UX language
+- Removed "slug" jargon from picture-wall public error.
+- `spConfirm` Confirm button gained matching `:focus` styling.
+
+### Refactoring
+- New helper `sp_stripe_session_id_is_valid()` called from 5 sites
+  that used to concatenate `sanitize_text_field()` output into the
+  Stripe API URL.
+- `sp_get_menu_capability_map()` restructured to use a `$map`
+  variable + `apply_filters()` return.
+
+### .pot files
+- Plugin and parent theme .pot regenerated. Plugin .pot is now
+  ~18,400 lines covering ~4,650+ strings.
+
+Plugin + parent theme: 1.0.58. Marketing theme: 0.42d.
+
+---
+
 ## [1.0.57] — 2026-05-06
 
 ### Security

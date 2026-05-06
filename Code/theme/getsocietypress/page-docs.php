@@ -54,7 +54,7 @@ get_header();
 
             <a class="docs-quick__link" href="<?php echo esc_url( home_url( '/docs/modules/' ) ); ?>">
                 <div class="docs-quick__link-title">Module Guides</div>
-                <p>One Harold-friendly guide per module — what it does, how to set it up, what to do when something looks wrong.</p>
+                <p>One plain-English guide per module &mdash; what it does, how to set it up, and what to do when something doesn&rsquo;t look right.</p>
             </a>
 
             <a class="docs-quick__link" href="<?php echo esc_url( home_url( '/docs/ens-migration/' ) ); ?>">

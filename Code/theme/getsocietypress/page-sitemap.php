@@ -28,7 +28,7 @@ $gsp_sitemap = array(
         'heading' => 'Learn about SocietyPress',
         'links'   => array(
             array( '/', 'Home', 'The overview &mdash; start here.' ),
-            array( '/features/', 'Features', '16 feature modules, one platform.' ),
+            array( '/features/', 'Features', '15 toggleable modules plus Members, one platform.' ),
             array( '/requirements/', 'Requirements', 'What you need on your server.' ),
             array( '/showcase/', 'Showcase', 'The five bundled child themes plus real society sites as they come online.' ),
             array( '/about/', 'About', 'Why the project exists and who is behind it.' ),

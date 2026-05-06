@@ -294,7 +294,7 @@ get_header();
             <div class="inst-setup-card">
                 <div class="inst-setup-card__number">A</div>
                 <h3>Pick your colors and fonts</h3>
-                <p>Go to <strong>Appearance &rarr; Design</strong> and choose your primary and accent colors. A live preview shows your site updating in real time. Set fonts, adjust spacing, and make it yours.</p>
+                <p>Go to <strong>SocietyPress &rarr; Design</strong> and choose your primary and accent colors. A live preview shows your site updating in real time. Set fonts, adjust spacing, and make it yours.</p>
             </div>
 
             <div class="inst-setup-card">
@@ -318,13 +318,13 @@ get_header();
             <div class="inst-setup-card">
                 <div class="inst-setup-card__number">E</div>
                 <h3>Build your pages</h3>
-                <p>Go to <strong>Appearance &rarr; Pages</strong> and use the built-in page builder to shape your homepage, about page, and anything else. Drag widgets onto the page &mdash; text, images, event lists, member spotlights &mdash; and arrange them how you like.</p>
+                <p>Go to <strong>SocietyPress &rarr; Pages</strong> and use the built-in page builder to shape your homepage, about page, and anything else. Drag widgets onto the page &mdash; text, images, event lists, member spotlights &mdash; and arrange them how you like.</p>
             </div>
 
             <div class="inst-setup-card">
                 <div class="inst-setup-card__number">F</div>
                 <h3>Post your first event</h3>
-                <p>Open <strong>Events &rarr; Add New</strong> and create a meeting, workshop, or cemetery walk. Set categories, capacity, and registration options. Your calendar and upcoming-events widgets pick it up automatically.</p>
+                <p>Open <strong>Events &rarr; Add Event</strong> and create a meeting, workshop, or cemetery walk. Set categories, capacity, and registration options. Your calendar and upcoming-events widgets pick it up automatically.</p>
             </div>
 
         </div>

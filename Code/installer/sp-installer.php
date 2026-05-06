@@ -108,6 +108,18 @@ define( 'SP_INSTALLER_MIN_MYSQL',   '5.7.0' );
 // MAIN ROUTING
 // ============================================================================
 
+// WHY suppress display_errors here: shared hosts default php.ini often has
+// display_errors=On, which would inject absolute server paths into the
+// rendered HTML on a stray notice/warning. error_log still receives them.
+@ini_set( 'display_errors', '0' );
+@ini_set( 'log_errors',     '1' );
+error_reporting( E_ALL );
+
+// WHY harden session before start: PHP defaults vary by host. Force the
+// session cookie to HttpOnly and use strict-mode so an attacker can't
+// pre-set a session ID via shared-host sibling processes.
+@ini_set( 'session.use_strict_mode', '1' );
+@ini_set( 'session.cookie_httponly', '1' );
 session_start();
 
 $step = $_GET['step'] ?? 'check';
@@ -764,11 +776,14 @@ function sp_installer_process(): void {
         $db_error = $e->getMessage();
     }
     if ( $db_error ) {
-        // Redirect back to the form with the error — all field values are
-        // already saved in the session so Harold doesn't retype anything.
+        // Redirect back to the form with a generic error — the raw mysqli
+        // message contains the username, hostname, and database name and
+        // confirms valid users to anyone probing an exposed installer.
+        // The detail still goes to error_log for the admin.
+        @error_log( 'SocietyPress installer: database connection failed: ' . $db_error );
         $_SESSION['sp_form_errors'] = [
-            'Database connection failed: ' . $db_error,
-            'Check your database name, username, password, and host.',
+            'Could not connect to the database. Check your credentials and try again.',
+            'If you are sure the credentials are right, ask your hosting provider whether the database is reachable.',
         ];
         header( 'Location: ?step=configure' );
         exit;
@@ -836,8 +851,13 @@ function sp_installer_process(): void {
         // Final containment check: the resolved parent directory must be the
         // install dir or beneath it. realpath() returns false if the path
         // doesn't exist, but mkdir above guarantees it does at this point.
+        // WHY trailing DIRECTORY_SEPARATOR: a bare strpos prefix-match would
+        // accept '/var/www/htmlevil' as inside '/var/www/html'. The trailing
+        // separator forces a directory-boundary match.
         $parent_real = realpath( $parent );
-        if ( $parent_real === false || strpos( $parent_real, $install_dir_real ) !== 0 ) {
+        $needle      = rtrim( $install_dir_real, DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR;
+        $haystack    = rtrim( $parent_real, DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR;
+        if ( $parent_real === false || strpos( $haystack, $needle ) !== 0 ) {
             $zip->close();
             sp_installer_die( 'Extract Failed', 'WordPress archive entry resolved outside the install directory. Aborting for safety.' );
         }
@@ -918,21 +938,37 @@ function sp_installer_process(): void {
     // quotes or PHP tokens it contained. Targeting only the constant's
     // single-quoted string and addslashes()-escaping the user value
     // contains both problems.
+    // WHY preg_replace_callback (not preg_replace): a literal `$1` or `${1}`
+    // in the user's value (cPanel-style auto-generated credentials sometimes
+    // include literal dollar signs followed by digits) would be parsed as
+    // a backreference inside a preg_replace replacement string and splice
+    // the captured group back in place. addslashes() doesn't touch `$`.
+    // The callback form treats the replacement as a plain string.
     $sp_set_config_value = function ( string $constant, string $value, string $config ): string {
         $escaped = addslashes( $value ); // safe for single-quoted PHP literal
         $pattern = "/(define\(\s*'" . preg_quote( $constant, '/' ) . "'\s*,\s*')[^']*('\s*\)\s*;)/";
-        return preg_replace( $pattern, '${1}' . $escaped . '${2}', $config, 1 );
+        return preg_replace_callback( $pattern, function ( $m ) use ( $escaped ) {
+            return $m[1] . $escaped . $m[2];
+        }, $config, 1 );
     };
     $config = $sp_set_config_value( 'DB_NAME',     $db_name, $config );
     $config = $sp_set_config_value( 'DB_USER',     $db_user, $config );
     $config = $sp_set_config_value( 'DB_PASSWORD', $db_pass, $config );
     $config = $sp_set_config_value( 'DB_HOST',     $db_host, $config );
-    $config = preg_replace( '/\$table_prefix\s*=\s*\'wp_\'/', "\$table_prefix = '{$db_prefix}'", $config );
+    $sp_prefix_safe = $db_prefix; // already validated as [a-zA-Z0-9_] earlier
+    $config = preg_replace_callback(
+        '/\$table_prefix\s*=\s*\'wp_\'/',
+        function () use ( $sp_prefix_safe ) { return "\$table_prefix = '{$sp_prefix_safe}'"; },
+        $config
+    );
 
-    // Replace salt block
-    $config = preg_replace(
+    // Replace salt block — use a callback so any `$1`-style sequence in the
+    // upstream WP salt response (or a MITM-injected one) is treated as a
+    // literal, not as a backreference.
+    $sp_salts_block = trim( $salts ) . "\n\n";
+    $config = preg_replace_callback(
         '/define\(\s*\'AUTH_KEY\'.*?define\(\s*\'NONCE_SALT\'[^;]*;\s*/s',
-        trim( $salts ) . "\n\n",
+        function () use ( $sp_salts_block ) { return $sp_salts_block; },
         $config
     );
 
@@ -1107,10 +1143,17 @@ add_action( 'admin_init', function () {
     // ---- Apply installer-collected SocietyPress settings ----
     // WHY: The installer form collects org details and membership config so
     // Harold doesn't have to re-enter them in a separate setup wizard. The
-    // installer writes these to a JSON file (sp-installer-config.json) that
-    // we read here, merge into the SP settings, and delete.
-    $config_file = ABSPATH . 'sp-installer-config.json';
-    if ( file_exists( $config_file ) ) {
+    // installer writes these to a JSON file with a randomized filename
+    // (sp-installer-config-<32hex>.json) that we glob for here, read,
+    // merge into the SP settings, and delete.
+    $config_file = '';
+    $candidates  = glob( ABSPATH . 'sp-installer-config-*.json' );
+    if ( $candidates ) {
+        // Most recent wins if more than one exists (shouldn't, but defend).
+        usort( $candidates, function ( $a, $b ) { return filemtime( $b ) <=> filemtime( $a ); } );
+        $config_file = $candidates[0];
+    }
+    if ( $config_file && file_exists( $config_file ) ) {
         $installer_config = json_decode( file_get_contents( $config_file ), true );
         if ( is_array( $installer_config ) ) {
             $sp_settings = get_option( 'societypress_settings', [] );
@@ -1208,6 +1251,12 @@ MUPLUGIN;
     // applies to the societypress_settings option, and deletes. This is
     // how the installer-collected org details reach the plugin without
     // a second wizard step.
+    //
+    // WHY randomized filename: the previous fixed name `sp-installer-
+    // config.json` was web-readable for the few seconds between write and
+    // mu-plugin pickup. The file holds admin name/email/phone/address
+    // (no passwords). Randomizing the filename closes blind URL probing
+    // — the mu-plugin globs for the unique pattern.
     $installer_config = [
         'organization_name'    => $site_title,
         'organization_email'   => $org_email ?: '',
@@ -1218,7 +1267,8 @@ MUPLUGIN;
         'admin_first_name'     => $admin_first,
         'admin_last_name'      => $admin_last,
     ];
-    file_put_contents( $install_dir . '/sp-installer-config.json', json_encode( $installer_config ) );
+    $config_filename = 'sp-installer-config-' . bin2hex( random_bytes( 16 ) ) . '.json';
+    file_put_contents( $install_dir . '/' . $config_filename, json_encode( $installer_config ) );
     $log[] = 'Installer config written.';
 
     // ---- 7. Create a bridge script that runs WordPress's install with our data ----
@@ -1298,6 +1348,10 @@ MUPLUGIN;
         . '@unlink( __FILE__ );' . "\n"
         . '$installer = dirname( __FILE__ ) . "/sp-installer.php";' . "\n"
         . 'if ( file_exists( $installer ) ) { @unlink( $installer ); }' . "\n"
+        . '// WHY: leftover .htaccess.sp-bak would otherwise sit web-readable' . "\n"
+        . '// on Apache hosts forever, exposing the prior rewrite config.' . "\n"
+        . '$htaccess_bak = dirname( __FILE__ ) . "/.htaccess.sp-bak";' . "\n"
+        . 'if ( file_exists( $htaccess_bak ) ) { @unlink( $htaccess_bak ); }' . "\n"
         . "\n"
         . '// Redirect directly to wp-login.php carrying the secret. The mu-plugin\'s' . "\n"
         . '// login_init hook reads the transient, verifies sp_token matches the stored' . "\n"
@@ -1432,7 +1486,11 @@ MUPLUGIN;
             @mkdir( $parent, 0755, true );
         }
         $parent_real = realpath( $parent );
-        if ( $parent_real === false || $wp_content_real === false || strpos( $parent_real, $wp_content_real ) !== 0 ) {
+        // WHY trailing separator: bare prefix match would let
+        // '/wp-contentevil' pass as inside '/wp-content'. Force boundary.
+        $sp_needle    = rtrim( (string) $wp_content_real, DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR;
+        $sp_haystack  = rtrim( (string) $parent_real,     DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR;
+        if ( $parent_real === false || $wp_content_real === false || strpos( $sp_haystack, $sp_needle ) !== 0 ) {
             $zip->close();
             @unlink( $sp_zip_path );
             sp_installer_die( 'Extract Failed', 'SocietyPress archive entry resolved outside wp-content. Aborting for safety.' );
@@ -1622,11 +1680,19 @@ function sp_installer_download( string $url, string $dest ): bool {
 
     // Fallback to file_get_contents
     if ( ini_get( 'allow_url_fopen' ) ) {
+        // WHY explicit ssl context: PHP stream wrappers don't enable peer
+        // verification by default unless openssl.cafile / curl.cainfo is
+        // set in php.ini, which most shared hosts don't. Force-on here so
+        // a MITM can't slip a crafted bundle past us via the fallback path.
         $ctx = stream_context_create( [
             'http' => [
                 'timeout'    => 300,
                 'user_agent' => 'SocietyPress-Installer/1.0',
                 'follow_location' => true,
+            ],
+            'ssl' => [
+                'verify_peer'      => true,
+                'verify_peer_name' => true,
             ],
         ] );
         $data = @file_get_contents( $url, false, $ctx, 0, $max_bytes + 1 );
@@ -1657,7 +1723,16 @@ function sp_installer_download_string( string $url ): ?string {
     }
 
     if ( ini_get( 'allow_url_fopen' ) ) {
-        $result = @file_get_contents( $url );
+        // WHY: same as above — explicit peer verification on the stream
+        // fallback so we don't quietly skip TLS validation when shared-host
+        // php.ini doesn't set openssl.cafile.
+        $ctx = stream_context_create( [
+            'ssl' => [
+                'verify_peer'      => true,
+                'verify_peer_name' => true,
+            ],
+        ] );
+        $result = @file_get_contents( $url, false, $ctx );
         if ( $result ) return $result;
     }
 
@@ -1692,6 +1767,10 @@ function sp_installer_download_string_post( string $url, array $data ): ?string 
                 'header'  => 'Content-Type: application/x-www-form-urlencoded',
                 'content' => http_build_query( $data ),
                 'timeout' => 60,
+            ],
+            'ssl' => [
+                'verify_peer'      => true,
+                'verify_peer_name' => true,
             ],
         ] );
         $result = @file_get_contents( $url, false, $ctx );

@@ -42,7 +42,7 @@ defined( 'ABSPATH' ) || exit;
 
             <!-- Column 2: Product Links -->
             <div class="footer-links">
-                <h4>Product</h4>
+                <h2 class="footer-links__heading">Product</h2>
                 <ul>
                     <li><a href="<?php echo esc_url( home_url( '/features/' ) ); ?>">Features</a></li>
                     <li><a href="<?php echo esc_url( home_url( '/docs/requirements/' ) ); ?>">Requirements</a></li>
@@ -55,7 +55,7 @@ defined( 'ABSPATH' ) || exit;
 
             <!-- Column 3: Resources -->
             <div class="footer-links">
-                <h4>Resources</h4>
+                <h2 class="footer-links__heading">Resources</h2>
                 <ul>
                     <li><a href="<?php echo esc_url( home_url( '/docs/' ) ); ?>">Documentation</a></li>
                     <li><a href="<?php echo esc_url( home_url( '/docs/faq/' ) ); ?>">FAQ</a></li>
@@ -68,7 +68,7 @@ defined( 'ABSPATH' ) || exit;
 
             <!-- Column 4: Community -->
             <div class="footer-links">
-                <h4>Community</h4>
+                <h2 class="footer-links__heading">Community</h2>
                 <ul>
                     <li><a href="<?php echo esc_url( home_url( '/about/' ) ); ?>">About</a></li>
                     <li><a href="<?php echo esc_url( home_url( '/donate/' ) ); ?>">Donate</a></li>
@@ -81,7 +81,7 @@ defined( 'ABSPATH' ) || exit;
 
             <!-- Column 5: Legal -->
             <div class="footer-links">
-                <h4>Legal</h4>
+                <h2 class="footer-links__heading">Legal</h2>
                 <ul>
                     <li><a href="<?php echo esc_url( home_url( '/privacy-policy/' ) ); ?>">Privacy Policy</a></li>
                     <li><a href="<?php echo esc_url( home_url( '/terms/' ) ); ?>">Terms of Use</a></li>

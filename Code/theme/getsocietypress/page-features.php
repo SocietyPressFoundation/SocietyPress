@@ -54,7 +54,7 @@ get_header();
                  and the homepage demo-section__features list together. -->
             <div class="feat-hero__stats">
                 <div class="feat-hero__stat">
-                    <span class="feat-hero__stat-number">14</span>
+                    <span class="feat-hero__stat-number">15</span>
                     <span class="feat-hero__stat-label">Feature Modules</span>
                 </div>
                 <div class="feat-hero__stat">
@@ -245,7 +245,7 @@ get_header();
 
             <!-- Right column: image placeholder -->
             <div class="feat-detail__image">
-                <img src="/cms/wp-content/uploads/members-screenshot.jpg" alt="SocietyPress member management interface showing a list of members with names, emails, phone numbers, plans, and statuses">
+                <img src="<?php echo esc_url( wp_upload_dir()['baseurl'] . '/members-screenshot.jpg' ); ?>" alt="SocietyPress member management interface showing a list of members with names, emails, phone numbers, plans, and statuses">
             </div>
 
         </div>
@@ -275,7 +275,7 @@ get_header();
 
             <!-- Left column: image placeholder -->
             <div class="feat-detail__image">
-                <img src="/cms/wp-content/uploads/events-screenshot.jpg" alt="SocietyPress event management showing upcoming meetings, workshops, cemetery walks, and book sales with categories, locations, and registration counts">
+                <img src="<?php echo esc_url( wp_upload_dir()['baseurl'] . '/events-screenshot.jpg' ); ?>" alt="SocietyPress event management showing upcoming meetings, workshops, cemetery walks, and book sales with categories, locations, and registration counts">
             </div>
 
             <!-- Right column: text content -->
@@ -392,7 +392,7 @@ get_header();
 
             <!-- Right column: image placeholder -->
             <div class="feat-detail__image">
-                <img src="/cms/wp-content/uploads/records-screenshot.jpg" alt="SocietyPress record collections showing cemetery indexes, census transcriptions, military records, church records, and naturalization records with record counts and export buttons">
+                <img src="<?php echo esc_url( wp_upload_dir()['baseurl'] . '/records-screenshot.jpg' ); ?>" alt="SocietyPress record collections showing cemetery indexes, census transcriptions, military records, church records, and naturalization records with record counts and export buttons">
             </div>
 
         </div>
@@ -421,7 +421,7 @@ get_header();
 
             <!-- Left column: image placeholder -->
             <div class="feat-detail__image">
-                <img src="/cms/wp-content/uploads/pagebuilder-screenshot.jpg" alt="SocietyPress page builder showing a hero slider widget with overlay text controls, image selection, and slide configuration">
+                <img src="<?php echo esc_url( wp_upload_dir()['baseurl'] . '/pagebuilder-screenshot.jpg' ); ?>" alt="SocietyPress page builder showing a hero slider widget with overlay text controls, image selection, and slide configuration">
             </div>
 
             <!-- Right column: text content -->

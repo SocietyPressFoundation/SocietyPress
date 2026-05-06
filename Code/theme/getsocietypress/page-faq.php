@@ -240,11 +240,12 @@ get_header();
                 <div class="faq-item__answer">
                     <p>
                         Sensitive fields (phone numbers, street addresses, dates of
-                        birth) are encrypted at rest using XChaCha20-Poly1305 via
-                        libsodium &mdash; the same modern cipher used by Signal and
-                        WireGuard. Every admin page and AJAX endpoint verifies a nonce
-                        and capability check. Email addresses on public pages are
-                        obfuscated against scraping bots.
+                        birth) are stored encrypted using the same modern security
+                        standard used by Signal and WhatsApp &mdash; even someone who
+                        gained access to your database wouldn&rsquo;t be able to read
+                        them. Every admin screen verifies your identity and permissions
+                        before showing or saving anything. Email addresses on public
+                        pages are obfuscated to slow down scraping bots.
                     </p>
                 </div>
             </details>

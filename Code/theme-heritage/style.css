@@ -29,10 +29,10 @@ Tags: genealogy, historical-society, traditional, warm, serif, one-column
     /* Heritage brand colors */
     --heritage-brown:     #3E2723;
     --heritage-cream:     #FDF6EC;
-    --heritage-gold:      #B8860B;
+    --heritage-gold:      #8C6500; /* WCAG-AA replacement for #B8860B (was 3.25:1 on white) */
     --heritage-tan:       #D4C5A9;
     --heritage-text:      #2C1810;
-    --heritage-muted:     #8B7355;
+    --heritage-muted:     #7A6240; /* WCAG-AA replacement for #8B7355 (was 4.49:1 — borderline) */
 
     /* Override SocietyPress design vars */
     --sp-color-primary:       #3E2723;

@@ -28,11 +28,11 @@ Tags: genealogy, historical-society, modern, clean, coastal, sans-serif, magazin
     /* Coastline brand colors */
     --coast-navy:      #1B3A5C;
     --coast-white:     #FFFFFF;
-    --coast-sky:       #5B9BD5;
+    --coast-sky:       #2E78C2; /* WCAG-AA replacement for #5B9BD5 (was 2.96:1 on white) */
     --coast-light:     #EFF6FC;
     --coast-sand:      #F5F0EB;
     --coast-text:      #1A2A3A;
-    --coast-muted:     #6B7D8E;
+    --coast-muted:     #5E6E7E; /* WCAG-AA replacement for #6B7D8E (was 4.24:1 at body sizes) */
     --coast-border:    #D6E4F0;
 
     /* Override SocietyPress design vars */

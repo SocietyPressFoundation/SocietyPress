@@ -32,7 +32,7 @@ Tags: genealogy, historical-society, earthy, warm, natural, serif, sidebar-navig
     /* Prairie brand colors */
     --prairie-forest:   #2D5016;
     --prairie-wheat:    #E8DCC8;
-    --prairie-sage:     #7A9A5E;
+    --prairie-sage:     #4E7A34; /* WCAG-AA replacement for #7A9A5E (was 2.97:1 on cream body) */
     --prairie-clay:     #C4A265;
     --prairie-bark:     #5C4033;
     --prairie-text:     #2A2118;

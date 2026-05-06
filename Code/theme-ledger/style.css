@@ -817,7 +817,10 @@ h1, h2, h3, h4, h5, h6 {
     padding: 20px 24px;
     text-align: center;
     font-size: 0.8rem;
-    color: var(--ledger-muted);
+    /* WHY ledger-silver, not ledger-muted: footer-bottom sits on charcoal
+     * (#2C2C2C). #808080 yields 3.54:1 — fails AA at 0.8rem. ledger-silver
+     * (#D4D0CB) is 9.1:1 on charcoal. */
+    color: var(--ledger-silver);
 }
 
 .ledger-footer-bottom a {

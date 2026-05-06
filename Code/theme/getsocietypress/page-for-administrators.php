@@ -66,7 +66,7 @@ get_header();
 
                 <div class="onepager__feature">
                     <h3>A page builder non-developers can use</h3>
-                    <p>21 drag-and-drop widgets (text, images, events lists, member directory, library catalog, volunteer signups). No shortcodes to memorize. Live preview before publishing.</p>
+                    <p>21 drag-and-drop widgets (text, images, events lists, member directory, library catalog, volunteer signups). No codes, no templates, no technical knowledge required. Live preview before publishing.</p>
                 </div>
 
                 <div class="onepager__feature">

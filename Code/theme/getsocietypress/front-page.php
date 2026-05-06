@@ -66,8 +66,9 @@ get_header();
         <div class="section-header">
             <h2>Everything Your Society Needs</h2>
             <p>
-                16 feature modules. One platform. No piecing together
-                a dozen WordPress plugins and hoping they work together.
+                15 toggleable feature modules plus Members always-on. One
+                platform. No piecing together a dozen WordPress plugins and
+                hoping they work together.
             </p>
         </div>
 
@@ -221,7 +222,7 @@ get_header();
                     <li>1,100+ sample members with full profiles</li>
                     <li>6,500+ genealogical records (real public data)</li>
                     <li>19,000+ library catalog items</li>
-                    <li>16 feature modules, all active</li>
+                    <li>15 feature modules plus Members, all active</li>
                     <li>Page builder with 21 widget types</li>
                     <li>5 pre-built child themes</li>
                 </ul>

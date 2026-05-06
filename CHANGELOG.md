@@ -14,6 +14,168 @@ Entries describe user-visible changes only. For the underlying commits, see
 
 ---
 
+## [1.0.56] — 2026-05-06
+
+### Changed
+- **Admin i18n long tail.** ~150 more admin-side strings wrapped:
+  Hero Slider widget admin (slide/line/size/weight/color labels and
+  placeholders), all `wp.media()` picker titles and buttons, Events
+  admin (page titles, table headers, registration form, slot tooltip,
+  role options, Update/Create button), event categories and tiers
+  tables, Speakers admin (page title, photo button, submit), Volunteers
+  placeholders, Library admin (search, item form, Update/Add Item),
+  newsletters search, Records guides el() builder, library enrich tool
+  log messages, blast email log table cells/headers, member stats
+  labels, breadcrumb aria-label, member-edit error transients,
+  generate-occurrences messages, event timezone test messages,
+  Stripe setup steps with placeholder substitutions, design settings
+  descriptions, import preview heading and submit buttons, Found-N-events
+  message, Expected Format heading. ~33 row-level CSV import error
+  messages converted to `sprintf( __() )` with translator comments.
+- **Inline-style hot-spot extraction.** "Feature Not Available" page,
+  Members-only gate, bulk-delete admin overlay, and "Coming Soon"
+  module placeholder all extracted to scoped CSS classes
+  (`.sp-module-not-available__*`, `.sp-members-only-gate__*`,
+  `.sp-delete-overlay__*`, `.sp-coming-soon-*`). Recurring postbox
+  handle padding (16 sites in lineage + research-case admin)
+  consolidated into a single `.sp-hndle-padded` utility class.
+  Front-page hero dynamic background-image and overlay opacity
+  moved to CSS custom properties on the section root. Marketing
+  showcase + theme-gallery color swatches documented as intentional
+  inline-style exceptions for per-row dynamic values.
+- **Login Acknowledgment modal text is now admin-editable.** New
+  Settings → Privacy → Login Notices section with two textarea
+  fields (`login_pre_notice`, `login_ack_text`). Defaults preserved;
+  every society should review and adapt the wording.
+- **Function clarity.** `sp_render_member_edit_page()` data-prep
+  extracted into `sp_member_edit_load_context()` returning an
+  associative array. `sp_create_tables()` annotated with the
+  explicit reason it's one function (every body is a `dbDelta()`,
+  no migration logic mixed in). Adds a hook for adding a future
+  `sp_run_upgrade_migrations()` helper if upgrade-path branches
+  ever need to live separately.
+
+### Fixed
+- Marketing site header brand link `aria-label` now derives from
+  `get_bloginfo( 'name' )` instead of hardcoded "SocietyPress home".
+- 404 search input focus shadow opacity bumped from 15% to 50% so
+  it actually meets WCAG 1.4.11 (non-text contrast).
+- Pagination wrapper inline padding extracted to a CSS class.
+
+### Performance
+- Events frontend CSS (~1,082 lines) extracted from inline output to
+  `Code/plugin/assets/css/events-frontend.css`. The browser caches
+  it across page loads instead of re-parsing it on every events-page
+  request. Plugin file dropped ~1,100 lines.
+
+---
+
+## [1.0.55] — 2026-05-06
+
+### Security
+- **Stripe webhook now rejects payloads when no signing secret is
+  configured.** Previously the handler accepted any unauthenticated
+  POST as legitimate when `stripe_webhook_secret` was missing — an
+  attacker could mark donations paid, provision membership renewals,
+  or trigger any other webhook-driven state change with zero credentials.
+  Now returns 401 if the secret isn't configured. Use the Stripe
+  Dashboard's sandbox signing secret during development.
+- **Membership-manager role assignment is allowlisted.** Delegates
+  with `sp_manage_members` (e.g., `membership_manager` template) can
+  no longer escalate users to WordPress administrator via the member
+  edit form. Only users with `manage_options` can assign elevated
+  WordPress roles; everyone else can only assign safe member-tier roles.
+- **ORDER BY columns allowlisted in 4 admin tables.** Payments report,
+  volunteer roster, volunteer hours, and ballots now restrict
+  `?orderby=` to known-safe columns. `sanitize_sql_orderby()` alone
+  permitted column enumeration.
+- libsodium fallback now `wp_die()`s loudly instead of silently
+  base64-encoding plaintext if the extension is somehow missing.
+  Backward-compatibility decrypt path for legacy `noenc:` data
+  retained.
+- Three minor unescaped-output sites fixed (`sort_order`, `user_id`).
+- `@file_put_contents` suppressor on the template-shim creator
+  removed; failures now surface to `error_log` instead of breaking
+  silently.
+
+### Added
+- **Admin-editable login notices** — new Settings → Privacy → Login
+  Notices section with two textarea fields. The acknowledgment
+  modal that appears after every successful login, and the privacy
+  notice above the login form, are now configurable per society.
+  Sensible defaults ship with the plugin.
+
+### Accessibility
+- ARIA dialog semantics on three modals: Login Acknowledgment
+  (`role="dialog"`, `aria-modal="true"`, `aria-labelledby`), Theme
+  Builder, and the JS-built Member Detail modal. Focus is now
+  managed and returned to the triggering element on close.
+- `aria-live` regions on four AJAX status containers so screen
+  readers announce progress: dashboard update status, bulk-delete
+  progress, import overlay, event registration messages.
+- Visible focus indicators replace `outline:none` at 8 sites
+  (member directory search/filter, events search, registration
+  form, library catalog search, marketing site 404 search,
+  admin sidebar group headers).
+- `spConfirm()` captures `document.activeElement` on open and
+  restores focus on close — keyboard users no longer lose their
+  place after canceling a destructive action.
+- Color contrast: ~70 sites of `#999`/`#888`/`#777` text on white
+  bumped to `#767676` (4.54:1, WCAG AA).
+- Hardcoded 11px font sizes converted to `0.75rem` so small UI
+  labels scale with the user's base font size preference.
+- Contact form fields now have `id`/`for` label associations
+  (Name, Email, Message).
+- Admin list tables auto-wrapped in `.sp-table-scroll` containers
+  on SocietyPress admin pages so they scroll horizontally below
+  ~900px instead of clipping.
+- Bulk-delete overlay countdown promoted to `aria-live="assertive"`.
+
+### Changed
+- WordPress jargon removed from admin UI: member edit username
+  field, Export & Backup page (FTP / cPanel guidance softened),
+  User Access page ("Site administrators" replaces "WordPress
+  administrators").
+- Shortcode syntax removed from admin help text on Database
+  Subscriptions, Research Guides, Research Cases. Picture Wall
+  configuration error gated to admins only — anonymous visitors
+  see a generic "Album not found" message.
+- `confirm()` dialogs replaced with `spConfirm()` in 6 places
+  (Help Request resolve/accept, refund button, Help-to-Case
+  conversion, Account-page surname/research/event forms).
+- "Delete?" terse confirmation messages replaced with full
+  contextual sentences ("Delete this request and all responses?
+  This cannot be undone.").
+- Empty states for library catalog, records browser, and tier
+  preview now give users a next step.
+- Class definitions (`SP_*_List_Table`, `SP_Society_Sidebar_Widget`)
+  now have an explicit "convention exemption" docblock noting they
+  exist solely because WordPress core APIs require class inheritance
+  and that no other classes should be introduced.
+
+### Performance
+- Insights dashboard: `sp_insights_bucket_counts()` rewritten to
+  pull window data once with a single SQL fetch and bucket in PHP,
+  replacing 13 queries per panel (1 total + 12 per-bucket COUNTs).
+  With ~13 enabled-module panels that previously fired ~180 queries
+  per pageview. Results cached in a 5-minute transient.
+- Event Categories admin and Membership Plans admin: row-level
+  N+1 `COUNT(*)` queries replaced with single `GROUP BY` lookups
+  built before the render loop.
+
+### i18n
+- ~150 member-facing strings wrapped: all event email notifications
+  (waitlist, confirmation, promotion, cancellation, update, reminder)
+  with translator comments and `_n()` plural forms; join-form error
+  messages; Research Help notices, email subjects, and form
+  placeholders; Library catalog headings and search placeholder;
+  Newsletter empty state; Groups front-end (Join/Leave buttons,
+  status messages, Leader/member labels); PayPal donate JS error
+  messages; Event Not Found page; Surname Contact modal; member-edit
+  error transients; address-form JS state/postal labels.
+
+---
+
 ## [1.0.54] — 2026-05-05
 
 ### Added

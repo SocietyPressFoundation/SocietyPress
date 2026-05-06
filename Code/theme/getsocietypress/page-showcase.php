@@ -118,7 +118,12 @@ $gsp_child_themes = array(
             <?php foreach ( $gsp_child_themes as $theme ) : ?>
                 <div class="showcase-theme-card">
 
-                    <!-- Palette preview — visual identity at a glance -->
+                    <!-- Palette preview — visual identity at a glance.
+                         WHY inline background-color (intentional): each swatch
+                         must paint a per-theme color from the configured
+                         palette array. Static CSS cannot express dynamic
+                         per-row data values. The dynamic value is the only
+                         declaration on the inline style. -->
                     <div class="showcase-theme-card__palette" aria-hidden="true">
                         <?php foreach ( $theme['palette'] as $color ) : ?>
                             <span class="showcase-theme-card__swatch" style="background-color: <?php echo esc_attr( $color ); ?>;"></span>

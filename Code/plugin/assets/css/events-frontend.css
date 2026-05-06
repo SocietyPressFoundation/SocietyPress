@@ -1,0 +1,1082 @@
+        /* ---- Wrapper ---- */
+        .sp-events-wrap {
+            max-width: var(--sp-content-width, 1100px);
+            margin: 40px auto;
+            padding: 0 20px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
+        }
+
+        /* ================================================================ */
+        /* FILTER BAR                                                        */
+        /* ================================================================ */
+        .sp-events-filters {
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #eee;
+        }
+        .sp-events-filter-form {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .sp-events-filter-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+        .sp-events-search-wrap {
+            flex: 1;
+            min-width: 200px;
+        }
+        .sp-events-search-input {
+            width: 100%;
+            padding: 10px 14px;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            box-sizing: border-box;
+        }
+        .sp-events-search-input:focus {
+            border-color: var(--sp-color-primary);
+            outline: 2px solid var(--sp-color-primary);
+            outline-offset: 2px;
+        }
+        .sp-events-filter-select {
+            padding: 10px 12px;
+            font-size: 15px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            background: #fff;
+            cursor: pointer;
+        }
+        .sp-events-filter-btn {
+            padding: 10px 24px;
+            font-size: 15px;
+            font-weight: 600;
+            color: #fff;
+            background: var(--sp-color-primary);
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .sp-events-filter-btn:hover { background: var(--sp-color-primary-hover); }
+        .sp-events-clear-link {
+            font-size: 14px;
+            color: #666;
+            text-decoration: none;
+            padding: 10px 8px;
+        }
+        .sp-events-clear-link:hover { color: #d63638; }
+
+        /* View toggle */
+        .sp-events-view-toggle {
+            display: flex;
+            gap: 4px;
+        }
+        .sp-view-btn {
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #555;
+            text-decoration: none;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            transition: all 0.15s;
+        }
+        .sp-view-btn:hover { border-color: var(--sp-color-primary); color: var(--sp-color-primary); }
+        .sp-view-active {
+            background: var(--sp-color-primary);
+            color: #fff !important;
+            border-color: var(--sp-color-primary);
+        }
+        .sp-view-icon { margin-right: 4px; }
+
+        /* ================================================================ */
+        /* EVENT CARDS (List View)                                           */
+        /* ================================================================ */
+        .sp-events-count {
+            margin-bottom: 8px;
+            color: #787c82;
+            font-size: 14px;
+        }
+        .sp-events-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .sp-event-card {
+            border: 1px solid #e8e8e8;
+            border-radius: 8px;
+            background: #fff;
+            transition: box-shadow 0.2s, border-color 0.2s;
+        }
+        .sp-event-card:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            border-color: #ccc;
+        }
+        .sp-event-card-link {
+            display: flex;
+            align-items: stretch;
+            text-decoration: none;
+            color: inherit;
+        }
+        .sp-event-date-block {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-width: 80px;
+            padding: 16px 12px;
+            background: #f7f7f7;
+            border-radius: 8px 0 0 8px;
+            border-right: 1px solid #e8e8e8;
+        }
+        .sp-event-month {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: #d63638;
+            letter-spacing: 0.5px;
+        }
+        .sp-event-day {
+            font-size: 28px;
+            font-weight: 700;
+            line-height: 1.1;
+            color: #1d2327;
+        }
+        .sp-event-dow {
+            font-size: 12px;
+            color: #787c82;
+            text-transform: uppercase;
+        }
+        .sp-event-details {
+            flex: 1;
+            padding: 16px 20px;
+            min-width: 0;
+        }
+        .sp-event-title {
+            margin: 0 0 6px 0;
+            font-size: 17px;
+            font-weight: 600;
+            color: #1d2327;
+            line-height: 1.3;
+        }
+        .sp-event-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+        .sp-event-meta-item {
+            font-size: 14px;
+            color: #555;
+        }
+        .sp-event-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+        }
+        .sp-event-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #fff;
+            border-radius: 4px;
+            white-space: nowrap;
+        }
+        .sp-badge-postponed { background: #dba617; }
+        .sp-badge-members { background: #787c82; }
+        .sp-badge-external { background: #2271b1; }
+        .sp-event-price {
+            font-size: 13px;
+            font-weight: 600;
+            color: #1d2327;
+        }
+        .sp-event-free { color: #00a32a; }
+        .sp-event-reg-info {
+            font-size: 12px;
+            color: #787c82;
+        }
+
+        /* ================================================================ */
+        /* CALENDAR VIEW                                                     */
+        /* ================================================================ */
+        /* Calendar wrap — explicit width prevents layout narrowing when
+           navigating to a different month (the grid inherits full width
+           from this container instead of sizing to content). */
+        .sp-calendar-wrap {
+            margin-top: 8px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .sp-calendar-nav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+        .sp-cal-nav-btn {
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--sp-color-primary);
+            text-decoration: none;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+        }
+        .sp-cal-nav-btn:hover { border-color: var(--sp-color-primary); }
+        .sp-cal-month-label {
+            margin: 0;
+            font-size: 22px;
+            font-weight: 600;
+            color: #1d2327;
+        }
+        .sp-calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .sp-cal-header {
+            padding: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            text-align: center;
+            color: #555;
+            background: #f7f7f7;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .sp-cal-day {
+            min-height: 100px;
+            padding: 6px;
+            border-right: 1px solid #eee;
+            border-bottom: 1px solid #eee;
+            background: #fff;
+            position: relative;
+        }
+        .sp-cal-day:nth-child(7n) { border-right: none; }
+        .sp-cal-empty { background: #fafafa; }
+        .sp-cal-today {
+            background: #f0f7fd;
+        }
+        .sp-cal-today .sp-cal-day-num {
+            background: var(--sp-color-primary);
+            color: #fff;
+            border-radius: 50%;
+            width: 26px;
+            height: 26px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .sp-cal-day-num {
+            font-size: 13px;
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 4px;
+        }
+        .sp-cal-events {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .sp-cal-event {
+            display: block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            color: #fff;
+            text-decoration: none;
+            font-size: 0.75rem;
+            line-height: 1.3;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            transition: opacity 0.15s;
+        }
+        .sp-cal-event:hover { opacity: 0.85; }
+        /* Notice-only events: no pointer, slightly transparent to signal "informational" */
+        .sp-cal-event--notice { opacity: 0.75; cursor: default; }
+        .sp-cal-event--notice:hover { opacity: 0.75; }
+        /* External events: subtle dashed border so Harold can distinguish at a glance */
+        .sp-cal-event--external { border: 1px dashed rgba(255,255,255,0.5); }
+        .sp-cal-event-title { font-weight: 500; }
+        .sp-cal-event-time {
+            font-size: 10px;
+            opacity: 0.85;
+            margin-left: 4px;
+        }
+
+        /* Mobile dots (hidden on desktop) */
+        .sp-cal-dots { display: none; }
+        .sp-cal-dot {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            margin: 1px;
+        }
+
+        /* Mobile panel for calendar day tap */
+        .sp-cal-mobile-panel {
+            margin-top: 12px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            background: #fff;
+            overflow: hidden;
+        }
+        .sp-cal-mobile-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: #f7f7f7;
+            border-bottom: 1px solid #e0e0e0;
+            font-weight: 600;
+        }
+        .sp-cal-mobile-close {
+            background: none;
+            border: none;
+            font-size: 22px;
+            cursor: pointer;
+            color: #555;
+            padding: 0 4px;
+        }
+        .sp-cal-mobile-event {
+            display: block;
+            padding: 12px 16px;
+            border-bottom: 1px solid #eee;
+            text-decoration: none;
+            color: inherit;
+        }
+        .sp-cal-mobile-event:last-child { border-bottom: none; }
+        .sp-cal-mobile-event-title {
+            font-weight: 600;
+            color: #1d2327;
+        }
+        .sp-cal-mobile-event-time {
+            font-size: 13px;
+            color: #787c82;
+            margin-top: 2px;
+        }
+
+        /* ================================================================ */
+        /* EVENT DETAIL PAGE                                                 */
+        /* ================================================================ */
+        .sp-event-back {
+            margin-bottom: 20px;
+        }
+        .sp-event-back a {
+            color: var(--sp-color-primary);
+            text-decoration: none;
+            font-size: 15px;
+        }
+        .sp-event-back a:hover { text-decoration: underline; }
+
+        .sp-event-detail {
+            max-width: 800px;
+        }
+        .sp-event-header { margin-bottom: 24px; }
+        .sp-event-cancelled-banner,
+        .sp-event-postponed-banner {
+            padding: 12px 16px;
+            border-radius: 6px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+        .sp-event-cancelled-banner {
+            background: #fce4e4;
+            color: #d63638;
+            border: 1px solid #f5c6c6;
+        }
+        .sp-event-postponed-banner {
+            background: #fff8e5;
+            color: #996800;
+            border: 1px solid #f0d68a;
+        }
+        .sp-event-detail-title {
+            margin: 0 0 12px 0;
+            font-size: 28px;
+            font-weight: 700;
+            color: #1d2327;
+            line-height: 1.2;
+        }
+        .sp-event-detail-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .sp-event-image {
+            margin-bottom: 24px;
+        }
+        .sp-event-image img {
+            width: 100%;
+            max-width: 800px;
+            height: auto;
+            border-radius: 8px;
+        }
+
+        /* Key details (date, location) */
+        .sp-event-key-details {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            padding: 20px;
+            background: #f7f7f7;
+            border-radius: 8px;
+            margin-bottom: 24px;
+        }
+        .sp-event-detail-item {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+        }
+        .sp-detail-icon {
+            font-size: 20px;
+            flex-shrink: 0;
+            width: 28px;
+            text-align: center;
+        }
+        .sp-detail-secondary { color: #555; font-size: 14px; }
+        .sp-detail-virtual { color: var(--sp-color-primary); font-weight: 500; }
+        .sp-virtual-link {
+            color: var(--sp-color-primary);
+            font-weight: 500;
+            text-decoration: none;
+        }
+        .sp-virtual-link:hover { text-decoration: underline; }
+
+        /* Add to Calendar link */
+        .sp-add-to-cal-link {
+            color: var(--sp-color-primary);
+            font-weight: 500;
+            text-decoration: none;
+            font-size: 15px;
+        }
+        .sp-add-to-cal-link:hover { text-decoration: underline; }
+
+        /* Separator between "Add to Calendar" and "Subscribe" */
+        .sp-detail-separator {
+            margin: 0 8px;
+            color: #767676;
+            font-size: 14px;
+        }
+        /* On the detail page, the subscribe dropdown should align inline */
+        .sp-event-add-to-cal .sp-ical-subscribe-wrap {
+            display: inline-block;
+            vertical-align: middle;
+        }
+        .sp-event-add-to-cal .sp-ical-subscribe-btn {
+            padding: 4px 12px;
+            font-size: 13px;
+            border-width: 1px;
+        }
+        .sp-event-add-to-cal .sp-ical-dropdown {
+            left: 0;
+            right: auto;
+        }
+
+        /* Description */
+        .sp-event-description {
+            margin-bottom: 24px;
+            font-size: 16px;
+            line-height: 1.7;
+            color: #333;
+        }
+
+        /* Speakers section */
+        .sp-event-speakers {
+            margin-bottom: 24px;
+        }
+        .sp-event-speakers h2 {
+            font-size: 20px;
+            margin: 0 0 16px 0;
+        }
+        .sp-speaker-card {
+            display: flex;
+            gap: 16px;
+            padding: 16px;
+            background: #f7f7f7;
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+        .sp-speaker-photo {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            object-fit: cover;
+            flex-shrink: 0;
+        }
+        .sp-speaker-info {
+            flex: 1;
+        }
+        .sp-speaker-name {
+            margin: 0 0 2px 0;
+            font-size: 16px;
+            font-weight: 600;
+            color: #1d2327;
+        }
+        .sp-speaker-title {
+            margin: 0 0 4px 0;
+            font-size: 14px;
+            color: #555;
+        }
+        .sp-speaker-role {
+            display: inline-block;
+            padding: 1px 8px;
+            background: #e0e0e0;
+            color: #555;
+            border-radius: 3px;
+            font-size: 12px;
+            margin-bottom: 6px;
+        }
+        .sp-speaker-bio {
+            margin: 6px 0 0 0;
+            font-size: 14px;
+            line-height: 1.5;
+            color: #3c434a;
+        }
+        .sp-speaker-website {
+            color: var(--sp-color-primary);
+            text-decoration: none;
+            font-size: 13px;
+        }
+        .sp-speaker-website:hover { text-decoration: underline; }
+
+        /* Registration section */
+        .sp-event-registration {
+            padding: 24px;
+            background: #f7f7f7;
+            border-radius: 8px;
+            margin-bottom: 24px;
+        }
+        .sp-event-registration h2 {
+            margin: 0 0 16px 0;
+            font-size: 20px;
+        }
+        .sp-event-pricing {
+            margin-bottom: 16px;
+        }
+        .sp-price-item {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 4px;
+            font-size: 15px;
+        }
+        .sp-price-label { color: #555; }
+        .sp-price-amount { font-weight: 600; }
+        .sp-price-free { color: #00a32a; }
+        .sp-price-note {
+            font-size: 13px;
+            color: #787c82;
+            margin-top: 4px;
+        }
+
+        /* Capacity bar */
+        .sp-event-capacity { margin-bottom: 16px; }
+        .sp-capacity-bar {
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 6px;
+        }
+        .sp-capacity-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+        .sp-capacity-text {
+            font-size: 14px;
+            color: #555;
+            margin: 0;
+        }
+
+        .sp-reg-confirmed {
+            padding: 16px;
+            background: #edf7ed;
+            border: 1px solid #c3e6c3;
+            border-radius: 6px;
+        }
+        .sp-reg-confirmed p { margin: 0; }
+        .sp-reg-note { font-size: 13px; color: #555; margin-top: 4px !important; }
+
+        /* Registration form */
+        .sp-reg-form {
+            margin-top: 8px;
+        }
+        .sp-reg-form-intro {
+            font-size: 14px;
+            color: #555;
+            margin-bottom: 12px;
+        }
+        .sp-reg-form-intro a { color: var(--sp-color-primary); }
+        .sp-reg-form-row {
+            margin-bottom: 12px;
+        }
+        .sp-reg-form-row label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 4px;
+            color: #333;
+        }
+        .sp-required { color: #d63638; }
+        .sp-reg-optional { color: #787c82; font-weight: normal; font-size: 13px; }
+        .sp-reg-form-row input[type="text"],
+        .sp-reg-form-row input[type="email"],
+        .sp-reg-form-row input[type="tel"] {
+            width: 100%;
+            max-width: 400px;
+            padding: 8px 12px;
+            border: 1px solid #c3c4c7;
+            border-radius: 4px;
+            font-size: 15px;
+            font-family: inherit;
+        }
+        .sp-reg-form-row input:focus {
+            border-color: var(--sp-color-primary);
+            outline: 2px solid var(--sp-color-primary);
+            outline-offset: 2px;
+            box-shadow: 0 0 0 3px rgba(34, 113, 177, 0.25);
+        }
+        .sp-reg-form-row select {
+            padding: 8px 12px;
+            border: 1px solid #c3c4c7;
+            border-radius: 4px;
+            font-size: 15px;
+            font-family: inherit;
+            background: #fff;
+        }
+        .sp-reg-submit-btn {
+            display: inline-block;
+            padding: 12px 32px;
+            background: var(--sp-color-primary);
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            font-family: inherit;
+            transition: background 0.15s;
+        }
+        .sp-reg-submit-btn:hover { background: var(--sp-color-primary-hover); }
+        .sp-reg-submit-btn:disabled {
+            background: #a7aaad;
+            cursor: not-allowed;
+        }
+        .sp-reg-cancel-btn {
+            display: inline-block;
+            margin-top: 12px;
+            padding: 6px 16px;
+            background: none;
+            color: #d63638;
+            border: 1px solid #d63638;
+            border-radius: 4px;
+            font-size: 13px;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.15s;
+        }
+        .sp-reg-cancel-btn:hover {
+            background: #d63638;
+            color: #fff;
+        }
+        .sp-reg-cancel-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .sp-reg-message {
+            margin-top: 8px;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .sp-reg-msg-error {
+            background: #fcf0f1;
+            border: 1px solid #d63638;
+            color: #d63638;
+        }
+        .sp-reg-msg-success {
+            background: #edf7ed;
+            border: 1px solid #c3e6c3;
+            color: #00a32a;
+        }
+        .sp-reg-login-prompt {
+            padding: 12px 16px;
+            background: #f0f6fc;
+            border: 1px solid #c3d9ed;
+            border-radius: 6px;
+            color: var(--sp-color-primary);
+            font-size: 14px;
+        }
+        .sp-reg-login-prompt a { color: var(--sp-color-primary); font-weight: 500; }
+
+        /* Fee summary — shows cost before they click Register */
+        .sp-reg-fee-summary {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 6px;
+            padding: 10px 14px;
+            background: #fef8e8;
+            border: 1px solid #e5c76b;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            font-size: 14px;
+        }
+        .sp-fee-label { font-weight: 600; color: #1d2327; }
+        .sp-fee-amount { font-weight: 700; font-size: 16px; color: #1d2327; }
+        .sp-fee-per-person { color: #787c82; font-size: 12px; }
+        .sp-fee-note { color: #666; font-size: 12px; font-style: italic; }
+
+        /* Payment option buttons — "either" mode shows two side-by-side */
+        .sp-reg-pay-options {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .sp-reg-pay-options .sp-reg-submit-btn {
+            flex: 1;
+            min-width: 140px;
+        }
+        .sp-pay-online-btn {
+            background: var(--sp-color-primary) !important;
+        }
+        .sp-pay-online-btn:hover {
+            background: var(--sp-color-primary-hover) !important;
+        }
+        .sp-pay-door-btn {
+            background: #50575e !important;
+        }
+        .sp-pay-door-btn:hover {
+            background: #3c4043 !important;
+        }
+
+        /* Contact section */
+        .sp-event-contact {
+            padding: 24px;
+            background: #f7f7f7;
+            border-radius: 8px;
+            margin-bottom: 24px;
+        }
+        /* Time Slots display cards */
+.sp-event-slots-section {
+    margin: 24px 0;
+}
+.sp-event-slots-section h2 {
+    font-size: 1.3em;
+    margin-bottom: 12px;
+}
+.sp-event-slots-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+}
+.sp-event-slot-card {
+    padding: 12px 16px;
+    border: 1px solid var(--sp-color-border, #e5e7eb);
+    border-radius: 6px;
+    background: var(--sp-color-bg, #fff);
+}
+.sp-event-slot-card.sp-slot-full {
+    opacity: 0.65;
+    border-color: #d63638;
+}
+.sp-slot-time {
+    font-weight: 600;
+    font-size: 1.05em;
+    margin-bottom: 4px;
+}
+.sp-slot-desc {
+    color: var(--sp-color-text-secondary, #6b7280);
+    font-size: 0.9em;
+    margin-bottom: 4px;
+}
+.sp-slot-capacity {
+    font-size: 0.85em;
+    color: var(--sp-color-text-secondary, #6b7280);
+}
+.sp-slot-full-label {
+    color: #d63638;
+    font-weight: 600;
+}
+
+.sp-event-contact h2 {
+            margin: 0 0 12px 0;
+            font-size: 20px;
+        }
+        .sp-event-contact p { margin: 0 0 4px 0; }
+        .sp-contact-name { font-weight: 600; }
+        .sp-event-contact a { color: var(--sp-color-primary); text-decoration: none; }
+        .sp-event-contact a:hover { text-decoration: underline; }
+
+        /* Not found / login required */
+        .sp-event-not-found,
+        .sp-event-login-required {
+            text-align: center;
+            padding: 60px 20px;
+        }
+        .sp-event-not-found h2,
+        .sp-event-login-required h2 {
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+        .sp-events-empty {
+            text-align: center;
+            padding: 40px 20px;
+            color: #787c82;
+        }
+
+        /* External event detail card — shown when an event lives on another site */
+        .sp-event-external-card {
+            max-width: 700px;
+            margin: 0 auto 40px;
+            padding: 32px;
+            background: #fff;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+        .sp-event-external-badge {
+            display: inline-block;
+            background: #2271b1;
+            color: #fff;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 3px 10px;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .sp-external-event-btn {
+            display: inline-block;
+            padding: 14px 28px;
+            background: var(--sp-color-primary, #2271b1);
+            color: #fff;
+            text-decoration: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+        .sp-external-event-btn:hover {
+            opacity: 0.9;
+            color: #fff;
+        }
+
+        /* ================================================================ */
+        /* PAGINATION (shared with directory)                                */
+        /* ================================================================ */
+        .sp-events-pagination {
+            display: flex;
+            gap: 4px;
+            justify-content: center;
+            align-items: center;
+            margin-top: 24px;
+            padding-top: 16px;
+            border-top: 1px solid #eee;
+        }
+
+        /* ================================================================ */
+        /* TOOLBAR — View toggle + Subscribe button alignment                */
+        /* ================================================================ */
+        .sp-events-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        /* ================================================================ */
+        /* SUBSCRIBE TO CALENDAR — Dropdown UI                               */
+        /* ================================================================ */
+        .sp-ical-subscribe-wrap {
+            position: relative;
+            display: inline-block;
+        }
+        .sp-ical-subscribe-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--sp-color-primary, #1e3a5f);
+            background: transparent;
+            border: 2px solid var(--sp-color-primary, #1e3a5f);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+            white-space: nowrap;
+        }
+        .sp-ical-subscribe-btn:hover {
+            background: var(--sp-color-primary, #1e3a5f);
+            color: #fff;
+        }
+        .sp-ical-icon { font-size: 16px; }
+        .sp-ical-caret { font-size: 10px; transition: transform 0.2s; }
+        .sp-ical-subscribe-btn[aria-expanded="true"] .sp-ical-caret {
+            transform: rotate(180deg);
+        }
+
+        .sp-ical-dropdown {
+            position: absolute;
+            right: 0;
+            top: calc(100% + 6px);
+            width: 360px;
+            max-width: 90vw;
+            background: #fff;
+            border: 1px solid var(--sp-color-border, #e5e7eb);
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+            padding: 16px;
+            z-index: 100;
+        }
+        .sp-ical-section {
+            margin-bottom: 16px;
+        }
+        .sp-ical-section:last-child { margin-bottom: 0; }
+        .sp-ical-members-section {
+            padding-top: 16px;
+            border-top: 1px solid var(--sp-color-border, #e5e7eb);
+        }
+        .sp-ical-section-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--sp-color-text, #1d2327);
+            margin-bottom: 8px;
+        }
+        .sp-ical-action-link {
+            display: inline-block;
+            font-size: 14px;
+            color: var(--sp-color-primary, #1e3a5f);
+            text-decoration: none;
+            margin-bottom: 8px;
+        }
+        .sp-ical-action-link:hover {
+            text-decoration: underline;
+        }
+        .sp-ical-copy-row {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 6px;
+        }
+        .sp-ical-url-input {
+            flex: 1;
+            padding: 6px 8px;
+            font-size: 12px;
+            border: 1px solid var(--sp-color-border, #ddd);
+            border-radius: 4px;
+            background: #f9f9f9;
+            color: #666;
+            min-width: 0;
+        }
+        .sp-ical-copy-btn {
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 500;
+            color: #fff;
+            background: var(--sp-color-primary, #1e3a5f);
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.2s;
+        }
+        .sp-ical-copy-btn:hover {
+            background: var(--sp-color-primary-hover, #2c5282);
+        }
+        .sp-ical-copy-btn.sp-ical-copied {
+            background: #00a32a;
+        }
+        .sp-ical-hint {
+            font-size: 0.75rem;
+            color: #767676;
+            line-height: 1.4;
+            margin-bottom: 6px;
+        }
+        .sp-ical-regen-btn {
+            display: inline-block;
+            font-size: 12px;
+            color: #d63638;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 2px 0;
+            text-decoration: underline;
+        }
+        .sp-ical-regen-btn:hover { color: #b71c1c; }
+
+        /* ================================================================ */
+        /* RESPONSIVE — Mobile layout                                        */
+        /* ================================================================ */
+        @media screen and (max-width: 768px) {
+            .sp-events-toolbar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .sp-ical-subscribe-wrap {
+                width: 100%;
+            }
+            .sp-ical-subscribe-btn {
+                width: 100%;
+                justify-content: center;
+            }
+            .sp-ical-dropdown {
+                right: auto;
+                left: 0;
+                width: 100%;
+            }
+            .sp-events-filter-row {
+                flex-direction: column;
+            }
+            .sp-events-search-wrap {
+                width: 100%;
+            }
+            .sp-events-filter-select,
+            .sp-events-filter-btn {
+                width: 100%;
+            }
+
+            /* Event cards — stack vertically */
+            .sp-event-card-link {
+                flex-direction: column;
+            }
+            .sp-event-date-block {
+                flex-direction: row;
+                gap: 8px;
+                border-radius: 8px 8px 0 0;
+                border-right: none;
+                border-bottom: 1px solid #e8e8e8;
+                padding: 10px 16px;
+            }
+            .sp-event-day { font-size: 20px; }
+            .sp-event-details { padding: 12px 16px; }
+            .sp-event-title { font-size: 16px; }
+            .sp-event-meta { flex-direction: column; gap: 4px; }
+
+            /* Calendar — dots instead of full event titles */
+            .sp-cal-day {
+                min-height: 48px;
+                padding: 4px;
+            }
+            .sp-cal-events { display: none; }
+            .sp-cal-dots { display: flex; flex-wrap: wrap; justify-content: center; }
+            .sp-cal-day-num { font-size: 12px; text-align: center; }
+            .sp-cal-header { padding: 6px 2px; font-size: 0.75rem; }
+
+            /* Calendar day tap interaction */
+            .sp-cal-has-events { cursor: pointer; }
+
+            /* Detail page */
+            .sp-event-detail-title { font-size: 22px; }
+            .sp-event-key-details { padding: 16px; }
+        }

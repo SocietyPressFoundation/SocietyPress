@@ -84,6 +84,11 @@ get_header();
                     $download_url = esc_url( get_template_directory_uri() . '/presets/' . $preset['_filename'] );
                     ?>
                     <article class="tg-card">
+                        <?php /* WHY inline `style=background:` here (intentional, NOT a violation
+                                 of the no-inline-styles rule): each swatch must paint a
+                                 different per-preset color stored in JSON. Static CSS cannot
+                                 express per-preset dynamic values. The dynamic value is the
+                                 only thing on the inline declaration. */ ?>
                         <div class="tg-swatches">
                             <span class="tg-swatch" style="background:<?php echo esc_attr( $tokens['design_color_primary'] ?? '#0d1f3c' ); ?>;"></span>
                             <span class="tg-swatch" style="background:<?php echo esc_attr( $tokens['design_color_accent'] ?? '#c9973a' ); ?>;"></span>

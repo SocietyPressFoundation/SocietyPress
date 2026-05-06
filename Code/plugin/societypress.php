@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.0.55
+ * Version:     1.0.56
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.55' );
+define( 'SOCIETYPRESS_VERSION', '1.0.56' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -610,6 +610,15 @@ function sp_maybe_create_default_pages(): void {
  *      existing data.
  */
 function sp_create_tables(): void {
+    // WHY single function despite size: every body is a single dbDelta() call
+    // declaring one table. There are no migrations or upgrade-path branches
+    // mixed in — schema drift is handled by running this whole function on
+    // every activation, and dbDelta is idempotent. Splitting into per-domain
+    // helpers (sp_create_member_tables, etc.) would just shuffle the same
+    // statements behind extra function boundaries. The section comments
+    // already make it scannable; if a domain ever needs upgrade migrations
+    // distinct from CREATE TABLE, a sp_run_upgrade_migrations() helper can
+    // be added then.
     global $wpdb;
 
     $charset_collate = $wpdb->get_charset_collate();
@@ -3650,13 +3659,17 @@ add_filter( 'template_include', function ( $template ) {
 
     // Module is disabled — show a friendly message
     get_header();
-    echo '<div class="entry-content" style="max-width:700px; margin:60px auto; padding:0 20px; text-align:center;">';
-    echo '<h1 style="font-size:24px; color:#1d2327; margin-bottom:12px;">'
-         . esc_html__( 'Feature Not Available', 'societypress' ) . '</h1>';
-    echo '<p style="color:#646970; font-size:16px;">'
-         . esc_html__( 'This feature is not currently enabled. Please contact the site administrator if you believe this is an error.', 'societypress' )
-         . '</p>';
-    echo '</div>';
+    ?>
+    <style id="sp-module-not-available-css">
+        .sp-module-not-available { max-width: 700px; margin: 60px auto; padding: 0 20px; text-align: center; }
+        .sp-module-not-available__title { font-size: 24px; color: #1d2327; margin-bottom: 12px; }
+        .sp-module-not-available__msg   { color: #646970; font-size: 16px; }
+    </style>
+    <div class="entry-content sp-module-not-available">
+        <h1 class="sp-module-not-available__title"><?php esc_html_e( 'Feature Not Available', 'societypress' ); ?></h1>
+        <p class="sp-module-not-available__msg"><?php esc_html_e( 'This feature is not currently enabled. Please contact the site administrator if you believe this is an error.', 'societypress' ); ?></p>
+    </div>
+    <?php
     get_footer();
 
     // Return empty string to prevent WordPress from loading the default template
@@ -8161,6 +8174,9 @@ add_action( 'admin_head', function () {
 .sp-w-120  { width: 120px; }
 .sp-w-150  { width: 150px; }
 
+/* ---------- Postbox handle padding (16+ uses across lineage/research-case admin) ---------- */
+.sp-hndle-padded { padding: 10px 14px; }
+
 /* ---------- Responsive table scrolling ----------
    WHY: SP admin pages have ~25 multi-column wp-list-tables. Below ~900px the
    columns spill out of the viewport. Wrapping each table individually would
@@ -8848,11 +8864,29 @@ add_filter( 'the_content', function ( $content ) {
         ? sp_get_login_page_url()
         : wp_login_url( get_permalink() );
 
-    return '<div style="text-align:center; padding:60px 20px; max-width:500px; margin:0 auto;">'
-         . '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:#767676; margin-bottom:16px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
-         . '<h2 style="margin:0 0 12px; font-size:1.4em;">' . esc_html__( 'Members Only', 'societypress' ) . '</h2>'
-         . '<p style="color:#666; margin:0 0 24px;">' . esc_html__( 'This page is available to members only. Please log in to view this content.', 'societypress' ) . '</p>'
-         . '<a href="' . esc_url( $login_url ) . '" style="display:inline-block; padding:10px 28px; background:var(--sp-color-primary, #0D1F3C); color:#fff; text-decoration:none; border-radius:4px; font-weight:600;">' . esc_html__( 'Log In', 'societypress' ) . '</a>'
+    // WHY style block: Page-builder content can render this gate before our
+    // theme stylesheet has loaded the rule for it; inline-once gives us the
+    // guarantee. Static CSS — no inline style attributes on individual
+    // elements.
+    static $sp_gate_css_emitted = false;
+    $css = '';
+    if ( ! $sp_gate_css_emitted ) {
+        $sp_gate_css_emitted = true;
+        $css = '<style id="sp-members-only-gate-css">'
+             . '.sp-members-only-gate { text-align: center; padding: 60px 20px; max-width: 500px; margin: 0 auto; }'
+             . '.sp-members-only-gate__icon { color: #767676; margin-bottom: 16px; }'
+             . '.sp-members-only-gate__title { margin: 0 0 12px; font-size: 1.4em; }'
+             . '.sp-members-only-gate__text { color: #767676; margin: 0 0 24px; }'
+             . '.sp-members-only-gate__cta { display: inline-block; padding: 10px 28px; background: var(--sp-color-primary, #0D1F3C); color: #fff; text-decoration: none; border-radius: 4px; font-weight: 600; }'
+             . '</style>';
+    }
+
+    return $css
+         . '<div class="sp-members-only-gate">'
+         . '<svg class="sp-members-only-gate__icon" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
+         . '<h2 class="sp-members-only-gate__title">' . esc_html__( 'Members Only', 'societypress' ) . '</h2>'
+         . '<p class="sp-members-only-gate__text">' . esc_html__( 'This page is available to members only. Please log in to view this content.', 'societypress' ) . '</p>'
+         . '<a class="sp-members-only-gate__cta" href="' . esc_url( $login_url ) . '">' . esc_html__( 'Log In', 'societypress' ) . '</a>'
          . '</div>';
 }, 1 );
 
@@ -12994,15 +13028,29 @@ function sp_render_members_page(): void {
         </script>
 
         <!-- Delete All Others: AJAX progress overlay -->
-        <div id="sp-delete-overlay" style="display:none; position:fixed; inset:0; background:rgba(255,255,255,0.92); z-index:999999; justify-content:center; align-items:center;">
-            <div style="text-align:center; padding:40px;">
-                <div id="sp-delete-spinner" style="display:inline-block; width:40px; height:40px; border:4px solid #c3c4c7; border-top-color:#d63638; border-radius:50%; animation:sp-spin 0.8s linear infinite;"></div>
-                <h2 id="sp-delete-title" style="margin-top:20px; font-size:18px; color:#1d2327;"><?php esc_html_e( 'Deleting Members...', 'societypress' ); ?></h2>
-                <div style="width:100%; max-width:400px; height:20px; background:#dcdcde; border-radius:10px; margin:20px auto 0; overflow:hidden;">
-                    <div id="sp-delete-progress" style="height:100%; width:0; background:#d63638; border-radius:10px; transition:width 0.3s ease;"></div>
+        <style id="sp-delete-overlay-css">
+            .sp-delete-overlay { display: none; position: fixed; inset: 0; background: rgba(255,255,255,0.92); z-index: 999999; justify-content: center; align-items: center; }
+            .sp-delete-overlay--active { display: flex; }
+            .sp-delete-overlay__inner { text-align: center; padding: 40px; }
+            .sp-delete-overlay__spinner { display: inline-block; width: 40px; height: 40px; border: 4px solid #c3c4c7; border-top-color: #d63638; border-radius: 50%; animation: sp-spin 0.8s linear infinite; }
+            .sp-delete-overlay__title { margin-top: 20px; font-size: 18px; color: #1d2327; }
+            .sp-delete-overlay__bar { width: 100%; max-width: 400px; height: 20px; background: #dcdcde; border-radius: 10px; margin: 20px auto 0; overflow: hidden; }
+            /* WHY width is set inline on the progress fill: it's the only
+             * piece that must update dynamically from JS (per-batch progress).
+             * All other style is static CSS. */
+            .sp-delete-overlay__fill { height: 100%; width: 0; background: #d63638; border-radius: 10px; transition: width 0.3s ease; }
+            .sp-delete-overlay__count, .sp-delete-overlay__msg { margin-top: 12px; font-size: 14px; color: #50575e; }
+            .sp-delete-overlay__msg { margin-top: 8px; }
+        </style>
+        <div id="sp-delete-overlay" class="sp-delete-overlay">
+            <div class="sp-delete-overlay__inner">
+                <div id="sp-delete-spinner" class="sp-delete-overlay__spinner"></div>
+                <h2 id="sp-delete-title" class="sp-delete-overlay__title"><?php esc_html_e( 'Deleting Members...', 'societypress' ); ?></h2>
+                <div class="sp-delete-overlay__bar">
+                    <div id="sp-delete-progress" class="sp-delete-overlay__fill" style="width:0;"></div>
                 </div>
-                <p id="sp-delete-count" style="margin-top:12px; font-size:14px; color:#50575e;" role="status" aria-live="polite"></p>
-                <p id="sp-delete-message" style="color:#50575e; margin-top:8px; font-size:14px;" role="alert" aria-live="assertive"><?php esc_html_e( 'Please do not close or refresh this page.', 'societypress' ); ?></p>
+                <p id="sp-delete-count" class="sp-delete-overlay__count" role="status" aria-live="polite"></p>
+                <p id="sp-delete-message" class="sp-delete-overlay__msg" role="alert" aria-live="assertive"><?php esc_html_e( 'Please do not close or refresh this page.', 'societypress' ); ?></p>
             </div>
         </div>
 
@@ -13639,11 +13687,24 @@ add_action( 'admin_init', function () {
  *   7. Admin Notes   — timestamped notes with author attribution
  *   8. Payment History — full payment ledger with add-new form
  */
-function sp_render_member_edit_page(): void {
+/**
+ * Load all context the member-edit screen needs to render.
+ *
+ * WHY split: sp_render_member_edit_page() was a single function mixing
+ *      ~95 lines of data prep with ~1600 lines of markup. Extracting the
+ *      data-prep half into a dedicated context loader makes the renderer
+ *      read top-to-bottom as pure presentation, and lets future helpers
+ *      (e.g. an AJAX endpoint or a CLI exporter) reuse the same context
+ *      without duplicating the SELECTs.
+ *
+ * Returns an associative array with all the variables the render function
+ * needs, OR null if the requested user isn't a member (in which case the
+ * caller should print a "not found" notice and stop).
+ */
+function sp_member_edit_load_context(): ?array {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
-    // Are we editing an existing member or adding a new one?
     $user_id = absint( $_GET['user_id'] ?? 0 );
     $is_edit = (bool) $user_id;
 
@@ -13655,7 +13716,6 @@ function sp_render_member_edit_page(): void {
     //      a completely different email than their WP admin account.
     $link_to_self = ! $is_edit && isset( $_GET['self'] ) && $_GET['self'] === '1';
 
-    // Load existing data if editing
     $member   = null;
     $wp_user  = null;
     $surnames = [];
@@ -13671,9 +13731,9 @@ function sp_render_member_edit_page(): void {
         $member = sp_member_decrypt_row( $member );
 
         if ( ! $member ) {
-            echo '<div class="wrap"><h1>' . esc_html__( 'Member not found.', 'societypress' ) . '</h1>'
-               . '<p><a href="' . esc_url( admin_url( 'admin.php?page=sp-members' ) ) . '">&larr; ' . esc_html__( 'Back to Members', 'societypress' ) . '</a></p></div>';
-            return;
+            // Caller will print a "not found" notice. Returning null is the
+            // signal to abort rendering.
+            return null;
         }
 
         $wp_user = get_userdata( $user_id );
@@ -13696,8 +13756,8 @@ function sp_render_member_edit_page(): void {
 
     // Load photo for display — same fallback chain as My Account:
     // sp_members.photo_url → wp_usermeta.sp_profile_photo_url → Gravatar
-    $admin_photo_url   = '';
-    $has_custom_photo   = false;
+    $admin_photo_url  = '';
+    $has_custom_photo = false;
     if ( $is_edit && $member ) {
         if ( ! empty( $member->photo_url ) ) {
             $admin_photo_url  = $member->photo_url;
@@ -13714,12 +13774,10 @@ function sp_render_member_edit_page(): void {
         $admin_photo_url = get_avatar_url( $user_id, [ 'size' => 120 ] );
     }
 
-    // Load available tiers for the dropdown
     $tiers = $wpdb->get_results(
         "SELECT id, name FROM {$prefix}membership_tiers WHERE active = 1 ORDER BY sort_order"
     );
 
-    // Show error if one was stored
     $error = get_transient( 'sp_member_error' );
     if ( $error ) {
         delete_transient( 'sp_member_error' );
@@ -13736,6 +13794,42 @@ function sp_render_member_edit_page(): void {
     } else {
         $page_title = __( 'Add New Member', 'societypress' );
     }
+
+    return compact(
+        'user_id', 'is_edit', 'link_to_self',
+        'member', 'wp_user', 'surnames', 'notes', 'payments',
+        'admin_photo_url', 'has_custom_photo',
+        'tiers', 'error', 'page_title'
+    );
+}
+
+
+function sp_render_member_edit_page(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $ctx = sp_member_edit_load_context();
+    if ( $ctx === null ) {
+        echo '<div class="wrap"><h1>' . esc_html__( 'Member not found.', 'societypress' ) . '</h1>'
+           . '<p><a href="' . esc_url( admin_url( 'admin.php?page=sp-members' ) ) . '">&larr; ' . esc_html__( 'Back to Members', 'societypress' ) . '</a></p></div>';
+        return;
+    }
+
+    // Unpack the context into local variables for the rest of the renderer.
+    // The renderer is pre-existing markup that reads from these names.
+    $user_id          = $ctx['user_id'];
+    $is_edit          = $ctx['is_edit'];
+    $link_to_self     = $ctx['link_to_self'];
+    $member           = $ctx['member'];
+    $wp_user          = $ctx['wp_user'];
+    $surnames         = $ctx['surnames'];
+    $notes            = $ctx['notes'];
+    $payments         = $ctx['payments'];
+    $admin_photo_url  = $ctx['admin_photo_url'];
+    $has_custom_photo = $ctx['has_custom_photo'];
+    $tiers            = $ctx['tiers'];
+    $error            = $ctx['error'];
+    $page_title       = $ctx['page_title'];
 
     ?>
     <div class="wrap">
@@ -14887,12 +14981,14 @@ function sp_render_member_edit_page(): void {
 
                             // Update labels to match the selected country
                             if (stateLabel) {
-                                if (country === "US") stateLabel.textContent = "State";
-                                else if (country === "CA") stateLabel.textContent = "Province";
-                                else stateLabel.textContent = "State / Province";
+                                if (country === "US") stateLabel.textContent = <?php echo wp_json_encode( __( 'State', 'societypress' ) ); ?>;
+                                else if (country === "CA") stateLabel.textContent = <?php echo wp_json_encode( __( 'Province', 'societypress' ) ); ?>;
+                                else stateLabel.textContent = <?php echo wp_json_encode( __( 'State / Province', 'societypress' ) ); ?>;
                             }
                             if (postalLabel) {
-                                postalLabel.textContent = (country === "US") ? "ZIP Code" : "Postal Code";
+                                postalLabel.textContent = (country === "US")
+                                    ? <?php echo wp_json_encode( __( 'ZIP Code', 'societypress' ) ); ?>
+                                    : <?php echo wp_json_encode( __( 'Postal Code', 'societypress' ) ); ?>;
                             }
                         }
 
@@ -15394,19 +15490,26 @@ function sp_render_placeholder_page(): void {
     ];
 
     ?>
+    <style id="sp-coming-soon-css">
+        .sp-coming-soon-card { max-width: 600px; padding: 30px; margin-top: 20px; }
+        .sp-coming-soon-row { display: flex; align-items: flex-start; gap: 16px; }
+        .sp-coming-soon-icon { font-size: 36px; width: 36px; height: 36px; color: #2271b1; }
+        .sp-coming-soon-title { margin: 0 0 8px; }
+        .sp-coming-soon-desc { margin: 0; color: #50575e; font-size: 14px; line-height: 1.6; }
+        .sp-coming-soon-note { margin: 16px 0 0; color: #787c82; font-size: 13px; }
+    </style>
     <div class="wrap">
         <h1><?php echo esc_html( $section['title'] ); ?></h1>
 
-        <div class="card" style="max-width: 600px; padding: 30px; margin-top: 20px;">
-            <div style="display: flex; align-items: flex-start; gap: 16px;">
-                <span class="dashicons <?php echo esc_attr( $section['icon'] ); ?>"
-                      style="font-size: 36px; width: 36px; height: 36px; color: #2271b1;"></span>
+        <div class="card sp-coming-soon-card">
+            <div class="sp-coming-soon-row">
+                <span class="dashicons <?php echo esc_attr( $section['icon'] ); ?> sp-coming-soon-icon"></span>
                 <div>
-                    <h2 style="margin: 0 0 8px 0;"><?php esc_html_e( 'Coming Soon', 'societypress' ); ?></h2>
-                    <p style="margin: 0; color: #50575e; font-size: 14px; line-height: 1.6;">
+                    <h2 class="sp-coming-soon-title"><?php esc_html_e( 'Coming Soon', 'societypress' ); ?></h2>
+                    <p class="sp-coming-soon-desc">
                         <?php echo esc_html( $section['desc'] ); ?>
                     </p>
-                    <p style="margin: 16px 0 0 0; color: #787c82; font-size: 13px;">
+                    <p class="sp-coming-soon-note">
                         <?php esc_html_e( 'This feature is being built. It will appear here in a future update.', 'societypress' ); ?>
                     </p>
                 </div>
@@ -18269,7 +18372,13 @@ function sp_render_import_page(): void {
                     </script>
 
                     <!-- Data preview -->
-                    <h3 class="sp-import-preview-heading">Data Preview (first <?php echo count( $preview['sample_rows'] ); ?> rows)</h3>
+                    <h3 class="sp-import-preview-heading"><?php
+                        printf(
+                            /* translators: %d: number of sample rows shown */
+                            esc_html__( 'Data Preview (first %d rows)', 'societypress' ),
+                            count( $preview['sample_rows'] )
+                        );
+                    ?></h3>
                     <div class="sp-import-preview-scroll">
                         <table class="widefat striped sp-import-preview-table">
                             <thead>
@@ -18316,7 +18425,7 @@ function sp_render_import_page(): void {
                                 <?php esc_html_e( 'This will create login accounts for each member (no welcome emails are sent). Duplicates are automatically skipped.', 'societypress' ); ?>
                             </p>
 
-                            <?php submit_button( 'Run Import', 'primary', 'sp_import_submit', false ); ?>
+                            <?php submit_button( __( 'Run Import', 'societypress' ), 'primary', 'sp_import_submit', false ); ?>
                             <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-import' ) ); ?>"
                                class="button sp-import-cancel-btn"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
                     </div>
@@ -18388,7 +18497,7 @@ function sp_render_import_page(): void {
                         </div>
 
                         <p class="sp-import-submit-wrap">
-                            <?php submit_button( 'Upload &amp; Preview', 'primary', 'sp_import_submit', false ); ?>
+                            <?php submit_button( __( 'Upload & Preview', 'societypress' ), 'primary', 'sp_import_submit', false ); ?>
                         </p>
                     </form>
                 </div>
@@ -19159,7 +19268,7 @@ function sp_render_export_page(): void {
             <!-- ============================================================ -->
 
             <p>
-                <?php submit_button( 'Download CSV', 'primary', 'sp_export_submit', false ); ?>
+                <?php submit_button( __( 'Download CSV', 'societypress' ), 'primary', 'sp_export_submit', false ); ?>
             </p>
 
         </form>
@@ -22350,7 +22459,7 @@ function sp_breadcrumbs( bool $echo = true ): string {
     }
 
     // Build HTML
-    $html = '<nav class="sp-breadcrumbs" aria-label="Breadcrumb">';
+    $html = '<nav class="sp-breadcrumbs" aria-label="' . esc_attr__( 'Breadcrumb', 'societypress' ) . '">';
     $html .= '<ol class="sp-breadcrumb-list">';
 
     $last = count( $crumbs ) - 1;
@@ -22631,7 +22740,7 @@ function sp_render_group_edit_page(): void {
                 </tr>
                 <tr>
                     <th><label for="sp-g-meeting"><?php esc_html_e( 'Meeting Info', 'societypress' ); ?></label></th>
-                    <td><input type="text" name="meeting_info" id="sp-g-meeting" value="<?php echo esc_attr( $group->meeting_info ?? '' ); ?>" class="sp-full-width" placeholder="e.g., 2nd Tuesday at 2 PM"></td>
+                    <td><input type="text" name="meeting_info" id="sp-g-meeting" value="<?php echo esc_attr( $group->meeting_info ?? '' ); ?>" class="sp-full-width" placeholder="<?php echo esc_attr__( 'e.g., 2nd Tuesday at 2 PM', 'societypress' ); ?>"></td>
                 </tr>
                 <tr>
                     <th><label for="sp-g-status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
@@ -23347,7 +23456,7 @@ function sp_render_page_edit(): void {
                     <th scope="row"><label for="page_type"><?php esc_html_e( 'Page Type', 'societypress' ); ?></label></th>
                     <td>
                         <select id="page_type" name="page_type" style="min-width: 250px;">
-                            <option value="" <?php selected( $template, '' ); ?>>Standard Page</option>
+                            <option value="" <?php selected( $template, '' ); ?>><?php esc_html_e( 'Standard Page', 'societypress' ); ?></option>
                             <?php foreach ( $page_types as $slug => $label ) : ?>
                                 <option value="<?php echo esc_attr( $slug ); ?>"
                                     <?php selected( $template, $slug ); ?>>
@@ -27865,7 +27974,7 @@ function sp_render_settings_design_page(): void {
                  setting up his society's identity. -->
             <div class="sp-design-section">
                 <h2 class="sp-design-section-heading"><?php esc_html_e( 'Logo', 'societypress' ); ?></h2>
-                <p class="description sp-design-section-desc">Upload your society's logo. It appears in the site header next to your society name.</p>
+                <p class="description sp-design-section-desc"><?php esc_html_e( "Upload your society's logo. It appears in the site header next to your society name.", 'societypress' ); ?></p>
 
                 <table class="form-table" role="presentation">
                     <tr>
@@ -28050,7 +28159,7 @@ function sp_render_settings_design_page(): void {
             <!-- ---- COLORS SECTION ---- -->
             <div class="sp-design-section">
                 <h2 class="sp-design-section-heading"><?php esc_html_e( 'Colors', 'societypress' ); ?></h2>
-                <p class="description sp-design-section-desc">Choose the colors for your website. Changes appear in the preview below.</p>
+                <p class="description sp-design-section-desc"><?php esc_html_e( 'Choose the colors for your website. Changes appear in the preview below.', 'societypress' ); ?></p>
 
                 <table class="form-table" role="presentation">
                     <tr>
@@ -28124,7 +28233,7 @@ function sp_render_settings_design_page(): void {
             <!-- ---- TYPOGRAPHY SECTION ---- -->
             <div class="sp-design-section">
                 <h2 class="sp-design-section-heading"><?php esc_html_e( 'Typography', 'societypress' ); ?></h2>
-                <p class="description sp-design-section-desc">Choose fonts and text sizes for your website.</p>
+                <p class="description sp-design-section-desc"><?php esc_html_e( 'Choose fonts and text sizes for your website.', 'societypress' ); ?></p>
 
                 <table class="form-table" role="presentation">
                     <tr>
@@ -28243,7 +28352,7 @@ function sp_render_settings_design_page(): void {
                  let him check how things look on different screen sizes. -->
             <div class="sp-design-section--preview">
                 <h2 class="sp-design-section-heading"><?php esc_html_e( 'Live Preview', 'societypress' ); ?></h2>
-                <p class="description sp-design-section-desc--sm">See how your changes look before saving. The preview updates as you make changes above.</p>
+                <p class="description sp-design-section-desc--sm"><?php esc_html_e( 'See how your changes look before saving. The preview updates as you make changes above.', 'societypress' ); ?></p>
 
                 <!-- Device width toggle buttons -->
                 <div class="sp-design-device-bar">
@@ -28303,8 +28412,8 @@ function sp_render_settings_design_page(): void {
                     }
 
                     logoFrame = wp.media({
-                        title:    'Select Logo',
-                        button:   { text: 'Use as Logo' },
+                        title:    <?php echo wp_json_encode( __( 'Select Logo', 'societypress' ) ); ?>,
+                        button:   { text: <?php echo wp_json_encode( __( 'Use as Logo', 'societypress' ) ); ?> },
                         multiple: false
                     });
 
@@ -32510,42 +32619,42 @@ function sp_builder_fields_hero_slider( $index, array $settings ): void {
 
     <div class="sp-slider-settings">
         <p>
-            <label><strong>Slider Height (px)</strong></label><br>
+            <label><strong><?php esc_html_e( 'Slider Height (px)', 'societypress' ); ?></strong></label><br>
             <input type="number" name="<?php echo $name; ?>[height]" value="<?php echo esc_attr( $height ); ?>" min="200" max="800" step="50" class="sp-hero-fields-input-height">
         </p>
         <p>
             <label>
                 <input type="checkbox" name="<?php echo $name; ?>[autoplay]" value="1" <?php checked( $autoplay, 1 ); ?>>
-                Auto-advance slides
+                <?php esc_html_e( 'Auto-advance slides', 'societypress' ); ?>
             </label>
-            &nbsp; every
-            <input type="number" name="<?php echo $name; ?>[interval]" value="<?php echo esc_attr( $interval ); ?>" min="2" max="15" class="sp-hero-fields-input-interval"> seconds
+            &nbsp; <?php esc_html_e( 'every', 'societypress' ); ?>
+            <input type="number" name="<?php echo $name; ?>[interval]" value="<?php echo esc_attr( $interval ); ?>" min="2" max="15" class="sp-hero-fields-input-interval"> <?php esc_html_e( 'seconds', 'societypress' ); ?>
         </p>
         <p>
             <label>
                 <input type="checkbox" name="<?php echo $name; ?>[overlay]" value="1" <?php checked( $overlay, 1 ); ?>>
-                Dark overlay on images (improves text readability)
+                <?php esc_html_e( 'Dark overlay on images (improves text readability)', 'societypress' ); ?>
             </label>
         </p>
 
-        <h4 class="sp-hero-fields-slides-heading">Slides</h4>
+        <h4 class="sp-hero-fields-slides-heading"><?php esc_html_e( 'Slides', 'societypress' ); ?></h4>
         <div class="sp-slider-slides" data-name="<?php echo esc_attr( $name ); ?>">
             <?php if ( ! empty( $slides ) ) : ?>
                 <?php foreach ( $slides as $si => $slide ) : ?>
                     <div class="sp-slider-slide-row sp-hero-fields-slide-card">
                         <p>
-                            <label><strong>Image or Video URL</strong></label><br>
+                            <label><strong><?php esc_html_e( 'Image or Video URL', 'societypress' ); ?></strong></label><br>
                             <input type="text" name="<?php echo $name; ?>[slides][<?php echo $si; ?>][image]"
                                    value="<?php echo esc_attr( $slide['image'] ?? '' ); ?>" class="sp-hero-fields-input-full"
-                                   placeholder="Paste image URL or use Media Library">
-                            <button type="button" class="button sp-media-select sp-hero-fields-btn-media">Choose Image</button>
+                                   placeholder="<?php echo esc_attr__( 'Paste image URL or use Media Library', 'societypress' ); ?>">
+                            <button type="button" class="button sp-media-select sp-hero-fields-btn-media"><?php esc_html_e( 'Choose Image', 'societypress' ); ?></button>
                         </p>
                         <!-- WHY: Per-line repeater replaces the old single textarea so each
                              line of overlay text can have its own size, weight, and color.
                              This lets Harold style slides differently — white text on dark
                              video, dark text on light images, accent-colored emphasis, etc. -->
                         <div class="sp-hero-fields-lines-wrap">
-                            <label><strong>Overlay Text Lines</strong></label>
+                            <label><strong><?php esc_html_e( 'Overlay Text Lines', 'societypress' ); ?></strong></label>
                             <div class="sp-slider-lines" data-name="<?php echo esc_attr( $name ); ?>[slides][<?php echo $si; ?>]">
                                 <?php
                                 $lines = $slide['lines'] ?? [];
@@ -32554,20 +32663,20 @@ function sp_builder_fields_hero_slider( $index, array $settings ): void {
                                 ?>
                                     <div class="sp-slider-line-row sp-hero-fields-line-row">
                                         <input type="text" name="<?php echo $name; ?>[slides][<?php echo $si; ?>][lines][<?php echo $li; ?>][text]"
-                                               value="<?php echo esc_attr( $line['text'] ?? '' ); ?>" class="sp-hero-fields-input-line-text" placeholder="Line text">
+                                               value="<?php echo esc_attr( $line['text'] ?? '' ); ?>" class="sp-hero-fields-input-line-text" placeholder="<?php echo esc_attr__( 'Line text', 'societypress' ); ?>">
                                         <select name="<?php echo $name; ?>[slides][<?php echo $si; ?>][lines][<?php echo $li; ?>][size]" class="sp-hero-fields-select-size">
-                                            <option value="small" <?php selected( $line['size'] ?? 'medium', 'small' ); ?>>Small</option>
+                                            <option value="small" <?php selected( $line['size'] ?? 'medium', 'small' ); ?>><?php esc_html_e( 'Small', 'societypress' ); ?></option>
                                             <option value="medium" <?php selected( $line['size'] ?? 'medium', 'medium' ); ?>><?php esc_html_e( 'Medium', 'societypress' ); ?></option>
                                             <option value="large" <?php selected( $line['size'] ?? 'medium', 'large' ); ?>><?php esc_html_e( 'Large', 'societypress' ); ?></option>
                                         </select>
                                         <select name="<?php echo $name; ?>[slides][<?php echo $si; ?>][lines][<?php echo $li; ?>][weight]" class="sp-hero-fields-select-weight">
-                                            <option value="light" <?php selected( $line['weight'] ?? 'light', 'light' ); ?>>Light</option>
-                                            <option value="bold" <?php selected( $line['weight'] ?? 'light', 'bold' ); ?>>Bold</option>
+                                            <option value="light" <?php selected( $line['weight'] ?? 'light', 'light' ); ?>><?php esc_html_e( 'Light', 'societypress' ); ?></option>
+                                            <option value="bold" <?php selected( $line['weight'] ?? 'light', 'bold' ); ?>><?php esc_html_e( 'Bold', 'societypress' ); ?></option>
                                         </select>
                                         <select name="<?php echo $name; ?>[slides][<?php echo $si; ?>][lines][<?php echo $li; ?>][color]" class="sp-hero-fields-select-color">
-                                            <option value="white" <?php selected( $line['color'] ?? 'white', 'white' ); ?>>White</option>
-                                            <option value="dark" <?php selected( $line['color'] ?? 'white', 'dark' ); ?>>Dark</option>
-                                            <option value="accent" <?php selected( $line['color'] ?? 'white', 'accent' ); ?>>Accent</option>
+                                            <option value="white" <?php selected( $line['color'] ?? 'white', 'white' ); ?>><?php esc_html_e( 'White', 'societypress' ); ?></option>
+                                            <option value="dark" <?php selected( $line['color'] ?? 'white', 'dark' ); ?>><?php esc_html_e( 'Dark', 'societypress' ); ?></option>
+                                            <option value="accent" <?php selected( $line['color'] ?? 'white', 'accent' ); ?>><?php esc_html_e( 'Accent', 'societypress' ); ?></option>
                                         </select>
                                         <button type="button" class="button sp-slider-remove-line sp-hero-fields-btn-danger" title="<?php esc_attr_e( 'Remove line', 'societypress' ); ?>">&times;</button>
                                     </div>
@@ -32576,45 +32685,45 @@ function sp_builder_fields_hero_slider( $index, array $settings ): void {
                                 endif;
                                 ?>
                             </div>
-                            <button type="button" class="button sp-slider-add-line sp-hero-fields-btn-add-line">+ Add Line</button>
+                            <button type="button" class="button sp-slider-add-line sp-hero-fields-btn-add-line"><?php esc_html_e( '+ Add Line', 'societypress' ); ?></button>
                         </div>
                         <p>
-                            <label><strong>Button Text</strong></label><br>
+                            <label><strong><?php esc_html_e( 'Button Text', 'societypress' ); ?></strong></label><br>
                             <input type="text" name="<?php echo $name; ?>[slides][<?php echo $si; ?>][btn_text]"
-                                   value="<?php echo esc_attr( $slide['btn_text'] ?? '' ); ?>" class="sp-hero-fields-input-half" placeholder="e.g., Learn More">
+                                   value="<?php echo esc_attr( $slide['btn_text'] ?? '' ); ?>" class="sp-hero-fields-input-half" placeholder="<?php echo esc_attr__( 'e.g., Learn More', 'societypress' ); ?>">
                             <input type="text" name="<?php echo $name; ?>[slides][<?php echo $si; ?>][btn_url]"
-                                   value="<?php echo esc_attr( $slide['btn_url'] ?? '' ); ?>" class="sp-hero-fields-input-half" placeholder="Button URL">
+                                   value="<?php echo esc_attr( $slide['btn_url'] ?? '' ); ?>" class="sp-hero-fields-input-half" placeholder="<?php echo esc_attr__( 'Button URL', 'societypress' ); ?>">
                         </p>
-                        <button type="button" class="button sp-slider-remove-slide sp-hero-fields-btn-danger">Remove Slide</button>
+                        <button type="button" class="button sp-slider-remove-slide sp-hero-fields-btn-danger"><?php esc_html_e( 'Remove Slide', 'societypress' ); ?></button>
                     </div>
                 <?php endforeach; ?>
             <?php endif; ?>
         </div>
-        <button type="button" class="button sp-slider-add-slide">+ Add Slide</button>
+        <button type="button" class="button sp-slider-add-slide"><?php esc_html_e( '+ Add Slide', 'societypress' ); ?></button>
 
         <template class="sp-slider-slide-template">
             <div class="sp-slider-slide-row sp-hero-fields-slide-card">
                 <p>
-                    <label><strong>Image or Video URL</strong></label><br>
-                    <input type="text" data-field="image" value="" class="sp-hero-fields-input-full" placeholder="Paste image URL or use Media Library">
-                    <button type="button" class="button sp-media-select sp-hero-fields-btn-media">Choose Image</button>
+                    <label><strong><?php esc_html_e( 'Image or Video URL', 'societypress' ); ?></strong></label><br>
+                    <input type="text" data-field="image" value="" class="sp-hero-fields-input-full" placeholder="<?php echo esc_attr__( 'Paste image URL or use Media Library', 'societypress' ); ?>">
+                    <button type="button" class="button sp-media-select sp-hero-fields-btn-media"><?php esc_html_e( 'Choose Image', 'societypress' ); ?></button>
                 </p>
                 <!-- WHY: Lines repeater in the template starts empty — Harold adds
                      lines after creating the slide. The data-field-group attribute
                      tells the JS to set name prefixes on child inputs when cloning. -->
                 <div class="sp-hero-fields-lines-wrap">
-                    <label><strong>Overlay Text Lines</strong></label>
+                    <label><strong><?php esc_html_e( 'Overlay Text Lines', 'societypress' ); ?></strong></label>
                     <div class="sp-slider-lines" data-field-group="lines">
                         <!-- Lines added dynamically via Add Line button -->
                     </div>
-                    <button type="button" class="button sp-slider-add-line sp-hero-fields-btn-add-line">+ Add Line</button>
+                    <button type="button" class="button sp-slider-add-line sp-hero-fields-btn-add-line"><?php esc_html_e( '+ Add Line', 'societypress' ); ?></button>
                 </div>
                 <p>
-                    <label><strong>Button Text</strong></label><br>
-                    <input type="text" data-field="btn_text" value="" class="sp-hero-fields-input-half" placeholder="e.g., Learn More">
-                    <input type="text" data-field="btn_url" value="" class="sp-hero-fields-input-half" placeholder="Button URL">
+                    <label><strong><?php esc_html_e( 'Button Text', 'societypress' ); ?></strong></label><br>
+                    <input type="text" data-field="btn_text" value="" class="sp-hero-fields-input-half" placeholder="<?php echo esc_attr__( 'e.g., Learn More', 'societypress' ); ?>">
+                    <input type="text" data-field="btn_url" value="" class="sp-hero-fields-input-half" placeholder="<?php echo esc_attr__( 'Button URL', 'societypress' ); ?>">
                 </p>
-                <button type="button" class="button sp-slider-remove-slide sp-hero-fields-btn-danger">Remove Slide</button>
+                <button type="button" class="button sp-slider-remove-slide sp-hero-fields-btn-danger"><?php esc_html_e( 'Remove Slide', 'societypress' ); ?></button>
             </div>
         </template>
 
@@ -32624,20 +32733,20 @@ function sp_builder_fields_hero_slider( $index, array $settings ): void {
              the browser doesn't nest <template> tags (some browsers choke). -->
         <template class="sp-slider-line-template">
             <div class="sp-slider-line-row sp-hero-fields-line-row">
-                <input type="text" data-line-field="text" value="" class="sp-hero-fields-input-line-text" placeholder="Line text">
+                <input type="text" data-line-field="text" value="" class="sp-hero-fields-input-line-text" placeholder="<?php echo esc_attr__( 'Line text', 'societypress' ); ?>">
                 <select data-line-field="size" class="sp-hero-fields-select-size">
-                    <option value="small">Small</option>
-                    <option value="medium" selected>Medium</option>
-                    <option value="large">Large</option>
+                    <option value="small"><?php esc_html_e( 'Small', 'societypress' ); ?></option>
+                    <option value="medium" selected><?php esc_html_e( 'Medium', 'societypress' ); ?></option>
+                    <option value="large"><?php esc_html_e( 'Large', 'societypress' ); ?></option>
                 </select>
                 <select data-line-field="weight" class="sp-hero-fields-select-weight">
-                    <option value="light" selected>Light</option>
-                    <option value="bold">Bold</option>
+                    <option value="light" selected><?php esc_html_e( 'Light', 'societypress' ); ?></option>
+                    <option value="bold"><?php esc_html_e( 'Bold', 'societypress' ); ?></option>
                 </select>
                 <select data-line-field="color" class="sp-hero-fields-select-color">
-                    <option value="white" selected>White</option>
-                    <option value="dark">Dark</option>
-                    <option value="accent">Accent</option>
+                    <option value="white" selected><?php esc_html_e( 'White', 'societypress' ); ?></option>
+                    <option value="dark"><?php esc_html_e( 'Dark', 'societypress' ); ?></option>
+                    <option value="accent"><?php esc_html_e( 'Accent', 'societypress' ); ?></option>
                 </select>
                 <button type="button" class="button sp-slider-remove-line sp-hero-fields-btn-danger" title="<?php esc_attr_e( 'Remove line', 'societypress' ); ?>">&times;</button>
             </div>
@@ -33325,7 +33434,12 @@ add_action( 'admin_footer', function () {
                 e.preventDefault();
                 var field = selectBtn.closest('.sp-builder-image-field');
                 if (!field) return;
-                var frame = wp.media({ title: 'Select Image', button: { text: 'Use This Image' }, multiple: false, library: { type: 'image' } });
+                var frame = wp.media({
+                    title: <?php echo wp_json_encode( __( 'Select Image', 'societypress' ) ); ?>,
+                    button: { text: <?php echo wp_json_encode( __( 'Use This Image', 'societypress' ) ); ?> },
+                    multiple: false,
+                    library: { type: 'image' }
+                });
                 frame.on('select', function() {
                     var att = frame.state().get('selection').first().toJSON();
                     var url = att.sizes && att.sizes.medium ? att.sizes.medium.url : att.url;
@@ -33336,7 +33450,7 @@ add_action( 'admin_footer', function () {
                     var preview = field.querySelector('.sp-builder-image-preview');
                     if (preview) preview.style.display = '';
                     var selectText = field.querySelector('.sp-builder-image-select');
-                    if (selectText) selectText.textContent = 'Change Image';
+                    if (selectText) selectText.textContent = <?php echo wp_json_encode( __( 'Change Image', 'societypress' ) ); ?>;
                     var removeBtn = field.querySelector('.sp-builder-image-remove');
                     if (removeBtn) removeBtn.style.display = '';
                 });
@@ -33355,7 +33469,7 @@ add_action( 'admin_footer', function () {
                 var preview = field.querySelector('.sp-builder-image-preview');
                 if (preview) preview.style.display = 'none';
                 var selectText = field.querySelector('.sp-builder-image-select');
-                if (selectText) selectText.textContent = 'Select Image';
+                if (selectText) selectText.textContent = <?php echo wp_json_encode( __( 'Select Image', 'societypress' ) ); ?>;
                 removeImgBtn.style.display = 'none';
             });
         }
@@ -33376,8 +33490,8 @@ add_action( 'admin_footer', function () {
             var textInput = inputEl.querySelector('input[type="text"]');
             if (!textInput) return;
             var frame = wp.media({
-                title: 'Choose Slide Media',
-                button: { text: 'Use This' },
+                title: <?php echo wp_json_encode( __( 'Choose Slide Media', 'societypress' ) ); ?>,
+                button: { text: <?php echo wp_json_encode( __( 'Use This', 'societypress' ) ); ?> },
                 multiple: false,
                 library: { type: ['image', 'video'] }
             });
@@ -34106,18 +34220,18 @@ function sp_render_builder_widget_member_stats( array $s ): void {
     echo '<div class="sp-member-stats-row">';
     echo '<div class="sp-member-stats-card">';
     echo '<div class="sp-member-stats-number">' . number_format( $total ) . '</div>';
-    echo '<div class="sp-member-stats-label">Total Members</div>';
+    echo '<div class="sp-member-stats-label">' . esc_html__( 'Total Members', 'societypress' ) . '</div>';
     echo '</div>';
     echo '<div class="sp-member-stats-card">';
     echo '<div class="sp-member-stats-number">' . number_format( $active ) . '</div>';
-    echo '<div class="sp-member-stats-label">Active Members</div>';
+    echo '<div class="sp-member-stats-label">' . esc_html__( 'Active Members', 'societypress' ) . '</div>';
     echo '</div>';
     echo '</div>';
 
     if ( $show_status_counts ) {
         $statuses = $wpdb->get_results( "SELECT status, COUNT(*) as count FROM {$prefix}members GROUP BY status ORDER BY count DESC" );
         if ( $statuses ) {
-            echo '<h4 class="sp-member-stats-section-head">By Status</h4>';
+            echo '<h4 class="sp-member-stats-section-head">' . esc_html__( 'By Status', 'societypress' ) . '</h4>';
             echo '<ul class="sp-member-stats-list">';
             foreach ( $statuses as $st ) {
                 echo '<li class="sp-member-stats-list-item">';
@@ -34138,7 +34252,7 @@ function sp_render_builder_widget_member_stats( array $s ): void {
              GROUP BY t.id ORDER BY t.sort_order ASC"
         );
         if ( $tiers ) {
-            echo '<h4 class="sp-member-stats-section-head">By Membership Level</h4>';
+            echo '<h4 class="sp-member-stats-section-head">' . esc_html__( 'By Membership Level', 'societypress' ) . '</h4>';
             echo '<ul class="sp-member-stats-list-last">';
             foreach ( $tiers as $t ) {
                 echo '<li class="sp-member-stats-list-item">';
@@ -35984,7 +36098,7 @@ function sp_render_event_edit_page(): void {
         $committees = [];
     }
 
-    $page_title = $event ? 'Edit Event' : 'Add New Event';
+    $page_title = $event ? __( 'Edit Event', 'societypress' ) : __( 'Add New Event', 'societypress' );
 
     // Default values from settings for new events
     $default_visibility   = $settings['events_default_visibility'] ?? 'public';
@@ -35997,7 +36111,7 @@ function sp_render_event_edit_page(): void {
 
         <?php if ( isset( $_GET['duplicated'] ) ) : ?>
             <div class="notice notice-info is-dismissible">
-                <p>Event duplicated. Update the details below and save.</p>
+                <p><?php esc_html_e( 'Event duplicated. Update the details below and save.', 'societypress' ); ?></p>
             </div>
         <?php endif; ?>
 
@@ -36238,7 +36352,7 @@ function sp_render_event_edit_page(): void {
                     <td>
                         <input type="url" id="event_virtual_url" name="event_virtual_url"
                                value="<?php echo esc_attr( $val( 'virtual_url' ) ); ?>"
-                               class="large-text" placeholder="https://zoom.us/j/...">
+                               class="large-text" placeholder="<?php echo esc_attr__( 'https://zoom.us/j/...', 'societypress' ); ?>">
                     </td>
                 </tr>
 
@@ -36364,7 +36478,7 @@ function sp_render_event_edit_page(): void {
                     <td>
                         <input type="text" id="event_price_description" name="event_price_description"
                                value="<?php echo esc_attr( $val( 'price_description' ) ); ?>"
-                               class="regular-text" placeholder="e.g., Includes materials and lunch">
+                               class="regular-text" placeholder="<?php echo esc_attr__( 'e.g., Includes materials and lunch', 'societypress' ); ?>">
                     </td>
                 </tr>
 
@@ -36425,10 +36539,10 @@ function sp_render_event_edit_page(): void {
                                         Label
                                         <input type="text" name="event_slots[<?php echo $si; ?>][description]"
                                                value="<?php echo esc_attr( $slot->description ?? '' ); ?>"
-                                               class="sp-event-edit-slot-description" placeholder="e.g., Session A">
+                                               class="sp-event-edit-slot-description" placeholder="<?php echo esc_attr__( 'e.g., Session A', 'societypress' ); ?>">
                                     </label>
                                     <?php if ( $slot->is_active ) : ?>
-                                        <button type="button" class="button sp-remove-slot sp-event-edit-remove-btn" title="Remove this slot">&times;</button>
+                                        <button type="button" class="button sp-remove-slot sp-event-edit-remove-btn" title="<?php echo esc_attr__( 'Remove this slot', 'societypress' ); ?>">&times;</button>
                                     <?php else : ?>
                                         <span class="sp-event-edit-slot-inactive"><?php esc_html_e( 'Inactive', 'societypress' ); ?></span>
                                     <?php endif; ?>
@@ -36459,9 +36573,9 @@ function sp_render_event_edit_page(): void {
                                 </label>
                                 <label class="sp-event-edit-slot-label sp-event-edit-slot-label--flex">
                                     Label
-                                    <input type="text" name="event_slots[__IDX__][description]" class="sp-event-edit-slot-description" placeholder="e.g., Session A">
+                                    <input type="text" name="event_slots[__IDX__][description]" class="sp-event-edit-slot-description" placeholder="<?php echo esc_attr__( 'e.g., Session A', 'societypress' ); ?>">
                                 </label>
-                                <button type="button" class="button sp-remove-slot sp-event-edit-remove-btn" title="Remove this slot">&times;</button>
+                                <button type="button" class="button sp-remove-slot sp-event-edit-remove-btn" title="<?php echo esc_attr__( 'Remove this slot', 'societypress' ); ?>">&times;</button>
                             </div>
                         </template>
                     </td>
@@ -36543,10 +36657,10 @@ function sp_render_event_edit_page(): void {
                                     <?php endforeach; ?>
                                 </select>
                                 <select name="event_speakers[__IDX__][role]" class="sp-event-edit-role-select">
-                                    <option value="speaker">Speaker</option>
-                                    <option value="instructor">Instructor</option>
-                                    <option value="moderator">Moderator</option>
-                                    <option value="panelist">Panelist</option>
+                                    <option value="speaker"><?php esc_html_e( 'Speaker', 'societypress' ); ?></option>
+                                    <option value="instructor"><?php esc_html_e( 'Instructor', 'societypress' ); ?></option>
+                                    <option value="moderator"><?php esc_html_e( 'Moderator', 'societypress' ); ?></option>
+                                    <option value="panelist"><?php esc_html_e( 'Panelist', 'societypress' ); ?></option>
                                 </select>
                                 <button type="button" class="button sp-remove-speaker" title="<?php esc_attr_e( 'Remove', 'societypress' ); ?>">&times;</button>
                             </div>
@@ -36725,7 +36839,7 @@ function sp_render_event_edit_page(): void {
                     <td>
                         <input type="url" id="event_external_url" name="event_external_url"
                                value="<?php echo esc_attr( $val( 'external_url' ) ); ?>"
-                               class="large-text" placeholder="https://example.org/their-event-page">
+                               class="large-text" placeholder="<?php echo esc_attr__( 'https://example.org/their-event-page', 'societypress' ); ?>">
                         <p class="description">
                             <?php esc_html_e( 'If set, this event links to an external website instead of showing a detail page on this site.', 'societypress' ); ?>
                         </p>
@@ -36734,7 +36848,7 @@ function sp_render_event_edit_page(): void {
 
             </table>
 
-            <?php submit_button( $event ? 'Update Event' : 'Create Event' ); ?>
+            <?php submit_button( $event ? __( 'Update Event', 'societypress' ) : __( 'Create Event', 'societypress' ) ); ?>
         </form>
 
         <?php
@@ -37122,8 +37236,8 @@ function sp_render_event_edit_page(): void {
                     }
 
                     frame = wp.media({
-                        title:    'Select Event Image',
-                        button:   { text: 'Use this image' },
+                        title:    <?php echo wp_json_encode( __( 'Select Event Image', 'societypress' ) ); ?>,
+                        button:   { text: <?php echo wp_json_encode( __( 'Use this image', 'societypress' ) ); ?> },
                         multiple: false,
                         library:  { type: 'image' }
                     });
@@ -37135,7 +37249,7 @@ function sp_render_event_edit_page(): void {
                                 ? attachment.sizes.medium.url
                                 : attachment.url;
                         imagePreview.innerHTML = '<img src="' + url + '" style="max-width: 300px; height: auto; border-radius: 4px;">';
-                        imageBtn.textContent = 'Change Image';
+                        imageBtn.textContent = <?php echo wp_json_encode( __( 'Change Image', 'societypress' ) ); ?>;
                         if (imageRemove) imageRemove.style.display = '';
                     });
 
@@ -37147,7 +37261,7 @@ function sp_render_event_edit_page(): void {
                         e.preventDefault();
                         imageInput.value = '';
                         imagePreview.innerHTML = '';
-                        imageBtn.textContent = 'Select Image';
+                        imageBtn.textContent = <?php echo wp_json_encode( __( 'Select Image', 'societypress' ) ); ?>;
                         this.style.display = 'none';
                     });
                 }
@@ -37474,17 +37588,23 @@ function sp_render_event_edit_page(): void {
                 fd.append('event_id', regenBtn.getAttribute('data-event-id'));
                 fd.append('nonce', '<?php echo wp_create_nonce( "sp_recurrence" ); ?>');
 
+                var spRegenI18n = {
+                    /* translators: %d: number of new occurrences created */
+                    createdFmt: <?php echo wp_json_encode( __( '%d new occurrence(s) created.', 'societypress' ) ); ?>,
+                    error:     <?php echo wp_json_encode( __( 'Error generating occurrences.', 'societypress' ) ); ?>,
+                    wrong:     <?php echo wp_json_encode( __( 'Something went wrong.', 'societypress' ) ); ?>
+                };
                 fetch('<?php echo admin_url( "admin-ajax.php" ); ?>', { method: 'POST', body: fd, credentials: 'same-origin' })
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
                         regenBtn.disabled = false;
                         regenStatus.textContent = data.success
-                            ? data.data.created + ' new occurrence(s) created.'
-                            : (data.data || 'Error generating occurrences.');
+                            ? spRegenI18n.createdFmt.replace('%d', data.data.created)
+                            : (data.data || spRegenI18n.error);
                     })
                     .catch(function() {
                         regenBtn.disabled = false;
-                        regenStatus.textContent = 'Something went wrong.';
+                        regenStatus.textContent = spRegenI18n.wrong;
                     });
             });
         }
@@ -37685,7 +37805,7 @@ function sp_render_event_categories_page(): void {
 
         <!-- Add New Category Form -->
         <div class="card sp-event-cats-add-card">
-            <h3 class="sp-event-cats-add-heading">Add New Category</h3>
+            <h3 class="sp-event-cats-add-heading"><?php esc_html_e( 'Add New Category', 'societypress' ); ?></h3>
             <form id="sp-add-category-form">
                 <?php wp_nonce_field( 'sp_event_category_nonce', 'sp_cat_nonce' ); ?>
                 <table class="form-table sp-event-cats-form-table" role="presentation">
@@ -37693,7 +37813,7 @@ function sp_render_event_categories_page(): void {
                         <th scope="row"><label for="sp-cat-name"><?php esc_html_e( 'Name', 'societypress' ); ?></label></th>
                         <td>
                             <input type="text" id="sp-cat-name" class="regular-text" required
-                                   placeholder="e.g., Workshop">
+                                   placeholder="<?php echo esc_attr__( 'e.g., Workshop', 'societypress' ); ?>">
                         </td>
                     </tr>
                     <tr>
@@ -37713,7 +37833,7 @@ function sp_render_event_categories_page(): void {
                     </tr>
                 </table>
                 <p class="sp-event-cats-submit-row">
-                    <button type="submit" class="button button-primary">Add Category</button>
+                    <button type="submit" class="button button-primary"><?php esc_html_e( 'Add Category', 'societypress' ); ?></button>
                     <span id="sp-cat-add-status" class="sp-event-cats-add-status"></span>
                 </p>
             </form>
@@ -37724,12 +37844,12 @@ function sp_render_event_categories_page(): void {
             <table class="widefat striped" id="sp-categories-table">
                 <thead>
                     <tr>
-                        <th class="sp-event-cats-col-name">Name</th>
-                        <th class="sp-event-cats-col-color">Color</th>
-                        <th class="sp-event-cats-col-sort">Sort</th>
-                        <th class="sp-event-cats-col-active">Active</th>
-                        <th class="sp-event-cats-col-events">Events</th>
-                        <th class="sp-event-cats-col-actions">Actions</th>
+                        <th class="sp-event-cats-col-name"><?php esc_html_e( 'Name', 'societypress' ); ?></th>
+                        <th class="sp-event-cats-col-color"><?php esc_html_e( 'Color', 'societypress' ); ?></th>
+                        <th class="sp-event-cats-col-sort"><?php esc_html_e( 'Sort', 'societypress' ); ?></th>
+                        <th class="sp-event-cats-col-active"><?php esc_html_e( 'Active', 'societypress' ); ?></th>
+                        <th class="sp-event-cats-col-events"><?php esc_html_e( 'Events', 'societypress' ); ?></th>
+                        <th class="sp-event-cats-col-actions"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -38121,13 +38241,12 @@ function sp_render_member_tiers_page(): void {
     <div class="wrap">
         <h1><?php esc_html_e( 'Membership Plans', 'societypress' ); ?></h1>
         <p class="description">
-            Membership plans define the tier names, annual dues, and renewal cycles that
-            appear in the member edit form. Reorder them with the Sort column.
+            <?php esc_html_e( 'Membership plans define the tier names, annual dues, and renewal cycles that appear in the member edit form. Reorder them with the Sort column.', 'societypress' ); ?>
         </p>
 
         <!-- Add New Plan Form -->
         <div class="card sp-tiers-card">
-            <h3 class="sp-tiers-form-heading">Add New Plan</h3>
+            <h3 class="sp-tiers-form-heading"><?php esc_html_e( 'Add New Plan', 'societypress' ); ?></h3>
             <form id="sp-add-tier-form">
                 <?php wp_nonce_field( 'sp_membership_tier_nonce', 'sp_tier_nonce' ); ?>
                 <table class="form-table sp-tiers-form-table" role="presentation">
@@ -38135,7 +38254,7 @@ function sp_render_member_tiers_page(): void {
                         <th scope="row"><label for="sp-tier-name"><?php esc_html_e( 'Name', 'societypress' ); ?></label></th>
                         <td>
                             <input type="text" id="sp-tier-name" class="regular-text" required
-                                   placeholder="e.g., Individual, Joint/Family">
+                                   placeholder="<?php echo esc_attr__( 'e.g., Individual, Joint/Family', 'societypress' ); ?>">
                         </td>
                     </tr>
                     <tr>
@@ -38161,7 +38280,7 @@ function sp_render_member_tiers_page(): void {
                         <th scope="row"><label for="sp-tier-sort"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label></th>
                         <td>
                             <input type="number" id="sp-tier-sort" value="0" min="0" class="small-text">
-                            <p class="description">Lower numbers appear first in dropdowns.</p>
+                            <p class="description"><?php esc_html_e( 'Lower numbers appear first in dropdowns.', 'societypress' ); ?></p>
                         </td>
                     </tr>
                     <tr>
@@ -38176,7 +38295,7 @@ function sp_render_member_tiers_page(): void {
                     </tr>
                 </table>
                 <p class="sp-tiers-form-actions">
-                    <button type="submit" class="button button-primary">Add Plan</button>
+                    <button type="submit" class="button button-primary"><?php esc_html_e( 'Add Plan', 'societypress' ); ?></button>
                     <span id="sp-tier-add-status" class="sp-tiers-add-status"></span>
                 </p>
             </form>
@@ -38187,14 +38306,14 @@ function sp_render_member_tiers_page(): void {
             <table class="widefat striped" id="sp-tiers-table">
                 <thead>
                     <tr>
-                        <th class="sp-tiers-col-name">Name</th>
-                        <th class="sp-tiers-col-dues">Dues</th>
-                        <th class="sp-tiers-col-duration">Duration</th>
-                        <th class="sp-tiers-col-sort">Sort</th>
-                        <th class="sp-tiers-col-active">Active</th>
-                        <th class="sp-tiers-col-joint">Joint</th>
-                        <th class="sp-tiers-col-members">Members</th>
-                        <th class="sp-tiers-col-actions">Actions</th>
+                        <th class="sp-tiers-col-name"><?php esc_html_e( 'Name', 'societypress' ); ?></th>
+                        <th class="sp-tiers-col-dues"><?php esc_html_e( 'Dues', 'societypress' ); ?></th>
+                        <th class="sp-tiers-col-duration"><?php esc_html_e( 'Duration', 'societypress' ); ?></th>
+                        <th class="sp-tiers-col-sort"><?php esc_html_e( 'Sort', 'societypress' ); ?></th>
+                        <th class="sp-tiers-col-active"><?php esc_html_e( 'Active', 'societypress' ); ?></th>
+                        <th class="sp-tiers-col-joint"><?php esc_html_e( 'Joint', 'societypress' ); ?></th>
+                        <th class="sp-tiers-col-members"><?php esc_html_e( 'Members', 'societypress' ); ?></th>
+                        <th class="sp-tiers-col-actions"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -38931,14 +39050,49 @@ add_action( 'admin_init', function () {
                         <?php echo $is_connected ? esc_html__( 'Setup Instructions (if you need to change keys)', 'societypress' ) : esc_html__( 'Setup Instructions (5 minutes)', 'societypress' ); ?>
                     </summary>
                     <ol style="margin: 12px 0 0 20px; line-height: 1.8; font-size: 13px; color: #3c434a;">
-                        <li>Go to <a href="https://dashboard.stripe.com/register" target="_blank" rel="noopener">stripe.com</a> and create a free account (or log in if you already have one).</li>
-                        <li>In your Stripe dashboard, click <strong>Developers</strong> in the top menu, then <strong>API keys</strong>.</li>
-                        <li>You'll see two keys. Copy the <strong>Publishable key</strong> (starts with <code>pk_test_</code>) and paste it below.</li>
-                        <li>Click <strong>Reveal test key</strong> to see the <strong>Secret key</strong> (starts with <code>sk_test_</code>) and paste it below.</li>
-                        <li>Leave <strong>Test Mode</strong> checked while you're setting up. When you're ready to accept real payments, get your live keys and uncheck Test Mode.</li>
+                        <li><?php
+                            printf(
+                                /* translators: 1: opening <a> tag to stripe.com, 2: closing </a> tag */
+                                wp_kses_post( __( 'Go to %1$sstripe.com%2$s and create a free account (or log in if you already have one).', 'societypress' ) ),
+                                '<a href="https://dashboard.stripe.com/register" target="_blank" rel="noopener">',
+                                '</a>'
+                            );
+                        ?></li>
+                        <li><?php
+                            printf(
+                                /* translators: 1: <strong>Developers</strong>, 2: <strong>API keys</strong> */
+                                wp_kses_post( __( 'In your Stripe dashboard, click %1$s in the top menu, then %2$s.', 'societypress' ) ),
+                                '<strong>' . esc_html__( 'Developers', 'societypress' ) . '</strong>',
+                                '<strong>' . esc_html__( 'API keys', 'societypress' ) . '</strong>'
+                            );
+                        ?></li>
+                        <li><?php
+                            printf(
+                                /* translators: 1: <strong>Publishable key</strong>, 2: <code>pk_test_</code> */
+                                wp_kses_post( __( "You'll see two keys. Copy the %1\$s (starts with %2\$s) and paste it below.", 'societypress' ) ),
+                                '<strong>' . esc_html__( 'Publishable key', 'societypress' ) . '</strong>',
+                                '<code>pk_test_</code>'
+                            );
+                        ?></li>
+                        <li><?php
+                            printf(
+                                /* translators: 1: <strong>Reveal test key</strong>, 2: <strong>Secret key</strong>, 3: <code>sk_test_</code> */
+                                wp_kses_post( __( 'Click %1$s to see the %2$s (starts with %3$s) and paste it below.', 'societypress' ) ),
+                                '<strong>' . esc_html__( 'Reveal test key', 'societypress' ) . '</strong>',
+                                '<strong>' . esc_html__( 'Secret key', 'societypress' ) . '</strong>',
+                                '<code>sk_test_</code>'
+                            );
+                        ?></li>
+                        <li><?php
+                            printf(
+                                /* translators: %s: <strong>Test Mode</strong> */
+                                wp_kses_post( __( "Leave %s checked while you're setting up. When you're ready to accept real payments, get your live keys and uncheck Test Mode.", 'societypress' ) ),
+                                '<strong>' . esc_html__( 'Test Mode', 'societypress' ) . '</strong>'
+                            );
+                        ?></li>
                     </ol>
                     <p style="margin: 8px 0 0 20px; font-size: 12px; color: #787c82;">
-                        Stripe charges about 2.9% + 30¢ per transaction. There are no monthly fees — you only pay when you process a payment.
+                        <?php esc_html_e( 'Stripe charges about 2.9% + 30¢ per transaction. There are no monthly fees — you only pay when you process a payment.', 'societypress' ); ?>
                     </p>
                 </details>
             </div>
@@ -39284,14 +39438,14 @@ add_action( 'admin_init', function () {
                             result.textContent = '\u2705 ' + data.data;
                             result.style.color = '#00a32a';
                         } else {
-                            result.textContent = '\u274C ' + (data.data || 'Connection failed. Check your credentials and try again.');
+                            result.textContent = '\u274C ' + (data.data || <?php echo wp_json_encode( __( 'Connection failed. Check your credentials and try again.', 'societypress' ) ); ?>);
                             result.style.color = '#d63638';
                         }
                         btn.disabled = false;
                         btn.innerHTML = '<span class="dashicons dashicons-superhero-alt" style="margin-top:4px;margin-right:2px;"></span> <?php echo esc_js( __( 'Test Connection', 'societypress' ) ); ?>';
                     })
                     .catch(function() {
-                        result.textContent = '\u274C Could not reach the server. Please try again.';
+                        result.textContent = '\u274C ' + <?php echo wp_json_encode( __( 'Could not reach the server. Please try again.', 'societypress' ) ); ?>;
                         result.style.color = '#d63638';
                         btn.disabled = false;
                         btn.innerHTML = '<span class="dashicons dashicons-superhero-alt" style="margin-top:4px;margin-right:2px;"></span> <?php echo esc_js( __( 'Test Connection', 'societypress' ) ); ?>';
@@ -40098,8 +40252,18 @@ function sp_render_import_events_page(): void {
             <div class="card sp-import-events-card-preview">
                 <h2 class="sp-import-events-card-heading"><?php esc_html_e( 'Preview & Column Mapping', 'societypress' ); ?></h2>
                 <p>
-                    Found <strong><?php echo (int) $preview['row_count']; ?> events</strong> in the file.
-                    Review the column mapping below, then click <strong>Import Events</strong>.
+                    <?php
+                    printf(
+                        /* translators: 1: <strong>N events</strong>, 2: <strong>Import Events</strong> */
+                        wp_kses_post( __( 'Found %1$s in the file. Review the column mapping below, then click %2$s.', 'societypress' ) ),
+                        '<strong>' . sprintf(
+                            /* translators: %d: number of events found in the import file */
+                            esc_html( _n( '%d event', '%d events', (int) $preview['row_count'], 'societypress' ) ),
+                            (int) $preview['row_count']
+                        ) . '</strong>',
+                        '<strong>' . esc_html__( 'Import Events', 'societypress' ) . '</strong>'
+                    );
+                    ?>
                 </p>
 
                 <form method="post">
@@ -40197,10 +40361,15 @@ function sp_render_import_events_page(): void {
 
                 <hr class="sp-import-events-section-divider">
 
-                <h3 class="sp-import-events-card-heading">Expected Format</h3>
-                <p>Your file should include at minimum a <strong>title</strong> and <strong>date</strong> column.
-                   All other columns are optional. The importer will try to auto-detect column mappings,
-                   and you can adjust them on the next screen.</p>
+                <h3 class="sp-import-events-card-heading"><?php esc_html_e( 'Expected Format', 'societypress' ); ?></h3>
+                <p><?php
+                    printf(
+                        /* translators: 1: <strong>title</strong>, 2: <strong>date</strong> */
+                        wp_kses_post( __( 'Your file should include at minimum a %1$s and %2$s column. All other columns are optional. The importer will try to auto-detect column mappings, and you can adjust them on the next screen.', 'societypress' ) ),
+                        '<strong>' . esc_html__( 'title', 'societypress' ) . '</strong>',
+                        '<strong>' . esc_html__( 'date', 'societypress' ) . '</strong>'
+                    );
+                ?></p>
 
                 <table class="widefat sp-import-events-format-table">
                     <thead>
@@ -41322,7 +41491,7 @@ function sp_render_events_listing( array $settings ): void {
 
         <!-- Pagination -->
         <?php if ( $total_pages > 1 ) : ?>
-        <nav class="sp-events-pagination" aria-label="Events pagination">
+        <nav class="sp-events-pagination" aria-label="<?php echo esc_attr__( 'Events pagination', 'societypress' ); ?>">
             <?php if ( $current_page > 1 ) : ?>
                 <a href="<?php echo esc_url( add_query_arg( array_merge( $page_args, [ 'sp_page' => $current_page - 1 ] ), $base_url ) ); ?>"
                    class="sp-page-link sp-page-prev">&laquo; Previous</a>
@@ -42192,1095 +42361,17 @@ function sp_render_event_detail( string $slug, array $settings ): void {
  * WHY: Only loaded on pages using the events template. Clean, responsive
  *      design that works with any WordPress theme. Mobile breakpoint at
  *      768px converts cards to stacked layout and calendar to dot view.
+ *
+ * The CSS itself lives in assets/css/events-frontend.css so the browser
+ * can cache it across page loads. Previously this function inlined ~1,000
+ * lines of static CSS on every events-page render.
  */
 function sp_events_frontend_styles(): void {
-    ?>
-    <style id="sp-events-frontend-css">
-        /* ---- Wrapper ---- */
-        .sp-events-wrap {
-            max-width: var(--sp-content-width, 1100px);
-            margin: 40px auto;
-            padding: 0 20px;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
-        }
-
-        /* ================================================================ */
-        /* FILTER BAR                                                        */
-        /* ================================================================ */
-        .sp-events-filters {
-            margin-bottom: 24px;
-            padding-bottom: 16px;
-            border-bottom: 1px solid #eee;
-        }
-        .sp-events-filter-form {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-        .sp-events-filter-row {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            align-items: center;
-        }
-        .sp-events-search-wrap {
-            flex: 1;
-            min-width: 200px;
-        }
-        .sp-events-search-input {
-            width: 100%;
-            padding: 10px 14px;
-            font-size: 16px;
-            border: 2px solid #ddd;
-            border-radius: 6px;
-            transition: border-color 0.2s, box-shadow 0.2s;
-            box-sizing: border-box;
-        }
-        .sp-events-search-input:focus {
-            border-color: var(--sp-color-primary);
-            outline: 2px solid var(--sp-color-primary);
-            outline-offset: 2px;
-        }
-        .sp-events-filter-select {
-            padding: 10px 12px;
-            font-size: 15px;
-            border: 2px solid #ddd;
-            border-radius: 6px;
-            background: #fff;
-            cursor: pointer;
-        }
-        .sp-events-filter-btn {
-            padding: 10px 24px;
-            font-size: 15px;
-            font-weight: 600;
-            color: #fff;
-            background: var(--sp-color-primary);
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-        }
-        .sp-events-filter-btn:hover { background: var(--sp-color-primary-hover); }
-        .sp-events-clear-link {
-            font-size: 14px;
-            color: #666;
-            text-decoration: none;
-            padding: 10px 8px;
-        }
-        .sp-events-clear-link:hover { color: #d63638; }
-
-        /* View toggle */
-        .sp-events-view-toggle {
-            display: flex;
-            gap: 4px;
-        }
-        .sp-view-btn {
-            padding: 8px 16px;
-            font-size: 14px;
-            font-weight: 500;
-            color: #555;
-            text-decoration: none;
-            border: 2px solid #ddd;
-            border-radius: 6px;
-            transition: all 0.15s;
-        }
-        .sp-view-btn:hover { border-color: var(--sp-color-primary); color: var(--sp-color-primary); }
-        .sp-view-active {
-            background: var(--sp-color-primary);
-            color: #fff !important;
-            border-color: var(--sp-color-primary);
-        }
-        .sp-view-icon { margin-right: 4px; }
-
-        /* ================================================================ */
-        /* EVENT CARDS (List View)                                           */
-        /* ================================================================ */
-        .sp-events-count {
-            margin-bottom: 8px;
-            color: #787c82;
-            font-size: 14px;
-        }
-        .sp-events-list {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-        .sp-event-card {
-            border: 1px solid #e8e8e8;
-            border-radius: 8px;
-            background: #fff;
-            transition: box-shadow 0.2s, border-color 0.2s;
-        }
-        .sp-event-card:hover {
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-            border-color: #ccc;
-        }
-        .sp-event-card-link {
-            display: flex;
-            align-items: stretch;
-            text-decoration: none;
-            color: inherit;
-        }
-        .sp-event-date-block {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-width: 80px;
-            padding: 16px 12px;
-            background: #f7f7f7;
-            border-radius: 8px 0 0 8px;
-            border-right: 1px solid #e8e8e8;
-        }
-        .sp-event-month {
-            font-size: 12px;
-            font-weight: 600;
-            text-transform: uppercase;
-            color: #d63638;
-            letter-spacing: 0.5px;
-        }
-        .sp-event-day {
-            font-size: 28px;
-            font-weight: 700;
-            line-height: 1.1;
-            color: #1d2327;
-        }
-        .sp-event-dow {
-            font-size: 12px;
-            color: #787c82;
-            text-transform: uppercase;
-        }
-        .sp-event-details {
-            flex: 1;
-            padding: 16px 20px;
-            min-width: 0;
-        }
-        .sp-event-title {
-            margin: 0 0 6px 0;
-            font-size: 17px;
-            font-weight: 600;
-            color: #1d2327;
-            line-height: 1.3;
-        }
-        .sp-event-meta {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
-            margin-bottom: 8px;
-        }
-        .sp-event-meta-item {
-            font-size: 14px;
-            color: #555;
-        }
-        .sp-event-badges {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-            align-items: center;
-        }
-        .sp-event-badge {
-            display: inline-block;
-            padding: 3px 10px;
-            font-size: 12px;
-            font-weight: 600;
-            color: #fff;
-            border-radius: 4px;
-            white-space: nowrap;
-        }
-        .sp-badge-postponed { background: #dba617; }
-        .sp-badge-members { background: #787c82; }
-        .sp-badge-external { background: #2271b1; }
-        .sp-event-price {
-            font-size: 13px;
-            font-weight: 600;
-            color: #1d2327;
-        }
-        .sp-event-free { color: #00a32a; }
-        .sp-event-reg-info {
-            font-size: 12px;
-            color: #787c82;
-        }
-
-        /* ================================================================ */
-        /* CALENDAR VIEW                                                     */
-        /* ================================================================ */
-        /* Calendar wrap — explicit width prevents layout narrowing when
-           navigating to a different month (the grid inherits full width
-           from this container instead of sizing to content). */
-        .sp-calendar-wrap {
-            margin-top: 8px;
-            width: 100%;
-            box-sizing: border-box;
-        }
-        .sp-calendar-nav {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 16px;
-        }
-        .sp-cal-nav-btn {
-            padding: 8px 16px;
-            font-size: 14px;
-            font-weight: 500;
-            color: var(--sp-color-primary);
-            text-decoration: none;
-            border: 2px solid #ddd;
-            border-radius: 6px;
-        }
-        .sp-cal-nav-btn:hover { border-color: var(--sp-color-primary); }
-        .sp-cal-month-label {
-            margin: 0;
-            font-size: 22px;
-            font-weight: 600;
-            color: #1d2327;
-        }
-        .sp-calendar-grid {
-            display: grid;
-            grid-template-columns: repeat(7, 1fr);
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            overflow: hidden;
-        }
-        .sp-cal-header {
-            padding: 10px;
-            font-size: 13px;
-            font-weight: 600;
-            text-align: center;
-            color: #555;
-            background: #f7f7f7;
-            border-bottom: 1px solid #e0e0e0;
-        }
-        .sp-cal-day {
-            min-height: 100px;
-            padding: 6px;
-            border-right: 1px solid #eee;
-            border-bottom: 1px solid #eee;
-            background: #fff;
-            position: relative;
-        }
-        .sp-cal-day:nth-child(7n) { border-right: none; }
-        .sp-cal-empty { background: #fafafa; }
-        .sp-cal-today {
-            background: #f0f7fd;
-        }
-        .sp-cal-today .sp-cal-day-num {
-            background: var(--sp-color-primary);
-            color: #fff;
-            border-radius: 50%;
-            width: 26px;
-            height: 26px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .sp-cal-day-num {
-            font-size: 13px;
-            font-weight: 600;
-            color: #555;
-            margin-bottom: 4px;
-        }
-        .sp-cal-events {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
-        .sp-cal-event {
-            display: block;
-            padding: 2px 6px;
-            border-radius: 3px;
-            color: #fff;
-            text-decoration: none;
-            font-size: 0.75rem;
-            line-height: 1.3;
-            overflow: hidden;
-            white-space: nowrap;
-            text-overflow: ellipsis;
-            transition: opacity 0.15s;
-        }
-        .sp-cal-event:hover { opacity: 0.85; }
-        /* Notice-only events: no pointer, slightly transparent to signal "informational" */
-        .sp-cal-event--notice { opacity: 0.75; cursor: default; }
-        .sp-cal-event--notice:hover { opacity: 0.75; }
-        /* External events: subtle dashed border so Harold can distinguish at a glance */
-        .sp-cal-event--external { border: 1px dashed rgba(255,255,255,0.5); }
-        .sp-cal-event-title { font-weight: 500; }
-        .sp-cal-event-time {
-            font-size: 10px;
-            opacity: 0.85;
-            margin-left: 4px;
-        }
-
-        /* Mobile dots (hidden on desktop) */
-        .sp-cal-dots { display: none; }
-        .sp-cal-dot {
-            display: inline-block;
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            margin: 1px;
-        }
-
-        /* Mobile panel for calendar day tap */
-        .sp-cal-mobile-panel {
-            margin-top: 12px;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            background: #fff;
-            overflow: hidden;
-        }
-        .sp-cal-mobile-panel-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px 16px;
-            background: #f7f7f7;
-            border-bottom: 1px solid #e0e0e0;
-            font-weight: 600;
-        }
-        .sp-cal-mobile-close {
-            background: none;
-            border: none;
-            font-size: 22px;
-            cursor: pointer;
-            color: #555;
-            padding: 0 4px;
-        }
-        .sp-cal-mobile-event {
-            display: block;
-            padding: 12px 16px;
-            border-bottom: 1px solid #eee;
-            text-decoration: none;
-            color: inherit;
-        }
-        .sp-cal-mobile-event:last-child { border-bottom: none; }
-        .sp-cal-mobile-event-title {
-            font-weight: 600;
-            color: #1d2327;
-        }
-        .sp-cal-mobile-event-time {
-            font-size: 13px;
-            color: #787c82;
-            margin-top: 2px;
-        }
-
-        /* ================================================================ */
-        /* EVENT DETAIL PAGE                                                 */
-        /* ================================================================ */
-        .sp-event-back {
-            margin-bottom: 20px;
-        }
-        .sp-event-back a {
-            color: var(--sp-color-primary);
-            text-decoration: none;
-            font-size: 15px;
-        }
-        .sp-event-back a:hover { text-decoration: underline; }
-
-        .sp-event-detail {
-            max-width: 800px;
-        }
-        .sp-event-header { margin-bottom: 24px; }
-        .sp-event-cancelled-banner,
-        .sp-event-postponed-banner {
-            padding: 12px 16px;
-            border-radius: 6px;
-            font-weight: 600;
-            margin-bottom: 16px;
-        }
-        .sp-event-cancelled-banner {
-            background: #fce4e4;
-            color: #d63638;
-            border: 1px solid #f5c6c6;
-        }
-        .sp-event-postponed-banner {
-            background: #fff8e5;
-            color: #996800;
-            border: 1px solid #f0d68a;
-        }
-        .sp-event-detail-title {
-            margin: 0 0 12px 0;
-            font-size: 28px;
-            font-weight: 700;
-            color: #1d2327;
-            line-height: 1.2;
-        }
-        .sp-event-detail-badges {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-        .sp-event-image {
-            margin-bottom: 24px;
-        }
-        .sp-event-image img {
-            width: 100%;
-            max-width: 800px;
-            height: auto;
-            border-radius: 8px;
-        }
-
-        /* Key details (date, location) */
-        .sp-event-key-details {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-            padding: 20px;
-            background: #f7f7f7;
-            border-radius: 8px;
-            margin-bottom: 24px;
-        }
-        .sp-event-detail-item {
-            display: flex;
-            gap: 12px;
-            align-items: flex-start;
-        }
-        .sp-detail-icon {
-            font-size: 20px;
-            flex-shrink: 0;
-            width: 28px;
-            text-align: center;
-        }
-        .sp-detail-secondary { color: #555; font-size: 14px; }
-        .sp-detail-virtual { color: var(--sp-color-primary); font-weight: 500; }
-        .sp-virtual-link {
-            color: var(--sp-color-primary);
-            font-weight: 500;
-            text-decoration: none;
-        }
-        .sp-virtual-link:hover { text-decoration: underline; }
-
-        /* Add to Calendar link */
-        .sp-add-to-cal-link {
-            color: var(--sp-color-primary);
-            font-weight: 500;
-            text-decoration: none;
-            font-size: 15px;
-        }
-        .sp-add-to-cal-link:hover { text-decoration: underline; }
-
-        /* Separator between "Add to Calendar" and "Subscribe" */
-        .sp-detail-separator {
-            margin: 0 8px;
-            color: #767676;
-            font-size: 14px;
-        }
-        /* On the detail page, the subscribe dropdown should align inline */
-        .sp-event-add-to-cal .sp-ical-subscribe-wrap {
-            display: inline-block;
-            vertical-align: middle;
-        }
-        .sp-event-add-to-cal .sp-ical-subscribe-btn {
-            padding: 4px 12px;
-            font-size: 13px;
-            border-width: 1px;
-        }
-        .sp-event-add-to-cal .sp-ical-dropdown {
-            left: 0;
-            right: auto;
-        }
-
-        /* Description */
-        .sp-event-description {
-            margin-bottom: 24px;
-            font-size: 16px;
-            line-height: 1.7;
-            color: #333;
-        }
-
-        /* Speakers section */
-        .sp-event-speakers {
-            margin-bottom: 24px;
-        }
-        .sp-event-speakers h2 {
-            font-size: 20px;
-            margin: 0 0 16px 0;
-        }
-        .sp-speaker-card {
-            display: flex;
-            gap: 16px;
-            padding: 16px;
-            background: #f7f7f7;
-            border-radius: 8px;
-            margin-bottom: 12px;
-        }
-        .sp-speaker-photo {
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            object-fit: cover;
-            flex-shrink: 0;
-        }
-        .sp-speaker-info {
-            flex: 1;
-        }
-        .sp-speaker-name {
-            margin: 0 0 2px 0;
-            font-size: 16px;
-            font-weight: 600;
-            color: #1d2327;
-        }
-        .sp-speaker-title {
-            margin: 0 0 4px 0;
-            font-size: 14px;
-            color: #555;
-        }
-        .sp-speaker-role {
-            display: inline-block;
-            padding: 1px 8px;
-            background: #e0e0e0;
-            color: #555;
-            border-radius: 3px;
-            font-size: 12px;
-            margin-bottom: 6px;
-        }
-        .sp-speaker-bio {
-            margin: 6px 0 0 0;
-            font-size: 14px;
-            line-height: 1.5;
-            color: #3c434a;
-        }
-        .sp-speaker-website {
-            color: var(--sp-color-primary);
-            text-decoration: none;
-            font-size: 13px;
-        }
-        .sp-speaker-website:hover { text-decoration: underline; }
-
-        /* Registration section */
-        .sp-event-registration {
-            padding: 24px;
-            background: #f7f7f7;
-            border-radius: 8px;
-            margin-bottom: 24px;
-        }
-        .sp-event-registration h2 {
-            margin: 0 0 16px 0;
-            font-size: 20px;
-        }
-        .sp-event-pricing {
-            margin-bottom: 16px;
-        }
-        .sp-price-item {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 4px;
-            font-size: 15px;
-        }
-        .sp-price-label { color: #555; }
-        .sp-price-amount { font-weight: 600; }
-        .sp-price-free { color: #00a32a; }
-        .sp-price-note {
-            font-size: 13px;
-            color: #787c82;
-            margin-top: 4px;
-        }
-
-        /* Capacity bar */
-        .sp-event-capacity { margin-bottom: 16px; }
-        .sp-capacity-bar {
-            height: 8px;
-            background: #e0e0e0;
-            border-radius: 4px;
-            overflow: hidden;
-            margin-bottom: 6px;
-        }
-        .sp-capacity-fill {
-            height: 100%;
-            border-radius: 4px;
-            transition: width 0.3s;
-        }
-        .sp-capacity-text {
-            font-size: 14px;
-            color: #555;
-            margin: 0;
-        }
-
-        .sp-reg-confirmed {
-            padding: 16px;
-            background: #edf7ed;
-            border: 1px solid #c3e6c3;
-            border-radius: 6px;
-        }
-        .sp-reg-confirmed p { margin: 0; }
-        .sp-reg-note { font-size: 13px; color: #555; margin-top: 4px !important; }
-
-        /* Registration form */
-        .sp-reg-form {
-            margin-top: 8px;
-        }
-        .sp-reg-form-intro {
-            font-size: 14px;
-            color: #555;
-            margin-bottom: 12px;
-        }
-        .sp-reg-form-intro a { color: var(--sp-color-primary); }
-        .sp-reg-form-row {
-            margin-bottom: 12px;
-        }
-        .sp-reg-form-row label {
-            display: block;
-            font-size: 14px;
-            font-weight: 500;
-            margin-bottom: 4px;
-            color: #333;
-        }
-        .sp-required { color: #d63638; }
-        .sp-reg-optional { color: #787c82; font-weight: normal; font-size: 13px; }
-        .sp-reg-form-row input[type="text"],
-        .sp-reg-form-row input[type="email"],
-        .sp-reg-form-row input[type="tel"] {
-            width: 100%;
-            max-width: 400px;
-            padding: 8px 12px;
-            border: 1px solid #c3c4c7;
-            border-radius: 4px;
-            font-size: 15px;
-            font-family: inherit;
-        }
-        .sp-reg-form-row input:focus {
-            border-color: var(--sp-color-primary);
-            outline: 2px solid var(--sp-color-primary);
-            outline-offset: 2px;
-            box-shadow: 0 0 0 3px rgba(34, 113, 177, 0.25);
-        }
-        .sp-reg-form-row select {
-            padding: 8px 12px;
-            border: 1px solid #c3c4c7;
-            border-radius: 4px;
-            font-size: 15px;
-            font-family: inherit;
-            background: #fff;
-        }
-        .sp-reg-submit-btn {
-            display: inline-block;
-            padding: 12px 32px;
-            background: var(--sp-color-primary);
-            color: #fff;
-            border: none;
-            border-radius: 4px;
-            font-size: 16px;
-            font-weight: 500;
-            cursor: pointer;
-            font-family: inherit;
-            transition: background 0.15s;
-        }
-        .sp-reg-submit-btn:hover { background: var(--sp-color-primary-hover); }
-        .sp-reg-submit-btn:disabled {
-            background: #a7aaad;
-            cursor: not-allowed;
-        }
-        .sp-reg-cancel-btn {
-            display: inline-block;
-            margin-top: 12px;
-            padding: 6px 16px;
-            background: none;
-            color: #d63638;
-            border: 1px solid #d63638;
-            border-radius: 4px;
-            font-size: 13px;
-            cursor: pointer;
-            font-family: inherit;
-            transition: all 0.15s;
-        }
-        .sp-reg-cancel-btn:hover {
-            background: #d63638;
-            color: #fff;
-        }
-        .sp-reg-cancel-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        .sp-reg-message {
-            margin-top: 8px;
-            padding: 8px 12px;
-            border-radius: 4px;
-            font-size: 14px;
-        }
-        .sp-reg-msg-error {
-            background: #fcf0f1;
-            border: 1px solid #d63638;
-            color: #d63638;
-        }
-        .sp-reg-msg-success {
-            background: #edf7ed;
-            border: 1px solid #c3e6c3;
-            color: #00a32a;
-        }
-        .sp-reg-login-prompt {
-            padding: 12px 16px;
-            background: #f0f6fc;
-            border: 1px solid #c3d9ed;
-            border-radius: 6px;
-            color: var(--sp-color-primary);
-            font-size: 14px;
-        }
-        .sp-reg-login-prompt a { color: var(--sp-color-primary); font-weight: 500; }
-
-        /* Fee summary — shows cost before they click Register */
-        .sp-reg-fee-summary {
-            display: flex;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 6px;
-            padding: 10px 14px;
-            background: #fef8e8;
-            border: 1px solid #e5c76b;
-            border-radius: 6px;
-            margin-bottom: 16px;
-            font-size: 14px;
-        }
-        .sp-fee-label { font-weight: 600; color: #1d2327; }
-        .sp-fee-amount { font-weight: 700; font-size: 16px; color: #1d2327; }
-        .sp-fee-per-person { color: #787c82; font-size: 12px; }
-        .sp-fee-note { color: #666; font-size: 12px; font-style: italic; }
-
-        /* Payment option buttons — "either" mode shows two side-by-side */
-        .sp-reg-pay-options {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-        .sp-reg-pay-options .sp-reg-submit-btn {
-            flex: 1;
-            min-width: 140px;
-        }
-        .sp-pay-online-btn {
-            background: var(--sp-color-primary) !important;
-        }
-        .sp-pay-online-btn:hover {
-            background: var(--sp-color-primary-hover) !important;
-        }
-        .sp-pay-door-btn {
-            background: #50575e !important;
-        }
-        .sp-pay-door-btn:hover {
-            background: #3c4043 !important;
-        }
-
-        /* Contact section */
-        .sp-event-contact {
-            padding: 24px;
-            background: #f7f7f7;
-            border-radius: 8px;
-            margin-bottom: 24px;
-        }
-        /* Time Slots display cards */
-.sp-event-slots-section {
-    margin: 24px 0;
-}
-.sp-event-slots-section h2 {
-    font-size: 1.3em;
-    margin-bottom: 12px;
-}
-.sp-event-slots-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 12px;
-}
-.sp-event-slot-card {
-    padding: 12px 16px;
-    border: 1px solid var(--sp-color-border, #e5e7eb);
-    border-radius: 6px;
-    background: var(--sp-color-bg, #fff);
-}
-.sp-event-slot-card.sp-slot-full {
-    opacity: 0.65;
-    border-color: #d63638;
-}
-.sp-slot-time {
-    font-weight: 600;
-    font-size: 1.05em;
-    margin-bottom: 4px;
-}
-.sp-slot-desc {
-    color: var(--sp-color-text-secondary, #6b7280);
-    font-size: 0.9em;
-    margin-bottom: 4px;
-}
-.sp-slot-capacity {
-    font-size: 0.85em;
-    color: var(--sp-color-text-secondary, #6b7280);
-}
-.sp-slot-full-label {
-    color: #d63638;
-    font-weight: 600;
+    $href = SOCIETYPRESS_PLUGIN_URL . 'assets/css/events-frontend.css';
+    $ver  = SOCIETYPRESS_VERSION;
+    echo '<link rel="stylesheet" id="sp-events-frontend-css" href="' . esc_url( $href ) . '?ver=' . esc_attr( $ver ) . '" media="all">' . "\n";
 }
 
-.sp-event-contact h2 {
-            margin: 0 0 12px 0;
-            font-size: 20px;
-        }
-        .sp-event-contact p { margin: 0 0 4px 0; }
-        .sp-contact-name { font-weight: 600; }
-        .sp-event-contact a { color: var(--sp-color-primary); text-decoration: none; }
-        .sp-event-contact a:hover { text-decoration: underline; }
-
-        /* Not found / login required */
-        .sp-event-not-found,
-        .sp-event-login-required {
-            text-align: center;
-            padding: 60px 20px;
-        }
-        .sp-event-not-found h2,
-        .sp-event-login-required h2 {
-            font-size: 24px;
-            margin-bottom: 8px;
-        }
-        .sp-events-empty {
-            text-align: center;
-            padding: 40px 20px;
-            color: #787c82;
-        }
-
-        /* External event detail card — shown when an event lives on another site */
-        .sp-event-external-card {
-            max-width: 700px;
-            margin: 0 auto 40px;
-            padding: 32px;
-            background: #fff;
-            border: 2px solid #e0e0e0;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-        }
-        .sp-event-external-badge {
-            display: inline-block;
-            background: #2271b1;
-            color: #fff;
-            font-size: 12px;
-            font-weight: 600;
-            padding: 3px 10px;
-            border-radius: 4px;
-            margin-bottom: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .sp-external-event-btn {
-            display: inline-block;
-            padding: 14px 28px;
-            background: var(--sp-color-primary, #2271b1);
-            color: #fff;
-            text-decoration: none;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 600;
-            transition: background 0.2s;
-        }
-        .sp-external-event-btn:hover {
-            opacity: 0.9;
-            color: #fff;
-        }
-
-        /* ================================================================ */
-        /* PAGINATION (shared with directory)                                */
-        /* ================================================================ */
-        .sp-events-pagination {
-            display: flex;
-            gap: 4px;
-            justify-content: center;
-            align-items: center;
-            margin-top: 24px;
-            padding-top: 16px;
-            border-top: 1px solid #eee;
-        }
-
-        /* ================================================================ */
-        /* TOOLBAR — View toggle + Subscribe button alignment                */
-        /* ================================================================ */
-        .sp-events-toolbar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-
-        /* ================================================================ */
-        /* SUBSCRIBE TO CALENDAR — Dropdown UI                               */
-        /* ================================================================ */
-        .sp-ical-subscribe-wrap {
-            position: relative;
-            display: inline-block;
-        }
-        .sp-ical-subscribe-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 8px 16px;
-            font-size: 14px;
-            font-weight: 500;
-            color: var(--sp-color-primary, #1e3a5f);
-            background: transparent;
-            border: 2px solid var(--sp-color-primary, #1e3a5f);
-            border-radius: 6px;
-            cursor: pointer;
-            transition: background 0.2s, color 0.2s;
-            white-space: nowrap;
-        }
-        .sp-ical-subscribe-btn:hover {
-            background: var(--sp-color-primary, #1e3a5f);
-            color: #fff;
-        }
-        .sp-ical-icon { font-size: 16px; }
-        .sp-ical-caret { font-size: 10px; transition: transform 0.2s; }
-        .sp-ical-subscribe-btn[aria-expanded="true"] .sp-ical-caret {
-            transform: rotate(180deg);
-        }
-
-        .sp-ical-dropdown {
-            position: absolute;
-            right: 0;
-            top: calc(100% + 6px);
-            width: 360px;
-            max-width: 90vw;
-            background: #fff;
-            border: 1px solid var(--sp-color-border, #e5e7eb);
-            border-radius: 8px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-            padding: 16px;
-            z-index: 100;
-        }
-        .sp-ical-section {
-            margin-bottom: 16px;
-        }
-        .sp-ical-section:last-child { margin-bottom: 0; }
-        .sp-ical-members-section {
-            padding-top: 16px;
-            border-top: 1px solid var(--sp-color-border, #e5e7eb);
-        }
-        .sp-ical-section-label {
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--sp-color-text, #1d2327);
-            margin-bottom: 8px;
-        }
-        .sp-ical-action-link {
-            display: inline-block;
-            font-size: 14px;
-            color: var(--sp-color-primary, #1e3a5f);
-            text-decoration: none;
-            margin-bottom: 8px;
-        }
-        .sp-ical-action-link:hover {
-            text-decoration: underline;
-        }
-        .sp-ical-copy-row {
-            display: flex;
-            gap: 4px;
-            margin-bottom: 6px;
-        }
-        .sp-ical-url-input {
-            flex: 1;
-            padding: 6px 8px;
-            font-size: 12px;
-            border: 1px solid var(--sp-color-border, #ddd);
-            border-radius: 4px;
-            background: #f9f9f9;
-            color: #666;
-            min-width: 0;
-        }
-        .sp-ical-copy-btn {
-            padding: 6px 12px;
-            font-size: 12px;
-            font-weight: 500;
-            color: #fff;
-            background: var(--sp-color-primary, #1e3a5f);
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            white-space: nowrap;
-            transition: background 0.2s;
-        }
-        .sp-ical-copy-btn:hover {
-            background: var(--sp-color-primary-hover, #2c5282);
-        }
-        .sp-ical-copy-btn.sp-ical-copied {
-            background: #00a32a;
-        }
-        .sp-ical-hint {
-            font-size: 0.75rem;
-            color: #767676;
-            line-height: 1.4;
-            margin-bottom: 6px;
-        }
-        .sp-ical-regen-btn {
-            display: inline-block;
-            font-size: 12px;
-            color: #d63638;
-            background: none;
-            border: none;
-            cursor: pointer;
-            padding: 2px 0;
-            text-decoration: underline;
-        }
-        .sp-ical-regen-btn:hover { color: #b71c1c; }
-
-        /* ================================================================ */
-        /* RESPONSIVE — Mobile layout                                        */
-        /* ================================================================ */
-        @media screen and (max-width: 768px) {
-            .sp-events-toolbar {
-                flex-direction: column;
-                align-items: stretch;
-            }
-            .sp-ical-subscribe-wrap {
-                width: 100%;
-            }
-            .sp-ical-subscribe-btn {
-                width: 100%;
-                justify-content: center;
-            }
-            .sp-ical-dropdown {
-                right: auto;
-                left: 0;
-                width: 100%;
-            }
-            .sp-events-filter-row {
-                flex-direction: column;
-            }
-            .sp-events-search-wrap {
-                width: 100%;
-            }
-            .sp-events-filter-select,
-            .sp-events-filter-btn {
-                width: 100%;
-            }
-
-            /* Event cards — stack vertically */
-            .sp-event-card-link {
-                flex-direction: column;
-            }
-            .sp-event-date-block {
-                flex-direction: row;
-                gap: 8px;
-                border-radius: 8px 8px 0 0;
-                border-right: none;
-                border-bottom: 1px solid #e8e8e8;
-                padding: 10px 16px;
-            }
-            .sp-event-day { font-size: 20px; }
-            .sp-event-details { padding: 12px 16px; }
-            .sp-event-title { font-size: 16px; }
-            .sp-event-meta { flex-direction: column; gap: 4px; }
-
-            /* Calendar — dots instead of full event titles */
-            .sp-cal-day {
-                min-height: 48px;
-                padding: 4px;
-            }
-            .sp-cal-events { display: none; }
-            .sp-cal-dots { display: flex; flex-wrap: wrap; justify-content: center; }
-            .sp-cal-day-num { font-size: 12px; text-align: center; }
-            .sp-cal-header { padding: 6px 2px; font-size: 0.75rem; }
-
-            /* Calendar day tap interaction */
-            .sp-cal-has-events { cursor: pointer; }
-
-            /* Detail page */
-            .sp-event-detail-title { font-size: 22px; }
-            .sp-event-key-details { padding: 16px; }
-        }
-    </style>
-    <?php
-}
 
 
 // ============================================================================
@@ -44469,8 +43560,8 @@ function sp_render_event_registrations_section( object $event ): void {
                 </a>
             <?php endif; ?>
             <?php if ( $event_past && $confirmed_count > 0 ) : ?>
-                <button type="button" class="button" id="sp-bulk-attended" title="Mark all confirmed as attended">
-                    Mark All Attended
+                <button type="button" class="button" id="sp-bulk-attended" title="<?php echo esc_attr__( 'Mark all confirmed as attended', 'societypress' ); ?>">
+                    <?php esc_html_e( 'Mark All Attended', 'societypress' ); ?>
                 </button>
             <?php endif; ?>
         </div>
@@ -44480,7 +43571,7 @@ function sp_render_event_registrations_section( object $event ): void {
         <!--      them quickly so they show up on the registration list, and the     -->
         <!--      treasurer can reconcile who paid at the door.                      -->
         <div id="sp-walkin-form" class="sp-event-reg-walkin-panel" style="display: none;">
-            <h3>Add Walk-in Registration</h3>
+            <h3><?php esc_html_e( 'Add Walk-in Registration', 'societypress' ); ?></h3>
             <table class="form-table" role="presentation">
                 <tr>
                     <th scope="row"><label for="sp-walkin-name"><?php esc_html_e( 'Name', 'societypress' ); ?></label></th>
@@ -44526,12 +43617,12 @@ function sp_render_event_registrations_section( object $event ): void {
                 </tr>
                 <tr>
                     <th scope="row"><label for="sp-walkin-notes"><?php esc_html_e( 'Notes', 'societypress' ); ?></label></th>
-                    <td><input type="text" id="sp-walkin-notes" class="regular-text" placeholder="e.g., Paid cash at door"></td>
+                    <td><input type="text" id="sp-walkin-notes" class="regular-text" placeholder="<?php echo esc_attr__( 'e.g., Paid cash at door', 'societypress' ); ?>"></td>
                 </tr>
             </table>
             <div class="sp-event-reg-walkin-btns">
-                <button type="button" class="button button-primary" id="sp-walkin-save">Add Registration</button>
-                <button type="button" class="button" id="sp-walkin-cancel">Cancel</button>
+                <button type="button" class="button button-primary" id="sp-walkin-save"><?php esc_html_e( 'Add Registration', 'societypress' ); ?></button>
+                <button type="button" class="button" id="sp-walkin-cancel"><?php esc_html_e( 'Cancel', 'societypress' ); ?></button>
             </div>
             <div id="sp-walkin-message" class="sp-event-reg-walkin-msg" style="display: none;"></div>
         </div>
@@ -44543,27 +43634,28 @@ function sp_render_event_registrations_section( object $event ): void {
             <table class="wp-list-table widefat fixed striped" id="sp-registrations-table">
                 <thead>
                     <tr>
-                        <th class="sp-event-reg-col-name">Name</th>
-                        <th class="sp-event-reg-col-email">Email</th>
+                        <th class="sp-event-reg-col-name"><?php esc_html_e( 'Name', 'societypress' ); ?></th>
+                        <th class="sp-event-reg-col-email"><?php esc_html_e( 'Email', 'societypress' ); ?></th>
                         <?php if ( $event_has_slots ) : ?>
-                            <th class="sp-event-reg-col-slot">Slot</th>
+                            <th class="sp-event-reg-col-slot"><?php esc_html_e( 'Slot', 'societypress' ); ?></th>
                         <?php endif; ?>
-                        <th class="sp-event-reg-col-party">Party</th>
-                        <th class="sp-event-reg-col-status">Status</th>
-                        <th class="sp-event-reg-col-fee">Fee</th>
-                        <th class="sp-event-reg-col-registered">Registered</th>
+                        <th class="sp-event-reg-col-party"><?php esc_html_e( 'Party', 'societypress' ); ?></th>
+                        <th class="sp-event-reg-col-status"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                        <th class="sp-event-reg-col-fee"><?php esc_html_e( 'Fee', 'societypress' ); ?></th>
+                        <th class="sp-event-reg-col-registered"><?php esc_html_e( 'Registered', 'societypress' ); ?></th>
                         <?php if ( $event_past ) : ?>
-                            <th class="sp-event-reg-col-attended">Attended</th>
+                            <th class="sp-event-reg-col-attended"><?php esc_html_e( 'Attended', 'societypress' ); ?></th>
                         <?php endif; ?>
-                        <th class="sp-event-reg-col-actions">Actions</th>
+                        <th class="sp-event-reg-col-actions"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php foreach ( $registrations as $reg ) :
                         // Display name: WordPress user name for members, guest_name for guests
                         $display_name = $reg->user_id
-                            ? esc_html( $reg->wp_name ?: 'Member #' . $reg->user_id )
-                            : esc_html( $reg->guest_name ?: 'Guest' );
+                            /* translators: %d: WordPress user ID */
+                            ? esc_html( $reg->wp_name ?: sprintf( __( 'Member #%d', 'societypress' ), (int) $reg->user_id ) )
+                            : esc_html( $reg->guest_name ?: __( 'Guest', 'societypress' ) );
                         // Display email: from wp_users for members, guest_email for guests
                         $display_email = $reg->user_id
                             ? esc_html( $reg->wp_email ?? '' )
@@ -44658,7 +43750,7 @@ function sp_render_event_registrations_section( object $event ): void {
                                     if ( $reg->payment_status === 'paid' && $reg->payment_method === 'stripe' ) : ?>
                                         <button type="button" class="button-link sp-admin-refund-btn sp-event-reg-refund-btn"
                                                 data-reg-id="<?php echo esc_attr( $reg->id ); ?>"
-                                                title="Issue a full refund via Stripe">
+                                                title="<?php echo esc_attr__( 'Issue a full refund via Stripe', 'societypress' ); ?>">
                                             Refund
                                         </button>
                                     <?php endif; ?>
@@ -45139,7 +44231,8 @@ function sp_ajax_export_registrations(): void {
     ];
 
     foreach ( $registrations as $reg ) {
-        $name  = $reg->user_id ? ( $reg->wp_name ?: 'Member #' . $reg->user_id ) : ( $reg->guest_name ?: __( 'Guest', 'societypress' ) );
+        /* translators: %d: WordPress user ID */
+        $name  = $reg->user_id ? ( $reg->wp_name ?: sprintf( __( 'Member #%d', 'societypress' ), (int) $reg->user_id ) ) : ( $reg->guest_name ?: __( 'Guest', 'societypress' ) );
         $email = $reg->user_id ? ( $reg->wp_email ?? '' ) : ( $reg->guest_email ?? '' );
         $phone = $reg->guest_phone ?? '';
         $type  = $reg->user_id ? __( 'Member', 'societypress' ) : __( 'Guest', 'societypress' );
@@ -46375,7 +45468,7 @@ function sp_email_event_details_block( object $event ): string {
     }
 
     if ( $event->is_virtual && ! empty( $event->virtual_url ) ) {
-        $html .= '<p style="margin: 8px 0 0;"><a href="' . esc_url( $event->virtual_url ) . '" class="sp-text-link">Join Online Meeting</a></p>';
+        $html .= '<p style="margin: 8px 0 0;"><a href="' . esc_url( $event->virtual_url ) . '" class="sp-text-link">' . esc_html__( 'Join Online Meeting', 'societypress' ) . '</a></p>';
     }
 
     $html .= '</div>';
@@ -47076,7 +46169,7 @@ function sp_render_speaker_edit_page(): void {
         return $speaker && isset( $speaker->$field ) ? $speaker->$field : $default;
     };
 
-    $page_title = $speaker ? 'Edit Speaker' : 'Add New Speaker';
+    $page_title = $speaker ? __( 'Edit Speaker', 'societypress' ) : __( 'Add New Speaker', 'societypress' );
     ?>
     <div class="wrap">
         <h1><?php echo esc_html( $page_title ); ?></h1>
@@ -47097,7 +46190,7 @@ function sp_render_speaker_edit_page(): void {
                 <tr>
                     <th scope="row"><label for="speaker_title"><?php esc_html_e( 'Title / Role', 'societypress' ); ?></label></th>
                     <td>
-                        <input type="text" id="speaker_title" name="speaker_title" value="<?php echo esc_attr( $val( 'title' ) ); ?>" class="regular-text" placeholder="e.g., Genealogy Instructor">
+                        <input type="text" id="speaker_title" name="speaker_title" value="<?php echo esc_attr( $val( 'title' ) ); ?>" class="regular-text" placeholder="<?php echo esc_attr__( 'e.g., Genealogy Instructor', 'societypress' ); ?>">
                     </td>
                 </tr>
                 <tr>
@@ -47134,7 +46227,7 @@ function sp_render_speaker_edit_page(): void {
                             ?>
                         </div>
                         <button type="button" class="button" id="sp-speaker-photo-btn">
-                            <?php echo $val( 'photo_id' ) ? 'Change Photo' : 'Select Photo'; ?>
+                            <?php echo esc_html( $val( 'photo_id' ) ? __( 'Change Photo', 'societypress' ) : __( 'Select Photo', 'societypress' ) ); ?>
                         </button>
                         <button type="button" class="button" id="sp-speaker-photo-remove"
                                 style="<?php echo $val( 'photo_id' ) ? '' : 'display: none;'; ?> color: #d63638;">
@@ -47154,7 +46247,7 @@ function sp_render_speaker_edit_page(): void {
                 </tr>
             </table>
 
-            <?php submit_button( $speaker ? 'Update Speaker' : 'Add Speaker' ); ?>
+            <?php submit_button( $speaker ? __( 'Update Speaker', 'societypress' ) : __( 'Add Speaker', 'societypress' ) ); ?>
         </form>
     </div>
 
@@ -47174,8 +46267,8 @@ function sp_render_speaker_edit_page(): void {
                 if (frame) { frame.open(); return; }
 
                 frame = wp.media({
-                    title:    'Select Speaker Photo',
-                    button:   { text: 'Use this photo' },
+                    title:    <?php echo wp_json_encode( __( 'Select Speaker Photo', 'societypress' ) ); ?>,
+                    button:   { text: <?php echo wp_json_encode( __( 'Use this photo', 'societypress' ) ); ?> },
                     multiple: false,
                     library:  { type: 'image' }
                 });
@@ -47186,7 +46279,7 @@ function sp_render_speaker_edit_page(): void {
                     var url = attachment.sizes && attachment.sizes.medium
                             ? attachment.sizes.medium.url : attachment.url;
                     photoPreview.innerHTML = '<img src="' + url + '" class="sp-img-preview">';
-                    photoBtn.textContent = 'Change Photo';
+                    photoBtn.textContent = <?php echo wp_json_encode( __( 'Change Photo', 'societypress' ) ); ?>;
                     if (photoRemove) photoRemove.style.display = '';
                 });
 
@@ -52129,7 +51222,11 @@ function sp_render_album_edit_page(): void {
         // We only use vanilla JS for all DOM updates in the callbacks.
         if (coverBtn) {
             coverBtn.addEventListener('click', function() {
-                var frame = wp.media({ title: 'Select Cover Image', button: { text: 'Set as Cover' }, multiple: false });
+                var frame = wp.media({
+                    title: <?php echo wp_json_encode( __( 'Select Cover Image', 'societypress' ) ); ?>,
+                    button: { text: <?php echo wp_json_encode( __( 'Set as Cover', 'societypress' ) ); ?> },
+                    multiple: false
+                });
                 frame.on('select', function() {
                     var att = frame.state().get('selection').first().toJSON();
                     if (coverIdInput) coverIdInput.value = att.id;
@@ -52373,7 +51470,7 @@ function sp_render_reports_page(): void {
         </div>
 
         <div class="sp-reports-cta">
-            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-annual-report' ) ); ?>" class="button button-primary button-hero">Generate Annual Report</a>
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-annual-report' ) ); ?>" class="button button-primary button-hero"><?php esc_html_e( 'Generate Annual Report', 'societypress' ); ?></a>
         </div>
     </div>
     <?php
@@ -54799,7 +53896,7 @@ function sp_render_library_catalog_page(): void {
         <form method="get" class="sp-catalog-filter-form">
             <input type="hidden" name="page" value="sp-library-catalog">
             <div>
-                <input type="text" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="Search title, author, call #, subject, surname..." class="sp-catalog-search-input">
+                <input type="text" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php echo esc_attr__( 'Search title, author, call #, subject, surname…', 'societypress' ); ?>" class="sp-catalog-search-input">
             </div>
             <div>
                 <select name="media_type">
@@ -55074,7 +54171,7 @@ function sp_render_library_item_edit_page(): void {
                 </tr>
                 <tr>
                     <th><label for="media_type"><?php esc_html_e( 'Media Type', 'societypress' ); ?></label></th>
-                    <td><input type="text" name="media_type" id="media_type" value="<?php echo esc_attr( $item->media_type ?? '' ); ?>" class="sp-lib-edit-medium-input" placeholder="Book, Map, Periodicals..."></td>
+                    <td><input type="text" name="media_type" id="media_type" value="<?php echo esc_attr( $item->media_type ?? '' ); ?>" class="sp-lib-edit-medium-input" placeholder="<?php echo esc_attr__( 'Book, Map, Periodicals…', 'societypress' ); ?>"></td>
                 </tr>
                 <tr>
                     <th><label for="category_id"><?php esc_html_e( 'Category', 'societypress' ); ?></label></th>
@@ -55089,7 +54186,7 @@ function sp_render_library_item_edit_page(): void {
                 </tr>
                 <tr>
                     <th><label for="subject"><?php esc_html_e( 'Subject Tags', 'societypress' ); ?></label></th>
-                    <td><input type="text" name="subject" id="subject" class="large-text" value="<?php echo esc_attr( $item->subject ?? '' ); ?>" placeholder="History, Family History, Vital Records...">
+                    <td><input type="text" name="subject" id="subject" class="large-text" value="<?php echo esc_attr( $item->subject ?? '' ); ?>" placeholder="<?php echo esc_attr__( 'History, Family History, Vital Records…', 'societypress' ); ?>">
                     <p class="description"><?php esc_html_e( 'Comma-separated subject tags.', 'societypress' ); ?></p></td>
                 </tr>
             </table>
@@ -55238,7 +54335,7 @@ function sp_render_library_item_edit_page(): void {
                             <option value="good" <?php selected( $item->item_condition ?? 'good', 'good' ); ?>>Good</option>
                             <option value="fair" <?php selected( $item->item_condition ?? '', 'fair' ); ?>>Fair</option>
                             <option value="poor" <?php selected( $item->item_condition ?? '', 'poor' ); ?>>Poor</option>
-                            <option value="reference" <?php selected( $item->item_condition ?? '', 'reference' ); ?>>Reference Only</option>
+                            <option value="reference" <?php selected( $item->item_condition ?? '', 'reference' ); ?>><?php esc_html_e( 'Reference Only', 'societypress' ); ?></option>
                         </select>
                     </td>
                 </tr>
@@ -55262,7 +54359,7 @@ function sp_render_library_item_edit_page(): void {
             </table>
 
             <p class="submit">
-                <input type="submit" name="sp_save_library_item" class="button button-primary" value="<?php echo $item ? 'Update Item' : 'Add Item'; ?>">
+                <input type="submit" name="sp_save_library_item" class="button button-primary" value="<?php echo esc_attr( $item ? __( 'Update Item', 'societypress' ) : __( 'Add Item', 'societypress' ) ); ?>">
             </p>
         </form>
     </div>
@@ -59431,11 +58528,11 @@ function sp_render_volunteers_page(): void {
                     </tr>
                     <tr>
                         <th><label for="role_title"><?php esc_html_e( 'Role Title', 'societypress' ); ?></label></th>
-                        <td><input type="text" name="role_title" id="role_title" value="<?php echo esc_attr( $editing->role_title ?? '' ); ?>" class="regular-text" required placeholder="e.g., Event Coordinator"></td>
+                        <td><input type="text" name="role_title" id="role_title" value="<?php echo esc_attr( $editing->role_title ?? '' ); ?>" class="regular-text" required placeholder="<?php echo esc_attr__( 'e.g., Event Coordinator', 'societypress' ); ?>"></td>
                     </tr>
                     <tr>
                         <th><label for="committee"><?php esc_html_e( 'Committee', 'societypress' ); ?></label></th>
-                        <td><input type="text" name="committee" id="committee" value="<?php echo esc_attr( $editing->committee ?? '' ); ?>" class="regular-text" placeholder="e.g., Programs Committee"></td>
+                        <td><input type="text" name="committee" id="committee" value="<?php echo esc_attr( $editing->committee ?? '' ); ?>" class="regular-text" placeholder="<?php echo esc_attr__( 'e.g., Programs Committee', 'societypress' ); ?>"></td>
                     </tr>
                     <tr>
                         <th><label for="start_date"><?php esc_html_e( 'Start Date', 'societypress' ); ?></label></th>
@@ -59650,11 +58747,11 @@ function sp_render_volunteer_hours_page(): void {
                 </div>
                 <div>
                     <label class="sp-vol-hours-field-label"><?php esc_html_e( 'Activity', 'societypress' ); ?></label>
-                    <input type="text" name="activity" placeholder="e.g., Library shelving" class="sp-vol-hours-input-activity">
+                    <input type="text" name="activity" placeholder="<?php echo esc_attr__( 'e.g., Library shelving', 'societypress' ); ?>" class="sp-vol-hours-input-activity">
                 </div>
                 <div>
                     <label class="sp-vol-hours-field-label"><?php esc_html_e( 'Committee', 'societypress' ); ?></label>
-                    <input type="text" name="committee" placeholder="Optional" class="sp-vol-hours-input-committee">
+                    <input type="text" name="committee" placeholder="<?php echo esc_attr__( 'Optional', 'societypress' ); ?>" class="sp-vol-hours-input-committee">
                 </div>
                 <div>
                     <label class="sp-vol-hours-field-label"><?php esc_html_e( 'Hours', 'societypress' ); ?></label>
@@ -60643,7 +59740,16 @@ function sp_render_email_log_page(): void {
 
         <?php if ( sp_email_should_block() ) : ?>
             <div class="notice notice-warning sp-email-log-notice">
-                <p><strong>Dev Mode Active:</strong> Emails are being logged but <strong>not sent</strong>. Define <code>SOCIETYPRESS_ALLOW_EMAILS</code> as <code>true</code> to override.</p>
+                <p><?php
+                    printf(
+                        /* translators: 1: <strong>Dev Mode Active:</strong>, 2: <strong>not sent</strong>, 3: <code>SOCIETYPRESS_ALLOW_EMAILS</code>, 4: <code>true</code> */
+                        wp_kses_post( __( '%1$s Emails are being logged but %2$s. Define %3$s as %4$s to override.', 'societypress' ) ),
+                        '<strong>' . esc_html__( 'Dev Mode Active:', 'societypress' ) . '</strong>',
+                        '<strong>' . esc_html__( 'not sent', 'societypress' ) . '</strong>',
+                        '<code>SOCIETYPRESS_ALLOW_EMAILS</code>',
+                        '<code>true</code>'
+                    );
+                ?></p>
             </div>
         <?php endif; ?>
 
@@ -60889,7 +59995,7 @@ function sp_render_email_log_detail( int $log_id ): void {
         <table class="widefat sp-email-detail-table">
             <tbody>
                 <tr>
-                    <th class="sp-email-detail-th-label-wide">Status</th>
+                    <th class="sp-email-detail-th-label-wide"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
                     <td>
                         <span class="sp-email-detail-badge" style="background: <?php echo esc_attr( $bc['bg'] ); ?>; color: <?php echo esc_attr( $bc['text'] ); ?>; border: 1px solid <?php echo esc_attr( $bc['border'] ); ?>;">
                             <?php echo esc_html( sp_localized_status( $entry->status ) ); ?>
@@ -60897,45 +60003,45 @@ function sp_render_email_log_detail( int $log_id ): void {
                     </td>
                 </tr>
                 <tr>
-                    <th class="sp-email-detail-th">To</th>
+                    <th class="sp-email-detail-th"><?php esc_html_e( 'To', 'societypress' ); ?></th>
                     <td><?php echo esc_html( $entry->recipient ); ?></td>
                 </tr>
                 <tr>
-                    <th class="sp-email-detail-th">Subject</th>
+                    <th class="sp-email-detail-th"><?php esc_html_e( 'Subject', 'societypress' ); ?></th>
                     <td><?php echo esc_html( $entry->subject ); ?></td>
                 </tr>
                 <?php if ( $entry->email_type ) : ?>
                     <tr>
-                        <th class="sp-email-detail-th">Type</th>
+                        <th class="sp-email-detail-th"><?php esc_html_e( 'Type', 'societypress' ); ?></th>
                         <td><?php echo esc_html( sp_localized_status( $entry->email_type, 'email_type' ) ); ?></td>
                     </tr>
                 <?php endif; ?>
                 <tr>
-                    <th class="sp-email-detail-th">Created</th>
+                    <th class="sp-email-detail-th"><?php esc_html_e( 'Created', 'societypress' ); ?></th>
                     <td><?php echo esc_html( date_i18n( 'F j, Y \a\t g:i:s a', strtotime( $entry->created_at ) ) ); ?></td>
                 </tr>
                 <?php if ( $entry->sent_at ) : ?>
                     <tr>
-                        <th class="sp-email-detail-th">Sent</th>
+                        <th class="sp-email-detail-th"><?php esc_html_e( 'Sent', 'societypress' ); ?></th>
                         <td><?php echo esc_html( date_i18n( 'F j, Y \a\t g:i:s a', strtotime( $entry->sent_at ) ) ); ?></td>
                     </tr>
                 <?php endif; ?>
                 <?php if ( $entry->error_message ) : ?>
                     <tr>
-                        <th class="sp-email-detail-th">Error</th>
+                        <th class="sp-email-detail-th"><?php esc_html_e( 'Error', 'societypress' ); ?></th>
                         <td class="sp-email-detail-error-text"><?php echo esc_html( $entry->error_message ); ?></td>
                     </tr>
                 <?php endif; ?>
                 <?php if ( $entry->headers ) : ?>
                     <tr>
-                        <th class="sp-email-detail-th">Headers</th>
+                        <th class="sp-email-detail-th"><?php esc_html_e( 'Headers', 'societypress' ); ?></th>
                         <td><pre class="sp-email-detail-headers-pre"><?php echo esc_html( $entry->headers ); ?></pre></td>
                     </tr>
                 <?php endif; ?>
             </tbody>
         </table>
 
-        <h3 class="sp-email-detail-body-heading">Email Body</h3>
+        <h3 class="sp-email-detail-body-heading"><?php esc_html_e( 'Email Body', 'societypress' ); ?></h3>
         <div class="sp-email-detail-body-wrapper">
             <?php
             // If it looks like HTML, render it in an iframe for safety.
@@ -61028,7 +60134,7 @@ function sp_render_blast_email_page(): void {
     ?>
     <div class="wrap sp-admin-wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Blast Email', 'societypress' ); ?></h1>
-        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email-compose' ) ); ?>" class="page-title-action">Compose New</a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email-compose' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Compose New', 'societypress' ); ?></a>
 
         <?php if ( isset( $_GET['deleted'] ) ) : ?>
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Blast email deleted.', 'societypress' ); ?></p></div>
@@ -61419,7 +60525,14 @@ function sp_render_blast_email_compose_page(): void {
                                     </label>
                                 <?php endforeach; ?>
                                 <?php if ( empty( $groups ) ) : ?>
-                                    <em class="sp-blast-no-groups">No active groups. <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-group-edit' ) ); ?>">Create one</a>.</em>
+                                    <em class="sp-blast-no-groups"><?php
+                                        printf(
+                                            /* translators: 1: opening <a> tag, 2: closing </a> tag */
+                                            wp_kses_post( __( 'No active groups. %1$sCreate one%2$s.', 'societypress' ) ),
+                                            '<a href="' . esc_url( admin_url( 'admin.php?page=sp-group-edit' ) ) . '">',
+                                            '</a>'
+                                        );
+                                    ?></em>
                                 <?php endif; ?>
                             </div>
 
@@ -61438,14 +60551,14 @@ function sp_render_blast_email_compose_page(): void {
                                 <?php endforeach; ?>
                             </div>
                         </fieldset>
-                        <p class="description">Members who have opted out of blast emails will be excluded automatically.</p>
+                        <p class="description"><?php esc_html_e( 'Members who have opted out of blast emails will be excluded automatically.', 'societypress' ); ?></p>
                     </td>
                 </tr>
                 <tr>
                     <th><label><?php esc_html_e( 'Email Body', 'societypress' ); ?></label></th>
                     <td>
                         <p class="description sp-blast-merge-hint">
-                            Merge tags: <code>{{first_name}}</code> <code>{{last_name}}</code> <code>{{display_name}}</code> <code>{{organization_name}}</code>
+                            <?php esc_html_e( 'Merge tags:', 'societypress' ); ?> <code>{{first_name}}</code> <code>{{last_name}}</code> <code>{{display_name}}</code> <code>{{organization_name}}</code>
                         </p>
                         <?php
                         wp_editor( $blast->body ?? '', 'blast_body', [
@@ -64803,6 +63916,23 @@ function sp_render_library_enrich_page(): void {
         var totalToProcess = 0;
         var ajaxUrl    = '<?php echo esc_js( admin_url( 'admin-ajax.php' ) ); ?>';
         var nonce      = '<?php echo esc_js( wp_create_nonce( 'sp_library_enrich' ) ); ?>';
+        var spEnrichI18n = <?php echo wp_json_encode( [
+            'starting'     => __( 'Starting enrichment…', 'societypress' ),
+            'stopping'     => __( 'Stopping after current batch completes…', 'societypress' ),
+            'stoppedByUser'=> __( 'Stopped by user.', 'societypress' ),
+            'unknownError' => __( 'Unknown error', 'societypress' ),
+            'errorPrefix'  => __( 'Error: ', 'societypress' ),
+            'stoppedError' => __( 'Stopped due to error.', 'societypress' ),
+            'stopped'      => __( 'Stopped.', 'societypress' ),
+            'complete'     => __( 'Complete!', 'societypress' ),
+            'networkPrefix'=> __( 'Network error: ', 'societypress' ),
+            'stoppedNet'   => __( 'Stopped due to network error.', 'societypress' ),
+            /* translators: %1$d: items processed, %2$d: total to process, %3$d: covers found, %4$d: not found, %5$d: errors */
+            'statusFmt'    => __( 'Processed: %1$d / %2$d | Covers found: %3$d | Not found: %4$d | Errors: %5$d', 'societypress' ),
+        ] ); ?>;
+        function spFmt(tpl, args) {
+            return tpl.replace(/%(\d+)\$d/g, function(_, n) { return args[parseInt(n,10) - 1]; });
+        }
 
         startBtn.addEventListener('click', function() {
             if ( running ) return;
@@ -64817,19 +63947,19 @@ function sp_render_library_enrich_page(): void {
             logEl.innerHTML = '';
             barEl.style.width = '0%';
 
-            log('Starting enrichment...');
+            log(spEnrichI18n.starting);
             fetchBatch();
         });
 
         stopBtn.addEventListener('click', function() {
             stopped = true;
             stopBtn.style.display = 'none';
-            log('Stopping after current batch completes...');
+            log(spEnrichI18n.stopping);
         });
 
         function fetchBatch() {
             if ( stopped ) {
-                finish('Stopped by user.');
+                finish(spEnrichI18n.stoppedByUser);
                 return;
             }
 
@@ -64849,8 +63979,8 @@ function sp_render_library_enrich_page(): void {
                 .then(function(r) { return r.json(); })
                 .then(function(resp) {
                     if ( ! resp.success ) {
-                        log('Error: ' + (resp.data || 'Unknown error'));
-                        finish('Stopped due to error.');
+                        log(spEnrichI18n.errorPrefix + (resp.data || spEnrichI18n.unknownError));
+                        finish(spEnrichI18n.stoppedError);
                         return;
                     }
 
@@ -64874,8 +64004,7 @@ function sp_render_library_enrich_page(): void {
                     // Update progress
                     var pct = totalToProcess > 0 ? Math.round( (processed / totalToProcess) * 100 ) : 0;
                     barEl.style.width = pct + '%';
-                    statusEl.textContent = 'Processed: ' + processed + ' / ' + totalToProcess +
-                        ' | Covers found: ' + found + ' | Not found: ' + notFound + ' | Errors: ' + errors;
+                    statusEl.textContent = spFmt(spEnrichI18n.statusFmt, [processed, totalToProcess, found, notFound, errors]);
 
                     // If there are more items, continue after a brief delay
                     // WHY: Open Library rate-limits to ~100 requests/5min for unauthed clients.
@@ -64883,12 +64012,12 @@ function sp_render_library_enrich_page(): void {
                     if ( d.has_more && ! stopped ) {
                         setTimeout(fetchBatch, 2000);
                     } else {
-                        finish(d.has_more ? 'Stopped.' : 'Complete!');
+                        finish(d.has_more ? spEnrichI18n.stopped : spEnrichI18n.complete);
                     }
                 })
                 .catch(function(err) {
-                    log('Network error: ' + err.message);
-                    finish('Stopped due to network error.');
+                    log(spEnrichI18n.networkPrefix + err.message);
+                    finish(spEnrichI18n.stoppedNet);
                 });
         }
 
@@ -65252,7 +64381,7 @@ function sp_render_newsletter_archive_page(): void {
         <form method="get" class="sp-newsletter-archive-search-form">
             <input type="hidden" name="page" value="sp-newsletter-archive">
             <p class="search-box">
-                <input type="search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="Search newsletters…">
+                <input type="search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php echo esc_attr__( 'Search newsletters…', 'societypress' ); ?>">
                 <input type="submit" class="button" value="<?php echo esc_attr__( 'Search', 'societypress' ); ?>">
                 <?php if ( $search ) : ?>
                     <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-newsletter-archive' ) ); ?>" class="button"><?php esc_html_e( 'Clear', 'societypress' ); ?></a>
@@ -65824,7 +64953,7 @@ function sp_frontend_newsletter_archive(): void {
 
         <!-- Search bar -->
         <div class="sp-mb-24">
-            <input type="text" id="sp-nl-search" placeholder="Search newsletters…"
+            <input type="text" id="sp-nl-search" placeholder="<?php echo esc_attr__( 'Search newsletters…', 'societypress' ); ?>"
                    style="width:100%; max-width:400px; padding:10px 14px; border:2px solid #dee2e6; border-radius:6px; font-size:16px;">
         </div>
 
@@ -65861,7 +64990,7 @@ function sp_frontend_newsletter_archive(): void {
                                  data-title="<?php echo esc_attr( $nl->title ); ?>"
                                  data-download="<?php echo esc_url( $download_url ); ?>"
                                  style="cursor:pointer;"
-                                 title="Click to preview"
+                                 title="<?php echo esc_attr__( 'Click to preview', 'societypress' ); ?>"
                              <?php endif; ?>>
                             <?php if ( $cover_url ) : ?>
                                 <img src="<?php echo esc_url( $cover_url ); ?>" alt="<?php echo esc_attr( $nl->title ); ?>">
@@ -67313,7 +66442,7 @@ function sp_render_record_collection_edit_page(): void {
             <table class="form-table">
                 <tr>
                     <th><label for="name"><?php esc_html_e( 'Name', 'societypress' ); ?></label></th>
-                    <td><input type="text" name="name" id="name" class="large-text" value="<?php echo esc_attr( $collection->name ?? '' ); ?>" required placeholder="e.g., Sample County Cemetery Index"></td>
+                    <td><input type="text" name="name" id="name" class="large-text" value="<?php echo esc_attr( $collection->name ?? '' ); ?>" required placeholder="<?php echo esc_attr__( 'e.g., Sample County Cemetery Index', 'societypress' ); ?>"></td>
                 </tr>
                 <tr>
                     <th><label for="record_type"><?php esc_html_e( 'Record Type', 'societypress' ); ?></label></th>
@@ -67343,7 +66472,7 @@ function sp_render_record_collection_edit_page(): void {
                 </tr>
                 <tr>
                     <th><label for="location"><?php esc_html_e( 'Location', 'societypress' ); ?></label></th>
-                    <td><input type="text" name="location" id="location" class="regular-text" value="<?php echo esc_attr( $collection->location ?? '' ); ?>" placeholder="e.g., Sample County, Texas"></td>
+                    <td><input type="text" name="location" id="location" class="regular-text" value="<?php echo esc_attr( $collection->location ?? '' ); ?>" placeholder="<?php echo esc_attr__( 'e.g., Sample County, Texas', 'societypress' ); ?>"></td>
                 </tr>
                 <tr>
                     <th><label for="access_level"><?php esc_html_e( 'Access Level', 'societypress' ); ?></label></th>
@@ -77763,7 +76892,7 @@ function sp_render_lineage_application_edit_page(): void {
             <!-- Application detail -->
             <div style="flex:1 1 600px; min-width:400px;">
                 <div class="postbox">
-                    <h2 class="hndle" style="padding:10px 14px;"><?php echo esc_html( $app->program_name ); ?></h2>
+                    <h2 class="hndle sp-hndle-padded"><?php echo esc_html( $app->program_name ); ?></h2>
                     <div class="inside">
                         <table class="form-table" style="margin-top:0;">
                             <tr>
@@ -77827,7 +76956,7 @@ function sp_render_lineage_application_edit_page(): void {
                 </div>
 
                 <div class="postbox">
-                    <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Narrative & Sources', 'societypress' ); ?></h2>
+                    <h2 class="hndle sp-hndle-padded"><?php esc_html_e( 'Narrative & Sources', 'societypress' ); ?></h2>
                     <div class="inside">
                         <h4><?php esc_html_e( 'Narrative', 'societypress' ); ?></h4>
                         <div style="background:#f9f9f9; border:1px solid #eee; padding:10px; border-radius:4px;">
@@ -77841,7 +76970,7 @@ function sp_render_lineage_application_edit_page(): void {
                 </div>
 
                 <div class="postbox">
-                    <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Proofs', 'societypress' ); ?> (<?php echo count( $proofs ); ?>)</h2>
+                    <h2 class="hndle sp-hndle-padded"><?php esc_html_e( 'Proofs', 'societypress' ); ?> (<?php echo count( $proofs ); ?>)</h2>
                     <div class="inside">
                         <?php if ( empty( $proofs ) ) : ?>
                             <p style="color:#767676;"><em><?php esc_html_e( 'No proof documents attached.', 'societypress' ); ?></em></p>
@@ -77872,7 +77001,7 @@ function sp_render_lineage_application_edit_page(): void {
             <!-- Decision sidebar -->
             <div style="flex:0 0 360px;">
                 <div class="postbox">
-                    <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Review Decision', 'societypress' ); ?></h2>
+                    <h2 class="hndle sp-hndle-padded"><?php esc_html_e( 'Review Decision', 'societypress' ); ?></h2>
                     <div class="inside">
                         <form method="post">
                             <?php wp_nonce_field( 'sp_review_lineage_application_' . $id, 'sp_la_nonce' ); ?>
@@ -80726,6 +79855,17 @@ function sp_render_research_guides_page(): void {
                 var initialData = JSON.parse(<?php echo wp_json_encode( $cats_json ); ?>) || [];
                 var container = document.getElementById('rg-categories');
                 var hidden    = document.getElementById('categories_json');
+                var spRgI18n = <?php echo wp_json_encode( [
+                    'resourceLabel'  => __( 'Resource label', 'societypress' ),
+                    'optionalNote'   => __( 'Optional note', 'societypress' ),
+                    'external'       => __( 'External', 'societypress' ),
+                    'local'          => __( 'Local', 'societypress' ),
+                    'remove'         => __( 'Remove', 'societypress' ),
+                    'categoryLabel'  => __( 'Category label, e.g. Births', 'societypress' ),
+                    'deleteCategory' => __( 'Delete category', 'societypress' ),
+                    'optionalIntro'  => __( 'Optional intro for this category', 'societypress' ),
+                    'addResource'    => __( '+ Add resource', 'societypress' ),
+                ] ); ?>;
 
                 function el(tag, attrs, children) {
                     var e = document.createElement(tag);
@@ -80765,15 +79905,15 @@ function sp_render_research_guides_page(): void {
 
                 function makeResource(data) {
                     data = data || { label: '', url: '', type: 'external', note: '' };
-                    var lbl = el('input', { type: 'text', placeholder: 'Resource label', value: data.label, 'data-r-label': '1', style: 'width:100%' });
+                    var lbl = el('input', { type: 'text', placeholder: spRgI18n.resourceLabel, value: data.label, 'data-r-label': '1', style: 'width:100%' });
                     var url = el('input', { type: 'url', placeholder: 'https://…', value: data.url, 'data-r-url': '1', style: 'width:100%' });
                     var type = el('select', { 'data-r-type': '1' }, [
-                        el('option', { value: 'external' }, ['External']),
-                        el('option', { value: 'local' }, ['Local'])
+                        el('option', { value: 'external' }, [spRgI18n.external]),
+                        el('option', { value: 'local' }, [spRgI18n.local])
                     ]);
                     type.value = data.type || 'external';
-                    var note = el('input', { type: 'text', placeholder: 'Optional note', value: data.note, 'data-r-note': '1', style: 'width:100%' });
-                    var del = el('button', { type: 'button', className: 'button-link-delete' }, ['Remove']);
+                    var note = el('input', { type: 'text', placeholder: spRgI18n.optionalNote, value: data.note, 'data-r-note': '1', style: 'width:100%' });
+                    var del = el('button', { type: 'button', className: 'button-link-delete' }, [spRgI18n.remove]);
                     var row = el('div', {
                         'data-resource': '1',
                         style: 'display:grid; grid-template-columns: 1.5fr 2fr 100px 1.5fr 70px; gap:6px; padding:6px; background:#fff; border:1px solid #eee; border-radius:4px; margin-bottom:4px; align-items:center;'
@@ -80785,17 +79925,17 @@ function sp_render_research_guides_page(): void {
 
                 function makeCategory(data) {
                     data = data || { label: '', intro: '', resources: [] };
-                    var lbl = el('input', { type: 'text', placeholder: 'Category label, e.g. Births', value: data.label, 'data-cat-label': '1', style: 'flex:1; padding:6px 8px; font-size:15px; font-weight:600;' });
-                    var del = el('button', { type: 'button', className: 'button button-link-delete' }, ['Delete category']);
+                    var lbl = el('input', { type: 'text', placeholder: spRgI18n.categoryLabel, value: data.label, 'data-cat-label': '1', style: 'flex:1; padding:6px 8px; font-size:15px; font-weight:600;' });
+                    var del = el('button', { type: 'button', className: 'button button-link-delete' }, [spRgI18n.deleteCategory]);
                     var header = el('div', { style: 'display:flex; gap:8px; align-items:center; margin-bottom:6px;' }, [ lbl, del ]);
 
-                    var intro = el('textarea', { rows: '2', placeholder: 'Optional intro for this category', 'data-cat-intro': '1', style: 'width:100%; margin-bottom:8px;' });
+                    var intro = el('textarea', { rows: '2', placeholder: spRgI18n.optionalIntro, 'data-cat-intro': '1', style: 'width:100%; margin-bottom:8px;' });
                     intro.value = data.intro;
 
                     var resWrap = el('div');
                     (data.resources || []).forEach(function (r) { resWrap.appendChild(makeResource(r)); });
 
-                    var addRes = el('button', { type: 'button', className: 'button button-small', style: 'margin-top:4px;' }, ['+ Add resource']);
+                    var addRes = el('button', { type: 'button', className: 'button button-small', style: 'margin-top:4px;' }, [spRgI18n.addResource]);
                     addRes.onclick = function () { resWrap.appendChild(makeResource()); syncHidden(); };
 
                     var card = el('div', { 'data-category': '1', style: 'background:#f8f8f8; border:1px solid #ddd; border-radius:6px; padding:12px; margin-bottom:14px;' }, [ header, intro, resWrap, addRes ]);
@@ -83294,7 +82434,7 @@ function sp_render_research_case_edit_page(): void {
             <!-- Case detail -->
             <div style="flex:1 1 600px; min-width:400px;">
                 <div class="postbox">
-                    <h2 class="hndle" style="padding:10px 14px;"><?php echo esc_html( $case->title ); ?></h2>
+                    <h2 class="hndle sp-hndle-padded"><?php echo esc_html( $case->title ); ?></h2>
                     <div class="inside">
                         <table class="form-table" style="margin-top:0;">
                             <tr><th><?php esc_html_e( 'Requester', 'societypress' ); ?></th>
@@ -83321,7 +82461,7 @@ function sp_render_research_case_edit_page(): void {
                 </div>
 
                 <div class="postbox">
-                    <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Description', 'societypress' ); ?></h2>
+                    <h2 class="hndle sp-hndle-padded"><?php esc_html_e( 'Description', 'societypress' ); ?></h2>
                     <div class="inside">
                         <div style="background:#f9f9f9; border:1px solid #eee; padding:10px; border-radius:4px;">
                             <?php echo wp_kses_post( wpautop( $case->description ) ); ?>
@@ -83336,7 +82476,7 @@ function sp_render_research_case_edit_page(): void {
                 </div>
 
                 <div class="postbox">
-                    <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Hours Logged', 'societypress' ); ?> (<?php echo esc_html( number_format( $hours_total, 2 ) ); ?> <?php esc_html_e( 'hrs', 'societypress' ); ?>)</h2>
+                    <h2 class="hndle sp-hndle-padded"><?php esc_html_e( 'Hours Logged', 'societypress' ); ?> (<?php echo esc_html( number_format( $hours_total, 2 ) ); ?> <?php esc_html_e( 'hrs', 'societypress' ); ?>)</h2>
                     <div class="inside">
                         <?php if ( ! empty( $hours_logged ) ) : ?>
                             <table class="widefat striped" style="margin-bottom:12px;">
@@ -83371,7 +82511,7 @@ function sp_render_research_case_edit_page(): void {
 
                 <?php if ( ! empty( $invoices ) ) : ?>
                 <div class="postbox">
-                    <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Invoices', 'societypress' ); ?> (<?php echo count( $invoices ); ?>)</h2>
+                    <h2 class="hndle sp-hndle-padded"><?php esc_html_e( 'Invoices', 'societypress' ); ?> (<?php echo count( $invoices ); ?>)</h2>
                     <div class="inside">
                         <table class="widefat striped">
                             <thead><tr><th><?php esc_html_e( 'Date', 'societypress' ); ?></th><th><?php esc_html_e( 'Hours', 'societypress' ); ?></th><th><?php esc_html_e( 'Amount', 'societypress' ); ?></th><th><?php esc_html_e( 'Status', 'societypress' ); ?></th></tr></thead>
@@ -83394,7 +82534,7 @@ function sp_render_research_case_edit_page(): void {
             <!-- Decision sidebar -->
             <div style="flex:0 0 360px;">
                 <div class="postbox">
-                    <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Case Decisions', 'societypress' ); ?></h2>
+                    <h2 class="hndle sp-hndle-padded"><?php esc_html_e( 'Case Decisions', 'societypress' ); ?></h2>
                     <div class="inside">
                         <form method="post">
                             <?php wp_nonce_field( 'sp_save_research_case_' . $id, 'sp_rc_nonce' ); ?>
@@ -84303,7 +83443,7 @@ add_action( 'admin_footer', function () {
     ?>
     <div id="sp-request-more-hours-tpl" style="display:none;">
         <div class="postbox">
-            <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Request Additional Hours', 'societypress' ); ?></h2>
+            <h2 class="hndle sp-hndle-padded"><?php esc_html_e( 'Request Additional Hours', 'societypress' ); ?></h2>
             <div class="inside">
                 <p class="description"><?php
                 printf(
@@ -85066,7 +84206,7 @@ add_action( 'admin_footer', function () {
     ?>
     <div id="sp-rc-messages-tpl" style="display:none;">
         <div class="postbox">
-            <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Case Messages', 'societypress' ); ?></h2>
+            <h2 class="hndle sp-hndle-padded"><?php esc_html_e( 'Case Messages', 'societypress' ); ?></h2>
             <div class="inside">
                 <?php echo $thread_html; ?>
             </div>
@@ -85469,7 +84609,7 @@ function sp_render_theme_presets_page(): void {
             <!-- Export -->
             <div style="flex:1 1 380px; min-width:340px;">
                 <div class="postbox">
-                    <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Export current look', 'societypress' ); ?></h2>
+                    <h2 class="hndle sp-hndle-padded"><?php esc_html_e( 'Export current look', 'societypress' ); ?></h2>
                     <div class="inside">
                         <p><?php esc_html_e( 'Download a JSON file of your current design tokens — palette, fonts, spacing, layout. Share it with another society, post it on the SocietyPress Theme Gallery (when launched), or keep it as a backup before experimenting with imports.', 'societypress' ); ?></p>
                         <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
@@ -85491,7 +84631,7 @@ function sp_render_theme_presets_page(): void {
                 </div>
 
                 <div class="postbox">
-                    <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( "What's in a preset", 'societypress' ); ?></h2>
+                    <h2 class="hndle sp-hndle-padded"><?php esc_html_e( "What's in a preset", 'societypress' ); ?></h2>
                     <div class="inside">
                         <p style="font-size:13px; color:#555;"><?php esc_html_e( 'Presets contain only your site\'s design tokens. They do not include:', 'societypress' ); ?></p>
                         <ul style="font-size:13px; color:#555; margin-left: 20px;">
@@ -85509,7 +84649,7 @@ function sp_render_theme_presets_page(): void {
             <!-- Import -->
             <div style="flex:1 1 380px; min-width:340px;">
                 <div class="postbox">
-                    <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Import a preset', 'societypress' ); ?></h2>
+                    <h2 class="hndle sp-hndle-padded"><?php esc_html_e( 'Import a preset', 'societypress' ); ?></h2>
                     <div class="inside">
                         <p><?php esc_html_e( 'Upload a SocietyPress preset (.json) you got from another society or downloaded from the Theme Gallery. Your site will instantly take on its look. Your content, members, and configuration are not touched.', 'societypress' ); ?></p>
                         <p style="background:#fff3cd; border-left:4px solid #b45309; padding:10px 14px; border-radius:0 4px 4px 0; font-size:13px;">
@@ -85531,7 +84671,7 @@ function sp_render_theme_presets_page(): void {
                 </div>
 
                 <div class="postbox">
-                    <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Theme Gallery', 'societypress' ); ?></h2>
+                    <h2 class="hndle sp-hndle-padded"><?php esc_html_e( 'Theme Gallery', 'societypress' ); ?></h2>
                     <div class="inside">
                         <p style="color:#555;"><?php esc_html_e( 'A public Theme Gallery where societies share their presets is in the works at getsocietypress.org. Once it launches, you\'ll be able to browse looks from other societies and one-click install them here.', 'societypress' ); ?></p>
                         <p><a href="https://getsocietypress.org/themes/" class="button" target="_blank"><?php esc_html_e( 'Open the Gallery →', 'societypress' ); ?></a></p>
@@ -86158,7 +85298,7 @@ function sp_render_help_tags_admin_page(): void {
             <!-- Action form -->
             <div style="flex:0 0 360px;">
                 <div class="postbox">
-                    <h2 class="hndle" style="padding:10px 14px;"><?php esc_html_e( 'Rename / Merge / Delete', 'societypress' ); ?></h2>
+                    <h2 class="hndle sp-hndle-padded"><?php esc_html_e( 'Rename / Merge / Delete', 'societypress' ); ?></h2>
                     <div class="inside">
                         <form method="post">
                             <?php wp_nonce_field( 'sp_help_tags' ); ?>

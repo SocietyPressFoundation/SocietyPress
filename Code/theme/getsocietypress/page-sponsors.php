@@ -123,11 +123,11 @@ $gsp_sponsors = array(
         <div class="sponsors-cta__content">
             <h2>Want to be listed here?</h2>
             <p>
-                There are three ways to end up on this page: donate toward
-                the project's hosting and conference costs, contribute
-                substantively to the code or documentation, or be a society
-                running SocietyPress whose feedback shapes what we build
-                next. Any of those earns you recognition here.
+                Three ways to end up on this page: donate toward the
+                project's hosting and conference costs, contribute code
+                or documentation, or be one of the early-adopter
+                societies whose feedback shapes what gets built next.
+                Any of those earns you recognition here.
             </p>
             <div class="sponsors-cta__actions">
                 <a href="<?php echo esc_url( home_url( '/donate/' ) ); ?>" class="btn btn-primary btn-lg">

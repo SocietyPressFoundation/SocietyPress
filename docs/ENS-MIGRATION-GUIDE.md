@@ -4,7 +4,7 @@ A step-by-step guide for genealogical and historical society webmasters who are 
 
 This guide assumes you are not a developer. You don't need to know PHP, MySQL, or anything about WordPress to follow it. You **do** need access to your current ENS site as an administrator, and access to a web hosting account where SocietyPress will live.
 
-**Coming from ENS-Classic or the new ENS-Responsive?** Both paths are supported. ENS-Classic is being sunset (Blue Crab's official end date is 5/31/2027 with no guarantee of extension), and ENS-R societies who'd rather own their data than keep paying tiered annual fees are also welcome — the export format is similar enough that the same CSV importer reads both. If you're still deciding which way to go, see the [side-by-side comparison](https://getsocietypress.org/comparison/) first.
+**Coming from ENS-Classic or the new ENS-Responsive?** Both paths are supported. ENS-Classic is being sunset (Blue Crab's official end date is 5/31/2027 with no guarantee of extension), and ENS-R societies who'd prefer to own their stack are also welcome — the export format is similar enough that the same CSV importer reads both. If you're still deciding which way to go, see the [side-by-side comparison](https://getsocietypress.org/comparison/) first.
 
 ---
 
@@ -77,7 +77,7 @@ If you have data in fields the importer would skip and you want it preserved, **
 
 1. Log in to your ENS administrator panel.
 2. Find the **Membership** or **Members** section. The exact menu name varies by ENS version.
-3. Look for an **Export** or **Download CSV** button. (If your ENS panel doesn't show one, contact ENS support and ask for a "full member export." It's part of your account.)
+3. Look for an **Export** or **Download CSV** button. (If your ENS panel doesn't show one, contact ENS support and ask for a full member export.)
 4. Save the CSV file somewhere you'll find it again. A folder on your Desktop named something like `Society Migration` is fine.
 5. While you're in ENS, also export anything else you can:
    - Events / calendar
@@ -302,6 +302,6 @@ These were all added in the run-up to the 2026 Texas State Genealogical Society 
 
 ## A note on your old data
 
-The ENS CSV you exported is the only complete snapshot of your member history that exists outside of ENS. **Make a backup of that CSV file and keep it somewhere safe** — a cloud folder, a thumb drive, an email attachment to yourself. After your subscription with ENS ends, you can't get it back.
+The ENS CSV you exported is the only complete snapshot of your member history that exists outside of ENS. **Make a backup of that CSV file and keep it somewhere safe** — a cloud folder, a thumb drive, an email attachment to yourself. After your ENS subscription ends, that CSV is the only copy you'll have.
 
 The same goes for the SocietyPress site you're about to build. SocietyPress includes a one-click full-site export (Settings → Export) that produces a single ZIP containing everything: database, files, photos, and configuration. **Run it monthly.** Keep the last three months of backups. This is your insurance against everything from a forgotten password to a host going out of business.

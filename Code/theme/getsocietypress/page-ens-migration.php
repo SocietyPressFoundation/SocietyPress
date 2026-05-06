@@ -67,10 +67,15 @@ get_header();
         <div class="section-header">
             <h2>Why Societies Move</h2>
             <p>
-                SocietyPress isn't an attack on ENS &mdash; ENS served a lot of
-                societies for a lot of years. But the needs of local societies
-                have changed, and the tools available to meet them have changed
-                too. These are the three reasons we hear most often.
+                We can't honestly bring up perceived value without bringing
+                up the elephant in the room: this is a SocietyPress page,
+                written about ENS, aimed at ENS societies. We're a
+                competitor &mdash; that's our bias, and we're not going to
+                pretend otherwise. ENS served a lot of societies for a lot
+                of years, and the reasons people are moving aren't about
+                ENS being bad. They're about both the needs and the tools
+                having changed. These are the three reasons we hear most
+                often.
             </p>
         </div>
 
@@ -80,12 +85,12 @@ get_header();
                 <div class="ens-why__card-number">1</div>
                 <h3>Cost</h3>
                 <p>
-                    ENS bills annually at hundreds of dollars a year for every
-                    society, large or small. SocietyPress is free forever, and
-                    you own your hosting directly &mdash; typically $5&ndash;15
-                    a month at a standard WordPress host. For a 200-member
-                    society, that's the difference between spending $600 a year
-                    on software and spending $120 a year on hosting.
+                    ENS is a paid annual subscription for every society,
+                    typically several hundred dollars a year depending on
+                    your tier. SocietyPress itself is free, and you own your
+                    hosting directly &mdash; usually $5&ndash;15 a month at a
+                    standard WordPress host. The math works out in your
+                    favor across most society sizes.
                 </p>
             </div>
 
@@ -109,9 +114,9 @@ get_header();
                     SocietyPress is built on current WordPress. That means
                     mobile-friendly by default, responsive admin screens,
                     modern payment processing (Stripe and PayPal out of the
-                    box), PWA support, real search, and all the usability that
-                    decades of web development have produced. Your members get
-                    a site that feels like 2026, not 2006.
+                    box), PWA support, and real search. Your members get a
+                    site built to current web standards, with the usability
+                    that comes from it.
                 </p>
             </div>
 

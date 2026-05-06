@@ -14,6 +14,67 @@ Entries describe user-visible changes only. For the underlying commits, see
 
 ---
 
+## [1.0.54] — 2026-05-05
+
+### Added
+- **Custom CSS field on the Design settings page.** Optional textarea
+  under SocietyPress → Settings → Design where webmasters can drop
+  in their own CSS rules. Output is appended after every other
+  stylesheet on the public-facing site so user CSS overrides
+  anything above. Sanitized on save and again on output:
+  `<style>`-block escapes, HTML tags, `expression(...)`,
+  `behavior:`, `javascript:` URLs, `@import` statements, and
+  HTML-comment markers are all stripped. Foundation for future
+  Theme Exchange Tier 2 (themed bundles).
+
+---
+
+## [1.0.53] — 2026-05-05
+
+### Added
+- **Classic `WP_Widget` registration for the Society Sidebar.** The
+  auto-assembled member-portal navigation is now droppable into any
+  registered widget area via Appearance → Widgets, with a title field
+  and the same three options (icons, login link, current-page
+  highlight) as the existing shortcode and page-builder widget. The
+  shortcode `[sp_society_sidebar]` and the page-builder widget
+  continue to work unchanged.
+
+---
+
+## [1.0.52] — 2026-05-05
+
+### Added
+- **Help Requests Tags admin — usability polish.** Click any tag in
+  the usage list to load it into the Source field; the Delete action
+  now triggers the standard `spConfirm()` modal so a single misclick
+  can't strip a tag from every thread that uses it.
+
+### Fixed
+- **Help Requests Tags rename/merge — empty destination.** Submitting
+  Rename or Merge with an empty Destination field used to silently
+  strip the source tag (the empty replacement was filtered out by
+  `array_filter`, equivalent to a Delete). The handler now blocks
+  the action with an inline error message.
+
+---
+
+## [1.0.51] — 2026-05-05
+
+### Added
+- **Help Requests email lifecycle — full coverage.**
+  `sp_help_send_status_email()` now handles the `approved`
+  (pending_review → open) and `reopened` events in addition to the
+  existing `resolved` and `closed` events. The reopen action on the
+  admin page emails the asker; bulk Approve and bulk Mark Resolved
+  emit one email per row that actually transitions (a two-stage hook
+  snapshots eligible IDs at priority 5 and dispatches at priority 20
+  so no-op rows aren't emailed). Hidden and Deleted bulk actions
+  remain silent — they're moderation actions, not asker-facing
+  transitions.
+
+---
+
 ## [1.0.50] — 2026-05-03
 
 ### Added

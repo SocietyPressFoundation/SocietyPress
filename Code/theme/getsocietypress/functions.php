@@ -232,7 +232,7 @@ function gsp_customizer_announcement( $wp_customize ) {
 
     /* Announcement text */
     $wp_customize->add_setting( 'gsp_announce_text', array(
-        'default'           => 'SocietyPress v0.01d is here — a free, open-source platform for genealogical societies.',
+        'default'           => 'SocietyPress is here — a free, open-source platform for genealogical societies.',
         'sanitize_callback' => 'wp_kses_post',
     ) );
 
@@ -272,7 +272,63 @@ add_filter( 'excerpt_length', 'gsp_excerpt_length' );
  * Returns the version as a plain string (e.g. "1.0.47"), no "v" prefix.
  */
 function gsp_get_sp_version() {
-    return '1.0.50';
+    return '1.0.53';
+}
+
+
+/**
+ * Recent GitHub releases for the SocietyPress repo.
+ *
+ * Powers the "Recently Shipped" section on the homepage. Cached for 6
+ * hours so the homepage doesn't hit the GitHub API on every load (and
+ * GitHub's anonymous rate limit is 60 req/hr — easily exceeded
+ * without caching). On API failure, caches an empty array briefly so
+ * a transient outage doesn't hammer the API on every page hit.
+ *
+ * Returns an array of release objects with: tag, name, date, url, body.
+ * Skips drafts and prereleases. Limit defaults to 3 cards.
+ */
+function gsp_get_github_releases( int $limit = 3 ): array {
+    $cached = get_transient( 'gsp_github_releases' );
+    if ( false !== $cached && is_array( $cached ) ) {
+        return array_slice( $cached, 0, $limit );
+    }
+
+    $response = wp_remote_get(
+        'https://api.github.com/repos/SocietyPressFoundation/SocietyPress/releases?per_page=10',
+        array(
+            'timeout' => 5,
+            'headers' => array( 'Accept' => 'application/vnd.github+json' ),
+        )
+    );
+
+    if ( is_wp_error( $response ) || 200 !== (int) wp_remote_retrieve_response_code( $response ) ) {
+        set_transient( 'gsp_github_releases', array(), 15 * MINUTE_IN_SECONDS );
+        return array();
+    }
+
+    $data = json_decode( wp_remote_retrieve_body( $response ), true );
+    if ( ! is_array( $data ) ) {
+        set_transient( 'gsp_github_releases', array(), 15 * MINUTE_IN_SECONDS );
+        return array();
+    }
+
+    $releases = array();
+    foreach ( $data as $r ) {
+        if ( ! empty( $r['draft'] ) || ! empty( $r['prerelease'] ) ) {
+            continue;
+        }
+        $releases[] = array(
+            'tag'  => (string) ( $r['tag_name']     ?? '' ),
+            'name' => (string) ( $r['name']         ?? '' ),
+            'date' => (string) ( $r['published_at'] ?? '' ),
+            'url'  => (string) ( $r['html_url']     ?? '' ),
+            'body' => (string) ( $r['body']         ?? '' ),
+        );
+    }
+
+    set_transient( 'gsp_github_releases', $releases, 6 * HOUR_IN_SECONDS );
+    return array_slice( $releases, 0, $limit );
 }
 
 
@@ -775,12 +831,37 @@ function gsp_social_meta() {
     $url = is_singular() ? get_permalink() : home_url( add_query_arg( null, null ) );
     $url = apply_filters( 'gsp_social_url', $url );
 
-    // Image — featured image on singles, site icon otherwise.
-    $image = '';
+    /* Image resolution order:
+     *   1. Featured image (singles only)
+     *   2. Configured default OG banner — filterable via 'gsp_default_og_image_url'
+     *      so a 1200×630 PNG can be wired in without code changes. The default
+     *      check is a file at /wp-content/uploads/og-banner.png so Charles can
+     *      drop one in via Media Library and it picks up automatically.
+     *   3. Site icon (favicon — square, not ideal for previews but better than nothing)
+     */
+    $image        = '';
+    $image_width  = 0;
+    $image_height = 0;
+
     if ( is_singular() && has_post_thumbnail() ) {
         $image_arr = wp_get_attachment_image_src( get_post_thumbnail_id(), 'full' );
         if ( ! empty( $image_arr[0] ) ) {
-            $image = $image_arr[0];
+            $image        = $image_arr[0];
+            $image_width  = (int) ( $image_arr[1] ?? 0 );
+            $image_height = (int) ( $image_arr[2] ?? 0 );
+        }
+    }
+    if ( ! $image ) {
+        $default_og = trailingslashit( content_url() ) . 'uploads/og-banner.png';
+        $default_og = apply_filters( 'gsp_default_og_image_url', $default_og );
+        $local_path = str_replace( content_url(), WP_CONTENT_DIR, $default_og );
+        if ( $default_og && file_exists( $local_path ) ) {
+            $image = $default_og;
+            $size  = @getimagesize( $local_path );
+            if ( is_array( $size ) ) {
+                $image_width  = (int) $size[0];
+                $image_height = (int) $size[1];
+            }
         }
     }
     if ( ! $image ) {
@@ -788,7 +869,9 @@ function gsp_social_meta() {
         if ( $site_icon_id ) {
             $icon_arr = wp_get_attachment_image_src( $site_icon_id, 'full' );
             if ( ! empty( $icon_arr[0] ) ) {
-                $image = $icon_arr[0];
+                $image        = $icon_arr[0];
+                $image_width  = (int) ( $icon_arr[1] ?? 0 );
+                $image_height = (int) ( $icon_arr[2] ?? 0 );
             }
         }
     }
@@ -812,6 +895,10 @@ function gsp_social_meta() {
     <?php if ( $image ) : ?>
         <meta property="og:image" content="<?php echo esc_url( $image ); ?>">
         <meta property="og:image:alt" content="<?php echo esc_attr( $site_name ); ?>">
+        <?php if ( $image_width && $image_height ) : ?>
+            <meta property="og:image:width" content="<?php echo (int) $image_width; ?>">
+            <meta property="og:image:height" content="<?php echo (int) $image_height; ?>">
+        <?php endif; ?>
     <?php endif; ?>
     <?php if ( is_singular( 'post' ) ) : ?>
         <meta property="article:published_time" content="<?php echo esc_attr( get_the_date( 'c' ) ); ?>">

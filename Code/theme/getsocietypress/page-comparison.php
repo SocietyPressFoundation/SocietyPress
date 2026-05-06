@@ -97,7 +97,7 @@ get_header();
             <div class="cmp-card">
                 <div class="cmp-card__badge cmp-card__badge--alt">Wild Apricot</div>
                 <ul class="cmp-card__list">
-                    <li><strong>$60–$330+/month</strong> tiered by contact count.</li>
+                    <li><strong>$66–$330+/month</strong> tiered by contact count.</li>
                     <li><strong>Hosted only.</strong> Personify, the parent company, owns the stack.</li>
                     <li><strong>Generic association tools.</strong> Members, events, donations — not genealogy-specific.</li>
                     <li><strong>No surname research.</strong> No First Families. No library catalog.</li>
@@ -242,7 +242,7 @@ get_header();
                     <!-- Compliance -->
                     <tr class="cmp-matrix__group"><td colspan="4">Compliance &amp; security</td></tr>
                     <tr><td>GDPR data exporters / erasers</td><td class="cmp-matrix__sp">✓</td><td>~</td><td>✓</td></tr>
-                    <tr><td>libsodium-encrypted sensitive fields</td><td class="cmp-matrix__sp">✓</td><td>?</td><td>?</td></tr>
+                    <tr><td>Sensitive member fields encrypted at rest</td><td class="cmp-matrix__sp">✓ (XChaCha20)</td><td>?</td><td>~ (infrastructure-level, AWS)</td></tr>
                     <tr><td>PWA / mobile-installable</td><td class="cmp-matrix__sp">✓</td><td>✗</td><td>~</td></tr>
 
                 </tbody>

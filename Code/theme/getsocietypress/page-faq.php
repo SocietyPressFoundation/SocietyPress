@@ -417,9 +417,184 @@ get_header();
 
 
 <!-- ==========================================================================
-     5. FEATURE QUESTIONS — what can the software actually do
+     5. COMMON CONCERNS — direct answers to the doubts boards raise
      ========================================================================== -->
 <section class="faq-section faq-section--alt section">
+    <div class="container container--narrow">
+
+        <h2 class="faq-section__heading">Common Concerns</h2>
+
+        <div class="faq-group">
+
+            <details class="faq-item">
+                <summary class="faq-item__question">
+                    SocietyPress is maintained by one person. What happens if something happens to him?
+                    <svg class="faq-item__chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <div class="faq-item__answer">
+                    <p>
+                        True today &mdash; SocietyPress is solo-maintained. The
+                        protection against bus-factor risk is the GPL license
+                        itself. Every line of code is public on
+                        <a href="https://github.com/SocietyPressFoundation/SocietyPress">GitHub</a>,
+                        every release ships the full source, and any developer
+                        anywhere can fork the project and continue it. Compare
+                        that to a commercial platform where, if the company
+                        folds, your data and your software both vanish on the
+                        same day. You also have a copy of every release sitting
+                        on your own server, which means a working SocietyPress
+                        site keeps working whether the project continues or
+                        not.
+                    </p>
+                </div>
+            </details>
+
+            <details class="faq-item">
+                <summary class="faq-item__question">
+                    There's no support contract or phone number. What do we do when something breaks?
+                    <svg class="faq-item__chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <div class="faq-item__answer">
+                    <p>
+                        Honest answer: there is no paid SLA today. Support
+                        happens through the public
+                        <a href="/community/">community forums</a>, the
+                        <a href="/bug-reports/">bug-report channel</a>, and
+                        direct conversation on GitHub. A managed-hosting
+                        option with formal support is on the
+                        <a href="/roadmap/">roadmap</a> for societies that
+                        want a bill instead of a fork. In the meantime, the
+                        same GPL license that lets you read the code lets
+                        any WordPress developer in the world fix a bug for
+                        you &mdash; you are never locked in to one vendor's
+                        support queue.
+                    </p>
+                </div>
+            </details>
+
+            <details class="faq-item">
+                <summary class="faq-item__question">
+                    We don't see other societies running SocietyPress yet. Are we taking a risk by being early?
+                    <svg class="faq-item__chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <div class="faq-item__answer">
+                    <p>
+                        Yes &mdash; and that is the trade. Early adopters get
+                        attention from the maintainer that later adopters
+                        will not. They get input into priorities. Their bug
+                        reports get fixed in days, not quarters. The
+                        <a href="https://demo.getsocietypress.org">live demo</a>
+                        runs every feature against real settings every day,
+                        so what you see is what you get. The risk you are
+                        actually weighing is whether the platform you switch
+                        to is still going to exist in five years &mdash; and
+                        the answer to that question is in the GPL license,
+                        not in the customer count.
+                    </p>
+                </div>
+            </details>
+
+            <details class="faq-item">
+                <summary class="faq-item__question">
+                    Why is SocietyPress still pre-1.0? Is it not ready?
+                    <svg class="faq-item__chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <div class="faq-item__answer">
+                    <p>
+                        The version number is conservative on purpose. Every
+                        release ships the full feature set with no
+                        upgrade-locked tier &mdash; the 1.0 milestone is an
+                        internal threshold for "first society in production"
+                        rather than a feature gate. The
+                        <a href="/changelog/">changelog</a> shows the actual
+                        rate of progress, and the
+                        <a href="https://demo.getsocietypress.org">demo</a>
+                        shows the actual surface area. Don't read 1.0 as a
+                        ship date &mdash; read the changelog and the demo.
+                    </p>
+                </div>
+            </details>
+
+            <details class="faq-item">
+                <summary class="faq-item__question">
+                    SocietyPress isn't a 501(c)(3) yet. Is that a governance risk?
+                    <svg class="faq-item__chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <div class="faq-item__answer">
+                    <p>
+                        Today the
+                        <a href="https://github.com/SocietyPressFoundation">SocietyPressFoundation</a>
+                        GitHub organization is owned by the maintainer
+                        personally and acts as a holding pen. The explicit
+                        plan is to incorporate a 501(c)(3) nonprofit and
+                        transfer the project to it &mdash; the URL,
+                        repository, and trademarks were all chosen to make
+                        that handoff possible without forcing societies to
+                        re-migrate or re-link anything. In the meantime, the
+                        GPL license means the code is already public-good
+                        regardless of who holds the org.
+                    </p>
+                </div>
+            </details>
+
+            <details class="faq-item">
+                <summary class="faq-item__question">
+                    We don't have a webmaster. Doesn't running WordPress mean hosting fees, updates, and security patches?
+                    <svg class="faq-item__chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <div class="faq-item__answer">
+                    <p>
+                        Yes &mdash; self-hosting is a real responsibility, and
+                        we won't pretend otherwise. Most cPanel hosts run $5
+                        to $10 a month and handle WordPress core updates
+                        automatically. SocietyPress itself ships a one-click
+                        installer and an in-app update checker so plugin and
+                        theme updates are a single button click. For
+                        societies who want none of that responsibility, the
+                        <a href="/roadmap/">roadmap</a> includes a managed
+                        hosting option where we handle every layer for a
+                        flat annual fee. The honest framing is: a few
+                        dollars a month for full control, or a higher fee
+                        for someone-else's-problem &mdash; both are
+                        legitimate choices.
+                    </p>
+                </div>
+            </details>
+
+            <details class="faq-item">
+                <summary class="faq-item__question">
+                    Aren't WordPress sites the ones that always get hacked? Isn't open source less secure?
+                    <svg class="faq-item__chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <div class="faq-item__answer">
+                    <p>
+                        Almost every WordPress compromise traces back to one
+                        of three things: an outdated installation, a sketchy
+                        third-party plugin, or a weak admin password.
+                        SocietyPress addresses all three: the in-app update
+                        checker keeps the plugin and theme current, the
+                        platform is built to ship as a single audited
+                        package rather than a kitchen-sink of unrelated
+                        plugins, and member data is encrypted at rest with
+                        XChaCha20-Poly1305 via libsodium. Open source
+                        actually makes security <em>better</em>, not worse:
+                        anyone can read every line, and anyone reporting a
+                        vulnerability follows the public disclosure policy
+                        at <a href="/security-policy/">/security-policy/</a>.
+                    </p>
+                </div>
+            </details>
+
+        </div>
+
+    </div>
+</section>
+
+
+<!-- ==========================================================================
+     6. FEATURE QUESTIONS — what can the software actually do
+     ========================================================================== -->
+<section class="faq-section section">
     <div class="container container--narrow">
 
         <h2 class="faq-section__heading">Features</h2>

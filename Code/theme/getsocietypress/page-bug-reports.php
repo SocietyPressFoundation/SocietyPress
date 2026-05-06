@@ -23,7 +23,7 @@ $gsp_bug_body    = rawurlencode(
     "WHAT HAPPENED:\n(Tell us what went wrong in one or two sentences.)\n\n" .
     "WHAT YOU EXPECTED:\n(What should have happened instead?)\n\n" .
     "STEPS TO REPRODUCE:\n1. \n2. \n3. \n\n" .
-    "SOCIETYPRESS VERSION:\n(Found at Settings > About. Example: 1.0.19)\n\n" .
+    "SOCIETYPRESS VERSION:\n(Found at Settings > About. Example: 1.0.53)\n\n" .
     "WORDPRESS VERSION:\n(Found at Dashboard > Updates. Example: 6.7.1)\n\n" .
     "BROWSER AND OS:\n(Example: Firefox 128 on Windows 11)\n\n" .
     "ANYTHING ELSE:\n(Attach screenshots, error messages, and anything else that helps. For PHP errors, include the text from wp-content/debug.log if you have WP_DEBUG enabled.)"

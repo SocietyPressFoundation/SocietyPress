@@ -121,7 +121,7 @@ $gsp_sitemap = array(
             <p>
                 Looking for the machine-readable XML sitemap for your search
                 engine? It's at
-                <a href="<?php echo esc_url( home_url( '/wp-sitemap.xml' ) ); ?>">/wp-sitemap.xml</a>.
+                <a href="<?php echo esc_url( home_url( '/sitemap.xml' ) ); ?>">/sitemap.xml</a>.
             </p>
         </div>
 

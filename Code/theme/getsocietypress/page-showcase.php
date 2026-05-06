@@ -172,14 +172,17 @@ $gsp_child_themes = array(
             <h2>Society Sites, Coming Soon</h2>
 
             <p>
-                Real societies are spinning up SocietyPress installations right now.
-                As they go live, their sites will appear here &mdash; complete with
-                a short write-up of how they're using the platform.
+                SocietyPress is new, and we're seeking early adopters.
+                As real societies go live, their sites will appear here
+                &mdash; complete with a short write-up of how they're
+                using the platform. Be one of the first and we'll
+                feature you prominently.
             </p>
 
             <p>
-                If your society is running SocietyPress and you'd like to be featured,
-                get in touch. We love seeing what societies build.
+                If your society is already running SocietyPress and
+                you'd like to be featured, get in touch. We love seeing
+                what societies build.
             </p>
 
             <div class="showcase-sites__actions">

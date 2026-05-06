@@ -30,7 +30,7 @@ get_header();
     <div class="container container--narrow">
 
         <p class="legal-page__updated">
-            <strong>Last updated:</strong> April 15, 2026
+            <strong>Last updated:</strong> May 5, 2026
         </p>
 
         <h2>Our target</h2>

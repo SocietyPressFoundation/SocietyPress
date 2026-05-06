@@ -122,21 +122,32 @@ $gsp_testimonials = array(
                 </svg>
             </div>
 
-            <h2>Real quotes, coming soon</h2>
+            <h2>No testimonials yet &mdash; we won't fake them</h2>
 
             <p>
-                SocietyPress is new. The first wave of societies is
-                installing it right now and will reach the
-                &ldquo;yeah, I'd recommend this&rdquo; moment in a few
-                months. We'd rather this page be empty than fill it with
+                SocietyPress is new, and we're seeking early adopters.
+                Real quotes from real societies arrive after real
+                societies use the software for a while. We'd rather this
+                page sit empty for a few months than fill it with
                 stock-photo quotes and invented personas.
             </p>
 
             <p>
-                If your society is running SocietyPress and you've got
-                something to say &mdash; good, bad, or mixed &mdash;
-                we'd love to hear it. Real words, attributed, verbatim.
-                No editing for marketing purposes.
+                If you're considering being one of the first societies to
+                switch, the live demo is the best way to see whether
+                SocietyPress fits.
+            </p>
+
+            <p class="testimonials-empty__cta">
+                <a href="https://demo.getsocietypress.org" class="btn btn-primary btn-lg" target="_blank" rel="noopener">
+                    Try the demo &rarr;
+                </a>
+            </p>
+
+            <p>
+                Already running SocietyPress? Even mixed or critical
+                feedback is welcome &mdash; honest reviews of free
+                software beat glowing ones for credibility.
             </p>
 
         </div>

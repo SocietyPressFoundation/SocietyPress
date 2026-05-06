@@ -315,6 +315,54 @@ get_header();
 
 
 <!-- ==========================================================================
+     RECENTLY SHIPPED — pulls from GitHub releases via a 6h-cached helper.
+     Hidden when the API is unavailable so the page doesn't show "0 releases."
+     ========================================================================== -->
+<?php
+$gsp_releases = function_exists( 'gsp_get_github_releases' ) ? gsp_get_github_releases( 3 ) : array();
+if ( ! empty( $gsp_releases ) ) :
+?>
+<section class="updates section">
+    <div class="container">
+
+        <div class="section-header">
+            <h2>Recently Shipped</h2>
+            <p>The most recent SocietyPress releases &mdash;
+                <a href="https://github.com/SocietyPressFoundation/SocietyPress/releases" target="_blank" rel="noopener">all releases on GitHub &rarr;</a>
+            </p>
+        </div>
+
+        <div class="grid-3">
+            <?php foreach ( $gsp_releases as $release ) :
+                $excerpt = '';
+                if ( ! empty( $release['body'] ) ) {
+                    $excerpt = wp_trim_words( wp_strip_all_tags( $release['body'] ), 25, '&hellip;' );
+                }
+            ?>
+                <article class="update-card">
+                    <div class="update-card__body">
+                        <div class="update-card__date">
+                            <?php echo esc_html( wp_date( 'F j, Y', strtotime( $release['date'] ) ) ); ?>
+                        </div>
+                        <h3>
+                            <a href="<?php echo esc_url( $release['url'] ); ?>" target="_blank" rel="noopener">
+                                <?php echo esc_html( $release['tag'] ); ?>
+                            </a>
+                        </h3>
+                        <?php if ( $excerpt ) : ?>
+                            <p class="update-card__excerpt"><?php echo wp_kses_post( $excerpt ); ?></p>
+                        <?php endif; ?>
+                    </div>
+                </article>
+            <?php endforeach; ?>
+        </div>
+
+    </div>
+</section>
+<?php endif; ?>
+
+
+<!-- ==========================================================================
      LATEST UPDATES — only shown when real posts exist
      ========================================================================== -->
 <?php

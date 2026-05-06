@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.0.50
+ * Version:     1.0.54
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.50' );
+define( 'SOCIETYPRESS_VERSION', '1.0.54' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -148,6 +148,7 @@ register_activation_hook( __FILE__, function () {
             'design_font_size'             => 'comfortable',
             'design_heading_scale'         => 'normal',
             'design_content_width'         => 'standard',
+            'design_custom_css'            => '',
             // Store — configurable product source
             'store_acq_code'               => '',
             'store_intro_text'             => '',
@@ -5807,6 +5808,47 @@ function sp_maybe_backfill_surname_phonetics(): void {
 //      have the same specificity, the one that appears later wins. By using
 //      wp_add_inline_style() on a stylesheet that depends on the child theme,
 //      we guarantee Design settings always have the final word.
+/**
+ * Sanitize user-supplied Custom CSS before it's stored or echoed in
+ * a `<style>` block.
+ *
+ * The risks we're mitigating: an admin (or a stolen admin session) could
+ * paste content that breaks out of the inline `<style>` tag, executes
+ * JavaScript, or pulls in remote stylesheets. We strip:
+ *   - All HTML tags (a `</style>` would escape the inline block)
+ *   - `expression(...)` — legacy IE-only JS-in-CSS attack surface
+ *   - `behavior:` — IE-only HTC attachment
+ *   - `javascript:` URLs anywhere in the input
+ *   - `@import` statements (block external CSS pulls)
+ *   - HTML comment markers `<!--` / `-->` (defense in depth)
+ *
+ * Anything that survives is returned verbatim — actual CSS syntax
+ * validation is out of scope; broken CSS just doesn't render.
+ */
+function sp_sanitize_custom_css( string $css ): string {
+    if ( $css === '' ) return '';
+
+    // Strip any HTML/script tags first
+    $css = wp_strip_all_tags( $css );
+
+    // Block dangerous CSS patterns (case-insensitive)
+    $patterns = [
+        '/expression\s*\(/i',
+        '/behavior\s*:/i',
+        '/javascript\s*:/i',
+        '/@import\b[^;]*;?/i',
+        '/<!--/',
+        '/-->/',
+    ];
+    $css = preg_replace( $patterns, '', $css );
+
+    // Belt-and-suspenders: kill any literal </style> spelling
+    $css = str_ireplace( '</style', '', $css );
+
+    return trim( (string) $css );
+}
+
+
 function sp_get_design_override_css(): string {
     $settings = get_option( 'societypress_settings', [] );
 
@@ -5893,6 +5935,13 @@ body { padding-top: " . ( $header_height + 3 ) . 'px !important; }';
     if ( ! $show_social ) {
         $css .= "
 .sp-social-icons { display: none !important; }";
+    }
+
+    // User-provided Custom CSS — appended last so it can override anything
+    // above. Sanitized on save; sanitized again here as defense-in-depth.
+    $custom = sp_sanitize_custom_css( (string) ( $settings['design_custom_css'] ?? '' ) );
+    if ( $custom !== '' ) {
+        $css .= "\n\n/* Custom CSS */\n" . $custom;
     }
 
     return $css;
@@ -20840,6 +20889,7 @@ function sp_sanitize_settings( array $input ): array {
         'design_nav_font_weight'      => fn() => in_array( $input['design_nav_font_weight'] ?? '', [ '', '300', '400', '500', '600', '700' ], true ) ? ( $input['design_nav_font_weight'] ?? '' ) : '',
         'design_color_footer_link'    => fn() => sanitize_hex_color( $input['design_color_footer_link'] ?? '' ) ?: '',
         'design_show_social_icons'    => fn() => (int) ! empty( $input['design_show_social_icons'] ),
+        'design_custom_css'           => fn() => sp_sanitize_custom_css( (string) ( $input['design_custom_css'] ?? '' ) ),
     ];
 
     // Only sanitize + update keys that were actually submitted in the form.
@@ -20925,6 +20975,7 @@ function sp_sanitize_settings( array $input ): array {
             'design_logo_height', 'design_header_padding',
             'design_nav_font_size', 'design_nav_spacing', 'design_nav_font_weight',
             'design_color_footer_link', 'design_show_social_icons',
+            'design_custom_css',
         ]);
     }
 
@@ -27934,6 +27985,42 @@ function sp_render_settings_design_page(): void {
                                    class="sp-design-control sp-design-input-narrow-md">
                             <span>px</span>
                             <p class="description"><?php esc_html_e( 'Width of the main content area in pixels. The slider always goes edge-to-edge regardless of this value.', 'societypress' ); ?></p>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- ---- CUSTOM CSS ---- -->
+            <!-- WHY: Most societies will never need this — the design
+                 controls above cover the colors, fonts, and spacing they
+                 actually adjust. But occasionally a webmaster wants to
+                 override one specific selector or add a small tweak that
+                 the controls don't expose, and shipping them off to a
+                 child theme for that is overkill. This textarea is the
+                 escape hatch. Sanitized on save and again on output to
+                 strip <style>-block escapes, JS-in-CSS legacy attacks,
+                 and external @imports. -->
+            <div class="sp-design-section">
+                <h2 class="sp-design-section-heading"><?php esc_html_e( 'Custom CSS', 'societypress' ); ?></h2>
+                <p class="description sp-design-section-desc">
+                    <?php esc_html_e( 'Optional. CSS rules entered here load after every other stylesheet on the public-facing site, so they override anything above. Leave blank if you don\'t need it.', 'societypress' ); ?>
+                </p>
+
+                <table class="form-table" role="presentation">
+                    <tr>
+                        <th scope="row"><label for="sp-design-custom-css"><?php esc_html_e( 'Custom CSS', 'societypress' ); ?></label></th>
+                        <td>
+                            <?php $d_custom_css = (string) ( $settings['design_custom_css'] ?? '' ); ?>
+                            <textarea id="sp-design-custom-css"
+                                      name="societypress_settings[design_custom_css]"
+                                      rows="10"
+                                      class="large-text code"
+                                      spellcheck="false"
+                                      placeholder="<?php esc_attr_e( '/* Example: tighten spacing on the membership form */
+.sp-membership-form .form-row { margin-bottom: 12px; }', 'societypress' ); ?>"><?php echo esc_textarea( $d_custom_css ); ?></textarea>
+                            <p class="description">
+                                <?php esc_html_e( 'For safety, the following are stripped before this CSS is saved or rendered: HTML tags, expression(), behavior:, javascript: URLs, and @import statements.', 'societypress' ); ?>
+                            </p>
                         </td>
                     </tr>
                 </table>
@@ -85342,6 +85429,91 @@ function sp_render_builder_widget_society_sidebar( array $s ): void {
 }
 
 
+/**
+ * Classic WP_Widget wrapper so Harold can drop the society sidebar into
+ * any registered widget area via Appearance → Widgets — without learning
+ * shortcodes or the page builder.
+ */
+class SP_Society_Sidebar_Widget extends WP_Widget {
+
+    public function __construct() {
+        parent::__construct(
+            'sp_society_sidebar',
+            __( 'SocietyPress: Society Sidebar', 'societypress' ),
+            [
+                'description' => __( 'Auto-assembled member-portal navigation built from enabled modules.', 'societypress' ),
+                'classname'   => 'widget_sp_society_sidebar',
+            ]
+        );
+    }
+
+    public function widget( $args, $instance ) {
+        $title = ! empty( $instance['title'] ) ? apply_filters( 'widget_title', $instance['title'] ) : '';
+
+        echo $args['before_widget'];
+        if ( $title ) {
+            echo $args['before_title'] . esc_html( $title ) . $args['after_title'];
+        }
+        echo sp_render_society_sidebar( [
+            'show_icons'        => ! empty( $instance['show_icons'] ),
+            'show_login_link'   => ! empty( $instance['show_login_link'] ),
+            'highlight_current' => ! empty( $instance['highlight_current'] ),
+        ] );
+        echo $args['after_widget'];
+    }
+
+    public function form( $instance ) {
+        $title             = $instance['title']             ?? '';
+        $show_icons        = ! isset( $instance['show_icons'] )        || ! empty( $instance['show_icons'] );
+        $show_login_link   = ! isset( $instance['show_login_link'] )   || ! empty( $instance['show_login_link'] );
+        $highlight_current = ! isset( $instance['highlight_current'] ) || ! empty( $instance['highlight_current'] );
+        ?>
+        <p>
+            <label for="<?php echo esc_attr( $this->get_field_id( 'title' ) ); ?>"><?php esc_html_e( 'Title (optional):', 'societypress' ); ?></label>
+            <input class="widefat" type="text"
+                   id="<?php echo esc_attr( $this->get_field_id( 'title' ) ); ?>"
+                   name="<?php echo esc_attr( $this->get_field_name( 'title' ) ); ?>"
+                   value="<?php echo esc_attr( $title ); ?>">
+        </p>
+        <p>
+            <input type="checkbox" class="checkbox"
+                   id="<?php echo esc_attr( $this->get_field_id( 'show_icons' ) ); ?>"
+                   name="<?php echo esc_attr( $this->get_field_name( 'show_icons' ) ); ?>"
+                   value="1" <?php checked( $show_icons ); ?>>
+            <label for="<?php echo esc_attr( $this->get_field_id( 'show_icons' ) ); ?>"><?php esc_html_e( 'Show icons', 'societypress' ); ?></label>
+        </p>
+        <p>
+            <input type="checkbox" class="checkbox"
+                   id="<?php echo esc_attr( $this->get_field_id( 'show_login_link' ) ); ?>"
+                   name="<?php echo esc_attr( $this->get_field_name( 'show_login_link' ) ); ?>"
+                   value="1" <?php checked( $show_login_link ); ?>>
+            <label for="<?php echo esc_attr( $this->get_field_id( 'show_login_link' ) ); ?>"><?php esc_html_e( 'Show sign-in / sign-out at the bottom', 'societypress' ); ?></label>
+        </p>
+        <p>
+            <input type="checkbox" class="checkbox"
+                   id="<?php echo esc_attr( $this->get_field_id( 'highlight_current' ) ); ?>"
+                   name="<?php echo esc_attr( $this->get_field_name( 'highlight_current' ) ); ?>"
+                   value="1" <?php checked( $highlight_current ); ?>>
+            <label for="<?php echo esc_attr( $this->get_field_id( 'highlight_current' ) ); ?>"><?php esc_html_e( 'Highlight the current page', 'societypress' ); ?></label>
+        </p>
+        <?php
+    }
+
+    public function update( $new_instance, $old_instance ) {
+        return [
+            'title'             => sanitize_text_field( $new_instance['title'] ?? '' ),
+            'show_icons'        => ! empty( $new_instance['show_icons'] )        ? 1 : 0,
+            'show_login_link'   => ! empty( $new_instance['show_login_link'] )   ? 1 : 0,
+            'highlight_current' => ! empty( $new_instance['highlight_current'] ) ? 1 : 0,
+        ];
+    }
+}
+
+add_action( 'widgets_init', function () {
+    register_widget( 'SP_Society_Sidebar_Widget' );
+} );
+
+
 // ============================================================================
 // HELP REQUESTS — email lifecycle for askers + tags taxonomy admin
 //
@@ -85386,10 +85558,14 @@ function sp_help_send_status_email( int $request_id, string $new_status ): void 
     $org      = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
 
     $subjects = [
+        'approved' => sprintf( __( '[%s] Your research question is now public', 'societypress' ), $org ),
+        'reopened' => sprintf( __( '[%s] Your research question is open again', 'societypress' ), $org ),
         'resolved' => sprintf( __( '[%s] Your research question is resolved', 'societypress' ), $org ),
         'closed'   => sprintf( __( '[%s] Your research question is closed', 'societypress' ), $org ),
     ];
     $bodies = [
+        'approved' => __( "Your research question has been reviewed and is now visible on our public archive. Other researchers can find it and respond. We'll email you whenever someone posts a new response.", 'societypress' ),
+        'reopened' => __( "Your research question has been reopened. New responses are welcome again — we'll email you whenever someone posts.", 'societypress' ),
         'resolved' => __( "Your research question has been marked resolved. Thank you to everyone who responded — the thread will stay on our public archive so future researchers can find it.", 'societypress' ),
         'closed'   => __( "Your research question has been closed. If you still need help, please post a new question with any additional context you've gathered since.", 'societypress' ),
     ];
@@ -85422,12 +85598,68 @@ add_action( 'admin_init', function () {
 
     if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) return;
 
-    // Only fire for the close transition (closed status).
     // The existing handler runs at default priority; we run later.
     if ( $action === 'close' ) {
         sp_help_send_status_email( $req_id, 'closed' );
+    } elseif ( $action === 'reopen' ) {
+        sp_help_send_status_email( $req_id, 'reopened' );
     }
 }, 20 );
+
+
+/**
+ * Hook the bulk-action handler — fire status emails for askers whose
+ * requests actually transition. Two-stage hook: priority 5 snapshots
+ * which IDs are eligible (so we don't email rows the handler will
+ * skip); priority 20 fires the emails after the update lands. Hidden
+ * and deleted are moderation actions and intentionally silent.
+ */
+add_action( 'admin_init', function () {
+    if ( ( $_POST['sp_help_bulk_action'] ?? '' ) === '' ) return;
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) return;
+    if ( ! isset( $_POST['_wpnonce'] ) || ! wp_verify_nonce( $_POST['_wpnonce'], 'sp_help_bulk' ) ) return;
+
+    $action = sanitize_text_field( $_POST['sp_help_bulk_action'] );
+    if ( ! in_array( $action, [ 'approve', 'mark_resolved' ], true ) ) return;
+
+    $ids = array_filter( array_map( 'intval', (array) ( $_POST['help_ids'] ?? [] ) ) );
+    if ( empty( $ids ) ) {
+        $GLOBALS['_sp_help_bulk_email_ids'] = [];
+        return;
+    }
+
+    global $wpdb;
+    $placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+    if ( $action === 'approve' ) {
+        $eligible = $wpdb->get_col( $wpdb->prepare(
+            "SELECT id FROM {$wpdb->prefix}sp_help_requests
+             WHERE id IN ({$placeholders}) AND status = 'pending_review'",
+            ...$ids
+        ) );
+    } else {
+        $eligible = $wpdb->get_col( $wpdb->prepare(
+            "SELECT id FROM {$wpdb->prefix}sp_help_requests
+             WHERE id IN ({$placeholders}) AND status <> 'resolved'",
+            ...$ids
+        ) );
+    }
+    $GLOBALS['_sp_help_bulk_email_ids']   = array_map( 'intval', (array) $eligible );
+    $GLOBALS['_sp_help_bulk_email_event'] = ( $action === 'approve' ) ? 'approved' : 'resolved';
+}, 5 ); // Priority 5 — snapshot before the bulk handler updates rows
+
+add_action( 'admin_init', function () {
+    if ( ( $_POST['sp_help_bulk_action'] ?? '' ) === '' ) return;
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) return;
+    if ( ! isset( $_POST['_wpnonce'] ) || ! wp_verify_nonce( $_POST['_wpnonce'], 'sp_help_bulk' ) ) return;
+
+    $ids   = $GLOBALS['_sp_help_bulk_email_ids']   ?? [];
+    $event = $GLOBALS['_sp_help_bulk_email_event'] ?? '';
+    if ( empty( $ids ) || ! $event ) return;
+
+    foreach ( $ids as $req_id ) {
+        sp_help_send_status_email( (int) $req_id, $event );
+    }
+}, 20 ); // Priority 20 — runs after the bulk handler at default priority
 
 
 /**
@@ -85511,7 +85743,10 @@ function sp_render_help_tags_admin_page(): void {
         $from   = strtolower( trim( wp_unslash( $_POST['from_tag'] ?? '' ) ) );
         $to     = strtolower( trim( wp_unslash( $_POST['to_tag']   ?? '' ) ) );
 
-        if ( $from && in_array( $action, [ 'rename', 'merge', 'delete' ], true ) ) {
+        $needs_dest = in_array( $action, [ 'rename', 'merge' ], true );
+        if ( $from && $needs_dest && $to === '' ) {
+            echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Rename and Merge require a destination tag.', 'societypress' ) . '</p></div>';
+        } elseif ( $from && in_array( $action, [ 'rename', 'merge', 'delete' ], true ) ) {
             // Pull every request whose tags column contains the from_tag (case-insensitive)
             $like = '%' . $wpdb->esc_like( $from ) . '%';
             $rows = $wpdb->get_results( $wpdb->prepare(
@@ -85592,7 +85827,7 @@ function sp_render_help_tags_admin_page(): void {
                                     <td>
                                         <button type="submit" name="sp_tags_action" value="rename" class="button button-primary"><?php esc_html_e( 'Rename', 'societypress' ); ?></button>
                                         <button type="submit" name="sp_tags_action" value="merge" class="button"><?php esc_html_e( 'Merge', 'societypress' ); ?></button>
-                                        <button type="submit" name="sp_tags_action" value="delete" class="button button-link-delete"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                                        <button type="submit" name="sp_tags_action" value="delete" class="button button-link-delete" data-sp-confirm="<?php esc_attr_e( 'Remove this tag from every thread that uses it? This cannot be undone.', 'societypress' ); ?>"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
                                     </td>
                                 </tr>
                             </table>
@@ -85612,12 +85847,13 @@ function sp_render_help_tags_admin_page(): void {
                 <?php if ( empty( $counts ) ) : ?>
                     <p style="color:#6b7280; font-style:italic; padding:20px;"><?php esc_html_e( 'No tags yet. Tags appear once members submit questions with them.', 'societypress' ); ?></p>
                 <?php else : ?>
+                    <p class="description" style="margin:6px 0 12px;"><?php esc_html_e( 'Click any tag to load it into the Source field.', 'societypress' ); ?></p>
                     <table class="widefat striped">
                         <thead><tr><th><?php esc_html_e( 'Tag', 'societypress' ); ?></th><th><?php esc_html_e( 'Usage', 'societypress' ); ?></th></tr></thead>
                         <tbody>
                             <?php foreach ( $counts as $tag => $count ) : ?>
                                 <tr>
-                                    <td><code><?php echo esc_html( $tag ); ?></code></td>
+                                    <td><button type="button" class="button-link sp-help-tag-pick" data-tag="<?php echo esc_attr( $tag ); ?>" style="font-family:monospace; cursor:pointer; padding:0; text-decoration:none;"><?php echo esc_html( $tag ); ?></button></td>
                                     <td><?php echo (int) $count; ?></td>
                                 </tr>
                             <?php endforeach; ?>
@@ -85627,6 +85863,18 @@ function sp_render_help_tags_admin_page(): void {
             </div>
         </div>
     </div>
+    <script>
+    (function () {
+        var src = document.getElementById('from_tag');
+        if ( ! src ) return;
+        document.querySelectorAll('.sp-help-tag-pick').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                src.value = btn.getAttribute('data-tag') || '';
+                src.focus();
+            });
+        });
+    })();
+    </script>
     <?php
 }
 

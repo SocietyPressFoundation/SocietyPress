@@ -124,11 +124,13 @@ get_header();
                     right.
                 </p>
                 <p>
-                    He speaks about society technology at community events and
-                    writes every line of SocietyPress himself &mdash; though the
-                    plugin's design choices, feature priorities, and rough edges
-                    all come from sustained conversation with society administrators
-                    who are actually running the thing.
+                    He speaks about society technology at community events
+                    and writes every line of SocietyPress himself. The
+                    plugin's design choices, feature priorities, and rough
+                    edges come from his own experience as a society
+                    webmaster, conversations with peers in the
+                    genealogical-society community, and feedback from the
+                    early-adopter societies as they come online.
                 </p>
                 <p class="about-who__disclosure">
                     Charles also serves as Chairman of the Education Committee
@@ -241,9 +243,10 @@ get_header();
             </li>
             <li>
                 <strong>Polish.</strong>
-                Store checkout, records imports, cleaning up the last i18n gaps,
-                and whatever else shakes out from societies actually running
-                SocietyPress in production and telling us what hurts.
+                Store checkout, records imports, cleaning up the last
+                i18n gaps, and whatever else shakes out once early-adopter
+                societies are running SocietyPress in production and
+                telling us what hurts.
             </li>
         </ol>
 

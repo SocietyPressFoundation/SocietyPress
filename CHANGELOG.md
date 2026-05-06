@@ -14,6 +14,129 @@ Entries describe user-visible changes only. For the underlying commits, see
 
 ---
 
+## [1.0.57] — 2026-05-06
+
+### Security
+- **Stored XSS via CSV import error display closed.** The error rows
+  shown after a member-import run included unsanitized CSV-supplied
+  values (first/last names, MySQL errors, `wp_insert_user()` error
+  messages) and were inserted via `innerHTML`. An attacker with
+  `sp_manage_members` could craft a row whose name contained
+  `<img src=x onerror=…>` and exfiltrate session cookies / nonces
+  whenever the row tripped the duplicate or DB-error path. Switched
+  to per-row `textContent` writes so CSV-borne HTML can never reach
+  a DOM sink.
+- **SSRF via iCal feed URL closed.** Feed URLs (saved by
+  `sp_manage_events`) were stored after `esc_url_raw()` and fetched
+  by cron and on-demand sync without scheme or private-IP guards.
+  An attacker could save a URL pointing at the cloud metadata
+  endpoint (e.g. `http://169.254.169.254/...`) or LAN admin panels
+  and trigger the server to fetch them. New
+  `sp_validate_external_feed_url()` helper rejects non-http(s)
+  schemes and private/reserved IPs at both add and update save
+  paths.
+- **`$page_title` escape fragility closed in member-edit.** The title
+  was pre-`esc_html()`'d inside the new `sp_member_edit_load_context()`
+  helper and echoed bare. Currently safe but one refactor away from
+  XSS. Moved the escape to point of output and let the context
+  builder return raw values, per WPCS.
+- **Rate limit on `sp_ajax_library_item_detail`** (60 requests per
+  minute per IP for unauthenticated callers) so the catalog can't
+  be enumerated by walking item IDs.
+- **`$wpdb->last_error` no longer leaked to admin** in import error
+  messages — the raw error logs to `error_log()` and users see a
+  generic "check the server error log" notice.
+- Member-edit save handler now allowlists `$status` (against
+  `sp_get_member_statuses()`) and `$member_type` (`individual` |
+  `organization`) — both previously fell through `sanitize_text_field()`
+  alone.
+- Member-edit role dropdown now mirrors the save-handler allowlist,
+  so non-admin delegates only see the roles they can actually assign.
+- Removed dead `sp_process_import()` (1,000-line synchronous duplicate
+  of the AJAX batch version) — its row logic was a maintenance hazard
+  flagged by audits.
+- PayPal donation amount cast goes through `sanitize_text_field()`
+  before `floatval()` (was raw `(float)`-cast).
+
+### Accessibility
+- spConfirm dialog: focus trap (Tab/Shift+Tab cycles between Cancel
+  and Confirm), screen-reader-only "Confirm action" heading via
+  `aria-labelledby`, message exposed via `aria-describedby`, and
+  high-contrast `:focus`/`:focus-visible` outlines on both buttons.
+- Bulk-delete and member-import progress bars now have
+  `role="progressbar"` plus `aria-valuemin`/`valuemax`/`valuenow`,
+  and the JS updates `aria-valuenow` as the fill width changes.
+- All 14 required-field asterisks (`*`) marked `aria-hidden="true"`
+  so screen readers don't double-announce required-state.
+- Form-label `id`/`for` associations added to the Research intake
+  form (~10 inputs), Volunteer hours log form (5 inputs), Donations
+  filter form (5 inputs), and the Leadership "Find Member" search.
+- Login Acknowledgment "I Understand" button and Member Detail close
+  button now have visible `:focus` styles.
+- Cart book-cover placeholder color bumped from `#bbb` (1.5:1, hard
+  WCAG fail) to `#767676`.
+- Marketing newsletter card date color `#666` → `#595959`.
+- Theme header search `outline:none` scoped to its `:focus` rule
+  only (was on the base state, which silently killed the browser
+  default for keyboard users).
+- Event registration `#sp-reg-message` swaps `role` to `alert` /
+  `aria-live="assertive"` for errors and back to `status` / `polite`
+  for success notices.
+- Join form result notice gained matching `role`/`aria-live` and
+  uses a CSS class instead of inline styles.
+- Nine hardcoded `font-size: 10px` declarations converted to
+  `0.625rem` so they scale with the user's base-font preference.
+
+### Changed (i18n + UX language)
+- ~150 additional strings wrapped: full event-detail page (Members:/
+  Non-Members:/Free/Speakers/role labels/Website/slot status/spots
+  remaining plurals), event registration JS confirmation messages
+  (waitlisted/registered/pay-at-door/reminder), Pages "Update Page"/
+  "Create Page"/"Cancel", event admin (Title field, slot Start/End/
+  Capacity/Label, +Add Time Slot, registration meta with plurals,
+  +Add Walk-in/Export CSV buttons), library catalog sort headers,
+  member directory modal section labels and field labels, Stripe
+  Show/Hide PayPal toggle, "Generating…"/"Testing…" inline-JS
+  buttons, donation `/mo` `/yr` suffixes (currency symbol now from
+  `sp_get_currency_symbol()`), address state/postal JS labels,
+  `WP_List_Table::search_box()` button labels for Members/Pages/
+  Events/Speakers.
+- All ~80 `add_submenu_page()` calls bulk-wrapped: page titles
+  (`'X — SocietyPress'`) and menu labels both translatable.
+- `Slug` renamed to `URL Name` in 7 admin contexts (library
+  categories, resource categories, committees, documents, landing
+  pages, research guides edit + list).
+- "Media Library" jargon replaced with "Files section" in three
+  help texts (meeting agenda/minutes upload, store product photo).
+- "blog posts" → "pages" in the export-page help.
+- "deactivating and reactivating the plugin" → module-toggle
+  instructions in the Newsletter category fallback notice.
+- "Recent posts from the Newsletter category" widget description
+  rewritten as "Newsletters you publish under SocietyPress →
+  Newsletters will appear here".
+- "Post-login acknowledgment" Settings field label renamed to
+  "Notice shown after sign-in".
+
+### Refactoring
+- Removed dead `global $wpdb; $prefix = …;` lines in
+  `sp_render_member_edit_page()` (left over from the v1.0.56
+  context split).
+- Hero slider `$media_url` now `esc_url()`-escaped at both output
+  sites (background-image and `<source src>`) instead of relying on
+  the pre-escape at assignment.
+- `sp_member_edit_load_context()` docblock documents that callers
+  are responsible for capability checks (the function itself reads
+  encrypted member data).
+
+### Empty states
+- Research guides admin table: empty row now includes a `+ New
+  Guide` button.
+- Four List Tables (`SP_Speakers`, `SP_Volunteers`,
+  `SP_VolunteerHours`, `SP_Ballots`) override `no_items()` with
+  module-specific guidance and a link to the create flow.
+
+---
+
 ## [1.0.56] — 2026-05-06
 
 ### Changed

@@ -5,7 +5,7 @@ Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
 Description: A clean, readable theme for genealogical and historical societies.
              Designed for ease of use with large fonts, high contrast, and simple navigation.
-Version: 1.0.56
+Version: 1.0.57
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.0
@@ -809,7 +809,6 @@ img {
     background: rgba(255, 255, 255, 0.15);
     color: var(--sp-color-header-text, #fff);
     font-size: 0.85rem;
-    outline: none;
     transition: border-color 0.2s ease, background 0.2s ease;
 }
 
@@ -817,10 +816,13 @@ img {
     color: rgba(255, 255, 255, 0.6);
 }
 
-/* WHY solid white: The previous rgba(255,255,255,0.7) border and subtle
-   background shift didn't meet the 3:1 minimum contrast ratio for focus
-   indicators against the dark header. Solid white ring is unmistakable. */
+/* WHY solid white: rgba(255,255,255,0.7) border and subtle background
+   shift didn't meet the 3:1 minimum contrast ratio for focus indicators
+   against the dark header. Solid white ring is unmistakable. The browser
+   default focus outline is suppressed only here (in the focus rule, not
+   the base state) so it never silently disappears for keyboard users. */
 .sp-header-search input[type="text"]:focus {
+    outline: none;
     box-shadow: 0 0 0 2px #fff;
     border-color: #fff;
     background: rgba(255, 255, 255, 0.2);
@@ -2272,7 +2274,7 @@ input[type="date"]:focus {
 .sp-newsletter-card-issue {
     display: block;
     font-size: 0.85rem;
-    color: #666;
+    color: #595959;
     line-height: 1.4;
 }
 

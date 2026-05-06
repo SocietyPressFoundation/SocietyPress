@@ -272,7 +272,7 @@ add_filter( 'excerpt_length', 'gsp_excerpt_length' );
  * Returns the version as a plain string (e.g. "1.0.47"), no "v" prefix.
  */
 function gsp_get_sp_version() {
-    return '1.0.56';
+    return '1.0.57';
 }
 
 

@@ -14,6 +14,70 @@ Entries describe user-visible changes only. For the underlying commits, see
 
 ---
 
+## [1.0.60] — 2026-05-06
+
+### Security
+- HIGH defense-in-depth Stripe `payment_intent` ID validator added
+  (`sp_stripe_payment_intent_id_is_valid()`). Two `wp_remote_get` sites
+  in the store finalize/return path now reject anything that isn&rsquo;t a
+  proper `pi_*` ID before it reaches the Stripe API URL. Mirrors the
+  v1.0.58 session-ID validator pattern.
+- iCal feed sync re-runs `sp_validate_external_feed_url()` at sync
+  time, not just at save time. The cron path used to fetch
+  `$feed-&gt;url` directly from the database; now it re-validates
+  before calling `wp_remote_get` so the SSRF guard runs on every
+  fetch.
+- Reports / volunteer-hours / Insights SQL switched from raw
+  `date( 'Y-01-01' )` / `date( 'Y-m-01' )` to `wp_date()` so the
+  &ldquo;this year/month&rdquo; window matches WordPress&rsquo;s configured timezone
+  rather than the server&rsquo;s.
+
+### Accessibility
+- Page-builder widget picker is now a real keyboard-accessible dialog:
+  added `role="dialog"` + `aria-modal="true"` + `aria-labelledby`.
+  Opening focuses the close button; Escape and overlay-click return
+  focus to the &ldquo;Add Widget&rdquo; trigger; Tab/Shift-Tab cycles inside
+  the picker so focus can&rsquo;t escape behind the modal.
+- Page-builder card buttons (`.sp-builder-btn`) and picker items
+  (`.sp-builder-picker-item`) gained `:focus`/`:focus-visible`
+  rulesets. Library catalog tabs (`.sp-catalog-tab`) too.
+- Member directory modal got a Tab/Shift-Tab focus trap so keyboard
+  users can&rsquo;t tab past the close button into obscured page content.
+- Library catalog filter `&lt;select&gt;` elements (media type, source,
+  sort) gained `aria-label`s. Without them screen readers read only
+  the first option text.
+- 12 `.sp-text-error` required asterisks gained `aria-hidden="true"`,
+  joining the matching fix in v1.0.58 for `.sp-member-edit-required`,
+  `.sp-event-edit-required`, `.sp-contact-required`. Two
+  `.sp-ext-cal-required` asterisks too.
+- `#767676` muted text replaced with `#6d7175` plugin-wide (~60
+  sites). At 12px on white the old value missed WCAG AA by 0.02; the
+  new value clears it at 5.0:1.
+- 404 template now uses `&lt;main id="main-content"&gt;` instead of `&lt;div&gt;`,
+  so the skip-to-main link lands on a real landmark region.
+
+### i18n
+- Member-facing: `Available Sessions`, `Library Catalog`,
+  `Research Help`, `Ask a Question` headings + button text.
+- Admin: PayPal Show buttons in both sandbox and live credential
+  rows (Stripe was already correct), Members list filter checkboxes
+  ("Individuals" / "Organizations"), speaker form Name field,
+  donation campaign Campaign Name field, blast email status filter
+  tabs, blast email detail table headers + delivery line, audit log
+  pagination + footer text, CSV import field-map "Skip" / "Store as
+  custom field" options, member export column-group legends
+  (Identity, Membership, Contact, Address, Seasonal Address,
+  Preferences, Directory Visibility, Custom Fields, Legacy / Import
+  Data).
+
+### Code review follow-ups
+- Event registrations table: `$type_label` now wraps `Member`/`Guest`
+  in `esc_html__()` (was bare string echo).
+
+Plugin + parent theme: 1.0.60. Marketing theme: 0.43d.
+
+---
+
 ## [1.0.59] — 2026-05-06
 
 ### Accessibility

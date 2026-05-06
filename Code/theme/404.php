@@ -12,7 +12,7 @@
 get_header();
 ?>
 
-<div id="main-content" class="site-content">
+<main id="main-content" class="site-content">
     <div class="content-area-full">
 
         <div class="error-404">
@@ -23,6 +23,6 @@ get_header();
         </div>
 
     </div>
-</div>
+</main>
 
 <?php get_footer(); ?>

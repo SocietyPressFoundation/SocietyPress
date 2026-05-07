@@ -14,6 +14,24 @@ Entries describe user-visible changes only. For the underlying commits, see
 
 ---
 
+## [1.0.62] — 2026-05-06
+
+### Refactoring
+- `sp_render_member_edit_page()` shed two more sections to dedicated
+  helpers: `sp_render_member_edit_admin_notes_section()` and
+  `sp_render_member_edit_payment_history_section()`. The render
+  function lost ~125 lines and the two extracted helpers each match
+  the load-context helper introduced in v1.0.55.
+- Payment History table headers gained `scope="col"`.
+
+### Accessibility / i18n leftovers
+- "Unknown" author fallback in admin notes is now wrapped with
+  `__()` (was a bare string).
+
+Plugin + parent theme: 1.0.62. Marketing theme: 0.43d.
+
+---
+
 ## [1.0.61] — 2026-05-06
 
 ### Bug fixes

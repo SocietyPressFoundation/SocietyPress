@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.0.61
+ * Version:     1.0.62
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.61' );
+define( 'SOCIETYPRESS_VERSION', '1.0.62' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -13893,6 +13893,154 @@ function sp_member_edit_load_context(): ?array {
 }
 
 
+/**
+ * Render the Admin Notes panel of the member edit screen.
+ *
+ * @param array $notes Loaded note rows from sp_notes for this member.
+ */
+function sp_render_member_edit_admin_notes_section( array $notes ): void {
+    ?>
+    <!-- ============================================================ -->
+    <!-- SECTION: Admin Notes -->
+    <!-- ============================================================ -->
+    <div class="sp-section">
+        <h2><?php esc_html_e( 'Admin Notes', 'societypress' ); ?></h2>
+        <div class="sp-section-body">
+
+            <?php if ( ! empty( $notes ) ) : ?>
+                <?php foreach ( $notes as $note ) :
+                    $author      = get_userdata( $note->author_id );
+                    $author_name = $author ? $author->display_name : __( 'Unknown', 'societypress' );
+                ?>
+                    <div class="sp-note">
+                        <div><?php echo nl2br( esc_html( $note->content ) ); ?></div>
+                        <div class="sp-note-meta">
+                            <?php echo esc_html( $author_name ); ?> &mdash;
+                            <?php echo esc_html( date_i18n( 'M j, Y g:i A', strtotime( $note->created_at ) ) ); ?>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            <?php else : ?>
+                <p class="sp-member-edit-empty"><?php esc_html_e( 'No notes yet.', 'societypress' ); ?></p>
+            <?php endif; ?>
+
+            <div class="sp-member-edit-note-wrap">
+                <label for="sp-new-note" class="sp-member-edit-note-label">
+                    <?php esc_html_e( 'Add a Note', 'societypress' ); ?>
+                </label>
+                <textarea name="new_note" id="sp-new-note" rows="3"
+                          class="sp-member-edit-textarea"
+                          placeholder="<?php echo esc_attr__( 'Type a note about this member...', 'societypress' ); ?>"></textarea>
+            </div>
+
+        </div>
+    </div>
+    <?php
+}
+
+
+/**
+ * Render the Payment History panel + Record-a-Payment inline form.
+ *
+ * @param array $payments Loaded payment rows from sp_payments for this member.
+ */
+function sp_render_member_edit_payment_history_section( array $payments ): void {
+    ?>
+    <!-- ============================================================ -->
+    <!-- SECTION: Payment History -->
+    <!-- ============================================================ -->
+    <div class="sp-section">
+        <h2><?php esc_html_e( 'Payment History', 'societypress' ); ?></h2>
+        <div class="sp-section-body">
+
+            <?php if ( ! empty( $payments ) ) : ?>
+                <table class="sp-payments-table">
+                    <thead>
+                        <tr>
+                            <th scope="col"><?php esc_html_e( 'Date', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Amount', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Type', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Method', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Note', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Recorded By', 'societypress' ); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ( $payments as $pay ) :
+                            $recorder      = get_userdata( $pay->recorded_by );
+                            $recorder_name = $recorder ? $recorder->display_name : '—';
+                        ?>
+                            <tr>
+                                <td><?php echo esc_html( date_i18n( 'M j, Y', strtotime( $pay->date ) ) ); ?></td>
+                                <td><?php echo esc_html( sp_format_currency( $pay->amount ) ); ?></td>
+                                <td><?php echo esc_html( sp_localized_status( $pay->type, 'payment_type' ) ); ?></td>
+                                <td><?php echo esc_html( $pay->method ?: '—' ); ?></td>
+                                <td><?php echo esc_html( $pay->note ?: '—' ); ?></td>
+                                <td><?php echo esc_html( $recorder_name ); ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php else : ?>
+                <p class="sp-member-edit-empty"><?php esc_html_e( 'No payments recorded yet.', 'societypress' ); ?></p>
+            <?php endif; ?>
+
+            <!-- Add new payment inline form -->
+            <div class="sp-member-edit-payment-wrap">
+                <h3 class="sp-member-edit-payment-heading">
+                    <?php esc_html_e( 'Record a Payment', 'societypress' ); ?>
+                </h3>
+                <div class="sp-fields">
+
+                    <div class="sp-field">
+                        <label for="sp-pay-amount"><?php esc_html_e( 'Amount ($)', 'societypress' ); ?></label>
+                        <input type="number" name="new_payment_amount" id="sp-pay-amount"
+                               step="0.01" min="0" placeholder="0.00">
+                    </div>
+
+                    <div class="sp-field">
+                        <label for="sp-pay-type"><?php esc_html_e( 'Type', 'societypress' ); ?></label>
+                        <select name="new_payment_type" id="sp-pay-type">
+                            <option value="dues"><?php esc_html_e( 'Dues', 'societypress' ); ?></option>
+                            <option value="donation"><?php esc_html_e( 'Donation', 'societypress' ); ?></option>
+                            <option value="event"><?php esc_html_e( 'Event Fee', 'societypress' ); ?></option>
+                            <option value="other"><?php esc_html_e( 'Other', 'societypress' ); ?></option>
+                        </select>
+                    </div>
+
+                    <div class="sp-field">
+                        <label for="sp-pay-method"><?php esc_html_e( 'Method', 'societypress' ); ?></label>
+                        <select name="new_payment_method" id="sp-pay-method">
+                            <option value="">—</option>
+                            <option value="check"><?php esc_html_e( 'Check', 'societypress' ); ?></option>
+                            <option value="cash"><?php esc_html_e( 'Cash', 'societypress' ); ?></option>
+                            <option value="credit_card"><?php esc_html_e( 'Credit Card', 'societypress' ); ?></option>
+                            <option value="paypal"><?php esc_html_e( 'PayPal', 'societypress' ); ?></option>
+                            <option value="other"><?php esc_html_e( 'Other', 'societypress' ); ?></option>
+                        </select>
+                    </div>
+
+                    <div class="sp-field">
+                        <label for="sp-pay-date"><?php esc_html_e( 'Date', 'societypress' ); ?></label>
+                        <input type="date" name="new_payment_date" id="sp-pay-date"
+                               value="<?php echo esc_attr( current_time( 'Y-m-d' ) ); ?>">
+                    </div>
+
+                    <div class="sp-field sp-field-full">
+                        <label for="sp-pay-note"><?php esc_html_e( 'Note', 'societypress' ); ?></label>
+                        <input type="text" name="new_payment_note" id="sp-pay-note"
+                               placeholder="<?php echo esc_attr__( 'Optional — e.g., Check #1234', 'societypress' ); ?>">
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+    </div>
+    <?php
+}
+
+
 function sp_render_member_edit_page(): void {
     $ctx = sp_member_edit_load_context();
     if ( $ctx === null ) {
@@ -15377,132 +15525,9 @@ function sp_render_member_edit_page(): void {
             </div>
 
             <!-- ============================================================ -->
-            <!-- SECTION: Admin Notes -->
-            <!-- ============================================================ -->
-            <div class="sp-section">
-                <h2><?php esc_html_e( 'Admin Notes', 'societypress' ); ?></h2>
-                <div class="sp-section-body">
+            <?php sp_render_member_edit_admin_notes_section( $notes ); ?>
 
-                    <?php if ( ! empty( $notes ) ) : ?>
-                        <?php foreach ( $notes as $note ) :
-                            $author = get_userdata( $note->author_id );
-                            $author_name = $author ? $author->display_name : 'Unknown';
-                        ?>
-                            <div class="sp-note">
-                                <div><?php echo nl2br( esc_html( $note->content ) ); ?></div>
-                                <div class="sp-note-meta">
-                                    <?php echo esc_html( $author_name ); ?> &mdash;
-                                    <?php echo esc_html( date_i18n( 'M j, Y g:i A', strtotime( $note->created_at ) ) ); ?>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-                    <?php else : ?>
-                        <p class="sp-member-edit-empty"><?php esc_html_e( 'No notes yet.', 'societypress' ); ?></p>
-                    <?php endif; ?>
-
-                    <div class="sp-member-edit-note-wrap">
-                        <label for="sp-new-note" class="sp-member-edit-note-label">
-                            <?php esc_html_e( 'Add a Note', 'societypress' ); ?>
-                        </label>
-                        <textarea name="new_note" id="sp-new-note" rows="3"
-                                  class="sp-member-edit-textarea"
-                                  placeholder="<?php echo esc_attr__( 'Type a note about this member...', 'societypress' ); ?>"></textarea>
-                    </div>
-
-                </div>
-            </div>
-
-            <!-- ============================================================ -->
-            <!-- SECTION: Payment History -->
-            <!-- ============================================================ -->
-            <div class="sp-section">
-                <h2><?php esc_html_e( 'Payment History', 'societypress' ); ?></h2>
-                <div class="sp-section-body">
-
-                    <?php if ( ! empty( $payments ) ) : ?>
-                        <table class="sp-payments-table">
-                            <thead>
-                                <tr>
-                                    <th><?php esc_html_e( 'Date', 'societypress' ); ?></th>
-                                    <th><?php esc_html_e( 'Amount', 'societypress' ); ?></th>
-                                    <th><?php esc_html_e( 'Type', 'societypress' ); ?></th>
-                                    <th><?php esc_html_e( 'Method', 'societypress' ); ?></th>
-                                    <th><?php esc_html_e( 'Note', 'societypress' ); ?></th>
-                                    <th><?php esc_html_e( 'Recorded By', 'societypress' ); ?></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ( $payments as $pay ) :
-                                    $recorder = get_userdata( $pay->recorded_by );
-                                    $recorder_name = $recorder ? $recorder->display_name : '—';
-                                ?>
-                                    <tr>
-                                        <td><?php echo esc_html( date_i18n( 'M j, Y', strtotime( $pay->date ) ) ); ?></td>
-                                        <td><?php echo esc_html( sp_format_currency( $pay->amount ) ); ?></td>
-                                        <td><?php echo esc_html( sp_localized_status( $pay->type, 'payment_type' ) ); ?></td>
-                                        <td><?php echo esc_html( $pay->method ?: '—' ); ?></td>
-                                        <td><?php echo esc_html( $pay->note ?: '—' ); ?></td>
-                                        <td><?php echo esc_html( $recorder_name ); ?></td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    <?php else : ?>
-                        <p class="sp-member-edit-empty"><?php esc_html_e( 'No payments recorded yet.', 'societypress' ); ?></p>
-                    <?php endif; ?>
-
-                    <!-- Add new payment inline form -->
-                    <div class="sp-member-edit-payment-wrap">
-                        <h3 class="sp-member-edit-payment-heading">
-                            <?php esc_html_e( 'Record a Payment', 'societypress' ); ?>
-                        </h3>
-                        <div class="sp-fields">
-
-                            <div class="sp-field">
-                                <label for="sp-pay-amount"><?php esc_html_e( 'Amount ($)', 'societypress' ); ?></label>
-                                <input type="number" name="new_payment_amount" id="sp-pay-amount"
-                                       step="0.01" min="0" placeholder="0.00">
-                            </div>
-
-                            <div class="sp-field">
-                                <label for="sp-pay-type"><?php esc_html_e( 'Type', 'societypress' ); ?></label>
-                                <select name="new_payment_type" id="sp-pay-type">
-                                    <option value="dues"><?php esc_html_e( 'Dues', 'societypress' ); ?></option>
-                                    <option value="donation"><?php esc_html_e( 'Donation', 'societypress' ); ?></option>
-                                    <option value="event"><?php esc_html_e( 'Event Fee', 'societypress' ); ?></option>
-                                    <option value="other"><?php esc_html_e( 'Other', 'societypress' ); ?></option>
-                                </select>
-                            </div>
-
-                            <div class="sp-field">
-                                <label for="sp-pay-method"><?php esc_html_e( 'Method', 'societypress' ); ?></label>
-                                <select name="new_payment_method" id="sp-pay-method">
-                                    <option value="">—</option>
-                                    <option value="check"><?php esc_html_e( 'Check', 'societypress' ); ?></option>
-                                    <option value="cash"><?php esc_html_e( 'Cash', 'societypress' ); ?></option>
-                                    <option value="credit_card"><?php esc_html_e( 'Credit Card', 'societypress' ); ?></option>
-                                    <option value="paypal"><?php esc_html_e( 'PayPal', 'societypress' ); ?></option>
-                                    <option value="other"><?php esc_html_e( 'Other', 'societypress' ); ?></option>
-                                </select>
-                            </div>
-
-                            <div class="sp-field">
-                                <label for="sp-pay-date"><?php esc_html_e( 'Date', 'societypress' ); ?></label>
-                                <input type="date" name="new_payment_date" id="sp-pay-date"
-                                       value="<?php echo esc_attr( current_time( 'Y-m-d' ) ); ?>">
-                            </div>
-
-                            <div class="sp-field sp-field-full">
-                                <label for="sp-pay-note"><?php esc_html_e( 'Note', 'societypress' ); ?></label>
-                                <input type="text" name="new_payment_note" id="sp-pay-note"
-                                       placeholder="<?php echo esc_attr__( 'Optional — e.g., Check #1234', 'societypress' ); ?>">
-                            </div>
-
-                        </div>
-                    </div>
-
-                </div>
-            </div>
+            <?php sp_render_member_edit_payment_history_section( $payments ); ?>
 
             <!-- ============================================================ -->
             <!-- SAVE BUTTON -->

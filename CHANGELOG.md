@@ -14,6 +14,42 @@ Entries describe user-visible changes only. For the underlying commits, see
 
 ---
 
+## [1.0.61] — 2026-05-06
+
+### Bug fixes
+- Document downloads work for the first time. The Documents module
+  was rendering links to `admin-ajax.php?action=sp_document_download`
+  but no handler was registered, so every click returned `0`. The
+  handler is now in place: validates the document exists, checks
+  `published` status (drafts only reachable by editors with
+  `sp_manage_content`), enforces `members_only` access by requiring
+  an authenticated session, same-origin guards the file URL, and
+  redirects via `wp_safe_redirect`.
+
+### Accessibility
+- Library catalog active-filter remove links got translatable
+  `aria-label`s ("Remove %s filter") so screen-reader users hear
+  context, not just "times".
+- Library catalog sortable column headers now emit `aria-sort`
+  ("ascending"/"descending") plus `scope="col"`, and the arrow glyph
+  carries `aria-hidden`.
+- Genealogical record rows (`sp-record-row`) gained dynamic
+  `aria-label`s built from the first non-empty field value, so
+  screen-reader users know which record they're about to expand.
+- Join form `:focus`/`:focus-within` styles for the submit button
+  and the membership-tier radio wrappers.
+
+### i18n
+- GDPR personal data exporters (Speaker Profile, Volunteer Hours,
+  Research Help Requests, Research Help Responses) now wrap every
+  `group_label`, `group_description`, and field-name string with
+  `__()`. Members see translatable labels in their personal-data
+  export.
+
+Plugin + parent theme: 1.0.61. Marketing theme: 0.43d.
+
+---
+
 ## [1.0.60] — 2026-05-06
 
 ### Security

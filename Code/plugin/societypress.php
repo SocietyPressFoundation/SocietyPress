@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.0.60
+ * Version:     1.0.61
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.60' );
+define( 'SOCIETYPRESS_VERSION', '1.0.61' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -43828,6 +43828,7 @@ function sp_render_join_form(): string {
         .sp-join-form .sp-field-row > .sp-field { flex: 1; }
         .sp-join-form .sp-tier-option { display: block; padding: 12px 16px; margin-bottom: 8px; border: 2px solid #e0e0e0; border-radius: 4px; cursor: pointer; transition: border-color 0.15s; }
         .sp-join-form .sp-tier-option:hover { border-color: #2271b1; }
+        .sp-join-form .sp-tier-option:focus-within { border-color: #2271b1; outline: 2px solid #2271b1; outline-offset: 2px; }
         .sp-join-form .sp-tier-option input:checked + .sp-tier-label { }
         .sp-join-form .sp-tier-option:has(input:checked) { border-color: #2271b1; background: #f0f6fc; }
         .sp-join-form .sp-tier-label { display: flex; justify-content: space-between; align-items: center; }
@@ -43836,6 +43837,8 @@ function sp_render_join_form(): string {
         .sp-join-form .sp-tier-desc { font-size: 13px; color: #666; margin-top: 4px; }
         .sp-join-form .sp-submit { display: inline-block; padding: 12px 32px; background: #2271b1; color: #fff; border: none; border-radius: 4px; font-size: 16px; font-weight: 600; cursor: pointer; }
         .sp-join-form .sp-submit:hover { background: #135e96; }
+        .sp-join-form .sp-submit:focus,
+        .sp-join-form .sp-submit:focus-visible { outline: 2px solid #fff; outline-offset: 2px; box-shadow: 0 0 0 4px #2271b1; background: #135e96; }
         .sp-join-form .sp-honeypot { position: absolute; left: -9999px; }
         @media (max-width: 480px) {
             .sp-join-form .sp-field-row { flex-direction: column; gap: 0; }
@@ -49670,19 +49673,27 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
     if ( $search ) {
         $field_label = $tab_labels[ $search_field ] ?? __( 'Keyword', 'societypress' );
         $remove_url  = remove_query_arg( [ 'sp_lib_search', 'sp_lib_field' ], $remove_base );
-        echo '<span class="sp-catalog-active-filter">' . esc_html( $field_label ) . ': ' . esc_html( $search ) . ' <a href="' . esc_url( $remove_url ) . '">&times;</a></span>';
+        /* translators: %s: filter name */
+        $aria_label  = sprintf( __( 'Remove %s filter', 'societypress' ), $field_label );
+        echo '<span class="sp-catalog-active-filter">' . esc_html( $field_label ) . ': ' . esc_html( $search ) . ' <a href="' . esc_url( $remove_url ) . '" aria-label="' . esc_attr( $aria_label ) . '">&times;</a></span>';
     }
     if ( $media_filter ) {
         $remove_url = remove_query_arg( 'sp_lib_media', $remove_base );
-        echo '<span class="sp-catalog-active-filter">' . esc_html__( 'Type', 'societypress' ) . ': ' . esc_html( $media_filter ) . ' <a href="' . esc_url( $remove_url ) . '">&times;</a></span>';
+        /* translators: %s: filter name */
+        $aria_label = sprintf( __( 'Remove %s filter', 'societypress' ), __( 'Type', 'societypress' ) );
+        echo '<span class="sp-catalog-active-filter">' . esc_html__( 'Type', 'societypress' ) . ': ' . esc_html( $media_filter ) . ' <a href="' . esc_url( $remove_url ) . '" aria-label="' . esc_attr( $aria_label ) . '">&times;</a></span>';
     }
     if ( $subj_filter ) {
         $remove_url = remove_query_arg( 'sp_lib_subject', $remove_base );
-        echo '<span class="sp-catalog-active-filter">' . esc_html__( 'Subject', 'societypress' ) . ': ' . esc_html( $subj_filter ) . ' <a href="' . esc_url( $remove_url ) . '">&times;</a></span>';
+        /* translators: %s: filter name */
+        $aria_label = sprintf( __( 'Remove %s filter', 'societypress' ), __( 'Subject', 'societypress' ) );
+        echo '<span class="sp-catalog-active-filter">' . esc_html__( 'Subject', 'societypress' ) . ': ' . esc_html( $subj_filter ) . ' <a href="' . esc_url( $remove_url ) . '" aria-label="' . esc_attr( $aria_label ) . '">&times;</a></span>';
     }
     if ( $acq_filter ) {
         $remove_url = remove_query_arg( 'sp_lib_acq', $remove_base );
-        echo '<span class="sp-catalog-active-filter">' . esc_html__( 'Source', 'societypress' ) . ': ' . esc_html( $acq_filter ) . ' <a href="' . esc_url( $remove_url ) . '">&times;</a></span>';
+        /* translators: %s: filter name */
+        $aria_label = sprintf( __( 'Remove %s filter', 'societypress' ), __( 'Source', 'societypress' ) );
+        echo '<span class="sp-catalog-active-filter">' . esc_html__( 'Source', 'societypress' ) . ': ' . esc_html( $acq_filter ) . ' <a href="' . esc_url( $remove_url ) . '" aria-label="' . esc_attr( $aria_label ) . '">&times;</a></span>';
     }
     if ( $has_active_filter ) {
         $clear_url = remove_query_arg( [ 'sp_lib_search', 'sp_lib_field', 'sp_lib_media', 'sp_lib_subject', 'sp_lib_acq', 'sp_lib_sort', 'sp_lib_pg' ] );
@@ -49713,9 +49724,13 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
             $is_sorted = ( $sort_by === $col_key ) ? ' sorted' : '';
             $arrow     = ( $sort_by === $col_key ) ? ( $col_key === 'pub_year' ? '&#9660;' : '&#9650;' ) : '&#9650;';
             $col_url   = add_query_arg( 'sp_lib_sort', $col_key, $sort_url_base );
-            echo '<th class="' . esc_attr( trim( $is_sorted ) ) . '">';
+            $aria_sort = '';
+            if ( $sort_by === $col_key ) {
+                $aria_sort = ( $col_key === 'pub_year' ) ? ' aria-sort="descending"' : ' aria-sort="ascending"';
+            }
+            echo '<th scope="col" class="' . esc_attr( trim( $is_sorted ) ) . '"' . $aria_sort . '>';
             echo '<a href="' . esc_url( $col_url ) . '" style="color:inherit; text-decoration:none;">';
-            echo esc_html( $col_label ) . ' <span class="sp-sort-arrow">' . $arrow . '</span>';
+            echo esc_html( $col_label ) . ' <span class="sp-sort-arrow" aria-hidden="true">' . $arrow . '</span>';
             echo '</a></th>';
         }
         echo '<th class="sp-text-center">' . esc_html__( 'Status', 'societypress' ) . '</th>';
@@ -61812,18 +61827,18 @@ function sp_privacy_export_speaker_data( string $email_address, int $page = 1 ):
     }
 
     $data = [
-        [ 'name' => 'Name',    'value' => $speaker->name ],
-        [ 'name' => 'Title',   'value' => $speaker->title ?: '(none)' ],
-        [ 'name' => 'Bio',     'value' => $speaker->bio ?: '(none)' ],
-        [ 'name' => 'Email',   'value' => $speaker->email ?: '(none)' ],
-        [ 'name' => 'Phone',   'value' => $speaker->phone ?: '(none)' ],
-        [ 'name' => 'Website', 'value' => $speaker->website ?: '(none)' ],
+        [ 'name' => __( 'Name',    'societypress' ), 'value' => $speaker->name ],
+        [ 'name' => __( 'Title',   'societypress' ), 'value' => $speaker->title ?: '(none)' ],
+        [ 'name' => __( 'Bio',     'societypress' ), 'value' => $speaker->bio ?: '(none)' ],
+        [ 'name' => __( 'Email',   'societypress' ), 'value' => $speaker->email ?: '(none)' ],
+        [ 'name' => __( 'Phone',   'societypress' ), 'value' => $speaker->phone ?: '(none)' ],
+        [ 'name' => __( 'Website', 'societypress' ), 'value' => $speaker->website ?: '(none)' ],
     ];
 
     $export_items[] = [
         'group_id'          => 'societypress-speakers',
-        'group_label'       => 'Speaker Profile',
-        'group_description' => 'Your speaker profile stored by this site.',
+        'group_label'       => __( 'Speaker Profile', 'societypress' ),
+        'group_description' => __( 'Your speaker profile stored by this site.', 'societypress' ),
         'item_id'           => 'speaker-' . $speaker->id,
         'data'              => $data,
     ];
@@ -62073,13 +62088,13 @@ function sp_privacy_export_volunteer_data( string $email_address, int $page = 1 
     foreach ( $hours as $entry ) {
         $export_items[] = [
             'group_id'    => 'sp-volunteer-hours',
-            'group_label' => 'Volunteer Hours',
+            'group_label' => __( 'Volunteer Hours', 'societypress' ),
             'item_id'     => 'sp-volunteer-hour-' . $entry->id,
             'data'        => [
-                [ 'name' => 'Activity', 'value' => $entry->activity ?: '(none)' ],
-                [ 'name' => 'Committee', 'value' => $entry->committee ?: '(none)' ],
-                [ 'name' => 'Hours', 'value' => $entry->hours ],
-                [ 'name' => 'Date', 'value' => $entry->activity_date ],
+                [ 'name' => __( 'Activity',  'societypress' ), 'value' => $entry->activity ?: '(none)' ],
+                [ 'name' => __( 'Committee', 'societypress' ), 'value' => $entry->committee ?: '(none)' ],
+                [ 'name' => __( 'Hours',     'societypress' ), 'value' => $entry->hours ],
+                [ 'name' => __( 'Date',      'societypress' ), 'value' => $entry->activity_date ],
             ],
         ];
     }
@@ -62105,13 +62120,13 @@ function sp_privacy_export_help_data( string $email_address, int $page = 1 ): ar
     foreach ( $requests as $req ) {
         $export_items[] = [
             'group_id'    => 'sp-help-requests',
-            'group_label' => 'Research Help Requests',
+            'group_label' => __( 'Research Help Requests', 'societypress' ),
             'item_id'     => 'sp-help-request-' . $req->id,
             'data'        => [
-                [ 'name' => 'Title', 'value' => $req->title ],
-                [ 'name' => 'Description', 'value' => $req->description ],
-                [ 'name' => __( 'Status', 'societypress' ), 'value' => sp_localized_status( $req->status ) ],
-                [ 'name' => 'Date', 'value' => $req->created_at ],
+                [ 'name' => __( 'Title',       'societypress' ), 'value' => $req->title ],
+                [ 'name' => __( 'Description', 'societypress' ), 'value' => $req->description ],
+                [ 'name' => __( 'Status',      'societypress' ), 'value' => sp_localized_status( $req->status ) ],
+                [ 'name' => __( 'Date',        'societypress' ), 'value' => $req->created_at ],
             ],
         ];
     }
@@ -62123,11 +62138,11 @@ function sp_privacy_export_help_data( string $email_address, int $page = 1 ): ar
     foreach ( $responses as $resp ) {
         $export_items[] = [
             'group_id'    => 'sp-help-responses',
-            'group_label' => 'Research Help Responses',
+            'group_label' => __( 'Research Help Responses', 'societypress' ),
             'item_id'     => 'sp-help-response-' . $resp->id,
             'data'        => [
-                [ 'name' => 'Content', 'value' => $resp->content ],
-                [ 'name' => 'Date', 'value' => $resp->created_at ],
+                [ 'name' => __( 'Content', 'societypress' ), 'value' => $resp->content ],
+                [ 'name' => __( 'Date',    'societypress' ), 'value' => $resp->created_at ],
             ],
         ];
     }
@@ -67898,8 +67913,21 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
             $rec_values = $values_map[ $rec->id ] ?? [];
 
             // tabindex="0" makes the row focusable by keyboard; role="button" tells screen
-            // readers it's clickable; aria-expanded tracks whether the detail panel is open
-            echo '<tr class="sp-record-row" data-record-id="' . esc_attr( $rec->id ) . '" data-collection-id="' . esc_attr( $rec->collection_id ) . '" tabindex="0" role="button" aria-expanded="false">';
+            // readers it's clickable; aria-expanded tracks whether the detail panel is open.
+            // Build an accessible row label from the first non-empty field value so screen
+            // reader users know which record they're about to expand.
+            $row_label_value = '';
+            foreach ( $rec_fields as $rf_label ) {
+                if ( ! empty( $rec_values[ $rf_label->id ] ) ) {
+                    $row_label_value = wp_trim_words( (string) $rec_values[ $rf_label->id ], 6 );
+                    break;
+                }
+            }
+            $row_label = $row_label_value
+                /* translators: %s: short record description */
+                ? sprintf( __( 'View record: %s', 'societypress' ), $row_label_value )
+                : __( 'View record', 'societypress' );
+            echo '<tr class="sp-record-row" data-record-id="' . esc_attr( $rec->id ) . '" data-collection-id="' . esc_attr( $rec->collection_id ) . '" tabindex="0" role="button" aria-expanded="false" aria-label="' . esc_attr( $row_label ) . '">';
 
             if ( $show_coll_column ) {
                 echo '<td data-label="' . esc_attr__( 'Collection', 'societypress' ) . '"><span class="sp-records-coll-badge">' . esc_html( $rec->collection_name ) . '</span></td>';
@@ -70815,6 +70843,59 @@ add_action( 'admin_init', function () {
     wp_redirect( admin_url( 'admin.php?page=sp-documents&sp_updated=1' ) );
     exit;
 });
+
+
+// ---------------------------------------------------------------------------
+// PUBLIC: Document download handler
+//
+// WHY: Document download URLs are routed through admin-ajax.php so the
+//      access-level check runs server-side before the file URL is exposed.
+//      Without this handler the link returned `0` and the file was
+//      effectively unreachable. Public documents are streamed to anyone;
+//      members-only documents require an authenticated session.
+// ---------------------------------------------------------------------------
+
+function sp_ajax_document_download(): void {
+    global $wpdb;
+
+    $doc_id = (int) ( $_GET['id'] ?? 0 );
+    if ( ! $doc_id ) {
+        wp_die( esc_html__( 'Document not found.', 'societypress' ), '', 404 );
+    }
+
+    $doc = $wpdb->get_row( $wpdb->prepare(
+        "SELECT id, file_url, access_level, status FROM {$wpdb->prefix}sp_documents WHERE id = %d",
+        $doc_id
+    ) );
+
+    if ( ! $doc || empty( $doc->file_url ) ) {
+        wp_die( esc_html__( 'Document not found.', 'societypress' ), '', 404 );
+    }
+
+    // Drafts are only reachable for editors with content management capability.
+    if ( $doc->status !== 'published' && ! current_user_can( 'sp_manage_content' ) ) {
+        wp_die( esc_html__( 'Document not found.', 'societypress' ), '', 404 );
+    }
+
+    if ( $doc->access_level === 'members_only' && ! is_user_logged_in() ) {
+        auth_redirect();
+        exit;
+    }
+
+    // Same-origin guard: only redirect to URLs on this site (file_url comes
+    // from esc_url_raw at save time, but a future code path or DB tampering
+    // could land an off-site URL here).
+    $home_host = wp_parse_url( home_url(), PHP_URL_HOST );
+    $file_host = wp_parse_url( $doc->file_url, PHP_URL_HOST );
+    if ( ! $file_host || strcasecmp( $file_host, (string) $home_host ) !== 0 ) {
+        wp_die( esc_html__( 'Document URL is invalid.', 'societypress' ), '', 400 );
+    }
+
+    wp_safe_redirect( $doc->file_url, 302, 'SocietyPress' );
+    exit;
+}
+add_action( 'wp_ajax_sp_document_download',        'sp_ajax_document_download' );
+add_action( 'wp_ajax_nopriv_sp_document_download', 'sp_ajax_document_download' );
 
 
 // ---------------------------------------------------------------------------

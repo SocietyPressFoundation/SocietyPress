@@ -89,10 +89,23 @@
             return;
         }
 
+        // Mirror open/closed state to aria-expanded so screen readers
+        // announce the submenu state independent of the visibility class.
+        function setExpanded(item, expanded) {
+            var l = item.querySelector(':scope > a');
+            if (l) l.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        }
+
         parentItems.forEach(function (item) {
             var link = item.querySelector(':scope > a');
             if (!link) {
                 return;
+            }
+
+            // Initialize state — defaulting to "false" if the markup doesn't
+            // already declare it.
+            if (!link.hasAttribute('aria-expanded')) {
+                link.setAttribute('aria-expanded', 'false');
             }
 
             link.addEventListener('click', function (e) {
@@ -105,11 +118,13 @@
                 if (isMobile || isPlaceholder) {
                     e.preventDefault();
                     var isOpen = item.classList.toggle('sp-submenu-open');
+                    setExpanded(item, isOpen);
 
                     // Close other open sub-menus
                     parentItems.forEach(function (other) {
                         if (other !== item) {
                             other.classList.remove('sp-submenu-open');
+                            setExpanded(other, false);
                         }
                     });
                 }
@@ -122,6 +137,7 @@
             if (nav && !nav.contains(e.target)) {
                 parentItems.forEach(function (item) {
                     item.classList.remove('sp-submenu-open');
+                    setExpanded(item, false);
                 });
             }
         });
@@ -131,6 +147,7 @@
             if (e.key === 'Escape') {
                 parentItems.forEach(function (item) {
                     item.classList.remove('sp-submenu-open');
+                    setExpanded(item, false);
                 });
             }
         });

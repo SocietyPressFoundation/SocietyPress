@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.0.70
+ * Version:     1.0.71
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.70' );
+define( 'SOCIETYPRESS_VERSION', '1.0.71' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -7412,6 +7412,7 @@ function sp_render_pending_changes_page(): void {
             .sp-pending-diff td { padding: 8px 12px; border-bottom: 1px solid #f6f6f6; }
             .sp-pending-diff .sp-changed { background: #fffbe6; }
             .sp-pending-actions { padding: 12px 20px; border-top: 1px solid #f0f0f0; display: flex; align-items: center; gap: 12px; }
+            .sp-pending-actions__form { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
             .sp-pending-actions textarea { width: 300px; height: 50px; font-size: 13px; }
             .sp-pending-status-badge {
                 display: inline-block; padding: 3px 10px; border-radius: 3px;
@@ -7556,10 +7557,11 @@ function sp_render_pending_changes_page(): void {
             <?php if ( $ch->status === 'pending' ) : ?>
             <!-- Approve / Reject form -->
             <div class="sp-pending-actions">
-                <form method="post" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <form method="post" class="sp-pending-actions__form">
                     <?php wp_nonce_field( 'sp_pending_changes', 'sp_pending_nonce' ); ?>
                     <input type="hidden" name="change_id" value="<?php echo esc_attr( $ch->id ); ?>">
-                    <textarea name="admin_note" placeholder="<?php echo esc_attr__( 'Optional note to member…', 'societypress' ); ?>"></textarea>
+                    <label for="sp-pending-admin-note-<?php echo esc_attr( $ch->id ); ?>" class="screen-reader-text"><?php esc_html_e( 'Note to member', 'societypress' ); ?></label>
+                    <textarea name="admin_note" id="sp-pending-admin-note-<?php echo esc_attr( $ch->id ); ?>" placeholder="<?php echo esc_attr__( 'Optional note to member…', 'societypress' ); ?>"></textarea>
                     <button type="submit" name="sp_decision" value="approve" class="button button-primary">
                         <?php echo esc_html__( 'Approve', 'societypress' ); ?>
                     </button>
@@ -13117,7 +13119,7 @@ function sp_render_members_page(): void {
         </style>
         <div id="sp-delete-overlay" class="sp-delete-overlay">
             <div class="sp-delete-overlay__inner">
-                <div id="sp-delete-spinner" class="sp-delete-overlay__spinner"></div>
+                <div id="sp-delete-spinner" class="sp-delete-overlay__spinner" aria-hidden="true"></div>
                 <h2 id="sp-delete-title" class="sp-delete-overlay__title"><?php esc_html_e( 'Deleting Members...', 'societypress' ); ?></h2>
                 <div class="sp-delete-overlay__bar">
                     <div id="sp-delete-progress" class="sp-delete-overlay__fill" style="width:0;" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="<?php echo esc_attr__( 'Delete progress', 'societypress' ); ?>"></div>
@@ -33525,31 +33527,31 @@ function sp_render_builder_widget_contact_card( array $s ): void {
     $email    = $settings['organization_email'] ?? get_option( 'admin_email' );
     $hours    = $settings['organization_hours'] ?? '';
 
-    echo '<div style="background:#f9f9f9; border:1px solid #e0e0e0; border-radius:8px; padding:24px;">';
-    echo '<h3 style="margin:0 0 16px; color:var(--sp-color-primary, #1e3a5f);">' . esc_html( $org_name ) . '</h3>';
+    echo '<div class="sp-contact-card">';
+    echo '<h3 class="sp-contact-card__name">' . esc_html( $org_name ) . '</h3>';
 
     if ( $show_address && $address ) {
-        echo '<div style="display:flex; align-items:flex-start; gap:12px; margin-bottom:12px;">';
-        echo '<span class="dashicons dashicons-location-alt" style="color:var(--sp-color-primary); margin-top:2px;"></span>';
-        echo '<address style="font-style:normal;">' . nl2br( esc_html( $address ) ) . '</address>';
+        echo '<div class="sp-contact-card__row sp-contact-card__row--top">';
+        echo '<span class="dashicons dashicons-location-alt sp-contact-card__icon sp-contact-card__icon--top"></span>';
+        echo '<address class="sp-contact-card__address">' . nl2br( esc_html( $address ) ) . '</address>';
         echo '</div>';
     }
     if ( $show_phone && $phone ) {
         $tel = preg_replace( '/[^0-9+]/', '', $phone );
-        echo '<div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">';
-        echo '<span class="dashicons dashicons-phone" style="color:var(--sp-color-primary);"></span>';
+        echo '<div class="sp-contact-card__row">';
+        echo '<span class="dashicons dashicons-phone sp-contact-card__icon"></span>';
         echo '<a href="tel:' . esc_attr( $tel ) . '">' . esc_html( $phone ) . '</a>';
         echo '</div>';
     }
     if ( $show_email && $email ) {
-        echo '<div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">';
-        echo '<span class="dashicons dashicons-email" style="color:var(--sp-color-primary);"></span>';
+        echo '<div class="sp-contact-card__row">';
+        echo '<span class="dashicons dashicons-email sp-contact-card__icon"></span>';
         echo sp_obfuscate_email( $email );
         echo '</div>';
     }
     if ( $show_hours && $hours ) {
-        echo '<div style="display:flex; align-items:flex-start; gap:12px;">';
-        echo '<span class="dashicons dashicons-clock" style="color:var(--sp-color-primary); margin-top:2px;"></span>';
+        echo '<div class="sp-contact-card__row sp-contact-card__row--top sp-contact-card__row--last">';
+        echo '<span class="dashicons dashicons-clock sp-contact-card__icon sp-contact-card__icon--top"></span>';
         echo '<span>' . nl2br( esc_html( $hours ) ) . '</span>';
         echo '</div>';
     }
@@ -33963,6 +33965,18 @@ function sp_builder_frontend_styles(): void {
         /* ------------------------------------------------------------------ */
         .sp-map-embed-wrap { max-width: var(--sp-content-width, 1100px); margin: 0 auto; }
         .sp-map-embed-wrap iframe { border: 0; border-radius: 8px; }
+
+        /* ------------------------------------------------------------------ */
+        /* CONTACT CARD — page-builder widget                                  */
+        /* ------------------------------------------------------------------ */
+        .sp-contact-card { background: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 8px; padding: 24px; }
+        .sp-contact-card__name { margin: 0 0 16px; color: var(--sp-color-primary, #1e3a5f); }
+        .sp-contact-card__row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+        .sp-contact-card__row--top { align-items: flex-start; }
+        .sp-contact-card__row--last { margin-bottom: 0; }
+        .sp-contact-card__icon { color: var(--sp-color-primary); }
+        .sp-contact-card__icon--top { margin-top: 2px; }
+        .sp-contact-card__address { font-style: normal; }
 
         /* ------------------------------------------------------------------ */
         /* MEMBERSHIP TIERS — grid + card                                      */
@@ -76116,6 +76130,19 @@ add_action( 'admin_footer', function () {
         yesBtn.className = 'button sp-confirm-btn sp-confirm-btn--' + (opts.type || 'danger');
         overlay.style.display = 'flex';
 
+        /* WHY inert on the rest of the page: aria-modal="true" on this
+         * overlay tells modern AT to ignore content behind it, but older
+         * AT (NVDA pre-2024, JAWS pre-2023) doesn't honor that. inert is
+         * widely supported as of 2023 and works for everyone. */
+        var sibs = [];
+        for (var i = 0; i < document.body.children.length; i++) {
+            var child = document.body.children[i];
+            if (child !== overlay && !child.inert) {
+                child.inert = true;
+                sibs.push(child);
+            }
+        }
+
         /* Clone buttons to remove any prior listeners */
         var freshYes = yesBtn.cloneNode(true);
         yesBtn.parentNode.replaceChild(freshYes, yesBtn);
@@ -76125,6 +76152,7 @@ add_action( 'admin_footer', function () {
         function close() {
             overlay.style.display = 'none';
             document.removeEventListener('keydown', keyHandler);
+            sibs.forEach(function (s) { s.inert = false; });
             if (trigger && typeof trigger.focus === 'function') {
                 try { trigger.focus(); } catch (e) { /* element may have been removed */ }
             }
@@ -82540,8 +82568,8 @@ function sp_render_research_case_edit_page(): void {
                             <input type="hidden" name="case_id" value="<?php echo (int) $id; ?>">
 
                             <p>
-                                <label><strong><?php esc_html_e( 'Status', 'societypress' ); ?></strong></label>
-                                <select name="status" class="sp-full-width">
+                                <label for="sp-rs-case-status"><strong><?php esc_html_e( 'Status', 'societypress' ); ?></strong></label>
+                                <select name="status" id="sp-rs-case-status" class="sp-full-width">
                                     <?php foreach ( $status_labels as $key => $label ) : ?>
                                         <option value="<?php echo esc_attr( $key ); ?>" <?php selected( $case->status, $key ); ?>><?php echo esc_html( $label ); ?></option>
                                     <?php endforeach; ?>
@@ -82549,8 +82577,8 @@ function sp_render_research_case_edit_page(): void {
                             </p>
 
                             <p>
-                                <label><strong><?php esc_html_e( 'Researcher', 'societypress' ); ?></strong></label>
-                                <select name="claimed_by_user_id" class="sp-full-width">
+                                <label for="sp-rs-case-researcher"><strong><?php esc_html_e( 'Researcher', 'societypress' ); ?></strong></label>
+                                <select name="claimed_by_user_id" id="sp-rs-case-researcher" class="sp-full-width">
                                     <option value=""><?php esc_html_e( '— Unassigned —', 'societypress' ); ?></option>
                                     <?php foreach ( $member_options as $m ) : ?>
                                         <option value="<?php echo (int) $m->user_id; ?>" <?php selected( (int) $case->claimed_by_user_id, (int) $m->user_id ); ?>>
@@ -82561,23 +82589,23 @@ function sp_render_research_case_edit_page(): void {
                             </p>
 
                             <p>
-                                <label><strong><?php esc_html_e( 'Hourly rate', 'societypress' ); ?></strong></label>
-                                <input type="number" step="0.01" min="0" name="hourly_rate" value="<?php echo esc_attr( number_format( (float) $case->hourly_rate, 2, '.', '' ) ); ?>" class="sp-full-width">
+                                <label for="sp-rs-case-rate"><strong><?php esc_html_e( 'Hourly rate', 'societypress' ); ?></strong></label>
+                                <input type="number" step="0.01" min="0" name="hourly_rate" id="sp-rs-case-rate" value="<?php echo esc_attr( number_format( (float) $case->hourly_rate, 2, '.', '' ) ); ?>" class="sp-full-width">
                             </p>
 
                             <p>
-                                <label><strong><?php esc_html_e( 'Hours authorized', 'societypress' ); ?></strong></label>
-                                <input type="number" step="0.25" min="0" name="max_hours_authorized" value="<?php echo esc_attr( number_format( (float) $case->max_hours_authorized, 2, '.', '' ) ); ?>" class="sp-full-width">
+                                <label for="sp-rs-case-hours"><strong><?php esc_html_e( 'Hours authorized', 'societypress' ); ?></strong></label>
+                                <input type="number" step="0.25" min="0" name="max_hours_authorized" id="sp-rs-case-hours" value="<?php echo esc_attr( number_format( (float) $case->max_hours_authorized, 2, '.', '' ) ); ?>" class="sp-full-width">
                             </p>
 
                             <p>
-                                <label><strong><?php esc_html_e( 'SLA (days)', 'societypress' ); ?></strong></label>
-                                <input type="number" min="1" max="365" name="sla_days" value="<?php echo (int) $case->sla_days; ?>" class="sp-full-width">
+                                <label for="sp-rs-case-sla"><strong><?php esc_html_e( 'SLA (days)', 'societypress' ); ?></strong></label>
+                                <input type="number" min="1" max="365" name="sla_days" id="sp-rs-case-sla" value="<?php echo (int) $case->sla_days; ?>" class="sp-full-width">
                             </p>
 
                             <p>
-                                <label><strong><?php esc_html_e( 'Internal admin note', 'societypress' ); ?></strong></label>
-                                <textarea name="admin_note" rows="3" class="sp-full-width"><?php echo esc_textarea( $case->admin_note ?? '' ); ?></textarea>
+                                <label for="sp-rs-case-admin-note"><strong><?php esc_html_e( 'Internal admin note', 'societypress' ); ?></strong></label>
+                                <textarea name="admin_note" id="sp-rs-case-admin-note" rows="3" class="sp-full-width"><?php echo esc_textarea( $case->admin_note ?? '' ); ?></textarea>
                             </p>
 
                             <?php submit_button( __( 'Save Case', 'societypress' ), 'primary', 'submit', false ); ?>

@@ -1246,7 +1246,7 @@ function sp_m( $member, $field ) {
                                 <?php
                                 $sim_count = $surname_similar_counts[ $sn->id ] ?? 0;
                                 if ( $sim_count > 0 ) : ?>
-                                    <span class="sp-surname-similar" style="display:block; font-size:12px; color:#2271b1; margin-top:2px;">
+                                    <span class="sp-surname-similar">
                                         <?php
                                         printf(
                                             /* translators: %d: number of other members researching similar surnames */

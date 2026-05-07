@@ -14,6 +14,47 @@ Entries describe user-visible changes only. For the underlying commits, see
 
 ---
 
+## [1.0.71] — 2026-05-06
+
+### Accessibility
+- Theme nav-menu submenu toggles now mirror open/closed state to
+  `aria-expanded` on the parent link (mobile + placeholder-`#`
+  parents). Previously only the `sp-submenu-open` CSS class was
+  toggled, so screen readers that don&rsquo;t infer state from CSS
+  visibility (NVDA + Firefox) announced submenus as collapsed even
+  when open. Initial `aria-expanded="false"` is also injected on
+  parent links if WordPress&rsquo; walker didn&rsquo;t.
+- `spConfirm` modal now sets `inert` on every body sibling while the
+  dialog is open. Modern AT honors `aria-modal` already; older AT
+  (NVDA pre-2024, JAWS pre-2023) doesn&rsquo;t. `inert` (widely
+  supported as of 2023) closes the gap with no other side effects.
+- Research Services case-edit form: 6 `&lt;label&gt;` elements got
+  matching `for=` attributes paired with `id=` on their inputs
+  (status, researcher, hourly rate, hours authorized, SLA, internal
+  admin note). Previously the labels were empty wrappers and screen
+  readers announced no field name when tabbing in.
+- Pending change-request &ldquo;Note to member&rdquo; textarea got an
+  associated `&lt;label class="screen-reader-text"&gt;` so it is
+  announced even when the placeholder text is gone.
+- Bulk-delete spinner gained `aria-hidden="true"` to match the
+  pattern set by import + gallery spinners.
+
+### Refactoring
+- Contact Card page-builder widget moved off inline `style="…"`
+  per render. New `.sp-contact-card`, `.sp-contact-card__name`,
+  `.sp-contact-card__row` (+ `--top` / `--last` modifiers),
+  `.sp-contact-card__icon` (+ `--top`), `.sp-contact-card__address`
+  classes. Child themes can now override visuals through normal CSS.
+- Pending-changes admin form moved off inline `style=` to
+  `.sp-pending-actions__form`.
+- `.sp-surname-similar` (the &ldquo;X other members research this
+  surname&rdquo; hint under each row of the my-account surname list)
+  moved off inline `style=` to a stylesheet rule.
+
+Plugin + parent theme: 1.0.71. Marketing theme: 0.43d.
+
+---
+
 ## [1.0.70] — 2026-05-06
 
 ### Refactoring

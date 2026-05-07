@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.0.65
+ * Version:     1.0.66
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.65' );
+define( 'SOCIETYPRESS_VERSION', '1.0.66' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -8098,8 +8098,13 @@ add_action( 'admin_head', function () {
 .sp-text-danger    { color: #b32d2e; }
 .sp-text-error     { color: #d63638; }
 .sp-text-success   { color: #0a6b2e; }
+.sp-text-success-strong { color: #00a32a; font-weight: 600; }
+.sp-text-info      { color: #2271b1; }
+.sp-text-info-link { color: #0073aa; font-weight: 500; }
 .sp-text-muted     { color: #6d7175; } /* WCAG-AA-safe replacement for #787c82, used in 20+ admin labels */
+.sp-text-muted-italic { color: #6d7175; font-style: italic; }
 .sp-text-secondary { color: #666; }
+.sp-empty-search-result { color: #666; font-style: italic; padding: 20px 0; }
 
 /* ---------- Spacing ---------- */
 .sp-mt-0   { margin-top: 0; }
@@ -21518,7 +21523,7 @@ function sp_render_access_log_page(): void {
                     <?php foreach ( $rows as $row ) : ?>
                         <tr>
                             <td style="white-space: nowrap;"><?php echo esc_html( wp_date( 'M j, Y g:i A', strtotime( $row->created_at ) ) ); ?></td>
-                            <td><?php echo $row->user_name ? esc_html( $row->user_name ) : '<span style="color:#6d7175;">' . esc_html__( 'Anonymous', 'societypress' ) . '</span>'; ?></td>
+                            <td><?php echo $row->user_name ? esc_html( $row->user_name ) : '<span class="sp-text-muted">' . esc_html__( 'Anonymous', 'societypress' ) . '</span>'; ?></td>
                             <td class="sp-access-url"><?php echo esc_html( $row->url ); ?>
                                 <?php if ( ! empty( $row->user_agent ) ) : ?>
                                     <div class="sp-access-ua"><?php echo esc_html( $row->user_agent ); ?></div>
@@ -22234,7 +22239,7 @@ class SP_Pages_List_Table extends WP_List_Table {
         $labels   = sp_get_page_type_labels();
 
         if ( ! empty( $template ) && isset( $labels[ $template ] ) ) {
-            return '<span style="color: #0073aa; font-weight: 500;">'
+            return '<span class="sp-text-info-link">'
                  . esc_html( $labels[ $template ] )
                  . '</span>';
         }
@@ -22247,9 +22252,9 @@ class SP_Pages_List_Table extends WP_List_Table {
      */
     protected function column_status( $item ): string {
         if ( $item->post_status === 'publish' ) {
-            return '<span style="color: #00a32a; font-weight: 600;">' . esc_html__( 'Published', 'societypress' ) . '</span>';
+            return '<span class="sp-text-success-strong">' . esc_html__( 'Published', 'societypress' ) . '</span>';
         }
-        return '<span style="color: #6d7175; font-weight: 600;">' . esc_html__( 'Draft', 'societypress' ) . '</span>';
+        return '<span class="sp-text-muted" style="font-weight:600;">' . esc_html__( 'Draft', 'societypress' ) . '</span>';
     }
 
     /**
@@ -42040,7 +42045,7 @@ function sp_events_frontend_scripts(): void {
                     .then(function(data) {
                         if (data.success && row) {
                             row.style.opacity = '0.4';
-                            row.innerHTML = '<span style="color: #6d7175; font-style: italic;"><?php echo esc_js( __( "Cancelled", "societypress" ) ); ?></span>';
+                            row.innerHTML = '<span class="sp-text-muted-italic"><?php echo esc_js( __( "Cancelled", "societypress" ) ); ?></span>';
                         }
                     });
             });
@@ -49868,7 +49873,7 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
 
     // ---- Results table ----
     if ( empty( $items ) ) {
-        echo '<p style="color:#666; font-style:italic; padding:20px 0;">' . esc_html__( 'No items match your search. Try broadening your filters.', 'societypress' ) . '</p>';
+        echo '<p class="sp-empty-search-result">' . esc_html__( 'No items match your search. Try broadening your filters.', 'societypress' ) . '</p>';
     } else {
         // WHY: Sortable column headers let the researcher reorder results without
         //      scrolling back up to the sort dropdown. The arrow indicator shows
@@ -49932,7 +49937,7 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
             echo '<td data-label="' . esc_attr__( 'Year', 'societypress' ) . '">' . esc_html( $item->pub_year ?: '—' ) . '</td>';
             echo '<td data-label="' . esc_attr__( 'Status', 'societypress' ) . '" class="sp-text-center">';
             echo $item->available
-                ? '<span style="color:#0a6b2e; font-weight:600;">' . esc_html__( 'Available', 'societypress' ) . '</span>'
+                ? '<span class="sp-text-success" style="font-weight:600;">' . esc_html__( 'Available', 'societypress' ) . '</span>'
                 : '<span class="sp-text-danger">' . esc_html__( 'Checked Out', 'societypress' ) . '</span>';
             echo '</td>';
             echo '</tr>';
@@ -68143,7 +68148,7 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
     echo '<div class="sp-records-status">' . number_format( $total ) . ' ' . esc_html__( 'records found', 'societypress' ) . '</div>';
 
     if ( empty( $records ) ) {
-        echo '<p style="color:#666; font-style:italic; padding:20px 0;">' . esc_html__( 'No records match your search. Try broadening your query.', 'societypress' ) . '</p>';
+        echo '<p class="sp-empty-search-result">' . esc_html__( 'No records match your search. Try broadening your query.', 'societypress' ) . '</p>';
     } else {
         // For multi-collection results, show Collection + first 3 fields
         // For single-collection, show first 4 fields

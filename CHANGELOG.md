@@ -14,6 +14,22 @@ Entries describe user-visible changes only. For the underlying commits, see
 
 ---
 
+## [1.0.66] — 2026-05-06
+
+### Refactoring
+- New text utility classes — `.sp-text-success-strong`,
+  `.sp-text-info`, `.sp-text-info-link`, `.sp-text-muted-italic`,
+  and `.sp-empty-search-result` — to eat the most-repeated inline
+  status-color patterns (Active, Published, Draft, Available,
+  Cancelled, "no results"). 8 inline `style="color:#…"` sites
+  converted to semantic class names; the rest of the inline colors
+  in the file are dynamic (status-badge backgrounds, theme-injected
+  values) and stay inline.
+
+Plugin + parent theme: 1.0.66. Marketing theme: 0.43d.
+
+---
+
 ## [1.0.65] — 2026-05-06
 
 ### Security

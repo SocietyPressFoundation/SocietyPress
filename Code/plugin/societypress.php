@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.0.69
+ * Version:     1.0.70
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.69' );
+define( 'SOCIETYPRESS_VERSION', '1.0.70' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -31131,7 +31131,7 @@ function sp_render_builder_ui( WP_Post $post ): void {
                         <div class="sp-builder-picker-grid">
                             <?php foreach ( $cat_widgets as $type => $w ) : ?>
                                 <button type="button" class="sp-builder-picker-item" data-widget-type="<?php echo esc_attr( $type ); ?>">
-                                    <span class="dashicons dashicons-<?php echo esc_attr( $w['icon'] ); ?>" style="color:#2271b1; margin-bottom:6px;"></span>
+                                    <span class="dashicons dashicons-<?php echo esc_attr( $w['icon'] ); ?> sp-builder-picker-icon"></span>
                                     <strong class="sp-field-label sp-fw-normal"><?php echo esc_html( $w['label'] ); ?></strong>
                                     <span style="font-size:12px; color:#646970; line-height:1.4;"><?php echo esc_html( $w['description'] ); ?></span>
                                 </button>
@@ -31175,7 +31175,7 @@ function sp_render_builder_card( $index, array $widget, array $registry ): void 
     ?>
     <div class="sp-builder-card" data-widget-type="<?php echo esc_attr( $type ); ?>">
         <div class="sp-builder-card-header">
-            <span class="dashicons dashicons-<?php echo esc_attr( $info['icon'] ); ?>" style="color:#2271b1; flex-shrink:0;"></span>
+            <span class="dashicons dashicons-<?php echo esc_attr( $info['icon'] ); ?> sp-builder-card-icon"></span>
             <span class="sp-builder-card-title" style="font-weight:600; flex-grow:1;"><?php echo esc_html( $info['label'] ); ?></span>
             <div class="sp-builder-card-actions" style="display:flex; gap:4px; flex-shrink:0;">
                 <button type="button" class="sp-builder-btn sp-builder-move-up" aria-label="<?php esc_attr_e( 'Move up', 'societypress' ); ?>">&#9650;</button>
@@ -32565,6 +32565,8 @@ add_action( 'admin_head', function () {
         .sp-builder-picker-inner { background: #fff; border-radius: 8px; max-width: 650px; width: 90%; max-height: 80vh; overflow-y: auto; padding: 24px; }
         .sp-builder-picker-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
         .sp-builder-picker-item { display: flex; flex-direction: column; align-items: flex-start; padding: 12px; border: 1px solid #c3c4c7; border-radius: 6px; background: #fff; cursor: pointer; text-align: left; transition: border-color 0.15s, box-shadow 0.15s; }
+        .sp-builder-picker-icon { color: #2271b1; margin-bottom: 6px; }
+        .sp-builder-card-icon   { color: #2271b1; flex-shrink: 0; }
         .sp-builder-picker-item:hover { border-color: #2271b1; box-shadow: 0 0 0 1px #2271b1; }
         .sp-builder-picker-item:focus,
         .sp-builder-picker-item:focus-visible { outline: none; border-color: #2271b1; box-shadow: 0 0 0 2px #2271b1, 0 0 0 4px rgba(34,113,177,0.25); }
@@ -33486,21 +33488,21 @@ function sp_render_builder_widget_membership_tiers( array $s ): void {
         return;
     }
 
-    echo '<div class="sp-tiers-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:16px;">';
+    echo '<div class="sp-tiers-grid">';
     foreach ( $tiers as $tier ) {
-        $opacity = $tier->active ? '' : ' opacity:0.6;';
-        echo '<div style="background:#fff; border:1px solid #e0e0e0; border-radius:8px; padding:20px; text-align:center;' . $opacity . '">';
-        echo '<h3 style="margin:0 0 8px; color:var(--sp-color-primary, #1e3a5f);">' . esc_html( $tier->name ) . '</h3>';
+        $card_class = 'sp-tier-card' . ( $tier->active ? '' : ' sp-tier-card--inactive' );
+        echo '<div class="' . esc_attr( $card_class ) . '">';
+        echo '<h3 class="sp-tier-card-name">' . esc_html( $tier->name ) . '</h3>';
         if ( $show_prices ) {
             $price = floatval( $tier->price );
-            echo '<div style="font-size:24px; font-weight:700; color:var(--sp-color-primary, #1e3a5f);">' . ( $price > 0 ? esc_html( sp_format_currency( $price ) ) : esc_html__( 'Free', 'societypress' ) ) . '</div>';
+            echo '<div class="sp-tier-card-price">' . ( $price > 0 ? esc_html( sp_format_currency( $price ) ) : esc_html__( 'Free', 'societypress' ) ) . '</div>';
             if ( $price > 0 && $tier->duration_months ) {
                 $d = intval( $tier->duration_months );
-                echo '<div style="font-size:14px; color:var(--sp-color-text-secondary, #666);">' . ( $d === 12 ? esc_html__( 'per year', 'societypress' ) : esc_html( sprintf( __( 'per %d months', 'societypress' ), $d ) ) ) . '</div>';
+                echo '<div class="sp-tier-card-period">' . ( $d === 12 ? esc_html__( 'per year', 'societypress' ) : esc_html( sprintf( __( 'per %d months', 'societypress' ), $d ) ) ) . '</div>';
             }
         }
         if ( ! $tier->active ) {
-            echo '<div style="margin-top:8px; font-size:12px; color:#6d7175; font-style:italic;">' . esc_html__( 'Not currently available', 'societypress' ) . '</div>';
+            echo '<div class="sp-tier-card-unavailable">' . esc_html__( 'Not currently available', 'societypress' ) . '</div>';
         }
         echo '</div>';
     }
@@ -33963,11 +33965,22 @@ function sp_builder_frontend_styles(): void {
         .sp-map-embed-wrap iframe { border: 0; border-radius: 8px; }
 
         /* ------------------------------------------------------------------ */
+        /* MEMBERSHIP TIERS — grid + card                                      */
+        /* ------------------------------------------------------------------ */
+        .sp-tiers-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+        .sp-tier-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; text-align: center; }
+        .sp-tier-card--inactive { opacity: 0.6; }
+        .sp-tier-card-name { margin: 0 0 8px; color: var(--sp-color-primary, #1e3a5f); }
+        .sp-tier-card-price { font-size: 24px; font-weight: 700; color: var(--sp-color-primary, #1e3a5f); }
+        .sp-tier-card-period { font-size: 14px; color: var(--sp-color-text-secondary, #666); }
+        .sp-tier-card-unavailable { margin-top: 8px; font-size: 12px; color: #6d7175; font-style: italic; }
+
+        /* ------------------------------------------------------------------ */
         /* MOBILE                                                              */
         /* ------------------------------------------------------------------ */
         @media (max-width: 600px) {
             .sp-widget-stats > div:first-child { flex-direction: column !important; }
-            .sp-tiers-grid { grid-template-columns: 1fr !important; }
+            .sp-tiers-grid { grid-template-columns: 1fr; }
             .sp-contact-row { flex-direction: column !important; gap: 0 !important; }
         }
     </style>

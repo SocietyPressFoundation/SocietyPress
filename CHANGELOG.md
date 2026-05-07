@@ -14,6 +14,24 @@ Entries describe user-visible changes only. For the underlying commits, see
 
 ---
 
+## [1.0.70] — 2026-05-06
+
+### Refactoring
+- Membership Tiers page-builder widget moved off inline `style="…"`
+  attributes per render. New `.sp-tier-card`, `.sp-tier-card--inactive`,
+  `.sp-tier-card-name`, `.sp-tier-card-price`, `.sp-tier-card-period`,
+  `.sp-tier-card-unavailable` classes. The `.sp-tiers-grid` rule no
+  longer needs `!important` since the inline definition is gone.
+  Child themes can now override tier-card visuals through normal CSS.
+- Page-builder widget picker icons and card icons gained
+  `.sp-builder-picker-icon` / `.sp-builder-card-icon` classes; the
+  hardcoded `#2271b1` color moved to the stylesheet. Two more inline
+  hex sites gone.
+
+Plugin + parent theme: 1.0.70. Marketing theme: 0.43d.
+
+---
+
 ## [1.0.69] — 2026-05-06
 
 ### Bug fixes

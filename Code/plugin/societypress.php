@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.0.62
+ * Version:     1.0.63
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.62' );
+define( 'SOCIETYPRESS_VERSION', '1.0.63' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -7523,9 +7523,9 @@ function sp_render_pending_changes_page(): void {
                 <table>
                     <thead>
                         <tr>
-                            <th><?php echo esc_html__( 'Field', 'societypress' ); ?></th>
-                            <th><?php echo esc_html__( 'Current Value', 'societypress' ); ?></th>
-                            <th><?php echo esc_html__( 'Requested Change', 'societypress' ); ?></th>
+                            <th scope="col"><?php echo esc_html__( 'Field', 'societypress' ); ?></th>
+                            <th scope="col"><?php echo esc_html__( 'Current Value', 'societypress' ); ?></th>
+                            <th scope="col"><?php echo esc_html__( 'Requested Change', 'societypress' ); ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -10871,9 +10871,9 @@ function sp_render_dashboard_page(): void {
                     <table>
                         <thead>
                             <tr>
-                                <th><?php echo esc_html__( 'Date', 'societypress' ); ?></th>
-                                <th><?php echo esc_html__( 'Event', 'societypress' ); ?></th>
-                                <th><?php echo esc_html__( 'Location', 'societypress' ); ?></th>
+                                <th scope="col"><?php echo esc_html__( 'Date', 'societypress' ); ?></th>
+                                <th scope="col"><?php echo esc_html__( 'Event', 'societypress' ); ?></th>
+                                <th scope="col"><?php echo esc_html__( 'Location', 'societypress' ); ?></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -10906,8 +10906,8 @@ function sp_render_dashboard_page(): void {
                     <table>
                         <thead>
                             <tr>
-                                <th><?php echo esc_html__( 'Member', 'societypress' ); ?></th>
-                                <th><?php echo esc_html__( 'Expires', 'societypress' ); ?></th>
+                                <th scope="col"><?php echo esc_html__( 'Member', 'societypress' ); ?></th>
+                                <th scope="col"><?php echo esc_html__( 'Expires', 'societypress' ); ?></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -10950,8 +10950,8 @@ function sp_render_dashboard_page(): void {
                     <table>
                         <thead>
                             <tr>
-                                <th><?php echo esc_html__( 'Member', 'societypress' ); ?></th>
-                                <th><?php echo esc_html__( 'Joined', 'societypress' ); ?></th>
+                                <th scope="col"><?php echo esc_html__( 'Member', 'societypress' ); ?></th>
+                                <th scope="col"><?php echo esc_html__( 'Joined', 'societypress' ); ?></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -14142,7 +14142,7 @@ function sp_render_member_edit_page(): void {
                 }
                 .sp-field .description {
                     font-size: 12px;
-                    color: #787c82;
+                    color: #6d7175;
                     margin-top: 4px;
                 }
                 /* Full-width fields that span all columns */
@@ -14167,7 +14167,7 @@ function sp_render_member_edit_page(): void {
                     margin-bottom: 4px;
                     font-weight: 600;
                     font-size: 12px;
-                    color: #787c82;
+                    color: #6d7175;
                 }
                 /* Responsive: stack to single column on smaller screens */
                 @media (max-width: 782px) {
@@ -14199,7 +14199,7 @@ function sp_render_member_edit_page(): void {
                 }
                 .sp-note-meta {
                     font-size: 12px;
-                    color: #787c82;
+                    color: #6d7175;
                     margin-top: 4px;
                 }
                 /* Payment table */
@@ -14215,7 +14215,7 @@ function sp_render_member_edit_page(): void {
                 }
                 .sp-payments-table th {
                     font-size: 12px;
-                    color: #787c82;
+                    color: #6d7175;
                     font-weight: 600;
                 }
                 /* Joint member checkbox label — flex row with gap */
@@ -14276,7 +14276,7 @@ function sp_render_member_edit_page(): void {
                 }
                 /* "No notes yet" / "No payments yet" muted text */
                 .sp-member-edit-empty {
-                    color: #787c82;
+                    color: #6d7175;
                     margin-top: 0;
                 }
                 /* Add-a-note wrapper div */
@@ -14907,31 +14907,31 @@ function sp_render_member_edit_page(): void {
                         }
                         // Countries most likely for genealogical societies, US first
                         $countries = array(
-                            'US' => 'United States',
-                            'CA' => 'Canada',
-                            'GB' => 'United Kingdom',
-                            'AU' => 'Australia',
-                            'NZ' => 'New Zealand',
-                            'IE' => 'Ireland',
-                            'DE' => 'Germany',
-                            'FR' => 'France',
-                            'IT' => 'Italy',
-                            'ES' => 'Spain',
-                            'MX' => 'Mexico',
-                            'BR' => 'Brazil',
-                            'NL' => 'Netherlands',
-                            'SE' => 'Sweden',
-                            'NO' => 'Norway',
-                            'DK' => 'Denmark',
-                            'FI' => 'Finland',
-                            'PL' => 'Poland',
-                            'CZ' => 'Czech Republic',
-                            'AT' => 'Austria',
-                            'CH' => 'Switzerland',
-                            'PT' => 'Portugal',
-                            'ZA' => 'South Africa',
-                            'JP' => 'Japan',
-                            'OTHER' => '— Other (type below) —',
+                            'US'    => __( 'United States',  'societypress' ),
+                            'CA'    => __( 'Canada',         'societypress' ),
+                            'GB'    => __( 'United Kingdom', 'societypress' ),
+                            'AU'    => __( 'Australia',      'societypress' ),
+                            'NZ'    => __( 'New Zealand',    'societypress' ),
+                            'IE'    => __( 'Ireland',        'societypress' ),
+                            'DE'    => __( 'Germany',        'societypress' ),
+                            'FR'    => __( 'France',         'societypress' ),
+                            'IT'    => __( 'Italy',          'societypress' ),
+                            'ES'    => __( 'Spain',          'societypress' ),
+                            'MX'    => __( 'Mexico',         'societypress' ),
+                            'BR'    => __( 'Brazil',         'societypress' ),
+                            'NL'    => __( 'Netherlands',    'societypress' ),
+                            'SE'    => __( 'Sweden',         'societypress' ),
+                            'NO'    => __( 'Norway',         'societypress' ),
+                            'DK'    => __( 'Denmark',        'societypress' ),
+                            'FI'    => __( 'Finland',        'societypress' ),
+                            'PL'    => __( 'Poland',         'societypress' ),
+                            'CZ'    => __( 'Czech Republic', 'societypress' ),
+                            'AT'    => __( 'Austria',        'societypress' ),
+                            'CH'    => __( 'Switzerland',    'societypress' ),
+                            'PT'    => __( 'Portugal',       'societypress' ),
+                            'ZA'    => __( 'South Africa',   'societypress' ),
+                            'JP'    => __( 'Japan',          'societypress' ),
+                            'OTHER' => __( '— Other (type below) —', 'societypress' ),
                         );
                         ?>
                         <div class="sp-field">
@@ -15006,10 +15006,18 @@ function sp_render_member_edit_page(): void {
                                     <option value="">—</option>
                                     <?php
                                     $months = [
-                                        '01' => 'January', '02' => 'February', '03' => 'March',
-                                        '04' => 'April',   '05' => 'May',      '06' => 'June',
-                                        '07' => 'July',    '08' => 'August',   '09' => 'September',
-                                        '10' => 'October', '11' => 'November', '12' => 'December',
+                                        '01' => __( 'January',   'societypress' ),
+                                        '02' => __( 'February',  'societypress' ),
+                                        '03' => __( 'March',     'societypress' ),
+                                        '04' => __( 'April',     'societypress' ),
+                                        '05' => __( 'May',       'societypress' ),
+                                        '06' => __( 'June',      'societypress' ),
+                                        '07' => __( 'July',      'societypress' ),
+                                        '08' => __( 'August',    'societypress' ),
+                                        '09' => __( 'September', 'societypress' ),
+                                        '10' => __( 'October',   'societypress' ),
+                                        '11' => __( 'November',  'societypress' ),
+                                        '12' => __( 'December',  'societypress' ),
                                     ];
                                     foreach ( $months as $num => $name ) {
                                         printf(
@@ -15619,7 +15627,7 @@ function sp_render_placeholder_page(): void {
         .sp-coming-soon-icon { font-size: 36px; width: 36px; height: 36px; color: #2271b1; }
         .sp-coming-soon-title { margin: 0 0 8px; }
         .sp-coming-soon-desc { margin: 0; color: #50575e; font-size: 14px; line-height: 1.6; }
-        .sp-coming-soon-note { margin: 16px 0 0; color: #787c82; font-size: 13px; }
+        .sp-coming-soon-note { margin: 16px 0 0; color: #6d7175; font-size: 13px; }
     </style>
     <div class="wrap">
         <h1><?php echo esc_html( $section['title'] ); ?></h1>
@@ -19430,10 +19438,18 @@ add_action( 'admin_init', function () {
             $current  = (int) ( $settings['membership_start_month'] ?? 7 );
 
             $months = [
-                1 => 'January',   2 => 'February',  3 => 'March',
-                4 => 'April',     5 => 'May',        6 => 'June',
-                7 => 'July',      8 => 'August',     9 => 'September',
-                10 => 'October',  11 => 'November',  12 => 'December',
+                1  => __( 'January',   'societypress' ),
+                2  => __( 'February',  'societypress' ),
+                3  => __( 'March',     'societypress' ),
+                4  => __( 'April',     'societypress' ),
+                5  => __( 'May',       'societypress' ),
+                6  => __( 'June',      'societypress' ),
+                7  => __( 'July',      'societypress' ),
+                8  => __( 'August',    'societypress' ),
+                9  => __( 'September', 'societypress' ),
+                10 => __( 'October',   'societypress' ),
+                11 => __( 'November',  'societypress' ),
+                12 => __( 'December',  'societypress' ),
             ];
 
             echo '<select name="societypress_settings[membership_start_month]">';
@@ -21173,12 +21189,12 @@ function sp_render_audit_log_page(): void {
         <table class="widefat striped">
             <thead>
                 <tr>
-                    <th><?php esc_html_e( 'Date/Time', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'User', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Action', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Description', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Object', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'IP', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Date/Time', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'User', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Action', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Description', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Object', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'IP', 'societypress' ); ?></th>
                 </tr>
             </thead>
             <tbody>
@@ -21200,7 +21216,7 @@ function sp_render_audit_log_page(): void {
                                     <?php endif; ?>
                                 <?php endif; ?>
                             </td>
-                            <td style="font-size: 12px; color: #787c82;"><?php echo $row->ip_address ? esc_html( $row->ip_address ) : ''; ?></td>
+                            <td style="font-size: 12px; color: #6d7175;"><?php echo $row->ip_address ? esc_html( $row->ip_address ) : ''; ?></td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -21482,11 +21498,11 @@ function sp_render_access_log_page(): void {
         <table class="widefat striped">
             <thead>
                 <tr>
-                    <th><?php esc_html_e( 'Date/Time', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'User', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'URL', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Referer', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'IP', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Date/Time', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'User', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'URL', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Referer', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'IP', 'societypress' ); ?></th>
                 </tr>
             </thead>
             <tbody>
@@ -21496,14 +21512,14 @@ function sp_render_access_log_page(): void {
                     <?php foreach ( $rows as $row ) : ?>
                         <tr>
                             <td style="white-space: nowrap;"><?php echo esc_html( wp_date( 'M j, Y g:i A', strtotime( $row->created_at ) ) ); ?></td>
-                            <td><?php echo $row->user_name ? esc_html( $row->user_name ) : '<span style="color:#787c82;">' . esc_html__( 'Anonymous', 'societypress' ) . '</span>'; ?></td>
+                            <td><?php echo $row->user_name ? esc_html( $row->user_name ) : '<span style="color:#6d7175;">' . esc_html__( 'Anonymous', 'societypress' ) . '</span>'; ?></td>
                             <td class="sp-access-url"><?php echo esc_html( $row->url ); ?>
                                 <?php if ( ! empty( $row->user_agent ) ) : ?>
                                     <div class="sp-access-ua"><?php echo esc_html( $row->user_agent ); ?></div>
                                 <?php endif; ?>
                             </td>
                             <td class="sp-access-url"><?php echo $row->referer ? esc_html( $row->referer ) : ''; ?></td>
-                            <td style="font-size: 12px; color: #787c82;"><?php echo $row->ip_address ? esc_html( $row->ip_address ) : ''; ?></td>
+                            <td style="font-size: 12px; color: #6d7175;"><?php echo $row->ip_address ? esc_html( $row->ip_address ) : ''; ?></td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -21785,11 +21801,11 @@ function sp_render_groups_page(): void {
         <table class="widefat striped sp-mt-16">
             <thead>
                 <tr>
-                    <th><?php esc_html_e( 'Name', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Members', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Leader', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Status', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Name', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Members', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Leader', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
                 </tr>
             </thead>
             <tbody>
@@ -21935,15 +21951,15 @@ function sp_render_group_edit_page(): void {
 
             <table class="form-table">
                 <tr>
-                    <th><label for="sp-g-name"><?php esc_html_e( 'Group Name', 'societypress' ); ?> <span class="sp-blast-required-star" aria-hidden="true">*</span></label></th>
+                    <th scope="col"><label for="sp-g-name"><?php esc_html_e( 'Group Name', 'societypress' ); ?> <span class="sp-blast-required-star" aria-hidden="true">*</span></label></th>
                     <td><input type="text" name="name" id="sp-g-name" value="<?php echo esc_attr( $group->name ?? '' ); ?>" required class="sp-full-width"></td>
                 </tr>
                 <tr>
-                    <th><label for="sp-g-desc"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-g-desc"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
                     <td><textarea name="description" id="sp-g-desc" rows="4" class="sp-full-width"><?php echo esc_textarea( $group->description ?? '' ); ?></textarea></td>
                 </tr>
                 <tr>
-                    <th><label for="sp-g-leader"><?php esc_html_e( 'Group Leader', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-g-leader"><?php esc_html_e( 'Group Leader', 'societypress' ); ?></label></th>
                     <td>
                         <select name="leader_id" id="sp-g-leader" class="sp-full-width">
                             <option value=""><?php esc_html_e( '— None —', 'societypress' ); ?></option>
@@ -21956,11 +21972,11 @@ function sp_render_group_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="sp-g-meeting"><?php esc_html_e( 'Meeting Info', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-g-meeting"><?php esc_html_e( 'Meeting Info', 'societypress' ); ?></label></th>
                     <td><input type="text" name="meeting_info" id="sp-g-meeting" value="<?php echo esc_attr( $group->meeting_info ?? '' ); ?>" class="sp-full-width" placeholder="<?php echo esc_attr__( 'e.g., 2nd Tuesday at 2 PM', 'societypress' ); ?>"></td>
                 </tr>
                 <tr>
-                    <th><label for="sp-g-status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-g-status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
                     <td>
                         <select name="status" id="sp-g-status">
                             <option value="active" <?php selected( $group->status ?? 'active', 'active' ); ?>><?php esc_html_e( 'Active', 'societypress' ); ?></option>
@@ -21969,7 +21985,7 @@ function sp_render_group_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="sp-g-order"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-g-order"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label></th>
                     <td><input type="number" name="sort_order" id="sp-g-order" value="<?php echo (int) ( $group->sort_order ?? 0 ); ?>" style="width: 80px;"></td>
                 </tr>
             </table>
@@ -21977,7 +21993,7 @@ function sp_render_group_edit_page(): void {
             <?php if ( $group_id && ! empty( $members ) ) : ?>
                 <h2><?php echo esc_html( sprintf( __( 'Current Members (%d)', 'societypress' ), count( $members ) ) ); ?></h2>
                 <table class="widefat striped sp-max-w-600">
-                    <thead><tr><th><?php esc_html_e( 'Name', 'societypress' ); ?></th><th><?php esc_html_e( 'Email', 'societypress' ); ?></th><th><?php esc_html_e( 'Joined', 'societypress' ); ?></th><th><?php esc_html_e( 'Remove', 'societypress' ); ?></th></tr></thead>
+                    <thead><tr><th scope="col"><?php esc_html_e( 'Name', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Email', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Joined', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Remove', 'societypress' ); ?></th></tr></thead>
                     <tbody>
                         <?php foreach ( $members as $gm ) : ?>
                             <tr>
@@ -22227,7 +22243,7 @@ class SP_Pages_List_Table extends WP_List_Table {
         if ( $item->post_status === 'publish' ) {
             return '<span style="color: #00a32a; font-weight: 600;">' . esc_html__( 'Published', 'societypress' ) . '</span>';
         }
-        return '<span style="color: #787c82; font-weight: 600;">' . esc_html__( 'Draft', 'societypress' ) . '</span>';
+        return '<span style="color: #6d7175; font-weight: 600;">' . esc_html__( 'Draft', 'societypress' ) . '</span>';
     }
 
     /**
@@ -23326,14 +23342,14 @@ function sp_render_finances_page(): void {
         <table class="widefat striped">
             <thead>
                 <tr>
-                    <th><?php esc_html_e( 'Date', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Member', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Amount', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Type', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Method', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Note', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Recorded By', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Date', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Member', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Amount', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Type', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Method', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Note', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Recorded By', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
                 </tr>
             </thead>
             <tbody>
@@ -23449,7 +23465,7 @@ function sp_render_record_payment_page(): void {
 
             <table class="form-table">
                 <tr>
-                    <th><label for="sp-pay-member"><?php esc_html_e( 'Member', 'societypress' ); ?> <span class="sp-text-error" aria-hidden="true">*</span></label></th>
+                    <th scope="col"><label for="sp-pay-member"><?php esc_html_e( 'Member', 'societypress' ); ?> <span class="sp-text-error" aria-hidden="true">*</span></label></th>
                     <td>
                         <select name="user_id" id="sp-pay-member" required class="sp-full-width">
                             <option value=""><?php echo '— ' . esc_html__( 'Select Member', 'societypress' ) . ' —'; ?></option>
@@ -23462,11 +23478,11 @@ function sp_render_record_payment_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="sp-pay-amount"><?php esc_html_e( 'Amount', 'societypress' ); ?> <span class="sp-text-error" aria-hidden="true">*</span></label></th>
+                    <th scope="col"><label for="sp-pay-amount"><?php esc_html_e( 'Amount', 'societypress' ); ?> <span class="sp-text-error" aria-hidden="true">*</span></label></th>
                     <td><input type="number" name="amount" id="sp-pay-amount" step="0.01" min="0.01" required class="sp-w-120"> <?php esc_html_e( 'USD', 'societypress' ); ?></td>
                 </tr>
                 <tr>
-                    <th><label for="sp-pay-type"><?php esc_html_e( 'Type', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-pay-type"><?php esc_html_e( 'Type', 'societypress' ); ?></label></th>
                     <td>
                         <select name="type" id="sp-pay-type">
                             <option value="dues"><?php esc_html_e( 'Dues', 'societypress' ); ?></option>
@@ -23477,7 +23493,7 @@ function sp_render_record_payment_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="sp-pay-method"><?php esc_html_e( 'Method', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-pay-method"><?php esc_html_e( 'Method', 'societypress' ); ?></label></th>
                     <td>
                         <select name="method" id="sp-pay-method">
                             <option value=""><?php esc_html_e( '— None —', 'societypress' ); ?></option>
@@ -23492,11 +23508,11 @@ function sp_render_record_payment_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="sp-pay-date"><?php esc_html_e( 'Date', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-pay-date"><?php esc_html_e( 'Date', 'societypress' ); ?></label></th>
                     <td><input type="date" name="date" id="sp-pay-date" value="<?php echo esc_attr( current_time( 'Y-m-d' ) ); ?>"></td>
                 </tr>
                 <tr>
-                    <th><label for="sp-pay-note"><?php esc_html_e( 'Note', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-pay-note"><?php esc_html_e( 'Note', 'societypress' ); ?></label></th>
                     <td><textarea name="note" id="sp-pay-note" rows="3" class="sp-full-width"></textarea></td>
                 </tr>
             </table>
@@ -23836,15 +23852,15 @@ function sp_render_settings_export_page(): void {
 
         <table class="form-table">
             <tr>
-                <th><?php esc_html_e( 'SocietyPress tables on this site', 'societypress' ); ?></th>
+                <th scope="col"><?php esc_html_e( 'SocietyPress tables on this site', 'societypress' ); ?></th>
                 <td><strong><?php echo (int) $table_count; ?></strong></td>
             </tr>
             <tr>
-                <th><?php esc_html_e( 'Includes', 'societypress' ); ?></th>
+                <th scope="col"><?php esc_html_e( 'Includes', 'societypress' ); ?></th>
                 <td><?php esc_html_e( 'societypress.sql (full SQL dump) and README.txt (restore instructions)', 'societypress' ); ?></td>
             </tr>
             <tr>
-                <th><?php esc_html_e( 'Does NOT include', 'societypress' ); ?></th>
+                <th scope="col"><?php esc_html_e( 'Does NOT include', 'societypress' ); ?></th>
                 <td>
                     <?php esc_html_e( 'Site-wide content like pages, and uploaded files such as newsletter PDFs, photos, and document attachments. To back up uploaded files, contact your hosting provider — they are too large to include in this export.', 'societypress' ); ?>
                 </td>
@@ -28438,10 +28454,10 @@ function sp_render_user_access_page(): void {
             <table class="widefat striped sp-access-staff-table">
                 <thead>
                     <tr>
-                        <th><?php esc_html_e( 'User', 'societypress' ); ?></th>
-                        <th><?php esc_html_e( 'Role Template', 'societypress' ); ?></th>
-                        <th><?php esc_html_e( 'Access Areas', 'societypress' ); ?></th>
-                        <th><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'User', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Role Template', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Access Areas', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -29130,7 +29146,7 @@ function sp_render_directory( array $settings ): void {
     // ---- Helper: sort indicator arrow ----
 
     // WHY aria-hidden on the visual arrow: screen readers would announce "up-pointing
-    // triangle" which is meaningless. The aria-sort attribute on <th> already
+    // triangle" which is meaningless. The aria-sort attribute on <th scope="col"> already
     // communicates the sort direction in a standard way.
     $sort_arrow = function ( $col ) use ( $sort_by, $sort_dir ) {
         if ( $sort_by !== $col ) return '';
@@ -29138,7 +29154,7 @@ function sp_render_directory( array $settings ): void {
         return ' <span aria-hidden="true">' . $arrow . '</span>';
     };
 
-    // Helper: returns aria-sort attribute string for sortable <th> elements.
+    // Helper: returns aria-sort attribute string for sortable <th scope="col"> elements.
     // Screen readers use aria-sort to announce "sorted ascending/descending".
     $aria_sort = function ( $col ) use ( $sort_by, $sort_dir ) {
         if ( $sort_by !== $col ) return '';
@@ -30924,7 +30940,7 @@ function sp_get_widget_registry(): array {
  * that shows up in the Template dropdown without needing a theme file.
  */
 add_filter( 'theme_page_templates', function ( $templates ) {
-    $templates['sp-builder'] = 'SocietyPress Builder';
+    $templates['sp-builder'] = __( 'SocietyPress Builder', 'societypress' );
     return $templates;
 });
 
@@ -33313,6 +33329,16 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
                 (function(){
                     // WHY: Event delegation from the parent container so buttons
                     //      added dynamically (unlikely here, but defensive) still work.
+                    var spSurnameOpener = null;  // for focus return
+                    function spCloseSurnameModal() {
+                        var m = document.getElementById('sp-surname-contact-modal');
+                        if (!m) return;
+                        m.style.display = 'none';
+                        if (spSurnameOpener && typeof spSurnameOpener.focus === 'function') {
+                            try { spSurnameOpener.focus(); } catch (e) {}
+                        }
+                        spSurnameOpener = null;
+                    }
                     document.addEventListener('click', function(e) {
                         var btn = e.target.closest('.sp-surname-contact-btn');
                         if (!btn) return;
@@ -33323,16 +33349,41 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
                                 .replace('%1$s', btn.dataset.researcherName)
                                 .replace('%2$s', btn.dataset.surname);
                         document.getElementById('sp-surname-contact-msg').style.display = 'none';
+                        spSurnameOpener = btn;
                         modal.style.display = 'flex';
+                        // Move focus into the modal so keyboard users can type
+                        // immediately and Escape is reachable.
+                        var firstField = modal.querySelector('textarea, input:not([type="hidden"]), button');
+                        if (firstField) { try { firstField.focus(); } catch (e) {} }
                     });
 
-                    document.getElementById('sp-surname-contact-close').addEventListener('click', function() {
-                        document.getElementById('sp-surname-contact-modal').style.display = 'none';
-                    });
+                    document.getElementById('sp-surname-contact-close').addEventListener('click', spCloseSurnameModal);
 
                     // Close modal on backdrop click
                     document.getElementById('sp-surname-contact-modal').addEventListener('click', function(e) {
-                        if (e.target === this) this.style.display = 'none';
+                        if (e.target === this) spCloseSurnameModal();
+                    });
+
+                    // Escape closes the modal; Tab is trapped inside it.
+                    document.addEventListener('keydown', function(e) {
+                        var m = document.getElementById('sp-surname-contact-modal');
+                        if (!m || m.style.display === 'none') return;
+                        if (e.key === 'Escape') {
+                            spCloseSurnameModal();
+                            return;
+                        }
+                        if (e.key !== 'Tab') return;
+                        var focusables = m.querySelectorAll(
+                            'button, [href], input:not([type="hidden"]), select, textarea, [tabindex]:not([tabindex="-1"])'
+                        );
+                        if (!focusables.length) return;
+                        var first = focusables[0];
+                        var last  = focusables[focusables.length - 1];
+                        if (e.shiftKey && document.activeElement === first) {
+                            e.preventDefault(); last.focus();
+                        } else if (!e.shiftKey && document.activeElement === last) {
+                            e.preventDefault(); first.focus();
+                        }
                     });
 
                     document.getElementById('sp-surname-contact-form').addEventListener('submit', function(e) {
@@ -33359,9 +33410,7 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
                                 msgBox.style.color = '#0a6b2e';
                                 msgBox.textContent = (data.data && data.data.message) || spSurnameI18n.messageSent;
                                 form.querySelector('textarea[name="message"]').value = '';
-                                setTimeout(function() {
-                                    document.getElementById('sp-surname-contact-modal').style.display = 'none';
-                                }, 2000);
+                                setTimeout(spCloseSurnameModal, 2000);
                             } else {
                                 msgBox.style.background = '#fef0f0';
                                 msgBox.style.color = '#6d7175';
@@ -36239,7 +36288,7 @@ function sp_render_event_edit_page(): void {
     .sp-event-edit-optional-label {
         font-weight: normal;
         font-size: 13px;
-        color: #787c82;
+        color: #6d7175;
     }
 
     /* sp-event-edit-slots-description
@@ -36302,7 +36351,7 @@ function sp_render_event_edit_page(): void {
        Muted italic text shown instead of a remove button when a slot is
        inactive (soft-deleted) — signals it can't be removed again. */
     .sp-event-edit-slot-inactive {
-        color: #787c82;
+        color: #6d7175;
         font-size: 12px;
         font-style: italic;
     }
@@ -37018,7 +37067,7 @@ function sp_render_event_categories_page(): void {
     /* Hex preview label next to the color picker */
     .sp-event-cats-color-hex {
         margin-left: 8px;
-        color: #787c82;
+        color: #6d7175;
     }
 
     /* Submit row: collapse bottom margin so the card doesn't look padded twice */
@@ -37048,7 +37097,7 @@ function sp_render_event_categories_page(): void {
     /* Empty-state message row */
     .sp-event-cats-empty-cell {
         text-align: center;
-        color: #787c82;
+        color: #6d7175;
         padding: 20px;
     }
 
@@ -37080,7 +37129,7 @@ function sp_render_event_categories_page(): void {
 
     /* Events count cell: muted text */
     .sp-event-cats-events-cell {
-        color: #787c82;
+        color: #6d7175;
     }
 
     /* Delete button: red text to signal destructive action */
@@ -37478,7 +37527,7 @@ function sp_render_member_tiers_page(): void {
         margin-top: 20px;
     }
 
-    /* Table column widths — set on <th> so all rows inherit via table layout */
+    /* Table column widths — set on <th scope="col"> so all rows inherit via table layout */
     .sp-tiers-col-name     { width: 20%; }
     .sp-tiers-col-dues     { width: 11%; }
     .sp-tiers-col-duration { width: 13%; }
@@ -37491,7 +37540,7 @@ function sp_render_member_tiers_page(): void {
     /* Empty-state cell: center text and mute color when no plans exist */
     .sp-tiers-empty-cell {
         text-align: center;
-        color: #787c82;
+        color: #6d7175;
         padding: 20px;
     }
 
@@ -37523,7 +37572,7 @@ function sp_render_member_tiers_page(): void {
 
     /* Members count cell: muted color — informational, not actionable */
     .sp-tiers-member-count-cell {
-        color: #787c82;
+        color: #6d7175;
     }
 
     /* Delete button: WP danger red — signals a destructive action */
@@ -38384,7 +38433,7 @@ add_action( 'admin_init', function () {
                             );
                         ?></li>
                     </ol>
-                    <p style="margin: 8px 0 0 20px; font-size: 12px; color: #787c82;">
+                    <p style="margin: 8px 0 0 20px; font-size: 12px; color: #6d7175;">
                         <?php esc_html_e( 'Stripe charges about 2.9% + 30¢ per transaction. There are no monthly fees — you only pay when you process a payment.', 'societypress' ); ?>
                     </p>
                 </details>
@@ -39463,7 +39512,7 @@ function sp_render_import_events_page(): void {
 
     /* Sample-values cell — muted, small text */
     .sp-import-events-sample-cell {
-        color: #787c82;
+        color: #6d7175;
         font-size: 12px;
     }
 
@@ -39571,7 +39620,7 @@ function sp_render_import_events_page(): void {
                             <tr>
                                 <th class="sp-import-events-col-quarter"><?php esc_html_e( 'File Column', 'societypress' ); ?></th>
                                 <th class="sp-import-events-col-quarter"><?php esc_html_e( 'Maps To', 'societypress' ); ?></th>
-                                <th><?php esc_html_e( 'Sample Values', 'societypress' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Sample Values', 'societypress' ); ?></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -39667,9 +39716,9 @@ function sp_render_import_events_page(): void {
                 <table class="widefat sp-import-events-format-table">
                     <thead>
                         <tr>
-                            <th><?php esc_html_e( 'Column', 'societypress' ); ?></th>
-                            <th><?php esc_html_e( 'Required', 'societypress' ); ?></th>
-                            <th><?php esc_html_e( 'Example', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Column', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Required', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Example', 'societypress' ); ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -39723,7 +39772,7 @@ function sp_render_import_events_page(): void {
  * Register the "Events" page template.
  */
 add_filter( 'theme_page_templates', function ( $templates ) {
-    $templates['sp-events'] = 'Events';
+    $templates['sp-events'] = __( 'Events', 'societypress' );
     return $templates;
 });
 
@@ -41633,6 +41682,7 @@ function sp_render_event_detail( string $slug, array $settings ): void {
         var spRegData = {
             ajaxUrl:      '<?php echo admin_url( "admin-ajax.php" ); ?>',
             nonce:        '<?php echo wp_create_nonce( "sp_event_register" ); ?>',
+            cancelNonce:  '<?php echo wp_create_nonce( "sp_event_cancel_" . (int) $event->id ); ?>',
             showPayBtn:   <?php echo $show_pay_btn ? 'true' : 'false'; ?>,
             showDoorBtn:  <?php echo $show_door_btn ? 'true' : 'false'; ?>,
             payOnly:      <?php echo $pay_only ? 'true' : 'false'; ?>,
@@ -41980,7 +42030,7 @@ function sp_events_frontend_scripts(): void {
                     .then(function(data) {
                         if (data.success && row) {
                             row.style.opacity = '0.4';
-                            row.innerHTML = '<span style="color: #787c82; font-style: italic;"><?php echo esc_js( __( "Cancelled", "societypress" ) ); ?></span>';
+                            row.innerHTML = '<span style="color: #6d7175; font-style: italic;"><?php echo esc_js( __( "Cancelled", "societypress" ) ); ?></span>';
                         }
                     });
             });
@@ -42038,7 +42088,7 @@ function sp_events_frontend_scripts(): void {
                 formData.append('action', 'sp_cancel_registration');
                 formData.append('event_id', eventId);
                 formData.append('registration_id', regId);
-                formData.append('nonce', spRegData.nonce);
+                formData.append('nonce', spRegData.cancelNonce);
 
                 fetch(spRegData.ajaxUrl, {
                     method: 'POST',
@@ -42398,19 +42448,21 @@ function sp_ajax_register_for_event(): void {
 add_action( 'wp_ajax_sp_cancel_registration', 'sp_ajax_cancel_registration' );
 
 function sp_ajax_cancel_registration(): void {
-    if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_event_register' ) ) {
+    $event_id        = (int) ( $_POST['event_id'] ?? 0 );
+    $registration_id = (int) ( $_POST['registration_id'] ?? 0 );
+
+    if ( ! $registration_id || ! $event_id ) {
+        wp_send_json_error( __( 'Invalid registration.', 'societypress' ) );
+    }
+
+    // Distinct cancel nonce per event so a leaked register-form nonce can't
+    // be replayed against the cancel endpoint.
+    if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_event_cancel_' . $event_id ) ) {
         wp_send_json_error( __( 'Security check failed. Please refresh and try again.', 'societypress' ) );
     }
 
     global $wpdb;
     $reg_table = $wpdb->prefix . 'sp_event_registrations';
-
-    $registration_id = (int) ( $_POST['registration_id'] ?? 0 );
-    $event_id        = (int) ( $_POST['event_id'] ?? 0 );
-
-    if ( ! $registration_id || ! $event_id ) {
-        wp_send_json_error( __( 'Invalid registration.', 'societypress' ) );
-    }
 
     // Fetch the registration to verify ownership
     $reg = $wpdb->get_row( $wpdb->prepare(
@@ -42711,7 +42763,7 @@ function sp_render_event_registrations_section( object $event ): void {
         .sp-event-reg-heading-meta {
             font-size: 14px;
             font-weight: normal;
-            color: #787c82;
+            color: #6d7175;
             margin-left: 8px;
         }
 
@@ -42750,7 +42802,7 @@ function sp_render_event_registrations_section( object $event ): void {
 
         /* ---- Empty-state message ---- */
         .sp-event-reg-empty {
-            color: #787c82;
+            color: #6d7175;
             font-style: italic;
         }
 
@@ -42771,13 +42823,13 @@ function sp_render_event_registrations_section( object $event ): void {
         /* ---- Per-row cell content ---- */
         /* "(Member)" / "(Guest)" label beside the registrant name */
         .sp-event-reg-type-label {
-            color: #787c82;
+            color: #6d7175;
             font-size: 12px;
             margin-left: 4px;
         }
         /* Notes line shown under the registrant name */
         .sp-event-reg-notes {
-            color: #787c82;
+            color: #6d7175;
             font-size: 12px;
         }
         /* Slot time range text */
@@ -42787,11 +42839,11 @@ function sp_render_event_registrations_section( object $event ): void {
         /* Slot description sub-line */
         .sp-event-reg-slot-desc {
             font-size: 0.75rem;
-            color: #787c82;
+            color: #6d7175;
         }
         /* Em-dash shown in the slot cell when registrant has no slot */
         .sp-event-reg-slot-none {
-            color: #787c82;
+            color: #6d7175;
             font-size: 12px;
         }
 
@@ -42827,7 +42879,7 @@ function sp_render_event_registrations_section( object $event ): void {
 
         /* ---- "Free" label in fee column ---- */
         .sp-event-reg-free-label {
-            color: #787c82;
+            color: #6d7175;
         }
 
         /* ---- Attendance select ---- */
@@ -42984,7 +43036,7 @@ function sp_render_event_registrations_section( object $event ): void {
                         // Status badge colors matching the rest of the plugin
                         $status_colors = [
                             'confirmed'  => '#00a32a',
-                            'waitlisted' => '#dba617',
+                            'waitlisted' => '#8a6500',
                             'cancelled'  => '#d63638',
                         ];
                         $badge_color = $status_colors[ $reg->status ] ?? '#787c82';
@@ -44756,7 +44808,7 @@ function sp_build_email_html( string $heading, string $body_html ): string {
         ' . $body_html . '
     </td></tr>
     <!-- Footer -->
-    <tr><td style="padding: 16px 32px; background: #f6f7f7; border-top: 1px solid #e0e0e0; font-size: 13px; color: #787c82;">
+    <tr><td style="padding: 16px 32px; background: #f6f7f7; border-top: 1px solid #e0e0e0; font-size: 13px; color: #6d7175;">
         <a href="' . esc_url( $site_url ) . '" style="color: ' . esc_attr( $brand_color ) . '; text-decoration: none;">' . esc_html( $site_name ) . '</a>
         &mdash; This is an automated message. Please do not reply directly to this email.
     </td></tr>
@@ -46504,7 +46556,7 @@ function sp_events_calendar_styles(): void {
         }
         .sp-cal-mobile-event-time {
             font-size: 13px;
-            color: #787c82;
+            color: #6d7175;
             margin-top: 2px;
         }
 
@@ -50308,6 +50360,17 @@ function sp_handle_surname_contact(): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
+    // WHY active-membership gate on the sender: surname contact is a
+    //      member benefit. Suspended or expired members shouldn't be able
+    //      to message other members about research.
+    $sender_status = $wpdb->get_var( $wpdb->prepare(
+        "SELECT status FROM {$prefix}members WHERE user_id = %d",
+        get_current_user_id()
+    ) );
+    if ( ! in_array( $sender_status, [ 'active', 'lifetime' ], true ) ) {
+        wp_send_json_error( __( 'Active membership required to contact other researchers.', 'societypress' ) );
+    }
+
     $researcher_id = absint( $_POST['researcher_id'] ?? 0 );
     $sender_name   = sanitize_text_field( $_POST['sender_name'] ?? '' );
     $sender_email  = sanitize_email( $_POST['sender_email'] ?? '' );
@@ -50544,15 +50607,15 @@ function sp_render_album_edit_page(): void {
 
             <table class="form-table">
                 <tr>
-                    <th><label for="title"><?php esc_html_e( 'Album Title', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="title"><?php esc_html_e( 'Album Title', 'societypress' ); ?></label></th>
                     <td><input type="text" name="title" id="title" class="regular-text" value="<?php echo esc_attr( $album->title ?? '' ); ?>" required></td>
                 </tr>
                 <tr>
-                    <th><label for="description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
                     <td><textarea name="description" id="description" rows="3" class="large-text"><?php echo esc_textarea( $album->description ?? '' ); ?></textarea></td>
                 </tr>
                 <tr>
-                    <th><?php esc_html_e( 'Cover Image', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Cover Image', 'societypress' ); ?></th>
                     <td>
                         <input type="hidden" name="cover_image_id" id="cover_image_id" value="<?php echo esc_attr( $album->cover_image_id ?? 0 ); ?>">
                         <div id="cover-preview" class="sp-album-edit-cover-preview">
@@ -50566,7 +50629,7 @@ function sp_render_album_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="visibility"><?php esc_html_e( 'Visibility', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="visibility"><?php esc_html_e( 'Visibility', 'societypress' ); ?></label></th>
                     <td>
                         <select name="visibility" id="visibility">
                             <option value="public" <?php selected( $album->visibility ?? 'public', 'public' ); ?>><?php esc_html_e( 'Public', 'societypress' ); ?></option>
@@ -50575,7 +50638,7 @@ function sp_render_album_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="sort_order"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sort_order"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label></th>
                     <td><input type="number" name="sort_order" id="sort_order" value="<?php echo esc_attr( $album->sort_order ?? 0 ); ?>" min="0" class="sp-album-edit-sort-input"></td>
                 </tr>
             </table>
@@ -50592,7 +50655,7 @@ function sp_render_album_edit_page(): void {
                     <div class="sp-album-photo sp-album-edit-photo-tile" data-id="<?php echo $photo->attachment_id; ?>" draggable="true">
                         <img src="<?php echo esc_url( $thumb ); ?>" class="sp-album-edit-photo-img">
                         <input type="text" name="photo_captions[<?php echo $photo->attachment_id; ?>]" value="<?php echo esc_attr( $photo->caption ); ?>" placeholder="<?php echo esc_attr__( 'Caption', 'societypress' ); ?>" class="sp-album-edit-caption-input">
-                        <button type="button" class="sp-remove-photo sp-album-edit-remove-btn" data-id="<?php echo $photo->attachment_id; ?>">&times;</button>
+                        <button type="button" class="sp-remove-photo sp-album-edit-remove-btn" data-id="<?php echo $photo->attachment_id; ?>" aria-label="<?php esc_attr_e( 'Remove photo', 'societypress' ); ?>">&times;</button>
                     </div>
                 <?php endforeach; ?>
             </div>
@@ -50659,7 +50722,7 @@ function sp_render_album_edit_page(): void {
                         var html = '<div class="sp-album-photo sp-album-edit-photo-tile" data-id="' + att.id + '" draggable="true">'
                             + '<img src="' + thumb + '" class="sp-album-edit-photo-img">'
                             + '<input type="text" name="photo_captions[' + att.id + ']" placeholder="<?php echo esc_js( __( 'Caption', 'societypress' ) ); ?>" class="sp-album-edit-caption-input">'
-                            + '<button type="button" class="sp-remove-photo sp-album-edit-remove-btn" data-id="' + att.id + '">&times;</button>'
+                            + '<button type="button" class="sp-remove-photo sp-album-edit-remove-btn" data-id="' + att.id + '" aria-label="<?php echo esc_js( __( 'Remove photo', 'societypress' ) ); ?>">&times;</button>'
                             + '</div>';
                         if (albumPhotos) albumPhotos.insertAdjacentHTML('beforeend', html);
                     });
@@ -51451,7 +51514,7 @@ function sp_render_membership_reports_page(): void {
         .sp-mr-stat-number--warning { color: #dba617; }
         .sp-mr-stat-number--danger  { color: #b32d2e; }
         .sp-mr-stat-number--green   { color: #00a32a; }
-        .sp-mr-stat-number--muted   { color: #787c82; }
+        .sp-mr-stat-number--muted   { color: #6d7175; }
         .sp-mr-stat-label {
             font-size: 12px;
             color: #666;
@@ -51858,7 +51921,7 @@ function sp_render_membership_reports_page(): void {
             <table class="sp-mr-table">
                 <thead>
                     <tr>
-                        <th><?php esc_html_e( 'Tier', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Tier', 'societypress' ); ?></th>
                         <th class="sp-mr-num"><?php esc_html_e( 'Payments', 'societypress' ); ?></th>
                         <th class="sp-mr-num"><?php esc_html_e( 'Revenue', 'societypress' ); ?></th>
                     </tr>
@@ -52071,7 +52134,7 @@ function sp_render_help_requests_admin_page(): void {
         </ul>
 
         <table class="wp-list-table widefat striped">
-            <thead><tr><th><?php esc_html_e( 'Title', 'societypress' ); ?></th><th><?php esc_html_e( 'Asked By', 'societypress' ); ?></th><th><?php esc_html_e( 'Responses', 'societypress' ); ?></th><th><?php esc_html_e( 'Status', 'societypress' ); ?></th><th><?php esc_html_e( 'Date', 'societypress' ); ?></th></tr></thead>
+            <thead><tr><th scope="col"><?php esc_html_e( 'Title', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Asked By', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Responses', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Status', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Date', 'societypress' ); ?></th></tr></thead>
             <tbody>
                 <?php if ( empty( $requests ) ) : ?>
                     <tr><td colspan="5"><?php esc_html_e( 'No requests found.', 'societypress' ); ?></td></tr>
@@ -52112,8 +52175,8 @@ function sp_render_help_requests_admin_page(): void {
  *      Registered via theme_page_templates and rendered via template_include.
  */
 add_filter( 'theme_page_templates', function( $templates ) {
-    $templates['sp-help-requests']   = 'Research Help Requests';
-    $templates['sp-resources']       = 'Resource Links Directory';
+    $templates['sp-help-requests']   = __( 'Research Help Requests', 'societypress' );
+    $templates['sp-resources']       = __( 'Resource Links Directory', 'societypress' );
     $templates['sp-library-catalog'] = 'Library Catalog';
     $templates['sp-records']         = 'Genealogical Records Search';
     $templates['sp-store']           = 'Store';
@@ -53339,13 +53402,13 @@ function sp_render_library_catalog_page(): void {
         <table class="wp-list-table widefat striped">
             <thead>
                 <tr>
-                    <th><?php echo $sort_link( 'title', __( 'Title', 'societypress' ) ); ?></th>
-                    <th><?php echo $sort_link( 'author', __( 'Author', 'societypress' ) ); ?></th>
-                    <th><?php echo $sort_link( 'media_type', __( 'Type', 'societypress' ) ); ?></th>
-                    <th><?php echo $sort_link( 'call_number', __( 'Call #', 'societypress' ) ); ?></th>
-                    <th><?php echo $sort_link( 'shelf_location', __( 'Location', 'societypress' ) ); ?></th>
-                    <th><?php echo $sort_link( 'pub_year', __( 'Year', 'societypress' ) ); ?></th>
-                    <th><?php echo $sort_link( 'acq_code', __( 'Acquired', 'societypress' ) ); ?></th>
+                    <th scope="col"><?php echo $sort_link( 'title', __( 'Title', 'societypress' ) ); ?></th>
+                    <th scope="col"><?php echo $sort_link( 'author', __( 'Author', 'societypress' ) ); ?></th>
+                    <th scope="col"><?php echo $sort_link( 'media_type', __( 'Type', 'societypress' ) ); ?></th>
+                    <th scope="col"><?php echo $sort_link( 'call_number', __( 'Call #', 'societypress' ) ); ?></th>
+                    <th scope="col"><?php echo $sort_link( 'shelf_location', __( 'Location', 'societypress' ) ); ?></th>
+                    <th scope="col"><?php echo $sort_link( 'pub_year', __( 'Year', 'societypress' ) ); ?></th>
+                    <th scope="col"><?php echo $sort_link( 'acq_code', __( 'Acquired', 'societypress' ) ); ?></th>
                 </tr>
             </thead>
             <tbody>
@@ -53563,24 +53626,24 @@ function sp_render_library_item_edit_page(): void {
             <h2><?php esc_html_e( 'Basic Information', 'societypress' ); ?></h2>
             <table class="form-table">
                 <tr>
-                    <th><label for="title"><?php esc_html_e( 'Title', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="title"><?php esc_html_e( 'Title', 'societypress' ); ?></label></th>
                     <td><input type="text" name="title" id="title" class="large-text" value="<?php echo esc_attr( $item->title ?? '' ); ?>" required></td>
                 </tr>
                 <tr>
-                    <th><label for="author"><?php esc_html_e( 'Author', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="author"><?php esc_html_e( 'Author', 'societypress' ); ?></label></th>
                     <td><input type="text" name="author" id="author" class="regular-text" value="<?php echo esc_attr( $item->author ?? '' ); ?>"></td>
                 </tr>
                 <tr>
-                    <th><label for="description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
                     <td><textarea name="description" id="description" rows="3" class="large-text"><?php echo esc_textarea( $item->description ?? '' ); ?></textarea>
                     <p class="description"><?php esc_html_e( 'Physical description: pages, index, illustrations, binding, etc.', 'societypress' ); ?></p></td>
                 </tr>
                 <tr>
-                    <th><label for="media_type"><?php esc_html_e( 'Media Type', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="media_type"><?php esc_html_e( 'Media Type', 'societypress' ); ?></label></th>
                     <td><input type="text" name="media_type" id="media_type" value="<?php echo esc_attr( $item->media_type ?? '' ); ?>" class="sp-lib-edit-medium-input" placeholder="<?php echo esc_attr__( 'Book, Map, Periodicals…', 'societypress' ); ?>"></td>
                 </tr>
                 <tr>
-                    <th><label for="category_id"><?php esc_html_e( 'Category', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="category_id"><?php esc_html_e( 'Category', 'societypress' ); ?></label></th>
                     <td>
                         <select name="category_id" id="category_id">
                             <option value="0"><?php esc_html_e( '— None —', 'societypress' ); ?></option>
@@ -53591,7 +53654,7 @@ function sp_render_library_item_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="subject"><?php esc_html_e( 'Subject Tags', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="subject"><?php esc_html_e( 'Subject Tags', 'societypress' ); ?></label></th>
                     <td><input type="text" name="subject" id="subject" class="large-text" value="<?php echo esc_attr( $item->subject ?? '' ); ?>" placeholder="<?php echo esc_attr__( 'History, Family History, Vital Records…', 'societypress' ); ?>">
                     <p class="description"><?php esc_html_e( 'Comma-separated subject tags.', 'societypress' ); ?></p></td>
                 </tr>
@@ -53601,15 +53664,15 @@ function sp_render_library_item_edit_page(): void {
             <h2><?php esc_html_e( 'Publication', 'societypress' ); ?></h2>
             <table class="form-table">
                 <tr>
-                    <th><label for="publisher"><?php esc_html_e( 'Publisher', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="publisher"><?php esc_html_e( 'Publisher', 'societypress' ); ?></label></th>
                     <td><input type="text" name="publisher" id="publisher" class="regular-text" value="<?php echo esc_attr( $item->publisher ?? '' ); ?>"></td>
                 </tr>
                 <tr>
-                    <th><label for="publisher_location"><?php esc_html_e( 'Publisher Location', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="publisher_location"><?php esc_html_e( 'Publisher Location', 'societypress' ); ?></label></th>
                     <td><input type="text" name="publisher_location" id="publisher_location" class="regular-text" value="<?php echo esc_attr( $item->publisher_location ?? '' ); ?>"></td>
                 </tr>
                 <tr>
-                    <th><?php esc_html_e( 'Publication Date', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Publication Date', 'societypress' ); ?></th>
                     <td class="sp-lib-edit-date-row">
                         <input type="number" name="pub_year" value="<?php echo esc_attr( $item->pub_year ?? '' ); ?>" class="sp-lib-edit-year" placeholder="<?php esc_attr_e( 'Year', 'societypress' ); ?>" min="1000" max="2100">
                         <input type="number" name="pub_month" value="<?php echo esc_attr( $item->pub_month ?? '' ); ?>" class="sp-lib-edit-month" placeholder="Mo" min="1" max="12">
@@ -53617,16 +53680,16 @@ function sp_render_library_item_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="isbn"><?php esc_html_e( 'ISBN', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="isbn"><?php esc_html_e( 'ISBN', 'societypress' ); ?></label></th>
                     <td><input type="text" name="isbn" id="isbn" value="<?php echo esc_attr( $item->isbn ?? '' ); ?>" class="sp-lib-edit-medium-input"></td>
                 </tr>
                 <tr>
-                    <th><label for="lccn"><?php esc_html_e( 'LCCN', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="lccn"><?php esc_html_e( 'LCCN', 'societypress' ); ?></label></th>
                     <td><input type="text" name="lccn" id="lccn" value="<?php echo esc_attr( $item->lccn ?? '' ); ?>" class="sp-lib-edit-medium-input">
                     <p class="description"><?php esc_html_e( 'Library of Congress Control Number.', 'societypress' ); ?></p></td>
                 </tr>
                 <tr>
-                    <th><label for="cover_url"><?php esc_html_e( 'Cover Image URL', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="cover_url"><?php esc_html_e( 'Cover Image URL', 'societypress' ); ?></label></th>
                     <td>
                         <input type="url" name="cover_url" id="cover_url" class="large-text" value="<?php echo esc_attr( $item->cover_url ?? '' ); ?>" placeholder="https://...">
                         <p class="description"><?php esc_html_e( 'URL to the book cover image. Can be populated automatically via Library Enrichment.', 'societypress' ); ?></p>
@@ -53643,29 +53706,29 @@ function sp_render_library_item_edit_page(): void {
             <h2><?php esc_html_e( 'Location & Classification', 'societypress' ); ?></h2>
             <table class="form-table">
                 <tr>
-                    <th><label for="call_number"><?php esc_html_e( 'Call Number', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="call_number"><?php esc_html_e( 'Call Number', 'societypress' ); ?></label></th>
                     <td><input type="text" name="call_number" id="call_number" value="<?php echo esc_attr( $item->call_number ?? '' ); ?>" class="sp-lib-edit-medium-input"></td>
                 </tr>
                 <tr>
-                    <th><label for="shelf_location"><?php esc_html_e( 'Shelf Location', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="shelf_location"><?php esc_html_e( 'Shelf Location', 'societypress' ); ?></label></th>
                     <td><input type="text" name="shelf_location" id="shelf_location" class="regular-text" value="<?php echo esc_attr( $item->shelf_location ?? '' ); ?>" placeholder="e.g., TEXAS, REFERENCE, FAMILY HISTORY">
                     <p class="description"><?php esc_html_e( 'Physical section/room in the library.', 'societypress' ); ?></p></td>
                 </tr>
                 <tr>
-                    <th><label for="geographic_location"><?php esc_html_e( 'Geographic Coverage', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="geographic_location"><?php esc_html_e( 'Geographic Coverage', 'societypress' ); ?></label></th>
                     <td><input type="text" name="geographic_location" id="geographic_location" class="regular-text" value="<?php echo esc_attr( $item->geographic_location ?? '' ); ?>" placeholder="e.g., Texas, England, Virginia">
                     <p class="description"><?php esc_html_e( 'Region(s) this item covers.', 'societypress' ); ?></p></td>
                 </tr>
                 <tr>
-                    <th><label for="county"><?php esc_html_e( 'County', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="county"><?php esc_html_e( 'County', 'societypress' ); ?></label></th>
                     <td><input type="text" name="county" id="county" class="regular-text" value="<?php echo esc_attr( $item->county ?? '' ); ?>"></td>
                 </tr>
                 <tr>
-                    <th><label for="state"><?php esc_html_e( 'State', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="state"><?php esc_html_e( 'State', 'societypress' ); ?></label></th>
                     <td><input type="text" name="state" id="state" class="regular-text" value="<?php echo esc_attr( $item->state ?? '' ); ?>"></td>
                 </tr>
                 <tr>
-                    <th><label for="surname"><?php esc_html_e( 'Surname', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="surname"><?php esc_html_e( 'Surname', 'societypress' ); ?></label></th>
                     <td><input type="text" name="surname" id="surname" class="regular-text" value="<?php echo esc_attr( $item->surname ?? '' ); ?>">
                     <p class="description"><?php esc_html_e( 'Family surname this item relates to.', 'societypress' ); ?></p></td>
                 </tr>
@@ -53675,7 +53738,7 @@ function sp_render_library_item_edit_page(): void {
             <h2><?php esc_html_e( 'Acquisition', 'societypress' ); ?></h2>
             <table class="form-table">
                 <tr>
-                    <th><label for="acq_code"><?php esc_html_e( 'How Acquired', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="acq_code"><?php esc_html_e( 'How Acquired', 'societypress' ); ?></label></th>
                     <td>
                         <select name="acq_code" id="acq_code">
                             <option value=""><?php esc_html_e( '— Unknown —', 'societypress' ); ?></option>
@@ -53686,7 +53749,7 @@ function sp_render_library_item_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><?php esc_html_e( 'Acquisition Date', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Acquisition Date', 'societypress' ); ?></th>
                     <td class="sp-lib-edit-date-row">
                         <input type="number" name="acq_year" value="<?php echo esc_attr( $item->acq_year ?? '' ); ?>" class="sp-lib-edit-year" placeholder="<?php esc_attr_e( 'Year', 'societypress' ); ?>">
                         <input type="number" name="acq_month" value="<?php echo esc_attr( $item->acq_month ?? '' ); ?>" class="sp-lib-edit-month" placeholder="Mo" min="1" max="12">
@@ -53694,15 +53757,15 @@ function sp_render_library_item_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="acquisition_number"><?php esc_html_e( 'Acquisition #', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="acquisition_number"><?php esc_html_e( 'Acquisition #', 'societypress' ); ?></label></th>
                     <td><input type="number" name="acquisition_number" id="acquisition_number" value="<?php echo esc_attr( $item->acquisition_number ?? '' ); ?>" class="sp-lib-edit-short-input"></td>
                 </tr>
                 <tr>
-                    <th><label for="donor"><?php esc_html_e( 'Donor', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="donor"><?php esc_html_e( 'Donor', 'societypress' ); ?></label></th>
                     <td><input type="text" name="donor" id="donor" class="regular-text" value="<?php echo esc_attr( $item->donor ?? '' ); ?>"></td>
                 </tr>
                 <tr>
-                    <th><label for="item_value"><?php esc_html_e( 'Value ($)', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="item_value"><?php esc_html_e( 'Value ($)', 'societypress' ); ?></label></th>
                     <td><input type="number" name="item_value" id="item_value" value="<?php echo esc_attr( $item->item_value ?? '' ); ?>" step="0.01" min="0" class="sp-lib-edit-short-input">
                     <p class="description"><?php esc_html_e( 'Setting a value above 0 makes this item available for sale in the public Store.', 'societypress' ); ?></p></td>
                 </tr>
@@ -53715,17 +53778,17 @@ function sp_render_library_item_edit_page(): void {
             </p>
             <table class="form-table">
                 <tr>
-                    <th><label for="store_category"><?php esc_html_e( 'Store Category', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="store_category"><?php esc_html_e( 'Store Category', 'societypress' ); ?></label></th>
                     <td><input type="text" name="store_category" id="store_category" class="regular-text" value="<?php echo esc_attr( $item->store_category ?? '' ); ?>" placeholder="<?php esc_attr_e( 'e.g., Books, Apparel, Pins, Maps', 'societypress' ); ?>">
                     <p class="description"><?php esc_html_e( 'Groups items in the storefront sidebar. Free-form — type the same value across items to group them.', 'societypress' ); ?></p></td>
                 </tr>
                 <tr>
-                    <th><label for="shipping_fee"><?php esc_html_e( 'Shipping (per unit)', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="shipping_fee"><?php esc_html_e( 'Shipping (per unit)', 'societypress' ); ?></label></th>
                     <td><input type="number" name="shipping_fee" id="shipping_fee" value="<?php echo esc_attr( number_format( (float) ( $item->shipping_fee ?? 0 ), 2, '.', '' ) ); ?>" step="0.01" min="0" class="sp-lib-edit-short-input">
                     <p class="description"><?php esc_html_e( 'Shipping fee per copy. Multiplied by quantity at checkout. Set to 0 for digital or shipping-included items.', 'societypress' ); ?></p></td>
                 </tr>
                 <tr>
-                    <th><label for="store_description"><?php esc_html_e( 'Store Description', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="store_description"><?php esc_html_e( 'Store Description', 'societypress' ); ?></label></th>
                     <td><textarea name="store_description" id="store_description" rows="4" class="large-text"><?php echo esc_textarea( $item->store_description ?? '' ); ?></textarea>
                     <p class="description"><?php esc_html_e( 'Marketing copy for the storefront product card. Sell it. If left blank, the catalog Description above is shown instead.', 'societypress' ); ?></p></td>
                 </tr>
@@ -53735,7 +53798,7 @@ function sp_render_library_item_edit_page(): void {
             <h2><?php esc_html_e( 'Status & Notes', 'societypress' ); ?></h2>
             <table class="form-table">
                 <tr>
-                    <th><label for="item_condition"><?php esc_html_e( 'Condition', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="item_condition"><?php esc_html_e( 'Condition', 'societypress' ); ?></label></th>
                     <td>
                         <select name="item_condition" id="item_condition">
                             <option value="good" <?php selected( $item->item_condition ?? 'good', 'good' ); ?>><?php esc_html_e( 'Good', 'societypress' ); ?></option>
@@ -53746,19 +53809,19 @@ function sp_render_library_item_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><?php esc_html_e( 'Available', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Available', 'societypress' ); ?></th>
                     <td><label><input type="checkbox" name="available" value="1" <?php checked( $item->available ?? 1 ); ?>> <?php esc_html_e( 'Item can be checked out', 'societypress' ); ?></label></td>
                 </tr>
                 <tr>
-                    <th><?php esc_html_e( 'Use Serials', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Use Serials', 'societypress' ); ?></th>
                     <td><label><input type="checkbox" name="use_serials" value="1" <?php checked( $item->use_serials ?? 0 ); ?>> <?php esc_html_e( 'Track as serial/periodical', 'societypress' ); ?></label></td>
                 </tr>
                 <tr>
-                    <th><label for="librarian_notes"><?php esc_html_e( 'Librarian Notes', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="librarian_notes"><?php esc_html_e( 'Librarian Notes', 'societypress' ); ?></label></th>
                     <td><textarea name="librarian_notes" id="librarian_notes" rows="3" class="large-text"><?php echo esc_textarea( $item->librarian_notes ?? '' ); ?></textarea></td>
                 </tr>
                 <tr>
-                    <th><label for="system_id"><?php esc_html_e( 'Legacy System ID', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="system_id"><?php esc_html_e( 'Legacy System ID', 'societypress' ); ?></label></th>
                     <td><input type="number" name="system_id" id="system_id" value="<?php echo esc_attr( $item->system_id ?? '' ); ?>" class="sp-lib-edit-short-input">
                     <p class="description"><?php esc_html_e( 'Original catalog ID from a previous system. Used for import deduplication.', 'societypress' ); ?></p></td>
                 </tr>
@@ -53834,7 +53897,7 @@ function sp_render_library_categories_page(): void {
             </div>
             <div class="sp-flex-1">
                 <table class="wp-list-table widefat striped">
-                    <thead><tr><th><?php esc_html_e( 'Name', 'societypress' ); ?></th><th><?php esc_html_e( 'URL Name', 'societypress' ); ?></th><th><?php esc_html_e( 'Order', 'societypress' ); ?></th><th><?php esc_html_e( 'Active', 'societypress' ); ?></th></tr></thead>
+                    <thead><tr><th scope="col"><?php esc_html_e( 'Name', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'URL Name', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Order', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Active', 'societypress' ); ?></th></tr></thead>
                     <tbody>
                         <?php foreach ( $categories as $cat ) :
                             $edit_url   = admin_url( 'admin.php?page=sp-library-categories&action=edit&cat_id=' . $cat->id );
@@ -54325,8 +54388,8 @@ function sp_render_library_import_page(): void {
                         <thead>
                             <tr>
                                 <th style="width:30px;">#</th>
-                                <th><?php esc_html_e( 'CSV Column', 'societypress' ); ?></th>
-                                <th><?php esc_html_e( 'Sample Data', 'societypress' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'CSV Column', 'societypress' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Sample Data', 'societypress' ); ?></th>
                                 <th style="width:280px;"><?php esc_html_e( 'Map To', 'societypress' ); ?></th>
                             </tr>
                         </thead>
@@ -54414,7 +54477,7 @@ function sp_render_library_import_page(): void {
 
                     <table class="form-table">
                         <tr>
-                            <th><label for="import_file"><?php esc_html_e( 'CSV File', 'societypress' ); ?></label></th>
+                            <th scope="col"><label for="import_file"><?php esc_html_e( 'CSV File', 'societypress' ); ?></label></th>
                             <td>
                                 <input type="file" name="import_file" id="import_file" accept=".csv" required>
                                 <p class="description"><?php printf( esc_html__( 'Maximum file size: %s', 'societypress' ), size_format( wp_max_upload_size() ) ); ?></p>
@@ -54524,19 +54587,19 @@ function sp_render_resources_page(): void {
 
                 <table class="form-table">
                     <tr>
-                        <th><label for="title"><?php esc_html_e( 'Title', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="title"><?php esc_html_e( 'Title', 'societypress' ); ?></label></th>
                         <td><input type="text" name="title" id="title" class="regular-text" value="<?php echo esc_attr( $editing->title ?? '' ); ?>" required></td>
                     </tr>
                     <tr>
-                        <th><label for="url"><?php esc_html_e( 'URL', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="url"><?php esc_html_e( 'URL', 'societypress' ); ?></label></th>
                         <td><input type="url" name="url" id="url" class="regular-text" value="<?php echo esc_attr( $editing->url ?? '' ); ?>" required placeholder="https://"></td>
                     </tr>
                     <tr>
-                        <th><label for="description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
                         <td><textarea name="description" id="description" rows="2" class="large-text"><?php echo esc_textarea( $editing->description ?? '' ); ?></textarea></td>
                     </tr>
                     <tr>
-                        <th><label for="category_id"><?php esc_html_e( 'Category', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="category_id"><?php esc_html_e( 'Category', 'societypress' ); ?></label></th>
                         <td>
                             <select name="category_id" id="category_id">
                                 <option value="0"><?php esc_html_e( '— None —', 'societypress' ); ?></option>
@@ -54547,7 +54610,7 @@ function sp_render_resources_page(): void {
                         </td>
                     </tr>
                     <tr>
-                        <th><?php esc_html_e( 'Options', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Options', 'societypress' ); ?></th>
                         <td>
                             <label><input type="checkbox" name="featured" value="1" <?php checked( $editing->featured ?? 0 ); ?>> <?php esc_html_e( 'Featured', 'societypress' ); ?></label>
                             &nbsp;&nbsp;
@@ -54555,7 +54618,7 @@ function sp_render_resources_page(): void {
                         </td>
                     </tr>
                     <tr>
-                        <th><label for="sort_order"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="sort_order"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label></th>
                         <td><input type="number" name="sort_order" id="sort_order" value="<?php echo esc_attr( $editing->sort_order ?? 0 ); ?>" min="0" class="sp-w-80"></td>
                     </tr>
                 </table>
@@ -54572,11 +54635,11 @@ function sp_render_resources_page(): void {
         <table class="wp-list-table widefat striped">
             <thead>
                 <tr>
-                    <th><?php esc_html_e( 'Title', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Category', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Featured', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Active', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Order', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Title', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Category', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Featured', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Active', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Order', 'societypress' ); ?></th>
                 </tr>
             </thead>
             <tbody>
@@ -54687,7 +54750,7 @@ function sp_render_resource_categories_page(): void {
             <!-- Categories list -->
             <div class="sp-flex-1">
                 <table class="wp-list-table widefat striped">
-                    <thead><tr><th><?php esc_html_e( 'Name', 'societypress' ); ?></th><th><?php esc_html_e( 'URL Name', 'societypress' ); ?></th><th><?php esc_html_e( 'Order', 'societypress' ); ?></th><th><?php esc_html_e( 'Active', 'societypress' ); ?></th></tr></thead>
+                    <thead><tr><th scope="col"><?php esc_html_e( 'Name', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'URL Name', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Order', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Active', 'societypress' ); ?></th></tr></thead>
                     <tbody>
                         <?php foreach ( $categories as $cat ) :
                             $edit_url   = admin_url( 'admin.php?page=sp-resource-categories&action=edit&cat_id=' . $cat->id );
@@ -55096,9 +55159,9 @@ function sp_render_links_import_page(): void {
                     <table class="widefat striped sp-mt-12">
                         <thead>
                             <tr>
-                                <th><?php esc_html_e( 'CSV Column', 'societypress' ); ?></th>
-                                <th><?php esc_html_e( 'Map To', 'societypress' ); ?></th>
-                                <th><?php esc_html_e( 'Sample Data (first rows)', 'societypress' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'CSV Column', 'societypress' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Map To', 'societypress' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Sample Data (first rows)', 'societypress' ); ?></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -55158,7 +55221,7 @@ function sp_render_links_import_page(): void {
 
                         <table class="form-table">
                             <tr>
-                                <th><label for="import_file"><?php esc_html_e( 'CSV File', 'societypress' ); ?></label></th>
+                                <th scope="col"><label for="import_file"><?php esc_html_e( 'CSV File', 'societypress' ); ?></label></th>
                                 <td>
                                     <input type="file" name="import_file" id="import_file" accept=".csv" required>
                                     <p class="description"><?php esc_html_e( 'Maximum file size: 2 MB. Must be a .csv file.', 'societypress' ); ?></p>
@@ -55830,7 +55893,7 @@ function sp_render_volunteer_opportunities_frontend(): string {
     /* Members-only label ---------------------------------------------------- */
     .sp-vol-members-only {
         font-size: 0.9em;
-        color: #787c82;
+        color: #6d7175;
     }
     /* Signed-up status row (icon + cancel button) --------------------------- */
     .sp-vol-status-row {
@@ -56045,7 +56108,7 @@ function sp_render_volunteer_opportunities_frontend(): string {
                             var icon = data.data.status === 'waitlisted' ? '\uD83D\uDCCB <?php echo esc_js( __( "Waitlisted", "societypress" ) ); ?>' : '\u2705 <?php echo esc_js( __( "Signed Up", "societypress" ) ); ?>';
                             btn.parentNode.innerHTML = '<span style="font-weight:600;color:' +
                                 (data.data.status === 'confirmed' ? '#00a32a' : '#dba617') + ';">' + icon + '</span>' +
-                                ' <em style="font-size:0.85em;color:#787c82;"><?php echo esc_js( __( "(reload to update)", "societypress" ) ); ?></em>';
+                                ' <em style="font-size:0.85em;color:#6d7175;"><?php echo esc_js( __( "(reload to update)", "societypress" ) ); ?></em>';
                         } else {
                             alert(data.data || '<?php echo esc_js( __( "Could not sign up.", "societypress" ) ); ?>');
                             btn.disabled = false;
@@ -56165,7 +56228,7 @@ function sp_render_volunteer_opportunities_page(): void {
         <p class="description"><?php esc_html_e( 'Post volunteer needs for your members to browse and sign up for.', 'societypress' ); ?></p>
 
         <?php if ( empty( $opportunities ) ) : ?>
-            <p style="color: #787c82; font-style: italic; margin-top: 20px;">
+            <p style="color: #6d7175; font-style: italic; margin-top: 20px;">
                 <?php esc_html_e( 'No opportunities yet.', 'societypress' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-volunteer-opportunity-edit' ) ); ?>"><?php esc_html_e( 'Create your first one.', 'societypress' ); ?></a>
             </p>
         <?php else : ?>
@@ -56333,11 +56396,11 @@ function sp_render_volunteer_opportunity_edit_page(): void {
 
             <table class="form-table">
                 <tr>
-                    <th><label for="opp_title"><?php esc_html_e( 'Title', 'societypress' ); ?> <span class="sp-text-error" aria-hidden="true">*</span></label></th>
+                    <th scope="col"><label for="opp_title"><?php esc_html_e( 'Title', 'societypress' ); ?> <span class="sp-text-error" aria-hidden="true">*</span></label></th>
                     <td><input type="text" id="opp_title" name="opp_title" value="<?php echo esc_attr( $val('title') ); ?>" class="large-text" required></td>
                 </tr>
                 <tr>
-                    <th><label for="opp_type"><?php esc_html_e( 'Type', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="opp_type"><?php esc_html_e( 'Type', 'societypress' ); ?></label></th>
                     <td>
                         <select id="opp_type" name="opp_type">
                             <option value="one_time" <?php selected( $val('opportunity_type', 'one_time'), 'one_time' ); ?>><?php esc_html_e( 'One-Time', 'societypress' ); ?></option>
@@ -56347,7 +56410,7 @@ function sp_render_volunteer_opportunity_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="opp_committee_id"><?php esc_html_e( 'Committee', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="opp_committee_id"><?php esc_html_e( 'Committee', 'societypress' ); ?></label></th>
                     <td>
                         <select id="opp_committee_id" name="opp_committee_id">
                             <option value=""><?php esc_html_e( 'Society-Wide (no committee)', 'societypress' ); ?></option>
@@ -56358,16 +56421,16 @@ function sp_render_volunteer_opportunity_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="opp_description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="opp_description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
                     <td><textarea id="opp_description" name="opp_description" rows="5" class="large-text"><?php echo esc_textarea( $val('description') ); ?></textarea></td>
                 </tr>
                 <tr>
-                    <th><label for="opp_date"><?php esc_html_e( 'Date', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="opp_date"><?php esc_html_e( 'Date', 'societypress' ); ?></label></th>
                     <td><input type="date" id="opp_date" name="opp_date" value="<?php echo esc_attr( $val('event_date') ); ?>">
                         <p class="description"><?php esc_html_e( 'For one-time opportunities. Leave blank for ongoing.', 'societypress' ); ?></p></td>
                 </tr>
                 <tr>
-                    <th><label for="opp_start_time"><?php esc_html_e( 'Time', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="opp_start_time"><?php esc_html_e( 'Time', 'societypress' ); ?></label></th>
                     <td>
                         <input type="time" id="opp_start_time" name="opp_start_time" value="<?php echo esc_attr( $val('start_time') ); ?>">
                         to
@@ -56375,20 +56438,20 @@ function sp_render_volunteer_opportunity_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="opp_location"><?php esc_html_e( 'Location', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="opp_location"><?php esc_html_e( 'Location', 'societypress' ); ?></label></th>
                     <td><input type="text" id="opp_location" name="opp_location" value="<?php echo esc_attr( $val('location') ); ?>" class="regular-text"></td>
                 </tr>
                 <tr>
-                    <th><label for="opp_capacity"><?php esc_html_e( 'Capacity', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="opp_capacity"><?php esc_html_e( 'Capacity', 'societypress' ); ?></label></th>
                     <td><input type="number" id="opp_capacity" name="opp_capacity" value="<?php echo $val('capacity') !== null ? esc_attr( $val('capacity') ) : ''; ?>" min="0" class="small-text">
                         <p class="description"><?php esc_html_e( 'Leave blank for unlimited.', 'societypress' ); ?></p></td>
                 </tr>
                 <tr>
-                    <th><label for="opp_skills"><?php esc_html_e( 'Skills/Requirements', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="opp_skills"><?php esc_html_e( 'Skills/Requirements', 'societypress' ); ?></label></th>
                     <td><textarea id="opp_skills" name="opp_skills" rows="2" class="large-text"><?php echo esc_textarea( $val('skills_needed') ); ?></textarea></td>
                 </tr>
                 <tr>
-                    <th><label for="opp_contact"><?php esc_html_e( 'Contact Person', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="opp_contact"><?php esc_html_e( 'Contact Person', 'societypress' ); ?></label></th>
                     <td>
                         <select id="opp_contact" name="opp_contact">
                             <option value=""><?php esc_html_e( '— None —', 'societypress' ); ?></option>
@@ -56401,7 +56464,7 @@ function sp_render_volunteer_opportunity_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="opp_status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="opp_status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
                     <td>
                         <select id="opp_status" name="opp_status">
                             <option value="open" <?php selected( $val('status', 'open'), 'open' ); ?>><?php esc_html_e( 'Open', 'societypress' ); ?></option>
@@ -56431,11 +56494,11 @@ function sp_render_volunteer_opportunity_edit_page(): void {
             if ( ! empty( $signups ) ) : ?>
                 <h2 style="margin-top: 30px; border-bottom: 1px solid #c3c4c7; padding-bottom: 8px;"><?php echo esc_html( sprintf( __( 'Signups (%d)', 'societypress' ), count( $signups ) ) ); ?></h2>
                 <table class="wp-list-table widefat fixed striped">
-                    <thead><tr><th><?php esc_html_e( 'Name', 'societypress' ); ?></th><th><?php esc_html_e( 'Status', 'societypress' ); ?></th><th><?php esc_html_e( 'Signed Up', 'societypress' ); ?></th></tr></thead>
+                    <thead><tr><th scope="col"><?php esc_html_e( 'Name', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Status', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Signed Up', 'societypress' ); ?></th></tr></thead>
                     <tbody>
                     <?php foreach ( $signups as $s ) :
                         $name = $s->first_name ? $s->first_name . ' ' . $s->last_name : $s->display_name;
-                        $badge = [ 'confirmed' => '#00a32a', 'waitlisted' => '#dba617', 'cancelled' => '#d63638' ];
+                        $badge = [ 'confirmed' => '#00a32a', 'waitlisted' => '#8a6500', 'cancelled' => '#d63638' ];
                     ?>
                         <tr>
                             <td><?php echo esc_html( $name ); ?></td>
@@ -56591,7 +56654,7 @@ function sp_render_meetings_page(): void {
                 <thead>
                     <tr>
                         <th class="sp-w-100"><?php esc_html_e( 'Type', 'societypress' ); ?></th>
-                        <th><?php esc_html_e( 'Title', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Title', 'societypress' ); ?></th>
                         <th class="sp-w-150"><?php esc_html_e( 'Date', 'societypress' ); ?></th>
                         <th class="sp-w-200"><?php esc_html_e( 'Committee', 'societypress' ); ?></th>
                         <th class="sp-w-150"><?php esc_html_e( 'Visibility', 'societypress' ); ?></th>
@@ -56751,7 +56814,7 @@ function sp_render_meeting_edit_page(): void {
 
             <table class="form-table">
                 <tr>
-                    <th><label for="sp-mtg-type"><?php esc_html_e( 'Meeting Type', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-mtg-type"><?php esc_html_e( 'Meeting Type', 'societypress' ); ?></label></th>
                     <td>
                         <select name="meeting_type" id="sp-mtg-type">
                             <option value="board"      <?php selected( $current_type, 'board' ); ?>><?php esc_html_e( 'Board', 'societypress' ); ?></option>
@@ -56761,7 +56824,7 @@ function sp_render_meeting_edit_page(): void {
                     </td>
                 </tr>
                 <tr id="sp-mtg-committee-row">
-                    <th><label for="sp-mtg-committee"><?php esc_html_e( 'Committee', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-mtg-committee"><?php esc_html_e( 'Committee', 'societypress' ); ?></label></th>
                     <td>
                         <select name="committee_id" id="sp-mtg-committee">
                             <option value=""><?php esc_html_e( '— Choose a committee —', 'societypress' ); ?></option>
@@ -56773,50 +56836,50 @@ function sp_render_meeting_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="sp-mtg-title"><?php esc_html_e( 'Title', 'societypress' ); ?> <span class="sp-text-error" aria-hidden="true">*</span></label></th>
+                    <th scope="col"><label for="sp-mtg-title"><?php esc_html_e( 'Title', 'societypress' ); ?> <span class="sp-text-error" aria-hidden="true">*</span></label></th>
                     <td>
                         <input type="text" name="title" id="sp-mtg-title" value="<?php echo esc_attr( $meeting->title ?? '' ); ?>" required class="regular-text sp-full-width" maxlength="255">
                         <p class="description"><?php esc_html_e( 'e.g. "March 2026 Board Meeting" or "Q1 General Meeting" or "Library Committee — March 12".', 'societypress' ); ?></p>
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="sp-mtg-date"><?php esc_html_e( 'Meeting Date', 'societypress' ); ?> <span class="sp-text-error" aria-hidden="true">*</span></label></th>
+                    <th scope="col"><label for="sp-mtg-date"><?php esc_html_e( 'Meeting Date', 'societypress' ); ?> <span class="sp-text-error" aria-hidden="true">*</span></label></th>
                     <td><input type="date" name="meeting_date" id="sp-mtg-date" value="<?php echo esc_attr( $meeting->meeting_date ?? '' ); ?>" required></td>
                 </tr>
                 <tr>
-                    <th><label for="sp-mtg-location"><?php esc_html_e( 'Location', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-mtg-location"><?php esc_html_e( 'Location', 'societypress' ); ?></label></th>
                     <td><input type="text" name="location" id="sp-mtg-location" value="<?php echo esc_attr( $meeting->location ?? '' ); ?>" class="regular-text" placeholder="<?php esc_attr_e( 'e.g. Society Hall, Zoom, Hybrid', 'societypress' ); ?>"></td>
                 </tr>
                 <tr>
-                    <th><label for="sp-mtg-attendance"><?php esc_html_e( 'Attendance', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-mtg-attendance"><?php esc_html_e( 'Attendance', 'societypress' ); ?></label></th>
                     <td>
                         <input type="text" name="attendance" id="sp-mtg-attendance" value="<?php echo esc_attr( $meeting->attendance ?? '' ); ?>" class="regular-text" placeholder="<?php esc_attr_e( 'e.g. 14 members present, 3 excused', 'societypress' ); ?>">
                         <p class="description"><?php esc_html_e( 'Free-form. A count, a list of names, or both.', 'societypress' ); ?></p>
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="sp-mtg-agenda"><?php esc_html_e( 'Agenda URL', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-mtg-agenda"><?php esc_html_e( 'Agenda URL', 'societypress' ); ?></label></th>
                     <td>
                         <input type="url" name="agenda_url" id="sp-mtg-agenda" value="<?php echo esc_attr( $meeting->agenda_url ?? '' ); ?>" class="large-text" placeholder="https://...">
                         <p class="description"><?php esc_html_e( 'Optional. Upload the agenda PDF via the Files section and paste its URL here.', 'societypress' ); ?></p>
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="sp-mtg-minutes"><?php esc_html_e( 'Minutes URL', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-mtg-minutes"><?php esc_html_e( 'Minutes URL', 'societypress' ); ?></label></th>
                     <td>
                         <input type="url" name="minutes_url" id="sp-mtg-minutes" value="<?php echo esc_attr( $meeting->minutes_url ?? '' ); ?>" class="large-text" placeholder="https://...">
                         <p class="description"><?php esc_html_e( 'Optional. Upload the formal minutes (PDF or Word doc) via the Files section and paste its URL here.', 'societypress' ); ?></p>
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="sp-mtg-notes"><?php esc_html_e( 'Inline Notes', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-mtg-notes"><?php esc_html_e( 'Inline Notes', 'societypress' ); ?></label></th>
                     <td>
                         <textarea name="notes" id="sp-mtg-notes" rows="6" class="large-text"><?php echo esc_textarea( $meeting->notes ?? '' ); ?></textarea>
                         <p class="description"><?php esc_html_e( 'Optional. A summary or full minutes inline. HTML allowed.', 'societypress' ); ?></p>
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="sp-mtg-vis"><?php esc_html_e( 'Visibility', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-mtg-vis"><?php esc_html_e( 'Visibility', 'societypress' ); ?></label></th>
                     <td>
                         <select name="visibility" id="sp-mtg-vis">
                             <option value="public"         <?php selected( $current_visibility, 'public' ); ?>><?php esc_html_e( 'Public — anyone can view', 'societypress' ); ?></option>
@@ -56904,7 +56967,7 @@ function sp_render_committees_page(): void {
             <table class="wp-list-table widefat fixed striped sp-mt-12">
                 <thead>
                     <tr>
-                        <th><?php esc_html_e( 'Name', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Name', 'societypress' ); ?></th>
                         <th class="sp-w-200"><?php esc_html_e( 'Chair', 'societypress' ); ?></th>
                         <th class="sp-w-100"><?php esc_html_e( 'Members', 'societypress' ); ?></th>
                         <th class="sp-w-100"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
@@ -57015,25 +57078,25 @@ function sp_render_committee_edit_page(): void {
 
             <table class="form-table">
                 <tr>
-                    <th><label for="sp-com-name"><?php esc_html_e( 'Name', 'societypress' ); ?> <span class="sp-text-error" aria-hidden="true">*</span></label></th>
+                    <th scope="col"><label for="sp-com-name"><?php esc_html_e( 'Name', 'societypress' ); ?> <span class="sp-text-error" aria-hidden="true">*</span></label></th>
                     <td><input type="text" name="name" id="sp-com-name" value="<?php echo esc_attr( $committee->name ?? '' ); ?>" required class="regular-text sp-full-width" maxlength="200"></td>
                 </tr>
                 <tr>
-                    <th><label for="sp-com-slug"><?php esc_html_e( 'URL Name', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-com-slug"><?php esc_html_e( 'URL Name', 'societypress' ); ?></label></th>
                     <td>
                         <input type="text" name="slug" id="sp-com-slug" value="<?php echo esc_attr( $committee->slug ?? '' ); ?>" class="regular-text">
                         <p class="description"><?php esc_html_e( 'Optional URL-friendly identifier. Auto-generated from the name if blank.', 'societypress' ); ?></p>
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="sp-com-desc"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-com-desc"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
                     <td>
                         <textarea name="description" id="sp-com-desc" rows="4" class="large-text"><?php echo esc_textarea( $committee->description ?? '' ); ?></textarea>
                         <p class="description"><?php esc_html_e( 'Brief description of the committee\'s charter and responsibilities. Shown on the public roster.', 'societypress' ); ?></p>
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="sp-com-chair"><?php esc_html_e( 'Chair', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-com-chair"><?php esc_html_e( 'Chair', 'societypress' ); ?></label></th>
                     <td>
                         <select name="chair_user_id" id="sp-com-chair">
                             <option value=""><?php esc_html_e( '— None —', 'societypress' ); ?></option>
@@ -57047,14 +57110,14 @@ function sp_render_committee_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="sp-com-sort"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-com-sort"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label></th>
                     <td>
                         <input type="number" name="sort_order" id="sp-com-sort" value="<?php echo esc_attr( (int) ( $committee->sort_order ?? 0 ) ); ?>" min="0" class="sp-w-100">
                         <p class="description"><?php esc_html_e( 'Lower numbers appear first. Equal values fall back to alphabetical.', 'societypress' ); ?></p>
                     </td>
                 </tr>
                 <tr>
-                    <th><?php esc_html_e( 'Active', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Active', 'societypress' ); ?></th>
                     <td>
                         <label><input type="checkbox" name="active" value="1" <?php checked( $committee ? (int) $committee->active : 1 ); ?>> <?php esc_html_e( 'Show this committee in dropdowns and on the public roster', 'societypress' ); ?></label>
                     </td>
@@ -57293,7 +57356,7 @@ function sp_render_leadership_page(): void {
         /* Officer card — term date range line */
         .sp-leadership-card-term {
             font-size: 12px;
-            color: #787c82;
+            color: #6d7175;
             margin-bottom: 8px;
         }
 
@@ -57325,7 +57388,7 @@ function sp_render_leadership_page(): void {
 
         /* Empty-state paragraph shown when no officers or committees exist */
         .sp-leadership-empty {
-            color: #787c82;
+            color: #6d7175;
             font-style: italic;
             margin: 16px 0;
         }
@@ -57429,7 +57492,7 @@ function sp_render_leadership_page(): void {
         /* Member count label next to the committee name */
         .sp-leadership-committee-count {
             font-weight: 400;
-            color: #787c82;
+            color: #6d7175;
             font-size: 13px;
             margin-left: 8px;
         }
@@ -57602,7 +57665,7 @@ function sp_render_leadership_page(): void {
 
                 <table class="form-table">
                     <tr>
-                        <th><label for="officer_user_id"><?php esc_html_e( 'Member', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="officer_user_id"><?php esc_html_e( 'Member', 'societypress' ); ?></label></th>
                         <td>
                             <select name="user_id" id="officer_user_id" required class="sp-leadership-member-select">
                                 <?php if ( empty( $officer_members ) ) : ?>
@@ -57619,7 +57682,7 @@ function sp_render_leadership_page(): void {
                         </td>
                     </tr>
                     <tr>
-                        <th><label for="officer_role_title"><?php esc_html_e( 'Position Title', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="officer_role_title"><?php esc_html_e( 'Position Title', 'societypress' ); ?></label></th>
                         <td>
                             <input type="text" name="role_title" id="officer_role_title"
                                    value="<?php echo esc_attr( $editing_section === 'officer' ? ( $editing->role_title ?? '' ) : '' ); ?>"
@@ -57628,14 +57691,14 @@ function sp_render_leadership_page(): void {
                         </td>
                     </tr>
                     <tr>
-                        <th><label for="officer_start_date"><?php esc_html_e( 'Start Date', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="officer_start_date"><?php esc_html_e( 'Start Date', 'societypress' ); ?></label></th>
                         <td>
                             <input type="date" name="start_date" id="officer_start_date"
                                    value="<?php echo esc_attr( $editing_section === 'officer' ? ( $editing->start_date ?? '' ) : '' ); ?>">
                         </td>
                     </tr>
                     <tr>
-                        <th><label for="officer_end_date"><?php esc_html_e( 'End Date', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="officer_end_date"><?php esc_html_e( 'End Date', 'societypress' ); ?></label></th>
                         <td>
                             <input type="date" name="end_date" id="officer_end_date"
                                    value="<?php echo esc_attr( $editing_section === 'officer' ? ( $editing->end_date ?? '' ) : '' ); ?>">
@@ -57643,7 +57706,7 @@ function sp_render_leadership_page(): void {
                         </td>
                     </tr>
                     <tr>
-                        <th><label for="officer_status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="officer_status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
                         <td>
                             <select name="status" id="officer_status">
                                 <option value="active" <?php selected( $editing_section === 'officer' ? ( $editing->status ?? 'active' ) : 'active', 'active' ); ?>><?php esc_html_e( 'Active', 'societypress' ); ?></option>
@@ -57796,7 +57859,7 @@ function sp_render_leadership_page(): void {
 
                 <table class="form-table">
                     <tr>
-                        <th><label for="committee_user_id"><?php esc_html_e( 'Member', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="committee_user_id"><?php esc_html_e( 'Member', 'societypress' ); ?></label></th>
                         <td>
                             <select name="user_id" id="committee_user_id" required class="sp-leadership-member-select">
                                 <?php if ( empty( $committee_members ) ) : ?>
@@ -57813,7 +57876,7 @@ function sp_render_leadership_page(): void {
                         </td>
                     </tr>
                     <tr>
-                        <th><label for="committee_name_input"><?php esc_html_e( 'Committee Name', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="committee_name_input"><?php esc_html_e( 'Committee Name', 'societypress' ); ?></label></th>
                         <td>
                             <input type="text" name="committee" id="committee_name_input"
                                    value="<?php echo esc_attr( $editing_section === 'committee' ? ( $editing->committee ?? '' ) : '' ); ?>"
@@ -57822,7 +57885,7 @@ function sp_render_leadership_page(): void {
                         </td>
                     </tr>
                     <tr>
-                        <th><label for="committee_role_title"><?php esc_html_e( 'Role in Committee', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="committee_role_title"><?php esc_html_e( 'Role in Committee', 'societypress' ); ?></label></th>
                         <td>
                             <input type="text" name="role_title" id="committee_role_title"
                                    value="<?php echo esc_attr( $editing_section === 'committee' ? ( $editing->role_title ?? '' ) : '' ); ?>"
@@ -57831,14 +57894,14 @@ function sp_render_leadership_page(): void {
                         </td>
                     </tr>
                     <tr>
-                        <th><label for="committee_start_date"><?php esc_html_e( 'Start Date', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="committee_start_date"><?php esc_html_e( 'Start Date', 'societypress' ); ?></label></th>
                         <td>
                             <input type="date" name="start_date" id="committee_start_date"
                                    value="<?php echo esc_attr( $editing_section === 'committee' ? ( $editing->start_date ?? '' ) : '' ); ?>">
                         </td>
                     </tr>
                     <tr>
-                        <th><label for="committee_end_date"><?php esc_html_e( 'End Date', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="committee_end_date"><?php esc_html_e( 'End Date', 'societypress' ); ?></label></th>
                         <td>
                             <input type="date" name="end_date" id="committee_end_date"
                                    value="<?php echo esc_attr( $editing_section === 'committee' ? ( $editing->end_date ?? '' ) : '' ); ?>">
@@ -57846,7 +57909,7 @@ function sp_render_leadership_page(): void {
                         </td>
                     </tr>
                     <tr>
-                        <th><label for="committee_status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="committee_status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
                         <td>
                             <select name="status" id="committee_status">
                                 <option value="active" <?php selected( $editing_section === 'committee' ? ( $editing->status ?? 'active' ) : 'active', 'active' ); ?>><?php esc_html_e( 'Active', 'societypress' ); ?></option>
@@ -57939,7 +58002,7 @@ function sp_render_volunteers_page(): void {
 
                 <table class="form-table">
                     <tr>
-                        <th><label for="user_id"><?php esc_html_e( 'Member', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="user_id"><?php esc_html_e( 'Member', 'societypress' ); ?></label></th>
                         <td>
                             <select name="user_id" id="user_id" required style="min-width:250px;">
                                 <option value=""><?php echo '— ' . esc_html__( 'Select Member', 'societypress' ) . ' —'; ?></option>
@@ -57952,23 +58015,23 @@ function sp_render_volunteers_page(): void {
                         </td>
                     </tr>
                     <tr>
-                        <th><label for="role_title"><?php esc_html_e( 'Role Title', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="role_title"><?php esc_html_e( 'Role Title', 'societypress' ); ?></label></th>
                         <td><input type="text" name="role_title" id="role_title" value="<?php echo esc_attr( $editing->role_title ?? '' ); ?>" class="regular-text" required placeholder="<?php echo esc_attr__( 'e.g., Event Coordinator', 'societypress' ); ?>"></td>
                     </tr>
                     <tr>
-                        <th><label for="committee"><?php esc_html_e( 'Committee', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="committee"><?php esc_html_e( 'Committee', 'societypress' ); ?></label></th>
                         <td><input type="text" name="committee" id="committee" value="<?php echo esc_attr( $editing->committee ?? '' ); ?>" class="regular-text" placeholder="<?php echo esc_attr__( 'e.g., Programs Committee', 'societypress' ); ?>"></td>
                     </tr>
                     <tr>
-                        <th><label for="start_date"><?php esc_html_e( 'Start Date', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="start_date"><?php esc_html_e( 'Start Date', 'societypress' ); ?></label></th>
                         <td><input type="date" name="start_date" id="start_date" value="<?php echo esc_attr( $editing->start_date ?? '' ); ?>"></td>
                     </tr>
                     <tr>
-                        <th><label for="end_date"><?php esc_html_e( 'End Date', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="end_date"><?php esc_html_e( 'End Date', 'societypress' ); ?></label></th>
                         <td><input type="date" name="end_date" id="end_date" value="<?php echo esc_attr( $editing->end_date ?? '' ); ?>"> <span class="description"><?php esc_html_e( 'Leave blank for ongoing roles.', 'societypress' ); ?></span></td>
                     </tr>
                     <tr>
-                        <th><label for="vstatus"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="vstatus"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
                         <td>
                             <select name="status" id="vstatus">
                                 <option value="active" <?php selected( $editing->status ?? 'active', 'active' ); ?>><?php esc_html_e( 'Active', 'societypress' ); ?></option>
@@ -59222,8 +59285,8 @@ function sp_render_email_log_page(): void {
                     <th class="sp-email-log-col-id"><?php esc_html_e( 'ID', 'societypress' ); ?></th>
                     <th class="sp-email-log-col-status"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
                     <th class="sp-email-log-col-type"><?php esc_html_e( 'Type', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Recipient', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Subject', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Recipient', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Subject', 'societypress' ); ?></th>
                     <th class="sp-email-log-col-date"><?php esc_html_e( 'Date', 'societypress' ); ?></th>
                 </tr>
             </thead>
@@ -59340,13 +59403,13 @@ function sp_render_email_log_detail( int $log_id ): void {
             max-width: 800px;
         }
 
-        /* First <th> has an extra width lock so the label column stays narrow */
+        /* First <th scope="col"> has an extra width lock so the label column stays narrow */
         .sp-email-detail-th-label-wide {
             width: 120px;
             background: #f6f7f7;
         }
 
-        /* All other <th> cells — just the zebra-stripe background */
+        /* All other <th scope="col"> cells — just the zebra-stripe background */
         .sp-email-detail-th {
             background: #f6f7f7;
         }
@@ -59420,7 +59483,7 @@ function sp_render_email_log_detail( int $log_id ): void {
         <table class="widefat sp-email-detail-table">
             <tbody>
                 <tr>
-                    <th class="sp-email-detail-th-label-wide"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                    <th scope="row" class="sp-email-detail-th-label-wide"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
                     <td>
                         <span class="sp-email-detail-badge" style="background: <?php echo esc_attr( $bc['bg'] ); ?>; color: <?php echo esc_attr( $bc['text'] ); ?>; border: 1px solid <?php echo esc_attr( $bc['border'] ); ?>;">
                             <?php echo esc_html( sp_localized_status( $entry->status ) ); ?>
@@ -59428,38 +59491,38 @@ function sp_render_email_log_detail( int $log_id ): void {
                     </td>
                 </tr>
                 <tr>
-                    <th class="sp-email-detail-th"><?php esc_html_e( 'To', 'societypress' ); ?></th>
+                    <th scope="row" class="sp-email-detail-th"><?php esc_html_e( 'To', 'societypress' ); ?></th>
                     <td><?php echo esc_html( $entry->recipient ); ?></td>
                 </tr>
                 <tr>
-                    <th class="sp-email-detail-th"><?php esc_html_e( 'Subject', 'societypress' ); ?></th>
+                    <th scope="row" class="sp-email-detail-th"><?php esc_html_e( 'Subject', 'societypress' ); ?></th>
                     <td><?php echo esc_html( $entry->subject ); ?></td>
                 </tr>
                 <?php if ( $entry->email_type ) : ?>
                     <tr>
-                        <th class="sp-email-detail-th"><?php esc_html_e( 'Type', 'societypress' ); ?></th>
+                        <th scope="row" class="sp-email-detail-th"><?php esc_html_e( 'Type', 'societypress' ); ?></th>
                         <td><?php echo esc_html( sp_localized_status( $entry->email_type, 'email_type' ) ); ?></td>
                     </tr>
                 <?php endif; ?>
                 <tr>
-                    <th class="sp-email-detail-th"><?php esc_html_e( 'Created', 'societypress' ); ?></th>
+                    <th scope="row" class="sp-email-detail-th"><?php esc_html_e( 'Created', 'societypress' ); ?></th>
                     <td><?php echo esc_html( date_i18n( 'F j, Y \a\t g:i:s a', strtotime( $entry->created_at ) ) ); ?></td>
                 </tr>
                 <?php if ( $entry->sent_at ) : ?>
                     <tr>
-                        <th class="sp-email-detail-th"><?php esc_html_e( 'Sent', 'societypress' ); ?></th>
+                        <th scope="row" class="sp-email-detail-th"><?php esc_html_e( 'Sent', 'societypress' ); ?></th>
                         <td><?php echo esc_html( date_i18n( 'F j, Y \a\t g:i:s a', strtotime( $entry->sent_at ) ) ); ?></td>
                     </tr>
                 <?php endif; ?>
                 <?php if ( $entry->error_message ) : ?>
                     <tr>
-                        <th class="sp-email-detail-th"><?php esc_html_e( 'Error', 'societypress' ); ?></th>
+                        <th scope="row" class="sp-email-detail-th"><?php esc_html_e( 'Error', 'societypress' ); ?></th>
                         <td class="sp-email-detail-error-text"><?php echo esc_html( $entry->error_message ); ?></td>
                     </tr>
                 <?php endif; ?>
                 <?php if ( $entry->headers ) : ?>
                     <tr>
-                        <th class="sp-email-detail-th"><?php esc_html_e( 'Headers', 'societypress' ); ?></th>
+                        <th scope="row" class="sp-email-detail-th"><?php esc_html_e( 'Headers', 'societypress' ); ?></th>
                         <td><pre class="sp-email-detail-headers-pre"><?php echo esc_html( $entry->headers ); ?></pre></td>
                     </tr>
                 <?php endif; ?>
@@ -59594,12 +59657,12 @@ function sp_render_blast_email_page(): void {
         <table class="widefat striped" style="margin-top: 16px; clear: both;">
             <thead>
                 <tr>
-                    <th><?php esc_html_e( 'Subject', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Sender', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Recipients', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Status', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Date', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Subject', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Sender', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Recipients', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Date', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
                 </tr>
             </thead>
             <tbody>
@@ -59921,8 +59984,8 @@ function sp_render_blast_email_compose_page(): void {
     .sp-blast-recipient-label     { display: block; margin-bottom: 8px; }
     .sp-blast-recipient-label-sm  { display: block; margin-bottom: 4px; }
     .sp-blast-check-label         { display: block; margin-bottom: 2px; }
-    .sp-blast-count               { color: #787c82; }
-    .sp-blast-no-groups           { color: #787c82; }
+    .sp-blast-count               { color: #6d7175; }
+    .sp-blast-no-groups           { color: #6d7175; }
     .sp-blast-merge-hint          { margin-bottom: 8px; }
     .sp-blast-submit-row          { display: flex; gap: 8px; align-items: center; }
     .sp-blast-send-btn            { background: #00a32a; border-color: #00a32a; }
@@ -59937,11 +60000,11 @@ function sp_render_blast_email_compose_page(): void {
 
             <table class="form-table sp-blast-form-table">
                 <tr>
-                    <th><label for="sp-blast-subject"><?php esc_html_e( 'Subject', 'societypress' ); ?> <span class="sp-blast-required-star" aria-hidden="true">*</span></label></th>
+                    <th scope="col"><label for="sp-blast-subject"><?php esc_html_e( 'Subject', 'societypress' ); ?> <span class="sp-blast-required-star" aria-hidden="true">*</span></label></th>
                     <td><input type="text" name="blast_subject" id="sp-blast-subject" value="<?php echo esc_attr( $blast->subject ?? '' ); ?>" required class="sp-blast-subject-input"></td>
                 </tr>
                 <tr>
-                    <th><?php esc_html_e( 'Recipients', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Recipients', 'societypress' ); ?></th>
                     <td>
                         <fieldset>
                             <label class="sp-blast-recipient-label">
@@ -59993,7 +60056,7 @@ function sp_render_blast_email_compose_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label><?php esc_html_e( 'Email Body', 'societypress' ); ?></label></th>
+                    <th scope="col"><label><?php esc_html_e( 'Email Body', 'societypress' ); ?></label></th>
                     <td>
                         <p class="description sp-blast-merge-hint">
                             <?php esc_html_e( 'Merge tags:', 'societypress' ); ?> <code>{{first_name}}</code> <code>{{last_name}}</code> <code>{{display_name}}</code> <code>{{organization_name}}</code>
@@ -60499,12 +60562,12 @@ function sp_render_donations_page(): void {
 
             /* Anonymous donor label — muted grey */
             .sp-donations-anonymous {
-                color: #787c82;
+                color: #6d7175;
             }
 
             /* Donor email sub-line — smaller, muted */
             .sp-donations-email {
-                color: #787c82;
+                color: #6d7175;
                 font-size: 12px;
             }
 
@@ -60520,7 +60583,7 @@ function sp_render_donations_page(): void {
 
             /* Not-acknowledged dash — muted */
             .sp-donations-ack-no {
-                color: #787c82;
+                color: #6d7175;
             }
 
             /* Delete form sits inline alongside the Edit link */
@@ -60609,13 +60672,13 @@ function sp_render_donations_page(): void {
                 <thead>
                     <tr>
                         <th class="sp-donations-col-check"><input type="checkbox" id="sp-don-check-all"></th>
-                        <th><?php esc_html_e( 'Date', 'societypress' ); ?></th>
-                        <th><?php esc_html_e( 'Donor', 'societypress' ); ?></th>
-                        <th><?php esc_html_e( 'Amount', 'societypress' ); ?></th>
-                        <th><?php esc_html_e( 'Type', 'societypress' ); ?></th>
-                        <th><?php esc_html_e( 'Campaign', 'societypress' ); ?></th>
-                        <th><?php esc_html_e( "Ack'd", 'societypress' ); ?></th>
-                        <th><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Date', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Donor', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Amount', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Type', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Campaign', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( "Ack'd", 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -60791,7 +60854,7 @@ function sp_render_donation_edit_page(): void {
 
             <table class="form-table">
                 <tr>
-                    <th><label for="sp-d-campaign"><?php esc_html_e( 'Campaign', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-d-campaign"><?php esc_html_e( 'Campaign', 'societypress' ); ?></label></th>
                     <td>
                         <select name="campaign_id" id="sp-d-campaign" class="sp-full-width">
                             <option value=""><?php esc_html_e( '— General / No Campaign —', 'societypress' ); ?></option>
@@ -60802,7 +60865,7 @@ function sp_render_donation_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="sp-d-member"><?php esc_html_e( 'Member', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-d-member"><?php esc_html_e( 'Member', 'societypress' ); ?></label></th>
                     <td>
                         <select name="member_id" id="sp-d-member" class="sp-full-width">
                             <option value=""><?php esc_html_e( '— Non-member / Manual Entry —', 'societypress' ); ?></option>
@@ -60819,19 +60882,19 @@ function sp_render_donation_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="sp-d-name"><?php esc_html_e( 'Donor Name', 'societypress' ); ?> <span class="sp-text-error" aria-hidden="true">*</span></label></th>
+                    <th scope="col"><label for="sp-d-name"><?php esc_html_e( 'Donor Name', 'societypress' ); ?> <span class="sp-text-error" aria-hidden="true">*</span></label></th>
                     <td><input type="text" name="donor_name" id="sp-d-name" value="<?php echo esc_attr( $donation->donor_name ?? '' ); ?>" required class="sp-full-width"></td>
                 </tr>
                 <tr>
-                    <th><label for="sp-d-email"><?php esc_html_e( 'Donor Email', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-d-email"><?php esc_html_e( 'Donor Email', 'societypress' ); ?></label></th>
                     <td><input type="email" name="donor_email" id="sp-d-email" value="<?php echo esc_attr( $donation->donor_email ?? '' ); ?>" class="sp-full-width"></td>
                 </tr>
                 <tr>
-                    <th><label for="sp-d-amount"><?php esc_html_e( 'Amount', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-d-amount"><?php esc_html_e( 'Amount', 'societypress' ); ?></label></th>
                     <td><input type="number" name="amount" id="sp-d-amount" value="<?php echo esc_attr( number_format( (float) ( $donation->amount ?? 0 ), 2, '.', '' ) ); ?>" step="0.01" min="0" class="sp-w-150"></td>
                 </tr>
                 <tr>
-                    <th><label for="sp-d-type"><?php esc_html_e( 'Type', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-d-type"><?php esc_html_e( 'Type', 'societypress' ); ?></label></th>
                     <td>
                         <select name="donation_type" id="sp-d-type" style="width: 200px;">
                             <?php foreach ( $types as $t ) : ?>
@@ -60841,19 +60904,19 @@ function sp_render_donation_edit_page(): void {
                     </td>
                 </tr>
                 <tr id="sp-d-inkind-row" style="<?php echo ( $donation->type ?? '' ) !== 'in_kind' ? 'display:none;' : ''; ?>">
-                    <th><label for="sp-d-inkind"><?php esc_html_e( 'In-Kind Description', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-d-inkind"><?php esc_html_e( 'In-Kind Description', 'societypress' ); ?></label></th>
                     <td><textarea name="in_kind_description" id="sp-d-inkind" rows="3" class="sp-full-width"><?php echo esc_textarea( $donation->in_kind_description ?? '' ); ?></textarea></td>
                 </tr>
                 <tr>
-                    <th><label for="sp-d-date"><?php esc_html_e( 'Date', 'societypress' ); ?> <span class="sp-text-error" aria-hidden="true">*</span></label></th>
+                    <th scope="col"><label for="sp-d-date"><?php esc_html_e( 'Date', 'societypress' ); ?> <span class="sp-text-error" aria-hidden="true">*</span></label></th>
                     <td><input type="date" name="donation_date" id="sp-d-date" value="<?php echo esc_attr( $donation->date ?? date( 'Y-m-d' ) ); ?>" required></td>
                 </tr>
                 <tr>
-                    <th><label for="sp-d-note"><?php esc_html_e( 'Note', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-d-note"><?php esc_html_e( 'Note', 'societypress' ); ?></label></th>
                     <td><textarea name="note" id="sp-d-note" rows="3" class="sp-full-width"><?php echo esc_textarea( $donation->note ?? '' ); ?></textarea></td>
                 </tr>
                 <tr>
-                    <th><?php esc_html_e( 'Options', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Options', 'societypress' ); ?></th>
                     <td>
                         <label><input type="checkbox" name="is_anonymous" value="1" <?php checked( $donation->is_anonymous ?? 0, 1 ); ?>> <?php esc_html_e( 'Anonymous donation', 'societypress' ); ?></label>
                     </td>
@@ -61049,13 +61112,13 @@ function sp_render_campaigns_page(): void {
         <table class="widefat striped sp-mt-16">
             <thead>
                 <tr>
-                    <th><?php esc_html_e( 'Campaign', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Goal', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Raised', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Progress', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Status', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Date Range', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Campaign', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Goal', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Raised', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Progress', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Date Range', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
                 </tr>
             </thead>
             <tbody>
@@ -61077,13 +61140,13 @@ function sp_render_campaigns_page(): void {
                                 <?php endif; ?>
                             </td>
                             <td><?php echo $goal > 0 ? esc_html( sp_format_currency( $goal ) ) : '—'; ?></td>
-                            <td class="sp-fw-600 sp-text-success"><?php echo esc_html( sp_format_currency( $raised ) ); ?> <span style="font-weight: normal; color: #787c82;">(<?php echo (int) $c->donation_count; ?>)</span></td>
+                            <td class="sp-fw-600 sp-text-success"><?php echo esc_html( sp_format_currency( $raised ) ); ?> <span style="font-weight: normal; color: #6d7175;">(<?php echo (int) $c->donation_count; ?>)</span></td>
                             <td class="sp-w-120">
                                 <?php if ( $goal > 0 ) : ?>
                                     <div style="background: #e5e7eb; border-radius: 4px; height: 16px; overflow: hidden;">
                                         <div style="background: <?php echo $bar_color; ?>; height: 100%; width: <?php echo $pct; ?>%; border-radius: 4px;"></div>
                                     </div>
-                                    <span style="font-size: 0.75rem; color: #787c82;"><?php echo $pct; ?>%</span>
+                                    <span style="font-size: 0.75rem; color: #6d7175;"><?php echo $pct; ?>%</span>
                                 <?php else : ?>
                                     —
                                 <?php endif; ?>
@@ -61189,27 +61252,27 @@ function sp_render_campaign_edit_page(): void {
 
             <table class="form-table">
                 <tr>
-                    <th><label for="sp-c-name"><?php esc_html_e( 'Campaign Name', 'societypress' ); ?> <span class="sp-text-error" aria-hidden="true">*</span></label></th>
+                    <th scope="col"><label for="sp-c-name"><?php esc_html_e( 'Campaign Name', 'societypress' ); ?> <span class="sp-text-error" aria-hidden="true">*</span></label></th>
                     <td><input type="text" name="name" id="sp-c-name" value="<?php echo esc_attr( $campaign->name ?? '' ); ?>" required class="sp-full-width"></td>
                 </tr>
                 <tr>
-                    <th><label for="sp-c-desc"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-c-desc"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
                     <td><textarea name="description" id="sp-c-desc" rows="4" class="sp-full-width"><?php echo esc_textarea( $campaign->description ?? '' ); ?></textarea></td>
                 </tr>
                 <tr>
-                    <th><label for="sp-c-goal"><?php esc_html_e( 'Goal Amount', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-c-goal"><?php esc_html_e( 'Goal Amount', 'societypress' ); ?></label></th>
                     <td><input type="number" name="goal_amount" id="sp-c-goal" value="<?php echo esc_attr( $campaign->goal_amount ?? '' ); ?>" step="0.01" min="0" class="sp-w-150" placeholder="0.00"></td>
                 </tr>
                 <tr>
-                    <th><label for="sp-c-start"><?php esc_html_e( 'Start Date', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-c-start"><?php esc_html_e( 'Start Date', 'societypress' ); ?></label></th>
                     <td><input type="date" name="start_date" id="sp-c-start" value="<?php echo esc_attr( $campaign->start_date ?? '' ); ?>"></td>
                 </tr>
                 <tr>
-                    <th><label for="sp-c-end"><?php esc_html_e( 'End Date', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-c-end"><?php esc_html_e( 'End Date', 'societypress' ); ?></label></th>
                     <td><input type="date" name="end_date" id="sp-c-end" value="<?php echo esc_attr( $campaign->end_date ?? '' ); ?>"></td>
                 </tr>
                 <tr>
-                    <th><label for="sp-c-status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-c-status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
                     <td>
                         <select name="campaign_status" id="sp-c-status">
                             <option value="active" <?php selected( $campaign->status ?? 'active', 'active' ); ?>><?php esc_html_e( 'Active', 'societypress' ); ?></option>
@@ -64043,20 +64106,20 @@ function sp_render_newsletter_edit_page(): void {
 
             <table class="form-table">
                 <tr>
-                    <th><label for="title"><?php esc_html_e( 'Title', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="title"><?php esc_html_e( 'Title', 'societypress' ); ?></label></th>
                     <td><input type="text" name="title" id="title" class="regular-text" value="<?php echo esc_attr( $nl->title ?? '' ); ?>" required></td>
                 </tr>
                 <tr>
-                    <th><label for="description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
                     <td><textarea name="description" id="description" rows="3" class="large-text"><?php echo esc_textarea( $nl->description ?? '' ); ?></textarea>
                     <p class="description"><?php esc_html_e( 'Optional summary shown on the frontend archive.', 'societypress' ); ?></p></td>
                 </tr>
                 <tr>
-                    <th><label for="pub_date"><?php esc_html_e( 'Publication Date', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="pub_date"><?php esc_html_e( 'Publication Date', 'societypress' ); ?></label></th>
                     <td><input type="date" name="pub_date" id="pub_date" value="<?php echo esc_attr( $nl->pub_date ?? '' ); ?>"></td>
                 </tr>
                 <tr>
-                    <th><?php esc_html_e( 'Volume & Issue', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Volume & Issue', 'societypress' ); ?></th>
                     <td>
                         <label for="volume" class="sp-newsletter-edit-vol-label"><?php esc_html_e( 'Vol.', 'societypress' ); ?></label>
                         <input type="number" name="volume" id="volume" value="<?php echo esc_attr( $nl->volume ?? '' ); ?>" min="1" class="sp-newsletter-edit-vol-input">
@@ -64065,7 +64128,7 @@ function sp_render_newsletter_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="visibility"><?php esc_html_e( 'Visibility', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="visibility"><?php esc_html_e( 'Visibility', 'societypress' ); ?></label></th>
                     <td>
                         <select name="visibility" id="visibility">
                             <option value="members_only" <?php selected( $nl->visibility ?? 'members_only', 'members_only' ); ?>><?php esc_html_e( 'Members Only', 'societypress' ); ?></option>
@@ -64075,7 +64138,7 @@ function sp_render_newsletter_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><?php esc_html_e( 'PDF File', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'PDF File', 'societypress' ); ?></th>
                     <td>
                         <input type="hidden" name="file_id" id="file_id" value="<?php echo esc_attr( $nl->file_id ?? 0 ); ?>">
                         <div id="pdf-preview" class="sp-newsletter-edit-preview">
@@ -64092,7 +64155,7 @@ function sp_render_newsletter_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><?php esc_html_e( 'Cover Image', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Cover Image', 'societypress' ); ?></th>
                     <td>
                         <input type="hidden" name="cover_image_id" id="cover_image_id" value="<?php echo esc_attr( $nl->cover_image_id ?? 0 ); ?>">
                         <div id="cover-preview" class="sp-newsletter-edit-preview">
@@ -64323,7 +64386,7 @@ function sp_ajax_newsletter_download(): void {
     // a missing or unrecognized visibility value gates behind login rather
     // than serving the file to anyone with a guessed integer ID.
     if ( $nl->visibility !== 'public' && ! is_user_logged_in() ) {
-        wp_redirect( wp_login_url( add_query_arg( [] ) ) );
+        wp_safe_redirect( wp_login_url( add_query_arg( [] ) ) );
         exit;
     }
 
@@ -64332,14 +64395,39 @@ function sp_ajax_newsletter_download(): void {
         wp_die( esc_html__( 'This newsletter is not currently available.', 'societypress' ) );
     }
 
+    // Path-containment check: the resolved file must live inside wp-uploads.
+    // WHY: get_attached_file() reads from postmeta which is admin-managed,
+    //      but a future migration or DB tampering could land an off-tree
+    //      path. Belt-and-suspenders before readfile().
+    $upload_dir = wp_upload_dir();
+    $real_file  = realpath( $file_path );
+    $real_base  = realpath( $upload_dir['basedir'] );
+    if ( ! $real_file || ! $real_base || strpos( $real_file, $real_base . DIRECTORY_SEPARATOR ) !== 0 ) {
+        wp_die( esc_html__( 'This newsletter is not currently available.', 'societypress' ) );
+    }
+
+    // MIME enforcement: only PDFs are allowed through this endpoint.
+    // WHY: The handler streams with a hardcoded application/pdf header. If a
+    //      non-PDF file slipped into postmeta (admin error, bad migration),
+    //      we'd serve it under the wrong type. Refuse instead.
+    $mime = function_exists( 'finfo_file' ) ? ( static function () use ( $real_file ) {
+        $finfo = finfo_open( FILEINFO_MIME_TYPE );
+        if ( ! $finfo ) return '';
+        $m = finfo_file( $finfo, $real_file );
+        finfo_close( $finfo );
+        return is_string( $m ) ? $m : '';
+    } )() : '';
+    if ( $mime && $mime !== 'application/pdf' ) {
+        wp_die( esc_html__( 'This newsletter is not currently available.', 'societypress' ) );
+    }
+
     // Serve the file with proper headers for download
+    nocache_headers();
     header( 'Content-Type: application/pdf' );
     header( 'Content-Disposition: attachment; filename="' . sanitize_file_name( $nl->title ) . '.pdf"' );
-    header( 'Content-Length: ' . filesize( $file_path ) );
-    header( 'Cache-Control: private, max-age=0' );
-    header( 'Pragma: public' );
+    header( 'Content-Length: ' . filesize( $real_file ) );
 
-    readfile( $file_path );
+    readfile( $real_file );
     exit;
 }
 
@@ -64357,7 +64445,7 @@ function sp_ajax_newsletter_download(): void {
 
 // Register the template in the page template dropdown
 add_filter( 'theme_page_templates', function( $templates ) {
-    $templates['sp-newsletter-archive'] = 'Newsletter Archive';
+    $templates['sp-newsletter-archive'] = __( 'Newsletter Archive', 'societypress' );
     return $templates;
 } );
 
@@ -64441,8 +64529,9 @@ function sp_frontend_newsletter_archive(): void {
                                  data-pdf="<?php echo esc_url( $pdf_url ); ?>"
                                  data-title="<?php echo esc_attr( $nl->title ); ?>"
                                  data-download="<?php echo esc_url( $download_url ); ?>"
+                                 role="button" tabindex="0"
+                                 aria-label="<?php echo esc_attr( sprintf( /* translators: %s: newsletter title */ __( 'Open preview of %s', 'societypress' ), $nl->title ) ); ?>"
                                  style="cursor:pointer;"
-                                 title="<?php echo esc_attr__( 'Click to preview', 'societypress' ); ?>"
                              <?php endif; ?>>
                             <?php if ( $cover_url ) : ?>
                                 <img src="<?php echo esc_url( $cover_url ); ?>" alt="<?php echo esc_attr( $nl->title ); ?>">
@@ -64534,22 +64623,37 @@ function sp_frontend_newsletter_archive(): void {
         var modalDL     = document.getElementById('sp-pdf-modal-download');
         var modalClose  = document.getElementById('sp-pdf-modal-close');
         var overlay     = modal ? modal.querySelector('.sp-pdf-modal-overlay') : null;
+        var modalOpener = null;  // element that triggered open, for focus return
 
-        // Open modal when clicking a card cover that has a data-pdf attribute
-        document.addEventListener('click', function(e) {
-            var cover = e.target.closest('.sp-newsletter-card-cover[data-pdf]');
+        // Open modal when clicking a card cover that has a data-pdf attribute,
+        // or pressing Enter/Space when one has keyboard focus.
+        function openPdfModal(cover) {
             if (!cover || !modal) return;
-            e.preventDefault();
-
-            var pdfUrl      = cover.getAttribute('data-pdf');
-            var title       = cover.getAttribute('data-title');
-            var downloadUrl = cover.getAttribute('data-download');
-
-            modalTitle.textContent = title;
-            modalIframe.src        = pdfUrl;
-            modalDL.href           = downloadUrl;
+            modalOpener            = document.activeElement;
+            modalTitle.textContent = cover.getAttribute('data-title') || '';
+            modalIframe.src        = cover.getAttribute('data-pdf') || '';
+            modalDL.href           = cover.getAttribute('data-download') || '#';
             modal.style.display    = 'flex';
             document.body.style.overflow = 'hidden'; // Prevent background scrolling
+            // Move focus into the modal so keyboard users can act on it.
+            if (modalClose && typeof modalClose.focus === 'function') {
+                try { modalClose.focus(); } catch (e) {}
+            }
+        }
+
+        document.addEventListener('click', function(e) {
+            var cover = e.target.closest('.sp-newsletter-card-cover[data-pdf]');
+            if (!cover) return;
+            e.preventDefault();
+            openPdfModal(cover);
+        });
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            var cover = e.target.closest('.sp-newsletter-card-cover[data-pdf]');
+            if (!cover) return;
+            e.preventDefault();
+            openPdfModal(cover);
         });
 
         // Close modal
@@ -64558,15 +64662,34 @@ function sp_frontend_newsletter_archive(): void {
             modal.style.display          = 'none';
             modalIframe.src              = '';
             document.body.style.overflow = '';
+            // Return focus to the element that opened the modal.
+            if (modalOpener && typeof modalOpener.focus === 'function') {
+                try { modalOpener.focus(); } catch (e) {}
+            }
+            modalOpener = null;
         }
 
         if (modalClose) modalClose.addEventListener('click', closeModal);
         if (overlay)    overlay.addEventListener('click', closeModal);
 
-        // Escape key closes modal
+        // Escape closes modal; Tab is trapped inside it.
         document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape' && modal && modal.style.display !== 'none') {
+            if (!modal || modal.style.display === 'none') return;
+            if (e.key === 'Escape') {
                 closeModal();
+                return;
+            }
+            if (e.key !== 'Tab') return;
+            var focusables = modal.querySelectorAll(
+                'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+            );
+            if (!focusables.length) return;
+            var first = focusables[0];
+            var last  = focusables[focusables.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault(); last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault(); first.focus();
             }
         });
     })();
@@ -64638,7 +64761,7 @@ add_action( 'save_post_page', function () {
 
 // Register the "Site Search" template in the page template dropdown
 add_filter( 'theme_page_templates', function ( $templates ) {
-    $templates['sp-search'] = 'Site Search';
+    $templates['sp-search'] = __( 'Site Search', 'societypress' );
     return $templates;
 } );
 
@@ -65519,7 +65642,7 @@ function sp_render_record_collections_page(): void {
             <table class="wp-list-table widefat fixed striped sp-records-table">
                 <thead>
                     <tr>
-                        <th><?php esc_html_e( 'Collection', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Collection', 'societypress' ); ?></th>
                         <th class="sp-records-col-type"><?php esc_html_e( 'Type', 'societypress' ); ?></th>
                         <th class="sp-records-col-count"><?php esc_html_e( 'Records', 'societypress' ); ?></th>
                         <th class="sp-records-col-access"><?php esc_html_e( 'Access', 'societypress' ); ?></th>
@@ -65893,11 +66016,11 @@ function sp_render_record_collection_edit_page(): void {
             <h2><?php esc_html_e( 'Collection Details', 'societypress' ); ?></h2>
             <table class="form-table">
                 <tr>
-                    <th><label for="name"><?php esc_html_e( 'Name', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="name"><?php esc_html_e( 'Name', 'societypress' ); ?></label></th>
                     <td><input type="text" name="name" id="name" class="large-text" value="<?php echo esc_attr( $collection->name ?? '' ); ?>" required placeholder="<?php echo esc_attr__( 'e.g., Sample County Cemetery Index', 'societypress' ); ?>"></td>
                 </tr>
                 <tr>
-                    <th><label for="record_type"><?php esc_html_e( 'Record Type', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="record_type"><?php esc_html_e( 'Record Type', 'societypress' ); ?></label></th>
                     <td>
                         <select name="record_type" id="record_type">
                             <?php foreach ( $type_labels as $val => $label ) : ?>
@@ -65910,24 +66033,24 @@ function sp_render_record_collection_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
                     <td><textarea name="description" id="description" rows="3" class="large-text"><?php echo esc_textarea( $collection->description ?? '' ); ?></textarea></td>
                 </tr>
                 <tr>
-                    <th><label for="source_info"><?php esc_html_e( 'Source Information', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="source_info"><?php esc_html_e( 'Source Information', 'societypress' ); ?></label></th>
                     <td><textarea name="source_info" id="source_info" rows="2" class="large-text"><?php echo esc_textarea( $collection->source_info ?? '' ); ?></textarea>
                     <p class="description"><?php esc_html_e( 'Where this data came from — e.g., "Transcribed from original records at Sample County Courthouse, 2019–2021."', 'societypress' ); ?></p></td>
                 </tr>
                 <tr>
-                    <th><label for="date_range"><?php esc_html_e( 'Date Range', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="date_range"><?php esc_html_e( 'Date Range', 'societypress' ); ?></label></th>
                     <td><input type="text" name="date_range" id="date_range" class="regular-text" value="<?php echo esc_attr( $collection->date_range ?? '' ); ?>" placeholder="e.g., 1850–1920"></td>
                 </tr>
                 <tr>
-                    <th><label for="location"><?php esc_html_e( 'Location', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="location"><?php esc_html_e( 'Location', 'societypress' ); ?></label></th>
                     <td><input type="text" name="location" id="location" class="regular-text" value="<?php echo esc_attr( $collection->location ?? '' ); ?>" placeholder="<?php echo esc_attr__( 'e.g., Sample County, Texas', 'societypress' ); ?>"></td>
                 </tr>
                 <tr>
-                    <th><label for="access_level"><?php esc_html_e( 'Access Level', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="access_level"><?php esc_html_e( 'Access Level', 'societypress' ); ?></label></th>
                     <td>
                         <select name="access_level" id="access_level">
                             <option value="public" <?php selected( $collection->access_level ?? 'members', 'public' ); ?>><?php esc_html_e( 'Public — anyone can search', 'societypress' ); ?></option>
@@ -65937,7 +66060,7 @@ function sp_render_record_collection_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
                     <td>
                         <select name="status" id="status">
                             <option value="active" <?php selected( $collection->status ?? 'draft', 'active' ); ?>><?php esc_html_e( 'Active — visible to users', 'societypress' ); ?></option>
@@ -65955,7 +66078,7 @@ function sp_render_record_collection_edit_page(): void {
                 <thead>
                     <tr>
                         <th class="sp-record-edit-col-handle"></th>
-                        <th><?php esc_html_e( 'Field Name', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Field Name', 'societypress' ); ?></th>
                         <th class="sp-record-edit-col-type"><?php esc_html_e( 'Type', 'societypress' ); ?></th>
                         <th class="sp-record-edit-col-check"><?php esc_html_e( 'Searchable', 'societypress' ); ?></th>
                         <th class="sp-record-edit-col-check"><?php esc_html_e( 'Public', 'societypress' ); ?></th>
@@ -66210,7 +66333,7 @@ function sp_render_record_browse_page(): void {
                     <tr>
                         <th class="sp-w-60">ID</th>
                         <?php foreach ( $display_fields as $f ) : ?>
-                            <th><?php echo esc_html( $f->field_name ); ?></th>
+                            <th scope="col"><?php echo esc_html( $f->field_name ); ?></th>
                         <?php endforeach; ?>
                         <th style="width:120px;"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
                     </tr>
@@ -66358,7 +66481,7 @@ function sp_render_record_edit_page(): void {
                     $val = $values[ $f->id ] ?? '';
                 ?>
                     <tr>
-                        <th><label for="field_<?php echo esc_attr( $f->id ); ?>"><?php echo esc_html( $f->field_name ); ?></label></th>
+                        <th scope="col"><label for="field_<?php echo esc_attr( $f->id ); ?>"><?php echo esc_html( $f->field_name ); ?></label></th>
                         <td>
                             <?php if ( $f->field_type === 'textarea' ) : ?>
                                 <textarea name="field_<?php echo esc_attr( $f->id ); ?>" id="field_<?php echo esc_attr( $f->id ); ?>" rows="3" class="large-text"><?php echo esc_textarea( $val ); ?></textarea>
@@ -66853,9 +66976,9 @@ function sp_render_record_import_page(): void {
                     <table class="wp-list-table widefat sp-my-16">
                         <thead>
                             <tr>
-                                <th><?php esc_html_e( 'CSV Column', 'societypress' ); ?></th>
-                                <th><?php esc_html_e( 'Sample Data', 'societypress' ); ?></th>
-                                <th><?php esc_html_e( 'Map To Field', 'societypress' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'CSV Column', 'societypress' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Sample Data', 'societypress' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Map To Field', 'societypress' ); ?></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -66966,14 +67089,14 @@ function sp_render_record_import_page(): void {
                 <input type="hidden" name="sp_create_and_import" value="1">
                 <table class="form-table">
                     <tr>
-                        <th><label for="collection_name"><?php esc_html_e( 'Collection Name', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="collection_name"><?php esc_html_e( 'Collection Name', 'societypress' ); ?></label></th>
                         <td>
                             <input type="text" name="collection_name" id="collection_name" class="regular-text"
                                    placeholder="<?php esc_attr_e( 'e.g., Sample County Marriage Records (1837–1950)', 'societypress' ); ?>" required>
                         </td>
                     </tr>
                     <tr>
-                        <th><label for="record_type"><?php esc_html_e( 'Record Type', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="record_type"><?php esc_html_e( 'Record Type', 'societypress' ); ?></label></th>
                         <td>
                             <select name="record_type" id="record_type">
                                 <option value="general"><?php esc_html_e( 'General', 'societypress' ); ?></option>
@@ -66988,7 +67111,7 @@ function sp_render_record_import_page(): void {
                         </td>
                     </tr>
                     <tr>
-                        <th><label for="access_level"><?php esc_html_e( 'Access', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="access_level"><?php esc_html_e( 'Access', 'societypress' ); ?></label></th>
                         <td>
                             <select name="access_level" id="access_level">
                                 <option value="public"><?php esc_html_e( 'Public — anyone can search', 'societypress' ); ?></option>
@@ -66997,14 +67120,14 @@ function sp_render_record_import_page(): void {
                         </td>
                     </tr>
                     <tr>
-                        <th><label for="csv_file"><?php esc_html_e( 'CSV File', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="csv_file"><?php esc_html_e( 'CSV File', 'societypress' ); ?></label></th>
                         <td>
                             <input type="file" name="csv_file" id="csv_file" accept=".csv" required>
                             <p class="description"><?php esc_html_e( 'Each column header becomes a searchable field in the collection.', 'societypress' ); ?></p>
                         </td>
                     </tr>
                     <tr>
-                        <th><label for="description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
                         <td>
                             <textarea name="description" id="description" rows="3" class="large-text"
                                       placeholder="<?php esc_attr_e( 'Optional — describe the source, date range, and scope of these records.', 'societypress' ); ?>"></textarea>
@@ -67030,7 +67153,7 @@ function sp_render_record_import_page(): void {
                     <?php wp_nonce_field( 'sp_record_import' ); ?>
                     <table class="form-table">
                         <tr>
-                            <th><label for="collection_id"><?php esc_html_e( 'Collection', 'societypress' ); ?></label></th>
+                            <th scope="col"><label for="collection_id"><?php esc_html_e( 'Collection', 'societypress' ); ?></label></th>
                             <td>
                                 <select name="collection_id" id="collection_id" required>
                                     <option value="">— <?php esc_html_e( 'Select Collection', 'societypress' ); ?> —</option>
@@ -67041,7 +67164,7 @@ function sp_render_record_import_page(): void {
                             </td>
                         </tr>
                         <tr>
-                            <th><label for="csv_file"><?php esc_html_e( 'CSV File', 'societypress' ); ?></label></th>
+                            <th scope="col"><label for="csv_file"><?php esc_html_e( 'CSV File', 'societypress' ); ?></label></th>
                             <td><input type="file" name="csv_file" id="csv_file" accept=".csv" required></td>
                         </tr>
                     </table>
@@ -67061,14 +67184,14 @@ function sp_render_record_import_page(): void {
                 <input type="hidden" name="sp_import_genrecord" value="1">
                 <table class="form-table">
                     <tr>
-                        <th><label for="genrecord_file"><?php esc_html_e( 'GENRECORD File', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="genrecord_file"><?php esc_html_e( 'GENRECORD File', 'societypress' ); ?></label></th>
                         <td>
                             <input type="file" name="genrecord_file" id="genrecord_file" accept=".genrecord" required>
                             <p class="description"><?php esc_html_e( 'Select a .genrecord file. The header metadata will populate the collection automatically.', 'societypress' ); ?></p>
                         </td>
                     </tr>
                     <tr>
-                        <th><label for="access_level"><?php esc_html_e( 'Access', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="access_level"><?php esc_html_e( 'Access', 'societypress' ); ?></label></th>
                         <td>
                             <select name="access_level" id="access_level">
                                 <option value="public"><?php esc_html_e( 'Public — anyone can search', 'societypress' ); ?></option>
@@ -67919,17 +68042,17 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
         echo '<table class="sp-records-table">';
         echo '<thead><tr>';
         if ( $show_coll_column ) {
-            echo '<th>' . esc_html__( 'Collection', 'societypress' ) . '</th>';
+            echo '<th scope="col">' . esc_html__( 'Collection', 'societypress' ) . '</th>';
         }
         // Show generic column headers (we can't know field names across collections)
         // For single-collection, use actual field names
         if ( $coll_filter && isset( $fields_by_coll[ $coll_filter ] ) ) {
             $display_fields = array_slice( $fields_by_coll[ $coll_filter ], 0, $show_coll_column ? 3 : 4 );
             foreach ( $display_fields as $df ) {
-                echo '<th>' . esc_html( $df->field_name ) . '</th>';
+                echo '<th scope="col">' . esc_html( $df->field_name ) . '</th>';
             }
         } else {
-            echo '<th>' . esc_html__( 'Summary', 'societypress' ) . '</th>';
+            echo '<th scope="col">' . esc_html__( 'Summary', 'societypress' ) . '</th>';
         }
         echo '</tr></thead><tbody>';
 
@@ -69870,7 +69993,7 @@ function sp_render_cart_page(): void {
             }
 
             var html = '<table class="sp-cart-table"><thead><tr>' +
-                '<th><?php echo esc_js( __( 'Item', 'societypress' ) ); ?></th>' +
+                '<th scope="col"><?php echo esc_js( __( 'Item', 'societypress' ) ); ?></th>' +
                 '<th style="width:120px;text-align:center;"><?php echo esc_js( __( 'Quantity', 'societypress' ) ); ?></th>' +
                 '<th style="width:80px;text-align:right;"><?php echo esc_js( __( 'Price', 'societypress' ) ); ?></th>' +
                 '<th class="sp-col-amount"><?php echo esc_js( __( 'Total', 'societypress' ) ); ?></th>' +
@@ -69887,9 +70010,9 @@ function sp_render_cart_page(): void {
                     (item.author ? '<div class="sp-cart-item-author">' + escHtml(item.author) + '</div>' : '') +
                     '</div></div></td>' +
                     '<td data-label="<?php echo esc_js( __( 'Qty', 'societypress' ) ); ?>"><div class="sp-cart-qty-wrap">' +
-                    '<button class="sp-cart-qty-btn sp-cart-minus" type="button">−</button>' +
+                    '<button class="sp-cart-qty-btn sp-cart-minus" type="button" aria-label="<?php echo esc_js( __( 'Decrease quantity', 'societypress' ) ); ?>">−</button>' +
                     '<span class="sp-cart-qty-val">' + item.qty + '</span>' +
-                    '<button class="sp-cart-qty-btn sp-cart-plus" type="button">+</button>' +
+                    '<button class="sp-cart-qty-btn sp-cart-plus" type="button" aria-label="<?php echo esc_js( __( 'Increase quantity', 'societypress' ) ); ?>">+</button>' +
                     '</div></td>' +
                     '<td data-label="<?php echo esc_js( __( 'Price', 'societypress' ) ); ?>" class="sp-cart-price">' + fmtCurrency(item.unit_price) + '</td>' +
                     '<td data-label="<?php echo esc_js( __( 'Total', 'societypress' ) ); ?>" class="sp-cart-price">' + fmtCurrency(item.line_total) + '</td>' +
@@ -70153,7 +70276,7 @@ function sp_render_store_products_page(): void {
             <table class="wp-list-table widefat fixed striped sp-mt-12">
                 <thead>
                     <tr>
-                        <th><?php esc_html_e( 'Title', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Title', 'societypress' ); ?></th>
                         <th class="sp-w-100"><?php esc_html_e( 'SKU', 'societypress' ); ?></th>
                         <th class="sp-w-150"><?php esc_html_e( 'Category', 'societypress' ); ?></th>
                         <th class="sp-w-100"><?php esc_html_e( 'Price', 'societypress' ); ?></th>
@@ -70267,45 +70390,45 @@ function sp_render_store_product_edit_page(): void {
 
             <table class="form-table">
                 <tr>
-                    <th><label for="sp-prod-title"><?php esc_html_e( 'Title', 'societypress' ); ?> <span class="sp-text-error" aria-hidden="true">*</span></label></th>
+                    <th scope="col"><label for="sp-prod-title"><?php esc_html_e( 'Title', 'societypress' ); ?> <span class="sp-text-error" aria-hidden="true">*</span></label></th>
                     <td><input type="text" name="title" id="sp-prod-title" value="<?php echo esc_attr( $product->title ?? '' ); ?>" required class="regular-text sp-full-width"></td>
                 </tr>
                 <tr>
-                    <th><label for="sp-prod-sku"><?php esc_html_e( 'SKU', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-prod-sku"><?php esc_html_e( 'SKU', 'societypress' ); ?></label></th>
                     <td>
                         <input type="text" name="sku" id="sp-prod-sku" value="<?php echo esc_attr( $product->sku ?? '' ); ?>" class="regular-text" maxlength="60">
                         <p class="description"><?php esc_html_e( 'Optional product code, useful for inventory tracking and packing slips.', 'societypress' ); ?></p>
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="sp-prod-cat"><?php esc_html_e( 'Store Category', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-prod-cat"><?php esc_html_e( 'Store Category', 'societypress' ); ?></label></th>
                     <td>
                         <input type="text" name="store_category" id="sp-prod-cat" value="<?php echo esc_attr( $product->store_category ?? '' ); ?>" class="regular-text" placeholder="<?php esc_attr_e( 'e.g., Apparel, Pins, Maps', 'societypress' ); ?>">
                         <p class="description"><?php esc_html_e( 'Groups items in the storefront sidebar. Use the same value across products to group them.', 'societypress' ); ?></p>
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="sp-prod-desc"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-prod-desc"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
                     <td>
                         <textarea name="description" id="sp-prod-desc" rows="5" class="large-text"><?php echo esc_textarea( $product->description ?? '' ); ?></textarea>
                         <p class="description"><?php esc_html_e( 'Marketing copy. Sell it.', 'societypress' ); ?></p>
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="sp-prod-price"><?php esc_html_e( 'Price', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-prod-price"><?php esc_html_e( 'Price', 'societypress' ); ?></label></th>
                     <td>
                         <input type="number" name="price" id="sp-prod-price" value="<?php echo esc_attr( number_format( (float) ( $product->price ?? 0 ), 2, '.', '' ) ); ?>" step="0.01" min="0" class="sp-w-150">
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="sp-prod-shipping"><?php esc_html_e( 'Shipping (per unit)', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-prod-shipping"><?php esc_html_e( 'Shipping (per unit)', 'societypress' ); ?></label></th>
                     <td>
                         <input type="number" name="shipping_fee" id="sp-prod-shipping" value="<?php echo esc_attr( number_format( (float) ( $product->shipping_fee ?? 0 ), 2, '.', '' ) ); ?>" step="0.01" min="0" class="sp-w-150">
                         <p class="description"><?php esc_html_e( 'Shipping fee per unit of this item. Multiplied by quantity at checkout. Set to 0 for no shipping (digital, pickup-only, or shipping-included pricing).', 'societypress' ); ?></p>
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="sp-prod-image"><?php esc_html_e( 'Image URL', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-prod-image"><?php esc_html_e( 'Image URL', 'societypress' ); ?></label></th>
                     <td>
                         <input type="url" name="image_url" id="sp-prod-image" value="<?php echo esc_attr( $product->image_url ?? '' ); ?>" class="large-text" placeholder="https://...">
                         <p class="description"><?php esc_html_e( 'URL of the product photo. Upload via the Files section and paste its URL here.', 'societypress' ); ?></p>
@@ -70315,21 +70438,21 @@ function sp_render_store_product_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="sp-prod-stock"><?php esc_html_e( 'Stock Quantity', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-prod-stock"><?php esc_html_e( 'Stock Quantity', 'societypress' ); ?></label></th>
                     <td>
                         <input type="number" name="stock_qty" id="sp-prod-stock" value="<?php echo $product && $product->stock_qty !== null ? esc_attr( (int) $product->stock_qty ) : ''; ?>" min="0" class="sp-w-150">
                         <p class="description"><?php esc_html_e( 'Leave blank for unlimited stock (the common case). Set a number to track inventory; when it hits zero the product shows as "Sold out". Each purchase decrements stock automatically.', 'societypress' ); ?></p>
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="sp-prod-sort"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-prod-sort"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label></th>
                     <td>
                         <input type="number" name="sort_order" id="sp-prod-sort" value="<?php echo esc_attr( (int) ( $product->sort_order ?? 0 ) ); ?>" min="0" class="sp-w-100">
                         <p class="description"><?php esc_html_e( 'Lower numbers appear first in the storefront. Items with the same sort order are alphabetized.', 'societypress' ); ?></p>
                     </td>
                 </tr>
                 <tr>
-                    <th><?php esc_html_e( 'Active', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Active', 'societypress' ); ?></th>
                     <td>
                         <label><input type="checkbox" name="active" value="1" <?php checked( $product ? (int) $product->active : 1 ); ?>> <?php esc_html_e( 'Show this product in the public store', 'societypress' ); ?></label>
                     </td>
@@ -70441,7 +70564,7 @@ function sp_render_orders_page(): void {
             <thead>
                 <tr>
                     <th style="width:70px;"><?php esc_html_e( 'Order', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Customer', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Customer', 'societypress' ); ?></th>
                     <th style="width:80px;text-align:center;"><?php esc_html_e( 'Items', 'societypress' ); ?></th>
                     <th class="sp-col-amount"><?php esc_html_e( 'Total', 'societypress' ); ?></th>
                     <th class="sp-w-100"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
@@ -70641,14 +70764,14 @@ function sp_render_order_detail_page(): void {
             <div class="postbox sp-order-detail-box">
                 <h3 class="sp-order-detail-box-heading"><?php esc_html_e( 'Order Information', 'societypress' ); ?></h3>
                 <table class="form-table sp-order-detail-info-table">
-                    <tr><th><?php esc_html_e( 'Status', 'societypress' ); ?></th><td><strong><?php echo esc_html( $status_labels[ $order->status ] ?? sp_localized_status( $order->status ) ); ?></strong></td></tr>
-                    <tr><th><?php esc_html_e( 'Date', 'societypress' ); ?></th><td><?php echo date_i18n( 'F j, Y g:i a', strtotime( $order->created_at ) ); ?></td></tr>
-                    <tr><th><?php esc_html_e( 'Payment', 'societypress' ); ?></th><td><?php echo esc_html( $order->payment_method ? sp_localized_status( $order->payment_method, 'payment_type' ) : __( 'N/A', 'societypress' ) ); ?></td></tr>
+                    <tr><th scope="col"><?php esc_html_e( 'Status', 'societypress' ); ?></th><td><strong><?php echo esc_html( $status_labels[ $order->status ] ?? sp_localized_status( $order->status ) ); ?></strong></td></tr>
+                    <tr><th scope="col"><?php esc_html_e( 'Date', 'societypress' ); ?></th><td><?php echo date_i18n( 'F j, Y g:i a', strtotime( $order->created_at ) ); ?></td></tr>
+                    <tr><th scope="col"><?php esc_html_e( 'Payment', 'societypress' ); ?></th><td><?php echo esc_html( $order->payment_method ? sp_localized_status( $order->payment_method, 'payment_type' ) : __( 'N/A', 'societypress' ) ); ?></td></tr>
                     <?php if ( $order->stripe_payment_intent ) : ?>
-                        <tr><th><?php esc_html_e( 'Stripe PI', 'societypress' ); ?></th><td><code class="sp-order-detail-stripe-pi"><?php echo esc_html( $order->stripe_payment_intent ); ?></code></td></tr>
+                        <tr><th scope="col"><?php esc_html_e( 'Stripe PI', 'societypress' ); ?></th><td><code class="sp-order-detail-stripe-pi"><?php echo esc_html( $order->stripe_payment_intent ); ?></code></td></tr>
                     <?php endif; ?>
-                    <tr><th><?php esc_html_e( 'Subtotal', 'societypress' ); ?></th><td><?php echo esc_html( sp_format_currency( $order->subtotal ) ); ?></td></tr>
-                    <tr><th><?php esc_html_e( 'Total', 'societypress' ); ?></th><td><strong><?php echo esc_html( sp_format_currency( $order->total ) ); ?></strong></td></tr>
+                    <tr><th scope="col"><?php esc_html_e( 'Subtotal', 'societypress' ); ?></th><td><?php echo esc_html( sp_format_currency( $order->subtotal ) ); ?></td></tr>
+                    <tr><th scope="col"><?php esc_html_e( 'Total', 'societypress' ); ?></th><td><strong><?php echo esc_html( sp_format_currency( $order->total ) ); ?></strong></td></tr>
                 </table>
             </div>
 
@@ -70656,13 +70779,13 @@ function sp_render_order_detail_page(): void {
             <div class="postbox sp-order-detail-box">
                 <h3 class="sp-order-detail-box-heading"><?php esc_html_e( 'Customer', 'societypress' ); ?></h3>
                 <table class="form-table sp-order-detail-info-table">
-                    <tr><th><?php esc_html_e( 'Name', 'societypress' ); ?></th><td><?php echo esc_html( $order->customer_name ?: '—' ); ?></td></tr>
-                    <tr><th><?php esc_html_e( 'Email', 'societypress' ); ?></th><td><?php echo esc_html( $order->customer_email ?: '—' ); ?></td></tr>
+                    <tr><th scope="col"><?php esc_html_e( 'Name', 'societypress' ); ?></th><td><?php echo esc_html( $order->customer_name ?: '—' ); ?></td></tr>
+                    <tr><th scope="col"><?php esc_html_e( 'Email', 'societypress' ); ?></th><td><?php echo esc_html( $order->customer_email ?: '—' ); ?></td></tr>
                     <?php if ( $order->customer_phone ) : ?>
-                        <tr><th><?php esc_html_e( 'Phone', 'societypress' ); ?></th><td><?php echo esc_html( $order->customer_phone ); ?></td></tr>
+                        <tr><th scope="col"><?php esc_html_e( 'Phone', 'societypress' ); ?></th><td><?php echo esc_html( $order->customer_phone ); ?></td></tr>
                     <?php endif; ?>
                     <?php if ( $order->user_id ) : ?>
-                        <tr><th><?php esc_html_e( 'Member', 'societypress' ); ?></th><td>
+                        <tr><th scope="col"><?php esc_html_e( 'Member', 'societypress' ); ?></th><td>
                             <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-member-edit&user_id=' . $order->user_id ) ); ?>">
                                 <?php esc_html_e( 'View Member Record', 'societypress' ); ?> &rarr;
                             </a>
@@ -70678,7 +70801,7 @@ function sp_render_order_detail_page(): void {
             <table class="wp-list-table widefat fixed striped">
                 <thead>
                     <tr>
-                        <th><?php esc_html_e( 'Item', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Item', 'societypress' ); ?></th>
                         <th class="sp-order-detail-th-price"><?php esc_html_e( 'Unit Price', 'societypress' ); ?></th>
                         <th class="sp-order-detail-th-qty"><?php esc_html_e( 'Qty', 'societypress' ); ?></th>
                         <th class="sp-order-detail-th-total"><?php esc_html_e( 'Line Total', 'societypress' ); ?></th>
@@ -70704,7 +70827,7 @@ function sp_render_order_detail_page(): void {
                 <?php wp_nonce_field( 'sp_update_order', 'sp_order_nonce' ); ?>
                 <table class="form-table">
                     <tr>
-                        <th><label for="order_status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="order_status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
                         <td>
                             <select name="order_status" id="order_status">
                                 <?php foreach ( [ 'pending', 'paid', 'shipped', 'completed', 'refunded' ] as $s ) : ?>
@@ -70716,7 +70839,7 @@ function sp_render_order_detail_page(): void {
                         </td>
                     </tr>
                     <tr>
-                        <th><label for="admin_note"><?php esc_html_e( 'Admin Note', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="admin_note"><?php esc_html_e( 'Admin Note', 'societypress' ); ?></label></th>
                         <td><textarea name="admin_note" id="admin_note" rows="3" class="large-text"><?php echo esc_textarea( $order->admin_note ?? '' ); ?></textarea></td>
                     </tr>
                 </table>
@@ -70902,9 +71025,24 @@ function sp_ajax_document_download(): void {
         wp_die( esc_html__( 'Document not found.', 'societypress' ), '', 404 );
     }
 
-    if ( $doc->access_level === 'members_only' && ! is_user_logged_in() ) {
-        auth_redirect();
-        exit;
+    if ( $doc->access_level === 'members_only' ) {
+        if ( ! is_user_logged_in() ) {
+            auth_redirect();
+            exit;
+        }
+        // WHY active-status check: WordPress login alone is not enough —
+        //      subscribers, contributors, suspended members, and approval-
+        //      pending users could all otherwise reach members-only files.
+        //      The save/delete handlers gate by capability; this gates by
+        //      member standing.
+        $member_status = $wpdb->get_var( $wpdb->prepare(
+            "SELECT status FROM {$wpdb->prefix}sp_members WHERE user_id = %d",
+            get_current_user_id()
+        ) );
+        $allowed_statuses = [ 'active', 'lifetime' ];
+        if ( ! in_array( $member_status, $allowed_statuses, true ) && ! current_user_can( 'sp_manage_content' ) ) {
+            wp_die( esc_html__( 'Active membership required to download this document.', 'societypress' ), '', 403 );
+        }
     }
 
     // Same-origin guard: only redirect to URLs on this site (file_url comes
@@ -71105,14 +71243,14 @@ function sp_render_documents_page(): void {
         <table class="widefat striped">
             <thead>
                 <tr>
-                    <th><?php esc_html_e( 'Title', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Category', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Date', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Type', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Size', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Access', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Status', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Title', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Category', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Date', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Type', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Size', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Access', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
                 </tr>
             </thead>
             <tbody>
@@ -71203,15 +71341,15 @@ function sp_render_document_categories_page(): void {
 
                     <table class="form-table">
                         <tr>
-                            <th><label for="category_name"><?php esc_html_e( 'Name', 'societypress' ); ?></label></th>
+                            <th scope="col"><label for="category_name"><?php esc_html_e( 'Name', 'societypress' ); ?></label></th>
                             <td><input type="text" id="category_name" name="category_name" value="<?php echo esc_attr( $edit_cat->name ?? '' ); ?>" class="regular-text" required></td>
                         </tr>
                         <tr>
-                            <th><label for="category_description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
+                            <th scope="col"><label for="category_description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
                             <td><textarea id="category_description" name="category_description" rows="3" class="large-text"><?php echo esc_textarea( $edit_cat->description ?? '' ); ?></textarea></td>
                         </tr>
                         <tr>
-                            <th><label for="category_sort_order"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label></th>
+                            <th scope="col"><label for="category_sort_order"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label></th>
                             <td><input type="number" id="category_sort_order" name="category_sort_order" value="<?php echo (int) ( $edit_cat->sort_order ?? 0 ); ?>" min="0" class="sp-w-80"></td>
                         </tr>
                     </table>
@@ -71229,11 +71367,11 @@ function sp_render_document_categories_page(): void {
                 <table class="widefat striped">
                     <thead>
                         <tr>
-                            <th><?php esc_html_e( 'Name', 'societypress' ); ?></th>
-                            <th><?php esc_html_e( 'URL Name', 'societypress' ); ?></th>
-                            <th><?php esc_html_e( 'Documents', 'societypress' ); ?></th>
-                            <th><?php esc_html_e( 'Order', 'societypress' ); ?></th>
-                            <th><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Name', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'URL Name', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Documents', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Order', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -71306,15 +71444,15 @@ function sp_render_document_edit_page(): void {
 
             <table class="form-table">
                 <tr>
-                    <th><label for="document_title"><?php esc_html_e( 'Title', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="document_title"><?php esc_html_e( 'Title', 'societypress' ); ?></label></th>
                     <td><input type="text" id="document_title" name="document_title" value="<?php echo esc_attr( $doc->title ?? '' ); ?>" class="regular-text" style="width:100%; max-width:600px;" required></td>
                 </tr>
                 <tr>
-                    <th><label for="document_description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="document_description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
                     <td><textarea id="document_description" name="document_description" rows="3" class="large-text" style="max-width:600px;"><?php echo esc_textarea( $doc->description ?? '' ); ?></textarea></td>
                 </tr>
                 <tr>
-                    <th><label for="document_category"><?php esc_html_e( 'Category', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="document_category"><?php esc_html_e( 'Category', 'societypress' ); ?></label></th>
                     <td>
                         <select id="document_category" name="document_category">
                             <option value=""><?php esc_html_e( '— None —', 'societypress' ); ?></option>
@@ -71325,11 +71463,11 @@ function sp_render_document_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="document_date"><?php esc_html_e( 'Document Date', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="document_date"><?php esc_html_e( 'Document Date', 'societypress' ); ?></label></th>
                     <td><input type="date" id="document_date" name="document_date" value="<?php echo esc_attr( $doc->document_date ?? '' ); ?>"></td>
                 </tr>
                 <tr>
-                    <th><?php esc_html_e( 'File', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'File', 'societypress' ); ?></th>
                     <td>
                         <input type="hidden" id="document_file_url" name="document_file_url" value="<?php echo esc_attr( $doc->file_url ?? '' ); ?>">
                         <input type="hidden" id="document_file_name" name="document_file_name" value="<?php echo esc_attr( $doc->file_name ?? '' ); ?>">
@@ -71348,7 +71486,7 @@ function sp_render_document_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="document_access"><?php esc_html_e( 'Access Level', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="document_access"><?php esc_html_e( 'Access Level', 'societypress' ); ?></label></th>
                     <td>
                         <select id="document_access" name="document_access">
                             <option value="members_only" <?php selected( $doc->access_level ?? 'members_only', 'members_only' ); ?>><?php esc_html_e( 'Members Only', 'societypress' ); ?></option>
@@ -71357,7 +71495,7 @@ function sp_render_document_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="document_status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="document_status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
                     <td>
                         <select id="document_status" name="document_status">
                             <option value="published" <?php selected( $doc->status ?? 'published', 'published' ); ?>><?php esc_html_e( 'Published', 'societypress' ); ?></option>
@@ -71366,7 +71504,7 @@ function sp_render_document_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="document_sort_order"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="document_sort_order"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label></th>
                     <td><input type="number" id="document_sort_order" name="document_sort_order" value="<?php echo (int) ( $doc->sort_order ?? 0 ); ?>" min="0" class="sp-w-80"></td>
                 </tr>
             </table>
@@ -71619,7 +71757,7 @@ function sp_render_document_bulk_upload_page(): void {
             <!-- Shared settings -->
             <table class="form-table sp-bulk-upload-settings-table">
                 <tr>
-                    <th><label for="bulk_category"><?php esc_html_e( 'Category', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="bulk_category"><?php esc_html_e( 'Category', 'societypress' ); ?></label></th>
                     <td>
                         <select id="bulk_category" name="bulk_category">
                             <option value=""><?php esc_html_e( '— None —', 'societypress' ); ?></option>
@@ -71630,7 +71768,7 @@ function sp_render_document_bulk_upload_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="bulk_access"><?php esc_html_e( 'Access Level', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="bulk_access"><?php esc_html_e( 'Access Level', 'societypress' ); ?></label></th>
                     <td>
                         <select id="bulk_access" name="bulk_access">
                             <option value="members_only"><?php esc_html_e( 'Members Only', 'societypress' ); ?></option>
@@ -71639,7 +71777,7 @@ function sp_render_document_bulk_upload_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="bulk_status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="bulk_status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
                     <td>
                         <select id="bulk_status" name="bulk_status">
                             <option value="published"><?php esc_html_e( 'Published', 'societypress' ); ?></option>
@@ -71661,7 +71799,7 @@ function sp_render_document_bulk_upload_page(): void {
                     <thead>
                         <tr>
                             <th class="sp-bulk-upload-col-icon"></th>
-                            <th><?php esc_html_e( 'Title', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Title', 'societypress' ); ?></th>
                             <th class="sp-bulk-upload-col-date"><?php esc_html_e( 'Date', 'societypress' ); ?></th>
                             <th class="sp-bulk-upload-col-type"><?php esc_html_e( 'Type', 'societypress' ); ?></th>
                             <th class="sp-bulk-upload-col-size"><?php esc_html_e( 'Size', 'societypress' ); ?></th>
@@ -71822,7 +71960,7 @@ function sp_render_document_bulk_upload_page(): void {
                 '<td><input type="date" name="bulk_date[]" value="' + detectDate(attachment.filename) + '" class="sp-full-width"></td>' +
                 '<td>' + escHtml(ext) + '</td>' +
                 '<td>' + formatSize(attachment.filesizeInBytes) + '</td>' +
-                '<td><button type="button" class="button sp-bulk-remove sp-text-danger" title="<?php echo esc_js( __( 'Remove', 'societypress' ) ); ?>">&times;</button></td>';
+                '<td><button type="button" class="button sp-bulk-remove sp-text-danger" aria-label="<?php echo esc_js( __( 'Remove file', 'societypress' ) ); ?>">&times;</button></td>';
 
             return tr;
         }
@@ -72703,7 +72841,7 @@ function sp_render_external_calendars_page(): void {
 
         /* Empty-state message when no feeds exist */
         .sp-ext-cal-empty-msg {
-            color: #787c82;
+            color: #6d7175;
             padding: 20px 0;
         }
     </style>
@@ -74371,15 +74509,15 @@ function sp_render_ballot_edit_page(): void {
             <h2><?php esc_html_e( 'Ballot Details', 'societypress' ); ?></h2>
             <table class="form-table">
                 <tr>
-                    <th><label for="sp-ballot-title"><?php esc_html_e( 'Title', 'societypress' ); ?> <span class="sp-text-error" aria-hidden="true">*</span></label></th>
+                    <th scope="col"><label for="sp-ballot-title"><?php esc_html_e( 'Title', 'societypress' ); ?> <span class="sp-text-error" aria-hidden="true">*</span></label></th>
                     <td><input type="text" name="ballot_title" id="sp-ballot-title" value="<?php echo esc_attr( $ballot->title ?? '' ); ?>" required class="sp-full-width"></td>
                 </tr>
                 <tr>
-                    <th><label for="sp-ballot-desc"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-ballot-desc"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
                     <td><textarea name="ballot_description" id="sp-ballot-desc" rows="4" class="sp-full-width"><?php echo esc_textarea( $ballot->description ?? '' ); ?></textarea></td>
                 </tr>
                 <tr>
-                    <th><label for="sp-ballot-type"><?php esc_html_e( 'Ballot Type', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-ballot-type"><?php esc_html_e( 'Ballot Type', 'societypress' ); ?></label></th>
                     <td>
                         <select name="ballot_type" id="sp-ballot-type">
                             <option value="election" <?php selected( $ballot->ballot_type ?? 'election', 'election' ); ?>><?php esc_html_e( 'Election', 'societypress' ); ?></option>
@@ -74390,7 +74528,7 @@ function sp_render_ballot_edit_page(): void {
                 </tr>
                 <?php if ( $ballot ) : ?>
                 <tr>
-                    <th><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
                     <td>
                         <?php
                         $status_colors = [ 'draft' => '#646970', 'open' => '#0a6b2e', 'closed' => '#2271b1', 'cancelled' => '#b32d2e' ];
@@ -74409,7 +74547,7 @@ function sp_render_ballot_edit_page(): void {
             <h2><?php esc_html_e( 'Eligibility', 'societypress' ); ?></h2>
             <table class="form-table">
                 <tr>
-                    <th><?php esc_html_e( 'Who Can Vote', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Who Can Vote', 'societypress' ); ?></th>
                     <td>
                         <label>
                             <input type="radio" name="eligibility_type" value="all_active"
@@ -74445,14 +74583,14 @@ function sp_render_ballot_edit_page(): void {
             <h2><?php esc_html_e( 'Voting Period', 'societypress' ); ?></h2>
             <table class="form-table">
                 <tr>
-                    <th><label><?php esc_html_e( 'Start', 'societypress' ); ?></label></th>
+                    <th scope="col"><label><?php esc_html_e( 'Start', 'societypress' ); ?></label></th>
                     <td>
                         <input type="date" name="voting_start_date" value="<?php echo esc_attr( $ballot && $ballot->voting_start ? wp_date( 'Y-m-d', strtotime( $ballot->voting_start ) ) : '' ); ?>">
                         <input type="time" name="voting_start_time" value="<?php echo esc_attr( $ballot && $ballot->voting_start ? wp_date( 'H:i', strtotime( $ballot->voting_start ) ) : '' ); ?>">
                     </td>
                 </tr>
                 <tr>
-                    <th><label><?php esc_html_e( 'End', 'societypress' ); ?></label></th>
+                    <th scope="col"><label><?php esc_html_e( 'End', 'societypress' ); ?></label></th>
                     <td>
                         <input type="date" name="voting_end_date" value="<?php echo esc_attr( $ballot && $ballot->voting_end ? wp_date( 'Y-m-d', strtotime( $ballot->voting_end ) ) : '' ); ?>">
                         <input type="time" name="voting_end_time" value="<?php echo esc_attr( $ballot && $ballot->voting_end ? wp_date( 'H:i', strtotime( $ballot->voting_end ) ) : '' ); ?>">
@@ -74464,7 +74602,7 @@ function sp_render_ballot_edit_page(): void {
             <h2><?php esc_html_e( 'Options', 'societypress' ); ?></h2>
             <table class="form-table">
                 <tr>
-                    <th><?php esc_html_e( 'Allow Abstain', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Allow Abstain', 'societypress' ); ?></th>
                     <td>
                         <label>
                             <input type="checkbox" name="allow_abstain" value="1"
@@ -74474,7 +74612,7 @@ function sp_render_ballot_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="sp-results-vis"><?php esc_html_e( 'Results Visibility', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="sp-results-vis"><?php esc_html_e( 'Results Visibility', 'societypress' ); ?></label></th>
                     <td>
                         <select name="results_visibility" id="sp-results-vis">
                             <option value="after_close" <?php selected( $ballot->results_visibility ?? 'after_close', 'after_close' ); ?>><?php esc_html_e( 'After Voting Closes', 'societypress' ); ?></option>
@@ -76181,51 +76319,51 @@ function sp_render_lineage_programs_page(): void {
 
                     <table class="form-table">
                         <tr>
-                            <th><label for="lp_name"><?php esc_html_e( 'Name', 'societypress' ); ?></label></th>
+                            <th scope="col"><label for="lp_name"><?php esc_html_e( 'Name', 'societypress' ); ?></label></th>
                             <td><input type="text" id="lp_name" name="name" value="<?php echo esc_attr( $editing->name ?? '' ); ?>" class="regular-text" required>
                                 <p class="description"><?php esc_html_e( 'e.g. "First Families of Sample County County"', 'societypress' ); ?></p></td>
                         </tr>
                         <tr>
-                            <th><label for="lp_slug"><?php esc_html_e( 'URL Name', 'societypress' ); ?></label></th>
+                            <th scope="col"><label for="lp_slug"><?php esc_html_e( 'URL Name', 'societypress' ); ?></label></th>
                             <td><input type="text" id="lp_slug" name="slug" value="<?php echo esc_attr( $editing->slug ?? '' ); ?>" class="regular-text">
                                 <p class="description"><?php esc_html_e( 'URL-safe identifier. Auto-generated if left blank.', 'societypress' ); ?></p></td>
                         </tr>
                         <tr>
-                            <th><label for="lp_desc"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
+                            <th scope="col"><label for="lp_desc"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
                             <td><textarea id="lp_desc" name="description" rows="3" class="large-text"><?php echo esc_textarea( $editing->description ?? '' ); ?></textarea>
                                 <p class="description"><?php esc_html_e( 'Public-facing summary shown on the program page.', 'societypress' ); ?></p></td>
                         </tr>
                         <tr>
-                            <th><label for="lp_req"><?php esc_html_e( 'Requirements', 'societypress' ); ?></label></th>
+                            <th scope="col"><label for="lp_req"><?php esc_html_e( 'Requirements', 'societypress' ); ?></label></th>
                             <td><textarea id="lp_req" name="requirements" rows="6" class="large-text"><?php echo esc_textarea( $editing->requirements ?? '' ); ?></textarea>
                                 <p class="description"><?php esc_html_e( 'What documentation must the applicant provide? Markdown is supported.', 'societypress' ); ?></p></td>
                         </tr>
                         <tr>
-                            <th><label for="lp_cutoff"><?php esc_html_e( 'Cutoff Year', 'societypress' ); ?></label></th>
+                            <th scope="col"><label for="lp_cutoff"><?php esc_html_e( 'Cutoff Year', 'societypress' ); ?></label></th>
                             <td><input type="number" id="lp_cutoff" name="cutoff_year" value="<?php echo esc_attr( $editing->cutoff_year ?? '' ); ?>" min="1500" max="2100" class="small-text">
                                 <p class="description"><?php esc_html_e( 'e.g. 1850 — ancestor must have been in the area by this year.', 'societypress' ); ?></p></td>
                         </tr>
                         <tr>
-                            <th><label for="lp_scope"><?php esc_html_e( 'Geographic Scope', 'societypress' ); ?></label></th>
+                            <th scope="col"><label for="lp_scope"><?php esc_html_e( 'Geographic Scope', 'societypress' ); ?></label></th>
                             <td><input type="text" id="lp_scope" name="geographic_scope" value="<?php echo esc_attr( $editing->geographic_scope ?? '' ); ?>" class="regular-text">
                                 <p class="description"><?php esc_html_e( 'e.g. "Sample County, Texas". Leave blank if not geographic.', 'societypress' ); ?></p></td>
                         </tr>
                         <tr>
-                            <th><label for="lp_fee"><?php esc_html_e( 'Application Fee', 'societypress' ); ?></label></th>
+                            <th scope="col"><label for="lp_fee"><?php esc_html_e( 'Application Fee', 'societypress' ); ?></label></th>
                             <td><input type="number" id="lp_fee" name="application_fee" value="<?php echo esc_attr( number_format( (float) ( $editing->application_fee ?? 0 ), 2, '.', '' ) ); ?>" min="0" step="0.01" class="small-text">
                                 <p class="description"><?php esc_html_e( 'Set to 0 for no fee. If > 0, applicant pays before the application is submitted for review.', 'societypress' ); ?></p></td>
                         </tr>
                         <tr>
-                            <th><label for="lp_badge"><?php esc_html_e( 'Badge Label', 'societypress' ); ?></label></th>
+                            <th scope="col"><label for="lp_badge"><?php esc_html_e( 'Badge Label', 'societypress' ); ?></label></th>
                             <td><input type="text" id="lp_badge" name="badge_label" value="<?php echo esc_attr( $editing->badge_label ?? '' ); ?>" class="regular-text" maxlength="100">
                                 <p class="description"><?php esc_html_e( 'Short label shown on approved members\' profiles, e.g. "First Families".', 'societypress' ); ?></p></td>
                         </tr>
                         <tr>
-                            <th><label for="lp_color"><?php esc_html_e( 'Badge Color', 'societypress' ); ?></label></th>
+                            <th scope="col"><label for="lp_color"><?php esc_html_e( 'Badge Color', 'societypress' ); ?></label></th>
                             <td><input type="color" id="lp_color" name="badge_color" value="<?php echo esc_attr( $editing->badge_color ?? '#0d1f3c' ); ?>"></td>
                         </tr>
                         <tr>
-                            <th><?php esc_html_e( 'Options', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Options', 'societypress' ); ?></th>
                             <td>
                                 <label><input type="checkbox" name="active" value="1" <?php checked( ! $editing || (int) $editing->active === 1 ); ?>> <?php esc_html_e( 'Active', 'societypress' ); ?></label><br>
                                 <label><input type="checkbox" name="accepts_applications" value="1" <?php checked( ! $editing || (int) $editing->accepts_applications === 1 ); ?>> <?php esc_html_e( 'Accepting new applications', 'societypress' ); ?></label><br>
@@ -76233,7 +76371,7 @@ function sp_render_lineage_programs_page(): void {
                             </td>
                         </tr>
                         <tr>
-                            <th><label for="lp_sort"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label></th>
+                            <th scope="col"><label for="lp_sort"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label></th>
                             <td><input type="number" id="lp_sort" name="sort_order" value="<?php echo (int) ( $editing->sort_order ?? 0 ); ?>" min="0" class="small-text"></td>
                         </tr>
                     </table>
@@ -76251,12 +76389,12 @@ function sp_render_lineage_programs_page(): void {
                 <table class="widefat striped">
                     <thead>
                         <tr>
-                            <th><?php esc_html_e( 'Name', 'societypress' ); ?></th>
-                            <th><?php esc_html_e( 'Cutoff', 'societypress' ); ?></th>
-                            <th><?php esc_html_e( 'Fee', 'societypress' ); ?></th>
-                            <th><?php esc_html_e( 'Applications', 'societypress' ); ?></th>
-                            <th><?php esc_html_e( 'Status', 'societypress' ); ?></th>
-                            <th><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Name', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Cutoff', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Fee', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Applications', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -76436,13 +76574,13 @@ function sp_render_lineage_applications_page(): void {
         <table class="widefat striped">
             <thead>
                 <tr>
-                    <th><?php esc_html_e( 'Submitted', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Applicant', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Program', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Ancestor', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Status', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Cert #', 'societypress' ); ?></th>
-                    <th></th>
+                    <th scope="col"><?php esc_html_e( 'Submitted', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Applicant', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Program', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Ancestor', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Cert #', 'societypress' ); ?></th>
+                    <th scope="col"></th>
                 </tr>
             </thead>
             <tbody>
@@ -76545,7 +76683,7 @@ function sp_render_lineage_application_edit_page(): void {
                     <div class="inside">
                         <table class="form-table sp-mt-only-0">
                             <tr>
-                                <th><?php esc_html_e( 'Applicant', 'societypress' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Applicant', 'societypress' ); ?></th>
                                 <td>
                                     <?php echo esc_html( $applicant ? $applicant->display_name : __( '(unknown user)', 'societypress' ) ); ?>
                                     <?php if ( $applicant && $applicant->user_email ) : ?>
@@ -76554,11 +76692,11 @@ function sp_render_lineage_application_edit_page(): void {
                                 </td>
                             </tr>
                             <tr>
-                                <th><?php esc_html_e( 'Relationship to ancestor', 'societypress' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Relationship to ancestor', 'societypress' ); ?></th>
                                 <td><?php echo esc_html( $app->relationship ?: '—' ); ?></td>
                             </tr>
                             <tr>
-                                <th><?php esc_html_e( 'Ancestor', 'societypress' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Ancestor', 'societypress' ); ?></th>
                                 <td>
                                     <strong><?php echo esc_html( trim( $app->ancestor_first_name . ' ' . $app->ancestor_middle_name . ' ' . $app->ancestor_last_name ) ?: __( '(unnamed)', 'societypress' ) ); ?></strong>
                                     <?php if ( $app->ancestor_maiden_name ) : ?>
@@ -76567,14 +76705,14 @@ function sp_render_lineage_application_edit_page(): void {
                                 </td>
                             </tr>
                             <tr>
-                                <th><?php esc_html_e( 'Birth', 'societypress' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Birth', 'societypress' ); ?></th>
                                 <td>
                                     <?php echo esc_html( $app->ancestor_birth_date ?: '—' ); ?>
                                     <?php if ( $app->ancestor_birth_place ) : ?> — <?php echo esc_html( $app->ancestor_birth_place ); ?><?php endif; ?>
                                 </td>
                             </tr>
                             <tr>
-                                <th><?php esc_html_e( 'Death', 'societypress' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Death', 'societypress' ); ?></th>
                                 <td>
                                     <?php echo esc_html( $app->ancestor_death_date ?: '—' ); ?>
                                     <?php if ( $app->ancestor_death_place ) : ?> — <?php echo esc_html( $app->ancestor_death_place ); ?><?php endif; ?>
@@ -76582,7 +76720,7 @@ function sp_render_lineage_application_edit_page(): void {
                             </tr>
                             <?php if ( $app->cutoff_year ) : ?>
                             <tr>
-                                <th><?php esc_html_e( 'Arrival', 'societypress' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Arrival', 'societypress' ); ?></th>
                                 <td>
                                     <?php echo $app->arrival_year ? esc_html( (int) $app->arrival_year ) : '—'; ?>
                                     <?php if ( $app->cutoff_year && $app->arrival_year ) : ?>
@@ -76838,13 +76976,13 @@ function sp_render_lineage_roster( array $args = [] ): string {
                 <table class="sp-lineage-roster-table">
                     <thead>
                         <tr>
-                            <th><?php esc_html_e( 'Ancestor', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Ancestor', 'societypress' ); ?></th>
                             <?php if ( $args['show_dates'] ) : ?>
-                                <th><?php esc_html_e( 'Lifespan', 'societypress' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Lifespan', 'societypress' ); ?></th>
                             <?php endif; ?>
-                            <th><?php esc_html_e( 'Member', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Member', 'societypress' ); ?></th>
                             <?php if ( $args['show_certificate'] ) : ?>
-                                <th><?php esc_html_e( 'Certificate', 'societypress' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Certificate', 'societypress' ); ?></th>
                             <?php endif; ?>
                         </tr>
                     </thead>
@@ -77462,11 +77600,11 @@ add_shortcode( 'sp_lineage_my_applications', function ( $atts ) {
             <table>
                 <thead>
                     <tr>
-                        <th><?php esc_html_e( 'Program', 'societypress' ); ?></th>
-                        <th><?php esc_html_e( 'Ancestor', 'societypress' ); ?></th>
-                        <th><?php esc_html_e( 'Status', 'societypress' ); ?></th>
-                        <th><?php esc_html_e( 'Submitted', 'societypress' ); ?></th>
-                        <th></th>
+                        <th scope="col"><?php esc_html_e( 'Program', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Ancestor', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Submitted', 'societypress' ); ?></th>
+                        <th scope="col"></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -79282,19 +79420,19 @@ function sp_render_database_subscriptions_page(): void {
 
                     <table class="form-table">
                         <tr>
-                            <th><label for="dbs-name"><?php esc_html_e( 'Name', 'societypress' ); ?></label></th>
+                            <th scope="col"><label for="dbs-name"><?php esc_html_e( 'Name', 'societypress' ); ?></label></th>
                             <td><input type="text" id="dbs-name" name="name" value="<?php echo esc_attr( $editing['name'] ?? '' ); ?>" class="regular-text" required></td>
                         </tr>
                         <tr>
-                            <th><label for="dbs-url"><?php esc_html_e( 'Login URL', 'societypress' ); ?></label></th>
+                            <th scope="col"><label for="dbs-url"><?php esc_html_e( 'Login URL', 'societypress' ); ?></label></th>
                             <td><input type="url" id="dbs-url" name="login_url" value="<?php echo esc_attr( $editing['login_url'] ?? '' ); ?>" class="regular-text" required placeholder="https://www.ancestry.com/account/signin"></td>
                         </tr>
                         <tr>
-                            <th><label for="dbs-desc"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
+                            <th scope="col"><label for="dbs-desc"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
                             <td><textarea id="dbs-desc" name="description" rows="3" class="large-text"><?php echo esc_textarea( $editing['description'] ?? '' ); ?></textarea></td>
                         </tr>
                         <tr>
-                            <th><?php esc_html_e( 'Access', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Access', 'societypress' ); ?></th>
                             <td><label><input type="checkbox" name="members_only" value="1" <?php checked( ! empty( $editing['members_only'] ) ); ?>> <?php esc_html_e( 'Members only', 'societypress' ); ?></label></td>
                         </tr>
                     </table>
@@ -79310,10 +79448,10 @@ function sp_render_database_subscriptions_page(): void {
                 <table class="widefat striped">
                     <thead>
                         <tr>
-                            <th><?php esc_html_e( 'Name', 'societypress' ); ?></th>
-                            <th><?php esc_html_e( 'URL', 'societypress' ); ?></th>
-                            <th><?php esc_html_e( 'Members only', 'societypress' ); ?></th>
-                            <th></th>
+                            <th scope="col"><?php esc_html_e( 'Name', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'URL', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Members only', 'societypress' ); ?></th>
+                            <th scope="col"></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -79482,16 +79620,16 @@ function sp_render_research_guides_page(): void {
 
                 <table class="form-table">
                     <tr>
-                        <th><label for="rg-title"><?php esc_html_e( 'Title', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="rg-title"><?php esc_html_e( 'Title', 'societypress' ); ?></label></th>
                         <td><input type="text" id="rg-title" name="title" value="<?php echo esc_attr( $editing['title'] ?? '' ); ?>" class="regular-text" required></td>
                     </tr>
                     <tr>
-                        <th><label for="rg-slug"><?php esc_html_e( 'URL Name', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="rg-slug"><?php esc_html_e( 'URL Name', 'societypress' ); ?></label></th>
                         <td><input type="text" id="rg-slug" name="slug" value="<?php echo esc_attr( $edit_slug ); ?>" class="regular-text" required>
                             <p class="description"><?php esc_html_e( 'URL-safe identifier used by the widget to look up this guide. e.g. "researching-sample-county".', 'societypress' ); ?></p></td>
                     </tr>
                     <tr>
-                        <th><label for="rg-intro"><?php esc_html_e( 'Intro', 'societypress' ); ?></label></th>
+                        <th scope="col"><label for="rg-intro"><?php esc_html_e( 'Intro', 'societypress' ); ?></label></th>
                         <td><textarea id="rg-intro" name="intro" rows="3" class="large-text"><?php echo esc_textarea( $editing['intro'] ?? '' ); ?></textarea></td>
                     </tr>
                 </table>
@@ -79637,10 +79775,10 @@ function sp_render_research_guides_page(): void {
         <table class="widefat striped" style="margin-top:20px;">
             <thead>
                 <tr>
-                    <th><?php esc_html_e( 'Title', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'URL Name', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Categories', 'societypress' ); ?></th>
-                    <th></th>
+                    <th scope="col"><?php esc_html_e( 'Title', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'URL Name', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Categories', 'societypress' ); ?></th>
+                    <th scope="col"></th>
                 </tr>
             </thead>
             <tbody>
@@ -81975,13 +82113,13 @@ function sp_render_research_cases_page(): void {
         <table class="widefat striped">
             <thead>
                 <tr>
-                    <th><?php esc_html_e( 'Title', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Requester', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Researcher', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Status', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Paid', 'societypress' ); ?></th>
-                    <th><?php esc_html_e( 'Submitted', 'societypress' ); ?></th>
-                    <th></th>
+                    <th scope="col"><?php esc_html_e( 'Title', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Requester', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Researcher', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Paid', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Submitted', 'societypress' ); ?></th>
+                    <th scope="col"></th>
                 </tr>
             </thead>
             <tbody>
@@ -82096,22 +82234,22 @@ function sp_render_research_case_edit_page(): void {
                     <h2 class="hndle sp-hndle-padded"><?php echo esc_html( $case->title ); ?></h2>
                     <div class="inside">
                         <table class="form-table sp-mt-only-0">
-                            <tr><th><?php esc_html_e( 'Requester', 'societypress' ); ?></th>
+                            <tr><th scope="col"><?php esc_html_e( 'Requester', 'societypress' ); ?></th>
                                 <td><?php echo esc_html( $case->requester_name ); ?>
                                     <?php if ( $case->requester_email ) : ?><br><a href="mailto:<?php echo esc_attr( $case->requester_email ); ?>"><?php echo esc_html( $case->requester_email ); ?></a><?php endif; ?>
                                     <?php if ( $case->requester_phone ) : ?><br><?php echo esc_html( $case->requester_phone ); ?><?php endif; ?>
                                 </td></tr>
-                            <tr><th><?php esc_html_e( 'Surname / ancestor', 'societypress' ); ?></th>
+                            <tr><th scope="col"><?php esc_html_e( 'Surname / ancestor', 'societypress' ); ?></th>
                                 <td><?php echo esc_html( $case->surname ?: '—' ); ?>
                                     <?php if ( $case->ancestor_name ) : ?> · <?php echo esc_html( $case->ancestor_name ); ?><?php endif; ?>
                                 </td></tr>
-                            <tr><th><?php esc_html_e( 'Time period', 'societypress' ); ?></th>
+                            <tr><th scope="col"><?php esc_html_e( 'Time period', 'societypress' ); ?></th>
                                 <td><?php echo esc_html( $case->time_period ?: '—' ); ?></td></tr>
-                            <tr><th><?php esc_html_e( 'Location', 'societypress' ); ?></th>
+                            <tr><th scope="col"><?php esc_html_e( 'Location', 'societypress' ); ?></th>
                                 <td><?php echo esc_html( $case->location ?: '—' ); ?></td></tr>
-                            <tr><th><?php esc_html_e( 'Submitted', 'societypress' ); ?></th>
+                            <tr><th scope="col"><?php esc_html_e( 'Submitted', 'societypress' ); ?></th>
                                 <td><?php echo esc_html( mysql2date( 'M j, Y g:i a', $case->created_at ) ); ?></td></tr>
-                            <tr><th><?php esc_html_e( 'Source Help Request', 'societypress' ); ?></th>
+                            <tr><th scope="col"><?php esc_html_e( 'Source Help Request', 'societypress' ); ?></th>
                                 <td><?php echo $case->source_help_request_id
                                     ? '<a href="' . esc_url( admin_url( 'admin.php?page=sp-help-requests&action=view&request_id=' . (int) $case->source_help_request_id ) ) . '">#' . (int) $case->source_help_request_id . '</a>'
                                     : '—'; ?></td></tr>
@@ -82139,7 +82277,7 @@ function sp_render_research_case_edit_page(): void {
                     <div class="inside">
                         <?php if ( ! empty( $hours_logged ) ) : ?>
                             <table class="widefat striped" style="margin-bottom:12px;">
-                                <thead><tr><th><?php esc_html_e( 'Date', 'societypress' ); ?></th><th><?php esc_html_e( 'Researcher', 'societypress' ); ?></th><th><?php esc_html_e( 'Hours', 'societypress' ); ?></th><th><?php esc_html_e( 'Notes', 'societypress' ); ?></th></tr></thead>
+                                <thead><tr><th scope="col"><?php esc_html_e( 'Date', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Researcher', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Hours', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Notes', 'societypress' ); ?></th></tr></thead>
                                 <tbody>
                                     <?php foreach ( $hours_logged as $h ) : ?>
                                         <tr>
@@ -82173,7 +82311,7 @@ function sp_render_research_case_edit_page(): void {
                     <h2 class="hndle sp-hndle-padded"><?php esc_html_e( 'Invoices', 'societypress' ); ?> (<?php echo count( $invoices ); ?>)</h2>
                     <div class="inside">
                         <table class="widefat striped">
-                            <thead><tr><th><?php esc_html_e( 'Date', 'societypress' ); ?></th><th><?php esc_html_e( 'Hours', 'societypress' ); ?></th><th><?php esc_html_e( 'Amount', 'societypress' ); ?></th><th><?php esc_html_e( 'Status', 'societypress' ); ?></th></tr></thead>
+                            <thead><tr><th scope="col"><?php esc_html_e( 'Date', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Hours', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Amount', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Status', 'societypress' ); ?></th></tr></thead>
                             <tbody>
                                 <?php foreach ( $invoices as $inv ) : ?>
                                     <tr>
@@ -84276,11 +84414,11 @@ function sp_render_theme_presets_page(): void {
                             <?php wp_nonce_field( 'sp_theme_preset_export' ); ?>
                             <table class="form-table">
                                 <tr>
-                                    <th><label for="preset_name"><?php esc_html_e( 'Name', 'societypress' ); ?></label></th>
+                                    <th scope="col"><label for="preset_name"><?php esc_html_e( 'Name', 'societypress' ); ?></label></th>
                                     <td><input type="text" id="preset_name" name="preset_name" class="regular-text" value="<?php echo esc_attr( $org . ' theme' ); ?>"></td>
                                 </tr>
                                 <tr>
-                                    <th><label for="preset_description"><?php esc_html_e( 'Description (optional)', 'societypress' ); ?></label></th>
+                                    <th scope="col"><label for="preset_description"><?php esc_html_e( 'Description (optional)', 'societypress' ); ?></label></th>
                                     <td><textarea id="preset_description" name="preset_description" rows="3" class="large-text" placeholder="<?php esc_attr_e( 'A short note for whoever imports this — e.g. "Navy + gold palette, Garamond headings, comfortable spacing for older readers."', 'societypress' ); ?>"></textarea></td>
                                 </tr>
                             </table>
@@ -84320,7 +84458,7 @@ function sp_render_theme_presets_page(): void {
                             <?php wp_nonce_field( 'sp_theme_preset_import' ); ?>
                             <table class="form-table">
                                 <tr>
-                                    <th><label for="preset_file"><?php esc_html_e( 'Preset file', 'societypress' ); ?></label></th>
+                                    <th scope="col"><label for="preset_file"><?php esc_html_e( 'Preset file', 'societypress' ); ?></label></th>
                                     <td><input type="file" id="preset_file" name="preset_file" accept=".json,application/json" required></td>
                                 </tr>
                             </table>
@@ -84963,16 +85101,16 @@ function sp_render_help_tags_admin_page(): void {
                             <?php wp_nonce_field( 'sp_help_tags' ); ?>
                             <table class="form-table">
                                 <tr>
-                                    <th><label for="from_tag"><?php esc_html_e( 'Source tag', 'societypress' ); ?></label></th>
+                                    <th scope="col"><label for="from_tag"><?php esc_html_e( 'Source tag', 'societypress' ); ?></label></th>
                                     <td><input type="text" id="from_tag" name="from_tag" class="regular-text" placeholder="<?php esc_attr_e( 'sample co.', 'societypress' ); ?>"></td>
                                 </tr>
                                 <tr>
-                                    <th><label for="to_tag"><?php esc_html_e( 'Destination tag', 'societypress' ); ?></label></th>
+                                    <th scope="col"><label for="to_tag"><?php esc_html_e( 'Destination tag', 'societypress' ); ?></label></th>
                                     <td><input type="text" id="to_tag" name="to_tag" class="regular-text" placeholder="<?php esc_attr_e( 'sample county', 'societypress' ); ?>">
                                         <p class="description"><?php esc_html_e( 'Required for Rename and Merge. Leave blank for Delete.', 'societypress' ); ?></p></td>
                                 </tr>
                                 <tr>
-                                    <th><?php esc_html_e( 'Action', 'societypress' ); ?></th>
+                                    <th scope="col"><?php esc_html_e( 'Action', 'societypress' ); ?></th>
                                     <td>
                                         <button type="submit" name="sp_tags_action" value="rename" class="button button-primary"><?php esc_html_e( 'Rename', 'societypress' ); ?></button>
                                         <button type="submit" name="sp_tags_action" value="merge" class="button"><?php esc_html_e( 'Merge', 'societypress' ); ?></button>
@@ -84998,7 +85136,7 @@ function sp_render_help_tags_admin_page(): void {
                 <?php else : ?>
                     <p class="description" style="margin:6px 0 12px;"><?php esc_html_e( 'Click any tag to load it into the Source field.', 'societypress' ); ?></p>
                     <table class="widefat striped">
-                        <thead><tr><th><?php esc_html_e( 'Tag', 'societypress' ); ?></th><th><?php esc_html_e( 'Usage', 'societypress' ); ?></th></tr></thead>
+                        <thead><tr><th scope="col"><?php esc_html_e( 'Tag', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Usage', 'societypress' ); ?></th></tr></thead>
                         <tbody>
                             <?php foreach ( $counts as $tag => $count ) : ?>
                                 <tr>

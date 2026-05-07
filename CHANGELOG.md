@@ -14,6 +14,71 @@ Entries describe user-visible changes only. For the underlying commits, see
 
 ---
 
+## [1.0.63] — 2026-05-06
+
+### Security
+- HIGH: newsletter download path-containment + MIME enforcement.
+  `sp_ajax_newsletter_download()` now `realpath()`s the resolved
+  attachment, refuses anything that doesn't live inside `wp-uploads`,
+  and uses `finfo_file()` to confirm `application/pdf` before
+  streaming. `wp_redirect()` for the login bounce switched to
+  `wp_safe_redirect()`. `nocache_headers()` added before the binary
+  stream.
+- MEDIUM: event-cancel handler now uses a distinct
+  `sp_event_cancel_{event_id}` nonce so a leaked register-form nonce
+  cannot be replayed against the cancel endpoint.
+- LOW: installer adds `session.cookie_secure=1` when the request is
+  over HTTPS so the install-session cookie (CSRF nonce) can&rsquo;t leak
+  over plaintext if the user accidentally hits the http:// URL.
+
+### Accessibility
+- 389 `&lt;th&gt;` column headers in the plugin and 3 in the parent theme
+  gained `scope="col"`. Screen readers now correctly announce
+  "column" context when navigating data tables (members, events,
+  payments, library, registrations, audit log, etc.).
+- 8 `&lt;th&gt;` row headers in the blast-email detail key/value table
+  gained `scope="row"` so the field label is announced alongside
+  each value cell.
+- Newsletter PDF viewer modal now properly manages keyboard focus:
+  saves the opener element on open, focuses the close button, traps
+  Tab/Shift-Tab inside the modal, and returns focus to the opener
+  on close. Newsletter card covers gained `role="button"` +
+  `tabindex="0"` + a translatable `aria-label` so keyboard users
+  can open the viewer with Enter or Space.
+- Surname contact modal got the same focus-management treatment:
+  saves opener, focuses first field on open, Escape closes,
+  Tab/Shift-Tab cycle inside the modal, focus returns to the
+  triggering button on close.
+- Cart quantity `+`/`&minus;` buttons gained `aria-label` ("Increase
+  quantity" / "Decrease quantity") &mdash; previously announced as
+  bare "plus, button" / "minus, button" with no context.
+- Album-edit photo remove buttons (admin) and bulk-document remove
+  buttons gained `aria-label`s in place of (or alongside) `title`,
+  which screen readers don't announce reliably on interactive
+  elements.
+- Volunteer status badges (waitlisted) switched from `#dba617`
+  (3.55:1) to `#8a6500` (4.5:1) at 12px so they meet WCAG AA on
+  the tinted-background pattern. Matches the v1.0.58 pending-changes
+  fix.
+- Last 4 occurrences of `#787c82` muted text replaced with `#6d7175`
+  (the established WCAG-AA-safe value). Consistency cleanup after
+  the v1.0.60 plugin-wide pass.
+
+### i18n
+- Member-edit seasonal-address From/To month dropdowns: 12 month
+  names wrapped with `__()`.
+- Settings &rarr; Membership &rarr; Period Start month dropdown:
+  same 12 names wrapped.
+- Member-edit Country dropdown: 25 country names wrapped, plus the
+  `&mdash; Other (type below) &mdash;` sentinel.
+- Page-template registration: 6 dropdown labels wrapped &mdash;
+  SocietyPress Builder, Events, Newsletter Archive, Site Search,
+  Research Help Requests, Resource Links Directory.
+
+Plugin + parent theme: 1.0.63. Marketing theme: 0.43d.
+
+---
+
 ## [1.0.62] — 2026-05-06
 
 ### Refactoring

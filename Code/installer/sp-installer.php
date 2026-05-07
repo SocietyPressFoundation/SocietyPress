@@ -120,6 +120,12 @@ error_reporting( E_ALL );
 // pre-set a session ID via shared-host sibling processes.
 @ini_set( 'session.use_strict_mode', '1' );
 @ini_set( 'session.cookie_httponly', '1' );
+// WHY cookie_secure when on HTTPS: prevents the install-session cookie
+// (which carries the CSRF nonce) from leaking over plaintext if the user
+// hits the http:// URL or a downgrade attack forces it.
+if ( ! empty( $_SERVER['HTTPS'] ) && $_SERVER['HTTPS'] !== 'off' ) {
+    @ini_set( 'session.cookie_secure', '1' );
+}
 session_start();
 
 $step = $_GET['step'] ?? 'check';

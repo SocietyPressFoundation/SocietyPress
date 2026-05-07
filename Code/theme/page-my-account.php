@@ -1561,9 +1561,9 @@ function sp_m( $member, $field ) {
                     <table class="sp-events-table">
                         <thead>
                             <tr>
-                                <th><?php esc_html_e( 'Event', 'societypress' ); ?></th>
-                                <th><?php esc_html_e( 'Date', 'societypress' ); ?></th>
-                                <th><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Event', 'societypress' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Date', 'societypress' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
                             </tr>
                         </thead>
                         <tbody>

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.0.67
+ * Version:     1.0.68
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.67' );
+define( 'SOCIETYPRESS_VERSION', '1.0.68' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -30080,6 +30080,20 @@ function sp_ajax_member_detail(): void {
 
     global $wpdb;
     $prefix   = $wpdb->prefix . 'sp_';
+
+    // WHY active-membership gate: an expired or suspended member who keeps
+    //      their WP subscriber account could otherwise call this endpoint
+    //      directly with a nonce harvested from the directory page after
+    //      logging in. The directory list view enforces this gate via
+    //      sp_render_directory(); we apply the same here so member detail
+    //      can't leak via a path that skips the page render.
+    $requester_status = $wpdb->get_var( $wpdb->prepare(
+        "SELECT status FROM {$prefix}members WHERE user_id = %d",
+        get_current_user_id()
+    ) );
+    if ( $requester_status !== 'active' && ! current_user_can( 'sp_manage_members' ) ) {
+        wp_send_json_error( __( 'Active membership required.', 'societypress' ) );
+    }
     $settings = get_option( 'societypress_settings', [] );
 
     // Fetch the member record with tier name and email from wp_users
@@ -41751,6 +41765,12 @@ function sp_events_frontend_scripts(): void {
     (function() {
         'use strict';
 
+        // Guard against double-binding when this module's JS fires alongside
+        // sp_events_calendar_scripts (e.g., calendar widget on the events
+        // template page). Whichever lands first wins.
+        if (window.spCalendarTapPanelInit) return;
+        window.spCalendarTapPanelInit = true;
+
         // ---- Calendar mobile: tap day to show events panel ----
         var calDays = document.querySelectorAll('.sp-cal-has-events');
         var panel   = document.getElementById('sp-cal-mobile-panel');
@@ -46726,6 +46746,11 @@ function sp_events_calendar_scripts(): void {
     (function() {
         'use strict';
 
+        // Guard against double-binding when this widget fires alongside
+        // sp_events_frontend_scripts (e.g., on the events template).
+        if (window.spCalendarTapPanelInit) return;
+        window.spCalendarTapPanelInit = true;
+
         // ---- Calendar mobile: tap day to show events panel ----
         var calDays = document.querySelectorAll('.sp-cal-has-events');
         var panel   = document.getElementById('sp-cal-mobile-panel');
@@ -48645,7 +48670,7 @@ add_action( 'wp_ajax_sp_admin_refund_payment', function () {
         $payment_intent = $matches[1];
     }
 
-    if ( empty( $payment_intent ) ) {
+    if ( empty( $payment_intent ) || ! sp_stripe_payment_intent_id_is_valid( $payment_intent ) ) {
         wp_send_json_error( __( 'Could not find payment reference. Please refund manually in Stripe dashboard.', 'societypress' ) );
     }
 
@@ -50460,7 +50485,7 @@ function sp_handle_surname_contact(): void {
         "SELECT status FROM {$prefix}members WHERE user_id = %d",
         get_current_user_id()
     ) );
-    if ( ! in_array( $sender_status, [ 'active', 'lifetime' ], true ) ) {
+    if ( $sender_status !== 'active' ) {
         wp_send_json_error( __( 'Active membership required to contact other researchers.', 'societypress' ) );
     }
 
@@ -69306,13 +69331,26 @@ function sp_store_finalize_paid_order( int $order_id, string $payment_method, ar
     if ( ! $order ) return false;
     if ( $order->status === 'paid' ) return true;
 
-    $update = array_merge( [
-        'status'         => 'paid',
-        'payment_method' => $payment_method,
-        'updated_at'     => current_time( 'mysql' ),
-    ], $extra_fields );
-
-    $wpdb->update( $prefix . 'orders', $update, [ 'id' => $order_id ] );
+    // WHY conditional UPDATE: a Stripe 3DS redirect and the webhook can both
+    //      land at this function in parallel. A plain UPDATE would let both
+    //      pass the status check above and produce a duplicate receipt
+    //      email + duplicate audit row. Conditional UPDATE on
+    //      status != 'paid' is the cheapest single-statement way to
+    //      serialize without table-level locks.
+    $now = current_time( 'mysql' );
+    $set_clauses = [ 'status = %s', 'payment_method = %s', 'updated_at = %s' ];
+    $values      = [ 'paid', $payment_method, $now ];
+    foreach ( $extra_fields as $col => $val ) {
+        $set_clauses[] = '`' . preg_replace( '/[^A-Za-z0-9_]/', '', $col ) . '` = %s';
+        $values[]      = (string) $val;
+    }
+    $values[] = $order_id;
+    $sql = "UPDATE {$prefix}orders SET " . implode( ', ', $set_clauses ) . " WHERE id = %d AND status != 'paid'";
+    $affected = $wpdb->query( $wpdb->prepare( $sql, ...$values ) );
+    if ( ! $affected ) {
+        // Another request finalized this order between our SELECT and UPDATE.
+        return true;
+    }
 
     if ( $order->user_id ) {
         sp_save_cart( [], (int) $order->user_id );
@@ -70927,7 +70965,7 @@ function sp_render_order_detail_page(): void {
                         <tr>
                             <td><?php echo esc_html( $item->title ); ?></td>
                             <td class="sp-order-detail-td-price"><?php echo esc_html( sp_format_currency( $item->unit_price ) ); ?></td>
-                            <td class="sp-order-detail-td-qty"><?php echo $item->quantity; ?></td>
+                            <td class="sp-order-detail-td-qty"><?php echo absint( $item->quantity ); ?></td>
                             <td class="sp-order-detail-td-total"><?php echo esc_html( sp_format_currency( $item->line_total ) ); ?></td>
                         </tr>
                     <?php endforeach; ?>
@@ -71154,8 +71192,7 @@ function sp_ajax_document_download(): void {
             "SELECT status FROM {$wpdb->prefix}sp_members WHERE user_id = %d",
             get_current_user_id()
         ) );
-        $allowed_statuses = [ 'active', 'lifetime' ];
-        if ( ! in_array( $member_status, $allowed_statuses, true ) && ! current_user_can( 'sp_manage_content' ) ) {
+        if ( $member_status !== 'active' && ! current_user_can( 'sp_manage_content' ) ) {
             wp_die( esc_html__( 'Active membership required to download this document.', 'societypress' ), '', 403 );
         }
     }

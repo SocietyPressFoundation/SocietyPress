@@ -14,6 +14,44 @@ Entries describe user-visible changes only. For the underlying commits, see
 
 ---
 
+## [1.0.68] — 2026-05-06
+
+### Security
+- HIGH: `sp_ajax_member_detail` now requires the requester's
+  membership status to be `active` (or `sp_manage_members`
+  capability). Previously gated on `is_user_logged_in()` only — an
+  expired or suspended member retaining their WP subscriber account
+  could harvest the page nonce and hit the endpoint to enumerate
+  member detail (phone, email, city/state, surnames, interests).
+  The directory list view already enforced this; the detail AJAX
+  did not.
+- MEDIUM: Store-order finalize is now atomic. Stripe 3DS redirect
+  + webhook can land in parallel; the previous read-then-write
+  let both pass the "is it already paid" check, producing a
+  duplicate receipt email and audit row. New conditional
+  `UPDATE ... WHERE status != 'paid'` returns 0 affected rows for
+  the loser, which short-circuits cleanly.
+- LOW: events refund handler now passes the extracted PaymentIntent
+  ID through `sp_stripe_payment_intent_id_is_valid()` before the
+  Stripe API call, matching the store flow.
+
+### Refactoring
+- Removed dead `'lifetime'` from two access allowlists. `lifetime`
+  is a separate boolean column on `sp_members`, not a status value
+  &mdash; it could never match. Document download and surname-contact
+  guards now check `status === 'active'` directly.
+- Calendar mobile tap-panel JS guards against double-init via
+  `window.spCalendarTapPanelInit`. When the calendar widget renders
+  on the events template, both `sp_events_frontend_scripts` and
+  `sp_events_calendar_scripts` used to fire, double-binding the
+  click listener so each tap fired its handler twice.
+- Order detail item-quantity output cast through `absint()` for
+  consistency with the rest of the codebase.
+
+Plugin + parent theme: 1.0.68. Marketing theme: 0.43d.
+
+---
+
 ## [1.0.67] — 2026-05-06
 
 ### Accessibility

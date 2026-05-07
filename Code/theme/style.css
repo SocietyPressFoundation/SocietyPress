@@ -5,7 +5,7 @@ Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
 Description: A clean, readable theme for genealogical and historical societies.
              Designed for ease of use with large fonts, high contrast, and simple navigation.
-Version: 1.0.68
+Version: 1.0.69
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.0
@@ -1803,6 +1803,24 @@ input[type="submit"]:hover {
     font-weight: 600;
     font-size: 0.9rem;
     color: var(--sp-color-primary, #1e3a5f);
+}
+
+/* Inline radio group inside a .sp-form-field — used for preferred-phone
+   choices and other "pick one" rows. */
+.sp-radio-row {
+    display: flex;
+    gap: 20px;
+    margin-top: 4px;
+}
+
+.sp-radio-row__option {
+    font-weight: 400;
+}
+
+/* Visually-uppercase input — used for surname inputs so members see all-caps
+   while typing. */
+.sp-input--uppercase {
+    text-transform: uppercase;
 }
 
 .sp-field-hint {

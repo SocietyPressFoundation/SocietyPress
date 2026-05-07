@@ -646,18 +646,18 @@ function sp_m( $member, $field ) {
                     ?>
                     <div class="sp-form-field">
                         <label><?php esc_html_e( 'Preferred Phone', 'societypress' ); ?></label>
-                        <div style="display: flex; gap: 20px; margin-top: 4px;">
-                            <label style="font-weight: 400;">
+                        <div class="sp-radio-row">
+                            <label class="sp-radio-row__option">
                                 <input type="radio" name="preferred_phone" value="phone"
                                        <?php checked( $pref_phone, 'phone' ); ?>>
                                 <?php esc_html_e( 'Home', 'societypress' ); ?>
                             </label>
-                            <label style="font-weight: 400;">
+                            <label class="sp-radio-row__option">
                                 <input type="radio" name="preferred_phone" value="cell"
                                        <?php checked( $pref_phone, 'cell' ); ?>>
                                 <?php esc_html_e( 'Cell', 'societypress' ); ?>
                             </label>
-                            <label style="font-weight: 400;">
+                            <label class="sp-radio-row__option">
                                 <input type="radio" name="preferred_phone" value="work_phone"
                                        <?php checked( $pref_phone, 'work_phone' ); ?>>
                                 <?php esc_html_e( 'Work', 'societypress' ); ?>
@@ -1283,7 +1283,7 @@ function sp_m( $member, $field ) {
                         <label for="sp-new-surname"><?php esc_html_e( 'Surname', 'societypress' ); ?></label>
                         <input type="text" id="sp-new-surname" name="new_surname" required
                                placeholder="<?php esc_attr_e( 'e.g., STRICKLIN', 'societypress' ); ?>"
-                               style="text-transform: uppercase;" />
+                               class="sp-input--uppercase" />
                     </div>
 
                     <div class="sp-form-field">

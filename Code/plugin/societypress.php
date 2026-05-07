@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.0.68
+ * Version:     1.0.69
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.68' );
+define( 'SOCIETYPRESS_VERSION', '1.0.69' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -78182,7 +78182,7 @@ add_action( 'admin_menu', function () {
         '',
         __( 'Picture Wall — Pending Submissions', 'societypress' ),
         __( 'Picture Wall Pending', 'societypress' ),
-        'manage_options',
+        'sp_manage_content',
         'sp-picture-wall-pending',
         'sp_render_picture_wall_pending_page'
     );
@@ -78191,10 +78191,15 @@ add_action( 'admin_menu', function () {
 
 /**
  * POST handler for approve / reject.
+ *
+ * WHY sp_manage_content (not manage_options): photo moderation is content
+ * work, not site config. The page registration above uses the same
+ * capability so a user with sp_manage_content can both reach the page
+ * and act on it.
  */
 add_action( 'admin_init', function () {
     if ( empty( $_POST['sp_pw_moderate'] ) ) return;
-    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) return;
+    if ( ! current_user_can( 'sp_manage_content' ) ) return;
 
     $item_id = (int) ( $_POST['item_id'] ?? 0 );
     check_admin_referer( 'sp_pw_moderate_' . $item_id );
@@ -81123,6 +81128,13 @@ function sp_handle_help_mark_resolved(): void {
         if ( $belongs ) {
             $wpdb->update( $prefix . 'help_responses', [ 'is_resolved_answer' => 1 ], [ 'id' => $resolved_response_id ] );
         }
+    }
+
+    // Fire the resolved-status notification email if this is a real
+    // transition. WHY inline (not via priority-20 hook below): wp_send_json_*
+    // calls wp_die(), so any same-action hook at priority > 10 never runs.
+    if ( $request->status !== 'resolved' ) {
+        sp_help_send_status_email( $request_id, 'resolved' );
     }
 
     wp_send_json_success( [ 'message' => __( 'Marked resolved.', 'societypress' ) ] );
@@ -85125,45 +85137,11 @@ add_action( 'admin_init', function () {
 }, 20 ); // Priority 20 — runs after the bulk handler at default priority
 
 
-/**
- * Hook the AJAX mark-resolved handler — fire the resolved-status email.
- * The existing handler at sp_handle_help_mark_resolved doesn't email;
- * we hook in via the wp_ajax action just before the existing handler
- * runs and capture the request_id, then fire the email after.
- */
-add_action( 'wp_ajax_sp_help_mark_resolved', function () {
-    if ( empty( $_POST['request_id'] ) ) return;
-    // Verify the same nonce the main handler checks. We're running at
-    // priority 5 (before the main handler), so this guard runs first
-    // and bails on missing/invalid nonces. Defense-in-depth — the main
-    // handler will also reject, but bailing here keeps a stale stashed
-    // global from being read by the priority-20 follow-up.
-    if ( ! check_ajax_referer( 'sp_help_resolve', '_wpnonce', false ) ) return;
-    $request_id = (int) $_POST['request_id'];
-    // Grab the current status before the existing handler updates it
-    global $wpdb;
-    $current = $wpdb->get_var( $wpdb->prepare(
-        "SELECT status FROM {$wpdb->prefix}sp_help_requests WHERE id = %d", $request_id
-    ) );
-    // Stash for our after-hook
-    $GLOBALS['_sp_help_status_was'] = $current;
-}, 5 ); // Priority 5 — runs before the main handler at default 10
-
-add_action( 'wp_ajax_sp_help_mark_resolved', function () {
-    if ( empty( $_POST['request_id'] ) ) return;
-    if ( ! check_ajax_referer( 'sp_help_resolve', '_wpnonce', false ) ) return;
-    $request_id = (int) $_POST['request_id'];
-    $previous   = $GLOBALS['_sp_help_status_was'] ?? '';
-    if ( $previous === 'resolved' ) return; // No transition
-
-    global $wpdb;
-    $current = $wpdb->get_var( $wpdb->prepare(
-        "SELECT status FROM {$wpdb->prefix}sp_help_requests WHERE id = %d", $request_id
-    ) );
-    if ( $current === 'resolved' ) {
-        sp_help_send_status_email( $request_id, 'resolved' );
-    }
-}, 20 ); // Priority 20 — runs after the main handler
+// WHY no separate priority-5/priority-20 wp_ajax hooks here: the main
+// handler sp_handle_help_mark_resolved() calls wp_send_json_success(),
+// which invokes wp_die() and short-circuits any later-priority hook on
+// the same action. The resolved-status email is now sent inline from
+// the main handler before wp_send_json_success().
 
 
 // ============================================================================

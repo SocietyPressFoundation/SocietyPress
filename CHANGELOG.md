@@ -14,6 +14,34 @@ Entries describe user-visible changes only. For the underlying commits, see
 
 ---
 
+## [1.0.69] — 2026-05-06
+
+### Bug fixes
+- Help-request resolved-status notification email is now sent. The
+  email was wired through a priority-20 hook on the same `wp_ajax`
+  action that the main handler sits on at priority 10 &mdash; but
+  the main handler called `wp_send_json_success()` (which invokes
+  `wp_die()`), so the priority-20 hook never fired. Email logic
+  moved inline into `sp_handle_help_mark_resolved()` and the
+  priority-5/priority-20 dead hooks removed.
+
+### Security / consistency
+- Picture Wall pending-submissions admin page now uses
+  `sp_manage_content` for both menu registration and POST handler
+  (was `manage_options` for the menu, `sp_manage_content` for the
+  handler &mdash; meaning a content moderator could moderate via
+  POST but couldn't reach the page through the UI).
+
+### Refactoring
+- `page-my-account.php` preferred-phone radio group + uppercase
+  surname input moved off inline `style=` to `.sp-radio-row`,
+  `.sp-radio-row__option`, and `.sp-input--uppercase` utility
+  classes in the parent theme stylesheet.
+
+Plugin + parent theme: 1.0.69. Marketing theme: 0.43d.
+
+---
+
 ## [1.0.68] — 2026-05-06
 
 ### Security

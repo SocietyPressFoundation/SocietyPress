@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.0.63
+ * Version:     1.0.64
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.63' );
+define( 'SOCIETYPRESS_VERSION', '1.0.64' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -15366,35 +15366,41 @@ function sp_render_member_edit_page(): void {
                                 <div class="sp-surname-row">
                                     <input type="text" name="surname[]"
                                            value="<?php echo esc_attr( $s->surname ); ?>"
-                                           placeholder="e.g. SMITH">
+                                           placeholder="e.g. SMITH"
+                                           aria-label="<?php echo esc_attr__( 'Surname', 'societypress' ); ?>">
                                     <input type="text" name="surname_county[]"
                                            value="<?php echo esc_attr( $s->county ); ?>"
-                                           placeholder="<?php echo esc_attr__( 'County', 'societypress' ); ?>">
+                                           placeholder="<?php echo esc_attr__( 'County', 'societypress' ); ?>"
+                                           aria-label="<?php echo esc_attr__( 'County', 'societypress' ); ?>">
                                     <input type="text" name="surname_state[]"
                                            value="<?php echo esc_attr( $s->state ); ?>"
-                                           placeholder="<?php echo esc_attr__( 'State', 'societypress' ); ?>">
+                                           placeholder="<?php echo esc_attr__( 'State', 'societypress' ); ?>"
+                                           aria-label="<?php echo esc_attr__( 'State', 'societypress' ); ?>">
                                     <input type="text" name="surname_country[]"
                                            value="<?php echo esc_attr( $s->country ); ?>"
-                                           placeholder="<?php echo esc_attr__( 'Country', 'societypress' ); ?>">
+                                           placeholder="<?php echo esc_attr__( 'Country', 'societypress' ); ?>"
+                                           aria-label="<?php echo esc_attr__( 'Country', 'societypress' ); ?>">
                                     <input type="number" name="surname_year_from[]"
                                            value="<?php echo esc_attr( $s->year_from ); ?>"
-                                           placeholder="1800" min="1000" max="2100">
+                                           placeholder="1800" min="1000" max="2100"
+                                           aria-label="<?php echo esc_attr__( 'Year from', 'societypress' ); ?>">
                                     <input type="number" name="surname_year_to[]"
                                            value="<?php echo esc_attr( $s->year_to ); ?>"
-                                           placeholder="1900" min="1000" max="2100">
+                                           placeholder="1900" min="1000" max="2100"
+                                           aria-label="<?php echo esc_attr__( 'Year to', 'societypress' ); ?>">
                                     <button type="button" class="button sp-remove-surname"
-                                            title="<?php echo esc_attr__( 'Remove this surname', 'societypress' ); ?>">&times;</button>
+                                            aria-label="<?php echo esc_attr__( 'Remove this surname', 'societypress' ); ?>">&times;</button>
                                 </div>
                             <?php endforeach; ?>
                         <?php else : ?>
                             <!-- Start with one empty row so Harold sees what to fill in -->
                             <div class="sp-surname-row">
-                                <input type="text" name="surname[]" placeholder="<?php echo esc_attr__( 'e.g. SMITH', 'societypress' ); ?>">
-                                <input type="text" name="surname_county[]" placeholder="<?php echo esc_attr__( 'County', 'societypress' ); ?>">
-                                <input type="text" name="surname_state[]" placeholder="<?php echo esc_attr__( 'State', 'societypress' ); ?>">
-                                <input type="text" name="surname_country[]" placeholder="<?php echo esc_attr__( 'Country', 'societypress' ); ?>">
-                                <input type="number" name="surname_year_from[]" placeholder="1800" min="1000" max="2100">
-                                <input type="number" name="surname_year_to[]" placeholder="1900" min="1000" max="2100">
+                                <input type="text" name="surname[]" placeholder="<?php echo esc_attr__( 'e.g. SMITH', 'societypress' ); ?>" aria-label="<?php echo esc_attr__( 'Surname', 'societypress' ); ?>">
+                                <input type="text" name="surname_county[]" placeholder="<?php echo esc_attr__( 'County', 'societypress' ); ?>" aria-label="<?php echo esc_attr__( 'County', 'societypress' ); ?>">
+                                <input type="text" name="surname_state[]" placeholder="<?php echo esc_attr__( 'State', 'societypress' ); ?>" aria-label="<?php echo esc_attr__( 'State', 'societypress' ); ?>">
+                                <input type="text" name="surname_country[]" placeholder="<?php echo esc_attr__( 'Country', 'societypress' ); ?>" aria-label="<?php echo esc_attr__( 'Country', 'societypress' ); ?>">
+                                <input type="number" name="surname_year_from[]" placeholder="1800" min="1000" max="2100" aria-label="<?php echo esc_attr__( 'Year from', 'societypress' ); ?>">
+                                <input type="number" name="surname_year_to[]" placeholder="1900" min="1000" max="2100" aria-label="<?php echo esc_attr__( 'Year to', 'societypress' ); ?>">
                                 <button type="button" class="button sp-remove-surname" aria-label="<?php echo esc_attr__( 'Remove this surname', 'societypress' ); ?>">&times;</button>
                             </div>
                         <?php endif; ?>
@@ -15412,12 +15418,12 @@ function sp_render_member_edit_page(): void {
                             var container = document.getElementById('sp-surnames-container');
                             var row = document.createElement('div');
                             row.className = 'sp-surname-row';
-                            row.innerHTML = '<input type="text" name="surname[]" placeholder="<?php echo esc_js( __( 'e.g. SMITH', 'societypress' ) ); ?>">'
-                                + '<input type="text" name="surname_county[]" placeholder="<?php echo esc_js( __( 'County', 'societypress' ) ); ?>">'
-                                + '<input type="text" name="surname_state[]" placeholder="<?php echo esc_js( __( 'State', 'societypress' ) ); ?>">'
-                                + '<input type="text" name="surname_country[]" placeholder="<?php echo esc_js( __( 'Country', 'societypress' ) ); ?>">'
-                                + '<input type="number" name="surname_year_from[]" placeholder="1800" min="1000" max="2100">'
-                                + '<input type="number" name="surname_year_to[]" placeholder="1900" min="1000" max="2100">'
+                            row.innerHTML = '<input type="text" name="surname[]" placeholder="<?php echo esc_js( __( 'e.g. SMITH', 'societypress' ) ); ?>" aria-label="<?php echo esc_js( __( 'Surname', 'societypress' ) ); ?>">'
+                                + '<input type="text" name="surname_county[]" placeholder="<?php echo esc_js( __( 'County', 'societypress' ) ); ?>" aria-label="<?php echo esc_js( __( 'County', 'societypress' ) ); ?>">'
+                                + '<input type="text" name="surname_state[]" placeholder="<?php echo esc_js( __( 'State', 'societypress' ) ); ?>" aria-label="<?php echo esc_js( __( 'State', 'societypress' ) ); ?>">'
+                                + '<input type="text" name="surname_country[]" placeholder="<?php echo esc_js( __( 'Country', 'societypress' ) ); ?>" aria-label="<?php echo esc_js( __( 'Country', 'societypress' ) ); ?>">'
+                                + '<input type="number" name="surname_year_from[]" placeholder="1800" min="1000" max="2100" aria-label="<?php echo esc_js( __( 'Year from', 'societypress' ) ); ?>">'
+                                + '<input type="number" name="surname_year_to[]" placeholder="1900" min="1000" max="2100" aria-label="<?php echo esc_js( __( 'Year to', 'societypress' ) ); ?>">'
                                 + '<button type="button" class="button sp-remove-surname" aria-label="<?php echo esc_js( __( 'Remove this surname', 'societypress' ) ); ?>">&times;</button>';
                             container.appendChild(row);
                         });
@@ -17703,7 +17709,7 @@ function sp_render_import_page(): void {
              as the import progresses. When all batches finish, a "Done" button appears. -->
         <div id="sp-import-overlay" class="sp-import-overlay" style="display:none;">
             <div class="sp-import-overlay-inner">
-                <div class="sp-import-spinner" id="sp-import-spinner"></div>
+                <div class="sp-import-spinner" id="sp-import-spinner" aria-hidden="true"></div>
                 <h2 class="sp-import-overlay-title" id="sp-import-overlay-title">
                     <?php esc_html_e( 'Importing Members...', 'societypress' ); ?>
                 </h2>
@@ -39974,9 +39980,9 @@ function sp_render_calendar_grid( int $category_id = 0, string $base_url = '', a
     // ---- Determine which month to display ----
     // WHY: The sp_cal_month query param lets users navigate months via
     //      prev/next links. Default to current month if not set or invalid.
-    $cal_month = isset( $_GET['sp_cal_month'] ) ? sanitize_text_field( $_GET['sp_cal_month'] ) : date( 'Y-m' );
+    $cal_month = isset( $_GET['sp_cal_month'] ) ? sanitize_text_field( $_GET['sp_cal_month'] ) : wp_date( 'Y-m' );
     if ( ! preg_match( '/^\d{4}-\d{2}$/', $cal_month ) ) {
-        $cal_month = date( 'Y-m' );
+        $cal_month = wp_date( 'Y-m' );
     }
 
     $cal_year    = (int) substr( $cal_month, 0, 4 );
@@ -40495,22 +40501,22 @@ function sp_render_events_listing( array $settings ): void {
         case '30days':
             $where[]  = "e.event_date >= %s AND e.event_date <= %s";
             $params[] = $today;
-            $params[] = date( 'Y-m-d', strtotime( '+30 days' ) );
+            $params[] = wp_date( 'Y-m-d', strtotime( '+30 days' ) );
             break;
         case '3months':
             $where[]  = "e.event_date >= %s AND e.event_date <= %s";
             $params[] = $today;
-            $params[] = date( 'Y-m-d', strtotime( '+3 months' ) );
+            $params[] = wp_date( 'Y-m-d', strtotime( '+3 months' ) );
             break;
         case '6months':
             $where[]  = "e.event_date >= %s AND e.event_date <= %s";
             $params[] = $today;
-            $params[] = date( 'Y-m-d', strtotime( '+6 months' ) );
+            $params[] = wp_date( 'Y-m-d', strtotime( '+6 months' ) );
             break;
         case '12months':
             $where[]  = "e.event_date >= %s AND e.event_date <= %s";
             $params[] = $today;
-            $params[] = date( 'Y-m-d', strtotime( '+12 months' ) );
+            $params[] = wp_date( 'Y-m-d', strtotime( '+12 months' ) );
             break;
         case 'all':
             $where[]  = "e.event_date >= %s";
@@ -49000,8 +49006,9 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
                  * specific rule would be needed and the no-JS fallback would
                  * break. Keeping it inline preserves the original behaviour.
                  */
-                echo '<div id="' . esc_attr( $target_id ) . '" class="sp-gallery-lightbox" style="display:none;">';
-                echo '<a href="#" class="sp-gallery-lightbox-backdrop"></a>';
+                echo '<div id="' . esc_attr( $target_id ) . '" class="sp-gallery-lightbox" role="dialog" aria-modal="true" aria-label="' . esc_attr__( 'Photo viewer', 'societypress' ) . '" style="display:none;" tabindex="-1">';
+                echo '<a href="#" class="sp-gallery-lightbox-backdrop" aria-label="' . esc_attr__( 'Close photo viewer', 'societypress' ) . '"></a>';
+                echo '<button type="button" class="sp-gallery-lightbox-close" aria-label="' . esc_attr__( 'Close photo viewer', 'societypress' ) . '" onclick="history.replaceState(null,null,window.location.pathname+window.location.search);this.closest(&quot;.sp-gallery-lightbox&quot;).style.display=&quot;none&quot;;">&times;</button>';
                 echo '<img src="' . esc_url( $full_url ?: $img_url ) . '" alt="' . esc_attr( $item->caption ) . '" class="sp-gallery-lightbox-img">';
                 if ( $item->caption ) {
                     echo '<p class="sp-gallery-lightbox-caption">' . esc_html( $item->caption ) . '</p>';
@@ -49009,6 +49016,83 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
                 echo '</div>';
             }
             echo '</div>';
+
+            // Keyboard + screen-reader support layered on top of the :target
+            // CSS lightbox. No-JS users get the original behavior; JS users
+            // get focus management, Escape to close, and focus return to the
+            // triggering thumbnail.
+            ?>
+            <style>
+                .sp-gallery-lightbox-close { position: absolute; top: 16px; right: 24px; z-index: 3; background: transparent; border: 0; color: #fff; font-size: 32px; line-height: 1; cursor: pointer; padding: 4px 10px; border-radius: 4px; }
+                .sp-gallery-lightbox-close:hover,
+                .sp-gallery-lightbox-close:focus,
+                .sp-gallery-lightbox-close:focus-visible { background: rgba(255,255,255,0.18); outline: 2px solid #fff; outline-offset: 2px; }
+            </style>
+            <script>
+            (function () {
+                if (!document.querySelector('.sp-gallery-lightbox')) return;
+                var lastTrigger = null;
+                function showLightbox(id) {
+                    var box = document.getElementById(id);
+                    if (!box) return;
+                    box.style.display = 'flex';
+                    var closeBtn = box.querySelector('.sp-gallery-lightbox-close');
+                    if (closeBtn) { try { closeBtn.focus(); } catch (e) {} }
+                }
+                function hideAllLightboxes(returnFocus) {
+                    document.querySelectorAll('.sp-gallery-lightbox').forEach(function (b) {
+                        b.style.display = 'none';
+                    });
+                    if (window.history && history.replaceState) {
+                        history.replaceState(null, null, window.location.pathname + window.location.search);
+                    }
+                    if (returnFocus && lastTrigger && typeof lastTrigger.focus === 'function') {
+                        try { lastTrigger.focus(); } catch (e) {}
+                    }
+                    lastTrigger = null;
+                }
+                document.addEventListener('click', function (e) {
+                    var thumb = e.target.closest('.sp-gallery-thumb-link');
+                    if (thumb) {
+                        var href = thumb.getAttribute('href') || '';
+                        if (href.charAt(0) === '#') {
+                            lastTrigger = thumb;
+                            // CSS :target rule shows the box; we still focus the close button.
+                            setTimeout(function () { showLightbox(href.slice(1)); }, 0);
+                        }
+                        return;
+                    }
+                    var backdrop = e.target.closest('.sp-gallery-lightbox-backdrop');
+                    if (backdrop) {
+                        e.preventDefault();
+                        hideAllLightboxes(true);
+                    }
+                });
+                document.addEventListener('keydown', function (e) {
+                    if (e.key !== 'Escape' && e.key !== 'Tab') return;
+                    var open = document.querySelector('.sp-gallery-lightbox[style*="flex"]');
+                    if (!open) return;
+                    if (e.key === 'Escape') {
+                        e.preventDefault();
+                        hideAllLightboxes(true);
+                        return;
+                    }
+                    // Trap Tab inside the open lightbox.
+                    var focusables = open.querySelectorAll(
+                        'button, a[href], [tabindex]:not([tabindex="-1"])'
+                    );
+                    if (!focusables.length) return;
+                    var first = focusables[0];
+                    var last  = focusables[focusables.length - 1];
+                    if (e.shiftKey && document.activeElement === first) {
+                        e.preventDefault(); last.focus();
+                    } else if (!e.shiftKey && document.activeElement === last) {
+                        e.preventDefault(); first.focus();
+                    }
+                });
+            })();
+            </script>
+            <?php
         }
     } else {
         // Albums grid view — show album covers
@@ -50500,7 +50584,14 @@ function sp_render_gallery_page(): void {
                         </a>
                         <div style="padding:12px;">
                             <h4 style="margin:0 0 4px;"><a href="<?php echo esc_url( $edit_url ); ?>" style="text-decoration:none; color:#1d2327;"><?php echo esc_html( $album->title ); ?></a></h4>
-                            <span class="sp-text-secondary sp-text-sm"><?php echo $album->photo_count; ?> photos</span>
+                            <span class="sp-text-secondary sp-text-sm"><?php
+                                $sp_photo_count = (int) $album->photo_count;
+                                printf(
+                                    /* translators: %s: number of photos in an album */
+                                    esc_html( _n( '%s photo', '%s photos', $sp_photo_count, 'societypress' ) ),
+                                    esc_html( number_format_i18n( $sp_photo_count ) )
+                                );
+                            ?></span>
                             <?php if ( $album->visibility === 'members_only' ) : ?>
                                 <span style="background:#fef0c7; color:#92400e; font-size: 0.625rem; padding:2px 6px; border-radius:3px; margin-left:4px;"><?php esc_html_e( 'Members Only', 'societypress' ); ?></span>
                             <?php endif; ?>
@@ -51231,7 +51322,7 @@ function sp_ajax_export_membership_report(): void {
 
     $filename = 'membership-report-' . $today . '.csv';
     header( 'Content-Type: text/csv; charset=utf-8' );
-    header( 'Content-Disposition: attachment; filename=' . $filename );
+    header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
     $out = fopen( 'php://output', 'w' );
 
     // Section 1: Summary Stats
@@ -58281,7 +58372,7 @@ add_action( 'admin_init', function() {
     );
 
     header( 'Content-Type: text/csv; charset=utf-8' );
-    header( 'Content-Disposition: attachment; filename=volunteer-hours-' . date( 'Y-m-d' ) . '.csv' );
+    header( 'Content-Disposition: attachment; filename="volunteer-hours-' . wp_date( 'Y-m-d' ) . '.csv"' );
     $out = fopen( 'php://output', 'w' );
     fputcsv( $out, [ 'First Name', 'Last Name', 'Activity', 'Committee', 'Hours', 'Date' ] );
     foreach ( $rows as $row ) {
@@ -63016,6 +63107,10 @@ add_action( 'wp_ajax_sp_export_full_site', function () {
     $sql .= "SET FOREIGN_KEY_CHECKS=0;\n\n";
 
     foreach ( $tables as $table ) {
+        // Defense-in-depth: $table came from $wpdb->get_col(...prepare("SHOW TABLES LIKE %s",...)),
+        // so it should already be a valid table name. Reject any backtick before
+        // interpolating into SHOW CREATE / SELECT statements.
+        if ( strpos( $table, '`' ) !== false ) continue;
         $create = $wpdb->get_row( "SHOW CREATE TABLE `{$table}`", ARRAY_N );
         if ( ! $create || empty( $create[1] ) ) continue;
 
@@ -64150,7 +64245,7 @@ function sp_render_newsletter_edit_page(): void {
                         <button type="button" class="button" id="select-pdf-btn"><?php esc_html_e( 'Select PDF', 'societypress' ); ?></button>
                         <button type="button" class="button" id="remove-pdf-btn" <?php if ( empty( $nl->file_id ) ) echo 'style="display:none;"'; ?>><?php esc_html_e( 'Remove', 'societypress' ); ?></button>
                         <span id="cover-generating" class="sp-newsletter-edit-generating" style="display:none;">
-                            <span class="spinner is-active sp-newsletter-edit-spinner"></span> <?php esc_html_e( 'Generating cover...', 'societypress' ); ?>
+                            <span class="spinner is-active sp-newsletter-edit-spinner" aria-hidden="true"></span> <?php esc_html_e( 'Generating cover...', 'societypress' ); ?>
                         </span>
                     </td>
                 </tr>
@@ -82130,7 +82225,10 @@ function sp_render_research_cases_page(): void {
                 <?php else : foreach ( $rows as $r ) : ?>
                     <tr>
                         <td><strong><?php echo esc_html( $r->title ); ?></strong>
-                            <?php if ( $r->surname ) : ?><br><span class="sp-text-quiet-sm">Surname: <?php echo esc_html( $r->surname ); ?></span><?php endif; ?>
+                            <?php if ( $r->surname ) : ?><br><span class="sp-text-quiet-sm"><?php
+                                /* translators: %s: surname being researched */
+                                printf( esc_html__( 'Surname: %s', 'societypress' ), esc_html( $r->surname ) );
+                            ?></span><?php endif; ?>
                         </td>
                         <td><?php echo esc_html( $r->requester_name ); ?>
                             <?php if ( $r->requester_email ) : ?><br><span class="sp-text-quiet-sm"><?php echo esc_html( $r->requester_email ); ?></span><?php endif; ?>

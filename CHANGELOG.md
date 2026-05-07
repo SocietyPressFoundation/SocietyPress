@@ -14,6 +14,49 @@ Entries describe user-visible changes only. For the underlying commits, see
 
 ---
 
+## [1.0.64] — 2026-05-06
+
+### Security
+- Defense-in-depth: full-site SQL export rejects table names containing
+  backticks before interpolating into `SHOW CREATE TABLE` /
+  `SELECT *`. Names already came from `$wpdb-&gt;prepare("SHOW TABLES
+  LIKE %s",...)`, but a backtick guard prevents the pattern from
+  ever reaching unsafe contexts as the codebase grows.
+
+### Accessibility
+- Surname repeater inputs (member edit) gained `aria-label`s so
+  screen-reader users hear "Surname / County / State / Country / Year
+  from / Year to" per cell. Previously announced only the
+  `placeholder`, which disappears once the user types. The dynamic
+  JS-cloned row got matching labels.
+- Three loading spinners (`sp-import-spinner`,
+  `.sp-newsletter-edit-spinner`) gained `aria-hidden="true"` so
+  screen readers don&rsquo;t describe purely decorative motion. The
+  adjacent `role="status"` regions still announce progress.
+- Album-grid photo count now uses `_n()` for proper plural handling
+  ("1 photo" / "5 photos") and `number_format_i18n` for locale-aware
+  thousand-separators. Was bare PHP echo + hardcoded "photos".
+- "Surname: %s" research-services label wrapped with sprintf-style
+  i18n.
+
+### Reliability
+- Calendar grid month default + invalid-fallback now uses
+  `wp_date( 'Y-m' )` so the initial month matches WordPress's
+  configured timezone, not the server's.
+- Events listing date-range filters (30 days / 3 / 6 / 12 months)
+  now use `wp_date()` for the upper bound. Stored event dates are in
+  WP timezone; the bound was computed in server timezone, so the
+  filter could miss or include events at the boundary on servers
+  with a different system clock.
+- CSV exports got proper `Content-Disposition: attachment;
+  filename="..."` quoting (RFC 6266) at two more sites; the
+  volunteer-hours export filename now uses `wp_date()` instead of
+  `date()`.
+
+Plugin + parent theme: 1.0.64. Marketing theme: 0.43d.
+
+---
+
 ## [1.0.63] — 2026-05-06
 
 ### Security

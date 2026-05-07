@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.0.64
+ * Version:     1.0.65
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.64' );
+define( 'SOCIETYPRESS_VERSION', '1.0.65' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -25313,7 +25313,11 @@ add_action( 'wp_ajax_sp_extract_site_colors', function () {
     // disable redirect-following so a 3xx to a different host can't
     // bypass the pin. Only effective when WP's HTTP API uses the cURL
     // transport (the default on every host we care about).
-    $port           = wp_parse_url( $url, PHP_URL_SCHEME ) === 'https' ? 443 : 80;
+    // Honor the URL's explicit port if present; fall back to scheme defaults.
+    // WHY: a URL like http://example.com:8080/ would otherwise pin to port 80
+    //      while the cURL connect goes to 8080, leaving the pin ineffective.
+    $explicit_port  = wp_parse_url( $url, PHP_URL_PORT );
+    $port           = $explicit_port ?: ( wp_parse_url( $url, PHP_URL_SCHEME ) === 'https' ? 443 : 80 );
     $resolve_pin    = "{$host}:{$port}:{$resolved_ip}";
     $sp_curl_pin_cb = function ( $handle ) use ( $resolve_pin ) {
         curl_setopt( $handle, CURLOPT_RESOLVE, [ $resolve_pin ] );
@@ -55948,12 +55952,14 @@ function sp_render_volunteer_opportunities_frontend(): string {
         font-size: 0.85em;
         color: var(--sp-color-text-secondary, #6b7280);
     }
-    /* Signup / waitlist count (capacity color stays inline — dynamic) ------- */
+    /* Signup / waitlist count — variant carries the color so the template
+       no longer needs an inline style on the dynamic case. */
     .sp-vol-card-capacity {
         margin: 8px 0 4px;
         font-size: 0.85em;
-        /* color is set inline: red when full, grey otherwise */
+        color: #6b7280;
     }
+    .sp-vol-card-capacity--full { color: #d63638; }
     .sp-vol-card-signups {
         margin: 8px 0 4px;
         font-size: 0.85em;
@@ -55992,11 +55998,15 @@ function sp_render_volunteer_opportunities_frontend(): string {
         align-items: center;
         gap: 10px;
     }
-    /* Status label (confirmed / waitlisted) — color stays inline (dynamic) -- */
+    /* Status label (confirmed / waitlisted) — variant carries the color so
+       the template no longer needs an inline style. #8a6500 chosen for
+       waitlisted (4.5:1 on white) instead of #dba617 (3.55:1). */
     .sp-vol-status-label {
         font-size: 0.9em;
         font-weight: 600;
     }
+    .sp-vol-status-label--confirmed  { color: #00a32a; }
+    .sp-vol-status-label--waitlisted { color: #8a6500; }
     /* Cancel button --------------------------------------------------------- */
     .sp-vol-cancel-btn {
         padding: 4px 12px;
@@ -56112,11 +56122,11 @@ function sp_render_volunteer_opportunities_frontend(): string {
                         <?php endif; ?>
 
                         <?php if ( $opp->capacity !== null ) : ?>
-                            <p class="sp-vol-card-capacity" style="color: <?php echo $is_full ? '#d63638' : '#6b7280'; ?>;">
+                            <p class="sp-vol-card-capacity<?php echo $is_full ? ' sp-vol-card-capacity--full' : ''; ?>">
                                 <?php if ( $is_full ) : ?>
-                                    <strong><?php esc_html_e( 'Full', 'societypress' ); ?></strong> (<?php echo $signup_count; ?>/<?php echo $opp->capacity; ?>)
+                                    <strong><?php esc_html_e( 'Full', 'societypress' ); ?></strong> (<?php echo (int) $signup_count; ?>/<?php echo (int) $opp->capacity; ?>)
                                 <?php else : ?>
-                                    <?php printf( esc_html__( '%1$d/%2$d spots filled', 'societypress' ), $signup_count, $opp->capacity ); ?>
+                                    <?php printf( esc_html__( '%1$d/%2$d spots filled', 'societypress' ), (int) $signup_count, (int) $opp->capacity ); ?>
                                 <?php endif; ?>
                             </p>
                         <?php elseif ( $signup_count > 0 ) : ?>
@@ -56143,7 +56153,7 @@ function sp_render_volunteer_opportunities_frontend(): string {
                             <span class="sp-vol-members-only"><?php esc_html_e( 'Members only', 'societypress' ); ?></span>
                         <?php elseif ( $user_signup ) : ?>
                             <div class="sp-vol-status-row">
-                                <span class="sp-vol-status-label" style="color: <?php echo $user_signup->status === 'confirmed' ? '#00a32a' : '#dba617'; ?>;">
+                                <span class="sp-vol-status-label sp-vol-status-label--<?php echo $user_signup->status === 'confirmed' ? 'confirmed' : 'waitlisted'; ?>">
                                     <?php echo $user_signup->status === 'confirmed' ? '&#9989; ' . esc_html__( 'Signed Up', 'societypress' ) : '&#128203; ' . esc_html__( 'Waitlisted', 'societypress' ); ?>
                                 </span>
                                 <button type="button" class="sp-vol-cancel-btn"
@@ -64515,6 +64525,11 @@ function sp_ajax_newsletter_download(): void {
     if ( $mime && $mime !== 'application/pdf' ) {
         wp_die( esc_html__( 'This newsletter is not currently available.', 'societypress' ) );
     }
+
+    // Drop any active output buffer so an upstream notice or stray output
+    // can't precede the binary PDF stream. Headers haven't been sent yet
+    // because we haven't echoed anything ourselves.
+    while ( ob_get_level() > 0 ) { ob_end_clean(); }
 
     // Serve the file with proper headers for download
     nocache_headers();
@@ -81247,9 +81262,25 @@ function sp_help_rate_limit_ok( string $email, string $ip ): bool {
     if ( $email_count >= $max ) return false;
     if ( $ip_count    >= $max * 3 ) return false; // IP cap is more generous
 
+    return true;
+}
+
+/**
+ * Increment the help-request rate-limit counters.
+ *
+ * WHY split from sp_help_rate_limit_ok(): increment-on-check would shrink
+ * a legitimate caller's daily quota whenever a downstream step (email send,
+ * DB insert) fails. Call this only after the request was actually accepted.
+ */
+function sp_help_rate_limit_record( string $email, string $ip ): void {
+    $email_key = 'sp_help_rl_e_' . md5( strtolower( $email ) );
+    $ip_key    = 'sp_help_rl_i_' . md5( $ip );
+
+    $email_count = (int) ( get_transient( $email_key ) ?: 0 );
+    $ip_count    = (int) ( get_transient( $ip_key ) ?: 0 );
+
     set_transient( $email_key, $email_count + 1, DAY_IN_SECONDS );
     set_transient( $ip_key,    $ip_count + 1,    DAY_IN_SECONDS );
-    return true;
 }
 
 
@@ -81428,6 +81459,11 @@ add_action( 'init', function () {
         'verification_token' => $token,
     ] );
     $request_id = (int) $wpdb->insert_id;
+
+    // Rate-limit counters bump only after the row actually landed, so a
+    // failed insert (DB error, etc.) doesn't shrink the legitimate caller's
+    // daily quota.
+    sp_help_rate_limit_record( $email, $ip );
 
     // Send verification email
     $verify_url = add_query_arg( [

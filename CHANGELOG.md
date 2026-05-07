@@ -14,6 +14,36 @@ Entries describe user-visible changes only. For the underlying commits, see
 
 ---
 
+## [1.0.65] — 2026-05-06
+
+### Security
+- Site-color extractor SSRF guard now honors an explicit URL port
+  before falling back to scheme defaults. A URL like
+  `http://example.com:8080/` used to pin the host to port 80 while
+  the cURL connect went to 8080, leaving the pin ineffective.
+- Help-request rate-limit counters now bump only after the row
+  actually inserts, so a downstream failure (DB insert error, etc.)
+  doesn&rsquo;t shrink the legitimate caller&rsquo;s daily quota. New
+  `sp_help_rate_limit_record()` helper splits commit from check.
+- Newsletter download flushes any active output buffer before
+  emitting the binary PDF stream so an upstream notice or stray
+  output can&rsquo;t corrupt the response.
+
+### Refactoring
+- Volunteer card capacity and sign-up status colors are now
+  controlled by modifier classes (`.sp-vol-card-capacity--full`,
+  `.sp-vol-status-label--confirmed`, `.sp-vol-status-label--waitlisted`)
+  instead of inline `style="color: …"` per render. The waitlisted
+  color also moved from `#dba617` (3.55:1 on white) to `#8a6500`
+  (4.5:1) at the same time. Two more inline-style hot spots gone.
+- Volunteer card capacity counts now cast through `(int)` for
+  defensive output even though `$signup_count` and
+  `$opp-&gt;capacity` are already integers from a DB query.
+
+Plugin + parent theme: 1.0.65. Marketing theme: 0.43d.
+
+---
+
 ## [1.0.64] — 2026-05-06
 
 ### Security

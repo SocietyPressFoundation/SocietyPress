@@ -14,6 +14,23 @@ Entries describe user-visible changes only. For the underlying commits, see
 
 ---
 
+## [1.0.67] — 2026-05-06
+
+### Accessibility
+- Hero-slider previous/next arrows gained `aria-label` ("Previous
+  slide" / "Next slide"). Were `&lsaquo;` / `&rsaquo;` glyphs only.
+- Records-edit "remove field" buttons (admin) gained `aria-label`s
+  in both the PHP-rendered and JS-cloned variants.
+- Voting "remove choice" buttons gained `aria-label`s across the
+  four sites where they appear (PHP-rendered + JS-cloned + new-row
+  template).
+- Bulk-attended button dropped its redundant `title` tooltip — the
+  visible text "Mark All Attended" is already complete.
+
+Plugin + parent theme: 1.0.67. Marketing theme: 0.43d.
+
+---
+
 ## [1.0.66] — 2026-05-06
 
 ### Refactoring

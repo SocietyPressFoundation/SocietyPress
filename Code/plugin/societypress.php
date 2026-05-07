@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.0.66
+ * Version:     1.0.67
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.66' );
+define( 'SOCIETYPRESS_VERSION', '1.0.67' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -42948,7 +42948,7 @@ function sp_render_event_registrations_section( object $event ): void {
                 </a>
             <?php endif; ?>
             <?php if ( $event_past && $confirmed_count > 0 ) : ?>
-                <button type="button" class="button" id="sp-bulk-attended" title="<?php echo esc_attr__( 'Mark all confirmed as attended', 'societypress' ); ?>">
+                <button type="button" class="button" id="sp-bulk-attended">
                     <?php esc_html_e( 'Mark All Attended', 'societypress' ); ?>
                 </button>
             <?php endif; ?>
@@ -50271,8 +50271,8 @@ function sp_render_builder_widget_hero_slider( array $s ): void {
 
         <?php if ( count( $slides ) > 1 ) : ?>
             <div class="sp-slider-arrows">
-                <button type="button" class="sp-slider-arrow sp-slider-prev">&lsaquo;</button>
-                <button type="button" class="sp-slider-arrow sp-slider-next">&rsaquo;</button>
+                <button type="button" class="sp-slider-arrow sp-slider-prev" aria-label="<?php esc_attr_e( 'Previous slide', 'societypress' ); ?>">&lsaquo;</button>
+                <button type="button" class="sp-slider-arrow sp-slider-next" aria-label="<?php esc_attr_e( 'Next slide', 'societypress' ); ?>">&rsaquo;</button>
             </div>
         <?php endif; ?>
     </div>
@@ -66222,7 +66222,7 @@ function sp_render_record_collection_edit_page(): void {
                             </td>
                             <td class="sp-record-edit-check-cell"><input type="checkbox" name="field_searchable[<?php echo $i; ?>]" value="1" <?php checked( $f->searchable ); ?>></td>
                             <td class="sp-record-edit-check-cell"><input type="checkbox" name="field_public[<?php echo $i; ?>]" value="1" <?php checked( $f->is_public ); ?>></td>
-                            <td><button type="button" class="button sp-remove-field sp-record-edit-remove-btn">&times;</button></td>
+                            <td><button type="button" class="button sp-remove-field sp-record-edit-remove-btn" aria-label="<?php esc_attr_e( 'Remove field', 'societypress' ); ?>">&times;</button></td>
                         </tr>
                     <?php
                         endforeach;
@@ -66270,7 +66270,7 @@ function sp_render_record_collection_edit_page(): void {
                 '<td><select name="field_type[' + fieldIdx + ']">' + typeOpts + '</select></td>' +
                 '<td class="sp-text-center"><input type="checkbox" name="field_searchable[' + fieldIdx + ']" value="1"' + (searchable ? ' checked' : '') + '></td>' +
                 '<td class="sp-text-center"><input type="checkbox" name="field_public[' + fieldIdx + ']" value="1"' + (isPublic ? ' checked' : '') + '></td>' +
-                '<td><button type="button" class="button sp-remove-field sp-text-danger">&times;</button></td>';
+                '<td><button type="button" class="button sp-remove-field sp-text-danger" aria-label="<?php echo esc_js( __( 'Remove field', 'societypress' ) ); ?>">&times;</button></td>';
             tbody.appendChild(tr);
             fieldIdx++;
         }
@@ -74814,12 +74814,12 @@ function sp_render_ballot_edit_page(): void {
                 + '    <div class="sp-choice-row sp-choice-row-flex">'
                 + '      <input type="hidden" name="sp_questions[' + idx + '][choices][0][id]" value="0">'
                 + '      <input type="text" name="sp_questions[' + idx + '][choices][0][text]" class="sp-full-width" placeholder="<?php echo esc_js( __( 'Choice text', 'societypress' ) ); ?>">'
-                + '      <button type="button" class="button sp-remove-choice sp-btn-danger">&times;</button>'
+                + '      <button type="button" class="button sp-remove-choice sp-btn-danger" aria-label="<?php echo esc_js( __( "Remove choice", "societypress" ) ); ?>">&times;</button>'
                 + '    </div>'
                 + '    <div class="sp-choice-row sp-choice-row-flex">'
                 + '      <input type="hidden" name="sp_questions[' + idx + '][choices][1][id]" value="0">'
                 + '      <input type="text" name="sp_questions[' + idx + '][choices][1][text]" class="sp-full-width" placeholder="<?php echo esc_js( __( 'Choice text', 'societypress' ) ); ?>">'
-                + '      <button type="button" class="button sp-remove-choice sp-btn-danger">&times;</button>'
+                + '      <button type="button" class="button sp-remove-choice sp-btn-danger" aria-label="<?php echo esc_js( __( "Remove choice", "societypress" ) ); ?>">&times;</button>'
                 + '    </div>'
                 + '  </div>'
                 + '  <button type="button" class="button sp-add-choice"><?php echo esc_js( __( 'Add Choice', 'societypress' ) ); ?></button>'
@@ -74887,7 +74887,7 @@ function sp_render_ballot_edit_page(): void {
                     row.style.cssText = 'display:flex; gap:8px; margin-bottom:6px;';
                     row.innerHTML = '<input type="hidden" name="sp_questions[' + idx + '][choices][' + cIdx + '][id]" value="0">'
                                   + '<input type="text" name="sp_questions[' + idx + '][choices][' + cIdx + '][text]" class="sp-full-width" placeholder="<?php echo esc_js( __( 'Choice text', 'societypress' ) ); ?>">'
-                                  + '<button type="button" class="button sp-remove-choice sp-btn-danger">&times;</button>';
+                                  + '<button type="button" class="button sp-remove-choice sp-btn-danger" aria-label="<?php echo esc_js( __( "Remove choice", "societypress" ) ); ?>">&times;</button>';
                     choicesList.appendChild(row);
                     bindRemoveChoice(row.querySelector('.sp-remove-choice'));
                 });
@@ -74982,7 +74982,7 @@ function sp_render_ballot_question_card( int $q_index, ?object $question ): void
                     <div class="sp-choice-row sp-choice-row-flex">
                         <input type="hidden" name="sp_questions[<?php echo esc_attr( $q_index ); ?>][choices][<?php echo esc_attr( $c_index ); ?>][id]" value="<?php echo esc_attr( $choice->id ?? 0 ); ?>">
                         <input type="text" name="sp_questions[<?php echo esc_attr( $q_index ); ?>][choices][<?php echo esc_attr( $c_index ); ?>][text]" value="<?php echo esc_attr( $choice->choice_text ?? '' ); ?>" class="sp-full-width" placeholder="<?php esc_attr_e( 'Choice text', 'societypress' ); ?>">
-                        <button type="button" class="button sp-remove-choice sp-btn-danger">&times;</button>
+                        <button type="button" class="button sp-remove-choice sp-btn-danger" aria-label="<?php esc_attr_e( 'Remove choice', 'societypress' ); ?>">&times;</button>
                     </div>
                 <?php endforeach; ?>
             </div>

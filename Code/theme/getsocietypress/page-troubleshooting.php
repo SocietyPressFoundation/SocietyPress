@@ -48,7 +48,7 @@ get_header();
             </p>
             <ol>
                 <li><strong>Check your SocietyPress version is current.</strong> <code>Settings &rarr; About</code> shows your version; <a href="<?php echo esc_url( home_url( '/download/' ) ); ?>">the download page</a> shows the latest. A lot of &ldquo;bugs&rdquo; are already fixed in a release you haven't installed yet.</li>
-                <li><strong>Check your WordPress version is current.</strong> <code>Dashboard &rarr; Updates</code>. Same reasoning.</li>
+                <li><strong>Check your <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> version is current.</strong> <code>Dashboard &rarr; Updates</code>. Same reasoning.</li>
                 <li><strong>Deactivate other plugins one at a time</strong> and retry. A surprising number of issues trace to a third-party plugin, not to SocietyPress.</li>
                 <li><strong>Switch to the parent SocietyPress theme</strong> temporarily. If the problem disappears, it's a child-theme customization issue.</li>
             </ol>
@@ -60,11 +60,11 @@ get_header();
 
             <h2>1. &ldquo;The installer stops with a timeout error&rdquo;</h2>
 
-            <p><strong>What you're seeing:</strong> <code>sp-installer.php</code> hangs at &ldquo;Downloading WordPress&hellip;&rdquo; or &ldquo;Extracting SocietyPress&hellip;&rdquo; and eventually shows a 504 or blank page.</p>
+            <p><strong>What you're seeing:</strong> <code>sp-installer.php</code> hangs at &ldquo;Downloading <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a>&hellip;&rdquo; or &ldquo;Extracting SocietyPress&hellip;&rdquo; and eventually shows a 504 or blank page.</p>
 
-            <p><strong>Why:</strong> Your host's PHP <code>max_execution_time</code> is set to 30 seconds. The installer needs to download WordPress core (~20 MB) and the SocietyPress bundle (~8 MB) and extract both &mdash; on a slow connection that overshoots 30 seconds.</p>
+            <p><strong>Why:</strong> Your host's PHP <code>max_execution_time</code> is set to 30 seconds. The installer needs to download <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> core (~20 MB) and the SocietyPress bundle (~8 MB) and extract both &mdash; on a slow connection that overshoots 30 seconds.</p>
 
-            <p><strong>Fix:</strong> Ask your host's support to raise <code>max_execution_time</code> to 300 seconds. Or use the manual install path: download the .zip from the download page, unzip locally, upload plugin and theme folders through the WordPress admin.</p>
+            <p><strong>Fix:</strong> Ask your host's support to raise <code>max_execution_time</code> to 300 seconds. Or use the manual install path: download the .zip from the download page, unzip locally, upload plugin and theme folders through the <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> admin.</p>
 
             <hr>
 
@@ -76,7 +76,7 @@ get_header();
 
             <p><strong>Fix:</strong> Add this line to <code>wp-config.php</code> just before the &ldquo;That's all, stop editing!&rdquo; comment:</p>
             <pre><code>define( 'WP_MEMORY_LIMIT', '256M' );</code></pre>
-            <p>If the white screen persists, turn on WordPress's debug log and check it:</p>
+            <p>If the white screen persists, turn on <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a>'s debug log and check it:</p>
             <pre><code>define( 'WP_DEBUG', true );
 define( 'WP_DEBUG_LOG', true );
 define( 'WP_DEBUG_DISPLAY', false );</code></pre>
@@ -112,12 +112,12 @@ define( 'WP_DEBUG_DISPLAY', false );</code></pre>
 
             <p><strong>What you're seeing:</strong> Members are reaching their renewal date but not getting the automated reminder email. You've checked spam folders &mdash; nothing there either.</p>
 
-            <p><strong>Why:</strong> Two common causes. First, WordPress's <code>wp_cron</code> system runs when someone visits the site &mdash; if your society site gets low traffic, cron tasks can stack up and not fire. Second, many shared hosts silently drop emails sent via PHP's built-in <code>mail()</code> function because of spam-prevention rules.</p>
+            <p><strong>Why:</strong> Two common causes. First, <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a>'s <code>wp_cron</code> system runs when someone visits the site &mdash; if your society site gets low traffic, cron tasks can stack up and not fire. Second, many shared hosts silently drop emails sent via PHP's built-in <code>mail()</code> function because of spam-prevention rules.</p>
 
             <p><strong>Fix:</strong></p>
             <ol>
                 <li>Install a transactional email plugin like <strong>WP Mail SMTP</strong> or <strong>FluentSMTP</strong>. Point it at a free-tier SMTP provider (Amazon SES, Postmark, Mailgun, SendGrid). This solves deliverability for good.</li>
-                <li>Set up a real cron trigger instead of WordPress's built-in pseudo-cron. Your cPanel has a &ldquo;Cron Jobs&rdquo; tool; add one that hits <code>wp-cron.php</code> every 15 minutes:
+                <li>Set up a real cron trigger instead of <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a>'s built-in pseudo-cron. Your cPanel has a &ldquo;Cron Jobs&rdquo; tool; add one that hits <code>wp-cron.php</code> every 15 minutes:
                     <pre><code>wget -q -O - https://yoursite.org/wp-cron.php?doing_wp_cron &gt;/dev/null 2&gt;&amp;1</code></pre>
                 </li>
             </ol>
@@ -145,7 +145,7 @@ define( 'WP_DEBUG_DISPLAY', false );</code></pre>
 
             <p><strong>Why:</strong> Usually a theme issue. Either the SocietyPress theme (or a child theme) isn't activated, or a child theme is pointing at a missing parent.</p>
 
-            <p><strong>Fix:</strong> Go to <code>Appearance &rarr; Themes</code>. The active theme should be the SocietyPress parent theme or one of its child themes (Heritage, Coastline, Prairie, Ledger, Parlor). If a default WordPress theme (Twenty Twenty-Five, etc.) is active, switch to SocietyPress. If a child theme is active but broken, switch to the SocietyPress parent first to confirm the base works, then re-activate your child theme.</p>
+            <p><strong>Fix:</strong> Go to <code>Appearance &rarr; Themes</code>. The active theme should be the SocietyPress parent theme or one of its child themes (Heritage, Coastline, Prairie, Ledger, Parlor). If a default <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> theme (Twenty Twenty-Five, etc.) is active, switch to SocietyPress. If a child theme is active but broken, switch to the SocietyPress parent first to confirm the base works, then re-activate your child theme.</p>
 
             <hr>
 
@@ -169,7 +169,7 @@ define( 'WP_DEBUG_DISPLAY', false );</code></pre>
 
             <p><strong>What you're seeing:</strong> You edit a page in the page builder, click Save, get a success message, but reloading the page shows the old content.</p>
 
-            <p><strong>Why:</strong> Caching. Either your hosting provider's CDN is serving the old page, a WordPress caching plugin is holding onto the old version, or your browser is showing a cached copy.</p>
+            <p><strong>Why:</strong> Caching. Either your hosting provider's CDN is serving the old page, a <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> caching plugin is holding onto the old version, or your browser is showing a cached copy.</p>
 
             <p><strong>Fix:</strong> In order of likelihood:</p>
             <ol>
@@ -187,7 +187,7 @@ define( 'WP_DEBUG_DISPLAY', false );</code></pre>
 
             <p><strong>Why:</strong> Happens to everyone. Breathe.</p>
 
-            <p><strong>Fix:</strong> WordPress and SocietyPress both use a Trash model for most deletions &mdash; things aren't actually deleted for 30 days. To recover:</p>
+            <p><strong>Fix:</strong> <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> and SocietyPress both use a Trash model for most deletions &mdash; things aren't actually deleted for 30 days. To recover:</p>
             <ul>
                 <li><strong>Pages:</strong> <code>Pages &rarr; Trash</code>. Click Restore.</li>
                 <li><strong>Members:</strong> <code>Members &rarr; Trash</code> (same pattern).</li>

@@ -36,7 +36,7 @@ get_header();
             <h1 class="page-hero__title">Installation Guide</h1>
             <p class="page-hero__subtitle">
                 Upload one file, fill out one form, and SocietyPress is running.
-                No command line, no WordPress to install first &mdash; the
+                No command line, no <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> to install first &mdash; the
                 installer handles all of it.
             </p>
         </div>
@@ -72,7 +72,7 @@ get_header();
                 </div>
                 <div class="inst-checklist__text">
                     <strong>An empty directory on your web host</strong>
-                    <span>Either a brand-new domain, or an empty subfolder like <code>yoursite.com/society/</code>. The installer won't overwrite an existing WordPress install.</span>
+                    <span>Either a brand-new domain, or an empty subfolder like <code>yoursite.com/society/</code>. The installer won't overwrite an existing <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> install.</span>
                 </div>
             </div>
 
@@ -178,8 +178,8 @@ get_header();
         </div>
 
         <div class="inst-note">
-            <strong>You do not need to install WordPress first.</strong>
-            The installer downloads WordPress and SocietyPress together. If you've already installed WordPress in this folder, the installer will detect that and stop so it doesn't overwrite anything. In that case, use the manual install instructions at the bottom of this page.
+            <strong>You do not need to install <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> first.</strong>
+            The installer downloads <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> and SocietyPress together. If you've already installed <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> in this folder, the installer will detect that and stop so it doesn't overwrite anything. In that case, use the manual install instructions at the bottom of this page.
         </div>
 
     </div>
@@ -220,7 +220,7 @@ get_header();
                     <p>One screen, a handful of fields, grouped into three short sections:</p>
                     <ul>
                         <li><strong>Database</strong> &mdash; the database name, username, and password you created with your host.</li>
-                        <li><strong>Site &amp; admin account</strong> &mdash; your site title, and the email, username, and password for your WordPress administrator account.</li>
+                        <li><strong>Site &amp; admin account</strong> &mdash; your site title, and the email, username, and password for your <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> administrator account.</li>
                         <li><strong>Your society</strong> &mdash; the name of your society and a contact email. This pre-fills the setup wizard so you don't have to do it again later.</li>
                     </ul>
                 </div>
@@ -230,7 +230,7 @@ get_header();
                 <div class="inst-step__number">3</div>
                 <div class="inst-step__content">
                     <h3>Click <strong>Install SocietyPress</strong></h3>
-                    <p>The installer runs through several automated steps: verifying your server, downloading the latest WordPress, downloading the SocietyPress bundle, writing the configuration file, setting up the database, activating the plugin, activating the theme, and saving your society details. You'll see progress as it goes. It usually takes one to two minutes on a decent host.</p>
+                    <p>The installer runs through several automated steps: verifying your server, downloading the latest <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a>, downloading the SocietyPress bundle, writing the configuration file, setting up the database, activating the plugin, activating the theme, and saving your society details. You'll see progress as it goes. It usually takes one to two minutes on a decent host.</p>
                 </div>
             </div>
 
@@ -258,7 +258,7 @@ get_header();
                 </svg>
             </div>
             <h2>Step 3: You're Already Signed In</h2>
-            <p>When the installer finishes, it logs you in to your new WordPress dashboard automatically and drops you at the SocietyPress home screen. No logging in separately, no setup wizard to step through &mdash; the information you gave the installer has already been saved.</p>
+            <p>When the installer finishes, it logs you in to your new <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> dashboard automatically and drops you at the SocietyPress home screen. No logging in separately, no setup wizard to step through &mdash; the information you gave the installer has already been saved.</p>
         </div>
 
         <div class="inst-note">
@@ -374,25 +374,25 @@ get_header();
 
             <details class="inst-trouble-item">
                 <summary class="inst-trouble-item__question">
-                    <span>"WordPress is already installed"</span>
+                    <span>"<a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> is already installed"</span>
                     <svg class="inst-trouble-item__chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <polyline points="6 9 12 15 18 9"/>
                     </svg>
                 </summary>
                 <div class="inst-trouble-item__answer">
-                    <p>The installer refuses to run in a directory that already contains <code>wp-config.php</code> or <code>wp-includes/</code>. This is intentional &mdash; overwriting an existing install could destroy data. Either install into a different folder, or if you really want a fresh install here, remove the existing files first. If you want to add SocietyPress to an existing WordPress site, use the <strong>Advanced: Manual Install</strong> section at the bottom of this page.</p>
+                    <p>The installer refuses to run in a directory that already contains <code>wp-config.php</code> or <code>wp-includes/</code>. This is intentional &mdash; overwriting an existing install could destroy data. Either install into a different folder, or if you really want a fresh install here, remove the existing files first. If you want to add SocietyPress to an existing <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> site, use the <strong>Advanced: Manual Install</strong> section at the bottom of this page.</p>
                 </div>
             </details>
 
             <details class="inst-trouble-item">
                 <summary class="inst-trouble-item__question">
-                    <span>"Couldn't download the SocietyPress bundle" or "Couldn't download WordPress"</span>
+                    <span>"Couldn't download the SocietyPress bundle" or "Couldn't download <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a>"</span>
                     <svg class="inst-trouble-item__chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <polyline points="6 9 12 15 18 9"/>
                     </svg>
                 </summary>
                 <div class="inst-trouble-item__answer">
-                    <p>Your host is blocking outbound connections. The installer needs to reach <code>wordpress.org</code> and <code>getsocietypress.org</code> to fetch the files it installs. This is rare on hosts that run WordPress at all, but if it happens, ask your host to allow outbound HTTPS to those two domains &mdash; or use the Advanced manual install instead.</p>
+                    <p>Your host is blocking outbound connections. The installer needs to reach <code>wordpress.org</code> and <code>getsocietypress.org</code> to fetch the files it installs. This is rare on hosts that run <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> at all, but if it happens, ask your host to allow outbound HTTPS to those two domains &mdash; or use the Advanced manual install instead.</p>
                 </div>
             </details>
 
@@ -452,7 +452,7 @@ get_header();
 
 <!-- ==========================================================================
      8. ADVANCED — MANUAL INSTALL FALLBACK
-     Collapsed by default. For users who already have WordPress, can't run
+     Collapsed by default. For users who already have <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a>, can't run
      the installer for some host-specific reason, or just want to upload
      the files themselves.
      ========================================================================== -->
@@ -466,7 +466,7 @@ get_header();
                 </svg>
             </div>
             <h2>Advanced: Manual Install</h2>
-            <p>For users who already have WordPress running and want to add SocietyPress by hand, or who can't use the installer for host-specific reasons. The one-click installer is simpler for nearly everyone &mdash; only come here if you have a reason to.</p>
+            <p>For users who already have <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> running and want to add SocietyPress by hand, or who can't use the installer for host-specific reasons. The one-click installer is simpler for nearly everyone &mdash; only come here if you have a reason to.</p>
         </div>
 
         <div class="inst-trouble-list">
@@ -481,7 +481,7 @@ get_header();
                 <div class="inst-trouble-item__answer">
                     <p><strong>Step 1 &mdash; Download the full .zip.</strong> From the <a href="<?php echo esc_url( home_url( '/download/' ) ); ?>">download page</a>, grab the full platform .zip (the secondary option next to the installer). Unzip it on your computer. You'll see a <code>societypress/</code> folder (the plugin) and several theme folders (<code>societypress/</code> parent theme plus the child themes).</p>
 
-                    <p><strong>Step 2 &mdash; Install the plugin.</strong> In your WordPress dashboard, go to <strong>Plugins &rarr; Add New Plugin</strong>, click <strong>Upload Plugin</strong>, and upload the <code>societypress/</code> plugin folder (you'll need to zip just that folder first). Click <strong>Install Now</strong>, then <strong>Activate Plugin</strong>. SocietyPress creates its database tables automatically on activation.</p>
+                    <p><strong>Step 2 &mdash; Install the plugin.</strong> In your <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> dashboard, go to <strong>Plugins &rarr; Add New Plugin</strong>, click <strong>Upload Plugin</strong>, and upload the <code>societypress/</code> plugin folder (you'll need to zip just that folder first). Click <strong>Install Now</strong>, then <strong>Activate Plugin</strong>. SocietyPress creates its database tables automatically on activation.</p>
 
                     <p><strong>Step 3 &mdash; Install the parent theme.</strong> Go to <strong>Appearance &rarr; Themes &rarr; Add New Theme &rarr; Upload Theme</strong>. Upload the <code>societypress/</code> parent theme folder (zip it first). Click <strong>Install Now</strong>, then <strong>Activate</strong>.</p>
 
@@ -511,19 +511,19 @@ get_header();
                     </svg>
                 </summary>
                 <div class="inst-trouble-item__answer">
-                    <p>A "nonce" is a one-time-use security token that WordPress generates every time you load a page in the dashboard. It proves that the action you're taking (like uploading a plugin) actually came from you, and not from a malicious script. This error almost always means you left the upload page open too long and the token expired. Log out of WordPress, log back in, and try again. If it keeps happening, clear your browser cookies for the site.</p>
+                    <p>A "nonce" is a one-time-use security token that <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> generates every time you load a page in the dashboard. It proves that the action you're taking (like uploading a plugin) actually came from you, and not from a malicious script. This error almost always means you left the upload page open too long and the token expired. Log out of <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a>, log back in, and try again. If it keeps happening, clear your browser cookies for the site.</p>
                 </div>
             </details>
 
             <details class="inst-trouble-item">
                 <summary class="inst-trouble-item__question">
-                    <span>My existing WordPress content disappeared</span>
+                    <span>My existing <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> content disappeared</span>
                     <svg class="inst-trouble-item__chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <polyline points="6 9 12 15 18 9"/>
                     </svg>
                 </summary>
                 <div class="inst-trouble-item__answer">
-                    <p>It hasn't. SocietyPress never modifies or deletes your existing WordPress posts, pages, or media. If content seems missing, it's just that the SocietyPress theme uses its own page system, so standard WordPress pages may not appear in the theme's navigation &mdash; but they're still in your database, safe and untouched. Switch your theme back temporarily if you need to see them.</p>
+                    <p>It hasn't. SocietyPress never modifies or deletes your existing <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> posts, pages, or media. If content seems missing, it's just that the SocietyPress theme uses its own page system, so standard <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> pages may not appear in the theme's navigation &mdash; but they're still in your database, safe and untouched. Switch your theme back temporarily if you need to see them.</p>
                 </div>
             </details>
 

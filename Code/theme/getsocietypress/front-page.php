@@ -67,7 +67,7 @@ get_header();
             <h2>Everything Your Society Needs</h2>
             <p>
                 15 toggleable feature modules plus Members always-on. One
-                platform. No piecing together a dozen WordPress plugins and
+                platform. No piecing together a dozen <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> plugins and
                 hoping they work together.
             </p>
         </div>
@@ -250,7 +250,7 @@ get_header();
                 <h3>Import Your Data</h3>
                 <p>
                     CSV import for members, events, library items, and resource links.
-                    GENRECORD import for genealogical record collections. Bring your
+                    <a href="https://genrecord.org" target="_blank" rel="noopener">GENRECORD</a> import for genealogical record collections. Bring your
                     data with you &mdash; nothing gets left behind.
                 </p>
             </div>
@@ -321,7 +321,23 @@ get_header();
      ========================================================================== -->
 <?php
 $gsp_releases = function_exists( 'gsp_get_github_releases' ) ? gsp_get_github_releases( 3 ) : array();
-if ( ! empty( $gsp_releases ) ) :
+
+// Hide Recently Shipped until v1.0 ships. Pre-1.0 dev iterations (1.0.x with
+// patch numbers) aren't user-facing news worth highlighting on the homepage.
+// When v1.0 releases, the latest tag will start with "v1." but be exactly
+// "v1.0" or higher (no fourth component), and this gate flips on.
+$gsp_show_releases = false;
+if ( ! empty( $gsp_releases ) ) {
+    $latest_tag = ltrim( (string) ( $gsp_releases[0]['tag'] ?? '' ), 'vV' );
+    $parts      = explode( '.', $latest_tag );
+    // Show only when major >= 1 and the version is exactly two-component (1.0)
+    // or any tag whose patch component is 0 — i.e. a real release, not a dev iter.
+    if ( count( $parts ) >= 2 && (int) $parts[0] >= 1 && ( count( $parts ) === 2 || ( isset( $parts[2] ) && (int) $parts[2] === 0 ) ) ) {
+        $gsp_show_releases = true;
+    }
+}
+
+if ( $gsp_show_releases ) :
 ?>
 <section class="updates section">
     <div class="container">
@@ -338,6 +354,12 @@ if ( ! empty( $gsp_releases ) ) :
                 $excerpt = '';
                 if ( ! empty( $release['body'] ) ) {
                     $excerpt = wp_trim_words( wp_strip_all_tags( $release['body'] ), 25, '&hellip;' );
+                    // Linkify literal "CHANGELOG.md" mentions to the local /changelog/ page.
+                    $excerpt = str_replace(
+                        'CHANGELOG.md',
+                        '<a href="' . esc_url( home_url( '/changelog/' ) ) . '">CHANGELOG.md</a>',
+                        $excerpt
+                    );
                 }
             ?>
                 <article class="update-card">

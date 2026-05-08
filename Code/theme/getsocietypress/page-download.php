@@ -134,14 +134,14 @@ $sp_installer_url = gsp_get_installer_url();
                     The core of the platform. Manages members, events, dues, the
                     research library, genealogical records, donations, newsletters,
                     the page builder, and the design system. Install it like any
-                    other WordPress plugin.
+                    other <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> plugin.
                 </p>
                 <ul class="dl-included__list">
                     <li>15 toggleable feature modules</li>
                     <li>Page builder with 21 widget types</li>
                     <li>Design system with live preview</li>
                     <li>Member directory with privacy controls</li>
-                    <li>CSV, GEDCOM, and GENRECORD import &amp; export</li>
+                    <li>CSV, GEDCOM, and <a href="https://genrecord.org" target="_blank" rel="noopener">GENRECORD</a> import &amp; export</li>
                     <li>Full-site export in one click</li>
                 </ul>
             </div>
@@ -197,7 +197,7 @@ $sp_installer_url = gsp_get_installer_url();
                 <div class="dl-step__content">
                     <h3>Point your browser at the installer</h3>
                     <p>
-                        Upload <code>sp-installer.php</code> to a fresh WordPress site, then
+                        Upload <code>sp-installer.php</code> to a fresh <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> site, then
                         visit <code>yoursite.com/sp-installer.php</code>. The installer pulls
                         this .zip, sets up the plugin and theme, and drops you at the setup
                         wizard &mdash; no SSH, no FTP, no cPanel gymnastics.
@@ -280,8 +280,8 @@ $sp_installer_url = gsp_get_installer_url();
             <p>
                 Make sure your hosting environment meets the
                 <a href="<?php echo esc_url( home_url( '/docs/requirements/' ) ); ?>">minimum requirements</a>.
-                Short version: PHP 8.1+, WordPress 6.0+, and MySQL 8.0+ (or MariaDB 10.6+).
-                If your host runs a current version of WordPress, you're almost certainly fine.
+                Short version: PHP 8.1+, <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> 6.0+, and MySQL 8.0+ (or MariaDB 10.6+).
+                If your host runs a current version of <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a>, you're almost certainly fine.
             </p>
         </div>
     </div>

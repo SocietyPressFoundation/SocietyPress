@@ -89,7 +89,7 @@ get_header();
                     <li><strong>Mature module set.</strong> ~15 modules including Voting, Surname Research, UDM.</li>
                     <li><strong>Migration cost.</strong> $60/hr — $1,800–$2,400 typical for ENS-C → ENS-R.</li>
                     <li><strong>ENS-Classic sunsetting</strong> May 31, 2027.</li>
-                    <li><strong>Closed source.</strong> Likely WordPress under the hood, locked down.</li>
+                    <li><strong>Closed source.</strong> Likely <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> under the hood, locked down.</li>
                 </ul>
             </div>
 
@@ -108,9 +108,9 @@ get_header();
 
             <!-- Custom WordPress -->
             <div class="cmp-card">
-                <div class="cmp-card__badge cmp-card__badge--alt">Custom WordPress</div>
+                <div class="cmp-card__badge cmp-card__badge--alt">Custom <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a></div>
                 <ul class="cmp-card__list">
-                    <li><strong>WordPress + plugins</strong> assembled à la carte.</li>
+                    <li><strong><a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> + plugins</strong> assembled à la carte.</li>
                     <li><strong>Per-plugin licenses</strong> add up — MemberPress, The Events Calendar, etc.</li>
                     <li><strong>You integrate.</strong> Five plugins from five vendors that don't talk to each other.</li>
                     <li><strong>No genealogy-specific features.</strong> Build your own surname directory.</li>

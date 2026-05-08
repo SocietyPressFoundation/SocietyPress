@@ -62,8 +62,13 @@ get_header();
         </p>
 
         <p>
-            This isn't a call for contributors or pull requests. SocietyPress is
-            developed and maintained by one person. Open source, to us, means
+            This isn't a call for contributors or pull requests. A common
+            question: who's behind this? Today, SocietyPress is independently
+            developed. The license is GPL, the code is public, and the
+            long-term plan is to put the project under nonprofit
+            stewardship — the GitHub organization name
+            (<a href="https://github.com/SocietyPressFoundation" target="_blank" rel="noopener">SocietyPressFoundation</a>)
+            was chosen with that in mind. Open source, to us, means
             transparency and freedom — not crowdsourced development.
         </p>
 

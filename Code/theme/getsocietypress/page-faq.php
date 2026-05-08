@@ -142,8 +142,8 @@ get_header();
                 </summary>
                 <div class="faq-item__answer">
                     <p>
-                        PHP 8.1+, WordPress 6.0+, and MySQL 8.0+ (or MariaDB 10.6+). Any
-                        current shared-hosting plan that supports WordPress will work.
+                        PHP 8.1+, <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> 6.0+, and MySQL 8.0+ (or MariaDB 10.6+). Any
+                        current shared-hosting plan that supports <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> will work.
                         See the full
                         <a href="<?php echo esc_url( home_url( '/docs/requirements/' ) ); ?>">requirements page</a>
                         for details.
@@ -159,11 +159,11 @@ get_header();
                 <div class="faq-item__answer">
                     <p>
                         The easiest path is the one-click installer: upload
-                        <code>sp-installer.php</code> to a fresh WordPress site, visit
+                        <code>sp-installer.php</code> to a fresh <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> site, visit
                         <code>yoursite.com/sp-installer.php</code>, and it handles the
                         rest. If you'd rather do it by hand, download the .zip from the
                         <a href="<?php echo esc_url( home_url( '/download/' ) ); ?>">download page</a>,
-                        upload the plugin and each theme folder through your WordPress
+                        upload the plugin and each theme folder through your <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a>
                         admin, activate the plugin first, then your chosen theme. Either
                         way you'll land on the 3-step setup wizard.
                     </p>
@@ -172,7 +172,7 @@ get_header();
 
             <details class="faq-item" open>
                 <summary class="faq-item__question">
-                    Can I use SocietyPress with my existing WordPress theme?
+                    Can I use SocietyPress with my existing <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> theme?
                     <svg class="faq-item__chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
                 </summary>
                 <div class="faq-item__answer">
@@ -257,7 +257,7 @@ get_header();
                 </summary>
                 <div class="faq-item__answer">
                     <p>
-                        Yes. SocietyPress plugs into WordPress's built-in personal-data
+                        Yes. SocietyPress plugs into <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a>'s built-in personal-data
                         export and erasure tools. Members, event registrations, library
                         loans, newsletter access, volunteer records, and donations all
                         flow through the standard Tools &gt; Export Personal Data and
@@ -304,7 +304,7 @@ get_header();
                         containing a SQL dump of every SocietyPress table, a decrypted
                         member export, and a README. Every byte your society put in
                         comes back out. Your host's backup system handles the
-                        WordPress files and database &mdash; SocietyPress doesn't
+                        <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> files and database &mdash; SocietyPress doesn't
                         replace that, but it does make sure nothing important is
                         trapped in a proprietary format. The
                         <a href="<?php echo esc_url( home_url( '/docs/modules/?guide=backup-restore' ) ); ?>">Backup &amp; Restore guide</a>
@@ -320,7 +320,7 @@ get_header();
                 </summary>
                 <div class="faq-item__answer">
                     <p>
-                        Email deliverability is a WordPress-level concern, not
+                        Email deliverability is a <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a>-level concern, not
                         SocietyPress-specific. For reliable delivery, install a free
                         SMTP plugin (WP Mail SMTP, FluentSMTP) and point it at a
                         transactional email service &mdash; Amazon SES, Postmark, or
@@ -434,18 +434,23 @@ get_header();
                 </summary>
                 <div class="faq-item__answer">
                     <p>
-                        True today &mdash; SocietyPress is solo-maintained. The
-                        protection against bus-factor risk is the GPL license
-                        itself. Every line of code is public on
+                        Today, SocietyPress is independently developed. The
+                        license is GPL, the code is public, and the long-term
+                        plan is to put the project under nonprofit
+                        stewardship &mdash; the GitHub organization name
+                        (<a href="https://github.com/SocietyPressFoundation" target="_blank" rel="noopener">SocietyPressFoundation</a>)
+                        was chosen with that in mind.
+                    </p>
+                    <p>
+                        The protection against bus-factor risk is also baked
+                        into the licensing model. Every line of code is public
+                        on
                         <a href="https://github.com/SocietyPressFoundation/SocietyPress">GitHub</a>,
                         every release ships the full source, and any developer
-                        anywhere can fork the project and continue it. Compare
-                        that to a commercial platform where, if the company
-                        folds, your data and your software both vanish on the
-                        same day. You also have a copy of every release sitting
-                        on your own server, which means a working SocietyPress
-                        site keeps working whether the project continues or
-                        not.
+                        anywhere can fork the project and continue it. You
+                        also have a copy of every release sitting on your own
+                        server, which means a working SocietyPress site keeps
+                        working whether the project continues or not.
                     </p>
                 </div>
             </details>
@@ -466,7 +471,7 @@ get_header();
                         <a href="/roadmap/">roadmap</a> for societies that
                         want a bill instead of a fork. In the meantime, the
                         same GPL license that lets you read the code lets
-                        any WordPress developer in the world fix a bug for
+                        any <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> developer in the world fix a bug for
                         you &mdash; you are never locked in to one vendor's
                         support queue.
                     </p>
@@ -540,14 +545,14 @@ get_header();
 
             <details class="faq-item">
                 <summary class="faq-item__question">
-                    We don't have a webmaster. Doesn't running WordPress mean hosting fees, updates, and security patches?
+                    We don't have a webmaster. Doesn't running <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> mean hosting fees, updates, and security patches?
                     <svg class="faq-item__chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
                 </summary>
                 <div class="faq-item__answer">
                     <p>
                         Yes &mdash; self-hosting is a real responsibility, and
                         we won't pretend otherwise. Most cPanel hosts run $5
-                        to $10 a month and handle WordPress core updates
+                        to $10 a month and handle <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> core updates
                         automatically. SocietyPress itself ships a one-click
                         installer and an in-app update checker so plugin and
                         theme updates are a single button click. For
@@ -564,12 +569,12 @@ get_header();
 
             <details class="faq-item">
                 <summary class="faq-item__question">
-                    Aren't WordPress sites the ones that always get hacked? Isn't open source less secure?
+                    Aren't <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> sites the ones that always get hacked? Isn't open source less secure?
                     <svg class="faq-item__chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
                 </summary>
                 <div class="faq-item__answer">
                     <p>
-                        Almost every WordPress compromise traces back to one
+                        Almost every <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> compromise traces back to one
                         of three things: an outdated installation, a sketchy
                         third-party plugin, or a weak admin password.
                         SocietyPress addresses all three: the in-app update

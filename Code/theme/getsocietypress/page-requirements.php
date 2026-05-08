@@ -54,7 +54,7 @@ get_header();
             <h2>The short version</h2>
 
             <p class="req-plain__lede">
-                If your society already has a WordPress website, SocietyPress will
+                If your society already has a <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> website, SocietyPress will
                 almost certainly work on it. If you're starting fresh, any reputable
                 shared-hosting plan will do the job.
             </p>
@@ -62,7 +62,7 @@ get_header();
             <ul class="req-plain__checks">
                 <li>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-                    A web hosting account that offers WordPress &mdash; $5&ndash;15 a month at most hosts
+                    A web hosting account that offers <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> &mdash; $5&ndash;15 a month at most hosts
                 </li>
                 <li>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
@@ -70,7 +70,7 @@ get_header();
                 </li>
                 <li>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-                    A current version of WordPress (6.0 or newer &mdash; most hosts install the latest for you)
+                    A current version of <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> (6.0 or newer &mdash; most hosts install the latest for you)
                 </li>
                 <li>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
@@ -126,12 +126,12 @@ get_header();
                 </thead>
                 <tbody>
                     <tr>
-                        <td>PHP (the language WordPress is written in)</td>
+                        <td>PHP (the language <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> is written in)</td>
                         <td>8.1</td>
                         <td><strong>8.3 or newer</strong></td>
                     </tr>
                     <tr>
-                        <td>WordPress</td>
+                        <td><a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a></td>
                         <td>6.0</td>
                         <td><strong>Latest stable release</strong></td>
                     </tr>
@@ -159,9 +159,9 @@ get_header();
 
         <div class="req-note">
             <strong>No special extensions required.</strong>
-            SocietyPress uses only standard PHP functions and WordPress APIs, plus
+            SocietyPress uses only standard PHP functions and <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> APIs, plus
             <code>libsodium</code> (bundled with PHP 7.2+) for encrypting member data
-            at rest. If your WordPress installation works, SocietyPress will work.
+            at rest. If your <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> installation works, SocietyPress will work.
         </div>
 
     </div>
@@ -187,7 +187,7 @@ get_header();
             </div>
             <h2>Database</h2>
             <p>
-                SocietyPress creates its own tables alongside your existing WordPress
+                SocietyPress creates its own tables alongside your existing <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a>
                 data &mdash; never inside it. Roughly 65 tables across 16 feature
                 modules, all prefixed so they're easy to identify and back up.
             </p>
@@ -249,7 +249,7 @@ get_header();
         <div class="req-note">
             <strong>Clean uninstall, clean backups.</strong>
             Every SocietyPress table uses the <code>sp_</code> prefix under your
-            WordPress prefix. Your database backup picks them up automatically, and
+            <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> prefix. Your database backup picks them up automatically, and
             if you ever remove SocietyPress the uninstaller cleans up after itself.
         </div>
 
@@ -307,8 +307,8 @@ get_header();
             Regional and state-level societies run 1,000&ndash;5,000. SocietyPress
             handles all of that on standard shared hosting without breaking a sweat.
             If you're running a 10,000+ member national organization, talk to your
-            host about a managed WordPress plan &mdash; not because the software
-            can't scale, but because any WordPress site at that size benefits from
+            host about a managed <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> plan &mdash; not because the software
+            can't scale, but because any <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> site at that size benefits from
             dedicated resources.
         </div>
 
@@ -340,11 +340,11 @@ get_header();
             <div class="req-hosting-card">
                 <h3>Shared Hosting</h3>
                 <p>
-                    Any standard shared-hosting plan that supports WordPress will run
+                    Any standard shared-hosting plan that supports <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> will run
                     SocietyPress without issues. "Shared" means your site shares a
                     server with other small websites &mdash; it's how most society
                     websites are hosted, and it's plenty of power for a society
-                    website. Look for any plan that advertises WordPress support.
+                    website. Look for any plan that advertises <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> support.
                 </p>
                 <div class="req-hosting-card__price">
                     Typically $5&ndash;15/month
@@ -352,10 +352,10 @@ get_header();
             </div>
 
             <div class="req-hosting-card">
-                <h3>Managed WordPress</h3>
+                <h3>Managed <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a></h3>
                 <p>
                     Hosts like SiteGround, Cloudways, Kinsta, or WP Engine offer
-                    managed WordPress plans with automatic updates, daily backups,
+                    managed <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> plans with automatic updates, daily backups,
                     staging environments, and better performance. A good choice for
                     larger societies or any society whose admins want less
                     hands-on maintenance.
@@ -382,7 +382,7 @@ get_header();
 
         <div class="req-note">
             <strong>No vendor lock-in.</strong>
-            SocietyPress runs on any standard WordPress host. If you're unhappy with
+            SocietyPress runs on any standard <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> host. If you're unhappy with
             your provider, you can export your entire site and migrate to another
             provider at any time. See <a href="<?php echo esc_url( home_url( '/features/' ) ); ?>">Your Data Is Yours</a>.
         </div>

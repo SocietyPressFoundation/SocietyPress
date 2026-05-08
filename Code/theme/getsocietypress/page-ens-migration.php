@@ -89,7 +89,7 @@ get_header();
                     typically several hundred dollars a year depending on
                     your tier. SocietyPress itself is free, and you own your
                     hosting directly &mdash; usually $5&ndash;15 a month at a
-                    standard WordPress host. The math works out in your
+                    standard <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> host. The math works out in your
                     favor across most society sizes.
                 </p>
             </div>
@@ -111,7 +111,7 @@ get_header();
                 <div class="ens-why__card-number">3</div>
                 <h3>Modernity</h3>
                 <p>
-                    SocietyPress is built on current WordPress. That means
+                    SocietyPress is built on current <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a>. That means
                     mobile-friendly by default, responsive admin screens,
                     modern payment processing (Stripe and PayPal out of the
                     box), PWA support, and real search. Your members get a
@@ -234,7 +234,7 @@ get_header();
                     Upload <code>sp-installer.php</code> to your new hosting
                     account, run the installer, and answer the setup wizard's
                     questions (society name, membership tiers, colors). About
-                    45 minutes including the coffee break while WordPress
+                    45 minutes including the coffee break while <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a>
                     downloads.
                 </p>
             </div>

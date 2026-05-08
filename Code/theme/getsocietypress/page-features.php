@@ -148,7 +148,7 @@ get_header();
                     </svg>
                 </div>
                 <h3>Genealogy</h3>
-                <p>Genealogical record collections, GENRECORD and GEDCOM import/export, surname research databases, and member privacy controls.</p>
+                <p>Genealogical record collections, <a href="https://genrecord.org" target="_blank" rel="noopener">GENRECORD</a> and GEDCOM import/export, surname research databases, and member privacy controls.</p>
             </div>
 
             <!-- Fundraising -->
@@ -382,7 +382,7 @@ get_header();
                 <!-- Data format callout -->
                 <div class="feat-detail__callout">
                     <strong>Two Standards, One Platform</strong>
-                    GENRECORD handles source records &mdash; the cemetery transcriptions,
+                    <a href="https://genrecord.org" target="_blank" rel="noopener">GENRECORD</a> handles source records &mdash; the cemetery transcriptions,
                     marriage indexes, and census extracts that societies spend years creating.
                     GEDCOM handles family trees &mdash; individuals, families, relationships.
                     SocietyPress supports both, so your society's data is portable no matter

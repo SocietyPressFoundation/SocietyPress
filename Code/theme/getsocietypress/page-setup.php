@@ -54,7 +54,7 @@ get_header();
             <div class="setup-step__text">
                 <div class="setup-step__badge">Overview</div>
                 <h2>The SocietyPress Dashboard</h2>
-                <p>After activating the plugin, you'll see a new <strong>SocietyPress</strong> menu in your WordPress sidebar. This is your home base — everything you need to manage your society lives here.</p>
+                <p>After activating the plugin, you'll see a new <strong>SocietyPress</strong> menu in your <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> sidebar. This is your home base — everything you need to manage your society lives here.</p>
                 <p>The dashboard gives you an at-a-glance summary: how many members you have, upcoming events, recent activity, and quick links to the areas you'll use most. Don't worry about all the options right now — we'll walk through each one.</p>
             </div>
             <div class="setup-step__screenshot">

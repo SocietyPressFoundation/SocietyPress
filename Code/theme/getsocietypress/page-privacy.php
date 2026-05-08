@@ -64,7 +64,7 @@ get_header();
 
         <h3>Cookies</h3>
         <p>
-            This site itself does not set tracking cookies. WordPress may set
+            This site itself does not set tracking cookies. <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> may set
             a session cookie if you log into the site (administrator only);
             that cookie expires when the session ends. The announcement bar
             dismissal state is remembered in your browser's sessionStorage

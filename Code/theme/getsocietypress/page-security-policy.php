@@ -71,7 +71,7 @@ get_header();
         <h2>In scope</h2>
 
         <ul>
-            <li>The SocietyPress WordPress plugin (any release since 1.0.0).</li>
+            <li>The SocietyPress <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> plugin (any release since 1.0.0).</li>
             <li>The SocietyPress parent theme.</li>
             <li>The five bundled child themes (Heritage, Coastline, Prairie, Ledger, Parlor).</li>
             <li>The one-click installer (<code>sp-installer.php</code>).</li>
@@ -83,7 +83,7 @@ get_header();
 
         <ul>
             <li>Individual society installations we do not operate. If you've found a vulnerability on a specific society's website, please report it directly to that society. If you believe the root cause is in SocietyPress itself, report it to us with a generic reproduction.</li>
-            <li>Third-party WordPress plugins installed alongside SocietyPress. Report those to their respective maintainers.</li>
+            <li>Third-party <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> plugins installed alongside SocietyPress. Report those to their respective maintainers.</li>
             <li>Vulnerabilities in WordPress core. Report to the WordPress Security Team at <a href="https://wordpress.org/support/wordpress-hackerone/">wordpress.org/support/wordpress-hackerone/</a>.</li>
             <li>Vulnerabilities in hosting provider infrastructure. Report to the host.</li>
             <li>Stripe and PayPal payment processor implementations. Report to them directly.</li>
@@ -115,7 +115,7 @@ get_header();
             <li>Missing rate-limiting on actions an admin can already do via the REST API.</li>
             <li>Social engineering of project maintainers.</li>
             <li>Reports generated solely by automated scanners without evidence of exploitability.</li>
-            <li>Vulnerabilities that require the admin to be running an EOL version of WordPress or PHP.</li>
+            <li>Vulnerabilities that require the admin to be running an EOL version of <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> or PHP.</li>
         </ul>
 
         <h2>Disclosure timing</h2>

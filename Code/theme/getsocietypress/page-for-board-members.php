@@ -72,7 +72,7 @@ get_header();
 
                 <div class="onepager__feature">
                     <h3>No single-vendor risk</h3>
-                    <p>The software is open-source and self-hosted. If the project ever stops being maintained, your site keeps running, your data stays yours, and you can hire any WordPress developer to continue supporting it. Commercial platforms create a dependency that becomes existential if the vendor is acquired, raises prices, or sunsets their product.</p>
+                    <p>The software is open-source and self-hosted. If the project ever stops being maintained, your site keeps running, your data stays yours, and you can hire any <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> developer to continue supporting it. Commercial platforms create a dependency that becomes existential if the vendor is acquired, raises prices, or sunsets their product.</p>
                 </div>
 
                 <div class="onepager__feature">
@@ -107,7 +107,7 @@ get_header();
             <h2>The board-level questions, answered</h2>
             <dl class="onepager__faq">
                 <dt>What if the project stops being maintained?</dt>
-                <dd>The software keeps working. You own the data. You can hire any WordPress developer to keep it running. The GPL license prevents it from ever being made proprietary.</dd>
+                <dd>The software keeps working. You own the data. You can hire any <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> developer to keep it running. The GPL license prevents it from ever being made proprietary.</dd>
 
                 <dt>What's our liability exposure?</dt>
                 <dd>Same as any self-hosted website, no more. Your hosting provider's terms of service apply. SocietyPress itself is distributed as-is with no warranty, like all open-source software.</dd>

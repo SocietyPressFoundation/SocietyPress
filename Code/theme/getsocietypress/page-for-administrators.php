@@ -96,7 +96,7 @@ get_header();
             <h2>Getting started takes about 30 minutes</h2>
             <ol class="onepager__steps">
                 <li>Visit <strong>getsocietypress.org/download/</strong> and grab the installer.</li>
-                <li>Upload <code>sp-installer.php</code> to a fresh WordPress hosting account and visit it in your browser.</li>
+                <li>Upload <code>sp-installer.php</code> to a fresh <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> hosting account and visit it in your browser.</li>
                 <li>Answer the 3-step setup wizard (society info, membership tiers, colors).</li>
                 <li>Import your members via CSV.</li>
             </ol>

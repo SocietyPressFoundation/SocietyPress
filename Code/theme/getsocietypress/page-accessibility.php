@@ -99,7 +99,7 @@ get_header();
             </li>
             <li>
                 <strong>Some admin data tables are dense.</strong> WP_List_Table
-                bulk-action checkboxes and sort arrows are WordPress core
+                bulk-action checkboxes and sort arrows are <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> core
                 defaults, and their accessibility is only as good as core's.
                 We avoid building on top of them where we can.
             </li>

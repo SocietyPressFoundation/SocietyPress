@@ -73,7 +73,7 @@ $gsp_bug_mailto  = 'mailto:bugs@getsocietypress.org?subject=' . $gsp_bug_subject
             <li>
                 <strong>Update first.</strong> Make sure you're on the latest
                 SocietyPress release (<a href="<?php echo esc_url( home_url( '/download/' ) ); ?>">download page</a>)
-                and the latest WordPress. Many bugs are already fixed in a
+                and the latest <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a>. Many bugs are already fixed in a
                 newer version.
             </li>
             <li>
@@ -109,7 +109,7 @@ $gsp_bug_mailto  = 'mailto:bugs@getsocietypress.org?subject=' . $gsp_bug_subject
             </li>
             <li>
                 <strong>Your versions.</strong> SocietyPress version,
-                WordPress version, PHP version if you know it, browser and
+                <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> version, PHP version if you know it, browser and
                 OS.
             </li>
             <li>

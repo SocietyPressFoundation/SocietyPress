@@ -199,11 +199,11 @@ get_header();
                     </svg>
                 </div>
                 <h3>Genealogy Tools</h3>
-                <p>Surname databases, record collections, GEDCOM and GENRECORD.</p>
+                <p>Surname databases, record collections, GEDCOM and <a href="https://genrecord.org" target="_blank" rel="noopener">GENRECORD</a>.</p>
                 <ul class="docs-card__summary">
                     <li>Create record collections &mdash; cemetery indexes, census extractions, marriage registers</li>
                     <li>Import from CSV or from <a href="https://genrecord.org">GENRECORD</a>-formatted files</li>
-                    <li>Export anything as GENRECORD for interchange with other societies and software</li>
+                    <li>Export anything as <a href="https://genrecord.org" target="_blank" rel="noopener">GENRECORD</a> for interchange with other societies and software</li>
                     <li>Import and export family trees as GEDCOM 5.5 or 7.0</li>
                     <li>Members register the surnames they're researching; visiting researchers find connections</li>
                     <li>Per-field privacy controls for living individuals</li>

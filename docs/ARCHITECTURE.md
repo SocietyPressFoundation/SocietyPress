@@ -1,7 +1,7 @@
 # SocietyPress — Architecture Reference
 
-Last updated: April 19, 2026
-Plugin version: 1.0.19 | ~72,640 lines | Single-file, function-based
+Last updated: May 10, 2026
+Plugin version: 1.0.72 | ~86,200 lines | Single-file, function-based
 
 ---
 
@@ -11,7 +11,7 @@ Plugin version: 1.0.19 | ~72,640 lines | Single-file, function-based
 SocietyPress/
 ├── Code/                             # All deployable code
 │   ├── plugin/
-│   │   └── societypress.php          # The entire plugin (~72,640 lines)
+│   │   └── societypress.php          # The entire plugin (~86,200 lines)
 │   ├── theme/                        # Parent theme (CSS vars, fallback defaults)
 │   ├── theme-coastline/              # Child theme
 │   ├── theme-heritage/               # Child theme
@@ -46,7 +46,7 @@ SocietyPress/
 ## Constants
 
 ```php
-SOCIETYPRESS_VERSION      // '1.0.19' (current release)
+SOCIETYPRESS_VERSION      // '1.0.72' (current release)
 SOCIETYPRESS_PLUGIN_DIR   // plugin_dir_path(__FILE__)
 SOCIETYPRESS_PLUGIN_URL   // plugin_dir_url(__FILE__)
 SOCIETYPRESS_PLUGIN_FILE  // __FILE__
@@ -78,7 +78,7 @@ Additional standalone options:
 
 ---
 
-## Database Tables (~65)
+## Database Tables (~60)
 
 All prefixed with `{$wpdb->prefix}sp_`.
 
@@ -176,11 +176,47 @@ All prefixed with `{$wpdb->prefix}sp_`.
 |-------|-------------|
 | `sp_pending_profile_changes` | Queued profile changes awaiting admin approval |
 
+### Voting (4 tables)
+| Table | Description |
+|-------|-------------|
+| `sp_ballots` | Ballot definitions with open/close windows |
+| `sp_ballot_questions` | Questions per ballot |
+| `sp_ballot_choices` | Choices per question (yes/no, single, multi) |
+| `sp_ballot_votes` | Per-voter cast records (dedup-enforced) |
+
+### Lineage Programs (3 tables)
+| Table | Description |
+|-------|-------------|
+| `sp_lineage_programs` | Program definitions (First Families, Pioneer Settlers, etc.) |
+| `sp_lineage_applications` | Member applications with status workflow |
+| `sp_lineage_proofs` | Uploaded proof documents per application |
+
+### Help Requests & Research Services (5 tables)
+| Table | Description |
+|-------|-------------|
+| `sp_help_requests` | Public Q&A submissions (free comradery model) |
+| `sp_help_responses` | Member responses with time-tracked hours |
+| `sp_research_cases` | Paid research case records |
+| `sp_research_invoices` | Stripe-billed invoices per case |
+| `sp_research_messages` | In-system case messaging with attachments |
+
+### Photos & Videos (2 tables)
+| Table | Description |
+|-------|-------------|
+| `sp_photo_albums` | Nested album folders |
+| `sp_photo_album_items` | Image/video items per album |
+
+### Calendar Integration (2 tables)
+| Table | Description |
+|-------|-------------|
+| `sp_ical_feeds` | External iCal subscription feeds |
+| `sp_event_reminders` | Sent-reminder dedup ledger |
+
 ### System (2 tables)
 | Table | Description |
 |-------|-------------|
 | `sp_audit_log` | Audit trail for member/status/position changes |
-| `sp_help_requests` | Member help request submissions |
+| `sp_access_log` | Access-control event log |
 
 ---
 
@@ -248,7 +284,7 @@ SocietyPress
 
 ---
 
-## AJAX Endpoints (46)
+## AJAX Endpoints (85+)
 
 All registered via `wp_ajax_` (and `wp_ajax_nopriv_` where noted).
 
@@ -389,7 +425,7 @@ Disabled module templates auto-hidden from Edit Page dropdown via `sp_template_m
 
 ---
 
-## Page Builder Widget Types (19)
+## Page Builder Widget Types (37)
 
 Each widget type has two functions:
 - `sp_builder_fields_{type}($index, $settings)` — admin settings form
@@ -496,7 +532,7 @@ All frontend emails rendered via `sp_obfuscate_email()`:
 - Custom login page with society branding
 
 ### Activation
-- Creates all 43 tables via `dbDelta()`
+- Creates all ~60 tables via `dbDelta()`
 - Seeds default settings (~40 keys)
 - Seeds default membership tiers
 - Schedules cron jobs

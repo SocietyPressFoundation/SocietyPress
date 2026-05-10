@@ -223,7 +223,7 @@ get_header();
                     <li>6,500+ genealogical records (real public data)</li>
                     <li>19,000+ library catalog items</li>
                     <li>15 feature modules plus Members, all active</li>
-                    <li>Page builder with 21 widget types</li>
+                    <li>Page builder with 37 widget types</li>
                     <li>5 pre-built child themes</li>
                 </ul>
             </div>

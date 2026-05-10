@@ -6,7 +6,7 @@ The page builder is a SocietyPress feature, not a separate plugin. It works on t
 
 ## What you can do
 
-- Drop pre-built widgets (24+ types) into single-column or multi-column rows.
+- Drop pre-built widgets (37 types) into single-column or multi-column rows.
 - Configure each widget through a settings panel — no code, no shortcode syntax.
 - Drag widgets to reorder. Resize columns by dragging the dividers.
 - Preview as you build — what you see in the editor is roughly what visitors see.

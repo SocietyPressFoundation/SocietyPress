@@ -1,6 +1,6 @@
 # SocietyPress — Competitive Comparison Matrix
 
-*Last updated: March 18, 2026*
+*Last updated: May 10, 2026*
 
 ---
 
@@ -63,8 +63,11 @@
 | **Research area tracking** | ✓ (geographic areas + time periods) | ✗ | ✗ | ✗ |
 | **Member relationships** | ✓ (spouse, family, referral) | ✗ | ✗ | ✗ |
 | **Genealogy service links** | ✓ (8 services: WikiTree, FamilySearch, Ancestry, etc.) | ✗ | ✗ | ✗ |
-| **Research help / query desk** | ✓ | ✓ | ✗ | ✗ |
+| **Research help / query desk** | ✓ (free comradery model + paid escalation) | ✓ | ✗ | ✗ |
+| **Paid research services workflow** | ✓ (Stripe-billed cases, researcher dashboard, hours tracking) | ✗ | ✗ | ✗ |
+| **Lineage programs (First Families, Pioneer Settlers, etc.)** | ✓ (multi-program, application queue, public roster, printable certificates) | ✗ | ✗ | ✗ |
 | **Open Library API enrichment** | ✓ (cover images, metadata) | ✗ | ✗ | ✗ |
+| **GENRECORD export** | ✓ (open exchange format, public-domain spec) | ✗ | ✗ | ✗ |
 
 *This is where SocietyPress pulls away. Generic platforms have zero genealogy features. ENS has some, but SocietyPress goes significantly deeper.*
 
@@ -109,7 +112,7 @@
 
 | Feature | **SocietyPress** | **ENS** | **Wild Apricot** | **ClubExpress** |
 |---|---|---|---|---|
-| Website builder / CMS | ✓ (page builder, 19 widgets) | ✓ | ✓ (drag-and-drop) | ✓ |
+| Website builder / CMS | ✓ (page builder, 37 widgets) | ✓ | ✓ (drag-and-drop) | ✓ |
 | Custom design / branding | ✓ (full CSS control, presets) | Limited templates | Themes | Themes |
 | Members-only pages | ✓ | ✓ | ✓ | ✓ |
 | Document library | ✓ (categories, bulk upload, access control) | ✓ (5MB limit) | ✗ | ✓ |
@@ -130,7 +133,7 @@
 | Officer / leadership positions | ✓ (terms, history) | ✓ | ✗ | ✓ |
 | Volunteer opportunities | ✓ (signup, waitlist, capacity) | ✗ | ✗ | ✗ |
 | Volunteer hours tracking | ✓ (with CSV export) | ✗ | ✗ | ✗ |
-| Voting / elections | ✗ | ✓ (optional) | ✗ | ✓ |
+| Voting / elections | ✓ (ballots, eligibility, live tally) | ✓ (optional) | ✗ | ✓ |
 
 ---
 
@@ -157,6 +160,8 @@
 | GDPR compliance tools | ✓ (6 exporters, 6 erasers) | ✗ | ✓ | ? |
 | Data encryption at rest | ✓ (libsodium) | ✗ | ? | ✗ |
 | Mobile admin app | ✗ | ✗ | ✓ | ✗ |
+| Cross-module insights dashboard | ✓ (per-module cards, sparklines, fiscal-year window) | ✗ | Limited | Limited |
+| Field-level access control on records | ✓ (per-field public/members-only/searchable) | ✗ | ✗ | ✗ |
 
 ---
 

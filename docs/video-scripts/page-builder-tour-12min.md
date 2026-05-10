@@ -44,13 +44,13 @@ the big "Add Widget" button.
 
 ---
 
-## Scene 2 — The 21 widgets, grouped (1:00–2:30)
+## Scene 2 — The 37 widgets, grouped (1:00–2:30)
 
-**ON SCREEN:** The "Add Widget" picker, showing all 21 widgets grouped.
+**ON SCREEN:** The "Add Widget" picker, showing all 37 widgets grouped.
 
 **NARRATION:**
 > Let's look at what's available before we start placing things.
-> Twenty-one widgets break down into four groups.
+> Thirty-seven widgets break down into four groups.
 
 *(Point to each group as you name it.)*
 

@@ -236,7 +236,7 @@ pages, blog posts, docs, and the showcase.
 
 ### Inline GitHub Releases feed on homepage
 
-**Motivation:** Showing activity on the homepage — "v1.0.19 released
+**Motivation:** Showing activity on the homepage — "v1.0.72 released
 three days ago" — signals the project is alive.
 **Scope:** Cached fetch of the GitHub Releases API, rendered as a
 compact feed in the homepage footer or sidebar.

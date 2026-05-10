@@ -1,0 +1,617 @@
+<!--
+  Synthetic fixture mimicking the ENS "Menu / Page Maintenance" admin screen
+  (mo_menuPageMaint.php) with the exact rows captured from the Society site
+  printout dated 2026-05-09.
+
+  This is a best-guess reproduction of the markup an ENS form-mode admin
+  page is likely to emit: a single <table> where each <tr> represents one
+  menu/page row, with form <input> and <select> elements holding the
+  editable values.
+
+  Real ENS HTML may name fields differently. The parser is defensive on
+  purpose and tries multiple strategies; mismatches against this fixture
+  should be small adjustments, not rewrites.
+-->
+<!DOCTYPE html>
+<html>
+<head>
+<title>Sample Genealogical Society - Menu / Page Maintenance</title>
+</head>
+<body>
+<h1>Menu / Page Maintenance</h1>
+<form action="mo_menuPageMaint.php" method="post" name="frmMenu">
+<table id="menuTable" border="1">
+<thead>
+  <tr>
+    <th>Navigation Menu Label</th>
+    <th>URL</th>
+    <th>Parent Menu Item</th>
+    <th>Display Order</th>
+    <th>Display</th>
+    <th>Secure</th>
+    <th>Actions</th>
+  </tr>
+</thead>
+<tbody>
+
+<!-- Top-level rows (parent = None). -->
+
+<tr>
+  <td><input type="text" name="label_1"  value="Home"></td>
+  <td><a href="index.php">index.php</a></td>
+  <td><select name="parent_1"><option value="0" selected>None</option></select></td>
+  <td><input type="text" name="order_1"  value="0"></td>
+  <td><input type="checkbox" name="display_1" checked></td>
+  <td><input type="checkbox" name="secure_1"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_2"  value="Search"></td>
+  <td><a href="cpage.php?pt=178">cpage.php?pt=178</a></td>
+  <td><select name="parent_2"><option value="0" selected>None</option></select></td>
+  <td><input type="text" name="order_2"  value="2"></td>
+  <td><input type="checkbox" name="display_2" checked></td>
+  <td><input type="checkbox" name="secure_2"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_3"  value="About Us"></td>
+  <td><a href="about.php">about.php</a></td>
+  <td><select name="parent_3"><option value="0" selected>None</option></select></td>
+  <td><input type="text" name="order_3"  value="50"></td>
+  <td><input type="checkbox" name="display_3" checked></td>
+  <td><input type="checkbox" name="secure_3"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_4"  value="Join Society"></td>
+  <td><a href="cpage.php?pt=34">cpage.php?pt=34</a></td>
+  <td><select name="parent_4"><option value="0" selected>None</option></select></td>
+  <td><input type="text" name="order_4"  value="100"></td>
+  <td><input type="checkbox" name="display_4" checked></td>
+  <td><input type="checkbox" name="secure_4"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_5"  value="Join Online"></td>
+  <td><a href="onlineJoin.php">onlineJoin.php</a></td>
+  <td><select name="parent_5"><option value="4" selected>Join Society</option></select></td>
+  <td><input type="text" name="order_5"  value="101"></td>
+  <td><input type="checkbox" name="display_5" checked></td>
+  <td><input type="checkbox" name="secure_5" checked></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_6"  value="Membership Benefits"></td>
+  <td><a href="cpage.php?pt=59">cpage.php?pt=59</a></td>
+  <td><select name="parent_6"><option value="4" selected>Join Society</option></select></td>
+  <td><input type="text" name="order_6"  value="102"></td>
+  <td><input type="checkbox" name="display_6" checked></td>
+  <td><input type="checkbox" name="secure_6"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_7"  value="Support Society"></td>
+  <td><a href="donation.php?dc=7">donation.php?dc=7</a></td>
+  <td><select name="parent_7"><option value="0" selected>None</option></select></td>
+  <td><input type="text" name="order_7"  value="110"></td>
+  <td><input type="checkbox" name="display_7" checked></td>
+  <td><input type="checkbox" name="secure_7"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_8"  value="Events &amp; Education"></td>
+  <td><a href="eventListings.php?nm=38">eventListings.php?nm=38</a></td>
+  <td><select name="parent_8"><option value="0" selected>None</option></select></td>
+  <td><input type="text" name="order_8"  value="150"></td>
+  <td><input type="checkbox" name="display_8" checked></td>
+  <td><input type="checkbox" name="secure_8"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_9"  value="Classes &amp; Workshops"></td>
+  <td><a href="cpage.php?pt=94">cpage.php?pt=94</a></td>
+  <td><select name="parent_9"><option value="8" selected>Events &amp; Education</option></select></td>
+  <td><input type="text" name="order_9"  value="154"></td>
+  <td><input type="checkbox" name="display_9" checked></td>
+  <td><input type="checkbox" name="secure_9"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_10" value="Galleries"></td>
+  <td><a href="gallery.php?sid=3">gallery.php?sid=3</a></td>
+  <td><select name="parent_10"><option value="0" selected>None</option></select></td>
+  <td><input type="text" name="order_10" value="170"></td>
+  <td><input type="checkbox" name="display_10" checked></td>
+  <td><input type="checkbox" name="secure_10"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_11" value="Founder's Day Gallery"></td>
+  <td><a href="gallery.php?sid=5">gallery.php?sid=5</a></td>
+  <td><select name="parent_11"><option value="10" selected>Galleries</option></select></td>
+  <td><input type="text" name="order_11" value="161"></td>
+  <td><input type="checkbox" name="display_11" checked></td>
+  <td><input type="checkbox" name="secure_11"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_12" value="Local Scenes"></td>
+  <td><a href="gallery.php?sid=11">gallery.php?sid=11</a></td>
+  <td><select name="parent_12"><option value="10" selected>Galleries</option></select></td>
+  <td><input type="text" name="order_12" value="171"></td>
+  <td><input type="checkbox" name="display_12" checked></td>
+  <td><input type="checkbox" name="secure_12"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_13" value="Historical Photos Gallery"></td>
+  <td><a href="gallery.php?sid=7">gallery.php?sid=7</a></td>
+  <td><select name="parent_13"><option value="10" selected>Galleries</option></select></td>
+  <td><input type="text" name="order_13" value="172"></td>
+  <td><input type="checkbox" name="display_13" checked></td>
+  <td><input type="checkbox" name="secure_13"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_14" value="Vintage Postcards"></td>
+  <td><a href="gallery.php?sid=10">gallery.php?sid=10</a></td>
+  <td><select name="parent_14"><option value="10" selected>Galleries</option></select></td>
+  <td><input type="text" name="order_14" value="173"></td>
+  <td><input type="checkbox" name="display_14" checked></td>
+  <td><input type="checkbox" name="secure_14"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_15" value="Historical Photographs"></td>
+  <td><a href="gallery.php?sid=12">gallery.php?sid=12</a></td>
+  <td><select name="parent_15"><option value="10" selected>Galleries</option></select></td>
+  <td><input type="text" name="order_15" value="174"></td>
+  <td><input type="checkbox" name="display_15" checked></td>
+  <td><input type="checkbox" name="secure_15"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_16" value="Historical Member photo"></td>
+  <td><a href="cpage.php?pt=163">cpage.php?pt=163</a></td>
+  <td><select name="parent_16"><option value="10" selected>Galleries</option></select></td>
+  <td><input type="text" name="order_16" value="175"></td>
+  <td><input type="checkbox" name="display_16" checked></td>
+  <td><input type="checkbox" name="secure_16"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_17" value="Merry Maids Musical Club"></td>
+  <td><a href="cpage.php?pt=162">cpage.php?pt=162</a></td>
+  <td><select name="parent_17"><option value="10" selected>Galleries</option></select></td>
+  <td><input type="text" name="order_17" value="176"></td>
+  <td><input type="checkbox" name="display_17" checked></td>
+  <td><input type="checkbox" name="secure_17"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_18" value="Blevins Collection"></td>
+  <td><a href="gallery.php?sid=13">gallery.php?sid=13</a></td>
+  <td><select name="parent_18"><option value="10" selected>Galleries</option></select></td>
+  <td><input type="text" name="order_18" value="999"></td>
+  <td><input type="checkbox" name="display_18" checked></td>
+  <td><input type="checkbox" name="secure_18"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_19" value="Newsletters"></td>
+  <td><a href="cpage.php?pt=23">cpage.php?pt=23</a></td>
+  <td><select name="parent_19"><option value="0" selected>None</option></select></td>
+  <td><input type="text" name="order_19" value="200"></td>
+  <td><input type="checkbox" name="display_19" checked></td>
+  <td><input type="checkbox" name="secure_19"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_20" value="Library"></td>
+  <td><a href="cpage.php?pt=38">cpage.php?pt=38</a></td>
+  <td><select name="parent_20"><option value="0" selected>None</option></select></td>
+  <td><input type="text" name="order_20" value="250"></td>
+  <td><input type="checkbox" name="display_20" checked></td>
+  <td><input type="checkbox" name="secure_20"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_21" value="Library Catalog"></td>
+  <td><a href="libraryRecords.php">libraryRecords.php</a></td>
+  <td><select name="parent_21"><option value="20" selected>Library</option></select></td>
+  <td><input type="text" name="order_21" value="251"></td>
+  <td><input type="checkbox" name="display_21" checked></td>
+  <td><input type="checkbox" name="secure_21"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_22" value="About the Collection"></td>
+  <td><a href="cpage.php?pt=45">cpage.php?pt=45</a></td>
+  <td><select name="parent_22"><option value="20" selected>Library</option></select></td>
+  <td><input type="text" name="order_22" value="255"></td>
+  <td><input type="checkbox" name="display_22" checked></td>
+  <td><input type="checkbox" name="secure_22"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_23" value="Our Librarians"></td>
+  <td><a href="cpage.php?pt=180">cpage.php?pt=180</a></td>
+  <td><select name="parent_23"><option value="20" selected>Library</option></select></td>
+  <td><input type="text" name="order_23" value="256"></td>
+  <td><input type="checkbox" name="display_23" checked></td>
+  <td><input type="checkbox" name="secure_23"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_24" value="Vertical Files"></td>
+  <td><a href="cpage.php?pt=68">cpage.php?pt=68</a></td>
+  <td><select name="parent_24"><option value="20" selected>Library</option></select></td>
+  <td><input type="text" name="order_24" value="256"></td>
+  <td><input type="checkbox" name="display_24" checked></td>
+  <td><input type="checkbox" name="secure_24"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_25" value="Collection Policy"></td>
+  <td><a href="/upload/menu/CollectionDevelopmentPolicy.pdf">/upload/menu/CollectionDevelopmentPolicy.pdf</a></td>
+  <td><select name="parent_25"><option value="20" selected>Library</option></select></td>
+  <td><input type="text" name="order_25" value="257"></td>
+  <td><input type="checkbox" name="display_25" checked></td>
+  <td><input type="checkbox" name="secure_25"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_26" value="Learn More!"></td>
+  <td><a href="cpage.php?pt=110">cpage.php?pt=110</a></td>
+  <td><select name="parent_26"><option value="20" selected>Library</option></select></td>
+  <td><input type="text" name="order_26" value="258"></td>
+  <td><input type="checkbox" name="display_26" checked></td>
+  <td><input type="checkbox" name="secure_26"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_27" value="Photocopy Requests"></td>
+  <td><a href="cpage.php?pt=13">cpage.php?pt=13</a></td>
+  <td><select name="parent_27"><option value="0" selected>None</option></select></td>
+  <td><input type="text" name="order_27" value="310"></td>
+  <td><input type="checkbox" name="display_27" checked></td>
+  <td><input type="checkbox" name="secure_27"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_28" value="Surname Research"></td>
+  <td><a href="surname.php">surname.php</a></td>
+  <td><select name="parent_28"><option value="0" selected>None</option></select></td>
+  <td><input type="text" name="order_28" value="330"></td>
+  <td><input type="checkbox" name="display_28" checked></td>
+  <td><input type="checkbox" name="secure_28"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_29" value="Surname Research Help"></td>
+  <td><a href="cpage.php?pt=189">cpage.php?pt=189</a></td>
+  <td><select name="parent_29"><option value="28" selected>Surname Research</option></select></td>
+  <td><input type="text" name="order_29" value="331"></td>
+  <td><input type="checkbox" name="display_29" checked></td>
+  <td><input type="checkbox" name="secure_29"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_30" value="Research Services"></td>
+  <td><a href="cpage.php?pt=14">cpage.php?pt=14</a></td>
+  <td><select name="parent_30"><option value="0" selected>None</option></select></td>
+  <td><input type="text" name="order_30" value="340"></td>
+  <td><input type="checkbox" name="display_30" checked></td>
+  <td><input type="checkbox" name="secure_30"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_31" value="Researching Sample County"></td>
+  <td><a href="cpage.php?pt=62">cpage.php?pt=62</a></td>
+  <td><select name="parent_31"><option value="0" selected>None</option></select></td>
+  <td><input type="text" name="order_31" value="350"></td>
+  <td><input type="checkbox" name="display_31" checked></td>
+  <td><input type="checkbox" name="secure_31"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_32" value="Births"></td>
+  <td><a href="cpage.php?pt=63">cpage.php?pt=63</a></td>
+  <td><select name="parent_32"><option value="31" selected>Researching Sample County</option></select></td>
+  <td><input type="text" name="order_32" value="355"></td>
+  <td><input type="checkbox" name="display_32" checked></td>
+  <td><input type="checkbox" name="secure_32"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_33" value="Marriages"></td>
+  <td><a href="cpage.php?pt=64">cpage.php?pt=64</a></td>
+  <td><select name="parent_33"><option value="31" selected>Researching Sample County</option></select></td>
+  <td><input type="text" name="order_33" value="360"></td>
+  <td><input type="checkbox" name="display_33" checked></td>
+  <td><input type="checkbox" name="secure_33"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_34" value="Divorces"></td>
+  <td><a href="cpage.php?pt=44">cpage.php?pt=44</a></td>
+  <td><select name="parent_34"><option value="31" selected>Researching Sample County</option></select></td>
+  <td><input type="text" name="order_34" value="365"></td>
+  <td><input type="checkbox" name="display_34" checked></td>
+  <td><input type="checkbox" name="secure_34"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_35" value="Obituaries"></td>
+  <td><a href="cpage.php?pt=65">cpage.php?pt=65</a></td>
+  <td><select name="parent_35"><option value="31" selected>Researching Sample County</option></select></td>
+  <td><input type="text" name="order_35" value="375"></td>
+  <td><input type="checkbox" name="display_35" checked></td>
+  <td><input type="checkbox" name="secure_35"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_36" value="Cemeteries"></td>
+  <td><a href="cpage.php?pt=35">cpage.php?pt=35</a></td>
+  <td><select name="parent_36"><option value="31" selected>Researching Sample County</option></select></td>
+  <td><input type="text" name="order_36" value="395"></td>
+  <td><input type="checkbox" name="display_36" checked></td>
+  <td><input type="checkbox" name="secure_36"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_37" value="Cemeteries Books Index"></td>
+  <td><a href="fileDownload.php?sid=8">fileDownload.php?sid=8</a></td>
+  <td><select name="parent_37"><option value="31" selected>Researching Sample County</option></select></td>
+  <td><input type="text" name="order_37" value="999"></td>
+  <td><input type="checkbox" name="display_37" checked></td>
+  <td><input type="checkbox" name="secure_37"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_38" value="Links"></td>
+  <td><a href="links.php?sid=1">links.php?sid=1</a></td>
+  <td><select name="parent_38"><option value="0" selected>None</option></select></td>
+  <td><input type="text" name="order_38" value="400"></td>
+  <td><input type="checkbox" name="display_38" checked></td>
+  <td><input type="checkbox" name="secure_38"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_39" value="Store"></td>
+  <td><a href="store.php?sid=1">store.php?sid=1</a></td>
+  <td><select name="parent_39"><option value="0" selected>None</option></select></td>
+  <td><input type="text" name="order_39" value="425"></td>
+  <td><input type="checkbox" name="display_39" checked></td>
+  <td><input type="checkbox" name="secure_39"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_40" value="Publications"></td>
+  <td><a href="cpage.php?pt=22">cpage.php?pt=22</a></td>
+  <td><select name="parent_40"><option value="0" selected>None</option></select></td>
+  <td><input type="text" name="order_40" value="450"></td>
+  <td><input type="checkbox" name="display_40" checked></td>
+  <td><input type="checkbox" name="secure_40"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_41" value="Society Books"></td>
+  <td><a href="cpage.php?pt=20">cpage.php?pt=20</a></td>
+  <td><select name="parent_41"><option value="40" selected>Publications</option></select></td>
+  <td><input type="text" name="order_41" value="454"></td>
+  <td><input type="checkbox" name="display_41" checked></td>
+  <td><input type="checkbox" name="secure_41"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_42" value="Our Heritage"></td>
+  <td><a href="cpage.php?pt=21">cpage.php?pt=21</a></td>
+  <td><select name="parent_42"><option value="40" selected>Publications</option></select></td>
+  <td><input type="text" name="order_42" value="455"></td>
+  <td><input type="checkbox" name="display_42" checked></td>
+  <td><input type="checkbox" name="secure_42"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_43" value="Get Published"></td>
+  <td><a href="cpage.php?pt=190">cpage.php?pt=190</a></td>
+  <td><select name="parent_43"><option value="40" selected>Publications</option></select></td>
+  <td><input type="text" name="order_43" value="456"></td>
+  <td><input type="checkbox" name="display_43" checked></td>
+  <td><input type="checkbox" name="secure_43"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_44" value="First Families Book"></td>
+  <td><a href="cpage.php?pt=164">cpage.php?pt=164</a></td>
+  <td><select name="parent_44"><option value="40" selected>Publications</option></select></td>
+  <td><input type="text" name="order_44" value="460"></td>
+  <td><input type="checkbox" name="display_44" checked></td>
+  <td><input type="checkbox" name="secure_44"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_45" value="First Families"></td>
+  <td><a href="cpage.php?pt=17">cpage.php?pt=17</a></td>
+  <td><select name="parent_45"><option value="0" selected>None</option></select></td>
+  <td><input type="text" name="order_45" value="475"></td>
+  <td><input type="checkbox" name="display_45" checked></td>
+  <td><input type="checkbox" name="secure_45"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_46" value="First Families List"></td>
+  <td><a href="cpage.php?pt=87">cpage.php?pt=87</a></td>
+  <td><select name="parent_46"><option value="45" selected>First Families</option></select></td>
+  <td><input type="text" name="order_46" value="521"></td>
+  <td><input type="checkbox" name="display_46" checked></td>
+  <td><input type="checkbox" name="secure_46"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_47" value="Newest First Families"></td>
+  <td><a href="cpage.php?pt=136">cpage.php?pt=136</a></td>
+  <td><select name="parent_47"><option value="45" selected>First Families</option></select></td>
+  <td><input type="text" name="order_47" value="999"></td>
+  <td><input type="checkbox" name="display_47" checked></td>
+  <td><input type="checkbox" name="secure_47"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_48" value="Society Activities"></td>
+  <td><a href="cpage.php?pt=41">cpage.php?pt=41</a></td>
+  <td><select name="parent_48"><option value="0" selected>None</option></select></td>
+  <td><input type="text" name="order_48" value="500"></td>
+  <td><input type="checkbox" name="display_48" checked></td>
+  <td><input type="checkbox" name="secure_48"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_49" value="Volunteering"></td>
+  <td><a href="cpage.php?pt=60">cpage.php?pt=60</a></td>
+  <td><select name="parent_49"><option value="48" selected>Society Activities</option></select></td>
+  <td><input type="text" name="order_49" value="505"></td>
+  <td><input type="checkbox" name="display_49" checked></td>
+  <td><input type="checkbox" name="secure_49"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_50" value="Picture Wall"></td>
+  <td><a href="cpage.php?pt=19">cpage.php?pt=19</a></td>
+  <td><select name="parent_50"><option value="48" selected>Society Activities</option></select></td>
+  <td><input type="text" name="order_50" value="525"></td>
+  <td><input type="checkbox" name="display_50" checked></td>
+  <td><input type="checkbox" name="secure_50"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_51" value="Picture Wall Index"></td>
+  <td><a href="cpage.php?pt=102">cpage.php?pt=102</a></td>
+  <td><select name="parent_51"><option value="48" selected>Society Activities</option></select></td>
+  <td><input type="text" name="order_51" value="999"></td>
+  <td><input type="checkbox" name="display_51" checked></td>
+  <td><input type="checkbox" name="secure_51"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_52" value="Members Only"></td>
+  <td><a href="members.php">members.php</a></td>
+  <td><select name="parent_52"><option value="0" selected>None</option></select></td>
+  <td><input type="text" name="order_52" value="600"></td>
+  <td><input type="checkbox" name="display_52" checked></td>
+  <td><input type="checkbox" name="secure_52"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_53" value="Your Profile"></td>
+  <td><a href="profile.php">profile.php</a></td>
+  <td><select name="parent_53"><option value="52" selected>Members Only</option></select></td>
+  <td><input type="text" name="order_53" value="605"></td>
+  <td><input type="checkbox" name="display_53" checked></td>
+  <td><input type="checkbox" name="secure_53" checked></td>
+  <td>Secure</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_54" value="Membership List"></td>
+  <td><a href="membershipList.php">membershipList.php</a></td>
+  <td><select name="parent_54"><option value="52" selected>Members Only</option></select></td>
+  <td><input type="text" name="order_54" value="610"></td>
+  <td><input type="checkbox" name="display_54" checked></td>
+  <td><input type="checkbox" name="secure_54" checked></td>
+  <td>Secure</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_55" value="Member Resources"></td>
+  <td><a href="fileDownload.php?sid=2">fileDownload.php?sid=2</a></td>
+  <td><select name="parent_55"><option value="52" selected>Members Only</option></select></td>
+  <td><input type="text" name="order_55" value="620"></td>
+  <td><input type="checkbox" name="display_55" checked></td>
+  <td><input type="checkbox" name="secure_55"></td>
+  <td>Public</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_56" value="Logoff"></td>
+  <td><a href="logoff.php">logoff.php</a></td>
+  <td><select name="parent_56"><option value="52" selected>Members Only</option></select></td>
+  <td><input type="text" name="order_56" value="625"></td>
+  <td><input type="checkbox" name="display_56" checked></td>
+  <td><input type="checkbox" name="secure_56" checked></td>
+  <td>Secure</td>
+</tr>
+
+<tr>
+  <td><input type="text" name="label_57" value="Contact Us"></td>
+  <td><a href="cpage.php?pt=188">cpage.php?pt=188</a></td>
+  <td><select name="parent_57"><option value="0" selected>None</option></select></td>
+  <td><input type="text" name="order_57" value="999"></td>
+  <td><input type="checkbox" name="display_57" checked></td>
+  <td><input type="checkbox" name="secure_57"></td>
+  <td>Public</td>
+</tr>
+
+</tbody>
+</table>
+<p>
+  <button type="button">Cancel &amp; Reset</button>
+  <button type="submit">Save Changes</button>
+</p>
+</form>
+</body>
+</html>

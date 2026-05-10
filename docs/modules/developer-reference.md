@@ -169,7 +169,7 @@ Module slugs: `events`, `library`, `newsletters`, `resources`, `governance`, `st
 
 ## Custom tables
 
-`{$wpdb->prefix}sp_*` — about 65 tables. Highlights:
+`{$wpdb->prefix}sp_*` — about 60 tables. Highlights:
 
 - **Members:** `sp_members`, `sp_member_meta`, `sp_member_notes`, `sp_membership_tiers`, `sp_member_payments`, `sp_member_relationships`, `sp_member_research_areas`, `sp_member_surnames`, `sp_pending_profile_changes`, `sp_renewal_reminders`
 - **Events:** `sp_events`, `sp_event_categories`, `sp_event_registrations`, `sp_event_reminders`, `sp_event_slots`, `sp_event_speakers`, `sp_event_speaker_assignments`, `sp_ical_feeds`

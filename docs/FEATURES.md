@@ -1,7 +1,7 @@
 # SocietyPress — Feature Reference
 
-Last updated: April 19, 2026
-Version: 1.0.19
+Last updated: May 10, 2026
+Version: 1.0.72
 
 This is the authoritative inventory of everything SocietyPress ships with.
 Each module section describes the module's purpose, what administrators
@@ -592,7 +592,7 @@ These aren't modules — they're capabilities that show up everywhere.
 
 ## Page Builder
 
-A classic-editor page builder with **21 widget types**, designed so
+A classic-editor page builder with **37 widget types**, designed so
 senior volunteers can build pages without writing HTML:
 
 Hero slider (per-line text styling), events calendar, event list, member
@@ -718,7 +718,7 @@ One unified search box, across everything:
 
 ## Internationalization
 
-- ~4,150 text-domain-wrapped strings across the plugin and parent theme
+- ~4,600 text-domain-wrapped strings across the plugin and parent theme
 - Text domain: `societypress` (unified across all child themes)
 - Generated `societypress.pot` files for both plugin and parent theme,
   committed under each component's `languages/` directory

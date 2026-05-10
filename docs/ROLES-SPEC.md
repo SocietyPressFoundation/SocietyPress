@@ -1,7 +1,8 @@
 # SocietyPress Roles & Permissions Specification
 
-**Status:** Draft — awaiting Charles' review before implementation
-**Date:** 2026-03-12
+**Status:** Implemented in v1.0 — this spec is retained as historical record. The shipped system covers 10 access areas and 8 role templates as described below; current behavior is canonical and any drift between this spec and the code should be resolved in favor of the code.
+**Originally drafted:** 2026-03-12
+**Last reviewed:** 2026-05-10
 
 ---
 

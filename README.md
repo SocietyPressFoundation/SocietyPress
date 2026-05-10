@@ -10,7 +10,7 @@ just the whole thing, given away.
 [![License: GPL v2+](https://img.shields.io/badge/License-GPL%20v2%2B-blue.svg)](LICENSE)
 [![WordPress: 6.0+](https://img.shields.io/badge/WordPress-6.0%2B-21759b.svg)](https://wordpress.org/)
 [![PHP: 8.0+](https://img.shields.io/badge/PHP-8.0%2B-777bb4.svg)](https://www.php.net/)
-[![Version](https://img.shields.io/badge/Plugin-v1.0.19-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Plugin-v1.0.72-brightgreen.svg)](CHANGELOG.md)
 
 [**getsocietypress.org**](https://getsocietypress.org) &nbsp;·&nbsp;
 [**Live demo**](https://demo.getsocietypress.org) &nbsp;·&nbsp;
@@ -57,7 +57,7 @@ can do this" over "a developer will figure it out."
 | **Photos & Videos** | Toggleable | Nested galleries plus YouTube embeds, frontend lightbox |
 | **Voting** | Toggleable | Elections, ballots, results |
 
-Plus: page builder (21 widgets), design system (live-preview color and
+Plus: page builder (37 widgets), design system (live-preview color and
 typography controls), email system (logged, merge-tagged, dev-mode), unified
 admin sidebar, a setup wizard, a custom login page, full site lockdown,
 field-level encryption for sensitive data (XChaCha20-Poly1305), GDPR

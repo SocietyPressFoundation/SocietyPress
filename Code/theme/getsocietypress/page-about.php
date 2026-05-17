@@ -132,16 +132,6 @@ get_header();
                     genealogical-society community, and feedback from the
                     early-adopter societies as they come online.
                 </p>
-                <p class="about-who__disclosure">
-                    Charles also serves as Chairman of the Education Committee
-                    at the
-                    <a href="https://samplesociety.org" target="_blank" rel="noopener">Sample Genealogical Society</a>
-                    &mdash; a volunteer role unrelated to SocietyPress. Society
-                    did not fund, sponsor, or contribute to this project.
-                    SocietyPress is his independent work, built on his own
-                    time with his own resources; Society has no ownership,
-                    control, or financial interest in it.
-                </p>
             </div>
 
             <div class="about-who__credentials">

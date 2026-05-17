@@ -126,6 +126,10 @@ error_reporting( E_ALL );
 if ( ! empty( $_SERVER['HTTPS'] ) && $_SERVER['HTTPS'] !== 'off' ) {
     @ini_set( 'session.cookie_secure', '1' );
 }
+// WHY SameSite=Strict: defense-in-depth against CSRF on the install POST.
+// The nonce check is the primary guard, but Strict means the install-session
+// cookie never accompanies cross-site requests at all.
+@ini_set( 'session.cookie_samesite', 'Strict' );
 session_start();
 
 $step = $_GET['step'] ?? 'check';

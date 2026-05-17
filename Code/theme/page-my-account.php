@@ -475,17 +475,41 @@ function sp_m( $member, $field ) {
                             <?php wp_nonce_field( 'sp_update_photo', 'sp_photo_nonce' ); ?>
 
                             <label for="sp-photo-upload" class="sp-button sp-button--secondary">
-                                <?php echo $custom_photo ? esc_html__( 'Change Photo', 'societypress' ) : esc_html__( 'Upload Photo', 'societypress' ); ?>
+                                <?php echo $custom_photo ? esc_html__( 'Choose Photo', 'societypress' ) : esc_html__( 'Choose Photo', 'societypress' ); ?>
                             </label>
                             <input type="file"
                                    id="sp-photo-upload"
                                    name="sp_profile_photo"
                                    accept="image/jpeg,image/png,image/gif"
-                                   class="sp-file-input"
-                                   onchange="this.form.submit();" />
+                                   class="sp-file-input" />
+                            <span id="sp-photo-selected" class="sp-photo-selected" aria-live="polite"></span>
+                            <button type="submit" id="sp-photo-upload-submit" class="sp-button sp-button--primary" hidden><?php esc_html_e( 'Upload', 'societypress' ); ?></button>
 
                             <input type="hidden" name="sp_action" value="update_photo" />
                         </form>
+                        <script>
+                            // WHY explicit Upload button: the previous build auto-submitted
+                            // the moment a file was chosen. A non-technical user (Harold)
+                            // who clicked the wrong file in the picker had no chance to
+                            // cancel. Now selecting a file reveals an explicit submit
+                            // button and shows the filename so he can confirm before
+                            // committing.
+                            (function () {
+                                var input  = document.getElementById('sp-photo-upload');
+                                var status = document.getElementById('sp-photo-selected');
+                                var btn    = document.getElementById('sp-photo-upload-submit');
+                                if (!input || !status || !btn) return;
+                                input.addEventListener('change', function () {
+                                    if (input.files && input.files.length) {
+                                        status.textContent = input.files[0].name;
+                                        btn.hidden = false;
+                                    } else {
+                                        status.textContent = '';
+                                        btn.hidden = true;
+                                    }
+                                });
+                            })();
+                        </script>
 
                         <?php if ( $custom_photo ) : ?>
                             <form method="post" class="sp-photo-remove-form">
@@ -625,14 +649,14 @@ function sp_m( $member, $field ) {
                             <label for="sp-phone"><?php esc_html_e( 'Home Phone', 'societypress' ); ?></label>
                             <input type="tel" id="sp-phone" name="phone"
                                    value="<?php echo esc_attr( sp_m( $member, 'phone' ) ); ?>"
-                                   placeholder="(210) 555-1234"
+                                   placeholder="<?php esc_attr_e( '(210) 555-1234', 'societypress' ); ?>"
                                    class="sp-phone-input" />
                         </div>
                         <div class="sp-form-field">
                             <label for="sp-cell"><?php esc_html_e( 'Cell Phone', 'societypress' ); ?></label>
                             <input type="tel" id="sp-cell" name="cell"
                                    value="<?php echo esc_attr( sp_m( $member, 'cell' ) ); ?>"
-                                   placeholder="(210) 555-1234"
+                                   placeholder="<?php esc_attr_e( '(210) 555-1234', 'societypress' ); ?>"
                                    class="sp-phone-input" />
                         </div>
                     </div>
@@ -1735,7 +1759,11 @@ function sp_m( $member, $field ) {
                 .then(function(data) {
                     var msg = document.createElement('div');
                     msg.className = 'sp-ajax-msg';
-                    msg.setAttribute('role', 'status');
+                    // WHY role branches on outcome: success is polite ("status",
+                    // doesn't interrupt), but a save failure needs to interrupt
+                    // the screen reader ("alert" = implicit aria-live="assertive")
+                    // because the user may already be moving on.
+                    msg.setAttribute('role', data.success ? 'status' : 'alert');
 
                     if (data.success) {
                         msg.className += ' sp-ajax-msg--success';

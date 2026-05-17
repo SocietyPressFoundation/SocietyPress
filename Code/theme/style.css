@@ -368,6 +368,19 @@ img {
     background: rgba(255, 255, 255, 0.12);
 }
 
+/* WHY explicit focus indicator: the browser default focus ring is a thin
+   blue outline that fails WCAG 1.4.11 non-text contrast against the dark
+   --sp-color-nav-bg. A white 2px outline with offset reliably stands out
+   on every nav background a society might choose, and the background tint
+   on focus matches the hover state so the active item still looks active
+   when focused. */
+.main-navigation a:focus,
+.main-navigation a:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+    background: rgba(255, 255, 255, 0.12);
+}
+
 /* User account menu — "Charles" / "Log Out" etc. Sits alongside the main
    nav in the header, not inside it, so .main-navigation rules don't
    reach it. WHY we set both :link and :visited: the logout URL carries

@@ -114,7 +114,7 @@
 
                 <!-- Primary navigation menu -->
                 <?php if ( has_nav_menu( 'primary' ) ) : ?>
-                <nav class="main-navigation" aria-label="Primary navigation">
+                <nav class="main-navigation" aria-label="<?php esc_attr_e( 'Primary navigation', 'societypress' ); ?>">
                     <?php
                     wp_nav_menu([
                         'theme_location' => 'primary',

@@ -224,6 +224,13 @@ register_activation_hook( __FILE__, function () {
     //      activations it's a no-op (guarded by sp_contacts_encrypted option).
     sp_maybe_migrate_encrypt_contacts();
 
+    // Re-encrypt any legacy `noenc:` rows left by older builds.
+    // WHY: The sp_decrypt() `noenc:` fallback was removed for v1.0 because
+    //      it allowed a DB-write attacker to plant arbitrary plaintext. Any
+    //      surviving rows must be upgraded to libsodium ciphertext before
+    //      the next read or they'll fail to decrypt.
+    sp_maybe_migrate_noenc_members();
+
     // Set a transient to trigger the setup wizard redirect on first admin visit.
     // WHY: We can't redirect during activation (headers already sent), so we
     //      set a flag and check it on the next admin_init.
@@ -2993,18 +3000,12 @@ function sp_decrypt( string $encrypted ) {
     // version that stored base64'd plaintext when libsodium was missing.
     // sp_encrypt() no longer produces this prefix.
     //
-    // SECURITY NOTE: this branch returns whatever base64 follows the prefix
-    // with no integrity check. If an attacker gains DB write access (a SQL
-    // injection in another plugin, direct DB access, etc.) and can write
-    // `noenc:<base64>` into an encrypted column, sp_decrypt() will return
-    // that arbitrary plaintext on the next read. The attack surface is
-    // bounded to attackers who already have DB write; the legacy install
-    // base that still has noenc: rows is what keeps this branch alive.
-    // TODO (post-v1.0): once a one-time migration confirms no rows still
-    //      carry the prefix, remove this branch entirely.
-    if ( strpos( $encrypted, 'noenc:' ) === 0 ) {
-        return base64_decode( substr( $encrypted, 6 ) );
-    }
+    // SECURITY NOTE: the legacy `noenc:` prefix branch was removed for v1.0.
+    // It previously returned base64 plaintext with no integrity check, which
+    // meant any process with DB write could plant `noenc:<base64>` into an
+    // encrypted column and have it returned verbatim. A one-time migration
+    // (`sp_maybe_migrate_noenc()`) re-encrypts any remaining rows on upgrade,
+    // so this branch is no longer needed.
 
     if ( ! function_exists( 'sodium_crypto_secretbox_open' ) ) {
         return false;
@@ -3249,6 +3250,57 @@ function sp_maybe_migrate_encrypt_contacts(): void {
     }
 
     update_option( 'sp_contacts_encrypted', 1, true );
+}
+
+/**
+ * One-time migration: re-encrypt any sp_members rows that still carry the
+ * legacy `noenc:` prefix from before libsodium was guaranteed available.
+ *
+ * The `noenc:` fallback in sp_decrypt() was removed for v1.0 because it had
+ * no MAC and allowed an attacker with DB write to return arbitrary plaintext.
+ * This migration scans every encrypted column, decodes the base64 payload
+ * after the prefix, and writes back a proper sodium-encrypted value.
+ *
+ * Idempotent: guarded by the `sp_noenc_migrated` option, and only touches
+ * rows whose value literally starts with `noenc:`.
+ */
+function sp_maybe_migrate_noenc_members(): void {
+    if ( get_option( 'sp_noenc_migrated' ) ) {
+        return;
+    }
+    if ( ! function_exists( 'sodium_crypto_secretbox' ) ) {
+        // libsodium missing — leave the flag unset so we'll try again next
+        // upgrade once the host has libsodium available.
+        return;
+    }
+
+    global $wpdb;
+    $table  = $wpdb->prefix . 'sp_members';
+    $fields = sp_encrypted_member_fields();
+
+    // Build a WHERE that matches any encrypted column starting with "noenc:".
+    $clauses = array_map( static fn( $f ) => "`{$f}` LIKE 'noenc:%'", $fields );
+    $where   = implode( ' OR ', $clauses );
+    $select  = 'user_id, ' . implode( ', ', array_map( static fn( $f ) => "`{$f}`", $fields ) );
+
+    $rows = $wpdb->get_results( "SELECT {$select} FROM {$table} WHERE {$where}" );
+    if ( $rows ) {
+        foreach ( $rows as $row ) {
+            $updates = [];
+            foreach ( $fields as $field ) {
+                $val = $row->$field ?? '';
+                if ( ! is_string( $val ) || strpos( $val, 'noenc:' ) !== 0 ) continue;
+                $plain = base64_decode( substr( $val, 6 ), true );
+                if ( $plain === false ) continue;
+                $updates[ $field ] = sp_encrypt( $plain );
+            }
+            if ( ! empty( $updates ) ) {
+                $wpdb->update( $table, $updates, [ 'user_id' => $row->user_id ] );
+            }
+        }
+    }
+
+    update_option( 'sp_noenc_migrated', 1, true );
 }
 
 
@@ -12231,7 +12283,7 @@ class SP_Members_List_Table extends WP_List_Table {
         // Status filter — uses the canonical status list so every dropdown
         // in the system shows the same options
         echo '<div class="alignleft actions">';
-        echo '<select name="member_status">';
+        echo '<select name="member_status" aria-label="' . esc_attr__( 'Filter by status', 'societypress' ) . '">';
         echo '<option value="">' . esc_html__( 'All Statuses', 'societypress' ) . '</option>';
         foreach ( sp_get_member_statuses() as $s => $label ) {
             printf(
@@ -12247,7 +12299,7 @@ class SP_Members_List_Table extends WP_List_Table {
         $tiers = $wpdb->get_results(
             "SELECT id, name FROM {$wpdb->prefix}sp_membership_tiers WHERE active = 1 ORDER BY sort_order"
         );
-        echo '<select name="member_tier">';
+        echo '<select name="member_tier" aria-label="' . esc_attr__( 'Filter by plan', 'societypress' ) . '">';
         echo '<option value="">' . esc_html__( 'All Plans', 'societypress' ) . '</option>';
         foreach ( $tiers as $t ) {
             printf(
@@ -12267,7 +12319,7 @@ class SP_Members_List_Table extends WP_List_Table {
             "SELECT id, name FROM {$wpdb->prefix}sp_groups WHERE status = 'active' ORDER BY sort_order, name"
         );
         $current_group = $_GET['member_group'] ?? '';
-        echo '<select name="member_group">';
+        echo '<select name="member_group" aria-label="' . esc_attr__( 'Filter by group', 'societypress' ) . '">';
         echo '<option value="">' . esc_html__( 'All Groups', 'societypress' ) . '</option>';
         foreach ( $groups as $g ) {
             printf(
@@ -20358,10 +20410,18 @@ function sp_sanitize_settings( array $input ): array {
     // Master sanitization rules — each key maps to its sanitizer.
     // WHY a lookup table: Keeps every field's sanitization visible in one
     // place. When adding a new setting, add one line here and you're done.
+    // CR/LF stripping helper for any value that could land in an email header.
+    $strip_crlf = static fn( $v ) => str_replace( [ "\r", "\n" ], '', sanitize_text_field( (string) $v ) );
+
     $sanitizers = [
         // Organization
         'store_acq_code'          => fn() => sanitize_text_field( $input['store_acq_code'] ?? '' ),
         'store_intro_text'        => fn() => sanitize_textarea_field( $input['store_intro_text'] ?? '' ),
+        // Outbound email identity — wizard-set today, but covered here so a
+        // future Email settings tab can't accidentally bypass header-safe input.
+        'email_from_name'         => fn() => $strip_crlf( $input['email_from_name']  ?? '' ),
+        'email_from_email'        => fn() => sanitize_email( $input['email_from_email'] ?? '' ),
+        'email_reply_to'          => fn() => sanitize_email( $input['email_reply_to']  ?? '' ),
         // Website
         'website_require_login'   => fn() => ! empty( $input['website_require_login'] ) ? 1 : 0,
         'website_show_admin_bar'  => fn() => ! empty( $input['website_show_admin_bar'] ) ? 1 : 0,
@@ -22911,8 +22971,7 @@ function sp_render_page_edit(): void {
                             <?php endforeach; ?>
                         </select>
                         <p class="description">
-                            Standard Pages use the content editor below.
-                            Other page types display their own specialized content.
+                            <?php esc_html_e( 'Standard Pages use the content editor below. Other page types display their own specialized content.', 'societypress' ); ?>
                         </p>
                     </td>
                 </tr>
@@ -23199,7 +23258,7 @@ function sp_handle_page_save(): void {
  * Register "Interest Groups" as a page template.
  */
 function sp_register_groups_template( $templates ) {
-    $templates['sp-groups'] = 'Interest Groups';
+    $templates['sp-groups'] = __( 'Interest Groups', 'societypress' );
     return $templates;
 }
 add_filter( 'theme_page_templates', 'sp_register_groups_template' );
@@ -26634,6 +26693,7 @@ function sp_render_themes_page(): void {
                                     <input type="text" class="sp-builder-color-hex sp-themes-color-hex-input"
                                            data-key="<?php echo esc_attr( $key ); ?>"
                                            value="<?php echo esc_attr( $default ); ?>"
+                                           aria-label="<?php echo esc_attr( sprintf( /* translators: %s: color field label, e.g. "Header Background" */ __( '%s — hex value', 'societypress' ), $label ) ); ?>"
                                            maxlength="7" pattern="#[0-9a-fA-F]{6}">
                                 </div>
                                 <p class="sp-themes-color-desc"><?php echo esc_html( $desc ); ?></p>
@@ -27513,8 +27573,7 @@ function sp_render_settings_design_page(): void {
                                 </button>
                             <?php endif; ?>
                             <p class="description sp-design-logo-desc">
-                                Recommended: PNG or SVG with a transparent background, at least 200px wide.
-                                The logo will be displayed at a maximum height of 75px in the header.
+                                <?php esc_html_e( 'Recommended: PNG or SVG with a transparent background, at least 200px wide. The logo will be displayed at a maximum height of 75px in the header.', 'societypress' ); ?>
                             </p>
                         </td>
                     </tr>
@@ -27527,10 +27586,10 @@ function sp_render_settings_design_page(): void {
                                        name="societypress_settings[design_show_header_title]"
                                        value="1"
                                        <?php checked( $show_title, 1 ); ?>>
-                                Show site name and tagline in the header
+                                <?php esc_html_e( 'Show site name and tagline in the header', 'societypress' ); ?>
                             </label>
                             <p class="description">
-                                Uncheck this if your logo already includes your society's name.
+                                <?php esc_html_e( "Uncheck this if your logo already includes your society's name.", 'societypress' ); ?>
                             </p>
                         </td>
                     </tr>
@@ -27549,8 +27608,7 @@ function sp_render_settings_design_page(): void {
                                    placeholder="Auto">
                             <span>px</span>
                             <p class="description">
-                                Leave blank for automatic height (based on logo and content).
-                                Set a value to match a specific design — e.g., 175 for a tall header with a large logo.
+                                <?php esc_html_e( 'Leave blank for automatic height (based on logo and content). Set a value to match a specific design — e.g., 175 for a tall header with a large logo.', 'societypress' ); ?>
                             </p>
                         </td>
                     </tr>
@@ -27852,13 +27910,13 @@ function sp_render_settings_design_page(): void {
                 <!-- Device width toggle buttons -->
                 <div class="sp-design-device-bar">
                     <button type="button" class="button sp-preview-device sp-preview-device-active" data-width="100%">
-                        <span class="dashicons dashicons-desktop sp-design-device-icon"></span> Desktop
+                        <span class="dashicons dashicons-desktop sp-design-device-icon"></span> <?php esc_html_e( 'Desktop', 'societypress' ); ?>
                     </button>
                     <button type="button" class="button sp-preview-device" data-width="768px">
-                        <span class="dashicons dashicons-tablet sp-design-device-icon"></span> Tablet
+                        <span class="dashicons dashicons-tablet sp-design-device-icon"></span> <?php esc_html_e( 'Tablet', 'societypress' ); ?>
                     </button>
                     <button type="button" class="button sp-preview-device" data-width="375px">
-                        <span class="dashicons dashicons-smartphone sp-design-device-icon"></span> Phone
+                        <span class="dashicons dashicons-smartphone sp-design-device-icon"></span> <?php echo esc_html_x( 'Phone', 'device preview button', 'societypress' ); ?>
                     </button>
                 </div>
 
@@ -27866,7 +27924,7 @@ function sp_render_settings_design_page(): void {
                 <div id="sp-preview-container" class="sp-design-preview-container">
                     <iframe id="sp-design-preview" src="<?php echo esc_url( home_url( '/' ) ); ?>"
                             class="sp-design-preview-iframe"
-                            title="Site preview"></iframe>
+                            title="<?php echo esc_attr__( 'Site preview', 'societypress' ); ?>"></iframe>
                 </div>
             </div>
 
@@ -31435,9 +31493,10 @@ function sp_render_builder_card( $index, array $widget, array $registry ): void 
     if ( ! $info ) return;
 
     ?>
+    <?php $sp_card_body_id = 'sp-builder-card-body-' . (int) $index; ?>
     <div class="sp-builder-card" data-widget-type="<?php echo esc_attr( $type ); ?>">
-        <div class="sp-builder-card-header">
-            <span class="dashicons dashicons-<?php echo esc_attr( $info['icon'] ); ?> sp-builder-card-icon"></span>
+        <div class="sp-builder-card-header" role="button" tabindex="0" aria-expanded="false" aria-controls="<?php echo esc_attr( $sp_card_body_id ); ?>">
+            <span class="dashicons dashicons-<?php echo esc_attr( $info['icon'] ); ?> sp-builder-card-icon" aria-hidden="true"></span>
             <span class="sp-builder-card-title" style="font-weight:600; flex-grow:1;"><?php echo esc_html( $info['label'] ); ?></span>
             <div class="sp-builder-card-actions" style="display:flex; gap:4px; flex-shrink:0;">
                 <button type="button" class="sp-builder-btn sp-builder-move-up" aria-label="<?php esc_attr_e( 'Move up', 'societypress' ); ?>">&#9650;</button>
@@ -31447,13 +31506,13 @@ function sp_render_builder_card( $index, array $widget, array $registry ): void 
             </div>
         </div>
 
-        <div class="sp-builder-card-body" style="display: none;">
+        <div id="<?php echo esc_attr( $sp_card_body_id ); ?>" class="sp-builder-card-body" style="display: none;">
             <input type="hidden" name="sp_widgets[<?php echo esc_attr( $index ); ?>][type]" value="<?php echo esc_attr( $type ); ?>">
 
             <!-- Section heading — available on every widget -->
             <div style="margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid #e0e0e0;">
-                <label class="sp-field-label"><?php esc_html_e( 'Section Heading (optional)', 'societypress' ); ?></label>
-                <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][section_heading]"
+                <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-section_heading"><?php esc_html_e( 'Section Heading (optional)', 'societypress' ); ?></label>
+                <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][section_heading]" id="sp-w-<?php echo esc_attr( $index ); ?>-section_heading"
                        value="<?php echo esc_attr( $settings['section_heading'] ?? '' ); ?>"
                        class="widefat" placeholder="<?php esc_attr_e( 'e.g., Classes & Events', 'societypress' ); ?>">
                 <p class="description" style="margin-top:4px;"><?php esc_html_e( 'Adds a centered heading with a decorative divider above this widget.', 'societypress' ); ?></p>
@@ -31484,7 +31543,7 @@ function sp_builder_fields_rich_text( $index, array $settings ): void {
     $name      = "sp_widgets[{$index}][settings][content]";
 
     echo '<div class="sp-builder-field">';
-    echo '<label class="sp-field-label">' . esc_html__( 'Content', 'societypress' ) . '</label>';
+    echo '<label class="sp-field-label" for="' . esc_attr( $editor_id ) . '">' . esc_html__( 'Content', 'societypress' ) . '</label>';
 
     if ( is_numeric( $index ) ) {
         wp_editor( $content, $editor_id, [
@@ -31522,8 +31581,8 @@ function sp_builder_fields_member_directory( $index, array $settings ): void {
         </label>
     </div>
     <div class="sp-builder-field">
-        <label class="sp-field-label"><?php esc_html_e( 'Results per page', 'societypress' ); ?></label>
-        <input type="number" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][per_page]" value="<?php echo esc_attr( $per_page ); ?>" min="6" max="100" step="1" class="small-text">
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-per_page"><?php esc_html_e( 'Results per page', 'societypress' ); ?></label>
+        <input type="number" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][per_page]" id="sp-w-<?php echo esc_attr( $index ); ?>-per_page" value="<?php echo esc_attr( $per_page ); ?>" min="6" max="100" step="1" class="small-text">
     </div>
     <?php
 }
@@ -31604,17 +31663,17 @@ function sp_builder_fields_heading( $index, array $settings ): void {
     $alignment    = $settings['alignment'] ?? 'left';
     ?>
     <div class="sp-builder-field">
-        <label class="sp-field-label"><?php esc_html_e( 'Heading text', 'societypress' ); ?></label>
-        <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][text]" value="<?php echo esc_attr( $text ); ?>" class="widefat">
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-text"><?php esc_html_e( 'Heading text', 'societypress' ); ?></label>
+        <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][text]" id="sp-w-<?php echo esc_attr( $index ); ?>-text" value="<?php echo esc_attr( $text ); ?>" class="widefat">
     </div>
     <div class="sp-builder-field">
-        <label class="sp-field-label"><?php esc_html_e( 'Subtitle (optional)', 'societypress' ); ?></label>
-        <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][subtitle]" value="<?php echo esc_attr( $subtitle ); ?>" class="widefat">
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-subtitle"><?php esc_html_e( 'Subtitle (optional)', 'societypress' ); ?></label>
+        <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][subtitle]" id="sp-w-<?php echo esc_attr( $index ); ?>-subtitle" value="<?php echo esc_attr( $subtitle ); ?>" class="widefat">
     </div>
     <div class="sp-builder-field sp-flex-gap-15">
         <div class="sp-flex-1">
-            <label class="sp-field-label"><?php esc_html_e( 'Level', 'societypress' ); ?></label>
-            <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][level]" class="sp-full-width">
+            <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-level"><?php esc_html_e( 'Level', 'societypress' ); ?></label>
+            <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][level]" id="sp-w-<?php echo esc_attr( $index ); ?>-level" class="sp-full-width">
                 <option value="h1" <?php selected( $level, 'h1' ); ?>>H1</option>
                 <option value="h2" <?php selected( $level, 'h2' ); ?>>H2</option>
                 <option value="h3" <?php selected( $level, 'h3' ); ?>>H3</option>
@@ -31622,8 +31681,8 @@ function sp_builder_fields_heading( $index, array $settings ): void {
             </select>
         </div>
         <div class="sp-flex-1">
-            <label class="sp-field-label"><?php esc_html_e( 'Alignment', 'societypress' ); ?></label>
-            <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][alignment]" class="sp-full-width">
+            <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-alignment"><?php esc_html_e( 'Alignment', 'societypress' ); ?></label>
+            <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][alignment]" id="sp-w-<?php echo esc_attr( $index ); ?>-alignment" class="sp-full-width">
                 <option value="left" <?php selected( $alignment, 'left' ); ?>><?php esc_html_e( 'Left', 'societypress' ); ?></option>
                 <option value="center" <?php selected( $alignment, 'center' ); ?>><?php esc_html_e( 'Center', 'societypress' ); ?></option>
                 <option value="right" <?php selected( $alignment, 'right' ); ?>><?php esc_html_e( 'Right', 'societypress' ); ?></option>
@@ -31652,8 +31711,8 @@ function sp_builder_fields_image( $index, array $settings ): void {
         if ( $img ) $preview_url = $img[0];
     }
     ?>
-    <div class="sp-builder-field sp-builder-image-field">
-        <label class="sp-field-label"><?php esc_html_e( 'Image', 'societypress' ); ?></label>
+    <div class="sp-builder-field sp-builder-image-field" role="group" aria-label="<?php esc_attr_e( 'Image', 'societypress' ); ?>">
+        <div class="sp-field-label" aria-hidden="true"><?php esc_html_e( 'Image', 'societypress' ); ?></div>
         <div class="sp-builder-image-preview" <?php echo $preview_url ? '' : 'style="display:none;"'; ?>>
             <img src="<?php echo esc_url( $preview_url ); ?>" alt="" style="max-width:300px; max-height:200px; border:1px solid #c3c4c7; border-radius:4px; margin-bottom:8px;">
         </div>
@@ -31662,25 +31721,25 @@ function sp_builder_fields_image( $index, array $settings ): void {
         <button type="button" class="button sp-builder-image-remove" <?php echo $image_id ? '' : 'style="display:none;"'; ?>><?php esc_html_e( 'Remove', 'societypress' ); ?></button>
     </div>
     <div class="sp-builder-field">
-        <label class="sp-field-label"><?php esc_html_e( 'Caption (optional)', 'societypress' ); ?></label>
-        <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][caption]" value="<?php echo esc_attr( $caption ); ?>" class="widefat">
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-caption"><?php esc_html_e( 'Caption (optional)', 'societypress' ); ?></label>
+        <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][caption]" id="sp-w-<?php echo esc_attr( $index ); ?>-caption" value="<?php echo esc_attr( $caption ); ?>" class="widefat">
     </div>
     <div class="sp-builder-field">
-        <label class="sp-field-label"><?php esc_html_e( 'Link URL (optional)', 'societypress' ); ?></label>
-        <input type="url" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][link_url]" value="<?php echo esc_attr( $link_url ); ?>" class="widefat" placeholder="https://">
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-link_url"><?php esc_html_e( 'Link URL (optional)', 'societypress' ); ?></label>
+        <input type="url" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][link_url]" id="sp-w-<?php echo esc_attr( $index ); ?>-link_url" value="<?php echo esc_attr( $link_url ); ?>" class="widefat" placeholder="https://">
     </div>
     <div class="sp-builder-field sp-flex-gap-15">
         <div class="sp-flex-1">
-            <label class="sp-field-label"><?php esc_html_e( 'Size', 'societypress' ); ?></label>
-            <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][size]" class="sp-full-width">
+            <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-size"><?php esc_html_e( 'Size', 'societypress' ); ?></label>
+            <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][size]" id="sp-w-<?php echo esc_attr( $index ); ?>-size" class="sp-full-width">
                 <option value="medium" <?php selected( $size, 'medium' ); ?>><?php esc_html_e( 'Medium', 'societypress' ); ?></option>
                 <option value="large" <?php selected( $size, 'large' ); ?>><?php esc_html_e( 'Large', 'societypress' ); ?></option>
                 <option value="full" <?php selected( $size, 'full' ); ?>><?php esc_html_e( 'Full width', 'societypress' ); ?></option>
             </select>
         </div>
         <div class="sp-flex-1">
-            <label class="sp-field-label"><?php esc_html_e( 'Alignment', 'societypress' ); ?></label>
-            <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][alignment]" class="sp-full-width">
+            <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-alignment"><?php esc_html_e( 'Alignment', 'societypress' ); ?></label>
+            <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][alignment]" id="sp-w-<?php echo esc_attr( $index ); ?>-alignment" class="sp-full-width">
                 <option value="left" <?php selected( $alignment, 'left' ); ?>><?php esc_html_e( 'Left', 'societypress' ); ?></option>
                 <option value="center" <?php selected( $alignment, 'center' ); ?>><?php esc_html_e( 'Center', 'societypress' ); ?></option>
                 <option value="right" <?php selected( $alignment, 'right' ); ?>><?php esc_html_e( 'Right', 'societypress' ); ?></option>
@@ -31701,25 +31760,25 @@ function sp_builder_fields_button( $index, array $settings ): void {
     $new_window = $settings['new_window'] ?? false;
     ?>
     <div class="sp-builder-field">
-        <label class="sp-field-label"><?php esc_html_e( 'Button text', 'societypress' ); ?></label>
-        <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][text]" value="<?php echo esc_attr( $text ); ?>" class="widefat" placeholder="<?php esc_attr_e( 'e.g., Join Today', 'societypress' ); ?>">
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-text"><?php esc_html_e( 'Button text', 'societypress' ); ?></label>
+        <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][text]" id="sp-w-<?php echo esc_attr( $index ); ?>-text" value="<?php echo esc_attr( $text ); ?>" class="widefat" placeholder="<?php esc_attr_e( 'e.g., Join Today', 'societypress' ); ?>">
     </div>
     <div class="sp-builder-field">
-        <label class="sp-field-label"><?php esc_html_e( 'Link URL', 'societypress' ); ?></label>
-        <input type="url" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][url]" value="<?php echo esc_attr( $url ); ?>" class="widefat" placeholder="https://">
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-url"><?php esc_html_e( 'Link URL', 'societypress' ); ?></label>
+        <input type="url" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][url]" id="sp-w-<?php echo esc_attr( $index ); ?>-url" value="<?php echo esc_attr( $url ); ?>" class="widefat" placeholder="https://">
     </div>
     <div class="sp-builder-field sp-flex-gap-15">
         <div class="sp-flex-1">
-            <label class="sp-field-label"><?php esc_html_e( 'Style', 'societypress' ); ?></label>
-            <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][style]" class="sp-full-width">
+            <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-style"><?php esc_html_e( 'Style', 'societypress' ); ?></label>
+            <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][style]" id="sp-w-<?php echo esc_attr( $index ); ?>-style" class="sp-full-width">
                 <option value="primary" <?php selected( $style, 'primary' ); ?>><?php esc_html_e( 'Primary (filled)', 'societypress' ); ?></option>
                 <option value="secondary" <?php selected( $style, 'secondary' ); ?>><?php esc_html_e( 'Secondary (gray)', 'societypress' ); ?></option>
                 <option value="outline" <?php selected( $style, 'outline' ); ?>><?php esc_html_e( 'Outline', 'societypress' ); ?></option>
             </select>
         </div>
         <div class="sp-flex-1">
-            <label class="sp-field-label"><?php esc_html_e( 'Alignment', 'societypress' ); ?></label>
-            <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][alignment]" class="sp-full-width">
+            <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-alignment"><?php esc_html_e( 'Alignment', 'societypress' ); ?></label>
+            <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][alignment]" id="sp-w-<?php echo esc_attr( $index ); ?>-alignment" class="sp-full-width">
                 <option value="left" <?php selected( $alignment, 'left' ); ?>><?php esc_html_e( 'Left', 'societypress' ); ?></option>
                 <option value="center" <?php selected( $alignment, 'center' ); ?>><?php esc_html_e( 'Center', 'societypress' ); ?></option>
                 <option value="right" <?php selected( $alignment, 'right' ); ?>><?php esc_html_e( 'Right', 'societypress' ); ?></option>
@@ -31740,8 +31799,8 @@ function sp_builder_fields_contact_form( $index, array $settings ): void {
     ?>
     <div class="sp-builder-field">
         <p class="description"><?php esc_html_e( 'Displays a simple name/email/message form. Submissions are emailed to the organization email from your SocietyPress settings.', 'societypress' ); ?></p>
-        <label class="sp-field-label"><?php esc_html_e( 'Introductory text (optional)', 'societypress' ); ?></label>
-        <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][intro_text]" value="<?php echo esc_attr( $intro_text ); ?>" class="widefat" placeholder="e.g., We\'d love to hear from you!">
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-intro_text"><?php esc_html_e( 'Introductory text (optional)', 'societypress' ); ?></label>
+        <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][intro_text]" id="sp-w-<?php echo esc_attr( $index ); ?>-intro_text" value="<?php echo esc_attr( $intro_text ); ?>" class="widefat" placeholder="e.g., We\'d love to hear from you!">
     </div>
     <?php
 }
@@ -31770,8 +31829,8 @@ function sp_builder_fields_upcoming_events( $index, array $settings ): void {
     <div class="sp-builder-field">
         <p class="description"><?php esc_html_e( 'Displays upcoming events pulled from your Events system.', 'societypress' ); ?></p>
 
-        <label class="sp-field-label"><?php esc_html_e( 'Layout', 'societypress' ); ?></label>
-        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][layout]">
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-layout"><?php esc_html_e( 'Layout', 'societypress' ); ?></label>
+        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][layout]" id="sp-w-<?php echo esc_attr( $index ); ?>-layout">
             <option value="list" <?php selected( $layout, 'list' ); ?>><?php esc_html_e( 'Compact List', 'societypress' ); ?></option>
             <option value="cards" <?php selected( $layout, 'cards' ); ?>><?php esc_html_e( 'Photo Cards (grid)', 'societypress' ); ?></option>
         </select>
@@ -31838,8 +31897,8 @@ function sp_builder_fields_event_calendar( $index, array $settings ): void {
     <div class="sp-builder-field">
         <p class="description"><?php echo esc_html__( 'Displays a monthly calendar grid with color-coded event pills, month navigation, and mobile day-tap.', 'societypress' ); ?></p>
 
-        <label class="sp-field-label"><?php echo esc_html__( 'Heading (optional)', 'societypress' ); ?></label>
-        <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][heading]"
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-heading"><?php echo esc_html__( 'Heading (optional)', 'societypress' ); ?></label>
+        <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][heading]" id="sp-w-<?php echo esc_attr( $index ); ?>-heading"
                value="<?php echo esc_attr( $heading ); ?>"
                placeholder="<?php echo esc_attr__( 'Events Calendar', 'societypress' ); ?>"
                class="sp-full-width">
@@ -31872,16 +31931,16 @@ function sp_builder_fields_community_link( $index, array $settings ): void {
     ?>
     <div class="sp-builder-field">
         <p class="description"><?php echo esc_html__( 'Links to the Community Forum URL set in Settings > Organization. If that URL is empty, this widget will be invisible to visitors.', 'societypress' ); ?></p>
-        <label class="sp-field-label"><?php esc_html_e( 'Button label', 'societypress' ); ?></label>
-        <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][label]" value="<?php echo esc_attr( $label ); ?>" class="widefat">
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-label"><?php esc_html_e( 'Button label', 'societypress' ); ?></label>
+        <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][label]" id="sp-w-<?php echo esc_attr( $index ); ?>-label" value="<?php echo esc_attr( $label ); ?>" class="widefat">
     </div>
     <div class="sp-builder-field">
-        <label class="sp-field-label"><?php esc_html_e( 'Description', 'societypress' ); ?></label>
-        <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][description]" value="<?php echo esc_attr( $description ); ?>" class="widefat">
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-description"><?php esc_html_e( 'Description', 'societypress' ); ?></label>
+        <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][description]" id="sp-w-<?php echo esc_attr( $index ); ?>-description" value="<?php echo esc_attr( $description ); ?>" class="widefat">
     </div>
     <div class="sp-builder-field">
-        <label class="sp-field-label"><?php esc_html_e( 'Button style', 'societypress' ); ?></label>
-        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][style]">
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-style"><?php esc_html_e( 'Button style', 'societypress' ); ?></label>
+        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][style]" id="sp-w-<?php echo esc_attr( $index ); ?>-style">
             <option value="primary" <?php selected( $style, 'primary' ); ?>><?php esc_html_e( 'Primary (Blue)', 'societypress' ); ?></option>
             <option value="secondary" <?php selected( $style, 'secondary' ); ?>><?php esc_html_e( 'Secondary (Gray)', 'societypress' ); ?></option>
             <option value="outline" <?php selected( $style, 'outline' ); ?>><?php esc_html_e( 'Outline', 'societypress' ); ?></option>
@@ -31902,8 +31961,8 @@ function sp_builder_fields_newsletter_archive( $index, array $settings ): void {
     ?>
     <div class="sp-builder-field">
         <p class="description"><?php esc_html_e( 'Newsletters you publish under SocietyPress → Newsletters will appear here automatically.', 'societypress' ); ?></p>
-        <label class="sp-field-label"><?php esc_html_e( 'Number of newsletters to show', 'societypress' ); ?></label>
-        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][count]">
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-count"><?php esc_html_e( 'Number of newsletters to show', 'societypress' ); ?></label>
+        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][count]" id="sp-w-<?php echo esc_attr( $index ); ?>-count">
             <?php foreach ( [ 5, 10, 15, 20, 50 ] as $opt ) : ?>
                 <option value="<?php echo $opt; ?>" <?php selected( $count, $opt ); ?>><?php echo $opt; ?></option>
             <?php endforeach; ?>
@@ -31934,8 +31993,8 @@ function sp_builder_fields_volunteer_stats( $index, array $settings ): void {
         <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_top_volunteers]" value="1" <?php checked( $show_top_volunteers ); ?>> <?php esc_html_e( 'Show top contributors', 'societypress' ); ?></label>
     </div>
     <div class="sp-builder-field">
-        <label class="sp-field-label"><?php esc_html_e( 'Time period', 'societypress' ); ?></label>
-        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][time_period]">
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-time_period"><?php esc_html_e( 'Time period', 'societypress' ); ?></label>
+        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][time_period]" id="sp-w-<?php echo esc_attr( $index ); ?>-time_period">
             <option value="year" <?php selected( $time_period, 'year' ); ?>><?php esc_html_e( 'This year', 'societypress' ); ?></option>
             <option value="all" <?php selected( $time_period, 'all' ); ?>><?php esc_html_e( 'All time', 'societypress' ); ?></option>
         </select>
@@ -31961,15 +32020,15 @@ function sp_builder_fields_photo_gallery( $index, array $settings ): void {
     ?>
     <div class="sp-builder-field">
         <p class="description"><?php esc_html_e( 'Displays photo albums from the Gallery section.', 'societypress' ); ?></p>
-        <label class="sp-field-label"><?php esc_html_e( 'Display mode', 'societypress' ); ?></label>
-        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][display_mode]">
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-display_mode"><?php esc_html_e( 'Display mode', 'societypress' ); ?></label>
+        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][display_mode]" id="sp-w-<?php echo esc_attr( $index ); ?>-display_mode">
             <option value="albums" <?php selected( $display_mode, 'albums' ); ?>><?php esc_html_e( 'All albums (grid of thumbnails)', 'societypress' ); ?></option>
             <option value="single" <?php selected( $display_mode, 'single' ); ?>><?php esc_html_e( 'Single album (all photos)', 'societypress' ); ?></option>
         </select>
     </div>
     <div class="sp-builder-field">
-        <label class="sp-field-label"><?php esc_html_e( 'Album (for single mode)', 'societypress' ); ?></label>
-        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][album_id]">
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-album_id"><?php esc_html_e( 'Album (for single mode)', 'societypress' ); ?></label>
+        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][album_id]" id="sp-w-<?php echo esc_attr( $index ); ?>-album_id">
             <option value=""><?php esc_html_e( '— Select an album —', 'societypress' ); ?></option>
             <?php foreach ( $albums as $a ) : ?>
                 <option value="<?php echo esc_attr( $a->id ); ?>" <?php selected( $album_id, $a->id ); ?>><?php echo esc_html( $a->title ); ?></option>
@@ -31978,16 +32037,16 @@ function sp_builder_fields_photo_gallery( $index, array $settings ): void {
     </div>
     <div class="sp-builder-field sp-flex-gap-15">
         <div class="sp-flex-1">
-            <label class="sp-field-label"><?php esc_html_e( 'Columns', 'societypress' ); ?></label>
-            <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][columns]" class="sp-full-width">
+            <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-columns"><?php esc_html_e( 'Columns', 'societypress' ); ?></label>
+            <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][columns]" id="sp-w-<?php echo esc_attr( $index ); ?>-columns" class="sp-full-width">
                 <?php foreach ( [ 2, 3, 4, 5 ] as $c ) : ?>
                     <option value="<?php echo $c; ?>" <?php selected( $columns, $c ); ?>><?php echo $c; ?></option>
                 <?php endforeach; ?>
             </select>
         </div>
         <div class="sp-flex-1">
-            <label class="sp-field-label"><?php esc_html_e( 'Max items', 'societypress' ); ?></label>
-            <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][count]" class="sp-full-width">
+            <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-count"><?php esc_html_e( 'Max items', 'societypress' ); ?></label>
+            <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][count]" id="sp-w-<?php echo esc_attr( $index ); ?>-count" class="sp-full-width">
                 <?php foreach ( [ 6, 12, 24, 48 ] as $c ) : ?>
                     <option value="<?php echo $c; ?>" <?php selected( $count, $c ); ?>><?php echo $c; ?></option>
                 <?php endforeach; ?>
@@ -32018,8 +32077,8 @@ function sp_builder_fields_resource_links( $index, array $settings ): void {
     ?>
     <div class="sp-builder-field">
         <p class="description"><?php echo esc_html__( 'Displays curated research resource links from Library > Resource Links.', 'societypress' ); ?></p>
-        <label class="sp-field-label"><?php esc_html_e( 'Filter by category', 'societypress' ); ?></label>
-        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][category_id]">
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-category_id"><?php esc_html_e( 'Filter by category', 'societypress' ); ?></label>
+        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][category_id]" id="sp-w-<?php echo esc_attr( $index ); ?>-category_id">
             <option value=""><?php esc_html_e( 'All Categories', 'societypress' ); ?></option>
             <?php foreach ( $categories as $cat ) : ?>
                 <option value="<?php echo esc_attr( $cat->id ); ?>" <?php selected( $category_id, $cat->id ); ?>><?php echo esc_html( $cat->name ); ?></option>
@@ -32027,8 +32086,8 @@ function sp_builder_fields_resource_links( $index, array $settings ): void {
         </select>
     </div>
     <div class="sp-builder-field">
-        <label class="sp-field-label"><?php esc_html_e( 'Max links to show', 'societypress' ); ?></label>
-        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][count]">
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-count"><?php esc_html_e( 'Max links to show', 'societypress' ); ?></label>
+        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][count]" id="sp-w-<?php echo esc_attr( $index ); ?>-count">
             <?php foreach ( [ 10, 20, 50, 100 ] as $opt ) : ?>
                 <option value="<?php echo $opt; ?>" <?php selected( $count, $opt ); ?>><?php echo $opt; ?></option>
             <?php endforeach; ?>
@@ -32061,8 +32120,8 @@ function sp_builder_fields_library_catalog( $index, array $settings ): void {
     ?>
     <div class="sp-builder-field">
         <p class="description"><?php esc_html_e( 'Displays a searchable, browsable library catalog with collection stats, tabbed search, browse-by-type cards, popular subjects, and a paginated results table with expandable detail rows.', 'societypress' ); ?></p>
-        <label class="sp-field-label"><?php esc_html_e( 'Filter by category', 'societypress' ); ?></label>
-        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][category_id]">
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-category_id"><?php esc_html_e( 'Filter by category', 'societypress' ); ?></label>
+        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][category_id]" id="sp-w-<?php echo esc_attr( $index ); ?>-category_id">
             <option value=""><?php esc_html_e( 'All Categories', 'societypress' ); ?></option>
             <?php foreach ( $categories as $cat ) : ?>
                 <option value="<?php echo esc_attr( $cat->id ); ?>" <?php selected( $category_id, $cat->id ); ?>><?php echo esc_html( $cat->name ); ?></option>
@@ -32070,8 +32129,8 @@ function sp_builder_fields_library_catalog( $index, array $settings ): void {
         </select>
     </div>
     <div class="sp-builder-field">
-        <label class="sp-field-label"><?php esc_html_e( 'Items per page', 'societypress' ); ?></label>
-        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][count]">
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-count"><?php esc_html_e( 'Items per page', 'societypress' ); ?></label>
+        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][count]" id="sp-w-<?php echo esc_attr( $index ); ?>-count">
             <?php foreach ( [ 10, 25, 50, 100 ] as $opt ) : ?>
                 <option value="<?php echo $opt; ?>" <?php selected( $count, $opt ); ?>><?php echo $opt; ?></option>
             <?php endforeach; ?>
@@ -32205,6 +32264,7 @@ function sp_builder_fields_hero_slider( $index, array $settings ): void {
                             <label><strong><?php esc_html_e( 'Image or Video URL', 'societypress' ); ?></strong></label><br>
                             <input type="text" name="<?php echo $name; ?>[slides][<?php echo $si; ?>][image]"
                                    value="<?php echo esc_attr( $slide['image'] ?? '' ); ?>" class="sp-hero-fields-input-full"
+                                   aria-label="<?php esc_attr_e( 'Image or video URL', 'societypress' ); ?>"
                                    placeholder="<?php echo esc_attr__( 'Paste image URL or use Media Library', 'societypress' ); ?>">
                             <button type="button" class="button sp-media-select sp-hero-fields-btn-media"><?php esc_html_e( 'Choose Image', 'societypress' ); ?></button>
                         </p>
@@ -32223,16 +32283,16 @@ function sp_builder_fields_hero_slider( $index, array $settings ): void {
                                     <div class="sp-slider-line-row sp-hero-fields-line-row">
                                         <input type="text" name="<?php echo $name; ?>[slides][<?php echo $si; ?>][lines][<?php echo $li; ?>][text]"
                                                value="<?php echo esc_attr( $line['text'] ?? '' ); ?>" class="sp-hero-fields-input-line-text" placeholder="<?php echo esc_attr__( 'Line text', 'societypress' ); ?>">
-                                        <select name="<?php echo $name; ?>[slides][<?php echo $si; ?>][lines][<?php echo $li; ?>][size]" class="sp-hero-fields-select-size">
+                                        <select name="<?php echo $name; ?>[slides][<?php echo $si; ?>][lines][<?php echo $li; ?>][size]" class="sp-hero-fields-select-size" aria-label="<?php esc_attr_e( 'Text size', 'societypress' ); ?>">
                                             <option value="small" <?php selected( $line['size'] ?? 'medium', 'small' ); ?>><?php esc_html_e( 'Small', 'societypress' ); ?></option>
                                             <option value="medium" <?php selected( $line['size'] ?? 'medium', 'medium' ); ?>><?php esc_html_e( 'Medium', 'societypress' ); ?></option>
                                             <option value="large" <?php selected( $line['size'] ?? 'medium', 'large' ); ?>><?php esc_html_e( 'Large', 'societypress' ); ?></option>
                                         </select>
-                                        <select name="<?php echo $name; ?>[slides][<?php echo $si; ?>][lines][<?php echo $li; ?>][weight]" class="sp-hero-fields-select-weight">
+                                        <select name="<?php echo $name; ?>[slides][<?php echo $si; ?>][lines][<?php echo $li; ?>][weight]" class="sp-hero-fields-select-weight" aria-label="<?php esc_attr_e( 'Font weight', 'societypress' ); ?>">
                                             <option value="light" <?php selected( $line['weight'] ?? 'light', 'light' ); ?>><?php esc_html_e( 'Light', 'societypress' ); ?></option>
                                             <option value="bold" <?php selected( $line['weight'] ?? 'light', 'bold' ); ?>><?php esc_html_e( 'Bold', 'societypress' ); ?></option>
                                         </select>
-                                        <select name="<?php echo $name; ?>[slides][<?php echo $si; ?>][lines][<?php echo $li; ?>][color]" class="sp-hero-fields-select-color">
+                                        <select name="<?php echo $name; ?>[slides][<?php echo $si; ?>][lines][<?php echo $li; ?>][color]" class="sp-hero-fields-select-color" aria-label="<?php esc_attr_e( 'Text color', 'societypress' ); ?>">
                                             <option value="white" <?php selected( $line['color'] ?? 'white', 'white' ); ?>><?php esc_html_e( 'White', 'societypress' ); ?></option>
                                             <option value="dark" <?php selected( $line['color'] ?? 'white', 'dark' ); ?>><?php esc_html_e( 'Dark', 'societypress' ); ?></option>
                                             <option value="accent" <?php selected( $line['color'] ?? 'white', 'accent' ); ?>><?php esc_html_e( 'Accent', 'societypress' ); ?></option>
@@ -32247,11 +32307,15 @@ function sp_builder_fields_hero_slider( $index, array $settings ): void {
                             <button type="button" class="button sp-slider-add-line sp-hero-fields-btn-add-line"><?php esc_html_e( '+ Add Line', 'societypress' ); ?></button>
                         </div>
                         <p>
-                            <label><strong><?php esc_html_e( 'Button Text', 'societypress' ); ?></strong></label><br>
+                            <label><strong><?php esc_html_e( 'Button Text', 'societypress' ); ?></strong></label> &nbsp; <label><strong><?php esc_html_e( 'Button URL', 'societypress' ); ?></strong></label><br>
                             <input type="text" name="<?php echo $name; ?>[slides][<?php echo $si; ?>][btn_text]"
-                                   value="<?php echo esc_attr( $slide['btn_text'] ?? '' ); ?>" class="sp-hero-fields-input-half" placeholder="<?php echo esc_attr__( 'e.g., Learn More', 'societypress' ); ?>">
+                                   value="<?php echo esc_attr( $slide['btn_text'] ?? '' ); ?>" class="sp-hero-fields-input-half"
+                                   aria-label="<?php esc_attr_e( 'Button text', 'societypress' ); ?>"
+                                   placeholder="<?php echo esc_attr__( 'e.g., Learn More', 'societypress' ); ?>">
                             <input type="text" name="<?php echo $name; ?>[slides][<?php echo $si; ?>][btn_url]"
-                                   value="<?php echo esc_attr( $slide['btn_url'] ?? '' ); ?>" class="sp-hero-fields-input-half" placeholder="<?php echo esc_attr__( 'Button URL', 'societypress' ); ?>">
+                                   value="<?php echo esc_attr( $slide['btn_url'] ?? '' ); ?>" class="sp-hero-fields-input-half"
+                                   aria-label="<?php esc_attr_e( 'Button URL', 'societypress' ); ?>"
+                                   placeholder="<?php echo esc_attr__( 'Button URL', 'societypress' ); ?>">
                         </p>
                         <button type="button" class="button sp-slider-remove-slide sp-hero-fields-btn-danger"><?php esc_html_e( 'Remove Slide', 'societypress' ); ?></button>
                     </div>
@@ -32264,7 +32328,7 @@ function sp_builder_fields_hero_slider( $index, array $settings ): void {
             <div class="sp-slider-slide-row sp-hero-fields-slide-card">
                 <p>
                     <label><strong><?php esc_html_e( 'Image or Video URL', 'societypress' ); ?></strong></label><br>
-                    <input type="text" data-field="image" value="" class="sp-hero-fields-input-full" placeholder="<?php echo esc_attr__( 'Paste image URL or use Media Library', 'societypress' ); ?>">
+                    <input type="text" data-field="image" value="" class="sp-hero-fields-input-full" aria-label="<?php esc_attr_e( 'Image or video URL', 'societypress' ); ?>" placeholder="<?php echo esc_attr__( 'Paste image URL or use Media Library', 'societypress' ); ?>">
                     <button type="button" class="button sp-media-select sp-hero-fields-btn-media"><?php esc_html_e( 'Choose Image', 'societypress' ); ?></button>
                 </p>
                 <!-- WHY: Lines repeater in the template starts empty — Harold adds
@@ -32278,9 +32342,9 @@ function sp_builder_fields_hero_slider( $index, array $settings ): void {
                     <button type="button" class="button sp-slider-add-line sp-hero-fields-btn-add-line"><?php esc_html_e( '+ Add Line', 'societypress' ); ?></button>
                 </div>
                 <p>
-                    <label><strong><?php esc_html_e( 'Button Text', 'societypress' ); ?></strong></label><br>
-                    <input type="text" data-field="btn_text" value="" class="sp-hero-fields-input-half" placeholder="<?php echo esc_attr__( 'e.g., Learn More', 'societypress' ); ?>">
-                    <input type="text" data-field="btn_url" value="" class="sp-hero-fields-input-half" placeholder="<?php echo esc_attr__( 'Button URL', 'societypress' ); ?>">
+                    <label><strong><?php esc_html_e( 'Button Text', 'societypress' ); ?></strong></label> &nbsp; <label><strong><?php esc_html_e( 'Button URL', 'societypress' ); ?></strong></label><br>
+                    <input type="text" data-field="btn_text" value="" class="sp-hero-fields-input-half" aria-label="<?php esc_attr_e( 'Button text', 'societypress' ); ?>" placeholder="<?php echo esc_attr__( 'e.g., Learn More', 'societypress' ); ?>">
+                    <input type="text" data-field="btn_url" value="" class="sp-hero-fields-input-half" aria-label="<?php esc_attr_e( 'Button URL', 'societypress' ); ?>" placeholder="<?php echo esc_attr__( 'Button URL', 'societypress' ); ?>">
                 </p>
                 <button type="button" class="button sp-slider-remove-slide sp-hero-fields-btn-danger"><?php esc_html_e( 'Remove Slide', 'societypress' ); ?></button>
             </div>
@@ -32293,16 +32357,16 @@ function sp_builder_fields_hero_slider( $index, array $settings ): void {
         <template class="sp-slider-line-template">
             <div class="sp-slider-line-row sp-hero-fields-line-row">
                 <input type="text" data-line-field="text" value="" class="sp-hero-fields-input-line-text" placeholder="<?php echo esc_attr__( 'Line text', 'societypress' ); ?>">
-                <select data-line-field="size" class="sp-hero-fields-select-size">
+                <select data-line-field="size" class="sp-hero-fields-select-size" aria-label="<?php esc_attr_e( 'Text size', 'societypress' ); ?>">
                     <option value="small"><?php esc_html_e( 'Small', 'societypress' ); ?></option>
                     <option value="medium" selected><?php esc_html_e( 'Medium', 'societypress' ); ?></option>
                     <option value="large"><?php esc_html_e( 'Large', 'societypress' ); ?></option>
                 </select>
-                <select data-line-field="weight" class="sp-hero-fields-select-weight">
+                <select data-line-field="weight" class="sp-hero-fields-select-weight" aria-label="<?php esc_attr_e( 'Font weight', 'societypress' ); ?>">
                     <option value="light" selected><?php esc_html_e( 'Light', 'societypress' ); ?></option>
                     <option value="bold"><?php esc_html_e( 'Bold', 'societypress' ); ?></option>
                 </select>
-                <select data-line-field="color" class="sp-hero-fields-select-color">
+                <select data-line-field="color" class="sp-hero-fields-select-color" aria-label="<?php esc_attr_e( 'Text color', 'societypress' ); ?>">
                     <option value="white" selected><?php esc_html_e( 'White', 'societypress' ); ?></option>
                     <option value="dark"><?php esc_html_e( 'Dark', 'societypress' ); ?></option>
                     <option value="accent"><?php esc_html_e( 'Accent', 'societypress' ); ?></option>
@@ -32405,8 +32469,8 @@ function sp_builder_fields_feature_cards( $index, array $settings ): void {
     <div class="sp-builder-field">
         <p class="description"><?php esc_html_e( 'Add image cards with headings, descriptions, and buttons. Great for highlighting features, services, or calls to action.', 'societypress' ); ?></p>
 
-        <label class="sp-field-label"><?php esc_html_e( 'Columns', 'societypress' ); ?></label>
-        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][columns]">
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-columns"><?php esc_html_e( 'Columns', 'societypress' ); ?></label>
+        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][columns]" id="sp-w-<?php echo esc_attr( $index ); ?>-columns">
             <option value="2" <?php selected( $columns, 2 ); ?>>2</option>
             <option value="3" <?php selected( $columns, 3 ); ?>>3</option>
             <option value="4" <?php selected( $columns, 4 ); ?>>4</option>
@@ -32420,9 +32484,9 @@ function sp_builder_fields_feature_cards( $index, array $settings ): void {
                         <button type="button" class="button sp-fc-remove-card sp-text-danger">&times; <?php esc_html_e( 'Remove', 'societypress' ); ?></button>
                     </div>
 
-                    <label class="sp-field-label"><?php esc_html_e( 'Image', 'societypress' ); ?></label>
+                    <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-cards-<?php echo (int) $ci; ?>-image_id"><?php esc_html_e( 'Image', 'societypress' ); ?></label>
                     <div class="sp-builder-image-field sp-mb-8">
-                        <input type="hidden" class="sp-builder-image-id" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][cards][<?php echo $ci; ?>][image_id]" value="<?php echo esc_attr( $card['image_id'] ?? '' ); ?>">
+                        <input type="hidden" class="sp-builder-image-id" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][cards][<?php echo $ci; ?>][image_id]" id="sp-w-<?php echo esc_attr( $index ); ?>-cards-<?php echo (int) $ci; ?>-image_id" value="<?php echo esc_attr( $card['image_id'] ?? '' ); ?>">
                         <?php
                         $img_url = '';
                         if ( ! empty( $card['image_id'] ) ) {
@@ -32436,20 +32500,20 @@ function sp_builder_fields_feature_cards( $index, array $settings ): void {
                         <button type="button" class="button sp-builder-image-remove" style="<?php echo $img_url ? '' : 'display:none;'; ?> color:#b32d2e;"><?php esc_html_e( 'Remove', 'societypress' ); ?></button>
                     </div>
 
-                    <label class="sp-field-label"><?php esc_html_e( 'Title', 'societypress' ); ?></label>
-                    <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][cards][<?php echo $ci; ?>][title]" value="<?php echo esc_attr( $card['title'] ?? '' ); ?>" class="widefat sp-mb-8">
+                    <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-cards-<?php echo (int) $ci; ?>-title"><?php esc_html_e( 'Title', 'societypress' ); ?></label>
+                    <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][cards][<?php echo $ci; ?>][title]" id="sp-w-<?php echo esc_attr( $index ); ?>-cards-<?php echo (int) $ci; ?>-title" value="<?php echo esc_attr( $card['title'] ?? '' ); ?>" class="widefat sp-mb-8">
 
-                    <label class="sp-field-label"><?php esc_html_e( 'Description', 'societypress' ); ?></label>
-                    <textarea name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][cards][<?php echo $ci; ?>][description]" class="widefat" rows="3" class="sp-mb-8"><?php echo esc_textarea( $card['description'] ?? '' ); ?></textarea>
+                    <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-cards-<?php echo (int) $ci; ?>-description"><?php esc_html_e( 'Description', 'societypress' ); ?></label>
+                    <textarea name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][cards][<?php echo $ci; ?>][description]" id="sp-w-<?php echo esc_attr( $index ); ?>-cards-<?php echo (int) $ci; ?>-description" class="widefat" rows="3" class="sp-mb-8"><?php echo esc_textarea( $card['description'] ?? '' ); ?></textarea>
 
                     <div class="sp-flex-gap-8">
                         <div class="sp-flex-1">
-                            <label class="sp-field-label"><?php esc_html_e( 'Button Text', 'societypress' ); ?></label>
-                            <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][cards][<?php echo $ci; ?>][btn_text]" value="<?php echo esc_attr( $card['btn_text'] ?? '' ); ?>" class="widefat">
+                            <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-cards-<?php echo (int) $ci; ?>-btn_text"><?php esc_html_e( 'Button Text', 'societypress' ); ?></label>
+                            <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][cards][<?php echo $ci; ?>][btn_text]" id="sp-w-<?php echo esc_attr( $index ); ?>-cards-<?php echo (int) $ci; ?>-btn_text" value="<?php echo esc_attr( $card['btn_text'] ?? '' ); ?>" class="widefat">
                         </div>
                         <div style="flex:2;">
-                            <label class="sp-field-label"><?php esc_html_e( 'Button URL', 'societypress' ); ?></label>
-                            <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][cards][<?php echo $ci; ?>][btn_url]" value="<?php echo esc_attr( $card['btn_url'] ?? '' ); ?>" class="widefat" placeholder="https://">
+                            <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-cards-<?php echo (int) $ci; ?>-btn_url"><?php esc_html_e( 'Button URL', 'societypress' ); ?></label>
+                            <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][cards][<?php echo $ci; ?>][btn_url]" id="sp-w-<?php echo esc_attr( $index ); ?>-cards-<?php echo (int) $ci; ?>-btn_url" value="<?php echo esc_attr( $card['btn_url'] ?? '' ); ?>" class="widefat" placeholder="https://">
                         </div>
                     </div>
                 </div>
@@ -32470,27 +32534,28 @@ function sp_builder_fields_feature_cards( $index, array $settings ): void {
             if (addBtn && wrap) {
                 addBtn.addEventListener('click', function() {
                     var ci = wrap.querySelectorAll('.sp-fc-card-row').length;
+                    var idBase = 'sp-w-' + idx + '-cards-' + ci + '-';
                     var html = '<div class="sp-fc-card-row" style="border:1px solid #ddd; border-radius:6px; padding:12px; margin-bottom:12px; background:#fafafa;">'
                         + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">'
                         + '<strong><?php echo esc_js( __( 'Card', 'societypress' ) ); ?> ' + (ci + 1) + '</strong>'
                         + '<button type="button" class="button sp-fc-remove-card sp-text-danger">&times; <?php echo esc_js( __( 'Remove', 'societypress' ) ); ?></button>'
                         + '</div>'
-                        + '<label class="sp-field-label"><?php echo esc_js( __( 'Image', 'societypress' ) ); ?></label>'
-                        + '<div class="sp-builder-image-field sp-mb-8">'
+                        + '<div class="sp-builder-image-field sp-mb-8" role="group" aria-label="<?php echo esc_js( __( 'Image', 'societypress' ) ); ?>">'
+                        + '<div class="sp-field-label" aria-hidden="true"><?php echo esc_js( __( 'Image', 'societypress' ) ); ?></div>'
                         + '<input type="hidden" class="sp-builder-image-id" name="sp_widgets[' + idx + '][settings][cards][' + ci + '][image_id]" value="">'
                         + '<div class="sp-builder-image-preview" style="display:none; margin-bottom:6px;"><img src="" class="sp-thumb-preview"></div>'
                         + '<button type="button" class="button sp-builder-image-select"><?php echo esc_js( __( 'Select Image', 'societypress' ) ); ?></button>'
                         + '<button type="button" class="button sp-builder-image-remove" style="display:none; color:#b32d2e;"><?php echo esc_js( __( 'Remove', 'societypress' ) ); ?></button>'
                         + '</div>'
-                        + '<label class="sp-field-label"><?php echo esc_js( __( 'Title', 'societypress' ) ); ?></label>'
-                        + '<input type="text" name="sp_widgets[' + idx + '][settings][cards][' + ci + '][title]" value="" class="widefat sp-mb-8">'
-                        + '<label class="sp-field-label"><?php echo esc_js( __( 'Description', 'societypress' ) ); ?></label>'
-                        + '<textarea name="sp_widgets[' + idx + '][settings][cards][' + ci + '][description]" class="widefat" rows="3" class="sp-mb-8"></textarea>'
+                        + '<label class="sp-field-label" for="' + idBase + 'title"><?php echo esc_js( __( 'Title', 'societypress' ) ); ?></label>'
+                        + '<input type="text" id="' + idBase + 'title" name="sp_widgets[' + idx + '][settings][cards][' + ci + '][title]" value="" class="widefat sp-mb-8">'
+                        + '<label class="sp-field-label" for="' + idBase + 'description"><?php echo esc_js( __( 'Description', 'societypress' ) ); ?></label>'
+                        + '<textarea id="' + idBase + 'description" name="sp_widgets[' + idx + '][settings][cards][' + ci + '][description]" class="widefat" rows="3" class="sp-mb-8"></textarea>'
                         + '<div class="sp-flex-gap-8">'
-                        + '<div class="sp-flex-1"><label class="sp-field-label"><?php echo esc_js( __( 'Button Text', 'societypress' ) ); ?></label>'
-                        + '<input type="text" name="sp_widgets[' + idx + '][settings][cards][' + ci + '][btn_text]" value="" class="widefat"></div>'
-                        + '<div style="flex:2;"><label class="sp-field-label"><?php echo esc_js( __( 'Button URL', 'societypress' ) ); ?></label>'
-                        + '<input type="text" name="sp_widgets[' + idx + '][settings][cards][' + ci + '][btn_url]" value="" class="widefat" placeholder="https://"></div>'
+                        + '<div class="sp-flex-1"><label class="sp-field-label" for="' + idBase + 'btn_text"><?php echo esc_js( __( 'Button Text', 'societypress' ) ); ?></label>'
+                        + '<input type="text" id="' + idBase + 'btn_text" name="sp_widgets[' + idx + '][settings][cards][' + ci + '][btn_text]" value="" class="widefat"></div>'
+                        + '<div style="flex:2;"><label class="sp-field-label" for="' + idBase + 'btn_url"><?php echo esc_js( __( 'Button URL', 'societypress' ) ); ?></label>'
+                        + '<input type="text" id="' + idBase + 'btn_url" name="sp_widgets[' + idx + '][settings][cards][' + ci + '][btn_url]" value="" class="widefat" placeholder="https://"></div>'
                         + '</div></div>';
                     wrap.insertAdjacentHTML('beforeend', html);
                 });
@@ -32533,11 +32598,11 @@ function sp_builder_fields_map_embed( $index, array $settings ): void {
     <div class="sp-builder-field">
         <p class="description"><?php esc_html_e( 'Embeds a Google Map centered on the address you enter.', 'societypress' ); ?></p>
 
-        <label class="sp-field-label"><?php esc_html_e( 'Address', 'societypress' ); ?></label>
-        <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][address]" value="<?php echo esc_attr( $address ); ?>" class="widefat" placeholder="<?php esc_attr_e( '123 Main St, City, ST 00000', 'societypress' ); ?>" class="sp-mb-8">
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-address"><?php esc_html_e( 'Address', 'societypress' ); ?></label>
+        <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][address]" id="sp-w-<?php echo esc_attr( $index ); ?>-address" value="<?php echo esc_attr( $address ); ?>" class="widefat" placeholder="<?php esc_attr_e( '123 Main St, City, ST 00000', 'societypress' ); ?>" class="sp-mb-8">
 
-        <label class="sp-field-label"><?php esc_html_e( 'Height (px)', 'societypress' ); ?></label>
-        <input type="number" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][height]" value="<?php echo esc_attr( $height ); ?>" min="200" max="600" class="sp-w-100">
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-height"><?php esc_html_e( 'Height (px)', 'societypress' ); ?></label>
+        <input type="number" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][height]" id="sp-w-<?php echo esc_attr( $index ); ?>-height" value="<?php echo esc_attr( $height ); ?>" min="200" max="600" class="sp-w-100">
     </div>
     <?php
 }
@@ -33003,14 +33068,33 @@ add_action( 'admin_footer', function () {
                 }
             });
 
+            // WHY: Single helper for card open/close so both pointer and keyboard
+            // paths keep aria-expanded in sync with the body's visible state.
+            function spToggleBuilderCard(header) {
+                if (!header) return;
+                var body = header.parentNode.querySelector('.sp-builder-card-body');
+                if (!body) return;
+                var isOpen = body.style.display !== 'none';
+                body.style.display = isOpen ? 'none' : '';
+                header.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
+            }
+
             // Toggle expand/collapse — clicking card header
             list.addEventListener('click', function(e) {
                 var header = e.target.closest('.sp-builder-card-header');
                 if (!header) return;
                 // Don't toggle if clicking on the action buttons inside the header
                 if (e.target.closest('.sp-builder-card-actions')) return;
-                var body = header.parentNode.querySelector('.sp-builder-card-body');
-                if (body) body.style.display = (body.style.display === 'none') ? '' : 'none';
+                spToggleBuilderCard(header);
+            });
+
+            // Keyboard support for the card header (Enter / Space)
+            list.addEventListener('keydown', function(e) {
+                var header = e.target.closest('.sp-builder-card-header');
+                if (!header || e.target !== header) return;
+                if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+                e.preventDefault();
+                spToggleBuilderCard(header);
             });
 
             // Toggle expand/collapse — clicking the toggle icon
@@ -33020,8 +33104,8 @@ add_action( 'admin_footer', function () {
                 e.stopPropagation();
                 var card = toggleBtn.closest('.sp-builder-card');
                 if (!card) return;
-                var body = card.querySelector('.sp-builder-card-body');
-                if (body) body.style.display = (body.style.display === 'none') ? '' : 'none';
+                var header = card.querySelector('.sp-builder-card-header');
+                spToggleBuilderCard(header);
             });
 
             // Media library for Image widget — delegated on list for dynamic cards
@@ -34989,7 +35073,7 @@ class SP_Events_List_Table extends WP_List_Table {
         $categories = $wpdb->get_results(
             "SELECT id, name FROM {$wpdb->prefix}sp_event_categories WHERE active = 1 ORDER BY sort_order"
         );
-        echo '<select name="event_category">';
+        echo '<select name="event_category" aria-label="' . esc_attr__( 'Filter by category', 'societypress' ) . '">';
         echo '<option value="">' . esc_html__( 'All Categories', 'societypress' ) . '</option>';
         foreach ( $categories as $cat ) {
             printf(
@@ -35003,7 +35087,7 @@ class SP_Events_List_Table extends WP_List_Table {
 
         // Status filter
         $statuses = [ 'scheduled', 'cancelled', 'postponed', 'completed' ];
-        echo '<select name="event_status">';
+        echo '<select name="event_status" aria-label="' . esc_attr__( 'Filter by status', 'societypress' ) . '">';
         echo '<option value="">' . esc_html__( 'All Statuses', 'societypress' ) . '</option>';
         foreach ( $statuses as $s ) {
             printf(
@@ -35021,7 +35105,7 @@ class SP_Events_List_Table extends WP_List_Table {
             'past'     => __( 'Past', 'societypress' ),
             'all'      => __( 'All', 'societypress' ),
         ];
-        echo '<select name="event_timeframe">';
+        echo '<select name="event_timeframe" aria-label="' . esc_attr__( 'Filter by timeframe', 'societypress' ) . '">';
         foreach ( $timeframes as $val => $label ) {
             printf(
                 '<option value="%s" %s>%s</option>',
@@ -36096,7 +36180,7 @@ function sp_render_event_edit_page(): void {
                         <input type="number" id="event_member_price" name="event_member_price"
                                value="<?php echo esc_attr( $val( 'member_price', '0.00' ) ); ?>"
                                min="0" step="0.01" class="small-text">
-                        <p class="description">0.00 = free for members</p>
+                        <p class="description"><?php esc_html_e( '0.00 = free for members', 'societypress' ); ?></p>
                     </td>
                 </tr>
 
@@ -36106,7 +36190,7 @@ function sp_render_event_edit_page(): void {
                         <input type="number" id="event_nonmember_price" name="event_nonmember_price"
                                value="<?php echo esc_attr( $val( 'nonmember_price', '0.00' ) ); ?>"
                                min="0" step="0.01" class="small-text">
-                        <p class="description">0.00 = free for non-members</p>
+                        <p class="description"><?php esc_html_e( '0.00 = free for non-members', 'societypress' ); ?></p>
                     </td>
                 </tr>
 
@@ -37457,8 +37541,7 @@ function sp_render_event_categories_page(): void {
     <div class="wrap">
         <h1><?php esc_html_e( 'Event Categories', 'societypress' ); ?></h1>
         <p class="description">
-            Categories help organize your events. Each category gets a color that appears as a badge
-            on the events calendar and listing pages.
+            <?php esc_html_e( 'Categories help organize your events. Each category gets a color that appears as a badge on the events calendar and listing pages.', 'societypress' ); ?>
         </p>
 
         <!-- Add New Category Form -->
@@ -40039,14 +40122,19 @@ function sp_render_import_events_page(): void {
                                 <input type="file" id="import_file" name="import_file"
                                        accept=".csv,.tsv,.txt,.xlsx" required>
                                 <p class="description">
-                                    Accepted formats: CSV, TSV, TXT, Excel (.xlsx).
-                                    Maximum file size: <?php echo esc_html( ini_get( 'upload_max_filesize' ) ); ?>
+                                    <?php
+                                    printf(
+                                        /* translators: %s: maximum upload file size, e.g. "8M" */
+                                        esc_html__( 'Accepted formats: CSV, TSV, TXT, Excel (.xlsx). Maximum file size: %s', 'societypress' ),
+                                        esc_html( ini_get( 'upload_max_filesize' ) )
+                                    );
+                                    ?>
                                 </p>
                             </td>
                         </tr>
                     </table>
 
-                    <?php submit_button( 'Upload &amp; Preview', 'primary', 'submit', true ); ?>
+                    <?php submit_button( __( 'Upload &amp; Preview', 'societypress' ), 'primary', 'submit', true ); ?>
                 </form>
 
                 <hr class="sp-import-events-section-divider">
@@ -41019,13 +41107,12 @@ function sp_render_events_listing( array $settings ): void {
     <?php else : ?>
 
         <div class="sp-events-count">
-            <?php
-            if ( $total === 1 ) {
-                echo '<p>1 event</p>';
-            } else {
-                printf( '<p>%s events</p>', number_format_i18n( $total ) );
-            }
-            ?>
+            <p><?php
+                printf(
+                    esc_html( _n( '%s event', '%s events', $total, 'societypress' ) ),
+                    esc_html( number_format_i18n( $total ) )
+                );
+            ?></p>
         </div>
 
         <?php
@@ -41078,9 +41165,9 @@ function sp_render_events_listing( array $settings ): void {
                     $location = $ev->location_name;
                 }
                 if ( $ev->is_virtual && empty( $location ) ) {
-                    $location = 'Virtual Event';
+                    $location = __( 'Virtual Event', 'societypress' );
                 } elseif ( $ev->is_virtual ) {
-                    $location .= ' + Virtual';
+                    $location .= ' + ' . __( 'Virtual', 'societypress' );
                 }
 
                 // Registration info (uses batch-fetched counts from above)
@@ -41547,10 +41634,10 @@ function sp_render_event_detail( string $slug, array $settings ): void {
                         <?php if ( ! empty( $event->location_name ) ) : ?>
                             <br>
                         <?php endif; ?>
-                        <span class="sp-detail-virtual">&#128187; Virtual / Online</span>
+                        <span class="sp-detail-virtual">&#128187; <?php esc_html_e( 'Virtual / Online', 'societypress' ); ?></span>
                         <?php if ( ! empty( $event->virtual_url ) && is_user_logged_in() ) : ?>
                             <br><a href="<?php echo esc_url( $event->virtual_url ); ?>" target="_blank" rel="noopener"
-                                   class="sp-virtual-link">Join Online Meeting &rarr;</a>
+                                   class="sp-virtual-link"><?php esc_html_e( 'Join Online Meeting', 'societypress' ); ?> &rarr;</a>
                         <?php endif; ?>
                     <?php endif; ?>
                 </div>
@@ -52628,11 +52715,11 @@ function sp_render_help_requests_admin_page(): void {
 add_filter( 'theme_page_templates', function( $templates ) {
     $templates['sp-help-requests']   = __( 'Research Help Requests', 'societypress' );
     $templates['sp-resources']       = __( 'Resource Links Directory', 'societypress' );
-    $templates['sp-library-catalog'] = 'Library Catalog';
-    $templates['sp-records']         = 'Genealogical Records Search';
-    $templates['sp-store']           = 'Store';
-    $templates['sp-cart']            = 'Shopping Cart';
-    $templates['sp-documents']       = 'Documents';
+    $templates['sp-library-catalog'] = __( 'Library Catalog', 'societypress' );
+    $templates['sp-records']         = __( 'Genealogical Records Search', 'societypress' );
+    $templates['sp-store']           = __( 'Store', 'societypress' );
+    $templates['sp-cart']            = __( 'Shopping Cart', 'societypress' );
+    $templates['sp-documents']       = __( 'Documents', 'societypress' );
     return $templates;
 } );
 
@@ -58986,11 +59073,39 @@ function sp_get_default_email_template( string $type ): string {
  *
  * @return array Email headers for wp_mail.
  */
+/**
+ * Validate a Stripe Checkout redirect URL before handing it to wp_redirect().
+ *
+ * Defense-in-depth: Stripe's API is trusted, but `wp_redirect()` itself
+ * accepts any URL. Constraining the destination to the Stripe Checkout host
+ * means a corrupted or unexpected API response can't be used as a redirect
+ * gadget. Returns null if the URL is missing or not a Stripe checkout URL.
+ */
+function sp_safe_stripe_checkout_url( $url ): ?string {
+    if ( ! is_string( $url ) || $url === '' ) return null;
+    $parts = wp_parse_url( $url );
+    if ( ! is_array( $parts ) )                 return null;
+    if ( ( $parts['scheme'] ?? '' ) !== 'https' ) return null;
+    $host = strtolower( $parts['host'] ?? '' );
+    // Stripe Checkout currently lives at checkout.stripe.com; allow any
+    // sub of stripe.com so future Stripe-hosted billing pages don't break.
+    if ( $host !== 'stripe.com' && substr( $host, -11 ) !== '.stripe.com' ) return null;
+    return $url;
+}
+
 function sp_get_email_headers(): array {
     $settings   = get_option( 'societypress_settings', [] );
     $from_name  = $settings['email_from_name']  ?? get_bloginfo( 'name' );
     $from_email = $settings['email_from_email'] ?? get_option( 'admin_email' );
     $reply_to   = $settings['email_reply_to']   ?? $from_email;
+
+    // Header injection guard: strip CR/LF from any value that lands in an
+    // SMTP header, even if it was admin-supplied via settings — bare newlines
+    // would let an attacker append Bcc:/Cc: headers to every outbound mail.
+    $strip      = static fn( $v ) => str_replace( [ "\r", "\n" ], '', (string) $v );
+    $from_name  = $strip( $from_name );
+    $from_email = sanitize_email( $strip( $from_email ) );
+    $reply_to   = sanitize_email( $strip( $reply_to ) );
 
     return [
         'Content-Type: text/html; charset=UTF-8',
@@ -59575,7 +59690,7 @@ function sp_render_email_log_page(): void {
         <form method="get" action="<?php echo esc_url( $base_url ); ?>">
             <input type="hidden" name="page" value="sp-email-log">
             <div class="tablenav top sp-email-log-filters">
-                <select name="status">
+                <select name="status" aria-label="<?php echo esc_attr__( 'Filter by status', 'societypress' ); ?>">
                     <option value=""><?php esc_html_e( 'All Statuses', 'societypress' ); ?></option>
                     <?php foreach ( [ 'sent', 'blocked', 'failed', 'pending' ] as $s ) : ?>
                         <option value="<?php echo esc_attr( $s ); ?>" <?php selected( $current_status, $s ); ?>>
@@ -59585,7 +59700,7 @@ function sp_render_email_log_page(): void {
                 </select>
 
                 <?php if ( ! empty( $email_types ) ) : ?>
-                    <select name="email_type">
+                    <select name="email_type" aria-label="<?php echo esc_attr__( 'Filter by email type', 'societypress' ); ?>">
                         <option value=""><?php esc_html_e( 'All Types', 'societypress' ); ?></option>
                         <?php foreach ( $email_types as $type ) : ?>
                             <option value="<?php echo esc_attr( $type ); ?>" <?php selected( $current_type, $type ); ?>>
@@ -59595,7 +59710,8 @@ function sp_render_email_log_page(): void {
                     </select>
                 <?php endif; ?>
 
-                <input type="search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php echo esc_attr__( 'Search recipient or subject...', 'societypress' ); ?>" class="sp-email-log-search">
+                <label for="sp-email-log-search" class="screen-reader-text"><?php esc_html_e( 'Search recipient or subject', 'societypress' ); ?></label>
+                <input type="search" id="sp-email-log-search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php echo esc_attr__( 'Search recipient or subject...', 'societypress' ); ?>" class="sp-email-log-search">
                 <button type="submit" class="button"><?php esc_html_e( 'Filter', 'societypress' ); ?></button>
 
                 <?php if ( $current_status || $current_type || $search ) : ?>
@@ -61001,7 +61117,7 @@ function sp_render_donations_page(): void {
             <table class="widefat striped">
                 <thead>
                     <tr>
-                        <th class="sp-donations-col-check"><input type="checkbox" id="sp-don-check-all"></th>
+                        <th scope="col" class="sp-donations-col-check"><label for="sp-don-check-all" class="screen-reader-text"><?php esc_html_e( 'Select all donations', 'societypress' ); ?></label><input type="checkbox" id="sp-don-check-all"></th>
                         <th scope="col"><?php esc_html_e( 'Date', 'societypress' ); ?></th>
                         <th scope="col"><?php esc_html_e( 'Donor', 'societypress' ); ?></th>
                         <th scope="col"><?php esc_html_e( 'Amount', 'societypress' ); ?></th>
@@ -75962,18 +76078,18 @@ function sp_render_ballot_edit_page(): void {
                 + '  <strong><?php echo esc_js( __( 'Question', 'societypress' ) ); ?> ' + (idx + 1) + '</strong>'
                 + '  <button type="button" class="button sp-remove-question sp-btn-danger"><?php echo esc_js( __( 'Remove Question', 'societypress' ) ); ?></button>'
                 + '</div>'
-                + '<p><label class="sp-field-label"><?php echo esc_js( __( 'Question Text', 'societypress' ) ); ?></label>'
-                + '<textarea name="sp_questions[' + idx + '][text]" rows="2" class="sp-full-width" required></textarea></p>'
-                + '<p><label class="sp-field-label"><?php echo esc_js( __( 'Question Type', 'societypress' ) ); ?></label>'
-                + '<select name="sp_questions[' + idx + '][type]" class="sp-question-type-select">'
+                + '<p><label class="sp-field-label" for="sp-q-' + idx + '-text"><?php echo esc_js( __( 'Question Text', 'societypress' ) ); ?></label>'
+                + '<textarea id="sp-q-' + idx + '-text" name="sp_questions[' + idx + '][text]" rows="2" class="sp-full-width" required></textarea></p>'
+                + '<p><label class="sp-field-label" for="sp-q-' + idx + '-type"><?php echo esc_js( __( 'Question Type', 'societypress' ) ); ?></label>'
+                + '<select id="sp-q-' + idx + '-type" name="sp_questions[' + idx + '][type]" class="sp-question-type-select">'
                 + '  <option value="single_choice"><?php echo esc_js( __( 'Single Choice', 'societypress' ) ); ?></option>'
                 + '  <option value="multi_choice"><?php echo esc_js( __( 'Multiple Choice', 'societypress' ) ); ?></option>'
                 + '  <option value="yes_no"><?php echo esc_js( __( 'Yes / No', 'societypress' ) ); ?></option>'
                 + '</select></p>'
-                + '<p class="sp-max-selections-wrap"><label class="sp-field-label"><?php echo esc_js( __( 'Max Selections', 'societypress' ) ); ?></label>'
-                + '<input type="number" name="sp_questions[' + idx + '][max_selections]" value="1" min="1" class="sp-w-80" style="display:none;"></p>'
-                + '<div class="sp-choices-container">'
-                + '  <label class="sp-field-label"><?php echo esc_js( __( 'Choices', 'societypress' ) ); ?></label>'
+                + '<p class="sp-max-selections-wrap"><label class="sp-field-label" for="sp-q-' + idx + '-max_selections"><?php echo esc_js( __( 'Max Selections', 'societypress' ) ); ?></label>'
+                + '<input type="number" id="sp-q-' + idx + '-max_selections" name="sp_questions[' + idx + '][max_selections]" value="1" min="1" class="sp-w-80" style="display:none;"></p>'
+                + '<div class="sp-choices-container" role="group" aria-label="<?php echo esc_js( __( 'Choices', 'societypress' ) ); ?>">'
+                + '  <div class="sp-field-label" aria-hidden="true"><?php echo esc_js( __( 'Choices', 'societypress' ) ); ?></div>'
                 + '  <div class="sp-choices-list">'
                 + '    <div class="sp-choice-row sp-choice-row-flex">'
                 + '      <input type="hidden" name="sp_questions[' + idx + '][choices][0][id]" value="0">'
@@ -76121,13 +76237,13 @@ function sp_render_ballot_question_card( int $q_index, ?object $question ): void
         </div>
 
         <p>
-            <label class="sp-field-label"><?php esc_html_e( 'Question Text', 'societypress' ); ?></label>
-            <textarea name="sp_questions[<?php echo esc_attr( $q_index ); ?>][text]" rows="2" class="sp-full-width" required><?php echo esc_textarea( $q_text ); ?></textarea>
+            <label class="sp-field-label" for="sp-q-<?php echo esc_attr( $q_index ); ?>-text"><?php esc_html_e( 'Question Text', 'societypress' ); ?></label>
+            <textarea id="sp-q-<?php echo esc_attr( $q_index ); ?>-text" name="sp_questions[<?php echo esc_attr( $q_index ); ?>][text]" rows="2" class="sp-full-width" required><?php echo esc_textarea( $q_text ); ?></textarea>
         </p>
 
         <p>
-            <label class="sp-field-label"><?php esc_html_e( 'Question Type', 'societypress' ); ?></label>
-            <select name="sp_questions[<?php echo esc_attr( $q_index ); ?>][type]" class="sp-question-type-select">
+            <label class="sp-field-label" for="sp-q-<?php echo esc_attr( $q_index ); ?>-type"><?php esc_html_e( 'Question Type', 'societypress' ); ?></label>
+            <select id="sp-q-<?php echo esc_attr( $q_index ); ?>-type" name="sp_questions[<?php echo esc_attr( $q_index ); ?>][type]" class="sp-question-type-select">
                 <option value="single_choice" <?php selected( $q_type, 'single_choice' ); ?>><?php esc_html_e( 'Single Choice', 'societypress' ); ?></option>
                 <option value="multi_choice" <?php selected( $q_type, 'multi_choice' ); ?>><?php esc_html_e( 'Multiple Choice', 'societypress' ); ?></option>
                 <option value="yes_no" <?php selected( $q_type, 'yes_no' ); ?>><?php esc_html_e( 'Yes / No', 'societypress' ); ?></option>
@@ -76135,12 +76251,12 @@ function sp_render_ballot_question_card( int $q_index, ?object $question ): void
         </p>
 
         <p class="sp-max-selections-wrap">
-            <label class="sp-field-label"><?php esc_html_e( 'Max Selections', 'societypress' ); ?></label>
-            <input type="number" name="sp_questions[<?php echo esc_attr( $q_index ); ?>][max_selections]" value="<?php echo esc_attr( $max_sel ); ?>" min="1" class="sp-w-80" style="<?php echo $q_type !== 'multi_choice' ? 'display:none;' : ''; ?>">
+            <label class="sp-field-label" for="sp-q-<?php echo esc_attr( $q_index ); ?>-max_selections"><?php esc_html_e( 'Max Selections', 'societypress' ); ?></label>
+            <input type="number" id="sp-q-<?php echo esc_attr( $q_index ); ?>-max_selections" name="sp_questions[<?php echo esc_attr( $q_index ); ?>][max_selections]" value="<?php echo esc_attr( $max_sel ); ?>" min="1" class="sp-w-80" style="<?php echo $q_type !== 'multi_choice' ? 'display:none;' : ''; ?>">
         </p>
 
-        <div class="sp-choices-container" style="<?php echo $is_yes_no ? 'display:none;' : ''; ?>">
-            <label class="sp-field-label"><?php esc_html_e( 'Choices', 'societypress' ); ?></label>
+        <div class="sp-choices-container" role="group" aria-label="<?php esc_attr_e( 'Choices', 'societypress' ); ?>" style="<?php echo $is_yes_no ? 'display:none;' : ''; ?>">
+            <div class="sp-field-label" aria-hidden="true"><?php esc_html_e( 'Choices', 'societypress' ); ?></div>
             <div class="sp-choices-list">
                 <?php foreach ( $choices as $c_index => $choice ) : ?>
                     <div class="sp-choice-row sp-choice-row-flex">
@@ -78700,7 +78816,12 @@ add_action( 'init', function () {
                 'stripe_session_id' => $resp['id'],
             ], [ 'id' => $app_id ] );
 
-            wp_redirect( $resp['url'] );
+            $safe_url = sp_safe_stripe_checkout_url( $resp['url'] );
+            if ( $safe_url ) {
+                wp_redirect( $safe_url );
+                exit;
+            }
+            wp_safe_redirect( add_query_arg( 'sp_lineage_err', 'checkout_failed', $referer ?? home_url( '/' ) ) );
             exit;
         }
 
@@ -78847,55 +78968,55 @@ add_shortcode( 'sp_lineage_apply', function ( $atts ) {
 
             <div class="row">
                 <div>
-                    <label><?php esc_html_e( 'First name', 'societypress' ); ?></label>
-                    <input type="text" name="ancestor_first_name" value="<?php echo esc_attr( $editing->ancestor_first_name ?? '' ); ?>">
+                    <label for="lp_ancestor_first_name"><?php esc_html_e( 'First name', 'societypress' ); ?></label>
+                    <input type="text" id="lp_ancestor_first_name" name="ancestor_first_name" value="<?php echo esc_attr( $editing->ancestor_first_name ?? '' ); ?>">
                 </div>
                 <div>
-                    <label><?php esc_html_e( 'Middle', 'societypress' ); ?></label>
-                    <input type="text" name="ancestor_middle_name" value="<?php echo esc_attr( $editing->ancestor_middle_name ?? '' ); ?>">
+                    <label for="lp_ancestor_middle_name"><?php esc_html_e( 'Middle', 'societypress' ); ?></label>
+                    <input type="text" id="lp_ancestor_middle_name" name="ancestor_middle_name" value="<?php echo esc_attr( $editing->ancestor_middle_name ?? '' ); ?>">
                 </div>
                 <div>
-                    <label><?php esc_html_e( 'Last name', 'societypress' ); ?></label>
-                    <input type="text" name="ancestor_last_name" value="<?php echo esc_attr( $editing->ancestor_last_name ?? '' ); ?>">
+                    <label for="lp_ancestor_last_name"><?php esc_html_e( 'Last name', 'societypress' ); ?></label>
+                    <input type="text" id="lp_ancestor_last_name" name="ancestor_last_name" value="<?php echo esc_attr( $editing->ancestor_last_name ?? '' ); ?>">
                 </div>
             </div>
 
-            <label><?php esc_html_e( 'Maiden name (if applicable)', 'societypress' ); ?></label>
-            <input type="text" name="ancestor_maiden_name" value="<?php echo esc_attr( $editing->ancestor_maiden_name ?? '' ); ?>">
+            <label for="lp_ancestor_maiden_name"><?php esc_html_e( 'Maiden name (if applicable)', 'societypress' ); ?></label>
+            <input type="text" id="lp_ancestor_maiden_name" name="ancestor_maiden_name" value="<?php echo esc_attr( $editing->ancestor_maiden_name ?? '' ); ?>">
 
             <div class="row">
                 <div>
-                    <label><?php esc_html_e( 'Birth date', 'societypress' ); ?> <span class="help"><?php esc_html_e( '(any format, e.g. "abt 1820")', 'societypress' ); ?></span></label>
-                    <input type="text" name="ancestor_birth_date" value="<?php echo esc_attr( $editing->ancestor_birth_date ?? '' ); ?>">
+                    <label for="lp_ancestor_birth_date"><?php esc_html_e( 'Birth date', 'societypress' ); ?> <span class="help"><?php esc_html_e( '(any format, e.g. "abt 1820")', 'societypress' ); ?></span></label>
+                    <input type="text" id="lp_ancestor_birth_date" name="ancestor_birth_date" value="<?php echo esc_attr( $editing->ancestor_birth_date ?? '' ); ?>">
                 </div>
                 <div>
-                    <label><?php esc_html_e( 'Birth place', 'societypress' ); ?></label>
-                    <input type="text" name="ancestor_birth_place" value="<?php echo esc_attr( $editing->ancestor_birth_place ?? '' ); ?>">
+                    <label for="lp_ancestor_birth_place"><?php esc_html_e( 'Birth place', 'societypress' ); ?></label>
+                    <input type="text" id="lp_ancestor_birth_place" name="ancestor_birth_place" value="<?php echo esc_attr( $editing->ancestor_birth_place ?? '' ); ?>">
                 </div>
             </div>
             <div class="row">
                 <div>
-                    <label><?php esc_html_e( 'Death date', 'societypress' ); ?></label>
-                    <input type="text" name="ancestor_death_date" value="<?php echo esc_attr( $editing->ancestor_death_date ?? '' ); ?>">
+                    <label for="lp_ancestor_death_date"><?php esc_html_e( 'Death date', 'societypress' ); ?></label>
+                    <input type="text" id="lp_ancestor_death_date" name="ancestor_death_date" value="<?php echo esc_attr( $editing->ancestor_death_date ?? '' ); ?>">
                 </div>
                 <div>
-                    <label><?php esc_html_e( 'Death place', 'societypress' ); ?></label>
-                    <input type="text" name="ancestor_death_place" value="<?php echo esc_attr( $editing->ancestor_death_place ?? '' ); ?>">
+                    <label for="lp_ancestor_death_place"><?php esc_html_e( 'Death place', 'societypress' ); ?></label>
+                    <input type="text" id="lp_ancestor_death_place" name="ancestor_death_place" value="<?php echo esc_attr( $editing->ancestor_death_place ?? '' ); ?>">
                 </div>
             </div>
 
-            <label><?php esc_html_e( 'Year ancestor arrived in / settled in the area', 'societypress' ); ?></label>
-            <input type="number" name="arrival_year" value="<?php echo esc_attr( $editing->arrival_year ?? '' ); ?>" min="1500" max="2100">
+            <label for="lp_arrival_year"><?php esc_html_e( 'Year ancestor arrived in / settled in the area', 'societypress' ); ?></label>
+            <input type="number" id="lp_arrival_year" name="arrival_year" value="<?php echo esc_attr( $editing->arrival_year ?? '' ); ?>" min="1500" max="2100">
 
-            <label><?php esc_html_e( 'Evidence of arrival / residence', 'societypress' ); ?></label>
-            <textarea name="arrival_evidence"><?php echo esc_textarea( $editing->arrival_evidence ?? '' ); ?></textarea>
+            <label for="lp_arrival_evidence"><?php esc_html_e( 'Evidence of arrival / residence', 'societypress' ); ?></label>
+            <textarea id="lp_arrival_evidence" name="arrival_evidence"><?php echo esc_textarea( $editing->arrival_evidence ?? '' ); ?></textarea>
 
             <h3 class="sp-mt-24"><?php esc_html_e( 'Lineage Narrative', 'societypress' ); ?></h3>
-            <label><?php esc_html_e( 'Narrative — describe the chain of descent from the ancestor to you', 'societypress' ); ?></label>
-            <textarea name="narrative" rows="6"><?php echo esc_textarea( $editing->narrative ?? '' ); ?></textarea>
+            <label for="lp_narrative"><?php esc_html_e( 'Narrative — describe the chain of descent from the ancestor to you', 'societypress' ); ?></label>
+            <textarea id="lp_narrative" name="narrative" rows="6"><?php echo esc_textarea( $editing->narrative ?? '' ); ?></textarea>
 
-            <label><?php esc_html_e( 'Sources cited', 'societypress' ); ?> <span class="help"><?php esc_html_e( '(census, vital records, wills, etc.)', 'societypress' ); ?></span></label>
-            <textarea name="sources" rows="4"><?php echo esc_textarea( $editing->sources ?? '' ); ?></textarea>
+            <label for="lp_sources"><?php esc_html_e( 'Sources cited', 'societypress' ); ?> <span class="help"><?php esc_html_e( '(census, vital records, wills, etc.)', 'societypress' ); ?></span></label>
+            <textarea id="lp_sources" name="sources" rows="4"><?php echo esc_textarea( $editing->sources ?? '' ); ?></textarea>
 
             <h3 class="sp-mt-24"><?php esc_html_e( 'Proof Documents', 'societypress' ); ?></h3>
             <p class="help"><?php esc_html_e( 'Upload supporting documents — birth/marriage/death certificates, census pages, will excerpts, etc. You can attach more documents on subsequent edits.', 'societypress' ); ?></p>
@@ -78903,12 +79024,12 @@ add_shortcode( 'sp_lineage_apply', function ( $atts ) {
             <div id="sp-lineage-proof-list">
                 <div class="row">
                     <div>
-                        <label><?php esc_html_e( 'Document label', 'societypress' ); ?></label>
-                        <input type="text" name="proof_labels[]" placeholder="<?php esc_attr_e( 'e.g. 1850 census page', 'societypress' ); ?>">
+                        <label for="lp_proof_label_0"><?php esc_html_e( 'Document label', 'societypress' ); ?></label>
+                        <input type="text" id="lp_proof_label_0" name="proof_labels[]" placeholder="<?php esc_attr_e( 'e.g. 1850 census page', 'societypress' ); ?>">
                     </div>
                     <div>
-                        <label><?php esc_html_e( 'File', 'societypress' ); ?></label>
-                        <input type="file" name="proofs[]">
+                        <label for="lp_proof_file_0"><?php esc_html_e( 'File', 'societypress' ); ?></label>
+                        <input type="file" id="lp_proof_file_0" name="proofs[]">
                     </div>
                 </div>
             </div>
@@ -80467,7 +80588,12 @@ add_action( 'init', function () {
         'stripe_session_id' => $resp['id'],
     ], [ 'id' => $donation_id ] );
 
-    wp_redirect( $resp['url'] );
+    $safe_url = sp_safe_stripe_checkout_url( $resp['url'] );
+    if ( $safe_url ) {
+        wp_redirect( $safe_url );
+        exit;
+    }
+    wp_safe_redirect( add_query_arg( 'sp_donate_err', 'checkout_failed', $referer ) );
     exit;
 } );
 
@@ -84110,7 +84236,12 @@ add_action( 'init', function () {
     }
 
     $wpdb->update( $cases_t, [ 'stripe_session_id' => $resp['id'] ], [ 'id' => $case_id ] );
-    wp_redirect( $resp['url'] );
+    $safe_url = sp_safe_stripe_checkout_url( $resp['url'] );
+    if ( $safe_url ) {
+        wp_redirect( $safe_url );
+        exit;
+    }
+    wp_safe_redirect( add_query_arg( 'sp_research_err', 'checkout_failed', $referer ) );
     exit;
 } );
 
@@ -84571,8 +84702,13 @@ add_action( 'init', function () {
     if ( empty( $resp['url'] ) ) return;
 
     $wpdb->update( $invoices_t, [ 'stripe_session_id' => $resp['id'] ], [ 'id' => $invoice_id ] );
-    wp_redirect( $resp['url'] );
-    exit;
+    $safe_url = sp_safe_stripe_checkout_url( $resp['url'] );
+    if ( $safe_url ) {
+        wp_redirect( $safe_url );
+        exit;
+    }
+    // Stripe returned a URL but it's not a stripe.com host — refuse to redirect.
+    return;
 } );
 
 

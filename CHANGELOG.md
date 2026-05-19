@@ -82,6 +82,13 @@ lineage programs, and research help — without third-party services.
   DNS-rebinding pinned (CURLOPT_RESOLVE)
 - File uploads validated against an explicit MIME allowlist; `.htaccess`
   drops PHP execution in upload paths
+- Email header CR/LF stripping in `sp_get_email_headers()` so a stray
+  newline in admin-edited From/Reply-To settings cannot inject Bcc/Cc
+- Legacy `noenc:` decryption fallback removed; on activation any surviving
+  rows are re-encrypted via `sp_maybe_migrate_noenc_members()`
+- Stripe Checkout redirect URLs validated via `sp_safe_stripe_checkout_url()`
+  at every checkout site (lineage applications, donations, research cases,
+  invoice payments)
 - GDPR: five exporters and five erasers (donations pseudonymize for IRS
   recordkeeping rather than delete)
 
@@ -91,10 +98,29 @@ lineage programs, and research help — without third-party services.
 - WCAG AA color contrast across status badges, links, and admin tables
 - Form labels, aria-live regions, and `prefers-reduced-motion` guards
 - Login acknowledgment modal that requires explicit dismissal
+- Filter-bar `<select>` controls in the Members, Events, and Email Log
+  list tables now expose visible-label-equivalent `aria-label` text
+- Page builder widget cards are keyboard-operable (Enter / Space toggles
+  open/closed; `aria-expanded` tracks the body's visible state)
+- 48 page-builder widget fields now have programmatically associated
+  labels (`for=`/`id=`) across flat and repeater field patterns
+- Hero slider per-line size/weight/color selects and per-slide Button
+  Text / Button URL inputs each have their own labels
+- Theme builder hex-color text inputs are labeled per color
+- Lineage application form fields are fully label-associated
+- Donations bulk-action "select all" checkbox has an associated label
 
 ### Internationalization
 - 4,600+ translatable strings, generated `.pot` files for plugin and
   parent theme
+- Page template names ("Library Catalog", "Genealogical Records Search",
+  "Store", "Shopping Cart", "Documents", "Interest Groups") now
+  translatable in the WordPress page Template dropdown
+- Frontend event-count plural moved to `_n()` ("1 event" / "%s events")
+- Frontend event location labels for virtual events translated
+- Design Settings, Event Categories, Event price fields, Page Builder
+  "Standard Pages" description, and Events Import file-format helper
+  strings wrapped with the `societypress` text domain
 
 ### Operations
 - One-file installer (`sp-installer.php`) — drop into web root, browse to

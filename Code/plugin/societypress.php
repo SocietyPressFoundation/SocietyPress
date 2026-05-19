@@ -88011,6 +88011,401 @@ function sp_render_import_newsletters_page(): void {
 }
 
 // ============================================================================
+// BULK RECORDS IMPORT
+//
+// The per-collection record importer already handles one CSV per
+// collection cleanly. For ENS migration, societies typically arrive
+// with six CSVs at once: cemetery, deaths, marriages, naturalizations,
+// directory, and at least one society-specific collection. Walking the
+// volunteer through six single-file imports is the migration pain
+// point this addresses.
+//
+// The bulk page accepts multiple CSV files in one POST. For each file
+// it:
+//   1. Reads the headers
+//   2. Suggests a collection name + record_type from the filename
+//      (e.g. "records-cemetery.csv" → "Cemetery Records", type "cemetery")
+//   3. Creates the collection, builds one sp_record_fields row per header
+//   4. Imports every data row into sp_records with field-value pairs
+//
+// The volunteer can review the auto-detected name/type on the preview
+// screen and adjust before committing.
+// ============================================================================
+
+/**
+ * Suggest a (name, record_type) pair from a CSV filename. Returns
+ * sensible defaults when no pattern matches so the import still proceeds.
+ *
+ * @return array{0:string,1:string}
+ */
+function sp_records_bulk_suggest_from_filename( string $filename ): array {
+    $base = strtolower( preg_replace( '/\.csv$/i', '', basename( $filename ) ) );
+    $base = preg_replace( '/^records?[\-_]/', '', $base );  // strip "records-" prefix
+
+    $map = [
+        'cemetery'        => [ 'Cemetery Records',        'cemetery' ],
+        'cemeteries'      => [ 'Cemetery Records',        'cemetery' ],
+        'burial'          => [ 'Cemetery Records',        'cemetery' ],
+        'burials'         => [ 'Cemetery Records',        'cemetery' ],
+        'tombstone'       => [ 'Cemetery Records',        'cemetery' ],
+        'death'           => [ 'Death Records',           'vital' ],
+        'deaths'          => [ 'Death Records',           'vital' ],
+        'obituaries'      => [ 'Obituaries',              'vital' ],
+        'obituary'        => [ 'Obituaries',              'vital' ],
+        'marriage'        => [ 'Marriage Records',        'vital' ],
+        'marriages'       => [ 'Marriage Records',        'vital' ],
+        'birth'           => [ 'Birth Records',           'vital' ],
+        'births'          => [ 'Birth Records',           'vital' ],
+        'naturalization'  => [ 'Naturalization Records',  'immigration' ],
+        'naturalizations' => [ 'Naturalization Records',  'immigration' ],
+        'immigration'     => [ 'Immigration Records',     'immigration' ],
+        'census'          => [ 'Census Records',          'census' ],
+        'directory'       => [ 'City Directory',          'directory' ],
+        'directories'     => [ 'City Directory',          'directory' ],
+        'will'            => [ 'Wills and Probate',       'probate' ],
+        'wills'           => [ 'Wills and Probate',       'probate' ],
+        'probate'         => [ 'Wills and Probate',       'probate' ],
+        'land'            => [ 'Land Records',            'land' ],
+        'deed'            => [ 'Land Records',            'land' ],
+        'deeds'           => [ 'Land Records',            'land' ],
+        'military'        => [ 'Military Records',        'military' ],
+        'pension'         => [ 'Pension Records',         'military' ],
+        'church'          => [ 'Church Records',          'church' ],
+        'baptism'         => [ 'Baptism Records',         'church' ],
+        'baptisms'        => [ 'Baptism Records',         'church' ],
+    ];
+
+    foreach ( $map as $key => [ $name, $type ] ) {
+        if ( strpos( $base, $key ) !== false ) {
+            return [ $name, $type ];
+        }
+    }
+
+    // Fallback: humanize the filename as the collection name, generic type
+    $name = trim( str_replace( [ '_', '-' ], ' ', $base ) );
+    $name = ucwords( $name );
+    if ( $name === '' ) $name = __( 'Imported Records', 'societypress' );
+    return [ $name, 'general' ];
+}
+
+/**
+ * Create a record collection from a CSV's headers, importing every row.
+ *
+ * Uses the same "headers ARE the schema" approach as the existing
+ * one-step records importer, but factored as a reusable helper so the
+ * bulk importer can iterate over multiple files.
+ *
+ * @return array{collection_id:int,fields:int,records:int,errors:array<int,string>}
+ */
+function sp_records_bulk_import_csv( string $csv_path, string $col_name, string $record_type, string $access_level ): array {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    $result = [ 'collection_id' => 0, 'fields' => 0, 'records' => 0, 'errors' => [] ];
+
+    $handle = fopen( $csv_path, 'r' );
+    if ( ! $handle ) {
+        $result['errors'][] = __( 'Could not open CSV file.', 'societypress' );
+        return $result;
+    }
+    $headers = fgetcsv( $handle );
+    if ( ! $headers ) {
+        fclose( $handle );
+        $result['errors'][] = __( 'CSV has no header row.', 'societypress' );
+        return $result;
+    }
+    $headers = array_map( static fn( $h ) => trim( $h, "\xEF\xBB\xBF \t\n\r\"" ), $headers );
+
+    $slug = sp_unique_collection_slug( sanitize_title( $col_name ) );
+    $wpdb->insert( $prefix . 'record_collections', [
+        'name'         => sanitize_text_field( $col_name ),
+        'slug'         => $slug,
+        'description'  => '',
+        'record_type'  => sanitize_text_field( $record_type ),
+        'source_info'  => 'Bulk import',
+        'access_level' => in_array( $access_level, [ 'public', 'members' ], true ) ? $access_level : 'public',
+        'status'       => 'active',
+        'record_count' => 0,
+    ] );
+    $collection_id = (int) $wpdb->insert_id;
+    if ( ! $collection_id ) {
+        fclose( $handle );
+        $result['errors'][] = __( 'Could not create collection.', 'societypress' );
+        return $result;
+    }
+    $result['collection_id'] = $collection_id;
+
+    // Build fields from headers
+    $field_ids = [];
+    foreach ( $headers as $i => $h ) {
+        if ( $h === '' ) continue;
+        $wpdb->insert( $prefix . 'record_collection_fields', [
+            'collection_id' => $collection_id,
+            'field_name'    => sanitize_text_field( $h ),
+            'field_slug'    => sanitize_key( $h ) ?: 'field_' . $i,
+            'field_type'    => 'text',
+            'sort_order'    => $i,
+            'searchable'    => 1,
+            'is_public'     => 1,
+        ] );
+        $field_ids[ $i ] = (int) $wpdb->insert_id;
+    }
+    $result['fields'] = count( $field_ids );
+
+    // Import rows
+    while ( ( $row = fgetcsv( $handle ) ) !== false ) {
+        // Build a search_text concatenation so FULLTEXT searches work
+        // without joining sp_record_values for every query.
+        $search_parts = [];
+        foreach ( $row as $i => $val ) {
+            $val = trim( (string) $val );
+            if ( $val !== '' ) $search_parts[] = $val;
+        }
+        $wpdb->insert( $prefix . 'records', [
+            'collection_id' => $collection_id,
+            'search_text'   => implode( ' ', $search_parts ),
+        ] );
+        $record_id = (int) $wpdb->insert_id;
+        if ( ! $record_id ) continue;
+
+        foreach ( $row as $i => $val ) {
+            if ( ! isset( $field_ids[ $i ] ) ) continue;
+            $val = trim( (string) $val );
+            if ( $val === '' ) continue;
+            $wpdb->insert( $prefix . 'record_values', [
+                'record_id'   => $record_id,
+                'field_id'    => $field_ids[ $i ],
+                'field_value' => $val,
+            ] );
+        }
+        $result['records']++;
+    }
+    fclose( $handle );
+
+    // Refresh denormalized record_count
+    $wpdb->update( $prefix . 'record_collections',
+        [ 'record_count' => $result['records'] ],
+        [ 'id' => $collection_id ]
+    );
+
+    return $result;
+}
+
+add_action( 'admin_menu', function () {
+    add_submenu_page(
+        'societypress',
+        __( 'Bulk Records Import — SocietyPress', 'societypress' ),
+        __( 'Bulk Records Import', 'societypress' ),
+        'sp_manage_records',
+        'sp-import-records-bulk',
+        'sp_render_import_records_bulk_page'
+    );
+}, 25 );
+
+function sp_render_import_records_bulk_page(): void {
+    if ( ! current_user_can( 'sp_manage_records' ) ) {
+        wp_die( esc_html__( 'You do not have permission to import records.', 'societypress' ) );
+    }
+
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+
+    $action = sanitize_key( $_POST['sp_recb_action'] ?? '' );
+    $upload_dir = wp_upload_dir();
+    $temp_dir   = trailingslashit( $upload_dir['basedir'] ) . 'sp-import-temp/';
+    if ( ! is_dir( $temp_dir ) ) wp_mkdir_p( $temp_dir );
+
+    echo '<div class="wrap">';
+    echo '<h1>' . esc_html__( 'Bulk Records Import', 'societypress' ) . '</h1>';
+    echo '<p>' . esc_html__( 'Upload multiple CSV files at once. Each file becomes its own records collection. The importer reads the filename to suggest a collection name and record type — review and adjust before saving.', 'societypress' ) . '</p>';
+
+    if ( $action === 'commit' ) {
+        check_admin_referer( 'sp_recb_import' );
+
+        $items   = isset( $_POST['sp_recb_items'] ) && is_array( $_POST['sp_recb_items'] ) ? $_POST['sp_recb_items'] : [];
+        $report  = [];
+
+        foreach ( $items as $idx => $raw ) {
+            $token   = sanitize_file_name( (string) ( $raw['token'] ?? '' ) );
+            $path    = realpath( $temp_dir . $token );
+            $name    = sanitize_text_field( (string) ( $raw['name'] ?? '' ) );
+            $type    = sanitize_text_field( (string) ( $raw['type'] ?? 'general' ) );
+            $access  = in_array( $raw['access'] ?? '', [ 'public', 'members' ], true ) ? $raw['access'] : 'public';
+            $skip    = ! empty( $raw['skip'] );
+
+            if ( $skip || ! $path || strpos( $path, realpath( $temp_dir ) ) !== 0 || ! file_exists( $path ) ) {
+                continue;
+            }
+            $report[] = [
+                'filename' => (string) ( $raw['filename'] ?? basename( $path ) ),
+                'result'   => sp_records_bulk_import_csv( $path, $name ?: 'Imported Records', $type, $access ),
+            ];
+            wp_delete_file( $path );
+        }
+
+        echo '<h2>' . esc_html__( 'Import complete', 'societypress' ) . '</h2>';
+        echo '<table class="widefat striped"><thead><tr><th scope="col">' . esc_html__( 'File', 'societypress' ) . '</th><th scope="col">' . esc_html__( 'Fields', 'societypress' ) . '</th><th scope="col">' . esc_html__( 'Records', 'societypress' ) . '</th><th scope="col">' . esc_html__( 'Collection', 'societypress' ) . '</th></tr></thead><tbody>';
+        foreach ( $report as $r ) {
+            $coll_url = admin_url( 'admin.php?page=sp-record-browse&collection_id=' . (int) $r['result']['collection_id'] );
+            echo '<tr><td>' . esc_html( $r['filename'] ) . '</td><td>' . (int) $r['result']['fields'] . '</td><td>' . (int) $r['result']['records'] . '</td><td><a href="' . esc_url( $coll_url ) . '">' . esc_html__( 'Browse', 'societypress' ) . '</a></td></tr>';
+            if ( ! empty( $r['result']['errors'] ) ) {
+                foreach ( $r['result']['errors'] as $e ) {
+                    echo '<tr><td colspan="4" style="color:#a00;">' . esc_html( $e ) . '</td></tr>';
+                }
+            }
+        }
+        echo '</tbody></table>';
+        echo '<p><a class="button button-primary" href="' . esc_url( admin_url( 'admin.php?page=sp-record-collections' ) ) . '">' . esc_html__( 'View All Collections', 'societypress' ) . '</a></p>';
+        echo '</div>';
+        return;
+    }
+
+    if ( $action === 'upload' ) {
+        check_admin_referer( 'sp_recb_import' );
+
+        $files = $_FILES['rec_csvs'] ?? null;
+        $rows  = [];
+        $errors = [];
+
+        if ( $files && ! empty( $files['name'][0] ) ) {
+            $count = count( $files['name'] );
+            for ( $i = 0; $i < $count; $i++ ) {
+                $name = $files['name'][ $i ] ?? '';
+                if ( $name === '' ) continue;
+                $err  = $files['error'][ $i ] ?? UPLOAD_ERR_NO_FILE;
+                if ( $err !== UPLOAD_ERR_OK ) {
+                    $errors[] = sprintf( '%s: upload error code %d', $name, (int) $err );
+                    continue;
+                }
+                $tmp_name = $files['tmp_name'][ $i ];
+                if ( ! sp_is_valid_import_upload( $tmp_name ) ) {
+                    $errors[] = sprintf( '%s: not a CSV/TSV', $name );
+                    continue;
+                }
+                $token = 'recb-' . wp_generate_password( 12, false, false ) . '.csv';
+                if ( ! @move_uploaded_file( $tmp_name, $temp_dir . $token ) ) {
+                    $errors[] = sprintf( '%s: could not save upload', $name );
+                    continue;
+                }
+                [ $suggested_name, $suggested_type ] = sp_records_bulk_suggest_from_filename( $name );
+
+                // Read header preview
+                $handle  = fopen( $temp_dir . $token, 'r' );
+                $headers = $handle ? fgetcsv( $handle ) : [];
+                $sample  = $handle ? fgetcsv( $handle ) : [];
+                if ( $handle ) fclose( $handle );
+
+                $rows[] = [
+                    'token'    => $token,
+                    'filename' => $name,
+                    'name'     => $suggested_name,
+                    'type'     => $suggested_type,
+                    'headers'  => $headers ?: [],
+                    'sample'   => $sample  ?: [],
+                ];
+            }
+        }
+
+        if ( ! $rows ) {
+            echo '<div class="notice notice-error"><p>' . esc_html__( 'No valid CSVs were uploaded.', 'societypress' ) . '</p></div>';
+            if ( $errors ) {
+                echo '<ul class="ul-disc">';
+                foreach ( $errors as $e ) echo '<li>' . esc_html( $e ) . '</li>';
+                echo '</ul>';
+            }
+            sp_render_import_records_bulk_form();
+            echo '</div>';
+            return;
+        }
+
+        if ( $errors ) {
+            echo '<div class="notice notice-warning"><p><strong>' . esc_html__( 'Some files were skipped:', 'societypress' ) . '</strong></p><ul class="ul-disc">';
+            foreach ( $errors as $e ) echo '<li>' . esc_html( $e ) . '</li>';
+            echo '</ul></div>';
+        }
+
+        echo '<h2>' . esc_html__( 'Review and confirm', 'societypress' ) . '</h2>';
+        echo '<p>' . esc_html__( 'One collection will be created per file. Adjust the auto-detected name and type, set access level, and click Import.', 'societypress' ) . '</p>';
+
+        echo '<form method="post">';
+        wp_nonce_field( 'sp_recb_import' );
+        echo '<input type="hidden" name="sp_recb_action" value="commit">';
+
+        $type_options = [
+            'general'     => __( 'General', 'societypress' ),
+            'cemetery'    => __( 'Cemetery', 'societypress' ),
+            'vital'       => __( 'Vital (birth/marriage/death)', 'societypress' ),
+            'census'      => __( 'Census', 'societypress' ),
+            'immigration' => __( 'Immigration / Naturalization', 'societypress' ),
+            'directory'   => __( 'Directory', 'societypress' ),
+            'probate'     => __( 'Probate / Wills', 'societypress' ),
+            'land'        => __( 'Land / Deeds', 'societypress' ),
+            'military'    => __( 'Military / Pension', 'societypress' ),
+            'church'      => __( 'Church / Baptism', 'societypress' ),
+        ];
+
+        foreach ( $rows as $i => $row ) {
+            echo '<div class="card" style="max-width:100%; padding:16px; margin-bottom:12px;">';
+            echo '<h3 class="sp-mt-0">' . esc_html( $row['filename'] ) . '</h3>';
+            echo '<input type="hidden" name="sp_recb_items[' . (int) $i . '][token]" value="' . esc_attr( $row['token'] ) . '">';
+            echo '<input type="hidden" name="sp_recb_items[' . (int) $i . '][filename]" value="' . esc_attr( $row['filename'] ) . '">';
+
+            echo '<table class="form-table"><tbody>';
+            echo '<tr><th scope="row"><label for="recb_name_' . (int) $i . '">' . esc_html__( 'Collection name', 'societypress' ) . '</label></th><td>';
+            echo '<input type="text" id="recb_name_' . (int) $i . '" name="sp_recb_items[' . (int) $i . '][name]" value="' . esc_attr( $row['name'] ) . '" class="regular-text"></td></tr>';
+
+            echo '<tr><th scope="row"><label for="recb_type_' . (int) $i . '">' . esc_html__( 'Record type', 'societypress' ) . '</label></th><td>';
+            echo '<select id="recb_type_' . (int) $i . '" name="sp_recb_items[' . (int) $i . '][type]">';
+            foreach ( $type_options as $val => $label ) {
+                printf( '<option value="%s"%s>%s</option>', esc_attr( $val ), selected( $row['type'], $val, false ), esc_html( $label ) );
+            }
+            echo '</select></td></tr>';
+
+            echo '<tr><th scope="row"><label for="recb_access_' . (int) $i . '">' . esc_html__( 'Access level', 'societypress' ) . '</label></th><td>';
+            echo '<select id="recb_access_' . (int) $i . '" name="sp_recb_items[' . (int) $i . '][access]">';
+            echo '<option value="public">' . esc_html__( 'Public', 'societypress' ) . '</option>';
+            echo '<option value="members">' . esc_html__( 'Members only', 'societypress' ) . '</option>';
+            echo '</select></td></tr>';
+
+            echo '<tr><th scope="row">' . esc_html__( 'Import?', 'societypress' ) . '</th><td>';
+            echo '<label><input type="checkbox" name="sp_recb_items[' . (int) $i . '][import]" value="1" checked> ' . esc_html__( 'Yes, import this file', 'societypress' ) . '</label></td></tr>';
+
+            echo '<tr><th scope="row">' . esc_html__( 'Fields detected', 'societypress' ) . '</th><td>';
+            echo '<code style="white-space:normal;">' . esc_html( implode( ', ', $row['headers'] ) ) . '</code></td></tr>';
+
+            if ( $row['sample'] ) {
+                echo '<tr><th scope="row">' . esc_html__( 'First row sample', 'societypress' ) . '</th><td>';
+                echo '<code style="white-space:normal; color:#555;">' . esc_html( implode( ' | ', $row['sample'] ) ) . '</code></td></tr>';
+            }
+            echo '</tbody></table>';
+            echo '</div>';
+        }
+
+        echo '<p class="sp-mt-only-0">';
+        submit_button( __( 'Import all collections', 'societypress' ), 'primary', 'submit', false );
+        echo ' &nbsp; <a class="button" href="' . esc_url( admin_url( 'admin.php?page=sp-import-records-bulk' ) ) . '">' . esc_html__( 'Cancel', 'societypress' ) . '</a></p>';
+        echo '</form>';
+        echo '</div>';
+        return;
+    }
+
+    sp_render_import_records_bulk_form();
+    echo '</div>';
+}
+
+function sp_render_import_records_bulk_form(): void {
+    $max_size = size_format( wp_max_upload_size() );
+    echo '<form method="post" enctype="multipart/form-data">';
+    wp_nonce_field( 'sp_recb_import' );
+    echo '<input type="hidden" name="sp_recb_action" value="upload">';
+    echo '<p><label for="rec_csvs">' . esc_html__( 'Select CSV files:', 'societypress' ) . '</label> ';
+    echo '<input type="file" id="rec_csvs" name="rec_csvs[]" accept=".csv,.tsv,text/csv" multiple required></p>';
+    /* translators: %s: human-readable max upload size per file */
+    echo '<p class="description">' . sprintf( esc_html__( 'Max %s per file. Each CSV becomes a new collection — the headers become the fields, the rows become the records.', 'societypress' ), esc_html( $max_size ) ) . '</p>';
+    submit_button( __( 'Upload &amp; Preview', 'societypress' ), 'primary' );
+    echo '</form>';
+}
+
+
+// ============================================================================
 // GALLERY IMPORTER
 //
 // Two modes share one admin page:

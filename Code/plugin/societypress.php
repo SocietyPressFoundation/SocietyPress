@@ -88010,6 +88010,276 @@ function sp_render_import_newsletters_page(): void {
     echo '</div>';
 }
 
+// ============================================================================
+// GALLERY IMPORTER
+//
+// Two modes share one admin page:
+//   1. Multi-image bulk upload — pick N image files from local disk, give
+//      them an album title and optional captions, importer creates an
+//      sp_photo_albums row and an sp_photo_album_items row per file.
+//   2. URL fetch — paste a list of image URLs (one per line) and an
+//      album title, importer fetches each URL via wp_remote_get into the
+//      media library and adds it to the new album. This is the path
+//      volunteers use to bring ENS gallery images across the wire.
+// ============================================================================
+
+/**
+ * Create (or reuse) a photo album by title.
+ *
+ * Slug is derived from the title with collision suffix. Returns the
+ * album id on success.
+ */
+function sp_gallery_import_create_album( string $title, string $description, string $visibility ): int {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_photo_albums';
+
+    $title = sanitize_text_field( $title );
+    if ( $title === '' ) return 0;
+
+    $slug = sanitize_title( $title ) ?: 'album-' . wp_generate_password( 6, false, false );
+    $base = $slug;
+    $i    = 1;
+    while ( (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE slug = %s", $slug ) ) > 0 ) {
+        $slug = $base . '-' . ( ++$i );
+        if ( $i > 100 ) break;
+    }
+
+    $wpdb->insert( $table, [
+        'title'       => $title,
+        'slug'        => $slug,
+        'description' => sanitize_textarea_field( $description ),
+        'visibility'  => in_array( $visibility, [ 'public', 'members_only' ], true ) ? $visibility : 'public',
+        'created_by'  => (int) get_current_user_id(),
+    ] );
+    return (int) $wpdb->insert_id;
+}
+
+/**
+ * Add an attachment to an album.
+ */
+function sp_gallery_import_add_item( int $album_id, int $attachment_id, int $sort_order, string $caption = '' ): int {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_photo_album_items';
+    $wpdb->insert( $table, [
+        'album_id'          => $album_id,
+        'attachment_id'     => $attachment_id,
+        'caption'           => sanitize_text_field( $caption ),
+        'sort_order'        => $sort_order,
+        'submission_status' => 'approved',
+    ] );
+    return (int) $wpdb->insert_id;
+}
+
+/**
+ * Fetch a remote image URL into the WordPress media library.
+ *
+ * Uses wp_remote_get to download, validates the content-type, drops a
+ * temp file under uploads/sp-import-temp/, then registers as an
+ * attachment via media_handle_sideload.
+ *
+ * @return int|WP_Error Attachment ID or error.
+ */
+function sp_gallery_import_fetch_url( string $url ) {
+    if ( ! preg_match( '#^https?://#i', $url ) ) {
+        return new WP_Error( 'sp_bad_url', __( 'URL must start with http:// or https://', 'societypress' ) );
+    }
+
+    $response = wp_remote_get( $url, [
+        'timeout'    => 20,
+        'user-agent' => 'SocietyPress/' . SOCIETYPRESS_VERSION,
+    ] );
+    if ( is_wp_error( $response ) ) return $response;
+    if ( wp_remote_retrieve_response_code( $response ) !== 200 ) {
+        return new WP_Error( 'sp_http_err', sprintf( /* translators: %d HTTP status */ __( 'HTTP %d', 'societypress' ), wp_remote_retrieve_response_code( $response ) ) );
+    }
+
+    $body         = wp_remote_retrieve_body( $response );
+    $content_type = wp_remote_retrieve_header( $response, 'content-type' );
+    if ( ! preg_match( '#^image/(jpeg|png|gif|webp)#i', (string) $content_type ) ) {
+        return new WP_Error( 'sp_not_image', sprintf( /* translators: %s detected content type */ __( 'Not an image (content-type: %s)', 'societypress' ), $content_type ) );
+    }
+
+    $upload_dir = wp_upload_dir();
+    $tmp_dir    = trailingslashit( $upload_dir['basedir'] ) . 'sp-import-temp/';
+    if ( ! is_dir( $tmp_dir ) ) wp_mkdir_p( $tmp_dir );
+
+    $ext = match ( true ) {
+        stripos( $content_type, 'png' )  !== false => 'png',
+        stripos( $content_type, 'gif' )  !== false => 'gif',
+        stripos( $content_type, 'webp' ) !== false => 'webp',
+        default                                    => 'jpg',
+    };
+    $name      = 'gallery-import-' . wp_generate_password( 12, false, false ) . '.' . $ext;
+    $tmp_path  = $tmp_dir . $name;
+    file_put_contents( $tmp_path, $body );
+
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+    require_once ABSPATH . 'wp-admin/includes/image.php';
+    require_once ABSPATH . 'wp-admin/includes/media.php';
+
+    $file_array = [
+        'name'     => basename( wp_parse_url( $url, PHP_URL_PATH ) ?: $name ),
+        'tmp_name' => $tmp_path,
+    ];
+
+    // media_handle_sideload moves the file into the uploads dir and
+    // creates the attachment + thumbnails.
+    $attachment_id = media_handle_sideload( $file_array, 0 );
+    if ( is_wp_error( $attachment_id ) ) {
+        @unlink( $tmp_path );
+        return $attachment_id;
+    }
+    return (int) $attachment_id;
+}
+
+add_action( 'admin_menu', function () {
+    add_submenu_page(
+        'societypress',
+        __( 'Import Gallery — SocietyPress', 'societypress' ),
+        __( 'Import Gallery', 'societypress' ),
+        'manage_options',
+        'sp-import-gallery',
+        'sp_render_import_gallery_page'
+    );
+}, 25 );
+
+function sp_render_import_gallery_page(): void {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You do not have permission to import galleries.', 'societypress' ) );
+    }
+
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+    require_once ABSPATH . 'wp-admin/includes/image.php';
+    require_once ABSPATH . 'wp-admin/includes/media.php';
+
+    $action = sanitize_key( $_POST['sp_gal_action'] ?? '' );
+
+    echo '<div class="wrap">';
+    echo '<h1>' . esc_html__( 'Import Gallery', 'societypress' ) . '</h1>';
+
+    if ( $action === 'upload' ) {
+        check_admin_referer( 'sp_gal_import' );
+
+        $album_id = sp_gallery_import_create_album(
+            (string) ( $_POST['album_title'] ?? '' ),
+            (string) ( $_POST['album_description'] ?? '' ),
+            (string) ( $_POST['album_visibility'] ?? 'public' )
+        );
+        if ( ! $album_id ) {
+            echo '<div class="notice notice-error"><p>' . esc_html__( 'Album title is required.', 'societypress' ) . '</p></div>';
+            sp_render_import_gallery_form();
+            echo '</div>';
+            return;
+        }
+
+        $added  = 0;
+        $errors = [];
+        $files  = $_FILES['gal_images'] ?? null;
+        if ( $files && ! empty( $files['name'][0] ) ) {
+            $count = count( $files['name'] );
+            $sort  = 0;
+            for ( $i = 0; $i < $count; $i++ ) {
+                $name = $files['name'][ $i ] ?? '';
+                if ( $name === '' ) continue;
+                $err  = $files['error'][ $i ] ?? UPLOAD_ERR_NO_FILE;
+                if ( $err !== UPLOAD_ERR_OK ) {
+                    $errors[] = sprintf( '%s: upload error code %d', $name, (int) $err );
+                    continue;
+                }
+                $file_array = [
+                    'name'     => $name,
+                    'tmp_name' => $files['tmp_name'][ $i ],
+                ];
+                $attach_id = media_handle_sideload( $file_array, 0 );
+                if ( is_wp_error( $attach_id ) ) {
+                    $errors[] = sprintf( '%s: %s', $name, $attach_id->get_error_message() );
+                    continue;
+                }
+                sp_gallery_import_add_item( $album_id, (int) $attach_id, $sort, preg_replace( '/\.[^.]+$/', '', $name ) );
+                $sort++;
+                $added++;
+            }
+        }
+
+        $urls = trim( (string) ( $_POST['gal_urls'] ?? '' ) );
+        if ( $urls !== '' ) {
+            $sort = $added;
+            foreach ( preg_split( '/\r?\n/', $urls ) as $url ) {
+                $url = trim( $url );
+                if ( $url === '' ) continue;
+                $result = sp_gallery_import_fetch_url( $url );
+                if ( is_wp_error( $result ) ) {
+                    $errors[] = sprintf( '%s: %s', $url, $result->get_error_message() );
+                    continue;
+                }
+                sp_gallery_import_add_item( $album_id, (int) $result, $sort );
+                $sort++;
+                $added++;
+            }
+        }
+
+        // Set first attachment as cover if no cover was set.
+        global $wpdb;
+        $first = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT attachment_id FROM {$wpdb->prefix}sp_photo_album_items WHERE album_id = %d ORDER BY sort_order ASC LIMIT 1",
+            $album_id
+        ) );
+        if ( $first ) {
+            $wpdb->update( $wpdb->prefix . 'sp_photo_albums', [ 'cover_image_id' => $first ], [ 'id' => $album_id ] );
+        }
+
+        echo '<h2>' . esc_html__( 'Import complete', 'societypress' ) . '</h2>';
+        echo '<p>' . sprintf( esc_html( _n( '%d image added to the album.', '%d images added to the album.', $added, 'societypress' ) ), $added ) . '</p>';
+        if ( $errors ) {
+            echo '<div class="notice notice-warning"><p><strong>' . esc_html__( 'Errors:', 'societypress' ) . '</strong></p><ul class="ul-disc">';
+            foreach ( $errors as $e ) echo '<li>' . esc_html( $e ) . '</li>';
+            echo '</ul></div>';
+        }
+        echo '<p><a class="button button-primary" href="' . esc_url( admin_url( 'admin.php?page=sp-gallery-albums' ) ) . '">' . esc_html__( 'Go to Photo Albums', 'societypress' ) . '</a> &nbsp; <a class="button" href="' . esc_url( admin_url( 'admin.php?page=sp-import-gallery' ) ) . '">' . esc_html__( 'Import another album', 'societypress' ) . '</a></p>';
+        echo '</div>';
+        return;
+    }
+
+    sp_render_import_gallery_form();
+    echo '</div>';
+}
+
+function sp_render_import_gallery_form(): void {
+    $max_size = size_format( wp_max_upload_size() );
+    echo '<p>' . esc_html__( 'Create a new photo album from local image files, remote image URLs, or both. Each file or URL becomes a photo in the album; the first image is set as the cover automatically.', 'societypress' ) . '</p>';
+
+    echo '<form method="post" enctype="multipart/form-data">';
+    wp_nonce_field( 'sp_gal_import' );
+    echo '<input type="hidden" name="sp_gal_action" value="upload">';
+
+    echo '<table class="form-table"><tbody>';
+    echo '<tr><th scope="row"><label for="album_title">' . esc_html__( 'Album title', 'societypress' ) . '</label></th><td>';
+    echo '<input type="text" id="album_title" name="album_title" class="regular-text" required></td></tr>';
+
+    echo '<tr><th scope="row"><label for="album_description">' . esc_html__( 'Description (optional)', 'societypress' ) . '</label></th><td>';
+    echo '<textarea id="album_description" name="album_description" class="large-text" rows="3"></textarea></td></tr>';
+
+    echo '<tr><th scope="row"><label for="album_visibility">' . esc_html__( 'Visibility', 'societypress' ) . '</label></th><td>';
+    echo '<select id="album_visibility" name="album_visibility">';
+    echo '<option value="public">' . esc_html__( 'Public', 'societypress' ) . '</option>';
+    echo '<option value="members_only">' . esc_html__( 'Members only', 'societypress' ) . '</option>';
+    echo '</select></td></tr>';
+
+    echo '<tr><th scope="row"><label for="gal_images">' . esc_html__( 'Image files', 'societypress' ) . '</label></th><td>';
+    echo '<input type="file" id="gal_images" name="gal_images[]" accept="image/*" multiple>';
+    /* translators: %s: human-readable max upload file size */
+    echo '<p class="description">' . sprintf( esc_html__( 'Max %s per file. JPG, PNG, GIF, WEBP supported.', 'societypress' ), esc_html( $max_size ) ) . '</p></td></tr>';
+
+    echo '<tr><th scope="row"><label for="gal_urls">' . esc_html__( 'Or paste image URLs', 'societypress' ) . '</label></th><td>';
+    echo '<textarea id="gal_urls" name="gal_urls" class="large-text code" rows="6" placeholder="https://example.org/upload/menu/image1.jpg&#10;https://example.org/upload/menu/image2.jpg"></textarea>';
+    echo '<p class="description">' . esc_html__( 'One URL per line. Each will be downloaded into the media library. Useful for pulling images from an existing EasyNetSites gallery — paste the /upload/menu/... URLs from the old site.', 'societypress' ) . '</p></td></tr>';
+
+    echo '</tbody></table>';
+    submit_button( __( 'Create Album', 'societypress' ), 'primary' );
+    echo '</form>';
+}
+
+
 function sp_render_import_newsletters_upload_form(): void {
     $max_size = size_format( wp_max_upload_size() );
     echo '<form method="post" enctype="multipart/form-data">';

@@ -64721,6 +64721,77 @@ function sp_render_newsletter_edit_page(): void {
     <?php
 }
 
+/**
+ * Generate a JPG cover thumbnail from the first page of a PDF attachment.
+ *
+ * Pure helper extracted from the AJAX handler so the bulk newsletter
+ * importer can reuse it. Returns the cover attachment ID on success, or
+ * a WP_Error on any failure (missing PDF, Imagick unavailable, Imagick
+ * exception).
+ *
+ * @return int|WP_Error
+ */
+function sp_generate_newsletter_cover_for_pdf( int $pdf_id ) {
+    if ( ! $pdf_id ) {
+        return new WP_Error( 'sp_no_pdf', __( 'Missing PDF ID.', 'societypress' ) );
+    }
+
+    $pdf_path = get_attached_file( $pdf_id );
+    if ( ! $pdf_path || ! file_exists( $pdf_path ) ) {
+        return new WP_Error( 'sp_pdf_missing', __( 'PDF file not found.', 'societypress' ) );
+    }
+
+    if ( ! class_exists( 'Imagick' ) ) {
+        return new WP_Error( 'sp_no_imagick', __( 'Imagick extension not available. Upload a cover image manually.', 'societypress' ) );
+    }
+
+    try {
+        $im = new Imagick();
+        // WHY 150 DPI: balance between quality and file size for a 200–300px
+        //              wide cover preview. Higher DPI is wasteful here.
+        $im->setResolution( 150, 150 );
+        $im->readImage( $pdf_path . '[0]' );
+        $im->setImageBackgroundColor( 'white' );
+        $im->setImageAlphaChannel( Imagick::ALPHACHANNEL_REMOVE );
+        $im = $im->mergeImageLayers( Imagick::LAYERMETHOD_FLATTEN );
+        $im->setImageFormat( 'jpg' );
+        $im->setImageCompressionQuality( 85 );
+
+        $upload_dir = wp_upload_dir();
+        $filename   = 'newsletter-cover-' . $pdf_id . '-' . time() . '.jpg';
+        $filepath   = $upload_dir['path'] . '/' . $filename;
+
+        $im->writeImage( $filepath );
+        $im->clear();
+        $im->destroy();
+
+        $attachment_id = wp_insert_attachment( [
+            'post_mime_type' => 'image/jpeg',
+            'post_title'     => 'Newsletter Cover — ' . basename( $pdf_path, '.pdf' ),
+            'post_status'    => 'inherit',
+        ], $filepath );
+
+        if ( is_wp_error( $attachment_id ) ) {
+            return $attachment_id;
+        }
+
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+        $metadata = wp_generate_attachment_metadata( $attachment_id, $filepath );
+        wp_update_attachment_metadata( $attachment_id, $metadata );
+
+        return (int) $attachment_id;
+    } catch ( Exception $e ) {
+        return new WP_Error(
+            'sp_imagick_error',
+            sprintf(
+                /* translators: %s is the error message from Imagick */
+                __( 'Imagick error: %s. Upload a cover image manually.', 'societypress' ),
+                $e->getMessage()
+            )
+        );
+    }
+}
+
 function sp_ajax_generate_newsletter_cover(): void {
     check_ajax_referer( 'sp_newsletter_cover' );
 
@@ -64729,77 +64800,16 @@ function sp_ajax_generate_newsletter_cover(): void {
     }
 
     $pdf_id = absint( $_POST['pdf_id'] ?? 0 );
-    if ( ! $pdf_id ) {
-        wp_send_json_error( __( 'Missing PDF ID.', 'societypress' ) );
+    $result = sp_generate_newsletter_cover_for_pdf( $pdf_id );
+
+    if ( is_wp_error( $result ) ) {
+        wp_send_json_error( $result->get_error_message() );
     }
 
-    $pdf_path = get_attached_file( $pdf_id );
-    if ( ! $pdf_path || ! file_exists( $pdf_path ) ) {
-        wp_send_json_error( __( 'PDF file not found.', 'societypress' ) );
-    }
-
-    // Check that Imagick is available and can handle PDFs
-    if ( ! class_exists( 'Imagick' ) ) {
-        wp_send_json_error( __( 'Imagick extension not available. Upload a cover image manually.', 'societypress' ) );
-    }
-
-    try {
-        $im = new Imagick();
-
-        // Set resolution BEFORE reading so Ghostscript renders at this DPI
-        // WHY: 150 DPI gives a good balance between quality and file size for
-        //      a cover thumbnail. Higher DPI would be wasteful for a 200–300px
-        //      wide preview image.
-        $im->setResolution( 150, 150 );
-
-        // Read only the first page (index [0]) of the PDF
-        $im->readImage( $pdf_path . '[0]' );
-
-        // Flatten to remove alpha channel (PDFs can have transparency)
-        $im->setImageBackgroundColor( 'white' );
-        $im->setImageAlphaChannel( Imagick::ALPHACHANNEL_REMOVE );
-        $im = $im->mergeImageLayers( Imagick::LAYERMETHOD_FLATTEN );
-
-        // Convert to JPEG for web display
-        $im->setImageFormat( 'jpg' );
-        $im->setImageCompressionQuality( 85 );
-
-        // Generate unique filename and save to uploads directory
-        $upload_dir = wp_upload_dir();
-        $filename   = 'newsletter-cover-' . $pdf_id . '-' . time() . '.jpg';
-        $filepath   = $upload_dir['path'] . '/' . $filename;
-        $fileurl    = $upload_dir['url'] . '/' . $filename;
-
-        $im->writeImage( $filepath );
-        $im->clear();
-        $im->destroy();
-
-        // Register as a WordPress attachment so it shows up in the media library
-        // and gets cleaned up properly if the newsletter is deleted
-        $attachment_id = wp_insert_attachment( [
-            'post_mime_type' => 'image/jpeg',
-            'post_title'     => 'Newsletter Cover — ' . basename( $pdf_path, '.pdf' ),
-            'post_status'    => 'inherit',
-        ], $filepath );
-
-        if ( is_wp_error( $attachment_id ) ) {
-            wp_send_json_error( __( 'Failed to register cover image attachment.', 'societypress' ) );
-        }
-
-        // Generate standard WP image sizes (thumbnail, medium, etc.)
-        require_once ABSPATH . 'wp-admin/includes/image.php';
-        $metadata = wp_generate_attachment_metadata( $attachment_id, $filepath );
-        wp_update_attachment_metadata( $attachment_id, $metadata );
-
-        wp_send_json_success( [
-            'cover_id'  => $attachment_id,
-            'cover_url' => $fileurl,
-        ] );
-
-    } catch ( Exception $e ) {
-        /* translators: %s is the error message from Imagick */
-        wp_send_json_error( sprintf( __( 'Imagick error: %s. Upload a cover image manually.', 'societypress' ), $e->getMessage() ) );
-    }
+    wp_send_json_success( [
+        'cover_id'  => (int) $result,
+        'cover_url' => (string) wp_get_attachment_url( (int) $result ),
+    ] );
 }
 
 
@@ -87393,4 +87403,383 @@ function sp_render_ens_pages_import_page(): void {
     submit_button( __( 'Upload &amp; Preview', 'societypress' ), 'primary' );
     echo '</form>';
     echo '</div>'; // .wrap
+}
+
+
+// ============================================================================
+// NEWSLETTERS BULK IMPORT
+//
+// One-shot migration tool: volunteer picks multiple PDFs in a single
+// upload, each becomes a media-library attachment + a row in sp_newsletters,
+// with a cover thumbnail generated from the PDF's first page. Filename
+// patterns are mined for year / season / volume / issue and pre-populated
+// in the review step so the volunteer can correct or accept before commit.
+// ============================================================================
+
+/**
+ * Mine a PDF filename for newsletter metadata.
+ *
+ * Best-effort: returns whatever it can find. Empty defaults are filled in
+ * by the importer (pub_date → today, title → filename without extension).
+ *
+ * @return array{title:string,pub_date:string,volume:int,issue_number:int,season:string,year:int}
+ */
+function sp_newsletters_parse_filename( string $filename ): array {
+    $base  = preg_replace( '/\.pdf$/i', '', $filename );
+    $human = trim( str_replace( [ '_', '-' ], ' ', $base ) );
+    $human = preg_replace( '/\s+/', ' ', $human );
+
+    $year   = 0;
+    $month  = 0;
+    $volume = 0;
+    $issue  = 0;
+    $season = '';
+
+    // Year: any 4-digit number 1900-2199. Use lookaround instead of \b
+    // because \b doesn't fire between letters and digits ("Spring2023") or
+    // around underscores ("_2022_") — Word chars include both.
+    if ( preg_match( '/(?<![\d])(19[5-9]\d|20\d{2}|21\d{2})(?![\d])/', $base, $m ) ) {
+        $year = (int) $m[1];
+    }
+    // Volume: "v17", "vol17", "vol 17", "volume 17"
+    if ( preg_match( '/(?<![A-Za-z])(?:v|vol|volume)[\s\-_]*(\d{1,4})\b/i', $base, $m ) ) {
+        $volume = (int) $m[1];
+    }
+    // Issue: "i3", "iss3", "issue 3", "no3", "number 3", "n3"
+    if ( preg_match( '/(?<![A-Za-z])(?:iss|issue|number|no|i|n)[\s\-_]*(\d{1,4})\b/i', $base, $m ) ) {
+        $issue = (int) $m[1];
+    }
+    // Season
+    foreach ( [ 'spring' => 3, 'summer' => 6, 'fall' => 9, 'autumn' => 9, 'winter' => 12 ] as $name => $m_num ) {
+        if ( stripos( $base, $name ) !== false ) {
+            $season = ucfirst( $name === 'autumn' ? 'fall' : $name );
+            $month  = $m_num;
+            break;
+        }
+    }
+    // Month name. Use letter-boundary lookarounds instead of \b because
+    // \b doesn't match between letters and underscores (both are word chars),
+    // so "August_2022" would otherwise miss the August match.
+    if ( $month === 0 ) {
+        $months = [
+            'january'=>1,'jan'=>1,'february'=>2,'feb'=>2,'march'=>3,'mar'=>3,
+            'april'=>4,'apr'=>4,'may'=>5,'june'=>6,'jun'=>6,
+            'july'=>7,'jul'=>7,'august'=>8,'aug'=>8,'september'=>9,'sep'=>9,'sept'=>9,
+            'october'=>10,'oct'=>10,'november'=>11,'nov'=>11,'december'=>12,'dec'=>12,
+        ];
+        foreach ( $months as $name => $m_num ) {
+            if ( preg_match( '/(?<![A-Za-z])' . preg_quote( $name, '/' ) . '(?![A-Za-z])/i', $base ) ) {
+                $month = $m_num;
+                break;
+            }
+        }
+    }
+
+    $pub_date = '';
+    if ( $year > 0 ) {
+        $pub_date = sprintf( '%04d-%02d-01', $year, $month > 0 ? $month : 1 );
+    }
+
+    return [
+        'title'        => $human,
+        'pub_date'     => $pub_date,
+        'volume'       => $volume,
+        'issue_number' => $issue,
+        'season'       => $season,
+        'year'         => $year,
+    ];
+}
+
+/**
+ * Insert a newsletter row using the existing sp_newsletters table shape.
+ *
+ * @return int|WP_Error Newsletter id on success.
+ */
+function sp_newsletters_insert_row( array $row, int $file_id, int $cover_id, int $user_id ) {
+    global $wpdb;
+
+    $title    = trim( (string) ( $row['title'] ?? '' ) );
+    if ( $title === '' ) $title = __( 'Untitled Newsletter', 'societypress' );
+
+    $slug_src = $title;
+    if ( ! empty( $row['volume'] ) || ! empty( $row['issue_number'] ) ) {
+        $slug_src .= ' v' . (int) ( $row['volume'] ?? 0 ) . ' i' . (int) ( $row['issue_number'] ?? 0 );
+    }
+    $slug = sanitize_title( $slug_src ) ?: 'newsletter-' . wp_generate_password( 6, false, false );
+
+    // Ensure slug uniqueness within sp_newsletters
+    $table = $wpdb->prefix . 'sp_newsletters';
+    $i     = 1;
+    $base  = $slug;
+    while ( (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE slug = %s", $slug ) ) > 0 ) {
+        $slug = $base . '-' . ( ++$i );
+        if ( $i > 100 ) break;
+    }
+
+    $pub_date = sanitize_text_field( (string) ( $row['pub_date'] ?? '' ) );
+    if ( $pub_date !== '' && ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $pub_date ) ) {
+        $pub_date = '';
+    }
+
+    $insert = $wpdb->insert( $table, [
+        'title'          => $title,
+        'slug'           => $slug,
+        'description'    => sanitize_textarea_field( (string) ( $row['description'] ?? '' ) ),
+        'toc'            => '',
+        'pub_date'       => $pub_date !== '' ? $pub_date : null,
+        'volume'         => max( 0, (int) ( $row['volume'] ?? 0 ) ) ?: null,
+        'issue_number'   => max( 0, (int) ( $row['issue_number'] ?? 0 ) ) ?: null,
+        'file_id'        => $file_id,
+        'cover_image_id' => $cover_id ?: null,
+        'visibility'     => in_array( $row['visibility'] ?? 'members_only', [ 'members_only', 'public' ], true ) ? $row['visibility'] : 'members_only',
+        'created_by'     => $user_id,
+    ] );
+
+    if ( $insert === false ) {
+        return new WP_Error( 'sp_nl_insert_failed', $wpdb->last_error ?: __( 'Database insert failed.', 'societypress' ) );
+    }
+
+    return (int) $wpdb->insert_id;
+}
+
+/**
+ * Register the Import Newsletters admin submenu.
+ */
+add_action( 'admin_menu', function () {
+    add_submenu_page(
+        'societypress',
+        __( 'Import Newsletters — SocietyPress', 'societypress' ),
+        __( 'Import Newsletters', 'societypress' ),
+        'sp_manage_communications',
+        'sp-import-newsletters',
+        'sp_render_import_newsletters_page'
+    );
+}, 25 );
+
+function sp_render_import_newsletters_page(): void {
+    if ( ! current_user_can( 'sp_manage_communications' ) ) {
+        wp_die( esc_html__( 'You do not have permission to import newsletters.', 'societypress' ) );
+    }
+
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+    require_once ABSPATH . 'wp-admin/includes/image.php';
+    require_once ABSPATH . 'wp-admin/includes/media.php';
+
+    $action = sanitize_key( $_POST['sp_nl_import_action'] ?? '' );
+
+    echo '<div class="wrap">';
+    echo '<h1>' . esc_html__( 'Import Newsletters', 'societypress' ) . '</h1>';
+    echo '<p>' . esc_html__( 'Upload multiple PDF newsletters at once. The importer will save each to the media library, generate a cover thumbnail from the first page, and create an archive entry. You can review the auto-detected title, date, volume, and issue number before saving.', 'societypress' ) . '</p>';
+
+    if ( ! class_exists( 'Imagick' ) ) {
+        echo '<div class="notice notice-warning"><p>' . esc_html__( 'Imagick is not available on this server, so cover thumbnails cannot be generated automatically. You will be able to upload the PDFs, but you will need to attach cover images by editing each newsletter after import.', 'societypress' ) . '</p></div>';
+    }
+
+    // ----- STEP 2: Commit imports based on edited preview -----
+    if ( $action === 'commit' ) {
+        check_admin_referer( 'sp_nl_import' );
+
+        $items   = isset( $_POST['sp_nl_items'] ) && is_array( $_POST['sp_nl_items'] ) ? $_POST['sp_nl_items'] : [];
+        $created = 0;
+        $errors  = [];
+        $user_id = (int) get_current_user_id();
+
+        foreach ( $items as $idx => $raw ) {
+            $file_id  = (int) ( $raw['file_id']  ?? 0 );
+            $cover_id = (int) ( $raw['cover_id'] ?? 0 );
+            if ( ! $file_id ) continue;
+            if ( ! empty( $raw['skip'] ) )   continue;
+
+            $row = [
+                'title'        => sanitize_text_field( (string) ( $raw['title'] ?? '' ) ),
+                'pub_date'     => sanitize_text_field( (string) ( $raw['pub_date'] ?? '' ) ),
+                'volume'       => (int) ( $raw['volume'] ?? 0 ),
+                'issue_number' => (int) ( $raw['issue_number'] ?? 0 ),
+                'description'  => sanitize_textarea_field( (string) ( $raw['description'] ?? '' ) ),
+                'visibility'   => in_array( $raw['visibility'] ?? '', [ 'members_only', 'public' ], true ) ? $raw['visibility'] : 'members_only',
+            ];
+
+            $result = sp_newsletters_insert_row( $row, $file_id, $cover_id, $user_id );
+            if ( is_wp_error( $result ) ) {
+                $errors[] = sprintf( '%s: %s', $row['title'] ?: 'Untitled', $result->get_error_message() );
+            } else {
+                $created++;
+            }
+        }
+
+        echo '<h2>' . esc_html__( 'Import complete', 'societypress' ) . '</h2>';
+        echo '<p>' . sprintf( esc_html( _n( '%d newsletter added to the archive.', '%d newsletters added to the archive.', $created, 'societypress' ) ), $created ) . '</p>';
+        if ( $errors ) {
+            echo '<div class="notice notice-warning"><p><strong>' . esc_html__( 'Errors:', 'societypress' ) . '</strong></p><ul class="ul-disc">';
+            foreach ( $errors as $e ) echo '<li>' . esc_html( $e ) . '</li>';
+            echo '</ul></div>';
+        }
+        echo '<p><a class="button button-primary" href="' . esc_url( admin_url( 'admin.php?page=sp-newsletter-archive' ) ) . '">' . esc_html__( 'View Newsletter Archive', 'societypress' ) . '</a></p>';
+        echo '</div>';
+        return;
+    }
+
+    // ----- STEP 1: Upload + preview -----
+    if ( $action === 'upload' ) {
+        check_admin_referer( 'sp_nl_import' );
+
+        $files = $_FILES['nl_pdfs'] ?? null;
+        if ( empty( $files ) || empty( $files['name'][0] ) ) {
+            echo '<div class="notice notice-error"><p>' . esc_html__( 'No files were uploaded.', 'societypress' ) . '</p></div>';
+            sp_render_import_newsletters_upload_form();
+            echo '</div>';
+            return;
+        }
+
+        // Normalize the multi-file $_FILES shape to one row per file.
+        $count  = count( $files['name'] );
+        $rows   = [];
+        $errors = [];
+
+        for ( $i = 0; $i < $count; $i++ ) {
+            $name     = $files['name'][ $i ]     ?? '';
+            $tmp_name = $files['tmp_name'][ $i ] ?? '';
+            $type     = $files['type'][ $i ]     ?? '';
+            $err      = $files['error'][ $i ]    ?? UPLOAD_ERR_NO_FILE;
+
+            if ( $name === '' || $err === UPLOAD_ERR_NO_FILE ) continue;
+            if ( $err !== UPLOAD_ERR_OK ) {
+                $errors[] = sprintf( '%s: upload error code %d', $name, (int) $err );
+                continue;
+            }
+            // Validate it's actually a PDF
+            $real_type = function_exists( 'finfo_open' )
+                ? ( $finfo = finfo_open( FILEINFO_MIME_TYPE ) ) ? finfo_file( $finfo, $tmp_name ) : ''
+                : $type;
+            if ( $real_type !== 'application/pdf' ) {
+                $errors[] = sprintf( '%s: not a PDF (detected %s)', $name, $real_type ?: 'unknown' );
+                continue;
+            }
+
+            // wp_handle_upload moves the file into the uploads dir, then we
+            // register it as an attachment.
+            $file_array  = [
+                'name'     => $name,
+                'tmp_name' => $tmp_name,
+                'type'     => 'application/pdf',
+                'error'    => 0,
+                'size'     => $files['size'][ $i ] ?? 0,
+            ];
+            $handled = wp_handle_upload( $file_array, [ 'test_form' => false, 'action' => 'sp_nl_import' ] );
+            if ( ! empty( $handled['error'] ) ) {
+                $errors[] = sprintf( '%s: %s', $name, $handled['error'] );
+                continue;
+            }
+
+            $attachment_id = wp_insert_attachment( [
+                'post_mime_type' => 'application/pdf',
+                'post_title'     => preg_replace( '/\.pdf$/i', '', $name ),
+                'post_status'    => 'inherit',
+            ], $handled['file'] );
+
+            if ( is_wp_error( $attachment_id ) || ! $attachment_id ) {
+                $errors[] = sprintf( '%s: could not register as attachment', $name );
+                continue;
+            }
+            $metadata = wp_generate_attachment_metadata( (int) $attachment_id, $handled['file'] );
+            wp_update_attachment_metadata( (int) $attachment_id, $metadata );
+
+            // Cover gen — non-fatal on failure.
+            $cover_id = 0;
+            $cover    = sp_generate_newsletter_cover_for_pdf( (int) $attachment_id );
+            if ( ! is_wp_error( $cover ) ) {
+                $cover_id = (int) $cover;
+            }
+
+            $parsed = sp_newsletters_parse_filename( $name );
+            $rows[] = [
+                'file_id'      => (int) $attachment_id,
+                'cover_id'     => $cover_id,
+                'filename'     => $name,
+                'title'        => $parsed['title'],
+                'pub_date'     => $parsed['pub_date'],
+                'volume'       => $parsed['volume'],
+                'issue_number' => $parsed['issue_number'],
+            ];
+        }
+
+        if ( ! $rows ) {
+            echo '<div class="notice notice-error"><p>' . esc_html__( 'No valid PDFs were uploaded.', 'societypress' ) . '</p></div>';
+            if ( $errors ) {
+                echo '<ul class="ul-disc">';
+                foreach ( $errors as $e ) echo '<li>' . esc_html( $e ) . '</li>';
+                echo '</ul>';
+            }
+            sp_render_import_newsletters_upload_form();
+            echo '</div>';
+            return;
+        }
+
+        if ( $errors ) {
+            echo '<div class="notice notice-warning"><p><strong>' . esc_html__( 'Some files were skipped:', 'societypress' ) . '</strong></p><ul class="ul-disc">';
+            foreach ( $errors as $e ) echo '<li>' . esc_html( $e ) . '</li>';
+            echo '</ul></div>';
+        }
+
+        echo '<h2>' . esc_html__( 'Review and confirm', 'societypress' ) . '</h2>';
+        echo '<p>' . esc_html__( 'Each row will become a newsletter archive entry. Adjust the auto-detected fields, uncheck any you do not want to import, then save.', 'societypress' ) . '</p>';
+
+        echo '<form method="post">';
+        wp_nonce_field( 'sp_nl_import' );
+        echo '<input type="hidden" name="sp_nl_import_action" value="commit">';
+
+        echo '<table class="widefat striped">';
+        echo '<thead><tr>';
+        echo '<th scope="col">' . esc_html__( 'Import?', 'societypress' ) . '</th>';
+        echo '<th scope="col">' . esc_html__( 'Cover', 'societypress' ) . '</th>';
+        echo '<th scope="col">' . esc_html__( 'Title', 'societypress' ) . '</th>';
+        echo '<th scope="col">' . esc_html__( 'Date', 'societypress' ) . '</th>';
+        echo '<th scope="col">' . esc_html__( 'Vol.', 'societypress' ) . '</th>';
+        echo '<th scope="col">' . esc_html__( 'Issue', 'societypress' ) . '</th>';
+        echo '<th scope="col">' . esc_html__( 'Visibility', 'societypress' ) . '</th>';
+        echo '</tr></thead><tbody>';
+
+        foreach ( $rows as $i => $row ) {
+            $cover_url = $row['cover_id'] ? wp_get_attachment_image_url( $row['cover_id'], 'thumbnail' ) : '';
+            echo '<tr>';
+            echo '<td><input type="hidden" name="sp_nl_items[' . (int) $i . '][file_id]" value="' . (int) $row['file_id'] . '">';
+            echo '<input type="hidden" name="sp_nl_items[' . (int) $i . '][cover_id]" value="' . (int) $row['cover_id'] . '">';
+            echo '<input type="checkbox" name="sp_nl_items[' . (int) $i . '][import]" value="1" checked aria-label="' . esc_attr__( 'Import this newsletter', 'societypress' ) . '"></td>';
+            echo '<td>' . ( $cover_url
+                ? '<img src="' . esc_url( $cover_url ) . '" alt="" style="max-width:60px;max-height:80px;border:1px solid #c3c4c7;">'
+                : '<em style="color:#767676;">' . esc_html__( 'none', 'societypress' ) . '</em>'
+            ) . '</td>';
+            echo '<td><input type="text" name="sp_nl_items[' . (int) $i . '][title]" value="' . esc_attr( $row['title'] ) . '" class="regular-text"><br><small style="color:#767676;">' . esc_html( $row['filename'] ) . '</small></td>';
+            echo '<td><input type="date" name="sp_nl_items[' . (int) $i . '][pub_date]" value="' . esc_attr( $row['pub_date'] ) . '"></td>';
+            echo '<td><input type="number" name="sp_nl_items[' . (int) $i . '][volume]" value="' . (int) $row['volume'] . '" min="0" class="small-text"></td>';
+            echo '<td><input type="number" name="sp_nl_items[' . (int) $i . '][issue_number]" value="' . (int) $row['issue_number'] . '" min="0" class="small-text"></td>';
+            echo '<td><select name="sp_nl_items[' . (int) $i . '][visibility]" aria-label="' . esc_attr__( 'Visibility', 'societypress' ) . '"><option value="members_only">' . esc_html__( 'Members only', 'societypress' ) . '</option><option value="public">' . esc_html__( 'Public', 'societypress' ) . '</option></select></td>';
+            echo '</tr>';
+        }
+        echo '</tbody></table>';
+
+        echo '<p class="sp-mt-only-0">';
+        submit_button( __( 'Add to Newsletter Archive', 'societypress' ), 'primary', 'submit', false );
+        echo ' &nbsp; <a class="button" href="' . esc_url( admin_url( 'admin.php?page=sp-import-newsletters' ) ) . '">' . esc_html__( 'Cancel', 'societypress' ) . '</a></p>';
+        echo '</form>';
+        echo '</div>';
+        return;
+    }
+
+    // ----- Default: upload form -----
+    sp_render_import_newsletters_upload_form();
+    echo '</div>';
+}
+
+function sp_render_import_newsletters_upload_form(): void {
+    $max_size = size_format( wp_max_upload_size() );
+    echo '<form method="post" enctype="multipart/form-data">';
+    wp_nonce_field( 'sp_nl_import' );
+    echo '<input type="hidden" name="sp_nl_import_action" value="upload">';
+    echo '<p><label for="nl_pdfs">' . esc_html__( 'Select PDFs:', 'societypress' ) . '</label> ';
+    echo '<input type="file" id="nl_pdfs" name="nl_pdfs[]" accept="application/pdf,.pdf" multiple required></p>';
+    /* translators: %s: human-readable max upload file size */
+    echo '<p class="description">' . sprintf( esc_html__( 'Maximum upload size per file: %s. Pick as many PDFs as your server allows in one POST.', 'societypress' ), esc_html( $max_size ) ) . '</p>';
+    submit_button( __( 'Upload PDFs', 'societypress' ), 'primary' );
+    echo '</form>';
 }

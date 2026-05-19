@@ -54557,6 +54557,20 @@ function sp_process_library_import( string $file_path, array $field_map ): array
  *      preview with field mapping. Step 2: run the actual import. Same
  *      pattern as the member import but tuned for library data.
  */
+/**
+ * Normalize a library-CSV header for auto-mapping lookup.
+ *
+ * "ISBN-13", "ISBN 13", "isbn 13", "ISBN-13:" all collapse to "isbn13".
+ * Strips BOM, whitespace, punctuation, quotes, parentheses, and lowercases.
+ */
+function sp_library_normalize_header( string $header ): string {
+    $h = trim( $header, "\xEF\xBB\xBF \t\n\r\"'" );
+    $h = strtolower( $h );
+    // Remove anything that isn't a letter or digit.
+    $h = preg_replace( '/[^a-z0-9]/', '', $h );
+    return $h ?? '';
+}
+
 function sp_render_library_import_page(): void {
     global $wpdb;
 
@@ -54687,38 +54701,146 @@ function sp_render_library_import_page(): void {
     // headers, we pre-select the right target fields so the admin doesn't
     // have to map 30 columns by hand.
     //
-    // For duplicate-name columns, the auto-map uses the LAST occurrence
-    // because in the typical legacy export that's where the real data
-    // lives — earlier duplicates are usually deprecated/empty.
+    // Matching is case-insensitive and punctuation-tolerant: every header
+    // is normalized via sp_library_normalize_header() before lookup, so
+    // "ISBN-13", "ISBN13", "isbn 13", and "isbn" all collapse to the same
+    // key. For duplicate-name columns, the auto-map uses the LAST
+    // occurrence because in the typical legacy export that's where the
+    // real data lives — earlier duplicates are usually deprecated/empty.
+    //
+    // The list below covers ENS and a half-dozen common variations seen
+    // in genealogical-society catalog exports (PastPerfect, ResourceMate,
+    // Booktrack, and ad-hoc spreadsheets).
     // ------------------------------------------------------------------
-    $auto_map = [
-        'System ID'          => 'system_id',
-        'Title'              => 'title',
-        'Author'             => 'author',
-        'Description'        => 'description',
-        'Publisher'          => 'publisher',
-        'Publisher Location' => 'publisher_location',
-        'Pub. Year'          => 'pub_year',
-        'Pub. Month'         => 'pub_month',
-        'Pub. Day'           => 'pub_day',
-        'Use Serials'        => 'use_serials',
-        'Call Number'        => 'call_number',
-        'LCCN'               => 'lccn',
-        'Acquisition Number' => 'acquisition_number',
-        'Acq. Year'          => 'acq_year',
-        'Acq. Month'         => 'acq_month',
-        'Acq. Day'           => 'acq_day',
-        'Acq. Code'          => 'acq_code',
-        'Donor'              => 'donor',
-        'Value'              => 'value',
-        'County'             => 'county',
-        'State'              => 'state',
-        'Surname'            => 'surname',
-        'Librarian Notes'    => 'librarian_notes',
-        'updatedByName'      => 'updated_by',
-        'Last Updated Date'  => 'last_updated_date',
-        'Subject'            => 'subject',
+    $auto_map_aliases = [
+        // System / catalog id
+        'systemid'           => 'system_id',
+        'sysid'              => 'system_id',
+        'catalogid'          => 'system_id',
+        'catalognumber'      => 'system_id',
+        'catalogno'          => 'system_id',
+        'id'                 => 'system_id',
+        'itemid'             => 'system_id',
+        'recordid'           => 'system_id',
+        // Title
+        'title'              => 'title',
+        'booktitle'          => 'title',
+        'itemtitle'          => 'title',
+        'name'               => 'title',
+        // Author
+        'author'             => 'author',
+        'authors'            => 'author',
+        'authorname'         => 'author',
+        'authors'            => 'author',
+        'by'                 => 'author',
+        'creator'            => 'author',
+        // Description / notes
+        'description'        => 'description',
+        'physicaldescription'=> 'description',
+        'physicalnotes'      => 'description',
+        'notes'              => 'description',
+        'abstract'           => 'description',
+        // Publisher
+        'publisher'          => 'publisher',
+        'publishedby'        => 'publisher',
+        'publisherlocation'  => 'publisher_location',
+        'placeofpublication' => 'publisher_location',
+        // Publication date pieces
+        'pubyear'            => 'pub_year',
+        'publicationyear'    => 'pub_year',
+        'yearpublished'      => 'pub_year',
+        'year'               => 'pub_year',
+        'pubmonth'           => 'pub_month',
+        'publicationmonth'   => 'pub_month',
+        'pubday'             => 'pub_day',
+        'publicationday'     => 'pub_day',
+        // Media type / serials
+        'mediatype'          => 'media_type',
+        'type'               => 'media_type',
+        'format'             => 'media_type',
+        'useserials'         => 'use_serials',
+        // Identifiers
+        'isbn'               => 'isbn',
+        'isbn10'             => 'isbn',
+        'isbn13'             => 'isbn',
+        'callnumber'         => 'call_number',
+        'call'               => 'call_number',
+        'lccn'               => 'lccn',
+        // Shelf / geography
+        'shelflocation'      => 'shelf_location',
+        'shelf'              => 'shelf_location',
+        'location'           => 'shelf_location',
+        'geographiclocation' => 'geographic_location',
+        'geographiccoverage' => 'geographic_location',
+        'geocoverage'        => 'geographic_location',
+        'region'             => 'geographic_location',
+        // Acquisition
+        'acquisitionnumber'  => 'acquisition_number',
+        'accessionnumber'    => 'acquisition_number',
+        'accession'          => 'acquisition_number',
+        'acqnumber'          => 'acquisition_number',
+        'acqyear'            => 'acq_year',
+        'acquisitionyear'    => 'acq_year',
+        'yearacquired'       => 'acq_year',
+        'acqmonth'           => 'acq_month',
+        'acquisitionmonth'   => 'acq_month',
+        'acqday'             => 'acq_day',
+        'acquisitionday'     => 'acq_day',
+        'acqcode'            => 'acq_code',
+        'acquisitioncode'    => 'acq_code',
+        'acquisition'        => 'acq_code',
+        // Donor / value
+        'donor'              => 'donor',
+        'donatedby'          => 'donor',
+        'source'             => 'donor',
+        'value'              => 'value',
+        'estimatedvalue'     => 'value',
+        // Geography
+        'county'             => 'county',
+        'state'              => 'state',
+        // Genealogy facets
+        'surname'            => 'surname',
+        'surnames'           => 'surname',
+        'familyname'         => 'surname',
+        // Tagging
+        'subject'            => 'subject',
+        'subjects'           => 'subject',
+        'subjecttags'        => 'subject',
+        'tags'               => 'subject',
+        'topic'              => 'subject',
+        'topics'             => 'subject',
+        // Audit
+        'librariannotes'     => 'librarian_notes',
+        'updatedbyname'      => 'updated_by',
+        'updatedby'          => 'updated_by',
+        'lastupdateddate'    => 'last_updated_date',
+        'lastupdated'        => 'last_updated_date',
+        'updatedate'         => 'last_updated_date',
+        // Covers
+        'coverurl'           => 'cover_url',
+        'coverimageurl'      => 'cover_url',
+        'image'              => 'cover_url',
+        'imageurl'           => 'cover_url',
     ];
+
+    // Build the actual $auto_map (header → target_field) by normalizing
+    // every header we saw against the aliases above. This runs only when
+    // we have preview data; on the initial upload screen it's empty.
+    $auto_map = [];
+    if ( $preview ) {
+        foreach ( $preview['headers'] as $header ) {
+            $norm = sp_library_normalize_header( $header );
+            if ( isset( $auto_map_aliases[ $norm ] ) ) {
+                $auto_map[ $header ] = $auto_map_aliases[ $norm ];
+                continue;
+            }
+            // Direct match against a target field key (case-insensitive)
+            $h_lower = strtolower( trim( $header ) );
+            if ( isset( $target_fields[ $h_lower ] ) ) {
+                $auto_map[ $header ] = $h_lower;
+            }
+        }
+    }
 
     ?>
     <div class="wrap">

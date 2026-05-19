@@ -39672,6 +39672,24 @@ function sp_process_event_import( string $file_path, array $field_map ): array {
             }
         }
 
+        // Recurrence — accepts weekly, monthly-nth, monthly-date, or empty.
+        // Empty/unknown values just leave the event as a one-off.
+        $recurrence_rule     = null;
+        $recurrence_end_date = null;
+        $recur_input = strtolower( trim( $data['recurrence'] ?? '' ) );
+        if ( in_array( $recur_input, [ 'weekly', 'monthly-nth', 'monthly-date' ], true ) ) {
+            $built = sp_build_recurrence_rule( $recur_input, $event_date );
+            if ( $built !== '' ) {
+                $recurrence_rule = $built;
+                if ( ! empty( $data['recurrence_end_date'] ) ) {
+                    $pe = strtotime( $data['recurrence_end_date'] );
+                    if ( $pe !== false ) {
+                        $recurrence_end_date = date( 'Y-m-d', $pe );
+                    }
+                }
+            }
+        }
+
         // Build the insert array
         $insert = [
             'title'                => sanitize_text_field( $title ),
@@ -39698,13 +39716,29 @@ function sp_process_event_import( string $file_path, array $field_map ): array {
             'contact_name'         => sanitize_text_field( $data['contact_name'] ?? '' ),
             'contact_email'        => sanitize_email( $data['contact_email'] ?? '' ),
             'contact_phone'        => sanitize_text_field( $data['contact_phone'] ?? '' ),
+            'recurrence_rule'      => $recurrence_rule,
+            'recurrence_end_date'  => $recurrence_end_date,
             'created_by'           => get_current_user_id(),
         ];
 
         $inserted = $wpdb->insert( $events_table, $insert );
 
         if ( $inserted ) {
+            $event_id = (int) $wpdb->insert_id;
             $results['imported']++;
+
+            // Speakers — semicolon-separated names. Reuse an existing speaker
+            // row if the name matches (case-insensitive); otherwise create one.
+            if ( ! empty( $data['speakers'] ) ) {
+                sp_event_import_attach_speakers( $event_id, (string) $data['speakers'] );
+            }
+
+            // Slots — semicolon-separated. Each slot follows the pattern
+            // "HH:MM-HH:MM|description|capacity". Description and capacity
+            // are optional. Missing/invalid slots are skipped silently.
+            if ( ! empty( $data['slots'] ) ) {
+                sp_event_import_attach_slots( $event_id, (string) $data['slots'] );
+            }
         } else {
             $results['skipped']++;
             /* translators: 1: row number, 2: event title */
@@ -39713,6 +39747,85 @@ function sp_process_event_import( string $file_path, array $field_map ): array {
     }
 
     return $results;
+}
+
+/**
+ * Parse a semicolon-separated list of speaker names and attach them to an
+ * event. Existing speaker rows are matched case-insensitively by name;
+ * unknown names get a new sp_event_speakers row.
+ */
+function sp_event_import_attach_speakers( int $event_id, string $raw ): void {
+    global $wpdb;
+    $speakers_table = $wpdb->prefix . 'sp_event_speakers';
+    $assign_table   = $wpdb->prefix . 'sp_event_speaker_assignments';
+
+    $names = array_filter( array_map( 'trim', explode( ';', $raw ) ) );
+    if ( ! $names ) return;
+
+    $sort = 0;
+    foreach ( $names as $name ) {
+        $name = sanitize_text_field( $name );
+        if ( $name === '' ) continue;
+
+        $speaker_id = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT id FROM {$speakers_table} WHERE LOWER(name) = %s LIMIT 1",
+            strtolower( $name )
+        ) );
+        if ( ! $speaker_id ) {
+            $wpdb->insert( $speakers_table, [
+                'name'   => $name,
+                'active' => 1,
+            ] );
+            $speaker_id = (int) $wpdb->insert_id;
+        }
+        if ( $speaker_id ) {
+            // INSERT IGNORE-style: the unique key on (event_id, speaker_id)
+            // prevents duplicates if a speaker is listed twice.
+            $wpdb->query( $wpdb->prepare(
+                "INSERT IGNORE INTO {$assign_table} (event_id, speaker_id, role, sort_order) VALUES (%d, %d, %s, %d)",
+                $event_id, $speaker_id, 'speaker', $sort
+            ) );
+            $sort++;
+        }
+    }
+}
+
+/**
+ * Parse a semicolon-separated list of slot definitions and attach them.
+ * Each slot is "HH:MM-HH:MM|description|capacity" (description and
+ * capacity optional). Invalid slots are silently skipped.
+ */
+function sp_event_import_attach_slots( int $event_id, string $raw ): void {
+    global $wpdb;
+    $slots_table = $wpdb->prefix . 'sp_event_slots';
+
+    $entries = array_filter( array_map( 'trim', explode( ';', $raw ) ) );
+    if ( ! $entries ) return;
+
+    $sort = 0;
+    foreach ( $entries as $entry ) {
+        $parts = array_map( 'trim', explode( '|', $entry ) );
+        $times = $parts[0] ?? '';
+        if ( ! preg_match( '/^(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})$/', $times, $m ) ) continue;
+
+        $start = date( 'H:i:s', strtotime( $m[1] ) ?: 0 );
+        $end   = date( 'H:i:s', strtotime( $m[2] ) ?: 0 );
+        if ( $start === '00:00:00' && $end === '00:00:00' ) continue;
+
+        $description = isset( $parts[1] ) ? sanitize_text_field( $parts[1] ) : '';
+        $capacity    = isset( $parts[2] ) && ctype_digit( $parts[2] ) ? (int) $parts[2] : null;
+
+        $wpdb->insert( $slots_table, [
+            'event_id'    => $event_id,
+            'start_time'  => $start,
+            'end_time'    => $end,
+            'capacity'    => $capacity,
+            'description' => $description,
+            'sort_order'  => $sort,
+            'is_active'   => 1,
+        ] );
+        $sort++;
+    }
 }
 
 
@@ -39836,6 +39949,10 @@ function sp_render_import_events_page(): void {
         'contact_name'         => 'Contact Name',
         'contact_email'        => 'Contact Email',
         'contact_phone'        => 'Contact Phone',
+        'recurrence'           => 'Recurrence (weekly / monthly-nth / monthly-date)',
+        'recurrence_end_date'  => 'Recurrence End Date',
+        'speakers'             => 'Speakers (semicolon-separated names)',
+        'slots'                => 'Slots (semicolon-separated; each "HH:MM-HH:MM|description|capacity")',
     ];
 
     // Auto-mapping: try to match CSV column names to target fields.

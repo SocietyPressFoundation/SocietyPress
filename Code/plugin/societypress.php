@@ -86747,3 +86747,650 @@ add_action( 'admin_notices', function () {
     if ( ( $_GET['action'] ?? '' ) !== '' ) return; // Only on the list view
     echo '<p class="sp-mt-only-0"><a href="' . esc_url( admin_url( 'admin.php?page=sp-help-tags' ) ) . '" class="button">' . esc_html__( 'Manage Tags', 'societypress' ) . '</a></p>';
 } );
+
+
+// ============================================================================
+// ENS PAGE MAINTENANCE IMPORTER
+//
+// Volunteers migrating from EasyNetSites (ENS) save their existing
+// "Menu / Page Maintenance" admin screen as HTML, upload it here, preview
+// what would be imported, and confirm. The importer creates one WordPress
+// page per ENS row (or reuses an existing one matched by ENS pt id), wires
+// up a navigation menu in the parsed sort order, and applies parent
+// relationships in a second pass.
+//
+// Idempotency: every imported page is marked with `_sp_ens_pt` post meta so
+// re-running the importer reuses the page instead of creating a duplicate.
+// The nav menu is identified by name ("Imported from ENS"); if it already
+// exists, its items are replaced wholesale rather than appended.
+//
+// The parser is a port of the CLI tracer at tools/ens/parse-page-maintenance.php
+// — the structure intentionally mirrors that file so changes can flow either
+// direction during the validate-against-real-HTML phase.
+// ============================================================================
+
+/**
+ * Parse a saved ENS Page Maintenance HTML document into a flat list of rows.
+ *
+ * @param string $html Raw HTML from the saved ENS admin page.
+ * @return array<int,array<string,mixed>> One element per data row, in source order.
+ */
+function sp_ens_parse_page_maintenance_html( string $html ): array {
+    if ( $html === '' ) return [];
+
+    $doc = new DOMDocument();
+    libxml_use_internal_errors( true );
+    $doc->loadHTML( $html, LIBXML_NOWARNING | LIBXML_NOERROR );
+    libxml_clear_errors();
+
+    $xpath = new DOMXPath( $doc );
+    $rows  = [];
+
+    // Every data <tr> contains an order_* or sort_* input. That signature
+    // also rules out the <thead> row and any decorative rows.
+    $trs = $xpath->query( '//tr[.//input[starts-with(@name, "order_") or starts-with(@name, "sort_")]]' );
+    if ( ! $trs || $trs->length === 0 ) return [];
+
+    foreach ( $trs as $i => $tr ) {
+        /** @var DOMElement $tr */
+        $row = sp_ens_parse_row( $tr, $xpath );
+        if ( $row !== null ) {
+            $row['row_index'] = $i + 1;
+            $rows[]           = $row;
+        }
+    }
+
+    return $rows;
+}
+
+/**
+ * Extract one ENS row from a <tr> element. Returns null if the row has
+ * neither a label nor an order — those are decorative.
+ */
+function sp_ens_parse_row( DOMElement $tr, DOMXPath $xpath ): ?array {
+    $label = sp_ens_first_input_value( $xpath, $tr, 'label_' )
+          ?? sp_ens_first_input_value( $xpath, $tr, 'menu_' );
+    $order = sp_ens_first_input_value( $xpath, $tr, 'order_' )
+          ?? sp_ens_first_input_value( $xpath, $tr, 'sort_' );
+
+    if ( $label === null && $order === null ) return null;
+
+    $url     = '';
+    $anchors = $xpath->query( './/a[@href]', $tr );
+    if ( $anchors && $anchors->length > 0 ) {
+        /** @var DOMElement $a */
+        $a   = $anchors->item( 0 );
+        $url = trim( $a->getAttribute( 'href' ) );
+    }
+    if ( $url === '' ) {
+        $url = sp_ens_first_input_value( $xpath, $tr, 'url_' ) ?? '';
+    }
+
+    $parent_label = 'None';
+    $parent_id    = '0';
+    $sel_opt      = $xpath->query( './/select[starts-with(@name, "parent_")]/option[@selected]', $tr );
+    if ( $sel_opt && $sel_opt->length > 0 ) {
+        /** @var DOMElement $opt */
+        $opt          = $sel_opt->item( 0 );
+        $parent_label = trim( $opt->textContent );
+        $parent_id    = trim( $opt->getAttribute( 'value' ) );
+    }
+
+    $display = sp_ens_checkbox_checked( $xpath, $tr, 'display_' );
+    $secure  = sp_ens_checkbox_checked( $xpath, $tr, 'secure_' );
+
+    [ $kind, $kind_arg ] = sp_ens_classify_url( $url );
+
+    return [
+        'label'        => $label !== null ? html_entity_decode( $label, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) : '',
+        'url'          => $url,
+        'parent_label' => html_entity_decode( $parent_label, ENT_QUOTES | ENT_HTML5, 'UTF-8' ),
+        'parent_id'    => $parent_id,
+        'sort_order'   => (int) ( $order ?? 0 ),
+        'display'      => $display,
+        'secure'       => $secure,
+        'kind'         => $kind,
+        'kind_arg'     => $kind_arg,
+    ];
+}
+
+function sp_ens_first_input_value( DOMXPath $xpath, DOMElement $tr, string $prefix ): ?string {
+    $nodes = $xpath->query( './/input[starts-with(@name, "' . $prefix . '")]', $tr );
+    if ( ! $nodes || $nodes->length === 0 ) return null;
+    /** @var DOMElement $node */
+    $node = $nodes->item( 0 );
+    return trim( $node->getAttribute( 'value' ) );
+}
+
+function sp_ens_checkbox_checked( DOMXPath $xpath, DOMElement $tr, string $prefix ): bool {
+    $nodes = $xpath->query( './/input[@type="checkbox" and starts-with(@name, "' . $prefix . '")]', $tr );
+    if ( ! $nodes || $nodes->length === 0 ) return false;
+    /** @var DOMElement $node */
+    $node = $nodes->item( 0 );
+    return $node->hasAttribute( 'checked' );
+}
+
+/**
+ * Classify an ENS URL into a destination type the SP importer knows how
+ * to map. Returns [kind, kind_arg] where kind_arg is the relevant id
+ * (pt= for content pages, sid= for galleries, dc= for donations) or the
+ * raw URL for external / unknown.
+ *
+ * @return array{0:string,1:string}
+ */
+function sp_ens_classify_url( string $url ): array {
+    if ( $url === '' ) return [ 'unknown', '' ];
+
+    if ( strpos( $url, '/upload/' ) === 0 )           return [ 'file_upload', $url ];
+    if ( preg_match( '#^https?://#i', $url ) )        return [ 'external', $url ];
+
+    $script = strtolower( strtok( $url, '?' ) );
+    $qs     = [];
+    $qpos   = strpos( $url, '?' );
+    if ( $qpos !== false ) parse_str( substr( $url, $qpos + 1 ), $qs );
+
+    switch ( $script ) {
+        case 'index.php':           return [ 'home', '' ];
+        case 'about.php':           return [ 'about_static', '' ];
+        case 'cpage.php':           return [ 'content_page', (string) ( $qs['pt'] ?? '' ) ];
+        case 'gallery.php':         return [ 'gallery', (string) ( $qs['sid'] ?? '' ) ];
+        case 'eventlistings.php':   return [ 'events', (string) ( $qs['nm'] ?? '' ) ];
+        case 'libraryrecords.php':  return [ 'library_catalog', '' ];
+        case 'surname.php':         return [ 'surname', '' ];
+        case 'donation.php':        return [ 'donation', (string) ( $qs['dc'] ?? '' ) ];
+        case 'links.php':           return [ 'links', (string) ( $qs['sid'] ?? '' ) ];
+        case 'store.php':           return [ 'store', (string) ( $qs['sid'] ?? '' ) ];
+        case 'members.php':         return [ 'members_home', '' ];
+        case 'profile.php':         return [ 'profile', '' ];
+        case 'membershiplist.php':  return [ 'membership_list', '' ];
+        case 'filedownload.php':    return [ 'member_file', (string) ( $qs['sid'] ?? '' ) ];
+        case 'logoff.php':          return [ 'logoff', '' ];
+        case 'onlinejoin.php':      return [ 'join_online', '' ];
+    }
+
+    return [ 'unknown', $url ];
+}
+
+/**
+ * Decide what to do with a parsed ENS row when the import runs. Returns
+ * a structure the importer uses to either create/find a WP page, link to
+ * the WP logout URL, or attach an external URL as a menu item.
+ *
+ * Mode shape:
+ *   [ 'mode' => 'page',
+ *     'slug' => 'about',
+ *     'title' => 'About Us',
+ *     'content' => '...',
+ *     'template' => 'sp-records' ]      // optional page_template meta
+ *   [ 'mode' => 'external', 'url' => 'https://...' ]
+ *   [ 'mode' => 'logoff' ]              // resolved to wp_logout_url() at menu-build time
+ *
+ * @return array<string,mixed>
+ */
+function sp_ens_resolve_destination( array $row ): array {
+    $label = $row['label'] !== '' ? $row['label'] : __( 'Untitled', 'societypress' );
+    $kind  = $row['kind'];
+    $arg   = $row['kind_arg'];
+
+    // Shortcode-backed destinations: build a page with the SP shortcode in
+    // the body. The volunteer can edit the page later; the shortcode wires
+    // the page to live SocietyPress data.
+    $shortcode = [
+        'donation'      => '[sp_donate]',
+        'join_online'   => '[societypress_join]',
+        'research_help' => '[sp_help_requests_archive]',
+    ];
+
+    // Template-backed destinations: the body is a placeholder; the
+    // page_template meta value matches a registered SP page template.
+    $template = [
+        'library_catalog' => 'sp-library-catalog',
+        'links'           => 'sp-resources',
+        'store'           => 'sp-store',
+        'events'          => '',  // events use eventlistings widget, leave blank
+        'members_home'    => '',  // SP my-account is its own template, handled below
+    ];
+
+    switch ( $kind ) {
+        case 'home':
+            // ENS index.php → site front page. We don't create a page; the
+            // menu item links to the site root.
+            return [ 'mode' => 'external', 'url' => home_url( '/' ) ];
+
+        case 'logoff':
+            return [ 'mode' => 'logoff' ];
+
+        case 'external':
+        case 'file_upload':
+            // External URLs and file links get attached directly. file_upload
+            // URLs are relative to the ENS site root and will need manual
+            // post-import attention — we record them as external nav items.
+            return [ 'mode' => 'external', 'url' => $arg !== '' ? $arg : $row['url'] ];
+
+        case 'members_home':
+        case 'profile':
+            return [
+                'mode'    => 'page',
+                'slug'    => 'my-account',
+                'title'   => $label,
+                'content' => '<!-- SocietyPress my-account page — managed by the plugin -->',
+            ];
+
+        case 'membership_list':
+            return [
+                'mode'    => 'page',
+                'slug'    => 'directory',
+                'title'   => $label,
+                'content' => '<!-- SocietyPress directory — see Settings → Directory for visibility rules -->',
+            ];
+
+        case 'about_static':
+            return [
+                'mode'    => 'page',
+                'slug'    => 'about',
+                'title'   => $label,
+                'content' => __( "About this society. Replace this placeholder with your About page content.\n\n(Imported from EasyNetSites.)", 'societypress' ),
+            ];
+
+        case 'content_page':
+            // ENS cpage.php?pt=N — every distinct pt becomes a distinct page.
+            return [
+                'mode'    => 'page',
+                'slug'    => 'ens-page-' . preg_replace( '/[^a-z0-9]+/i', '-', strtolower( (string) $arg ) ),
+                'title'   => $label,
+                'content' => sprintf(
+                    /* translators: %s: ENS source URL, e.g. cpage.php?pt=42 */
+                    __( "Placeholder for an EasyNetSites content page.\n\nOriginal ENS URL: %s\n\nThe ENS Page Maintenance importer creates one of these per cpage.php entry so your nav menu is restored immediately; copy the page body from your old ENS install into this editor.", 'societypress' ),
+                    $row['url']
+                ),
+            ];
+
+        case 'gallery':
+            return [
+                'mode'    => 'page',
+                'slug'    => 'gallery-' . preg_replace( '/[^a-z0-9]+/i', '-', strtolower( (string) $arg ) ),
+                'title'   => $label,
+                'content' => '[sp_picture_wall]',
+            ];
+
+        case 'surname':
+            return [
+                'mode'    => 'page',
+                'slug'    => 'surname-search',
+                'title'   => $label,
+                'content' => '<!-- SocietyPress surname-search page — Settings → Modules: Surname Submissions -->',
+            ];
+
+        case 'member_file':
+            return [
+                'mode'    => 'page',
+                'slug'    => 'member-file-' . preg_replace( '/[^a-z0-9]+/i', '-', strtolower( (string) $arg ) ),
+                'title'   => $label,
+                'content' => sprintf(
+                    /* translators: %s: ENS source URL, e.g. fileDownload.php?sid=12 */
+                    __( "Members-only file from EasyNetSites.\n\nOriginal ENS URL: %s\n\nUpload the actual file to the SocietyPress Documents module and update this page to link to it.", 'societypress' ),
+                    $row['url']
+                ),
+            ];
+
+        case 'donation':
+        case 'join_online':
+        case 'research_help':
+            return [
+                'mode'    => 'page',
+                'slug'    => 'ens-' . $kind . ( $arg !== '' ? '-' . preg_replace( '/[^a-z0-9]+/i', '-', strtolower( (string) $arg ) ) : '' ),
+                'title'   => $label,
+                'content' => $shortcode[ $kind ],
+            ];
+
+        case 'events':
+        case 'library_catalog':
+        case 'links':
+        case 'store':
+            return [
+                'mode'     => 'page',
+                'slug'     => $kind === 'library_catalog' ? 'library' : $kind,
+                'title'    => $label,
+                'content'  => '<!-- SocietyPress ' . esc_html( $kind ) . ' page — Settings → Modules controls visibility -->',
+                'template' => $template[ $kind ] ?? '',
+            ];
+    }
+
+    // Fallback: create a stub page noting the original ENS URL so nothing
+    // is silently dropped.
+    return [
+        'mode'    => 'page',
+        'slug'    => 'ens-row-' . (int) ( $row['row_index'] ?? 0 ),
+        'title'   => $label,
+        'content' => sprintf(
+            /* translators: %s: ENS source URL */
+            __( "This menu item came from EasyNetSites with an unrecognized URL pattern.\n\nOriginal ENS URL: %s", 'societypress' ),
+            $row['url']
+        ),
+    ];
+}
+
+/**
+ * Find or create a WordPress page for an ENS row. Existing pages are
+ * matched first by the `_sp_ens_pt` post meta key (re-import case), then
+ * by slug (existing SP installation already has the canonical page).
+ *
+ * Returns [ page_id, status ] where status is one of:
+ *   'created'  — wp_insert_post just inserted a new page
+ *   'reused'   — found by _sp_ens_pt marker (prior import) or by canonical slug
+ *   'failed'   — wp_insert_post returned an error
+ *
+ * @return array{0:int,1:string}
+ */
+function sp_ens_find_or_create_page( array $row, array $dest ): array {
+    $ens_marker = $row['kind'] . ':' . ( $row['kind_arg'] !== '' ? $row['kind_arg'] : (string) ( $row['row_index'] ?? 0 ) );
+
+    $matches = get_posts( [
+        'post_type'   => 'page',
+        'post_status' => [ 'publish', 'draft', 'pending', 'private' ],
+        'numberposts' => 1,
+        'meta_key'    => '_sp_ens_pt',
+        'meta_value'  => $ens_marker,
+        'fields'      => 'ids',
+    ] );
+    if ( ! empty( $matches ) ) return [ (int) $matches[0], 'reused' ];
+
+    $by_slug = get_page_by_path( $dest['slug'], OBJECT, 'page' );
+    if ( $by_slug instanceof WP_Post ) {
+        update_post_meta( $by_slug->ID, '_sp_ens_pt', $ens_marker );
+        return [ (int) $by_slug->ID, 'reused' ];
+    }
+
+    $page_id = wp_insert_post( [
+        'post_type'    => 'page',
+        'post_status'  => 'publish',
+        'post_title'   => $dest['title'],
+        'post_name'    => $dest['slug'],
+        'post_content' => $dest['content'] ?? '',
+    ], true );
+
+    if ( is_wp_error( $page_id ) || ! $page_id ) return [ 0, 'failed' ];
+
+    update_post_meta( (int) $page_id, '_sp_ens_pt', $ens_marker );
+    if ( ! empty( $dest['template'] ) ) {
+        update_post_meta( (int) $page_id, '_wp_page_template', $dest['template'] );
+    }
+
+    return [ (int) $page_id, 'created' ];
+}
+
+/**
+ * Import parsed ENS rows: create/reuse pages, build the nav menu, wire
+ * parent/child relationships in a second pass.
+ *
+ * @param array  $rows      Parsed rows from sp_ens_parse_page_maintenance_html().
+ * @param string $menu_name Display name of the nav menu to create/replace.
+ * @return array{pages_created:int,pages_reused:int,menu_items:int,menu_id:int,errors:array<int,string>}
+ */
+function sp_ens_import_rows( array $rows, string $menu_name ): array {
+    $result = [
+        'pages_created' => 0,
+        'pages_reused'  => 0,
+        'menu_items'    => 0,
+        'menu_id'       => 0,
+        'errors'        => [],
+    ];
+
+    // Find-or-create the nav menu by name. If it exists, clear its items
+    // first — repeat imports should replace, not stack.
+    $menu = wp_get_nav_menu_object( $menu_name );
+    if ( $menu ) {
+        $existing = wp_get_nav_menu_items( $menu->term_id, [ 'update_post_term_cache' => false ] );
+        if ( $existing ) {
+            foreach ( $existing as $mi ) {
+                wp_delete_post( (int) $mi->ID, true );
+            }
+        }
+        $menu_id = (int) $menu->term_id;
+    } else {
+        $created = wp_create_nav_menu( $menu_name );
+        if ( is_wp_error( $created ) ) {
+            $result['errors'][] = 'Could not create nav menu: ' . $created->get_error_message();
+            return $result;
+        }
+        $menu_id = (int) $created;
+    }
+    $result['menu_id'] = $menu_id;
+
+    // First pass: resolve every row to a destination + create menu items
+    // with parent=0. Track row_index → menu_item_id and row_index →
+    // page_id so the second pass can wire parents.
+    $rowindex_to_menuitem = [];
+    $rowindex_to_pageid   = [];
+
+    foreach ( $rows as $row ) {
+        if ( ! empty( $row['display'] ) && $row['display'] === false ) {
+            // Hidden ENS rows skip the menu, but we still create the page
+            // so admins can find it. ENS-hidden pages were often staging.
+            $dest = sp_ens_resolve_destination( $row );
+            if ( ( $dest['mode'] ?? '' ) === 'page' ) {
+                [ $page_id, $status ] = sp_ens_find_or_create_page( $row, $dest );
+                if ( $page_id ) {
+                    $rowindex_to_pageid[ (int) $row['row_index'] ] = $page_id;
+                    if ( $status === 'created' ) $result['pages_created']++;
+                    else                         $result['pages_reused']++;
+                }
+            }
+            continue;
+        }
+
+        $dest = sp_ens_resolve_destination( $row );
+
+        $menu_args = [
+            'menu-item-title'       => wp_strip_all_tags( $row['label'] ),
+            'menu-item-status'      => 'publish',
+            'menu-item-position'    => (int) ( $row['sort_order'] ?? 0 ),
+            'menu-item-parent-id'   => 0, // wired in second pass
+        ];
+
+        $mode = $dest['mode'] ?? '';
+        if ( $mode === 'page' ) {
+            [ $page_id, $status ] = sp_ens_find_or_create_page( $row, $dest );
+            if ( ! $page_id ) {
+                $result['errors'][] = sprintf( 'Could not create page for row %d (%s)', (int) ( $row['row_index'] ?? 0 ), $row['label'] );
+                continue;
+            }
+            $rowindex_to_pageid[ (int) $row['row_index'] ] = $page_id;
+            if ( $status === 'created' ) $result['pages_created']++;
+            else                         $result['pages_reused']++;
+            $menu_args['menu-item-object']    = 'page';
+            $menu_args['menu-item-object-id'] = $page_id;
+            $menu_args['menu-item-type']      = 'post_type';
+        } elseif ( $mode === 'logoff' ) {
+            $menu_args['menu-item-url']  = wp_logout_url( home_url( '/' ) );
+            $menu_args['menu-item-type'] = 'custom';
+        } else {
+            $menu_args['menu-item-url']  = esc_url_raw( $dest['url'] ?? '#' );
+            $menu_args['menu-item-type'] = 'custom';
+        }
+
+        $mi_id = wp_update_nav_menu_item( $menu_id, 0, $menu_args );
+        if ( is_wp_error( $mi_id ) || ! $mi_id ) {
+            $result['errors'][] = sprintf( 'Could not add menu item for row %d (%s)', (int) ( $row['row_index'] ?? 0 ), $row['label'] );
+            continue;
+        }
+        $rowindex_to_menuitem[ (int) $row['row_index'] ] = (int) $mi_id;
+        $result['menu_items']++;
+    }
+
+    // Second pass: wire parent relationships. ENS parent_id refers to
+    // another ENS row's id; in our parsed structure that maps to the
+    // row_index field of an earlier row that shares the same label as
+    // parent_label. We trust parent_label (textual) since ENS row ids
+    // aren't preserved through the parser.
+    //
+    // Build a label → row_index lookup, then resolve each child.
+    $label_to_rowindex = [];
+    foreach ( $rows as $row ) {
+        $label_to_rowindex[ $row['label'] ] = (int) ( $row['row_index'] ?? 0 );
+    }
+    foreach ( $rows as $row ) {
+        $parent_label = $row['parent_label'] ?? 'None';
+        if ( $parent_label === '' || $parent_label === 'None' ) continue;
+
+        $child_mi_id  = $rowindex_to_menuitem[ (int) ( $row['row_index'] ?? 0 ) ] ?? 0;
+        $parent_row_i = $label_to_rowindex[ $parent_label ] ?? 0;
+        $parent_mi_id = $rowindex_to_menuitem[ $parent_row_i ] ?? 0;
+
+        if ( $child_mi_id && $parent_mi_id ) {
+            update_post_meta( $child_mi_id, '_menu_item_menu_item_parent', (string) $parent_mi_id );
+        }
+    }
+
+    return $result;
+}
+
+/**
+ * Register the ENS Pages importer admin submenu.
+ */
+add_action( 'admin_menu', function () {
+    add_submenu_page(
+        'societypress',
+        __( 'Import ENS Pages — SocietyPress', 'societypress' ),
+        __( 'Import ENS Pages', 'societypress' ),
+        'manage_options',
+        'sp-import-ens-pages',
+        'sp_render_ens_pages_import_page'
+    );
+}, 25 );
+
+/**
+ * Three-step importer flow: upload → preview → confirm.
+ *
+ * The upload form stashes the HTML in a temp file under uploads/ keyed by
+ * a basename-only token (no traversal), then the preview screen reads it
+ * back, displays a row-by-row summary, and posts a confirm button that
+ * triggers the actual import.
+ */
+function sp_render_ens_pages_import_page(): void {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You do not have permission to import.', 'societypress' ) );
+    }
+
+    $action = sanitize_key( $_POST['sp_ens_action'] ?? '' );
+    $upload_dir = wp_upload_dir();
+    $temp_dir   = trailingslashit( $upload_dir['basedir'] ) . 'sp-import-temp/';
+    if ( ! is_dir( $temp_dir ) ) wp_mkdir_p( $temp_dir );
+
+    $results = null;
+    $preview = null;
+    $temp_token = '';
+
+    echo '<div class="wrap">';
+    echo '<h1>' . esc_html__( 'Import ENS Pages', 'societypress' ) . '</h1>';
+    echo '<p>' . esc_html__( 'Save your existing EasyNetSites "Menu / Page Maintenance" screen as an HTML file (browser → File → Save Page As), then upload it here. SocietyPress will read your menu structure, create matching WordPress pages, and build a navigation menu in the same order.', 'societypress' ) . '</p>';
+
+    if ( $action === 'preview' ) {
+        check_admin_referer( 'sp_ens_import' );
+        $tmp_name = $_FILES['ens_html']['tmp_name'] ?? '';
+        if ( $tmp_name && is_uploaded_file( $tmp_name ) ) {
+            $html  = (string) file_get_contents( $tmp_name );
+            $rows  = sp_ens_parse_page_maintenance_html( $html );
+            if ( ! empty( $rows ) ) {
+                // Stash the HTML in a temp file so the confirm step doesn't
+                // need re-upload. Basename-only token, no traversal.
+                $temp_token = wp_generate_password( 16, false, false ) . '.html';
+                @file_put_contents( $temp_dir . $temp_token, $html );
+                $preview = $rows;
+            } else {
+                echo '<div class="notice notice-error"><p>' . esc_html__( 'No menu rows were detected in that file. Make sure you uploaded the "Menu / Page Maintenance" page and not a different ENS screen.', 'societypress' ) . '</p></div>';
+            }
+        } else {
+            echo '<div class="notice notice-error"><p>' . esc_html__( 'No file was uploaded.', 'societypress' ) . '</p></div>';
+        }
+    } elseif ( $action === 'run_import' ) {
+        check_admin_referer( 'sp_ens_import' );
+        $token     = sanitize_file_name( $_POST['sp_ens_token'] ?? '' );
+        $temp_file = realpath( $temp_dir . $token );
+        $menu_name = sanitize_text_field( $_POST['sp_ens_menu_name'] ?? __( 'Imported from ENS', 'societypress' ) );
+
+        if ( ! $temp_file || strpos( $temp_file, realpath( $temp_dir ) ) !== 0 || ! file_exists( $temp_file ) ) {
+            echo '<div class="notice notice-error"><p>' . esc_html__( 'The uploaded preview has expired. Please upload again.', 'societypress' ) . '</p></div>';
+        } else {
+            $html    = (string) file_get_contents( $temp_file );
+            $rows    = sp_ens_parse_page_maintenance_html( $html );
+            $results = sp_ens_import_rows( $rows, $menu_name !== '' ? $menu_name : __( 'Imported from ENS', 'societypress' ) );
+            wp_delete_file( $temp_file );
+        }
+    }
+
+    // ----- Results screen -----
+    if ( $results !== null ) {
+        echo '<h2>' . esc_html__( 'Import complete', 'societypress' ) . '</h2>';
+        echo '<ul class="ul-disc">';
+        echo '<li>' . sprintf( esc_html( _n( '%d page created', '%d pages created', (int) $results['pages_created'], 'societypress' ) ), (int) $results['pages_created'] ) . '</li>';
+        echo '<li>' . sprintf( esc_html( _n( '%d page reused', '%d pages reused', (int) $results['pages_reused'], 'societypress' ) ), (int) $results['pages_reused'] ) . '</li>';
+        echo '<li>' . sprintf( esc_html( _n( '%d menu item added', '%d menu items added', (int) $results['menu_items'], 'societypress' ) ), (int) $results['menu_items'] ) . '</li>';
+        echo '</ul>';
+        if ( ! empty( $results['errors'] ) ) {
+            echo '<div class="notice notice-warning"><p><strong>' . esc_html__( 'Some rows could not be imported:', 'societypress' ) . '</strong></p><ul class="ul-disc">';
+            foreach ( $results['errors'] as $err ) {
+                echo '<li>' . esc_html( $err ) . '</li>';
+            }
+            echo '</ul></div>';
+        }
+        echo '<p><a class="button button-primary" href="' . esc_url( admin_url( 'nav-menus.php?action=edit&menu=' . (int) $results['menu_id'] ) ) . '">' . esc_html__( 'Open the imported menu in Appearance → Menus', 'societypress' ) . '</a></p>';
+        echo '</div>'; // .wrap
+        return;
+    }
+
+    // ----- Preview screen -----
+    if ( $preview !== null ) {
+        echo '<h2>' . esc_html__( 'Preview', 'societypress' ) . '</h2>';
+        echo '<p>' . sprintf( esc_html( _n( 'Detected %d row in the ENS file.', 'Detected %d rows in the ENS file.', count( $preview ), 'societypress' ) ), count( $preview ) ) . '</p>';
+
+        echo '<form method="post">';
+        wp_nonce_field( 'sp_ens_import' );
+        echo '<input type="hidden" name="sp_ens_action" value="run_import">';
+        echo '<input type="hidden" name="sp_ens_token" value="' . esc_attr( $temp_token ) . '">';
+        echo '<p><label for="sp_ens_menu_name">' . esc_html__( 'Name for the imported nav menu:', 'societypress' ) . '</label> ';
+        echo '<input type="text" id="sp_ens_menu_name" name="sp_ens_menu_name" value="' . esc_attr__( 'Imported from ENS', 'societypress' ) . '" class="regular-text"></p>';
+
+        echo '<table class="widefat striped">';
+        echo '<thead><tr>';
+        echo '<th scope="col">#</th>';
+        echo '<th scope="col">' . esc_html__( 'Label', 'societypress' ) . '</th>';
+        echo '<th scope="col">' . esc_html__( 'ENS URL', 'societypress' ) . '</th>';
+        echo '<th scope="col">' . esc_html__( 'Maps to', 'societypress' ) . '</th>';
+        echo '<th scope="col">' . esc_html__( 'Parent', 'societypress' ) . '</th>';
+        echo '<th scope="col">' . esc_html__( 'Order', 'societypress' ) . '</th>';
+        echo '</tr></thead><tbody>';
+        foreach ( $preview as $row ) {
+            $dest        = sp_ens_resolve_destination( $row );
+            $maps_to_str = $dest['mode'] === 'page'
+                ? sprintf( 'Page: %s', $dest['slug'] )
+                : ( $dest['mode'] === 'logoff' ? 'Logout' : ( 'Link: ' . ( $dest['url'] ?? '' ) ) );
+            echo '<tr>';
+            echo '<td>' . (int) ( $row['row_index'] ?? 0 ) . '</td>';
+            echo '<td>' . esc_html( $row['label'] ) . '</td>';
+            echo '<td><code>' . esc_html( $row['url'] ) . '</code></td>';
+            echo '<td>' . esc_html( $maps_to_str ) . '</td>';
+            echo '<td>' . esc_html( $row['parent_label'] ) . '</td>';
+            echo '<td>' . (int) ( $row['sort_order'] ?? 0 ) . '</td>';
+            echo '</tr>';
+        }
+        echo '</tbody></table>';
+
+        echo '<p class="sp-mt-only-0">';
+        submit_button( __( 'Import these rows', 'societypress' ), 'primary', 'submit', false );
+        echo ' &nbsp; <a class="button" href="' . esc_url( admin_url( 'admin.php?page=sp-import-ens-pages' ) ) . '">' . esc_html__( 'Cancel and upload a different file', 'societypress' ) . '</a></p>';
+        echo '</form>';
+        echo '</div>'; // .wrap
+        return;
+    }
+
+    // ----- Upload screen (default) -----
+    echo '<form method="post" enctype="multipart/form-data">';
+    wp_nonce_field( 'sp_ens_import' );
+    echo '<input type="hidden" name="sp_ens_action" value="preview">';
+    echo '<p><label for="ens_html">' . esc_html__( 'Saved ENS HTML file:', 'societypress' ) . '</label> ';
+    echo '<input type="file" id="ens_html" name="ens_html" accept=".html,.htm,text/html" required></p>';
+    submit_button( __( 'Upload &amp; Preview', 'societypress' ), 'primary' );
+    echo '</form>';
+    echo '</div>'; // .wrap
+}

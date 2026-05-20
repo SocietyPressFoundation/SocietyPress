@@ -1,0 +1,116 @@
+name: Release
+
+# Cuts a GitHub Release whenever a v*.*.* tag is pushed.
+#
+# What it does:
+#   1. Builds societypress-<version>.zip with the same flat structure
+#      the v1.0.0 release uses:
+#         societypress/societypress.php
+#         societypress/languages/societypress.pot
+#   2. Extracts the CHANGELOG section for the matching version and uses
+#      it as the release body. Falls back to the tag name if no section
+#      is found.
+#   3. Creates the GitHub Release as the latest stable (not prerelease,
+#      not draft) and attaches the zip as the sole asset.
+#
+# This is the path the in-app updater consumes — sp_get_github_release()
+# reads /releases/latest and looks for the societypress-*.zip asset.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write  # needed to create releases and upload assets
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Resolve version from tag
+        id: ver
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          echo "tag=$tag"         >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Verify plugin Version: header matches the tag
+        env:
+          EXPECTED: ${{ steps.ver.outputs.version }}
+        run: |
+          # Pull the `* Version: X.Y.Z` line from the plugin's header docblock.
+          plugin_version=$(grep -E '^[[:space:]]*\*[[:space:]]*Version:' Code/plugin/societypress.php \
+                           | head -n1 \
+                           | sed -E 's/^[[:space:]]*\*[[:space:]]*Version:[[:space:]]*//')
+          constant_version=$(grep "define( 'SOCIETYPRESS_VERSION'" Code/plugin/societypress.php \
+                             | head -n1 \
+                             | sed -E "s/.*'SOCIETYPRESS_VERSION',[[:space:]]*'([^']+)'.*/\1/")
+          echo "tag version:      $EXPECTED"
+          echo "header version:   $plugin_version"
+          echo "constant version: $constant_version"
+          if [ "$plugin_version" != "$EXPECTED" ] || [ "$constant_version" != "$EXPECTED" ]; then
+            echo "::error::Tag $EXPECTED doesn't match plugin Version header ($plugin_version) or SOCIETYPRESS_VERSION constant ($constant_version)."
+            echo "Bump both in Code/plugin/societypress.php before tagging."
+            exit 1
+          fi
+
+      - name: Build societypress-<version>.zip
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          # Stage the same flat shape v1.0.0 ships:
+          #   societypress/societypress.php
+          #   societypress/languages/societypress.pot
+          mkdir -p stage/societypress/languages
+          cp Code/plugin/societypress.php             stage/societypress/societypress.php
+          if [ -f Code/plugin/languages/societypress.pot ]; then
+            cp Code/plugin/languages/societypress.pot stage/societypress/languages/societypress.pot
+          fi
+          ( cd stage && zip -rq "../societypress-${VERSION}.zip" societypress )
+          ls -la societypress-${VERSION}.zip
+
+      - name: Extract CHANGELOG section for this version
+        id: notes
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          notes_file="release-notes.md"
+          # Pull from the first `## [VERSION]` heading up to (but not including)
+          # the next `## [` heading or the `---` separator.
+          awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" {found=1; print; next}
+            found && /^## \[/ {found=0}
+            found && /^---[[:space:]]*$/ {found=0}
+            found {print}
+          ' CHANGELOG.md > "$notes_file"
+          # Strip the leading heading — GitHub uses the release title for that.
+          sed -i '/^## \[/d' "$notes_file"
+          # If empty, fall back to a generic line.
+          if [ ! -s "$notes_file" ]; then
+            echo "SocietyPress $VERSION." > "$notes_file"
+          fi
+          echo "notes_file=$notes_file" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release and upload the zip
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION:  ${{ steps.ver.outputs.version }}
+          TAG:      ${{ steps.ver.outputs.tag }}
+        run: |
+          title="SocietyPress ${VERSION}"
+          # If the release already exists (e.g. a re-run), upload instead of recreating.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — uploading asset (clobber on)."
+            gh release upload "$TAG" "societypress-${VERSION}.zip" --clobber
+          else
+            gh release create "$TAG" \
+              --title "$title" \
+              --notes-file "release-notes.md" \
+              --latest \
+              "societypress-${VERSION}.zip"
+          fi

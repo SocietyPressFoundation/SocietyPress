@@ -15,9 +15,31 @@ set -e
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_DIR="$PROJECT_ROOT/Code/softaculous/build"
 OUTPUT_ZIP="$PROJECT_ROOT/Code/softaculous/societypress.zip"
+INFO_XML="$PROJECT_ROOT/Code/softaculous/info.xml"
 WP_URL="https://wordpress.org/latest.zip"
 
 echo "=== SocietyPress Softaculous Package Builder ==="
+echo ""
+
+# ---- Sync info.xml <ver> with the plugin's Version: header ----
+# WHY: info.xml's <ver> drove silent drift in past releases — the bundle
+# would ship a newer plugin while Softaculous's catalog still advertised
+# an older version. Pulling the truth from the plugin header on every
+# build means the two can't disagree.
+PLUGIN_VER=$(grep -E '^[[:space:]]*\*[[:space:]]*Version:' \
+             "$PROJECT_ROOT/Code/plugin/societypress.php" \
+             | head -n1 \
+             | sed -E 's/^[[:space:]]*\*[[:space:]]*Version:[[:space:]]*//')
+if [ -z "$PLUGIN_VER" ]; then
+    echo "ERROR: Could not parse Version: header from plugin file."
+    exit 1
+fi
+echo "Plugin version: $PLUGIN_VER"
+# In-place rewrite of the single <ver>...</ver> line. macOS and Linux sed
+# disagree on -i, so a tempfile + mv keeps the script portable.
+sed -E "s|<ver>[^<]*</ver>|<ver>${PLUGIN_VER}</ver>|" "$INFO_XML" > "$INFO_XML.tmp" \
+    && mv "$INFO_XML.tmp" "$INFO_XML"
+echo "Updated $(basename "$INFO_XML") <ver> to $PLUGIN_VER"
 echo ""
 
 # ---- Clean up any previous build ----

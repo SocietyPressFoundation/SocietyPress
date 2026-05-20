@@ -9732,7 +9732,112 @@ add_action( 'wp_dashboard_setup', function () {
 
     // "Welcome to WordPress!" — a tutorial for WordPress itself
     remove_action( 'welcome_panel', 'wp_welcome_panel' );
+
+    // Chair-scoped at-a-glance widget. Only added for users who actually
+    // chair at least one active committee — anyone else doesn't need it.
+    global $wpdb;
+    $uid = (int) get_current_user_id();
+    if ( $uid ) {
+        $chaired = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}sp_committees WHERE chair_user_id = %d AND active = 1",
+            $uid
+        ) );
+        if ( $chaired > 0 ) {
+            wp_add_dashboard_widget(
+                'sp_chair_overview',
+                __( 'Your Committee — at a glance', 'societypress' ),
+                'sp_render_chair_dashboard_widget'
+            );
+        }
+    }
 });
+
+/**
+ * Dashboard widget body. For each committee the current user chairs,
+ * surface the next handful of upcoming events with their registration
+ * count, capacity, and open seats. Read-only — the goal is to give
+ * the chair a quick "anything I need to act on?" view without
+ * clicking through to the full Events admin.
+ */
+function sp_render_chair_dashboard_widget(): void {
+    global $wpdb;
+    $uid = (int) get_current_user_id();
+    if ( ! $uid ) return;
+
+    $committees = $wpdb->get_results( $wpdb->prepare(
+        "SELECT id, name FROM {$wpdb->prefix}sp_committees
+         WHERE chair_user_id = %d AND active = 1
+         ORDER BY sort_order, name",
+        $uid
+    ) );
+
+    if ( ! $committees ) {
+        echo '<p>' . esc_html__( 'You no longer chair any active committees.', 'societypress' ) . '</p>';
+        return;
+    }
+
+    $today = gmdate( 'Y-m-d' );
+
+    foreach ( $committees as $c ) {
+        // Upcoming events for this committee (next 6)
+        $events = $wpdb->get_results( $wpdb->prepare(
+            "SELECT id, title, event_date, start_time, registration_enabled, registration_limit, location_name, is_virtual
+             FROM {$wpdb->prefix}sp_events
+             WHERE committee_id = %d
+               AND status = 'scheduled'
+               AND event_date >= %s
+             ORDER BY event_date ASC, start_time ASC
+             LIMIT 6",
+            $c->id, $today
+        ) );
+
+        echo '<h3 style="margin:14px 0 4px;">' . esc_html( $c->name ) . '</h3>';
+        if ( ! $events ) {
+            echo '<p style="margin:0 0 8px; color:#6b7280;">' . esc_html__( 'No upcoming events scheduled.', 'societypress' ) . '</p>';
+            continue;
+        }
+
+        // Batch-fetch confirmed/waitlisted counts per event (one query, not N).
+        $event_ids = wp_list_pluck( $events, 'id' );
+        $reg_counts = [];
+        if ( $event_ids ) {
+            $placeholders = implode( ',', array_fill( 0, count( $event_ids ), '%d' ) );
+            $counts = $wpdb->get_results( $wpdb->prepare(
+                "SELECT event_id, COALESCE(SUM(party_size), 0) AS total
+                 FROM {$wpdb->prefix}sp_event_registrations
+                 WHERE event_id IN ($placeholders) AND status IN ('confirmed','waitlisted')
+                 GROUP BY event_id",
+                ...$event_ids
+            ) );
+            foreach ( $counts as $row ) {
+                $reg_counts[ (int) $row->event_id ] = (int) $row->total;
+            }
+        }
+
+        echo '<table class="widefat striped" style="border:0;"><tbody>';
+        foreach ( $events as $e ) {
+            $when    = wp_date( 'M j', strtotime( (string) $e->event_date ) );
+            if ( $e->start_time ) $when .= ' ' . wp_date( 'g:ia', strtotime( $e->start_time ) );
+            $where   = $e->is_virtual ? __( 'Virtual', 'societypress' ) : ( $e->location_name ?: '—' );
+            $regd    = $reg_counts[ (int) $e->id ] ?? 0;
+            $cap     = (int) $e->registration_limit;
+            $reg_str = $e->registration_enabled
+                ? ( $cap > 0 ? sprintf( '%d / %d', $regd, $cap ) : (string) $regd )
+                : '—';
+            $edit_url = admin_url( 'admin.php?page=sp-event-edit&id=' . (int) $e->id );
+
+            echo '<tr>';
+            echo '<td style="white-space:nowrap;">' . esc_html( $when ) . '</td>';
+            echo '<td><a href="' . esc_url( $edit_url ) . '">' . esc_html( $e->title ) . '</a></td>';
+            echo '<td style="color:#6b7280;">' . esc_html( $where ) . '</td>';
+            echo '<td style="white-space:nowrap;">' . esc_html( $reg_str ) . '</td>';
+            echo '</tr>';
+        }
+        echo '</tbody></table>';
+    }
+
+    echo '<p style="margin-top:14px;"><a class="button button-secondary" href="' . esc_url( admin_url( 'admin.php?page=sp-events' ) ) . '">' . esc_html__( 'Manage events', 'societypress' ) . '</a></p>';
+}
 
 
 // ============================================================================
@@ -88716,4 +88821,323 @@ function sp_render_import_newsletters_upload_form(): void {
     echo '<p class="description">' . sprintf( esc_html__( 'Maximum upload size per file: %s. Pick as many PDFs as your server allows in one POST.', 'societypress' ), esc_html( $max_size ) ) . '</p>';
     submit_button( __( 'Upload PDFs', 'societypress' ), 'primary' );
     echo '</form>';
+}
+
+
+// ============================================================================
+// URL SHORTENER — society-local short links at /r/{code}
+//
+// Useful in printed materials (newsletter footers, flyers, posters) where
+// you want a memorable URL that points back into the society's own site.
+// A click on /r/{code} 301s to the saved target URL and bumps a click
+// counter so Harold can see which printed campaigns are working.
+//
+// Codes are 6-char base36 by default; the admin can edit them to any
+// slug. Targets are validated through sp_validate_external_feed_url()
+// so the shortener can't be turned into an open redirect.
+// ============================================================================
+
+/**
+ * Create the sp_short_links table on first use. Idempotent — guarded by
+ * an option flag so we don't ALTER on every admin page load.
+ */
+function sp_short_links_maybe_create_table(): void {
+    if ( get_option( 'sp_short_links_table_v1' ) ) return;
+
+    global $wpdb;
+    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+    $charset = $wpdb->get_charset_collate();
+    dbDelta( "CREATE TABLE {$wpdb->prefix}sp_short_links (
+        id                BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        code              VARCHAR(64)         NOT NULL,
+        target_url        VARCHAR(2048)       NOT NULL,
+        label             VARCHAR(255)        NULL,
+        click_count       INT UNSIGNED        NOT NULL DEFAULT 0,
+        last_clicked_at   DATETIME            NULL,
+        created_by        BIGINT(20) UNSIGNED NULL,
+        created_at        DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at        DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        UNIQUE KEY code (code),
+        KEY last_clicked_at (last_clicked_at)
+    ) {$charset};" );
+
+    update_option( 'sp_short_links_table_v1', 1, true );
+}
+add_action( 'admin_init', 'sp_short_links_maybe_create_table' );
+
+/**
+ * Generate a fresh unique short code. 6 chars of base36 = ~2 billion
+ * keyspace; collisions retry up to 5 times before giving up.
+ */
+function sp_short_links_generate_code(): string {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_short_links';
+    for ( $i = 0; $i < 5; $i++ ) {
+        // base_convert + random_int for 6 chars in [0-9a-z]
+        $n    = random_int( 60466176, 2176782335 );  // 6-char base36 range
+        $code = base_convert( (string) $n, 10, 36 );
+        $hit  = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE code = %s", $code ) );
+        if ( ! $hit ) return $code;
+    }
+    return 'sp' . substr( md5( (string) microtime( true ) ), 0, 6 );
+}
+
+/**
+ * Validate a custom slug a volunteer typed into the code field.
+ * Lowercase alphanumeric + hyphen, 2-64 chars, must not collide.
+ */
+function sp_short_links_validate_code( string $raw, ?int $exclude_id = null ): ?string {
+    $code = strtolower( trim( $raw ) );
+    if ( ! preg_match( '/^[a-z0-9-]{2,64}$/', $code ) ) return null;
+
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_short_links';
+    $sql   = $wpdb->prepare( "SELECT id FROM {$table} WHERE code = %s", $code );
+    if ( $exclude_id ) {
+        $sql .= $wpdb->prepare( ' AND id <> %d', $exclude_id );
+    }
+    $hit = (int) $wpdb->get_var( $sql );
+    return $hit ? null : $code;
+}
+
+/**
+ * Rewrite rule: /r/{code}  →  index.php?sp_short=…
+ *
+ * Registered every page load. Pretty permalink site assumed; on
+ * ugly-permalink sites the redirect handler can still be hit via
+ * ?sp_short=…
+ */
+add_action( 'init', function () {
+    add_rewrite_rule( '^r/([A-Za-z0-9_\-]+)/?$', 'index.php?sp_short=$matches[1]', 'top' );
+} );
+
+add_filter( 'query_vars', function ( $vars ) {
+    $vars[] = 'sp_short';
+    return $vars;
+} );
+
+/**
+ * Hit the matched short link, bump its counter, redirect.
+ */
+add_action( 'template_redirect', function () {
+    $code = get_query_var( 'sp_short' );
+    if ( $code === '' || $code === null ) return;
+    $code = strtolower( sanitize_text_field( (string) $code ) );
+    if ( $code === '' ) return;
+
+    global $wpdb;
+    $row = $wpdb->get_row( $wpdb->prepare(
+        "SELECT id, target_url FROM {$wpdb->prefix}sp_short_links WHERE code = %s LIMIT 1",
+        $code
+    ) );
+    if ( ! $row || ! $row->target_url ) {
+        status_header( 404 );
+        nocache_headers();
+        wp_die( esc_html__( 'Short link not found.', 'societypress' ), 'Not Found', [ 'response' => 404 ] );
+    }
+
+    // Bump click counter + timestamp. Best-effort — failure doesn't block
+    // the redirect.
+    $wpdb->query( $wpdb->prepare(
+        "UPDATE {$wpdb->prefix}sp_short_links
+         SET click_count = click_count + 1, last_clicked_at = %s
+         WHERE id = %d",
+        current_time( 'mysql' ),
+        (int) $row->id
+    ) );
+
+    wp_redirect( esc_url_raw( $row->target_url ), 301 );
+    exit;
+} );
+
+/**
+ * Admin: SocietyPress → Short Links submenu (under Website group).
+ */
+add_action( 'admin_menu', function () {
+    add_submenu_page(
+        'societypress',
+        __( 'Short Links — SocietyPress', 'societypress' ),
+        __( 'Short Links', 'societypress' ),
+        'manage_options',
+        'sp-short-links',
+        'sp_render_short_links_admin_page'
+    );
+}, 30 );
+
+function sp_render_short_links_admin_page(): void {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'Insufficient permissions.', 'societypress' ) );
+    }
+    sp_short_links_maybe_create_table();
+
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_short_links';
+    $msg   = '';
+    $err   = '';
+
+    // Handle POST actions: create / update / delete
+    if ( ! empty( $_POST['sp_short_action'] ) ) {
+        check_admin_referer( 'sp_short_links' );
+        $action     = sanitize_key( $_POST['sp_short_action'] );
+        $row_id     = (int) ( $_POST['row_id'] ?? 0 );
+        $raw_code   = (string) ( $_POST['code'] ?? '' );
+        $raw_target = trim( (string) ( $_POST['target_url'] ?? '' ) );
+        $label      = sanitize_text_field( (string) ( $_POST['label'] ?? '' ) );
+
+        if ( $action === 'delete' && $row_id ) {
+            $wpdb->delete( $table, [ 'id' => $row_id ] );
+            $msg = __( 'Short link deleted.', 'societypress' );
+        } elseif ( in_array( $action, [ 'create', 'update' ], true ) ) {
+            // Validate target URL via the shared validator. Open-redirect guard.
+            $safe = function_exists( 'sp_validate_external_feed_url' )
+                ? sp_validate_external_feed_url( $raw_target )
+                : esc_url_raw( $raw_target );
+            if ( ! $safe ) {
+                $err = __( 'Target URL is not valid or not allowed.', 'societypress' );
+            } else {
+                $code = $raw_code !== ''
+                    ? sp_short_links_validate_code( $raw_code, $action === 'update' ? $row_id : null )
+                    : sp_short_links_generate_code();
+                if ( $code === null ) {
+                    $err = __( 'Code must be 2–64 lowercase letters, digits, or hyphens and not already in use.', 'societypress' );
+                } elseif ( $action === 'create' ) {
+                    $wpdb->insert( $table, [
+                        'code'       => $code,
+                        'target_url' => esc_url_raw( $safe ),
+                        'label'      => $label,
+                        'created_by' => (int) get_current_user_id(),
+                    ] );
+                    $msg = sprintf( /* translators: %s short URL path */ __( 'Created /r/%s', 'societypress' ), $code );
+                } else {
+                    $wpdb->update( $table, [
+                        'code'       => $code,
+                        'target_url' => esc_url_raw( $safe ),
+                        'label'      => $label,
+                    ], [ 'id' => $row_id ] );
+                    $msg = __( 'Short link updated.', 'societypress' );
+                }
+            }
+        }
+    }
+
+    $rows = $wpdb->get_results( "SELECT * FROM {$table} ORDER BY id DESC LIMIT 500" );
+    $edit_id = (int) ( $_GET['edit'] ?? 0 );
+    $editing = $edit_id ? $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", $edit_id ) ) : null;
+
+    ?>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Short Links', 'societypress' ); ?></h1>
+        <p class="description sp-max-w-780">
+            <?php esc_html_e( 'Create short, memorable links at /r/{code} that redirect to longer URLs. Useful in printed materials and oral announcements.', 'societypress' ); ?>
+        </p>
+
+        <?php if ( $msg ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php echo esc_html( $msg ); ?></p></div>
+        <?php endif; ?>
+        <?php if ( $err ) : ?>
+            <div class="notice notice-error is-dismissible"><p><?php echo esc_html( $err ); ?></p></div>
+        <?php endif; ?>
+
+        <h2 class="sp-mt-only-0"><?php echo $editing ? esc_html__( 'Edit short link', 'societypress' ) : esc_html__( 'Create a short link', 'societypress' ); ?></h2>
+        <form method="post" class="card" style="max-width:100%; padding:16px;">
+            <?php wp_nonce_field( 'sp_short_links' ); ?>
+            <input type="hidden" name="sp_short_action" value="<?php echo $editing ? 'update' : 'create'; ?>">
+            <?php if ( $editing ) : ?>
+                <input type="hidden" name="row_id" value="<?php echo (int) $editing->id; ?>">
+            <?php endif; ?>
+            <table class="form-table"><tbody>
+                <tr>
+                    <th scope="row"><label for="code"><?php esc_html_e( 'Code', 'societypress' ); ?></label></th>
+                    <td>
+                        <code><?php echo esc_html( home_url( '/r/' ) ); ?></code><input type="text"
+                               id="code" name="code"
+                               value="<?php echo esc_attr( $editing->code ?? '' ); ?>"
+                               placeholder="<?php esc_attr_e( 'auto-generated if blank', 'societypress' ); ?>"
+                               pattern="[a-z0-9-]{2,64}"
+                               class="regular-text">
+                        <p class="description"><?php esc_html_e( 'Lowercase letters, digits, and hyphens. Leave blank to auto-generate.', 'societypress' ); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="target_url"><?php esc_html_e( 'Target URL', 'societypress' ); ?></label></th>
+                    <td><input type="url" id="target_url" name="target_url" class="large-text"
+                               value="<?php echo esc_attr( $editing->target_url ?? '' ); ?>"
+                               placeholder="https://"
+                               required></td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="label"><?php esc_html_e( 'Label (optional)', 'societypress' ); ?></label></th>
+                    <td><input type="text" id="label" name="label" class="regular-text"
+                               value="<?php echo esc_attr( $editing->label ?? '' ); ?>"
+                               placeholder="<?php esc_attr_e( 'e.g. Fall newsletter QR', 'societypress' ); ?>"></td>
+                </tr>
+            </tbody></table>
+            <p class="sp-mt-only-0">
+                <?php submit_button( $editing ? __( 'Save changes', 'societypress' ) : __( 'Create short link', 'societypress' ), 'primary', 'submit', false ); ?>
+                <?php if ( $editing ) : ?>
+                    &nbsp; <a class="button" href="<?php echo esc_url( admin_url( 'admin.php?page=sp-short-links' ) ); ?>"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
+                <?php endif; ?>
+            </p>
+        </form>
+
+        <h2 style="margin-top:24px;"><?php esc_html_e( 'All short links', 'societypress' ); ?></h2>
+        <?php if ( ! $rows ) : ?>
+            <p style="color:#6b7280; padding:20px 0;"><?php esc_html_e( 'No short links yet.', 'societypress' ); ?></p>
+        <?php else : ?>
+            <table class="widefat striped">
+                <thead><tr>
+                    <th scope="col"><?php esc_html_e( 'Short URL', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Target', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Label', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Clicks', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Last clicked', 'societypress' ); ?></th>
+                    <th scope="col"></th>
+                </tr></thead>
+                <tbody>
+                <?php foreach ( $rows as $r ) :
+                    $short_url = home_url( '/r/' . $r->code );
+                ?>
+                    <tr>
+                        <td>
+                            <a href="<?php echo esc_url( $short_url ); ?>" target="_blank" rel="noopener"><?php echo esc_html( str_replace( home_url( '/' ), '/', $short_url ) ); ?></a>
+                            <button type="button" class="button-link sp-short-copy" data-url="<?php echo esc_attr( $short_url ); ?>" style="margin-left:6px; font-size:11px;"><?php esc_html_e( 'copy', 'societypress' ); ?></button>
+                        </td>
+                        <td><a href="<?php echo esc_url( $r->target_url ); ?>" target="_blank" rel="noopener nofollow"><?php echo esc_html( wp_html_excerpt( $r->target_url, 70, '…' ) ); ?></a></td>
+                        <td><?php echo esc_html( $r->label ?? '' ); ?></td>
+                        <td><?php echo (int) $r->click_count; ?></td>
+                        <td><?php echo $r->last_clicked_at ? esc_html( mysql2date( 'M j, Y g:ia', $r->last_clicked_at ) ) : '—'; ?></td>
+                        <td style="white-space:nowrap;">
+                            <a class="button button-small" href="<?php echo esc_url( admin_url( 'admin.php?page=sp-short-links&edit=' . (int) $r->id ) ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
+                            <form method="post" class="sp-inline" style="display:inline;" data-sp-confirm="<?php esc_attr_e( 'Delete this short link? Any printed references to it will stop working.', 'societypress' ); ?>">
+                                <?php wp_nonce_field( 'sp_short_links' ); ?>
+                                <input type="hidden" name="sp_short_action" value="delete">
+                                <input type="hidden" name="row_id" value="<?php echo (int) $r->id; ?>">
+                                <button type="submit" class="button button-small button-link-delete"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                            </form>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+    </div>
+    <script>
+    (function () {
+        document.querySelectorAll('.sp-short-copy').forEach(function (b) {
+            b.addEventListener('click', function () {
+                var url = b.getAttribute('data-url') || '';
+                if ( ! url ) return;
+                if ( navigator.clipboard && navigator.clipboard.writeText ) {
+                    navigator.clipboard.writeText(url).then(function () {
+                        var t = b.textContent;
+                        b.textContent = '<?php echo esc_js( __( 'copied!', 'societypress' ) ); ?>';
+                        setTimeout(function () { b.textContent = t; }, 1500);
+                    });
+                }
+            });
+        });
+    })();
+    </script>
+    <?php
 }

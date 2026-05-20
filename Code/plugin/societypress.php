@@ -39977,7 +39977,7 @@ function sp_render_import_events_page(): void {
             $results = [
                 'imported'           => 0,
                 'skipped'            => 0,
-                'errors'             => [ 'The uploaded file has expired. Please upload again.' ],
+                'errors'             => [ __( 'The uploaded file has expired. Please upload again.', 'societypress' ) ],
                 'categories_created' => [],
             ];
         }
@@ -40033,31 +40033,31 @@ function sp_render_import_events_page(): void {
     // human-friendly labels shown in the dropdown.
     // ------------------------------------------------------------------
     $target_fields = [
-        'title'                => 'Title',
-        'event_date'           => 'Date',
-        'start_time'           => 'Start Time',
-        'end_time'             => 'End Time',
-        'category'             => 'Category',
-        'description'          => 'Description',
-        'location_name'        => 'Venue / Location Name',
-        'location_address'     => 'Address',
-        'is_virtual'           => 'Virtual Event (yes/no)',
-        'virtual_url'          => 'Virtual Meeting URL',
-        'visibility'           => 'Visibility (public/members_only)',
-        'registration_enabled' => 'Registration Enabled (yes/no)',
-        'registration_limit'   => 'Registration Limit',
-        'guest_registration'   => 'Guest Registration (yes/no)',
-        'member_price'         => 'Member Price',
-        'nonmember_price'      => 'Non-Member Price',
-        'payment_mode'         => 'Payment Mode',
-        'price_description'    => 'Price Description',
-        'contact_name'         => 'Contact Name',
-        'contact_email'        => 'Contact Email',
-        'contact_phone'        => 'Contact Phone',
-        'recurrence'           => 'Recurrence (weekly / monthly-nth / monthly-date)',
-        'recurrence_end_date'  => 'Recurrence End Date',
-        'speakers'             => 'Speakers (semicolon-separated names)',
-        'slots'                => 'Slots (semicolon-separated; each "HH:MM-HH:MM|description|capacity")',
+        'title'                => __( 'Title', 'societypress' ),
+        'event_date'           => __( 'Date', 'societypress' ),
+        'start_time'           => __( 'Start Time', 'societypress' ),
+        'end_time'             => __( 'End Time', 'societypress' ),
+        'category'             => __( 'Category', 'societypress' ),
+        'description'          => __( 'Description', 'societypress' ),
+        'location_name'        => __( 'Venue / Location Name', 'societypress' ),
+        'location_address'     => __( 'Address', 'societypress' ),
+        'is_virtual'           => __( 'Virtual Event (yes/no)', 'societypress' ),
+        'virtual_url'          => __( 'Virtual Meeting URL', 'societypress' ),
+        'visibility'           => __( 'Visibility (public/members_only)', 'societypress' ),
+        'registration_enabled' => __( 'Registration Enabled (yes/no)', 'societypress' ),
+        'registration_limit'   => __( 'Registration Limit', 'societypress' ),
+        'guest_registration'   => __( 'Guest Registration (yes/no)', 'societypress' ),
+        'member_price'         => __( 'Member Price', 'societypress' ),
+        'nonmember_price'      => __( 'Non-Member Price', 'societypress' ),
+        'payment_mode'         => __( 'Payment Mode', 'societypress' ),
+        'price_description'    => __( 'Price Description', 'societypress' ),
+        'contact_name'         => __( 'Contact Name', 'societypress' ),
+        'contact_email'        => __( 'Contact Email', 'societypress' ),
+        'contact_phone'        => __( 'Contact Phone', 'societypress' ),
+        'recurrence'           => __( 'Recurrence (weekly / monthly-nth / monthly-date)', 'societypress' ),
+        'recurrence_end_date'  => __( 'Recurrence End Date', 'societypress' ),
+        'speakers'             => __( 'Speakers (semicolon-separated names)', 'societypress' ),
+        'slots'                => __( 'Slots (semicolon-separated; each "HH:MM-HH:MM|description|capacity")', 'societypress' ),
     ];
 
     // Auto-mapping: try to match CSV column names to target fields.
@@ -54794,6 +54794,9 @@ function sp_library_normalize_header( string $header ): string {
 }
 
 function sp_render_library_import_page(): void {
+    if ( ! current_user_can( 'sp_manage_library' ) && ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You do not have permission to import the library catalog.', 'societypress' ) );
+    }
     global $wpdb;
 
     $results = null;
@@ -54827,8 +54830,10 @@ function sp_render_library_import_page(): void {
             wp_delete_file( $temp_file );
         } else {
             $results = [
-                'imported' => 0, 'skipped' => 0,
-                'errors'   => [ __( 'The uploaded file has expired. Please upload again.', 'societypress' ) ],
+                'imported'           => 0,
+                'skipped'            => 0,
+                'errors'             => [ __( 'The uploaded file has expired. Please upload again.', 'societypress' ) ],
+                'categories_created' => [],
             ];
         }
     }
@@ -65084,6 +65089,18 @@ function sp_generate_newsletter_cover_for_pdf( int $pdf_id ) {
     if ( ! $pdf_path || ! file_exists( $pdf_path ) ) {
         return new WP_Error( 'sp_pdf_missing', __( 'PDF file not found.', 'societypress' ) );
     }
+
+    // Confine the path to the uploads dir before handing it to Imagick.
+    // get_attached_file() derives from attachment meta, which a prior
+    // import step could have tampered with — and the "[0]" page suffix
+    // we append means a traversal string could point Imagick at an
+    // arbitrary file. realpath() + prefix check closes that.
+    $real    = realpath( $pdf_path );
+    $up_base = realpath( wp_upload_dir()['basedir'] );
+    if ( ! $real || ! $up_base || strpos( $real, $up_base ) !== 0 ) {
+        return new WP_Error( 'sp_pdf_path', __( 'PDF is outside the uploads directory.', 'societypress' ) );
+    }
+    $pdf_path = $real;
 
     if ( ! class_exists( 'Imagick' ) ) {
         return new WP_Error( 'sp_no_imagick', __( 'Imagick extension not available. Upload a cover image manually.', 'societypress' ) );
@@ -86384,13 +86401,22 @@ add_action( 'admin_post_sp_theme_preset_import', function () {
 function sp_spchildtheme_sanitize_css( string $css ): string {
     // Drop CSS comments first — they can hide other vectors.
     $css = preg_replace( '#/\*.*?\*/#s', '', $css );
-    // Drop HTML-style comments and script/style tags.
+    // Drop HTML-style comments.
     $css = preg_replace( '#<!--.*?-->#s', '', $css );
+    // Drop script/style/etc. tag PAIRS.
     $css = preg_replace( '#<\s*(script|style|iframe|object|embed)\b[^>]*>.*?<\s*/\s*\1\s*>#is', '', $css );
+    // CRITICAL: strip ANY angle-bracket tag, including a bare closing
+    // </style>. The sanitized CSS is emitted inside <style>…</style>, so a
+    // lone "</style><img onerror=…>" would break out of the style block
+    // and inject markup into the page. Removing all < and > defeats that.
+    $css = preg_replace( '#</?\s*[a-z][^>]*>#is', '', $css );
+    $css = str_replace( [ '<', '>' ], '', $css );
     // Strip @import — bundle CSS must not pull from elsewhere.
     $css = preg_replace( '#@import[^;]*;#i', '', $css );
-    // Strip JS-ish URI schemes anywhere they appear.
-    $css = preg_replace( '#(?:javascript|vbscript|data:\s*text/html)\s*:[^;\)\}]*#i', '', $css );
+    // Strip JS-ish and data URI schemes anywhere they appear (including
+    // data:image/svg+xml which can carry script in some contexts).
+    $css = preg_replace( '#(?:javascript|vbscript)\s*:[^;\)\}]*#i', '', $css );
+    $css = preg_replace( '#data:\s*(?:text/html|image/svg\+xml)[^;\)\}]*#i', '', $css );
     // expression() and behavior: are IE-only but historic XSS vectors.
     $css = preg_replace( '#expression\s*\([^)]*\)#i', '', $css );
     $css = preg_replace( '#behavior\s*:[^;]*;?#i', '', $css );
@@ -86432,8 +86458,10 @@ function sp_spchildtheme_parse_archive( string $zip_path ) {
     $css      = null;
     $images   = [];
 
-    $allowed_image_ext   = [ 'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg' ];
-    $allowed_image_mimes = [ 'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml' ];
+    // SVG deliberately excluded: an SVG can carry inline <script> and would
+    // be served from a web-accessible uploads path. Raster formats only.
+    $allowed_image_ext   = [ 'jpg', 'jpeg', 'png', 'gif', 'webp' ];
+    $allowed_image_mimes = [ 'image/jpeg', 'image/png', 'image/gif', 'image/webp' ];
 
     for ( $i = 0; $i < $zip->numFiles; $i++ ) {
         $name = (string) $zip->getNameIndex( $i );
@@ -86527,6 +86555,12 @@ function sp_spchildtheme_apply( array $parsed ) {
         $up = wp_upload_dir();
         $dir = trailingslashit( $up['basedir'] ) . 'sp-spchildtheme/' . $slug;
         if ( ! is_dir( $dir ) ) wp_mkdir_p( $dir );
+        // Defense in depth: block PHP execution + directory listing in the
+        // asset folder even though only sniffed raster images land here.
+        $ht = trailingslashit( $up['basedir'] ) . 'sp-spchildtheme/.htaccess';
+        if ( ! file_exists( $ht ) ) {
+            @file_put_contents( $ht, "Options -Indexes\n<FilesMatch \"\\.(php|phtml|phar)$\">\nDeny from all\n</FilesMatch>\n" );
+        }
         foreach ( $parsed['images'] as $name => $blob ) {
             $safe = sanitize_file_name( $name );
             if ( $safe === '' ) continue;
@@ -87442,6 +87476,25 @@ add_action( 'admin_notices', function () {
 } );
 
 
+/**
+ * Create the shared sp-import-temp/ staging dir and drop a deny-all
+ * .htaccess so uploaded stash files are never web-served, even if this
+ * importer is the first to create the directory on a fresh site.
+ */
+function sp_ensure_import_temp_dir(): string {
+    $upload_dir = wp_upload_dir();
+    $temp_dir   = trailingslashit( $upload_dir['basedir'] ) . 'sp-import-temp/';
+    if ( ! is_dir( $temp_dir ) ) {
+        wp_mkdir_p( $temp_dir );
+    }
+    $ht = $temp_dir . '.htaccess';
+    if ( ! file_exists( $ht ) ) {
+        @file_put_contents( $ht, "Deny from all\n" );
+    }
+    return $temp_dir;
+}
+
+
 // ============================================================================
 // ENS PAGE MAINTENANCE IMPORTER
 //
@@ -87624,6 +87677,10 @@ function sp_ens_resolve_destination( array $row ): array {
     $label = $row['label'] !== '' ? $row['label'] : __( 'Untitled', 'societypress' );
     $kind  = $row['kind'];
     $arg   = $row['kind_arg'];
+    // The URL comes from parsed ENS HTML (an href attribute). It gets
+    // interpolated into page content and nav-item URLs below; strip any
+    // markup so a doctored export can't smuggle <script> into a page.
+    $row['url'] = esc_url_raw( (string) ( $row['url'] ?? '' ) );
 
     // Shortcode-backed destinations: build a page with the SP shortcode in
     // the body. The volunteer can edit the page later; the shortcode wires
@@ -87843,7 +87900,7 @@ function sp_ens_import_rows( array $rows, string $menu_name ): array {
     } else {
         $created = wp_create_nav_menu( $menu_name );
         if ( is_wp_error( $created ) ) {
-            $result['errors'][] = 'Could not create nav menu: ' . $created->get_error_message();
+            $result['errors'][] = sprintf( /* translators: %s: error message */ __( 'Could not create nav menu: %s', 'societypress' ), $created->get_error_message() );
             return $result;
         }
         $menu_id = (int) $created;
@@ -87885,7 +87942,7 @@ function sp_ens_import_rows( array $rows, string $menu_name ): array {
         if ( $mode === 'page' ) {
             [ $page_id, $status ] = sp_ens_find_or_create_page( $row, $dest );
             if ( ! $page_id ) {
-                $result['errors'][] = sprintf( 'Could not create page for row %d (%s)', (int) ( $row['row_index'] ?? 0 ), $row['label'] );
+                $result['errors'][] = sprintf( /* translators: 1: row number, 2: row label */ __( 'Could not create page for row %1$d (%2$s)', 'societypress' ), (int) ( $row['row_index'] ?? 0 ), $row['label'] );
                 continue;
             }
             $rowindex_to_pageid[ (int) $row['row_index'] ] = $page_id;
@@ -87904,7 +87961,7 @@ function sp_ens_import_rows( array $rows, string $menu_name ): array {
 
         $mi_id = wp_update_nav_menu_item( $menu_id, 0, $menu_args );
         if ( is_wp_error( $mi_id ) || ! $mi_id ) {
-            $result['errors'][] = sprintf( 'Could not add menu item for row %d (%s)', (int) ( $row['row_index'] ?? 0 ), $row['label'] );
+            $result['errors'][] = sprintf( /* translators: 1: row number, 2: row label */ __( 'Could not add menu item for row %1$d (%2$s)', 'societypress' ), (int) ( $row['row_index'] ?? 0 ), $row['label'] );
             continue;
         }
         $rowindex_to_menuitem[ (int) $row['row_index'] ] = (int) $mi_id;
@@ -87966,9 +88023,7 @@ function sp_render_ens_pages_import_page(): void {
     }
 
     $action = sanitize_key( $_POST['sp_ens_action'] ?? '' );
-    $upload_dir = wp_upload_dir();
-    $temp_dir   = trailingslashit( $upload_dir['basedir'] ) . 'sp-import-temp/';
-    if ( ! is_dir( $temp_dir ) ) wp_mkdir_p( $temp_dir );
+    $temp_dir = sp_ensure_import_temp_dir();
 
     $results = null;
     $preview = null;
@@ -87981,7 +88036,26 @@ function sp_render_ens_pages_import_page(): void {
     if ( $action === 'preview' ) {
         check_admin_referer( 'sp_ens_import' );
         $tmp_name = $_FILES['ens_html']['tmp_name'] ?? '';
+        $bad_upload = false;
         if ( $tmp_name && is_uploaded_file( $tmp_name ) ) {
+            // Size cap — a saved Page Maintenance screen is a few hundred KB
+            // at most. Reject anything over 5MB before reading into memory.
+            if ( (int) filesize( $tmp_name ) > 5 * 1024 * 1024 ) {
+                echo '<div class="notice notice-error"><p>' . esc_html__( 'That file is too large to be an ENS page (over 5MB).', 'societypress' ) . '</p></div>';
+                $bad_upload = true;
+            }
+            // MIME sniff — must look like HTML/text, not a disguised script.
+            if ( ! $bad_upload && function_exists( 'finfo_open' ) ) {
+                $finfo = finfo_open( FILEINFO_MIME_TYPE );
+                $mime  = $finfo ? finfo_file( $finfo, $tmp_name ) : '';
+                if ( $finfo ) finfo_close( $finfo );
+                if ( $mime && strpos( $mime, 'text/' ) !== 0 && $mime !== 'application/xml' ) {
+                    echo '<div class="notice notice-error"><p>' . esc_html__( 'That file does not look like a saved HTML page.', 'societypress' ) . '</p></div>';
+                    $bad_upload = true;
+                }
+            }
+        }
+        if ( ! $bad_upload && $tmp_name && is_uploaded_file( $tmp_name ) ) {
             $html  = (string) file_get_contents( $tmp_name );
             $rows  = sp_ens_parse_page_maintenance_html( $html );
             if ( ! empty( $rows ) ) {
@@ -87993,7 +88067,7 @@ function sp_render_ens_pages_import_page(): void {
             } else {
                 echo '<div class="notice notice-error"><p>' . esc_html__( 'No menu rows were detected in that file. Make sure you uploaded the "Menu / Page Maintenance" page and not a different ENS screen.', 'societypress' ) . '</p></div>';
             }
-        } else {
+        } elseif ( ! $bad_upload ) {
             echo '<div class="notice notice-error"><p>' . esc_html__( 'No file was uploaded.', 'societypress' ) . '</p></div>';
         }
     } elseif ( $action === 'run_import' ) {
@@ -88056,8 +88130,10 @@ function sp_render_ens_pages_import_page(): void {
         foreach ( $preview as $row ) {
             $dest        = sp_ens_resolve_destination( $row );
             $maps_to_str = $dest['mode'] === 'page'
-                ? sprintf( 'Page: %s', $dest['slug'] )
-                : ( $dest['mode'] === 'logoff' ? 'Logout' : ( 'Link: ' . ( $dest['url'] ?? '' ) ) );
+                ? sprintf( /* translators: %s: page slug */ __( 'Page: %s', 'societypress' ), $dest['slug'] )
+                : ( $dest['mode'] === 'logoff'
+                    ? __( 'Logout', 'societypress' )
+                    : sprintf( /* translators: %s: destination URL */ __( 'Link: %s', 'societypress' ), $dest['url'] ?? '' ) );
             echo '<tr>';
             echo '<td>' . (int) ( $row['row_index'] ?? 0 ) . '</td>';
             echo '<td>' . esc_html( $row['label'] ) . '</td>';
@@ -88271,7 +88347,9 @@ function sp_render_import_newsletters_page(): void {
             $file_id  = (int) ( $raw['file_id']  ?? 0 );
             $cover_id = (int) ( $raw['cover_id'] ?? 0 );
             if ( ! $file_id ) continue;
-            if ( ! empty( $raw['skip'] ) )   continue;
+            // The review form uses an "import" checkbox; an unchecked box
+            // sends no value, so skip any row that wasn't explicitly ticked.
+            if ( empty( $raw['import'] ) ) continue;
 
             $row = [
                 'title'        => sanitize_text_field( (string) ( $raw['title'] ?? '' ) ),
@@ -88284,7 +88362,7 @@ function sp_render_import_newsletters_page(): void {
 
             $result = sp_newsletters_insert_row( $row, $file_id, $cover_id, $user_id );
             if ( is_wp_error( $result ) ) {
-                $errors[] = sprintf( '%s: %s', $row['title'] ?: 'Untitled', $result->get_error_message() );
+                $errors[] = sprintf( /* translators: 1: newsletter title, 2: error message */ __( '%1$s: %2$s', 'societypress' ), $row['title'] ?: __( 'Untitled', 'societypress' ), $result->get_error_message() );
             } else {
                 $created++;
             }
@@ -88327,7 +88405,7 @@ function sp_render_import_newsletters_page(): void {
 
             if ( $name === '' || $err === UPLOAD_ERR_NO_FILE ) continue;
             if ( $err !== UPLOAD_ERR_OK ) {
-                $errors[] = sprintf( '%s: upload error code %d', $name, (int) $err );
+                $errors[] = sprintf( /* translators: 1: file name, 2: upload error code */ __( '%1$s: upload error code %2$d', 'societypress' ), $name, (int) $err );
                 continue;
             }
             // Validate it's actually a PDF
@@ -88335,7 +88413,7 @@ function sp_render_import_newsletters_page(): void {
                 ? ( $finfo = finfo_open( FILEINFO_MIME_TYPE ) ) ? finfo_file( $finfo, $tmp_name ) : ''
                 : $type;
             if ( $real_type !== 'application/pdf' ) {
-                $errors[] = sprintf( '%s: not a PDF (detected %s)', $name, $real_type ?: 'unknown' );
+                $errors[] = sprintf( /* translators: 1: file name, 2: detected MIME type */ __( '%1$s: not a PDF (detected %2$s)', 'societypress' ), $name, $real_type ?: __( 'unknown', 'societypress' ) );
                 continue;
             }
 
@@ -88350,7 +88428,7 @@ function sp_render_import_newsletters_page(): void {
             ];
             $handled = wp_handle_upload( $file_array, [ 'test_form' => false, 'action' => 'sp_nl_import' ] );
             if ( ! empty( $handled['error'] ) ) {
-                $errors[] = sprintf( '%s: %s', $name, $handled['error'] );
+                $errors[] = sprintf( /* translators: 1: file name, 2: error message */ __( '%1$s: %2$s', 'societypress' ), $name, $handled['error'] );
                 continue;
             }
 
@@ -88361,7 +88439,7 @@ function sp_render_import_newsletters_page(): void {
             ], $handled['file'] );
 
             if ( is_wp_error( $attachment_id ) || ! $attachment_id ) {
-                $errors[] = sprintf( '%s: could not register as attachment', $name );
+                $errors[] = sprintf( /* translators: %s: file name */ __( '%s: could not register as attachment', 'societypress' ), $name );
                 continue;
             }
             $metadata = wp_generate_attachment_metadata( (int) $attachment_id, $handled['file'] );
@@ -88487,36 +88565,36 @@ function sp_records_bulk_suggest_from_filename( string $filename ): array {
     $base = preg_replace( '/^records?[\-_]/', '', $base );  // strip "records-" prefix
 
     $map = [
-        'cemetery'        => [ 'Cemetery Records',        'cemetery' ],
-        'cemeteries'      => [ 'Cemetery Records',        'cemetery' ],
-        'burial'          => [ 'Cemetery Records',        'cemetery' ],
-        'burials'         => [ 'Cemetery Records',        'cemetery' ],
-        'tombstone'       => [ 'Cemetery Records',        'cemetery' ],
-        'death'           => [ 'Death Records',           'vital' ],
-        'deaths'          => [ 'Death Records',           'vital' ],
-        'obituaries'      => [ 'Obituaries',              'vital' ],
-        'obituary'        => [ 'Obituaries',              'vital' ],
-        'marriage'        => [ 'Marriage Records',        'vital' ],
-        'marriages'       => [ 'Marriage Records',        'vital' ],
-        'birth'           => [ 'Birth Records',           'vital' ],
-        'births'          => [ 'Birth Records',           'vital' ],
-        'naturalization'  => [ 'Naturalization Records',  'immigration' ],
-        'naturalizations' => [ 'Naturalization Records',  'immigration' ],
-        'immigration'     => [ 'Immigration Records',     'immigration' ],
-        'census'          => [ 'Census Records',          'census' ],
-        'directory'       => [ 'City Directory',          'directory' ],
-        'directories'     => [ 'City Directory',          'directory' ],
-        'will'            => [ 'Wills and Probate',       'probate' ],
-        'wills'           => [ 'Wills and Probate',       'probate' ],
-        'probate'         => [ 'Wills and Probate',       'probate' ],
-        'land'            => [ 'Land Records',            'land' ],
-        'deed'            => [ 'Land Records',            'land' ],
-        'deeds'           => [ 'Land Records',            'land' ],
-        'military'        => [ 'Military Records',        'military' ],
-        'pension'         => [ 'Pension Records',         'military' ],
-        'church'          => [ 'Church Records',          'church' ],
-        'baptism'         => [ 'Baptism Records',         'church' ],
-        'baptisms'        => [ 'Baptism Records',         'church' ],
+        'cemetery'        => [ __( 'Cemetery Records', 'societypress' ),       'cemetery' ],
+        'cemeteries'      => [ __( 'Cemetery Records', 'societypress' ),       'cemetery' ],
+        'burial'          => [ __( 'Cemetery Records', 'societypress' ),       'cemetery' ],
+        'burials'         => [ __( 'Cemetery Records', 'societypress' ),       'cemetery' ],
+        'tombstone'       => [ __( 'Cemetery Records', 'societypress' ),       'cemetery' ],
+        'death'           => [ __( 'Death Records', 'societypress' ),          'vital' ],
+        'deaths'          => [ __( 'Death Records', 'societypress' ),          'vital' ],
+        'obituaries'      => [ __( 'Obituaries', 'societypress' ),             'vital' ],
+        'obituary'        => [ __( 'Obituaries', 'societypress' ),             'vital' ],
+        'marriage'        => [ __( 'Marriage Records', 'societypress' ),       'vital' ],
+        'marriages'       => [ __( 'Marriage Records', 'societypress' ),       'vital' ],
+        'birth'           => [ __( 'Birth Records', 'societypress' ),          'vital' ],
+        'births'          => [ __( 'Birth Records', 'societypress' ),          'vital' ],
+        'naturalization'  => [ __( 'Naturalization Records', 'societypress' ), 'immigration' ],
+        'naturalizations' => [ __( 'Naturalization Records', 'societypress' ), 'immigration' ],
+        'immigration'     => [ __( 'Immigration Records', 'societypress' ),    'immigration' ],
+        'census'          => [ __( 'Census Records', 'societypress' ),         'census' ],
+        'directory'       => [ __( 'City Directory', 'societypress' ),         'directory' ],
+        'directories'     => [ __( 'City Directory', 'societypress' ),         'directory' ],
+        'will'            => [ __( 'Wills and Probate', 'societypress' ),      'probate' ],
+        'wills'           => [ __( 'Wills and Probate', 'societypress' ),      'probate' ],
+        'probate'         => [ __( 'Wills and Probate', 'societypress' ),      'probate' ],
+        'land'            => [ __( 'Land Records', 'societypress' ),           'land' ],
+        'deed'            => [ __( 'Land Records', 'societypress' ),           'land' ],
+        'deeds'           => [ __( 'Land Records', 'societypress' ),           'land' ],
+        'military'        => [ __( 'Military Records', 'societypress' ),       'military' ],
+        'pension'         => [ __( 'Pension Records', 'societypress' ),        'military' ],
+        'church'          => [ __( 'Church Records', 'societypress' ),         'church' ],
+        'baptism'         => [ __( 'Baptism Records', 'societypress' ),        'church' ],
+        'baptisms'        => [ __( 'Baptism Records', 'societypress' ),        'church' ],
     ];
 
     foreach ( $map as $key => [ $name, $type ] ) {
@@ -88653,9 +88731,7 @@ function sp_render_import_records_bulk_page(): void {
     require_once ABSPATH . 'wp-admin/includes/file.php';
 
     $action = sanitize_key( $_POST['sp_recb_action'] ?? '' );
-    $upload_dir = wp_upload_dir();
-    $temp_dir   = trailingslashit( $upload_dir['basedir'] ) . 'sp-import-temp/';
-    if ( ! is_dir( $temp_dir ) ) wp_mkdir_p( $temp_dir );
+    $temp_dir = sp_ensure_import_temp_dir();
 
     echo '<div class="wrap">';
     echo '<h1>' . esc_html__( 'Bulk Records Import', 'societypress' ) . '</h1>';
@@ -88668,19 +88744,20 @@ function sp_render_import_records_bulk_page(): void {
         $report  = [];
 
         foreach ( $items as $idx => $raw ) {
-            $token   = sanitize_file_name( (string) ( $raw['token'] ?? '' ) );
+            $token   = basename( sanitize_file_name( (string) ( $raw['token'] ?? '' ) ) );
             $path    = realpath( $temp_dir . $token );
             $name    = sanitize_text_field( (string) ( $raw['name'] ?? '' ) );
             $type    = sanitize_text_field( (string) ( $raw['type'] ?? 'general' ) );
             $access  = in_array( $raw['access'] ?? '', [ 'public', 'members' ], true ) ? $raw['access'] : 'public';
-            $skip    = ! empty( $raw['skip'] );
+            // Unchecked "import" box sends no value → skip that row.
+            $skip    = empty( $raw['import'] );
 
             if ( $skip || ! $path || strpos( $path, realpath( $temp_dir ) ) !== 0 || ! file_exists( $path ) ) {
                 continue;
             }
             $report[] = [
                 'filename' => (string) ( $raw['filename'] ?? basename( $path ) ),
-                'result'   => sp_records_bulk_import_csv( $path, $name ?: 'Imported Records', $type, $access ),
+                'result'   => sp_records_bulk_import_csv( $path, $name ?: __( 'Imported Records', 'societypress' ), $type, $access ),
             ];
             wp_delete_file( $path );
         }
@@ -88716,17 +88793,17 @@ function sp_render_import_records_bulk_page(): void {
                 if ( $name === '' ) continue;
                 $err  = $files['error'][ $i ] ?? UPLOAD_ERR_NO_FILE;
                 if ( $err !== UPLOAD_ERR_OK ) {
-                    $errors[] = sprintf( '%s: upload error code %d', $name, (int) $err );
+                    $errors[] = sprintf( /* translators: 1: file name, 2: upload error code */ __( '%1$s: upload error code %2$d', 'societypress' ), $name, (int) $err );
                     continue;
                 }
                 $tmp_name = $files['tmp_name'][ $i ];
                 if ( ! sp_is_valid_import_upload( $tmp_name ) ) {
-                    $errors[] = sprintf( '%s: not a CSV/TSV', $name );
+                    $errors[] = sprintf( /* translators: %s: file name */ __( '%s: not a CSV/TSV', 'societypress' ), $name );
                     continue;
                 }
                 $token = 'recb-' . wp_generate_password( 12, false, false ) . '.csv';
                 if ( ! @move_uploaded_file( $tmp_name, $temp_dir . $token ) ) {
-                    $errors[] = sprintf( '%s: could not save upload', $name );
+                    $errors[] = sprintf( /* translators: %s: file name */ __( '%s: could not save upload', 'societypress' ), $name );
                     continue;
                 }
                 [ $suggested_name, $suggested_type ] = sp_records_bulk_suggest_from_filename( $name );
@@ -88919,8 +88996,12 @@ function sp_gallery_import_add_item( int $album_id, int $attachment_id, int $sor
  * @return int|WP_Error Attachment ID or error.
  */
 function sp_gallery_import_fetch_url( string $url ) {
-    if ( ! preg_match( '#^https?://#i', $url ) ) {
-        return new WP_Error( 'sp_bad_url', __( 'URL must start with http:// or https://', 'societypress' ) );
+    // SSRF guard: reject non-http(s), unresolvable hosts, and any URL that
+    // resolves to a private/reserved address. Shared with the iCal feed
+    // importer so the policy stays consistent.
+    $url_error = sp_validate_external_feed_url( $url );
+    if ( $url_error !== '' ) {
+        return new WP_Error( 'sp_bad_url', $url_error );
     }
 
     $response = wp_remote_get( $url, [
@@ -88938,9 +89019,17 @@ function sp_gallery_import_fetch_url( string $url ) {
         return new WP_Error( 'sp_not_image', sprintf( /* translators: %s detected content type */ __( 'Not an image (content-type: %s)', 'societypress' ), $content_type ) );
     }
 
-    $upload_dir = wp_upload_dir();
-    $tmp_dir    = trailingslashit( $upload_dir['basedir'] ) . 'sp-import-temp/';
-    if ( ! is_dir( $tmp_dir ) ) wp_mkdir_p( $tmp_dir );
+    // Don't trust the server-provided content-type alone — sniff the body.
+    if ( function_exists( 'finfo_open' ) ) {
+        $finfo = finfo_open( FILEINFO_MIME_TYPE );
+        $sniff = $finfo ? finfo_buffer( $finfo, $body ) : '';
+        if ( $finfo ) finfo_close( $finfo );
+        if ( $sniff && ! in_array( $sniff, [ 'image/jpeg', 'image/png', 'image/gif', 'image/webp' ], true ) ) {
+            return new WP_Error( 'sp_not_image', sprintf( /* translators: %s sniffed MIME type */ __( 'Downloaded file is not an image (detected %s).', 'societypress' ), $sniff ) );
+        }
+    }
+
+    $tmp_dir = sp_ensure_import_temp_dir();
 
     $ext = match ( true ) {
         stripos( $content_type, 'png' )  !== false => 'png',
@@ -89022,7 +89111,7 @@ function sp_render_import_gallery_page(): void {
                 if ( $name === '' ) continue;
                 $err  = $files['error'][ $i ] ?? UPLOAD_ERR_NO_FILE;
                 if ( $err !== UPLOAD_ERR_OK ) {
-                    $errors[] = sprintf( '%s: upload error code %d', $name, (int) $err );
+                    $errors[] = sprintf( /* translators: 1: file name, 2: upload error code */ __( '%1$s: upload error code %2$d', 'societypress' ), $name, (int) $err );
                     continue;
                 }
                 $file_array = [
@@ -89031,7 +89120,7 @@ function sp_render_import_gallery_page(): void {
                 ];
                 $attach_id = media_handle_sideload( $file_array, 0 );
                 if ( is_wp_error( $attach_id ) ) {
-                    $errors[] = sprintf( '%s: %s', $name, $attach_id->get_error_message() );
+                    $errors[] = sprintf( /* translators: 1: file name, 2: error message */ __( '%1$s: %2$s', 'societypress' ), $name, $attach_id->get_error_message() );
                     continue;
                 }
                 sp_gallery_import_add_item( $album_id, (int) $attach_id, $sort, preg_replace( '/\.[^.]+$/', '', $name ) );
@@ -89298,12 +89387,12 @@ function sp_render_short_links_admin_page(): void {
             $wpdb->delete( $table, [ 'id' => $row_id ] );
             $msg = __( 'Short link deleted.', 'societypress' );
         } elseif ( in_array( $action, [ 'create', 'update' ], true ) ) {
-            // Validate target URL via the shared validator. Open-redirect guard.
-            $safe = function_exists( 'sp_validate_external_feed_url' )
-                ? sp_validate_external_feed_url( $raw_target )
-                : esc_url_raw( $raw_target );
-            if ( ! $safe ) {
-                $err = __( 'Target URL is not valid or not allowed.', 'societypress' );
+            // Validate target URL via the shared SSRF guard. The validator
+            // returns '' on success and a localized error message on
+            // failure — so a non-empty return means "rejected".
+            $url_error = sp_validate_external_feed_url( $raw_target );
+            if ( $url_error !== '' ) {
+                $err = $url_error;
             } else {
                 $code = $raw_code !== ''
                     ? sp_short_links_validate_code( $raw_code, $action === 'update' ? $row_id : null )
@@ -89313,7 +89402,7 @@ function sp_render_short_links_admin_page(): void {
                 } elseif ( $action === 'create' ) {
                     $wpdb->insert( $table, [
                         'code'       => $code,
-                        'target_url' => esc_url_raw( $safe ),
+                        'target_url' => esc_url_raw( $raw_target ),
                         'label'      => $label,
                         'created_by' => (int) get_current_user_id(),
                     ] );
@@ -89321,7 +89410,7 @@ function sp_render_short_links_admin_page(): void {
                 } else {
                     $wpdb->update( $table, [
                         'code'       => $code,
-                        'target_url' => esc_url_raw( $safe ),
+                        'target_url' => esc_url_raw( $raw_target ),
                         'label'      => $label,
                     ], [ 'id' => $row_id ] );
                     $msg = __( 'Short link updated.', 'societypress' );
@@ -89330,9 +89419,9 @@ function sp_render_short_links_admin_page(): void {
         }
     }
 
-    $rows = $wpdb->get_results( "SELECT * FROM {$table} ORDER BY id DESC LIMIT 500" );
+    $rows = $wpdb->get_results( "SELECT id, code, target_url, label, click_count, last_clicked_at, created_by FROM {$table} ORDER BY id DESC LIMIT 500" );
     $edit_id = (int) ( $_GET['edit'] ?? 0 );
-    $editing = $edit_id ? $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", $edit_id ) ) : null;
+    $editing = $edit_id ? $wpdb->get_row( $wpdb->prepare( "SELECT id, code, target_url, label FROM {$table} WHERE id = %d", $edit_id ) ) : null;
 
     ?>
     <div class="wrap">

@@ -1203,3 +1203,84 @@ if ( ! function_exists( 'gsp_md_inline' ) ) {
         return $text;
     }
 }
+
+/**
+ * Serve a self-contained XML sitemap at /sitemap.xml.
+ *
+ * WordPress 5.5+ ships a built-in sitemap at /wp-sitemap.xml, but it's
+ * not wired up on this install (returns 404 — likely an interaction with
+ * the bbPress install or a missing rewrite). Rather than chase that,
+ * we emit our own simple flat XML sitemap covering every published page
+ * and post. Crawlers default to /sitemap.xml so this is the path that
+ * matters in practice.
+ *
+ * Cached for 12 hours via transient so we're not running a WP_Query on
+ * every crawler hit.
+ */
+add_action( 'init', function () {
+    $path = trim( wp_parse_url( $_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH ) ?? '', '/' );
+    if ( $path !== 'sitemap.xml' && $path !== 'sitemap_index.xml' ) {
+        return;
+    }
+
+    $xml = get_transient( 'gsp_sitemap_xml' );
+    if ( ! is_string( $xml ) || $xml === '' ) {
+        $urls = array();
+        // Home
+        $urls[] = array( 'loc' => home_url( '/' ), 'lastmod' => current_time( 'c' ) );
+
+        // Pages + posts in one query, public statuses only.
+        $items = get_posts( array(
+            'post_type'        => array( 'page', 'post' ),
+            'post_status'      => 'publish',
+            'numberposts'      => 500,
+            'orderby'          => 'modified',
+            'order'            => 'DESC',
+            'suppress_filters' => true,
+        ) );
+        foreach ( $items as $p ) {
+            $urls[] = array(
+                'loc'     => get_permalink( $p ),
+                'lastmod' => mysql2date( 'c', $p->post_modified_gmt, false ),
+            );
+        }
+
+        $xml  = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
+        $xml .= '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
+        foreach ( $urls as $u ) {
+            $xml .= "  <url>\n";
+            $xml .= '    <loc>' . esc_url( $u['loc'] ) . "</loc>\n";
+            if ( ! empty( $u['lastmod'] ) ) {
+                $xml .= '    <lastmod>' . esc_html( $u['lastmod'] ) . "</lastmod>\n";
+            }
+            $xml .= "  </url>\n";
+        }
+        $xml .= '</urlset>';
+        set_transient( 'gsp_sitemap_xml', $xml, 12 * HOUR_IN_SECONDS );
+    }
+
+    header( 'Content-Type: application/xml; charset=UTF-8' );
+    header( 'X-Robots-Tag: noindex' );
+    echo $xml; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped — pre-escaped XML
+    exit;
+}, 1 );
+
+
+/**
+ * Add the site search form to the header (next to / inside the nav).
+ *
+ * Wired by enqueuing a small helper that the header template will pick up
+ * via the `gsp_render_search_form()` call. Kept minimal so it can be moved
+ * later by editing one template.
+ */
+function gsp_render_search_form(): void {
+    ?>
+    <form role="search" method="get" class="gsp-search-form" action="<?php echo esc_url( home_url( '/' ) ); ?>">
+        <label for="gsp-search-input" class="screen-reader-text"><?php esc_html_e( 'Search the site', 'getsocietypress' ); ?></label>
+        <input type="search" id="gsp-search-input" name="s" value="<?php echo esc_attr( get_search_query() ); ?>" placeholder="<?php esc_attr_e( 'Search docs, FAQ, blog…', 'getsocietypress' ); ?>" autocomplete="off">
+        <button type="submit" class="gsp-search-submit" aria-label="<?php esc_attr_e( 'Search', 'getsocietypress' ); ?>">
+            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M21 21l-4.3-4.3M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15z"/></svg>
+        </button>
+    </form>
+    <?php
+}

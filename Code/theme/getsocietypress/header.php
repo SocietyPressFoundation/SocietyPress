@@ -97,6 +97,7 @@ if ( $announce_enabled && ! empty( $announce_text ) ) :
 
         <!-- Right-side Action -->
         <div class="nav-actions">
+            <?php if ( function_exists( 'gsp_render_search_form' ) ) gsp_render_search_form(); ?>
             <a href="<?php echo esc_url( home_url( '/download/' ) ); ?>" class="btn btn-primary btn-sm">Download</a>
         </div>
 

@@ -645,6 +645,115 @@ if ( $rec_count > 0 ) {
 }
 
 // ---------------------------------------------------------------------------
+// 10b. HART ISLAND GENRECORD — public-domain demo of the .genrecord format
+//
+// The .gedrec file at sample-data/records/hart-island-burials.gedrec is a
+// real public-domain dataset (NYC Hart Island burial records, ~150 rows).
+// Loading it on demo proves the GENRECORD differentiator the marketing
+// site advertises, using real data rather than synthetic placeholders.
+//
+// Idempotent: skip if a collection with the GENRECORD-derived slug
+// already exists.
+// ---------------------------------------------------------------------------
+
+WP_CLI::log( 'Loading Hart Island GENRECORD dataset...' );
+
+$gr_path = '/home/charle24/domains/getsocietypress.org/public_html/demo/sample-data/records/hart-island-burials.gedrec';
+if ( ! file_exists( $gr_path ) ) {
+	WP_CLI::log( '  Skipping — file not present at ' . $gr_path );
+} elseif ( ! function_exists( 'sp_parse_genrecord_file' ) ) {
+	WP_CLI::log( '  Skipping — sp_parse_genrecord_file() not available.' );
+} else {
+	$parsed = sp_parse_genrecord_file( $gr_path );
+	if ( is_wp_error( $parsed ) ) {
+		WP_CLI::log( '  Parse failed: ' . $parsed->get_error_message() );
+	} else {
+		$header  = $parsed['header'];
+		$columns = $parsed['columns'];
+		$rows    = $parsed['rows'];
+
+		// GENRECORD spec keys are case-insensitive; the parser lowercases them.
+		$col_name    = sanitize_text_field( $header['collection'] ?? 'Hart Island Burials' );
+		$slug        = sanitize_title( $col_name );
+		$gr_type     = strtoupper( $header['type'] ?? 'BIO' );
+		$type_map    = function_exists( 'sp_genrecord_type_to_sp' ) ? sp_genrecord_type_to_sp() : [];
+		$sp_type     = $type_map[ $gr_type ] ?? 'general';
+		$description = sanitize_textarea_field( $header['description'] ?? $header['notes'] ?? '' );
+		$location    = sanitize_text_field( $header['location'] ?? '' );
+		$date_range  = sanitize_text_field( $header['date-range'] ?? '' );
+
+		$existing = (int) $wpdb->get_var( $wpdb->prepare(
+			"SELECT id FROM {$prefix}record_collections WHERE slug = %s",
+			$slug
+		) );
+		if ( $existing ) {
+			WP_CLI::log( '  Hart Island collection already present; skipping import.' );
+		} else {
+			$wpdb->insert( "{$prefix}record_collections", [
+				'name'         => $col_name,
+				'slug'         => $slug,
+				'description'  => $description,
+				'record_type'  => $sp_type,
+				'source_info'  => trim(
+					( $header['society'] ?? '' )
+					. ( ! empty( $header['license'] ) ? ' | License: ' . $header['license'] : '' )
+				),
+				'date_range'   => $date_range,
+				'location'     => $location,
+				'access_level' => 'public',
+				'status'       => 'active',
+				'record_count' => 0,
+			] );
+			$gr_collection_id = (int) $wpdb->insert_id;
+
+			$field_ids = [];
+			foreach ( $columns as $i => $col ) {
+				if ( strtolower( trim( $col ) ) === 'record_id' ) continue;
+				$wpdb->insert( "{$prefix}record_collection_fields", [
+					'collection_id' => $gr_collection_id,
+					'field_name'    => sanitize_text_field( $col ),
+					'field_slug'    => sanitize_key( $col ) ?: 'field_' . $i,
+					'field_type'    => 'text',
+					'sort_order'    => $i,
+					'searchable'    => 1,
+					'is_public'     => 1,
+				] );
+				$field_ids[ $i ] = (int) $wpdb->insert_id;
+			}
+
+			$record_count = 0;
+			foreach ( $rows as $row ) {
+				$search_parts = [];
+				foreach ( $row as $val ) {
+					$val = trim( (string) $val );
+					if ( $val !== '' ) $search_parts[] = $val;
+				}
+				$wpdb->insert( "{$prefix}records", [
+					'collection_id' => $gr_collection_id,
+					'search_text'   => implode( ' ', $search_parts ),
+				] );
+				$record_id = (int) $wpdb->insert_id;
+				if ( ! $record_id ) continue;
+				foreach ( $row as $i => $val ) {
+					if ( ! isset( $field_ids[ $i ] ) ) continue;
+					$val = trim( (string) $val );
+					if ( $val === '' ) continue;
+					$wpdb->insert( "{$prefix}record_values", [
+						'record_id'   => $record_id,
+						'field_id'    => $field_ids[ $i ],
+						'field_value' => $val,
+					] );
+				}
+				$record_count++;
+			}
+			$wpdb->update( "{$prefix}record_collections", [ 'record_count' => $record_count ], [ 'id' => $gr_collection_id ] );
+			WP_CLI::log( "  Hart Island: $record_count records, " . count( $field_ids ) . ' fields.' );
+		}
+	}
+}
+
+
+// ---------------------------------------------------------------------------
 // 11. DEMO ADMIN MEMBER RECORD
 // ---------------------------------------------------------------------------
 

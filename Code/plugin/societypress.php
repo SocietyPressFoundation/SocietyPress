@@ -67282,12 +67282,14 @@ function sp_render_record_import_page(): void {
                 $type_map    = sp_genrecord_type_to_sp();
                 $sp_type     = $type_map[ $gr_type ] ?? 'general';
 
-                // Build collection metadata from header
-                $col_name    = sanitize_text_field( $header['title'] ?? __( 'Imported GENRECORD Collection', 'societypress' ) );
+                // Build collection metadata from header (spec keys, lowercased
+                // by sp_parse_genrecord_file). Falls back to legacy key names
+                // for any older files still in the wild.
+                $col_name    = sanitize_text_field( $header['collection'] ?? $header['title'] ?? __( 'Imported GENRECORD Collection', 'societypress' ) );
                 $slug        = sp_unique_collection_slug( sanitize_title( $col_name ) );
-                $description = sanitize_textarea_field( $header['notes'] ?? '' );
-                $location    = sanitize_text_field( $header['coverage.place'] ?? $header['coverage_place'] ?? '' );
-                $date_range  = sanitize_text_field( $header['coverage.dates'] ?? $header['coverage_dates'] ?? '' );
+                $description = sanitize_textarea_field( $header['description'] ?? $header['notes'] ?? '' );
+                $location    = sanitize_text_field( $header['location'] ?? $header['coverage.place'] ?? $header['coverage_place'] ?? '' );
+                $date_range  = sanitize_text_field( $header['date-range'] ?? $header['coverage.dates'] ?? $header['coverage_dates'] ?? '' );
                 $source_info = '';
 
                 // Build source attribution from header metadata
@@ -68461,74 +68463,102 @@ function sp_parse_genrecord_file( string $file_path ) {
         return new WP_Error( 'file_error', __( 'Could not open file.', 'societypress' ) );
     }
 
-    // Read the first line — must be ##GENRECORD
-    $first_line = trim( fgets( $handle ) );
-    // Strip BOM if present
-    $first_line = ltrim( $first_line, "\xEF\xBB\xBF" );
-    if ( strpos( $first_line, '##GENRECORD' ) !== 0 ) {
-        fclose( $handle );
-        return new WP_Error( 'not_genrecord', __( 'File does not start with ##GENRECORD — not a valid GENRECORD file.', 'societypress' ) );
+    // Slurp the whole file into memory so we can normalize line endings
+    // and tolerate optional BOM on the first byte. GENRECORD files are
+    // typically a few MB at most.
+    $raw = '';
+    while ( ! feof( $handle ) ) $raw .= fread( $handle, 65536 );
+    fclose( $handle );
+
+    $raw   = ltrim( $raw, "\xEF\xBB\xBF" );
+    $lines = preg_split( '/\r\n|\r|\n/', $raw );
+    if ( ! is_array( $lines ) || ! isset( $lines[0] ) ) {
+        return new WP_Error( 'empty_file', __( 'File is empty.', 'societypress' ) );
     }
 
-    // Parse header block: all lines starting with # until we hit ---
-    $header = [];
-    $header['genrecord_version'] = trim( str_replace( '##GENRECORD', '', $first_line ) );
+    // Per spec: first line MUST be the format identifier `#GENRECORD 1.0`
+    // (single `#`, no colon). Lines starting with `##` are comments.
+    $first = trim( $lines[0] );
+    if ( ! preg_match( '/^#GENRECORD\s+([0-9.]+)\s*$/i', $first, $m ) ) {
+        return new WP_Error( 'not_genrecord', __( 'File does not start with "#GENRECORD 1.0" — not a valid GENRECORD file.', 'societypress' ) );
+    }
+    $header = [ 'genrecord_version' => $m[1] ];
 
-    while ( ( $line = fgets( $handle ) ) !== false ) {
-        $line = trim( $line );
+    // Walk the rest: header lines start with single `#` (not `##`),
+    // contain `Key: Value`. Header ends at first line that doesn't start
+    // with `#`. That line is the column header row. Per spec, `##` lines
+    // are comments and are silently ignored.
+    $col_line_idx = null;
+    $line_count   = count( $lines );
+    for ( $i = 1; $i < $line_count; $i++ ) {
+        $line = $lines[ $i ];
+        $trim = trim( $line );
+        if ( $trim === '' ) continue;
 
-        // Separator line — end of header
-        if ( $line === '---' ) {
+        if ( $trim[0] !== '#' ) {
+            // First non-# line — this is the column header row.
+            $col_line_idx = $i;
             break;
         }
+        // `##` = comment, ignore. `#` = header field.
+        if ( isset( $trim[1] ) && $trim[1] === '#' ) continue;
 
-        // Header lines start with #
-        if ( $line !== '' && $line[0] === '#' ) {
-            // Strip leading # and split on first colon
-            $line = ltrim( $line, '#' );
-            $colon_pos = strpos( $line, ':' );
-            if ( $colon_pos !== false ) {
-                $key   = trim( substr( $line, 0, $colon_pos ) );
-                $value = trim( substr( $line, $colon_pos + 1 ) );
-                $header[ $key ] = $value;
-            }
+        $body = ltrim( substr( $trim, 1 ) );
+        $colon_pos = strpos( $body, ':' );
+        if ( $colon_pos === false ) continue;
+        // Case-insensitive key per spec — normalize to lowercase.
+        $key   = strtolower( trim( substr( $body, 0, $colon_pos ) ) );
+        $value = trim( substr( $body, $colon_pos + 1 ) );
+        if ( $key !== '' ) {
+            $header[ $key ] = $value;
         }
     }
 
-    // Read column definition row (first line after ---)
-    $columns_raw = fgetcsv( $handle );
-    if ( ! $columns_raw ) {
-        fclose( $handle );
-        return new WP_Error( 'no_columns', __( 'No column headers found after --- separator.', 'societypress' ) );
+    if ( $col_line_idx === null ) {
+        return new WP_Error( 'no_columns', __( 'No data section found — the header was not followed by column row + rows.', 'societypress' ) );
     }
-    // Clean column names
-    $columns = array_map( function( $col ) {
-        return trim( $col, "\xEF\xBB\xBF \t\n\r\"" );
-    }, $columns_raw );
 
-    // Read all data rows
+    // Delimiter: spec default is tab. `comma` may be requested explicitly.
+    $delim_key = strtolower( $header['delimiter'] ?? 'tab' );
+    $delim     = ( $delim_key === 'comma' ) ? ',' : "\t";
+
+    $col_line = $lines[ $col_line_idx ];
+    $columns  = sp_genrecord_parse_data_line( $col_line, $delim );
+    $columns  = array_map( static fn( $c ) => trim( $c, "\xEF\xBB\xBF \t\n\r\"" ), $columns );
+
     $rows = [];
-    while ( ( $row = fgetcsv( $handle ) ) !== false ) {
-        // Skip completely empty rows
-        $has_data = false;
-        foreach ( $row as $val ) {
-            if ( trim( $val ) !== '' ) {
-                $has_data = true;
-                break;
-            }
+    for ( $i = $col_line_idx + 1; $i < $line_count; $i++ ) {
+        $line = $lines[ $i ];
+        if ( trim( $line ) === '' ) continue;
+        $row = sp_genrecord_parse_data_line( $line, $delim );
+        // Skip rows that are entirely empty after parsing
+        $has = false;
+        foreach ( $row as $v ) {
+            if ( trim( (string) $v ) !== '' ) { $has = true; break; }
         }
-        if ( $has_data ) {
-            $rows[] = $row;
-        }
+        if ( $has ) $rows[] = $row;
     }
-
-    fclose( $handle );
 
     return [
         'header'  => $header,
         'columns' => $columns,
         'rows'    => $rows,
     ];
+}
+
+/**
+ * Parse one data line from a GENRECORD file. Handles tab-delimited and
+ * comma-delimited via str_getcsv, which honors RFC-4180 quoting.
+ *
+ * @return array<int,string>
+ */
+function sp_genrecord_parse_data_line( string $line, string $delim ): array {
+    $line = rtrim( $line, "\r\n" );
+    if ( $delim === "\t" ) {
+        // str_getcsv with a tab delimiter handles quoted values too.
+        return str_getcsv( $line, "\t", '"', '\\' );
+    }
+    return str_getcsv( $line, ',', '"', '\\' );
 }
 
 

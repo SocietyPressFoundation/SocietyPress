@@ -86350,6 +86350,268 @@ add_action( 'admin_post_sp_theme_preset_import', function () {
 } );
 
 
+// ============================================================================
+// THEME EXCHANGE — TIER 2 — .spchildtheme archive bundles
+//
+// A .spchildtheme is a ZIP containing:
+//   theme.json         — same shape as the Tier 1 preset, with
+//                        format = "societypress.spchildtheme.v1"
+//   styles.css         — optional custom CSS appended to the frontend
+//   assets/<images>    — optional images (jpg/png/gif/webp/svg) the CSS can
+//                        reference relative to the bundle root
+//
+// Tier 1 (JSON preset) is the trusted foundation — design tokens only, no
+// executable content. Tier 2 layers in CSS + images for societies that
+// want a fuller visual identity without going all the way to a full WP
+// child theme. The CSS is sanitized aggressively; assets are sniffed
+// against an extension + MIME allowlist before they land in uploads.
+// ============================================================================
+
+/**
+ * Sanitize an untrusted CSS string for safe inclusion in <style>.
+ *
+ * Strips constructs that can execute code, leak data, or pull arbitrary
+ * external resources at render time:
+ *   - <script>, <style>, HTML comments
+ *   - JavaScript URI schemes (javascript:, data:text/html, vbscript:)
+ *   - IE-era `expression(...)` and `behavior:` properties
+ *   - @import (would let a CSS injection pull arbitrary stylesheets)
+ *   - CSS comments stripped first as defense in depth so payloads can't
+ *     hide inside slash-star...star-slash blocks
+ *
+ * Returns a trimmed string. Empty if the input was entirely unsafe.
+ */
+function sp_spchildtheme_sanitize_css( string $css ): string {
+    // Drop CSS comments first — they can hide other vectors.
+    $css = preg_replace( '#/\*.*?\*/#s', '', $css );
+    // Drop HTML-style comments and script/style tags.
+    $css = preg_replace( '#<!--.*?-->#s', '', $css );
+    $css = preg_replace( '#<\s*(script|style|iframe|object|embed)\b[^>]*>.*?<\s*/\s*\1\s*>#is', '', $css );
+    // Strip @import — bundle CSS must not pull from elsewhere.
+    $css = preg_replace( '#@import[^;]*;#i', '', $css );
+    // Strip JS-ish URI schemes anywhere they appear.
+    $css = preg_replace( '#(?:javascript|vbscript|data:\s*text/html)\s*:[^;\)\}]*#i', '', $css );
+    // expression() and behavior: are IE-only but historic XSS vectors.
+    $css = preg_replace( '#expression\s*\([^)]*\)#i', '', $css );
+    $css = preg_replace( '#behavior\s*:[^;]*;?#i', '', $css );
+    return trim( (string) $css );
+}
+
+/**
+ * Open a .spchildtheme ZIP and return its parsed structure, or WP_Error.
+ *
+ * Result shape:
+ *   [
+ *     'manifest' => array,        // theme.json contents
+ *     'css'      => ?string,      // sanitized styles.css, or null
+ *     'images'   => [             // name => binary blob
+ *         'logo.png' => '<bytes>',
+ *         'bg.jpg'   => '<bytes>',
+ *     ],
+ *   ]
+ *
+ * Zip-slip safe: rejects any entry name containing `..` or starting
+ * with `/`. Image entries are filtered by extension AND by sniffed MIME
+ * (image/jpeg|png|gif|webp|svg+xml).
+ *
+ * @return array|WP_Error
+ */
+function sp_spchildtheme_parse_archive( string $zip_path ) {
+    if ( ! file_exists( $zip_path ) ) {
+        return new WP_Error( 'no_file', __( 'Bundle file not found.', 'societypress' ) );
+    }
+    if ( ! class_exists( 'ZipArchive' ) ) {
+        return new WP_Error( 'no_zip', __( 'ZipArchive PHP extension is not available — cannot read bundle.', 'societypress' ) );
+    }
+    $zip = new ZipArchive();
+    if ( $zip->open( $zip_path ) !== true ) {
+        return new WP_Error( 'bad_zip', __( 'Bundle is not a valid ZIP archive.', 'societypress' ) );
+    }
+
+    $manifest = null;
+    $css      = null;
+    $images   = [];
+
+    $allowed_image_ext   = [ 'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg' ];
+    $allowed_image_mimes = [ 'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml' ];
+
+    for ( $i = 0; $i < $zip->numFiles; $i++ ) {
+        $name = (string) $zip->getNameIndex( $i );
+        $clean = ltrim( $name, '/' );
+
+        // Zip-slip + directory traversal guard.
+        if ( $clean === '' || $clean !== $name || strpos( $clean, '..' ) !== false ) continue;
+        // Skip directory entries.
+        if ( str_ends_with( $clean, '/' ) ) continue;
+        // Strip a single top-level wrapper folder if one is present
+        // (matches the export convention "<slug>/theme.json").
+        $parts = explode( '/', $clean );
+        if ( count( $parts ) > 1 ) {
+            $rel = implode( '/', array_slice( $parts, 1 ) );
+        } else {
+            $rel = $clean;
+        }
+        $rel = strtolower( $rel );
+
+        if ( $rel === 'theme.json' ) {
+            $raw = (string) $zip->getFromIndex( $i );
+            $manifest = json_decode( $raw, true );
+            continue;
+        }
+        if ( $rel === 'styles.css' || $rel === 'style.css' ) {
+            $raw = (string) $zip->getFromIndex( $i );
+            if ( strlen( $raw ) > 1024 * 256 ) continue; // 256KB cap per CSS file
+            $css = sp_spchildtheme_sanitize_css( $raw );
+            continue;
+        }
+        if ( strpos( $rel, 'assets/' ) === 0 ) {
+            $basename = basename( $rel );
+            $ext      = strtolower( pathinfo( $basename, PATHINFO_EXTENSION ) );
+            if ( ! in_array( $ext, $allowed_image_ext, true ) ) continue;
+            $blob = (string) $zip->getFromIndex( $i );
+            if ( strlen( $blob ) > 1024 * 1024 * 4 ) continue; // 4MB cap per image
+            // Sniff MIME — extension alone isn't trusted.
+            if ( function_exists( 'finfo_open' ) ) {
+                $finfo = finfo_open( FILEINFO_MIME_TYPE );
+                $mime  = $finfo ? finfo_buffer( $finfo, $blob ) : '';
+                if ( $finfo ) finfo_close( $finfo );
+                if ( $mime && ! in_array( $mime, $allowed_image_mimes, true ) ) continue;
+            }
+            $images[ $basename ] = $blob;
+        }
+    }
+    $zip->close();
+
+    if ( ! is_array( $manifest ) ) {
+        return new WP_Error( 'no_manifest', __( 'Bundle is missing theme.json.', 'societypress' ) );
+    }
+    if ( ( $manifest['format'] ?? '' ) !== 'societypress.spchildtheme.v1' ) {
+        return new WP_Error( 'bad_format', __( 'Bundle theme.json format is not societypress.spchildtheme.v1.', 'societypress' ) );
+    }
+
+    return [
+        'manifest' => $manifest,
+        'css'      => $css,
+        'images'   => $images,
+    ];
+}
+
+/**
+ * Apply a parsed bundle: write images to uploads/sp-spchildtheme/<slug>/,
+ * stash the sanitized CSS in an option, and apply the manifest's design
+ * tokens through the Tier-1 apply pipeline (which sanitizes them).
+ *
+ * @return array|WP_Error
+ */
+function sp_spchildtheme_apply( array $parsed ) {
+    $manifest = $parsed['manifest'];
+
+    // The manifest carries a Tier-1-shaped tokens block; reuse that
+    // pipeline so a Tier-2 bundle can't sneak in a token value Tier-1
+    // would have rejected.
+    $tier1_payload = [
+        'format'      => 'societypress.preset.v1',
+        'name'        => $manifest['name']        ?? __( 'Imported bundle', 'societypress' ),
+        'description' => $manifest['description'] ?? '',
+        'tokens'      => $manifest['tokens']      ?? [],
+    ];
+    $applied = sp_theme_preset_apply( $tier1_payload );
+    if ( is_wp_error( $applied ) ) return $applied;
+
+    // Slug for the asset folder. Sanitize the bundle name as the source.
+    $slug = sanitize_title( $manifest['name'] ?? 'bundle' ) ?: 'bundle';
+
+    // Write images.
+    $written = [];
+    if ( ! empty( $parsed['images'] ) ) {
+        $up = wp_upload_dir();
+        $dir = trailingslashit( $up['basedir'] ) . 'sp-spchildtheme/' . $slug;
+        if ( ! is_dir( $dir ) ) wp_mkdir_p( $dir );
+        foreach ( $parsed['images'] as $name => $blob ) {
+            $safe = sanitize_file_name( $name );
+            if ( $safe === '' ) continue;
+            $path = $dir . '/' . $safe;
+            file_put_contents( $path, $blob );
+            $written[ $safe ] = trailingslashit( $up['baseurl'] ) . 'sp-spchildtheme/' . $slug . '/' . $safe;
+        }
+    }
+
+    // Stash the active bundle's CSS + asset URL map. Single active bundle
+    // for now; a future tab can list "installed bundles" and switch.
+    update_option( 'sp_spchildtheme_active', [
+        'slug'        => $slug,
+        'name'        => $manifest['name']        ?? '',
+        'description' => $manifest['description'] ?? '',
+        'imported_at' => gmdate( 'c' ),
+        'css'         => $parsed['css'] ?? '',
+        'assets'      => $written,
+    ], false );
+
+    return [ 'images' => count( $written ), 'css_length' => strlen( $parsed['css'] ?? '' ) ];
+}
+
+/**
+ * Emit the active bundle's sanitized CSS into <head>. Late priority so
+ * it follows the theme's stylesheet and can override.
+ */
+add_action( 'wp_head', function () {
+    $active = get_option( 'sp_spchildtheme_active' );
+    if ( ! is_array( $active ) || empty( $active['css'] ) ) return;
+    // Re-sanitize on output — defense in depth in case the option was
+    // tampered with directly.
+    $css = sp_spchildtheme_sanitize_css( (string) $active['css'] );
+    if ( $css === '' ) return;
+    echo '<style id="sp-spchildtheme">' . $css . '</style>' . "\n";
+}, 99 );
+
+/**
+ * admin-post handler — accept a .spchildtheme upload, parse, apply.
+ */
+add_action( 'admin_post_sp_spchildtheme_import', function () {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( __( 'Insufficient permissions.', 'societypress' ) );
+    }
+    check_admin_referer( 'sp_spchildtheme_import' );
+
+    $back = admin_url( 'admin.php?page=sp-theme-presets' );
+
+    if ( empty( $_FILES['spchildtheme_file']['tmp_name'] ) || ( $_FILES['spchildtheme_file']['error'] ?? UPLOAD_ERR_NO_FILE ) !== UPLOAD_ERR_OK ) {
+        wp_safe_redirect( add_query_arg( 'sp_bundle_err', 'no_file', $back ) );
+        exit;
+    }
+
+    $size = filesize( $_FILES['spchildtheme_file']['tmp_name'] );
+    if ( $size > 1024 * 1024 * 10 ) { // 10MB cap on the bundle itself
+        wp_safe_redirect( add_query_arg( 'sp_bundle_err', 'too_large', $back ) );
+        exit;
+    }
+
+    $parsed = sp_spchildtheme_parse_archive( $_FILES['spchildtheme_file']['tmp_name'] );
+    if ( is_wp_error( $parsed ) ) {
+        wp_safe_redirect( add_query_arg( [
+            'sp_bundle_err'     => 'parse_failed',
+            'sp_bundle_err_msg' => urlencode( $parsed->get_error_message() ),
+        ], $back ) );
+        exit;
+    }
+
+    $applied = sp_spchildtheme_apply( $parsed );
+    if ( is_wp_error( $applied ) ) {
+        wp_safe_redirect( add_query_arg( [
+            'sp_bundle_err'     => 'apply_failed',
+            'sp_bundle_err_msg' => urlencode( $applied->get_error_message() ),
+        ], $back ) );
+        exit;
+    }
+
+    wp_safe_redirect( add_query_arg( [
+        'sp_bundle_imported' => 1,
+        'sp_bundle_name'     => urlencode( $parsed['manifest']['name'] ?? 'bundle' ),
+    ], $back ) );
+    exit;
+} );
+
+
 /**
  * The Theme Presets admin page.
  */
@@ -86454,6 +86716,53 @@ function sp_render_theme_presets_page(): void {
                             </table>
                             <?php submit_button( __( 'Apply Preset', 'societypress' ), 'primary' ); ?>
                         </form>
+                    </div>
+                </div>
+
+                <div class="postbox">
+                    <h2 class="hndle sp-hndle-padded"><?php esc_html_e( 'Import a themed bundle (.spchildtheme)', 'societypress' ); ?></h2>
+                    <div class="inside">
+                        <p><?php esc_html_e( 'A themed bundle goes beyond a preset — it can include custom CSS overrides and image assets (logo, hero background, decorative imagery). The CSS is sanitized to strip executable content; images are validated by extension and MIME before they land in your uploads folder.', 'societypress' ); ?></p>
+                        <?php
+                        $bundle_err     = sanitize_text_field( $_GET['sp_bundle_err'] ?? '' );
+                        $bundle_err_msg = sanitize_text_field( urldecode( $_GET['sp_bundle_err_msg'] ?? '' ) );
+                        $bundle_imp     = isset( $_GET['sp_bundle_imported'] ) ? sanitize_text_field( urldecode( $_GET['sp_bundle_name'] ?? '' ) ) : '';
+                        ?>
+                        <?php if ( $bundle_imp ) : ?>
+                            <p class="notice notice-success" style="padding:6px 12px;"><?php printf( esc_html__( 'Bundle "%s" applied.', 'societypress' ), esc_html( $bundle_imp ) ); ?></p>
+                        <?php endif; ?>
+                        <?php if ( $bundle_err === 'no_file' ) : ?>
+                            <p class="notice notice-error" style="padding:6px 12px;"><?php esc_html_e( 'Please choose a bundle file to import.', 'societypress' ); ?></p>
+                        <?php elseif ( $bundle_err === 'too_large' ) : ?>
+                            <p class="notice notice-error" style="padding:6px 12px;"><?php esc_html_e( 'Bundle is too large (over 10MB).', 'societypress' ); ?></p>
+                        <?php elseif ( in_array( $bundle_err, [ 'parse_failed', 'apply_failed' ], true ) ) : ?>
+                            <p class="notice notice-error" style="padding:6px 12px;"><?php esc_html_e( 'Bundle could not be imported:', 'societypress' ); ?> <strong><?php echo esc_html( $bundle_err_msg ); ?></strong></p>
+                        <?php endif; ?>
+                        <form method="post" enctype="multipart/form-data" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+                            <input type="hidden" name="action" value="sp_spchildtheme_import">
+                            <?php wp_nonce_field( 'sp_spchildtheme_import' ); ?>
+                            <table class="form-table">
+                                <tr>
+                                    <th scope="col"><label for="spchildtheme_file"><?php esc_html_e( 'Bundle file', 'societypress' ); ?></label></th>
+                                    <td><input type="file" id="spchildtheme_file" name="spchildtheme_file" accept=".spchildtheme,.zip,application/zip" required></td>
+                                </tr>
+                            </table>
+                            <?php submit_button( __( 'Apply Bundle', 'societypress' ), 'secondary' ); ?>
+                        </form>
+                        <?php
+                        $active_bundle = get_option( 'sp_spchildtheme_active' );
+                        if ( is_array( $active_bundle ) && ! empty( $active_bundle['name'] ) ) :
+                        ?>
+                            <p style="margin-top:12px; font-size:12px; color:#555;">
+                                <?php
+                                printf(
+                                    /* translators: %s: bundle name */
+                                    esc_html__( 'Currently active bundle: %s', 'societypress' ),
+                                    '<strong>' . esc_html( $active_bundle['name'] ) . '</strong>'
+                                );
+                                ?>
+                            </p>
+                        <?php endif; ?>
                     </div>
                 </div>
 

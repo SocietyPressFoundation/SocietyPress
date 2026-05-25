@@ -332,49 +332,48 @@ get_header();
                 </svg>
             </div>
             <h2>Hosting</h2>
-            <p>You don't need a dedicated server. Standard shared hosting works great.</p>
+            <p>You don't need a dedicated server &mdash; standard shared hosting is plenty for a society. The easiest setups pair <strong>cPanel</strong> with the <strong>Softaculous</strong> one-click installer, which gets SocietyPress running in a few clicks. Any of the hosts below work well.</p>
         </div>
 
         <div class="req-hosting-grid">
 
             <div class="req-hosting-card">
-                <h3>Shared Hosting</h3>
+                <h3><a href="https://www.bluehost.com" target="_blank" rel="noopener">Bluehost</a></h3>
                 <p>
-                    Any standard shared-hosting plan that supports <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> will run
-                    SocietyPress without issues. "Shared" means your site shares a
-                    server with other small websites &mdash; it's how most society
-                    websites are hosted, and it's plenty of power for a society
-                    website. Look for any plan that advertises <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> support.
+                    One of the hosts <a href="https://wordpress.org/hosting/" target="_blank" rel="noopener">WordPress.org itself recommends</a>,
+                    so it's a name most people already trust. It includes cPanel and
+                    the Softaculous one-click installer. On Bluehost you reach
+                    Softaculous through their portal: <em>Hosting &rarr; cPanel &rarr;
+                    Software &rarr; Softaculous Apps Installer</em>.
                 </p>
                 <div class="req-hosting-card__price">
-                    Typically $5&ndash;15/month
+                    A few dollars/month
                 </div>
             </div>
 
             <div class="req-hosting-card">
-                <h3>Managed <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a></h3>
+                <h3><a href="https://www.hostgator.com" target="_blank" rel="noopener">HostGator</a></h3>
                 <p>
-                    Hosts like SiteGround, Cloudways, Kinsta, or WP Engine offer
-                    managed <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> plans with automatic updates, daily backups,
-                    staging environments, and better performance. A good choice for
-                    larger societies or any society whose admins want less
-                    hands-on maintenance.
+                    A long-established, budget-friendly host with standard cPanel and
+                    the Softaculous one-click installer right on the cPanel home
+                    screen. A solid, inexpensive choice for a small society that wants
+                    the simplest possible setup.
                 </p>
                 <div class="req-hosting-card__price">
-                    Typically $10&ndash;30/month
+                    A few dollars/month
                 </div>
             </div>
 
             <div class="req-hosting-card">
-                <h3>VPS / Dedicated</h3>
+                <h3><a href="https://skystra.com" target="_blank" rel="noopener">Skystra</a></h3>
                 <p>
-                    Only necessary for very large societies with heavy traffic or
-                    complex integrations. Most societies will never need this level
-                    of infrastructure &mdash; and if yours does, you'll probably
-                    already have an IT person who'll handle the setup.
+                    The cPanel host we run our own demo site on. It includes cPanel
+                    and the Softaculous one-click installer, so setup is the same few
+                    clicks as the others &mdash; with the bonus that we use it
+                    ourselves and know it runs SocietyPress well.
                 </p>
                 <div class="req-hosting-card__price">
-                    Typically $20&ndash;80/month
+                    A few dollars/month
                 </div>
             </div>
 

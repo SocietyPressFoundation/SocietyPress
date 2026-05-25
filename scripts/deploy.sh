@@ -189,6 +189,10 @@ case "${1:-plugin}" in
         # Parent theme → themes/societypress/
         mkdir -p "$BUNDLE_STAGING/themes/societypress"
         cp -r "$LOCAL_BASE/Code/theme/"* "$BUNDLE_STAGING/themes/societypress/"
+        # The getsocietypress.org marketing site is nested inside Code/theme/ but
+        # is NOT part of the shippable product — it stays the learn/demo/download
+        # site only. Strip it so it never rides along in the installer bundle.
+        rm -rf "$BUNDLE_STAGING/themes/societypress/getsocietypress"
 
         # Child themes → themes/<name>/
         for t in heritage coastline prairie ledger parlor; do

@@ -237,7 +237,7 @@ get_header();
                     <tr><td>One-click installer</td><td class="cmp-matrix__sp">✓</td><td>n/a (hosted)</td><td>n/a (hosted)</td></tr>
                     <tr><td>ENS-format CSV importer (86 fields)</td><td class="cmp-matrix__sp">✓</td><td>$60/hr to import</td><td>BYO mapping</td></tr>
                     <tr><td>Full data export (your data, no friction)</td><td class="cmp-matrix__sp">✓ Full SQL + media</td><td>~</td><td>~</td></tr>
-                    <tr><td>Standards-based formats (.genrecord, GEDCOM)</td><td class="cmp-matrix__sp">✓ (planned)</td><td>✗</td><td>✗</td></tr>
+                    <tr><td>Standards-based formats (.genrecord, GEDCOM)</td><td class="cmp-matrix__sp">✓</td><td>✗</td><td>✗</td></tr>
 
                     <!-- Compliance -->
                     <tr class="cmp-matrix__group"><td colspan="4">Compliance &amp; security</td></tr>

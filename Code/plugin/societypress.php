@@ -2220,11 +2220,14 @@ function sp_create_tables(): void {
     // ========================================================================
     // sp_ballot_votes — Individual vote records
     //
-    // WHY: One row per question per voter. The UNIQUE KEY on (question_id,
-    //      user_id) prevents double-voting at the database level — even if
-    //      the application logic has a bug, the DB constraint catches it.
-    //      choice_id is NULL for abstain votes — this lets us distinguish
-    //      "voted but abstained" from "didn't vote at all."
+    // WHY: One row per chosen option per voter. The UNIQUE KEY on
+    //      (question_id, user_id, choice_id) prevents picking the same option
+    //      twice while still allowing multi-choice questions, where one voter
+    //      legitimately produces several rows for the same question (one per
+    //      selection). An earlier (question_id, user_id) key made multi-choice
+    //      votes impossible — the second selection collided and the whole
+    //      ballot rolled back. choice_id is NULL for abstain votes — this lets
+    //      us distinguish "voted but abstained" from "didn't vote at all."
     // ========================================================================
     dbDelta( "CREATE TABLE {$prefix}ballot_votes (
         id          BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -2234,7 +2237,7 @@ function sp_create_tables(): void {
         user_id     BIGINT(20) UNSIGNED NOT NULL,
         voted_at    DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
-        UNIQUE KEY question_user (question_id, user_id),
+        UNIQUE KEY question_user_choice (question_id, user_id, choice_id),
         KEY ballot_id (ballot_id),
         KEY user_id (user_id)
     ) {$charset_collate};" );
@@ -2770,6 +2773,36 @@ add_action( 'admin_init', function () {
 
 
 // ============================================================================
+// MIGRATION: Widen the ballot_votes unique key to include choice_id
+//
+// WHY: The original UNIQUE KEY was (question_id, user_id), which made it
+//      impossible to record a multi-choice vote — the voter's second selection
+//      for the same question collided with the key and rolled back the entire
+//      ballot. The correct invariant is one row per chosen option, so the key
+//      must be (question_id, user_id, choice_id). dbDelta won't alter an
+//      existing index, so existing installs need an explicit swap. No existing
+//      multi-choice votes can collide because the old key made them impossible
+//      to create in the first place.
+// ============================================================================
+add_action( 'admin_init', function () {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_ballot_votes';
+
+    // Bail on fresh installs — sp_create_tables() already builds the new key.
+    if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) !== $table ) {
+        return;
+    }
+
+    // The old key is named "question_user". If it's still present, replace it.
+    $old_key = $wpdb->get_results( "SHOW INDEX FROM {$table} WHERE Key_name = 'question_user'" );
+    if ( ! empty( $old_key ) ) {
+        $wpdb->query( "ALTER TABLE {$table} DROP INDEX question_user" );
+        $wpdb->query( "ALTER TABLE {$table} ADD UNIQUE KEY question_user_choice (question_id, user_id, choice_id)" );
+    }
+} );
+
+
+// ============================================================================
 // MIGRATION: Add external event columns to sp_events for existing installs
 //
 // WHY: External events (manual URLs and iCal imports) need four new columns in
@@ -2907,7 +2940,7 @@ register_deactivation_hook( __FILE__, function () {
 //   $key = sp_setting_decrypt( 'stripe_secret_key' ); // Retrieve + decrypt setting
 //
 // SECURITY NOTES:
-//   - Uses XChaCha20-Poly1305 (sodium) — authenticated encryption, tamper-proof
+//   - Uses XSalsa20-Poly1305 (sodium secretbox) — authenticated encryption, tamper-proof
 //   - Each encryption generates a unique random nonce — same plaintext produces
 //     different ciphertext every time
 //   - If AUTH_KEY changes (wp-config.php replaced), encrypted data becomes
@@ -2947,7 +2980,7 @@ function sp_get_encryption_key(): string {
 }
 
 /**
- * Encrypt a string using sodium (XChaCha20-Poly1305).
+ * Encrypt a string using sodium (XSalsa20-Poly1305 via secretbox).
  *
  * WHY: This is the go-to authenticated encryption in libsodium. It's fast,
  *      safe, and nonce-misuse-resistant (24-byte nonce = astronomically low
@@ -42940,6 +42973,14 @@ function sp_ajax_register_for_event(): void {
         }
     }
 
+    // Serialize the capacity check and the insert below for this event. Without
+    // it, two simultaneous registrations for the last seat can both read "room
+    // available" and both confirm, overshooting capacity. The lock is released
+    // immediately after the insert. A 5s wait then proceed keeps a stuck lock
+    // from blocking sign-ups entirely (degrades to today's behavior, no worse).
+    $reg_lock = 'sp_event_reg_' . $event_id;
+    $wpdb->query( $wpdb->prepare( 'SELECT GET_LOCK(%s, 5)', $reg_lock ) );
+
     // Determine status: confirmed if there's room, waitlisted if full
     // WHY: When a slot_id is provided, we check slot-level capacity instead of
     //      event-level. This lets each slot (e.g., "10-11 AM session") have its
@@ -43016,6 +43057,9 @@ function sp_ajax_register_for_event(): void {
 
     $wpdb->insert( $reg_table, $insert_data, $insert_format );
     $registration_id = $wpdb->insert_id;
+
+    // Capacity decision and insert are done — release the per-event lock.
+    $wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $reg_lock ) );
 
     if ( ! $registration_id ) {
         wp_send_json_error( __( 'Could not complete registration. Please try again.', 'societypress' ) );
@@ -43780,7 +43824,7 @@ function sp_render_event_registrations_section( object $event ): void {
                                      */
                                     ?>
                                     <span class="sp-event-reg-pay-badge"
-                                          style="background: <?php echo $pay_color; ?>22; color: <?php echo $pay_color; ?>;">
+                                          style="background: <?php echo esc_attr( $pay_color ); ?>22; color: <?php echo esc_attr( $pay_color ); ?>;">
                                         <?php echo esc_html( sp_localized_status( $reg->payment_status ) ); ?>
                                         <?php if ( $reg->payment_method === 'at_door' && $reg->payment_status === 'pending' ) : ?>
                                             (at door)
@@ -66464,6 +66508,71 @@ function sp_render_record_collections_page(): void {
             color: #b32d2e;
             cursor: pointer;
         }
+
+        /* GEDCOM export-version chooser: a labelled toggle sitting above the
+         * collections table. Flipping it rewrites every GEDCOM button's link
+         * to the chosen version — the choice lives only in this page view. */
+        .sp-gedcom-version {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 16px 0 0;
+        }
+        .sp-gedcom-version__label {
+            font-weight: 600;
+        }
+        .sp-gedcom-version__opt {
+            color: #646970;
+        }
+        .sp-gedcom-version__hint {
+            flex-basis: 100%;
+            color: #646970;
+            font-size: 12px;
+        }
+
+        /* Toggle switch — same component used on the Modules screen. The hidden
+         * checkbox drives state; the visible slider is pure CSS. */
+        .sp-toggle {
+            position: relative;
+            width: 40px;
+            height: 22px;
+            flex-shrink: 0;
+        }
+        .sp-toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+            position: absolute;
+        }
+        .sp-toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            inset: 0;
+            background: #ccc;
+            border-radius: 22px;
+            transition: background 0.2s;
+        }
+        .sp-toggle-slider::before {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            left: 3px;
+            bottom: 3px;
+            background: #fff;
+            border-radius: 50%;
+            transition: transform 0.2s;
+        }
+        .sp-toggle input:checked + .sp-toggle-slider {
+            background: #2271b1;
+        }
+        .sp-toggle input:checked + .sp-toggle-slider::before {
+            transform: translateX(18px);
+        }
+        .sp-toggle input:focus + .sp-toggle-slider {
+            box-shadow: 0 0 0 2px rgba(34, 113, 177, 0.4);
+        }
     </style>
     <div class="wrap">
         <h1>
@@ -66480,6 +66589,16 @@ function sp_render_record_collections_page(): void {
                 <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-collection-edit' ) ); ?>" class="button button-primary button-hero"><?php esc_html_e( 'Create Collection', 'societypress' ); ?></a>
             </div>
         <?php else : ?>
+            <div class="sp-gedcom-version">
+                <span class="sp-gedcom-version__label"><?php esc_html_e( 'GEDCOM export version:', 'societypress' ); ?></span>
+                <span class="sp-gedcom-version__opt"><?php esc_html_e( '5.5.1', 'societypress' ); ?></span>
+                <label class="sp-toggle">
+                    <input type="checkbox" id="sp-gedcom-version-toggle">
+                    <span class="sp-toggle-slider"></span>
+                </label>
+                <span class="sp-gedcom-version__opt"><?php esc_html_e( '7.0', 'societypress' ); ?></span>
+                <span class="sp-gedcom-version__hint"><?php esc_html_e( 'GEDCOM 5.5.1 works with every genealogy program. Switch to 7.0 only if you specifically need the newest format. This choice applies to the GEDCOM buttons below.', 'societypress' ); ?></span>
+            </div>
             <table class="wp-list-table widefat fixed striped sp-records-table">
                 <thead>
                     <tr>
@@ -66500,10 +66619,10 @@ function sp_render_record_collections_page(): void {
                             admin_url( 'admin-ajax.php?action=sp_export_genrecord&collection_id=' . $c->id ),
                             'sp_export_genrecord'
                         );
-                        $gedcom_url = wp_nonce_url(
+                        $gedcom_url = add_query_arg( 'ver', '551', wp_nonce_url(
                             admin_url( 'admin-ajax.php?action=sp_export_gedcom&collection_id=' . $c->id ),
                             'sp_export_gedcom'
-                        );
+                        ) );
                         // delete via POST form below
                     ?>
                         <tr>
@@ -66535,7 +66654,7 @@ function sp_render_record_collections_page(): void {
                                 <a href="<?php echo esc_url( $browse_url ); ?>" class="button button-small"><?php esc_html_e( 'Browse', 'societypress' ); ?></a>
                                 <a href="<?php echo esc_url( $import_url ); ?>" class="button button-small"><?php esc_html_e( 'Import', 'societypress' ); ?></a>
                                 <a href="<?php echo esc_url( $export_url ); ?>" class="button button-small" title="<?php esc_attr_e( 'Export as GENRECORD file', 'societypress' ); ?>"><?php esc_html_e( 'Export', 'societypress' ); ?></a>
-                                <a href="<?php echo esc_url( $gedcom_url ); ?>" class="button button-small" title="<?php esc_attr_e( 'Export as GEDCOM file', 'societypress' ); ?>"><?php esc_html_e( 'GEDCOM', 'societypress' ); ?></a>
+                                <a href="<?php echo esc_url( $gedcom_url ); ?>" class="button button-small sp-gedcom-link" title="<?php esc_attr_e( 'Export as GEDCOM file', 'societypress' ); ?>"><?php esc_html_e( 'GEDCOM', 'societypress' ); ?></a>
                                 <a href="<?php echo esc_url( $edit_url ); ?>" class="button button-small"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
                                 <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-collections' ) ); ?>" class="sp-records-delete-form" data-sp-confirm="<?php echo esc_attr( __( 'Delete this collection and ALL its records? This cannot be undone.', 'societypress' ) ); ?>">
                                     <?php wp_nonce_field( 'sp_delete_collection_' . $c->id ); ?>
@@ -66548,6 +66667,23 @@ function sp_render_record_collections_page(): void {
                     <?php endforeach; ?>
                 </tbody>
             </table>
+            <script>
+            // Flip every GEDCOM download link between the 5.5.1 and 7.0 export
+            // endpoints. Pure client-side: the version travels on the request,
+            // so one admin's choice never changes what another admin downloads.
+            ( function () {
+                var toggle = document.getElementById( 'sp-gedcom-version-toggle' );
+                if ( ! toggle ) {
+                    return;
+                }
+                toggle.addEventListener( 'change', function () {
+                    var ver = toggle.checked ? '70' : '551';
+                    document.querySelectorAll( '.sp-gedcom-link' ).forEach( function ( link ) {
+                        link.href = link.href.replace( /([?&]ver=)(?:70|551)/, '$1' + ver );
+                    } );
+                } );
+            } )();
+            </script>
         <?php endif; ?>
     </div>
     <?php
@@ -67388,6 +67524,10 @@ function sp_render_record_import_page(): void {
 
         if ( empty( $_FILES['genrecord_file']['tmp_name'] ) ) {
             echo '<div class="notice notice-error"><p>' . esc_html__( 'Please select a .genrecord file.', 'societypress' ) . '</p></div>';
+        } elseif ( ! sp_is_valid_import_upload( $_FILES['genrecord_file']['tmp_name'] ) ) {
+            // Confirm it's a genuine upload of a plain-text file before parsing —
+            // a .genrecord file is plain text, same gate every other importer uses.
+            echo '<div class="notice notice-error"><p>' . esc_html__( "That file doesn't look like a valid GENRECORD file. A .genrecord file is plain text — please upload one exported from SocietyPress or another GENRECORD source.", 'societypress' ) . '</p></div>';
         } else {
             // Parse the .genrecord file
             $parsed = sp_parse_genrecord_file( $_FILES['genrecord_file']['tmp_name'] );
@@ -67602,6 +67742,14 @@ function sp_render_record_import_page(): void {
             if ( $ext !== 'ged' ) {
                 echo '<div class="notice notice-error"><p>';
                 esc_html_e( 'Please upload a .ged file.', 'societypress' );
+                echo '</p></div>';
+            } elseif ( ! sp_is_valid_import_upload( $_FILES['gedcom_file']['tmp_name'] ) ) {
+                // Defense in depth: the .ged extension is user-supplied and
+                // trivially spoofed, so confirm it's a genuine upload of a
+                // plain-text file before parsing — same gate every other
+                // importer uses.
+                echo '<div class="notice notice-error"><p>';
+                esc_html_e( "That file doesn't look like a valid GEDCOM file. GEDCOM files are plain text — please upload the .ged file your genealogy software produced.", 'societypress' );
                 echo '</p></div>';
             } else {
                 $temp_dir  = wp_upload_dir()['basedir'];
@@ -69344,6 +69492,12 @@ function sp_ajax_export_gedcom(): void {
     $prefix        = $wpdb->prefix . 'sp_';
     $collection_id = (int) ( $_GET['collection_id'] ?? 0 );
 
+    // Export format version: '551' (GEDCOM 5.5.1, the default and most widely
+    // readable target) or '70' (GEDCOM 7.0). Chosen per-download via the toggle
+    // on the Records page, so the selection rides with this one request and
+    // never persists as shared state that could surprise another admin.
+    $ver = ( ( $_GET['ver'] ?? '' ) === '70' ) ? '70' : '551';
+
     $collection = $wpdb->get_row( $wpdb->prepare(
         "SELECT * FROM {$prefix}record_collections WHERE id = %d",
         $collection_id
@@ -69428,22 +69582,46 @@ function sp_ajax_export_gedcom(): void {
 
     $out = fopen( 'php://output', 'w' );
 
-    fwrite( $out, "0 HEAD\n" );
-    fwrite( $out, "1 SOUR SocietyPress\n" );
-    fwrite( $out, "2 VERS " . SOCIETYPRESS_VERSION . "\n" );
-    fwrite( $out, "2 NAME SocietyPress\n" );
-    if ( $site_name ) {
-        fwrite( $out, "2 CORP " . str_replace( "\n", ' ', $site_name ) . "\n" );
+    $export_date = strtoupper( wp_date( 'j M Y' ) );
+    $note_text   = 'Exported from SocietyPress collection: ' . str_replace( "\n", ' ', $collection->name );
+
+    if ( $ver === '70' ) {
+        // GEDCOM 7.0 header. The 7.0 spec puts GEDC first, drops the FORM
+        // substructure, and removes the CHAR, FILE, and DEST lines (7.0 files
+        // are always UTF-8 and self-describing). The individual records below
+        // are structurally identical to 5.5.1, so only the header differs.
+        // Ref: https://gedcom.io/specifications/FamilySearchGEDCOMv7.html
+        fwrite( $out, "0 HEAD\n" );
+        fwrite( $out, "1 GEDC\n" );
+        fwrite( $out, "2 VERS 7.0\n" );
+        fwrite( $out, "1 SOUR SocietyPress\n" );
+        fwrite( $out, "2 VERS " . SOCIETYPRESS_VERSION . "\n" );
+        fwrite( $out, "2 NAME SocietyPress\n" );
+        if ( $site_name ) {
+            fwrite( $out, "2 CORP " . str_replace( "\n", ' ', $site_name ) . "\n" );
+        }
+        fwrite( $out, "1 DATE " . $export_date . "\n" );
+        fwrite( $out, "1 SUBM @SUBM1@\n" );
+        fwrite( $out, "1 NOTE " . $note_text . "\n" );
+    } else {
+        // GEDCOM 5.5.1 header — the most universally readable export target.
+        fwrite( $out, "0 HEAD\n" );
+        fwrite( $out, "1 SOUR SocietyPress\n" );
+        fwrite( $out, "2 VERS " . SOCIETYPRESS_VERSION . "\n" );
+        fwrite( $out, "2 NAME SocietyPress\n" );
+        if ( $site_name ) {
+            fwrite( $out, "2 CORP " . str_replace( "\n", ' ', $site_name ) . "\n" );
+        }
+        fwrite( $out, "1 DEST GEDCOM\n" );
+        fwrite( $out, "1 DATE " . $export_date . "\n" );
+        fwrite( $out, "1 FILE " . $filename . "\n" );
+        fwrite( $out, "1 GEDC\n" );
+        fwrite( $out, "2 VERS 5.5.1\n" );
+        fwrite( $out, "2 FORM LINEAGE-LINKED\n" );
+        fwrite( $out, "1 CHAR UTF-8\n" );
+        fwrite( $out, "1 SUBM @SUBM1@\n" );
+        fwrite( $out, "1 NOTE " . $note_text . "\n" );
     }
-    fwrite( $out, "1 DEST GEDCOM\n" );
-    fwrite( $out, "1 DATE " . strtoupper( wp_date( 'j M Y' ) ) . "\n" );
-    fwrite( $out, "1 FILE " . $filename . "\n" );
-    fwrite( $out, "1 GEDC\n" );
-    fwrite( $out, "2 VERS 5.5.1\n" );
-    fwrite( $out, "2 FORM LINEAGE-LINKED\n" );
-    fwrite( $out, "1 CHAR UTF-8\n" );
-    fwrite( $out, "1 SUBM @SUBM1@\n" );
-    fwrite( $out, "1 NOTE Exported from SocietyPress collection: " . str_replace( "\n", ' ', $collection->name ) . "\n" );
 
     fwrite( $out, "0 @SUBM1@ SUBM\n" );
     fwrite( $out, "1 NAME " . str_replace( "\n", ' ', $site_name ?: 'SocietyPress' ) . "\n" );
@@ -70402,7 +70580,7 @@ function sp_render_store_frontend(): void {
                     <li>
                         <a href="<?php echo esc_url( add_query_arg( 'sp_store_cat', urlencode( $cat->store_category ) ) ); ?>"<?php echo $active_cat === $cat->store_category ? ' class="active"' : ''; ?>>
                             <?php echo esc_html( $cat->store_category ); ?>
-                            <span class="sp-store-cat-count"><?php echo $cat->cnt; ?></span>
+                            <span class="sp-store-cat-count"><?php echo (int) $cat->cnt; ?></span>
                         </a>
                     </li>
                 <?php endforeach; ?>
@@ -72321,7 +72499,7 @@ function sp_render_orders_page(): void {
                                     <br><small class="sp-text-quiet"><?php echo esc_html( $o->customer_email ); ?></small>
                                 <?php endif; ?>
                             </td>
-                            <td class="sp-text-center"><?php echo $o->item_count; ?></td>
+                            <td class="sp-text-center"><?php echo (int) $o->item_count; ?></td>
                             <td style="text-align:right;font-weight:600;"><?php echo esc_html( sp_format_currency( $o->total ) ); ?></td>
                             <td>
                                 <span style="display:inline-block;padding:2px 8px;border-radius:3px;font-size:12px;font-weight:600;color:#fff;background:<?php echo $color; ?>;">
@@ -72735,6 +72913,11 @@ add_action( 'admin_init', function () {
 // ---------------------------------------------------------------------------
 
 function sp_ajax_document_download(): void {
+    // No nonce by design: document links are meant to be shareable/bookmarkable
+    // direct URLs, so they can't be tied to a per-session nonce. This is a
+    // read-only download, so there's no CSRF-able state change. Access control
+    // is enforced below instead — drafts require sp_manage_content, and
+    // members-only documents require an active membership.
     global $wpdb;
 
     $doc_id = (int) ( $_GET['id'] ?? 0 );
@@ -75262,7 +75445,9 @@ function sp_rest_health_check(): WP_REST_Response {
         'php_version'    => PHP_VERSION,
         'php_ok'         => version_compare( PHP_VERSION, '8.0', '>=' ),
         'wp_ok'          => version_compare( get_bloginfo( 'version' ), '6.0', '>=' ),
-        'libsodium'      => function_exists( 'sodium_crypto_aead_xchacha20poly1305_ietf_encrypt' ),
+        // Check the primitive the code actually uses (secretbox = XSalsa20-Poly1305),
+        // not the unrelated AEAD function.
+        'libsodium'      => function_exists( 'sodium_crypto_secretbox' ),
     ];
 
     if ( ! $checks['environment']['php_ok'] || ! $checks['environment']['wp_ok'] ) {
@@ -82817,10 +83002,12 @@ add_action( 'admin_init', function () {
  */
 add_action( 'wp_ajax_sp_help_endorse', 'sp_handle_help_endorse' );
 function sp_handle_help_endorse(): void {
+    // Nonce first (CSRF guard), then the login check — matches every other
+    // handler and avoids work before the request is proven legitimate.
+    check_ajax_referer( 'sp_help_endorse', '_wpnonce' );
     if ( ! is_user_logged_in() ) {
         wp_send_json_error( [ 'message' => __( 'Please log in to endorse responses.', 'societypress' ) ] );
     }
-    check_ajax_referer( 'sp_help_endorse', '_wpnonce' );
 
     $response_id = (int) ( $_POST['response_id'] ?? 0 );
     if ( $response_id <= 0 ) {
@@ -89004,10 +89191,44 @@ function sp_gallery_import_fetch_url( string $url ) {
         return new WP_Error( 'sp_bad_url', $url_error );
     }
 
+    // Resolve the host once, confirm it's a public IP, and pin THAT IP into the
+    // cURL handle via CURLOPT_RESOLVE. Without this, a hostile resolver could
+    // return a public IP to sp_validate_external_feed_url() above and then flip
+    // to a private IP for the fetch below (DNS rebind). Same protection the
+    // iCal sync and theme color-extractor apply.
+    $g_host = wp_parse_url( $url, PHP_URL_HOST );
+    $g_ip   = $g_host ? gethostbyname( $g_host ) : '';
+    if ( $g_ip === '' || $g_ip === $g_host
+        || ! filter_var( $g_ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE ) ) {
+        return new WP_Error( 'sp_bad_url', __( 'Image host could not be safely resolved (private/reserved IP).', 'societypress' ) );
+    }
+    // The pin only works under cURL; the Streams fallback would silently bypass
+    // it and reopen the window. Refuse rather than degrade.
+    if ( ! function_exists( 'curl_init' ) ) {
+        return new WP_Error( 'sp_no_curl', __( 'Fetching images by URL requires the PHP cURL extension on this server.', 'societypress' ) );
+    }
+    $g_port = wp_parse_url( $url, PHP_URL_PORT );
+    $g_port = $g_port ?: ( wp_parse_url( $url, PHP_URL_SCHEME ) === 'https' ? 443 : 80 );
+    $g_pin  = "{$g_host}:{$g_port}:{$g_ip}";
+    $g_curl = function ( $handle ) use ( $g_pin ) {
+        curl_setopt( $handle, CURLOPT_RESOLVE, [ $g_pin ] );
+        curl_setopt( $handle, CURLOPT_FOLLOWLOCATION, false );
+    };
+    add_action( 'http_api_curl', $g_curl );
+    $g_force_curl = function () { return true; };
+    add_filter( 'use_curl_transport', $g_force_curl, PHP_INT_MAX );
+    add_filter( 'use_streams_transport', '__return_false', PHP_INT_MAX );
+
     $response = wp_remote_get( $url, [
-        'timeout'    => 20,
-        'user-agent' => 'SocietyPress/' . SOCIETYPRESS_VERSION,
+        'timeout'     => 20,
+        'redirection' => 0,
+        'user-agent'  => 'SocietyPress/' . SOCIETYPRESS_VERSION,
     ] );
+
+    remove_action( 'http_api_curl', $g_curl );
+    remove_filter( 'use_curl_transport', $g_force_curl, PHP_INT_MAX );
+    remove_filter( 'use_streams_transport', '__return_false', PHP_INT_MAX );
+
     if ( is_wp_error( $response ) ) return $response;
     if ( wp_remote_retrieve_response_code( $response ) !== 200 ) {
         return new WP_Error( 'sp_http_err', sprintf( /* translators: %d HTTP status */ __( 'HTTP %d', 'societypress' ), wp_remote_retrieve_response_code( $response ) ) );

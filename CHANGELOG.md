@@ -47,7 +47,8 @@ lineage programs, and research help — without third-party services.
 - **Store** — online publication sales with per-item shipping, Stripe
   and PayPal checkout, order management
 - **Records** — collection-based historical record sets with custom fields,
-  member submissions, search, and `.genrecord` open-format import/export
+  member submissions, search, `.genrecord` open-format import/export, and
+  GEDCOM import (5.5/5.5.1/7.0) and export (5.5.1 or 7.0)
 - **Donations** — one-time and recurring donations, campaigns,
   acknowledgments, year-end reports
 - **Blast Email** — newsletter blasts, segmented sends, plain-text or

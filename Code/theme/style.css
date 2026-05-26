@@ -419,6 +419,11 @@ img {
     color: var(--sp-color-header-text, #fff);
 }
 
+.sp-user-nav-link:focus-visible {
+    outline: 2px solid var(--sp-color-header-text, #fff);
+    outline-offset: 2px;
+}
+
 /* Avatar-with-name variant — small round photo to the left of the
    member's name. Inherits link color/size from .sp-user-nav-link.
    !important on display because the base .sp-user-nav-link rule (which
@@ -657,6 +662,12 @@ img {
     cursor: pointer;
     padding: 8px;
     z-index: 1001;
+}
+
+.sp-hamburger:focus-visible {
+    outline: 2px solid var(--sp-color-header-text, #fff);
+    outline-offset: 2px;
+    border-radius: 2px;
 }
 
 /* Three horizontal bars that form the hamburger icon. Bar height (3px) and
@@ -1013,7 +1024,7 @@ img {
     height: 20px;
     line-height: 20px;
     text-align: center;
-    color: #6c757d;
+    color: #6b7280;
 }
 
 .sp-user-dropdown-item:hover .sp-user-dropdown-icon {
@@ -1067,7 +1078,7 @@ img {
 
 .entry-meta {
     font-size: 0.8rem;
-    color: #8a8f98;
+    color: #6b7280;
     margin-bottom: 16px;
     letter-spacing: 0.03em;
     text-transform: uppercase;
@@ -1561,7 +1572,7 @@ article.post:last-child {
 
 .error-404 p {
     font-size: 1.1rem;
-    color: #6c757d;
+    color: #6b7280;
     margin-bottom: 24px;
 }
 
@@ -1617,6 +1628,12 @@ input[type="submit"]:hover {
     background: var(--sp-color-primary-hover, #2c5282);
 }
 
+button:focus-visible,
+input[type="submit"]:focus-visible {
+    outline: 2px solid var(--sp-color-accent, #c9973a);
+    outline-offset: 2px;
+}
+
 /* ============================================================================
    WORDPRESS UTILITIES
    WHY: WordPress adds these classes for alignment and captions.
@@ -1644,7 +1661,7 @@ input[type="submit"]:hover {
 
 .wp-caption-text {
     font-size: 0.85rem;
-    color: #6c757d;
+    color: #6b7280;
     margin-top: 6px;
 }
 
@@ -1794,7 +1811,7 @@ input[type="submit"]:hover {
 
 .sp-photo-hint {
     font-size: 0.8rem;
-    color: #6c757d;
+    color: #6b7280;
     margin: 0;
 }
 
@@ -1847,7 +1864,7 @@ input[type="submit"]:hover {
 
 .sp-field-hint {
     font-size: 0.8rem;
-    color: #6c757d;
+    color: #6b7280;
     margin: 0;
 }
 
@@ -1969,7 +1986,7 @@ input[type="date"]:focus {
 /* Section description text (used in Directory Privacy) */
 .sp-section-description {
     font-size: 0.9rem;
-    color: #6c757d;
+    color: #6b7280;
     margin-bottom: 16px;
     margin-top: -8px;
 }
@@ -1996,6 +2013,12 @@ input[type="date"]:focus {
 .sp-button:hover {
     background: var(--sp-color-primary-hover, #2c5282);
     color: #fff;
+}
+
+.sp-button:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px var(--sp-color-primary, #1e3a5f);
 }
 
 .sp-button--secondary {

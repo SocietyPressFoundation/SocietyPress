@@ -12435,8 +12435,8 @@ class SP_Members_List_Table extends WP_List_Table {
             'active'   => '#00a32a',
             'expired'  => '#d63638',
             'lapsed'   => '#d63638',
-            'grace'    => '#dba617',
-            'pending'  => '#dba617',
+            'grace'    => '#8a6500',
+            'pending'  => '#8a6500',
             'deceased' => '#787c82',
             'inactive' => '#787c82',
         ];
@@ -35340,7 +35340,7 @@ class SP_Events_List_Table extends WP_List_Table {
         $colors = [
             'scheduled' => '#2271b1',
             'cancelled' => '#d63638',
-            'postponed' => '#dba617',
+            'postponed' => '#8a6500',
             'completed' => '#00a32a',
         ];
         $color = $colors[ $item->status ] ?? '#787c82';
@@ -44020,7 +44020,7 @@ function sp_render_event_registrations_section( object $event ): void {
                                     $pay_colors = [
                                         'paid'     => '#00a32a',
                                         'refunded' => '#d63638',
-                                        'pending'  => '#dba617',
+                                        'pending'  => '#8a6500',
                                         'none'     => '#787c82',
                                     ];
                                     $pay_color = $pay_colors[ $reg->payment_status ] ?? '#787c82';
@@ -52618,7 +52618,7 @@ function sp_render_membership_reports_page(): void {
             font-weight: 700;
             color: var(--sp-color-primary, #1e3a5f);
         }
-        .sp-mr-stat-number--warning { color: #dba617; }
+        .sp-mr-stat-number--warning { color: #8a6500; }
         .sp-mr-stat-number--danger  { color: #b32d2e; }
         .sp-mr-stat-number--green   { color: #00a32a; }
         .sp-mr-revenue-total        { font-size: 24px; font-weight: 700; margin-bottom: 12px; }
@@ -52688,7 +52688,7 @@ function sp_render_membership_reports_page(): void {
             color: var(--sp-color-primary, #1e3a5f);
         }
         .sp-mr-pipeline-count--urgent { color: #b32d2e; }
-        .sp-mr-pipeline-count--warning { color: #dba617; }
+        .sp-mr-pipeline-count--warning { color: #8a6500; }
         .sp-mr-pipeline-label {
             font-size: 13px;
             color: #666;
@@ -54237,7 +54237,7 @@ function sp_render_library_catalog_page(): void {
     /* Individual accent colors for each KPI tile */
     .sp-catalog-stat-number--total     { color: #2271b1; } /* WP admin blue  — total items   */
     .sp-catalog-stat-number--available { color: #0a6b2e; } /* green          — available      */
-    .sp-catalog-stat-number--value     { color: #dba617; } /* amber          — collection $   */
+    .sp-catalog-stat-number--value     { color: #8a6500; } /* amber          — collection $   */
     .sp-catalog-stat-number--types     { color: #8c5bbd; } /* purple         — media type cnt */
     .sp-catalog-stat-label {
         color: #666;
@@ -60371,7 +60371,7 @@ function sp_render_email_log_page(): void {
 
         /* Color per status for the count number */
         .sp-email-log-stat-sent-num    { color: #00a32a; }
-        .sp-email-log-stat-blocked-num { color: #dba617; }
+        .sp-email-log-stat-blocked-num { color: #8a6500; }
         .sp-email-log-stat-failed-num  { color: #d63638; }
         .sp-email-log-stat-total-num   { color: #2271b1; }
 
@@ -60949,7 +60949,7 @@ function sp_render_blast_email_page(): void {
                                 <?php
                                 $status_colors = [
                                     'draft'   => '#787c82',
-                                    'sending' => '#dba617',
+                                    'sending' => '#8a6500',
                                     'sent'    => '#00a32a',
                                     'failed'  => '#d63638',
                                 ];
@@ -62419,7 +62419,7 @@ function sp_render_campaigns_page(): void {
                             </td>
                             <td>
                                 <?php
-                                $status_colors = [ 'active' => '#00a32a', 'closed' => '#787c82', 'draft' => '#dba617' ];
+                                $status_colors = [ 'active' => '#00a32a', 'closed' => '#787c82', 'draft' => '#8a6500' ];
                                 $color = $status_colors[ $c->status ] ?? '#787c82';
                                 printf( '<span class="sp-status-badge" style="color: %s;">%s</span>', esc_attr( $color ), esc_html( sp_localized_status( $c->status ) ) );
                                 ?>
@@ -75467,7 +75467,7 @@ function sp_render_external_calendars_page(): void {
                     $status_colors = [
                         'success' => '#00a32a',
                         'error'   => '#d63638',
-                        'pending' => '#dba617',
+                        'pending' => '#8a6500',
                     ];
                     $status_color = $status_colors[ $feed->last_status ] ?? '#787c82';
                     $status_label = sp_localized_status( $feed->last_status );

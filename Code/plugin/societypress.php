@@ -30072,7 +30072,7 @@ function sp_render_directory( array $settings ): void {
                 if ( $show_surnames && ! empty( $surnames_map[ $m->user_id ] ) ) :
                 ?>
                     <tr class="sp-surname-row">
-                        <td colspan="<?php echo $col_count; ?>">
+                        <td colspan="<?php echo (int) $col_count; ?>">
                             <div class="sp-surnames">
                                 <span class="sp-surnames-label"><?php echo esc_html__( 'Researching:', 'societypress' ); ?></span>
                                 <?php
@@ -30109,7 +30109,7 @@ function sp_render_directory( array $settings ): void {
                 if ( ! empty( $groups_map[ $m->user_id ] ) ) :
                 ?>
                     <tr class="sp-groups-row">
-                        <td colspan="<?php echo $col_count; ?>">
+                        <td colspan="<?php echo (int) $col_count; ?>">
                             <div class="sp-member-groups">
                                 <span class="sp-groups-label"><?php echo esc_html__( 'Groups:', 'societypress' ); ?></span>
                                 <?php
@@ -34460,9 +34460,10 @@ function sp_handle_builder_contact_form(): void {
     $to        = $settings['organization_email'] ?? get_option( 'admin_email' );
     $site_name = get_bloginfo( 'name' );
 
-    // Strip \r and \n from sender name before use in email headers to prevent
-    // header injection attacks (an attacker could inject BCC: or other headers)
-    $safe_name = str_replace( [ "\r", "\n" ], '', $name );
+    // Strip \r and \n from the sender name to prevent header injection, and
+    // also < > so the name can't break out of the "Name <email>" structure of
+    // the Reply-To header and inject a different address.
+    $safe_name = str_replace( [ "\r", "\n", '<', '>' ], '', $name );
 
     $sent = wp_mail(
         $to,
@@ -37683,7 +37684,7 @@ function sp_render_event_edit_page(): void {
                     error:     <?php echo wp_json_encode( __( 'Error generating occurrences.', 'societypress' ) ); ?>,
                     wrong:     <?php echo wp_json_encode( __( 'Something went wrong.', 'societypress' ) ); ?>
                 };
-                fetch('<?php echo admin_url( "admin-ajax.php" ); ?>', { method: 'POST', body: fd, credentials: 'same-origin' })
+                fetch('<?php echo esc_js( admin_url( "admin-ajax.php" ) ); ?>', { method: 'POST', body: fd, credentials: 'same-origin' })
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
                         regenBtn.disabled = false;
@@ -37710,7 +37711,7 @@ function sp_render_event_edit_page(): void {
                 fd.append('event_id', detachBtn.getAttribute('data-event-id'));
                 fd.append('nonce', '<?php echo wp_create_nonce( "sp_recurrence" ); ?>');
 
-                fetch('<?php echo admin_url( "admin-ajax.php" ); ?>', { method: 'POST', body: fd, credentials: 'same-origin' })
+                fetch('<?php echo esc_js( admin_url( "admin-ajax.php" ) ); ?>', { method: 'POST', body: fd, credentials: 'same-origin' })
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
                         if (data.success) {
@@ -37739,7 +37740,7 @@ function sp_render_event_edit_page(): void {
                 fd.append('event_id', detachFeedBtn.getAttribute('data-event-id'));
                 fd.append('_wpnonce', detachFeedBtn.getAttribute('data-nonce'));
 
-                fetch('<?php echo admin_url( "admin-ajax.php" ); ?>', { method: 'POST', body: fd, credentials: 'same-origin' })
+                fetch('<?php echo esc_js( admin_url( "admin-ajax.php" ) ); ?>', { method: 'POST', body: fd, credentials: 'same-origin' })
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
                         if (data.success) {
@@ -39378,7 +39379,7 @@ add_action( 'admin_init', function () {
                     formData.append('action', 'sp_test_stripe_connection');
                     formData.append('nonce', '<?php echo wp_create_nonce( "sp_stripe_test" ); ?>');
 
-                    fetch('<?php echo admin_url( "admin-ajax.php" ); ?>', {
+                    fetch('<?php echo esc_js( admin_url( "admin-ajax.php" ) ); ?>', {
                         method: 'POST',
                         body: formData,
                         credentials: 'same-origin'
@@ -42610,7 +42611,7 @@ function sp_render_event_detail( string $slug, array $settings ): void {
         <!-- Registration data for AJAX calls -->
         <script>
         var spRegData = {
-            ajaxUrl:      '<?php echo admin_url( "admin-ajax.php" ); ?>',
+            ajaxUrl:      '<?php echo esc_js( admin_url( "admin-ajax.php" ) ); ?>',
             nonce:        '<?php echo wp_create_nonce( "sp_event_register" ); ?>',
             cancelNonce:  '<?php echo wp_create_nonce( "sp_event_cancel_" . (int) $event->id ); ?>',
             showPayBtn:   <?php echo $show_pay_btn ? 'true' : 'false'; ?>,
@@ -44121,7 +44122,7 @@ function sp_render_event_registrations_section( object $event ): void {
     (function() {
         'use strict';
         var eventId = <?php echo (int) $event->id; ?>;
-        var ajaxUrl = '<?php echo admin_url( "admin-ajax.php" ); ?>';
+        var ajaxUrl = '<?php echo esc_js( admin_url( "admin-ajax.php" ) ); ?>';
         var nonce   = '<?php echo wp_create_nonce( "sp_admin_registration" ); ?>';
 
         // ---- Walk-in form toggle ----
@@ -49585,12 +49586,14 @@ add_action( 'wp_ajax_sp_test_stripe_connection', function () {
  *      Stripe's dashboard to find the payment and refund it manually.
  */
 add_action( 'wp_ajax_sp_admin_refund_payment', function () {
-    if ( ! current_user_can( 'sp_manage_finances' ) ) {
-        wp_send_json_error( __( 'Permission denied.', 'societypress' ) );
-    }
-
+    // Nonce first (CSRF guard), then capability — this triggers a real Stripe
+    // refund, so the ordering matters most here.
     if ( ! check_ajax_referer( 'sp_admin_registration', 'nonce', false ) ) {
         wp_send_json_error( __( 'Security check failed.', 'societypress' ) );
+    }
+
+    if ( ! current_user_can( 'sp_manage_finances' ) ) {
+        wp_send_json_error( __( 'Permission denied.', 'societypress' ) );
     }
 
     global $wpdb;
@@ -71746,7 +71749,10 @@ add_action( 'wp_ajax_sp_store_finalize_stripe', function () {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
     $order  = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$prefix}orders WHERE id = %d", $order_id ) );
-    if ( ! $order || ( is_user_logged_in() && (int) $order->user_id !== get_current_user_id() ) ) {
+    // Auth-only endpoint: the order must belong to the current user. (Not
+    // wrapped in is_user_logged_in() so this stays correct if a guest-checkout
+    // nopriv variant is ever added — a guest order's user_id is 0.)
+    if ( ! $order || (int) $order->user_id !== get_current_user_id() ) {
         wp_send_json_error( [ 'message' => __( 'Order ownership check failed.', 'societypress' ) ] );
     }
 
@@ -71894,7 +71900,8 @@ add_action( 'wp_ajax_sp_store_capture_paypal_order', function () {
     if ( ! $order ) {
         wp_send_json_error( [ 'message' => __( 'No matching order on this site.', 'societypress' ) ] );
     }
-    if ( is_user_logged_in() && (int) $order->user_id !== get_current_user_id() ) {
+    // Auth-only endpoint: the order must belong to the current user.
+    if ( (int) $order->user_id !== get_current_user_id() ) {
         wp_send_json_error( [ 'message' => __( 'Order ownership check failed.', 'societypress' ) ] );
     }
 
@@ -83711,10 +83718,12 @@ function sp_handle_help_endorse(): void {
  */
 add_action( 'wp_ajax_sp_help_mark_resolved', 'sp_handle_help_mark_resolved' );
 function sp_handle_help_mark_resolved(): void {
+    // Nonce first (CSRF guard), then the login check.
+    check_ajax_referer( 'sp_help_resolve', '_wpnonce' );
+
     if ( ! is_user_logged_in() ) {
         wp_send_json_error( [ 'message' => __( 'Login required.', 'societypress' ) ], 403 );
     }
-    check_ajax_referer( 'sp_help_resolve', '_wpnonce' );
 
     $request_id = (int) ( $_POST['request_id'] ?? 0 );
     $resolved_response_id = (int) ( $_POST['resolved_response_id'] ?? 0 ); // optional

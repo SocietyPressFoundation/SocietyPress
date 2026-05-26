@@ -60,7 +60,8 @@ if ( isset( $_POST['gsp_feedback_submit'] ) ) {
 
                 $headers = [
                     'Content-Type: text/plain; charset=UTF-8',
-                    'Reply-To: ' . str_replace( [ "\r", "\n" ], '', $name ) . ' <' . $email . '>',
+                    // Strip CRLF (header injection) and < > (can't break out of Name <email>).
+                    'Reply-To: ' . str_replace( [ "\r", "\n", '<', '>' ], '', $name ) . ' <' . $email . '>',
                 ];
 
                 $sent = wp_mail( $to, $subject, $body, $headers );

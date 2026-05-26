@@ -3500,8 +3500,14 @@ function sp_localized_status( $slug, string $context = '' ): string {
  * The SocietyPress settings array.
  *
  * WHY a wrapper: this option is read in ~180 places. Centralizing the call
- * gives one spot to add caching, a filter, or rename the option key without
- * touching every call site. Always returns an array (empty if never saved).
+ * gives one spot to add a filter or rename the option key without touching
+ * every call site. Always returns an array (empty if never saved).
+ *
+ * WHY no static local cache: the option is autoloaded, so WordPress already
+ * serves every read from the in-memory alloptions cache after a single startup
+ * query — there is no per-call MySQL hit to eliminate. A static cache here
+ * would instead risk returning stale settings after any in-request
+ * update_option() (e.g. the settings-save handler), so we deliberately don't.
  */
 function sp_settings(): array {
     return get_option( 'societypress_settings', [] );
@@ -7799,9 +7805,7 @@ add_action( 'wp_ajax_sp_save_account', function() {
 
     // ---- Profile (personal info) ----
     if ( $action === 'update_profile' ) {
-        if ( ! wp_verify_nonce( $_POST['sp_profile_nonce'] ?? '', 'sp_update_profile' ) ) {
-            wp_send_json_error( [ 'message' => __( 'Security check failed. Please reload the page.', 'societypress' ) ] );
-        }
+        // Nonce already verified by the dispatch map at the top of this handler.
         $first_name     = sanitize_text_field( $_POST['first_name'] ?? '' );
         $middle_name    = sanitize_text_field( $_POST['middle_name'] ?? '' );
         $last_name      = sanitize_text_field( $_POST['last_name'] ?? '' );
@@ -7835,9 +7839,7 @@ add_action( 'wp_ajax_sp_save_account', function() {
 
     // ---- Contact ----
     if ( $action === 'update_contact' ) {
-        if ( ! wp_verify_nonce( $_POST['sp_contact_nonce'] ?? '', 'sp_update_contact' ) ) {
-            wp_send_json_error( [ 'message' => __( 'Security check failed. Please reload the page.', 'societypress' ) ] );
-        }
+        // Nonce already verified by the dispatch map at the top of this handler.
         $email          = sanitize_email( $_POST['user_email'] ?? '' );
         $phone          = sanitize_text_field( $_POST['phone'] ?? '' );
         $cell           = sanitize_text_field( $_POST['cell'] ?? '' );
@@ -7884,9 +7886,7 @@ add_action( 'wp_ajax_sp_save_account', function() {
 
     // ---- Address ----
     if ( $action === 'update_address' ) {
-        if ( ! wp_verify_nonce( $_POST['sp_address_nonce'] ?? '', 'sp_update_address' ) ) {
-            wp_send_json_error( [ 'message' => __( 'Security check failed. Please reload the page.', 'societypress' ) ] );
-        }
+        // Nonce already verified by the dispatch map at the top of this handler.
         if ( ! sp_user_has_member_record( $user->ID ) ) {
             wp_send_json_error( [ 'message' => __( 'Member record not found.', 'societypress' ) ] );
         }
@@ -7923,9 +7923,7 @@ add_action( 'wp_ajax_sp_save_account', function() {
 
     // ---- Communication Preferences ----
     if ( $action === 'update_preferences' ) {
-        if ( ! wp_verify_nonce( $_POST['sp_preferences_nonce'] ?? '', 'sp_update_preferences' ) ) {
-            wp_send_json_error( [ 'message' => __( 'Security check failed. Please reload the page.', 'societypress' ) ] );
-        }
+        // Nonce already verified by the dispatch map at the top of this handler.
         if ( ! sp_user_has_member_record( $user->ID ) ) {
             wp_send_json_error( [ 'message' => __( 'Member record not found.', 'societypress' ) ] );
         }
@@ -7943,9 +7941,7 @@ add_action( 'wp_ajax_sp_save_account', function() {
 
     // ---- Directory Privacy ----
     if ( $action === 'update_privacy' ) {
-        if ( ! wp_verify_nonce( $_POST['sp_privacy_nonce'] ?? '', 'sp_update_privacy' ) ) {
-            wp_send_json_error( [ 'message' => __( 'Security check failed. Please reload the page.', 'societypress' ) ] );
-        }
+        // Nonce already verified by the dispatch map at the top of this handler.
         if ( ! sp_user_has_member_record( $user->ID ) ) {
             wp_send_json_error( [ 'message' => __( 'Member record not found.', 'societypress' ) ] );
         }
@@ -19691,7 +19687,7 @@ add_action( 'admin_init', function () {
             $settings = sp_settings();
             $value    = $settings['currency_symbol'] ?? '$';
             printf(
-                '<input type="text" name="societypress_settings[currency_symbol]" value="%s" class="small-text" maxlength="5" class="sp-w-60">',
+                '<input type="text" name="societypress_settings[currency_symbol]" value="%s" class="small-text sp-w-60" maxlength="5">',
                 esc_attr( $value )
             );
             echo '<p class="description">' . esc_html__( 'The symbol shown next to monetary amounts (e.g., $, €, £, ¥).', 'societypress' ) . '</p>';
@@ -30629,9 +30625,9 @@ function sp_directory_styles(): void {
  */
 add_action( 'wp_ajax_sp_member_detail', 'sp_ajax_member_detail' );
 function sp_ajax_member_detail(): void {
-    $user_id = absint( $_GET['user_id'] ?? 0 );
-    if ( ! $user_id ) {
-        wp_send_json_error( __( 'Missing member ID.', 'societypress' ) );
+    // Verify nonce first (CSRF) — the directory JS passes it with every request.
+    if ( ! check_ajax_referer( 'sp_member_detail_nonce', 'nonce', false ) ) {
+        wp_send_json_error( __( 'Security check failed. Please refresh the page.', 'societypress' ) );
     }
 
     // Only logged-in members can view profiles
@@ -30639,9 +30635,9 @@ function sp_ajax_member_detail(): void {
         wp_send_json_error( __( 'You must be logged in to view member profiles.', 'societypress' ) );
     }
 
-    // Verify nonce to prevent CSRF — the directory JS passes this with every request
-    if ( ! check_ajax_referer( 'sp_member_detail_nonce', 'nonce', false ) ) {
-        wp_send_json_error( __( 'Security check failed. Please refresh the page.', 'societypress' ) );
+    $user_id = absint( $_GET['user_id'] ?? 0 );
+    if ( ! $user_id ) {
+        wp_send_json_error( __( 'Missing member ID.', 'societypress' ) );
     }
 
     global $wpdb;
@@ -32793,7 +32789,7 @@ function sp_builder_fields_feature_cards( $index, array $settings ): void {
                     <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][cards][<?php echo $ci; ?>][title]" id="sp-w-<?php echo esc_attr( $index ); ?>-cards-<?php echo (int) $ci; ?>-title" value="<?php echo esc_attr( $card['title'] ?? '' ); ?>" class="widefat sp-mb-8">
 
                     <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-cards-<?php echo (int) $ci; ?>-description"><?php esc_html_e( 'Description', 'societypress' ); ?></label>
-                    <textarea name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][cards][<?php echo $ci; ?>][description]" id="sp-w-<?php echo esc_attr( $index ); ?>-cards-<?php echo (int) $ci; ?>-description" class="widefat" rows="3" class="sp-mb-8"><?php echo esc_textarea( $card['description'] ?? '' ); ?></textarea>
+                    <textarea name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][cards][<?php echo $ci; ?>][description]" id="sp-w-<?php echo esc_attr( $index ); ?>-cards-<?php echo (int) $ci; ?>-description" class="widefat sp-mb-8" rows="3"><?php echo esc_textarea( $card['description'] ?? '' ); ?></textarea>
 
                     <div class="sp-flex-gap-8">
                         <div class="sp-flex-1">
@@ -32839,7 +32835,7 @@ function sp_builder_fields_feature_cards( $index, array $settings ): void {
                         + '<label class="sp-field-label" for="' + idBase + 'title"><?php echo esc_js( __( 'Title', 'societypress' ) ); ?></label>'
                         + '<input type="text" id="' + idBase + 'title" name="sp_widgets[' + idx + '][settings][cards][' + ci + '][title]" value="" class="widefat sp-mb-8">'
                         + '<label class="sp-field-label" for="' + idBase + 'description"><?php echo esc_js( __( 'Description', 'societypress' ) ); ?></label>'
-                        + '<textarea id="' + idBase + 'description" name="sp_widgets[' + idx + '][settings][cards][' + ci + '][description]" class="widefat" rows="3" class="sp-mb-8"></textarea>'
+                        + '<textarea id="' + idBase + 'description" name="sp_widgets[' + idx + '][settings][cards][' + ci + '][description]" class="widefat sp-mb-8" rows="3"></textarea>'
                         + '<div class="sp-flex-gap-8">'
                         + '<div class="sp-flex-1"><label class="sp-field-label" for="' + idBase + 'btn_text"><?php echo esc_js( __( 'Button Text', 'societypress' ) ); ?></label>'
                         + '<input type="text" id="' + idBase + 'btn_text" name="sp_widgets[' + idx + '][settings][cards][' + ci + '][btn_text]" value="" class="widefat"></div>'
@@ -46156,6 +46152,13 @@ register_deactivation_hook( __FILE__, function () {
 add_action( 'sp_event_reminder_cron', 'sp_send_event_reminders' );
 
 function sp_send_event_reminders(): void {
+    // Guard in the handler too: a cron scheduled while Events was on can still
+    // fire in the window after the module is disabled and before admin_init
+    // unschedules it. No module, no reminders.
+    if ( ! sp_module_enabled( 'events' ) ) {
+        return;
+    }
+
     global $wpdb;
     $settings  = sp_settings();
     $evt_table = $wpdb->prefix . 'sp_events';
@@ -56879,12 +56882,13 @@ add_action( 'wp_ajax_sp_volunteer_signup', function () {
 
 // ---- AJAX: Cancel volunteer signup ----
 add_action( 'wp_ajax_sp_volunteer_cancel', function () {
-    if ( ! is_user_logged_in() ) {
-        wp_send_json_error( [ 'message' => __( 'You must be logged in.', 'societypress' ) ] );
-    }
-
+    // Nonce first (CSRF guard), then the login check.
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_volunteer_opp' ) ) {
         wp_send_json_error( __( 'Security check failed.', 'societypress' ) );
+    }
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => __( 'You must be logged in.', 'societypress' ) ] );
     }
 
     global $wpdb;

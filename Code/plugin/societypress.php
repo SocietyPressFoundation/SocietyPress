@@ -122,6 +122,8 @@ register_activation_hook( __FILE__, function () {
             'backup_include_settings'      => 1,
             'backup_day_of_week'           => 0,          // 0 = Sunday
             'backup_hour'                  => 3,          // 3 AM server time
+            'backup_notify'                => 0,          // email admins when a scheduled backup finishes
+            'backup_notify_email'          => '',         // recipient; empty = site admin_email
             // Community forum URL — Feature 1
             'community_forum_url'          => '',
             // Renewal reminders — Feature 3
@@ -24452,6 +24454,129 @@ function sp_render_settings_export_page(): void {
 
         <p class="description">
             <?php esc_html_e( 'Recommended cadence: monthly. Keep the last three months of backups offsite (cloud storage, USB drive, email-to-self). The export is your insurance against accidental deletion, a forgotten password, a hosting outage, or a failed migration.', 'societypress' ); ?>
+        </p>
+
+        <hr class="sp-mt-24">
+
+        <h2><?php esc_html_e( 'Scheduled Backups', 'societypress' ); ?></h2>
+        <p class="description">
+            <?php esc_html_e( 'Automatically create a full backup (database and settings, and optionally uploaded files) on a schedule. Backups are kept on this server and listed below — download a copy and keep it somewhere safe.', 'societypress' ); ?>
+        </p>
+
+        <?php
+        $msg = sanitize_key( $_GET['sp_backup_msg'] ?? '' );
+        if ( $msg === 'saved' ) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Backup settings saved.', 'societypress' ) . '</p></div>';
+        } elseif ( $msg === 'deleted' ) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Backup deleted.', 'societypress' ) . '</p></div>';
+        } elseif ( $msg === 'ran' ) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Backup created.', 'societypress' ) . '</p></div>';
+        }
+
+        $settings  = sp_settings();
+        $freq      = $settings['backup_frequency'] ?? 'weekly';
+        $retention = (int) ( $settings['backup_retention'] ?? 5 );
+        $hour      = (int) ( $settings['backup_hour'] ?? 3 );
+        $inc_up    = ! empty( $settings['backup_include_uploads'] );
+        $notify    = ! empty( $settings['backup_notify'] );
+        $notify_to = $settings['backup_notify_email'] ?? '';
+        ?>
+
+        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+            <input type="hidden" name="action" value="sp_save_backup_settings">
+            <?php wp_nonce_field( 'sp_save_backup_settings' ); ?>
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><label for="sp-backup-frequency"><?php esc_html_e( 'Frequency', 'societypress' ); ?></label></th>
+                    <td>
+                        <select name="backup_frequency" id="sp-backup-frequency">
+                            <option value="off"    <?php selected( $freq, 'off' ); ?>><?php esc_html_e( 'Off', 'societypress' ); ?></option>
+                            <option value="daily"  <?php selected( $freq, 'daily' ); ?>><?php esc_html_e( 'Daily', 'societypress' ); ?></option>
+                            <option value="weekly" <?php selected( $freq, 'weekly' ); ?>><?php esc_html_e( 'Weekly', 'societypress' ); ?></option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="sp-backup-hour"><?php esc_html_e( 'Run at hour', 'societypress' ); ?></label></th>
+                    <td>
+                        <input type="number" name="backup_hour" id="sp-backup-hour" min="0" max="23" value="<?php echo esc_attr( $hour ); ?>" class="small-text">
+                        <p class="description"><?php esc_html_e( '24-hour clock, server time (0–23). The backup runs at the first site visit after this hour.', 'societypress' ); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="sp-backup-retention"><?php esc_html_e( 'Keep this many', 'societypress' ); ?></label></th>
+                    <td>
+                        <input type="number" name="backup_retention" id="sp-backup-retention" min="1" max="50" value="<?php echo esc_attr( $retention ); ?>" class="small-text">
+                        <p class="description"><?php esc_html_e( 'Older backups beyond this count are deleted automatically.', 'societypress' ); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php esc_html_e( 'Include uploaded files', 'societypress' ); ?></th>
+                    <td><label><input type="checkbox" name="backup_include_uploads" value="1" <?php checked( $inc_up ); ?>> <?php esc_html_e( 'Include newsletter PDFs, photos, and document attachments (makes backups much larger).', 'societypress' ); ?></label></td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php esc_html_e( 'Email when ready', 'societypress' ); ?></th>
+                    <td>
+                        <label><input type="checkbox" name="backup_notify" value="1" <?php checked( $notify ); ?>> <?php esc_html_e( 'Email an admin a download link each time a scheduled backup finishes.', 'societypress' ); ?></label>
+                        <p>
+                            <input type="email" name="backup_notify_email" value="<?php echo esc_attr( $notify_to ); ?>" class="regular-text" placeholder="<?php echo esc_attr( get_option( 'admin_email' ) ); ?>">
+                            <br><span class="description"><?php esc_html_e( 'Leave blank to use the site admin email.', 'societypress' ); ?></span>
+                        </p>
+                    </td>
+                </tr>
+            </table>
+            <p class="submit"><button type="submit" class="button button-primary"><?php esc_html_e( 'Save Backup Settings', 'societypress' ); ?></button></p>
+        </form>
+
+        <h2><?php esc_html_e( 'Available Backups', 'societypress' ); ?></h2>
+        <?php
+        $backups = $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}sp_backups WHERE status = 'complete' ORDER BY created_at DESC LIMIT 50" );
+        if ( empty( $backups ) ) {
+            echo '<p class="description">' . esc_html__( 'No backups yet. One will appear here after the first scheduled run, or use “Create a backup now” below.', 'societypress' ) . '</p>';
+        } else {
+            echo '<table class="wp-list-table widefat fixed striped">';
+            echo '<thead><tr>';
+            echo '<th>' . esc_html__( 'Created', 'societypress' ) . '</th>';
+            echo '<th>' . esc_html__( 'Size', 'societypress' ) . '</th>';
+            echo '<th>' . esc_html__( 'Includes', 'societypress' ) . '</th>';
+            echo '<th>' . esc_html__( 'Source', 'societypress' ) . '</th>';
+            echo '<th>' . esc_html__( 'Actions', 'societypress' ) . '</th>';
+            echo '</tr></thead><tbody>';
+            $date_fmt = get_option( 'date_format' ) . ' ' . get_option( 'time_format' );
+            foreach ( $backups as $b ) {
+                $inc = [];
+                if ( $b->includes_db )       { $inc[] = __( 'Database', 'societypress' ); }
+                if ( $b->includes_uploads )  { $inc[] = __( 'Uploads', 'societypress' ); }
+                if ( $b->includes_settings ) { $inc[] = __( 'Settings', 'societypress' ); }
+                $dl = wp_nonce_url(
+                    admin_url( 'admin-post.php?action=sp_download_backup&backup_id=' . (int) $b->id ),
+                    'sp_download_backup_' . (int) $b->id
+                );
+                echo '<tr>';
+                echo '<td>' . esc_html( wp_date( $date_fmt, strtotime( $b->created_at ) ) ) . '</td>';
+                echo '<td>' . esc_html( size_format( (int) $b->file_size ) ) . '</td>';
+                echo '<td>' . esc_html( implode( ', ', $inc ) ) . '</td>';
+                echo '<td>' . esc_html( $b->trigger_type === 'scheduled' ? __( 'Scheduled', 'societypress' ) : __( 'Manual', 'societypress' ) ) . '</td>';
+                echo '<td>';
+                echo '<a href="' . esc_url( $dl ) . '" class="button button-small">' . esc_html__( 'Download', 'societypress' ) . '</a> ';
+                echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" class="sp-inline" data-sp-confirm="' . esc_attr__( 'Delete this backup? This cannot be undone.', 'societypress' ) . '">';
+                echo '<input type="hidden" name="action" value="sp_delete_backup">';
+                echo '<input type="hidden" name="backup_id" value="' . (int) $b->id . '">';
+                wp_nonce_field( 'sp_delete_backup_' . (int) $b->id );
+                echo '<button type="submit" class="button button-small sp-text-danger">' . esc_html__( 'Delete', 'societypress' ) . '</button>';
+                echo '</form>';
+                echo '</td></tr>';
+            }
+            echo '</tbody></table>';
+        }
+        ?>
+
+        <p class="submit">
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+                <input type="hidden" name="action" value="sp_run_backup_now">
+                <?php wp_nonce_field( 'sp_run_backup_now' ); ?>
+                <button type="submit" class="button"><?php esc_html_e( 'Create a backup now', 'societypress' ); ?></button>
+            </form>
         </p>
     </div>
     <?php
@@ -48795,6 +48920,9 @@ function sp_run_scheduled_backup(): void {
 
             // Enforce retention limit — delete oldest backups beyond the limit
             sp_prune_old_backups();
+
+            // Notify admins (if enabled) that a fresh backup is ready to grab.
+            sp_notify_backup_ready( $backup_id );
         } else {
             $wpdb->update( $prefix . 'backups', [
                 'status' => 'failed',
@@ -48816,6 +48944,157 @@ function sp_run_scheduled_backup(): void {
     // files are useless and just waste disk space.
     sp_backup_rmdir( $temp_dir );
 }
+
+
+/**
+ * Email admins that a fresh backup is ready, with a link to download it.
+ *
+ * WHY a link, not the file: backup ZIPs contain decrypted member PII and are
+ * often large — emailing the archive itself would leak data into mailboxes and
+ * blow past attachment limits. The link points to the capability-gated admin
+ * page; the recipient still has to log in to actually download.
+ */
+function sp_notify_backup_ready( int $backup_id ): void {
+    $settings = sp_settings();
+    if ( empty( $settings['backup_notify'] ) ) {
+        return;
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    $backup = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$prefix}backups WHERE id = %d", $backup_id ) );
+    if ( ! $backup || $backup->status !== 'complete' ) {
+        return;
+    }
+
+    $to = ! empty( $settings['backup_notify_email'] ) ? $settings['backup_notify_email'] : get_option( 'admin_email' );
+    if ( ! is_email( $to ) ) {
+        return;
+    }
+
+    $org  = $settings['organization_name'] ?? get_bloginfo( 'name' );
+    $url  = admin_url( 'admin.php?page=sp-export' );
+    $size = size_format( (int) $backup->file_size );
+    $when = wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $backup->completed_at ) );
+
+    $subject = sprintf( __( '[%s] Your backup is ready to download', 'societypress' ), $org );
+
+    $body  = sprintf( __( 'A new backup of %s finished successfully.', 'societypress' ), $org ) . "\n\n";
+    $body .= sprintf( __( 'Created: %s', 'societypress' ), $when ) . "\n";
+    $body .= sprintf( __( 'Size: %s', 'societypress' ), $size ) . "\n\n";
+    $body .= __( 'Download it from the Export & Backup page (you will need to be logged in):', 'societypress' ) . "\n";
+    $body .= $url . "\n\n";
+    $body .= __( 'Keep a copy somewhere off this server — cloud storage, a USB drive, or your own computer — so a hosting problem can never take your backup down with it.', 'societypress' );
+
+    wp_mail( $to, $subject, $body );
+}
+
+/**
+ * Resolve a backup ID to its on-disk path, refusing anything outside the
+ * backup directory. Shared by the download and delete handlers.
+ *
+ * @return string|false Absolute path, or false if missing/invalid.
+ */
+function sp_backup_resolve_path( int $backup_id ) {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    $filename = $wpdb->get_var( $wpdb->prepare(
+        "SELECT filename FROM {$prefix}backups WHERE id = %d", $backup_id
+    ) );
+    if ( ! $filename ) {
+        return false;
+    }
+    $dir  = sp_get_backup_dir();
+    // basename() strips any path; realpath() + containment check is belt-and-braces
+    // (filenames are plugin-generated, but never trust a stored value blindly).
+    $path = realpath( $dir . '/' . basename( $filename ) );
+    $base = realpath( $dir );
+    if ( ! $path || ! $base || strpos( $path, $base ) !== 0 || ! is_file( $path ) ) {
+        return false;
+    }
+    return $path;
+}
+
+// ---- Download a backup ZIP (capability-gated, nonce-protected, stream) ----
+add_action( 'admin_post_sp_download_backup', function () {
+    if ( ! current_user_can( 'sp_manage_members' ) ) {
+        wp_die( esc_html__( 'Permission denied.', 'societypress' ), '', [ 'response' => 403 ] );
+    }
+    $backup_id = (int) ( $_GET['backup_id'] ?? 0 );
+    check_admin_referer( 'sp_download_backup_' . $backup_id );
+
+    $path = sp_backup_resolve_path( $backup_id );
+    if ( ! $path ) {
+        wp_die( esc_html__( 'Backup file not found.', 'societypress' ), '', [ 'response' => 404 ] );
+    }
+
+    sp_audit( 'backup_downloaded', sprintf( 'Backup #%d downloaded', $backup_id ), 'backup', $backup_id );
+
+    nocache_headers();
+    header( 'Content-Type: application/zip' );
+    header( 'Content-Disposition: attachment; filename="' . basename( $path ) . '"' );
+    header( 'Content-Length: ' . filesize( $path ) );
+    // Flush output buffers so a large file streams instead of buffering in memory.
+    while ( ob_get_level() ) { ob_end_clean(); }
+    readfile( $path );
+    exit;
+} );
+
+// ---- Delete a backup (file + metadata row) ----
+add_action( 'admin_post_sp_delete_backup', function () {
+    if ( ! current_user_can( 'sp_manage_members' ) ) {
+        wp_die( esc_html__( 'Permission denied.', 'societypress' ), '', [ 'response' => 403 ] );
+    }
+    $backup_id = (int) ( $_POST['backup_id'] ?? 0 );
+    check_admin_referer( 'sp_delete_backup_' . $backup_id );
+
+    $path = sp_backup_resolve_path( $backup_id );
+    if ( $path ) {
+        @unlink( $path );
+    }
+    global $wpdb;
+    $wpdb->delete( $wpdb->prefix . 'sp_backups', [ 'id' => $backup_id ] );
+    sp_audit( 'backup_deleted', sprintf( 'Backup #%d deleted', $backup_id ), 'backup', $backup_id );
+
+    wp_safe_redirect( add_query_arg( 'sp_backup_msg', 'deleted', admin_url( 'admin.php?page=sp-export' ) ) );
+    exit;
+} );
+
+// ---- Run a scheduled-format backup on demand ----
+add_action( 'admin_post_sp_run_backup_now', function () {
+    if ( ! current_user_can( 'sp_manage_members' ) ) {
+        wp_die( esc_html__( 'Permission denied.', 'societypress' ), '', [ 'response' => 403 ] );
+    }
+    check_admin_referer( 'sp_run_backup_now' );
+    sp_run_scheduled_backup();
+    wp_safe_redirect( add_query_arg( 'sp_backup_msg', 'ran', admin_url( 'admin.php?page=sp-export' ) ) );
+    exit;
+} );
+
+// ---- Save the scheduled-backup settings ----
+add_action( 'admin_post_sp_save_backup_settings', function () {
+    if ( ! current_user_can( 'sp_manage_members' ) ) {
+        wp_die( esc_html__( 'Permission denied.', 'societypress' ), '', [ 'response' => 403 ] );
+    }
+    check_admin_referer( 'sp_save_backup_settings' );
+
+    $settings = sp_settings();
+    $freq = sanitize_text_field( $_POST['backup_frequency'] ?? 'weekly' );
+    $settings['backup_frequency']       = in_array( $freq, [ 'off', 'daily', 'weekly' ], true ) ? $freq : 'weekly';
+    $settings['backup_retention']       = max( 1, min( 50, (int) ( $_POST['backup_retention'] ?? 5 ) ) );
+    $settings['backup_hour']            = max( 0, min( 23, (int) ( $_POST['backup_hour'] ?? 3 ) ) );
+    $settings['backup_include_uploads'] = empty( $_POST['backup_include_uploads'] ) ? 0 : 1;
+    $settings['backup_notify']          = empty( $_POST['backup_notify'] ) ? 0 : 1;
+    $settings['backup_notify_email']    = sanitize_email( $_POST['backup_notify_email'] ?? '' );
+    update_option( 'societypress_settings', $settings );
+
+    // Clear the cron so the init scheduler re-creates it with the new frequency
+    // and hour on the next request (otherwise the old schedule lingers).
+    wp_clear_scheduled_hook( 'sp_backup_cron' );
+
+    wp_safe_redirect( add_query_arg( 'sp_backup_msg', 'saved', admin_url( 'admin.php?page=sp-export' ) ) );
+    exit;
+} );
 
 
 /**

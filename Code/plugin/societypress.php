@@ -32526,7 +32526,7 @@ function sp_builder_fields_hero_slider( $index, array $settings ): void {
                             <input type="text" name="<?php echo $name; ?>[slides][<?php echo $si; ?>][image]"
                                    value="<?php echo esc_attr( $slide['image'] ?? '' ); ?>" class="sp-hero-fields-input-full"
                                    aria-label="<?php esc_attr_e( 'Image or video URL', 'societypress' ); ?>"
-                                   placeholder="<?php echo esc_attr__( 'Paste image URL or use Media Library', 'societypress' ); ?>">
+                                   placeholder="<?php echo esc_attr__( 'Paste a URL, or choose an uploaded image', 'societypress' ); ?>">
                             <button type="button" class="button sp-media-select sp-hero-fields-btn-media"><?php esc_html_e( 'Choose Image', 'societypress' ); ?></button>
                         </p>
                         <!-- WHY: Per-line repeater replaces the old single textarea so each
@@ -32589,7 +32589,7 @@ function sp_builder_fields_hero_slider( $index, array $settings ): void {
             <div class="sp-slider-slide-row sp-hero-fields-slide-card">
                 <p>
                     <label><strong><?php esc_html_e( 'Image or Video URL', 'societypress' ); ?></strong></label><br>
-                    <input type="text" data-field="image" value="" class="sp-hero-fields-input-full" aria-label="<?php esc_attr_e( 'Image or video URL', 'societypress' ); ?>" placeholder="<?php echo esc_attr__( 'Paste image URL or use Media Library', 'societypress' ); ?>">
+                    <input type="text" data-field="image" value="" class="sp-hero-fields-input-full" aria-label="<?php esc_attr_e( 'Image or video URL', 'societypress' ); ?>" placeholder="<?php echo esc_attr__( 'Paste a URL, or choose an uploaded image', 'societypress' ); ?>">
                     <button type="button" class="button sp-media-select sp-hero-fields-btn-media"><?php esc_html_e( 'Choose Image', 'societypress' ); ?></button>
                 </p>
                 <!-- WHY: Lines repeater in the template starts empty — Harold adds
@@ -40974,7 +40974,7 @@ function sp_render_calendar_grid( int $category_id = 0, string $base_url = '', a
 
             <!-- Empty cells before first day -->
             <?php for ( $i = 0; $i < $first_offset; $i++ ) : ?>
-                <div class="sp-cal-day sp-cal-empty"></div>
+                <div class="sp-cal-day sp-cal-empty" aria-hidden="true"></div>
             <?php endfor; ?>
 
             <!-- Day cells — each gets role="gridcell" and aria-label with the full
@@ -41059,7 +41059,7 @@ function sp_render_calendar_grid( int $category_id = 0, string $base_url = '', a
             if ( $remainder > 0 ) :
                 for ( $i = 0; $i < ( 7 - $remainder ); $i++ ) :
             ?>
-                <div class="sp-cal-day sp-cal-empty"></div>
+                <div class="sp-cal-day sp-cal-empty" aria-hidden="true"></div>
             <?php endfor; endif; ?>
         </div>
 
@@ -50697,12 +50697,12 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
         foreach ( $tab_labels as $field_key => $label ) {
             $active = ( $search_field === $field_key ) ? ' active' : '';
             $aria_selected = $active === ' active' ? 'true' : 'false';
-            echo '<button type="button" class="sp-catalog-tab' . $active . '" data-field="' . esc_attr( $field_key ) . '" role="tab" aria-selected="' . $aria_selected . '">' . esc_html( $label ) . '</button>';
+            echo '<button type="button" class="sp-catalog-tab' . $active . '" data-field="' . esc_attr( $field_key ) . '" id="' . esc_attr( $uid ) . '-tab-' . esc_attr( $field_key ) . '" role="tab" aria-selected="' . $aria_selected . '" aria-controls="' . esc_attr( $uid ) . '-form">' . esc_html( $label ) . '</button>';
         }
         echo '</div>';
 
         // Search form
-        echo '<form method="get" class="sp-catalog-search-form" id="' . esc_attr( $uid ) . '-form">';
+        echo '<form method="get" class="sp-catalog-search-form" id="' . esc_attr( $uid ) . '-form" role="tabpanel" aria-labelledby="' . esc_attr( $uid ) . '-tab-' . esc_attr( $search_field ) . '">';
         foreach ( $base_params as $k => $v ) {
             echo '<input type="hidden" name="' . esc_attr( $k ) . '" value="' . esc_attr( $v ) . '">';
         }
@@ -50993,6 +50993,10 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
                 tabs.forEach(function(t) { t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); });
                 this.classList.add('active');
                 this.setAttribute('aria-selected', 'true');
+
+                // Keep the tabpanel (search form) labelled by the active tab
+                var spForm = document.getElementById('<?php echo esc_js( $uid ); ?>-form');
+                if ( spForm ) spForm.setAttribute('aria-labelledby', '<?php echo esc_js( $uid ); ?>-tab-' + field);
 
                 // Update hidden field value and placeholder
                 if ( fieldInput ) fieldInput.value = field;
@@ -54440,7 +54444,7 @@ function sp_render_library_catalog_page(): void {
             </thead>
             <tbody>
                 <?php if ( empty( $items ) ) : ?>
-                    <tr><td colspan="7"><?php esc_html_e( 'No items found.', 'societypress' ); ?></td></tr>
+                    <tr><td colspan="7"><?php esc_html_e( 'No items found.', 'societypress' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-item-edit' ) ); ?>"><?php esc_html_e( 'Add your first catalog item', 'societypress' ); ?></a>.</td></tr>
                 <?php else : ?>
                     <?php foreach ( $items as $item ) :
                         $edit_url   = admin_url( 'admin.php?page=sp-library-item-edit&item_id=' . $item->id );
@@ -88904,7 +88908,7 @@ function sp_render_ens_pages_import_page(): void {
             }
             echo '</ul></div>';
         }
-        echo '<p><a class="button button-primary" href="' . esc_url( admin_url( 'nav-menus.php?action=edit&menu=' . (int) $results['menu_id'] ) ) . '">' . esc_html__( 'Open the imported menu in Appearance → Menus', 'societypress' ) . '</a></p>';
+        echo '<p><a class="button button-primary" href="' . esc_url( admin_url( 'nav-menus.php?action=edit&menu=' . (int) $results['menu_id'] ) ) . '">' . esc_html__( 'Review and edit your navigation menu', 'societypress' ) . '</a></p>';
         echo '</div>'; // .wrap
         return;
     }

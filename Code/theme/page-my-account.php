@@ -444,6 +444,22 @@ function sp_m( $member, $field ) {
                 </div>
             <?php endif; ?>
 
+            <?php if ( $success || $error || $pending ) : ?>
+                <script>
+                // After a save, bring the status banner into view and move focus
+                // to it. The page is long and the banner sits at the top, so
+                // without this a member who just saved a lower section sees no
+                // confirmation. role="alert"/"status" already announces to AT.
+                (function () {
+                    var n = document.querySelector('.sp-notice');
+                    if (!n) return;
+                    n.setAttribute('tabindex', '-1');
+                    n.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    n.focus({ preventScroll: true });
+                })();
+                </script>
+            <?php endif; ?>
+
             <?php
             // ================================================================
             // SECTION 1: PROFILE PHOTO

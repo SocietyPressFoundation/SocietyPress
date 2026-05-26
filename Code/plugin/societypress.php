@@ -3513,6 +3513,16 @@ function sp_settings(): array {
     return get_option( 'societypress_settings', [] );
 }
 
+/**
+ * Format a monetary amount with the configured currency symbol/position.
+ *
+ * @param int|float $amount
+ * @param bool      $html  When true, wraps the result in <span class="sp-currency">
+ *                         (already escaped). When false (default), returns a PLAIN
+ *                         string that is NOT HTML-escaped — callers echoing it into
+ *                         markup must wrap it in esc_html(). The value only ever
+ *                         contains digits, a decimal point, and the currency symbol.
+ */
 function sp_format_currency( $amount, bool $html = false ): string {
     // Cache symbol/position across calls — this runs in render loops and the
     // values don't change within a request.
@@ -9635,9 +9645,10 @@ add_action( 'admin_footer', function () {
     $sp_ack_email    = $sp_ack_settings['organization_email'] ?? ( $sp_ack_settings['org_email'] ?? '' );
     $sp_ack_body     = (string) ( $sp_ack_settings['login_ack_text'] ?? '' );
     ?>
-    <div class="sp-acknowledge-overlay" id="sp-login-ack-overlay" role="dialog" aria-modal="true" aria-labelledby="sp-login-ack-title">
+    <div class="sp-acknowledge-overlay" id="sp-login-ack-overlay" role="dialog" aria-modal="true" aria-labelledby="sp-login-ack-title" aria-describedby="sp-login-ack-body">
         <div class="sp-acknowledge-modal" tabindex="-1">
             <h2 id="sp-login-ack-title"><?php esc_html_e( 'Important Notice', 'societypress' ); ?></h2>
+            <div id="sp-login-ack-body">
             <?php
             // Render each paragraph (split on blank lines) so admins can author
             // the text naturally and we still produce semantic <p> elements.
@@ -9652,6 +9663,7 @@ add_action( 'admin_footer', function () {
             <?php if ( $sp_ack_email ) : ?>
                 <p><?php echo esc_html__( 'If you have any questions, please contact us at ', 'societypress' ); ?><?php echo sp_obfuscate_email( $sp_ack_email ); ?>.</p>
             <?php endif; ?>
+            </div>
             <button type="button" class="sp-acknowledge-btn" id="sp-login-ack-btn"><?php esc_html_e( 'I Understand', 'societypress' ); ?></button>
         </div>
     </div>
@@ -32750,6 +32762,7 @@ function sp_builder_fields_feature_cards( $index, array $settings ): void {
         .sp-fc-card-row           { border: 1px solid #ddd; border-radius: 6px; padding: 12px; margin-bottom: 12px; background: #fafafa; }
         .sp-fc-card-row-header    { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
         .sp-fc-btn-url-wrap       { flex: 2; }
+        .sp-builder-image-preview { margin-bottom: 6px; }
     </style>
     <div class="sp-builder-field">
         <p class="description"><?php esc_html_e( 'Add image cards with headings, descriptions, and buttons. Great for highlighting features, services, or calls to action.', 'societypress' ); ?></p>
@@ -32778,7 +32791,7 @@ function sp_builder_fields_feature_cards( $index, array $settings ): void {
                             $img_url = wp_get_attachment_image_url( (int) $card['image_id'], 'medium' );
                         }
                         ?>
-                        <div class="sp-builder-image-preview" style="<?php echo $img_url ? '' : 'display:none;'; ?> margin-bottom:6px;">
+                        <div class="sp-builder-image-preview" style="<?php echo $img_url ? '' : 'display:none;'; ?>">
                             <img src="<?php echo esc_url( $img_url ); ?>" class="sp-thumb-preview">
                         </div>
                         <button type="button" class="button sp-builder-image-select"><?php echo $img_url ? esc_html__( 'Change Image', 'societypress' ) : esc_html__( 'Select Image', 'societypress' ); ?></button>
@@ -32828,7 +32841,7 @@ function sp_builder_fields_feature_cards( $index, array $settings ): void {
                         + '<div class="sp-builder-image-field sp-mb-8" role="group" aria-label="<?php echo esc_js( __( 'Image', 'societypress' ) ); ?>">'
                         + '<div class="sp-field-label" aria-hidden="true"><?php echo esc_js( __( 'Image', 'societypress' ) ); ?></div>'
                         + '<input type="hidden" class="sp-builder-image-id" name="sp_widgets[' + idx + '][settings][cards][' + ci + '][image_id]" value="">'
-                        + '<div class="sp-builder-image-preview" style="display:none; margin-bottom:6px;"><img src="" class="sp-thumb-preview"></div>'
+                        + '<div class="sp-builder-image-preview" style="display:none;"><img src="" class="sp-thumb-preview"></div>'
                         + '<button type="button" class="button sp-builder-image-select"><?php echo esc_js( __( 'Select Image', 'societypress' ) ); ?></button>'
                         + '<button type="button" class="button sp-builder-image-remove sp-text-danger" style="display:none;"><?php echo esc_js( __( 'Remove', 'societypress' ) ); ?></button>'
                         + '</div>'
@@ -34283,6 +34296,7 @@ function sp_render_builder_widget_heading( array $s ): void {
         echo '<style id="sp-widget-heading-css">
             .sp-widget-heading-text     { margin: 0 0 8px; color: var(--sp-color-primary, #1e3a5f); }
             .sp-widget-heading-subtitle { margin: 0 0 12px; color: var(--sp-color-text-secondary, #666); font-size: 18px; }
+            .sp-widget-heading-hr       { border: none; border-top: 2px solid var(--sp-color-primary); width: 60px; }
         </style>';
         $heading_css_emitted = true;
     }
@@ -34303,7 +34317,7 @@ function sp_render_builder_widget_heading( array $s ): void {
     }
     if ( $show_divider ) {
         $hr_margin = $alignment === 'center' ? 'auto' : ( $alignment === 'right' ? '0 0 0 auto' : '0' );
-        echo '<hr style="border:none; border-top:2px solid var(--sp-color-primary); width:60px; margin:' . $hr_margin . ';">';
+        echo '<hr class="sp-widget-heading-hr" style="margin:' . $hr_margin . ';">';
     }
     echo '</div>';
 }
@@ -34315,7 +34329,7 @@ function sp_render_builder_widget_image( array $s ): void {
     static $image_css_emitted = false;
     if ( ! $image_css_emitted ) {
         echo '<style id="sp-widget-image-css">
-            .sp-widget-image-caption { margin-top: 8px; color: #666; font-size: 14px; font-style: italic; }
+            .sp-widget-image-caption { margin-top: 8px; color: var(--sp-color-text-secondary, #666); font-size: 14px; font-style: italic; }
         </style>';
         $image_css_emitted = true;
     }
@@ -78433,6 +78447,10 @@ function sp_render_modal_module(): void {
             border-color: #2271b1 !important;
             color: #fff !important;
         }
+        .sp-confirm-btn--primary:hover {
+            background: #135e96 !important;
+            border-color: #135e96 !important;
+        }
         /* WHY: WP admin's default focus ring is sometimes outline:0'd by
          * theme CSS that bleeds in. Pin a high-contrast focus state on
          * both buttons so keyboard users always see which is selected. */
@@ -83793,13 +83811,13 @@ function sp_render_member_volunteer_hours_summary( int $user_id, int $year = 0 )
     ?>
     <div class="sp-vh-summary">
         <style>
-            .sp-vh-summary { background: #f9f9f9; border-left: 4px solid #c9973a; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; }
+            .sp-vh-summary { background: #f9f9f9; border-left: 4px solid var(--sp-color-accent, #c9973a); padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; }
             .sp-vh-summary h4 { margin: 0 0 8px; font-size: 15px; color: #0d1f3c; }
             .sp-vh-summary .sp-vh-total { font-size: 22px; font-weight: 700; color: #0d1f3c; }
             .sp-vh-summary .sp-vh-period { font-size: 13px; color: #666; margin-left: 6px; }
             .sp-vh-summary ul { margin: 8px 0 0; padding: 0 0 0 18px; font-size: 14px; color: #333; }
             .sp-vh-summary li { margin: 2px 0; }
-            .sp-vh-summary-empty { background: #f9f9f9; border-left: 4px solid #ddd; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; color: #666; font-style: italic; }
+            .sp-vh-summary-empty { background: #f9f9f9; border-left: 4px solid var(--sp-color-border, #ddd); padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; color: var(--sp-color-text-secondary, #666); font-style: italic; }
         </style>
         <h4><?php esc_html_e( 'Volunteer Hours', 'societypress' ); ?></h4>
         <div>
@@ -83834,7 +83852,7 @@ add_shortcode( 'sp_my_volunteer_hours', function () {
     }
     $html = sp_render_member_volunteer_hours_summary( get_current_user_id() );
     if ( $html === '' ) {
-        return '<style>.sp-vh-summary-empty { background: #f9f9f9; border-left: 4px solid #ddd; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; color: #666; font-style: italic; }</style>'
+        return '<style>.sp-vh-summary-empty { background: #f9f9f9; border-left: 4px solid var(--sp-color-border, #ddd); padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; color: var(--sp-color-text-secondary, #666); font-style: italic; }</style>'
              . '<div class="sp-vh-summary-empty">'
              . esc_html__( 'No volunteer hours logged yet this year. Helping out on a research question or committee meeting will add to your total.', 'societypress' )
              . '</div>';

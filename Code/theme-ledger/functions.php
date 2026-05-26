@@ -38,6 +38,9 @@ if ( ! defined( 'LEDGER_THEME_VERSION' ) ) {
  *      and the Design settings page shows the correct values too.
  */
 add_action( 'after_switch_theme', function () {
+    // Read the option directly, not the plugin's sp_settings() wrapper: the
+    // plugin may be inactive when a theme is switched, so its functions can't
+    // be assumed to exist here.
     $settings = get_option( 'societypress_settings', [] );
 
     $settings['design_color_primary']       = '#2C2C2C';

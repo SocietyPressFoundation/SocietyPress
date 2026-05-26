@@ -31,6 +31,9 @@ if ( ! defined( 'PARLOR_THEME_VERSION' ) ) {
  * this same hook with its own palette.
  */
 add_action( 'after_switch_theme', function () {
+    // Read the option directly, not the plugin's sp_settings() wrapper: the
+    // plugin may be inactive when a theme is switched, so its functions can't
+    // be assumed to exist here.
     $settings = get_option( 'societypress_settings', [] );
 
     $settings['design_color_primary']       = '#3C1053';

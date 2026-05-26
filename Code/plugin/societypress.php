@@ -3508,9 +3508,14 @@ function sp_settings(): array {
 }
 
 function sp_format_currency( $amount, bool $html = false ): string {
-    $settings = sp_settings();
-    $symbol   = $settings['currency_symbol'] ?? '$';
-    $position = $settings['currency_position'] ?? 'before';
+    // Cache symbol/position across calls — this runs in render loops and the
+    // values don't change within a request.
+    static $symbol = null, $position = null;
+    if ( $symbol === null ) {
+        $settings = sp_settings();
+        $symbol   = $settings['currency_symbol'] ?? '$';
+        $position = $settings['currency_position'] ?? 'before';
+    }
     $formatted = number_format( (float) $amount, 2 );
 
     if ( $position === 'after' ) {
@@ -7740,6 +7745,12 @@ add_action( 'wp_ajax_sp_save_account', function() {
     // requires." Adding a branch without registering it makes the
     // branch unreachable — by design, so a future change can't ship a
     // sub-action that escapes nonce coverage.
+    // NOTE: This AJAX handler covers only the inline-edit account sections below.
+    // Non-AJAX account actions (update_joint, update_photo, remove_photo,
+    // update_password, add/remove_surname, add/remove_research_area,
+    // cancel_event_registration) are handled by sp_handle_account_forms() on
+    // template_redirect — they POST a full form, not AJAX. Add new AJAX actions
+    // here; add new form-POST actions there.
     $sp_account_nonce_map = [
         'update_profile'            => [ 'sp_profile_nonce',     'sp_update_profile' ],
         'update_contact'            => [ 'sp_contact_nonce',     'sp_update_contact' ],
@@ -8250,6 +8261,9 @@ add_action( 'admin_head', function () {
 
 /* ---------- Width ---------- */
 .sp-full-width { width: 100%; }
+/* Status/category badges: static layout here, dynamic color stays inline. */
+.sp-status-badge { font-weight: 600; }
+.sp-category-badge { color: #fff; padding: 3px 8px; border-radius: 3px; font-size: 12px; font-weight: 500; white-space: nowrap; }
 
 /* ---------- Flex ---------- */
 .sp-flex-1  { flex: 1; }
@@ -10756,7 +10770,7 @@ function sp_render_dashboard_page(): void {
                 </strong>
 
                 <?php if ( $parent_theme_update ) : ?>
-                <div class="sp-dash-update-row" style="margin-bottom:<?php echo ! empty( $child_theme_updates ) ? '10px' : '0'; ?>;">
+                <div class="sp-dash-update-row<?php echo ! empty( $child_theme_updates ) ? ' sp-dash-update-row--gap' : ''; ?>">
                     <span class="sp-dash-update-text">
                         <?php printf(
                             esc_html__( 'SocietyPress parent theme: %s → %s', 'societypress' ),
@@ -11130,6 +11144,8 @@ function sp_render_dashboard_page(): void {
             }
             /* Child theme rows always have a small bottom gap */
             .sp-dash-update-row--child { margin-bottom: 4px; }
+            /* Spacing below the plugin row when child-theme updates follow it */
+            .sp-dash-update-row--gap { margin-bottom: 10px; }
 
             /* Theme/child update text label */
             .sp-dash-update-text { font-size: 13px; }
@@ -12431,7 +12447,7 @@ class SP_Members_List_Table extends WP_List_Table {
         $label    = $statuses[ $item->status ] ?? sp_localized_status( $item->status );
 
         return sprintf(
-            '<span style="color: %s; font-weight: 600;">%s</span>',
+            '<span class="sp-status-badge" style="color: %s;">%s</span>',
             esc_attr( $color ),
             esc_html( $label )
         );
@@ -13313,6 +13329,7 @@ function sp_render_members_page(): void {
             .sp-members-empty-notice { padding: 12px 16px; }
             .sp-members-empty-title { margin: 0 0 8px 0; font-size: 14px; }
             .sp-assign-label { font-weight: 600; margin-right: 8px; }
+            .sp-group-assign-wrap { margin: 8px 0; padding: 8px 12px; background: #f0f6fc; border: 1px solid #72aee6; border-radius: 4px; }
         </style>
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Members', 'societypress' ); ?></h1>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-member-edit' ) ); ?>" class="page-title-action">
@@ -13427,7 +13444,7 @@ function sp_render_members_page(): void {
         <form method="get">
             <input type="hidden" name="page" value="sp-members">
 
-            <div id="sp-group-assign-wrap" style="display:none; margin: 8px 0; padding: 8px 12px; background: #f0f6fc; border: 1px solid #72aee6; border-radius: 4px;">
+            <div id="sp-group-assign-wrap" class="sp-group-assign-wrap" style="display:none;">
                 <label for="sp-assign-group-id" class="sp-assign-label"><?php esc_html_e( 'Assign to:', 'societypress' ); ?></label>
                 <select name="sp_assign_group_id" id="sp-assign-group-id">
                     <option value=""><?php echo esc_html( '— ' . __( 'Select Group', 'societypress' ) . ' —' ); ?></option>
@@ -21534,10 +21551,14 @@ function sp_prune_audit_log(): void {
 }
 add_action( 'sp_daily_maintenance', 'sp_prune_audit_log' );
 
-// Schedule the daily maintenance cron if not already scheduled
-if ( ! wp_next_scheduled( 'sp_daily_maintenance' ) ) {
-    wp_schedule_event( time(), 'daily', 'sp_daily_maintenance' );
-}
+// Schedule the daily maintenance cron if not already scheduled. Inside init so
+// scheduling runs after WordPress has bootstrapped, matching the other cron
+// registrations (avoids file-scope scheduling quirks on multisite/caching).
+add_action( 'init', function () {
+    if ( ! wp_next_scheduled( 'sp_daily_maintenance' ) ) {
+        wp_schedule_event( time(), 'daily', 'sp_daily_maintenance' );
+    }
+} );
 
 /**
  * Add Audit Log admin menu item under Reports.
@@ -31788,7 +31809,7 @@ function sp_builder_fields_rich_text( $index, array $settings ): void {
         ] );
     } else {
         printf(
-            '<textarea name="%s" id="%s" class="sp-builder-wysiwyg" rows="10" style="width:100%%;">%s</textarea>',
+            '<textarea name="%s" id="%s" class="sp-builder-wysiwyg sp-full-width" rows="10">%s</textarea>',
             esc_attr( $name ),
             esc_attr( $editor_id ),
             esc_textarea( $content )
@@ -32743,7 +32764,7 @@ function sp_builder_fields_feature_cards( $index, array $settings ): void {
                             <img src="<?php echo esc_url( $img_url ); ?>" class="sp-thumb-preview">
                         </div>
                         <button type="button" class="button sp-builder-image-select"><?php echo $img_url ? esc_html__( 'Change Image', 'societypress' ) : esc_html__( 'Select Image', 'societypress' ); ?></button>
-                        <button type="button" class="button sp-builder-image-remove" style="<?php echo $img_url ? '' : 'display:none;'; ?> color:#b32d2e;"><?php esc_html_e( 'Remove', 'societypress' ); ?></button>
+                        <button type="button" class="button sp-builder-image-remove sp-text-danger" style="<?php echo $img_url ? '' : 'display:none;'; ?>"><?php esc_html_e( 'Remove', 'societypress' ); ?></button>
                     </div>
 
                     <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-cards-<?php echo (int) $ci; ?>-title"><?php esc_html_e( 'Title', 'societypress' ); ?></label>
@@ -32781,8 +32802,8 @@ function sp_builder_fields_feature_cards( $index, array $settings ): void {
                 addBtn.addEventListener('click', function() {
                     var ci = wrap.querySelectorAll('.sp-fc-card-row').length;
                     var idBase = 'sp-w-' + idx + '-cards-' + ci + '-';
-                    var html = '<div class="sp-fc-card-row" style="border:1px solid #ddd; border-radius:6px; padding:12px; margin-bottom:12px; background:#fafafa;">'
-                        + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">'
+                    var html = '<div class="sp-fc-card-row">'
+                        + '<div class="sp-fc-card-row-header">'
                         + '<strong><?php echo esc_js( __( 'Card', 'societypress' ) ); ?> ' + (ci + 1) + '</strong>'
                         + '<button type="button" class="button sp-fc-remove-card sp-text-danger">&times; <?php echo esc_js( __( 'Remove', 'societypress' ) ); ?></button>'
                         + '</div>'
@@ -32791,7 +32812,7 @@ function sp_builder_fields_feature_cards( $index, array $settings ): void {
                         + '<input type="hidden" class="sp-builder-image-id" name="sp_widgets[' + idx + '][settings][cards][' + ci + '][image_id]" value="">'
                         + '<div class="sp-builder-image-preview" style="display:none; margin-bottom:6px;"><img src="" class="sp-thumb-preview"></div>'
                         + '<button type="button" class="button sp-builder-image-select"><?php echo esc_js( __( 'Select Image', 'societypress' ) ); ?></button>'
-                        + '<button type="button" class="button sp-builder-image-remove" style="display:none; color:#b32d2e;"><?php echo esc_js( __( 'Remove', 'societypress' ) ); ?></button>'
+                        + '<button type="button" class="button sp-builder-image-remove sp-text-danger" style="display:none;"><?php echo esc_js( __( 'Remove', 'societypress' ) ); ?></button>'
                         + '</div>'
                         + '<label class="sp-field-label" for="' + idBase + 'title"><?php echo esc_js( __( 'Title', 'societypress' ) ); ?></label>'
                         + '<input type="text" id="' + idBase + 'title" name="sp_widgets[' + idx + '][settings][cards][' + ci + '][title]" value="" class="widefat sp-mb-8">'
@@ -35281,7 +35302,7 @@ class SP_Events_List_Table extends WP_List_Table {
         }
         // Category name and color are pre-fetched via JOIN in prepare_items()
         return sprintf(
-            '<span style="background: %s; color: #fff; padding: 3px 8px; border-radius: 3px; font-size: 12px; font-weight: 500; white-space: nowrap;">%s</span>',
+            '<span class="sp-category-badge" style="background: %s;">%s</span>',
             esc_attr( $item->category_color ?: '#2271b1' ),
             esc_html( $item->category_name )
         );
@@ -35326,7 +35347,7 @@ class SP_Events_List_Table extends WP_List_Table {
         $label = sp_localized_status( $item->status );
 
         return sprintf(
-            '<span style="color: %s; font-weight: 600;">%s</span>',
+            '<span class="sp-status-badge" style="color: %s;">%s</span>',
             esc_attr( $color ),
             esc_html( $label )
         );
@@ -35984,6 +36005,10 @@ add_action( 'admin_init', function () {
     //      recurrence rule and end date so "Generate Occurrences" can work.
     $recurrence_type = sanitize_text_field( $_POST['event_recurrence_type'] ?? '' );
     if ( $recurrence_type && ! empty( $data['event_date'] ) ) {
+        // WHY date() not wp_date() below: $event_date_ts is a site-tz calendar
+        // date parsed from admin input; the weekday/day-of-month extraction is
+        // pure calendar math, so server-tz date() is consistent. wp_date() would
+        // apply the UTC offset and could shift the day. See sp_compute_recurrence_dates().
         $event_date_ts = strtotime( $data['event_date'] );
         $rule = '';
 
@@ -38673,7 +38698,7 @@ function sp_render_member_tiers_page(): void {
  *      membership never expires — perfect for Lifetime and Honorary tiers.
  */
 add_action( 'wp_ajax_sp_save_membership_tier', function () {
-    // Security checks — capability first (cheap, fails fast), nonce second.
+    // Security checks — nonce first (CSRF guard), capability second.
     if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'sp_membership_tier_nonce' ) ) {
         wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ] );
     }
@@ -60929,7 +60954,7 @@ function sp_render_blast_email_page(): void {
                                     'failed'  => '#d63638',
                                 ];
                                 $color = $status_colors[ $row->status ] ?? '#787c82';
-                                printf( '<span style="color: %s; font-weight: 600;">%s</span>', esc_attr( $color ), esc_html( sp_localized_status( $row->status ) ) );
+                                printf( '<span class="sp-status-badge" style="color: %s;">%s</span>', esc_attr( $color ), esc_html( sp_localized_status( $row->status ) ) );
                                 ?>
                             </td>
                             <td>
@@ -62396,7 +62421,7 @@ function sp_render_campaigns_page(): void {
                                 <?php
                                 $status_colors = [ 'active' => '#00a32a', 'closed' => '#787c82', 'draft' => '#dba617' ];
                                 $color = $status_colors[ $c->status ] ?? '#787c82';
-                                printf( '<span style="color: %s; font-weight: 600;">%s</span>', esc_attr( $color ), esc_html( sp_localized_status( $c->status ) ) );
+                                printf( '<span class="sp-status-badge" style="color: %s;">%s</span>', esc_attr( $color ), esc_html( sp_localized_status( $c->status ) ) );
                                 ?>
                             </td>
                             <td>
@@ -65619,6 +65644,7 @@ function sp_ajax_generate_newsletter_cover(): void {
         'cover_url' => (string) wp_get_attachment_url( (int) $result ),
     ] );
 }
+add_action( 'wp_ajax_sp_generate_newsletter_cover', 'sp_ajax_generate_newsletter_cover' );
 
 
 // ============================================================================

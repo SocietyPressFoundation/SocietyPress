@@ -59,6 +59,8 @@ if ( php_sapi_name() === 'cli' ) {
 // let the installer overwrite a half-finished install, potentially
 // destroying a wp-config.php with the only copy of the DB password.
 if ( file_exists( __DIR__ . '/wp-config.php' ) || file_exists( __DIR__ . '/wp-includes/version.php' ) ) {
+    // sp_installer_die() and the other render helpers are defined lower in this
+    // file (PHP hoists named functions, so calling them up here is fine).
     sp_installer_die(
         'WordPress Is Already Installed',
         'A WordPress installation already exists in this directory (or a previous install left files behind). If you need to reinstall, '

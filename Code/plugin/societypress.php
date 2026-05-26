@@ -8901,6 +8901,7 @@ var spMenuConfig = {
             headerLink.className = 'sp-menu-group-header';
             headerLink.setAttribute('role', 'button');
             headerLink.setAttribute('aria-expanded', 'false');
+            headerLink.setAttribute('aria-haspopup', 'true');
             headerLink.setAttribute('tabindex', '0');
             headerLink.innerHTML =
                 '<span class="dashicons ' + gc.icon + ' sp-group-icon"></span>' +
@@ -8908,13 +8909,19 @@ var spMenuConfig = {
                 '<span class="dashicons dashicons-arrow-right-alt2 sp-group-arrow"></span>';
 
             // Panel that opens over the content area
+            // WHY role=list not menu: items are reached with Tab (not arrow
+            // keys), so the ARIA menu pattern would set wrong expectations for
+            // screen-reader users. A list with an explicit role survives CSS
+            // list-style:none (which can strip the implicit role in Safari).
             var flyoutUl = document.createElement('ul');
             flyoutUl.className = 'sp-menu-flyout';
-            flyoutUl.setAttribute('role', 'menu');
+            flyoutUl.setAttribute('role', 'list');
 
-            // Group heading inside the panel — hide if only 1 item (redundant)
+            // Group heading inside the panel — hide if only 1 item (redundant).
+            // aria-hidden because the group header already announces this label.
             var heading = document.createElement('li');
             heading.className = 'sp-flyout-heading';
+            heading.setAttribute('aria-hidden', 'true');
             if (childItems.length <= 1) heading.className += ' sp-heading-hidden';
             heading.textContent = gc.label;
             flyoutUl.appendChild(heading);
@@ -30905,9 +30912,16 @@ function sp_directory_detail_script(): void {
             }
         });
 
+        // WHY inert: aria-modal="true" alone isn't honored by older AT, so we
+        // mark every sibling of the overlay inert while the modal is open —
+        // matching the confirm/acknowledgment dialogs elsewhere in the plugin.
+        var modalInertSibs = [];
+
         function closeModal() {
             overlay.style.display = 'none';
             document.body.style.overflow = '';
+            modalInertSibs.forEach(function (s) { s.inert = false; });
+            modalInertSibs = [];
             if (modalTrigger && typeof modalTrigger.focus === 'function') {
                 try { modalTrigger.focus(); } catch (e) {}
             }
@@ -30917,6 +30931,14 @@ function sp_directory_detail_script(): void {
             modalTrigger = document.activeElement;
             overlay.style.display = 'flex';
             document.body.style.overflow = 'hidden';
+            modalInertSibs = [];
+            for (var i = 0; i < document.body.children.length; i++) {
+                var child = document.body.children[i];
+                if (child !== overlay && !child.inert) {
+                    child.inert = true;
+                    modalInertSibs.push(child);
+                }
+            }
             if (modalDialog) modalDialog.focus();
         }
 
@@ -44624,7 +44646,7 @@ add_action( 'init', function () {
     $tier_id    = absint( $_POST['tier_id'] ?? 0 );
 
     if ( ! $first_name || ! $last_name || ! $email || ! $tier_id ) {
-        $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => __( 'Please fill in all required fields.', 'societypress' ) ];
+        $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => __( 'One or more required fields are missing. Required fields are marked with an asterisk (*).', 'societypress' ) ];
         return;
     }
 
@@ -44813,6 +44835,8 @@ function sp_render_join_form(): string {
         .sp-join-form .sp-field { margin-bottom: 14px; }
         .sp-join-form label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #1d2327; }
         .sp-join-form label .required { color: #d63638; }
+        .sp-join-required-note { font-size: 0.875rem; color: #555; margin-bottom: 16px; }
+        .sp-join-required-note .required { color: #d63638; }
         .sp-join-form input[type="text"],
         .sp-join-form input[type="email"],
         .sp-join-form input[type="tel"],
@@ -85301,7 +85325,7 @@ add_shortcode( 'sp_research_request', function () {
                 <span class="help"><?php printf( esc_html__( 'You will receive an initial response within %d days. If additional hours are required, we will request authorization for the extra time before continuing.', 'societypress' ), $sla_days ); ?></span>
             </div>
 
-            <button type="submit"><?php esc_html_e( 'Submit & Pay →', 'societypress' ); ?></button>
+            <button type="submit"><?php esc_html_e( 'Place Order', 'societypress' ); ?></button>
         </form>
     </div>
     <?php

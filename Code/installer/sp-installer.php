@@ -256,7 +256,7 @@ function sp_installer_check_requirements(): void {
             <?php foreach ( $checks as $check ) : ?>
                 <tr style="border-bottom: 1px solid #E5E7EB;">
                     <td style="padding: 12px 16px; font-weight: 500;">
-                        <?php echo htmlspecialchars( $check['label'] ); ?>
+                        <?php echo htmlspecialchars( $check['label'] , ENT_QUOTES, 'UTF-8'); ?>
                     </td>
                     <td style="padding: 12px 16px; text-align: center; width: 40px;">
                         <?php if ( $check['status'] ) : ?>
@@ -266,9 +266,9 @@ function sp_installer_check_requirements(): void {
                         <?php endif; ?>
                     </td>
                     <td style="padding: 12px 16px; color: #6B7280;">
-                        <?php echo htmlspecialchars( $check['value'] ); ?>
+                        <?php echo htmlspecialchars( $check['value'] , ENT_QUOTES, 'UTF-8'); ?>
                         <?php if ( $check['note'] ) : ?>
-                            <br><small style="color: #DC2626;"><?php echo htmlspecialchars( $check['note'] ); ?></small>
+                            <br><small style="color: #DC2626;"><?php echo htmlspecialchars( $check['note'] , ENT_QUOTES, 'UTF-8'); ?></small>
                         <?php endif; ?>
                     </td>
                 </tr>
@@ -320,7 +320,7 @@ function sp_installer_show_form(): void {
         <?php if ( $form_errors ) : ?>
             <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 16px 20px; margin-bottom: 24px;">
                 <?php foreach ( $form_errors as $err ) : ?>
-                    <p style="color: #991B1B; margin: 0 0 4px;"><?php echo htmlspecialchars( $err ); ?></p>
+                    <p style="color: #991B1B; margin: 0 0 4px;"><?php echo htmlspecialchars( $err , ENT_QUOTES, 'UTF-8'); ?></p>
                 <?php endforeach; ?>
             </div>
         <?php endif; ?>
@@ -340,7 +340,7 @@ function sp_installer_show_form(): void {
         <?php endif; ?>
 
         <form method="post" action="?step=configure" id="sp-install-form">
-            <input type="hidden" name="sp_install_nonce" value="<?php echo htmlspecialchars( $nonce ); ?>">
+            <input type="hidden" name="sp_install_nonce" value="<?php echo htmlspecialchars( $nonce , ENT_QUOTES, 'UTF-8'); ?>">
 
             <!-- Database Settings -->
             <h2 style="font-size: 18px; font-weight: 700; color: #0D1F3C; margin: 32px 0 16px; padding-bottom: 8px; border-bottom: 2px solid #C9973A;">
@@ -351,10 +351,10 @@ function sp_installer_show_form(): void {
                 <!-- Demo mode: show realistic example fields (disabled) with coaching text.
                      Real credentials are submitted via hidden inputs underneath. Howard sees
                      what he'll encounter on his own hosting, with explanations. -->
-                <input type="hidden" name="db_name" value="<?php echo htmlspecialchars( SP_DEMO_DB_NAME ); ?>">
-                <input type="hidden" name="db_user" value="<?php echo htmlspecialchars( SP_DEMO_DB_USER ); ?>">
-                <input type="hidden" name="db_pass" value="<?php echo htmlspecialchars( SP_DEMO_DB_PASS ); ?>">
-                <input type="hidden" name="db_host" value="<?php echo htmlspecialchars( SP_DEMO_DB_HOST ); ?>">
+                <input type="hidden" name="db_name" value="<?php echo htmlspecialchars( SP_DEMO_DB_NAME , ENT_QUOTES, 'UTF-8'); ?>">
+                <input type="hidden" name="db_user" value="<?php echo htmlspecialchars( SP_DEMO_DB_USER , ENT_QUOTES, 'UTF-8'); ?>">
+                <input type="hidden" name="db_pass" value="<?php echo htmlspecialchars( SP_DEMO_DB_PASS , ENT_QUOTES, 'UTF-8'); ?>">
+                <input type="hidden" name="db_host" value="<?php echo htmlspecialchars( SP_DEMO_DB_HOST , ENT_QUOTES, 'UTF-8'); ?>">
                 <input type="hidden" name="db_prefix" value="wp_">
 
                 <p style="color: #6B7280; font-size: 13px; margin-bottom: 16px;">
@@ -420,7 +420,7 @@ function sp_installer_show_form(): void {
                         <th><label for="db_name">Database Name</label></th>
                         <td>
                             <input type="text" id="db_name" name="db_name" required
-                                   value="<?php echo htmlspecialchars( $saved['db_name'] ?? '' ); ?>"
+                                   value="<?php echo htmlspecialchars( $saved['db_name'] ?? '' , ENT_QUOTES, 'UTF-8'); ?>"
                                    placeholder="e.g., society_db" autocomplete="off">
                             <p class="desc">The name of the database you created for this site.</p>
                         </td>
@@ -429,7 +429,7 @@ function sp_installer_show_form(): void {
                         <th><label for="db_user">Database Username</label></th>
                         <td>
                             <input type="text" id="db_user" name="db_user" required
-                                   value="<?php echo htmlspecialchars( $saved['db_user'] ?? '' ); ?>"
+                                   value="<?php echo htmlspecialchars( $saved['db_user'] ?? '' , ENT_QUOTES, 'UTF-8'); ?>"
                                    placeholder="e.g., society_user" autocomplete="off">
                         </td>
                     </tr>
@@ -443,14 +443,14 @@ function sp_installer_show_form(): void {
                     <tr>
                         <th><label for="db_host">Database Host</label></th>
                         <td>
-                            <input type="text" id="db_host" name="db_host" value="<?php echo htmlspecialchars( $saved['db_host'] ?? 'localhost' ); ?>">
+                            <input type="text" id="db_host" name="db_host" value="<?php echo htmlspecialchars( $saved['db_host'] ?? 'localhost' , ENT_QUOTES, 'UTF-8'); ?>">
                             <p class="desc">Almost always "localhost." Only change this if your host tells you to.</p>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="db_prefix">Table Prefix</label></th>
                         <td>
-                            <input type="text" id="db_prefix" name="db_prefix" value="<?php echo htmlspecialchars( $saved['db_prefix'] ?? 'wp_' ); ?>"
+                            <input type="text" id="db_prefix" name="db_prefix" value="<?php echo htmlspecialchars( $saved['db_prefix'] ?? 'wp_' , ENT_QUOTES, 'UTF-8'); ?>"
                                    pattern="[a-zA-Z_][a-zA-Z0-9_]*" maxlength="20">
                             <p class="desc">Leave as "wp_" unless you have a reason to change it.</p>
                         </td>
@@ -468,7 +468,7 @@ function sp_installer_show_form(): void {
                     <th><label for="site_title">Society Name</label></th>
                     <td>
                         <input type="text" id="site_title" name="site_title" required
-                               value="<?php echo htmlspecialchars( $saved['site_title'] ?? '' ); ?>"
+                               value="<?php echo htmlspecialchars( $saved['site_title'] ?? '' , ENT_QUOTES, 'UTF-8'); ?>"
                                placeholder="e.g., Elm County Genealogical Society">
                         <p class="desc">This appears as your site title. You can change it later.</p>
                     </td>
@@ -477,7 +477,7 @@ function sp_installer_show_form(): void {
                     <th><label for="admin_email">Admin Email</label></th>
                     <td>
                         <input type="email" id="admin_email" name="admin_email" required
-                               value="<?php echo htmlspecialchars( $saved['admin_email'] ?? '' ); ?>"
+                               value="<?php echo htmlspecialchars( $saved['admin_email'] ?? '' , ENT_QUOTES, 'UTF-8'); ?>"
                                placeholder="you@example.com">
                         <p class="desc">Used for admin login and system notifications.</p>
                     </td>
@@ -486,7 +486,7 @@ function sp_installer_show_form(): void {
                     <th><label for="admin_first">Your First Name</label></th>
                     <td>
                         <input type="text" id="admin_first" name="admin_first" required
-                               value="<?php echo htmlspecialchars( $saved['admin_first'] ?? '' ); ?>"
+                               value="<?php echo htmlspecialchars( $saved['admin_first'] ?? '' , ENT_QUOTES, 'UTF-8'); ?>"
                                placeholder="e.g., Harold">
                     </td>
                 </tr>
@@ -494,7 +494,7 @@ function sp_installer_show_form(): void {
                     <th><label for="admin_last">Your Last Name</label></th>
                     <td>
                         <input type="text" id="admin_last" name="admin_last" required
-                               value="<?php echo htmlspecialchars( $saved['admin_last'] ?? '' ); ?>"
+                               value="<?php echo htmlspecialchars( $saved['admin_last'] ?? '' , ENT_QUOTES, 'UTF-8'); ?>"
                                placeholder="e.g., Whitfield">
                     </td>
                 </tr>
@@ -502,7 +502,7 @@ function sp_installer_show_form(): void {
                     <th><label for="admin_user">Admin Username</label></th>
                     <td>
                         <input type="text" id="admin_user" name="admin_user" required
-                               value="<?php echo htmlspecialchars( $saved['admin_user'] ?? '' ); ?>" pattern="[a-zA-Z0-9_\-\.]{3,60}"
+                               value="<?php echo htmlspecialchars( $saved['admin_user'] ?? '' , ENT_QUOTES, 'UTF-8'); ?>" pattern="[a-zA-Z0-9_\-\.]{3,60}"
                                placeholder="e.g. jsmith or harold.whitfield">
                         <p class="desc">Your login username. Choose something unique and memorable.</p>
                         <p id="sp-admin-warn" style="display:none; color: #DC2626; font-size: 13px; margin-top: 4px;">
@@ -548,7 +548,7 @@ function sp_installer_show_form(): void {
                     <th><label for="org_address">Mailing Address</label></th>
                     <td>
                         <textarea id="org_address" name="org_address" rows="3"
-                                  placeholder="Optional — P.O. Box or society address"><?php echo htmlspecialchars( $saved['org_address'] ?? '' ); ?></textarea>
+                                  placeholder="Optional — P.O. Box or society address"><?php echo htmlspecialchars( $saved['org_address'] ?? '' , ENT_QUOTES, 'UTF-8'); ?></textarea>
                         <p class="desc">Your society's public address, not your personal home address. Leave blank if your society doesn't publish one.</p>
                     </td>
                 </tr>
@@ -556,7 +556,7 @@ function sp_installer_show_form(): void {
                     <th><label for="org_phone">Phone Number</label></th>
                     <td>
                         <input type="tel" id="org_phone" name="org_phone"
-                               value="<?php echo htmlspecialchars( $saved['org_phone'] ?? '' ); ?>"
+                               value="<?php echo htmlspecialchars( $saved['org_phone'] ?? '' , ENT_QUOTES, 'UTF-8'); ?>"
                                placeholder="Optional">
                         <p class="desc">Leave blank if your society doesn't have a public phone number.</p>
                     </td>
@@ -565,7 +565,7 @@ function sp_installer_show_form(): void {
                     <th><label for="org_email">Contact Email</label></th>
                     <td>
                         <input type="email" id="org_email" name="org_email"
-                               value="<?php echo htmlspecialchars( $saved['org_email'] ?? '' ); ?>"
+                               value="<?php echo htmlspecialchars( $saved['org_email'] ?? '' , ENT_QUOTES, 'UTF-8'); ?>"
                                placeholder="Optional — e.g., info@yoursociety.org">
                         <p class="desc">A public email for your society (not your personal email). Leave blank to set later.</p>
                     </td>
@@ -1426,7 +1426,7 @@ MUPLUGIN;
             'SocietyPress Download Failed',
             'WordPress was installed successfully, but we could not download SocietyPress. '
             . 'You can install it manually: download the plugin from '
-            . '<a href="https://github.com/' . htmlspecialchars( SP_INSTALLER_GITHUB_REPO ) . '/releases">GitHub</a> '
+            . '<a href="https://github.com/' . htmlspecialchars( SP_INSTALLER_GITHUB_REPO , ENT_QUOTES, 'UTF-8') . '/releases">GitHub</a> '
             . 'and upload it through your WordPress admin panel.'
         );
     }
@@ -1616,12 +1616,12 @@ function sp_installer_show_complete(): void {
                 through the rest — your organization details, membership settings, and design choices.
             </p>
 
-            <a href="<?php echo htmlspecialchars( $admin_url ); ?>" class="sp-btn">
+            <a href="<?php echo htmlspecialchars( $admin_url , ENT_QUOTES, 'UTF-8'); ?>" class="sp-btn">
                 Go to Your Dashboard &rarr;
             </a>
 
             <p style="margin-top: 16px;">
-                <a href="<?php echo htmlspecialchars( $site_url ); ?>" style="color: #C9973A; text-decoration: none;">
+                <a href="<?php echo htmlspecialchars( $site_url , ENT_QUOTES, 'UTF-8'); ?>" style="color: #C9973A; text-decoration: none;">
                     or visit your new site
                 </a>
             </p>
@@ -1631,7 +1631,7 @@ function sp_installer_show_complete(): void {
             <details style="margin-top: 32px; padding: 16px; background: #F9FAFB; border-radius: 8px;">
                 <summary style="cursor: pointer; font-weight: 600; color: #6B7280;">Installation Log</summary>
                 <pre style="margin-top: 8px; font-size: 12px; color: #374151; white-space: pre-wrap;"><?php
-                    echo htmlspecialchars( implode( "\n", $log ) );
+                    echo htmlspecialchars( implode( "\n", $log ) , ENT_QUOTES, 'UTF-8');
                 ?></pre>
             </details>
         <?php endif; ?>
@@ -1854,7 +1854,7 @@ function sp_installer_render_page( string $title, callable $content ): void {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title><?php echo htmlspecialchars( $title ); ?> — SocietyPress Installer</title>
+        <title><?php echo htmlspecialchars( $title , ENT_QUOTES, 'UTF-8'); ?> — SocietyPress Installer</title>
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
@@ -1981,7 +1981,7 @@ function sp_installer_render_page( string $title, callable $content ): void {
         <div class="sp-installer">
             <div class="sp-installer-header">
                 <h1>SocietyPress</h1>
-                <div class="step-title"><?php echo htmlspecialchars( $title ); ?></div>
+                <div class="step-title"><?php echo htmlspecialchars( $title , ENT_QUOTES, 'UTF-8'); ?></div>
             </div>
             <div class="sp-installer-body">
                 <?php $content(); ?>

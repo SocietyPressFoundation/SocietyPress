@@ -49998,7 +49998,10 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
 
                 // Thumbnail — width is dynamic (depends on $col_width), all other styles are in CSS class
                 echo '<a href="#' . esc_attr( $target_id ) . '" class="sp-gallery-thumb-link" style="width:calc(' . $col_width . '% - 8px);">';
-                echo '<img src="' . esc_url( $img_url ) . '" alt="' . esc_attr( $item->caption ?: 'Photo ' . ( $i + 1 ) ) . '" class="sp-gallery-thumb-img" loading="lazy">';
+                // WHY alt falls back to empty (decorative) not "Photo N": a
+                // sequential label conveys nothing to a screen-reader user, so
+                // an empty alt is the correct choice when there's no caption.
+                echo '<img src="' . esc_url( $img_url ) . '" alt="' . esc_attr( (string) $item->caption ) . '" class="sp-gallery-thumb-img" loading="lazy">';
                 echo '</a>';
 
                 /*
@@ -54750,7 +54753,7 @@ function sp_render_library_item_edit_page(): void {
                         <p class="description"><?php esc_html_e( 'URL to the book cover image. Can be populated automatically via Library Enrichment.', 'societypress' ); ?></p>
                         <?php if ( ! empty( $item->cover_url ) ) : ?>
                             <div class="sp-lib-edit-cover-preview">
-                                <img src="<?php echo esc_url( $item->cover_url ); ?>" alt="Cover preview" class="sp-lib-edit-cover-img">
+                                <img src="<?php echo esc_url( $item->cover_url ); ?>" alt="<?php echo esc_attr( sprintf( __( 'Cover image for %s', 'societypress' ), $item->title ) ); ?>" class="sp-lib-edit-cover-img">
                             </div>
                         <?php endif; ?>
                     </td>

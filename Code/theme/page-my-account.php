@@ -595,8 +595,9 @@ function sp_m( $member, $field ) {
                         <div class="sp-form-field">
                             <label for="sp-preferred-name"><?php esc_html_e( 'Preferred Name', 'societypress' ); ?></label>
                             <input type="text" id="sp-preferred-name" name="preferred_name"
+                                   aria-describedby="sp-preferred-name-hint"
                                    value="<?php echo esc_attr( sp_m( $member, 'preferred_name' ) ); ?>" />
-                            <p class="sp-field-hint"><?php esc_html_e( 'What you\'d like to be called (e.g., "Bob" instead of "Robert").', 'societypress' ); ?></p>
+                            <p class="sp-field-hint" id="sp-preferred-name-hint"><?php esc_html_e( 'What you\'d like to be called (e.g., "Bob" instead of "Robert").', 'societypress' ); ?></p>
                         </div>
                         <div class="sp-form-field">
                             <label for="sp-maiden-name"><?php esc_html_e( 'Maiden Name', 'societypress' ); ?></label>
@@ -640,8 +641,9 @@ function sp_m( $member, $field ) {
                         <label for="sp-email"><?php esc_html_e( 'Email Address', 'societypress' ); ?></label>
                         <input type="email" id="sp-email" name="user_email"
                                value="<?php echo esc_attr( $user->user_email ); ?>"
+                               aria-describedby="sp-email-hint"
                                required />
-                        <p class="sp-field-hint"><?php esc_html_e( 'This is used for logging in and receiving communications.', 'societypress' ); ?></p>
+                        <p class="sp-field-hint" id="sp-email-hint"><?php esc_html_e( 'This is used for logging in and receiving communications.', 'societypress' ); ?></p>
                     </div>
 
                     <div class="sp-form-row sp-form-row--half">
@@ -1078,17 +1080,19 @@ function sp_m( $member, $field ) {
                     <div class="sp-form-field">
                         <label for="sp-interests"><?php esc_html_e( 'Interests', 'societypress' ); ?></label>
                         <textarea id="sp-interests" name="interests" rows="3"
+                                  aria-describedby="sp-interests-hint"
                                   placeholder="<?php esc_attr_e( 'e.g., Texas Rangers, Civil War records, DNA research, cemetery preservation', 'societypress' ); ?>"
                         ><?php echo esc_textarea( sp_m( $member, 'interests' ) ); ?></textarea>
-                        <p class="sp-field-hint"><?php esc_html_e( 'Genealogical topics, time periods, or geographic areas you\'re interested in.', 'societypress' ); ?></p>
+                        <p class="sp-field-hint" id="sp-interests-hint"><?php esc_html_e( 'Genealogical topics, time periods, or geographic areas you\'re interested in.', 'societypress' ); ?></p>
                     </div>
 
                     <div class="sp-form-field">
                         <label for="sp-skills"><?php esc_html_e( 'Skills', 'societypress' ); ?></label>
                         <textarea id="sp-skills" name="skills" rows="3"
+                                  aria-describedby="sp-skills-hint"
                                   placeholder="<?php esc_attr_e( 'e.g., German translation, courthouse research, photo restoration, web design', 'societypress' ); ?>"
                         ><?php echo esc_textarea( sp_m( $member, 'skills' ) ); ?></textarea>
-                        <p class="sp-field-hint"><?php esc_html_e( 'Skills or expertise you\'d be willing to share with other members.', 'societypress' ); ?></p>
+                        <p class="sp-field-hint" id="sp-skills-hint"><?php esc_html_e( 'Skills or expertise you\'d be willing to share with other members.', 'societypress' ); ?></p>
                     </div>
 
                     <button type="submit" class="sp-button"><?php esc_html_e( 'Save Interests & Skills', 'societypress' ); ?></button>
@@ -1648,8 +1652,9 @@ function sp_m( $member, $field ) {
                                name="new_password"
                                required
                                minlength="8"
-                               autocomplete="new-password" />
-                        <p class="sp-field-hint"><?php esc_html_e( 'At least 8 characters.', 'societypress' ); ?></p>
+                               autocomplete="new-password"
+                               aria-describedby="sp-new-password-hint" />
+                        <p class="sp-field-hint" id="sp-new-password-hint"><?php esc_html_e( 'At least 8 characters.', 'societypress' ); ?></p>
                     </div>
 
                     <div class="sp-form-field">

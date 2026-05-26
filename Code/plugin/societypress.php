@@ -2242,6 +2242,19 @@ function sp_create_tables(): void {
         KEY user_id (user_id)
     ) {$charset_collate};" );
 
+    // sp_ballot_voters — one row per member per ballot. This is the atomic
+    // participation gate: the UNIQUE (ballot_id, user_id) key lets the vote
+    // handler INSERT this row to claim the slot, closing the check-then-insert
+    // race that ballot_votes' per-(question,choice) key can't prevent on a
+    // single-select question.
+    dbDelta( "CREATE TABLE {$prefix}ballot_voters (
+        ballot_id BIGINT(20) UNSIGNED NOT NULL,
+        user_id   BIGINT(20) UNSIGNED NOT NULL,
+        voted_at  DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY ballot_user (ballot_id, user_id),
+        KEY user_id (user_id)
+    ) {$charset_collate};" );
+
     // ========================================================================
     // sp_backups — Backup archive metadata
     //
@@ -2798,6 +2811,33 @@ add_action( 'admin_init', function () {
     if ( ! empty( $old_key ) ) {
         $wpdb->query( "ALTER TABLE {$table} DROP INDEX question_user" );
         $wpdb->query( "ALTER TABLE {$table} ADD UNIQUE KEY question_user_choice (question_id, user_id, choice_id)" );
+    }
+
+    // Ensure the participation-gate table exists, then backfill it from the
+    // distinct voters already in ballot_votes so anyone who voted before this
+    // table existed can't vote again. Created here (not only in sp_create_tables)
+    // because the DB-version gate may not fire on an in-place upgrade; the vote
+    // handler depends on this table, so it must self-heal. INSERT IGNORE is
+    // idempotent, so the backfill is safe to run on every admin_init.
+    $voters = $wpdb->prefix . 'sp_ballot_voters';
+    if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $voters ) ) ) !== $voters ) {
+        $charset_collate = $wpdb->get_charset_collate();
+        $wpdb->query(
+            "CREATE TABLE {$voters} (
+                ballot_id BIGINT(20) UNSIGNED NOT NULL,
+                user_id   BIGINT(20) UNSIGNED NOT NULL,
+                voted_at  DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY ballot_user (ballot_id, user_id),
+                KEY user_id (user_id)
+            ) {$charset_collate}"
+        );
+    }
+    if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $voters ) ) ) === $voters ) {
+        $wpdb->query(
+            "INSERT IGNORE INTO {$voters} (ballot_id, user_id, voted_at)
+             SELECT ballot_id, user_id, MIN(voted_at) FROM {$table}
+             GROUP BY ballot_id, user_id"
+        );
     }
 } );
 
@@ -76915,6 +76955,7 @@ function sp_render_ballots_page(): void {
             }
             $wpdb->delete( $prefix . 'ballot_questions', [ 'ballot_id' => $bid ] );
             $wpdb->delete( $prefix . 'ballot_votes', [ 'ballot_id' => $bid ] );
+            $wpdb->delete( $prefix . 'ballot_voters', [ 'ballot_id' => $bid ] );
             $wpdb->delete( $prefix . 'ballots', [ 'id' => $bid ] );
 
             sp_audit( 'ballot_deleted', sprintf( 'Ballot "%s" deleted', $title ), 'ballot', $bid );
@@ -77797,6 +77838,20 @@ add_action( 'wp_ajax_sp_submit_vote', function () {
     // ---- Insert all votes in a transaction ----
     $wpdb->query( 'START TRANSACTION' );
     $success = true;
+
+    // Atomic participation gate. The COUNT() pre-check above is a friendly
+    // fast path, but two concurrent submissions can both pass it. Only one can
+    // claim this (ballot_id, user_id) row — the UNIQUE key makes the duplicate
+    // INSERT IGNORE affect 0 rows, so the loser is rejected before any vote is
+    // recorded. This closes the race for single-select questions too.
+    $claimed = $wpdb->query( $wpdb->prepare(
+        "INSERT IGNORE INTO {$prefix}ballot_voters (ballot_id, user_id, voted_at) VALUES (%d, %d, %s)",
+        $ballot_id, $user_id, $now
+    ) );
+    if ( $claimed !== 1 ) {
+        $wpdb->query( 'ROLLBACK' );
+        wp_send_json_error( __( 'You have already voted on this ballot.', 'societypress' ) );
+    }
 
     foreach ( $votes_to_insert as $vote ) {
         $result = $wpdb->insert( $prefix . 'ballot_votes', $vote );

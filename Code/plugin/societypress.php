@@ -12379,7 +12379,7 @@ class SP_Members_List_Table extends WP_List_Table {
         //      remove them, demote their role first (Edit → change Role to
         //      Subscriber), then delete. That two-step process is intentional.
         if ( (int) $item->user_id !== get_current_user_id() && ! user_can( (int) $item->user_id, 'manage_options' ) ) {
-            $actions['delete'] = '<a href="#" class="sp-text-danger" onclick="spConfirm(\'' . esc_js( __( 'Are you sure you want to delete this member?', 'societypress' ) ) . '\', function(){var f=document.createElement(\'form\');f.method=\'post\';f.action=\'' . esc_url( admin_url( 'admin.php?page=sp-members' ) ) . '\';var d=[[\'_wpnonce\',\'' . wp_create_nonce( 'sp_delete_member_' . $item->user_id ) . '\'],[\'action\',\'delete\'],[\'member\',\'' . (int) $item->user_id . '\']];d.forEach(function(p){var i=document.createElement(\'input\');i.type=\'hidden\';i.name=p[0];i.value=p[1];f.appendChild(i);});document.body.appendChild(f);f.submit();});return false;">' . esc_html__( 'Delete', 'societypress' ) . '</a>';
+            $actions['delete'] = '<a href="#" class="sp-text-danger" onclick="spConfirm(\'' . esc_js( __( 'Delete this member? This removes their account and cannot be undone.', 'societypress' ) ) . '\', function(){var f=document.createElement(\'form\');f.method=\'post\';f.action=\'' . esc_url( admin_url( 'admin.php?page=sp-members' ) ) . '\';var d=[[\'_wpnonce\',\'' . wp_create_nonce( 'sp_delete_member_' . $item->user_id ) . '\'],[\'action\',\'delete\'],[\'member\',\'' . (int) $item->user_id . '\']];d.forEach(function(p){var i=document.createElement(\'input\');i.type=\'hidden\';i.name=p[0];i.value=p[1];f.appendChild(i);});document.body.appendChild(f);f.submit();});return false;">' . esc_html__( 'Delete', 'societypress' ) . '</a>';
         }
 
         return $name . $this->row_actions( $actions );
@@ -13524,7 +13524,7 @@ function sp_render_members_page(): void {
             var batchSize  = 25;
 
             btn.addEventListener('click', function() {
-                spConfirm(<?php echo wp_json_encode( sprintf( __( "This will permanently delete all %d other members and their accounts.\n\nYour own account will NOT be touched.\n\nAre you sure?", "societypress" ), $others_count ) ); ?>, function() {
+                spConfirm(<?php echo wp_json_encode( sprintf( __( "Delete all %d other members and their accounts?\n\nYour own account will NOT be touched.\n\nThis cannot be undone.", "societypress" ), $others_count ) ); ?>, function() {
                 var overlay     = document.getElementById('sp-delete-overlay');
                 var progressBar = document.getElementById('sp-delete-progress');
                 var countEl     = document.getElementById('sp-delete-count');
@@ -15955,7 +15955,7 @@ function sp_render_member_edit_page(): void {
 
         </form>
         <?php if ( $is_edit && (int) $user_id !== get_current_user_id() ) : ?>
-            <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-members' ) ); ?>" class="sp-member-edit-delete-form" data-sp-confirm="<?php echo esc_attr( __( 'Are you sure you want to permanently delete this member? This cannot be undone.', 'societypress' ) ); ?>">
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-members' ) ); ?>" class="sp-member-edit-delete-form" data-sp-confirm="<?php echo esc_attr( __( 'Delete this member permanently? This cannot be undone.', 'societypress' ) ); ?>">
                 <?php wp_nonce_field( 'sp_delete_member_' . $user_id ); ?>
                 <input type="hidden" name="action" value="delete">
                 <input type="hidden" name="member" value="<?php echo (int) $user_id; ?>">
@@ -22717,7 +22717,7 @@ class SP_Pages_List_Table extends WP_List_Table {
         }
 
         // Delete — JS-based POST to avoid nested forms inside the list table
-        $actions['delete'] = '<a href="#" class="sp-text-danger" onclick="spConfirm(\'' . esc_js( __( 'Are you sure you want to delete this page?', 'societypress' ) ) . '\', function(){var f=document.createElement(\'form\');f.method=\'post\';f.action=\'' . esc_url( admin_url( 'admin.php?page=sp-pages' ) ) . '\';var d=[[\'_wpnonce\',\'' . wp_create_nonce( 'sp_delete_page_' . $item->ID ) . '\'],[\'action\',\'delete\'],[\'post_id\',\'' . (int) $item->ID . '\']];d.forEach(function(p){var i=document.createElement(\'input\');i.type=\'hidden\';i.name=p[0];i.value=p[1];f.appendChild(i);});document.body.appendChild(f);f.submit();});return false;">' . esc_html__( 'Delete', 'societypress' ) . '</a>';
+        $actions['delete'] = '<a href="#" class="sp-text-danger" onclick="spConfirm(\'' . esc_js( __( 'Delete this page?', 'societypress' ) ) . '\', function(){var f=document.createElement(\'form\');f.method=\'post\';f.action=\'' . esc_url( admin_url( 'admin.php?page=sp-pages' ) ) . '\';var d=[[\'_wpnonce\',\'' . wp_create_nonce( 'sp_delete_page_' . $item->ID ) . '\'],[\'action\',\'delete\'],[\'post_id\',\'' . (int) $item->ID . '\']];d.forEach(function(p){var i=document.createElement(\'input\');i.type=\'hidden\';i.name=p[0];i.value=p[1];f.appendChild(i);});document.body.appendChild(f);f.submit();});return false;">' . esc_html__( 'Delete', 'societypress' ) . '</a>';
 
         return $name . $this->row_actions( $actions );
     }
@@ -23319,7 +23319,7 @@ function sp_render_page_edit(): void {
             </p>
         </form>
         <?php if ( $is_edit ) : ?>
-            <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-pages' ) ); ?>" class="sp-inline-form sp-inline-form--tight" data-sp-confirm="<?php echo esc_attr( __( 'Are you sure you want to delete this page?', 'societypress' ) ); ?>">
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-pages' ) ); ?>" class="sp-inline-form sp-inline-form--tight" data-sp-confirm="<?php echo esc_attr( __( 'Delete this page?', 'societypress' ) ); ?>">
                 <?php wp_nonce_field( 'sp_delete_page_' . $post_id ); ?>
                 <input type="hidden" name="action" value="delete">
                 <input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>">
@@ -35267,7 +35267,7 @@ class SP_Events_List_Table extends WP_List_Table {
         }
 
         // Delete — JS-based POST to avoid nested forms inside the list table
-        $actions['delete'] = '<a href="#" class="sp-text-danger" onclick="spConfirm(\'' . esc_js( __( 'Permanently delete this event?', 'societypress' ) ) . '\', function(){var f=document.createElement(\'form\');f.method=\'post\';f.action=\'' . esc_url( admin_url( 'admin.php?page=sp-events' ) ) . '\';var d=[[\'_wpnonce\',\'' . wp_create_nonce( 'sp_delete_event_' . $item->id ) . '\'],[\'action\',\'delete\'],[\'event_id\',\'' . (int) $item->id . '\']];d.forEach(function(p){var i=document.createElement(\'input\');i.type=\'hidden\';i.name=p[0];i.value=p[1];f.appendChild(i);});document.body.appendChild(f);f.submit();});return false;">' . esc_html__( 'Delete', 'societypress' ) . '</a>';
+        $actions['delete'] = '<a href="#" class="sp-text-danger" onclick="spConfirm(\'' . esc_js( __( 'Delete this event? This cannot be undone.', 'societypress' ) ) . '\', function(){var f=document.createElement(\'form\');f.method=\'post\';f.action=\'' . esc_url( admin_url( 'admin.php?page=sp-events' ) ) . '\';var d=[[\'_wpnonce\',\'' . wp_create_nonce( 'sp_delete_event_' . $item->id ) . '\'],[\'action\',\'delete\'],[\'event_id\',\'' . (int) $item->id . '\']];d.forEach(function(p){var i=document.createElement(\'input\');i.type=\'hidden\';i.name=p[0];i.value=p[1];f.appendChild(i);});document.body.appendChild(f);f.submit();});return false;">' . esc_html__( 'Delete', 'societypress' ) . '</a>';
 
         return $title . $this->row_actions( $actions );
     }
@@ -43003,7 +43003,7 @@ function sp_events_frontend_scripts(): void {
             if (!cancelBtn) return;
             cancelBtn.addEventListener('click', function() {
                 var btn     = this;
-                spConfirm('<?php echo esc_js( __( 'Are you sure you want to cancel your registration?', 'societypress' ) ); ?>', function() {
+                spConfirm('<?php echo esc_js( __( 'Cancel your registration?', 'societypress' ) ); ?>', function() {
                 var eventId = btn.getAttribute('data-event-id');
                 var regId   = btn.getAttribute('data-reg-id');
 
@@ -72710,7 +72710,7 @@ function sp_render_store_products_page(): void {
                                 <div class="row-actions">
                                     <span class="edit"><a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> | </span>
                                     <span class="toggle"><a href="<?php echo esc_url( $toggle_url ); ?>"><?php echo (int) $p->active ? esc_html__( 'Deactivate', 'societypress' ) : esc_html__( 'Activate', 'societypress' ); ?></a> | </span>
-                                    <span class="delete"><a href="<?php echo esc_url( $delete_url ); ?>" class="sp-text-danger" onclick="spConfirm(<?php echo wp_json_encode( __( 'Permanently delete this product? Past order history is preserved.', 'societypress' ) ); ?>, function(){window.location=this.href;}.bind(this));return false;"><?php esc_html_e( 'Delete', 'societypress' ); ?></a></span>
+                                    <span class="delete"><a href="<?php echo esc_url( $delete_url ); ?>" class="sp-text-danger" onclick="spConfirm(<?php echo wp_json_encode( __( 'Delete this product? Past order history is preserved.', 'societypress' ) ); ?>, function(){window.location=this.href;}.bind(this));return false;"><?php esc_html_e( 'Delete', 'societypress' ); ?></a></span>
                                 </div>
                             </td>
                             <td><?php echo $p->sku ? esc_html( $p->sku ) : '—'; ?></td>
@@ -78465,7 +78465,16 @@ function sp_render_modal_module(): void {
         var trigger = document.activeElement;
 
         msgEl.textContent = message;
-        if (opts.confirmText) yesBtn.textContent = opts.confirmText;
+        // Label the confirm button with the action instead of a generic
+        // "Confirm". The messages lead with their verb ("Delete this category?"
+        // -> "Delete", "Cancel your registration?" -> "Cancel"), so we derive
+        // the label from the first word unless the caller passed one explicitly.
+        var confirmLabel = opts.confirmText;
+        if (!confirmLabel && message) {
+            var firstWord = String(message).trim().split(/[\s,.?!:;]+/)[0] || '';
+            if (firstWord) confirmLabel = firstWord.charAt(0).toUpperCase() + firstWord.slice(1);
+        }
+        if (confirmLabel) yesBtn.textContent = confirmLabel;
         if (opts.cancelText)  noBtn.textContent  = opts.cancelText;
 
         yesBtn.className = 'button sp-confirm-btn sp-confirm-btn--' + (opts.type || 'danger');

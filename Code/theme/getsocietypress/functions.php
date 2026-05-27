@@ -142,12 +142,17 @@ remove_action( 'wp_head', 'rest_output_link_wp_head' );
 
 
 /**
- * Custom Nav Walker — Bare Links
+ * Custom Nav Walker — Bare Links with Drop Down Menus
  *
- * Strips the default <ul>/<li> wrapper from wp_nav_menu() and outputs
- * plain <a> tags. This keeps the nav markup identical to what we had
- * when the links were hardcoded, so the existing CSS works unchanged.
- * Also adds a "current" class to the active page link.
+ * Outputs plain <a> tags for top-level links (no <li>/<ul> chrome, so the
+ * existing flat-row CSS keeps working). A top-level item that has children
+ * is rendered as a drop down: a category <button> that toggles a panel of
+ * child links beneath it. The parent label is a category, not a
+ * destination — its children carry the real pages — so it's a button, not
+ * a link, which keeps keyboard and screen-reader behavior honest.
+ *
+ * Only one level of nesting is supported (matching the 'depth' => 2 cap in
+ * header.php); deeper trees would need additional markup.
  *
  * NOTE on OOP exception: the rest of this theme is function-based per
  * the project convention. A class is required here only because
@@ -157,34 +162,55 @@ remove_action( 'wp_head', 'rest_output_link_wp_head' );
 class GSP_Nav_Walker extends Walker_Nav_Menu {
 
     /**
-     * Skip the <li> open tag entirely — we only want <a> tags.
+     * Open a menu item. Drop down parents become a disclosure button wrapped
+     * in a .nav-dropdown container; everything else is a bare <a>.
      */
     public function start_el( &$output, $item, $depth = 0, $args = null, $id = 0 ) {
         $item_classes = (array) $item->classes;
-        $link_classes = array();
+        $has_children = in_array( 'menu-item-has-children', $item_classes, true );
+        $state        = array();
 
         /* Carry over WordPress built-in current-page CSS classes so theme CSS can target them */
         if ( in_array( 'current-menu-item', $item_classes, true ) ) {
-            $link_classes[] = 'current';
-            $link_classes[] = 'current-menu-item';
+            $state[] = 'current';
+            $state[] = 'current-menu-item';
         }
         if ( in_array( 'current-menu-ancestor', $item_classes, true ) ) {
-            $link_classes[] = 'current-menu-ancestor';
+            $state[] = 'current-menu-ancestor';
         }
         if ( in_array( 'current-menu-parent', $item_classes, true ) ) {
-            $link_classes[] = 'current-menu-parent';
+            $state[] = 'current-menu-parent';
         }
 
-        $class_attr = $link_classes ? ' class="' . implode( ' ', $link_classes ) . '"' : '';
-        $output .= '<a href="' . esc_url( $item->url ) . '"' . $class_attr . '>' . esc_html( $item->title ) . '</a>';
+        if ( 0 === $depth && $has_children ) {
+            $toggle_class = trim( 'nav-dropdown__toggle ' . implode( ' ', $state ) );
+            $output .= '<div class="nav-dropdown">';
+            $output .= '<button type="button" class="' . esc_attr( $toggle_class ) . '" aria-expanded="false" aria-haspopup="true">';
+            $output .= esc_html( $item->title );
+            $output .= '<span class="nav-dropdown__caret" aria-hidden="true"></span>';
+            $output .= '</button>';
+            return;
+        }
+
+        $class_attr = $state ? ' class="' . esc_attr( implode( ' ', $state ) ) . '"' : '';
+        $output    .= '<a href="' . esc_url( $item->url ) . '"' . $class_attr . '>' . esc_html( $item->title ) . '</a>';
     }
 
-    /* We don't need closing </li> tags since we never opened them */
-    public function end_el( &$output, $item, $depth = 0, $args = null ) {}
+    /* Close the .nav-dropdown wrapper opened for a drop down parent. */
+    public function end_el( &$output, $item, $depth = 0, $args = null ) {
+        if ( 0 === $depth && in_array( 'menu-item-has-children', (array) $item->classes, true ) ) {
+            $output .= '</div>';
+        }
+    }
 
-    /* We don't need <ul> wrappers for submenus (depth is 1 anyway) */
-    public function start_lvl( &$output, $depth = 0, $args = null ) {}
-    public function end_lvl( &$output, $depth = 0, $args = null ) {}
+    /* The drop down panel that holds the child links. */
+    public function start_lvl( &$output, $depth = 0, $args = null ) {
+        $output .= '<div class="nav-dropdown__menu">';
+    }
+
+    public function end_lvl( &$output, $depth = 0, $args = null ) {
+        $output .= '</div>';
+    }
 }
 
 

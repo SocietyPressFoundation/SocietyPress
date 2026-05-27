@@ -4,7 +4,7 @@ Theme URI: https://getsocietypress.org
 Author: SocietyPress Contributors
 Author URI: https://getsocietypress.org
 Description: The official theme for getsocietypress.org — the home of SocietyPress, a free, open-source WordPress platform for genealogical society administrators.
-Version: 0.53d
+Version: 0.54d
 License: GNU General Public License v2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 Text Domain: getsocietypress
@@ -558,6 +558,111 @@ body {
     width: 100%;
 }
 
+/* --------------------------------------------------------------------------
+   Drop down menus
+   A top-level item with children renders as a category button that reveals
+   a panel of child links. The panel opens on hover, on keyboard focus, and
+   on click (the JS toggles aria-expanded for screen readers). Mobile turns
+   the same structure into an inline accordion further down in section 8.
+   -------------------------------------------------------------------------- */
+.nav-dropdown {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+/* Match the look of a .primary-nav link, but it's a real <button> */
+.nav-dropdown__toggle {
+    color: var(--color-nav-text);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    font-family: inherit;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.5rem 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    transition: color var(--transition-fast);
+}
+
+.nav-dropdown__toggle:hover,
+.nav-dropdown:hover .nav-dropdown__toggle,
+.nav-dropdown__toggle.current-menu-ancestor,
+.nav-dropdown__toggle.current-menu-parent {
+    color: var(--color-nav-hover);
+}
+
+.nav-dropdown__caret {
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid currentColor;
+    transition: transform var(--transition-fast);
+}
+
+.nav-dropdown:hover .nav-dropdown__caret,
+.nav-dropdown__toggle[aria-expanded="true"] .nav-dropdown__caret {
+    transform: rotate(180deg);
+}
+
+.nav-dropdown__menu {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 200px;
+    background-color: var(--color-nav-bg);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    padding: 0.5rem 0;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity var(--transition-fast), visibility var(--transition-fast);
+    z-index: 1001;
+}
+
+/* Invisible bridge so the cursor can cross the gap without the panel closing */
+.nav-dropdown__menu::before {
+    content: '';
+    position: absolute;
+    top: -0.5rem;
+    left: 0;
+    right: 0;
+    height: 0.5rem;
+}
+
+.nav-dropdown:hover .nav-dropdown__menu,
+.nav-dropdown:focus-within .nav-dropdown__menu,
+.nav-dropdown.is-open .nav-dropdown__menu {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.nav-dropdown__menu a {
+    padding: 0.5rem 1.25rem;
+    font-size: var(--font-size-sm);
+    white-space: nowrap;
+}
+
+/* Children use a background hover, not the top-level underline */
+.nav-dropdown__menu a::after {
+    display: none;
+}
+
+.nav-dropdown__menu a:hover,
+.nav-dropdown__menu a.current {
+    background-color: rgba(255, 255, 255, 0.06);
+    color: var(--color-nav-hover);
+}
+
 /* Right-side nav actions (Sign In link + Download CTA) */
 .nav-actions {
     display: flex;
@@ -652,6 +757,50 @@ body {
     margin-top: var(--spacing-md);
     width: 100%;
     text-align: center;
+}
+
+/* Drop downs become inline accordions inside the mobile overlay. Hover and
+   focus-within reveal make no sense on touch, so here the panel is hidden
+   until JS adds .is-open to the parent. */
+.mobile-nav .nav-dropdown {
+    display: block;
+    width: 100%;
+}
+
+.mobile-nav .nav-dropdown__toggle {
+    width: 100%;
+    justify-content: space-between;
+    font-size: var(--font-size-lg);
+    padding: var(--spacing-md) 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mobile-nav .nav-dropdown__menu {
+    position: static;
+    transform: none;
+    min-width: 0;
+    padding: 0 0 0 var(--spacing-md);
+    background: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    display: none;
+}
+
+.mobile-nav .nav-dropdown.is-open .nav-dropdown__menu {
+    display: flex;
+}
+
+.mobile-nav .nav-dropdown__menu::before {
+    display: none;
+}
+
+.mobile-nav .nav-dropdown__menu a {
+    font-size: var(--font-size-base);
+    white-space: normal;
 }
 
 

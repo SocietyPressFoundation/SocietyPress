@@ -48,6 +48,63 @@
 
 
     /* ======================================================================
+       1b. DROP DOWN MENUS
+       Category toggles in the nav reveal a panel of child links. Hover and
+       focus-within handle the pointer/keyboard reveal in CSS; this wires up
+       the click toggle (with aria-expanded for screen readers), closes open
+       menus when you click elsewhere, and closes on Escape.
+       ====================================================================== */
+
+    var dropdownToggles = document.querySelectorAll( '.nav-dropdown__toggle' );
+
+    function closeDropdowns( except ) {
+        var open = document.querySelectorAll( '.nav-dropdown.is-open' );
+        for ( var k = 0; k < open.length; k++ ) {
+            if ( open[k] === except ) {
+                continue;
+            }
+            open[k].classList.remove( 'is-open' );
+            var toggle = open[k].querySelector( '.nav-dropdown__toggle' );
+            if ( toggle ) {
+                toggle.setAttribute( 'aria-expanded', 'false' );
+            }
+        }
+    }
+
+    for ( var d = 0; d < dropdownToggles.length; d++ ) {
+        dropdownToggles[d].addEventListener( 'click', function( e ) {
+            e.preventDefault();
+            e.stopPropagation();
+            var parent   = this.parentNode;
+            var willOpen = ! parent.classList.contains( 'is-open' );
+            closeDropdowns( parent );
+            parent.classList.toggle( 'is-open', willOpen );
+            this.setAttribute( 'aria-expanded', willOpen ? 'true' : 'false' );
+        } );
+    }
+
+    /* Any click outside an open drop down closes it */
+    document.addEventListener( 'click', function() {
+        closeDropdowns( null );
+    } );
+
+    /* Escape closes the open drop down and returns focus to its toggle */
+    document.addEventListener( 'keydown', function( e ) {
+        if ( e.key !== 'Escape' ) {
+            return;
+        }
+        var open = document.querySelector( '.nav-dropdown.is-open' );
+        if ( open ) {
+            var toggle = open.querySelector( '.nav-dropdown__toggle' );
+            closeDropdowns( null );
+            if ( toggle ) {
+                toggle.focus();
+            }
+        }
+    } );
+
+
+    /* ======================================================================
        2. ANNOUNCEMENT BAR DISMISSAL
        When dismissed, stores a flag in sessionStorage so the bar stays
        hidden for the rest of the browser session. On page load, we check

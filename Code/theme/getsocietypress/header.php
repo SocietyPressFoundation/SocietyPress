@@ -89,7 +89,7 @@ if ( $announce_enabled && ! empty( $announce_text ) ) :
                 'container'      => false,
                 'items_wrap'     => '%3$s',
                 'walker'         => new GSP_Nav_Walker(),
-                'depth'          => 1,
+                'depth'          => 2,
                 'fallback_cb'    => false,
             ) );
             ?>

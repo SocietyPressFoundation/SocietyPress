@@ -48353,7 +48353,11 @@ function sp_get_backup_dir(): string {
         wp_mkdir_p( $backup_dir );
     }
 
-    // Prevent direct HTTP access — backup ZIPs contain sensitive member data
+    // Prevent direct HTTP access — backup ZIPs contain sensitive member data.
+    // NOTE: .htaccess only protects Apache/LiteSpeed. On nginx it's ignored, so
+    // those hosts must add `location ^~ /wp-content/uploads/sp-backups/ { deny all; }`
+    // to the server block. Downloads always go through the capability-gated
+    // admin_post_sp_download_backup handler, never a direct file URL.
     if ( ! file_exists( $backup_dir . '/.htaccess' ) ) {
         file_put_contents( $backup_dir . '/.htaccess', "Order Deny,Allow\nDeny from all" );
     }
@@ -48651,11 +48655,13 @@ function sp_prune_old_backups(): void {
     if ( count( $backups ) <= $retention ) return;
 
     $to_delete  = array_slice( $backups, $retention );
-    $backup_dir = sp_get_backup_dir();
+    $backup_dir = realpath( sp_get_backup_dir() );
 
     foreach ( $to_delete as $old ) {
-        $path = $backup_dir . '/' . $old->filename;
-        if ( file_exists( $path ) ) {
+        // Same containment guard as sp_backup_resolve_path — only ever delete a
+        // file that genuinely lives inside the backup directory.
+        $path = realpath( $backup_dir . '/' . basename( $old->filename ) );
+        if ( $path && $backup_dir && strpos( $path, $backup_dir . DIRECTORY_SEPARATOR ) === 0 && is_file( $path ) ) {
             wp_delete_file( $path );
         }
         $wpdb->delete( $prefix . 'backups', [ 'id' => $old->id ] );
@@ -48784,8 +48790,9 @@ add_action( 'sp_backup_cron', 'sp_run_scheduled_backup' );
  *      The 10-minute time limit gives large databases room to export without
  *      hitting PHP's default 30-second limit.
  */
-function sp_run_scheduled_backup(): void {
+function sp_run_scheduled_backup( string $trigger_type = 'scheduled' ): void {
     global $wpdb;
+    $trigger_type = ( $trigger_type === 'manual' ) ? 'manual' : 'scheduled';
     $prefix   = $wpdb->prefix . 'sp_';
     $settings = sp_settings();
 
@@ -48829,7 +48836,7 @@ function sp_run_scheduled_backup(): void {
         'includes_uploads'  => $include_uploads ? 1 : 0,
         'includes_settings' => $include_settings ? 1 : 0,
         'status'            => 'running',
-        'trigger_type'      => 'scheduled',
+        'trigger_type'      => $trigger_type,
         'started_at'        => current_time( 'mysql' ),
     ] );
     $backup_id = (int) $wpdb->insert_id;
@@ -48972,8 +48979,8 @@ function sp_notify_backup_ready( int $backup_id ): void {
         return;
     }
 
-    $org  = $settings['organization_name'] ?? get_bloginfo( 'name' );
-    $url  = admin_url( 'admin.php?page=sp-export' );
+    $org  = wp_strip_all_tags( $settings['organization_name'] ?? get_bloginfo( 'name' ) );
+    $url  = admin_url( 'admin.php?page=sp-settings-export' );
     $size = size_format( (int) $backup->file_size );
     $when = wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $backup->completed_at ) );
 
@@ -49009,7 +49016,9 @@ function sp_backup_resolve_path( int $backup_id ) {
     // (filenames are plugin-generated, but never trust a stored value blindly).
     $path = realpath( $dir . '/' . basename( $filename ) );
     $base = realpath( $dir );
-    if ( ! $path || ! $base || strpos( $path, $base ) !== 0 || ! is_file( $path ) ) {
+    // Compare against $base . '/' so a sibling like "sp-backups-x/" can't pass
+    // the prefix check.
+    if ( ! $path || ! $base || strpos( $path, $base . DIRECTORY_SEPARATOR ) !== 0 || ! is_file( $path ) ) {
         return false;
     }
     return $path;
@@ -49017,11 +49026,14 @@ function sp_backup_resolve_path( int $backup_id ) {
 
 // ---- Download a backup ZIP (capability-gated, nonce-protected, stream) ----
 add_action( 'admin_post_sp_download_backup', function () {
-    if ( ! current_user_can( 'sp_manage_members' ) ) {
-        wp_die( esc_html__( 'Permission denied.', 'societypress' ), '', [ 'response' => 403 ] );
-    }
+    // Nonce first, then capability. sp_manage_settings matches the page and the
+    // existing manual full-export — backups carry decrypted PII, so the bar is
+    // "can manage settings", NOT the broader sp_manage_members.
     $backup_id = (int) ( $_GET['backup_id'] ?? 0 );
     check_admin_referer( 'sp_download_backup_' . $backup_id );
+    if ( ! current_user_can( 'sp_manage_settings' ) ) {
+        wp_die( esc_html__( 'Permission denied.', 'societypress' ), '', [ 'response' => 403 ] );
+    }
 
     $path = sp_backup_resolve_path( $backup_id );
     if ( ! $path ) {
@@ -49030,9 +49042,13 @@ add_action( 'admin_post_sp_download_backup', function () {
 
     sp_audit( 'backup_downloaded', sprintf( 'Backup #%d downloaded', $backup_id ), 'backup', $backup_id );
 
+    // Sanitize the filename for the header context (defense-in-depth — the name
+    // is plugin-generated, but never interpolate an unsanitized value here).
+    $dl_name = preg_replace( '/[^A-Za-z0-9._-]/', '_', basename( $path ) );
+
     nocache_headers();
     header( 'Content-Type: application/zip' );
-    header( 'Content-Disposition: attachment; filename="' . basename( $path ) . '"' );
+    header( 'Content-Disposition: attachment; filename="' . $dl_name . '"' );
     header( 'Content-Length: ' . filesize( $path ) );
     // Flush output buffers so a large file streams instead of buffering in memory.
     while ( ob_get_level() ) { ob_end_clean(); }
@@ -49042,11 +49058,11 @@ add_action( 'admin_post_sp_download_backup', function () {
 
 // ---- Delete a backup (file + metadata row) ----
 add_action( 'admin_post_sp_delete_backup', function () {
-    if ( ! current_user_can( 'sp_manage_members' ) ) {
-        wp_die( esc_html__( 'Permission denied.', 'societypress' ), '', [ 'response' => 403 ] );
-    }
     $backup_id = (int) ( $_POST['backup_id'] ?? 0 );
     check_admin_referer( 'sp_delete_backup_' . $backup_id );
+    if ( ! current_user_can( 'sp_manage_settings' ) ) {
+        wp_die( esc_html__( 'Permission denied.', 'societypress' ), '', [ 'response' => 403 ] );
+    }
 
     $path = sp_backup_resolve_path( $backup_id );
     if ( $path ) {
@@ -49056,27 +49072,27 @@ add_action( 'admin_post_sp_delete_backup', function () {
     $wpdb->delete( $wpdb->prefix . 'sp_backups', [ 'id' => $backup_id ] );
     sp_audit( 'backup_deleted', sprintf( 'Backup #%d deleted', $backup_id ), 'backup', $backup_id );
 
-    wp_safe_redirect( add_query_arg( 'sp_backup_msg', 'deleted', admin_url( 'admin.php?page=sp-export' ) ) );
+    wp_safe_redirect( add_query_arg( 'sp_backup_msg', 'deleted', admin_url( 'admin.php?page=sp-settings-export' ) ) );
     exit;
 } );
 
 // ---- Run a scheduled-format backup on demand ----
 add_action( 'admin_post_sp_run_backup_now', function () {
-    if ( ! current_user_can( 'sp_manage_members' ) ) {
+    check_admin_referer( 'sp_run_backup_now' );
+    if ( ! current_user_can( 'sp_manage_settings' ) ) {
         wp_die( esc_html__( 'Permission denied.', 'societypress' ), '', [ 'response' => 403 ] );
     }
-    check_admin_referer( 'sp_run_backup_now' );
-    sp_run_scheduled_backup();
-    wp_safe_redirect( add_query_arg( 'sp_backup_msg', 'ran', admin_url( 'admin.php?page=sp-export' ) ) );
+    sp_run_scheduled_backup( 'manual' );
+    wp_safe_redirect( add_query_arg( 'sp_backup_msg', 'ran', admin_url( 'admin.php?page=sp-settings-export' ) ) );
     exit;
 } );
 
 // ---- Save the scheduled-backup settings ----
 add_action( 'admin_post_sp_save_backup_settings', function () {
-    if ( ! current_user_can( 'sp_manage_members' ) ) {
+    check_admin_referer( 'sp_save_backup_settings' );
+    if ( ! current_user_can( 'sp_manage_settings' ) ) {
         wp_die( esc_html__( 'Permission denied.', 'societypress' ), '', [ 'response' => 403 ] );
     }
-    check_admin_referer( 'sp_save_backup_settings' );
 
     $settings = sp_settings();
     $freq = sanitize_text_field( $_POST['backup_frequency'] ?? 'weekly' );
@@ -49092,7 +49108,7 @@ add_action( 'admin_post_sp_save_backup_settings', function () {
     // and hour on the next request (otherwise the old schedule lingers).
     wp_clear_scheduled_hook( 'sp_backup_cron' );
 
-    wp_safe_redirect( add_query_arg( 'sp_backup_msg', 'saved', admin_url( 'admin.php?page=sp-export' ) ) );
+    wp_safe_redirect( add_query_arg( 'sp_backup_msg', 'saved', admin_url( 'admin.php?page=sp-settings-export' ) ) );
     exit;
 } );
 

@@ -134,20 +134,6 @@ get_header();
                 </p>
             </div>
 
-            <div class="about-who__credentials">
-                <h4>Speaking &amp; Community</h4>
-                <ul class="about-who__list">
-                    <li>
-                        <strong>TSGS Leadership Conference 2026</strong>
-                        <span>Speaker and vendor &mdash; August 29, 2026</span>
-                    </li>
-                    <li>
-                        <strong>RootsTech 2027</strong>
-                        <span>Target launch milestone &mdash; Salt Lake City, March 3&ndash;7, 2027</span>
-                    </li>
-                </ul>
-            </div>
-
         </div>
 
     </div>
@@ -203,49 +189,7 @@ get_header();
 
 
 <!-- ==========================================================================
-     6. ROADMAP
-     Broad strokes. Not a promise of dates — a direction.
-     ========================================================================== -->
-<section class="about-roadmap section">
-    <div class="container container--narrow">
-
-        <h2>Where We're Headed</h2>
-
-        <p>
-            The plugin hit feature completeness in early 2026. The work ahead
-            is in three broad arcs:
-        </p>
-
-        <ol class="about-roadmap__list">
-            <li>
-                <strong>Documentation.</strong>
-                Comprehensive written guides, video walkthroughs, and migration
-                guides &mdash; especially for societies coming from
-                <a href="<?php echo esc_url( home_url( '/docs/ens-migration/' ) ); ?>">EasyNetSites (ENS)</a>,
-                which is the most common platform SocietyPress replaces.
-            </li>
-            <li>
-                <strong>Adoption.</strong>
-                Getting SocietyPress into the hands of more societies &mdash;
-                starting with the roughly 170 active ENS societies that are looking
-                for a successor, and expanding from there. This is why
-                <a href="https://rootstech.org">RootsTech 2027</a> matters.
-            </li>
-            <li>
-                <strong>Polish.</strong>
-                Store checkout, records imports, cleaning up the last
-                i18n gaps, and whatever else shakes out once early-adopter
-                societies are running SocietyPress in production and
-                telling us what hurts.
-            </li>
-        </ol>
-
-    </div>
-</section>
-
-
-<!-- ==========================================================================
-     7. CTA
+     6. CTA
      ========================================================================== -->
 <section class="about-cta">
     <div class="container">

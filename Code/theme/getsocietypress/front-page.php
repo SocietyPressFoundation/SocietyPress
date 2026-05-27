@@ -438,9 +438,9 @@ endif;
     <div class="container">
         <div class="cta-banner__content">
 
-            <h2>Built for Societies, by Someone Who Runs One</h2>
+            <h2>Built for Volunteers, by a Volunteer</h2>
             <p>
-                SocietyPress was born from firsthand experience managing a
+                SocietyPress was born from firsthand experience volunteering with a
                 genealogical society's website and membership. It's free software,
                 freely given. Donations are never expected, always appreciated.
             </p>

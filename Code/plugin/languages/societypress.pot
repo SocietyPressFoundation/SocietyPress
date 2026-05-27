@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-05-27T04:19:32+04:00\n"
+"POT-Creation-Date: 2026-05-28T01:11:05+04:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: societypress\n"
@@ -602,6 +602,7 @@ msgstr ""
 #: societypress.php:31664
 #: societypress.php:65542
 #: societypress.php:66133
+#: societypress.php:66183
 msgid "Newsletter Archive"
 msgstr ""
 
@@ -10384,6 +10385,14 @@ msgstr ""
 msgid "Your full name"
 msgstr ""
 
+#: societypress.php:42654
+msgid "your@email.com"
+msgstr ""
+
+#: societypress.php:42658
+msgid "(555) 555-1234"
+msgstr ""
+
 #: societypress.php:42742
 #, php-format
 msgid "Please %slog in%s to register for this event."
@@ -14884,6 +14893,21 @@ msgstr ""
 msgid "Upload your first newsletter"
 msgstr ""
 
+#: societypress.php:65573
+#: societypress.php:65781
+#: societypress.php:66207
+#: societypress.php:67093
+#: societypress.php:89727
+msgid "Vol."
+msgstr ""
+
+#: societypress.php:65574
+#: societypress.php:65783
+#: societypress.php:66208
+#: societypress.php:67094
+msgid "No."
+msgstr ""
+
 #: societypress.php:65611
 msgid "Delete this newsletter?"
 msgstr ""
@@ -14910,15 +14934,6 @@ msgstr ""
 
 #: societypress.php:65779
 msgid "Volume & Issue"
-msgstr ""
-
-#: societypress.php:65781
-#: societypress.php:89727
-msgid "Vol."
-msgstr ""
-
-#: societypress.php:65783
-msgid "No."
 msgstr ""
 
 #: societypress.php:65794
@@ -20278,6 +20293,10 @@ msgstr[1] ""
 
 #: societypress.php:89342
 msgid "Name for the imported nav menu:"
+msgstr ""
+
+#: societypress.php:89347
+msgid "#"
 msgstr ""
 
 #: societypress.php:89349

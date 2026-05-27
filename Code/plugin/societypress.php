@@ -42651,11 +42651,11 @@ function sp_render_event_detail( string $slug, array $settings ): void {
                                 </div>
                                 <div class="sp-reg-form-row">
                                     <label for="sp-guest-email"><?php esc_html_e( 'Email', 'societypress' ); ?> <span class="sp-required" aria-hidden="true">*</span></label>
-                                    <input type="email" id="sp-guest-email" required placeholder="your@email.com">
+                                    <input type="email" id="sp-guest-email" required placeholder="<?php echo esc_attr__( 'your@email.com', 'societypress' ); ?>">
                                 </div>
                                 <div class="sp-reg-form-row">
                                     <label for="sp-guest-phone"><?php esc_html_e( 'Phone', 'societypress' ); ?> <span class="sp-reg-optional"><?php esc_html_e( '(optional)', 'societypress' ); ?></span></label>
-                                    <input type="tel" id="sp-guest-phone" placeholder="(555) 555-1234">
+                                    <input type="tel" id="sp-guest-phone" placeholder="<?php echo esc_attr__( '(555) 555-1234', 'societypress' ); ?>">
                                 </div>
                                 <?php if ( ! empty( $slot_display_data ) ) : ?>
                                     <div class="sp-reg-form-row">
@@ -65570,8 +65570,8 @@ function sp_render_newsletter_archive_page(): void {
 
                     // Format the volume/issue line (e.g. "Vol. 3, No. 2")
                     $vol_issue = '';
-                    if ( $nl->volume )       $vol_issue .= 'Vol.&nbsp;' . $nl->volume;
-                    if ( $nl->issue_number ) $vol_issue .= ( $vol_issue ? ', ' : '' ) . 'No.&nbsp;' . $nl->issue_number;
+                    if ( $nl->volume )       $vol_issue .= esc_html__( 'Vol.', 'societypress' ) . '&nbsp;' . $nl->volume;
+                    if ( $nl->issue_number ) $vol_issue .= ( $vol_issue ? ', ' : '' ) . esc_html__( 'No.', 'societypress' ) . '&nbsp;' . $nl->issue_number;
 
                     // Format the publication date
                     $date_display = $nl->pub_date ? wp_date( 'M j, Y', strtotime( $nl->pub_date ) ) : '';
@@ -66180,7 +66180,7 @@ function sp_frontend_newsletter_archive(): void {
         .sp-newsletter-card-cover[data-pdf] { cursor: pointer; }
     </style>
     <div class="sp-newsletter-archive">
-        <h1 class="entry-title sp-mb-8">Newsletter Archive</h1>
+        <h1 class="entry-title sp-mb-8"><?php esc_html_e( 'Newsletter Archive', 'societypress' ); ?></h1>
 
         <!-- Search bar -->
         <div class="sp-mb-24">
@@ -66204,8 +66204,8 @@ function sp_frontend_newsletter_archive(): void {
 
                     // Format volume/issue
                     $vol_issue = '';
-                    if ( $nl->volume )       $vol_issue .= 'Vol.&nbsp;' . $nl->volume;
-                    if ( $nl->issue_number ) $vol_issue .= ( $vol_issue ? ', ' : '' ) . 'No.&nbsp;' . $nl->issue_number;
+                    if ( $nl->volume )       $vol_issue .= esc_html__( 'Vol.', 'societypress' ) . '&nbsp;' . $nl->volume;
+                    if ( $nl->issue_number ) $vol_issue .= ( $vol_issue ? ', ' : '' ) . esc_html__( 'No.', 'societypress' ) . '&nbsp;' . $nl->issue_number;
 
                     // Format date
                     $date_display = $nl->pub_date ? wp_date( 'F Y', strtotime( $nl->pub_date ) ) : '';
@@ -67090,8 +67090,8 @@ function sp_render_search_newsletters( array $items ): void {
         }
 
         $vol_issue = '';
-        if ( $nl->volume )       $vol_issue .= 'Vol. ' . $nl->volume;
-        if ( $nl->issue_number ) $vol_issue .= ( $vol_issue ? ', ' : '' ) . 'No. ' . $nl->issue_number;
+        if ( $nl->volume )       $vol_issue .= esc_html__( 'Vol.', 'societypress' ) . ' ' . $nl->volume;
+        if ( $nl->issue_number ) $vol_issue .= ( $vol_issue ? ', ' : '' ) . esc_html__( 'No.', 'societypress' ) . ' ' . $nl->issue_number;
 
         ?>
         <div class="sp-search-item">
@@ -70645,12 +70645,16 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
     }
     $where_sql = implode( ' AND ', $where );
 
-    // Count + fetch
+    // Count + fetch. The JOIN to record_collections is intentionally omitted:
+    // joining there forces the optimizer to materialize and filesort every
+    // matching record before applying LIMIT (O(n log n) on each page load),
+    // whereas filtering r alone lets it walk the id index and stop at $per_page.
+    // The collection name/type we'd get from the join are already in hand via
+    // $available_collections, so we stitch them on in PHP below.
     $total   = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}records r WHERE {$where_sql}" );
     $records = $wpdb->get_results( $wpdb->prepare(
-        "SELECT r.*, c.name AS collection_name, c.record_type
+        "SELECT r.*
          FROM {$prefix}records r
-         INNER JOIN {$prefix}record_collections c ON r.collection_id = c.id
          WHERE {$where_sql}
          ORDER BY r.id DESC
          LIMIT %d OFFSET %d",
@@ -70658,6 +70662,17 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
         $offset
     ) );
     $total_pages = (int) ceil( $total / $per_page );
+
+    // Stitch collection name + type onto each record from the already-loaded list.
+    $coll_meta = [];
+    foreach ( $available_collections as $c ) {
+        $coll_meta[ (int) $c->id ] = $c;
+    }
+    foreach ( $records as $rec ) {
+        $meta = isset( $coll_meta[ (int) $rec->collection_id ] ) ? $coll_meta[ (int) $rec->collection_id ] : null;
+        $rec->collection_name = $meta ? $meta->name : '';
+        $rec->record_type     = $meta ? $meta->record_type : '';
+    }
 
     // Load field definitions for display collections
     $active_coll_ids = array_unique( wp_list_pluck( $records, 'collection_id' ) );
@@ -89344,7 +89359,7 @@ function sp_render_ens_pages_import_page(): void {
 
         echo '<table class="widefat striped">';
         echo '<thead><tr>';
-        echo '<th scope="col">#</th>';
+        echo '<th scope="col">' . esc_html__( '#', 'societypress' ) . '</th>';
         echo '<th scope="col">' . esc_html__( 'Label', 'societypress' ) . '</th>';
         echo '<th scope="col">' . esc_html__( 'ENS URL', 'societypress' ) . '</th>';
         echo '<th scope="col">' . esc_html__( 'Maps to', 'societypress' ) . '</th>';

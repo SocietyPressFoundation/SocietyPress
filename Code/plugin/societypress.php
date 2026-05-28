@@ -53520,8 +53520,14 @@ function sp_frontend_help_requests(): void {
 
     // Handle new question submission
     if ( isset( $_POST['sp_submit_question'] ) && check_admin_referer( 'sp_help_question' ) ) {
-        $title = sanitize_text_field( $_POST['question_title'] ?? '' );
-        $desc  = sanitize_textarea_field( $_POST['question_description'] ?? '' );
+        if ( ! is_user_logged_in() ) {
+            echo '<div class="sp-help-notice sp-help-notice--error">' . esc_html__( 'Please log in as a member to ask a research question.', 'societypress' ) . '</div>';
+            $title = '';
+            $desc  = '';
+        } else {
+            $title = sanitize_text_field( $_POST['question_title'] ?? '' );
+            $desc  = sanitize_textarea_field( $_POST['question_description'] ?? '' );
+        }
 
         if ( $title && $desc ) {
             $wpdb->insert( $prefix . 'help_requests', [
@@ -53577,7 +53583,15 @@ function sp_frontend_help_requests(): void {
     }
 
     // Sub-view routing
-    if ( $view === 'submit' ) {
+    if ( $view === 'submit' && ! is_user_logged_in() ) {
+        // Asking a question is members-only; the question record is keyed to a
+        // member account, so an anonymous submission would be orphaned and never
+        // surface in any list. Prompt the visitor to log in instead.
+        echo '<h2>' . esc_html__( 'Ask a Research Question', 'societypress' ) . '</h2>';
+        echo '<p class="sp-help-intro-text">' . esc_html__( 'You must be logged in as a member to ask a research question.', 'societypress' ) . '</p>';
+        echo '<p><a class="sp-btn sp-btn-primary" href="' . esc_url( wp_login_url( add_query_arg( 'sp_help', 'submit', get_permalink() ) ) ) . '">' . esc_html__( 'Log In', 'societypress' ) . '</a></p>';
+
+    } elseif ( $view === 'submit' ) {
         // Submit question form
         echo '<h2>' . esc_html__( 'Ask a Research Question', 'societypress' ) . '</h2>';
         echo '<p class="sp-help-intro-text">' . esc_html__( 'Describe your genealogy research challenge. Other members may be able to help!', 'societypress' ) . '</p>';
@@ -53605,6 +53619,10 @@ function sp_frontend_help_requests(): void {
             .sp-help-notice--success {
                 background: #edfaef;
                 color: #0a6b2e;
+            }
+            .sp-help-notice--error {
+                background: #fcebea;
+                color: #8a1f11;
             }
 
             /* === Submit form === */
@@ -53999,7 +54017,11 @@ function sp_frontend_help_requests(): void {
         // List view
         echo '<div class="sp-help-list-header">';
         echo '<h2>' . esc_html__( 'Research Help', 'societypress' ) . '</h2>';
-        echo '<a href="' . esc_url( add_query_arg( 'sp_help', 'submit' ) ) . '" class="sp-btn sp-btn-primary">' . esc_html__( 'Ask a Question', 'societypress' ) . '</a>';
+        if ( is_user_logged_in() ) {
+            echo '<a href="' . esc_url( add_query_arg( 'sp_help', 'submit' ) ) . '" class="sp-btn sp-btn-primary">' . esc_html__( 'Ask a Question', 'societypress' ) . '</a>';
+        } else {
+            echo '<a href="' . esc_url( wp_login_url( add_query_arg( 'sp_help', 'submit', get_permalink() ) ) ) . '" class="sp-btn sp-btn-primary">' . esc_html__( 'Log in to ask a question', 'societypress' ) . '</a>';
+        }
         echo '</div>';
 
         $requests = $wpdb->get_results(

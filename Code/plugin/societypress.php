@@ -72065,8 +72065,35 @@ function sp_store_create_pending_order() {
     $shipping_total = round( $shipping_total, 2 );
     $total          = round( $subtotal + $shipping_total, 2 );
 
+    // Shipping address. Collected from the checkout form ($_POST), which the
+    // front end prefills from the member's address on file. When the order
+    // carries a shipping charge, an address is required — otherwise we'd be
+    // charging postage with nowhere to send the parcel (the original bug).
+    $ship = [
+        'shipping_address_1' => sanitize_text_field( wp_unslash( $_POST['shipping_address_1'] ?? '' ) ),
+        'shipping_address_2' => sanitize_text_field( wp_unslash( $_POST['shipping_address_2'] ?? '' ) ),
+        'shipping_city'      => sanitize_text_field( wp_unslash( $_POST['shipping_city'] ?? '' ) ),
+        'shipping_state'     => sanitize_text_field( wp_unslash( $_POST['shipping_state'] ?? '' ) ),
+        'shipping_postal'    => sanitize_text_field( wp_unslash( $_POST['shipping_postal'] ?? '' ) ),
+        'shipping_country'   => sanitize_text_field( wp_unslash( $_POST['shipping_country'] ?? '' ) ),
+    ];
+
+    if ( $shipping_total > 0 ) {
+        if (
+            $ship['shipping_address_1'] === ''
+            || $ship['shipping_city'] === ''
+            || $ship['shipping_state'] === ''
+            || $ship['shipping_postal'] === ''
+        ) {
+            return new WP_Error( 'shipping_address_required', __( 'Please enter a shipping address before paying — this order includes a shipping charge.', 'societypress' ) );
+        }
+        if ( $ship['shipping_country'] === '' ) {
+            $ship['shipping_country'] = 'US';
+        }
+    }
+
     $now = current_time( 'mysql' );
-    $wpdb->insert( $prefix . 'orders', [
+    $wpdb->insert( $prefix . 'orders', array_merge( [
         'user_id'        => $user->ID,
         'status'         => 'pending',
         'subtotal'       => $subtotal,
@@ -72080,7 +72107,7 @@ function sp_store_create_pending_order() {
         'customer_phone' => $member->phone ?? '',
         'created_at'     => $now,
         'updated_at'     => $now,
-    ] );
+    ], $ship ) );
     $order_id = (int) $wpdb->insert_id;
 
     if ( ! $order_id ) {
@@ -72773,6 +72800,36 @@ function sp_render_cart_page(): void {
         : ( $settings['stripe_live_publishable_key'] ?? '' );
     $paypal_client_id  = sp_paypal_get_client_id( $settings );
     $paypal_currency   = strtoupper( $settings['stripe_currency'] ?? 'usd' );
+
+    // Prefill the shipping address from the buyer's member record (decrypted),
+    // when they have one. A logged-in WordPress user without a member row just
+    // gets blank fields. The member can always edit before paying.
+    $ship_prefill = [
+        'address_1'   => '',
+        'address_2'   => '',
+        'city'        => '',
+        'state'       => '',
+        'postal_code' => '',
+        'country'     => '',
+    ];
+    if ( is_user_logged_in() ) {
+        $buyer = sp_get_member_by_user_id( get_current_user_id() );
+        if ( $buyer ) {
+            // address_1 / address_2 are encrypted at rest; decrypt before
+            // prefilling. City/state/postal/country are stored in plaintext.
+            if ( function_exists( 'sp_member_decrypt_row' ) ) {
+                $buyer = sp_member_decrypt_row( $buyer );
+            }
+            $ship_prefill = [
+                'address_1'   => (string) ( $buyer->address_1 ?? '' ),
+                'address_2'   => (string) ( $buyer->address_2 ?? '' ),
+                'city'        => (string) ( $buyer->city ?? '' ),
+                'state'       => (string) ( $buyer->state ?? '' ),
+                'postal_code' => (string) ( $buyer->postal_code ?? '' ),
+                'country'     => (string) ( $buyer->country ?? '' ),
+            ];
+        }
+    }
     ?>
     <style>
         .sp-cart-wrap { max-width:800px; margin:0 auto; }
@@ -72811,6 +72868,13 @@ function sp_render_cart_page(): void {
         .sp-pay-panel .sp-pay-sub { color:#666; font-size:13px; margin:0 0 18px 0; }
         .sp-pay-section { background:#fff; border:1px solid var(--sp-border-color,#e5e7eb); border-radius:6px; padding:16px; margin-bottom:14px; }
         .sp-pay-section-label { display:block; font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:#666; margin-bottom:10px; }
+        .sp-ship-field { margin-bottom:12px; }
+        .sp-ship-field label { display:block; font-size:13px; font-weight:600; margin-bottom:4px; }
+        .sp-ship-field .required { color:#b91c1c; }
+        .sp-ship-field input { width:100%; padding:9px 10px; border:1px solid #ccc; border-radius:4px; font-size:15px; box-sizing:border-box; }
+        .sp-ship-row { display:flex; gap:12px; flex-wrap:wrap; }
+        .sp-ship-row > .sp-ship-field { flex:1; min-width:120px; }
+        .sp-ship-error { color:#b91c1c; font-size:13px; margin-top:6px; }
         .sp-pay-divider { text-align:center; color:#6d7175; font-size:12px; text-transform:uppercase; letter-spacing:1px; margin:8px 0; position:relative; }
         .sp-pay-divider:before,.sp-pay-divider:after { content:""; position:absolute; top:50%; width:calc(50% - 30px); height:1px; background:#e5e7eb; }
         .sp-pay-divider:before { left:0; }
@@ -72861,6 +72925,46 @@ function sp_render_cart_page(): void {
             <div id="sp-pay-panel" class="sp-pay-panel" style="display:none;">
                 <h3><?php esc_html_e( 'Payment', 'societypress' ); ?></h3>
                 <p class="sp-pay-sub" id="sp-pay-total-line"></p>
+
+                <?php
+                // Shipping address. Shown only when the cart actually carries a
+                // shipping charge (toggled by JS via the cart's shipping_total),
+                // and required before payment in that case. Prefilled from the
+                // member's address on file; editable for gifts / alternate
+                // destinations.
+                ?>
+                <div class="sp-pay-section" id="sp-ship-section" style="display:none;">
+                    <span class="sp-pay-section-label"><?php esc_html_e( 'Shipping address', 'societypress' ); ?></span>
+                    <div class="sp-ship-field">
+                        <label for="sp-ship-address1"><?php esc_html_e( 'Street address', 'societypress' ); ?> <span class="required" aria-hidden="true">*</span></label>
+                        <input type="text" id="sp-ship-address1" autocomplete="shipping address-line1" value="<?php echo esc_attr( $ship_prefill['address_1'] ); ?>">
+                    </div>
+                    <div class="sp-ship-field">
+                        <label for="sp-ship-address2"><?php esc_html_e( 'Apartment, suite, etc. (optional)', 'societypress' ); ?></label>
+                        <input type="text" id="sp-ship-address2" autocomplete="shipping address-line2" value="<?php echo esc_attr( $ship_prefill['address_2'] ); ?>">
+                    </div>
+                    <div class="sp-ship-row">
+                        <div class="sp-ship-field">
+                            <label for="sp-ship-city"><?php esc_html_e( 'City', 'societypress' ); ?> <span class="required" aria-hidden="true">*</span></label>
+                            <input type="text" id="sp-ship-city" autocomplete="shipping address-level2" value="<?php echo esc_attr( $ship_prefill['city'] ); ?>">
+                        </div>
+                        <div class="sp-ship-field">
+                            <label for="sp-ship-state"><?php esc_html_e( 'State / Province', 'societypress' ); ?> <span class="required" aria-hidden="true">*</span></label>
+                            <input type="text" id="sp-ship-state" autocomplete="shipping address-level1" value="<?php echo esc_attr( $ship_prefill['state'] ); ?>">
+                        </div>
+                    </div>
+                    <div class="sp-ship-row">
+                        <div class="sp-ship-field">
+                            <label for="sp-ship-postal"><?php esc_html_e( 'ZIP / Postal code', 'societypress' ); ?> <span class="required" aria-hidden="true">*</span></label>
+                            <input type="text" id="sp-ship-postal" autocomplete="shipping postal-code" value="<?php echo esc_attr( $ship_prefill['postal_code'] ); ?>">
+                        </div>
+                        <div class="sp-ship-field">
+                            <label for="sp-ship-country"><?php esc_html_e( 'Country', 'societypress' ); ?></label>
+                            <input type="text" id="sp-ship-country" autocomplete="shipping country-name" value="<?php echo esc_attr( $ship_prefill['country'] ?: 'US' ); ?>">
+                        </div>
+                    </div>
+                    <div class="sp-ship-error" id="sp-ship-error" role="alert" aria-live="assertive"></div>
+                </div>
 
                 <?php if ( $stripe_configured ) : ?>
                 <div class="sp-pay-section">
@@ -72919,6 +73023,7 @@ function sp_render_cart_page(): void {
         var totalLine   = document.getElementById('sp-pay-total-line');
         var successBanner = document.getElementById('sp-cart-success-banner');
         var cartTotal   = 0;
+        var cartShipping = 0;
 
         // Payment flow state — reset each time the buyer enters checkout
         var stripeObj   = null;
@@ -72960,6 +73065,7 @@ function sp_render_cart_page(): void {
 
         function renderCart(data) {
             cartTotal = (data && typeof data.total === 'number') ? data.total : 0;
+            cartShipping = (data && typeof data.shipping_total === 'number') ? data.shipping_total : 0;
             if (!data.items || data.items.length === 0) {
                 container.innerHTML =
                     '<div class="sp-cart-empty">' +
@@ -73061,13 +73167,61 @@ function sp_render_cart_page(): void {
             }
         }
 
+        // Reading + validating the shipping address. The section is only
+        // shown (and required) when the cart carries a shipping charge.
+        var shipSection = document.getElementById('sp-ship-section');
+        function shippingRequired() { return cartShipping > 0; }
+        function collectShipping() {
+            function v(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; }
+            return {
+                shipping_address_1: v('sp-ship-address1'),
+                shipping_address_2: v('sp-ship-address2'),
+                shipping_city:      v('sp-ship-city'),
+                shipping_state:     v('sp-ship-state'),
+                shipping_postal:    v('sp-ship-postal'),
+                shipping_country:   v('sp-ship-country')
+            };
+        }
+        function shippingValid() {
+            if (!shippingRequired()) return true;
+            var s = collectShipping();
+            return s.shipping_address_1 && s.shipping_city && s.shipping_state && s.shipping_postal;
+        }
+        function showShipError(show) {
+            var e = document.getElementById('sp-ship-error');
+            if (e) e.textContent = show ? <?php echo wp_json_encode( __( 'Please complete the required shipping fields (marked *) to continue.', 'societypress' ) ); ?> : '';
+        }
+
         function enterCheckout() {
             container.style.display = 'none';
             panel.style.display = 'block';
             totalLine.textContent = <?php echo wp_json_encode( __( 'Total due:', 'societypress' ) ); ?> + ' ' + fmtCurrency(cartTotal);
 
+            if (shipSection) shipSection.style.display = shippingRequired() ? 'block' : 'none';
+
+            mountPaymentMethods();
+        }
+
+        // Mount the payment widgets only once a shipping address (when needed)
+        // is present, so the order is created with the address attached. While
+        // it's incomplete we keep them hidden behind the address prompt and
+        // re-check as the buyer types.
+        var paymentMethodsMounted = false;
+        function mountPaymentMethods() {
+            if (paymentMethodsMounted) return;
+            if (!shippingValid()) { showShipError(true); return; }
+            showShipError(false);
+            paymentMethodsMounted = true;
             if (stripeConfigured) mountStripe();
             if (paypalConfigured) mountPaypal();
+        }
+        if (shipSection) {
+            shipSection.addEventListener('input', function() {
+                if (!paymentMethodsMounted && shippingValid()) {
+                    showShipError(false);
+                    mountPaymentMethods();
+                }
+            });
         }
 
         function exitCheckout() {
@@ -73080,7 +73234,7 @@ function sp_render_cart_page(): void {
             var errEl = document.getElementById('sp-stripe-error');
             errEl.textContent = '';
 
-            cartAjax('sp_store_create_payment_intent', {}, function(data) {
+            cartAjax('sp_store_create_payment_intent', collectShipping(), function(data) {
                 stripeOrderId = data.order_id;
                 try {
                     stripeObj = Stripe(stripePubKey);
@@ -73145,8 +73299,12 @@ function sp_render_cart_page(): void {
                 style: { layout: 'vertical', shape: 'rect', color: 'gold', label: 'paypal' },
                 createOrder: function() {
                     errEl.textContent = '';
+                    if (!shippingValid()) {
+                        showShipError(true);
+                        return Promise.reject(new Error('shipping_required'));
+                    }
                     return new Promise(function(resolve, reject) {
-                        cartAjax('sp_store_create_paypal_order', {}, function(data) {
+                        cartAjax('sp_store_create_paypal_order', collectShipping(), function(data) {
                             resolve(data.paypal_order_id);
                         }, function(msg) {
                             errEl.textContent = msg || <?php echo wp_json_encode( __( 'Could not start PayPal checkout.', 'societypress' ) ); ?>;
@@ -73702,6 +73860,12 @@ function sp_render_order_detail_page(): void {
             margin: 0;
         }
 
+        /* Order missing a shipping address despite a shipping charge */
+        .sp-order-noaddr {
+            color: #8a5300;
+            background: #fff4e5;
+        }
+
         /* Stripe Payment Intent ID — small monospace to fit in the cell */
         .sp-order-detail-stripe-pi {
             font-size: 0.75rem;
@@ -73787,6 +73951,40 @@ function sp_render_order_detail_page(): void {
                     <?php endif; ?>
                 </table>
             </div>
+
+            <?php
+            // Shipping address — shown when one was captured at checkout. A
+            // shipping charge with no address here flags an order that needs
+            // follow-up (older orders predating address collection).
+            $has_ship_addr = ( $order->shipping_address_1 ?? '' ) !== ''
+                || ( $order->shipping_city ?? '' ) !== '';
+            if ( $has_ship_addr || (float) ( $order->shipping_total ?? 0 ) > 0 ) :
+            ?>
+            <div class="postbox sp-order-detail-box">
+                <h3 class="sp-order-detail-box-heading"><?php esc_html_e( 'Shipping Address', 'societypress' ); ?></h3>
+                <table class="form-table sp-order-detail-info-table">
+                    <?php if ( $has_ship_addr ) :
+                        $addr_lines = array_filter( [
+                            $order->shipping_address_1,
+                            $order->shipping_address_2,
+                            trim( implode( ', ', array_filter( [
+                                $order->shipping_city,
+                                trim( ( $order->shipping_state ?? '' ) . ' ' . ( $order->shipping_postal ?? '' ) ),
+                            ] ) ) ),
+                            $order->shipping_country,
+                        ] );
+                    ?>
+                        <tr><td>
+                            <?php echo wp_kses_post( implode( '<br>', array_map( 'esc_html', $addr_lines ) ) ); ?>
+                        </td></tr>
+                    <?php else : ?>
+                        <tr><td class="sp-order-noaddr">
+                            <?php esc_html_e( 'No shipping address on file for this order. Contact the customer before fulfilling.', 'societypress' ); ?>
+                        </td></tr>
+                    <?php endif; ?>
+                </table>
+            </div>
+            <?php endif; ?>
         </div>
 
         <!-- Order Items -->

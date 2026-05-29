@@ -50376,6 +50376,19 @@ function sp_render_builder_widget_volunteer_stats( array $s ): void {
 
 
 /**
+ * Register the sp_album query var used to browse into a single album.
+ *
+ * WHY: The Photo Gallery widget in "albums" mode renders clickable cards that
+ *      link to ?sp_album=ID on the same page. WordPress strips unregistered
+ *      query vars, so without this the album-detail view could never load and
+ *      the gallery stayed a dead end.
+ */
+add_filter( 'query_vars', function ( $vars ) {
+    $vars[] = 'sp_album';
+    return $vars;
+} );
+
+/**
  * Render: Photo Gallery
  *
  * WHY: Feature 5 — displays photo albums or a single album's images on the
@@ -50398,6 +50411,17 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
     $album_id     = absint( $s['album_id'] ?? 0 );
     $columns      = max( 2, min( 6, (int) ( $s['columns'] ?? 3 ) ) );
     $count        = max( 1, (int) ( $s['count'] ?? 12 ) );
+
+    // A visitor who clicked an album card lands back here with ?sp_album=ID.
+    // In albums mode, that switches this instance to the single-album view so
+    // the gallery is navigable; widgets pinned to one album ignore it.
+    $requested_album = absint( get_query_var( 'sp_album', 0 ) );
+    $viewing_from_grid = false;
+    if ( $display_mode !== 'single' && $requested_album ) {
+        $display_mode      = 'single';
+        $album_id          = $requested_album;
+        $viewing_from_grid = true;
+    }
 
     /*
      * WHY a <style> block here: All static presentational rules for this widget
@@ -50431,6 +50455,16 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
                                   padding: 6px 16px; border-radius: 4px; }
 /* Albums grid */
 .sp-gallery-albums-grid        { display: flex; flex-wrap: wrap; gap: 16px; }
+.sp-gallery-back               { margin: 0 0 12px; }
+/* Album card is an <a>: strip link chrome and add a hover affordance so it
+   reads as a card, not a text link. */
+.sp-gallery-album-card         { display: block; text-decoration: none; color: inherit;
+                                  transition: transform .12s ease, box-shadow .12s ease; }
+.sp-gallery-album-card:hover,
+.sp-gallery-album-card:focus-visible { transform: translateY(-2px);
+                                  box-shadow: 0 4px 14px rgba(0,0,0,0.12); outline: none; }
+.sp-gallery-album-card:focus-visible { outline: 2px solid #2271b1; outline-offset: 3px; }
+.sp-gallery-album-card:hover .sp-gallery-album-name { text-decoration: underline; }
 .sp-gallery-cover-wrap         { aspect-ratio: 4/3; overflow: hidden;
                                   border-radius: 8px; margin-bottom: 8px; }
 .sp-gallery-cover-img          { width: 100%; height: 100%; object-fit: cover; }
@@ -50461,6 +50495,12 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
         if ( $album->visibility === 'members_only' && ! is_user_logged_in() ) {
             echo '<p>' . esc_html__( 'Please', 'societypress' ) . ' <a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">' . esc_html__( 'log in', 'societypress' ) . '</a> ' . esc_html__( 'to view this album.', 'societypress' ) . '</p></div>';
             return;
+        }
+
+        if ( $viewing_from_grid ) {
+            // Strip sp_album from the current URL to get back to the album grid.
+            $back_url = remove_query_arg( 'sp_album' );
+            echo '<p class="sp-gallery-back"><a href="' . esc_url( $back_url ) . '">&larr; ' . esc_html__( 'All albums', 'societypress' ) . '</a></p>';
         }
 
         if ( $album->title ) {
@@ -50637,8 +50677,11 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
                     "SELECT COUNT(*) FROM {$prefix}photo_album_items WHERE album_id = %d", $album->id
                 ) );
 
-                // Album card — width is dynamic, all other styles are in CSS class
-                echo '<div class="sp-gallery-album-card" style="width:calc(' . $col_width . '% - 16px);">';
+                // Album card — the whole card links into the single-album view
+                // via ?sp_album=ID on the current page. Width is dynamic; all
+                // other styles live in the CSS class.
+                $album_url = add_query_arg( 'sp_album', (int) $album->id );
+                echo '<a href="' . esc_url( $album_url ) . '" class="sp-gallery-album-card" style="width:calc(' . $col_width . '% - 16px);">';
                 if ( $cover_url ) {
                     echo '<div class="sp-gallery-cover-wrap">';
                     echo '<img src="' . esc_url( $cover_url ) . '" alt="' . esc_attr( $album->title ) . '" class="sp-gallery-cover-img" loading="lazy">';
@@ -50650,7 +50693,7 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
                 }
                 echo '<h4 class="sp-gallery-album-name">' . esc_html( $album->title ) . '</h4>';
                 echo '<span class="sp-gallery-photo-count">' . sprintf( _n( '%d photo', '%d photos', $photo_count, 'societypress' ), $photo_count ) . '</span>';
-                echo '</div>';
+                echo '</a>';
             }
             echo '</div>';
         }

@@ -10805,6 +10805,71 @@ function sp_render_dashboard_page(): void {
             })();
             </script>
 
+            <?php else : ?>
+            <?php
+            // ---- Up-to-date state + manual check ----
+            // WHY: When no update is waiting, Harold still wants reassurance
+            //      the site is current and a way to check on demand rather
+            //      than waiting out the 12-hour release cache. This button
+            //      drives the sp_check_update endpoint, which force-refreshes
+            //      the cache; if a release is found, we reload so the update
+            //      banner above renders on the next paint.
+            ?>
+            <div id="sp-update-current" class="sp-dash-update-current-row">
+                <span class="sp-dash-update-uptodate">
+                    <span class="dashicons dashicons-yes-alt sp-dash-icon-mr"></span>
+                    <?php printf(
+                        esc_html__( 'SocietyPress is up to date (%s).', 'societypress' ),
+                        esc_html( SOCIETYPRESS_VERSION )
+                    ); ?>
+                </span>
+                <button type="button" id="sp-check-update-btn" class="button button-secondary sp-dash-nowrap">
+                    <?php esc_html_e( 'Check for updates', 'societypress' ); ?>
+                </button>
+                <span id="sp-check-update-status" class="sp-dash-update-status" role="status" aria-live="polite"></span>
+            </div>
+
+            <script>
+            (function() {
+                'use strict';
+                var btn    = document.getElementById('sp-check-update-btn');
+                var status = document.getElementById('sp-check-update-status');
+                if (!btn) return;
+
+                btn.addEventListener('click', function() {
+                    btn.disabled       = true;
+                    var original       = btn.textContent;
+                    btn.textContent    = <?php echo wp_json_encode( __( 'Checking...', 'societypress' ) ); ?>;
+                    status.style.color = '';
+                    status.textContent = '';
+
+                    var data = new FormData();
+                    data.append('action', 'sp_check_update');
+                    data.append('nonce', <?php echo wp_json_encode( wp_create_nonce( 'sp_check_update_nonce' ) ); ?>);
+
+                    fetch(ajaxurl, { method: 'POST', body: data })
+                        .then(function(r) { return r.json(); })
+                        .then(function(r) {
+                            if (r.success && r.data && r.data.available) {
+                                status.style.color = '#2271b1';
+                                status.textContent = <?php echo wp_json_encode( __( 'Update found. Reloading...', 'societypress' ) ); ?>;
+                                setTimeout(function() { location.reload(); }, 1200);
+                            } else {
+                                status.textContent = (r.data && r.data.message) ? r.data.message : <?php echo wp_json_encode( __( 'You are running the latest version.', 'societypress' ) ); ?>;
+                                btn.disabled    = false;
+                                btn.textContent = original;
+                            }
+                        })
+                        .catch(function() {
+                            status.style.color = '#d63638';
+                            status.textContent = <?php echo wp_json_encode( __( 'Could not check for updates. Please try again.', 'societypress' ) ); ?>;
+                            btn.disabled    = false;
+                            btn.textContent = original;
+                        });
+                });
+            })();
+            </script>
+
             <?php endif; ?>
 
             <?php
@@ -11154,6 +11219,22 @@ function sp_render_dashboard_page(): void {
                 margin-left: 6px;
             }
             .sp-dash-update-notes-link { font-size: 13px; }
+
+            /* Up-to-date row shown when no update is pending (subtle, no banner) */
+            .sp-dash-update-current-row {
+                display: flex;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 10px;
+                margin: 16px 0;
+                font-size: 13px;
+            }
+            .sp-dash-update-uptodate {
+                color: #50575e;
+                display: inline-flex;
+                align-items: center;
+            }
+            .sp-dash-update-uptodate .dashicons-yes-alt { color: #00a32a; }
 
             /* Shared update action row (flex container for button + status span) */
             .sp-dash-update-actions {

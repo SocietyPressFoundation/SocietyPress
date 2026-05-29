@@ -12408,6 +12408,72 @@ if ( ! class_exists( 'WP_List_Table' ) ) {
     require_once ABSPATH . 'wp-admin/includes/class-wp-list-table.php';
 }
 
+/**
+ * Emit a confirmation guard for a list-table's bulk "Delete" action.
+ *
+ * WHY: WordPress list tables submit bulk actions as a plain form POST/GET with
+ *      no confirmation. Single-row deletes already route through spConfirm(),
+ *      but selecting "Delete" + Apply over a set of checked rows fires
+ *      immediately — an easy, irreversible mistake. This guard intercepts the
+ *      enclosing form's submit, and when the chosen bulk action is "delete",
+ *      defers it through spConfirm() just like the row actions.
+ *
+ * The script binds to its OWN enclosing <form> via the executing <script>
+ * element, so the same helper works for every list-table form without needing
+ * a unique selector per page. Call it once, inside the <form>, after
+ * $table->display().
+ *
+ * @param string $message Confirmation prompt shown before deleting.
+ */
+function sp_bulk_delete_confirm_script( string $message ): void {
+    ?>
+    <script>
+    (function() {
+        'use strict';
+        var script = document.currentScript;
+        var form   = script ? script.closest('form') : null;
+        if ( ! form || typeof spConfirm !== 'function' ) { return; }
+
+        form.addEventListener('submit', function( e ) {
+            // WP renders top ("action") and bottom ("action2") bulk selects;
+            // the submitter button tells us which one is authoritative.
+            var submitter = e.submitter || document.activeElement;
+            var select = null;
+            if ( submitter && submitter.id === 'doaction2' ) {
+                select = form.querySelector('select[name="action2"]');
+            } else if ( submitter && submitter.id === 'doaction' ) {
+                select = form.querySelector('select[name="action"]');
+            }
+            // Fallback: if we can't tell which button fired, treat a delete in
+            // either select as a delete.
+            var value = select
+                ? select.value
+                : ( ( form.querySelector('select[name="action"]')  || {} ).value === 'delete'
+                 || ( form.querySelector('select[name="action2"]') || {} ).value === 'delete'
+                    ? 'delete' : '' );
+
+            if ( value !== 'delete' ) { return; }
+
+            e.preventDefault();
+            spConfirm(<?php echo wp_json_encode( $message ); ?>, function() {
+                // Re-submit, preserving which Apply button was used so WP reads
+                // the right select. HTMLFormElement.submit() skips submit
+                // events, so this won't loop back into this handler.
+                if ( submitter && submitter.name ) {
+                    var hidden = document.createElement('input');
+                    hidden.type  = 'hidden';
+                    hidden.name  = submitter.name;
+                    hidden.value = submitter.value;
+                    form.appendChild(hidden);
+                }
+                form.submit();
+            });
+        });
+    })();
+    </script>
+    <?php
+}
+
 class SP_Members_List_Table extends WP_List_Table {
 
     public function __construct() {
@@ -13595,6 +13661,7 @@ function sp_render_members_page(): void {
             <?php
             $table->search_box( __( 'Search Members', 'societypress' ), 'sp-member-search' );
             $table->display();
+            sp_bulk_delete_confirm_script( __( 'Delete the selected members? This permanently removes them and cannot be undone.', 'societypress' ) );
             ?>
         </form>
 
@@ -23076,6 +23143,7 @@ function sp_render_pages_page(): void {
             <?php
             $table->search_box( __( 'Search Pages', 'societypress' ), 'sp-page-search' );
             $table->display();
+            sp_bulk_delete_confirm_script( __( 'Delete the selected pages? This cannot be undone.', 'societypress' ) );
             ?>
         </form>
 
@@ -36060,6 +36128,7 @@ function sp_render_events_page(): void {
             <?php
             $table->search_box( __( 'Search Events', 'societypress' ), 'sp-event-search' );
             $table->display();
+            sp_bulk_delete_confirm_script( __( 'Delete the selected events? This cannot be undone.', 'societypress' ) );
             ?>
         </form>
     </div>
@@ -59721,6 +59790,7 @@ function sp_render_volunteers_page(): void {
             <?php
             $table->search_box( __( 'Search Volunteers', 'societypress' ), 'volunteer_search' );
             $table->display();
+            sp_bulk_delete_confirm_script( __( 'Delete the selected volunteer role assignments? This cannot be undone.', 'societypress' ) );
             ?>
         </form>
     </div>
@@ -59924,7 +59994,10 @@ function sp_render_volunteer_hours_page(): void {
         <!-- Hours log table -->
         <form method="get">
             <input type="hidden" name="page" value="sp-volunteer-hours">
-            <?php $table->display(); ?>
+            <?php
+            $table->display();
+            sp_bulk_delete_confirm_script( __( 'Delete the selected volunteer-hours entries? This cannot be undone.', 'societypress' ) );
+            ?>
         </form>
     </div>
     <?php
@@ -80287,6 +80360,24 @@ add_action( 'init', function () {
             'public_listing'       => empty( $_POST['public_listing'] ) ? 0 : 1,
         ];
 
+        // Enforce required fields on submit (the form marks these with *).
+        // If anything is missing we don't reject outright — we save what was
+        // entered as a draft so nothing is lost, then send them back with an
+        // error. This mirrors the no-JS submit path, where the only signal is
+        // which button was pressed.
+        $submit_missing_required = false;
+        if ( $action === 'submit_application' ) {
+            if (
+                $data['relationship'] === ''
+                || $data['ancestor_first_name'] === ''
+                || $data['ancestor_last_name'] === ''
+                || trim( wp_strip_all_tags( $data['narrative'] ) ) === ''
+            ) {
+                $submit_missing_required = true;
+                $action = 'save_draft';
+            }
+        }
+
         if ( $action === 'submit_application' ) {
             $data['status']       = 'submitted';
             $data['submitted_at'] = current_time( 'mysql' );
@@ -80468,11 +80559,16 @@ add_action( 'init', function () {
             exit;
         }
 
-        $redirect = $action === 'submit_application' ? 'submitted' : 'saved';
-        wp_safe_redirect( add_query_arg( [
+        $redirect_args = [
             'sp_lineage_app' => $app_id,
-            'sp_lineage_msg' => $redirect,
-        ], wp_get_referer() ?: home_url() ) );
+            'sp_lineage_msg' => $action === 'submit_application' ? 'submitted' : 'saved',
+        ];
+        // A submit that fell short of the required fields was saved as a draft;
+        // tell the member why it wasn't sent for review.
+        if ( $submit_missing_required ) {
+            $redirect_args['sp_lineage_error'] = 'missing_required';
+        }
+        wp_safe_redirect( add_query_arg( $redirect_args, wp_get_referer() ?: home_url() ) );
         exit;
     }
 
@@ -80563,6 +80659,8 @@ add_shortcode( 'sp_lineage_apply', function ( $atts ) {
             .sp-lineage-apply .btn-primary { background: #0d1f3c; color: #fff; }
             .sp-lineage-apply .btn-secondary { background: #ddd; color: #222; }
             .sp-lineage-apply .help { color: #666; font-size: 13px; font-weight: 400; }
+            .sp-lineage-apply .required { color: #b91c1c; }
+            .sp-lineage-apply .sp-la-required-note { color: #666; font-size: 13px; margin: 4px 0 0; }
             .sp-lineage-apply .notice { padding: 10px 14px; border-radius: 4px; margin-bottom: 16px; }
             .sp-lineage-apply .notice-success { background: #e8f5e9; border-left: 4px solid #166534; color: #1f4d2c; }
             .sp-lineage-apply .notice-error { background: #fde8e8; border-left: 4px solid #b91c1c; color: #7d1414; }
@@ -80580,19 +80678,28 @@ add_shortcode( 'sp_lineage_apply', function ( $atts ) {
             <div class="notice notice-error"><?php esc_html_e( 'That program is closed to new applications.', 'societypress' ); ?></div>
         <?php elseif ( $err === 'forbidden' ) : ?>
             <div class="notice notice-error"><?php esc_html_e( 'You can only edit your own applications.', 'societypress' ); ?></div>
+        <?php elseif ( $err === 'missing_required' ) : ?>
+            <div class="notice notice-error"><?php esc_html_e( 'Please complete all required fields (marked with *) before submitting for review. Your entries have been saved as a draft.', 'societypress' ); ?></div>
         <?php endif; ?>
 
         <h2><?php echo $editing ? esc_html__( 'Edit Lineage Application', 'societypress' ) : esc_html__( 'Apply for a Lineage Program', 'societypress' ); ?></h2>
 
         <form method="post" enctype="multipart/form-data">
             <?php wp_nonce_field( 'sp_lineage_submit_' . ( $editing_id ?: 'new' ), 'sp_lineage_nonce' ); ?>
-            <input type="hidden" name="sp_lineage_action" id="sp_lineage_action" value="save_draft">
             <?php if ( $editing ) : ?>
                 <input type="hidden" name="application_id" value="<?php echo (int) $editing->id; ?>">
             <?php endif; ?>
 
+            <p class="sp-la-required-note">
+                <?php printf(
+                    /* translators: %s is the required-field marker (an asterisk) */
+                    esc_html__( 'Fields marked %s are required to submit for review. You can save a draft at any time with whatever you have so far.', 'societypress' ),
+                    '<span class="required" aria-hidden="true">*</span>'
+                ); ?>
+            </p>
+
             <h3><?php esc_html_e( 'Program', 'societypress' ); ?></h3>
-            <label for="lp_program_id"><?php esc_html_e( 'Which program are you applying to?', 'societypress' ); ?></label>
+            <label for="lp_program_id"><?php esc_html_e( 'Which program are you applying to?', 'societypress' ); ?> <span class="required" aria-hidden="true">*</span></label>
             <select name="program_id" id="lp_program_id" required>
                 <option value=""><?php esc_html_e( '— Select a program —', 'societypress' ); ?></option>
                 <?php foreach ( $programs as $p ) : ?>
@@ -80607,12 +80714,12 @@ add_shortcode( 'sp_lineage_apply', function ( $atts ) {
 
             <h3 class="sp-mt-24"><?php esc_html_e( 'Your Ancestor', 'societypress' ); ?></h3>
 
-            <label for="lp_relationship"><?php esc_html_e( 'Your relationship to the ancestor', 'societypress' ); ?></label>
+            <label for="lp_relationship"><?php esc_html_e( 'Your relationship to the ancestor', 'societypress' ); ?> <span class="required" aria-hidden="true">*</span></label>
             <input type="text" id="lp_relationship" name="relationship" value="<?php echo esc_attr( $editing->relationship ?? '' ); ?>" placeholder="<?php esc_attr_e( 'e.g. great-great-grandfather', 'societypress' ); ?>">
 
             <div class="row">
                 <div>
-                    <label for="lp_ancestor_first_name"><?php esc_html_e( 'First name', 'societypress' ); ?></label>
+                    <label for="lp_ancestor_first_name"><?php esc_html_e( 'First name', 'societypress' ); ?> <span class="required" aria-hidden="true">*</span></label>
                     <input type="text" id="lp_ancestor_first_name" name="ancestor_first_name" value="<?php echo esc_attr( $editing->ancestor_first_name ?? '' ); ?>">
                 </div>
                 <div>
@@ -80620,7 +80727,7 @@ add_shortcode( 'sp_lineage_apply', function ( $atts ) {
                     <input type="text" id="lp_ancestor_middle_name" name="ancestor_middle_name" value="<?php echo esc_attr( $editing->ancestor_middle_name ?? '' ); ?>">
                 </div>
                 <div>
-                    <label for="lp_ancestor_last_name"><?php esc_html_e( 'Last name', 'societypress' ); ?></label>
+                    <label for="lp_ancestor_last_name"><?php esc_html_e( 'Last name', 'societypress' ); ?> <span class="required" aria-hidden="true">*</span></label>
                     <input type="text" id="lp_ancestor_last_name" name="ancestor_last_name" value="<?php echo esc_attr( $editing->ancestor_last_name ?? '' ); ?>">
                 </div>
             </div>
@@ -80656,7 +80763,7 @@ add_shortcode( 'sp_lineage_apply', function ( $atts ) {
             <textarea id="lp_arrival_evidence" name="arrival_evidence"><?php echo esc_textarea( $editing->arrival_evidence ?? '' ); ?></textarea>
 
             <h3 class="sp-mt-24"><?php esc_html_e( 'Lineage Narrative', 'societypress' ); ?></h3>
-            <label for="lp_narrative"><?php esc_html_e( 'Narrative — describe the chain of descent from the ancestor to you', 'societypress' ); ?></label>
+            <label for="lp_narrative"><?php esc_html_e( 'Narrative — describe the chain of descent from the ancestor to you', 'societypress' ); ?> <span class="required" aria-hidden="true">*</span></label>
             <textarea id="lp_narrative" name="narrative" rows="6"><?php echo esc_textarea( $editing->narrative ?? '' ); ?></textarea>
 
             <label for="lp_sources"><?php esc_html_e( 'Sources cited', 'societypress' ); ?> <span class="help"><?php esc_html_e( '(census, vital records, wills, etc.)', 'societypress' ); ?></span></label>
@@ -80684,8 +80791,13 @@ add_shortcode( 'sp_lineage_apply', function ( $atts ) {
             </p>
 
             <div class="actions">
-                <button type="submit" class="btn btn-secondary" onclick="document.getElementById('sp_lineage_action').value='save_draft';"><?php esc_html_e( 'Save Draft', 'societypress' ); ?></button>
-                <button type="submit" class="btn btn-primary" onclick="document.getElementById('sp_lineage_action').value='submit_application';"><?php esc_html_e( 'Submit for Review', 'societypress' ); ?></button>
+                <?php
+                // Each button carries its own name=value, so the clicked button
+                // determines the action with no JavaScript. "Save Draft" is first
+                // so it is also the default when the form is submitted via Enter.
+                ?>
+                <button type="submit" name="sp_lineage_action" value="save_draft" class="btn btn-secondary"><?php esc_html_e( 'Save Draft', 'societypress' ); ?></button>
+                <button type="submit" name="sp_lineage_action" value="submit_application" class="btn btn-primary"><?php esc_html_e( 'Submit for Review', 'societypress' ); ?></button>
             </div>
         </form>
     </div>

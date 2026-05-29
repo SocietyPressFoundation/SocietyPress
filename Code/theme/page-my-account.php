@@ -340,6 +340,54 @@ function sp_m( $member, $field ) {
     from { opacity: 0; transform: translateY(-4px); }
     to   { opacity: 1; transform: translateY(0); }
 }
+
+/* ---- Membership status ---- */
+/* WHY: A read-only summary of the member's standing — status, plan, dues,
+   and key dates — so members can see where they stand and when to renew
+   without emailing the membership chair. */
+.sp-membership-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 14px 24px;
+    margin-top: 6px;
+}
+.sp-membership-item .sp-membership-label {
+    display: block;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--sp-text-muted, #666);
+    margin-bottom: 2px;
+}
+.sp-membership-item .sp-membership-value {
+    font-size: 16px;
+    color: var(--sp-text, #1a1a1a);
+}
+.sp-membership-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.6;
+}
+.sp-membership-badge--safe    { background: #e8f5e9; color: #1f4d2c; }
+.sp-membership-badge--expiring{ background: #fff4e5; color: #8a5300; }
+.sp-membership-badge--expired { background: #fde8e8; color: #7d1414; }
+.sp-membership-badge--neutral { background: #eef1f5; color: #44474b; }
+.sp-membership-renew-note {
+    margin: 16px 0 0;
+    padding: 12px 14px;
+    border-radius: 6px;
+    background: #fff4e5;
+    border-left: 4px solid #d9962f;
+    color: #6a4a14;
+}
+.sp-membership-renew-note--expired {
+    background: #fde8e8;
+    border-left-color: #b91c1c;
+    color: #7d1414;
+}
 </style>
 
 <main id="main-content" class="site-content">
@@ -458,6 +506,143 @@ function sp_m( $member, $field ) {
                     n.focus({ preventScroll: true });
                 })();
                 </script>
+            <?php endif; ?>
+
+            <?php
+            // ================================================================
+            // SECTION 0: MEMBERSHIP STATUS (read-only)
+            // ================================================================
+            // WHY: Members had no way to see their own standing — status, plan,
+            //      dues, join date, and when their membership expires — from the
+            //      account page; they relied entirely on renewal-reminder emails.
+            //      This is a read-only summary. Renewal itself is handled by the
+            //      society's configured "Renew" menu item / process, so we point
+            //      members toward it with guidance rather than inventing a flow.
+            if ( $member ) :
+                $statuses      = function_exists( 'sp_get_member_statuses' ) ? sp_get_member_statuses() : [];
+                $status_key    = (string) sp_m( $member, 'status' );
+                $status_label  = $statuses[ $status_key ] ?? ( $status_key !== '' ? ucfirst( $status_key ) : __( 'Unknown', 'societypress' ) );
+                $is_lifetime   = (int) sp_m( $member, 'lifetime' ) === 1;
+                $join_date     = sp_m( $member, 'join_date' );
+                $expiration    = sp_m( $member, 'expiration_date' );
+                $tier_id       = (int) sp_m( $member, 'tier_id' );
+
+                $tier = null;
+                if ( $tier_id ) {
+                    $tier = $wpdb->get_row( $wpdb->prepare(
+                        "SELECT name, price, duration_months FROM {$wpdb->prefix}sp_membership_tiers WHERE id = %d",
+                        $tier_id
+                    ) );
+                }
+
+                // Renewal posture drives the badge + any nudge. Lifetime members
+                // never need to renew, so we skip the window check for them.
+                $renewal = ( ! $is_lifetime && function_exists( 'sp_user_renewal_status' ) )
+                    ? sp_user_renewal_status( (int) $user->ID )
+                    : 'safe';
+
+                $badge_class = 'sp-membership-badge--neutral';
+                if ( $is_lifetime ) {
+                    $badge_class = 'sp-membership-badge--safe';
+                } elseif ( 'safe' === $renewal ) {
+                    $badge_class = 'sp-membership-badge--safe';
+                } elseif ( 'expiring' === $renewal ) {
+                    $badge_class = 'sp-membership-badge--expiring';
+                } elseif ( 'expired' === $renewal ) {
+                    $badge_class = 'sp-membership-badge--expired';
+                }
+
+                $date_fmt = get_option( 'date_format' ) ?: 'F j, Y';
+                $fmt_date = static function ( $raw ) use ( $date_fmt ) {
+                    if ( empty( $raw ) || '0000-00-00' === $raw ) {
+                        return '';
+                    }
+                    $ts = strtotime( $raw );
+                    return $ts ? date_i18n( $date_fmt, $ts ) : '';
+                };
+                $join_disp = $fmt_date( $join_date );
+                $exp_disp  = $fmt_date( $expiration );
+            ?>
+            <section class="sp-account-section" id="membership">
+                <h2><?php esc_html_e( 'Membership', 'societypress' ); ?></h2>
+
+                <div class="sp-membership-grid">
+                    <div class="sp-membership-item">
+                        <span class="sp-membership-label"><?php esc_html_e( 'Status', 'societypress' ); ?></span>
+                        <span class="sp-membership-value">
+                            <span class="sp-membership-badge <?php echo esc_attr( $badge_class ); ?>">
+                                <?php
+                                echo $is_lifetime
+                                    ? esc_html__( 'Lifetime Member', 'societypress' )
+                                    : esc_html( $status_label );
+                                ?>
+                            </span>
+                        </span>
+                    </div>
+
+                    <div class="sp-membership-item">
+                        <span class="sp-membership-label"><?php esc_html_e( 'Plan', 'societypress' ); ?></span>
+                        <span class="sp-membership-value">
+                            <?php echo $tier ? esc_html( $tier->name ) : esc_html__( '—', 'societypress' ); ?>
+                        </span>
+                    </div>
+
+                    <?php if ( ! $is_lifetime && $tier && (float) $tier->price > 0 ) : ?>
+                    <div class="sp-membership-item">
+                        <span class="sp-membership-label"><?php esc_html_e( 'Dues', 'societypress' ); ?></span>
+                        <span class="sp-membership-value">
+                            <?php
+                            $price = number_format_i18n( (float) $tier->price, 2 );
+                            if ( ! empty( $tier->duration_months ) ) {
+                                printf(
+                                    /* translators: 1: formatted price, 2: number of months */
+                                    esc_html( _n( '$%1$s every %2$d month', '$%1$s every %2$d months', (int) $tier->duration_months, 'societypress' ) ),
+                                    esc_html( $price ),
+                                    (int) $tier->duration_months
+                                );
+                            } else {
+                                echo esc_html( '$' . $price );
+                            }
+                            ?>
+                        </span>
+                    </div>
+                    <?php endif; ?>
+
+                    <?php if ( $join_disp ) : ?>
+                    <div class="sp-membership-item">
+                        <span class="sp-membership-label"><?php esc_html_e( 'Member since', 'societypress' ); ?></span>
+                        <span class="sp-membership-value"><?php echo esc_html( $join_disp ); ?></span>
+                    </div>
+                    <?php endif; ?>
+
+                    <?php if ( ! $is_lifetime && $exp_disp ) : ?>
+                    <div class="sp-membership-item">
+                        <span class="sp-membership-label"><?php esc_html_e( 'Renews / expires', 'societypress' ); ?></span>
+                        <span class="sp-membership-value"><?php echo esc_html( $exp_disp ); ?></span>
+                    </div>
+                    <?php endif; ?>
+                </div>
+
+                <?php if ( ! $is_lifetime && 'expiring' === $renewal ) : ?>
+                    <p class="sp-membership-renew-note">
+                        <?php
+                        if ( $exp_disp ) {
+                            printf(
+                                /* translators: %s is the expiration date */
+                                esc_html__( 'Your membership is up for renewal on %s. Use the renewal link in the menu, or contact your membership chair to renew.', 'societypress' ),
+                                '<strong>' . esc_html( $exp_disp ) . '</strong>'
+                            );
+                        } else {
+                            esc_html_e( 'Your membership is up for renewal soon. Use the renewal link in the menu, or contact your membership chair to renew.', 'societypress' );
+                        }
+                        ?>
+                    </p>
+                <?php elseif ( ! $is_lifetime && 'expired' === $renewal ) : ?>
+                    <p class="sp-membership-renew-note sp-membership-renew-note--expired">
+                        <?php esc_html_e( 'Your membership has lapsed. Use the renewal link in the menu, or contact your membership chair to reinstate it.', 'societypress' ); ?>
+                    </p>
+                <?php endif; ?>
+            </section>
             <?php endif; ?>
 
             <?php

@@ -36087,6 +36087,13 @@ add_action( 'admin_init', function () {
             $event['recurrence_rule']      = null;
             $event['recurrence_end_date']  = null;
 
+            // Don't inherit the original's date — a duplicate is almost always
+            // "same event, new date," and carrying a long-past date over is a
+            // trap. event_date is NOT NULL, so reset to today as a neutral
+            // default the admin overrides on the edit screen they land on. Keep
+            // the start/end time, which is usually what they want to reuse.
+            $event['event_date'] = current_time( 'Y-m-d' );
+
             $event['created_by'] = get_current_user_id();
 
             $wpdb->insert( $events_table, $event );

@@ -944,6 +944,7 @@ function sp_create_tables(): void {
         is_virtual            TINYINT(1)          NOT NULL DEFAULT 0,
         virtual_url           VARCHAR(500)        NULL,
         image_id              BIGINT(20) UNSIGNED NULL,
+        attachment_id         BIGINT(20) UNSIGNED NULL,
         visibility            VARCHAR(20)         NOT NULL DEFAULT 'public',
         notice_only           TINYINT(1)          NOT NULL DEFAULT 0,
         registration_enabled  TINYINT(1)          NOT NULL DEFAULT 0,
@@ -36287,6 +36288,7 @@ add_action( 'admin_init', function () {
         'is_virtual'           => ! empty( $_POST['event_is_virtual'] ) ? 1 : 0,
         'virtual_url'          => esc_url_raw( $_POST['event_virtual_url'] ?? '' ),
         'image_id'             => ! empty( $_POST['event_image_id'] ) ? (int) $_POST['event_image_id'] : null,
+        'attachment_id'        => ! empty( $_POST['event_attachment_id'] ) ? (int) $_POST['event_attachment_id'] : null,
         'visibility'           => in_array( $_POST['event_visibility'] ?? '', [ 'public', 'members_only', 'committee_only' ], true )
                                   ? $_POST['event_visibility'] : 'public',
         'notice_only'          => ! empty( $_POST['event_notice_only'] ) ? 1 : 0,
@@ -36741,6 +36743,31 @@ function sp_render_event_edit_page(): void {
                                 Remove
                             </button>
                         <?php endif; ?>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th scope="row"><?php esc_html_e( 'Attachment', 'societypress' ); ?></th>
+                    <td>
+                        <?php
+                        $attachment_id   = (int) $val( 'attachment_id', 0 );
+                        $attachment_name = $attachment_id ? get_the_title( $attachment_id ) : '';
+                        ?>
+                        <div id="sp-event-attachment-preview" class="sp-event-edit-attachment-preview">
+                            <?php if ( $attachment_id ) : ?>
+                                <span class="dashicons dashicons-media-default" aria-hidden="true"></span>
+                                <a href="<?php echo esc_url( (string) wp_get_attachment_url( $attachment_id ) ); ?>" target="_blank" rel="noopener"><?php echo esc_html( $attachment_name ); ?></a>
+                            <?php endif; ?>
+                        </div>
+                        <input type="hidden" id="event_attachment_id" name="event_attachment_id"
+                               value="<?php echo esc_attr( $attachment_id ); ?>">
+                        <button type="button" class="button" id="sp-event-attachment-btn">
+                            <?php echo $attachment_id ? esc_html__( 'Change File', 'societypress' ) : esc_html__( 'Attach a File', 'societypress' ); ?>
+                        </button>
+                        <button type="button" class="button sp-event-edit-remove-btn" id="sp-event-attachment-remove"<?php echo $attachment_id ? '' : ' style="display: none;"'; ?>>
+                            <?php esc_html_e( 'Remove', 'societypress' ); ?>
+                        </button>
+                        <p class="description"><?php esc_html_e( 'Optional flyer or handout (PDF, document, etc.) shown as a download link on the event page.', 'societypress' ); ?></p>
                     </td>
                 </tr>
 
@@ -37732,6 +37759,50 @@ function sp_render_event_edit_page(): void {
                         imageInput.value = '';
                         imagePreview.innerHTML = '';
                         imageBtn.textContent = <?php echo wp_json_encode( __( 'Select Image', 'societypress' ) ); ?>;
+                        this.style.display = 'none';
+                    });
+                }
+            }
+
+            // ---- Attachment (any file type) picker — mirrors the image picker ----
+            var attachBtn     = document.getElementById('sp-event-attachment-btn');
+            var attachRemove  = document.getElementById('sp-event-attachment-remove');
+            var attachInput   = document.getElementById('event_attachment_id');
+            var attachPreview = document.getElementById('sp-event-attachment-preview');
+
+            if (attachBtn && typeof wp !== 'undefined' && wp.media) {
+                var attachFrame;
+
+                attachBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    if (attachFrame) { attachFrame.open(); return; }
+
+                    attachFrame = wp.media({
+                        title:    <?php echo wp_json_encode( __( 'Select Event Attachment', 'societypress' ) ); ?>,
+                        button:   { text: <?php echo wp_json_encode( __( 'Use this file', 'societypress' ) ); ?> },
+                        multiple: false
+                    });
+
+                    attachFrame.on('select', function() {
+                        var file = attachFrame.state().get('selection').first().toJSON();
+                        attachInput.value = file.id;
+                        var label = file.title || file.filename || file.url;
+                        attachPreview.innerHTML = '<span class="dashicons dashicons-media-default" aria-hidden="true"></span> '
+                            + '<a href="' + file.url + '" target="_blank" rel="noopener"></a>';
+                        attachPreview.querySelector('a').textContent = label;
+                        attachBtn.textContent = <?php echo wp_json_encode( __( 'Change File', 'societypress' ) ); ?>;
+                        if (attachRemove) attachRemove.style.display = '';
+                    });
+
+                    attachFrame.open();
+                });
+
+                if (attachRemove) {
+                    attachRemove.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        attachInput.value = '';
+                        attachPreview.innerHTML = '';
+                        attachBtn.textContent = <?php echo wp_json_encode( __( 'Attach a File', 'societypress' ) ); ?>;
                         this.style.display = 'none';
                     });
                 }
@@ -42583,6 +42654,20 @@ function sp_render_event_detail( string $slug, array $settings ): void {
         <?php if ( ! empty( $event->description ) ) : ?>
             <div class="sp-event-description">
                 <?php echo wp_kses_post( wpautop( $event->description ) ); ?>
+            </div>
+        <?php endif; ?>
+
+        <!-- Attachment download -->
+        <?php
+        $event_attachment_url = ! empty( $event->attachment_id ) ? wp_get_attachment_url( (int) $event->attachment_id ) : '';
+        if ( $event_attachment_url ) :
+            $event_attachment_name = get_the_title( (int) $event->attachment_id ) ?: __( 'Download', 'societypress' );
+        ?>
+            <div class="sp-event-attachment">
+                <a class="sp-event-attachment-link" href="<?php echo esc_url( $event_attachment_url ); ?>" target="_blank" rel="noopener">
+                    <span aria-hidden="true">&#11015;</span>
+                    <?php echo esc_html( $event_attachment_name ); ?>
+                </a>
             </div>
         <?php endif; ?>
 
@@ -61875,7 +61960,7 @@ function sp_render_blast_email_compose_page(): void {
     // chooses recipients before anything is saved or sent.
     if ( ! $blast_id && $_SERVER['REQUEST_METHOD'] !== 'POST' && ! empty( $_GET['sp_event'] ) ) {
         $event = $wpdb->get_row( $wpdb->prepare(
-            "SELECT title, description, event_date, start_time, location_name, location_address, virtual_url
+            "SELECT title, description, event_date, start_time, location_name, location_address, virtual_url, attachment_id
              FROM {$prefix}events WHERE id = %d",
             (int) $_GET['sp_event']
         ) );
@@ -61906,6 +61991,13 @@ function sp_render_blast_email_compose_page(): void {
             }
             if ( trim( (string) $event->description ) !== '' ) {
                 $lines[] = wpautop( wp_kses_post( $event->description ) );
+            }
+            if ( ! empty( $event->attachment_id ) ) {
+                $att_url = wp_get_attachment_url( (int) $event->attachment_id );
+                if ( $att_url ) {
+                    $att_name = get_the_title( (int) $event->attachment_id ) ?: __( 'Download', 'societypress' );
+                    $lines[]  = '<p><strong>' . esc_html__( 'Attachment:', 'societypress' ) . '</strong> <a href="' . esc_url( $att_url ) . '">' . esc_html( $att_name ) . '</a></p>';
+                }
             }
 
             $blast = (object) [
@@ -84702,6 +84794,9 @@ add_action( 'admin_init', function () {
         ],
         'sp_orders'         => [
             'shipping_total' => "ALTER TABLE {$wpdb->prefix}sp_orders ADD COLUMN shipping_total DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER subtotal",
+        ],
+        'sp_events'         => [
+            'attachment_id' => "ALTER TABLE {$wpdb->prefix}sp_events ADD COLUMN attachment_id BIGINT(20) UNSIGNED NULL AFTER image_id",
         ],
     ];
 

@@ -32375,12 +32375,16 @@ function sp_builder_fields_button( $index, array $settings ): void {
  * Contact Form widget settings.
  */
 function sp_builder_fields_contact_form( $index, array $settings ): void {
-    $intro_text = $settings['intro_text'] ?? '';
+    $intro_text     = $settings['intro_text'] ?? '';
+    $preset_subject = $settings['preset_subject'] ?? '';
     ?>
     <div class="sp-builder-field">
         <p class="description"><?php esc_html_e( 'Displays a simple name/email/message form. Submissions are emailed to the organization email from your SocietyPress settings.', 'societypress' ); ?></p>
         <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-intro_text"><?php esc_html_e( 'Introductory text (optional)', 'societypress' ); ?></label>
         <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][intro_text]" id="sp-w-<?php echo esc_attr( $index ); ?>-intro_text" value="<?php echo esc_attr( $intro_text ); ?>" class="widefat" placeholder="e.g., We\'d love to hear from you!">
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-preset_subject"><?php esc_html_e( 'Subject line (optional)', 'societypress' ); ?></label>
+        <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][preset_subject]" id="sp-w-<?php echo esc_attr( $index ); ?>-preset_subject" value="<?php echo esc_attr( $preset_subject ); ?>" class="widefat" placeholder="<?php esc_attr_e( 'e.g., Membership question', 'societypress' ); ?>">
+        <p class="description"><?php esc_html_e( 'Sets the subject of the email this form sends — useful when you have separate contact forms on different pages so you can tell them apart in your inbox.', 'societypress' ); ?></p>
     </div>
     <?php
 }
@@ -33261,7 +33265,10 @@ function sp_sanitize_builder_widget( string $type, array $settings ): array {
             ];
 
         case 'contact_form':
-            return [ 'intro_text' => sanitize_text_field( $settings['intro_text'] ?? '' ) ];
+            return [
+                'intro_text'     => sanitize_text_field( $settings['intro_text'] ?? '' ),
+                'preset_subject' => sanitize_text_field( $settings['preset_subject'] ?? '' ),
+            ];
 
         case 'upcoming_events':
             return [
@@ -34764,6 +34771,9 @@ function sp_render_builder_widget_contact_form( array $s ): void {
     <form class="sp-builder-contact-form-inner" method="post">
         <?php wp_nonce_field( 'sp_builder_contact', 'sp_builder_contact_nonce' ); ?>
         <div class="sp-contact-honeypot" aria-hidden="true"><input type="text" name="sp_website_url" tabindex="-1" autocomplete="off"></div>
+        <?php if ( ! empty( $s['preset_subject'] ) ) : ?>
+            <input type="hidden" name="sp_contact_subject" value="<?php echo esc_attr( $s['preset_subject'] ); ?>">
+        <?php endif; ?>
 
         <div class="sp-contact-row">
             <div class="sp-contact-field">
@@ -34836,10 +34846,17 @@ function sp_handle_builder_contact_form(): void {
     // the Reply-To header and inject a different address.
     $safe_name = str_replace( [ "\r", "\n", '<', '>' ], '', $name );
 
+    // Optional per-form subject (set on the Contact Form widget). Newlines
+    // stripped to prevent header injection. Falls back to the default subject.
+    $preset_subject = trim( str_replace( [ "\r", "\n" ], '', sanitize_text_field( $_POST['sp_contact_subject'] ?? '' ) ) );
+    $subject = $preset_subject !== ''
+        ? sprintf( '[%1$s] %2$s', $site_name, $preset_subject )
+        /* translators: 1: site/society name, 2: sender name */
+        : sprintf( __( '[%1$s] Message from %2$s', 'societypress' ), $site_name, $safe_name );
+
     $sent = wp_mail(
         $to,
-        /* translators: 1: site/society name, 2: sender name */
-        sprintf( __( '[%1$s] Message from %2$s', 'societypress' ), $site_name, $safe_name ),
+        $subject,
         sprintf(
             /* translators: 1: sender name, 2: sender email, 3: message body, 4: site/society name */
             __( "Name: %1\$s\nEmail: %2\$s\n\nMessage:\n%3\$s\n\n---\nSent from %4\$s contact form", 'societypress' ),

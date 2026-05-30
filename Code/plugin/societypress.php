@@ -82764,6 +82764,67 @@ function sp_donation_presets(): array {
 
 
 /**
+ * Printable "mail us a check" confirmation slip.
+ *
+ * WHY: When a donor chooses the mail-in option we record a pending gift and
+ *      show them exactly where to send the check, who to make it payable to,
+ *      and a confirmation code to write on the memo line — so the treasurer can
+ *      match the check to the pending record when it arrives. Plain HTML +
+ *      window.print(); no PDF dependency (consistent with SP's "no server-side
+ *      PDF" posture).
+ */
+function sp_donation_check_slip( array $settings, string $org_name ): string {
+    $amount  = number_format( (float) ( $_GET['sp_amount'] ?? 0 ), 2 );
+    $code    = preg_replace( '/[^A-Z0-9\-]/', '', strtoupper( sanitize_text_field( wp_unslash( $_GET['sp_code'] ?? '' ) ) ) );
+    $address = trim( (string) ( $settings['organization_address'] ?? '' ) );
+    $symbol  = sp_get_currency_symbol();
+
+    ob_start();
+    ?>
+    <div class="sp-checkslip-wrap">
+        <style>
+            .sp-checkslip-wrap { max-width: 560px; margin: 1.5em auto; }
+            .sp-checkslip { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 28px; }
+            .sp-checkslip h3 { margin: 0 0 6px; }
+            .sp-checkslip-lead { color: #555; margin: 0 0 20px; }
+            .sp-checkslip dl { margin: 0; }
+            .sp-checkslip dt { font-weight: 600; color: #555; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; margin-top: 16px; }
+            .sp-checkslip dd { margin: 3px 0 0; font-size: 16px; }
+            .sp-checkslip-amount { font-size: 22px; font-weight: 700; color: #0d1f3c; }
+            .sp-checkslip-code { font-family: monospace; font-size: 20px; letter-spacing: .08em; }
+            .sp-checkslip address { white-space: pre-line; font-style: normal; }
+            .sp-checkslip-print { margin-top: 22px; background: #0d1f3c; color: #fff; border: none; border-radius: 6px; padding: 10px 18px; font-weight: 600; cursor: pointer; }
+            @media print { .sp-checkslip-print { display: none; } .sp-checkslip { border: none; } }
+        </style>
+        <div class="sp-checkslip">
+            <h3><?php esc_html_e( 'Thank you — here\'s how to mail your gift', 'societypress' ); ?></h3>
+            <p class="sp-checkslip-lead"><?php esc_html_e( 'We\'ve noted your gift and will mark it received when your check arrives. Print this page or jot down the details below.', 'societypress' ); ?></p>
+            <dl>
+                <dt><?php esc_html_e( 'Gift amount', 'societypress' ); ?></dt>
+                <dd class="sp-checkslip-amount"><?php echo esc_html( $symbol . $amount ); ?></dd>
+
+                <dt><?php esc_html_e( 'Make your check payable to', 'societypress' ); ?></dt>
+                <dd><?php echo esc_html( $org_name ); ?></dd>
+
+                <?php if ( $address !== '' ) : ?>
+                    <dt><?php esc_html_e( 'Mail it to', 'societypress' ); ?></dt>
+                    <dd><address><?php echo esc_html( $address ); ?></address></dd>
+                <?php endif; ?>
+
+                <?php if ( $code !== '' ) : ?>
+                    <dt><?php esc_html_e( 'Write this code on the memo line', 'societypress' ); ?></dt>
+                    <dd class="sp-checkslip-code"><?php echo esc_html( $code ); ?></dd>
+                <?php endif; ?>
+            </dl>
+            <button type="button" class="sp-checkslip-print" onclick="window.print()"><?php esc_html_e( 'Print this page', 'societypress' ); ?></button>
+        </div>
+    </div>
+    <?php
+    return (string) ob_get_clean();
+}
+
+
+/**
  * Shortcode: [sp_donate]
  *
  * Public donation form. Accepts attributes:
@@ -82816,6 +82877,12 @@ add_shortcode( 'sp_donate', function ( $atts ) {
     // Status messaging back from Stripe
     $msg = sanitize_text_field( $_GET['sp_donate_msg'] ?? '' );
     $err = sanitize_text_field( $_GET['sp_donate_err'] ?? '' );
+
+    // Mail-in check path: after recording a pending gift, show the printable
+    // slip in place of the form rather than sending the donor to a processor.
+    if ( $msg === 'check_mailin' ) {
+        return sp_donation_check_slip( $settings, $org_name );
+    }
 
     ob_start();
     ?>
@@ -82879,6 +82946,13 @@ add_shortcode( 'sp_donate', function ( $atts ) {
             .sp-donate-notice-success { background: #e8f5e9; border-left: 4px solid #166534; color: #1f4d2c; }
             .sp-donate-notice-error { background: #fde8e8; border-left: 4px solid #b91c1c; color: #7d1414; }
             .sp-donate-anonymous label { font-weight: normal; }
+            .sp-donate-check-btn {
+                background: #fff; color: #0d1f3c; padding: 11px; width: 100%;
+                border: 1px solid #0d1f3c; border-radius: 6px; cursor: pointer;
+                font-size: 15px; font-weight: 600;
+            }
+            .sp-donate-check-btn:hover { background: #f6f6f6; }
+            .sp-donate-check-help { color: #6d7175; font-size: 13px; text-align: center; margin-top: 8px; }
         </style>
 
         <?php if ( $msg === 'success' ) : ?>
@@ -83011,6 +83085,12 @@ add_shortcode( 'sp_donate', function ( $atts ) {
             <?php else : ?>
                 <p class="sp-donate-paypal-soon"><?php esc_html_e( 'Secure payment via Stripe.', 'societypress' ); ?></p>
             <?php endif; ?>
+
+            <div class="sp-donate-or"><?php esc_html_e( 'or', 'societypress' ); ?></div>
+            <button type="submit" name="sp_donate_method" value="check" class="sp-donate-check-btn" id="sp-donate-check-btn">
+                <?php esc_html_e( 'Prefer to mail a check? →', 'societypress' ); ?>
+            </button>
+            <p class="sp-donate-check-help"><?php esc_html_e( 'We\'ll show you where to send it and a code to write on the check.', 'societypress' ); ?></p>
         </form>
 
         <?php if ( $paypal_configured && $paypal_client_id ) : ?>
@@ -83178,6 +83258,59 @@ add_action( 'init', function () {
     $amount = round( max( 0, $amount ), 2 );
     if ( $amount < 1 ) {
         wp_safe_redirect( add_query_arg( 'sp_donate_err', 'invalid_amount', $referer ) );
+        exit;
+    }
+
+    // --- Mail-in check path -------------------------------------------------
+    // WHY: Many society donors (often older) prefer to mail a check. Without
+    //      this the online form silently excludes them. We record the gift as a
+    //      pending check and send the donor to a printable slip; the treasurer
+    //      marks it received when the check arrives. No processor involved, so
+    //      this branches out before any Stripe work — checks are one-time only.
+    if ( ( $_POST['sp_donate_method'] ?? '' ) === 'check' ) {
+        global $wpdb;
+
+        $donor_name  = sanitize_text_field( wp_unslash( $_POST['donor_name'] ?? '' ) );
+        $donor_email = sanitize_email( $_POST['donor_email'] ?? '' );
+        if ( $donor_name === '' || ! is_email( $donor_email ) ) {
+            wp_safe_redirect( add_query_arg( 'sp_donate_err', 'invalid_amount', $referer ) );
+            exit;
+        }
+
+        // Short, human-readable code the donor writes on the memo line and the
+        // treasurer searches notes for when the check arrives.
+        $code = 'SP-' . strtoupper( substr( wp_generate_password( 10, false, false ), 0, 6 ) );
+        $note = sprintf(
+            /* translators: %s: confirmation code the donor writes on the check */
+            __( 'Mail-in check pledge — awaiting receipt. Confirmation code: %s', 'societypress' ),
+            $code
+        );
+
+        $wpdb->insert( $wpdb->prefix . 'sp_donations', [
+            'campaign_id'      => (int) ( $_POST['campaign_id'] ?? 0 ) ?: null,
+            'user_id'          => get_current_user_id() ?: null,
+            'donor_name'       => $donor_name,
+            'donor_email'      => $donor_email,
+            'amount'           => $amount,
+            'frequency'        => 'one_time',
+            'cover_fees'       => 0,
+            'fee_amount'       => 0,
+            'gross_amount'     => $amount,
+            'type'             => 'check',
+            'date'             => current_time( 'Y-m-d' ),
+            'is_anonymous'     => ! empty( $_POST['is_anonymous'] ) ? 1 : 0,
+            'dedication'       => sanitize_text_field( wp_unslash( $_POST['dedication'] ?? '' ) ),
+            'donation_message' => sanitize_textarea_field( wp_unslash( $_POST['donation_message'] ?? '' ) ),
+            'payment_method'   => 'check',
+            'status'           => 'pending',
+            'note'             => $note,
+        ] );
+
+        wp_safe_redirect( add_query_arg( [
+            'sp_donate_msg' => 'check_mailin',
+            'sp_amount'     => number_format( $amount, 2, '.', '' ),
+            'sp_code'       => $code,
+        ], $referer ) );
         exit;
     }
 

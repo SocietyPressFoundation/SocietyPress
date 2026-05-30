@@ -32684,6 +32684,7 @@ function sp_builder_fields_resource_links( $index, array $settings ): void {
     <div class="sp-builder-field">
         <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][featured_only]" value="1" <?php checked( $featured_only ); ?>> <?php esc_html_e( 'Show featured links only', 'societypress' ); ?></label><br>
         <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_descriptions]" value="1" <?php checked( $show_descriptions ); ?>> <?php esc_html_e( 'Show descriptions', 'societypress' ); ?></label><br>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_updated]" value="1" <?php checked( ! empty( $settings['show_updated'] ) ); ?>> <?php esc_html_e( 'Show last-updated date', 'societypress' ); ?></label><br>
         <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][login_required]" value="1" <?php checked( $login_required ); ?>> <?php esc_html_e( 'Require login to view', 'societypress' ); ?></label>
     </div>
     <?php
@@ -33333,6 +33334,7 @@ function sp_sanitize_builder_widget( string $type, array $settings ): array {
                 'count'             => in_array( (int) ( $settings['count'] ?? -1 ), [ 10, 20, 50, 100 ], true )
                                        ? (int) $settings['count'] : 20,
                 'show_descriptions' => ! empty( $settings['show_descriptions'] ),
+                'show_updated'      => ! empty( $settings['show_updated'] ),
                 'login_required'    => ! empty( $settings['login_required'] ),
             ];
 
@@ -51018,6 +51020,7 @@ function sp_render_builder_widget_resource_links( array $s ): void {
     $featured_only  = $s['featured_only'] ?? false;
     $count          = max( 1, (int) ( $s['count'] ?? 50 ) );
     $show_desc      = $s['show_descriptions'] ?? true;
+    $show_updated   = ! empty( $s['show_updated'] );
 
     $where = [ 'r.active = 1' ];
     if ( $category_id ) {
@@ -51044,6 +51047,7 @@ function sp_render_builder_widget_resource_links( array $s ): void {
 .sp-resource-link { font-weight: 600; color: var(--sp-color-primary); text-decoration: none; font-size: 15px; }
 .sp-resource-featured-badge { background: #fef0c7; color: #92400e; font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; font-weight: 500; margin-left: 4px; }
 .sp-resource-desc { margin: 4px 0 0; color: #555; font-size: 13px; }
+.sp-resource-updated { margin: 3px 0 0; color: #888; font-size: 12px; font-style: italic; }
 </style>';
 
     echo '<div class="sp-widget-resource-links">';
@@ -51071,6 +51075,13 @@ function sp_render_builder_widget_resource_links( array $s ): void {
                 echo '</a>';
                 if ( $show_desc && $item->description ) {
                     echo '<p class="sp-resource-desc">' . esc_html( $item->description ) . '</p>';
+                }
+                if ( $show_updated && ! empty( $item->updated_at ) ) {
+                    echo '<p class="sp-resource-updated">' . esc_html( sprintf(
+                        /* translators: %s: last-updated date */
+                        __( 'Updated %s', 'societypress' ),
+                        wp_date( get_option( 'date_format', 'F j, Y' ), strtotime( $item->updated_at ) )
+                    ) ) . '</p>';
                 }
                 echo '</li>';
             }

@@ -63257,7 +63257,16 @@ function sp_render_donations_page(): void {
     }
     if ( $search ) {
         $like    = '%' . $wpdb->esc_like( $search ) . '%';
-        $where[] = '(d.donor_name LIKE %s OR d.donor_email LIKE %s OR d.note LIKE %s)';
+        // Search donor identity, the note, AND the processor transaction IDs so
+        // a treasurer can paste a Stripe/PayPal reference straight from a payout
+        // and find the matching gift when reconciling.
+        $where[] = '(d.donor_name LIKE %s OR d.donor_email LIKE %s OR d.note LIKE %s'
+                 . ' OR d.stripe_session_id LIKE %s OR d.stripe_subscription_id LIKE %s'
+                 . ' OR d.paypal_order_id LIKE %s OR d.paypal_capture_id LIKE %s)';
+        $args[]  = $like;
+        $args[]  = $like;
+        $args[]  = $like;
+        $args[]  = $like;
         $args[]  = $like;
         $args[]  = $like;
         $args[]  = $like;
@@ -63467,7 +63476,7 @@ function sp_render_donations_page(): void {
             </div>
             <div>
                 <label class="sp-donations-filter-label" for="sp-don-search"><?php esc_html_e( 'Search', 'societypress' ); ?></label>
-                <input type="search" id="sp-don-search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php echo esc_attr__( 'Donor name or note...', 'societypress' ); ?>">
+                <input type="search" id="sp-don-search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php echo esc_attr__( 'Donor, note, or transaction ID...', 'societypress' ); ?>">
             </div>
             <div>
                 <button type="submit" class="button"><?php esc_html_e( 'Filter', 'societypress' ); ?></button>

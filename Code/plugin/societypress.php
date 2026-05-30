@@ -1969,6 +1969,7 @@ function sp_create_tables(): void {
         total_recipients    INT UNSIGNED        NOT NULL DEFAULT 0,
         total_sent          INT UNSIGNED        NOT NULL DEFAULT 0,
         total_failed        INT UNSIGNED        NOT NULL DEFAULT 0,
+        override_optout     TINYINT(1)          NOT NULL DEFAULT 0,
         status              VARCHAR(20)         NOT NULL DEFAULT 'draft',
         scheduled_at        DATETIME            NULL,
         sent_at             DATETIME            NULL,
@@ -62124,6 +62125,7 @@ function sp_render_blast_email_compose_page(): void {
         $body           = wp_kses_post( $_POST['blast_body'] ?? '' );
         $recipient_type = sanitize_text_field( $_POST['recipient_type'] ?? 'all_members' );
         $action         = sanitize_text_field( $_POST['sp_blast_action'] ?? 'save_draft' );
+        $override_optout = ! empty( $_POST['override_optout'] ) ? 1 : 0;
 
         // Build recipient filter JSON
         $recipient_filter = null;
@@ -62137,8 +62139,8 @@ function sp_render_blast_email_compose_page(): void {
             ] );
         }
 
-        // Count recipients
-        $total_recipients = sp_blast_count_recipients( $recipient_type, $recipient_filter );
+        // Count recipients (honoring the opt-out override for critical notices)
+        $total_recipients = sp_blast_count_recipients( $recipient_type, $recipient_filter, (bool) $override_optout );
 
         $data = [
             'subject'          => $subject,
@@ -62147,6 +62149,7 @@ function sp_render_blast_email_compose_page(): void {
             'recipient_type'   => $recipient_type,
             'recipient_filter' => $recipient_filter,
             'total_recipients' => $total_recipients,
+            'override_optout'  => $override_optout,
             'status'           => 'draft',
             'updated_at'       => current_time( 'mysql' ),
         ];
@@ -62232,6 +62235,7 @@ function sp_render_blast_email_compose_page(): void {
     .sp-blast-recipient-label-sm  { display: block; margin-bottom: 4px; }
     .sp-blast-check-label         { display: block; margin-bottom: 2px; }
     .sp-blast-count               { color: #6d7175; }
+    .sp-blast-override-optout     { display: block; margin-top: 10px; color: #7d1414; font-weight: 600; }
     .sp-blast-no-groups           { color: #6d7175; }
     .sp-blast-merge-hint          { margin-bottom: 8px; }
     .sp-blast-submit-row          { display: flex; gap: 8px; align-items: center; }
@@ -62305,6 +62309,10 @@ function sp_render_blast_email_compose_page(): void {
                             </label>
                         </fieldset>
                         <p class="description"><?php esc_html_e( 'Members who have opted out of blast emails will be excluded automatically.', 'societypress' ); ?></p>
+                        <label class="sp-blast-override-optout">
+                            <input type="checkbox" name="override_optout" value="1" <?php checked( ! empty( $blast->override_optout ) ); ?>>
+                            <?php esc_html_e( 'Send even to members who opted out — use only for critical notices (e.g. an emergency or a meeting-quorum call). The unsubscribe link is still included.', 'societypress' ); ?>
+                        </label>
                     </td>
                 </tr>
                 <tr>
@@ -62371,12 +62379,15 @@ function sp_render_blast_email_compose_page(): void {
  * @param string|null $recipient_filter JSON filter data.
  * @return int Number of recipients.
  */
-function sp_blast_count_recipients( string $recipient_type, ?string $recipient_filter ): int {
+function sp_blast_count_recipients( string $recipient_type, ?string $recipient_filter, bool $include_optout = false ): int {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
-    // Base: active members with valid email who haven't opted out
-    $base_where = "m.status = 'active' AND m.blast_email_opt_out = 0
+    // Base: active members with a valid email. Normally we exclude members who
+    // opted out of blast email; $include_optout overrides that for genuinely
+    // critical org-wide notices (the unsubscribe link is still sent).
+    $optout_clause = $include_optout ? '' : ' AND m.blast_email_opt_out = 0';
+    $base_where = "m.status = 'active'{$optout_clause}
                    AND u.user_email != '' AND u.user_email IS NOT NULL";
 
     if ( $recipient_type === 'group' && $recipient_filter ) {
@@ -62429,11 +62440,12 @@ function sp_blast_count_recipients( string $recipient_type, ?string $recipient_f
  * @param int         $limit            Batch size.
  * @return array Array of recipient objects.
  */
-function sp_blast_get_recipients( string $recipient_type, ?string $recipient_filter, int $offset = 0, int $limit = 50 ): array {
+function sp_blast_get_recipients( string $recipient_type, ?string $recipient_filter, int $offset = 0, int $limit = 50, bool $include_optout = false ): array {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
-    $base_where = "m.status = 'active' AND m.blast_email_opt_out = 0
+    $optout_clause = $include_optout ? '' : ' AND m.blast_email_opt_out = 0';
+    $base_where = "m.status = 'active'{$optout_clause}
                    AND u.user_email != '' AND u.user_email IS NOT NULL";
 
     $base_select = "SELECT DISTINCT m.user_id, u.user_email AS email, m.first_name, m.last_name, u.display_name
@@ -62565,7 +62577,8 @@ function sp_blast_email_send_batch( int $blast_id, int $offset ): void {
         $blast->recipient_type,
         $blast->recipient_filter,
         $offset,
-        $batch_size
+        $batch_size,
+        ! empty( $blast->override_optout )
     );
 
     if ( empty( $recipients ) ) {
@@ -85047,6 +85060,9 @@ add_action( 'admin_init', function () {
         ],
         'sp_events'         => [
             'attachment_id' => "ALTER TABLE {$wpdb->prefix}sp_events ADD COLUMN attachment_id BIGINT(20) UNSIGNED NULL AFTER image_id",
+        ],
+        'sp_blast_emails'   => [
+            'override_optout' => "ALTER TABLE {$wpdb->prefix}sp_blast_emails ADD COLUMN override_optout TINYINT(1) NOT NULL DEFAULT 0 AFTER total_failed",
         ],
     ];
 

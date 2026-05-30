@@ -51054,6 +51054,7 @@ function sp_render_builder_widget_resource_links( array $s ): void {
 .sp-resource-item { padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
 .sp-resource-link { font-weight: 600; color: var(--sp-color-primary); text-decoration: none; font-size: 15px; }
 .sp-resource-featured-badge { background: #fef0c7; color: #92400e; font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; font-weight: 500; margin-left: 4px; }
+.sp-resource-new { background: #e8f5e9; color: #166534; font-size: 0.7rem; padding: 2px 7px; border-radius: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin-left: 4px; }
 .sp-resource-desc { margin: 4px 0 0; color: #555; font-size: 13px; }
 .sp-resource-updated { margin: 3px 0 0; color: #888; font-size: 12px; font-style: italic; }
 </style>';
@@ -51079,6 +51080,9 @@ function sp_render_builder_widget_resource_links( array $s ): void {
                 echo esc_html( $item->title );
                 if ( $item->featured ) {
                     echo ' <span class="sp-resource-featured-badge">' . esc_html__( 'Featured', 'societypress' ) . '</span>';
+                }
+                if ( sp_is_new_item( $item->created_at ?? '' ) ) {
+                    echo ' <span class="sp-resource-new">' . esc_html__( 'New', 'societypress' ) . '</span>';
                 }
                 echo '</a>';
                 if ( $show_desc && $item->description ) {
@@ -76421,6 +76425,25 @@ function sp_render_document_bulk_upload_page(): void {
  *      order, with members-only files shown locked. Listing a locked title
  *      leaks nothing — sp_ajax_document_download() enforces access server-side.
  */
+/**
+ * Whether an item was added recently enough to wear a "New" badge.
+ *
+ * WHY: A small, automatic "New" flag on recently-added items (documents,
+ *      resources, etc.) helps members who don't visit often spot what's
+ *      changed — the same affordance ENS offers per-page. Fixed 30-day window
+ *      for now; a per-module configurable window is a possible follow-up.
+ */
+function sp_is_new_item( $created_at, int $days = 30 ): bool {
+    if ( empty( $created_at ) ) {
+        return false;
+    }
+    $ts = strtotime( (string) $created_at );
+    if ( ! $ts ) {
+        return false;
+    }
+    return $ts >= ( current_time( 'timestamp' ) - $days * DAY_IN_SECONDS );
+}
+
 function sp_frontend_documents(): void {
     if ( ! sp_module_enabled( 'documents' ) ) {
         echo '<p>' . esc_html__( 'The documents library is not available.', 'societypress' ) . '</p>';
@@ -76477,6 +76500,7 @@ function sp_frontend_documents(): void {
 .sp-doc-icon { font-size: 24px; line-height: 1.2; flex: 0 0 auto; }
 .sp-doc-info { flex: 1 1 auto; min-width: 0; }
 .sp-doc-title { font-weight: 600; }
+.sp-doc-new { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; background: #e8f5e9; color: #166534; vertical-align: middle; }
 .sp-doc-meta { color: #6b7280; font-size: 13px; margin-top: 2px; }
 .sp-doc-desc { margin-top: 4px; }
 .sp-doc-action { flex: 0 0 auto; }
@@ -76520,7 +76544,11 @@ function sp_render_document_row( object $doc, bool $is_member, string $login_url
 
     // Info
     echo '<div class="sp-doc-info">';
-    echo '<div class="sp-doc-title">' . esc_html( $doc->title ) . '</div>';
+    echo '<div class="sp-doc-title">' . esc_html( $doc->title );
+    if ( sp_is_new_item( $doc->created_at ?? '' ) ) {
+        echo ' <span class="sp-doc-new">' . esc_html__( 'New', 'societypress' ) . '</span>';
+    }
+    echo '</div>';
 
     $meta_parts = [];
     if ( $doc->document_date ) {

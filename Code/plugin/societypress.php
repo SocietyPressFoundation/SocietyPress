@@ -22525,9 +22525,10 @@ function sp_render_group_edit_page(): void {
             return;
         }
         $members = $wpdb->get_results( $wpdb->prepare(
-            "SELECT gm.*, u.display_name, u.user_email
+            "SELECT gm.*, u.display_name, u.user_email, m.status AS member_status
              FROM {$prefix}group_members gm
              JOIN {$wpdb->users} u ON gm.user_id = u.ID
+             LEFT JOIN {$prefix}members m ON m.user_id = gm.user_id
              WHERE gm.group_id = %d
              ORDER BY u.display_name ASC",
             $group_id
@@ -22603,6 +22604,7 @@ function sp_render_group_edit_page(): void {
     <style id="sp-group-edit-css">
         .sp-group-order-input { width: 80px; }
         .sp-group-member-select { width: 300px; }
+        .sp-group-lapsed-flag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 10px; font-size: 11px; font-weight: 600; background: #fde8e8; color: #b32d2e; vertical-align: middle; }
     </style>
     <div class="wrap sp-admin-wrap">
         <h1><?php echo $group_id ? esc_html__( 'Edit Group', 'societypress' ) : esc_html__( 'Add New Group', 'societypress' ); ?></h1>
@@ -22659,7 +22661,12 @@ function sp_render_group_edit_page(): void {
                     <tbody>
                         <?php foreach ( $members as $gm ) : ?>
                             <tr>
-                                <td><?php echo esc_html( $gm->display_name ); ?></td>
+                                <td>
+                                    <?php echo esc_html( $gm->display_name ); ?>
+                                    <?php if ( ! empty( $gm->member_status ) && $gm->member_status !== 'active' ) : ?>
+                                        <span class="sp-group-lapsed-flag"><?php echo esc_html( sp_localized_status( $gm->member_status ) ); ?></span>
+                                    <?php endif; ?>
+                                </td>
                                 <td><?php echo esc_html( $gm->user_email ); ?></td>
                                 <td><?php echo esc_html( wp_date( 'M j, Y', strtotime( $gm->joined_at ) ) ); ?></td>
                                 <td><label><input type="checkbox" name="remove_members[]" value="<?php echo esc_attr( $gm->user_id ); ?>"> <?php esc_html_e( 'Remove', 'societypress' ); ?></label></td>

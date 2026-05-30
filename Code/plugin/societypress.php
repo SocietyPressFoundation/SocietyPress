@@ -61733,6 +61733,33 @@ function sp_render_blast_email_page(): void {
         exit;
     }
 
+    // Clone an existing blast into a fresh draft. WHY: societies send near-identical
+    // emails repeatedly (monthly meeting notice, renewal nudge); reusing a past
+    // one beats retyping it. Sent blasts are read-only, so this is how you "edit
+    // and resend" — it copies content + audience into a new editable draft.
+    if ( isset( $_GET['action'], $_GET['blast'] ) && $_GET['action'] === 'clone' ) {
+        $clone_id = absint( $_GET['blast'] );
+        check_admin_referer( 'sp_clone_blast_' . $clone_id );
+        $src = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$prefix}blast_emails WHERE id = %d", $clone_id ) );
+        if ( $src ) {
+            $wpdb->insert( $prefix . 'blast_emails', [
+                'subject'          => $src->subject,
+                'body'             => $src->body,
+                'recipient_type'   => $src->recipient_type,
+                'recipient_filter' => $src->recipient_filter,
+                'sender_id'        => get_current_user_id(),
+                'status'           => 'draft',
+                'total_recipients' => (int) $src->total_recipients,
+                'created_at'       => current_time( 'mysql' ),
+                'updated_at'       => current_time( 'mysql' ),
+            ] );
+            wp_redirect( admin_url( 'admin.php?page=sp-blast-email-compose&blast_id=' . (int) $wpdb->insert_id . '&cloned=1' ) );
+            exit;
+        }
+        wp_redirect( admin_url( 'admin.php?page=sp-blast-email' ) );
+        exit;
+    }
+
     // View a single blast email (read-only)
     $view_id = isset( $_GET['view'] ) ? absint( $_GET['view'] ) : 0;
     if ( $view_id ) {
@@ -61877,6 +61904,7 @@ function sp_render_blast_email_page(): void {
                                 <?php else : ?>
                                     <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email&view=' . $row->id ) ); ?>"><?php esc_html_e( 'View', 'societypress' ); ?></a> |
                                 <?php endif; ?>
+                                <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=sp-blast-email&action=clone&blast=' . $row->id ), 'sp_clone_blast_' . $row->id ) ); ?>"><?php esc_html_e( 'Clone', 'societypress' ); ?></a> |
                                 <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ); ?>" class="sp-inline" data-sp-confirm="<?php echo esc_attr( __( 'Delete this blast email?', 'societypress' ) ); ?>">
                                     <?php wp_nonce_field( 'sp_delete_blast_' . $row->id ); ?>
                                     <input type="hidden" name="action" value="delete">

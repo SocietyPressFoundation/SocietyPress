@@ -1905,6 +1905,7 @@ function sp_create_tables(): void {
         sku             VARCHAR(60)         NULL,
         description     TEXT                NULL,
         price           DECIMAL(10,2)       NOT NULL DEFAULT 0.00,
+        member_price    DECIMAL(10,2)       NULL,
         shipping_fee    DECIMAL(10,2)       NOT NULL DEFAULT 0.00,
         image_url       VARCHAR(500)        NULL,
         store_category  VARCHAR(50)         NULL,
@@ -45624,6 +45625,57 @@ function sp_is_member( int $user_id = 0 ): bool {
 }
 
 /**
+ * Whether the current user is an ACTIVE member (dues paid, not expired).
+ *
+ * WHY: Distinct from sp_is_member(), which is true for any member record
+ *      regardless of standing. Member benefits that hinge on good standing —
+ *      member store pricing, for one — should key off active status so a lapsed
+ *      member doesn't keep the discount.
+ */
+function sp_user_is_active_member(): bool {
+    $uid = get_current_user_id();
+    if ( ! $uid ) {
+        return false;
+    }
+    global $wpdb;
+    $status = $wpdb->get_var( $wpdb->prepare(
+        "SELECT status FROM {$wpdb->prefix}sp_members WHERE user_id = %d",
+        $uid
+    ) );
+    return $status === 'active';
+}
+
+/**
+ * Resolve the effective store price for a buyer.
+ *
+ * WHY: Societies commonly sell their publications cheaper to members as a
+ *      membership benefit. `price` is the standard (non-member) price; an
+ *      optional `member_price` undercuts it for active members. A member_price
+ *      that isn't actually a discount is ignored, so admins can't accidentally
+ *      charge members more.
+ *
+ * @param mixed     $regular      The standard price.
+ * @param mixed     $member_price The member price (null/'' = none).
+ * @param bool|null $is_member    Pass to avoid a per-row DB hit; null = look up.
+ */
+function sp_store_effective_price( $regular, $member_price, ?bool $is_member = null ): float {
+    $regular = (float) $regular;
+    if ( $member_price === null || $member_price === '' ) {
+        return $regular;
+    }
+    if ( $is_member === null ) {
+        $is_member = sp_user_is_active_member();
+    }
+    if ( $is_member ) {
+        $mp = (float) $member_price;
+        if ( $mp >= 0 && $mp < $regular ) {
+            return $mp;
+        }
+    }
+    return $regular;
+}
+
+/**
  * Bulk convert existing subscriber users to the sp_member role.
  *
  * WHY: Members imported before the sp_member role existed are all subscribers.
@@ -72037,6 +72089,9 @@ function sp_store_get_unified_listing( array $args = [] ): array {
 
     $category = isset( $args['category'] ) ? trim( (string) $args['category'] ) : '';
 
+    // Resolve member status once for the whole listing rather than per row.
+    $is_member = sp_user_is_active_member();
+
     // ---- Library-source products ----
     $store_acq_code = trim( $settings['store_acq_code'] ?? '' );
     $lib_where      = 'item_value IS NOT NULL AND item_value > 0';
@@ -72058,7 +72113,7 @@ function sp_store_get_unified_listing( array $args = [] ): array {
         $prod_where .= $wpdb->prepare( ' AND store_category = %s', $category );
     }
     $prod_rows = $wpdb->get_results(
-        "SELECT id, title, sku, description, price, image_url, store_category, stock_qty, sort_order
+        "SELECT id, title, sku, description, price, member_price, image_url, store_category, stock_qty, sort_order
          FROM {$prefix}store_products
          WHERE {$prod_where}"
     );
@@ -72078,6 +72133,8 @@ function sp_store_get_unified_listing( array $args = [] ): array {
             'pub_year'       => $row->pub_year ? (int) $row->pub_year : null,
             'description'    => $desc,
             'price'          => (float) $row->item_value,
+            'regular_price'  => (float) $row->item_value,
+            'member_price'   => null,
             'image_url'      => $row->cover_url ?: null,
             'store_category' => $row->store_category ?: null,
             'sku'            => null,
@@ -72094,7 +72151,9 @@ function sp_store_get_unified_listing( array $args = [] ): array {
             'author'         => null,
             'pub_year'       => null,
             'description'    => (string) ( $row->description ?? '' ),
-            'price'          => (float) $row->price,
+            'price'          => sp_store_effective_price( $row->price, $row->member_price, $is_member ),
+            'regular_price'  => (float) $row->price,
+            'member_price'   => ( $row->member_price === null ) ? null : (float) $row->member_price,
             'image_url'      => $row->image_url ?: null,
             'store_category' => $row->store_category ?: null,
             'sku'            => $row->sku ?: null,
@@ -72133,7 +72192,7 @@ function sp_store_lookup( string $source, int $id ): ?array {
 
     if ( $source === 'product' ) {
         $row = $wpdb->get_row( $wpdb->prepare(
-            "SELECT id, title, sku, description, price, shipping_fee, image_url, store_category, stock_qty
+            "SELECT id, title, sku, description, price, member_price, shipping_fee, image_url, store_category, stock_qty
              FROM {$prefix}store_products
              WHERE id = %d AND active = 1",
             $id
@@ -72146,7 +72205,12 @@ function sp_store_lookup( string $source, int $id ): ?array {
             'author'         => null,
             'pub_year'       => null,
             'description'    => (string) ( $row->description ?? '' ),
-            'price'          => (float) $row->price,
+            // Effective price honors member pricing for the current buyer — this
+            // is the value cart/checkout charges, so members are actually billed
+            // the member rate, not just shown it.
+            'price'          => sp_store_effective_price( $row->price, $row->member_price ),
+            'regular_price'  => (float) $row->price,
+            'member_price'   => ( $row->member_price === null ) ? null : (float) $row->member_price,
             'shipping_fee'   => (float) ( $row->shipping_fee ?? 0 ),
             'image_url'      => $row->image_url ?: null,
             'store_category' => $row->store_category ?: null,
@@ -72360,6 +72424,32 @@ function sp_render_store_frontend(): void {
             color: var(--sp-color-primary, #1a1a1a);
             margin-bottom: 12px;
         }
+        .sp-store-price-was {
+            font-size: 16px;
+            font-weight: 400;
+            color: #999;
+            text-decoration: line-through;
+            margin-right: 6px;
+        }
+        .sp-store-price-tag {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #166534;
+            background: #e8f5e9;
+            padding: 2px 7px;
+            border-radius: 10px;
+            vertical-align: middle;
+            margin-left: 4px;
+        }
+        .sp-store-member-hint {
+            font-size: 13px;
+            color: var(--sp-color-accent, #c9973a);
+            margin: -6px 0 12px;
+            font-weight: 600;
+        }
 
         .sp-store-actions {
             display: flex;
@@ -72507,7 +72597,32 @@ function sp_render_store_frontend(): void {
                                 <?php if ( $desc ) : ?>
                                     <div class="sp-store-desc"><?php echo esc_html( $desc ); ?></div>
                                 <?php endif; ?>
-                                <div class="sp-store-price"><?php echo esc_html( sp_format_currency( $entry['price'] ) ); ?></div>
+                                <?php
+                                // Member-pricing display. The listing already
+                                // resolved $entry['price'] to the effective rate
+                                // for this viewer; regular_price/member_price let
+                                // us show the discount (to members) or entice
+                                // non-members to join.
+                                $reg_price           = $entry['regular_price'] ?? $entry['price'];
+                                $mem_price           = $entry['member_price'] ?? null;
+                                $has_member_discount = ( $mem_price !== null && $mem_price < $reg_price );
+                                $viewer_gets_member  = ( $has_member_discount && $entry['price'] <= $mem_price );
+                                ?>
+                                <div class="sp-store-price">
+                                    <?php if ( $viewer_gets_member ) : ?>
+                                        <span class="sp-store-price-was"><?php echo esc_html( sp_format_currency( $reg_price ) ); ?></span>
+                                        <?php echo esc_html( sp_format_currency( $entry['price'] ) ); ?>
+                                        <span class="sp-store-price-tag"><?php esc_html_e( 'member price', 'societypress' ); ?></span>
+                                    <?php else : ?>
+                                        <?php echo esc_html( sp_format_currency( $entry['price'] ) ); ?>
+                                    <?php endif; ?>
+                                </div>
+                                <?php if ( $has_member_discount && ! $viewer_gets_member ) : ?>
+                                    <div class="sp-store-member-hint"><?php
+                                        /* translators: %s: discounted member price */
+                                        echo esc_html( sprintf( __( 'Members pay %s', 'societypress' ), sp_format_currency( $mem_price ) ) );
+                                    ?></div>
+                                <?php endif; ?>
                                 <div class="sp-store-actions">
                                     <?php if ( $entry['in_stock'] ) : ?>
                                         <input type="number" class="sp-store-qty" value="1" min="1" max="99" aria-label="<?php echo esc_attr( sprintf( __( 'Quantity for %s', 'societypress' ), $entry['title'] ) ); ?>">
@@ -74139,6 +74254,10 @@ function sp_render_store_product_edit_page(): void {
             'sku'            => sanitize_text_field( $_POST['sku'] ?? '' ) ?: null,
             'description'    => sanitize_textarea_field( $_POST['description'] ?? '' ) ?: null,
             'price'          => round( (float) ( $_POST['price'] ?? 0 ), 2 ),
+            // Blank member price = no member pricing (NULL). A value stores the
+            // member rate; it only applies when it's actually lower than price.
+            'member_price'   => ( trim( (string) ( $_POST['member_price'] ?? '' ) ) === '' )
+                                ? null : max( 0, round( (float) $_POST['member_price'], 2 ) ),
             'shipping_fee'   => max( 0, round( (float) ( $_POST['shipping_fee'] ?? 0 ), 2 ) ),
             'image_url'      => esc_url_raw( $_POST['image_url'] ?? '' ) ?: null,
             'store_category' => sanitize_text_field( $_POST['store_category'] ?? '' ) ?: null,
@@ -74208,6 +74327,14 @@ function sp_render_store_product_edit_page(): void {
                     <th scope="col"><label for="sp-prod-price"><?php esc_html_e( 'Price', 'societypress' ); ?></label></th>
                     <td>
                         <input type="number" name="price" id="sp-prod-price" value="<?php echo esc_attr( number_format( (float) ( $product->price ?? 0 ), 2, '.', '' ) ); ?>" step="0.01" min="0" class="sp-w-150">
+                        <p class="description"><?php esc_html_e( 'The regular price everyone pays.', 'societypress' ); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="col"><label for="sp-prod-member-price"><?php esc_html_e( 'Member price', 'societypress' ); ?></label></th>
+                    <td>
+                        <input type="number" name="member_price" id="sp-prod-member-price" value="<?php echo esc_attr( $product && $product->member_price !== null ? number_format( (float) $product->member_price, 2, '.', '' ) : '' ); ?>" step="0.01" min="0" class="sp-w-150" placeholder="<?php esc_attr_e( 'Optional', 'societypress' ); ?>">
+                        <p class="description"><?php esc_html_e( 'Optional discounted price for logged-in active members. Leave blank to charge everyone the regular price. Only applied when it is lower than the regular price.', 'societypress' ); ?></p>
                     </td>
                 </tr>
                 <tr>
@@ -84515,6 +84642,7 @@ add_action( 'admin_init', function () {
         ],
         'sp_store_products' => [
             'shipping_fee' => "ALTER TABLE {$wpdb->prefix}sp_store_products ADD COLUMN shipping_fee DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER price",
+            'member_price' => "ALTER TABLE {$wpdb->prefix}sp_store_products ADD COLUMN member_price DECIMAL(10,2) NULL AFTER price",
         ],
         'sp_orders'         => [
             'shipping_total' => "ALTER TABLE {$wpdb->prefix}sp_orders ADD COLUMN shipping_total DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER subtotal",

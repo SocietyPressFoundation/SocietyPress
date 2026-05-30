@@ -768,7 +768,9 @@ function sp_create_tables(): void {
         KEY tier_id (tier_id),
         KEY household_id (household_id),
         KEY last_name (last_name),
-        KEY expiration_date (expiration_date)
+        KEY expiration_date (expiration_date),
+        KEY expiration_status (expiration_date, status),
+        FULLTEXT KEY members_search (first_name, last_name, preferred_name, organization_name, city, member_number, interests, skills)
     ) {$charset_collate};" );
 
     // ========================================================================
@@ -887,7 +889,8 @@ function sp_create_tables(): void {
         meta_value  LONGTEXT            NULL,
         PRIMARY KEY (id),
         KEY user_id (user_id),
-        KEY meta_key (meta_key)
+        KEY meta_key (meta_key),
+        KEY user_meta (user_id, meta_key)
     ) {$charset_collate};" );
 
     // ========================================================================
@@ -1377,7 +1380,8 @@ function sp_create_tables(): void {
         created_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         KEY user_id (user_id),
-        KEY created_at (created_at)
+        KEY created_at (created_at),
+        KEY user_created (user_id, created_at)
     ) {$charset_collate};" );
 
     // ========================================================================
@@ -2495,6 +2499,36 @@ function sp_create_tables(): void {
         KEY sender_user_id (sender_user_id)
     ) {$charset_collate};" );
 
+    // ========================================================================
+    // sp_subscribers — Public mailing-list signups (separate from members)
+    //
+    // WHY: Members receive blasts through their membership. This table is the
+    //      PUBLIC newsletter list: anyone (non-members) can opt in via the
+    //      [societypress_subscribe] form. Double opt-in — a row starts
+    //      'pending' and only becomes 'confirmed' after the person clicks the
+    //      link in the confirmation email, which protects deliverability and
+    //      keeps the list consent-based for GDPR/CAN-SPAM. The unsubscribe
+    //      token backs the one-click unsubscribe link in every blast.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}subscribers (
+        id                 BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        email              VARCHAR(255)        NOT NULL,
+        name               VARCHAR(200)        NULL,
+        status             VARCHAR(20)         NOT NULL DEFAULT 'pending',
+        confirm_token      VARCHAR(64)         NULL,
+        unsubscribe_token  VARCHAR(64)         NOT NULL,
+        source             VARCHAR(50)         NULL,
+        ip_address         VARCHAR(45)         NULL,
+        created_at         DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        confirmed_at       DATETIME            NULL,
+        unsubscribed_at    DATETIME            NULL,
+        PRIMARY KEY (id),
+        UNIQUE KEY email (email),
+        KEY status (status),
+        KEY confirm_token (confirm_token),
+        KEY unsubscribe_token (unsubscribe_token)
+    ) {$charset_collate};" );
+
 
     // Store the schema version so we can run migrations in future updates
     // without re-running the full dbDelta on every page load.
@@ -3551,9 +3585,21 @@ function sp_localized_status( $slug, string $context = '' ): string {
  * would instead risk returning stale settings after any in-request
  * update_option() (e.g. the settings-save handler), so we deliberately don't.
  */
-function sp_settings(): array {
-    return get_option( 'societypress_settings', [] );
+function sp_settings( bool $refresh = false ): array {
+    // Static cache: sp_settings() is called ~180 times across a single request
+    // (render loops, profile pages, etc.). get_option() memoizes the value but
+    // still runs the 'option_societypress_settings' filter chain each call;
+    // caching here skips that. Busted on save via the update/add_option hooks
+    // below so a settings change within the same request is still seen.
+    static $cache = null;
+    if ( $cache === null || $refresh ) {
+        $opt   = get_option( 'societypress_settings', [] );
+        $cache = is_array( $opt ) ? $opt : [];
+    }
+    return $cache;
 }
+add_action( 'update_option_societypress_settings', static function () { sp_settings( true ); } );
+add_action( 'add_option_societypress_settings',    static function () { sp_settings( true ); } );
 
 /**
  * Format a monetary amount with the configured currency symbol/position.
@@ -3691,7 +3737,7 @@ function sp_get_modules(): array {
             'name'        => __( 'Blast Email', 'societypress' ),
             'description' => __( 'Send mass emails to all members or specific groups. Includes delivery tracking and opt-out management.', 'societypress' ),
             'icon'        => 'dashicons-email-alt',
-            'menu_slugs'  => [ 'sp-blast-email', 'sp-blast-email-compose', 'sp-email-templates' ],
+            'menu_slugs'  => [ 'sp-blast-email', 'sp-blast-email-compose', 'sp-email-templates', 'sp-subscribers' ],
         ],
         'gallery' => [
             'name'        => __( 'Photo Gallery', 'societypress' ),
@@ -5183,6 +5229,15 @@ add_action( 'admin_menu', function () {
         'sp_render_blast_email_page'
     );
 
+    add_submenu_page(
+        'societypress',
+        __( 'Subscribers — SocietyPress', 'societypress' ),
+        __( 'Subscribers', 'societypress' ),
+        'manage_options',
+        'sp-subscribers',
+        'sp_render_subscribers_page'
+    );
+
     // Hidden: Compose/edit blast email page
     add_submenu_page(
         null,
@@ -6203,7 +6258,15 @@ add_action( 'wp_enqueue_scripts', function () {
     // settings color change was silently ignored, masked only because the
     // widget CSS elsewhere references var(--sp-color-*, <default-fallback>)
     // and those hardcoded fallbacks match the defaults.
-    wp_register_style( 'sp-design-overrides', false, [ 'societypress-style' ], SOCIETYPRESS_VERSION );
+    // WHY the conditional dep: the plugin can run under a non-SocietyPress
+    // theme (e.g. the marketing site), where 'societypress-style' is never
+    // registered. Declaring an unregistered dependency emits a WP 6.9.1
+    // "dependencies that are not registered" notice on every page load AND
+    // drops the inline style entirely. Priority 999 already guarantees this
+    // loads after the active theme's stylesheets, so the dependency is only
+    // needed to satisfy WordPress when the handle exists.
+    $deps = wp_style_is( 'societypress-style', 'registered' ) ? [ 'societypress-style' ] : [];
+    wp_register_style( 'sp-design-overrides', false, $deps, SOCIETYPRESS_VERSION );
     wp_enqueue_style( 'sp-design-overrides' );
     wp_add_inline_style( 'sp-design-overrides', sp_get_design_override_css() );
 }, 999 );
@@ -11804,47 +11867,57 @@ function sp_insights_stats_members( array $window ): array {
     $access  = $wpdb->prefix . 'sp_access_log';
     $members = $wpdb->prefix . 'sp_members';
     $zeroes  = array_fill( 0, max( 1, (int) ( $window['buckets'] ?? 12 ) ), 0 );
+    $label   = __( 'Active members', 'societypress' );
+
+    // Cache hot: this panel renders on every Insights load alongside a dozen
+    // others. A short transient keeps it viable on shared hosts with a large
+    // access_log. Keyed on the window so each date range caches independently.
+    $cache_key = 'sp_insights_members_' . md5( wp_json_encode( $window ) );
+    $cached    = get_transient( $cache_key );
+    if ( is_array( $cached ) && isset( $cached['value'], $cached['sparkline'] ) ) {
+        return [ 'label' => $label, 'value' => $cached['value'], 'value_kind' => 'count', 'sparkline' => $cached['sparkline'] ];
+    }
 
     $access_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $access ) );
     if ( ! $access_exists ) {
-        return [
-            'label'      => __( 'Active members', 'societypress' ),
-            'value'      => 0,
-            'value_kind' => 'count',
-            'sparkline'  => $zeroes,
-        ];
+        return [ 'label' => $label, 'value' => 0, 'value_kind' => 'count', 'sparkline' => $zeroes ];
     }
 
-    $total = (int) $wpdb->get_var( $wpdb->prepare(
-        "SELECT COUNT(DISTINCT a.user_id)
+    // WHY one query, not 13: previously this fired 1 total + 12 per-bucket
+    //  COUNT(DISTINCT)s. Pull every (user_id, timestamp) hit in the window
+    //  once and compute the distinct-active counts in PHP. Distinct counting
+    //  can't be summed across buckets — a member active in two buckets counts
+    //  once in the total but once in each bucket — so PHP sets handle both.
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT a.user_id AS uid, UNIX_TIMESTAMP(a.created_at) AS ts
            FROM {$access} a
      INNER JOIN {$members} m ON a.user_id = m.user_id
           WHERE a.user_id IS NOT NULL
             AND a.created_at BETWEEN %s AND %s",
         $window['start'] . ' 00:00:00',
         $window['end']   . ' 23:59:59'
-    ) );
+    ), ARRAY_A );
 
-    $sparkline = [];
-    foreach ( sp_insights_bucket_edges( $window ) as $edge ) {
-        $sparkline[] = (int) $wpdb->get_var( $wpdb->prepare(
-            "SELECT COUNT(DISTINCT a.user_id)
-               FROM {$access} a
-         INNER JOIN {$members} m ON a.user_id = m.user_id
-              WHERE a.user_id IS NOT NULL
-                AND a.created_at >= %s
-                AND a.created_at <  %s",
-            wp_date( 'Y-m-d H:i:s', $edge['start_ts'] ),
-            wp_date( 'Y-m-d H:i:s', $edge['end_ts'] )
-        ) );
+    $edges        = sp_insights_bucket_edges( $window );
+    $total_users  = [];
+    $bucket_users = array_fill( 0, count( $edges ), [] );
+    foreach ( $rows as $row ) {
+        $uid = (int) $row['uid'];
+        $ts  = (int) $row['ts'];
+        $total_users[ $uid ] = true;
+        foreach ( $edges as $i => $edge ) {
+            if ( $ts >= $edge['start_ts'] && $ts < $edge['end_ts'] ) {
+                $bucket_users[ $i ][ $uid ] = true;
+                break;
+            }
+        }
     }
+    $total     = count( $total_users );
+    $sparkline = array_map( 'count', $bucket_users );
 
-    return [
-        'label'      => __( 'Active members', 'societypress' ),
-        'value'      => $total,
-        'value_kind' => 'count',
-        'sparkline'  => $sparkline,
-    ];
+    set_transient( $cache_key, [ 'value' => $total, 'sparkline' => $sparkline ], 5 * MINUTE_IN_SECONDS );
+
+    return [ 'label' => $label, 'value' => $total, 'value_kind' => 'count', 'sparkline' => $sparkline ];
 }
 
 function sp_insights_stats_events( array $window ): array {
@@ -11891,38 +11964,47 @@ function sp_insights_stats_governance( array $window ): array {
     global $wpdb;
     $table  = $wpdb->prefix . 'sp_volunteer_hours';
     $zeroes = array_fill( 0, max( 1, (int) ( $window['buckets'] ?? 12 ) ), 0 );
+    $label  = __( 'Volunteer hours', 'societypress' );
+
+    $cache_key = 'sp_insights_governance_' . md5( wp_json_encode( $window ) );
+    $cached    = get_transient( $cache_key );
+    if ( is_array( $cached ) && isset( $cached['value'], $cached['sparkline'] ) ) {
+        return [ 'label' => $label, 'value' => $cached['value'], 'value_kind' => 'hours', 'sparkline' => $cached['sparkline'] ];
+    }
 
     $exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
     if ( ! $exists ) {
-        return [
-            'label'      => __( 'Volunteer hours', 'societypress' ),
-            'value'      => 0,
-            'value_kind' => 'hours',
-            'sparkline'  => $zeroes,
-        ];
+        return [ 'label' => $label, 'value' => 0, 'value_kind' => 'hours', 'sparkline' => $zeroes ];
     }
 
-    $total = (float) $wpdb->get_var( $wpdb->prepare(
-        "SELECT COALESCE(SUM(hours), 0) FROM {$table} WHERE activity_date BETWEEN %s AND %s",
+    // One query instead of 1 total + 12 per-bucket SUM()s: pull every
+    // (timestamp, hours) row in the window and aggregate in PHP.
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT UNIX_TIMESTAMP(activity_date) AS ts, hours FROM {$table}
+          WHERE activity_date BETWEEN %s AND %s",
         $window['start'],
         $window['end']
-    ) );
+    ), ARRAY_A );
 
-    $sparkline = [];
-    foreach ( sp_insights_bucket_edges( $window ) as $edge ) {
-        $sparkline[] = (int) round( (float) $wpdb->get_var( $wpdb->prepare(
-            "SELECT COALESCE(SUM(hours), 0) FROM {$table} WHERE activity_date >= %s AND activity_date < %s",
-            wp_date( 'Y-m-d', $edge['start_ts'] ),
-            wp_date( 'Y-m-d', $edge['end_ts'] )
-        ) ) );
+    $edges     = sp_insights_bucket_edges( $window );
+    $total     = 0.0;
+    $bucket_sum = array_fill( 0, count( $edges ), 0.0 );
+    foreach ( $rows as $row ) {
+        $hours = (float) $row['hours'];
+        $ts    = (int) $row['ts'];
+        $total += $hours;
+        foreach ( $edges as $i => $edge ) {
+            if ( $ts >= $edge['start_ts'] && $ts < $edge['end_ts'] ) {
+                $bucket_sum[ $i ] += $hours;
+                break;
+            }
+        }
     }
+    $sparkline = array_map( static fn( $v ) => (int) round( $v ), $bucket_sum );
 
-    return [
-        'label'      => __( 'Volunteer hours', 'societypress' ),
-        'value'      => $total,
-        'value_kind' => 'hours',
-        'sparkline'  => $sparkline,
-    ];
+    set_transient( $cache_key, [ 'value' => $total, 'sparkline' => $sparkline ], 5 * MINUTE_IN_SECONDS );
+
+    return [ 'label' => $label, 'value' => $total, 'value_kind' => 'hours', 'sparkline' => $sparkline ];
 }
 
 function sp_insights_stats_store( array $window ): array {
@@ -11955,45 +12037,52 @@ function sp_insights_stats_donations( array $window ): array {
     $table  = $wpdb->prefix . 'sp_donations';
     $zeroes = array_fill( 0, max( 1, (int) ( $window['buckets'] ?? 12 ) ), 0 );
 
+    $label = __( 'Total raised', 'societypress' );
+
+    $cache_key = 'sp_insights_donations_' . md5( wp_json_encode( $window ) );
+    $cached    = get_transient( $cache_key );
+    if ( is_array( $cached ) && isset( $cached['value'], $cached['sparkline'] ) ) {
+        return [ 'label' => $label, 'value' => $cached['value'], 'value_kind' => 'currency', 'sparkline' => $cached['sparkline'] ];
+    }
+
     $exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
     if ( ! $exists ) {
-        return [
-            'label'      => __( 'Total raised', 'societypress' ),
-            'value'      => 0,
-            'value_kind' => 'currency',
-            'sparkline'  => $zeroes,
-        ];
+        return [ 'label' => $label, 'value' => 0, 'value_kind' => 'currency', 'sparkline' => $zeroes ];
     }
 
     // Statuses we count as actual revenue. 'recorded' = manual cash/check entry,
     // 'paid' = Stripe one-time, 'subscription_active' = Stripe recurring.
     $exclude = "status NOT IN ('failed','pending','cancelled','refunded')";
 
-    $total = (float) $wpdb->get_var( $wpdb->prepare(
-        "SELECT COALESCE(SUM(amount), 0) FROM {$table}
+    // One query instead of 1 total + 12 per-bucket SUM()s: pull every
+    // (timestamp, amount) row in the window and aggregate in PHP.
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT UNIX_TIMESTAMP(date) AS ts, amount FROM {$table}
           WHERE date BETWEEN %s AND %s
             AND {$exclude}",
         $window['start'],
         $window['end']
-    ) );
+    ), ARRAY_A );
 
-    $sparkline = [];
-    foreach ( sp_insights_bucket_edges( $window ) as $edge ) {
-        $sparkline[] = (int) round( (float) $wpdb->get_var( $wpdb->prepare(
-            "SELECT COALESCE(SUM(amount), 0) FROM {$table}
-              WHERE date >= %s AND date < %s
-                AND {$exclude}",
-            wp_date( 'Y-m-d', $edge['start_ts'] ),
-            wp_date( 'Y-m-d', $edge['end_ts'] )
-        ) ) );
+    $edges      = sp_insights_bucket_edges( $window );
+    $total      = 0.0;
+    $bucket_sum = array_fill( 0, count( $edges ), 0.0 );
+    foreach ( $rows as $row ) {
+        $amount = (float) $row['amount'];
+        $ts     = (int) $row['ts'];
+        $total += $amount;
+        foreach ( $edges as $i => $edge ) {
+            if ( $ts >= $edge['start_ts'] && $ts < $edge['end_ts'] ) {
+                $bucket_sum[ $i ] += $amount;
+                break;
+            }
+        }
     }
+    $sparkline = array_map( static fn( $v ) => (int) round( $v ), $bucket_sum );
 
-    return [
-        'label'      => __( 'Total raised', 'societypress' ),
-        'value'      => $total,
-        'value_kind' => 'currency',
-        'sparkline'  => $sparkline,
-    ];
+    set_transient( $cache_key, [ 'value' => $total, 'sparkline' => $sparkline ], 5 * MINUTE_IN_SECONDS );
+
+    return [ 'label' => $label, 'value' => $total, 'value_kind' => 'currency', 'sparkline' => $sparkline ];
 }
 
 function sp_insights_stats_blast_email( array $window ): array {
@@ -12439,10 +12528,11 @@ class SP_Members_List_Table extends WP_List_Table {
      * Email column — pulled from wp_users, not our table.
      */
     protected function column_email( $item ): string {
-        $user = get_userdata( $item->user_id );
-        if ( $user ) {
-            return '<a href="mailto:' . esc_attr( $user->user_email ) . '">'
-                 . esc_html( $user->user_email ) . '</a>';
+        // user_email is projected by prepare_items' JOIN on wp_users.
+        $email = $item->user_email ?? '';
+        if ( $email ) {
+            return '<a href="mailto:' . esc_attr( $email ) . '">'
+                 . esc_html( $email ) . '</a>';
         }
         return '—';
     }
@@ -12476,12 +12566,8 @@ class SP_Members_List_Table extends WP_List_Table {
         if ( ! $item->tier_id ) {
             return '—';
         }
-        global $wpdb;
-        $tier_name = $wpdb->get_var( $wpdb->prepare(
-            "SELECT name FROM {$wpdb->prefix}sp_membership_tiers WHERE id = %d",
-            $item->tier_id
-        ) );
-        return esc_html( $tier_name ?: '—' );
+        // tier_name is projected by prepare_items' JOIN on sp_membership_tiers.
+        return esc_html( $item->tier_name ?: '—' );
     }
 
     /**
@@ -12728,8 +12814,13 @@ class SP_Members_List_Table extends WP_List_Table {
         $offset       = ( $current_page - 1 ) * $per_page;
 
         // Fetch the rows
-        $query = "SELECT m.* FROM {$table} m
+        // WHY the joins: column_email and column_plan would otherwise fire one
+        //  query per row (get_userdata + a tier-name lookup) — 50+ extra
+        //  queries on a full page. Project user_email and the tier name here so
+        //  both columns render from the single result set.
+        $query = "SELECT m.*, u.user_email, t.name AS tier_name FROM {$table} m
                   LEFT JOIN {$wpdb->users} u ON m.user_id = u.ID
+                  LEFT JOIN {$wpdb->prefix}sp_membership_tiers t ON t.id = m.tier_id
                   {$where_sql}
                   ORDER BY m.{$orderby} {$order}
                   LIMIT %d OFFSET %d";
@@ -21906,14 +21997,27 @@ function sp_log_url_access(): void {
     }
 
     global $wpdb;
-    $wpdb->insert( $wpdb->prefix . 'sp_access_log', [
+    $row = [
         'user_id'    => $user_id ?: null,
         'url'        => substr( esc_url_raw( home_url( $req ) ), 0, 2048 ),
         'referer'    => isset( $_SERVER['HTTP_REFERER'] ) ? substr( esc_url_raw( $_SERVER['HTTP_REFERER'] ), 0, 2048 ) : null,
         'user_agent' => isset( $_SERVER['HTTP_USER_AGENT'] ) ? substr( sanitize_text_field( $_SERVER['HTTP_USER_AGENT'] ), 0, 500 ) : null,
         'ip_address' => sp_get_remote_ip(),
         'created_at' => current_time( 'mysql' ),
-    ] );
+    ];
+
+    // Defer the write to shutdown so it never blocks page render. WHY not
+    // wp_schedule_single_event: that writes the cron array to the options table
+    // on every pageview — costlier than the INSERT it would defer. Where the
+    // SAPI provides fastcgi_finish_request(), the response is flushed to the
+    // visitor first, so the access-log write happens after they already have
+    // the page. Elsewhere it still runs after all page logic, off the hot path.
+    add_action( 'shutdown', static function () use ( $wpdb, $row ) {
+        if ( function_exists( 'fastcgi_finish_request' ) ) {
+            fastcgi_finish_request();
+        }
+        $wpdb->insert( $wpdb->prefix . 'sp_access_log', $row );
+    }, 99 );
 }
 add_action( 'template_redirect', 'sp_log_url_access' );
 add_action( 'admin_init',        'sp_log_url_access' );
@@ -29585,6 +29689,31 @@ function sp_get_blank_template_path(): string {
     }
     return $blank_path;
 }
+
+/**
+ * Turn a user search string into a MySQL FULLTEXT BOOLEAN MODE query.
+ *
+ * WHY: FULLTEXT search is dramatically faster than leading-wildcard LIKE on
+ *      large tables (members, records), but raw user input can contain boolean
+ *      operators (+ - * " ( ) ~ @ <>) that would change the query's meaning or
+ *      error out. We strip those, then require each whitespace-separated token
+ *      as a prefix match ("+stri*") so typing the start of a name or word finds
+ *      it — the behavior people expect from a search box. Tokens shorter than
+ *      the server's minimum token length simply won't match; that 3-character
+ *      floor is an accepted trade for the speed.
+ *
+ * @param string $search Raw user search string.
+ * @return string A BOOLEAN MODE query, or '' if nothing searchable remains.
+ */
+function sp_fulltext_boolean_query( string $search ): string {
+    $clean  = preg_replace( '/[+\-><()~*"@]+/', ' ', $search );
+    $tokens = preg_split( '/\s+/', trim( (string) $clean ), -1, PREG_SPLIT_NO_EMPTY );
+    if ( empty( $tokens ) ) {
+        return '';
+    }
+    return implode( ' ', array_map( static fn( $t ) => '+' . $t . '*', $tokens ) );
+}
+
 /**
  * Render the membership directory — the main content between header and footer.
  *
@@ -29634,6 +29763,7 @@ function sp_render_directory( array $settings ): void {
     // can filter specifically by surname being researched without mixing it
     // into the general name/email search.
     $surname_search = isset( $_GET['sp_surname'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_surname'] ) ) : '';
+    $surname_fuzzy  = sp_surname_fuzzy_requested();
 
     // Sort column and direction
     $allowed_sorts = [ 'last_name', 'first_name', 'city', 'state', 'join_date', 'tier_name', 'phone', 'user_email', 'website' ];
@@ -29670,34 +29800,23 @@ function sp_render_directory( array $settings ): void {
         $params[] = $status_filter;
     }
 
-    // Text search — look in name, city, email, member number, interests, skills, and surnames
+    // Text search — name, city, member number, interests, skills via FULLTEXT.
+    // WHY MATCH not LIKE: leading-wildcard LIKE on these columns forces a full
+    //  table scan (no index can serve '%term%'). The members_search FULLTEXT
+    //  index makes prefix/word search fast on large rosters. ORing MATCH with
+    //  LIKE on other columns would defeat the index, so email is dropped from
+    //  free-text (it's privacy-gated and rarely searched here) and surnames
+    //  keep their own dedicated filter below.
     if ( $search !== '' ) {
-        $like     = '%' . $wpdb->esc_like( $search ) . '%';
-        $where[]  = "(
-            m.first_name LIKE %s
-            OR m.last_name LIKE %s
-            OR m.preferred_name LIKE %s
-            OR m.organization_name LIKE %s
-            OR m.city LIKE %s
-            OR m.member_number LIKE %s
-            OR m.interests LIKE %s
-            OR m.skills LIKE %s
-            OR u.user_email LIKE %s
-            OR EXISTS (
-                SELECT 1 FROM {$prefix}member_surnames s
-                WHERE s.user_id = m.user_id AND s.surname LIKE %s
-            )
-        )";
-        $params[] = $like; // first_name
-        $params[] = $like; // last_name
-        $params[] = $like; // preferred_name
-        $params[] = $like; // organization_name
-        $params[] = $like; // city
-        $params[] = $like; // member_number
-        $params[] = $like; // interests
-        $params[] = $like; // skills
-        $params[] = $like; // user_email
-        $params[] = $like; // surname
+        $bool = sp_fulltext_boolean_query( $search );
+        if ( $bool !== '' ) {
+            $where[]  = "MATCH (m.first_name, m.last_name, m.preferred_name, m.organization_name, m.city, m.member_number, m.interests, m.skills) AGAINST (%s IN BOOLEAN MODE)";
+            $params[] = $bool;
+        } else {
+            // Nothing searchable survived sanitizing — return no matches rather
+            // than silently ignoring the search and showing the whole roster.
+            $where[] = '1 = 0';
+        }
     }
 
     // Dedicated surname filter — matches against the surnames table specifically.
@@ -29706,12 +29825,14 @@ function sp_render_directory( array $settings ): void {
     //      through general search results. A dedicated surname filter makes
     //      this dead simple.
     if ( $surname_search !== '' ) {
-        $surname_like = '%' . $wpdb->esc_like( $surname_search ) . '%';
-        $where[]  = "EXISTS (
+        list( $sn_sql, $sn_params ) = sp_surname_match_clause( $surname_search, 's', $surname_fuzzy );
+        $where[] = "EXISTS (
             SELECT 1 FROM {$prefix}member_surnames s
-            WHERE s.user_id = m.user_id AND s.surname LIKE %s
+            WHERE s.user_id = m.user_id AND {$sn_sql}
         )";
-        $params[] = $surname_like;
+        foreach ( $sn_params as $sn_param ) {
+            $params[] = $sn_param;
+        }
     }
 
     // Group/committee filter — find members who belong to the selected group
@@ -29995,6 +30116,11 @@ function sp_render_directory( array $settings ): void {
                            value="<?php echo esc_attr( $surname_search ); ?>"
                            placeholder="<?php echo esc_attr__( 'e.g. Smith', 'societypress' ); ?>"
                            class="sp-filter-input">
+                    <label class="sp-filter-checkbox-label" for="sp-filter-fuzzy">
+                        <input type="hidden" name="sp_fuzzy" value="0">
+                        <input type="checkbox" name="sp_fuzzy" value="1" id="sp-filter-fuzzy" <?php checked( $surname_fuzzy, true ); ?>>
+                        <?php echo esc_html__( 'Also match similar spellings', 'societypress' ); ?>
+                    </label>
                 </div>
 
             </div>
@@ -33841,6 +33967,62 @@ function sp_render_builder_widget_member_directory( array $s ): void {
 /**
  * Render: Surname Lookup
  */
+/**
+ * Build a surname-match SQL fragment with optional phonetic ("sounds like")
+ * matching, plus its bound parameters.
+ *
+ * WHY: Census-era and hand-transcribed genealogy records are riddled with
+ *      spelling drift — Mueller/Muller/Müller, Schmidt/Schmitt, Reilly/Riley.
+ *      We already compute and index soundex_code and metaphone_code on every
+ *      surname row at write time, but the searches only ever did a substring
+ *      LIKE, so a researcher entering one variant got zero results for the
+ *      others. This makes the stored phonetic columns actually do their job.
+ *
+ * The returned fragment references the surnames table by $alias (default 's'),
+ * so callers can drop it into an EXISTS subquery or a JOINed query alike. The
+ * soundex()/metaphone() calls here use the same PHP functions that populated
+ * the stored columns, so the equality matches line up exactly.
+ *
+ * @return array{0:string,1:array} [ sql_fragment, ordered_params ]
+ */
+function sp_surname_match_clause( string $term, string $alias = 's', bool $fuzzy = true ): array {
+    global $wpdb;
+
+    $sql    = "{$alias}.surname LIKE %s";
+    $params = [ '%' . $wpdb->esc_like( $term ) . '%' ];
+
+    if ( $fuzzy ) {
+        $soundex   = soundex( $term );
+        $metaphone = metaphone( $term );
+        $ors       = [];
+        if ( $soundex !== '' ) {
+            $ors[]    = "{$alias}.soundex_code = %s";
+            $params[] = $soundex;
+        }
+        if ( $metaphone !== '' ) {
+            $ors[]    = "{$alias}.metaphone_code = %s";
+            $params[] = $metaphone;
+        }
+        if ( ! empty( $ors ) ) {
+            $sql = '( ' . $sql . ' OR ' . implode( ' OR ', $ors ) . ' )';
+        }
+    }
+
+    return [ $sql, $params ];
+}
+
+/**
+ * Whether the current request wants phonetic surname matching. Defaults to on
+ * when the parameter is absent (first page load) so researchers get variant
+ * spellings without opting in; an explicit '0' from the unchecked toggle turns
+ * it off. WHY a leading hidden 0 + checkbox 1 in the forms: a GET checkbox that
+ * is unchecked submits nothing, which would re-enable the default — the hidden
+ * field guarantees an explicit value either way.
+ */
+function sp_surname_fuzzy_requested(): bool {
+    return ( $_GET['sp_fuzzy'] ?? '1' ) !== '0';
+}
+
 function sp_render_builder_widget_surname_lookup( array $s ): void {
     global $wpdb;
     $login_required = $s['login_required'] ?? true;
@@ -33892,6 +34074,16 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
     border: 1px solid #ccc;
     border-radius: 6px;
     font-size: 16px;
+}
+
+/* sp-surname-fuzzy-toggle — "Also match similar spellings" checkbox label,
+   kept on one line and vertically centered against the search field */
+.sp-surname-fuzzy-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    font-size: 14px;
 }
 
 /* sp-surname-results-table — Results data table */
@@ -34051,23 +34243,32 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
 }
 </style>';
 
+    $fuzzy = sp_surname_fuzzy_requested();
+
     echo '<form method="get" class="sp-surname-search-form">';
     echo '<input type="text" name="sp_surname" value="' . esc_attr( $search ) . '" placeholder="' . esc_attr__( 'Search surnames…', 'societypress' ) . '" class="sp-surname-search-input">';
     echo '<button type="submit" class="sp-btn sp-btn-primary">' . esc_html__( 'Search', 'societypress' ) . '</button>';
+    // Phonetic-match toggle. Hidden 0 + checkbox 1 so an unchecked box submits
+    // an explicit "off" rather than silently falling back to the default-on.
+    echo '<label class="sp-surname-fuzzy-toggle">';
+    echo '<input type="hidden" name="sp_fuzzy" value="0">';
+    echo '<input type="checkbox" name="sp_fuzzy" value="1"' . checked( $fuzzy, true, false ) . '> ';
+    echo esc_html__( 'Also match similar spellings', 'societypress' );
+    echo '</label>';
     echo '</form>';
 
     if ( ! empty( $search ) ) {
-        $like = '%' . $wpdb->esc_like( $search ) . '%';
         // WHY: We also select m.user_id so the "Contact Researcher" button
         //      can reference the researcher without exposing their email.
+        list( $surname_sql, $surname_params ) = sp_surname_match_clause( $search, 's', $fuzzy );
         $results = $wpdb->get_results( $wpdb->prepare(
             "SELECT s.surname, s.county, s.state, s.country, s.year_from, s.year_to,
                     m.user_id, m.first_name, m.last_name
              FROM {$prefix}member_surnames s
              INNER JOIN {$prefix}members m ON s.user_id = m.user_id
-             WHERE s.surname LIKE %s AND m.status = 'active'
+             WHERE {$surname_sql} AND m.status = 'active'
              ORDER BY s.surname ASC, m.last_name ASC",
-            $like
+            ...$surname_params
         ) );
 
         if ( ! empty( $results ) ) {
@@ -34081,29 +34282,32 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
             echo '<th class="sp-surname-th-center">' . esc_html__( 'Contact', 'societypress' ) . '</th>';
             echo '</tr></thead><tbody>';
 
-            // WHY: Track which user IDs we've already checked for opt-out so we
-            //      don't re-query the same member's preferences on every row.
+            // Batch-load the surname-contact opt-out for every researcher in
+            // the result set in one query. WHY: this was a meta lookup per
+            // unique researcher — one round-trip each inside the row loop.
+            //      Default to allowed unless an explicit '0' opt-out exists.
+            $researcher_ids        = array_values( array_unique( array_map( static fn( $r ) => (int) $r->user_id, $results ) ) );
             $contact_allowed_cache = [];
+            if ( ! empty( $researcher_ids ) ) {
+                $in_rids = implode( ',', $researcher_ids );
+                $optouts = [];
+                foreach ( (array) $wpdb->get_results(
+                    "SELECT user_id, meta_value FROM {$prefix}member_meta
+                     WHERE meta_key = 'pref_email_surnames' AND user_id IN ({$in_rids})"
+                ) as $mr ) {
+                    $optouts[ (int) $mr->user_id ] = $mr->meta_value;
+                }
+                foreach ( $researcher_ids as $rid ) {
+                    $contact_allowed_cache[ $rid ] = ! ( isset( $optouts[ $rid ] ) && $optouts[ $rid ] === '0' );
+                }
+            }
 
             foreach ( $results as $row ) {
                 $loc = implode( ', ', array_filter( [ $row->county, $row->state, $row->country ] ) ) ?: '—';
                 $period = ( $row->year_from && $row->year_to ) ? "{$row->year_from}–{$row->year_to}"
                     : ( $row->year_from ? "{$row->year_from}–" : ( $row->year_to ? "–{$row->year_to}" : '—' ) );
 
-                // Check if this researcher allows surname contact emails.
-                // WHY: Members can opt out via pref_email_surnames in their profile.
-                //      We cache the result per user_id to avoid repeated DB queries
-                //      when a researcher has multiple surnames listed.
-                if ( ! isset( $contact_allowed_cache[ $row->user_id ] ) ) {
-                    $meta_val = $wpdb->get_var( $wpdb->prepare(
-                        "SELECT meta_value FROM {$prefix}member_meta
-                         WHERE user_id = %d AND meta_key = 'pref_email_surnames'",
-                        $row->user_id
-                    ) );
-                    // Default to allowed (1) if no preference has been set
-                    $contact_allowed_cache[ $row->user_id ] = ( $meta_val === '0' ) ? false : true;
-                }
-
+                // Surname-contact opt-out was batch-loaded above.
                 echo '<tr>';
                 echo '<td class="sp-surname-td"><strong>' . esc_html( $row->surname ) . '</strong></td>';
                 echo '<td class="sp-surname-td">' . esc_html( $loc ) . '</td>';
@@ -46372,10 +46576,31 @@ function sp_send_event_reminders(): void {
         $target_date = date( 'Y-m-d', strtotime( "+{$days_before} days", current_time( 'timestamp' ) ) );
 
         $events = $wpdb->get_results( $wpdb->prepare(
-            "SELECT * FROM {$evt_table}
+            "SELECT id, title, event_date, start_time, end_time,
+                    location_name, location_address, is_virtual, virtual_url
+               FROM {$evt_table}
              WHERE event_date = %s AND status = 'scheduled' AND registration_enabled = 1",
             $target_date
         ) );
+
+        if ( empty( $events ) ) {
+            continue;
+        }
+
+        // Pre-load which (event, registration) pairs already received this
+        // reminder type, in one query. WHY: the per-registrant duplicate check
+        // below was a COUNT() per registrant — events × registrants queries per
+        // run. One IN() query plus a PHP hash set does the same work.
+        $event_ids   = array_map( static fn( $e ) => (int) $e->id, $events );
+        $in_ids      = implode( ',', $event_ids );
+        $sent_lookup = [];
+        foreach ( (array) $wpdb->get_results( $wpdb->prepare(
+            "SELECT event_id, registration_id FROM {$rem_table}
+             WHERE reminder_type = %s AND event_id IN ({$in_ids})",
+            $reminder_type
+        ) ) as $sr ) {
+            $sent_lookup[ (int) $sr->event_id . ':' . (int) $sr->registration_id ] = true;
+        }
 
         foreach ( $events as $event ) {
             // Get confirmed registrants for this event
@@ -46403,13 +46628,9 @@ function sp_send_event_reminders(): void {
                 // Check if this specific reminder was already sent
                 // WHY: Prevents duplicate sends if cron fires multiple times
                 //      in the same day (which wp_cron can do under load).
-                $already_sent = $wpdb->get_var( $wpdb->prepare(
-                    "SELECT COUNT(*) FROM {$rem_table}
-                     WHERE event_id = %d AND registration_id = %d AND reminder_type = %s",
-                    $event->id, $reg->reg_id, $reminder_type
-                ) );
-
-                if ( $already_sent ) {
+                //      Looked up from the pre-loaded set, not a per-row query.
+                $sent_key = (int) $event->id . ':' . (int) $reg->reg_id;
+                if ( isset( $sent_lookup[ $sent_key ] ) ) {
                     continue;
                 }
 
@@ -46451,6 +46672,7 @@ function sp_send_event_reminders(): void {
                     'reminder_type'   => $reminder_type,
                     'sent_at'         => current_time( 'mysql' ),
                 ] );
+                $sent_lookup[ $sent_key ] = true;
             }
         }
     }
@@ -50226,6 +50448,49 @@ function sp_render_builder_widget_volunteer_stats( array $s ): void {
 
 
 /**
+/**
+ * First-photo cover fallback for a set of albums, resolved in one query.
+ *
+ * WHY: An album with no explicitly chosen cover image used to render a blank
+ *      placeholder icon even when it held photos. ENS (and plain common sense)
+ *      use the album's first photo as the cover. Returns album_id =>
+ *      attachment_id for the lowest-sort_order approved photo in each album,
+ *      so render loops can fall back without a per-album query.
+ *
+ * @param int[] $album_ids
+ * @return array<int,int>
+ */
+function sp_album_cover_fallbacks( array $album_ids ): array {
+    global $wpdb;
+
+    $album_ids = array_values( array_filter( array_map( 'intval', $album_ids ) ) );
+    if ( empty( $album_ids ) ) {
+        return [];
+    }
+
+    $prefix = $wpdb->prefix . 'sp_';
+    $in     = implode( ',', $album_ids ); // values are cast to int above — safe to inline
+    $rows   = $wpdb->get_results(
+        "SELECT pai.album_id, pai.attachment_id
+         FROM {$prefix}photo_album_items pai
+         INNER JOIN (
+             SELECT album_id, MIN(sort_order) AS ms
+             FROM {$prefix}photo_album_items
+             WHERE album_id IN ({$in}) AND submission_status = 'approved'
+             GROUP BY album_id
+         ) first_item ON first_item.album_id = pai.album_id AND first_item.ms = pai.sort_order
+         WHERE pai.submission_status = 'approved'
+         GROUP BY pai.album_id"
+    );
+
+    $out = [];
+    foreach ( (array) $rows as $r ) {
+        $out[ (int) $r->album_id ] = (int) $r->attachment_id;
+    }
+    return $out;
+}
+
+/**
  * Render: Photo Gallery
  *
  * WHY: Feature 5 — displays photo albums or a single album's images on the
@@ -50478,14 +50743,26 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
 .sp-gallery-album-card { min-width: 200px; }
 </style>';
 
+            // Batch-load photo counts for every album on this page in one
+            // GROUP BY query. WHY: this was a COUNT() per album — one extra
+            // round-trip for every card rendered.
+            $album_ids    = array_map( static fn( $a ) => (int) $a->id, $albums );
+            $in_album_ids = implode( ',', $album_ids );
+            $photo_counts = [];
+            foreach ( (array) $wpdb->get_results(
+                "SELECT album_id, COUNT(*) AS c FROM {$prefix}photo_album_items WHERE album_id IN ({$in_album_ids}) GROUP BY album_id"
+            ) as $pc ) {
+                $photo_counts[ (int) $pc->album_id ] = (int) $pc->c;
+            }
+
+            // First-photo fallback for albums with no explicit cover chosen.
+            $cover_fallbacks = sp_album_cover_fallbacks( $album_ids );
+
             echo '<div class="sp-gallery-albums-grid">';
             foreach ( $albums as $album ) {
-                $cover_url = $album->cover_image_id
-                    ? wp_get_attachment_image_url( $album->cover_image_id, 'medium' )
-                    : '';
-                $photo_count = (int) $wpdb->get_var( $wpdb->prepare(
-                    "SELECT COUNT(*) FROM {$prefix}photo_album_items WHERE album_id = %d", $album->id
-                ) );
+                $cover_id  = $album->cover_image_id ?: ( $cover_fallbacks[ (int) $album->id ] ?? 0 );
+                $cover_url = $cover_id ? wp_get_attachment_image_url( $cover_id, 'medium' ) : '';
+                $photo_count = $photo_counts[ (int) $album->id ] ?? 0;
 
                 // Album card — width is dynamic, all other styles are in CSS class
                 echo '<div class="sp-gallery-album-card" style="width:calc(' . $col_width . '% - 16px);">';
@@ -51936,6 +52213,9 @@ function sp_render_gallery_page(): void {
          FROM {$prefix}photo_albums a
          ORDER BY a.sort_order ASC, a.created_at DESC"
     );
+
+    // First-photo fallback for albums with no explicit cover chosen.
+    $cover_fallbacks = sp_album_cover_fallbacks( array_map( static fn( $a ) => (int) $a->id, (array) $albums ) );
     ?>
     <div class="wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Photo Gallery', 'societypress' ); ?></h1>
@@ -51959,9 +52239,8 @@ function sp_render_gallery_page(): void {
             </style>
             <div class="sp-gallery-admin-grid">
                 <?php foreach ( $albums as $album ) :
-                    $cover_url = $album->cover_image_id
-                        ? wp_get_attachment_image_url( $album->cover_image_id, 'medium' )
-                        : '';
+                    $cover_id  = $album->cover_image_id ?: ( $cover_fallbacks[ (int) $album->id ] ?? 0 );
+                    $cover_url = $cover_id ? wp_get_attachment_image_url( $cover_id, 'medium' ) : '';
                     $edit_url   = admin_url( 'admin.php?page=sp-album-edit&album_id=' . $album->id );
                     // $delete_url removed — using POST form below
                 ?>
@@ -60236,6 +60515,13 @@ function sp_get_default_email_template( string $type ): string {
 <p>If you have any questions, please contact us at {{admin_email}}.</p>
 <p>With gratitude,<br>{{organization_name}}</p>';
 
+        case 'subscribe_confirm':
+            // The confirmation button and the "if you didn\'t request this"
+            // disclaimer are appended automatically by the sender, so the
+            // critical confirm link can never be edited away by accident.
+            return '<p>Hi {{name}},</p>
+<p>Thanks for signing up for the {{organization_name}} mailing list! Please confirm your email address using the button below to start receiving our updates.</p>';
+
         default:
             return '';
     }
@@ -60339,6 +60625,7 @@ function sp_render_email_templates_page(): void {
             'renewal_reminder'         => 'renewal_reminder_subject',
             'expired'                  => 'expired_notice_subject',
             'donation_acknowledgment'  => 'donation_acknowledgment_subject',
+            'subscribe_confirm'        => 'subscribe_confirm_subject',
         ];
         foreach ( $subject_keys as $type => $subj_key ) {
             $body_key = 'email_template_' . $type;
@@ -60361,7 +60648,7 @@ function sp_render_email_templates_page(): void {
 
     // Determine active tab — default to 'welcome'
     $active_tab = sanitize_key( $_GET['tab'] ?? 'welcome' );
-    if ( ! in_array( $active_tab, [ 'welcome', 'renewal_reminder', 'expired', 'donation_acknowledgment' ], true ) ) {
+    if ( ! in_array( $active_tab, [ 'welcome', 'renewal_reminder', 'expired', 'donation_acknowledgment', 'subscribe_confirm' ], true ) ) {
         $active_tab = 'welcome';
     }
 
@@ -60394,6 +60681,12 @@ function sp_render_email_templates_page(): void {
             'subject_key'     => 'donation_acknowledgment_subject',
             'default_subject' => __( 'Thank You for Your Donation — {{organization_name}}', 'societypress' ),
             'description'     => __( 'Sent to donors when the treasurer clicks "Send Acknowledgment" on one or more donations. Supports donation-specific merge tags.', 'societypress' ),
+        ],
+        'subscribe_confirm' => [
+            'label'           => __( 'Subscription Confirmation', 'societypress' ),
+            'subject_key'     => 'subscribe_confirm_subject',
+            'default_subject' => __( 'Please confirm your subscription to {{organization_name}}', 'societypress' ),
+            'description'     => __( 'Sent when someone signs up for your public mailing list, asking them to confirm their address (double opt-in). The confirmation button and disclaimer are added automatically — you only edit the message text. Merge tags: {{name}}, {{organization_name}}.', 'societypress' ),
         ],
     ];
 
@@ -61696,6 +61989,11 @@ function sp_render_blast_email_compose_page(): void {
                                     </label>
                                 <?php endforeach; ?>
                             </div>
+
+                            <label class="sp-blast-recipient-label-sm">
+                                <input type="radio" name="recipient_type" value="mailing_list_subscribers" <?php checked( $recipient_type, 'mailing_list_subscribers' ); ?>>
+                                <?php printf( esc_html__( 'Mailing list subscribers (%d)', 'societypress' ), sp_subscriber_confirmed_count() ); ?>
+                            </label>
                         </fieldset>
                         <p class="description"><?php esc_html_e( 'Members who have opted out of blast emails will be excluded automatically.', 'societypress' ); ?></p>
                     </td>
@@ -61797,6 +62095,10 @@ function sp_blast_count_recipients( string $recipient_type, ?string $recipient_f
         }
     }
 
+    if ( $recipient_type === 'mailing_list_subscribers' ) {
+        return sp_subscriber_confirmed_count();
+    }
+
     // Default: all active members
     return (int) $wpdb->get_var(
         "SELECT COUNT(*) FROM {$prefix}members m
@@ -61856,6 +62158,24 @@ function sp_blast_get_recipients( string $recipient_type, ?string $recipient_fil
                 $limit, $offset
             ) );
         }
+    }
+
+    // Public mailing-list subscribers (confirmed only). Shaped like member
+    // recipients so merge tags still work; user_id is 0 (no WP account) and the
+    // unsubscribe_token rides along so the send loop can append an unsubscribe
+    // link. The name (if given) fills first_name/display_name for greetings.
+    if ( $recipient_type === 'mailing_list_subscribers' ) {
+        return $wpdb->get_results( $wpdb->prepare(
+            "SELECT 0 AS user_id, email,
+                    name AS first_name, '' AS last_name,
+                    CASE WHEN name IS NULL OR name = '' THEN email ELSE name END AS display_name,
+                    unsubscribe_token
+             FROM {$prefix}subscribers
+             WHERE status = 'confirmed' AND email != '' AND email IS NOT NULL
+             ORDER BY id ASC
+             LIMIT %d OFFSET %d",
+            $limit, $offset
+        ) );
     }
 
     // Default: all active members
@@ -61956,6 +62276,16 @@ function sp_blast_email_send_batch( int $blast_id, int $offset ): void {
         // Process merge tags for this recipient
         $personalized_body = sp_blast_process_merge_tags( $blast->body, $recipient );
 
+        // Public subscribers carry an unsubscribe token — append a one-click
+        // unsubscribe link (CAN-SPAM). Members manage email via their profile,
+        // so they have no token and get no footer link here.
+        if ( ! empty( $recipient->unsubscribe_token ) ) {
+            $unsub_url = add_query_arg( 'sp_unsubscribe', $recipient->unsubscribe_token, home_url( '/' ) );
+            $personalized_body .= '<p style="margin-top:28px;color:#6b7280;font-size:12px;text-align:center;">'
+                . '<a href="' . esc_url( $unsub_url ) . '" style="color:#6b7280;">' . esc_html__( 'Unsubscribe from these emails', 'societypress' ) . '</a>'
+                . '</p>';
+        }
+
         // Wrap in the email HTML template
         $html_body = sp_build_email_html( $blast->subject, $personalized_body );
 
@@ -61994,6 +62324,617 @@ function sp_blast_email_send_batch( int $blast_id, int $offset ): void {
     wp_schedule_single_event( time() + 5, 'sp_blast_email_send_batch', [ $blast_id, $next_offset ] );
 }
 add_action( 'sp_blast_email_send_batch', 'sp_blast_email_send_batch', 10, 2 );
+
+// ============================================================================
+// MAILING LIST SUBSCRIBERS — public newsletter signups (double opt-in)
+//
+// WHY: Members receive blasts through their membership. Subscribers are the
+//      PUBLIC list — non-members who opt in via [societypress_subscribe].
+//      Signup creates a 'pending' row and emails a confirmation link; only
+//      after the click does the row become 'confirmed' and eligible to receive
+//      blasts. Every blast to subscribers carries a one-click unsubscribe link.
+// ============================================================================
+
+/**
+ * Generate a URL-safe random token for confirm/unsubscribe links.
+ *
+ * WHY 32 hex chars: enough entropy that a token can't be guessed, and it
+ *      survives email clients and URL encoding without escaping.
+ */
+function sp_subscriber_token(): string {
+    return bin2hex( random_bytes( 16 ) );
+}
+
+/**
+ * Count confirmed subscribers — used by the blast compose recipient preview.
+ */
+function sp_subscriber_confirmed_count(): int {
+    global $wpdb;
+    return (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}sp_subscribers WHERE status = 'confirmed'"
+    );
+}
+
+/**
+ * Render a minimal, self-contained confirmation/result page and exit.
+ *
+ * WHY standalone HTML and not a redirect to a WP page: confirm/unsubscribe
+ *      links are clicked from email clients on any site, and we can't assume a
+ *      dedicated "thank you" page exists. This mirrors the PWA offline page —
+ *      accessible, no external assets, themed only by the org name.
+ */
+function sp_subscriber_render_message_page( string $heading, string $message ): void {
+    $settings = sp_settings();
+    $org_name = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+    nocache_headers();
+    status_header( 200 );
+    header( 'Content-Type: text/html; charset=utf-8' );
+    echo '<!doctype html><html ' . get_language_attributes() . '><head><meta charset="utf-8">';
+    echo '<meta name="viewport" content="width=device-width,initial-scale=1">';
+    echo '<title>' . esc_html( $heading . ' — ' . $org_name ) . '</title>';
+    echo '<style>body{font-family:system-ui,-apple-system,sans-serif;max-width:520px;margin:60px auto;padding:24px;color:#1a1a1a;line-height:1.5}h1{margin-top:0;font-size:24px}p{margin:14px 0}a.btn{display:inline-block;margin-top:16px;padding:10px 18px;background:#2271b1;color:#fff;border-radius:6px;text-decoration:none}</style>';
+    echo '</head><body>';
+    echo '<h1>' . esc_html( $heading ) . '</h1>';
+    echo '<p>' . esc_html( $message ) . '</p>';
+    echo '<a class="btn" href="' . esc_url( home_url( '/' ) ) . '">' . esc_html( sprintf( __( 'Back to %s', 'societypress' ), $org_name ) ) . '</a>';
+    echo '</body></html>';
+    exit;
+}
+
+/**
+ * Send the double opt-in confirmation email to a pending subscriber.
+ *
+ * @param string $email         Recipient email.
+ * @param string $confirm_token The row's confirm_token.
+ */
+function sp_subscriber_send_confirmation( string $email, string $confirm_token ): bool {
+    $settings    = sp_settings();
+    $org_name    = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+    $confirm_url = add_query_arg( 'sp_confirm_subscription', $confirm_token, home_url( '/' ) );
+
+    /* translators: %s: organization name */
+    $subject = trim( $settings['subscribe_confirm_subject'] ?? '' )
+        ?: sprintf( __( 'Please confirm your subscription to %s', 'societypress' ), $org_name );
+
+    $intro = trim( $settings['subscribe_confirm_body'] ?? '' )
+        ?: __( 'Thanks for signing up! Please confirm your email address to start receiving our updates.', 'societypress' );
+
+    $body  = '<p>' . esc_html( $intro ) . '</p>';
+    $body .= '<p style="text-align:center;margin:28px 0;"><a href="' . esc_url( $confirm_url ) . '" style="display:inline-block;padding:12px 24px;background:#2271b1;color:#ffffff;border-radius:6px;text-decoration:none;font-weight:600;">' . esc_html__( 'Confirm Subscription', 'societypress' ) . '</a></p>';
+    $body .= '<p style="color:#6b7280;font-size:13px;">' . esc_html__( 'If you did not request this, just ignore this email — you will not be added to the list.', 'societypress' ) . '</p>';
+
+    $html = sp_build_email_html( __( 'Confirm your subscription', 'societypress' ), $body );
+    return (bool) wp_mail( $email, $subject, $html, sp_get_email_headers() );
+}
+
+/**
+ * Shortcode: [societypress_subscribe] — public newsletter signup form.
+ *
+ * Attributes: title, button, show_name ("1"/"0").
+ */
+add_shortcode( 'societypress_subscribe', function ( $atts ) {
+    if ( ! sp_module_enabled( 'blast_email' ) ) {
+        return '';
+    }
+    $atts = shortcode_atts( [
+        'title'     => __( 'Subscribe to our newsletter', 'societypress' ),
+        'button'    => __( 'Subscribe', 'societypress' ),
+        'show_name' => '1',
+    ], $atts, 'societypress_subscribe' );
+
+    $msg     = sanitize_text_field( $_GET['sp_sub_msg'] ?? '' );
+    $notices = [
+        'check_email' => [ 'ok',  __( 'Almost there! Check your inbox for a confirmation link to finish subscribing.', 'societypress' ) ],
+        'already'     => [ 'ok',  __( 'You\'re already subscribed — thanks!', 'societypress' ) ],
+        'invalid'     => [ 'err', __( 'Please enter a valid email address.', 'societypress' ) ],
+    ];
+
+    // Self-contained styles so the form looks right on any theme (society
+    // themes or the marketing theme), emitted once per page. Mirrors the
+    // [sp_donate] pattern — a scoped <style> block, not inline attributes.
+    static $styled = false;
+    ob_start();
+    if ( ! $styled ) {
+        $styled = true;
+        echo '<style>
+.sp-subscribe-wrap{max-width:420px;margin:1.25em 0;}
+.sp-subscribe-form{display:flex;flex-direction:column;gap:10px;}
+.sp-subscribe-title{margin:0 0 4px;font-size:1.15em;}
+.sp-subscribe-label{display:flex;flex-direction:column;gap:4px;font-size:14px;font-weight:600;}
+.sp-subscribe-input{padding:9px 11px;border:1px solid #ccc;border-radius:5px;font-size:16px;width:100%;box-sizing:border-box;}
+.sp-subscribe-btn{align-self:flex-start;padding:10px 20px;border:0;border-radius:5px;background:var(--sp-subscribe-btn-bg,#2271b1);color:var(--sp-subscribe-btn-text,#fff);font-weight:600;font-size:15px;cursor:pointer;}
+.sp-subscribe-btn:hover{background:var(--sp-subscribe-btn-hover,#185a8c);}
+.sp-subscribe-notice{padding:10px 12px;border-radius:5px;font-size:14px;margin:0 0 12px;}
+.sp-subscribe-notice-ok{background:#edfaef;border:1px solid #00a32a;color:#1d4d2b;}
+.sp-subscribe-notice-err{background:#fcf0f1;border:1px solid #d63638;color:#7a1c1e;}
+</style>';
+    }
+    echo '<div class="sp-subscribe-wrap">';
+    if ( isset( $notices[ $msg ] ) ) {
+        $cls = $notices[ $msg ][0] === 'ok' ? 'sp-subscribe-notice-ok' : 'sp-subscribe-notice-err';
+        echo '<p class="sp-subscribe-notice ' . esc_attr( $cls ) . '">' . esc_html( $notices[ $msg ][1] ) . '</p>';
+    }
+    echo '<form method="post" class="sp-subscribe-form">';
+    if ( $atts['title'] !== '' ) {
+        echo '<h3 class="sp-subscribe-title">' . esc_html( $atts['title'] ) . '</h3>';
+    }
+    if ( $atts['show_name'] === '1' ) {
+        echo '<label class="sp-subscribe-label">' . esc_html__( 'Name (optional)', 'societypress' ) . '<input type="text" name="sp_subscribe_name" class="sp-subscribe-input" autocomplete="name"></label>';
+    }
+    echo '<label class="sp-subscribe-label">' . esc_html__( 'Email', 'societypress' ) . ' <span class="sp-required" aria-hidden="true">*</span><input type="email" name="sp_subscribe_email" class="sp-subscribe-input" required autocomplete="email"></label>';
+    wp_nonce_field( 'sp_subscribe', 'sp_subscribe_nonce' );
+    echo '<input type="hidden" name="sp_subscribe_submit" value="1">';
+    echo '<button type="submit" class="sp-btn sp-btn-primary sp-subscribe-btn">' . esc_html( $atts['button'] ) . '</button>';
+    echo '</form>';
+    echo '</div>';
+    return ob_get_clean();
+} );
+
+/**
+ * Handle a newsletter signup submission (double opt-in: create pending + email).
+ */
+add_action( 'init', function () {
+    if ( empty( $_POST['sp_subscribe_submit'] ) ) {
+        return;
+    }
+    if ( ! sp_module_enabled( 'blast_email' ) ) {
+        return;
+    }
+    $redirect = wp_get_referer() ?: home_url( '/' );
+
+    if ( ! isset( $_POST['sp_subscribe_nonce'] )
+      || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['sp_subscribe_nonce'] ) ), 'sp_subscribe' ) ) {
+        wp_safe_redirect( add_query_arg( 'sp_sub_msg', 'invalid', $redirect ) );
+        exit;
+    }
+
+    $email = sanitize_email( wp_unslash( $_POST['sp_subscribe_email'] ?? '' ) );
+    $name  = sanitize_text_field( wp_unslash( $_POST['sp_subscribe_name'] ?? '' ) );
+
+    if ( ! is_email( $email ) ) {
+        wp_safe_redirect( add_query_arg( 'sp_sub_msg', 'invalid', $redirect ) );
+        exit;
+    }
+
+    global $wpdb;
+    $t        = $wpdb->prefix . 'sp_subscribers';
+    $existing = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$t} WHERE email = %s", $email ) );
+
+    // Already confirmed — don't re-send, just reassure them.
+    if ( $existing && $existing->status === 'confirmed' ) {
+        wp_safe_redirect( add_query_arg( 'sp_sub_msg', 'already', $redirect ) );
+        exit;
+    }
+
+    $confirm_token = sp_subscriber_token();
+    if ( $existing ) {
+        // Pending or previously unsubscribed → reset to pending with a fresh
+        // token and re-send the confirmation. Re-subscribing is consent.
+        $wpdb->update( $t, [
+            'name'            => $name !== '' ? $name : $existing->name,
+            'status'          => 'pending',
+            'confirm_token'   => $confirm_token,
+            'unsubscribed_at' => null,
+            'created_at'      => current_time( 'mysql' ),
+        ], [ 'id' => $existing->id ] );
+    } else {
+        $wpdb->insert( $t, [
+            'email'             => $email,
+            'name'              => $name !== '' ? $name : null,
+            'status'            => 'pending',
+            'confirm_token'     => $confirm_token,
+            'unsubscribe_token' => sp_subscriber_token(),
+            'source'            => 'signup_form',
+            'ip_address'        => sp_get_remote_ip(),
+            'created_at'        => current_time( 'mysql' ),
+        ] );
+    }
+
+    sp_subscriber_send_confirmation( $email, $confirm_token );
+    wp_safe_redirect( add_query_arg( 'sp_sub_msg', 'check_email', $redirect ) );
+    exit;
+}, 5 );
+
+/**
+ * Handle the confirmation link click (?sp_confirm_subscription=TOKEN).
+ */
+add_action( 'init', function () {
+    if ( ! isset( $_GET['sp_confirm_subscription'] ) ) {
+        return;
+    }
+    $token = sanitize_text_field( wp_unslash( $_GET['sp_confirm_subscription'] ) );
+    if ( ! ctype_xdigit( $token ) ) {
+        sp_subscriber_render_message_page(
+            __( 'Link not recognized', 'societypress' ),
+            __( 'That confirmation link looks invalid or has already been used.', 'societypress' )
+        );
+    }
+
+    global $wpdb;
+    $t   = $wpdb->prefix . 'sp_subscribers';
+    $sub = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$t} WHERE confirm_token = %s", $token ) );
+
+    if ( ! $sub ) {
+        sp_subscriber_render_message_page(
+            __( 'Link not recognized', 'societypress' ),
+            __( 'That confirmation link looks invalid or has already been used.', 'societypress' )
+        );
+    }
+
+    if ( $sub->status !== 'confirmed' ) {
+        $wpdb->update( $t, [
+            'status'        => 'confirmed',
+            'confirmed_at'  => current_time( 'mysql' ),
+            'confirm_token' => null,
+        ], [ 'id' => $sub->id ] );
+    }
+
+    sp_subscriber_render_message_page(
+        __( 'You\'re subscribed!', 'societypress' ),
+        __( 'Thanks for confirming — you\'ll receive our updates from now on. You can unsubscribe at any time using the link at the bottom of any email.', 'societypress' )
+    );
+} );
+
+/**
+ * Handle the unsubscribe link click (?sp_unsubscribe=TOKEN).
+ */
+add_action( 'init', function () {
+    if ( ! isset( $_GET['sp_unsubscribe'] ) ) {
+        return;
+    }
+    $token = sanitize_text_field( wp_unslash( $_GET['sp_unsubscribe'] ) );
+    if ( ! ctype_xdigit( $token ) ) {
+        sp_subscriber_render_message_page(
+            __( 'Link not recognized', 'societypress' ),
+            __( 'That unsubscribe link looks invalid.', 'societypress' )
+        );
+    }
+
+    global $wpdb;
+    $t   = $wpdb->prefix . 'sp_subscribers';
+    $sub = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$t} WHERE unsubscribe_token = %s", $token ) );
+
+    if ( $sub && $sub->status !== 'unsubscribed' ) {
+        $wpdb->update( $t, [
+            'status'          => 'unsubscribed',
+            'unsubscribed_at' => current_time( 'mysql' ),
+        ], [ 'id' => $sub->id ] );
+    }
+
+    sp_subscriber_render_message_page(
+        __( 'You\'ve been unsubscribed', 'societypress' ),
+        __( 'You will no longer receive newsletter emails from us. Changed your mind? You can subscribe again any time.', 'societypress' )
+    );
+} );
+
+/**
+ * Count subscribers by status — used for the admin filter tabs.
+ *
+ * @return array{all:int,confirmed:int,pending:int,unsubscribed:int}
+ */
+function sp_subscriber_status_counts(): array {
+    global $wpdb;
+    $t    = $wpdb->prefix . 'sp_subscribers';
+    $rows = $wpdb->get_results( "SELECT status, COUNT(*) AS c FROM {$t} GROUP BY status", OBJECT_K );
+    return [
+        'all'          => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$t}" ),
+        'confirmed'    => isset( $rows['confirmed'] ) ? (int) $rows['confirmed']->c : 0,
+        'pending'      => isset( $rows['pending'] ) ? (int) $rows['pending']->c : 0,
+        'unsubscribed' => isset( $rows['unsubscribed'] ) ? (int) $rows['unsubscribed']->c : 0,
+    ];
+}
+
+if ( ! class_exists( 'WP_List_Table' ) ) {
+    require_once ABSPATH . 'wp-admin/includes/class-wp-list-table.php';
+}
+
+/**
+ * Admin list table for mailing-list subscribers.
+ */
+class SP_Subscribers_List_Table extends WP_List_Table {
+
+    public function __construct() {
+        parent::__construct( [
+            'singular' => 'subscriber',
+            'plural'   => 'subscribers',
+            'ajax'     => false,
+        ] );
+    }
+
+    public function get_columns(): array {
+        return [
+            'cb'         => '<input type="checkbox" />',
+            'email'      => __( 'Email', 'societypress' ),
+            'name'       => __( 'Name', 'societypress' ),
+            'status'     => __( 'Status', 'societypress' ),
+            'source'     => __( 'Source', 'societypress' ),
+            'created_at' => __( 'Signed Up', 'societypress' ),
+        ];
+    }
+
+    protected function get_sortable_columns(): array {
+        return [
+            'email'      => [ 'email', false ],
+            'status'     => [ 'status', false ],
+            'created_at' => [ 'created_at', true ],
+        ];
+    }
+
+    protected function column_cb( $item ): string {
+        return sprintf( '<input type="checkbox" name="subscriber[]" value="%d" />', (int) $item->id );
+    }
+
+    protected function column_email( $item ): string {
+        $delete_url = wp_nonce_url(
+            admin_url( 'admin.php?page=sp-subscribers&action=delete&subscriber=' . (int) $item->id ),
+            'sp_delete_subscriber_' . (int) $item->id
+        );
+        $actions = [
+            'delete' => sprintf(
+                '<a href="%s" class="sp-text-danger" onclick="return spConfirm ? spConfirm(\'%s\', function(){window.location=\'%s\';}) && false : confirm(\'%s\');">%s</a>',
+                esc_url( $delete_url ),
+                esc_js( __( 'Remove this subscriber? This permanently deletes their record.', 'societypress' ) ),
+                esc_js( $delete_url ),
+                esc_js( __( 'Remove this subscriber?', 'societypress' ) ),
+                esc_html__( 'Delete', 'societypress' )
+            ),
+        ];
+        return '<strong>' . esc_html( $item->email ) . '</strong>' . $this->row_actions( $actions );
+    }
+
+    protected function column_name( $item ): string {
+        return $item->name ? esc_html( $item->name ) : '<span class="sp-text-muted">—</span>';
+    }
+
+    protected function column_status( $item ): string {
+        $colors = [ 'confirmed' => '#00a32a', 'pending' => '#8a6500', 'unsubscribed' => '#787c82' ];
+        $labels = [
+            'confirmed'    => __( 'Confirmed', 'societypress' ),
+            'pending'      => __( 'Pending', 'societypress' ),
+            'unsubscribed' => __( 'Unsubscribed', 'societypress' ),
+        ];
+        $color = $colors[ $item->status ] ?? '#787c82';
+        $label = $labels[ $item->status ] ?? $item->status;
+        return '<span class="sp-status-badge" style="color:' . esc_attr( $color ) . ';">' . esc_html( $label ) . '</span>';
+    }
+
+    protected function column_source( $item ): string {
+        $map = [
+            'signup_form' => __( 'Signup form', 'societypress' ),
+            'manual'      => __( 'Added manually', 'societypress' ),
+            'import'      => __( 'Imported', 'societypress' ),
+        ];
+        return esc_html( $map[ $item->source ] ?? ( $item->source ?: '—' ) );
+    }
+
+    protected function column_created_at( $item ): string {
+        if ( empty( $item->created_at ) ) {
+            return '—';
+        }
+        return esc_html( date_i18n( get_option( 'date_format', 'F j, Y' ), strtotime( $item->created_at ) ) );
+    }
+
+    protected function column_default( $item, $column_name ): string {
+        return isset( $item->$column_name ) ? esc_html( $item->$column_name ) : '';
+    }
+
+    protected function get_bulk_actions(): array {
+        return [ 'bulk_delete' => __( 'Delete', 'societypress' ) ];
+    }
+
+    public function no_items(): void {
+        esc_html_e( 'No subscribers yet.', 'societypress' );
+    }
+
+    public function prepare_items(): void {
+        global $wpdb;
+        $t        = $wpdb->prefix . 'sp_subscribers';
+        $per_page = 25;
+
+        $where  = [];
+        $params = [];
+
+        $status = isset( $_GET['status'] ) ? sanitize_text_field( wp_unslash( $_GET['status'] ) ) : '';
+        if ( in_array( $status, [ 'confirmed', 'pending', 'unsubscribed' ], true ) ) {
+            $where[]  = 'status = %s';
+            $params[] = $status;
+        }
+
+        $search = isset( $_GET['s'] ) ? sanitize_text_field( wp_unslash( $_GET['s'] ) ) : '';
+        if ( $search !== '' ) {
+            $like     = '%' . $wpdb->esc_like( $search ) . '%';
+            $where[]  = '(email LIKE %s OR name LIKE %s)';
+            $params[] = $like;
+            $params[] = $like;
+        }
+
+        $where_sql = $where ? 'WHERE ' . implode( ' AND ', $where ) : '';
+
+        $allowed_orderby = [ 'email', 'status', 'created_at' ];
+        $orderby = $_GET['orderby'] ?? 'created_at';
+        if ( ! in_array( $orderby, $allowed_orderby, true ) ) {
+            $orderby = 'created_at';
+        }
+        $order = ( $_GET['order'] ?? 'desc' ) === 'asc' ? 'ASC' : 'DESC';
+
+        $count_sql = "SELECT COUNT(*) FROM {$t} {$where_sql}";
+        $total = $params
+            ? (int) $wpdb->get_var( $wpdb->prepare( $count_sql, ...$params ) )
+            : (int) $wpdb->get_var( $count_sql );
+
+        $current = $this->get_pagenum();
+        $offset  = ( $current - 1 ) * $per_page;
+
+        $query  = "SELECT * FROM {$t} {$where_sql} ORDER BY {$orderby} {$order} LIMIT %d OFFSET %d";
+        $values = array_merge( $params, [ $per_page, $offset ] );
+        $this->items = $wpdb->get_results( $wpdb->prepare( $query, ...$values ) );
+
+        $this->_column_headers = [ $this->get_columns(), [], $this->get_sortable_columns() ];
+        $this->set_pagination_args( [
+            'total_items' => $total,
+            'per_page'    => $per_page,
+            'total_pages' => (int) ceil( $total / $per_page ),
+        ] );
+    }
+}
+
+/**
+ * Handle subscriber admin actions (add, delete, bulk delete, CSV export).
+ *
+ * WHY admin_init: these need to redirect or stream a file before any admin
+ *      page output, which the page render callback runs too late to do.
+ */
+add_action( 'admin_init', function () {
+    if ( ! is_admin() || ( $_GET['page'] ?? '' ) !== 'sp-subscribers' ) {
+        return;
+    }
+    if ( ! current_user_can( 'manage_options' ) || ! sp_module_enabled( 'blast_email' ) ) {
+        return;
+    }
+    global $wpdb;
+    $t        = $wpdb->prefix . 'sp_subscribers';
+    $base_url = admin_url( 'admin.php?page=sp-subscribers' );
+
+    // CSV export
+    if ( isset( $_GET['sp_export_subscribers'] ) ) {
+        check_admin_referer( 'sp_export_subscribers' );
+        $rows = $wpdb->get_results( "SELECT email, name, status, source, created_at, confirmed_at FROM {$t} ORDER BY created_at DESC", ARRAY_A );
+        nocache_headers();
+        header( 'Content-Type: text/csv; charset=utf-8' );
+        header( 'Content-Disposition: attachment; filename=subscribers-' . gmdate( 'Y-m-d' ) . '.csv' );
+        $out = fopen( 'php://output', 'w' );
+        fputcsv( $out, [ 'Email', 'Name', 'Status', 'Source', 'Signed Up', 'Confirmed' ] );
+        foreach ( $rows as $r ) {
+            fputcsv( $out, $r );
+        }
+        fclose( $out );
+        exit;
+    }
+
+    // Manual add
+    if ( ! empty( $_POST['sp_add_subscriber'] ) ) {
+        check_admin_referer( 'sp_add_subscriber' );
+        $email = sanitize_email( wp_unslash( $_POST['sp_new_subscriber_email'] ?? '' ) );
+        $name  = sanitize_text_field( wp_unslash( $_POST['sp_new_subscriber_name'] ?? '' ) );
+        if ( is_email( $email ) ) {
+            $exists = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$t} WHERE email = %s", $email ) );
+            if ( ! $exists ) {
+                // Admin-added subscribers are trusted — confirmed immediately,
+                // no double opt-in (the admin vouches for the address).
+                $wpdb->insert( $t, [
+                    'email'             => $email,
+                    'name'              => $name !== '' ? $name : null,
+                    'status'            => 'confirmed',
+                    'unsubscribe_token' => sp_subscriber_token(),
+                    'source'            => 'manual',
+                    'created_at'        => current_time( 'mysql' ),
+                    'confirmed_at'      => current_time( 'mysql' ),
+                ] );
+                $notice = 'added';
+            } else {
+                $notice = 'exists';
+            }
+        } else {
+            $notice = 'invalid';
+        }
+        wp_safe_redirect( add_query_arg( 'sp_sub_admin', $notice, $base_url ) );
+        exit;
+    }
+
+    // Single delete
+    if ( ( $_GET['action'] ?? '' ) === 'delete' && isset( $_GET['subscriber'] ) ) {
+        $id = (int) $_GET['subscriber'];
+        check_admin_referer( 'sp_delete_subscriber_' . $id );
+        $wpdb->delete( $t, [ 'id' => $id ], [ '%d' ] );
+        wp_safe_redirect( add_query_arg( 'sp_sub_admin', 'deleted', $base_url ) );
+        exit;
+    }
+
+    // Bulk delete
+    $action = $_REQUEST['action'] ?? '';
+    if ( $action === '-1' ) {
+        $action = $_REQUEST['action2'] ?? '';
+    }
+    if ( $action === 'bulk_delete' && ! empty( $_REQUEST['subscriber'] ) ) {
+        check_admin_referer( 'bulk-subscribers' );
+        $ids = array_map( 'intval', (array) $_REQUEST['subscriber'] );
+        $ids = array_filter( $ids );
+        if ( $ids ) {
+            $in = implode( ',', $ids );
+            $wpdb->query( "DELETE FROM {$t} WHERE id IN ({$in})" );
+        }
+        wp_safe_redirect( add_query_arg( 'sp_sub_admin', 'deleted', $base_url ) );
+        exit;
+    }
+} );
+
+/**
+ * Render the Subscribers admin page.
+ */
+function sp_render_subscribers_page(): void {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You do not have permission to view this page.', 'societypress' ) );
+    }
+    $counts   = sp_subscriber_status_counts();
+    $status   = isset( $_GET['status'] ) ? sanitize_text_field( wp_unslash( $_GET['status'] ) ) : '';
+    $base_url = admin_url( 'admin.php?page=sp-subscribers' );
+    $notice   = sanitize_text_field( $_GET['sp_sub_admin'] ?? '' );
+    $notices  = [
+        'added'   => [ 'success', __( 'Subscriber added.', 'societypress' ) ],
+        'exists'  => [ 'warning', __( 'That email is already on the list.', 'societypress' ) ],
+        'invalid' => [ 'error',   __( 'Please enter a valid email address.', 'societypress' ) ],
+        'deleted' => [ 'success', __( 'Subscriber(s) deleted.', 'societypress' ) ],
+    ];
+
+    $table = new SP_Subscribers_List_Table();
+    $table->prepare_items();
+    ?>
+    <div class="wrap">
+        <h1 class="wp-heading-inline"><?php esc_html_e( 'Subscribers', 'societypress' ); ?></h1>
+        <a href="<?php echo esc_url( wp_nonce_url( add_query_arg( 'sp_export_subscribers', '1', $base_url ), 'sp_export_subscribers' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Export CSV', 'societypress' ); ?></a>
+        <hr class="wp-header-end">
+
+        <?php if ( isset( $notices[ $notice ] ) ) : ?>
+            <div class="notice notice-<?php echo esc_attr( $notices[ $notice ][0] ); ?> is-dismissible"><p><?php echo esc_html( $notices[ $notice ][1] ); ?></p></div>
+        <?php endif; ?>
+
+        <p class="description"><?php esc_html_e( 'People who opted in to your public mailing list. Confirmed subscribers can be selected as recipients when you compose a Blast Email.', 'societypress' ); ?></p>
+
+        <div class="sp-subscriber-add-box" style="background:#fff;border:1px solid #c3c4c7;border-radius:6px;padding:14px 16px;margin:14px 0;max-width:640px;">
+            <form method="post" action="<?php echo esc_url( $base_url ); ?>">
+                <?php wp_nonce_field( 'sp_add_subscriber' ); ?>
+                <input type="hidden" name="sp_add_subscriber" value="1">
+                <strong><?php esc_html_e( 'Add a subscriber', 'societypress' ); ?></strong>
+                <p class="description"><?php esc_html_e( 'Added here, they are confirmed immediately (no confirmation email). Only add people who have asked to be on the list.', 'societypress' ); ?></p>
+                <p>
+                    <input type="email" name="sp_new_subscriber_email" placeholder="<?php esc_attr_e( 'email@example.com', 'societypress' ); ?>" required class="regular-text">
+                    <input type="text" name="sp_new_subscriber_name" placeholder="<?php esc_attr_e( 'Name (optional)', 'societypress' ); ?>" class="regular-text">
+                    <button type="submit" class="button button-primary"><?php esc_html_e( 'Add', 'societypress' ); ?></button>
+                </p>
+            </form>
+        </div>
+
+        <ul class="subsubsub">
+            <li><a href="<?php echo esc_url( $base_url ); ?>" class="<?php echo $status === '' ? 'current' : ''; ?>"><?php esc_html_e( 'All', 'societypress' ); ?> <span class="count">(<?php echo (int) $counts['all']; ?>)</span></a> |</li>
+            <li><a href="<?php echo esc_url( add_query_arg( 'status', 'confirmed', $base_url ) ); ?>" class="<?php echo $status === 'confirmed' ? 'current' : ''; ?>"><?php esc_html_e( 'Confirmed', 'societypress' ); ?> <span class="count">(<?php echo (int) $counts['confirmed']; ?>)</span></a> |</li>
+            <li><a href="<?php echo esc_url( add_query_arg( 'status', 'pending', $base_url ) ); ?>" class="<?php echo $status === 'pending' ? 'current' : ''; ?>"><?php esc_html_e( 'Pending', 'societypress' ); ?> <span class="count">(<?php echo (int) $counts['pending']; ?>)</span></a> |</li>
+            <li><a href="<?php echo esc_url( add_query_arg( 'status', 'unsubscribed', $base_url ) ); ?>" class="<?php echo $status === 'unsubscribed' ? 'current' : ''; ?>"><?php esc_html_e( 'Unsubscribed', 'societypress' ); ?> <span class="count">(<?php echo (int) $counts['unsubscribed']; ?>)</span></a></li>
+        </ul>
+
+        <form method="get">
+            <input type="hidden" name="page" value="sp-subscribers">
+            <?php if ( $status !== '' ) : ?>
+                <input type="hidden" name="status" value="<?php echo esc_attr( $status ); ?>">
+            <?php endif; ?>
+            <?php $table->search_box( __( 'Search subscribers', 'societypress' ), 'sp-subscriber-search' ); ?>
+        </form>
+
+        <form method="post">
+            <?php $table->display(); ?>
+        </form>
+    </div>
+    <?php
+}
 
 /**
  * AJAX handler: get recipient count for blast email compose preview.
@@ -63373,8 +64314,43 @@ add_filter( 'wp_privacy_personal_data_exporters', function ( $exporters ) {
         'callback'               => 'sp_privacy_export_donation_data',
     ];
 
+    // Mailing-list subscriber exporter
+    $exporters['societypress-subscribers'] = [
+        'exporter_friendly_name' => 'SocietyPress Mailing List Subscription',
+        'callback'               => 'sp_privacy_export_subscriber_data',
+    ];
+
     return $exporters;
 } );
+
+/**
+ * GDPR exporter: a person's mailing-list subscription, keyed by email.
+ */
+function sp_privacy_export_subscriber_data( string $email_address, int $page = 1 ): array {
+    global $wpdb;
+    $sub = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_subscribers WHERE email = %s",
+        $email_address
+    ) );
+
+    $export_items = [];
+    if ( $sub ) {
+        $export_items[] = [
+            'group_id'    => 'sp-subscribers',
+            'group_label' => __( 'Mailing List Subscription', 'societypress' ),
+            'item_id'     => 'sp-subscriber-' . (int) $sub->id,
+            'data'        => [
+                [ 'name' => __( 'Email', 'societypress' ),       'value' => $sub->email ],
+                [ 'name' => __( 'Name', 'societypress' ),        'value' => $sub->name ?: '' ],
+                [ 'name' => __( 'Status', 'societypress' ),      'value' => $sub->status ],
+                [ 'name' => __( 'Signed up', 'societypress' ),   'value' => $sub->created_at ],
+                [ 'name' => __( 'Confirmed', 'societypress' ),   'value' => $sub->confirmed_at ?: '' ],
+            ],
+        ];
+    }
+
+    return [ 'data' => $export_items, 'done' => true ];
+}
 
 
 /**
@@ -63640,8 +64616,32 @@ add_filter( 'wp_privacy_personal_data_erasers', function ( $erasers ) {
         'callback'             => 'sp_privacy_erase_donation_data',
     ];
 
+    // Mailing-list subscriber eraser
+    $erasers['societypress-subscribers'] = [
+        'eraser_friendly_name' => 'SocietyPress Mailing List Subscription',
+        'callback'             => 'sp_privacy_erase_subscriber_data',
+    ];
+
     return $erasers;
 } );
+
+/**
+ * GDPR eraser: delete a person's mailing-list subscription, keyed by email.
+ */
+function sp_privacy_erase_subscriber_data( string $email_address, int $page = 1 ): array {
+    global $wpdb;
+    $removed = (int) $wpdb->delete(
+        $wpdb->prefix . 'sp_subscribers',
+        [ 'email' => $email_address ],
+        [ '%s' ]
+    );
+    return [
+        'items_removed'  => $removed > 0,
+        'items_retained' => false,
+        'messages'       => [],
+        'done'           => true,
+    ];
+}
 
 
 /**
@@ -68085,8 +69085,11 @@ function sp_render_record_browse_page(): void {
 
     $where = $wpdb->prepare( 'r.collection_id = %d', $collection_id );
     if ( $search ) {
-        $like   = '%' . $wpdb->esc_like( $search ) . '%';
-        $where .= $wpdb->prepare( ' AND r.search_text LIKE %s', $like );
+        // FULLTEXT on search_text — see the frontend records search for why.
+        $bool   = sp_fulltext_boolean_query( $search );
+        $where .= $bool !== ''
+            ? $wpdb->prepare( ' AND MATCH (r.search_text) AGAINST (%s IN BOOLEAN MODE)', $bool )
+            : ' AND 1 = 0';
     }
 
     $total = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}records r WHERE {$where}" );
@@ -70640,8 +71643,13 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
         $where = [ $wpdb->prepare( 'r.collection_id = %d', $coll_filter ) ];
     }
     if ( $search ) {
-        $like    = '%' . $wpdb->esc_like( $search ) . '%';
-        $where[] = $wpdb->prepare( 'r.search_text LIKE %s', $like );
+        // FULLTEXT on the precomputed search_text blob — fast on collections
+        // with tens of thousands of records, where '%term%' LIKE scanned every
+        // row. search_text exists specifically to back this index.
+        $bool = sp_fulltext_boolean_query( $search );
+        $where[] = $bool !== ''
+            ? $wpdb->prepare( 'MATCH (r.search_text) AGAINST (%s IN BOOLEAN MODE)', $bool )
+            : '1 = 0';
     }
     $where_sql = implode( ' AND ', $where );
 
@@ -74870,6 +75878,107 @@ function sp_render_document_bulk_upload_page(): void {
     })();
     </script>
     <?php
+}
+
+/**
+ * Frontend: the public Documents library.
+ *
+ * WHY: The Documents module ships an admin cataloguer and a per-row renderer
+ *      (sp_render_document_row below), and the page router sends the
+ *      /documents/ template here — but the container that ties them together
+ *      was never written, so the public page called an undefined function and
+ *      fataled the moment a society published a Documents page. This restores
+ *      it: published documents grouped by category, ordered by the admin's sort
+ *      order, with members-only files shown locked. Listing a locked title
+ *      leaks nothing — sp_ajax_document_download() enforces access server-side.
+ */
+function sp_frontend_documents(): void {
+    if ( ! sp_module_enabled( 'documents' ) ) {
+        echo '<p>' . esc_html__( 'The documents library is not available.', 'societypress' ) . '</p>';
+        return;
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // Access parity with the download handler: an active member OR a content
+    // manager may open members-only files. Computing membership the same way
+    // here keeps the lock icon honest — nobody is shown "Download" only to hit
+    // a 403 on click.
+    $is_member = current_user_can( 'sp_manage_content' );
+    if ( ! $is_member && is_user_logged_in() ) {
+        $member_status = $wpdb->get_var( $wpdb->prepare(
+            "SELECT status FROM {$prefix}members WHERE user_id = %d",
+            get_current_user_id()
+        ) );
+        $is_member = ( $member_status === 'active' );
+    }
+    $login_url = wp_login_url( get_permalink() );
+
+    // Dependency-free file-type glyph keyed off the extension.
+    $type_icon = static function ( string $file_name ): string {
+        $ext = strtolower( pathinfo( $file_name, PATHINFO_EXTENSION ) );
+        $map = [
+            'pdf' => '📄', 'doc' => '📝', 'docx' => '📝', 'rtf' => '📝', 'txt' => '📝',
+            'xls' => '📊', 'xlsx' => '📊', 'csv' => '📊',
+            'ppt' => '📑', 'pptx' => '📑',
+            'zip' => '🗜️', 'jpg' => '🖼️', 'jpeg' => '🖼️', 'png' => '🖼️', 'gif' => '🖼️',
+        ];
+        return '<span aria-hidden="true">' . ( $map[ $ext ] ?? '📁' ) . '</span>';
+    };
+
+    // Published documents only on the frontend. Order by category sort order,
+    // then by each document's sort order; uncategorized documents come last.
+    $docs = $wpdb->get_results(
+        "SELECT d.*, c.name AS category_name, c.sort_order AS cat_sort
+         FROM {$prefix}documents d
+         LEFT JOIN {$prefix}document_categories c ON d.category_id = c.id
+         WHERE d.status = 'published'
+         ORDER BY (d.category_id IS NULL) ASC, c.sort_order ASC, c.name ASC,
+                  d.sort_order ASC, d.title ASC"
+    );
+
+    // These classes are consumed by sp_render_document_row() and were never
+    // defined elsewhere (only the admin-side .sp-doc-* styles exist), so the
+    // frontend list owns its own scoped style block — no inline style= attrs.
+    echo '<style>
+.sp-doc-category { margin-bottom: 32px; }
+.sp-doc-cat-heading { font-size: 20px; margin: 0 0 12px; padding-bottom: 6px; border-bottom: 2px solid #e5e7eb; }
+.sp-doc-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-bottom: 1px solid #eee; }
+.sp-doc-icon { font-size: 24px; line-height: 1.2; flex: 0 0 auto; }
+.sp-doc-info { flex: 1 1 auto; min-width: 0; }
+.sp-doc-title { font-weight: 600; }
+.sp-doc-meta { color: #6b7280; font-size: 13px; margin-top: 2px; }
+.sp-doc-desc { margin-top: 4px; }
+.sp-doc-action { flex: 0 0 auto; }
+.sp-doc-download { display: inline-block; padding: 6px 14px; border: 1px solid #0d1f3c; border-radius: 6px; text-decoration: none; font-weight: 600; }
+.sp-doc-download:hover { background: #0d1f3c; color: #fff; }
+.sp-doc-locked { color: #6b7280; font-size: 13px; }
+.sp-doc-empty { color: #6b7280; font-style: italic; }
+</style>';
+
+    if ( empty( $docs ) ) {
+        echo '<p class="sp-doc-empty">' . esc_html__( 'No documents have been posted yet.', 'societypress' ) . '</p>';
+        return;
+    }
+
+    // Group the ordered rows by category, preserving the SQL order.
+    $grouped    = [];
+    $cat_labels = [];
+    foreach ( $docs as $d ) {
+        $key                = $d->category_id ? (int) $d->category_id : 0;
+        $grouped[ $key ][]  = $d;
+        $cat_labels[ $key ] = $d->category_name ?: __( 'Uncategorized', 'societypress' );
+    }
+
+    foreach ( $grouped as $key => $rows ) {
+        echo '<section class="sp-doc-category">';
+        echo '<h2 class="sp-doc-cat-heading">' . esc_html( $cat_labels[ $key ] ) . '</h2>';
+        foreach ( $rows as $d ) {
+            sp_render_document_row( $d, $is_member, $login_url, $type_icon );
+        }
+        echo '</section>';
+    }
 }
 
 function sp_render_document_row( object $doc, bool $is_member, string $login_url, callable $type_icon ): void {
@@ -81685,10 +82794,24 @@ add_shortcode( 'sp_donate', function ( $atts ) {
             : $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}sp_campaigns WHERE slug = %s", sanitize_title( $atts['campaign'] ) ) );
     }
 
-    // Auto-fill from logged-in user
+    // Auto-fill from logged-in user. WHY prefer the member record: display_name
+    // is often a WordPress username/nickname, not the donor's real name. If the
+    // logged-in user has a member record, use their actual first/last name (the
+    // lookup decrypts the at-rest fields) so the receipt and acknowledgment read
+    // correctly; fall back to display_name for non-member logged-in users.
     $current_user = wp_get_current_user();
-    $name  = $current_user->ID ? trim( $current_user->display_name ) : '';
-    $email = $current_user->ID ? $current_user->user_email : '';
+    $name  = '';
+    $email = '';
+    if ( $current_user->ID ) {
+        $email  = $current_user->user_email;
+        $member = sp_get_member_by_user_id( $current_user->ID );
+        if ( $member ) {
+            $name = trim( ( $member->first_name ?? '' ) . ' ' . ( $member->last_name ?? '' ) );
+        }
+        if ( $name === '' ) {
+            $name = trim( $current_user->display_name );
+        }
+    }
 
     // Status messaging back from Stripe
     $msg = sanitize_text_field( $_GET['sp_donate_msg'] ?? '' );

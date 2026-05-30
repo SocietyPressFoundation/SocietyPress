@@ -50775,6 +50775,7 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
                                   justify-content: center; color: #6d7175; }
 .sp-gallery-no-cover-icon      { font-size: 48px; width: 48px; height: 48px; }
 .sp-gallery-album-name         { margin: 0 0 4px; font-size: 16px; }
+.sp-gallery-new                { display: inline-block; margin-left: 6px; padding: 2px 7px; border-radius: 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; background: #e8f5e9; color: #166534; vertical-align: middle; }
 .sp-gallery-photo-count        { color: #666; font-size: 13px; }
 /* :target lightbox trigger — flips display:none → flex when hash matches */
 .sp-gallery-lightbox:target    { display: flex !important; }
@@ -50995,7 +50996,11 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
                     echo '<span class="dashicons dashicons-format-gallery sp-gallery-no-cover-icon"></span>';
                     echo '</div>';
                 }
-                echo '<h4 class="sp-gallery-album-name">' . esc_html( $album->title ) . '</h4>';
+                echo '<h4 class="sp-gallery-album-name">' . esc_html( $album->title );
+                if ( sp_is_new_item( $album->created_at ?? '' ) ) {
+                    echo ' <span class="sp-gallery-new">' . esc_html__( 'New', 'societypress' ) . '</span>';
+                }
+                echo '</h4>';
                 echo '<span class="sp-gallery-photo-count">' . sprintf( _n( '%d photo', '%d photos', $photo_count, 'societypress' ), $photo_count ) . '</span>';
                 echo '</div>';
             }
@@ -72460,7 +72465,7 @@ function sp_store_get_unified_listing( array $args = [] ): array {
         $prod_where .= $wpdb->prepare( ' AND store_category = %s', $category );
     }
     $prod_rows = $wpdb->get_results(
-        "SELECT id, title, sku, description, price, member_price, image_url, store_category, stock_qty, sort_order
+        "SELECT id, title, sku, description, price, member_price, image_url, store_category, stock_qty, sort_order, created_at
          FROM {$prefix}store_products
          WHERE {$prod_where}"
     );
@@ -72482,6 +72487,7 @@ function sp_store_get_unified_listing( array $args = [] ): array {
             'price'          => (float) $row->item_value,
             'regular_price'  => (float) $row->item_value,
             'member_price'   => null,
+            'is_new'         => false,
             'image_url'      => $row->cover_url ?: null,
             'store_category' => $row->store_category ?: null,
             'sku'            => null,
@@ -72501,6 +72507,7 @@ function sp_store_get_unified_listing( array $args = [] ): array {
             'price'          => sp_store_effective_price( $row->price, $row->member_price, $is_member ),
             'regular_price'  => (float) $row->price,
             'member_price'   => ( $row->member_price === null ) ? null : (float) $row->member_price,
+            'is_new'         => sp_is_new_item( $row->created_at ?? '' ),
             'image_url'      => $row->image_url ?: null,
             'store_category' => $row->store_category ?: null,
             'sku'            => $row->sku ?: null,
@@ -72797,6 +72804,12 @@ function sp_render_store_frontend(): void {
             margin: -6px 0 12px;
             font-weight: 600;
         }
+        .sp-store-new {
+            display: inline-block; margin-left: 6px; padding: 2px 7px;
+            border-radius: 10px; font-size: 11px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.04em;
+            background: #e8f5e9; color: #166534; vertical-align: middle;
+        }
 
         .sp-store-actions {
             display: flex;
@@ -72937,7 +72950,10 @@ function sp_render_store_frontend(): void {
                                 <?php if ( $entry['store_category'] ) : ?>
                                     <div class="sp-store-cat-badge"><?php echo esc_html( $entry['store_category'] ); ?></div>
                                 <?php endif; ?>
-                                <h3 class="sp-store-title"><?php echo esc_html( $entry['title'] ); ?></h3>
+                                <h3 class="sp-store-title"><?php echo esc_html( $entry['title'] );
+                                    if ( ! empty( $entry['is_new'] ) ) {
+                                        echo ' <span class="sp-store-new">' . esc_html__( 'New', 'societypress' ) . '</span>';
+                                    } ?></h3>
                                 <?php if ( $author ) : ?>
                                     <div class="sp-store-author"><?php echo esc_html( $author ); ?><?php if ( $entry['pub_year'] ) echo ' (' . esc_html( $entry['pub_year'] ) . ')'; ?></div>
                                 <?php endif; ?>

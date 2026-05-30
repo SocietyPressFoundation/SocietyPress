@@ -83587,6 +83587,17 @@ add_action( 'init', function () {
             'status'           => 'pending',
             'note'             => $note,
         ] );
+        $check_donation_id = (int) $wpdb->insert_id;
+
+        // Let the society know a mailed check is on its way.
+        if ( $check_donation_id ) {
+            $d_row = $wpdb->get_row( $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}sp_donations WHERE id = %d", $check_donation_id
+            ) );
+            if ( $d_row ) {
+                sp_donation_notify_society( $d_row, sp_settings(), true );
+            }
+        }
 
         wp_safe_redirect( add_query_arg( [
             'sp_donate_msg' => 'check_mailin',
@@ -83792,6 +83803,46 @@ function sp_donation_mark_paid_from_session( int $donation_id, array $session ):
 /**
  * Send an immediate receipt email for a paid donation.
  */
+/**
+ * Notify the society that a gift arrived (or, for a mail-in check, is expected).
+ *
+ * WHY: The donor always got a receipt, but the treasurer had no heads-up — gifts
+ *      had to be discovered by opening the admin. Sends to organization_email
+ *      (admin-editable), falling back to the WordPress admin email.
+ */
+function sp_donation_notify_society( object $d, array $settings, bool $is_pledge = false ): void {
+    $notify_to = trim( $settings['organization_email'] ?? '' ) ?: get_option( 'admin_email' );
+    if ( ! $notify_to || ! is_email( $notify_to ) ) {
+        return;
+    }
+    $org_name = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+    $anon     = (int) ( $d->is_anonymous ?? 0 ) === 1;
+    $amount   = number_format( (float) ( $d->gross_amount ?: $d->amount ), 2 );
+
+    $subject = $is_pledge
+        ? sprintf( __( '[%s] Mail-in donation pledged', 'societypress' ), $org_name )
+        : sprintf( __( '[%s] New donation received', 'societypress' ), $org_name );
+
+    $body = $is_pledge
+        ? sprintf( __( 'A donor pledged $%s by mailed check. Mark it received in the admin when the check arrives.', 'societypress' ), $amount ) . "\n\n"
+        : sprintf( __( 'A donation of $%s was just received.', 'societypress' ), $amount ) . "\n\n";
+    $body .= sprintf( __( 'Donor: %s', 'societypress' ), $anon ? __( 'Anonymous', 'societypress' ) : $d->donor_name ) . "\n";
+    if ( ! $anon && ! empty( $d->donor_email ) ) {
+        $body .= sprintf( __( 'Email: %s', 'societypress' ), $d->donor_email ) . "\n";
+    }
+    if ( ! empty( $d->payment_method ) ) {
+        $body .= sprintf( __( 'Method: %s', 'societypress' ), $d->payment_method ) . "\n";
+    }
+    if ( ! empty( $d->dedication ) ) {
+        $body .= sprintf( __( 'Dedication: %s', 'societypress' ), $d->dedication ) . "\n";
+    }
+    if ( ! empty( $d->note ) ) {
+        $body .= sprintf( __( 'Note: %s', 'societypress' ), $d->note ) . "\n";
+    }
+
+    wp_mail( $notify_to, $subject, $body );
+}
+
 function sp_donation_send_receipt( int $donation_id ): void {
     global $wpdb;
     $d = $wpdb->get_row( $wpdb->prepare(
@@ -83843,6 +83894,9 @@ function sp_donation_send_receipt( int $donation_id ): void {
     $body .= sprintf( __( 'With gratitude,%1$sThe %2$s team', 'societypress' ), "\n", $org_name );
 
     wp_mail( $d->donor_email, $subject, $body );
+
+    // Heads-up to the society (fires once, gated by acknowledgment_sent above).
+    sp_donation_notify_society( $d, $settings );
 
     $wpdb->update( $wpdb->prefix . 'sp_donations', [
         'acknowledgment_sent' => 1,

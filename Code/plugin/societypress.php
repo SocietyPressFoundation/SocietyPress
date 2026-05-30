@@ -35633,6 +35633,16 @@ class SP_Events_List_Table extends WP_List_Table {
         );
         $actions['duplicate'] = sprintf( '<a href="%s">%s</a>', esc_url( $duplicate_url ), esc_html__( 'Duplicate', 'societypress' ) );
 
+        // Email this event — one click to the blast composer, pre-filled with
+        // the event's title, date, location, and description. WHY: promoting an
+        // event was previously a copy-paste chore; this is the single highest-
+        // leverage events↔communications shortcut for a volunteer admin. Only
+        // shown when the Blast Email module is on and the user may send it.
+        if ( sp_module_enabled( 'blast_email' ) && current_user_can( 'sp_manage_communications' ) ) {
+            $email_url = admin_url( 'admin.php?page=sp-blast-email-compose&sp_event=' . (int) $item->id );
+            $actions['email_event'] = sprintf( '<a href="%s">%s</a>', esc_url( $email_url ), esc_html__( 'Email this event', 'societypress' ) );
+        }
+
         // Cancel — only for scheduled events
         if ( $item->status === 'scheduled' ) {
             $cancel_url = wp_nonce_url(
@@ -61856,6 +61866,52 @@ function sp_render_blast_email_compose_page(): void {
             echo '<p>' . esc_html__( 'This blast email has already been sent and cannot be edited.', 'societypress' ) . '</p>';
             echo '<p><a href="' . esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ) . '">' . esc_html__( '&larr; Back', 'societypress' ) . '</a></p></div>';
             return;
+        }
+    }
+
+    // Pre-fill from an event when arriving via the "Email this event" row
+    // action (no blast_id, GET request). We synthesize a draft-shaped object so
+    // the existing subject/body fields render pre-populated; the admin edits and
+    // chooses recipients before anything is saved or sent.
+    if ( ! $blast_id && $_SERVER['REQUEST_METHOD'] !== 'POST' && ! empty( $_GET['sp_event'] ) ) {
+        $event = $wpdb->get_row( $wpdb->prepare(
+            "SELECT title, description, event_date, start_time, location_name, location_address, virtual_url
+             FROM {$prefix}events WHERE id = %d",
+            (int) $_GET['sp_event']
+        ) );
+        if ( $event ) {
+            $when = $event->event_date ? wp_date( get_option( 'date_format', 'F j, Y' ), strtotime( $event->event_date ) ) : '';
+            if ( $when !== '' && $event->start_time ) {
+                $when .= ' ' . __( 'at', 'societypress' ) . ' ' . wp_date( get_option( 'time_format', 'g:i a' ), strtotime( $event->event_date . ' ' . $event->start_time ) );
+            }
+            $where = trim( (string) $event->location_name );
+            if ( $event->location_address ) {
+                $where .= ( $where !== '' ? ', ' : '' ) . $event->location_address;
+            }
+            if ( $where === '' && $event->virtual_url ) {
+                $where = __( 'Online', 'societypress' );
+            }
+
+            // Friendly, fully-editable HTML starting point (body is a wp_editor).
+            $lines   = [];
+            $lines[] = '<p>' . esc_html( sprintf( __( 'Join us for %s.', 'societypress' ), $event->title ) ) . '</p>';
+            if ( $when !== '' ) {
+                $lines[] = '<p><strong>' . esc_html__( 'When:', 'societypress' ) . '</strong> ' . esc_html( $when ) . '</p>';
+            }
+            if ( $where !== '' ) {
+                $lines[] = '<p><strong>' . esc_html__( 'Where:', 'societypress' ) . '</strong> ' . esc_html( $where ) . '</p>';
+            }
+            if ( $event->virtual_url ) {
+                $lines[] = '<p><strong>' . esc_html__( 'Join online:', 'societypress' ) . '</strong> <a href="' . esc_url( $event->virtual_url ) . '">' . esc_html( $event->virtual_url ) . '</a></p>';
+            }
+            if ( trim( (string) $event->description ) !== '' ) {
+                $lines[] = wpautop( wp_kses_post( $event->description ) );
+            }
+
+            $blast = (object) [
+                'subject' => $event->title,
+                'body'    => implode( "\n", $lines ),
+            ];
         }
     }
 

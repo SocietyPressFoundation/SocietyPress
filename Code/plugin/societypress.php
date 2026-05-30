@@ -52810,7 +52810,7 @@ function sp_render_reports_page(): void {
     // Donation stats for this year
     $year_start     = wp_date( 'Y-01-01' );
     $donations_year = (float) $wpdb->get_var( $wpdb->prepare(
-        "SELECT COALESCE(SUM(amount), 0) FROM {$prefix}donations WHERE date >= %s", $year_start
+        "SELECT COALESCE(SUM(amount), 0) FROM {$prefix}donations WHERE date >= %s AND status NOT IN ('pending','failed')", $year_start
     ) );
     $donor_count    = (int) $wpdb->get_var( $wpdb->prepare(
         "SELECT COUNT(DISTINCT donor_email) FROM {$prefix}donations WHERE date >= %s AND donor_email IS NOT NULL AND donor_email != ''", $year_start
@@ -52821,7 +52821,7 @@ function sp_render_reports_page(): void {
         "SELECT c.name, SUM(d.amount) AS raised
          FROM {$prefix}donations d
          JOIN {$prefix}campaigns c ON d.campaign_id = c.id
-         WHERE d.date >= %s
+         WHERE d.date >= %s AND d.status NOT IN ('pending','failed')
          GROUP BY d.campaign_id
          ORDER BY raised DESC
          LIMIT 1", $year_start
@@ -63444,10 +63444,11 @@ function sp_render_donations_page(): void {
         ? $wpdb->get_row( $wpdb->prepare( $stats_sql, ...$args ) )
         : $wpdb->get_row( $stats_sql );
 
-    // This year's total (always unfiltered)
+    // This year's total received (excludes not-yet-received pending pledges and
+    // failed payments, matching the campaign "raised" figures).
     $year_start = wp_date( 'Y-01-01' );
     $year_total = (float) $wpdb->get_var( $wpdb->prepare(
-        "SELECT COALESCE(SUM(amount), 0) FROM {$prefix}donations WHERE date >= %s",
+        "SELECT COALESCE(SUM(amount), 0) FROM {$prefix}donations WHERE date >= %s AND status NOT IN ('pending','failed')",
         $year_start
     ) );
 
@@ -64073,8 +64074,8 @@ function sp_render_campaigns_page(): void {
     $campaigns = $wpdb->get_results(
         "SELECT c.*,
                 u.display_name AS created_by_name,
-                COALESCE((SELECT SUM(d.amount) FROM {$prefix}donations d WHERE d.campaign_id = c.id), 0) AS raised,
-                (SELECT COUNT(*) FROM {$prefix}donations d WHERE d.campaign_id = c.id) AS donation_count
+                COALESCE((SELECT SUM(d.amount) FROM {$prefix}donations d WHERE d.campaign_id = c.id AND d.status NOT IN ('pending','failed')), 0) AS raised,
+                (SELECT COUNT(*) FROM {$prefix}donations d WHERE d.campaign_id = c.id AND d.status NOT IN ('pending','failed')) AS donation_count
          FROM {$prefix}campaigns c
          LEFT JOIN {$wpdb->users} u ON c.created_by = u.ID
          ORDER BY c.status ASC, c.created_at DESC"

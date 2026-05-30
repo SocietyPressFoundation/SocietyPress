@@ -74606,6 +74606,11 @@ function sp_render_orders_page(): void {
     $status_filter = sanitize_text_field( $_GET['status'] ?? '' );
     $valid_statuses = [ 'pending', 'paid', 'shipped', 'completed', 'refunded', 'failed' ];
 
+    // Name/email/order-# search and date range — parity with the donations admin.
+    $search    = sanitize_text_field( $_GET['s'] ?? '' );
+    $filter_from = sanitize_text_field( $_GET['from'] ?? '' );
+    $filter_to   = sanitize_text_field( $_GET['to'] ?? '' );
+
     // Counts for tab badges
     $counts = [];
     $count_rows = $wpdb->get_results( "SELECT status, COUNT(*) as cnt FROM {$prefix}orders GROUP BY status" );
@@ -74614,13 +74619,30 @@ function sp_render_orders_page(): void {
     }
     $total_count = array_sum( $counts );
 
-    // Query orders
-    $where = '';
-    $params = [];
+    // Query orders — build WHERE from the active filters.
+    $where_parts = [];
+    $params      = [];
     if ( $status_filter && in_array( $status_filter, $valid_statuses, true ) ) {
-        $where = 'WHERE o.status = %s';
-        $params[] = $status_filter;
+        $where_parts[] = 'o.status = %s';
+        $params[]      = $status_filter;
     }
+    if ( $search !== '' ) {
+        $like          = '%' . $wpdb->esc_like( $search ) . '%';
+        $where_parts[] = '(o.customer_name LIKE %s OR o.customer_email LIKE %s OR u.display_name LIKE %s OR o.id = %d)';
+        $params[]      = $like;
+        $params[]      = $like;
+        $params[]      = $like;
+        $params[]      = (int) $search;
+    }
+    if ( $filter_from !== '' ) {
+        $where_parts[] = 'o.created_at >= %s';
+        $params[]      = $filter_from . ' 00:00:00';
+    }
+    if ( $filter_to !== '' ) {
+        $where_parts[] = 'o.created_at <= %s';
+        $params[]      = $filter_to . ' 23:59:59';
+    }
+    $where = $where_parts ? 'WHERE ' . implode( ' AND ', $where_parts ) : '';
 
     $sql = "SELECT o.*, u.display_name AS user_display_name,
                    (SELECT COUNT(*) FROM {$prefix}order_items oi WHERE oi.order_id = o.id) AS item_count
@@ -74655,6 +74677,8 @@ function sp_render_orders_page(): void {
     <style id="sp-orders-css">
         .sp-orders-tabs { margin-bottom: 10px; }
         .sp-orders-table { margin-top: 10px; }
+        .sp-orders-filter-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0; }
+        .sp-orders-filter-label { font-weight: 600; color: #555; }
         .sp-orders-col-id { width: 70px; }
         .sp-orders-col-items { width: 80px; text-align: center; }
         .sp-orders-col-date { width: 150px; }
@@ -74688,6 +74712,22 @@ function sp_render_orders_page(): void {
                 </a><?php echo $s !== $last ? ' |' : ''; ?></li>
             <?php endforeach; ?>
         </ul>
+
+        <form method="get" class="sp-orders-filter-form">
+            <input type="hidden" name="page" value="sp-orders">
+            <?php if ( $status_filter ) : ?>
+                <input type="hidden" name="status" value="<?php echo esc_attr( $status_filter ); ?>">
+            <?php endif; ?>
+            <input type="search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php echo esc_attr__( 'Name, email, or order #...', 'societypress' ); ?>">
+            <label class="sp-orders-filter-label" for="sp-ord-from"><?php esc_html_e( 'From', 'societypress' ); ?></label>
+            <input type="date" id="sp-ord-from" name="from" value="<?php echo esc_attr( $filter_from ); ?>">
+            <label class="sp-orders-filter-label" for="sp-ord-to"><?php esc_html_e( 'To', 'societypress' ); ?></label>
+            <input type="date" id="sp-ord-to" name="to" value="<?php echo esc_attr( $filter_to ); ?>">
+            <button type="submit" class="button"><?php esc_html_e( 'Filter', 'societypress' ); ?></button>
+            <?php if ( $search !== '' || $filter_from !== '' || $filter_to !== '' ) : ?>
+                <a href="<?php echo esc_url( add_query_arg( array_filter( [ 'page' => 'sp-orders', 'status' => $status_filter ] ) ) ); ?>" class="button"><?php esc_html_e( 'Clear', 'societypress' ); ?></a>
+            <?php endif; ?>
+        </form>
 
         <table class="wp-list-table widefat fixed striped sp-orders-table">
             <thead>

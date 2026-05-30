@@ -45244,6 +45244,33 @@ add_action( 'init', function () {
     sp_member_encrypt_fields( $join_member_data );
     $wpdb->insert( $prefix . 'members', $join_member_data );
 
+    // Capture researched surnames entered on the join form. WHY: surnames are
+    // the heart of a genealogy society — grabbing them while the new member is
+    // engaged beats hoping they log in later to fill out their profile. The
+    // field is a comma-separated list; we store each with its phonetic codes so
+    // it's immediately findable in the surname search.
+    $join_surnames = sanitize_text_field( wp_unslash( $_POST['research_surnames'] ?? '' ) );
+    if ( $join_surnames !== '' ) {
+        $seen = [];
+        foreach ( explode( ',', $join_surnames ) as $raw_surname ) {
+            $surname = trim( $raw_surname );
+            if ( $surname === '' ) {
+                continue;
+            }
+            $key = strtolower( $surname );
+            if ( isset( $seen[ $key ] ) ) {
+                continue;
+            }
+            $seen[ $key ] = true;
+            $wpdb->insert( $prefix . 'member_surnames', [
+                'user_id'        => $user_id,
+                'surname'        => $surname,
+                'soundex_code'   => soundex( $surname ),
+                'metaphone_code' => metaphone( $surname ),
+            ] );
+        }
+    }
+
     // Send welcome email
     sp_send_welcome_email( $user_id );
 
@@ -45516,6 +45543,18 @@ function sp_render_join_form(): string {
                     <input type="text" id="sp-zip" name="postal_code"
                            value="<?php echo esc_attr( $_POST['postal_code'] ?? '' ); ?>">
                 </div>
+            </div>
+        </fieldset>
+
+        <!-- Research interests -->
+        <fieldset>
+            <legend><?php esc_html_e( 'Your Research', 'societypress' ); ?></legend>
+            <div class="sp-field">
+                <label for="sp-research-surnames"><?php esc_html_e( 'Surnames you\'re researching', 'societypress' ); ?></label>
+                <input type="text" id="sp-research-surnames" name="research_surnames"
+                       value="<?php echo esc_attr( $_POST['research_surnames'] ?? '' ); ?>"
+                       placeholder="<?php echo esc_attr__( 'e.g. Whitfield, Mueller, Stricklin', 'societypress' ); ?>">
+                <p class="sp-field-help"><?php esc_html_e( 'Optional. Separate names with commas — other members can find you by the family lines you study.', 'societypress' ); ?></p>
             </div>
         </fieldset>
 

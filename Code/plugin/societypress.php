@@ -63223,8 +63223,12 @@ function sp_render_donations_page(): void {
     $filter_type     = sanitize_text_field( $_GET['type'] ?? '' );
     $filter_from     = sanitize_text_field( $_GET['from'] ?? '' );
     $filter_to       = sanitize_text_field( $_GET['to'] ?? '' );
+    $filter_year     = (int) ( $_GET['year'] ?? 0 );
     $search          = sanitize_text_field( $_GET['s'] ?? '' );
     $per_page        = 50;
+
+    // Years present in the data, for the quick year filter (annual/IRS review).
+    $year_options = $wpdb->get_col( "SELECT DISTINCT YEAR(date) AS y FROM {$prefix}donations WHERE date IS NOT NULL ORDER BY y DESC" );
     $paged           = max( 1, (int) ( $_GET['paged'] ?? 1 ) );
     $offset          = ( $paged - 1 ) * $per_page;
 
@@ -63238,6 +63242,10 @@ function sp_render_donations_page(): void {
     if ( $filter_type ) {
         $where[] = 'd.type = %s';
         $args[]  = $filter_type;
+    }
+    if ( $filter_year ) {
+        $where[] = 'YEAR(d.date) = %d';
+        $args[]  = $filter_year;
     }
     if ( $filter_from ) {
         $where[] = 'd.date >= %s';
@@ -63438,6 +63446,17 @@ function sp_render_donations_page(): void {
                     <?php endforeach; ?>
                 </select>
             </div>
+            <?php if ( ! empty( $year_options ) ) : ?>
+            <div>
+                <label class="sp-donations-filter-label" for="sp-don-year"><?php esc_html_e( 'Year', 'societypress' ); ?></label>
+                <select id="sp-don-year" name="year">
+                    <option value=""><?php esc_html_e( 'All Years', 'societypress' ); ?></option>
+                    <?php foreach ( $year_options as $y ) : ?>
+                        <option value="<?php echo (int) $y; ?>" <?php selected( $filter_year, (int) $y ); ?>><?php echo (int) $y; ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <?php endif; ?>
             <div>
                 <label class="sp-donations-filter-label" for="sp-don-from"><?php esc_html_e( 'From', 'societypress' ); ?></label>
                 <input type="date" id="sp-don-from" name="from" value="<?php echo esc_attr( $filter_from ); ?>">
@@ -63452,7 +63471,7 @@ function sp_render_donations_page(): void {
             </div>
             <div>
                 <button type="submit" class="button"><?php esc_html_e( 'Filter', 'societypress' ); ?></button>
-                <?php if ( $filter_campaign || $filter_type || $filter_from || $filter_to || $search ) : ?>
+                <?php if ( $filter_campaign || $filter_type || $filter_year || $filter_from || $filter_to || $search ) : ?>
                     <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-donations' ) ); ?>" class="button"><?php esc_html_e( 'Clear', 'societypress' ); ?></a>
                 <?php endif; ?>
             </div>

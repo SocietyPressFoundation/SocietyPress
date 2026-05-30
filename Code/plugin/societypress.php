@@ -61993,6 +61993,14 @@ function sp_render_blast_email_detail( int $blast_id ): void {
                 implode( ', ', $tier_names )
             );
         }
+    } elseif ( $blast->recipient_type === 'mailing_list_subscribers' ) {
+        $filter_display = __( 'Mailing list subscribers', 'societypress' );
+    } elseif ( $blast->recipient_type === 'renewal_due' ) {
+        $filter_display = __( 'Renewal due within 30 days', 'societypress' );
+    } elseif ( $blast->recipient_type === 'recently_joined' ) {
+        $filter_display = __( 'Recently joined (last 30 days)', 'societypress' );
+    } elseif ( $blast->recipient_type === 'birthday_month' ) {
+        $filter_display = __( 'Birthdays this month', 'societypress' );
     }
 
     ?>
@@ -62307,6 +62315,18 @@ function sp_render_blast_email_compose_page(): void {
                                 <input type="radio" name="recipient_type" value="mailing_list_subscribers" <?php checked( $recipient_type, 'mailing_list_subscribers' ); ?>>
                                 <?php printf( esc_html__( 'Mailing list subscribers (%d)', 'societypress' ), sp_subscriber_confirmed_count() ); ?>
                             </label>
+                            <label class="sp-blast-recipient-label-sm">
+                                <input type="radio" name="recipient_type" value="renewal_due" <?php checked( $recipient_type, 'renewal_due' ); ?>>
+                                <?php printf( esc_html__( 'Renewal due soon — active members expiring within 30 days (%d)', 'societypress' ), sp_blast_count_recipients( 'renewal_due', null ) ); ?>
+                            </label>
+                            <label class="sp-blast-recipient-label-sm">
+                                <input type="radio" name="recipient_type" value="recently_joined" <?php checked( $recipient_type, 'recently_joined' ); ?>>
+                                <?php printf( esc_html__( 'Recently joined — within the last 30 days (%d)', 'societypress' ), sp_blast_count_recipients( 'recently_joined', null ) ); ?>
+                            </label>
+                            <label class="sp-blast-recipient-label-sm">
+                                <input type="radio" name="recipient_type" value="birthday_month" <?php checked( $recipient_type, 'birthday_month' ); ?>>
+                                <?php printf( esc_html__( 'Birthdays this month (%d)', 'societypress' ), sp_blast_count_recipients( 'birthday_month', null ) ); ?>
+                            </label>
                         </fieldset>
                         <p class="description"><?php esc_html_e( 'Members who have opted out of blast emails will be excluded automatically.', 'societypress' ); ?></p>
                         <label class="sp-blast-override-optout">
@@ -62379,6 +62399,29 @@ function sp_render_blast_email_compose_page(): void {
  * @param string|null $recipient_filter JSON filter data.
  * @return int Number of recipients.
  */
+/**
+ * Extra WHERE clause for status-based blast segments that target ACTIVE members,
+ * so they layer cleanly onto the standard recipient base query. Returns '' for
+ * any recipient type that isn't one of these segments. Static SQL (CURDATE()),
+ * no user input — safe to inline.
+ *
+ *  - renewal_due:     active members expiring within the next 30 days
+ *  - recently_joined: members who joined within the last 30 days
+ *  - birthday_month:  members whose birthday falls in the current calendar month
+ */
+function sp_blast_segment_clause( string $recipient_type ): string {
+    switch ( $recipient_type ) {
+        case 'renewal_due':
+            return ' AND m.expiration_date IS NOT NULL AND m.expiration_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)';
+        case 'recently_joined':
+            return ' AND m.join_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)';
+        case 'birthday_month':
+            return ' AND m.date_of_birth IS NOT NULL AND MONTH(m.date_of_birth) = MONTH(CURDATE())';
+        default:
+            return '';
+    }
+}
+
 function sp_blast_count_recipients( string $recipient_type, ?string $recipient_filter, bool $include_optout = false ): int {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
@@ -62419,11 +62462,12 @@ function sp_blast_count_recipients( string $recipient_type, ?string $recipient_f
         return sp_subscriber_confirmed_count();
     }
 
-    // Default: all active members
+    // Default: all active members, plus any status-segment clause (renewal_due,
+    // recently_joined, birthday_month) which layers onto the active base.
     return (int) $wpdb->get_var(
         "SELECT COUNT(*) FROM {$prefix}members m
          JOIN {$wpdb->users} u ON m.user_id = u.ID
-         WHERE {$base_where}"
+         WHERE {$base_where}" . sp_blast_segment_clause( $recipient_type )
     );
 }
 
@@ -62499,10 +62543,10 @@ function sp_blast_get_recipients( string $recipient_type, ?string $recipient_fil
         ) );
     }
 
-    // Default: all active members
+    // Default: all active members, plus any status-segment clause.
     return $wpdb->get_results( $wpdb->prepare(
         "{$base_select}
-         WHERE {$base_where}
+         WHERE {$base_where}" . sp_blast_segment_clause( $recipient_type ) . "
          ORDER BY m.last_name ASC
          LIMIT %d OFFSET %d",
         $limit, $offset

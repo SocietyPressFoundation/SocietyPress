@@ -34260,6 +34260,15 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
 .sp-surname-modal-submit {
     width: 100%;
 }
+
+/* Browse-mode A–Z directory */
+.sp-surname-az { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 16px; }
+.sp-surname-az a { padding: 4px 9px; border: 1px solid #ddd; border-radius: 4px; text-decoration: none; font-size: 14px; font-weight: 600; }
+.sp-surname-az a.sp-az-active { background: #0d1f3c; color: #fff; border-color: #0d1f3c; }
+.sp-surname-browse-list { list-style: none; margin: 0; padding: 0; columns: 3; column-gap: 24px; }
+.sp-surname-browse-list li { break-inside: avoid; padding: 3px 0; }
+.sp-surname-browse-count { color: #6d7175; font-size: 12px; }
+@media (max-width: 600px) { .sp-surname-browse-list { columns: 1; } }
 </style>';
 
     $fuzzy = sp_surname_fuzzy_requested();
@@ -34275,6 +34284,53 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
     echo esc_html__( 'Also match similar spellings', 'societypress' );
     echo '</label>';
     echo '</form>';
+
+    // Browse mode: with no search term, show an A–Z directory of every
+    // researched surname so genealogists can scan the registry instead of having
+    // to guess search terms. Clicking a surname runs the normal search.
+    if ( empty( $search ) ) {
+        $letter = isset( $_GET['sp_letter'] ) ? strtoupper( substr( preg_replace( '/[^A-Za-z]/', '', (string) $_GET['sp_letter'] ), 0, 1 ) ) : '';
+        $base   = remove_query_arg( [ 'sp_letter', 'sp_surname' ] );
+
+        echo '<div class="sp-surname-browse">';
+        echo '<div class="sp-surname-az">';
+        echo '<a href="' . esc_url( $base ) . '"' . ( $letter === '' ? ' class="sp-az-active"' : '' ) . '>' . esc_html__( 'All', 'societypress' ) . '</a>';
+        foreach ( range( 'A', 'Z' ) as $az_letter ) {
+            echo '<a href="' . esc_url( add_query_arg( 'sp_letter', $az_letter, $base ) ) . '"' . ( $letter === $az_letter ? ' class="sp-az-active"' : '' ) . '>' . esc_html( $az_letter ) . '</a>';
+        }
+        echo '</div>';
+
+        $browse_where  = "m.status = 'active'";
+        $browse_params = [];
+        if ( $letter !== '' ) {
+            $browse_where    .= ' AND s.surname LIKE %s';
+            $browse_params[] = $wpdb->esc_like( $letter ) . '%';
+        }
+        // LIMIT 500 caps the "All" view on large registries; the A–Z filter is
+        // the intended way to drill in.
+        $browse_sql = "SELECT s.surname, COUNT(DISTINCT s.user_id) AS researchers
+                       FROM {$prefix}member_surnames s
+                       INNER JOIN {$prefix}members m ON s.user_id = m.user_id
+                       WHERE {$browse_where}
+                       GROUP BY s.surname
+                       ORDER BY s.surname ASC
+                       LIMIT 500";
+        $browse_rows = $browse_params
+            ? $wpdb->get_results( $wpdb->prepare( $browse_sql, ...$browse_params ) )
+            : $wpdb->get_results( $browse_sql );
+
+        if ( empty( $browse_rows ) ) {
+            echo '<p class="sp-surname-no-results">' . esc_html__( 'No surnames to browse yet.', 'societypress' ) . '</p>';
+        } else {
+            echo '<ul class="sp-surname-browse-list">';
+            foreach ( $browse_rows as $br ) {
+                $surname_url = add_query_arg( 'sp_surname', rawurlencode( $br->surname ), $base );
+                echo '<li><a href="' . esc_url( $surname_url ) . '">' . esc_html( $br->surname ) . '</a> <span class="sp-surname-browse-count">(' . (int) $br->researchers . ')</span></li>';
+            }
+            echo '</ul>';
+        }
+        echo '</div>';
+    }
 
     if ( ! empty( $search ) ) {
         // WHY: We also select m.user_id so the "Contact Researcher" button

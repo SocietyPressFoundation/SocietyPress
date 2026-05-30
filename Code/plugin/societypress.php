@@ -74310,6 +74310,16 @@ function sp_render_store_products_page(): void {
         }
     }
 
+    // Save the inline sort-order inputs (one form for the whole list). WHY: the
+    // edit screen already sets a product's order, but reordering the catalog
+    // meant opening each product; this lets the admin renumber from the list.
+    if ( isset( $_POST['sp_save_sort'], $_POST['sort'] ) && check_admin_referer( 'sp_store_sort_save' ) && is_array( $_POST['sort'] ) ) {
+        foreach ( $_POST['sort'] as $pid => $ord ) {
+            $wpdb->update( $prefix . 'store_products', [ 'sort_order' => max( 0, (int) $ord ) ], [ 'id' => (int) $pid ] );
+        }
+        echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Product order saved.', 'societypress' ) . '</p></div>';
+    }
+
     $products = $wpdb->get_results(
         "SELECT id, title, sku, price, store_category, stock_qty, active, sort_order
          FROM {$prefix}store_products
@@ -74333,9 +74343,12 @@ function sp_render_store_products_page(): void {
                 <p><a href="<?php echo esc_url( $add_url ); ?>" class="button button-primary"><?php esc_html_e( 'Add Your First Product', 'societypress' ); ?></a></p>
             </div>
         <?php else : ?>
+            <form method="post">
+            <?php wp_nonce_field( 'sp_store_sort_save' ); ?>
             <table class="wp-list-table widefat fixed striped sp-mt-12">
                 <thead>
                     <tr>
+                        <th class="sp-w-80"><?php esc_html_e( 'Sort', 'societypress' ); ?></th>
                         <th scope="col"><?php esc_html_e( 'Title', 'societypress' ); ?></th>
                         <th class="sp-w-100"><?php esc_html_e( 'SKU', 'societypress' ); ?></th>
                         <th class="sp-w-150"><?php esc_html_e( 'Category', 'societypress' ); ?></th>
@@ -74358,6 +74371,7 @@ function sp_render_store_products_page(): void {
                         $stock_label = ( $p->stock_qty === null ) ? __( 'Unlimited', 'societypress' ) : (string) (int) $p->stock_qty;
                         ?>
                         <tr>
+                            <td><input type="number" name="sort[<?php echo (int) $p->id; ?>]" value="<?php echo esc_attr( (int) $p->sort_order ); ?>" min="0" class="sp-w-80" aria-label="<?php echo esc_attr( sprintf( __( 'Sort order for %s', 'societypress' ), $p->title ) ); ?>"></td>
                             <td>
                                 <strong><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $p->title ); ?></a></strong>
                                 <div class="row-actions">
@@ -74381,6 +74395,11 @@ function sp_render_store_products_page(): void {
                     <?php endforeach; ?>
                 </tbody>
             </table>
+            <p class="sp-mt-12">
+                <button type="submit" name="sp_save_sort" value="1" class="button"><?php esc_html_e( 'Save order', 'societypress' ); ?></button>
+                <span class="description"><?php esc_html_e( 'Lower numbers appear first in the store.', 'societypress' ); ?></span>
+            </p>
+            </form>
         <?php endif; ?>
     </div>
     <?php

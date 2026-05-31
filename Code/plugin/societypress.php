@@ -75183,6 +75183,53 @@ function sp_render_order_detail_page(): void {
         }
     }
 
+    // Re-price a guest/non-member order at member rates. WHY: members who forgot
+    // to log in (or phone orders a volunteer places for them) get charged the
+    // regular price; this lets an admin apply the member price after the fact
+    // for each product line that has one, then recompute the order totals.
+    if ( $_SERVER['REQUEST_METHOD'] === 'POST' && isset( $_POST['sp_convert_nonce'] ) ) {
+        check_admin_referer( 'sp_convert_order_' . $order_id, 'sp_convert_nonce' );
+        $order_row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$prefix}orders WHERE id = %d", $order_id ) );
+        if ( $order_row ) {
+            $items_to_price = $wpdb->get_results( $wpdb->prepare(
+                "SELECT * FROM {$prefix}order_items WHERE order_id = %d", $order_id
+            ) );
+            $new_subtotal = 0.0;
+            $changed      = false;
+            foreach ( $items_to_price as $it ) {
+                $unit = (float) $it->unit_price;
+                if ( ! empty( $it->product_id ) ) {
+                    $mp = $wpdb->get_var( $wpdb->prepare(
+                        "SELECT member_price FROM {$prefix}store_products WHERE id = %d", (int) $it->product_id
+                    ) );
+                    if ( $mp !== null && (float) $mp < $unit ) {
+                        $unit    = (float) $mp;
+                        $changed = true;
+                    }
+                }
+                $line = round( $unit * (int) $it->quantity, 2 );
+                if ( abs( $unit - (float) $it->unit_price ) > 0.0001 ) {
+                    $wpdb->update( $prefix . 'order_items',
+                        [ 'unit_price' => $unit, 'line_total' => $line ],
+                        [ 'id' => (int) $it->id ]
+                    );
+                }
+                $new_subtotal += $line;
+            }
+            if ( $changed ) {
+                $new_subtotal = round( $new_subtotal, 2 );
+                $new_total    = round( $new_subtotal + (float) $order_row->shipping_total, 2 );
+                $wpdb->update( $prefix . 'orders',
+                    [ 'subtotal' => $new_subtotal, 'total' => $new_total, 'updated_at' => current_time( 'mysql' ) ],
+                    [ 'id' => $order_id ]
+                );
+                sp_audit( 'store_order_member_repriced', sprintf( 'Order #%d re-priced at member rates (new total $%s)', $order_id, number_format( $new_total, 2 ) ), 'order', $order_id );
+            }
+            wp_redirect( admin_url( 'admin.php?page=sp-order-detail&order_id=' . $order_id . ( $changed ? '&repriced=1' : '&nochange=1' ) ) );
+            exit;
+        }
+    }
+
     $order = $wpdb->get_row( $wpdb->prepare(
         "SELECT * FROM {$prefix}orders WHERE id = %d", $order_id
     ) );
@@ -75295,6 +75342,11 @@ function sp_render_order_detail_page(): void {
         <?php if ( $updated === '1' ) : ?>
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Order updated.', 'societypress' ); ?></p></div>
         <?php endif; ?>
+        <?php if ( ( $_GET['repriced'] ?? '' ) === '1' ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Order re-priced at member rates.', 'societypress' ); ?></p></div>
+        <?php elseif ( ( $_GET['nochange'] ?? '' ) === '1' ) : ?>
+            <div class="notice notice-info is-dismissible"><p><?php esc_html_e( 'No change — none of the items had a lower member price.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
 
         <div class="sp-order-detail-grid">
 
@@ -75356,6 +75408,13 @@ function sp_render_order_detail_page(): void {
                     <?php endforeach; ?>
                 </tbody>
             </table>
+            <?php if ( ! in_array( $order->status, [ 'refunded', 'failed' ], true ) ) : ?>
+                <form method="post" class="sp-mt-12">
+                    <?php wp_nonce_field( 'sp_convert_order_' . $order_id, 'sp_convert_nonce' ); ?>
+                    <button type="submit" class="button" data-sp-confirm="<?php echo esc_attr__( 'Re-price this order at member rates? Items that have a member price will be lowered and the total recalculated.', 'societypress' ); ?>"><?php esc_html_e( 'Apply member pricing', 'societypress' ); ?></button>
+                    <span class="description"><?php esc_html_e( 'Use when the buyer is a member who was charged the regular price (e.g. forgot to log in).', 'societypress' ); ?></span>
+                </form>
+            <?php endif; ?>
         </div>
 
         <!-- Update Status -->

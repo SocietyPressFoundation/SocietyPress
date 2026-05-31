@@ -2090,12 +2090,13 @@ function sp_create_tables(): void {
     //      those categories with a sort order for display.
     // ========================================================================
     dbDelta( "CREATE TABLE {$prefix}document_categories (
-        id          BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-        name        VARCHAR(200)        NOT NULL,
-        slug        VARCHAR(200)        NOT NULL,
-        description TEXT                NULL,
-        sort_order  INT                 NOT NULL DEFAULT 0,
-        created_at  DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        id           BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        name         VARCHAR(200)        NOT NULL,
+        slug         VARCHAR(200)        NOT NULL,
+        description  TEXT                NULL,
+        access_level VARCHAR(20)         NOT NULL DEFAULT 'public',
+        sort_order   INT                 NOT NULL DEFAULT 0,
+        created_at   DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         UNIQUE KEY slug (slug)
     ) {$charset_collate};" );
@@ -75683,7 +75684,10 @@ function sp_ajax_document_download(): void {
     }
 
     $doc = $wpdb->get_row( $wpdb->prepare(
-        "SELECT id, file_url, access_level, status FROM {$wpdb->prefix}sp_documents WHERE id = %d",
+        "SELECT d.id, d.file_url, d.access_level, d.status, c.access_level AS cat_access
+         FROM {$wpdb->prefix}sp_documents d
+         LEFT JOIN {$wpdb->prefix}sp_document_categories c ON d.category_id = c.id
+         WHERE d.id = %d",
         $doc_id
     ) );
 
@@ -75696,7 +75700,9 @@ function sp_ajax_document_download(): void {
         wp_die( esc_html__( 'Document not found.', 'societypress' ), '', 404 );
     }
 
-    if ( $doc->access_level === 'members_only' ) {
+    // A members-only category locks its documents even if the file itself is
+    // public — enforce the stricter of the two here, mirroring the frontend.
+    if ( $doc->access_level === 'members_only' || ( $doc->cat_access ?? 'public' ) === 'members_only' ) {
         if ( ! is_user_logged_in() ) {
             auth_redirect();
             exit;
@@ -75784,10 +75790,12 @@ add_action( 'admin_init', function () {
     }
 
     $data = [
-        'name'        => $name,
-        'slug'        => sanitize_title( $name ),
-        'description' => sanitize_textarea_field( $_POST['category_description'] ?? '' ),
-        'sort_order'  => (int) ( $_POST['category_sort_order'] ?? 0 ),
+        'name'         => $name,
+        'slug'         => sanitize_title( $name ),
+        'description'  => sanitize_textarea_field( $_POST['category_description'] ?? '' ),
+        'access_level' => in_array( $_POST['category_access'] ?? '', [ 'public', 'members_only' ], true )
+            ? $_POST['category_access'] : 'public',
+        'sort_order'   => (int) ( $_POST['category_sort_order'] ?? 0 ),
     ];
 
     if ( $cat_id ) {
@@ -76030,6 +76038,16 @@ function sp_render_document_categories_page(): void {
                         <tr>
                             <th scope="col"><label for="category_description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
                             <td><textarea id="category_description" name="category_description" rows="3" class="large-text"><?php echo esc_textarea( $edit_cat->description ?? '' ); ?></textarea></td>
+                        </tr>
+                        <tr>
+                            <th scope="col"><label for="category_access"><?php esc_html_e( 'Access', 'societypress' ); ?></label></th>
+                            <td>
+                                <select id="category_access" name="category_access">
+                                    <option value="public" <?php selected( $edit_cat->access_level ?? 'public', 'public' ); ?>><?php esc_html_e( 'Public — anyone can view', 'societypress' ); ?></option>
+                                    <option value="members_only" <?php selected( $edit_cat->access_level ?? 'public', 'members_only' ); ?>><?php esc_html_e( 'Members only', 'societypress' ); ?></option>
+                                </select>
+                                <p class="description"><?php esc_html_e( 'Members-only makes every document in this category members-only, regardless of each file\'s own setting — so you don\'t have to lock them one by one.', 'societypress' ); ?></p>
+                            </td>
                         </tr>
                         <tr>
                             <th scope="col"><label for="category_sort_order"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label></th>
@@ -76810,13 +76828,21 @@ function sp_frontend_documents(): void {
     // Published documents only on the frontend. Order by category sort order,
     // then by each document's sort order; uncategorized documents come last.
     $docs = $wpdb->get_results(
-        "SELECT d.*, c.name AS category_name, c.sort_order AS cat_sort
+        "SELECT d.*, c.name AS category_name, c.sort_order AS cat_sort, c.access_level AS cat_access
          FROM {$prefix}documents d
          LEFT JOIN {$prefix}document_categories c ON d.category_id = c.id
          WHERE d.status = 'published'
          ORDER BY (d.category_id IS NULL) ASC, c.sort_order ASC, c.name ASC,
                   d.sort_order ASC, d.title ASC"
     );
+
+    // A members-only category locks every document in it, regardless of each
+    // file's own setting — so promote the document's effective access here.
+    foreach ( $docs as $d ) {
+        if ( ( $d->cat_access ?? 'public' ) === 'members_only' ) {
+            $d->access_level = 'members_only';
+        }
+    }
 
     // These classes are consumed by sp_render_document_row() and were never
     // defined elsewhere (only the admin-side .sp-doc-* styles exist), so the
@@ -85461,6 +85487,9 @@ add_action( 'admin_init', function () {
         ],
         'sp_events'         => [
             'attachment_id' => "ALTER TABLE {$wpdb->prefix}sp_events ADD COLUMN attachment_id BIGINT(20) UNSIGNED NULL AFTER image_id",
+        ],
+        'sp_document_categories' => [
+            'access_level' => "ALTER TABLE {$wpdb->prefix}sp_document_categories ADD COLUMN access_level VARCHAR(20) NOT NULL DEFAULT 'public' AFTER description",
         ],
         'sp_blast_emails'   => [
             'override_optout' => "ALTER TABLE {$wpdb->prefix}sp_blast_emails ADD COLUMN override_optout TINYINT(1) NOT NULL DEFAULT 0 AFTER total_failed",

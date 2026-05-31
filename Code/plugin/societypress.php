@@ -53202,7 +53202,7 @@ function sp_render_album_edit_page(): void {
         // Add photos
         if (addPhotosBtn) {
             addPhotosBtn.addEventListener('click', function() {
-                var frame = wp.media({ title: 'Add Photos', button: { text: 'Add to Album' }, multiple: true });
+                var frame = wp.media({ title: <?php echo wp_json_encode( __( 'Add Photos', 'societypress' ) ); ?>, button: { text: <?php echo wp_json_encode( __( 'Add to Album', 'societypress' ) ); ?> }, multiple: true });
                 frame.on('select', function() {
                     var attachments = frame.state().get('selection').toJSON();
                     var currentIds = (photoIdsInput && photoIdsInput.value) ? photoIdsInput.value.split(',').map(Number) : [];
@@ -53210,9 +53210,21 @@ function sp_render_album_edit_page(): void {
                         if (currentIds.indexOf(att.id) !== -1) return; // skip dupes
                         currentIds.push(att.id);
                         var thumb = att.sizes && att.sizes.thumbnail ? att.sizes.thumbnail.url : att.url;
+                        // Carry the caption the volunteer typed in the WordPress
+                        // media uploader straight into the album's caption box, so
+                        // adding one captioned photo really is a single step (no
+                        // retyping). Fall back to the media Title if no caption was
+                        // set, but skip a bare filename-style title (no spaces, has
+                        // a dot) so we don't seed noise like "speaker-photo.jpg".
+                        var seed = att.caption || '';
+                        if (!seed && att.title && !/^\S+\.\S+$/.test(att.title)) { seed = att.title; }
+                        var esc = function (s) {
+                            return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+                                .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        };
                         var html = '<div class="sp-album-photo sp-album-edit-photo-tile" data-id="' + att.id + '" draggable="true">'
                             + '<img src="' + thumb + '" class="sp-album-edit-photo-img">'
-                            + '<input type="text" name="photo_captions[' + att.id + ']" placeholder="<?php echo esc_js( __( 'Caption', 'societypress' ) ); ?>" class="sp-album-edit-caption-input">'
+                            + '<input type="text" name="photo_captions[' + att.id + ']" value="' + esc(seed) + '" placeholder="<?php echo esc_js( __( 'Caption', 'societypress' ) ); ?>" class="sp-album-edit-caption-input">'
                             + '<button type="button" class="sp-remove-photo sp-album-edit-remove-btn" data-id="' + att.id + '" aria-label="<?php echo esc_js( __( 'Remove photo', 'societypress' ) ); ?>">&times;</button>'
                             + '</div>';
                         if (albumPhotos) albumPhotos.insertAdjacentHTML('beforeend', html);

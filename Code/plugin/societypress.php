@@ -157,6 +157,7 @@ register_activation_hook( __FILE__, function () {
             'design_custom_css'            => '',
             // Store — configurable product source
             'store_acq_code'               => '',
+            'store_flat_shipping'          => 0,
             'store_intro_text'             => '',
             // Analytics — Google Analytics integration
             'analytics_google_id'          => '',
@@ -19908,6 +19909,22 @@ add_action( 'admin_init', function () {
     );
 
     add_settings_field(
+        'store_flat_shipping',
+        __( 'Flat Shipping Rate', 'societypress' ),
+        function () {
+            $settings = sp_settings();
+            $value    = (float) ( $settings['store_flat_shipping'] ?? 0 );
+            printf(
+                '<input type="number" name="societypress_settings[store_flat_shipping]" value="%s" step="0.01" min="0" class="sp-w-150">',
+                esc_attr( number_format( $value, 2, '.', '' ) )
+            );
+            echo '<p class="description">' . esc_html__( 'Optional. If above 0, any order containing a shippable item is charged this single flat rate once, instead of summing each item\'s per-unit shipping. Leave at 0 to use per-item shipping.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-org',
+        'sp_store_section'
+    );
+
+    add_settings_field(
         'store_intro_text',
         __( 'Store Introduction', 'societypress' ),
         function () {
@@ -20776,6 +20793,7 @@ function sp_sanitize_settings( array $input ): array {
     $sanitizers = [
         // Organization
         'store_acq_code'          => fn() => sanitize_text_field( $input['store_acq_code'] ?? '' ),
+        'store_flat_shipping'     => fn() => max( 0, round( (float) ( $input['store_flat_shipping'] ?? 0 ), 2 ) ),
         'store_intro_text'        => fn() => sanitize_textarea_field( $input['store_intro_text'] ?? '' ),
         // Outbound email identity — wizard-set today, but covered here so a
         // future Email settings tab can't accidentally bypass header-safe input.
@@ -20982,7 +21000,7 @@ function sp_sanitize_settings( array $input ): array {
             'organization_name', 'organization_address', 'organization_phone',
             'organization_email', 'community_forum_url', 'help_requests_notify_all',
             'currency_symbol', 'currency_position',
-            'store_acq_code', 'store_intro_text',
+            'store_acq_code', 'store_intro_text', 'store_flat_shipping',
         ]);
     }
 
@@ -73407,6 +73425,15 @@ function sp_store_create_pending_order() {
         return new WP_Error( 'no_valid_items', __( 'No valid items in your cart.', 'societypress' ) );
     }
 
+    // Flat-rate shipping: if the society set a single per-order rate, charge it
+    // once (instead of the per-item sum) for any order that would have incurred
+    // shipping — so digital-only orders still ship free. Most small society
+    // shops prefer one flat postage charge over per-copy math.
+    $flat_shipping = (float) ( sp_settings()['store_flat_shipping'] ?? 0 );
+    if ( $flat_shipping > 0 && $shipping_total > 0 ) {
+        $shipping_total = $flat_shipping;
+    }
+
     $shipping_total = round( $shipping_total, 2 );
     $total          = round( $subtotal + $shipping_total, 2 );
 
@@ -74086,10 +74113,18 @@ function sp_build_cart_response(): array {
         $total_items    += $qty;
     }
 
+    // Flat-rate shipping (mirrors checkout): one per-order rate replaces the
+    // per-item sum when set and the order would otherwise ship.
+    $flat_shipping = (float) ( sp_settings()['store_flat_shipping'] ?? 0 );
+    if ( $flat_shipping > 0 && $shipping_total > 0 ) {
+        $shipping_total = $flat_shipping;
+    }
+    $shipping_total = round( $shipping_total, 2 );
+
     return [
         'items'          => $items,
         'subtotal'       => $subtotal,
-        'shipping_total' => round( $shipping_total, 2 ),
+        'shipping_total' => $shipping_total,
         'total'          => round( $subtotal + $shipping_total, 2 ),
         'total_items'    => $total_items,
     ];

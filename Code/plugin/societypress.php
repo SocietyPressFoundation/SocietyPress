@@ -78127,13 +78127,30 @@ function sp_frontend_documents(): void {
         return '<span aria-hidden="true">' . ( $map[ $ext ] ?? '📁' ) . '</span>';
     };
 
+    // Optional recency filter (?sp_doc_time): narrow to documents dated within
+    // the last N months. Undated documents are excluded while a range is active
+    // (there's no date to judge them by); the default "all" shows everything.
+    $doc_time   = sanitize_text_field( $_GET['sp_doc_time'] ?? 'all' );
+    $time_months = [ '3months' => 3, '6months' => 6, '12months' => 12 ];
+    $time_where = '';
+    if ( isset( $time_months[ $doc_time ] ) ) {
+        $cutoff     = wp_date( 'Y-m-d', strtotime( '-' . $time_months[ $doc_time ] . ' months' ) );
+        $time_where = $wpdb->prepare( ' AND d.document_date IS NOT NULL AND d.document_date >= %s', $cutoff );
+    }
+
+    // Whether any published document is dated at all — if not, the recency
+    // filter is meaningless, so we hide the control entirely.
+    $has_dated_docs = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$prefix}documents WHERE status = 'published' AND document_date IS NOT NULL AND document_date <> '0000-00-00'"
+    ) > 0;
+
     // Published documents only on the frontend. Order by category sort order,
     // then by each document's sort order; uncategorized documents come last.
     $docs = $wpdb->get_results(
         "SELECT d.*, c.name AS category_name, c.sort_order AS cat_sort, c.access_level AS cat_access, c.display_format AS cat_format, c.show_updated AS cat_show_updated, c.list_sort AS cat_list_sort
          FROM {$prefix}documents d
          LEFT JOIN {$prefix}document_categories c ON d.category_id = c.id
-         WHERE d.status = 'published'
+         WHERE d.status = 'published'{$time_where}
          ORDER BY (d.category_id IS NULL) ASC, c.sort_order ASC, c.name ASC,
                   d.sort_order ASC, d.title ASC"
     );
@@ -78167,10 +78184,37 @@ function sp_frontend_documents(): void {
 .sp-doc-monthyear { list-style: none; margin: 0; padding: 0; columns: 2; column-gap: 32px; }
 .sp-doc-monthyear li { break-inside: avoid; padding: 5px 0; border-bottom: 1px solid #f0f0f0; }
 @media (max-width: 600px) { .sp-doc-monthyear { columns: 1; } }
+.sp-doc-filter { margin: 0 0 24px; }
+.sp-doc-filter label { font-weight: 600; margin-right: 8px; }
+.sp-doc-filter select { padding: 6px 8px; }
 </style>';
 
+    // Recency filter control — only when some documents are dated. Submits with
+    // a plain GET so it works without JavaScript; the <select> auto-submits via
+    // the shared .sp-autosubmit handler when JS is on.
+    if ( $has_dated_docs ) {
+        $doc_time_opts = [
+            'all'      => __( 'All dates', 'societypress' ),
+            '3months'  => __( 'Past 3 months', 'societypress' ),
+            '6months'  => __( 'Past 6 months', 'societypress' ),
+            '12months' => __( 'Past 12 months', 'societypress' ),
+        ];
+        echo '<form method="get" class="sp-doc-filter">';
+        echo '<label for="sp-doc-time">' . esc_html__( 'Show:', 'societypress' ) . '</label>';
+        echo '<select id="sp-doc-time" name="sp_doc_time" class="sp-autosubmit">';
+        foreach ( $doc_time_opts as $val => $label ) {
+            printf( '<option value="%s" %s>%s</option>', esc_attr( $val ), selected( $doc_time, $val, false ), esc_html( $label ) );
+        }
+        echo '</select> <noscript><button type="submit">' . esc_html__( 'Apply', 'societypress' ) . '</button></noscript>';
+        echo '</form>';
+    }
+
     if ( empty( $docs ) ) {
-        echo '<p class="sp-doc-empty">' . esc_html__( 'No documents have been posted yet.', 'societypress' ) . '</p>';
+        echo '<p class="sp-doc-empty">';
+        echo isset( $time_months[ $doc_time ] )
+            ? esc_html__( 'No documents in this time range. Try "All dates".', 'societypress' )
+            : esc_html__( 'No documents have been posted yet.', 'societypress' );
+        echo '</p>';
         return;
     }
 

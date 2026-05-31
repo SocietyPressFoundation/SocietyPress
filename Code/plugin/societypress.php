@@ -66065,6 +66065,74 @@ add_action( 'wp_ajax_sp_export_leadership', function () {
     exit;
 } );
 
+// Export a genealogical record collection to CSV (columns = the collection's
+// fields, in display order). WHY: records previously exported only as GENRECORD
+// or GEDCOM; volunteers routinely need plain CSV to open in Excel or load into
+// another database when sharing a transcribed set.
+add_action( 'wp_ajax_sp_export_records', function () {
+    if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_records' ) ) {
+        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+    }
+    if ( ! current_user_can( 'sp_manage_records' ) ) {
+        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $prefix        = $wpdb->prefix . 'sp_';
+    $collection_id = absint( $_GET['collection_id'] ?? 0 );
+
+    $collection = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$prefix}record_collections WHERE id = %d", $collection_id
+    ) );
+    if ( ! $collection ) {
+        wp_die( esc_html__( 'Collection not found.', 'societypress' ) );
+    }
+
+    $fields = $wpdb->get_results( $wpdb->prepare(
+        "SELECT id, field_name FROM {$prefix}record_collection_fields WHERE collection_id = %d ORDER BY sort_order ASC, id ASC",
+        $collection_id
+    ) );
+    $field_ids   = array_map( static fn( $f ) => (int) $f->id, $fields );
+    $field_names = array_map( static fn( $f ) => $f->field_name, $fields );
+
+    // Pull every value for this collection once, keyed [record_id][field_id].
+    $values_by_record = [];
+    foreach ( (array) $wpdb->get_results( $wpdb->prepare(
+        "SELECT rv.record_id, rv.field_id, rv.field_value
+         FROM {$prefix}record_values rv
+         JOIN {$prefix}records r ON r.id = rv.record_id
+         WHERE r.collection_id = %d",
+        $collection_id
+    ) ) as $rv ) {
+        $values_by_record[ (int) $rv->record_id ][ (int) $rv->field_id ] = $rv->field_value;
+    }
+
+    $record_ids = $wpdb->get_col( $wpdb->prepare(
+        "SELECT id FROM {$prefix}records WHERE collection_id = %d ORDER BY id ASC",
+        $collection_id
+    ) );
+
+    $filename = 'records-' . sanitize_title( $collection->name ) . '-' . wp_date( 'Y-m-d' ) . '.csv';
+    header( 'Content-Type: text/csv; charset=utf-8' );
+    header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+    nocache_headers();
+
+    $out = fopen( 'php://output', 'w' );
+    fwrite( $out, "\xEF\xBB\xBF" );
+    fputcsv( $out, array_merge( [ __( 'Record ID', 'societypress' ) ], $field_names ) );
+
+    foreach ( $record_ids as $rid ) {
+        $rid  = (int) $rid;
+        $line = [ $rid ];
+        foreach ( $field_ids as $fid ) {
+            $line[] = $values_by_record[ $rid ][ $fid ] ?? '';
+        }
+        fputcsv( $out, $line );
+    }
+    fclose( $out );
+    exit;
+} );
+
 
 /**
  * Export store orders with line items as CSV.
@@ -69698,6 +69766,7 @@ function sp_render_record_browse_page(): void {
             <?php echo esc_html( $collection->name ); ?>
             <span class="sp-record-count-note">(<?php echo number_format( $total ); ?> <?php esc_html_e( 'records', 'societypress' ); ?>)</span>
             <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-edit&collection_id=' . $collection_id ) ); ?>" class="page-title-action"><?php esc_html_e( 'Add Record', 'societypress' ); ?></a>
+            <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=sp_export_records&collection_id=' . $collection_id . '&nonce=' . wp_create_nonce( 'sp_export_records' ) ) ); ?>" class="page-title-action"><?php esc_html_e( 'Export CSV', 'societypress' ); ?></a>
         </h1>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-collections' ) ); ?>">&larr; <?php esc_html_e( 'Back to Collections', 'societypress' ); ?></a>
 

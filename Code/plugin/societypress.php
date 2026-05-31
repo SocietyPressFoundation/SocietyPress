@@ -70,6 +70,7 @@ register_activation_hook( __FILE__, function () {
             'membership_period_type'  => 'annual',
             'membership_start_month'  => 7,
             'late_join_months'        => 5,
+            'membership_max_years'    => 1,
             'grace_period_months'     => 2,
             // Directory — what shows up on the membership listing page
             'dir_show_city_state'     => 1,
@@ -20059,6 +20060,27 @@ add_action( 'admin_init', function () {
         'sp_membership_section'
     );
 
+    // --- Multi-Year Membership ---
+    // WHY: Some members prefer to pay several years at once. When this is above
+    //      1 AND online dues (Stripe) is configured, the join/renew form offers
+    //      a term selector and charges (dues × years), extending the expiration
+    //      accordingly. Left at 1 = single-year only (unchanged).
+    add_settings_field(
+        'sp_membership_max_years',
+        __( 'Multi-Year Membership', 'societypress' ),
+        function () {
+            $settings = sp_settings();
+            $current  = max( 1, (int) ( $settings['membership_max_years'] ?? 1 ) );
+            printf(
+                '<input type="number" name="societypress_settings[membership_max_years]" value="%d" min="1" max="10" class="sp-w-60"> ' . esc_html__( 'years', 'societypress' ),
+                $current
+            );
+            echo '<p class="description">' . esc_html__( 'Most years a member may pay for at once during online (Stripe) signup/renewal. Set above 1 to let members pre-pay multiple years; 1 disables the term selector. Requires online dues — societies collecting dues offline are unaffected.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-membership',
+        'sp_membership_section'
+    );
+
     // --- Grace Period ---
     // WHY: Societies typically give existing members a window to renew
     //      after the new period starts before dropping them. This setting
@@ -20851,6 +20873,7 @@ function sp_sanitize_settings( array $input ): array {
                                               ? $input['membership_period_type'] : 'annual',
         'membership_start_month'  => fn() => max( 1, min( 12, (int) ( $input['membership_start_month'] ?? 7 ) ) ),
         'late_join_months'        => fn() => max( 0, min( 11, (int) ( $input['late_join_months'] ?? 3 ) ) ),
+        'membership_max_years'    => fn() => max( 1, min( 10, (int) ( $input['membership_max_years'] ?? 1 ) ) ),
         'grace_period_months'     => fn() => max( 0, min( 11, (int) ( $input['grace_period_months'] ?? 2 ) ) ),
         'renewal_reminder_30d'    => fn() => ! empty( $input['renewal_reminder_30d'] ) ? 1 : 0,
         'renewal_reminder_15d'    => fn() => ! empty( $input['renewal_reminder_15d'] ) ? 1 : 0,
@@ -21010,6 +21033,7 @@ function sp_sanitize_settings( array $input ): array {
     if ( array_key_exists( 'membership_period_type', $input ) ) {
         $page_keys = array_merge( $page_keys, [
             'membership_period_type', 'membership_start_month', 'late_join_months',
+            'membership_max_years',
             'grace_period_months', 'renewal_reminder_30d', 'renewal_reminder_15d',
             'renewal_reminder_7d', 'renewal_reminder_subject',
         ]);
@@ -45190,6 +45214,73 @@ function sp_ajax_export_registrations(): void {
 add_shortcode( 'societypress_join', 'sp_render_join_form' );
 
 /**
+ * Compute a membership expiration date N years out, honoring the society's
+ * period type. Rolling = today + N years; annual = the next cycle's start month,
+ * then N-1 further years. Used when online dues are paid for a multi-year term.
+ */
+function sp_membership_compute_expiration( int $years, array $settings ): string {
+    $years       = max( 1, $years );
+    $period_type = $settings['membership_period_type'] ?? 'annual';
+    $start_month = (int) ( $settings['membership_start_month'] ?? 1 );
+    $today       = new DateTime();
+    if ( $period_type === 'rolling' ) {
+        return $today->modify( '+' . $years . ' year' )->format( 'Y-m-d' );
+    }
+    $cy       = (int) $today->format( 'Y' );
+    $cm       = (int) $today->format( 'n' );
+    $exp_year = ( $cm >= $start_month ? $cy + 1 : $cy ) + ( $years - 1 );
+    return sprintf( '%04d-%02d-01', $exp_year, $start_month );
+}
+
+/**
+ * Activate a member after a successful dues payment: set status active, set the
+ * expiration N years out, and record the dues payment. Idempotent — keyed on the
+ * Stripe session reference stored in the payment note, so a webhook + return-URL
+ * double-fire only activates once. Returns true if it activated, false if it was
+ * a no-op (already recorded or bad input).
+ */
+function sp_membership_activate_from_payment( int $user_id, int $tier_id, int $years, float $amount, string $session_ref ): bool {
+    global $wpdb;
+    if ( $user_id <= 0 ) {
+        return false;
+    }
+    $mp_table      = $wpdb->prefix . 'sp_member_payments';
+    $members_table = $wpdb->prefix . 'sp_members';
+
+    if ( $session_ref !== '' ) {
+        $already = $wpdb->get_var( $wpdb->prepare(
+            "SELECT id FROM {$mp_table} WHERE user_id = %d AND note LIKE %s LIMIT 1",
+            $user_id, '%' . $wpdb->esc_like( $session_ref ) . '%'
+        ) );
+        if ( $already ) {
+            return false;
+        }
+    }
+
+    $settings = sp_settings();
+    $exp      = sp_membership_compute_expiration( max( 1, $years ), $settings );
+
+    $update = [ 'status' => 'active', 'expiration_date' => $exp ];
+    if ( $tier_id > 0 ) {
+        $update['tier_id'] = $tier_id;
+    }
+    $wpdb->update( $members_table, $update, [ 'user_id' => $user_id ] );
+
+    $wpdb->insert( $mp_table, [
+        'user_id' => $user_id,
+        'amount'  => round( $amount, 2 ),
+        'type'    => 'dues',
+        'method'  => 'stripe',
+        'date'    => current_time( 'Y-m-d' ),
+        'note'    => $session_ref !== ''
+            ? sprintf( __( 'Online dues payment (Stripe: %s)', 'societypress' ), $session_ref )
+            : __( 'Online dues payment', 'societypress' ),
+    ] );
+
+    return true;
+}
+
+/**
  * Process join form submission on init (before any output).
  *
  * WHY: Must run before rendering so we can set result messages and
@@ -45374,6 +45465,60 @@ add_action( 'init', function () {
         }
     }
 
+    // If this tier has dues and Stripe is configured, send the applicant to
+    // checkout for (price × chosen years). On return/webhook the member is
+    // activated and their expiration set (sp_membership_activate_from_payment).
+    // Free tiers, or societies collecting dues offline (no Stripe key), fall
+    // through to the existing pending-application behavior below.
+    $dues_price = (float) ( $tier->price ?? 0 );
+    $secret_key = function_exists( 'sp_stripe_get_secret_key' ) ? sp_stripe_get_secret_key( $settings ) : '';
+    if ( $dues_price > 0 && $secret_key ) {
+        $max_years = max( 1, (int) ( $settings['membership_max_years'] ?? 1 ) );
+        $years     = max( 1, min( $max_years, (int) ( $_POST['membership_years'] ?? 1 ) ) );
+        $amount    = round( $dues_price * $years, 2 );
+        $currency  = strtolower( $settings['stripe_currency'] ?? 'usd' );
+        $referer   = wp_get_referer() ?: home_url();
+        $org_name  = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+
+        $resp = wp_remote_post( 'https://api.stripe.com/v1/checkout/sessions', [
+            'timeout' => 30,
+            'headers' => [
+                'Authorization' => 'Bearer ' . $secret_key,
+                'Content-Type'  => 'application/x-www-form-urlencoded',
+            ],
+            'body' => [
+                'mode'                                  => 'payment',
+                'success_url'                           => add_query_arg( [ 'sp_membership_session' => '{CHECKOUT_SESSION_ID}' ], $referer ),
+                'cancel_url'                            => add_query_arg( [ 'sp_membership_msg' => 'cancelled' ], $referer ),
+                'customer_email'                        => $email,
+                'metadata[membership_user_id]'          => (string) $user_id,
+                'metadata[membership_tier_id]'          => (string) $tier_id,
+                'metadata[membership_years]'            => (string) $years,
+                'metadata[site_url]'                    => home_url(),
+                'payment_method_types[0]'               => 'card',
+                'line_items[0][quantity]'               => 1,
+                'line_items[0][price_data][currency]'   => $currency,
+                'line_items[0][price_data][unit_amount]'=> (int) round( $amount * 100 ),
+                'line_items[0][price_data][product_data][name]' => sprintf(
+                    /* translators: 1: society name, 2: number of years */
+                    _n( '%1$s membership dues', '%1$s membership dues (%2$d years)', $years, 'societypress' ),
+                    $org_name, $years
+                ),
+            ],
+        ] );
+
+        if ( ! is_wp_error( $resp ) && wp_remote_retrieve_response_code( $resp ) === 200 ) {
+            $data = json_decode( wp_remote_retrieve_body( $resp ), true );
+            if ( ! empty( $data['url'] ) ) {
+                wp_safe_redirect( $data['url'] );
+                exit;
+            }
+        }
+        // Couldn't create the session — fall through so the application isn't
+        // lost; the society can follow up for payment.
+        error_log( 'SocietyPress membership checkout error: ' . ( is_wp_error( $resp ) ? $resp->get_error_message() : wp_remote_retrieve_body( $resp ) ) );
+    }
+
     // Send welcome email
     sp_send_welcome_email( $user_id );
 
@@ -45381,6 +45526,44 @@ add_action( 'init', function () {
         'success' => true,
         'message' => __( 'Welcome! Your membership application has been submitted. You will receive a confirmation email shortly.', 'societypress' ),
     ];
+} );
+
+/**
+ * Finalize a membership dues payment when Stripe sends the applicant back to the
+ * join page (?sp_membership_session=cs_…). Fetches the session, and if it's paid,
+ * activates the member. The webhook does the same; both are idempotent.
+ */
+add_action( 'init', function () {
+    if ( empty( $_GET['sp_membership_session'] ) ) {
+        return;
+    }
+    $session_id = sanitize_text_field( wp_unslash( $_GET['sp_membership_session'] ) );
+    if ( strpos( $session_id, 'cs_' ) !== 0 ) {
+        return;
+    }
+    $settings   = sp_settings();
+    $secret_key = function_exists( 'sp_stripe_get_secret_key' ) ? sp_stripe_get_secret_key( $settings ) : '';
+    if ( ! $secret_key ) {
+        return;
+    }
+    $resp = wp_remote_get( 'https://api.stripe.com/v1/checkout/sessions/' . rawurlencode( $session_id ), [
+        'timeout' => 20,
+        'headers' => [ 'Authorization' => 'Bearer ' . $secret_key ],
+    ] );
+    if ( is_wp_error( $resp ) || wp_remote_retrieve_response_code( $resp ) !== 200 ) {
+        return;
+    }
+    $session = json_decode( wp_remote_retrieve_body( $resp ), true );
+    if ( ( $session['payment_status'] ?? '' ) !== 'paid' ) {
+        return;
+    }
+    sp_membership_activate_from_payment(
+        (int) ( $session['metadata']['membership_user_id'] ?? 0 ),
+        (int) ( $session['metadata']['membership_tier_id'] ?? 0 ),
+        max( 1, (int) ( $session['metadata']['membership_years'] ?? 1 ) ),
+        ( (int) ( $session['amount_total'] ?? 0 ) ) / 100,
+        $session_id
+    );
 } );
 
 /**
@@ -45522,6 +45705,23 @@ function sp_render_join_form(): string {
                 </label>
             <?php endforeach; ?>
         </fieldset>
+
+        <?php $sp_max_years = max( 1, (int) ( sp_settings()['membership_max_years'] ?? 1 ) ); ?>
+        <?php if ( $sp_max_years > 1 ) : ?>
+        <!-- Membership Term (multi-year, online dues only) -->
+        <fieldset>
+            <legend><?php esc_html_e( 'Membership Term', 'societypress' ); ?></legend>
+            <div class="sp-field">
+                <label for="sp-membership-years"><?php esc_html_e( 'Pay for how many years?', 'societypress' ); ?></label>
+                <select name="membership_years" id="sp-membership-years">
+                    <?php for ( $y = 1; $y <= $sp_max_years; $y++ ) : ?>
+                        <option value="<?php echo (int) $y; ?>"><?php echo esc_html( sprintf( _n( '%d year', '%d years', $y, 'societypress' ), $y ) ); ?></option>
+                    <?php endfor; ?>
+                </select>
+                <p class="sp-field-help"><?php esc_html_e( 'Dues are multiplied by the number of years, and your membership is extended accordingly.', 'societypress' ); ?></p>
+            </div>
+        </fieldset>
+        <?php endif; ?>
 
         <!-- Personal Information -->
         <fieldset>
@@ -84585,6 +84785,18 @@ function sp_donations_handle_stripe_webhook( WP_REST_Request $request ) {
         $donation_id = (int) ( $obj['metadata']['donation_id'] ?? 0 );
         if ( $donation_id ) {
             sp_donation_mark_paid_from_session( $donation_id, $obj );
+        }
+        // Membership dues — activate the member (idempotent with the return-URL
+        // path, keyed on the session id).
+        $membership_uid = (int) ( $obj['metadata']['membership_user_id'] ?? 0 );
+        if ( $membership_uid ) {
+            sp_membership_activate_from_payment(
+                $membership_uid,
+                (int) ( $obj['metadata']['membership_tier_id'] ?? 0 ),
+                max( 1, (int) ( $obj['metadata']['membership_years'] ?? 1 ) ),
+                ( (int) ( $obj['amount_total'] ?? 0 ) ) / 100,
+                (string) ( $obj['id'] ?? '' )
+            );
         }
     } elseif ( $type === 'invoice.paid' ) {
         // Recurring renewal — create a new donation row tied to the original sub

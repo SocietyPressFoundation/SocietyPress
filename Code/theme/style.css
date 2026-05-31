@@ -1737,6 +1737,25 @@ input[type="submit"]:focus-visible {
     color: #5d4037;
 }
 
+.sp-notice--info {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    color: #1e3a5f;
+}
+
+/* Read-only field summary shown when a My Account section is locked by the
+   society (members can see their info but not edit it). */
+.sp-account-readonly {
+    margin: 0 0 8px;
+}
+.sp-account-readonly dt {
+    font-weight: 600;
+    margin-top: 10px;
+}
+.sp-account-readonly dd {
+    margin: 2px 0 0;
+}
+
 /* ------- My Account renewal banner ------- */
 /* WHY: A member who is expiring or expired sees the nav "Renew Now" CTA on
    every page, but the account page itself is where they manage membership,

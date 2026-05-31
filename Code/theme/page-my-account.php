@@ -80,6 +80,14 @@ $pending = isset( $_GET['sp-pending'] ) ? true : false;
 function sp_m( $member, $field ) {
     return ( $member && isset( $member[ $field ] ) ) ? $member[ $field ] : '';
 }
+
+// Whether a My Account section is locked by society policy (Settings → Privacy).
+// Locked sections show a read-only notice instead of their edit form; the save
+// handlers enforce the same lock server-side. function_exists guards the case
+// where the theme is somehow active without the plugin.
+$sp_section_locked = function ( $section ) {
+    return function_exists( 'sp_member_section_locked' ) && sp_member_section_locked( $section );
+};
 ?>
 
 <!--
@@ -715,6 +723,25 @@ function sp_m( $member, $field ) {
             <section class="sp-account-section" id="contact">
                 <h2><?php esc_html_e( 'Contact Information', 'societypress' ); ?></h2>
 
+                <?php if ( $sp_section_locked( 'contact' ) ) : ?>
+                    <p class="sp-notice sp-notice--info"><?php esc_html_e( 'Your contact information is managed by your society. Please contact an administrator to update it.', 'societypress' ); ?></p>
+                    <dl class="sp-account-readonly">
+                        <dt><?php esc_html_e( 'Email Address', 'societypress' ); ?></dt>
+                        <dd><?php echo esc_html( $user->user_email ); ?></dd>
+                        <?php if ( sp_m( $member, 'phone' ) ) : ?>
+                            <dt><?php esc_html_e( 'Home Phone', 'societypress' ); ?></dt>
+                            <dd><?php echo esc_html( sp_m( $member, 'phone' ) ); ?></dd>
+                        <?php endif; ?>
+                        <?php if ( sp_m( $member, 'cell' ) ) : ?>
+                            <dt><?php esc_html_e( 'Cell Phone', 'societypress' ); ?></dt>
+                            <dd><?php echo esc_html( sp_m( $member, 'cell' ) ); ?></dd>
+                        <?php endif; ?>
+                        <?php if ( sp_m( $member, 'website' ) ) : ?>
+                            <dt><?php esc_html_e( 'Website', 'societypress' ); ?></dt>
+                            <dd><?php echo esc_html( sp_m( $member, 'website' ) ); ?></dd>
+                        <?php endif; ?>
+                    </dl>
+                <?php else : ?>
                 <form method="post" class="sp-account-form">
                     <?php wp_nonce_field( 'sp_update_contact', 'sp_contact_nonce' ); ?>
                     <input type="hidden" name="sp_action" value="update_contact" />
@@ -782,6 +809,7 @@ function sp_m( $member, $field ) {
 
                     <button type="submit" class="sp-button"><?php esc_html_e( 'Save Contact Information', 'societypress' ); ?></button>
                 </form>
+                <?php endif; ?>
             </section>
 
             <?php
@@ -1031,6 +1059,9 @@ function sp_m( $member, $field ) {
             <section class="sp-account-section" id="preferences">
                 <h2><?php esc_html_e( 'Communication Preferences', 'societypress' ); ?></h2>
 
+                <?php if ( $sp_section_locked( 'preferences' ) ) : ?>
+                    <p class="sp-notice sp-notice--info"><?php esc_html_e( 'Your email preferences are managed by your society. Please contact an administrator to change them.', 'societypress' ); ?></p>
+                <?php else : ?>
                 <form method="post" class="sp-account-form">
                     <?php wp_nonce_field( 'sp_update_preferences', 'sp_preferences_nonce' ); ?>
                     <input type="hidden" name="sp_action" value="update_preferences" />
@@ -1075,6 +1106,7 @@ function sp_m( $member, $field ) {
 
                     <button type="submit" class="sp-button"><?php esc_html_e( 'Save Preferences', 'societypress' ); ?></button>
                 </form>
+                <?php endif; // section lock ?>
             </section>
             <?php endif; ?>
 
@@ -1371,12 +1403,14 @@ function sp_m( $member, $field ) {
                                         ?>
                                     </span>
                                 <?php endif; ?>
+                                <?php if ( ! $sp_section_locked( 'surnames' ) ) : ?>
                                 <form method="post" data-sp-confirm="<?php echo esc_attr__( 'Remove this surname?', 'societypress' ); ?>">
                                     <?php wp_nonce_field( 'sp_remove_surname', 'sp_surname_nonce' ); ?>
                                     <input type="hidden" name="sp_action" value="remove_surname">
                                     <input type="hidden" name="surname_id" value="<?php echo esc_attr( $sn->id ); ?>">
                                     <button type="submit" class="sp-surname-remove" aria-label="<?php esc_attr_e( 'Remove surname', 'societypress' ); ?>">&times;</button>
                                 </form>
+                                <?php endif; ?>
                             </div>
                         <?php endforeach; ?>
                     <?php else : ?>
@@ -1385,6 +1419,9 @@ function sp_m( $member, $field ) {
                 </div>
 
                 <!-- Add new surname form -->
+                <?php if ( $sp_section_locked( 'surnames' ) ) : ?>
+                    <p class="sp-notice sp-notice--info"><?php esc_html_e( 'Your research surnames are managed by your society. Please contact an administrator to add or change them.', 'societypress' ); ?></p>
+                <?php else : ?>
                 <form method="post" class="sp-surname-add-form">
                     <?php wp_nonce_field( 'sp_add_surname', 'sp_surname_nonce' ); ?>
                     <input type="hidden" name="sp_action" value="add_surname">
@@ -1442,6 +1479,7 @@ function sp_m( $member, $field ) {
 
                     <button type="submit" class="sp-button"><?php esc_html_e( 'Add Surname', 'societypress' ); ?></button>
                 </form>
+                <?php endif; ?>
             </section>
 
             <?php
@@ -1720,6 +1758,9 @@ function sp_m( $member, $field ) {
             <section class="sp-account-section" id="password">
                 <h2><?php esc_html_e( 'Change Password', 'societypress' ); ?></h2>
 
+                <?php if ( $sp_section_locked( 'password' ) ) : ?>
+                    <p class="sp-notice sp-notice--info"><?php esc_html_e( 'Passwords are managed by your society. Please contact an administrator to reset yours.', 'societypress' ); ?></p>
+                <?php else : ?>
                 <form method="post" class="sp-account-form">
                     <?php wp_nonce_field( 'sp_update_password', 'sp_password_nonce' ); ?>
                     <input type="hidden" name="sp_action" value="update_password" />
@@ -1757,6 +1798,7 @@ function sp_m( $member, $field ) {
 
                     <button type="submit" class="sp-button"><?php esc_html_e( 'Change Password', 'societypress' ); ?></button>
                 </form>
+                <?php endif; ?>
             </section>
 
         </article>

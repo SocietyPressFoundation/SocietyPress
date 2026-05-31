@@ -7032,6 +7032,49 @@ function sp_user_menu() {
 // MY ACCOUNT — Form Processing (profile, contact, address, photo, password)
 // ============================================================================
 
+/**
+ * Member self-edit locks. A society can lock parts of a member's own profile
+ * (Settings → Privacy) so they're read-only on My Account and rejected by both
+ * save handlers. Default: nothing locked (members edit everything, as before).
+ * Locks gate the self-service page only — admins still edit any member from the
+ * admin Members screen, which is never gated.
+ *
+ * @return array<string,string> section key => human label
+ */
+function sp_member_lockable_sections(): array {
+    return [
+        'contact'     => __( 'Contact info (email, phone, website)', 'societypress' ),
+        'password'    => __( 'Password', 'societypress' ),
+        'surnames'    => __( 'Research surnames', 'societypress' ),
+        'preferences' => __( 'Email preferences', 'societypress' ),
+    ];
+}
+
+/** Whether a given self-service section is locked by society policy. */
+function sp_member_section_locked( string $section ): bool {
+    if ( $section === '' ) {
+        return false;
+    }
+    return ! empty( sp_settings()[ 'member_lock_' . $section ] );
+}
+
+/**
+ * Map a My Account save action to its locked section, or '' if the action is
+ * either unlockable or currently unlocked. Both save handlers call this and
+ * bail when it returns non-empty.
+ */
+function sp_member_locked_section_for_action( string $action ): string {
+    $map = [
+        'update_contact'     => 'contact',
+        'update_password'    => 'password',
+        'add_surname'        => 'surnames',
+        'remove_surname'     => 'surnames',
+        'update_preferences' => 'preferences',
+    ];
+    $section = $map[ $action ] ?? '';
+    return ( $section !== '' && sp_member_section_locked( $section ) ) ? $section : '';
+}
+
 add_action( 'template_redirect', 'sp_handle_account_forms' );
 
 function sp_handle_account_forms() {
@@ -7043,6 +7086,14 @@ function sp_handle_account_forms() {
     $user        = wp_get_current_user();
     $account_url = sp_get_my_account_url();
     $table       = $wpdb->prefix . 'sp_members';
+
+    // Society policy: refuse edits to any section the society has locked. The
+    // theme hides the form too, so this is the server-side backstop against a
+    // direct POST.
+    if ( sp_member_locked_section_for_action( $action ) !== '' ) {
+        wp_redirect( add_query_arg( 'sp-error', 'locked', $account_url ) );
+        exit;
+    }
 
     // Check approval setting once for all sections below
     $sp_settings      = sp_settings();
@@ -7992,6 +8043,12 @@ add_action( 'wp_ajax_sp_save_account', function() {
     [ $sp_nonce_key, $sp_nonce_action ] = $sp_account_nonce_map[ $action ];
     if ( ! wp_verify_nonce( $_POST[ $sp_nonce_key ] ?? '', $sp_nonce_action ) ) {
         wp_send_json_error( [ 'message' => __( 'Security check failed. Please reload the page.', 'societypress' ) ] );
+    }
+
+    // Society policy: refuse edits to a section the society has locked (the
+    // theme hides the form too; this is the server-side backstop).
+    if ( sp_member_locked_section_for_action( $action ) !== '' ) {
+        wp_send_json_error( [ 'message' => __( 'This information is managed by your society and can\'t be changed here. Please contact an administrator.', 'societypress' ) ] );
     }
 
     $user   = wp_get_current_user();
@@ -20632,6 +20689,46 @@ add_action( 'admin_init', function () {
     }
 
     // ====================================================================
+    // SECTION: Member Self-Service Locks (Privacy tab)
+    //
+    // WHY: Some societies keep authoritative contact/identity data and don't
+    //      want members editing it themselves (or want passwords reset only by
+    //      staff). These toggles lock individual My Account sections — they go
+    //      read-only on the member's page and are refused server-side. Default
+    //      is everything unlocked, matching prior behavior.
+    // ====================================================================
+    add_settings_section(
+        'sp_member_locks_section',
+        __( 'Member Self-Service', 'societypress' ),
+        function () {
+            echo '<p>' . esc_html__( 'By default members can edit all of their own information on the My Account page. Lock a section here to make it read-only for members — they will see it but must contact you to change it. Locking never affects what you can edit from the admin Members screen.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-privacy'
+    );
+
+    $sp_lock_settings = sp_settings();
+    foreach ( sp_member_lockable_sections() as $sp_lock_key => $sp_lock_label ) {
+        add_settings_field(
+            'member_lock_' . $sp_lock_key,
+            $sp_lock_label,
+            function () use ( $sp_lock_key, $sp_lock_label, $sp_lock_settings ) {
+                $on = ! empty( $sp_lock_settings[ 'member_lock_' . $sp_lock_key ] );
+                ?>
+                <label>
+                    <input type="checkbox" name="societypress_settings[member_lock_<?php echo esc_attr( $sp_lock_key ); ?>]" value="1" <?php checked( $on ); ?>>
+                    <?php
+                    /* translators: %s: the section name (e.g. "Password") */
+                    printf( esc_html__( 'Lock %s — members cannot change this themselves', 'societypress' ), esc_html( $sp_lock_label ) );
+                    ?>
+                </label>
+                <?php
+            },
+            'sp-settings-privacy',
+            'sp_member_locks_section'
+        );
+    }
+
+    // ====================================================================
     // SECTION: Activity Logging (Privacy tab)
     //
     // WHY: Logins and admin actions are already tracked in the Audit Log
@@ -21251,6 +21348,12 @@ function sp_sanitize_settings( array $input ): array {
         // default list" (see sp_parse_picklist_setting()).
         'name_prefixes' => fn() => sp_sanitize_picklist_input( $input['name_prefixes'] ?? '' ),
         'name_suffixes' => fn() => sp_sanitize_picklist_input( $input['name_suffixes'] ?? '' ),
+
+        // Member self-service locks (Privacy tab)
+        'member_lock_contact'     => fn() => ! empty( $input['member_lock_contact'] ) ? 1 : 0,
+        'member_lock_password'    => fn() => ! empty( $input['member_lock_password'] ) ? 1 : 0,
+        'member_lock_surnames'    => fn() => ! empty( $input['member_lock_surnames'] ) ? 1 : 0,
+        'member_lock_preferences' => fn() => ! empty( $input['member_lock_preferences'] ) ? 1 : 0,
 
         // New-member email preference defaults (Privacy tab)
         'pref_default_email_notices'     => fn() => ! empty( $input['pref_default_email_notices'] ) ? 1 : 0,

@@ -1363,6 +1363,12 @@ function sp_m( $member, $field ) {
                     </div>
 
                     <div class="sp-form-field sp-form-field--full">
+                        <label for="sp-new-surname-alternates"><?php esc_html_e( 'Alternate Spellings', 'societypress' ); ?></label>
+                        <input type="text" id="sp-new-surname-alternates" name="new_surname_alternates"
+                               placeholder="<?php esc_attr_e( 'Comma-separated, e.g., Strickland, Stricklen', 'societypress' ); ?>" />
+                    </div>
+
+                    <div class="sp-form-field sp-form-field--full">
                         <label for="sp-new-surname-note"><?php esc_html_e( 'Research Notes', 'societypress' ); ?></label>
                         <input type="text" id="sp-new-surname-note" name="new_surname_note"
                                placeholder="<?php esc_attr_e( 'e.g., German immigrants, arrived 1850s via Galveston', 'societypress' ); ?>" />

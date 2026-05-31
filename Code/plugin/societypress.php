@@ -2096,6 +2096,7 @@ function sp_create_tables(): void {
         slug         VARCHAR(200)        NOT NULL,
         description  TEXT                NULL,
         access_level VARCHAR(20)         NOT NULL DEFAULT 'public',
+        display_format VARCHAR(20)       NOT NULL DEFAULT 'title_desc',
         sort_order   INT                 NOT NULL DEFAULT 0,
         created_at   DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
@@ -76032,6 +76033,8 @@ add_action( 'admin_init', function () {
         'description'  => sanitize_textarea_field( $_POST['category_description'] ?? '' ),
         'access_level' => in_array( $_POST['category_access'] ?? '', [ 'public', 'members_only' ], true )
             ? $_POST['category_access'] : 'public',
+        'display_format' => in_array( $_POST['category_display_format'] ?? '', [ 'title_desc', 'month_year' ], true )
+            ? $_POST['category_display_format'] : 'title_desc',
         'sort_order'   => (int) ( $_POST['category_sort_order'] ?? 0 ),
     ];
 
@@ -76284,6 +76287,16 @@ function sp_render_document_categories_page(): void {
                                     <option value="members_only" <?php selected( $edit_cat->access_level ?? 'public', 'members_only' ); ?>><?php esc_html_e( 'Members only', 'societypress' ); ?></option>
                                 </select>
                                 <p class="description"><?php esc_html_e( 'Members-only makes every document in this category members-only, regardless of each file\'s own setting — so you don\'t have to lock them one by one.', 'societypress' ); ?></p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="col"><label for="category_display_format"><?php esc_html_e( 'Display Format', 'societypress' ); ?></label></th>
+                            <td>
+                                <select id="category_display_format" name="category_display_format">
+                                    <option value="title_desc" <?php selected( $edit_cat->display_format ?? 'title_desc', 'title_desc' ); ?>><?php esc_html_e( 'Title & description (default)', 'societypress' ); ?></option>
+                                    <option value="month_year" <?php selected( $edit_cat->display_format ?? 'title_desc', 'month_year' ); ?>><?php esc_html_e( 'Month & year (for minutes / dated archives)', 'societypress' ); ?></option>
+                                </select>
+                                <p class="description"><?php esc_html_e( 'Month & year shows each document by its date (e.g. "March 2025") in a compact list — ideal for meeting minutes. Falls back to the title for documents with no date.', 'societypress' ); ?></p>
                             </td>
                         </tr>
                         <tr>
@@ -77065,7 +77078,7 @@ function sp_frontend_documents(): void {
     // Published documents only on the frontend. Order by category sort order,
     // then by each document's sort order; uncategorized documents come last.
     $docs = $wpdb->get_results(
-        "SELECT d.*, c.name AS category_name, c.sort_order AS cat_sort, c.access_level AS cat_access
+        "SELECT d.*, c.name AS category_name, c.sort_order AS cat_sort, c.access_level AS cat_access, c.display_format AS cat_format
          FROM {$prefix}documents d
          LEFT JOIN {$prefix}document_categories c ON d.category_id = c.id
          WHERE d.status = 'published'
@@ -77099,6 +77112,9 @@ function sp_frontend_documents(): void {
 .sp-doc-download:hover { background: #0d1f3c; color: #fff; }
 .sp-doc-locked { color: #6b7280; font-size: 13px; }
 .sp-doc-empty { color: #6b7280; font-style: italic; }
+.sp-doc-monthyear { list-style: none; margin: 0; padding: 0; columns: 2; column-gap: 32px; }
+.sp-doc-monthyear li { break-inside: avoid; padding: 5px 0; border-bottom: 1px solid #f0f0f0; }
+@media (max-width: 600px) { .sp-doc-monthyear { columns: 1; } }
 </style>';
 
     if ( empty( $docs ) ) {
@@ -77107,19 +77123,45 @@ function sp_frontend_documents(): void {
     }
 
     // Group the ordered rows by category, preserving the SQL order.
-    $grouped    = [];
-    $cat_labels = [];
+    $grouped     = [];
+    $cat_labels  = [];
+    $cat_formats = [];
     foreach ( $docs as $d ) {
-        $key                = $d->category_id ? (int) $d->category_id : 0;
-        $grouped[ $key ][]  = $d;
-        $cat_labels[ $key ] = $d->category_name ?: __( 'Uncategorized', 'societypress' );
+        $key                 = $d->category_id ? (int) $d->category_id : 0;
+        $grouped[ $key ][]   = $d;
+        $cat_labels[ $key ]  = $d->category_name ?: __( 'Uncategorized', 'societypress' );
+        $cat_formats[ $key ] = $d->cat_format ?? 'title_desc';
     }
 
     foreach ( $grouped as $key => $rows ) {
         echo '<section class="sp-doc-category">';
         echo '<h2 class="sp-doc-cat-heading">' . esc_html( $cat_labels[ $key ] ) . '</h2>';
-        foreach ( $rows as $d ) {
-            sp_render_document_row( $d, $is_member, $login_url, $type_icon );
+        if ( ( $cat_formats[ $key ] ?? 'title_desc' ) === 'month_year' ) {
+            // Compact dated list — each document shows as its month/year (e.g.
+            // "March 2025"), ideal for a meeting-minutes archive.
+            echo '<ul class="sp-doc-monthyear">';
+            foreach ( $rows as $d ) {
+                $label = ! empty( $d->document_date )
+                    ? wp_date( 'F Y', strtotime( $d->document_date ) )
+                    : $d->title;
+                $can_access = ( $d->access_level === 'public' ) || $is_member;
+                echo '<li>';
+                if ( $can_access ) {
+                    $download_url = admin_url( 'admin-ajax.php?action=sp_document_download&id=' . (int) $d->id );
+                    echo '<a href="' . esc_url( $download_url ) . '" target="_blank" rel="noopener">' . esc_html( $label ) . '</a>';
+                } else {
+                    echo '<span class="sp-doc-locked">&#128274; ' . esc_html( $label ) . ' — <a href="' . esc_url( $login_url ) . '">' . esc_html__( 'log in', 'societypress' ) . '</a></span>';
+                }
+                if ( sp_is_new_item( $d->created_at ?? '' ) ) {
+                    echo ' <span class="sp-doc-new">' . esc_html__( 'New', 'societypress' ) . '</span>';
+                }
+                echo '</li>';
+            }
+            echo '</ul>';
+        } else {
+            foreach ( $rows as $d ) {
+                sp_render_document_row( $d, $is_member, $login_url, $type_icon );
+            }
         }
         echo '</section>';
     }
@@ -85738,7 +85780,8 @@ add_action( 'admin_init', function () {
             'attachment_id' => "ALTER TABLE {$wpdb->prefix}sp_events ADD COLUMN attachment_id BIGINT(20) UNSIGNED NULL AFTER image_id",
         ],
         'sp_document_categories' => [
-            'access_level' => "ALTER TABLE {$wpdb->prefix}sp_document_categories ADD COLUMN access_level VARCHAR(20) NOT NULL DEFAULT 'public' AFTER description",
+            'access_level'   => "ALTER TABLE {$wpdb->prefix}sp_document_categories ADD COLUMN access_level VARCHAR(20) NOT NULL DEFAULT 'public' AFTER description",
+            'display_format' => "ALTER TABLE {$wpdb->prefix}sp_document_categories ADD COLUMN display_format VARCHAR(20) NOT NULL DEFAULT 'title_desc' AFTER access_level",
         ],
         'sp_blast_emails'   => [
             'override_optout' => "ALTER TABLE {$wpdb->prefix}sp_blast_emails ADD COLUMN override_optout TINYINT(1) NOT NULL DEFAULT 0 AFTER total_failed",

@@ -2102,6 +2102,7 @@ function sp_create_tables(): void {
         access_level VARCHAR(20)         NOT NULL DEFAULT 'public',
         display_format VARCHAR(20)       NOT NULL DEFAULT 'title_desc',
         show_updated TINYINT(1)          NOT NULL DEFAULT 0,
+        list_sort    VARCHAR(20)         NOT NULL DEFAULT 'manual',
         sort_order   INT                 NOT NULL DEFAULT 0,
         created_at   DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
@@ -77055,6 +77056,8 @@ add_action( 'admin_init', function () {
         'display_format' => in_array( $_POST['category_display_format'] ?? '', [ 'title_desc', 'month_year' ], true )
             ? $_POST['category_display_format'] : 'title_desc',
         'show_updated' => ! empty( $_POST['category_show_updated'] ) ? 1 : 0,
+        'list_sort'    => in_array( $_POST['category_list_sort'] ?? '', [ 'manual', 'date_desc', 'title' ], true )
+            ? $_POST['category_list_sort'] : 'manual',
         'sort_order'   => (int) ( $_POST['category_sort_order'] ?? 0 ),
     ];
 
@@ -77332,6 +77335,17 @@ function sp_render_document_categories_page(): void {
                             <td>
                                 <label><input type="checkbox" name="category_show_updated" value="1" <?php checked( ! empty( $edit_cat->show_updated ) ); ?>> <?php esc_html_e( 'Show each document\'s last-updated date', 'societypress' ); ?></label>
                                 <p class="description"><?php esc_html_e( 'Helpful for living documents like bylaws, so members can tell they\'re viewing the current revision.', 'societypress' ); ?></p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="col"><label for="category_list_sort"><?php esc_html_e( 'List By', 'societypress' ); ?></label></th>
+                            <td>
+                                <select id="category_list_sort" name="category_list_sort">
+                                    <option value="manual" <?php selected( $edit_cat->list_sort ?? 'manual', 'manual' ); ?>><?php esc_html_e( 'Manual order (default)', 'societypress' ); ?></option>
+                                    <option value="date_desc" <?php selected( $edit_cat->list_sort ?? 'manual', 'date_desc' ); ?>><?php esc_html_e( 'Date — newest first', 'societypress' ); ?></option>
+                                    <option value="title" <?php selected( $edit_cat->list_sort ?? 'manual', 'title' ); ?>><?php esc_html_e( 'Title — A to Z', 'societypress' ); ?></option>
+                                </select>
+                                <p class="description"><?php esc_html_e( 'How documents in this category are ordered on the public page. "Newest first" suits minutes and newsletters; "A to Z" suits reference docs. Manual keeps the order you set per document.', 'societypress' ); ?></p>
                             </td>
                         </tr>
                         <tr>
@@ -78116,7 +78130,7 @@ function sp_frontend_documents(): void {
     // Published documents only on the frontend. Order by category sort order,
     // then by each document's sort order; uncategorized documents come last.
     $docs = $wpdb->get_results(
-        "SELECT d.*, c.name AS category_name, c.sort_order AS cat_sort, c.access_level AS cat_access, c.display_format AS cat_format, c.show_updated AS cat_show_updated
+        "SELECT d.*, c.name AS category_name, c.sort_order AS cat_sort, c.access_level AS cat_access, c.display_format AS cat_format, c.show_updated AS cat_show_updated, c.list_sort AS cat_list_sort
          FROM {$prefix}documents d
          LEFT JOIN {$prefix}document_categories c ON d.category_id = c.id
          WHERE d.status = 'published'
@@ -78164,12 +78178,36 @@ function sp_frontend_documents(): void {
     $grouped     = [];
     $cat_labels  = [];
     $cat_formats = [];
+    $cat_sorts   = [];
     foreach ( $docs as $d ) {
         $key                 = $d->category_id ? (int) $d->category_id : 0;
         $grouped[ $key ][]   = $d;
         $cat_labels[ $key ]  = $d->category_name ?: __( 'Uncategorized', 'societypress' );
         $cat_formats[ $key ] = $d->cat_format ?? 'title_desc';
+        $cat_sorts[ $key ]   = $d->cat_list_sort ?? 'manual';
     }
+
+    // Per-category ordering. 'manual' keeps the SQL order (category + document
+    // sort_order); 'date_desc' shows newest first (undated docs sink to the
+    // bottom); 'title' is A–Z. Done in PHP so one query covers all categories.
+    foreach ( $grouped as $key => &$rows ) {
+        $mode = $cat_sorts[ $key ] ?? 'manual';
+        if ( $mode === 'date_desc' ) {
+            usort( $rows, static function ( $a, $b ) {
+                $da = $a->document_date ?: '';
+                $db = $b->document_date ?: '';
+                if ( $da === $db ) {
+                    return strcasecmp( $a->title, $b->title );
+                }
+                if ( $da === '' ) return 1;   // undated last
+                if ( $db === '' ) return -1;
+                return strcmp( $db, $da );     // newest first
+            } );
+        } elseif ( $mode === 'title' ) {
+            usort( $rows, static fn( $a, $b ) => strcasecmp( $a->title, $b->title ) );
+        }
+    }
+    unset( $rows );
 
     foreach ( $grouped as $key => $rows ) {
         echo '<section class="sp-doc-category">';
@@ -86833,6 +86871,7 @@ add_action( 'admin_init', function () {
             'access_level'   => "ALTER TABLE {$wpdb->prefix}sp_document_categories ADD COLUMN access_level VARCHAR(20) NOT NULL DEFAULT 'public' AFTER description",
             'display_format' => "ALTER TABLE {$wpdb->prefix}sp_document_categories ADD COLUMN display_format VARCHAR(20) NOT NULL DEFAULT 'title_desc' AFTER access_level",
             'show_updated'   => "ALTER TABLE {$wpdb->prefix}sp_document_categories ADD COLUMN show_updated TINYINT(1) NOT NULL DEFAULT 0 AFTER display_format",
+            'list_sort'      => "ALTER TABLE {$wpdb->prefix}sp_document_categories ADD COLUMN list_sort VARCHAR(20) NOT NULL DEFAULT 'manual' AFTER show_updated",
         ],
         'sp_blast_emails'   => [
             'override_optout'     => "ALTER TABLE {$wpdb->prefix}sp_blast_emails ADD COLUMN override_optout TINYINT(1) NOT NULL DEFAULT 0 AFTER total_failed",

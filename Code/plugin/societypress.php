@@ -45345,13 +45345,25 @@ add_shortcode( 'societypress_join', 'sp_render_join_form' );
  * period type. Rolling = today + N years; annual = the next cycle's start month,
  * then N-1 further years. Used when online dues are paid for a multi-year term.
  */
-function sp_membership_compute_expiration( int $years, array $settings ): string {
+function sp_membership_compute_expiration( int $years, array $settings, ?string $current_expiration = null ): string {
     $years       = max( 1, $years );
     $period_type = $settings['membership_period_type'] ?? 'annual';
     $start_month = (int) ( $settings['membership_start_month'] ?? 1 );
     $today       = new DateTime();
     if ( $period_type === 'rolling' ) {
-        return $today->modify( '+' . $years . ' year' )->format( 'Y-m-d' );
+        // Extend from whichever is later: today, or the member's current
+        // expiration. WHY: a member who renews early shouldn't forfeit the
+        // days they had left — stacking the new term onto the unused tail is
+        // the fair, expected behavior. New members (no/past expiration) just
+        // get today + term.
+        $base = $today;
+        if ( $current_expiration ) {
+            $exp_dt = DateTime::createFromFormat( 'Y-m-d', substr( $current_expiration, 0, 10 ) );
+            if ( $exp_dt && $exp_dt > $today ) {
+                $base = $exp_dt;
+            }
+        }
+        return $base->modify( '+' . $years . ' year' )->format( 'Y-m-d' );
     }
     $cy       = (int) $today->format( 'Y' );
     $cm       = (int) $today->format( 'n' );
@@ -45384,8 +45396,14 @@ function sp_membership_activate_from_payment( int $user_id, int $tier_id, int $y
         }
     }
 
+    // Pass the member's current expiration so an early renewal in rolling mode
+    // stacks onto any remaining days instead of resetting the clock to today.
+    $current_exp = $wpdb->get_var( $wpdb->prepare(
+        "SELECT expiration_date FROM {$members_table} WHERE user_id = %d LIMIT 1",
+        $user_id
+    ) );
     $settings = sp_settings();
-    $exp      = sp_membership_compute_expiration( max( 1, $years ), $settings );
+    $exp      = sp_membership_compute_expiration( max( 1, $years ), $settings, $current_exp );
 
     $update = [ 'status' => 'active', 'expiration_date' => $exp ];
     if ( $tier_id > 0 ) {

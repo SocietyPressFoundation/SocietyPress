@@ -62841,20 +62841,62 @@ function sp_render_blast_email_compose_page(): void {
         </form>
 
         <script>
-        // Toggle group/tier checkboxes based on recipient type selection
+        // Toggle group/tier checkboxes based on recipient type selection, and
+        // keep the Send confirmation message in sync with the chosen audience so
+        // the volunteer sees exactly who (and roughly how many) they're emailing
+        // before they commit — counts already live in the recipient labels.
         (function() {
-            var radios = document.querySelectorAll('input[name="recipient_type"]');
+            var radios    = document.querySelectorAll('input[name="recipient_type"]');
             var groupsDiv = document.getElementById('sp-blast-groups');
-            var tiersDiv = document.getElementById('sp-blast-tiers');
+            var tiersDiv  = document.getElementById('sp-blast-tiers');
+            var sendBtn   = document.querySelector('.sp-blast-send-btn');
+            var overrideCb= document.querySelector('input[name="override_optout"]');
+            var groupBoxes= document.querySelectorAll('input[name="group_ids[]"]');
+            var tierBoxes = document.querySelectorAll('input[name="tier_ids[]"]');
+
+            var LEAD          = <?php echo wp_json_encode( __( 'Send this email to', 'societypress' ) ); ?>;
+            var TAIL          = <?php echo wp_json_encode( __( 'This cannot be undone.', 'societypress' ) ); ?>;
+            var NONE_GROUP    = <?php echo wp_json_encode( __( 'the groups you select (none chosen yet)', 'societypress' ) ); ?>;
+            var NONE_TIER     = <?php echo wp_json_encode( __( 'the tiers you select (none chosen yet)', 'societypress' ) ); ?>;
+            var OVERRIDE_NOTE = <?php echo wp_json_encode( __( 'Members who opted out WILL be included.', 'societypress' ) ); ?>;
+
+            function labelText(el) {
+                var lbl = el.closest('label');
+                return lbl ? lbl.textContent.replace(/\s+/g, ' ').trim() : el.value;
+            }
+
+            function updateConfirm() {
+                var sel = document.querySelector('input[name="recipient_type"]:checked');
+                if (!sel || !sendBtn) return;
+                var summary;
+                if (sel.value === 'group' || sel.value === 'tier') {
+                    var checked = Array.prototype.filter.call(
+                        sel.value === 'group' ? groupBoxes : tierBoxes,
+                        function (b) { return b.checked; }
+                    );
+                    summary = checked.length
+                        ? checked.map(labelText).join(', ')
+                        : ( sel.value === 'group' ? NONE_GROUP : NONE_TIER );
+                } else {
+                    summary = labelText(sel);
+                }
+                var msg = LEAD + ': ' + summary + '. ' + TAIL;
+                if (overrideCb && overrideCb.checked) { msg += ' ' + OVERRIDE_NOTE; }
+                sendBtn.setAttribute('data-sp-confirm', msg);
+            }
 
             function toggle() {
                 var selected = document.querySelector('input[name="recipient_type"]:checked');
                 if (!selected) return;
                 groupsDiv.style.display = selected.value === 'group' ? '' : 'none';
-                tiersDiv.style.display = selected.value === 'tier' ? '' : 'none';
+                tiersDiv.style.display  = selected.value === 'tier'  ? '' : 'none';
+                updateConfirm();
             }
 
             radios.forEach(function(r) { r.addEventListener('change', toggle); });
+            groupBoxes.forEach && Array.prototype.forEach.call(groupBoxes, function (b) { b.addEventListener('change', updateConfirm); });
+            Array.prototype.forEach.call(tierBoxes, function (b) { b.addEventListener('change', updateConfirm); });
+            if (overrideCb) { overrideCb.addEventListener('change', updateConfirm); }
             toggle();
         })();
 

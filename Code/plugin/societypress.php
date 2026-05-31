@@ -800,6 +800,7 @@ function sp_create_tables(): void {
         year_from       INT                 NULL,
         year_to         INT                 NULL,
         note            TEXT                NULL,
+        alternate_spellings VARCHAR(500)    NULL,
         soundex_code    VARCHAR(10)         NULL,
         metaphone_code  VARCHAR(20)         NULL,
         PRIMARY KEY (id),
@@ -7272,6 +7273,7 @@ function sp_handle_account_forms() {
         $year_from = absint( $_POST['new_year_from'] ?? 0 );
         $year_to   = absint( $_POST['new_year_to'] ?? 0 );
         $note      = sanitize_textarea_field( $_POST['new_surname_note'] ?? '' );
+        $alternates = sanitize_text_field( $_POST['new_surname_alternates'] ?? '' );
         if ( $surname ) {
             $wpdb->insert( $wpdb->prefix . 'sp_member_surnames', [
                 'user_id'        => $user->ID,
@@ -7282,6 +7284,7 @@ function sp_handle_account_forms() {
                 'year_from'      => $year_from ?: null,
                 'year_to'        => $year_to ?: null,
                 'note'           => $note ?: null,
+                'alternate_spellings' => $alternates ?: null,
                 'soundex_code'   => soundex( $surname ),
                 'metaphone_code' => metaphone( $surname ),
             ] );
@@ -14148,6 +14151,7 @@ add_action( 'admin_init', function () {
         $countries  = $_POST['surname_country'] ?? [];
         $year_froms = $_POST['surname_year_from'] ?? [];
         $year_tos   = $_POST['surname_year_to'] ?? [];
+        $alternates = $_POST['surname_alternates'] ?? [];
 
         foreach ( $surnames as $i => $surname ) {
             $surname = sanitize_text_field( $surname );
@@ -14162,6 +14166,7 @@ add_action( 'admin_init', function () {
                 'country'        => sanitize_text_field( $countries[ $i ] ?? '' ) ?: null,
                 'year_from'      => absint( $year_froms[ $i ] ?? 0 ) ?: null,
                 'year_to'        => absint( $year_tos[ $i ] ?? 0 ) ?: null,
+                'alternate_spellings' => sanitize_text_field( $alternates[ $i ] ?? '' ) ?: null,
                 'soundex_code'   => soundex( $surname ),
                 'metaphone_code' => metaphone( $surname ),
             ] );
@@ -14701,6 +14706,11 @@ function sp_render_member_edit_page(): void {
                 }
                 .sp-surname-row input {
                     width: 100%;
+                }
+                /* Alternate-spellings field wraps to a full-width second line so
+                   it doesn't squeeze the column grid. */
+                .sp-surname-row .sp-surname-alt {
+                    grid-column: 1 / -1;
                 }
                 .sp-surname-header {
                     display: grid;
@@ -15932,6 +15942,10 @@ function sp_render_member_edit_page(): void {
                                            aria-label="<?php echo esc_attr__( 'Year to', 'societypress' ); ?>">
                                     <button type="button" class="button sp-remove-surname"
                                             aria-label="<?php echo esc_attr__( 'Remove this surname', 'societypress' ); ?>">&times;</button>
+                                    <input type="text" name="surname_alternates[]" class="sp-surname-alt"
+                                           value="<?php echo esc_attr( $s->alternate_spellings ?? '' ); ?>"
+                                           placeholder="<?php echo esc_attr__( 'Also known as (comma-separated): e.g. Strickland, Stricklen', 'societypress' ); ?>"
+                                           aria-label="<?php echo esc_attr__( 'Alternate spellings', 'societypress' ); ?>">
                                 </div>
                             <?php endforeach; ?>
                         <?php else : ?>
@@ -15944,6 +15958,7 @@ function sp_render_member_edit_page(): void {
                                 <input type="number" name="surname_year_from[]" placeholder="1800" min="1000" max="2100" aria-label="<?php echo esc_attr__( 'Year from', 'societypress' ); ?>">
                                 <input type="number" name="surname_year_to[]" placeholder="1900" min="1000" max="2100" aria-label="<?php echo esc_attr__( 'Year to', 'societypress' ); ?>">
                                 <button type="button" class="button sp-remove-surname" aria-label="<?php echo esc_attr__( 'Remove this surname', 'societypress' ); ?>">&times;</button>
+                                <input type="text" name="surname_alternates[]" class="sp-surname-alt" placeholder="<?php echo esc_attr__( 'Also known as (comma-separated): e.g. Strickland, Stricklen', 'societypress' ); ?>" aria-label="<?php echo esc_attr__( 'Alternate spellings', 'societypress' ); ?>">
                             </div>
                         <?php endif; ?>
                     </div>
@@ -15966,7 +15981,8 @@ function sp_render_member_edit_page(): void {
                                 + '<input type="text" name="surname_country[]" placeholder="<?php echo esc_js( __( 'Country', 'societypress' ) ); ?>" aria-label="<?php echo esc_js( __( 'Country', 'societypress' ) ); ?>">'
                                 + '<input type="number" name="surname_year_from[]" placeholder="1800" min="1000" max="2100" aria-label="<?php echo esc_js( __( 'Year from', 'societypress' ) ); ?>">'
                                 + '<input type="number" name="surname_year_to[]" placeholder="1900" min="1000" max="2100" aria-label="<?php echo esc_js( __( 'Year to', 'societypress' ) ); ?>">'
-                                + '<button type="button" class="button sp-remove-surname" aria-label="<?php echo esc_js( __( 'Remove this surname', 'societypress' ) ); ?>">&times;</button>';
+                                + '<button type="button" class="button sp-remove-surname" aria-label="<?php echo esc_js( __( 'Remove this surname', 'societypress' ) ); ?>">&times;</button>'
+                                + '<input type="text" name="surname_alternates[]" class="sp-surname-alt" placeholder="<?php echo esc_js( __( 'Also known as (comma-separated): e.g. Strickland, Stricklen', 'societypress' ) ); ?>" aria-label="<?php echo esc_js( __( 'Alternate spellings', 'societypress' ) ); ?>">';
                             container.appendChild(row);
                         });
 
@@ -34147,13 +34163,17 @@ function sp_render_builder_widget_member_directory( array $s ): void {
 function sp_surname_match_clause( string $term, string $alias = 's', bool $fuzzy = true ): array {
     global $wpdb;
 
-    $sql    = "{$alias}.surname LIKE %s";
-    $params = [ '%' . $wpdb->esc_like( $term ) . '%' ];
+    $like = '%' . $wpdb->esc_like( $term ) . '%';
+    // Always match the surname itself and any curated alternate spellings — a
+    // comma-separated list a researcher maintains (e.g. "Strickland, Stricklen")
+    // that catches documented variants phonetics miss. Soundex/metaphone add
+    // sound-alike matching when fuzzy is on.
+    $ors    = [ "{$alias}.surname LIKE %s", "{$alias}.alternate_spellings LIKE %s" ];
+    $params = [ $like, $like ];
 
     if ( $fuzzy ) {
         $soundex   = soundex( $term );
         $metaphone = metaphone( $term );
-        $ors       = [];
         if ( $soundex !== '' ) {
             $ors[]    = "{$alias}.soundex_code = %s";
             $params[] = $soundex;
@@ -34162,12 +34182,9 @@ function sp_surname_match_clause( string $term, string $alias = 's', bool $fuzzy
             $ors[]    = "{$alias}.metaphone_code = %s";
             $params[] = $metaphone;
         }
-        if ( ! empty( $ors ) ) {
-            $sql = '( ' . $sql . ' OR ' . implode( ' OR ', $ors ) . ' )';
-        }
     }
 
-    return [ $sql, $params ];
+    return [ '( ' . implode( ' OR ', $ors ) . ' )', $params ];
 }
 
 /**
@@ -85866,6 +85883,9 @@ add_action( 'admin_init', function () {
         ],
         'sp_events'         => [
             'attachment_id' => "ALTER TABLE {$wpdb->prefix}sp_events ADD COLUMN attachment_id BIGINT(20) UNSIGNED NULL AFTER image_id",
+        ],
+        'sp_member_surnames' => [
+            'alternate_spellings' => "ALTER TABLE {$wpdb->prefix}sp_member_surnames ADD COLUMN alternate_spellings VARCHAR(500) NULL AFTER note",
         ],
         'sp_document_categories' => [
             'access_level'   => "ALTER TABLE {$wpdb->prefix}sp_document_categories ADD COLUMN access_level VARCHAR(20) NOT NULL DEFAULT 'public' AFTER description",

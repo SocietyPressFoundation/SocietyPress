@@ -63128,6 +63128,16 @@ function sp_render_blast_email_compose_page(): void {
             $recipient_filter = wp_json_encode( [
                 'tier_ids' => array_map( 'intval', (array) $_POST['tier_ids'] ),
             ] );
+        } elseif (
+            in_array( $recipient_type, [ 'all_members', 'renewal_due', 'recently_joined', 'birthday_month' ], true )
+            && ! empty( $_POST['limit_tier_ids'] )
+        ) {
+            // Optional tier limit layered on an all-members / status segment
+            // (e.g. "Renewal Due" narrowed to specific tiers).
+            $limit_tiers = array_values( array_filter( array_map( 'intval', (array) $_POST['limit_tier_ids'] ) ) );
+            if ( $limit_tiers ) {
+                $recipient_filter = wp_json_encode( [ 'tier_ids' => $limit_tiers ] );
+            }
         }
 
         // Count recipients (honoring the opt-out override for critical notices)
@@ -63317,6 +63327,29 @@ function sp_render_blast_email_compose_page(): void {
                                 <?php printf( esc_html__( 'Birthdays this month (%d)', 'societypress' ), sp_blast_count_recipients( 'birthday_month', null ) ); ?>
                             </label>
                         </fieldset>
+                        <?php
+                        // Optional tier limit for the all-members / status segments
+                        // (e.g. "Renewal Due" narrowed to specific tiers). Shown
+                        // only for those types — By Group / By Tier already target
+                        // directly, and subscribers aren't members. Pre-checked from
+                        // the saved filter only when the type can use it.
+                        $sp_limit_types  = [ 'all_members', 'renewal_due', 'recently_joined', 'birthday_month' ];
+                        $limit_tier_ids  = in_array( $recipient_type, $sp_limit_types, true ) ? $selected_tiers : [];
+                        $show_tier_limit = in_array( $recipient_type, $sp_limit_types, true );
+                        ?>
+                        <div id="sp-blast-tier-limit" class="sp-blast-tier-limit" style="margin: 8px 0 4px;<?php echo $show_tier_limit ? '' : 'display:none;'; ?>">
+                            <strong class="sp-blast-tier-limit-label"><?php esc_html_e( 'Optionally limit to membership tier(s):', 'societypress' ); ?></strong>
+                            <div class="sp-blast-tier-limit-boxes" style="margin: 4px 0 0 4px;">
+                                <?php foreach ( $tiers as $t ) : ?>
+                                    <label class="sp-blast-check-label">
+                                        <input type="checkbox" name="limit_tier_ids[]" value="<?php echo esc_attr( $t->id ); ?>"
+                                            <?php checked( in_array( (int) $t->id, $limit_tier_ids, true ) ); ?>>
+                                        <?php echo esc_html( $t->name ); ?>
+                                    </label>
+                                <?php endforeach; ?>
+                            </div>
+                            <p class="description"><?php esc_html_e( 'Leave all unchecked to include every tier. Check one or more to send only to members on those plans (combined with the audience above).', 'societypress' ); ?></p>
+                        </div>
                         <p class="description"><?php esc_html_e( 'Members who have opted out of blast emails will be excluded automatically.', 'societypress' ); ?></p>
                         <label class="sp-blast-override-optout">
                             <input type="checkbox" name="override_optout" value="1" <?php checked( ! empty( $blast->override_optout ) ); ?>>
@@ -63441,11 +63474,19 @@ function sp_render_blast_email_compose_page(): void {
                 sendBtn.setAttribute('data-sp-confirm', msg);
             }
 
+            var tierLimitDiv = document.getElementById('sp-blast-tier-limit');
+            var limitTypes   = ['all_members', 'renewal_due', 'recently_joined', 'birthday_month'];
+
             function toggle() {
                 var selected = document.querySelector('input[name="recipient_type"]:checked');
                 if (!selected) return;
                 groupsDiv.style.display = selected.value === 'group' ? '' : 'none';
                 tiersDiv.style.display  = selected.value === 'tier'  ? '' : 'none';
+                // The optional tier limit only applies to all-members / status
+                // segments — hide it for By Group, By Tier, and subscribers.
+                if (tierLimitDiv) {
+                    tierLimitDiv.style.display = limitTypes.indexOf(selected.value) !== -1 ? '' : 'none';
+                }
                 updateConfirm();
             }
 
@@ -63544,6 +63585,33 @@ function sp_blast_segment_clause( string $recipient_type ): string {
     }
 }
 
+/**
+ * Optional "limit to membership tier(s)" clause layered on top of the all-
+ * members and status-segment audiences (e.g. "Renewal Due AND a Joint tier").
+ *
+ * WHY a separate clause: the dedicated By-Tier recipient type returns early in
+ * the count/get queries, so this only ever applies in the default branch —
+ * letting a status segment be narrowed to specific tiers without a new
+ * recipient type. tier_ids are cast to ints, so safe to inline.
+ *
+ * @param string|null $recipient_filter JSON that may carry tier_ids.
+ * @return string SQL fragment beginning with " AND ", or '' when no tiers.
+ */
+function sp_blast_tier_clause( ?string $recipient_filter ): string {
+    if ( ! $recipient_filter ) {
+        return '';
+    }
+    $filter = json_decode( $recipient_filter, true );
+    if ( empty( $filter['tier_ids'] ) || ! is_array( $filter['tier_ids'] ) ) {
+        return '';
+    }
+    $ids = array_filter( array_map( 'intval', $filter['tier_ids'] ) );
+    if ( ! $ids ) {
+        return '';
+    }
+    return ' AND m.tier_id IN (' . implode( ',', $ids ) . ')';
+}
+
 function sp_blast_count_recipients( string $recipient_type, ?string $recipient_filter, bool $include_optout = false ): int {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
@@ -63585,11 +63653,12 @@ function sp_blast_count_recipients( string $recipient_type, ?string $recipient_f
     }
 
     // Default: all active members, plus any status-segment clause (renewal_due,
-    // recently_joined, birthday_month) which layers onto the active base.
+    // recently_joined, birthday_month) and an optional tier limit, both layered
+    // onto the active base.
     return (int) $wpdb->get_var(
         "SELECT COUNT(*) FROM {$prefix}members m
          JOIN {$wpdb->users} u ON m.user_id = u.ID
-         WHERE {$base_where}" . sp_blast_segment_clause( $recipient_type )
+         WHERE {$base_where}" . sp_blast_segment_clause( $recipient_type ) . sp_blast_tier_clause( $recipient_filter )
     );
 }
 
@@ -63665,10 +63734,11 @@ function sp_blast_get_recipients( string $recipient_type, ?string $recipient_fil
         ) );
     }
 
-    // Default: all active members, plus any status-segment clause.
+    // Default: all active members, plus any status-segment clause and optional
+    // tier limit.
     return $wpdb->get_results( $wpdb->prepare(
         "{$base_select}
-         WHERE {$base_where}" . sp_blast_segment_clause( $recipient_type ) . "
+         WHERE {$base_where}" . sp_blast_segment_clause( $recipient_type ) . sp_blast_tier_clause( $recipient_filter ) . "
          ORDER BY m.last_name ASC
          LIMIT %d OFFSET %d",
         $limit, $offset

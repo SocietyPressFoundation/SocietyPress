@@ -76008,6 +76008,39 @@ function sp_render_order_detail_page(): void {
         }
     }
 
+    // Mark an order complimentary ("comp"). WHY: societies hand out free
+    // publications to speakers, contributors, or exchange partners. This zeroes
+    // the balance (total + shipping → $0), records the reason, and settles the
+    // order, while leaving the line items and subtotal intact as a record of
+    // what was given away.
+    if ( $_SERVER['REQUEST_METHOD'] === 'POST' && isset( $_POST['sp_comp_nonce'] ) ) {
+        check_admin_referer( 'sp_comp_order_' . $order_id, 'sp_comp_nonce' );
+        $reason    = sanitize_text_field( $_POST['comp_reason'] ?? '' );
+        $order_row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$prefix}orders WHERE id = %d", $order_id ) );
+        if ( $order_row && ! in_array( $order_row->status, [ 'refunded', 'failed' ], true ) ) {
+            $tag  = $reason !== ''
+                ? sprintf( __( '[Complimentary: %s]', 'societypress' ), $reason )
+                : __( '[Complimentary]', 'societypress' );
+            $note = trim( $tag . ( $order_row->admin_note ? "\n" . $order_row->admin_note : '' ) );
+            $wpdb->update( $prefix . 'orders', [
+                'shipping_total' => 0.00,
+                'total'          => 0.00,
+                'status'         => 'completed',
+                'payment_method' => 'comp',
+                'admin_note'     => $note,
+                'updated_at'     => current_time( 'mysql' ),
+            ], [ 'id' => $order_id ] );
+            sp_audit(
+                'store_order_comped',
+                sprintf( 'Order #%d marked complimentary%s', $order_id, $reason !== '' ? ' (' . $reason . ')' : '' ),
+                'order',
+                $order_id
+            );
+            wp_redirect( admin_url( 'admin.php?page=sp-order-detail&order_id=' . $order_id . '&comped=1' ) );
+            exit;
+        }
+    }
+
     $order = $wpdb->get_row( $wpdb->prepare(
         "SELECT * FROM {$prefix}orders WHERE id = %d", $order_id
     ) );
@@ -76124,6 +76157,8 @@ function sp_render_order_detail_page(): void {
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Order re-priced at member rates.', 'societypress' ); ?></p></div>
         <?php elseif ( ( $_GET['nochange'] ?? '' ) === '1' ) : ?>
             <div class="notice notice-info is-dismissible"><p><?php esc_html_e( 'No change — none of the items had a lower member price.', 'societypress' ); ?></p></div>
+        <?php elseif ( ( $_GET['comped'] ?? '' ) === '1' ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Order marked complimentary — no charge.', 'societypress' ); ?></p></div>
         <?php endif; ?>
 
         <div class="sp-order-detail-grid">
@@ -76192,6 +76227,15 @@ function sp_render_order_detail_page(): void {
                     <button type="submit" class="button" data-sp-confirm="<?php echo esc_attr__( 'Re-price this order at member rates? Items that have a member price will be lowered and the total recalculated.', 'societypress' ); ?>"><?php esc_html_e( 'Apply member pricing', 'societypress' ); ?></button>
                     <span class="description"><?php esc_html_e( 'Use when the buyer is a member who was charged the regular price (e.g. forgot to log in).', 'societypress' ); ?></span>
                 </form>
+                <?php if ( $order->payment_method !== 'comp' && (float) $order->total > 0 ) : ?>
+                    <form method="post" class="sp-mt-12">
+                        <?php wp_nonce_field( 'sp_comp_order_' . $order_id, 'sp_comp_nonce' ); ?>
+                        <label for="sp-comp-reason"><?php esc_html_e( 'Reason (optional):', 'societypress' ); ?></label>
+                        <input type="text" name="comp_reason" id="sp-comp-reason" class="regular-text" placeholder="<?php esc_attr_e( 'e.g. Speaker thank-you copy', 'societypress' ); ?>">
+                        <button type="submit" class="button" data-sp-confirm="<?php echo esc_attr__( 'Mark this order complimentary? The total will be set to $0.00 and the order marked completed. This is for free copies given to speakers, contributors, or exchange partners.', 'societypress' ); ?>"><?php esc_html_e( 'Mark complimentary', 'societypress' ); ?></button>
+                        <span class="description"><?php esc_html_e( 'Zeroes the balance (no charge) but keeps the items as a record of what was given.', 'societypress' ); ?></span>
+                    </form>
+                <?php endif; ?>
             <?php endif; ?>
         </div>
 

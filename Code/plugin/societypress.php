@@ -20568,6 +20568,21 @@ add_action( 'admin_init', function () {
         'sp_directory_section'
     );
 
+    // --- Public Surname Contact ---
+    add_settings_field(
+        'surname_public_contact',
+        __( 'Public Surname Contact', 'societypress' ),
+        function () {
+            $settings = sp_settings();
+            echo '<label><input type="checkbox" name="societypress_settings[surname_public_contact]" value="1" '
+               . checked( ! empty( $settings['surname_public_contact'] ), true, false )
+               . '> ' . esc_html__( 'Let non-members contact researchers from the surname search', 'societypress' ) . '</label>';
+            echo '<p class="description">' . esc_html__( 'When on, visitors who aren\'t logged in can message a researcher from the surname search — they supply their own name and email, and the researcher\'s address is never exposed. Messages are rate-limited to deter spam. Only useful when your surname registry is public.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-directory',
+        'sp_directory_section'
+    );
+
 });
 
 
@@ -20914,6 +20929,7 @@ function sp_sanitize_settings( array $input ): array {
         'dir_per_page'            => fn() => in_array( (int) ( $input['dir_per_page'] ?? -1 ), [ 10, 25, 50, 100, 250, 500 ], true )
                                               ? (int) $input['dir_per_page'] : 25,
         'profile_changes_require_approval' => fn() => ! empty( $input['profile_changes_require_approval'] ) ? 1 : 0,
+        'surname_public_contact'  => fn() => ! empty( $input['surname_public_contact'] ) ? 1 : 0,
 
         // Events
         'events_default_visibility'   => fn() => in_array( $input['events_default_visibility'] ?? '', [ 'public', 'members_only' ], true )
@@ -21066,6 +21082,7 @@ function sp_sanitize_settings( array $input ): array {
             'dir_show_city_state', 'dir_show_phone', 'dir_show_email',
             'dir_show_website', 'dir_show_tier', 'dir_show_join_date',
             'dir_show_surnames', 'dir_per_page', 'profile_changes_require_approval',
+            'surname_public_contact',
         ]);
     }
 
@@ -34512,14 +34529,17 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
                 echo '<td class="sp-surname-td">' . esc_html( $period ) . '</td>';
                 echo '<td class="sp-surname-td">' . esc_html( $row->first_name . ' ' . $row->last_name ) . '</td>';
 
-                // Contact button — only shown if researcher allows it
+                // Contact button — shown if the researcher allows contact AND
+                // either the viewer is logged in or the society allows public
+                // (non-member) contact on its registry.
+                $sp_public_contact = ! empty( sp_settings()['surname_public_contact'] );
                 echo '<td class="sp-surname-td-center">';
-                if ( $contact_allowed_cache[ $row->user_id ] && is_user_logged_in() ) {
+                if ( $contact_allowed_cache[ $row->user_id ] && ( is_user_logged_in() || $sp_public_contact ) ) {
                     echo '<button type="button" class="sp-btn sp-btn-outline sp-surname-contact-btn sp-surname-contact-btn-sm" '
                        . 'data-researcher-id="' . esc_attr( $row->user_id ) . '" '
                        . 'data-researcher-name="' . esc_attr( $row->first_name . ' ' . $row->last_name ) . '" '
                        . 'data-surname="' . esc_attr( $row->surname ) . '">' . esc_html__( 'Contact', 'societypress' ) . '</button>';
-                } elseif ( ! is_user_logged_in() ) {
+                } elseif ( ! is_user_logged_in() && ! $sp_public_contact ) {
                     echo '<span class="sp-surname-no-contact">' . esc_html__( 'Log in to contact', 'societypress' ) . '</span>';
                 } else {
                     echo '<span class="sp-surname-no-contact">—</span>';
@@ -34535,8 +34555,10 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
             //      user stays in context. The researcher's email is never exposed
             //      to the sender — the AJAX handler sends on their behalf with
             //      the sender's email only in the Reply-To header.
-            if ( is_user_logged_in() ) {
+            if ( is_user_logged_in() || ! empty( sp_settings()['surname_public_contact'] ) ) {
                 $current_user = wp_get_current_user();
+                $sp_sender_name_default  = $current_user->ID ? $current_user->display_name : '';
+                $sp_sender_email_default = $current_user->ID ? $current_user->user_email : '';
                 ?>
                 <div id="sp-surname-contact-modal" class="sp-surname-modal-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="sp-surname-modal-title" aria-describedby="sp-surname-contact-desc">
                     <div class="sp-surname-modal-box" tabindex="-1">
@@ -34550,11 +34572,11 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
                             <div class="sp-surname-modal-fields-row">
                                 <div class="sp-surname-modal-field">
                                     <label class="sp-surname-modal-label" for="sp-surname-sender-name"><?php esc_html_e( 'Your Name', 'societypress' ); ?></label>
-                                    <input type="text" id="sp-surname-sender-name" name="sender_name" value="<?php echo esc_attr( $current_user->display_name ); ?>" required class="sp-surname-modal-input">
+                                    <input type="text" id="sp-surname-sender-name" name="sender_name" value="<?php echo esc_attr( $sp_sender_name_default ); ?>" required class="sp-surname-modal-input">
                                 </div>
                                 <div class="sp-surname-modal-field">
                                     <label class="sp-surname-modal-label" for="sp-surname-sender-email"><?php esc_html_e( 'Your Email', 'societypress' ); ?></label>
-                                    <input type="email" id="sp-surname-sender-email" name="sender_email" value="<?php echo esc_attr( $current_user->user_email ); ?>" required class="sp-surname-modal-input">
+                                    <input type="email" id="sp-surname-sender-email" name="sender_email" value="<?php echo esc_attr( $sp_sender_email_default ); ?>" required class="sp-surname-modal-input">
                                 </div>
                             </div>
                             <div class="sp-surname-modal-msg-wrap">
@@ -52683,27 +52705,35 @@ function sp_render_builder_widget_map_embed( array $s ): void {
 //      Reply-To so the researcher can respond directly if they choose.
 
 add_action( 'wp_ajax_sp_surname_contact', 'sp_handle_surname_contact' );
+add_action( 'wp_ajax_nopriv_sp_surname_contact', 'sp_handle_surname_contact' );
 
 function sp_handle_surname_contact(): void {
     if ( ! check_ajax_referer( 'sp_surname_contact', 'sp_surname_contact_nonce', false ) ) {
         wp_send_json_error( __( 'Security check failed. Please refresh and try again.', 'societypress' ) );
     }
-    if ( ! is_user_logged_in() ) {
-        wp_send_json_error( __( 'You must be logged in to contact a researcher.', 'societypress' ) );
-    }
 
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
-    // WHY active-membership gate on the sender: surname contact is a
-    //      member benefit. Suspended or expired members shouldn't be able
-    //      to message other members about research.
-    $sender_status = $wpdb->get_var( $wpdb->prepare(
-        "SELECT status FROM {$prefix}members WHERE user_id = %d",
-        get_current_user_id()
-    ) );
-    if ( $sender_status !== 'active' ) {
-        wp_send_json_error( __( 'Active membership required to contact other researchers.', 'societypress' ) );
+    if ( is_user_logged_in() ) {
+        // Logged-in sender must be an active member — surname contact is a
+        // member benefit; suspended/expired members shouldn't be able to message.
+        $sender_status = $wpdb->get_var( $wpdb->prepare(
+            "SELECT status FROM {$prefix}members WHERE user_id = %d",
+            get_current_user_id()
+        ) );
+        if ( $sender_status !== 'active' ) {
+            wp_send_json_error( __( 'Active membership required to contact other researchers.', 'societypress' ) );
+        }
+    } else {
+        // Guests may contact only if the society runs a public registry, and are
+        // rate-limited by IP to deter spam (same posture as the contact form).
+        if ( empty( sp_settings()['surname_public_contact'] ) ) {
+            wp_send_json_error( __( 'You must be logged in to contact a researcher.', 'societypress' ) );
+        }
+        if ( sp_rate_limit_hit( 'sp_surname_contact_' . md5( sp_get_remote_ip() ), 5, HOUR_IN_SECONDS ) ) {
+            wp_send_json_error( __( 'Too many messages have been sent recently. Please try again later.', 'societypress' ) );
+        }
     }
 
     $researcher_id = absint( $_POST['researcher_id'] ?? 0 );

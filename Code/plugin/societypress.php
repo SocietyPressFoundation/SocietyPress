@@ -1975,6 +1975,8 @@ function sp_create_tables(): void {
         total_failed        INT UNSIGNED        NOT NULL DEFAULT 0,
         override_optout     TINYINT(1)          NOT NULL DEFAULT 0,
         attachment_ids      TEXT                NULL,
+        from_name_override  VARCHAR(255)        NULL,
+        from_email_override VARCHAR(255)        NULL,
         status              VARCHAR(20)         NOT NULL DEFAULT 'draft',
         scheduled_at        DATETIME            NULL,
         sent_at             DATETIME            NULL,
@@ -62192,6 +62194,8 @@ function sp_render_blast_email_page(): void {
                 'body'             => $src->body,
                 'recipient_type'   => $src->recipient_type,
                 'recipient_filter' => $src->recipient_filter,
+                'from_name_override'  => $src->from_name_override ?? null,
+                'from_email_override' => $src->from_email_override ?? null,
                 'sender_id'        => get_current_user_id(),
                 'status'           => 'draft',
                 'total_recipients' => (int) $src->total_recipients,
@@ -62588,6 +62592,16 @@ function sp_render_blast_email_compose_page(): void {
         // int list.
         $attachment_ids = implode( ',', array_unique( array_filter( array_map( 'intval', explode( ',', (string) ( $_POST['blast_attachment_ids'] ?? '' ) ) ) ) ) );
 
+        // Optional per-blast sender override (e.g. a committee chair sending in
+        // their own name). CR/LF stripped to block header injection; an invalid
+        // email is discarded so we fall back to the society default rather than
+        // emit a broken From header.
+        $from_name_override  = sanitize_text_field( $_POST['blast_from_name'] ?? '' );
+        $from_email_override = sanitize_email( $_POST['blast_from_email'] ?? '' );
+        if ( $from_email_override && ! is_email( $from_email_override ) ) {
+            $from_email_override = '';
+        }
+
         // Build recipient filter JSON
         $recipient_filter = null;
         if ( $recipient_type === 'group' && ! empty( $_POST['group_ids'] ) ) {
@@ -62612,6 +62626,8 @@ function sp_render_blast_email_compose_page(): void {
             'total_recipients' => $total_recipients,
             'override_optout'  => $override_optout,
             'attachment_ids'   => $attachment_ids ?: null,
+            'from_name_override'  => $from_name_override ?: null,
+            'from_email_override' => $from_email_override ?: null,
             'status'           => 'draft',
             'updated_at'       => current_time( 'mysql' ),
         ];
@@ -62825,6 +62841,30 @@ function sp_render_blast_email_compose_page(): void {
                         </ul>
                         <button type="button" class="button" id="sp-blast-attachment-btn"><?php esc_html_e( 'Attach Files', 'societypress' ); ?></button>
                         <p class="description"><?php esc_html_e( 'Optional files sent with every copy of this email (e.g. a flyer or the newsletter PDF). Large attachments can slow delivery and hit some hosts\' size limits.', 'societypress' ); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="col"><label for="sp-blast-from-name"><?php esc_html_e( 'Send as', 'societypress' ); ?></label></th>
+                    <td>
+                        <p>
+                            <label class="sp-blast-from-field">
+                                <span class="sp-blast-from-label"><?php esc_html_e( 'Sender name', 'societypress' ); ?></span>
+                                <input type="text" name="blast_from_name" id="sp-blast-from-name" value="<?php echo esc_attr( $blast->from_name_override ?? '' ); ?>" class="regular-text" placeholder="<?php esc_attr_e( 'e.g. Membership Committee', 'societypress' ); ?>">
+                            </label>
+                        </p>
+                        <p>
+                            <label class="sp-blast-from-field">
+                                <span class="sp-blast-from-label"><?php esc_html_e( 'From address', 'societypress' ); ?></span>
+                                <input type="email" name="blast_from_email" id="sp-blast-from-email" value="<?php echo esc_attr( $blast->from_email_override ?? '' ); ?>" class="regular-text" placeholder="<?php esc_attr_e( 'name@yourdomain.org', 'societypress' ); ?>">
+                            </label>
+                        </p>
+                        <p class="description">
+                            <?php esc_html_e( 'Leave blank to send under your society\'s default sender. Filling these in lets a committee or officer send in their own name.', 'societypress' ); ?>
+                        </p>
+                        <p class="description sp-blast-dmarc-warning">
+                            <strong><?php esc_html_e( 'Deliverability note:', 'societypress' ); ?></strong>
+                            <?php esc_html_e( 'A From address on a different domain than your website (for example a personal Gmail or Yahoo address) often fails modern spam checks (DMARC) and can be rejected or sorted into junk. For reliable delivery, use an address at your own website\'s domain. When you set a From address, replies route back to it automatically.', 'societypress' ); ?>
+                        </p>
                     </td>
                 </tr>
             </table>
@@ -63203,6 +63243,31 @@ function sp_blast_email_send_batch( int $blast_id, int $offset ): void {
     $headers    = sp_get_email_headers();
     $sent_count = 0;
     $fail_count = 0;
+
+    // Per-blast sender override: replace the default From line (and point
+    // Reply-To at the same address) when this blast carries one. CR/LF are
+    // stripped as a header-injection guard even though the value was already
+    // sanitized on save. The composer warns that an off-domain From can fail
+    // DMARC and land in spam — we honor the admin's choice regardless.
+    $ov_name  = isset( $blast->from_name_override )  ? str_replace( [ "\r", "\n" ], '', (string) $blast->from_name_override )  : '';
+    $ov_email = isset( $blast->from_email_override ) ? sanitize_email( str_replace( [ "\r", "\n" ], '', (string) $blast->from_email_override ) ) : '';
+    if ( $ov_email && is_email( $ov_email ) ) {
+        $headers = array_values( array_filter( $headers, static function ( $h ) {
+            return stripos( $h, 'From:' ) !== 0 && stripos( $h, 'Reply-To:' ) !== 0;
+        } ) );
+        $from_line = $ov_name !== '' ? $ov_name . ' <' . $ov_email . '>' : $ov_email;
+        $headers[] = 'From: ' . $from_line;
+        $headers[] = 'Reply-To: ' . $ov_email;
+    } elseif ( $ov_name !== '' ) {
+        // Name-only override: keep the deliverable From address, swap the
+        // display name so it reads as the chosen sender.
+        foreach ( $headers as $i => $h ) {
+            if ( stripos( $h, 'From:' ) === 0 && preg_match( '/<([^>]+)>/', $h, $m ) ) {
+                $headers[ $i ] = 'From: ' . $ov_name . ' <' . $m[1] . '>';
+                break;
+            }
+        }
+    }
 
     // Resolve any attached files once for the whole batch — wp_mail wants
     // filesystem paths, so map the stored media IDs through get_attached_file().
@@ -85975,8 +86040,10 @@ add_action( 'admin_init', function () {
             'show_updated'   => "ALTER TABLE {$wpdb->prefix}sp_document_categories ADD COLUMN show_updated TINYINT(1) NOT NULL DEFAULT 0 AFTER display_format",
         ],
         'sp_blast_emails'   => [
-            'override_optout' => "ALTER TABLE {$wpdb->prefix}sp_blast_emails ADD COLUMN override_optout TINYINT(1) NOT NULL DEFAULT 0 AFTER total_failed",
-            'attachment_ids'  => "ALTER TABLE {$wpdb->prefix}sp_blast_emails ADD COLUMN attachment_ids TEXT NULL AFTER override_optout",
+            'override_optout'     => "ALTER TABLE {$wpdb->prefix}sp_blast_emails ADD COLUMN override_optout TINYINT(1) NOT NULL DEFAULT 0 AFTER total_failed",
+            'attachment_ids'      => "ALTER TABLE {$wpdb->prefix}sp_blast_emails ADD COLUMN attachment_ids TEXT NULL AFTER override_optout",
+            'from_name_override'  => "ALTER TABLE {$wpdb->prefix}sp_blast_emails ADD COLUMN from_name_override VARCHAR(255) NULL AFTER attachment_ids",
+            'from_email_override' => "ALTER TABLE {$wpdb->prefix}sp_blast_emails ADD COLUMN from_email_override VARCHAR(255) NULL AFTER from_name_override",
         ],
     ];
 

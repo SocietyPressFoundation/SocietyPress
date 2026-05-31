@@ -38,6 +38,15 @@ defined( 'ABSPATH' ) || exit;
                         &rarr; Try the live demo
                     </a>
                 </p>
+                <?php
+                // Newsletter signup — dogfoods SocietyPress's own mailing-list
+                // subscriber feature (the [societypress_subscribe] shortcode),
+                // not a third-party service. Renders only when the plugin is
+                // active and the Blast Email module is enabled.
+                if ( shortcode_exists( 'societypress_subscribe' ) ) {
+                    echo do_shortcode( '[societypress_subscribe title="Stay in the loop" button="Subscribe" show_name="0"]' );
+                }
+                ?>
             </div>
 
             <!-- Column 2: Product Links -->

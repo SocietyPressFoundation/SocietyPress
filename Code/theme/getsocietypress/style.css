@@ -4,7 +4,7 @@ Theme URI: https://getsocietypress.org
 Author: SocietyPress Contributors
 Author URI: https://getsocietypress.org
 Description: The official theme for getsocietypress.org — the home of SocietyPress, a free, open-source WordPress platform for genealogical society administrators.
-Version: 0.55d
+Version: 0.56d
 License: GNU General Public License v2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 Text Domain: getsocietypress
@@ -60,6 +60,13 @@ Requires PHP: 8.0
     --color-footer-bg: #0D1F3C;
     --color-footer-text: #FFFFFF;
     --color-footer-link: #C9973A;
+
+    /* SocietyPress newsletter signup form ([societypress_subscribe]) —
+       map the plugin shortcode's themeable vars to the brand palette so the
+       form is on-brand on the /subscribe page (light background). */
+    --sp-subscribe-btn-bg: var(--color-primary);
+    --sp-subscribe-btn-hover: #16294d;
+    --sp-subscribe-btn-text: #FFFFFF;
 
     /* Announcement Bar */
     --color-announce-bg: #C9973A;
@@ -6880,3 +6887,16 @@ select:focus-visible,
     .gsp-search-layout { grid-template-columns: 1fr; }
     .gsp-search-sidebar { position: static; }
 }
+
+/* ==========================================================================
+   NEWSLETTER SIGNUP IN FOOTER
+   The [societypress_subscribe] form sits in the dark navy footer, so its
+   default light-background styling needs a footer-specific palette: light
+   label text and a gold (accent) button that reads against the navy.
+   ========================================================================== */
+.site-footer .sp-subscribe-wrap { max-width: 100%; margin: 18px 0 0; }
+.site-footer .sp-subscribe-title { color: var(--color-footer-text); font-size: 1rem; }
+.site-footer .sp-subscribe-label { color: var(--color-footer-text); font-size: 13px; }
+.site-footer .sp-subscribe-input { background: #fff; }
+.site-footer .sp-subscribe-btn { background: var(--color-accent); color: var(--color-primary); }
+.site-footer .sp-subscribe-btn:hover { background: #b5852f; }

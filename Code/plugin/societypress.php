@@ -12742,14 +12742,19 @@ class SP_Members_List_Table extends WP_List_Table {
      * Handles searching, filtering, sorting, and pagination — everything
      * Harold needs to find a specific member in a list of hundreds.
      */
-    public function prepare_items(): void {
+    /**
+     * Build the WHERE clause, prepared values, and sort order from the current
+     * request's search + filter parameters.
+     *
+     * WHY extracted: both the paginated on-screen list (prepare_items) and the
+     * print/PDF view need the exact same filtered set. Keeping the filter logic
+     * in one place stops the two from drifting apart.
+     *
+     * @return array{0:string,1:array,2:string,3:string} [where_sql, values, orderby, order]
+     */
+    protected function get_filter_sql(): array {
         global $wpdb;
 
-        $sp_settings = sp_settings();
-        $per_page = (int) ( $sp_settings['dir_per_page'] ?? 25 );
-        $table    = $wpdb->prefix . 'sp_members';
-
-        // Build the WHERE clause from search and filters
         $where  = [];
         $values = [];
 
@@ -12835,6 +12840,39 @@ class SP_Members_List_Table extends WP_List_Table {
             $orderby = 'last_name';
         }
         $order = ( $_GET['order'] ?? 'asc' ) === 'desc' ? 'DESC' : 'ASC';
+
+        return [ $where_sql, $values, $orderby, $order ];
+    }
+
+    /**
+     * Fetch ALL members matching the current filters (no pagination), for the
+     * print/PDF view. Mirrors prepare_items' SELECT/JOINs and decryption.
+     *
+     * @return array Row objects with user_email + tier_name projected.
+     */
+    public function get_all_filtered_rows(): array {
+        global $wpdb;
+        $table = $wpdb->prefix . 'sp_members';
+        list( $where_sql, $values, $orderby, $order ) = $this->get_filter_sql();
+        $query = "SELECT m.*, u.user_email, t.name AS tier_name FROM {$table} m
+                  LEFT JOIN {$wpdb->users} u ON m.user_id = u.ID
+                  LEFT JOIN {$wpdb->prefix}sp_membership_tiers t ON t.id = m.tier_id
+                  {$where_sql}
+                  ORDER BY m.{$orderby} {$order}";
+        $rows = empty( $values )
+            ? $wpdb->get_results( $query )
+            : $wpdb->get_results( $wpdb->prepare( $query, ...$values ) );
+        return sp_member_decrypt_rows( $rows );
+    }
+
+    public function prepare_items(): void {
+        global $wpdb;
+
+        $sp_settings = sp_settings();
+        $per_page = (int) ( $sp_settings['dir_per_page'] ?? 25 );
+        $table    = $wpdb->prefix . 'sp_members';
+
+        list( $where_sql, $values, $orderby, $order ) = $this->get_filter_sql();
 
         // Count total items (for pagination)
         $count_sql = "SELECT COUNT(*) FROM {$table} m
@@ -13504,6 +13542,111 @@ function sp_render_chair_page(): void {
  *      an "Add New" button, search box, filter dropdowns, and the sortable
  *      member table.
  */
+/**
+ * Print/PDF view of the members list.
+ *
+ * WHY admin_init (not inside the page render): we need a clean, standalone HTML
+ * document with no wp-admin chrome, so we intercept before any admin output and
+ * exit. SocietyPress bundles no PDF library (zero external deps), so we emit a
+ * print-optimized page and let the browser's "Save as PDF" do the rest — works
+ * everywhere with nothing to install. Honors the same filters as the on-screen
+ * list via the shared SP_Members_List_Table::get_all_filtered_rows().
+ */
+add_action( 'admin_init', function () {
+    if ( ( $_GET['page'] ?? '' ) !== 'sp-members' || empty( $_GET['sp_print'] ) ) {
+        return;
+    }
+    if ( ! current_user_can( 'sp_manage_members' ) ) {
+        wp_die( esc_html__( 'You do not have permission to view this.', 'societypress' ) );
+    }
+    if ( ! class_exists( 'WP_List_Table' ) ) {
+        require_once ABSPATH . 'wp-admin/includes/class-wp-list-table.php';
+    }
+
+    $list     = new SP_Members_List_Table();
+    $rows     = $list->get_all_filtered_rows();
+    $settings = sp_settings();
+    $org_name = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+    $statuses = sp_get_member_statuses();
+    $when     = date_i18n( get_option( 'date_format', 'F j, Y' ) );
+
+    header( 'Content-Type: text/html; charset=utf-8' );
+    ?><!doctype html>
+<html lang="<?php echo esc_attr( get_bloginfo( 'language' ) ); ?>">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title><?php echo esc_html( sprintf( __( '%s — Membership List', 'societypress' ), $org_name ) ); ?></title>
+<style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #1a1a1a; margin: 32px; }
+    h1 { font-size: 20px; margin: 0 0 2px; }
+    .sp-print-meta { color: #555; font-size: 12px; margin: 0 0 18px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
+    th { border-bottom: 2px solid #333; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
+    tr:nth-child(even) td { background: #f7f7f7; }
+    .sp-print-toolbar { margin: 0 0 18px; }
+    .sp-print-btn { padding: 8px 18px; font-size: 14px; border: 1px solid #333; background: #fff; border-radius: 5px; cursor: pointer; }
+    .sp-print-count { color: #555; font-size: 12px; margin-left: 10px; }
+    @media print {
+        body { margin: 0; }
+        .sp-print-toolbar { display: none; }
+        thead { display: table-header-group; }
+        tr { page-break-inside: avoid; }
+    }
+</style>
+</head>
+<body>
+    <div class="sp-print-toolbar">
+        <button type="button" class="sp-print-btn" onclick="window.print();"><?php esc_html_e( 'Print / Save as PDF', 'societypress' ); ?></button>
+        <span class="sp-print-count"><?php echo esc_html( sprintf( _n( '%d member', '%d members', count( $rows ), 'societypress' ), count( $rows ) ) ); ?></span>
+    </div>
+    <h1><?php echo esc_html( sprintf( __( '%s — Membership List', 'societypress' ), $org_name ) ); ?></h1>
+    <p class="sp-print-meta"><?php echo esc_html( sprintf( __( 'Generated %s', 'societypress' ), $when ) ); ?></p>
+    <table>
+        <thead>
+            <tr>
+                <th><?php esc_html_e( 'Name', 'societypress' ); ?></th>
+                <th><?php esc_html_e( 'Plan', 'societypress' ); ?></th>
+                <th><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                <th><?php esc_html_e( 'Expiration', 'societypress' ); ?></th>
+                <th><?php esc_html_e( 'Email', 'societypress' ); ?></th>
+                <th><?php esc_html_e( 'Phone', 'societypress' ); ?></th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php if ( empty( $rows ) ) : ?>
+                <tr><td colspan="6"><?php esc_html_e( 'No members match the current filters.', 'societypress' ); ?></td></tr>
+            <?php else : ?>
+                <?php foreach ( $rows as $m ) :
+                    $name = $m->member_type === 'organization' && ! empty( $m->organization_name )
+                        ? $m->organization_name
+                        : trim( $m->last_name . ', ' . $m->first_name, ', ' );
+                    $exp  = empty( $m->expiration_date )
+                        ? __( 'Lifetime', 'societypress' )
+                        : date_i18n( get_option( 'date_format', 'F j, Y' ), strtotime( $m->expiration_date ) );
+                    $phone = $m->phone ?: ( $m->cell ?? '' );
+                ?>
+                    <tr>
+                        <td><?php echo esc_html( $name ?: '—' ); ?></td>
+                        <td><?php echo esc_html( $m->tier_name ?: '—' ); ?></td>
+                        <td><?php echo esc_html( $statuses[ $m->status ] ?? sp_localized_status( $m->status ) ); ?></td>
+                        <td><?php echo esc_html( $exp ); ?></td>
+                        <td><?php echo esc_html( $m->user_email ?: '—' ); ?></td>
+                        <td><?php echo esc_html( $phone ?: '—' ); ?></td>
+                    </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </tbody>
+    </table>
+    <script>window.addEventListener('load', function () { window.print(); });</script>
+</body>
+</html>
+    <?php
+    exit;
+} );
+
 function sp_render_members_page(): void {
     $table = new SP_Members_List_Table();
     $table->prepare_items();
@@ -13554,6 +13697,20 @@ function sp_render_members_page(): void {
         <?php endif; ?>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-import' ) ); ?>" class="page-title-action">
             <?php esc_html_e( 'Import Membership List', 'societypress' ); ?>
+        </a>
+        <?php
+        // Print / PDF — opens a clean printable view of the CURRENTLY filtered
+        // list in a new tab (browser "Print → Save as PDF"). We carry the active
+        // search + filter params through so the printout matches what's on screen.
+        $sp_print_args = [ 'page' => 'sp-members', 'sp_print' => 1 ];
+        foreach ( [ 's', 'member_status', 'member_tier', 'member_group', 'sp_filter', 'orderby', 'order', 'show_individual', 'show_organization', 'filter_action' ] as $sp_pk ) {
+            if ( isset( $_GET[ $sp_pk ] ) && $_GET[ $sp_pk ] !== '' ) {
+                $sp_print_args[ $sp_pk ] = sanitize_text_field( wp_unslash( $_GET[ $sp_pk ] ) );
+            }
+        }
+        ?>
+        <a href="<?php echo esc_url( add_query_arg( $sp_print_args, admin_url( 'admin.php' ) ) ); ?>" class="page-title-action" target="_blank" rel="noopener">
+            <?php esc_html_e( 'Print / PDF', 'societypress' ); ?>
         </a>
         <hr class="wp-header-end">
 

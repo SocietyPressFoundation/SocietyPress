@@ -62930,6 +62930,116 @@ function sp_render_blast_email_page(): void {
     <div class="wrap sp-admin-wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Blast Email', 'societypress' ); ?></h1>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email-compose' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Compose New', 'societypress' ); ?></a>
+        <button type="button" id="sp-email-health-btn" class="page-title-action"><?php esc_html_e( 'Check Email Addresses', 'societypress' ); ?></button>
+
+        <?php
+        // One-click member email health check. Verifies the mail domain of every
+        // member address has a working mail server, so dead addresses surface
+        // before a big send. Runs in the browser in small batches against an
+        // AJAX endpoint (can't time out) and checks each unique domain once.
+        ?>
+        <div id="sp-email-health-panel" class="sp-email-health-panel" style="display:none;">
+            <p class="sp-email-health-status"><?php esc_html_e( 'Checking member email addresses…', 'societypress' ); ?></p>
+            <div class="sp-email-health-bar"><div class="sp-email-health-bar-fill" id="sp-email-health-fill"></div></div>
+            <div id="sp-email-health-report" class="sp-email-health-report" aria-live="polite"></div>
+        </div>
+        <style>
+            .sp-email-health-panel { margin: 16px 0; padding: 16px 18px; background: #fff; border: 1px solid #c3c4c7; border-radius: 6px; max-width: 760px; }
+            .sp-email-health-bar { height: 10px; background: #f0f0f1; border-radius: 5px; overflow: hidden; margin: 10px 0; }
+            .sp-email-health-bar-fill { height: 100%; width: 0; background: #2271b1; transition: width 0.2s; }
+            .sp-email-health-report ul { margin: 8px 0 0; }
+            .sp-email-health-report .sp-eh-bad { color: #b32d2e; font-weight: 600; }
+            .sp-email-health-report .sp-eh-ok { color: #1a7f37; font-weight: 600; }
+            .sp-email-health-domain { margin: 10px 0 0; }
+            .sp-email-health-domain h4 { margin: 0; }
+            .sp-email-health-domain ul { list-style: disc; margin-left: 22px; }
+        </style>
+        <script>
+        (function () {
+            var btn    = document.getElementById('sp-email-health-btn');
+            var panel  = document.getElementById('sp-email-health-panel');
+            var status = panel ? panel.querySelector('.sp-email-health-status') : null;
+            var fill   = document.getElementById('sp-email-health-fill');
+            var report = document.getElementById('sp-email-health-report');
+            if (!btn) return;
+            var ajaxUrl = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
+            var nonce   = <?php echo wp_json_encode( wp_create_nonce( 'sp_email_health' ) ); ?>;
+            var running = false;
+
+            function esc(s) { var d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; }
+
+            btn.addEventListener('click', function () {
+                if (running) return;
+                running = true;
+                panel.style.display = '';
+                report.innerHTML = '';
+                fill.style.width = '0';
+                status.textContent = <?php echo wp_json_encode( __( 'Gathering addresses…', 'societypress' ) ); ?>;
+
+                var body = new URLSearchParams();
+                body.append('action', 'sp_email_health_start');
+                body.append('nonce', nonce);
+                fetch(ajaxUrl, { method: 'POST', credentials: 'same-origin', body: body })
+                    .then(function (r) { return r.json(); })
+                    .then(function (res) {
+                        if (!res || !res.success) {
+                            status.textContent = (res && res.data && res.data.message) ? res.data.message : <?php echo wp_json_encode( __( 'Could not start the check.', 'societypress' ) ); ?>;
+                            running = false; return;
+                        }
+                        runBatches(res.data.domains || [], res.data.by_domain || {});
+                    })
+                    .catch(function () { status.textContent = <?php echo wp_json_encode( __( 'Could not start the check.', 'societypress' ) ); ?>; running = false; });
+            });
+
+            function runBatches(domains, byDomain) {
+                var total = domains.length, idx = 0, bad = [];
+                if (!total) { finish(bad, byDomain); return; }
+                var BATCH = 10;
+                function next() {
+                    if (idx >= total) { finish(bad, byDomain); return; }
+                    var chunk = domains.slice(idx, idx + BATCH);
+                    var body = new URLSearchParams();
+                    body.append('action', 'sp_email_health_check');
+                    body.append('nonce', nonce);
+                    chunk.forEach(function (d) { body.append('domains[]', d); });
+                    fetch(ajaxUrl, { method: 'POST', credentials: 'same-origin', body: body })
+                        .then(function (r) { return r.json(); })
+                        .then(function (res) {
+                            if (res && res.success && res.data.bad) { bad = bad.concat(res.data.bad); }
+                            idx += BATCH;
+                            fill.style.width = Math.min(100, Math.round(idx / total * 100)) + '%';
+                            status.textContent = <?php echo wp_json_encode( __( 'Checking domains…', 'societypress' ) ); ?> + ' ' + Math.min(idx, total) + '/' + total;
+                            next();
+                        })
+                        .catch(function () { idx += BATCH; next(); });
+                }
+                next();
+            }
+
+            function finish(bad, byDomain) {
+                running = false;
+                fill.style.width = '100%';
+                var affected = 0;
+                bad.forEach(function (d) { affected += (byDomain[d] ? byDomain[d].length : 0); });
+                if (!affected) {
+                    status.innerHTML = '<span class="sp-eh-ok">' + esc(<?php echo wp_json_encode( __( 'All member email domains look deliverable.', 'societypress' ) ); ?>) + '</span>';
+                    report.innerHTML = '';
+                    return;
+                }
+                var badMsg = <?php echo wp_json_encode( __( '%d address(es) may be undeliverable:', 'societypress' ) ); ?>;
+                status.innerHTML = '<span class="sp-eh-bad">' + esc( badMsg.replace( '%d', affected ) ) + '</span>';
+                var html = '';
+                bad.forEach(function (d) {
+                    var members = byDomain[d] || [];
+                    if (!members.length) return;
+                    html += '<div class="sp-email-health-domain"><h4>@' + esc(d) + '</h4><ul>';
+                    members.forEach(function (m) { html += '<li>' + esc(m.name) + ' — ' + esc(m.email) + '</li>'; });
+                    html += '</ul></div>';
+                });
+                report.innerHTML = html;
+            }
+        })();
+        </script>
 
         <?php if ( isset( $_GET['deleted'] ) ) : ?>
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Blast email deleted.', 'societypress' ); ?></p></div>
@@ -63063,6 +63173,80 @@ function sp_render_blast_email_page(): void {
     </div>
     <?php
 }
+
+/**
+ * AJAX: start the member email-health check. Returns the unique mail domains
+ * across all member addresses plus a domain → members map, so the browser can
+ * check each domain once (not each address) and then attribute any bad domain
+ * back to the affected members. Same address set the blast sender uses.
+ */
+add_action( 'wp_ajax_sp_email_health_start', function () {
+    if ( ! current_user_can( 'sp_manage_communications' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Permission denied.', 'societypress' ) ], 403 );
+    }
+    if ( ! check_ajax_referer( 'sp_email_health', 'nonce', false ) ) {
+        wp_send_json_error( [ 'message' => __( 'Security check failed. Please reload the page.', 'societypress' ) ], 400 );
+    }
+    if ( ! function_exists( 'checkdnsrr' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Your host has disabled DNS lookups, so email addresses can\'t be checked here.', 'societypress' ) ] );
+    }
+
+    global $wpdb;
+    $rows = $wpdb->get_results(
+        "SELECT m.first_name, m.last_name, u.user_email AS email
+         FROM {$wpdb->prefix}sp_members m
+         JOIN {$wpdb->users} u ON m.user_id = u.ID
+         WHERE u.user_email <> '' AND u.user_email IS NOT NULL"
+    );
+
+    $by_domain = [];
+    foreach ( $rows as $r ) {
+        $email = strtolower( trim( $r->email ) );
+        $at    = strrpos( $email, '@' );
+        if ( $at === false ) {
+            continue;
+        }
+        $domain = substr( $email, $at + 1 );
+        if ( $domain === '' ) {
+            continue;
+        }
+        $name = trim( $r->first_name . ' ' . $r->last_name );
+        $by_domain[ $domain ][] = [ 'name' => $name !== '' ? $name : $r->email, 'email' => $r->email ];
+    }
+
+    wp_send_json_success( [
+        'domains'   => array_keys( $by_domain ),
+        'by_domain' => $by_domain,
+    ] );
+} );
+
+/**
+ * AJAX: check one batch of mail domains. A domain is considered deliverable if
+ * it has an MX record, or (per RFC 5321's implicit-MX rule) an A/AAAA record.
+ * Returns the subset that resolve to nothing — i.e. likely-dead domains.
+ */
+add_action( 'wp_ajax_sp_email_health_check', function () {
+    if ( ! current_user_can( 'sp_manage_communications' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Permission denied.', 'societypress' ) ], 403 );
+    }
+    if ( ! check_ajax_referer( 'sp_email_health', 'nonce', false ) ) {
+        wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ], 400 );
+    }
+
+    $domains = array_map( 'sanitize_text_field', (array) ( $_POST['domains'] ?? [] ) );
+    $bad     = [];
+    foreach ( $domains as $domain ) {
+        $domain = strtolower( trim( $domain ) );
+        if ( $domain === '' ) {
+            continue;
+        }
+        $ok = checkdnsrr( $domain, 'MX' ) || checkdnsrr( $domain, 'A' ) || checkdnsrr( $domain, 'AAAA' );
+        if ( ! $ok ) {
+            $bad[] = $domain;
+        }
+    }
+    wp_send_json_success( [ 'bad' => $bad ] );
+} );
 
 /**
  * Render a single blast email in read-only detail view.

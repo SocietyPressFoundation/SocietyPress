@@ -71,6 +71,7 @@ register_activation_hook( __FILE__, function () {
             'membership_start_month'  => 7,
             'late_join_months'        => 5,
             'membership_max_years'    => 1,
+            'groups_auto_remove_expired' => 0,
             'grace_period_months'     => 2,
             // Directory — what shows up on the membership listing page
             'dir_show_city_state'     => 1,
@@ -20106,6 +20107,23 @@ add_action( 'admin_init', function () {
         'sp_membership_section'
     );
 
+    // --- Auto-remove lapsed members from groups ---
+    add_settings_field(
+        'sp_groups_auto_remove_expired',
+        __( 'Lapsed Members in Groups', 'societypress' ),
+        function () {
+            $settings = sp_settings();
+            printf(
+                '<label><input type="checkbox" name="societypress_settings[groups_auto_remove_expired]" value="1" %s> %s</label>',
+                checked( ! empty( $settings['groups_auto_remove_expired'] ), true, false ),
+                esc_html__( 'Automatically remove expired, lapsed, or cancelled members from all groups', 'societypress' )
+            );
+            echo '<p class="description">' . esc_html__( 'Runs daily. Keeps group rosters and group blast-email sends clean. Grace-period members (mid-renewal) are kept. Off by default; the group editor always flags lapsed members regardless.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-membership',
+        'sp_membership_section'
+    );
+
     // --- Renewal Reminder Section ---
     // WHY: Automated reminders save Harold hours every renewal cycle.
     //      Instead of manually tracking who's about to expire and sending
@@ -20876,6 +20894,7 @@ function sp_sanitize_settings( array $input ): array {
         'membership_start_month'  => fn() => max( 1, min( 12, (int) ( $input['membership_start_month'] ?? 7 ) ) ),
         'late_join_months'        => fn() => max( 0, min( 11, (int) ( $input['late_join_months'] ?? 3 ) ) ),
         'membership_max_years'    => fn() => max( 1, min( 10, (int) ( $input['membership_max_years'] ?? 1 ) ) ),
+        'groups_auto_remove_expired' => fn() => ! empty( $input['groups_auto_remove_expired'] ) ? 1 : 0,
         'grace_period_months'     => fn() => max( 0, min( 11, (int) ( $input['grace_period_months'] ?? 2 ) ) ),
         'renewal_reminder_30d'    => fn() => ! empty( $input['renewal_reminder_30d'] ) ? 1 : 0,
         'renewal_reminder_15d'    => fn() => ! empty( $input['renewal_reminder_15d'] ) ? 1 : 0,
@@ -21035,7 +21054,7 @@ function sp_sanitize_settings( array $input ): array {
     if ( array_key_exists( 'membership_period_type', $input ) ) {
         $page_keys = array_merge( $page_keys, [
             'membership_period_type', 'membership_start_month', 'late_join_months',
-            'membership_max_years',
+            'membership_max_years', 'groups_auto_remove_expired',
             'grace_period_months', 'renewal_reminder_30d', 'renewal_reminder_15d',
             'renewal_reminder_7d', 'renewal_reminder_subject',
         ]);
@@ -21747,6 +21766,27 @@ function sp_prune_audit_log(): void {
     );
 }
 add_action( 'sp_daily_maintenance', 'sp_prune_audit_log' );
+
+/**
+ * Remove lapsed members from all groups on the daily cron, when the society has
+ * opted in (Settings → Membership). WHY: expired/cancelled members linger in
+ * group rosters and group blast-email sends; this keeps them tidy automatically.
+ * The manual lapsed-member flag in the group editor stays regardless.
+ * Grace-period members are kept — they're mid-renewal.
+ */
+function sp_groups_remove_expired_members(): void {
+    if ( empty( sp_settings()['groups_auto_remove_expired'] ) ) {
+        return;
+    }
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    $wpdb->query(
+        "DELETE gm FROM {$prefix}group_members gm
+         JOIN {$prefix}members m ON m.user_id = gm.user_id
+         WHERE m.status IN ('expired','lapsed','cancelled')"
+    );
+}
+add_action( 'sp_daily_maintenance', 'sp_groups_remove_expired_members' );
 
 // Schedule the daily maintenance cron if not already scheduled. Inside init so
 // scheduling runs after WordPress has bootstrapped, matching the other cron

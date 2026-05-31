@@ -69578,13 +69578,20 @@ function sp_record_type_default_fields( string $type ): array {
             [ 'field_name' => 'Notes',           'field_type' => 'textarea', 'searchable' => 1, 'is_public' => 1 ],
         ],
         'obituary' => [
-            [ 'field_name' => 'Surname',         'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
-            [ 'field_name' => 'Given Name',      'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
-            [ 'field_name' => 'Death Date',      'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
-            [ 'field_name' => 'Newspaper',       'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
-            [ 'field_name' => 'Publication Date', 'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
-            [ 'field_name' => 'Page',            'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
-            [ 'field_name' => 'Notes',           'field_type' => 'textarea', 'searchable' => 1, 'is_public' => 1 ],
+            // WHY the Death-Notice vs Obituary split: a death notice (the brief
+            // paid announcement) and the obituary (the longer editorial piece)
+            // are distinct documents, often in different papers on different
+            // dates — genealogists index them separately, and it gives ENS
+            // migrants a clean mapping target.
+            [ 'field_name' => 'Surname',             'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Given Name',          'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Death Date',          'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
+            [ 'field_name' => 'Death Notice Date',   'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
+            [ 'field_name' => 'Death Notice Source', 'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Obituary Date',       'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
+            [ 'field_name' => 'Obituary Source',     'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],
+            [ 'field_name' => 'Page',                'field_type' => 'text', 'searchable' => 0, 'is_public' => 1 ],
+            [ 'field_name' => 'Notes',               'field_type' => 'textarea', 'searchable' => 1, 'is_public' => 1 ],
         ],
         'marriage' => [
             [ 'field_name' => 'Groom Surname',    'field_type' => 'text', 'searchable' => 1, 'is_public' => 1 ],

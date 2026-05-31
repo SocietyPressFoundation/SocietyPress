@@ -3615,6 +3615,28 @@ add_action( 'update_option_societypress_settings', static function () { sp_setti
 add_action( 'add_option_societypress_settings',    static function () { sp_settings( true ); } );
 
 /**
+ * Default on/off state for a new member's four email-preference checkboxes.
+ *
+ * WHY: Whether communication checkboxes start ticked (opt-out) or unticked
+ *      (opt-in) is a per-society consent choice (Settings → Privacy). Each
+ *      defaults to 1 (ticked) when unset, preserving the long-standing
+ *      behavior for societies that never touch the setting.
+ *
+ * @return array{pref_email_notices:int,pref_email_events:int,pref_email_newsletters:int,pref_email_surnames:int}
+ *              Keyed by the member-table column so callers can splat it
+ *              straight into an insert or a checked() default.
+ */
+function sp_pref_email_defaults(): array {
+    $s = sp_settings();
+    return [
+        'pref_email_notices'     => (int) ( $s['pref_default_email_notices'] ?? 1 ),
+        'pref_email_events'      => (int) ( $s['pref_default_email_events'] ?? 1 ),
+        'pref_email_newsletters' => (int) ( $s['pref_default_email_newsletters'] ?? 1 ),
+        'pref_email_surnames'    => (int) ( $s['pref_default_email_surnames'] ?? 1 ),
+    ];
+}
+
+/**
  * Format a monetary amount with the configured currency symbol/position.
  *
  * @param int|float $amount
@@ -16006,27 +16028,33 @@ function sp_render_member_edit_page(): void {
                 <div class="sp-section-body">
                     <div class="sp-fields">
 
+                        <?php
+                        // For a NEW member ($member is null), the boxes start in
+                        // the society's configured opt-in/opt-out default; for an
+                        // existing member, ?? leaves their stored choice untouched.
+                        $sp_pref_email_defaults = sp_pref_email_defaults();
+                        ?>
                         <div class="sp-field">
                             <label class="sp-member-edit-group-label"><?php esc_html_e( 'Email Notifications', 'societypress' ); ?></label>
                             <div class="sp-checkboxes">
                                 <label>
                                     <input type="checkbox" name="pref_email_notices" value="1"
-                                        <?php checked( $member->pref_email_notices ?? 1, 1 ); ?>>
+                                        <?php checked( $member->pref_email_notices ?? $sp_pref_email_defaults['pref_email_notices'], 1 ); ?>>
                                     <?php esc_html_e( 'General notices', 'societypress' ); ?>
                                 </label>
                                 <label>
                                     <input type="checkbox" name="pref_email_events" value="1"
-                                        <?php checked( $member->pref_email_events ?? 1, 1 ); ?>>
+                                        <?php checked( $member->pref_email_events ?? $sp_pref_email_defaults['pref_email_events'], 1 ); ?>>
                                     <?php esc_html_e( 'Event announcements', 'societypress' ); ?>
                                 </label>
                                 <label>
                                     <input type="checkbox" name="pref_email_newsletters" value="1"
-                                        <?php checked( $member->pref_email_newsletters ?? 1, 1 ); ?>>
+                                        <?php checked( $member->pref_email_newsletters ?? $sp_pref_email_defaults['pref_email_newsletters'], 1 ); ?>>
                                     <?php esc_html_e( 'Newsletter notifications', 'societypress' ); ?>
                                 </label>
                                 <label>
                                     <input type="checkbox" name="pref_email_surnames" value="1"
-                                        <?php checked( $member->pref_email_surnames ?? 1, 1 ); ?>>
+                                        <?php checked( $member->pref_email_surnames ?? $sp_pref_email_defaults['pref_email_surnames'], 1 ); ?>>
                                     <?php esc_html_e( 'Surname match alerts', 'societypress' ); ?>
                                 </label>
                             </div>
@@ -20286,6 +20314,50 @@ add_action( 'admin_init', function () {
     );
 
     // ====================================================================
+    // SECTION: New-Member Email Preference Defaults (Privacy tab)
+    //
+    // WHY: Whether a new member's communication checkboxes start ticked
+    //      (opt-out model) or unticked (opt-in model) is a consent-policy
+    //      choice that varies by society and jurisdiction. We default all
+    //      four to ticked (the long-standing behavior) but let the society
+    //      flip any of them to opt-in. Applies to brand-new members only —
+    //      existing members keep whatever they've chosen.
+    // ====================================================================
+    add_settings_section(
+        'sp_pref_email_defaults_section',
+        __( 'New-Member Email Defaults', 'societypress' ),
+        function () {
+            echo '<p>' . esc_html__( 'When a new member is added (or signs up through the join form), should these email types start turned on? Turn one off to require members to opt in to it instead. This does not change existing members\' choices.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-privacy'
+    );
+
+    $sp_pref_settings = sp_settings();
+    $sp_pref_fields   = [
+        'pref_default_email_notices'     => __( 'Membership notices on by default', 'societypress' ),
+        'pref_default_email_events'      => __( 'Event announcements on by default', 'societypress' ),
+        'pref_default_email_newsletters' => __( 'Newsletters on by default', 'societypress' ),
+        'pref_default_email_surnames'    => __( 'Surname-research contact on by default', 'societypress' ),
+    ];
+    foreach ( $sp_pref_fields as $sp_pref_key => $sp_pref_label ) {
+        add_settings_field(
+            $sp_pref_key,
+            $sp_pref_label,
+            function () use ( $sp_pref_key, $sp_pref_label, $sp_pref_settings ) {
+                $on = (int) ( $sp_pref_settings[ $sp_pref_key ] ?? 1 );
+                ?>
+                <label>
+                    <input type="checkbox" name="societypress_settings[<?php echo esc_attr( $sp_pref_key ); ?>]" value="1" <?php checked( $on, 1 ); ?>>
+                    <?php echo esc_html( $sp_pref_label ); ?>
+                </label>
+                <?php
+            },
+            'sp-settings-privacy',
+            'sp_pref_email_defaults_section'
+        );
+    }
+
+    // ====================================================================
     // SECTION: Activity Logging (Privacy tab)
     //
     // WHY: Logins and admin actions are already tracked in the Audit Log
@@ -20898,6 +20970,12 @@ function sp_sanitize_settings( array $input ): array {
         // survive a save round-trip. wp_kses_post on render protects on output.
         'login_pre_notice'        => fn() => isset( $input['login_pre_notice'] ) ? wp_check_invalid_utf8( (string) $input['login_pre_notice'] ) : '',
         'login_ack_text'          => fn() => isset( $input['login_ack_text'] ) ? wp_check_invalid_utf8( (string) $input['login_ack_text'] ) : '',
+
+        // New-member email preference defaults (Privacy tab)
+        'pref_default_email_notices'     => fn() => ! empty( $input['pref_default_email_notices'] ) ? 1 : 0,
+        'pref_default_email_events'      => fn() => ! empty( $input['pref_default_email_events'] ) ? 1 : 0,
+        'pref_default_email_newsletters' => fn() => ! empty( $input['pref_default_email_newsletters'] ) ? 1 : 0,
+        'pref_default_email_surnames'    => fn() => ! empty( $input['pref_default_email_surnames'] ) ? 1 : 0,
 
         // Activity Logging (Privacy tab)
         'log_logouts'             => fn() => ! empty( $input['log_logouts'] ) ? 1 : 0,
@@ -45598,6 +45676,7 @@ add_action( 'init', function () {
     // Create the member record
     // WHY: Build the data array first so we can encrypt sensitive fields
     // before the insert. cell, address_1, address_2 are encrypted at rest.
+    $sp_pref_email_defaults = sp_pref_email_defaults();
     $join_member_data = [
         'user_id'         => $user_id,
         'member_type'     => 'individual',
@@ -45622,10 +45701,11 @@ add_action( 'init', function () {
         'country'         => sanitize_text_field( $_POST['country'] ?? 'US' ),
         'join_date'       => $join_date,
         'expiration_date' => $exp_date,
-        'pref_email_notices'     => 1,
-        'pref_email_events'      => 1,
-        'pref_email_newsletters' => 1,
-        'pref_email_surnames'    => 1,
+        // Email-preference defaults are society-configurable (Settings → Privacy).
+        'pref_email_notices'     => $sp_pref_email_defaults['pref_email_notices'],
+        'pref_email_events'      => $sp_pref_email_defaults['pref_email_events'],
+        'pref_email_newsletters' => $sp_pref_email_defaults['pref_email_newsletters'],
+        'pref_email_surnames'    => $sp_pref_email_defaults['pref_email_surnames'],
         'dir_show_name'    => 1,
         'dir_show_email'   => 1,
         'dir_show_phone'   => 0,

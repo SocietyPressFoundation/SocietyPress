@@ -21311,6 +21311,8 @@ function sp_sanitize_settings( array $input ): array {
         // Events
         'events_default_visibility'   => fn() => in_array( $input['events_default_visibility'] ?? '', [ 'public', 'members_only' ], true )
                                                    ? $input['events_default_visibility'] : 'public',
+        'events_default_timeframe'    => fn() => in_array( $input['events_default_timeframe'] ?? '', [ '30days', '3months', '6months', '12months', 'all' ], true )
+                                                   ? $input['events_default_timeframe'] : '12months',
         'events_default_registration' => fn() => ! empty( $input['events_default_registration'] ) ? 1 : 0,
         'events_guest_registration'   => fn() => ! empty( $input['events_guest_registration'] ) ? 1 : 0,
         'events_per_page'             => fn() => in_array( (int) ( $input['events_per_page'] ?? -1 ), [ 6, 12, 24, 48 ], true )
@@ -40025,6 +40027,35 @@ add_action( 'admin_init', function () {
         'sp_events_section'
     );
 
+    // --- Default Timeframe (public events listing) ---
+    // WHY: How far ahead the public Events page shows by default. Visitors can
+    //      still change it with the dropdown on the page; this just sets where
+    //      it lands first. A society with a packed calendar might prefer 3
+    //      months; a quiet one, all upcoming.
+    add_settings_field(
+        'events_default_timeframe',
+        __( 'Events Page Default Range', 'societypress' ),
+        function () {
+            $settings = sp_settings();
+            $current  = $settings['events_default_timeframe'] ?? '12months';
+            $options  = [
+                '30days'   => __( 'Next 30 Days', 'societypress' ),
+                '3months'  => __( 'Next 3 Months', 'societypress' ),
+                '6months'  => __( 'Next 6 Months', 'societypress' ),
+                '12months' => __( 'Next 12 Months', 'societypress' ),
+                'all'      => __( 'All Upcoming', 'societypress' ),
+            ];
+            echo '<select name="societypress_settings[events_default_timeframe]">';
+            foreach ( $options as $val => $label ) {
+                printf( '<option value="%s" %s>%s</option>', esc_attr( $val ), selected( $current, $val, false ), esc_html( $label ) );
+            }
+            echo '</select>';
+            echo '<p class="description">' . esc_html__( 'How far ahead the public Events page shows when a visitor first lands on it. They can change the range with the dropdown on the page.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-events',
+        'sp_events_section'
+    );
+
     // --- Default Registration ---
     add_settings_field(
         'events_default_registration',
@@ -42516,7 +42547,14 @@ function sp_render_events_listing( array $settings ): void {
     // ---- Collect filter parameters from the URL ----
     $search     = isset( $_GET['sp_search'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_search'] ) ) : '';
     $cat_filter = isset( $_GET['sp_cat'] ) ? (int) $_GET['sp_cat'] : 0;
-    $timeframe  = isset( $_GET['sp_time'] ) ? sanitize_text_field( $_GET['sp_time'] ) : '12months';
+    // Default timeframe is admin-configurable (Settings → Events); a visitor can
+    // still change it via the sp_time dropdown. Falls back to 12 months.
+    $sp_evt_settings   = sp_settings();
+    $default_timeframe = $sp_evt_settings['events_default_timeframe'] ?? '12months';
+    if ( ! in_array( $default_timeframe, [ '30days', '3months', '6months', '12months', 'all' ], true ) ) {
+        $default_timeframe = '12months';
+    }
+    $timeframe  = isset( $_GET['sp_time'] ) ? sanitize_text_field( $_GET['sp_time'] ) : $default_timeframe;
     $view       = isset( $_GET['sp_view'] ) ? sanitize_text_field( $_GET['sp_view'] ) : 'list';
 
     // ---- Build the WHERE clause ----
@@ -42619,7 +42657,7 @@ function sp_render_events_listing( array $settings ): void {
     $page_args = [];
     if ( $search !== '' ) $page_args['sp_search'] = $search;
     if ( $cat_filter > 0 ) $page_args['sp_cat'] = $cat_filter;
-    if ( $timeframe !== '12months' ) $page_args['sp_time'] = $timeframe;
+    if ( $timeframe !== $default_timeframe ) $page_args['sp_time'] = $timeframe;
     if ( $view !== 'list' ) $page_args['sp_view'] = $view;
 
     ?>
@@ -42670,7 +42708,7 @@ function sp_render_events_listing( array $settings ): void {
 
                 <button type="submit" class="sp-events-filter-btn"><?php esc_html_e( 'Filter', 'societypress' ); ?></button>
 
-                <?php if ( $search !== '' || $cat_filter > 0 || $timeframe !== '12months' ) : ?>
+                <?php if ( $search !== '' || $cat_filter > 0 || $timeframe !== $default_timeframe ) : ?>
                     <a href="<?php echo esc_url( $base_url ); ?>" class="sp-events-clear-link"><?php esc_html_e( 'Clear', 'societypress' ); ?></a>
                 <?php endif; ?>
             </div>

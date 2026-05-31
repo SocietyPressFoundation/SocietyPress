@@ -32846,6 +32846,14 @@ function sp_builder_fields_resource_links( $index, array $settings ): void {
         </select>
     </div>
     <div class="sp-builder-field">
+        <?php $display_mode = $settings['display_mode'] ?? 'list'; ?>
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-display_mode"><?php esc_html_e( 'Layout', 'societypress' ); ?></label>
+        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][display_mode]" id="sp-w-<?php echo esc_attr( $index ); ?>-display_mode">
+            <option value="list" <?php selected( $display_mode, 'list' ); ?>><?php esc_html_e( 'List (one column)', 'societypress' ); ?></option>
+            <option value="grid" <?php selected( $display_mode, 'grid' ); ?>><?php esc_html_e( 'Grid (category cards)', 'societypress' ); ?></option>
+        </select>
+    </div>
+    <div class="sp-builder-field">
         <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][featured_only]" value="1" <?php checked( $featured_only ); ?>> <?php esc_html_e( 'Show featured links only', 'societypress' ); ?></label><br>
         <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_descriptions]" value="1" <?php checked( $show_descriptions ); ?>> <?php esc_html_e( 'Show descriptions', 'societypress' ); ?></label><br>
         <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_updated]" value="1" <?php checked( ! empty( $settings['show_updated'] ) ); ?>> <?php esc_html_e( 'Show last-updated date', 'societypress' ); ?></label><br>
@@ -33499,6 +33507,7 @@ function sp_sanitize_builder_widget( string $type, array $settings ): array {
                                        ? (int) $settings['count'] : 20,
                 'show_descriptions' => ! empty( $settings['show_descriptions'] ),
                 'show_updated'      => ! empty( $settings['show_updated'] ),
+                'display_mode'      => ( ( $settings['display_mode'] ?? 'list' ) === 'grid' ) ? 'grid' : 'list',
                 'login_required'    => ! empty( $settings['login_required'] ),
             ];
 
@@ -51428,6 +51437,7 @@ function sp_render_builder_widget_resource_links( array $s ): void {
     $count          = max( 1, (int) ( $s['count'] ?? 50 ) );
     $show_desc      = $s['show_descriptions'] ?? true;
     $show_updated   = ! empty( $s['show_updated'] );
+    $grid_mode      = ( ( $s['display_mode'] ?? 'list' ) === 'grid' );
 
     $where = [ 'r.active = 1' ];
     if ( $category_id ) {
@@ -51456,9 +51466,14 @@ function sp_render_builder_widget_resource_links( array $s ): void {
 .sp-resource-new { background: #e8f5e9; color: #166534; font-size: 0.7rem; padding: 2px 7px; border-radius: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin-left: 4px; }
 .sp-resource-desc { margin: 4px 0 0; color: #555; font-size: 13px; }
 .sp-resource-updated { margin: 3px 0 0; color: #888; font-size: 12px; font-style: italic; }
+/* Grid mode: category blocks as cards in a responsive multi-column grid, so a
+   links-heavy page reads as organized sections instead of one long column. */
+.sp-resource-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px; }
+.sp-resource-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px 18px; }
+.sp-resource-card .sp-resource-cat-heading { border-bottom-color: #e5e7eb; }
 </style>';
 
-    echo '<div class="sp-widget-resource-links">';
+    echo '<div class="sp-widget-resource-links' . ( $grid_mode ? ' sp-resource-grid' : '' ) . '">';
     if ( empty( $resources ) ) {
         echo '<p class="sp-text-secondary sp-italic">' . esc_html__( 'No resources available yet.', 'societypress' ) . '</p>';
     } else {
@@ -51470,7 +51485,7 @@ function sp_render_builder_widget_resource_links( array $s ): void {
         }
 
         foreach ( $grouped as $cat_name => $items ) {
-            echo '<div class="sp-mb-24">';
+            echo '<div class="' . ( $grid_mode ? 'sp-resource-card' : 'sp-mb-24' ) . '">';
             echo '<h4 class="sp-resource-cat-heading">' . esc_html( $cat_name ) . '</h4>';
             echo '<ul class="sp-list-reset">';
             foreach ( $items as $item ) {

@@ -352,6 +352,58 @@ function sp_m( $member, $field ) {
 
             <?php
             // ----------------------------------------------------------------
+            // RENEWAL BANNER
+            // WHY: This is the page where a member manages their membership, so
+            // an expiring/expired member earns a louder, escalating banner here
+            // than the nav "Renew Now" CTA — amber while expiring, red once
+            // expired. Status comes from sp_user_renewal_status(), which uses
+            // the society's own reminder-window thresholds, so the banner and
+            // the email reminders agree on what "expiring" means.
+            // ----------------------------------------------------------------
+            $sp_renewal = function_exists( 'sp_user_renewal_status' ) ? sp_user_renewal_status() : 'none';
+            if ( in_array( $sp_renewal, [ 'expiring', 'expired' ], true ) ) :
+                $sp_exp_raw = sp_m( $member, 'expiration_date' );
+                $sp_exp_fmt = ( $sp_exp_raw && '0000-00-00' !== $sp_exp_raw )
+                    ? date_i18n( get_option( 'date_format' ), strtotime( $sp_exp_raw ) )
+                    : '';
+                // Renewal runs through the same join page (the join form links
+                // existing accounts), planted at slug "join".
+                $sp_join_page = get_page_by_path( 'join' );
+                $sp_renew_url = $sp_join_page ? get_permalink( $sp_join_page ) : home_url( '/join/' );
+            ?>
+                <div class="sp-renewal-banner sp-renewal-banner--<?php echo esc_attr( $sp_renewal ); ?>" role="alert">
+                    <div class="sp-renewal-banner__text">
+                        <strong class="sp-renewal-banner__title">
+                            <?php
+                            if ( 'expired' === $sp_renewal ) {
+                                esc_html_e( 'Your membership has expired.', 'societypress' );
+                            } else {
+                                esc_html_e( 'Your membership is expiring soon.', 'societypress' );
+                            }
+                            ?>
+                        </strong>
+                        <span class="sp-renewal-banner__detail">
+                            <?php
+                            if ( 'expired' === $sp_renewal && $sp_exp_fmt ) {
+                                /* translators: %s: expiration date */
+                                printf( esc_html__( 'It ended on %s. Renew now to keep your benefits and your place in the directory.', 'societypress' ), esc_html( $sp_exp_fmt ) );
+                            } elseif ( 'expired' === $sp_renewal ) {
+                                esc_html_e( 'Renew now to keep your benefits and your place in the directory.', 'societypress' );
+                            } elseif ( $sp_exp_fmt ) {
+                                /* translators: %s: expiration date */
+                                printf( esc_html__( 'It expires on %s. Renew now to avoid a lapse in your benefits.', 'societypress' ), esc_html( $sp_exp_fmt ) );
+                            } else {
+                                esc_html_e( 'Renew now to avoid a lapse in your benefits.', 'societypress' );
+                            }
+                            ?>
+                        </span>
+                    </div>
+                    <a class="sp-button sp-renewal-banner__btn" href="<?php echo esc_url( $sp_renew_url ); ?>"><?php esc_html_e( 'Renew Now', 'societypress' ); ?></a>
+                </div>
+            <?php endif; ?>
+
+            <?php
+            // ----------------------------------------------------------------
             // SUCCESS / ERROR MESSAGES
             // WHY: We use URL parameters (sp-updated, sp-error) instead of
             // session variables because WordPress doesn't start sessions by

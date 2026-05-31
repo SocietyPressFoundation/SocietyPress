@@ -1737,6 +1737,41 @@ input[type="submit"]:focus-visible {
     color: #5d4037;
 }
 
+/* ------- My Account renewal banner ------- */
+/* WHY: A member who is expiring or expired sees the nav "Renew Now" CTA on
+   every page, but the account page itself is where they manage membership,
+   so it earns a louder, escalating banner. Amber for expiring, red for
+   expired. A flex row keeps the message and the action button on one line
+   on desktop and stacks them on narrow screens. */
+.sp-renewal-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 16px 20px;
+    border-radius: 6px;
+    margin-bottom: 24px;
+}
+.sp-renewal-banner--expiring {
+    background: #fff8e1;
+    border: 1px solid #f9a825;
+    border-left-width: 4px;
+    color: #5d4037;
+}
+.sp-renewal-banner--expired {
+    background: #fef2f2;
+    border: 1px solid #ef4444;
+    border-left-width: 4px;
+    color: #991b1b;
+}
+.sp-renewal-banner__text { display: flex; flex-direction: column; gap: 2px; }
+.sp-renewal-banner__title { font-size: 1.05rem; }
+.sp-renewal-banner__detail { font-weight: 400; font-size: 0.95rem; }
+/* Reuses the theme's .sp-button; this modifier just stops the button from
+   shrinking when the message text is long. */
+.sp-renewal-banner__btn { flex-shrink: 0; align-self: center; }
+
 /* ------- Members Only Gate ------- */
 /* WHY: Previously inline styles. Now classes so child themes can
    override the gate appearance via CSS custom properties. */

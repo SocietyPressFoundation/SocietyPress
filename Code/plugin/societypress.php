@@ -23947,6 +23947,26 @@ function sp_render_finances_page(): void {
         $stats = $wpdb->get_row( $stats_sql );
     }
 
+    // All-income summary across modules — gives the treasurer the whole picture
+    // (dues + donations + store sales + event fees) on one screen, respecting the
+    // date range. Independent of the member_payments type filter (those are
+    // separate income sources). Excludes refunded/pending/failed/unpaid.
+    $store_where = "status IN ('paid','shipped','completed')";
+    $store_args  = [];
+    if ( $filter_from ) { $store_where .= ' AND created_at >= %s'; $store_args[] = $filter_from . ' 00:00:00'; }
+    if ( $filter_to )   { $store_where .= ' AND created_at <= %s'; $store_args[] = $filter_to . ' 23:59:59'; }
+    $store_sql    = "SELECT COALESCE(SUM(total), 0) FROM {$prefix}orders WHERE {$store_where}";
+    $store_income = (float) ( $store_args ? $wpdb->get_var( $wpdb->prepare( $store_sql, ...$store_args ) ) : $wpdb->get_var( $store_sql ) );
+
+    $evt_where = "payment_status = 'paid'";
+    $evt_args  = [];
+    if ( $filter_from ) { $evt_where .= ' AND payment_date >= %s'; $evt_args[] = $filter_from . ' 00:00:00'; }
+    if ( $filter_to )   { $evt_where .= ' AND payment_date <= %s'; $evt_args[] = $filter_to . ' 23:59:59'; }
+    $evt_sql      = "SELECT COALESCE(SUM(fee_amount), 0) FROM {$prefix}event_registrations WHERE {$evt_where}";
+    $event_income = (float) ( $evt_args ? $wpdb->get_var( $wpdb->prepare( $evt_sql, ...$evt_args ) ) : $wpdb->get_var( $evt_sql ) );
+
+    $total_income = (float) $stats->dues_total + (float) $stats->donation_total + $store_income + $event_income;
+
     // Paginated results
     // WHY: sanitize_sql_orderby() strips dangerous characters but accepts
     //      arbitrary column names. Restrict to known-safe columns to prevent
@@ -23989,6 +24009,10 @@ function sp_render_finances_page(): void {
         <style>
             .sp-finance-stats { display: flex; gap: 16px; margin: 16px 0; flex-wrap: wrap; }
             .sp-finance-stat { background: #fff; border: 1px solid #c3c4c7; border-radius: 4px; padding: 12px 20px; min-width: 140px; }
+            .sp-finance-stat-total { background: #0d1f3c; border-color: #0d1f3c; }
+            .sp-finance-stat-total .stat-label { color: #c9d4e6; }
+            .sp-finance-stat-total .stat-value { color: #fff; }
+            .sp-finance-income-note { max-width: 760px; margin-top: -4px; }
             .sp-finance-stat .stat-label { font-size: 12px; color: #646970; text-transform: uppercase; letter-spacing: 0.5px; }
             .sp-finance-stat .stat-value { font-size: 24px; font-weight: 600; margin-top: 4px; }
             .sp-finance-stat .stat-value.money { color: #00a32a; }
@@ -24016,7 +24040,20 @@ function sp_render_finances_page(): void {
                 <div class="stat-label"><?php esc_html_e( 'Donations', 'societypress' ); ?></div>
                 <div class="stat-value money"><?php echo esc_html( sp_format_currency( $stats->donation_total ) ); ?></div>
             </div>
+            <div class="sp-finance-stat">
+                <div class="stat-label"><?php esc_html_e( 'Store Sales', 'societypress' ); ?></div>
+                <div class="stat-value money"><?php echo esc_html( sp_format_currency( $store_income ) ); ?></div>
+            </div>
+            <div class="sp-finance-stat">
+                <div class="stat-label"><?php esc_html_e( 'Event Fees', 'societypress' ); ?></div>
+                <div class="stat-value money"><?php echo esc_html( sp_format_currency( $event_income ) ); ?></div>
+            </div>
+            <div class="sp-finance-stat sp-finance-stat-total">
+                <div class="stat-label"><?php esc_html_e( 'Total Income', 'societypress' ); ?></div>
+                <div class="stat-value money"><?php echo esc_html( sp_format_currency( $total_income ) ); ?></div>
+            </div>
         </div>
+        <p class="description sp-finance-income-note"><?php esc_html_e( 'Total Income spans all sources for the date range — dues, donations, store sales, and event fees. The list below shows dues and donations in detail; store and event income is managed under their own admin screens.', 'societypress' ); ?></p>
 
         <!-- Filters -->
         <form method="get" class="sp-finance-filters">

@@ -32541,8 +32541,21 @@ function sp_builder_fields_button( $index, array $settings ): void {
  * Contact Form widget settings.
  */
 function sp_builder_fields_contact_form( $index, array $settings ): void {
-    $intro_text     = $settings['intro_text'] ?? '';
-    $preset_subject = $settings['preset_subject'] ?? '';
+    global $wpdb;
+    $intro_text        = $settings['intro_text'] ?? '';
+    $preset_subject    = $settings['preset_subject'] ?? '';
+    $recipient_role_id = (int) ( $settings['recipient_role_id'] ?? 0 );
+
+    // Active officers + committee chairs, so the admin can route this form to a
+    // specific position (e.g. the Membership Chair) instead of the catch-all
+    // organization inbox. The actual address is resolved to the current holder
+    // at send time, so reassigning the role re-routes future submissions.
+    $positions = $wpdb->get_results(
+        "SELECT id, role_title, committee, role_type
+         FROM {$wpdb->prefix}sp_volunteer_roles
+         WHERE role_type IN ( 'officer', 'committee' ) AND status = 'active'
+         ORDER BY role_type, role_title"
+    );
     ?>
     <div class="sp-builder-field">
         <p class="description"><?php esc_html_e( 'Displays a simple name/email/message form. Submissions are emailed to the organization email from your SocietyPress settings.', 'societypress' ); ?></p>
@@ -32551,6 +32564,20 @@ function sp_builder_fields_contact_form( $index, array $settings ): void {
         <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-preset_subject"><?php esc_html_e( 'Subject line (optional)', 'societypress' ); ?></label>
         <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][preset_subject]" id="sp-w-<?php echo esc_attr( $index ); ?>-preset_subject" value="<?php echo esc_attr( $preset_subject ); ?>" class="widefat" placeholder="<?php esc_attr_e( 'e.g., Membership question', 'societypress' ); ?>">
         <p class="description"><?php esc_html_e( 'Sets the subject of the email this form sends — useful when you have separate contact forms on different pages so you can tell them apart in your inbox.', 'societypress' ); ?></p>
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-recipient_role_id"><?php esc_html_e( 'Send submissions to', 'societypress' ); ?></label>
+        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][recipient_role_id]" id="sp-w-<?php echo esc_attr( $index ); ?>-recipient_role_id" class="widefat">
+            <option value="0" <?php selected( $recipient_role_id, 0 ); ?>><?php esc_html_e( 'Organization email (default)', 'societypress' ); ?></option>
+            <?php foreach ( $positions as $pos ) :
+                $label = $pos->role_title;
+                if ( $pos->role_type === 'committee' && $pos->committee ) {
+                    /* translators: 1: role title, 2: committee name */
+                    $label = sprintf( __( '%1$s — %2$s Committee', 'societypress' ), $pos->role_title, $pos->committee );
+                }
+                ?>
+                <option value="<?php echo (int) $pos->id; ?>" <?php selected( $recipient_role_id, (int) $pos->id ); ?>><?php echo esc_html( $label ); ?></option>
+            <?php endforeach; ?>
+        </select>
+        <p class="description"><?php esc_html_e( 'Route this form to a specific officer or committee chair (for example, send membership questions straight to the Membership Chair). The message goes to whoever currently holds that position; if the position is later vacated, it falls back to the organization email.', 'societypress' ); ?></p>
     </div>
     <?php
 }
@@ -33441,8 +33468,9 @@ function sp_sanitize_builder_widget( string $type, array $settings ): array {
 
         case 'contact_form':
             return [
-                'intro_text'     => sanitize_text_field( $settings['intro_text'] ?? '' ),
-                'preset_subject' => sanitize_text_field( $settings['preset_subject'] ?? '' ),
+                'intro_text'        => sanitize_text_field( $settings['intro_text'] ?? '' ),
+                'preset_subject'    => sanitize_text_field( $settings['preset_subject'] ?? '' ),
+                'recipient_role_id' => absint( $settings['recipient_role_id'] ?? 0 ),
             ];
 
         case 'upcoming_events':
@@ -35013,6 +35041,9 @@ function sp_render_builder_widget_contact_form( array $s ): void {
         <?php if ( ! empty( $s['preset_subject'] ) ) : ?>
             <input type="hidden" name="sp_contact_subject" value="<?php echo esc_attr( $s['preset_subject'] ); ?>">
         <?php endif; ?>
+        <?php if ( ! empty( $s['recipient_role_id'] ) ) : ?>
+            <input type="hidden" name="sp_contact_role_id" value="<?php echo (int) $s['recipient_role_id']; ?>">
+        <?php endif; ?>
 
         <div class="sp-contact-row">
             <div class="sp-contact-field">
@@ -35079,6 +35110,28 @@ function sp_handle_builder_contact_form(): void {
     $settings  = sp_settings();
     $to        = $settings['organization_email'] ?? get_option( 'admin_email' );
     $site_name = get_bloginfo( 'name' );
+
+    // Optional per-form routing to a specific officer/committee chair. We only
+    // honor the id if it maps to a CURRENTLY active officer/committee role and
+    // that holder has a usable email — otherwise we silently fall back to the
+    // organization inbox so the message is never lost. Resolving server-side
+    // means the client never sees (or can substitute) an arbitrary address.
+    $role_id = absint( $_POST['sp_contact_role_id'] ?? 0 );
+    if ( $role_id ) {
+        global $wpdb;
+        $holder_id = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT user_id FROM {$wpdb->prefix}sp_volunteer_roles
+             WHERE id = %d AND role_type IN ( 'officer', 'committee' ) AND status = 'active'
+             LIMIT 1",
+            $role_id
+        ) );
+        if ( $holder_id ) {
+            $holder = get_userdata( $holder_id );
+            if ( $holder && is_email( $holder->user_email ) ) {
+                $to = $holder->user_email;
+            }
+        }
+    }
 
     // Strip \r and \n from the sender name to prevent header injection, and
     // also < > so the name can't break out of the "Name <email>" structure of

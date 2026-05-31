@@ -61979,8 +61979,14 @@ function sp_render_blast_email_page(): void {
                             </td>
                             <td>
                                 <?php
-                                $date = $row->sent_at ?: $row->created_at;
-                                echo esc_html( date_i18n( 'M j, Y g:i a', strtotime( $date ) ) );
+                                if ( $row->status === 'sending' ) {
+                                    // Don't show the created date for an in-flight send — it
+                                    // reads as "done." Make the in-progress state explicit.
+                                    echo '<em>' . esc_html__( 'In progress…', 'societypress' ) . '</em>';
+                                } else {
+                                    $date = $row->sent_at ?: $row->created_at;
+                                    echo esc_html( date_i18n( 'M j, Y g:i a', strtotime( $date ) ) );
+                                }
                                 ?>
                             </td>
                             <td>

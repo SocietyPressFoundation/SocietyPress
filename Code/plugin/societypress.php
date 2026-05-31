@@ -36838,8 +36838,16 @@ function sp_render_events_page(): void {
     </style>
     <div class="wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Events', 'societypress' ); ?></h1>
-        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-event-edit' ) ); ?>" class="page-title-action">
-            Add New
+        <?php
+        // Carry the active category filter into Add New so a new event defaults
+        // to the category you were just looking at.
+        $sp_add_event_url = admin_url( 'admin.php?page=sp-event-edit' );
+        if ( ! empty( $_GET['event_category'] ) ) {
+            $sp_add_event_url = add_query_arg( 'event_category', absint( $_GET['event_category'] ), $sp_add_event_url );
+        }
+        ?>
+        <a href="<?php echo esc_url( $sp_add_event_url ); ?>" class="page-title-action">
+            <?php esc_html_e( 'Add New', 'societypress' ); ?>
         </a>
         <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=sp_export_events&nonce=' . wp_create_nonce( 'sp_export_events' ) ) ); ?>" class="page-title-action"><?php esc_html_e( 'Export CSV', 'societypress' ); ?></a>
         <hr class="wp-header-end">
@@ -37250,6 +37258,11 @@ function sp_render_event_edit_page(): void {
 
     $page_title = $event ? __( 'Edit Event', 'societypress' ) : __( 'Add New Event', 'societypress' );
 
+    // Pre-select the category carried over from the events list's category
+    // filter (so "Add New" while filtered to a category lands on that category).
+    // New events only — never overrides an existing event's saved category.
+    $preselect_cat = $event ? 0 : absint( $_GET['event_category'] ?? 0 );
+
     // Default values from settings for new events
     $default_visibility   = $settings['events_default_visibility'] ?? 'public';
     $default_registration = $settings['events_default_registration'] ?? 0;
@@ -37326,7 +37339,7 @@ function sp_render_event_edit_page(): void {
                             <option value=""><?php esc_html_e( '— None —', 'societypress' ); ?></option>
                             <?php foreach ( $categories as $cat ) : ?>
                                 <option value="<?php echo esc_attr( $cat->id ); ?>"
-                                    <?php selected( $val( 'category_id' ), $cat->id ); ?>>
+                                    <?php selected( $val( 'category_id', $preselect_cat ), $cat->id ); ?>>
                                     <?php echo esc_html( $cat->name ); ?>
                                 </option>
                             <?php endforeach; ?>
@@ -77038,7 +77051,15 @@ function sp_render_documents_page(): void {
     </style>
     <div class="wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Documents', 'societypress' ); ?></h1>
-        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-document-edit' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Add New', 'societypress' ); ?></a>
+        <?php
+        // Carry the active category filter into Add New so a new document
+        // defaults to the category you were viewing.
+        $sp_add_doc_url = admin_url( 'admin.php?page=sp-document-edit' );
+        if ( $filter_cat > 0 ) {
+            $sp_add_doc_url = add_query_arg( 'cat', $filter_cat, $sp_add_doc_url );
+        }
+        ?>
+        <a href="<?php echo esc_url( $sp_add_doc_url ); ?>" class="page-title-action"><?php esc_html_e( 'Add New', 'societypress' ); ?></a>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-document-bulk-upload' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Bulk Upload', 'societypress' ); ?></a>
         <hr class="wp-header-end">
 
@@ -77285,6 +77306,9 @@ function sp_render_document_edit_page(): void {
     $categories = $wpdb->get_results(
         "SELECT * FROM {$wpdb->prefix}sp_document_categories ORDER BY sort_order, name"
     );
+    // New documents pre-select the category carried over from the list's
+    // category filter (?cat=N), so "Add New" while filtered lands on it.
+    $preselect_cat = $is_edit ? (int) ( $doc->category_id ?? 0 ) : absint( $_GET['cat'] ?? 0 );
 
     // Enqueue media library for file picker
     wp_enqueue_media();
@@ -77326,7 +77350,7 @@ function sp_render_document_edit_page(): void {
                         <select id="document_category" name="document_category">
                             <option value=""><?php esc_html_e( '— None —', 'societypress' ); ?></option>
                             <?php foreach ( $categories as $cat ) : ?>
-                                <option value="<?php echo (int) $cat->id; ?>" <?php selected( $doc->category_id ?? 0, $cat->id ); ?>><?php echo esc_html( $cat->name ); ?></option>
+                                <option value="<?php echo (int) $cat->id; ?>" <?php selected( $preselect_cat, $cat->id ); ?>><?php echo esc_html( $cat->name ); ?></option>
                             <?php endforeach; ?>
                         </select>
                     </td>

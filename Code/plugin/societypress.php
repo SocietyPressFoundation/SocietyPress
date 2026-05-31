@@ -57202,9 +57202,11 @@ function sp_render_resources_page(): void {
         </div>
 
         <!-- Resources list -->
-        <table class="wp-list-table widefat striped">
+        <p class="description sp-resource-reorder-hint"><?php esc_html_e( 'Drag the ⠿ handle to reorder how links appear on the website. Changes save automatically.', 'societypress' ); ?></p>
+        <table class="wp-list-table widefat striped" id="sp-resources-table">
             <thead>
                 <tr>
+                    <th scope="col" class="sp-resource-drag-col" aria-hidden="true"></th>
                     <th scope="col"><?php esc_html_e( 'Title', 'societypress' ); ?></th>
                     <th scope="col"><?php esc_html_e( 'Category', 'societypress' ); ?></th>
                     <th scope="col"><?php esc_html_e( 'Featured', 'societypress' ); ?></th>
@@ -57212,15 +57214,16 @@ function sp_render_resources_page(): void {
                     <th scope="col"><?php esc_html_e( 'Order', 'societypress' ); ?></th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="sp-resources-rows">
                 <?php if ( empty( $resources ) ) : ?>
-                    <tr><td colspan="5"><?php esc_html_e( 'No resources yet.', 'societypress' ); ?></td></tr>
+                    <tr><td colspan="6"><?php esc_html_e( 'No resources yet.', 'societypress' ); ?></td></tr>
                 <?php else : ?>
                     <?php foreach ( $resources as $r ) :
                         $edit_url   = admin_url( 'admin.php?page=sp-library&action=edit&resource_id=' . $r->id );
                         // delete via POST form in row actions
                     ?>
-                        <tr>
+                        <tr data-id="<?php echo (int) $r->id; ?>">
+                            <td class="sp-resource-drag-handle" draggable="true" aria-label="<?php esc_attr_e( 'Drag to reorder', 'societypress' ); ?>" title="<?php esc_attr_e( 'Drag to reorder', 'societypress' ); ?>">⠿</td>
                             <td>
                                 <strong><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $r->title ); ?></a></strong>
                                 <br><a href="<?php echo esc_url( $r->url ); ?>" target="_blank" class="sp-text-secondary sp-text-sm"><?php echo esc_html( $r->url ); ?></a>
@@ -57232,14 +57235,101 @@ function sp_render_resources_page(): void {
                             <td><?php echo esc_html( $r->category_name ?: '—' ); ?></td>
                             <td><?php echo $r->featured ? '<span class="sp-text-success">' . esc_html__( 'Yes', 'societypress' ) . '</span>' : '—'; ?></td>
                             <td><?php echo $r->active ? '<span class="sp-text-success">' . esc_html__( 'Yes', 'societypress' ) . '</span>' : '<span class="sp-text-danger">' . esc_html__( 'No', 'societypress' ) . '</span>'; ?></td>
-                            <td><?php echo (int) $r->sort_order; ?></td>
+                            <td class="sp-resource-order-cell"><?php echo (int) $r->sort_order; ?></td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
             </tbody>
         </table>
+        <style>
+            #sp-resources-table .sp-resource-drag-col { width: 28px; }
+            #sp-resources-table .sp-resource-drag-handle { cursor: grab; text-align: center; color: #787c82; font-size: 16px; user-select: none; }
+            #sp-resources-table tr.sp-row-dragging { opacity: 0.5; }
+            #sp-resources-table tr.sp-row-saved { animation: spRowSaved 1s ease; }
+            @keyframes spRowSaved { 0% { background: #f0f6e6; } 100% { background: transparent; } }
+        </style>
+        <script>
+        (function () {
+            var tbody = document.getElementById('sp-resources-rows');
+            if (!tbody) return;
+            var ajaxUrl = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
+            var nonce   = <?php echo wp_json_encode( wp_create_nonce( 'sp_reorder_resources' ) ); ?>;
+            var dragRow = null;
+
+            // Only the handle starts a drag; we move the whole <tr>.
+            tbody.addEventListener('dragstart', function (e) {
+                var handle = e.target.closest('.sp-resource-drag-handle');
+                if (!handle) { e.preventDefault(); return; }
+                dragRow = handle.closest('tr');
+                if (dragRow) { dragRow.classList.add('sp-row-dragging'); e.dataTransfer.effectAllowed = 'move'; }
+            });
+            tbody.addEventListener('dragover', function (e) {
+                if (!dragRow) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+            });
+            tbody.addEventListener('drop', function (e) {
+                if (!dragRow) return;
+                e.preventDefault();
+                var target = e.target.closest('tr');
+                if (target && target !== dragRow && target.dataset.id) {
+                    var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr[data-id]'));
+                    if (rows.indexOf(dragRow) < rows.indexOf(target)) { target.after(dragRow); }
+                    else { target.before(dragRow); }
+                    persist();
+                }
+            });
+            tbody.addEventListener('dragend', function () {
+                if (dragRow) { dragRow.classList.remove('sp-row-dragging'); dragRow = null; }
+            });
+
+            function persist() {
+                var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr[data-id]'));
+                var order = rows.map(function (r) { return r.dataset.id; });
+                // Reflect the new positions in the Order column immediately.
+                rows.forEach(function (r, i) {
+                    var cell = r.querySelector('.sp-resource-order-cell');
+                    if (cell) { cell.textContent = i; }
+                    r.classList.remove('sp-row-saved');
+                    void r.offsetWidth; // restart the flash animation
+                    r.classList.add('sp-row-saved');
+                });
+                var body = new URLSearchParams();
+                body.append('action', 'sp_reorder_resources');
+                body.append('nonce', nonce);
+                order.forEach(function (id) { body.append('order[]', id); });
+                fetch(ajaxUrl, { method: 'POST', credentials: 'same-origin', body: body });
+            }
+        })();
+        </script>
     </div>
     <?php
+}
+
+/**
+ * AJAX: persist a drag-reordered resource-links list.
+ *
+ * WHY: Typing sort-order numbers one row at a time is tedious for a volunteer;
+ *      dragging is the expected gesture. We rewrite sort_order to the new
+ *      positions (0..N-1) in one pass. Admin-only + nonce-guarded.
+ */
+add_action( 'wp_ajax_sp_reorder_resources', 'sp_ajax_reorder_resources' );
+function sp_ajax_reorder_resources(): void {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Permission denied.', 'societypress' ) ], 403 );
+    }
+    if ( ! check_ajax_referer( 'sp_reorder_resources', 'nonce', false ) ) {
+        wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ], 400 );
+    }
+    $ids = array_values( array_filter( array_map( 'absint', (array) ( $_POST['order'] ?? [] ) ) ) );
+    if ( ! $ids ) {
+        wp_send_json_error( [ 'message' => __( 'Nothing to reorder.', 'societypress' ) ], 400 );
+    }
+    global $wpdb;
+    foreach ( $ids as $pos => $id ) {
+        $wpdb->update( $wpdb->prefix . 'sp_resources', [ 'sort_order' => $pos ], [ 'id' => $id ] );
+    }
+    wp_send_json_success();
 }
 
 /**

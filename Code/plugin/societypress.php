@@ -1971,6 +1971,7 @@ function sp_create_tables(): void {
         total_sent          INT UNSIGNED        NOT NULL DEFAULT 0,
         total_failed        INT UNSIGNED        NOT NULL DEFAULT 0,
         override_optout     TINYINT(1)          NOT NULL DEFAULT 0,
+        attachment_ids      TEXT                NULL,
         status              VARCHAR(20)         NOT NULL DEFAULT 'draft',
         scheduled_at        DATETIME            NULL,
         sent_at             DATETIME            NULL,
@@ -62217,6 +62218,9 @@ function sp_render_blast_email_compose_page(): void {
         $recipient_type = sanitize_text_field( $_POST['recipient_type'] ?? 'all_members' );
         $action         = sanitize_text_field( $_POST['sp_blast_action'] ?? 'save_draft' );
         $override_optout = ! empty( $_POST['override_optout'] ) ? 1 : 0;
+        // Comma-separated media IDs from the attachment picker → clean, deduped
+        // int list.
+        $attachment_ids = implode( ',', array_unique( array_filter( array_map( 'intval', explode( ',', (string) ( $_POST['blast_attachment_ids'] ?? '' ) ) ) ) ) );
 
         // Build recipient filter JSON
         $recipient_filter = null;
@@ -62241,6 +62245,7 @@ function sp_render_blast_email_compose_page(): void {
             'recipient_filter' => $recipient_filter,
             'total_recipients' => $total_recipients,
             'override_optout'  => $override_optout,
+            'attachment_ids'   => $attachment_ids ?: null,
             'status'           => 'draft',
             'updated_at'       => current_time( 'mysql' ),
         ];
@@ -62327,6 +62332,9 @@ function sp_render_blast_email_compose_page(): void {
     .sp-blast-check-label         { display: block; margin-bottom: 2px; }
     .sp-blast-count               { color: #6d7175; }
     .sp-blast-override-optout     { display: block; margin-top: 10px; color: #7d1414; font-weight: 600; }
+    .sp-blast-attachment-list     { margin: 0 0 8px; padding: 0; list-style: none; }
+    .sp-blast-attachment-list li  { padding: 3px 0; }
+    .sp-blast-attachment-remove   { color: #b32d2e; text-decoration: none; font-weight: 700; margin-left: 4px; }
     .sp-blast-no-groups           { color: #6d7175; }
     .sp-blast-merge-hint          { margin-bottom: 8px; }
     .sp-blast-submit-row          { display: flex; gap: 8px; align-items: center; }
@@ -62435,6 +62443,24 @@ function sp_render_blast_email_compose_page(): void {
                         ?>
                     </td>
                 </tr>
+                <tr>
+                    <th scope="col"><label><?php esc_html_e( 'Attachments', 'societypress' ); ?></label></th>
+                    <td>
+                        <?php $blast_att_ids = $blast->attachment_ids ?? ''; ?>
+                        <input type="hidden" name="blast_attachment_ids" id="sp-blast-attachment-ids" value="<?php echo esc_attr( $blast_att_ids ); ?>">
+                        <ul id="sp-blast-attachment-list" class="sp-blast-attachment-list">
+                            <?php
+                            foreach ( array_filter( array_map( 'intval', explode( ',', (string) $blast_att_ids ) ) ) as $att_id ) {
+                                $att_title = get_the_title( $att_id ) ?: __( 'File', 'societypress' );
+                                echo '<li data-id="' . esc_attr( $att_id ) . '">' . esc_html( $att_title )
+                                   . ' <button type="button" class="button-link sp-blast-attachment-remove" aria-label="' . esc_attr__( 'Remove attachment', 'societypress' ) . '">&times;</button></li>';
+                            }
+                            ?>
+                        </ul>
+                        <button type="button" class="button" id="sp-blast-attachment-btn"><?php esc_html_e( 'Attach Files', 'societypress' ); ?></button>
+                        <p class="description"><?php esc_html_e( 'Optional files sent with every copy of this email (e.g. a flyer or the newsletter PDF). Large attachments can slow delivery and hit some hosts\' size limits.', 'societypress' ); ?></p>
+                    </td>
+                </tr>
             </table>
 
             <p class="submit sp-blast-submit-row">
@@ -62464,6 +62490,55 @@ function sp_render_blast_email_compose_page(): void {
 
             radios.forEach(function(r) { r.addEventListener('change', toggle); });
             toggle();
+        })();
+
+        // Attachment picker — multi-select from the media library; IDs accumulate
+        // in the hidden field and filenames show as a removable list.
+        (function () {
+            var btn   = document.getElementById('sp-blast-attachment-btn');
+            var field = document.getElementById('sp-blast-attachment-ids');
+            var list  = document.getElementById('sp-blast-attachment-list');
+            if (!btn || !field || !list || typeof wp === 'undefined' || !wp.media) return;
+
+            function ids() { return field.value.split(',').map(function (s) { return s.trim(); }).filter(Boolean); }
+            function setIds(arr) { field.value = arr.join(','); }
+
+            list.addEventListener('click', function (e) {
+                if (!e.target.classList.contains('sp-blast-attachment-remove')) return;
+                var li = e.target.closest('li');
+                var id = li.getAttribute('data-id');
+                setIds(ids().filter(function (x) { return x !== String(id); }));
+                li.parentNode.removeChild(li);
+            });
+
+            var frame;
+            btn.addEventListener('click', function (e) {
+                e.preventDefault();
+                if (frame) { frame.open(); return; }
+                frame = wp.media({
+                    title:    <?php echo wp_json_encode( __( 'Attach files to this email', 'societypress' ) ); ?>,
+                    button:   { text: <?php echo wp_json_encode( __( 'Attach', 'societypress' ) ); ?> },
+                    multiple: true
+                });
+                frame.on('select', function () {
+                    var cur = ids();
+                    frame.state().get('selection').toJSON().forEach(function (f) {
+                        if (cur.indexOf(String(f.id)) !== -1) return;
+                        cur.push(String(f.id));
+                        var li = document.createElement('li');
+                        li.setAttribute('data-id', f.id);
+                        li.textContent = (f.title || f.filename || f.url) + ' ';
+                        var rm = document.createElement('button');
+                        rm.type = 'button'; rm.className = 'button-link sp-blast-attachment-remove';
+                        rm.setAttribute('aria-label', <?php echo wp_json_encode( __( 'Remove attachment', 'societypress' ) ); ?>);
+                        rm.innerHTML = '&times;';
+                        li.appendChild(rm);
+                        list.appendChild(li);
+                    });
+                    setIds(cur);
+                });
+                frame.open();
+            });
         })();
         </script>
     </div>
@@ -62721,6 +62796,18 @@ function sp_blast_email_send_batch( int $blast_id, int $offset ): void {
     $sent_count = 0;
     $fail_count = 0;
 
+    // Resolve any attached files once for the whole batch — wp_mail wants
+    // filesystem paths, so map the stored media IDs through get_attached_file().
+    $attachments = [];
+    if ( ! empty( $blast->attachment_ids ) ) {
+        foreach ( array_filter( array_map( 'intval', explode( ',', $blast->attachment_ids ) ) ) as $att_id ) {
+            $att_path = get_attached_file( $att_id );
+            if ( $att_path && file_exists( $att_path ) ) {
+                $attachments[] = $att_path;
+            }
+        }
+    }
+
     foreach ( $recipients as $recipient ) {
         // Process merge tags for this recipient
         $personalized_body = sp_blast_process_merge_tags( $blast->body, $recipient );
@@ -62738,8 +62825,8 @@ function sp_blast_email_send_batch( int $blast_id, int $offset ): void {
         // Wrap in the email HTML template
         $html_body = sp_build_email_html( $blast->subject, $personalized_body );
 
-        // Send the email
-        $sent = wp_mail( $recipient->email, $blast->subject, $html_body, $headers );
+        // Send the email (with any attached files)
+        $sent = wp_mail( $recipient->email, $blast->subject, $html_body, $headers, $attachments );
 
         // Log to email log
         sp_email_log_insert(
@@ -85243,6 +85330,7 @@ add_action( 'admin_init', function () {
         ],
         'sp_blast_emails'   => [
             'override_optout' => "ALTER TABLE {$wpdb->prefix}sp_blast_emails ADD COLUMN override_optout TINYINT(1) NOT NULL DEFAULT 0 AFTER total_failed",
+            'attachment_ids'  => "ALTER TABLE {$wpdb->prefix}sp_blast_emails ADD COLUMN attachment_ids TEXT NULL AFTER override_optout",
         ],
     ];
 

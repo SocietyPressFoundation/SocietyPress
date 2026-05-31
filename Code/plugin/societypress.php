@@ -2097,6 +2097,7 @@ function sp_create_tables(): void {
         description  TEXT                NULL,
         access_level VARCHAR(20)         NOT NULL DEFAULT 'public',
         display_format VARCHAR(20)       NOT NULL DEFAULT 'title_desc',
+        show_updated TINYINT(1)          NOT NULL DEFAULT 0,
         sort_order   INT                 NOT NULL DEFAULT 0,
         created_at   DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
@@ -76035,6 +76036,7 @@ add_action( 'admin_init', function () {
             ? $_POST['category_access'] : 'public',
         'display_format' => in_array( $_POST['category_display_format'] ?? '', [ 'title_desc', 'month_year' ], true )
             ? $_POST['category_display_format'] : 'title_desc',
+        'show_updated' => ! empty( $_POST['category_show_updated'] ) ? 1 : 0,
         'sort_order'   => (int) ( $_POST['category_sort_order'] ?? 0 ),
     ];
 
@@ -76297,6 +76299,13 @@ function sp_render_document_categories_page(): void {
                                     <option value="month_year" <?php selected( $edit_cat->display_format ?? 'title_desc', 'month_year' ); ?>><?php esc_html_e( 'Month & year (for minutes / dated archives)', 'societypress' ); ?></option>
                                 </select>
                                 <p class="description"><?php esc_html_e( 'Month & year shows each document by its date (e.g. "March 2025") in a compact list — ideal for meeting minutes. Falls back to the title for documents with no date.', 'societypress' ); ?></p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="col"><?php esc_html_e( 'Last Updated', 'societypress' ); ?></th>
+                            <td>
+                                <label><input type="checkbox" name="category_show_updated" value="1" <?php checked( ! empty( $edit_cat->show_updated ) ); ?>> <?php esc_html_e( 'Show each document\'s last-updated date', 'societypress' ); ?></label>
+                                <p class="description"><?php esc_html_e( 'Helpful for living documents like bylaws, so members can tell they\'re viewing the current revision.', 'societypress' ); ?></p>
                             </td>
                         </tr>
                         <tr>
@@ -77078,7 +77087,7 @@ function sp_frontend_documents(): void {
     // Published documents only on the frontend. Order by category sort order,
     // then by each document's sort order; uncategorized documents come last.
     $docs = $wpdb->get_results(
-        "SELECT d.*, c.name AS category_name, c.sort_order AS cat_sort, c.access_level AS cat_access, c.display_format AS cat_format
+        "SELECT d.*, c.name AS category_name, c.sort_order AS cat_sort, c.access_level AS cat_access, c.display_format AS cat_format, c.show_updated AS cat_show_updated
          FROM {$prefix}documents d
          LEFT JOIN {$prefix}document_categories c ON d.category_id = c.id
          WHERE d.status = 'published'
@@ -77193,6 +77202,15 @@ function sp_render_document_row( object $doc, bool $is_member, string $login_url
     }
     if ( $doc->file_size ) {
         $meta_parts[] = size_format( $doc->file_size );
+    }
+    // When the category opts in, show the last-updated date so members can tell
+    // they're viewing the current revision of a living document (e.g. bylaws).
+    if ( ! empty( $doc->cat_show_updated ) && ! empty( $doc->updated_at ) ) {
+        $meta_parts[] = sprintf(
+            /* translators: %s: last-updated date */
+            __( 'Updated %s', 'societypress' ),
+            wp_date( 'F j, Y', strtotime( $doc->updated_at ) )
+        );
     }
     if ( ! empty( $meta_parts ) ) {
         echo '<div class="sp-doc-meta">' . esc_html( implode( ' · ', $meta_parts ) ) . '</div>';
@@ -85782,6 +85800,7 @@ add_action( 'admin_init', function () {
         'sp_document_categories' => [
             'access_level'   => "ALTER TABLE {$wpdb->prefix}sp_document_categories ADD COLUMN access_level VARCHAR(20) NOT NULL DEFAULT 'public' AFTER description",
             'display_format' => "ALTER TABLE {$wpdb->prefix}sp_document_categories ADD COLUMN display_format VARCHAR(20) NOT NULL DEFAULT 'title_desc' AFTER access_level",
+            'show_updated'   => "ALTER TABLE {$wpdb->prefix}sp_document_categories ADD COLUMN show_updated TINYINT(1) NOT NULL DEFAULT 0 AFTER display_format",
         ],
         'sp_blast_emails'   => [
             'override_optout' => "ALTER TABLE {$wpdb->prefix}sp_blast_emails ADD COLUMN override_optout TINYINT(1) NOT NULL DEFAULT 0 AFTER total_failed",

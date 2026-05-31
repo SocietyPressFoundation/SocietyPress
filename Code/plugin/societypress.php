@@ -3615,6 +3615,74 @@ add_action( 'update_option_societypress_settings', static function () { sp_setti
 add_action( 'add_option_societypress_settings',    static function () { sp_settings( true ); } );
 
 /**
+ * The society's name-prefix picklist (Mr./Mrs./Dr./…), admin-editable at
+ * Settings → Membership. Falls back to a sensible default list when unset.
+ *
+ * @return string[]
+ */
+function sp_get_name_prefixes(): array {
+    $default = [ 'Mr.', 'Mrs.', 'Ms.', 'Miss', 'Dr.', 'Rev.', 'Hon.', 'Prof.' ];
+    return sp_parse_picklist_setting( 'name_prefixes', $default );
+}
+
+/**
+ * The society's name-suffix picklist (Jr./Sr./III/…), admin-editable at
+ * Settings → Membership. Falls back to a sensible default list when unset.
+ *
+ * @return string[]
+ */
+function sp_get_name_suffixes(): array {
+    $default = [ 'Jr.', 'Sr.', 'II', 'III', 'IV', 'Esq.', 'Ph.D.', 'M.D.' ];
+    return sp_parse_picklist_setting( 'name_suffixes', $default );
+}
+
+/**
+ * Read a newline/comma-separated picklist setting into a clean array.
+ *
+ * WHY shared: prefix and suffix lists store the same way (one entry per line),
+ * and both must degrade to their defaults when the setting was never touched.
+ *
+ * @param string   $key     Settings key.
+ * @param string[] $default Default list when the setting is empty.
+ * @return string[]
+ */
+function sp_parse_picklist_setting( string $key, array $default ): array {
+    $raw = (string) ( sp_settings()[ $key ] ?? '' );
+    if ( trim( $raw ) === '' ) {
+        return $default;
+    }
+    $items = preg_split( '/[\r\n,]+/', $raw );
+    $items = array_filter( array_map( 'trim', $items ), static fn( $v ) => $v !== '' );
+    // De-dupe case-sensitively (Dr. vs dr. are distinct titles) but preserve order.
+    return array_values( array_unique( $items ) );
+}
+
+/**
+ * Sanitize a picklist textarea on save: strip tags, trim, cap each entry to the
+ * member-column width (VARCHAR(20)), drop blanks/dupes, and return a clean
+ * newline-joined string ('' = fall back to the default list).
+ */
+function sp_sanitize_picklist_input( $raw ): string {
+    $items = preg_split( '/[\r\n,]+/', (string) $raw );
+    $clean = [];
+    foreach ( $items as $item ) {
+        $item = trim( wp_strip_all_tags( (string) $item ) );
+        if ( $item === '' ) {
+            continue;
+        }
+        if ( function_exists( 'mb_substr' ) ) {
+            $item = mb_substr( $item, 0, 20 );
+        } else {
+            $item = substr( $item, 0, 20 );
+        }
+        if ( ! in_array( $item, $clean, true ) ) {
+            $clean[] = $item;
+        }
+    }
+    return implode( "\n", $clean );
+}
+
+/**
  * Default on/off state for a new member's four email-preference checkboxes.
  *
  * WHY: Whether communication checkboxes start ticked (opt-out) or unticked
@@ -15477,12 +15545,19 @@ function sp_render_member_edit_page(): void {
                             <select name="prefix" id="sp-prefix">
                                 <option value="">—</option>
                                 <?php
-                                $prefixes = [ 'Mr.', 'Mrs.', 'Ms.', 'Miss', 'Dr.', 'Rev.', 'Hon.', 'Prof.' ];
+                                // Deletion guard: if this member already has a prefix
+                                // that's no longer in the society's picklist, keep it
+                                // as an option so editing doesn't silently drop it.
+                                $prefixes = sp_get_name_prefixes();
+                                $cur_pre  = $member->prefix ?? '';
+                                if ( $cur_pre !== '' && ! in_array( $cur_pre, $prefixes, true ) ) {
+                                    array_unshift( $prefixes, $cur_pre );
+                                }
                                 foreach ( $prefixes as $p ) {
                                     printf(
                                         '<option value="%s" %s>%s</option>',
                                         esc_attr( $p ),
-                                        selected( $member->prefix ?? '', $p, false ),
+                                        selected( $cur_pre, $p, false ),
                                         esc_html( $p )
                                     );
                                 }
@@ -15526,12 +15601,16 @@ function sp_render_member_edit_page(): void {
                             <select name="suffix" id="sp-suffix">
                                 <option value="">—</option>
                                 <?php
-                                $suffixes = [ 'Jr.', 'Sr.', 'II', 'III', 'IV', 'Esq.', 'Ph.D.', 'M.D.' ];
+                                $suffixes = sp_get_name_suffixes();
+                                $cur_suf  = $member->suffix ?? '';
+                                if ( $cur_suf !== '' && ! in_array( $cur_suf, $suffixes, true ) ) {
+                                    array_unshift( $suffixes, $cur_suf );
+                                }
                                 foreach ( $suffixes as $s ) {
                                     printf(
                                         '<option value="%s" %s>%s</option>',
                                         esc_attr( $s ),
-                                        selected( $member->suffix ?? '', $s, false ),
+                                        selected( $cur_suf, $s, false ),
                                         esc_html( $s )
                                     );
                                 }
@@ -20287,6 +20366,44 @@ add_action( 'admin_init', function () {
         'sp_membership_section'
     );
 
+    // --- Name Prefix / Suffix picklists ---
+    // WHY: The titles offered in the Prefix/Suffix dropdowns on member forms
+    //      used to be hardcoded. Societies vary (military ranks, clergy titles,
+    //      academic suffixes), so let them edit the lists. Removing an entry
+    //      never changes a member who already has it — the form keeps their
+    //      stored value as an option (see sp_get_name_prefixes() callers).
+    add_settings_field(
+        'sp_name_prefixes',
+        __( 'Name Prefixes', 'societypress' ),
+        function () {
+            $val = implode( "\n", sp_get_name_prefixes() );
+            printf(
+                '<textarea name="societypress_settings[name_prefixes]" rows="5" class="regular-text" placeholder="%s">%s</textarea>',
+                esc_attr__( 'Mr.', 'societypress' ),
+                esc_textarea( $val )
+            );
+            echo '<p class="description">' . esc_html__( 'Titles offered in the Prefix dropdown on member forms — one per line (e.g. Mr., Mrs., Dr., Rev.). Leave blank to use the standard list.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-membership',
+        'sp_membership_section'
+    );
+
+    add_settings_field(
+        'sp_name_suffixes',
+        __( 'Name Suffixes', 'societypress' ),
+        function () {
+            $val = implode( "\n", sp_get_name_suffixes() );
+            printf(
+                '<textarea name="societypress_settings[name_suffixes]" rows="5" class="regular-text" placeholder="%s">%s</textarea>',
+                esc_attr__( 'Jr.', 'societypress' ),
+                esc_textarea( $val )
+            );
+            echo '<p class="description">' . esc_html__( 'Suffixes offered in the Suffix dropdown on member forms — one per line (e.g. Jr., Sr., III, Ph.D.). Leave blank to use the standard list.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-membership',
+        'sp_membership_section'
+    );
+
     // --- Grace Period ---
     // WHY: Societies typically give existing members a window to renew
     //      after the new period starts before dropping them. This setting
@@ -21127,6 +21244,13 @@ function sp_sanitize_settings( array $input ): array {
         // survive a save round-trip. wp_kses_post on render protects on output.
         'login_pre_notice'        => fn() => isset( $input['login_pre_notice'] ) ? wp_check_invalid_utf8( (string) $input['login_pre_notice'] ) : '',
         'login_ack_text'          => fn() => isset( $input['login_ack_text'] ) ? wp_check_invalid_utf8( (string) $input['login_ack_text'] ) : '',
+
+        // Name prefix/suffix picklists (Membership tab). Clean each line:
+        // strip tags, trim, cap to the column width (VARCHAR(20)), drop blanks
+        // and dupes, then store newline-joined. An empty result means "use the
+        // default list" (see sp_parse_picklist_setting()).
+        'name_prefixes' => fn() => sp_sanitize_picklist_input( $input['name_prefixes'] ?? '' ),
+        'name_suffixes' => fn() => sp_sanitize_picklist_input( $input['name_suffixes'] ?? '' ),
 
         // New-member email preference defaults (Privacy tab)
         'pref_default_email_notices'     => fn() => ! empty( $input['pref_default_email_notices'] ) ? 1 : 0,

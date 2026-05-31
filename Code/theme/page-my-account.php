@@ -614,9 +614,17 @@ function sp_m( $member, $field ) {
                             <select id="sp-prefix" name="prefix">
                                 <option value="">&mdash;</option>
                                 <?php
-                                $prefixes = [ 'Mr.', 'Mrs.', 'Ms.', 'Miss', 'Dr.', 'Rev.', 'Hon.' ];
+                                // Use the society's admin-managed picklist; fall back
+                                // to the standard list if the plugin helper is absent.
+                                $prefixes = function_exists( 'sp_get_name_prefixes' )
+                                    ? sp_get_name_prefixes()
+                                    : [ 'Mr.', 'Mrs.', 'Ms.', 'Miss', 'Dr.', 'Rev.', 'Hon.' ];
+                                $cur_prefix = sp_m( $member, 'prefix' );
+                                if ( $cur_prefix !== '' && ! in_array( $cur_prefix, $prefixes, true ) ) {
+                                    array_unshift( $prefixes, $cur_prefix );
+                                }
                                 foreach ( $prefixes as $p ) {
-                                    $selected = ( sp_m( $member, 'prefix' ) === $p ) ? ' selected' : '';
+                                    $selected = ( $cur_prefix === $p ) ? ' selected' : '';
                                     echo '<option value="' . esc_attr( $p ) . '"' . $selected . '>' . esc_html( $p ) . '</option>';
                                 }
                                 ?>
@@ -627,9 +635,15 @@ function sp_m( $member, $field ) {
                             <select id="sp-suffix" name="suffix">
                                 <option value="">&mdash;</option>
                                 <?php
-                                $suffixes = [ 'Jr.', 'Sr.', 'II', 'III', 'IV', 'Esq.', 'Ph.D.', 'M.D.' ];
+                                $suffixes = function_exists( 'sp_get_name_suffixes' )
+                                    ? sp_get_name_suffixes()
+                                    : [ 'Jr.', 'Sr.', 'II', 'III', 'IV', 'Esq.', 'Ph.D.', 'M.D.' ];
+                                $cur_suffix = sp_m( $member, 'suffix' );
+                                if ( $cur_suffix !== '' && ! in_array( $cur_suffix, $suffixes, true ) ) {
+                                    array_unshift( $suffixes, $cur_suffix );
+                                }
                                 foreach ( $suffixes as $s ) {
-                                    $selected = ( sp_m( $member, 'suffix' ) === $s ) ? ' selected' : '';
+                                    $selected = ( $cur_suffix === $s ) ? ' selected' : '';
                                     echo '<option value="' . esc_attr( $s ) . '"' . $selected . '>' . esc_html( $s ) . '</option>';
                                 }
                                 ?>

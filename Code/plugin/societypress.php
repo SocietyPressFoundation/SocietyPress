@@ -773,6 +773,8 @@ function sp_create_tables(): void {
         KEY last_name (last_name),
         KEY expiration_date (expiration_date),
         KEY expiration_status (expiration_date, status),
+        KEY join_date (join_date),
+        KEY status_optout (status, blast_email_opt_out),
         FULLTEXT KEY members_search (first_name, last_name, preferred_name, organization_name, city, member_number, interests, skills)
     ) {$charset_collate};" );
 
@@ -1100,7 +1102,8 @@ function sp_create_tables(): void {
         reminder_type     VARCHAR(50)         NOT NULL,
         sent_at           DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
-        UNIQUE KEY event_reg_type (event_id, registration_id, reminder_type)
+        UNIQUE KEY event_reg_type (event_id, registration_id, reminder_type),
+        KEY reminder_type_event (reminder_type, event_id)
     ) {$charset_collate};" );
 
     // ========================================================================
@@ -1842,7 +1845,9 @@ function sp_create_tables(): void {
         KEY type (type),
         KEY status (status),
         KEY is_anonymous (is_anonymous),
-        KEY stripe_subscription_id (stripe_subscription_id)
+        KEY stripe_subscription_id (stripe_subscription_id),
+        KEY donor_email (donor_email),
+        KEY paypal_order_id (paypal_order_id)
     ) {$charset_collate};" );
 
     // ========================================================================
@@ -1885,7 +1890,8 @@ function sp_create_tables(): void {
         KEY user_id (user_id),
         KEY status (status),
         KEY created_at (created_at),
-        KEY stripe_session_id (stripe_session_id)
+        KEY stripe_session_id (stripe_session_id),
+        KEY paypal_order_id (paypal_order_id)
     ) {$charset_collate};" );
 
     // ========================================================================
@@ -2063,6 +2069,7 @@ function sp_create_tables(): void {
         updated_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         KEY collection_id (collection_id),
+        KEY created_at (created_at),
         FULLTEXT KEY search_text (search_text)
     ) {$charset_collate};" );
 
@@ -2818,6 +2825,14 @@ add_action( 'admin_init', function () {
 //      'volunteer' so they continue to appear on the Volunteer Roster page.
 // ============================================================================
 add_action( 'admin_init', function () {
+    // PERF: skip the per-pageload SHOW TABLES/COLUMNS probes once the schema is
+    // known-current. The shared 'sp_schema_synced' transient is set to the
+    // current version after all migrations run (see the priority-99999 setter
+    // below) and expires daily, so migrations still self-heal on a version bump
+    // and as a daily safety net.
+    if ( get_transient( 'sp_schema_synced' ) === SOCIETYPRESS_VERSION ) {
+        return;
+    }
     global $wpdb;
     $table = $wpdb->prefix . 'sp_volunteer_roles';
 
@@ -2848,6 +2863,14 @@ add_action( 'admin_init', function () {
 //      to create in the first place.
 // ============================================================================
 add_action( 'admin_init', function () {
+    // PERF: skip the per-pageload SHOW TABLES/COLUMNS probes once the schema is
+    // known-current. The shared 'sp_schema_synced' transient is set to the
+    // current version after all migrations run (see the priority-99999 setter
+    // below) and expires daily, so migrations still self-heal on a version bump
+    // and as a daily safety net.
+    if ( get_transient( 'sp_schema_synced' ) === SOCIETYPRESS_VERSION ) {
+        return;
+    }
     global $wpdb;
     $table = $wpdb->prefix . 'sp_ballot_votes';
 
@@ -2901,6 +2924,14 @@ add_action( 'admin_init', function () {
 //      the ALTER only fires if the columns are genuinely missing.
 // ============================================================================
 add_action( 'admin_init', function () {
+    // PERF: skip the per-pageload SHOW TABLES/COLUMNS probes once the schema is
+    // known-current. The shared 'sp_schema_synced' transient is set to the
+    // current version after all migrations run (see the priority-99999 setter
+    // below) and expires daily, so migrations still self-heal on a version bump
+    // and as a daily safety net.
+    if ( get_transient( 'sp_schema_synced' ) === SOCIETYPRESS_VERSION ) {
+        return;
+    }
     global $wpdb;
     $table = $wpdb->prefix . 'sp_events';
 
@@ -2957,6 +2988,14 @@ add_action( 'admin_init', function () {
 //      is cheap and only the ALTER fires when the column is genuinely missing.
 // ============================================================================
 add_action( 'admin_init', function () {
+    // PERF: skip the per-pageload SHOW TABLES/COLUMNS probes once the schema is
+    // known-current. The shared 'sp_schema_synced' transient is set to the
+    // current version after all migrations run (see the priority-99999 setter
+    // below) and expires daily, so migrations still self-heal on a version bump
+    // and as a daily safety net.
+    if ( get_transient( 'sp_schema_synced' ) === SOCIETYPRESS_VERSION ) {
+        return;
+    }
     global $wpdb;
     $table = $wpdb->prefix . 'sp_newsletters';
 
@@ -2981,6 +3020,14 @@ add_action( 'admin_init', function () {
 //      safe and idempotent — MySQL is a no-op when the definition already matches.
 // ============================================================================
 add_action( 'admin_init', function () {
+    // PERF: skip the per-pageload SHOW TABLES/COLUMNS probes once the schema is
+    // known-current. The shared 'sp_schema_synced' transient is set to the
+    // current version after all migrations run (see the priority-99999 setter
+    // below) and expires daily, so migrations still self-heal on a version bump
+    // and as a daily safety net.
+    if ( get_transient( 'sp_schema_synced' ) === SOCIETYPRESS_VERSION ) {
+        return;
+    }
     global $wpdb;
 
     foreach ( [ 'sp_committees', 'sp_meetings' ] as $suffix ) {
@@ -22288,10 +22335,11 @@ function sp_groups_remove_expired_members(): void {
 }
 add_action( 'sp_daily_maintenance', 'sp_groups_remove_expired_members' );
 
-// Schedule the daily maintenance cron if not already scheduled. Inside init so
-// scheduling runs after WordPress has bootstrapped, matching the other cron
-// registrations (avoids file-scope scheduling quirks on multisite/caching).
-add_action( 'init', function () {
+// Schedule the daily maintenance cron if not already scheduled. On admin_init
+// (not init) so the scheduling check doesn't run on every public page view —
+// only admins ever need to register/repair the schedule, and once scheduled it
+// persists in the cron option for the real (frontend-triggered) cron runner.
+add_action( 'admin_init', function () {
     if ( ! wp_next_scheduled( 'sp_daily_maintenance' ) ) {
         wp_schedule_event( time(), 'daily', 'sp_daily_maintenance' );
     }
@@ -46644,8 +46692,11 @@ function sp_render_join_form(): string {
  *      Everything else is denied by default.
  *
  * SAFETY: Only adds the role if it doesn't exist yet. Safe to call repeatedly.
+ *         On admin_init (not init): the role is created on activation and
+ *         persists in the database, so re-checking it on every public page view
+ *         is wasted work. An admin page load will self-heal it if it's missing.
  */
-add_action( 'init', function () {
+add_action( 'admin_init', function () {
     if ( ! get_role( 'sp_member' ) ) {
         add_role( 'sp_member', 'Society Member', [
             'read'                    => true,
@@ -47287,7 +47338,7 @@ add_action( 'wp_mail_failed', function ( $wp_error ) {
  * WHY: We don't want to check "should we clean up?" on every page load.
  *      A daily cron event is lightweight and keeps the table tidy.
  */
-add_action( 'init', function () {
+add_action( 'admin_init', function () {
     if ( ! wp_next_scheduled( 'sp_email_log_cleanup_cron' ) ) {
         wp_schedule_event( time(), 'daily', 'sp_email_log_cleanup_cron' );
     }
@@ -50181,12 +50232,14 @@ add_filter( 'cron_schedules', function( array $schedules ): array {
     return $schedules;
 } );
 
-// Schedule (or deschedule) the backup cron on every request.
-// WHY: We check on 'init' so that if Harold changes the frequency from
-// "weekly" to "daily" (or "off"), the cron updates on the next page load
-// without requiring a deactivate/reactivate cycle. If frequency is 'off',
-// we clear the hook entirely.
-add_action( 'init', function(): void {
+// Schedule (or deschedule) the backup cron.
+// WHY: We check on 'admin_init' so that if Harold changes the frequency from
+// "weekly" to "daily" (or "off"), the cron updates the next time he's in the
+// admin — which is exactly when he'd change it. Running this on 'init' meant
+// every public page view read settings and could even write the options table
+// (clearing the hook when frequency is 'off') on every single request. If
+// frequency is 'off', we clear the hook entirely.
+add_action( 'admin_init', function(): void {
     $settings  = sp_settings();
     $frequency = $settings['backup_frequency'] ?? 'weekly';
 
@@ -61923,8 +61976,9 @@ function sp_get_email_headers(): array {
     ];
 }
 
-// Schedule daily notification cron if not already scheduled
-add_action( 'init', function() {
+// Schedule daily notification cron if not already scheduled. On admin_init so
+// the check doesn't run on every public page view.
+add_action( 'admin_init', function() {
     if ( ! wp_next_scheduled( 'sp_renewal_reminder_cron' ) ) {
         wp_schedule_event( time(), 'daily', 'sp_renewal_reminder_cron' );
     }
@@ -79046,7 +79100,7 @@ function sp_sync_ical_feed( int $feed_id ): array {
 //      cleanup on feed deletion, interval changes, etc.).
 // ============================================================================
 
-add_action( 'init', function () {
+add_action( 'admin_init', function () {
     if ( ! wp_next_scheduled( 'sp_ical_feed_sync_cron' ) ) {
         wp_schedule_event( time(), 'hourly', 'sp_ical_feed_sync_cron' );
     }
@@ -80301,6 +80355,15 @@ function sp_render_voting_frontend(): void {
     ) );
 
     if ( ! empty( $open_ballots ) ) {
+        // Pre-fetch all has-voted flags in one query instead of one per ballot.
+        // WHY: avoids N+1 when there are multiple open ballots.
+        $open_ballot_ids = implode( ',', array_map( 'intval', array_column( (array) $open_ballots, 'id' ) ) );
+        $voted_ballot_ids = $wpdb->get_col( $wpdb->prepare(
+            "SELECT DISTINCT ballot_id FROM {$prefix}ballot_votes WHERE user_id = %d AND ballot_id IN ({$open_ballot_ids})",
+            $user_id
+        ) );
+        $voted = array_flip( array_map( 'intval', $voted_ballot_ids ) );
+
         echo '<h2>' . esc_html__( 'Open Ballots', 'societypress' ) . '</h2>';
         foreach ( $open_ballots as $ballot ) {
             // Check eligibility for this specific ballot
@@ -80308,11 +80371,8 @@ function sp_render_voting_frontend(): void {
                 continue;
             }
 
-            // Check if already voted
-            $has_voted = (int) $wpdb->get_var( $wpdb->prepare(
-                "SELECT COUNT(*) FROM {$prefix}ballot_votes WHERE ballot_id = %d AND user_id = %d",
-                $ballot->id, $user_id
-            ) );
+            // Check if already voted (lookup, not a per-ballot query)
+            $has_voted = isset( $voted[ (int) $ballot->id ] ) ? 1 : 0;
 
             echo '<div class="sp-ballot-card" data-ballot-id="' . esc_attr( $ballot->id ) . '">';
             echo '<div class="sp-ballot-card-header">';
@@ -80441,15 +80501,23 @@ function sp_render_vote_form( object $ballot ): void {
         return;
     }
 
+    // Pre-fetch all choices for all questions in one query instead of one per question.
+    // WHY: avoids N+1 when a ballot has many questions.
+    $question_ids    = implode( ',', array_map( 'intval', array_column( (array) $questions, 'id' ) ) );
+    $all_choices     = $wpdb->get_results(
+        "SELECT * FROM {$prefix}ballot_choices WHERE question_id IN ({$question_ids}) ORDER BY sort_order ASC"
+    );
+    $choices_by_q = [];
+    foreach ( $all_choices as $choice_row ) {
+        $choices_by_q[ (int) $choice_row->question_id ][] = $choice_row;
+    }
+
     $nonce = wp_create_nonce( 'sp_submit_vote_' . $ballot->id );
 
     echo '<form class="sp-vote-form" data-ballot-id="' . esc_attr( $ballot->id ) . '" data-nonce="' . esc_attr( $nonce ) . '" data-allow-abstain="' . esc_attr( $ballot->allow_abstain ? '1' : '0' ) . '">';
 
     foreach ( $questions as $question ) {
-        $choices = $wpdb->get_results( $wpdb->prepare(
-            "SELECT * FROM {$prefix}ballot_choices WHERE question_id = %d ORDER BY sort_order ASC",
-            $question->id
-        ) );
+        $choices = $choices_by_q[ (int) $question->id ] ?? [];
 
         echo '<div class="sp-vote-question" data-question-id="' . esc_attr( $question->id ) . '">';
         echo '<h4 class="sp-vote-question-text">' . esc_html( $question->question_text ) . '</h4>';
@@ -80534,29 +80602,55 @@ function sp_render_ballot_results_frontend( object $ballot ): void {
         $ballot->id
     ) );
 
+    if ( empty( $questions ) ) {
+        return;
+    }
+
+    // Pre-fetch all choices for all questions in one query.
+    // WHY: avoids N+1 per-question choices fetch.
+    $question_ids = implode( ',', array_map( 'intval', array_column( (array) $questions, 'id' ) ) );
+    $all_choices  = $wpdb->get_results(
+        "SELECT * FROM {$prefix}ballot_choices WHERE question_id IN ({$question_ids}) ORDER BY sort_order ASC"
+    );
+    $choices_by_q = [];
+    foreach ( $all_choices as $choice_row ) {
+        $choices_by_q[ (int) $choice_row->question_id ][] = $choice_row;
+    }
+
+    // Pre-fetch all vote counts for every question+choice combination in one query.
+    // WHY: replaces per-choice COUNT queries and per-question total/abstain queries.
+    // Abstain rows have choice_id IS NULL; GROUP BY treats NULL as its own group,
+    // which maps to key 0 when cast with intval — safe because real choice PKs start at 1.
+    $raw_counts = $wpdb->get_results( $wpdb->prepare(
+        "SELECT question_id, choice_id, COUNT(*) AS cnt FROM {$prefix}ballot_votes WHERE ballot_id = %d GROUP BY question_id, choice_id",
+        $ballot->id
+    ) );
+    $counts = [];
+    foreach ( $raw_counts as $row ) {
+        $counts[ (int) $row->question_id ][ (int) $row->choice_id ] = (int) $row->cnt;
+    }
+
     foreach ( $questions as $question ) {
         echo '<div class="sp-results-question">';
         echo '<h4>' . esc_html( $question->question_text ) . '</h4>';
 
-        $choices = $wpdb->get_results( $wpdb->prepare(
-            "SELECT * FROM {$prefix}ballot_choices WHERE question_id = %d ORDER BY sort_order ASC",
-            $question->id
-        ) );
+        $choices = $choices_by_q[ (int) $question->id ] ?? [];
 
-        // Get total votes for this question (excluding abstains)
-        $total_votes = (int) $wpdb->get_var( $wpdb->prepare(
-            "SELECT COUNT(*) FROM {$prefix}ballot_votes WHERE question_id = %d AND choice_id IS NOT NULL",
-            $question->id
-        ) );
+        // Total votes for this question = sum of all non-abstain (non-NULL) choice counts.
+        // Abstains are stored as choice_id IS NULL, which becomes key 0 in $counts.
+        $q_counts    = $counts[ (int) $question->id ] ?? [];
+        $total_votes = 0;
+        foreach ( $q_counts as $choice_key => $cnt ) {
+            if ( $choice_key !== 0 ) { // 0 is the abstain bucket (NULL choice_id)
+                $total_votes += $cnt;
+            }
+        }
 
         // Find the winner (most votes)
-        $max_votes  = 0;
+        $max_votes     = 0;
         $choice_counts = [];
         foreach ( $choices as $choice ) {
-            $count = (int) $wpdb->get_var( $wpdb->prepare(
-                "SELECT COUNT(*) FROM {$prefix}ballot_votes WHERE question_id = %d AND choice_id = %d",
-                $question->id, $choice->id
-            ) );
+            $count = $q_counts[ (int) $choice->id ] ?? 0;
             $choice_counts[ $choice->id ] = $count;
             if ( $count > $max_votes ) {
                 $max_votes = $count;
@@ -80584,12 +80678,9 @@ function sp_render_ballot_results_frontend( object $ballot ): void {
             echo '</div>';
         }
 
-        // Show abstain count if enabled
+        // Show abstain count if enabled (key 0 in $counts = NULL choice_id rows)
         if ( $ballot->allow_abstain ) {
-            $abstain_count = (int) $wpdb->get_var( $wpdb->prepare(
-                "SELECT COUNT(*) FROM {$prefix}ballot_votes WHERE question_id = %d AND choice_id IS NULL",
-                $question->id
-            ) );
+            $abstain_count = $q_counts[0] ?? 0;
             if ( $abstain_count > 0 ) {
                 echo '<p class="sp-results-abstain">';
                 echo esc_html( sprintf( __( 'Abstained: %d', 'societypress' ), $abstain_count ) );
@@ -81501,25 +81592,49 @@ function sp_render_ballot_results_page(): void {
             $ballot_id
         ) );
 
+        // Pre-fetch all choices for all questions in one query.
+        // WHY: avoids N+1 per-question choices fetch.
+        $admin_question_ids = ! empty( $questions )
+            ? implode( ',', array_map( 'intval', array_column( (array) $questions, 'id' ) ) )
+            : '';
+        $admin_choices_by_q = [];
+        if ( $admin_question_ids !== '' ) {
+            $admin_all_choices = $wpdb->get_results(
+                "SELECT * FROM {$prefix}ballot_choices WHERE question_id IN ({$admin_question_ids}) ORDER BY sort_order ASC"
+            );
+            foreach ( $admin_all_choices as $admin_choice_row ) {
+                $admin_choices_by_q[ (int) $admin_choice_row->question_id ][] = $admin_choice_row;
+            }
+        }
+
+        // Pre-fetch all vote counts in one aggregate query.
+        // WHY: replaces per-choice and per-question COUNT queries inside the loop.
+        // Abstain rows (choice_id IS NULL) group under key 0 after intval cast.
+        $admin_raw_counts = $wpdb->get_results( $wpdb->prepare(
+            "SELECT question_id, choice_id, COUNT(*) AS cnt FROM {$prefix}ballot_votes WHERE ballot_id = %d GROUP BY question_id, choice_id",
+            $ballot_id
+        ) );
+        $admin_counts = [];
+        foreach ( $admin_raw_counts as $admin_row ) {
+            $admin_counts[ (int) $admin_row->question_id ][ (int) $admin_row->choice_id ] = (int) $admin_row->cnt;
+        }
+
         foreach ( $questions as $question ) :
-            $choices = $wpdb->get_results( $wpdb->prepare(
-                "SELECT * FROM {$prefix}ballot_choices WHERE question_id = %d ORDER BY sort_order ASC",
-                $question->id
-            ) );
+            $choices = $admin_choices_by_q[ (int) $question->id ] ?? [];
 
-            // Count votes per choice
-            $total_choice_votes = (int) $wpdb->get_var( $wpdb->prepare(
-                "SELECT COUNT(*) FROM {$prefix}ballot_votes WHERE question_id = %d AND choice_id IS NOT NULL",
-                $question->id
-            ) );
+            // Total non-abstain votes for this question (choice_id IS NOT NULL → key != 0)
+            $q_cnts             = $admin_counts[ (int) $question->id ] ?? [];
+            $total_choice_votes = 0;
+            foreach ( $q_cnts as $ck => $cv ) {
+                if ( $ck !== 0 ) {
+                    $total_choice_votes += $cv;
+                }
+            }
 
-            $max_votes  = 0;
+            $max_votes   = 0;
             $choice_data = [];
             foreach ( $choices as $choice ) {
-                $count = (int) $wpdb->get_var( $wpdb->prepare(
-                    "SELECT COUNT(*) FROM {$prefix}ballot_votes WHERE question_id = %d AND choice_id = %d",
-                    $question->id, $choice->id
-                ) );
+                $count         = $q_cnts[ (int) $choice->id ] ?? 0;
                 $choice_data[] = [ 'choice' => $choice, 'count' => $count ];
                 if ( $count > $max_votes ) {
                     $max_votes = $count;
@@ -81560,12 +81675,9 @@ function sp_render_ballot_results_page(): void {
                 <?php endforeach; ?>
 
                 <?php
-                // Abstain count
+                // Abstain count (key 0 in $admin_counts = NULL choice_id rows)
                 if ( $ballot->allow_abstain ) :
-                    $abstain_count = (int) $wpdb->get_var( $wpdb->prepare(
-                        "SELECT COUNT(*) FROM {$prefix}ballot_votes WHERE question_id = %d AND choice_id IS NULL",
-                        $question->id
-                    ) );
+                    $abstain_count = $q_cnts[0] ?? 0;
                     if ( $abstain_count > 0 ) :
                 ?>
                     <p class="sp-text-muted sp-italic">
@@ -81830,6 +81942,33 @@ add_action( 'wp_ajax_sp_export_ballot_results', function () {
         $ballot_id
     ) );
 
+    // Pre-fetch all choices for all questions in one query.
+    // WHY: avoids N+1 per-question choices fetch in the CSV loop.
+    $csv_question_ids = ! empty( $questions )
+        ? implode( ',', array_map( 'intval', array_column( (array) $questions, 'id' ) ) )
+        : '';
+    $csv_choices_by_q = [];
+    if ( $csv_question_ids !== '' ) {
+        $csv_all_choices = $wpdb->get_results(
+            "SELECT * FROM {$prefix}ballot_choices WHERE question_id IN ({$csv_question_ids}) ORDER BY sort_order ASC"
+        );
+        foreach ( $csv_all_choices as $csv_choice_row ) {
+            $csv_choices_by_q[ (int) $csv_choice_row->question_id ][] = $csv_choice_row;
+        }
+    }
+
+    // Pre-fetch all vote counts in one aggregate query.
+    // WHY: replaces per-choice and per-question COUNT queries inside the CSV loop.
+    // Abstain rows (choice_id IS NULL) map to key 0 after intval cast.
+    $csv_raw_counts = $wpdb->get_results( $wpdb->prepare(
+        "SELECT question_id, choice_id, COUNT(*) AS cnt FROM {$prefix}ballot_votes WHERE ballot_id = %d GROUP BY question_id, choice_id",
+        $ballot_id
+    ) );
+    $csv_counts = [];
+    foreach ( $csv_raw_counts as $csv_row ) {
+        $csv_counts[ (int) $csv_row->question_id ][ (int) $csv_row->choice_id ] = (int) $csv_row->cnt;
+    }
+
     // Set headers for CSV download
     $filename = sanitize_file_name( 'ballot-results-' . $ballot_id . '-' . wp_date( 'Y-m-d' ) . '.csv' );
     header( 'Content-Type: text/csv; charset=UTF-8' );
@@ -81850,22 +81989,20 @@ add_action( 'wp_ajax_sp_export_ballot_results', function () {
     ] );
 
     foreach ( $questions as $question ) {
-        $choices = $wpdb->get_results( $wpdb->prepare(
-            "SELECT * FROM {$prefix}ballot_choices WHERE question_id = %d ORDER BY sort_order ASC",
-            $question->id
-        ) );
+        $choices    = $csv_choices_by_q[ (int) $question->id ] ?? [];
+        $q_csv_cnts = $csv_counts[ (int) $question->id ] ?? [];
 
-        $total = (int) $wpdb->get_var( $wpdb->prepare(
-            "SELECT COUNT(*) FROM {$prefix}ballot_votes WHERE question_id = %d AND choice_id IS NOT NULL",
-            $question->id
-        ) );
+        // Total non-abstain votes (key 0 = abstain bucket)
+        $total = 0;
+        foreach ( $q_csv_cnts as $ck => $cv ) {
+            if ( $ck !== 0 ) {
+                $total += $cv;
+            }
+        }
 
         foreach ( $choices as $choice ) {
-            $count = (int) $wpdb->get_var( $wpdb->prepare(
-                "SELECT COUNT(*) FROM {$prefix}ballot_votes WHERE question_id = %d AND choice_id = %d",
-                $question->id, $choice->id
-            ) );
-            $pct = $total > 0 ? round( ( $count / $total ) * 100, 1 ) . '%' : '0%';
+            $count = $q_csv_cnts[ (int) $choice->id ] ?? 0;
+            $pct   = $total > 0 ? round( ( $count / $total ) * 100, 1 ) . '%' : '0%';
 
             fputcsv( $output, [
                 $question->question_text,
@@ -81875,12 +82012,9 @@ add_action( 'wp_ajax_sp_export_ballot_results', function () {
             ] );
         }
 
-        // Abstain row
+        // Abstain row (key 0 in $csv_counts = NULL choice_id rows)
         if ( $ballot->allow_abstain ) {
-            $abstain = (int) $wpdb->get_var( $wpdb->prepare(
-                "SELECT COUNT(*) FROM {$prefix}ballot_votes WHERE question_id = %d AND choice_id IS NULL",
-                $question->id
-            ) );
+            $abstain = $q_csv_cnts[0] ?? 0;
             if ( $abstain > 0 ) {
                 fputcsv( $output, [
                     $question->question_text,
@@ -84367,6 +84501,14 @@ add_shortcode( 'sp_lineage_my_applications', function ( $atts ) {
  * MIGRATION: Add submission columns to sp_photo_albums for existing installs.
  */
 add_action( 'admin_init', function () {
+    // PERF: skip the per-pageload SHOW TABLES/COLUMNS probes once the schema is
+    // known-current. The shared 'sp_schema_synced' transient is set to the
+    // current version after all migrations run (see the priority-99999 setter
+    // below) and expires daily, so migrations still self-heal on a version bump
+    // and as a daily safety net.
+    if ( get_transient( 'sp_schema_synced' ) === SOCIETYPRESS_VERSION ) {
+        return;
+    }
     global $wpdb;
     $table = $wpdb->prefix . 'sp_photo_albums';
     if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) !== $table ) return;
@@ -84388,6 +84530,14 @@ add_action( 'admin_init', function () {
  * MIGRATION: Add submission columns to sp_photo_album_items for existing installs.
  */
 add_action( 'admin_init', function () {
+    // PERF: skip the per-pageload SHOW TABLES/COLUMNS probes once the schema is
+    // known-current. The shared 'sp_schema_synced' transient is set to the
+    // current version after all migrations run (see the priority-99999 setter
+    // below) and expires daily, so migrations still self-heal on a version bump
+    // and as a daily safety net.
+    if ( get_transient( 'sp_schema_synced' ) === SOCIETYPRESS_VERSION ) {
+        return;
+    }
     global $wpdb;
     $table = $wpdb->prefix . 'sp_photo_album_items';
     if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) !== $table ) return;
@@ -84944,6 +85094,14 @@ add_action( 'admin_notices', function () {
 // ============================================================================
 
 add_action( 'admin_init', function () {
+    // PERF: skip the per-pageload SHOW TABLES/COLUMNS probes once the schema is
+    // known-current. The shared 'sp_schema_synced' transient is set to the
+    // current version after all migrations run (see the priority-99999 setter
+    // below) and expires daily, so migrations still self-heal on a version bump
+    // and as a daily safety net.
+    if ( get_transient( 'sp_schema_synced' ) === SOCIETYPRESS_VERSION ) {
+        return;
+    }
     global $wpdb;
     $table = $wpdb->prefix . 'sp_membership_tiers';
     if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) !== $table ) return;
@@ -85210,6 +85368,14 @@ function sp_render_builder_widget_research_guide( array $s ): void {
  * On fresh installs the CREATE TABLE statement above already includes them.
  */
 add_action( 'admin_init', function () {
+    // PERF: skip the per-pageload SHOW TABLES/COLUMNS probes once the schema is
+    // known-current. The shared 'sp_schema_synced' transient is set to the
+    // current version after all migrations run (see the priority-99999 setter
+    // below) and expires daily, so migrations still self-heal on a version bump
+    // and as a daily safety net.
+    if ( get_transient( 'sp_schema_synced' ) === SOCIETYPRESS_VERSION ) {
+        return;
+    }
     global $wpdb;
     $table = $wpdb->prefix . 'sp_donations';
     if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) !== $table ) return;
@@ -87076,6 +87242,14 @@ function sp_donate_paypal_capture(): void {
 // ============================================================================
 
 add_action( 'admin_init', function () {
+    // PERF: skip the per-pageload SHOW TABLES/COLUMNS probes once the schema is
+    // known-current. The shared 'sp_schema_synced' transient is set to the
+    // current version after all migrations run (see the priority-99999 setter
+    // below) and expires daily, so migrations still self-heal on a version bump
+    // and as a daily safety net.
+    if ( get_transient( 'sp_schema_synced' ) === SOCIETYPRESS_VERSION ) {
+        return;
+    }
     global $wpdb;
 
     $migrations = [
@@ -87789,6 +87963,14 @@ function sp_render_builder_widget_picture_wall_submit( array $s ): void {
 // ============================================================================
 
 add_action( 'admin_init', function () {
+    // PERF: skip the per-pageload SHOW TABLES/COLUMNS probes once the schema is
+    // known-current. The shared 'sp_schema_synced' transient is set to the
+    // current version after all migrations run (see the priority-99999 setter
+    // below) and expires daily, so migrations still self-heal on a version bump
+    // and as a daily safety net.
+    if ( get_transient( 'sp_schema_synced' ) === SOCIETYPRESS_VERSION ) {
+        return;
+    }
     global $wpdb;
 
     $migrations = [
@@ -94391,6 +94573,17 @@ function sp_short_links_maybe_create_table(): void {
     update_option( 'sp_short_links_table_v1', 1, true );
 }
 add_action( 'admin_init', 'sp_short_links_maybe_create_table' );
+
+// PERF: after all schema-migration closures have had their chance to run this
+// request, stamp the schema as synced for the current version. Runs at a very
+// late priority so every migration above completes first. The DAY_IN_SECONDS
+// TTL means the migrations re-probe once a day as a self-heal safety net, and a
+// version bump changes the stored value so they re-run immediately on upgrade.
+add_action( 'admin_init', function () {
+    if ( get_transient( 'sp_schema_synced' ) !== SOCIETYPRESS_VERSION ) {
+        set_transient( 'sp_schema_synced', SOCIETYPRESS_VERSION, DAY_IN_SECONDS );
+    }
+}, 99999 );
 
 /**
  * Generate a fresh unique short code. 6 chars of base36 = ~2 billion

@@ -2885,30 +2885,70 @@ add_action( 'admin_init', function () {
         $wpdb->query( "ALTER TABLE {$table} DROP INDEX question_user" );
         $wpdb->query( "ALTER TABLE {$table} ADD UNIQUE KEY question_user_choice (question_id, user_id, choice_id)" );
     }
+} );
 
-    // Ensure the participation-gate table exists, then backfill it from the
-    // distinct voters already in ballot_votes so anyone who voted before this
-    // table existed can't vote again. Created here (not only in sp_create_tables)
-    // because the DB-version gate may not fire on an in-place upgrade; the vote
-    // handler depends on this table, so it must self-heal. INSERT IGNORE is
-    // idempotent, so the backfill is safe to run on every admin_init.
+// ============================================================================
+// SELF-HEAL: ensure the ballot participation-gate table (sp_ballot_voters)
+//
+// WHY: this repair must NOT sit behind the 'sp_schema_synced' transient — that
+//      gate could otherwise suppress it for up to a day. It is split into its
+//      own closure so the transient gate on the index migration above can't
+//      reach it.
+//
+//      It runs on admin_init, not init. That is deliberate: the table is
+//      already created on activation and by the DB-version gate in
+//      sp_create_tables(), so this is only a tertiary net for the rare case
+//      where it goes missing on an in-place upgrade, a restore, or a dropped
+//      table. The failure mode is fail-safe, not fail-open — if the table is
+//      missing, the vote handler's INSERT IGNORE fails, the claim check
+//      rejects the submission, and the member simply can't vote (rather than
+//      voting twice). admin_init is sufficient to recover: the next wp-admin
+//      load rebuilds the table. Putting this on init would re-add a SHOW
+//      TABLES probe to every public (and unauthenticated) request — the exact
+//      per-pageload cost the schema-sync work removed — to guard an edge case
+//      that already fails safe.
+//
+//      Steady-state cost here is one SHOW TABLES probe that returns early; the
+//      create + one-time backfill only fire when the table is genuinely
+//      absent. The vote handler double-writes ballot_voters on every vote, so
+//      once the table exists no further backfill is needed.
+// ============================================================================
+add_action( 'admin_init', function () {
+    global $wpdb;
     $voters = $wpdb->prefix . 'sp_ballot_voters';
-    if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $voters ) ) ) !== $voters ) {
-        $charset_collate = $wpdb->get_charset_collate();
-        $wpdb->query(
-            "CREATE TABLE {$voters} (
-                ballot_id BIGINT(20) UNSIGNED NOT NULL,
-                user_id   BIGINT(20) UNSIGNED NOT NULL,
-                voted_at  DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE KEY ballot_user (ballot_id, user_id),
-                KEY user_id (user_id)
-            ) {$charset_collate}"
-        );
-    }
+    $votes  = $wpdb->prefix . 'sp_ballot_votes';
+
+    // Table present — nothing to do. One query, then out.
     if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $voters ) ) ) === $voters ) {
+        return;
+    }
+
+    $charset_collate = $wpdb->get_charset_collate();
+    $created         = $wpdb->query(
+        "CREATE TABLE {$voters} (
+            ballot_id BIGINT(20) UNSIGNED NOT NULL,
+            user_id   BIGINT(20) UNSIGNED NOT NULL,
+            voted_at  DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY ballot_user (ballot_id, user_id),
+            KEY user_id (user_id)
+        ) {$charset_collate}"
+    );
+
+    // A silent CREATE failure (low disk, missing privileges) would otherwise
+    // leave the gate table absent with no trace until a double-vote complaint.
+    // The backfill below still skips safely, but log so the cause is findable.
+    if ( false === $created && defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+        error_log( 'SocietyPress: failed to create ' . $voters . ' — ' . $wpdb->last_error );
+    }
+
+    // Backfill once, right after creation, from the distinct voters already in
+    // ballot_votes so anyone who voted before this table existed can't vote
+    // again. INSERT IGNORE keeps it idempotent.
+    if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $voters ) ) ) === $voters
+        && $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $votes ) ) ) === $votes ) {
         $wpdb->query(
             "INSERT IGNORE INTO {$voters} (ballot_id, user_id, voted_at)
-             SELECT ballot_id, user_id, MIN(voted_at) FROM {$table}
+             SELECT ballot_id, user_id, MIN(voted_at) FROM {$votes}
              GROUP BY ballot_id, user_id"
         );
     }
@@ -22335,11 +22375,12 @@ function sp_groups_remove_expired_members(): void {
 }
 add_action( 'sp_daily_maintenance', 'sp_groups_remove_expired_members' );
 
-// Schedule the daily maintenance cron if not already scheduled. On admin_init
-// (not init) so the scheduling check doesn't run on every public page view —
-// only admins ever need to register/repair the schedule, and once scheduled it
-// persists in the cron option for the real (frontend-triggered) cron runner.
-add_action( 'admin_init', function () {
+// Schedule the daily maintenance cron if not already scheduled. On init (not
+// admin_init) because WP-Cron is triggered by real page loads — including
+// public visits — so a missed/cleared schedule must be re-registered on any
+// request, not only when an admin logs in. The wp_next_scheduled() check is a
+// single cached options read, so the per-pageload cost is negligible.
+add_action( 'init', function () {
     if ( ! wp_next_scheduled( 'sp_daily_maintenance' ) ) {
         wp_schedule_event( time(), 'daily', 'sp_daily_maintenance' );
     }
@@ -46692,11 +46733,13 @@ function sp_render_join_form(): string {
  *      Everything else is denied by default.
  *
  * SAFETY: Only adds the role if it doesn't exist yet. Safe to call repeatedly.
- *         On admin_init (not init): the role is created on activation and
- *         persists in the database, so re-checking it on every public page view
- *         is wasted work. An admin page load will self-heal it if it's missing.
+ *         On init (not admin_init): roles are a global concern — REST API,
+ *         AJAX, and WP-CLI requests run through init without ever hitting an
+ *         admin page, and they need sp_member present to resolve member
+ *         capabilities. get_role() is an in-memory check against $wp_roles, so
+ *         re-checking on every request costs essentially nothing.
  */
-add_action( 'admin_init', function () {
+add_action( 'init', function () {
     if ( ! get_role( 'sp_member' ) ) {
         add_role( 'sp_member', 'Society Member', [
             'read'                    => true,
@@ -47338,7 +47381,10 @@ add_action( 'wp_mail_failed', function ( $wp_error ) {
  * WHY: We don't want to check "should we clean up?" on every page load.
  *      A daily cron event is lightweight and keeps the table tidy.
  */
-add_action( 'admin_init', function () {
+// On init (not admin_init): WP-Cron fires on frontend page loads, so a cleared
+// schedule must be able to re-register without waiting for an admin login. The
+// wp_next_scheduled() check is a cached options read — negligible per request.
+add_action( 'init', function () {
     if ( ! wp_next_scheduled( 'sp_email_log_cleanup_cron' ) ) {
         wp_schedule_event( time(), 'daily', 'sp_email_log_cleanup_cron' );
     }
@@ -61976,9 +62022,11 @@ function sp_get_email_headers(): array {
     ];
 }
 
-// Schedule daily notification cron if not already scheduled. On admin_init so
-// the check doesn't run on every public page view.
-add_action( 'admin_init', function() {
+// Schedule daily notification cron if not already scheduled. On init (not
+// admin_init): renewal reminders are high-stakes and WP-Cron is frontend-
+// triggered, so a cleared schedule must re-register on any request rather than
+// waiting for an admin login. The wp_next_scheduled() check is a cached read.
+add_action( 'init', function() {
     if ( ! wp_next_scheduled( 'sp_renewal_reminder_cron' ) ) {
         wp_schedule_event( time(), 'daily', 'sp_renewal_reminder_cron' );
     }
@@ -79100,7 +79148,10 @@ function sp_sync_ical_feed( int $feed_id ): array {
 //      cleanup on feed deletion, interval changes, etc.).
 // ============================================================================
 
-add_action( 'admin_init', function () {
+// On init (not admin_init): WP-Cron is frontend-triggered, so a cleared hourly
+// schedule must re-register on any request rather than waiting for an admin
+// login. The wp_next_scheduled() check is a cached options read.
+add_action( 'init', function () {
     if ( ! wp_next_scheduled( 'sp_ical_feed_sync_cron' ) ) {
         wp_schedule_event( time(), 'hourly', 'sp_ical_feed_sync_cron' );
     }
@@ -80357,10 +80408,12 @@ function sp_render_voting_frontend(): void {
     if ( ! empty( $open_ballots ) ) {
         // Pre-fetch all has-voted flags in one query instead of one per ballot.
         // WHY: avoids N+1 when there are multiple open ballots.
-        $open_ballot_ids = implode( ',', array_map( 'intval', array_column( (array) $open_ballots, 'id' ) ) );
+        $open_ballot_ids  = array_map( 'intval', array_column( (array) $open_ballots, 'id' ) );
+        $id_placeholders  = implode( ',', array_fill( 0, count( $open_ballot_ids ), '%d' ) );
         $voted_ballot_ids = $wpdb->get_col( $wpdb->prepare(
-            "SELECT DISTINCT ballot_id FROM {$prefix}ballot_votes WHERE user_id = %d AND ballot_id IN ({$open_ballot_ids})",
-            $user_id
+            "SELECT DISTINCT ballot_id FROM {$prefix}ballot_votes WHERE user_id = %d AND ballot_id IN ({$id_placeholders})",
+            $user_id,
+            ...$open_ballot_ids
         ) );
         $voted = array_flip( array_map( 'intval', $voted_ballot_ids ) );
 
@@ -80503,10 +80556,12 @@ function sp_render_vote_form( object $ballot ): void {
 
     // Pre-fetch all choices for all questions in one query instead of one per question.
     // WHY: avoids N+1 when a ballot has many questions.
-    $question_ids    = implode( ',', array_map( 'intval', array_column( (array) $questions, 'id' ) ) );
-    $all_choices     = $wpdb->get_results(
-        "SELECT * FROM {$prefix}ballot_choices WHERE question_id IN ({$question_ids}) ORDER BY sort_order ASC"
-    );
+    $question_ids    = array_map( 'intval', array_column( (array) $questions, 'id' ) );
+    $q_placeholders  = implode( ',', array_fill( 0, count( $question_ids ), '%d' ) );
+    $all_choices     = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$prefix}ballot_choices WHERE question_id IN ({$q_placeholders}) ORDER BY sort_order ASC",
+        ...$question_ids
+    ) );
     $choices_by_q = [];
     foreach ( $all_choices as $choice_row ) {
         $choices_by_q[ (int) $choice_row->question_id ][] = $choice_row;
@@ -80519,8 +80574,10 @@ function sp_render_vote_form( object $ballot ): void {
     foreach ( $questions as $question ) {
         $choices = $choices_by_q[ (int) $question->id ] ?? [];
 
-        echo '<div class="sp-vote-question" data-question-id="' . esc_attr( $question->id ) . '">';
-        echo '<h4 class="sp-vote-question-text">' . esc_html( $question->question_text ) . '</h4>';
+        // <fieldset>/<legend> so screen readers announce each choice in the
+        // context of its question instead of reading bare "Yes"/"No" options.
+        echo '<fieldset class="sp-vote-question" data-question-id="' . esc_attr( $question->id ) . '">';
+        echo '<legend class="sp-vote-question-text">' . esc_html( $question->question_text ) . '</legend>';
 
         if ( $question->question_type === 'multi_choice' && $question->max_selections > 1 ) {
             echo '<p class="sp-vote-hint">' . sprintf(
@@ -80567,13 +80624,15 @@ function sp_render_vote_form( object $ballot ): void {
         }
 
         echo '</div>'; // .sp-vote-choices
-        echo '</div>'; // .sp-vote-question
+        echo '</fieldset>'; // .sp-vote-question
     }
 
     echo '<div class="sp-vote-submit-wrap">';
     echo '<button type="submit" class="sp-vote-submit-btn">' . esc_html__( 'Submit Vote', 'societypress' ) . '</button>';
     echo '</div>';
-    echo '<div class="sp-vote-form-message" style="display:none;"></div>';
+    // role="alert" + aria-live so screen readers announce the outcome
+    // ("vote recorded", "already voted", validation errors) on submit.
+    echo '<div class="sp-vote-form-message" role="alert" aria-live="assertive" aria-atomic="true" style="display:none;"></div>';
     echo '</form>';
 }
 
@@ -80608,10 +80667,12 @@ function sp_render_ballot_results_frontend( object $ballot ): void {
 
     // Pre-fetch all choices for all questions in one query.
     // WHY: avoids N+1 per-question choices fetch.
-    $question_ids = implode( ',', array_map( 'intval', array_column( (array) $questions, 'id' ) ) );
-    $all_choices  = $wpdb->get_results(
-        "SELECT * FROM {$prefix}ballot_choices WHERE question_id IN ({$question_ids}) ORDER BY sort_order ASC"
-    );
+    $question_ids   = array_map( 'intval', array_column( (array) $questions, 'id' ) );
+    $q_placeholders = implode( ',', array_fill( 0, count( $question_ids ), '%d' ) );
+    $all_choices    = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$prefix}ballot_choices WHERE question_id IN ({$q_placeholders}) ORDER BY sort_order ASC",
+        ...$question_ids
+    ) );
     $choices_by_q = [];
     foreach ( $all_choices as $choice_row ) {
         $choices_by_q[ (int) $choice_row->question_id ][] = $choice_row;
@@ -81595,13 +81656,15 @@ function sp_render_ballot_results_page(): void {
         // Pre-fetch all choices for all questions in one query.
         // WHY: avoids N+1 per-question choices fetch.
         $admin_question_ids = ! empty( $questions )
-            ? implode( ',', array_map( 'intval', array_column( (array) $questions, 'id' ) ) )
-            : '';
+            ? array_map( 'intval', array_column( (array) $questions, 'id' ) )
+            : [];
         $admin_choices_by_q = [];
-        if ( $admin_question_ids !== '' ) {
-            $admin_all_choices = $wpdb->get_results(
-                "SELECT * FROM {$prefix}ballot_choices WHERE question_id IN ({$admin_question_ids}) ORDER BY sort_order ASC"
-            );
+        if ( ! empty( $admin_question_ids ) ) {
+            $admin_placeholders = implode( ',', array_fill( 0, count( $admin_question_ids ), '%d' ) );
+            $admin_all_choices  = $wpdb->get_results( $wpdb->prepare(
+                "SELECT * FROM {$prefix}ballot_choices WHERE question_id IN ({$admin_placeholders}) ORDER BY sort_order ASC",
+                ...$admin_question_ids
+            ) );
             foreach ( $admin_all_choices as $admin_choice_row ) {
                 $admin_choices_by_q[ (int) $admin_choice_row->question_id ][] = $admin_choice_row;
             }
@@ -81780,6 +81843,10 @@ add_action( 'wp_ajax_sp_submit_vote', function () {
     }
 
     // ---- Check not already voted ----
+    // This COUNT() is only the friendly fast path — it gives a clean "already
+    // voted" message without a write. It is NOT the actual double-vote guard:
+    // two concurrent submissions can both pass it. The real, atomic gate is the
+    // INSERT IGNORE into ballot_voters inside the transaction below.
     $already_voted = (int) $wpdb->get_var( $wpdb->prepare(
         "SELECT COUNT(*) FROM {$prefix}ballot_votes WHERE ballot_id = %d AND user_id = %d",
         $ballot_id, $user_id
@@ -81945,13 +82012,15 @@ add_action( 'wp_ajax_sp_export_ballot_results', function () {
     // Pre-fetch all choices for all questions in one query.
     // WHY: avoids N+1 per-question choices fetch in the CSV loop.
     $csv_question_ids = ! empty( $questions )
-        ? implode( ',', array_map( 'intval', array_column( (array) $questions, 'id' ) ) )
-        : '';
+        ? array_map( 'intval', array_column( (array) $questions, 'id' ) )
+        : [];
     $csv_choices_by_q = [];
-    if ( $csv_question_ids !== '' ) {
-        $csv_all_choices = $wpdb->get_results(
-            "SELECT * FROM {$prefix}ballot_choices WHERE question_id IN ({$csv_question_ids}) ORDER BY sort_order ASC"
-        );
+    if ( ! empty( $csv_question_ids ) ) {
+        $csv_placeholders = implode( ',', array_fill( 0, count( $csv_question_ids ), '%d' ) );
+        $csv_all_choices  = $wpdb->get_results( $wpdb->prepare(
+            "SELECT * FROM {$prefix}ballot_choices WHERE question_id IN ({$csv_placeholders}) ORDER BY sort_order ASC",
+            ...$csv_question_ids
+        ) );
         foreach ( $csv_all_choices as $csv_choice_row ) {
             $csv_choices_by_q[ (int) $csv_choice_row->question_id ][] = $csv_choice_row;
         }
@@ -82119,10 +82188,23 @@ function sp_voting_frontend_css(): void {
         background: #f9fafb;
         border-radius: 6px;
         border: 1px solid #e5e7eb;
+        min-width: 0; /* fieldset default min-width:min-content can overflow flex/grid parents */
     }
     .sp-vote-question-text {
         margin: 0 0 8px 0;
+        padding: 0; /* reset legend default side padding */
         font-size: 1.05em;
+        font-weight: 600; /* legends aren't bold by default; keep the old <h4> weight */
+    }
+    .sp-vote-question--error {
+        outline: 2px solid var(--sp-color-danger, #b32d2e);
+        outline-offset: 4px;
+    }
+    .sp-vote-question-error {
+        margin: 12px 0 0 0;
+        color: var(--sp-color-danger, #b32d2e);
+        font-size: 0.9em;
+        font-weight: 600;
     }
     .sp-vote-hint {
         color: #6b7280;
@@ -82185,6 +82267,10 @@ function sp_voting_frontend_css(): void {
     .sp-vote-submit-btn:disabled {
         opacity: 0.6;
         cursor: not-allowed;
+    }
+    .sp-vote-submit-btn:focus-visible {
+        outline: 2px solid var(--sp-color-primary, #2271b1);
+        outline-offset: 2px;
     }
     .sp-vote-form-message {
         margin-top: 12px;
@@ -82335,14 +82421,23 @@ function sp_voting_frontend_js(): void {
                     var allowAbstain = form.getAttribute('data-allow-abstain') === '1';
                     if (!hasSelection && !allowAbstain) {
                         valid = false;
-                        // Add visual error indicator so the member sees which question they missed
-                        qDiv.style.outline = '2px solid #b32d2e';
-                        qDiv.style.outlineOffset = '4px';
-                        qDiv.style.borderRadius = '4px';
+                        // Outline the missed question (themeable class, not an
+                        // inline style) and add an inline message right on it so
+                        // the member sees exactly which one still needs an answer.
+                        qDiv.classList.add('sp-vote-question--error');
+                        var qErr = qDiv.querySelector('.sp-vote-question-error');
+                        if (!qErr) {
+                            qErr = document.createElement('p');
+                            qErr.className = 'sp-vote-question-error';
+                            qErr.setAttribute('role', 'alert');
+                            qDiv.appendChild(qErr);
+                        }
+                        qErr.textContent = '<?php echo esc_js( __( 'Please choose an answer for this question.', 'societypress' ) ); ?>';
                     } else {
                         // Clear any previous error state
-                        qDiv.style.outline = '';
-                        qDiv.style.outlineOffset = '';
+                        qDiv.classList.remove('sp-vote-question--error');
+                        var clearedErr = qDiv.querySelector('.sp-vote-question-error');
+                        if (clearedErr) clearedErr.remove();
                     }
                 });
 

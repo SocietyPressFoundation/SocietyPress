@@ -245,6 +245,51 @@ register_activation_hook( __FILE__, function () {
 
 
 /**
+ * Evict the Hello Dolly plugin that ships with WordPress.
+ *
+ * WHY: Hello Dolly is sample code that sprinkles show-tune lyrics across
+ *      wp-admin — pure clutter on a volunteer-run society site. We remove it
+ *      in the same spirit as the activation hook clearing the "Sample Page"
+ *      and "Hello world!" starter content.
+ *
+ *      This runs once (guarded by the sp_hello_dolly_evicted option) on the
+ *      first admin load by a user who can delete plugins, which covers both
+ *      fresh activations and sites that simply upgraded into this build. We
+ *      leave Akismet and the bundled Twenty* themes alone — Akismet is useful,
+ *      and core treats a default theme as its emergency fallback and re-adds
+ *      one on update regardless, so fighting that is not worth it.
+ *
+ *      On hosts where WordPress can't write to the plugins directory without
+ *      filesystem credentials, delete_plugins() fails quietly and Hello Dolly
+ *      simply remains — an acceptable worst case, not an error to surface.
+ */
+add_action( 'admin_init', function () {
+    if ( get_option( 'sp_hello_dolly_evicted' ) ) {
+        return;
+    }
+    if ( ! current_user_can( 'delete_plugins' ) ) {
+        return;
+    }
+
+    require_once ABSPATH . 'wp-admin/includes/plugin.php';
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+
+    foreach ( get_plugins() as $plugin_file => $data ) {
+        // Hello Dolly is a single-file plugin (hello.php). Confirm the header
+        // name too so we never delete an unrelated hello.php a site has added.
+        if ( basename( $plugin_file ) === 'hello.php' && $data['Name'] === 'Hello Dolly' ) {
+            if ( is_plugin_active( $plugin_file ) ) {
+                deactivate_plugins( $plugin_file, true );
+            }
+            delete_plugins( [ $plugin_file ] );
+        }
+    }
+
+    update_option( 'sp_hello_dolly_evicted', 1, false );
+} );
+
+
+/**
  * Create the essential default pages if no published pages exist.
  *
  * WHY: WordPress starts with a "Sample Page" that may or may not still be
@@ -73545,24 +73590,6 @@ function sp_ajax_export_gedcom(): void {
         }
     }
 
-    $records    = $wpdb->get_results( $wpdb->prepare(
-        "SELECT * FROM {$prefix}records WHERE collection_id = %d ORDER BY id",
-        $collection_id
-    ) );
-    $record_ids = wp_list_pluck( $records, 'id' );
-
-    $all_values = [];
-    if ( $record_ids ) {
-        $id_placeholders = implode( ',', array_fill( 0, count( $record_ids ), '%d' ) );
-        $value_rows = $wpdb->get_results( $wpdb->prepare(
-            "SELECT record_id, field_id, field_value FROM {$prefix}record_values WHERE record_id IN ($id_placeholders)",
-            ...$record_ids
-        ) );
-        foreach ( $value_rows as $vr ) {
-            $all_values[ (int) $vr->record_id ][ (int) $vr->field_id ] = $vr->field_value;
-        }
-    }
-
     $filename  = sanitize_file_name( $collection->name ) . '.ged';
     $site_name = get_bloginfo( 'name' );
 
@@ -73617,11 +73644,42 @@ function sp_ajax_export_gedcom(): void {
     fwrite( $out, "0 @SUBM1@ SUBM\n" );
     fwrite( $out, "1 NAME " . str_replace( "\n", ' ', $site_name ?: 'SocietyPress' ) . "\n" );
 
+    // Stream individuals in batches so peak memory stays flat no matter how
+    // large the collection is (ENS-scale collections run to tens of thousands
+    // of records). ORDER BY id with LIMIT/OFFSET preserves the exact record
+    // order of a single-query export, and $indi_num runs across every batch so
+    // the @I…@ xref numbering is byte-identical to the old whole-table load.
     $indi_num = 0;
-    foreach ( $records as $rec ) {
+    $offset   = 0;
+    $batch    = 500;
+    while ( true ) {
+        $records = $wpdb->get_results( $wpdb->prepare(
+            "SELECT * FROM {$prefix}records WHERE collection_id = %d ORDER BY id LIMIT %d OFFSET %d",
+            $collection_id,
+            $batch,
+            $offset
+        ) );
+        if ( ! $records ) {
+            break;
+        }
+
+        $record_ids   = wp_list_pluck( $records, 'id' );
+        $batch_values = [];
+        if ( $record_ids ) {
+            $id_placeholders = implode( ',', array_fill( 0, count( $record_ids ), '%d' ) );
+            $value_rows = $wpdb->get_results( $wpdb->prepare(
+                "SELECT record_id, field_id, field_value FROM {$prefix}record_values WHERE record_id IN ($id_placeholders)",
+                ...$record_ids
+            ) );
+            foreach ( $value_rows as $vr ) {
+                $batch_values[ (int) $vr->record_id ][ (int) $vr->field_id ] = $vr->field_value;
+            }
+        }
+
+        foreach ( $records as $rec ) {
         $indi_num++;
         $xref   = 'I' . $indi_num;
-        $values = $all_values[ (int) $rec->id ] ?? [];
+        $values = $batch_values[ (int) $rec->id ] ?? [];
 
         $by_tag         = [];
         $unmapped_notes = [];
@@ -73686,6 +73744,9 @@ function sp_ajax_export_gedcom(): void {
         foreach ( $unmapped_notes as $note ) {
             fwrite( $out, "1 NOTE " . str_replace( "\n", ' ', $note ) . "\n" );
         }
+        }
+
+        $offset += $batch;
     }
 
     fwrite( $out, "0 TRLR\n" );

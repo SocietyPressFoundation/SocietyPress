@@ -835,7 +835,10 @@ function gsp_social_meta() {
     } elseif ( is_singular() ) {
         $desc = get_the_excerpt();
         if ( empty( $desc ) ) {
-            $desc = wp_trim_words( wp_strip_all_tags( get_post_field( 'post_content', get_the_ID() ) ), 30, '' );
+            // strip_shortcodes() first so shortcode-only pages (e.g. a donate
+            // page whose entire body is [sp_donate]) don't leak the raw
+            // shortcode text into the social-share description.
+            $desc = wp_trim_words( wp_strip_all_tags( strip_shortcodes( get_post_field( 'post_content', get_the_ID() ) ) ), 30, '' );
         }
         // Fall back to the site tagline if the page genuinely has no
         // content yet (empty template-driven pages would otherwise

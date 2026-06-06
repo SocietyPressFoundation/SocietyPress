@@ -2858,6 +2858,23 @@ add_action( 'admin_init', function () {
     }
 });
 
+// One-time: take the 80+-key settings blob out of the autoload set. Left
+// autoloaded it rides along in alloptions on every single page load — including
+// frontend visitor requests. sp_settings() loads it on demand and request-caches
+// it, so on-demand loading costs at most one indexed lookup on the requests that
+// actually read settings. Runs independently of the schema-version gate above so
+// existing installs already on the current version still get it; the flag makes
+// it a once-ever operation. (wp_set_option_autoload is WP 6.4+.)
+add_action( 'admin_init', function () {
+    if ( get_option( 'sp_settings_autoload_fixed' ) ) {
+        return;
+    }
+    if ( function_exists( 'wp_set_option_autoload' ) ) {
+        wp_set_option_autoload( 'societypress_settings', false );
+    }
+    update_option( 'sp_settings_autoload_fixed', 1, false );
+});
+
 // ============================================================================
 // MIGRATION: Add role_type column to sp_volunteer_roles for existing installs
 //
@@ -4024,19 +4041,42 @@ function sp_get_modules(): array {
  * @param string $module_slug Module identifier (e.g., 'events', 'library').
  * @return bool True if the module is enabled (or if no modules option exists yet).
  */
+/**
+ * Resolved enabled-modules list, cached for the request.
+ *
+ * Returns boolean true when the option is absent (every module on — pre-wizard
+ * and pre-toggle installs default to everything enabled), otherwise the array
+ * of enabled slugs. Both module gates below read through this so the option and
+ * its filter chain resolve once per request instead of on every one of the 15+
+ * calls a typical admin load makes. Busted on save via the hooks below so a
+ * Settings → Modules change within the same request is still honored.
+ *
+ * @param  bool       $refresh Re-read from the database, bypassing the cache.
+ * @return true|array
+ */
+function sp_enabled_modules_cached( bool $refresh = false ) {
+    static $cache = null;
+    if ( $cache === null || $refresh ) {
+        $opt   = get_option( 'sp_enabled_modules', null );
+        $cache = ( $opt === null ) ? true : (array) $opt;
+    }
+    return $cache;
+}
+add_action( 'update_option_sp_enabled_modules', static function () { sp_enabled_modules_cached( true ); } );
+add_action( 'add_option_sp_enabled_modules',    static function () { sp_enabled_modules_cached( true ); } );
+add_action( 'delete_option_sp_enabled_modules', static function () { sp_enabled_modules_cached( true ); } );
+
 function sp_module_enabled( string $module_slug ): bool {
     // Members is always enabled — it's the core of the platform
     if ( $module_slug === 'members' ) return true;
 
-    $modules = get_option( 'sp_enabled_modules', null );
+    // true sentinel = option absent → everything enabled by default, so existing
+    // installs don't suddenly lose functionality when they upgrade.
+    $modules = sp_enabled_modules_cached();
+    if ( $modules === true ) return true;
 
-    // If the option doesn't exist yet (pre-wizard or pre-feature-toggle),
-    // everything is enabled by default. This ensures existing installs
-    // don't suddenly lose functionality when they upgrade.
-    if ( $modules === null ) return true;
-
-    // If the option exists, it's an array of enabled module slugs
-    return in_array( $module_slug, (array) $modules, true );
+    // Otherwise it's the array of enabled module slugs.
+    return in_array( $module_slug, $modules, true );
 }
 
 /**
@@ -4045,14 +4085,14 @@ function sp_module_enabled( string $module_slug ): bool {
  * @return array Array of enabled module slug strings.
  */
 function sp_get_enabled_modules(): array {
-    $modules = get_option( 'sp_enabled_modules', null );
+    $modules = sp_enabled_modules_cached();
 
-    if ( $modules === null ) {
+    if ( $modules === true ) {
         // Default: everything enabled
         return array_keys( sp_get_modules() );
     }
 
-    return (array) $modules;
+    return $modules;
 }
 
 
@@ -6379,6 +6419,15 @@ function sp_sanitize_custom_css( string $css ): string {
 
 
 function sp_get_design_override_css(): string {
+    // Rebuilt from Design settings on every frontend load, but it only changes
+    // when those settings are saved — so cache it and bust on the save hooks
+    // below. Keeps a steady stream of visitor page loads from re-deriving the
+    // same CSS string each time.
+    $cached = get_transient( 'sp_design_override_css' );
+    if ( is_string( $cached ) ) {
+        return $cached;
+    }
+
     $settings = sp_settings();
 
     // --- Color defaults ---
@@ -6473,8 +6522,15 @@ body { padding-top: " . ( $header_height + 3 ) . 'px !important; }';
         $css .= "\n\n/* Custom CSS */\n" . $custom;
     }
 
+    set_transient( 'sp_design_override_css', $css, DAY_IN_SECONDS );
     return $css;
 }
+
+// Bust the cached Design CSS whenever the settings blob is saved, so a color or
+// font change shows on the very next page load.
+add_action( 'update_option_societypress_settings', static function () { delete_transient( 'sp_design_override_css' ); } );
+add_action( 'add_option_societypress_settings',    static function () { delete_transient( 'sp_design_override_css' ); } );
+add_action( 'delete_option_societypress_settings', static function () { delete_transient( 'sp_design_override_css' ); } );
 
 // Enqueue a dummy stylesheet that loads AFTER all theme stylesheets,
 // then attach the Design settings CSS to it via wp_add_inline_style().
@@ -23230,6 +23286,252 @@ function sp_render_groups_page(): void {
 /**
  * Render the Group edit/add page.
  */
+/**
+ * AJAX: type-ahead member search for admin "pick a member" fields.
+ *
+ * WHY: The group and payment forms used to render every member as a <select>
+ *      option — a multi-thousand-row dropdown at ENS scale that was slow to
+ *      build and miserable to scroll. This returns up to 20 matches for a typed
+ *      fragment so those forms load instantly and the admin just types a name.
+ *      Only user_id + a display label leave the server, all of it data these
+ *      roles already see in their member lists.
+ */
+add_action( 'wp_ajax_sp_admin_member_search', 'sp_ajax_admin_member_search' );
+function sp_ajax_admin_member_search(): void {
+    if ( ! check_ajax_referer( 'sp_admin_member_search', 'nonce', false ) ) {
+        wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ], 403 );
+    }
+    // These fields appear on member-management and finance pages; allow either.
+    if ( ! current_user_can( 'sp_manage_members' ) && ! current_user_can( 'sp_manage_finances' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ], 403 );
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    $q      = sanitize_text_field( wp_unslash( $_GET['q'] ?? '' ) );
+
+    // Require at least 2 characters so an empty field never triggers a full scan.
+    if ( strlen( $q ) < 2 ) {
+        wp_send_json_success( [ 'results' => [] ] );
+    }
+
+    $like = '%' . $wpdb->esc_like( $q ) . '%';
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT m.user_id, u.display_name, u.user_email
+         FROM {$prefix}members m
+         JOIN {$wpdb->users} u ON m.user_id = u.ID
+         WHERE u.display_name LIKE %s
+            OR u.user_email LIKE %s
+            OR m.first_name LIKE %s
+            OR m.last_name LIKE %s
+            OR CONCAT(m.last_name, ', ', m.first_name) LIKE %s
+         ORDER BY u.display_name ASC
+         LIMIT 20",
+        $like, $like, $like, $like, $like
+    ) );
+
+    $results = [];
+    foreach ( (array) $rows as $r ) {
+        $email     = $r->user_email ? ' (' . $r->user_email . ')' : '';
+        $results[] = [
+            'id'    => (int) $r->user_id,
+            'label' => $r->display_name . $email,
+        ];
+    }
+    wp_send_json_success( [ 'results' => $results ] );
+}
+
+/**
+ * Print the shared CSS + JS for member-autocomplete fields exactly once.
+ *
+ * WHY: The widget can appear more than once on a page (the group form has two).
+ *      The markup is per-field but the styling and the combobox behavior are
+ *      shared, so they print a single time and bind to every field by data hook.
+ */
+function sp_print_member_autocomplete_assets(): void {
+    static $printed = false;
+    if ( $printed ) {
+        return;
+    }
+    $printed = true;
+    ?>
+    <style id="sp-member-ac-css">
+        .sp-member-ac { position: relative; display: inline-block; }
+        .sp-member-ac-input { width: 320px; max-width: 100%; }
+        .sp-member-ac-list {
+            position: absolute; z-index: 100; left: 0; right: 0; margin: 2px 0 0;
+            max-height: 240px; overflow-y: auto; list-style: none; padding: 0;
+            background: #fff; border: 1px solid #8c8f94; border-radius: 4px;
+            box-shadow: 0 2px 6px rgba( 0, 0, 0, .15 );
+        }
+        .sp-member-ac-list li { margin: 0; padding: 7px 10px; cursor: pointer; font-size: 13px; }
+        .sp-member-ac-list li[aria-selected="true"],
+        .sp-member-ac-list li:hover { background: #2271b1; color: #fff; }
+        .sp-member-ac-empty { padding: 7px 10px; color: #646970; font-size: 13px; }
+    </style>
+    <script id="sp-member-ac-js">
+    ( function () {
+        function debounce( fn, wait ) {
+            var t;
+            return function () {
+                var ctx = this, args = arguments;
+                clearTimeout( t );
+                t = setTimeout( function () { fn.apply( ctx, args ); }, wait );
+            };
+        }
+        function init( wrap ) {
+            if ( wrap.dataset.spAcReady ) { return; }
+            wrap.dataset.spAcReady = '1';
+            var input  = wrap.querySelector( '.sp-member-ac-input' );
+            var hidden = wrap.querySelector( '.sp-member-ac-value' );
+            var list   = wrap.querySelector( '.sp-member-ac-list' );
+            var nonce  = wrap.getAttribute( 'data-nonce' );
+            var emptyMsg = wrap.getAttribute( 'data-empty' ) || '';
+            var items = [], active = -1;
+
+            function close() {
+                list.hidden = true;
+                list.innerHTML = '';
+                items = [];
+                active = -1;
+                input.setAttribute( 'aria-expanded', 'false' );
+                input.removeAttribute( 'aria-activedescendant' );
+            }
+            function choose( it ) {
+                hidden.value = it.id;
+                input.value = it.label;
+                close();
+                hidden.dispatchEvent( new Event( 'change', { bubbles: true } ) );
+            }
+            function render( results ) {
+                list.innerHTML = '';
+                if ( ! results.length ) {
+                    var none = document.createElement( 'li' );
+                    none.className = 'sp-member-ac-empty';
+                    none.setAttribute( 'role', 'presentation' );
+                    none.textContent = emptyMsg;
+                    list.appendChild( none );
+                    list.hidden = false;
+                    input.setAttribute( 'aria-expanded', 'true' );
+                    items = [];
+                    active = -1;
+                    return;
+                }
+                items = results;
+                results.forEach( function ( it, i ) {
+                    var li = document.createElement( 'li' );
+                    li.setAttribute( 'role', 'option' );
+                    li.id = input.id + '-opt-' + i;
+                    li.setAttribute( 'aria-selected', 'false' );
+                    li.textContent = it.label;
+                    li.addEventListener( 'mousedown', function ( e ) { e.preventDefault(); choose( it ); } );
+                    list.appendChild( li );
+                } );
+                active = -1;
+                list.hidden = false;
+                input.setAttribute( 'aria-expanded', 'true' );
+            }
+            function highlight( idx ) {
+                var nodes = list.querySelectorAll( '[role="option"]' );
+                nodes.forEach( function ( n ) { n.setAttribute( 'aria-selected', 'false' ); } );
+                if ( idx >= 0 && nodes[ idx ] ) {
+                    nodes[ idx ].setAttribute( 'aria-selected', 'true' );
+                    input.setAttribute( 'aria-activedescendant', nodes[ idx ].id );
+                    nodes[ idx ].scrollIntoView( { block: 'nearest' } );
+                } else {
+                    input.removeAttribute( 'aria-activedescendant' );
+                }
+            }
+            var search = debounce( function () {
+                var q = input.value.trim();
+                // Typing invalidates any prior pick until the admin chooses again.
+                hidden.value = '';
+                if ( q.length < 2 ) { close(); return; }
+                var url = window.ajaxurl + '?action=sp_admin_member_search&nonce=' +
+                    encodeURIComponent( nonce ) + '&q=' + encodeURIComponent( q );
+                fetch( url, { credentials: 'same-origin' } )
+                    .then( function ( r ) { return r.json(); } )
+                    .then( function ( res ) {
+                        if ( res && res.success ) { render( res.data.results || [] ); }
+                    } )
+                    .catch( function () { close(); } );
+            }, 200 );
+
+            input.addEventListener( 'input', search );
+            input.addEventListener( 'keydown', function ( e ) {
+                if ( list.hidden ) { return; }
+                if ( e.key === 'ArrowDown' ) {
+                    e.preventDefault();
+                    active = Math.min( active + 1, items.length - 1 );
+                    highlight( active );
+                } else if ( e.key === 'ArrowUp' ) {
+                    e.preventDefault();
+                    active = Math.max( active - 1, 0 );
+                    highlight( active );
+                } else if ( e.key === 'Enter' ) {
+                    if ( active >= 0 && items[ active ] ) { e.preventDefault(); choose( items[ active ] ); }
+                } else if ( e.key === 'Escape' ) {
+                    close();
+                }
+            } );
+            // Delay close so a click on an option registers before blur fires.
+            input.addEventListener( 'blur', function () { setTimeout( close, 150 ); } );
+        }
+        function boot() {
+            document.querySelectorAll( '[data-sp-member-ac]' ).forEach( init );
+        }
+        if ( document.readyState === 'loading' ) {
+            document.addEventListener( 'DOMContentLoaded', boot );
+        } else {
+            boot();
+        }
+    } )();
+    </script>
+    <?php
+}
+
+/**
+ * Render an accessible "search a member" autocomplete that posts a user_id.
+ *
+ * WHY: Replaces the whole-membership <select> on admin forms. The visible text
+ *      input drives a type-ahead search; the chosen member's user_id is written
+ *      to a hidden field named $field_name, so the surrounding <form> submits
+ *      exactly the value it did before — no handler changes required.
+ *
+ * @param string $field_name name= of the hidden field the form reads (e.g. 'user_id').
+ * @param array  $args {
+ *     @type int    $value        Pre-selected user_id (edit mode). Default 0.
+ *     @type string $value_label  Display label for the pre-selected member.
+ *     @type string $placeholder  Input placeholder text.
+ *     @type bool   $required     Mark the visible input required. Default false.
+ *     @type string $input_id     id for the text input (for <label for>). Default random.
+ * }
+ */
+function sp_render_member_autocomplete( string $field_name, array $args = [] ): void {
+    $value       = (int) ( $args['value'] ?? 0 );
+    $value_label = (string) ( $args['value_label'] ?? '' );
+    $placeholder = (string) ( $args['placeholder'] ?? __( 'Type a name to search…', 'societypress' ) );
+    $required    = ! empty( $args['required'] );
+    $input_id    = (string) ( $args['input_id'] ?? 'sp-mac-' . wp_rand() );
+    $list_id     = $input_id . '-list';
+
+    sp_print_member_autocomplete_assets();
+    ?>
+    <span class="sp-member-ac" data-sp-member-ac
+          data-nonce="<?php echo esc_attr( wp_create_nonce( 'sp_admin_member_search' ) ); ?>"
+          data-empty="<?php echo esc_attr__( 'No matching members found.', 'societypress' ); ?>">
+        <input type="text" id="<?php echo esc_attr( $input_id ); ?>"
+               class="sp-member-ac-input" role="combobox" aria-autocomplete="list"
+               aria-expanded="false" aria-controls="<?php echo esc_attr( $list_id ); ?>"
+               autocomplete="off" placeholder="<?php echo esc_attr( $placeholder ); ?>"
+               value="<?php echo esc_attr( $value_label ); ?>"<?php echo $required ? ' required' : ''; ?>>
+        <input type="hidden" name="<?php echo esc_attr( $field_name ); ?>"
+               class="sp-member-ac-value" value="<?php echo $value ? esc_attr( (string) $value ) : ''; ?>">
+        <ul id="<?php echo esc_attr( $list_id ); ?>" class="sp-member-ac-list" role="listbox" hidden></ul>
+    </span>
+    <?php
+}
+
 function sp_render_group_edit_page(): void {
     global $wpdb;
     $prefix   = $wpdb->prefix . 'sp_';
@@ -23313,18 +23615,23 @@ function sp_render_group_edit_page(): void {
         }
     }
 
-    // All SP members for dropdowns
-    $all_members = $wpdb->get_results(
-        "SELECT m.user_id, u.display_name, u.user_email
-         FROM {$prefix}members m
-         JOIN {$wpdb->users} u ON m.user_id = u.ID
-         ORDER BY u.display_name ASC"
-    );
+    // Label for the currently-assigned leader so the autocomplete can show the
+    // existing pick in edit mode without loading the whole membership.
+    $leader_label = '';
+    if ( ! empty( $group->leader_id ) ) {
+        $lu = get_userdata( (int) $group->leader_id );
+        if ( $lu ) {
+            $leader_label = $lu->display_name . ( $lu->user_email ? ' (' . $lu->user_email . ')' : '' );
+        }
+    }
+
+    // Print the autocomplete CSS/JS at body top, before the form table, so the
+    // shared <style>/<script> never lands mid-<table> when the widget renders.
+    sp_print_member_autocomplete_assets();
 
     ?>
     <style id="sp-group-edit-css">
         .sp-group-order-input { width: 80px; }
-        .sp-group-member-select { width: 300px; }
         .sp-group-lapsed-flag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 10px; font-size: 11px; font-weight: 600; background: #fde8e8; color: #b32d2e; vertical-align: middle; }
     </style>
     <div class="wrap sp-admin-wrap">
@@ -23346,14 +23653,12 @@ function sp_render_group_edit_page(): void {
                 <tr>
                     <th scope="col"><label for="sp-g-leader"><?php esc_html_e( 'Group Leader', 'societypress' ); ?></label></th>
                     <td>
-                        <select name="leader_id" id="sp-g-leader" class="sp-full-width">
-                            <option value=""><?php esc_html_e( '— None —', 'societypress' ); ?></option>
-                            <?php foreach ( $all_members as $m ) : ?>
-                                <option value="<?php echo esc_attr( $m->user_id ); ?>" <?php selected( (int) ( $group->leader_id ?? 0 ), (int) $m->user_id ); ?>>
-                                    <?php echo esc_html( $m->display_name ); ?> (<?php echo esc_html( $m->user_email ); ?>)
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
+                        <?php sp_render_member_autocomplete( 'leader_id', [
+                            'value'       => (int) ( $group->leader_id ?? 0 ),
+                            'value_label' => $leader_label,
+                            'input_id'    => 'sp-g-leader',
+                            'placeholder' => __( 'Type a name, or leave blank for none', 'societypress' ),
+                        ] ); ?>
                     </td>
                 </tr>
                 <tr>
@@ -23399,18 +23704,15 @@ function sp_render_group_edit_page(): void {
 
             <?php if ( $group_id ) : ?>
                 <h2><?php esc_html_e( 'Add Member', 'societypress' ); ?></h2>
-                <select name="add_member_id" class="sp-group-member-select">
-                    <option value=""><?php esc_html_e( '— Select Member —', 'societypress' ); ?></option>
-                    <?php
-                    $current_ids = array_map( function( $m ) { return (int) $m->user_id; }, $members );
-                    foreach ( $all_members as $m ) :
-                        if ( in_array( (int) $m->user_id, $current_ids, true ) ) continue;
-                    ?>
-                        <option value="<?php echo esc_attr( $m->user_id ); ?>">
-                            <?php echo esc_html( $m->display_name ); ?> (<?php echo esc_html( $m->user_email ); ?>)
-                        </option>
-                    <?php endforeach; ?>
-                </select>
+                <?php
+                // Members already in the group are skipped server-side on save
+                // (the duplicate guard in the POST handler), so the search can
+                // offer everyone without loading the whole roster up front.
+                sp_render_member_autocomplete( 'add_member_id', [
+                    'input_id'    => 'sp-g-addmember',
+                    'placeholder' => __( 'Type a name to add a member', 'societypress' ),
+                ] );
+                ?>
             <?php endif; ?>
 
             <p class="submit">
@@ -24881,13 +25183,9 @@ function sp_render_record_payment_page(): void {
         }
     }
 
-    // Get all members for the dropdown
-    $members = $wpdb->get_results(
-        "SELECT m.user_id, u.display_name, u.user_email
-         FROM {$prefix}members m
-         JOIN {$wpdb->users} u ON m.user_id = u.ID
-         ORDER BY u.display_name ASC"
-    );
+    // Print the autocomplete CSS/JS at body top, before the form table, so the
+    // shared <style>/<script> never lands mid-<table> when the widget renders.
+    sp_print_member_autocomplete_assets();
 
     ?>
     <style id="sp-record-payment-css">
@@ -24904,14 +25202,11 @@ function sp_render_record_payment_page(): void {
                 <tr>
                     <th scope="col"><label for="sp-pay-member"><?php esc_html_e( 'Member', 'societypress' ); ?> <span class="sp-text-error" aria-hidden="true">*</span></label></th>
                     <td>
-                        <select name="user_id" id="sp-pay-member" required class="sp-full-width">
-                            <option value=""><?php echo '— ' . esc_html__( 'Select Member', 'societypress' ) . ' —'; ?></option>
-                            <?php foreach ( $members as $m ) : ?>
-                                <option value="<?php echo esc_attr( $m->user_id ); ?>">
-                                    <?php echo esc_html( $m->display_name ); ?> (<?php echo esc_html( $m->user_email ); ?>)
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
+                        <?php sp_render_member_autocomplete( 'user_id', [
+                            'input_id'    => 'sp-pay-member',
+                            'required'    => true,
+                            'placeholder' => __( 'Type a name to search…', 'societypress' ),
+                        ] ); ?>
                     </td>
                 </tr>
                 <tr>
@@ -61627,20 +61922,18 @@ add_action( 'admin_init', function() {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
-    $rows = $wpdb->get_results(
-        "SELECT m.first_name, m.last_name, vh.activity, vh.committee, vh.hours, vh.activity_date
+    $sql = "SELECT m.first_name, m.last_name, vh.activity, vh.committee, vh.hours, vh.activity_date
          FROM {$prefix}volunteer_hours vh
          INNER JOIN {$prefix}members m ON vh.user_id = m.user_id
-         ORDER BY vh.activity_date DESC"
-    );
+         ORDER BY vh.activity_date DESC, vh.id DESC";
 
     header( 'Content-Type: text/csv; charset=utf-8' );
     header( 'Content-Disposition: attachment; filename="volunteer-hours-' . wp_date( 'Y-m-d' ) . '.csv"' );
     $out = fopen( 'php://output', 'w' );
     fputcsv( $out, [ __( 'First Name', 'societypress' ), __( 'Last Name', 'societypress' ), __( 'Activity', 'societypress' ), __( 'Committee', 'societypress' ), __( 'Hours', 'societypress' ), __( 'Date', 'societypress' ) ] );
-    foreach ( $rows as $row ) {
-    fputcsv( $out, [ $row->first_name, $row->last_name, $row->activity, $row->committee, $row->hours, $row->activity_date ] );
-    }
+    sp_export_stream_csv( $out, $sql, static function ( $row ) {
+        return [ $row->first_name, $row->last_name, $row->activity, $row->committee, $row->hours, $row->activity_date ];
+    } );
     fclose( $out );
     exit;
 } );
@@ -64879,15 +65172,15 @@ add_action( 'admin_init', function () {
     // CSV export
     if ( isset( $_GET['sp_export_subscribers'] ) ) {
         check_admin_referer( 'sp_export_subscribers' );
-        $rows = $wpdb->get_results( "SELECT email, name, status, source, created_at, confirmed_at FROM {$t} ORDER BY created_at DESC", ARRAY_A );
+        $sql = "SELECT email, name, status, source, created_at, confirmed_at FROM {$t} ORDER BY created_at DESC, email ASC";
         nocache_headers();
         header( 'Content-Type: text/csv; charset=utf-8' );
         header( 'Content-Disposition: attachment; filename=subscribers-' . gmdate( 'Y-m-d' ) . '.csv' );
         $out = fopen( 'php://output', 'w' );
         fputcsv( $out, [ 'Email', 'Name', 'Status', 'Source', 'Signed Up', 'Confirmed' ] );
-        foreach ( $rows as $r ) {
-            fputcsv( $out, $r );
-        }
+        sp_export_stream_csv( $out, $sql, static function ( $r ) {
+            return [ $r->email, $r->name, $r->status, $r->source, $r->created_at, $r->confirmed_at ];
+        } );
         fclose( $out );
         exit;
     }
@@ -67361,9 +67654,7 @@ function sp_ajax_export_library(): void {
     }
     $where_sql = implode( ' AND ', $where );
 
-    $items = $wpdb->get_results(
-        "SELECT li.* FROM {$prefix}library_items li WHERE {$where_sql} ORDER BY li.title ASC"
-    );
+    $sql = "SELECT li.* FROM {$prefix}library_items li WHERE {$where_sql} ORDER BY li.title ASC, li.id ASC";
 
     // CSV headers match the import target fields
     $headers = [
@@ -67389,8 +67680,8 @@ function sp_ajax_export_library(): void {
     fwrite( $out, "\xEF\xBB\xBF" );
     fputcsv( $out, $headers );
 
-    foreach ( $items as $item ) {
-        fputcsv( $out, [
+    sp_export_stream_csv( $out, $sql, static function ( $item ) {
+        return [
             $item->system_id,
             $item->title,
             $item->author,
@@ -67424,8 +67715,8 @@ function sp_ajax_export_library(): void {
             $item->item_condition,
             $item->available,
             $item->cover_url,
-        ] );
-    }
+        ];
+    } );
 
     fclose( $out );
     exit;
@@ -67438,6 +67729,42 @@ function sp_ajax_export_library(): void {
 //      out in a standard format. No export fees, no "contact us," no degraded
 //      exports. Your data is yours. Always.
 // ============================================================================
+
+/**
+ * Stream a SELECT to an open CSV handle in bounded LIMIT/OFFSET batches.
+ *
+ * WHY: The per-module exports below each used to pull an entire table into a
+ *      PHP array before writing the first row. At ENS scale (thousands of
+ *      members, 19k+ records) that array can exhaust shared-hosting memory on a
+ *      request that should cost almost nothing. Fetching a fixed number of rows
+ *      at a time keeps peak memory flat regardless of how big the table grows.
+ *
+ * The base query MUST carry a deterministic ORDER BY — one that breaks every
+ * tie, so append the primary key — and must NOT already contain a LIMIT, or the
+ * OFFSET paging will skip or duplicate rows across batch boundaries.
+ *
+ * SECURITY: $base_sql is concatenated verbatim. The caller is responsible for
+ * ensuring it contains no unescaped user input — build any dynamic WHERE clause
+ * with $wpdb->prepare()/esc_like() before passing it in.
+ *
+ * @param resource $out      Open stream handle (typically php://output).
+ * @param string   $base_sql Full SELECT minus any LIMIT clause, pre-sanitized.
+ * @param callable $to_row   Maps one DB row object to an array of CSV cells.
+ * @param int      $batch    Rows per fetch.
+ */
+function sp_export_stream_csv( $out, string $base_sql, callable $to_row, int $batch = 500 ): void {
+    global $wpdb;
+    $offset = 0;
+    do {
+        $rows    = $wpdb->get_results( $base_sql . $wpdb->prepare( ' LIMIT %d OFFSET %d', $batch, $offset ) );
+        $fetched = is_array( $rows ) ? count( $rows ) : 0;
+        foreach ( (array) $rows as $row ) {
+            fputcsv( $out, $to_row( $row ) );
+        }
+        unset( $rows );
+        $offset += $batch;
+    } while ( $fetched === $batch );
+}
 
 
 /**
@@ -67458,12 +67785,10 @@ add_action( 'wp_ajax_sp_export_events', function () {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
-    $items = $wpdb->get_results(
-        "SELECT e.*, c.name AS category_name
+    $sql = "SELECT e.*, c.name AS category_name
          FROM {$prefix}events e
          LEFT JOIN {$prefix}event_categories c ON e.category_id = c.id
-         ORDER BY e.event_date DESC"
-    );
+         ORDER BY e.event_date DESC, e.id DESC";
 
     $headers = [
         'ID', 'Title', 'Category', 'Status', 'Event Date', 'Start Time',
@@ -67482,8 +67807,8 @@ add_action( 'wp_ajax_sp_export_events', function () {
     fwrite( $out, "\xEF\xBB\xBF" );
     fputcsv( $out, $headers );
 
-    foreach ( $items as $e ) {
-        fputcsv( $out, [
+    sp_export_stream_csv( $out, $sql, static function ( $e ) {
+        return [
             $e->id, $e->title, $e->category_name ?? '', $e->status ?? '',
             $e->event_date, $e->start_time, $e->end_time,
             $e->location_name, $e->location_address,
@@ -67491,8 +67816,8 @@ add_action( 'wp_ajax_sp_export_events', function () {
             $e->price_per_ticket, $e->contact_name, $e->contact_email,
             $e->contact_phone, $e->external_url ?? '', $e->description,
             $e->created_at, $e->updated_at,
-        ] );
-    }
+        ];
+    } );
 
     fclose( $out );
     exit;
@@ -67516,13 +67841,11 @@ add_action( 'wp_ajax_sp_export_donations', function () {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
-    $items = $wpdb->get_results(
-        "SELECT d.*, c.name AS campaign_name, u.display_name AS recorded_by_name
+    $sql = "SELECT d.*, c.name AS campaign_name, u.display_name AS recorded_by_name
          FROM {$prefix}donations d
          LEFT JOIN {$prefix}campaigns c ON d.campaign_id = c.id
          LEFT JOIN {$wpdb->users} u ON d.recorded_by = u.ID
-         ORDER BY d.date DESC"
-    );
+         ORDER BY d.date DESC, d.id DESC";
 
     $headers = [
         'ID', 'Donor Name', 'Donor Email', 'Amount', 'Type', 'Date',
@@ -67539,15 +67862,15 @@ add_action( 'wp_ajax_sp_export_donations', function () {
     fwrite( $out, "\xEF\xBB\xBF" );
     fputcsv( $out, $headers );
 
-    foreach ( $items as $d ) {
-        fputcsv( $out, [
+    sp_export_stream_csv( $out, $sql, static function ( $d ) {
+        return [
             $d->id, $d->donor_name, $d->donor_email, $d->amount,
             $d->type, $d->date, $d->campaign_name ?? '',
             $d->in_kind_description, $d->is_anonymous ? 'Yes' : 'No',
             $d->acknowledgment_sent ? 'Yes' : 'No', $d->acknowledgment_date,
             $d->note, $d->recorded_by_name ?? '', $d->created_at,
-        ] );
-    }
+        ];
+    } );
 
     fclose( $out );
     exit;
@@ -67571,12 +67894,10 @@ add_action( 'wp_ajax_sp_export_leadership', function () {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
-    $items = $wpdb->get_results(
-        "SELECT r.*, u.display_name AS member_name
+    $sql = "SELECT r.*, u.display_name AS member_name
          FROM {$prefix}volunteer_roles r
          LEFT JOIN {$wpdb->users} u ON r.user_id = u.ID
-         ORDER BY r.role_type ASC, r.start_date DESC"
-    );
+         ORDER BY r.role_type ASC, r.start_date DESC, r.id DESC";
 
     $headers = [
         'ID', 'Member Name', 'Role Title', 'Role Type', 'Committee',
@@ -67592,13 +67913,13 @@ add_action( 'wp_ajax_sp_export_leadership', function () {
     fwrite( $out, "\xEF\xBB\xBF" );
     fputcsv( $out, $headers );
 
-    foreach ( $items as $r ) {
-        fputcsv( $out, [
+    sp_export_stream_csv( $out, $sql, static function ( $r ) {
+        return [
             $r->id, $r->member_name ?? '', $r->role_title, $r->role_type,
             $r->committee, $r->start_date, $r->end_date, $r->status,
             $r->created_at, $r->updated_at,
-        ] );
-    }
+        ];
+    } );
 
     fclose( $out );
     exit;
@@ -67634,23 +67955,6 @@ add_action( 'wp_ajax_sp_export_records', function () {
     $field_ids   = array_map( static fn( $f ) => (int) $f->id, $fields );
     $field_names = array_map( static fn( $f ) => $f->field_name, $fields );
 
-    // Pull every value for this collection once, keyed [record_id][field_id].
-    $values_by_record = [];
-    foreach ( (array) $wpdb->get_results( $wpdb->prepare(
-        "SELECT rv.record_id, rv.field_id, rv.field_value
-         FROM {$prefix}record_values rv
-         JOIN {$prefix}records r ON r.id = rv.record_id
-         WHERE r.collection_id = %d",
-        $collection_id
-    ) ) as $rv ) {
-        $values_by_record[ (int) $rv->record_id ][ (int) $rv->field_id ] = $rv->field_value;
-    }
-
-    $record_ids = $wpdb->get_col( $wpdb->prepare(
-        "SELECT id FROM {$prefix}records WHERE collection_id = %d ORDER BY id ASC",
-        $collection_id
-    ) );
-
     $filename = 'records-' . sanitize_title( $collection->name ) . '-' . wp_date( 'Y-m-d' ) . '.csv';
     header( 'Content-Type: text/csv; charset=utf-8' );
     header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
@@ -67660,13 +67964,39 @@ add_action( 'wp_ajax_sp_export_records', function () {
     fwrite( $out, "\xEF\xBB\xBF" );
     fputcsv( $out, array_merge( [ __( 'Record ID', 'societypress' ) ], $field_names ) );
 
-    foreach ( $record_ids as $rid ) {
-        $rid  = (int) $rid;
-        $line = [ $rid ];
-        foreach ( $field_ids as $fid ) {
-            $line[] = $values_by_record[ $rid ][ $fid ] ?? '';
+    // Stream records in batches, pulling only the current batch's values into
+    // memory. At ENS scale (19k+ records) the old whole-collection pivot held
+    // every value in a single PHP array — fine on demo, a memory wall on shared
+    // hosting. The Record ID column keeps the real record id, not a sequence.
+    $offset = 0;
+    $batch  = 500;
+    while ( true ) {
+        $batch_ids = $wpdb->get_col( $wpdb->prepare(
+            "SELECT id FROM {$prefix}records WHERE collection_id = %d ORDER BY id ASC LIMIT %d OFFSET %d",
+            $collection_id, $batch, $offset
+        ) );
+        if ( ! $batch_ids ) {
+            break;
         }
-        fputcsv( $out, $line );
+
+        $id_placeholders = implode( ',', array_fill( 0, count( $batch_ids ), '%d' ) );
+        $batch_values = [];
+        foreach ( (array) $wpdb->get_results( $wpdb->prepare(
+            "SELECT record_id, field_id, field_value FROM {$prefix}record_values WHERE record_id IN ($id_placeholders)",
+            ...array_map( 'intval', $batch_ids )
+        ) ) as $rv ) {
+            $batch_values[ (int) $rv->record_id ][ (int) $rv->field_id ] = $rv->field_value;
+        }
+
+        foreach ( $batch_ids as $rid ) {
+            $rid  = (int) $rid;
+            $line = [ $rid ];
+            foreach ( $field_ids as $fid ) {
+                $line[] = $batch_values[ $rid ][ $fid ] ?? '';
+            }
+            fputcsv( $out, $line );
+        }
+        $offset += $batch;
     }
     fclose( $out );
     exit;
@@ -67693,16 +68023,14 @@ add_action( 'wp_ajax_sp_export_orders', function () {
     $prefix = $wpdb->prefix . 'sp_';
 
     // One row per line item, with order data repeated on each row
-    $items = $wpdb->get_results(
-        "SELECT o.id AS order_id, o.created_at AS order_date, o.status,
+    $sql = "SELECT o.id AS order_id, o.created_at AS order_date, o.status,
                 o.customer_name, o.customer_email, o.subtotal, o.tax, o.total,
                 o.payment_method, o.shipping_address_1, o.shipping_city,
                 o.shipping_state, o.shipping_postal, o.admin_note,
                 oi.title AS item_title, oi.quantity, oi.unit_price, oi.line_total
          FROM {$prefix}orders o
          LEFT JOIN {$prefix}order_items oi ON oi.order_id = o.id
-         ORDER BY o.created_at DESC, oi.id ASC"
-    );
+         ORDER BY o.created_at DESC, o.id DESC, oi.id ASC";
 
     $headers = [
         'Order ID', 'Order Date', 'Status', 'Customer Name', 'Customer Email',
@@ -67720,8 +68048,8 @@ add_action( 'wp_ajax_sp_export_orders', function () {
     fwrite( $out, "\xEF\xBB\xBF" );
     fputcsv( $out, $headers );
 
-    foreach ( $items as $row ) {
-        fputcsv( $out, [
+    sp_export_stream_csv( $out, $sql, static function ( $row ) {
+        return [
             $row->order_id, $row->order_date, $row->status,
             $row->customer_name, $row->customer_email,
             $row->subtotal, $row->tax, $row->total, $row->payment_method,
@@ -67729,8 +68057,8 @@ add_action( 'wp_ajax_sp_export_orders', function () {
             $row->shipping_state, $row->shipping_postal, $row->admin_note,
             $row->item_title ?? '', $row->quantity ?? '', $row->unit_price ?? '',
             $row->line_total ?? '',
-        ] );
-    }
+        ];
+    } );
 
     fclose( $out );
     exit;
@@ -67754,12 +68082,10 @@ add_action( 'wp_ajax_sp_export_email_log', function () {
     global $wpdb;
     $table = $wpdb->prefix . 'sp_email_log';
 
-    $items = $wpdb->get_results(
-        "SELECT id, recipient, subject, status, email_type, error_message,
+    $sql = "SELECT id, recipient, subject, status, email_type, error_message,
                 created_at, sent_at
          FROM {$table}
-         ORDER BY created_at DESC"
-    );
+         ORDER BY created_at DESC, id DESC";
 
     $headers = [
         'ID', 'Recipient', 'Subject', 'Status', 'Type', 'Error Message',
@@ -67775,12 +68101,12 @@ add_action( 'wp_ajax_sp_export_email_log', function () {
     fwrite( $out, "\xEF\xBB\xBF" );
     fputcsv( $out, $headers );
 
-    foreach ( $items as $e ) {
-        fputcsv( $out, [
+    sp_export_stream_csv( $out, $sql, static function ( $e ) {
+        return [
             $e->id, $e->recipient, $e->subject, $e->status,
             $e->email_type, $e->error_message, $e->created_at, $e->sent_at,
-        ] );
-    }
+        ];
+    } );
 
     fclose( $out );
     exit;
@@ -67828,18 +68154,35 @@ add_action( 'wp_ajax_sp_export_full_site', function () {
         "SHOW TABLES LIKE %s", $like
     ) );
 
-    // Build the SQL dump in memory. For societies of a few hundred members
-    // and a few thousand records the dump fits comfortably under 50 MB; the
-    // 512M memory bump above gives headroom for larger sites.
-    $sql  = "-- SocietyPress full-site export\n";
-    $sql .= '-- Generated: ' . wp_date( 'Y-m-d H:i:s' ) . "\n";
-    $sql .= '-- Site: ' . home_url() . "\n";
-    $sql .= '-- Plugin version: ' . SOCIETYPRESS_VERSION . "\n";
-    $sql .= "-- WordPress version: " . get_bloginfo( 'version' ) . "\n";
-    $sql .= "-- Tables included: " . count( $tables ) . "\n";
-    $sql .= "--\n-- See README.txt in this archive for restore instructions.\n\n";
-    $sql .= "SET NAMES utf8mb4;\n";
-    $sql .= "SET FOREIGN_KEY_CHECKS=0;\n\n";
+    // Stream the SQL dump to a temp file rather than concatenating it in
+    // memory. At ENS scale (record_values alone runs to hundreds of thousands
+    // of rows) a whole-dump string plus a whole-table SELECT would blow past
+    // even the 512M bump above on shared hosting. Writing as we go keeps peak
+    // memory to a single 500-row batch.
+    $sql_tmp = wp_tempnam( 'sp-export-sql' );
+    // Safety net: the SQL dump contains decrypted member PII. Guarantee the temp
+    // file is removed even if a later fatal aborts the request before the
+    // explicit unlink below. file_exists keeps it idempotent with that unlink.
+    register_shutdown_function( static function () use ( $sql_tmp ) {
+        if ( file_exists( $sql_tmp ) ) {
+            @unlink( $sql_tmp );
+        }
+    } );
+    $sf = fopen( $sql_tmp, 'w' );
+    if ( ! $sf ) {
+        @unlink( $sql_tmp );
+        wp_die( esc_html__( 'Could not create export file.', 'societypress' ) );
+    }
+
+    fwrite( $sf, "-- SocietyPress full-site export\n" );
+    fwrite( $sf, '-- Generated: ' . wp_date( 'Y-m-d H:i:s' ) . "\n" );
+    fwrite( $sf, '-- Site: ' . home_url() . "\n" );
+    fwrite( $sf, '-- Plugin version: ' . SOCIETYPRESS_VERSION . "\n" );
+    fwrite( $sf, "-- WordPress version: " . get_bloginfo( 'version' ) . "\n" );
+    fwrite( $sf, "-- Tables included: " . count( $tables ) . "\n" );
+    fwrite( $sf, "--\n-- See README.txt in this archive for restore instructions.\n\n" );
+    fwrite( $sf, "SET NAMES utf8mb4;\n" );
+    fwrite( $sf, "SET FOREIGN_KEY_CHECKS=0;\n\n" );
 
     foreach ( $tables as $table ) {
         // Defense-in-depth: $table came from $wpdb->get_col(...prepare("SHOW TABLES LIKE %s",...)),
@@ -67849,56 +68192,85 @@ add_action( 'wp_ajax_sp_export_full_site', function () {
         $create = $wpdb->get_row( "SHOW CREATE TABLE `{$table}`", ARRAY_N );
         if ( ! $create || empty( $create[1] ) ) continue;
 
-        $sql .= "-- ----------------------------------------------------\n";
-        $sql .= "-- Table: {$table}\n";
-        $sql .= "-- ----------------------------------------------------\n";
-        $sql .= "DROP TABLE IF EXISTS `{$table}`;\n";
-        $sql .= $create[1] . ";\n\n";
+        fwrite( $sf, "-- ----------------------------------------------------\n" );
+        fwrite( $sf, "-- Table: {$table}\n" );
+        fwrite( $sf, "-- ----------------------------------------------------\n" );
+        fwrite( $sf, "DROP TABLE IF EXISTS `{$table}`;\n" );
+        fwrite( $sf, $create[1] . ";\n\n" );
 
         // For sp_members, decrypt sensitive columns before dumping. Without
         // this the export is portable in name only — the receiving system
         // would be staring at base64'd ciphertext for phone, address, etc.
         $is_members_table = ( $table === $sp_prefix . 'members' );
 
-        $rows = $wpdb->get_results( "SELECT * FROM `{$table}`", ARRAY_A );
-        if ( empty( $rows ) ) continue;
-
-        if ( $is_members_table && function_exists( 'sp_member_decrypt_row' ) ) {
-            foreach ( $rows as &$r ) {
-                $obj = (object) $r;
-                $obj = sp_member_decrypt_row( $obj );
-                $r   = (array) $obj;
-            }
-            unset( $r );
+        // Order by primary key so LIMIT/OFFSET paging stays stable even if a
+        // row is written mid-export. Tables with no primary key (none of ours,
+        // but be safe) fall back to natural order.
+        $pk_cols  = $wpdb->get_col( "SHOW KEYS FROM `{$table}` WHERE Key_name = 'PRIMARY'", 4 );
+        $order_by = '';
+        if ( $pk_cols ) {
+            $order_by = ' ORDER BY `' . implode( '`, `', array_map(
+                static fn( $c ) => str_replace( '`', '', (string) $c ), $pk_cols
+            ) ) . '`';
         }
 
-        $columns = array_keys( $rows[0] );
-        $col_list = '`' . implode( '`, `', $columns ) . '`';
+        $offset   = 0;
+        $batch    = 500;
+        $columns  = [];
+        $col_list = '';
+        while ( true ) {
+            $rows = $wpdb->get_results(
+                "SELECT * FROM `{$table}`{$order_by} LIMIT {$batch} OFFSET {$offset}",
+                ARRAY_A
+            );
+            if ( empty( $rows ) ) break;
 
-        // Chunk INSERTs in groups of 50 to keep individual statements short
-        // enough that mysql clients (and shared-host import tools) accept them.
-        foreach ( array_chunk( $rows, 50 ) as $chunk ) {
-            $values_parts = [];
-            foreach ( $chunk as $row ) {
-                $vals = [];
-                foreach ( $columns as $col ) {
-                    $v = $row[ $col ];
-                    if ( $v === null ) {
-                        $vals[] = 'NULL';
-                    } else {
-                        $vals[] = "'" . esc_sql( $v ) . "'";
-                    }
+            if ( $is_members_table && function_exists( 'sp_member_decrypt_row' ) ) {
+                foreach ( $rows as &$r ) {
+                    $obj = (object) $r;
+                    $obj = sp_member_decrypt_row( $obj );
+                    $r   = (array) $obj;
                 }
-                $values_parts[] = '(' . implode( ', ', $vals ) . ')';
+                unset( $r );
             }
-            $sql .= "INSERT INTO `{$table}` ({$col_list}) VALUES\n  ";
-            $sql .= implode( ",\n  ", $values_parts ) . ";\n";
+
+            // Column list is identical across batches — derive it once. Strip any
+            // backtick before interpolating, matching the table-name and PK-name
+            // guards above (defense-in-depth; real column names can't contain one).
+            if ( $col_list === '' ) {
+                $columns  = array_map( static fn( $c ) => str_replace( '`', '', (string) $c ), array_keys( $rows[0] ) );
+                $col_list = '`' . implode( '`, `', $columns ) . '`';
+            }
+
+            // Chunk INSERTs in groups of 50 to keep individual statements short
+            // enough that mysql clients (and shared-host import tools) accept them.
+            foreach ( array_chunk( $rows, 50 ) as $chunk ) {
+                $values_parts = [];
+                foreach ( $chunk as $row ) {
+                    $vals = [];
+                    foreach ( $columns as $col ) {
+                        $v = $row[ $col ];
+                        if ( $v === null ) {
+                            $vals[] = 'NULL';
+                        } else {
+                            $vals[] = "'" . esc_sql( $v ) . "'";
+                        }
+                    }
+                    $values_parts[] = '(' . implode( ', ', $vals ) . ')';
+                }
+                fwrite( $sf, "INSERT INTO `{$table}` ({$col_list}) VALUES\n  " );
+                fwrite( $sf, implode( ",\n  ", $values_parts ) . ";\n" );
+            }
+
+            unset( $rows );
+            $offset += $batch;
         }
-        $sql .= "\n";
+        fwrite( $sf, "\n" );
     }
 
-    $sql .= "SET FOREIGN_KEY_CHECKS=1;\n";
-    $sql .= "-- End of export\n";
+    fwrite( $sf, "SET FOREIGN_KEY_CHECKS=1;\n" );
+    fwrite( $sf, "-- End of export\n" );
+    fclose( $sf );
 
     // README explaining what is and isn't in the ZIP, plus restore steps.
     $readme = "SocietyPress Site Export\n";
@@ -67931,16 +68303,20 @@ add_action( 'wp_ajax_sp_export_full_site', function () {
     $readme .= "SUPPORT\n-------\n";
     $readme .= "https://github.com/SocietyPressFoundation/SocietyPress/issues\n";
 
-    // Build the ZIP entirely in memory via a temporary file (ZipArchive needs
-    // a real path) and stream it to the browser as the response.
+    // Package the on-disk SQL dump plus the README into a ZIP. addFile() streams
+    // the SQL straight from disk on close(), so the dump never re-enters memory.
     $tmp = wp_tempnam( 'sp-export' );
     $zip = new ZipArchive();
     if ( $zip->open( $tmp, ZipArchive::CREATE | ZipArchive::OVERWRITE ) !== true ) {
+        @unlink( $sql_tmp );
         wp_die( esc_html__( 'Could not create export ZIP.', 'societypress' ) );
     }
-    $zip->addFromString( 'societypress.sql', $sql );
+    $zip->addFile( $sql_tmp, 'societypress.sql' );
     $zip->addFromString( 'README.txt', $readme );
     $zip->close();
+    // The SQL temp file had to outlive the zip's close() — addFile() reads its
+    // source lazily — so only remove it now that the archive is written.
+    @unlink( $sql_tmp );
 
     $filename = sprintf(
         'societypress-export-%s-%s.zip',
@@ -67975,12 +68351,10 @@ add_action( 'wp_ajax_sp_export_resources', function () {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
-    $items = $wpdb->get_results(
-        "SELECT r.*, c.name AS category_name
+    $sql = "SELECT r.*, c.name AS category_name
          FROM {$prefix}resources r
          LEFT JOIN {$prefix}resource_categories c ON r.category_id = c.id
-         ORDER BY c.sort_order ASC, r.sort_order ASC"
-    );
+         ORDER BY c.sort_order ASC, r.sort_order ASC, r.id ASC";
 
     $headers = [
         'ID', 'Title', 'URL', 'Description', 'Category', 'Featured',
@@ -67996,14 +68370,14 @@ add_action( 'wp_ajax_sp_export_resources', function () {
     fwrite( $out, "\xEF\xBB\xBF" );
     fputcsv( $out, $headers );
 
-    foreach ( $items as $r ) {
-        fputcsv( $out, [
+    sp_export_stream_csv( $out, $sql, static function ( $r ) {
+        return [
             $r->id, $r->title, $r->url, $r->description,
             $r->category_name ?? '', $r->featured ? 'Yes' : 'No',
             $r->active ? 'Yes' : 'No', $r->sort_order,
             $r->created_at, $r->updated_at,
-        ] );
-    }
+        ];
+    } );
 
     fclose( $out );
     exit;
@@ -72949,25 +73323,13 @@ function sp_ajax_export_genrecord(): void {
     }
     $filename = implode( '_', array_filter( $slug_parts ) ) . '.genrecord';
 
-    // Load all records and their values in bulk (avoid N+1)
-    $records = $wpdb->get_results( $wpdb->prepare(
-        "SELECT id FROM {$prefix}records WHERE collection_id = %d ORDER BY id ASC",
+    // Record count for the header block only. The data rows are streamed in
+    // batches further down, so a 19k-record collection never loads into memory
+    // all at once on shared hosting.
+    $record_count = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$prefix}records WHERE collection_id = %d",
         $collection_id
     ) );
-    $record_ids = wp_list_pluck( $records, 'id' );
-
-    // Pre-load all values keyed by record_id → field_id → value
-    $all_values = [];
-    if ( $record_ids ) {
-        $id_placeholders = implode( ',', array_fill( 0, count( $record_ids ), '%d' ) );
-        $value_rows = $wpdb->get_results( $wpdb->prepare(
-            "SELECT record_id, field_id, field_value FROM {$prefix}record_values WHERE record_id IN ($id_placeholders)",
-            ...$record_ids
-        ) );
-        foreach ( $value_rows as $vr ) {
-            $all_values[ (int) $vr->record_id ][ (int) $vr->field_id ] = $vr->field_value;
-        }
-    }
 
     // Build column slugs from field definitions for GENRECORD column names
     // WHY: GENRECORD uses snake_case field names like surname, given, birth_date.
@@ -73017,7 +73379,7 @@ function sp_ajax_export_genrecord(): void {
     if ( $contact ) {
         fwrite( $out, "#contact: " . $clean( $contact ) . "\n" );
     }
-    fwrite( $out, "#record_count: " . count( $record_ids ) . "\n" );
+    fwrite( $out, "#record_count: " . $record_count . "\n" );
     if ( $collection->description ) {
         fwrite( $out, "#notes: " . $clean( $collection->description ) . "\n" );
     }
@@ -73028,14 +73390,40 @@ function sp_ajax_export_genrecord(): void {
     // --- Data block (CSV) ---
     fputcsv( $out, $col_headers );
 
-    $row_num = 1;
-    foreach ( $record_ids as $rid ) {
-        $csv_row = [ $row_num ]; // record_id: sequential per GENRECORD spec
-        foreach ( $field_ids as $fid ) {
-            $csv_row[] = $all_values[ $rid ][ $fid ] ?? '';
+    // Stream records in batches, pulling only the current batch's values into
+    // memory. $row_num runs across every batch so the sequential record_id the
+    // GENRECORD spec requires stays byte-identical to the old whole-table load.
+    $row_num = 0;
+    $offset  = 0;
+    $batch   = 500;
+    while ( true ) {
+        $batch_ids = $wpdb->get_col( $wpdb->prepare(
+            "SELECT id FROM {$prefix}records WHERE collection_id = %d ORDER BY id ASC LIMIT %d OFFSET %d",
+            $collection_id, $batch, $offset
+        ) );
+        if ( ! $batch_ids ) {
+            break;
         }
-        fputcsv( $out, $csv_row );
-        $row_num++;
+
+        $id_placeholders = implode( ',', array_fill( 0, count( $batch_ids ), '%d' ) );
+        $batch_values = [];
+        foreach ( (array) $wpdb->get_results( $wpdb->prepare(
+            "SELECT record_id, field_id, field_value FROM {$prefix}record_values WHERE record_id IN ($id_placeholders)",
+            ...array_map( 'intval', $batch_ids )
+        ) ) as $vr ) {
+            $batch_values[ (int) $vr->record_id ][ (int) $vr->field_id ] = $vr->field_value;
+        }
+
+        foreach ( $batch_ids as $rid ) {
+            $rid = (int) $rid;
+            $row_num++;
+            $csv_row = [ $row_num ]; // record_id: sequential per GENRECORD spec
+            foreach ( $field_ids as $fid ) {
+                $csv_row[] = $batch_values[ $rid ][ $fid ] ?? '';
+            }
+            fputcsv( $out, $csv_row );
+        }
+        $offset += $batch;
     }
 
     fclose( $out );

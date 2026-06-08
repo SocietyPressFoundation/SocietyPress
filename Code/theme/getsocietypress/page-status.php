@@ -48,7 +48,7 @@ foreach ( $gsp_incidents as $inc ) {
 }
 
 $gsp_overall_class = $gsp_any_ongoing ? 'status-hero--alert' : 'status-hero--ok';
-$gsp_overall_label = $gsp_any_ongoing ? 'Active incident' : 'All systems operational';
+$gsp_overall_label = $gsp_any_ongoing ? __( 'Active incident', 'getsocietypress' ) : __( 'All systems operational', 'getsocietypress' );
 ?>
 
 <section class="status-hero <?php echo esc_attr( $gsp_overall_class ); ?>">

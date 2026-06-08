@@ -65,10 +65,20 @@ if ( isset( $_POST['sp_batch_action'] ) && $_POST['sp_batch_action'] === 'import
         wp_send_json_error( [ 'message' => 'CSV file not found.' ] );
     }
 
-    $csv_data = file_get_contents( $csv_path );
-    $lines    = str_getcsv( $csv_data, "\n" );
-    $header   = str_getcsv( array_shift( $lines ) );
-    $total    = count( $lines );
+    // WHY: stream the CSV with fgetcsv instead of slurping the whole file and splitting
+    // on "\n". fgetcsv honours RFC 4180 quoting, so fields containing embedded newlines
+    // (e.g. a multi-line Notes value) aren't shredded into bogus rows, and we never hold
+    // more than one batch in memory.
+    $fh = fopen( $csv_path, 'r' );
+    if ( false === $fh ) {
+        wp_send_json_error( [ 'message' => 'CSV file not found.' ] );
+    }
+
+    $header = fgetcsv( $fh );
+    if ( false === $header ) {
+        fclose( $fh );
+        wp_send_json_error( [ 'message' => 'CSV file is empty.' ] );
+    }
 
     // Map header columns
     $col = [];
@@ -76,8 +86,31 @@ if ( isset( $_POST['sp_batch_action'] ) && $_POST['sp_batch_action'] === 'import
         $col[ trim( $name ) ] = $i;
     }
 
-    // Slice the batch
-    $batch = array_slice( $lines, $offset, $batch_size );
+    // Skip rows already processed by earlier batches.
+    for ( $skip = 0; $skip < $offset; $skip++ ) {
+        if ( false === fgetcsv( $fh ) ) {
+            break;
+        }
+    }
+
+    // Read this batch as pre-parsed rows.
+    $batch = [];
+    for ( $b = 0; $b < $batch_size; $b++ ) {
+        $row = fgetcsv( $fh );
+        if ( false === $row ) {
+            break;
+        }
+        $batch[] = $row;
+    }
+
+    // Count the remaining rows so the total reflects the full file.
+    $remaining = 0;
+    while ( false !== fgetcsv( $fh ) ) {
+        $remaining++;
+    }
+    fclose( $fh );
+
+    $total = $offset + count( $batch ) + $remaining;
 
     if ( empty( $batch ) ) {
         wp_send_json_success( [ 'imported' => 0, 'done' => true, 'total' => $total ] );
@@ -98,9 +131,8 @@ if ( isset( $_POST['sp_batch_action'] ) && $_POST['sp_batch_action'] === 'import
     $errors    = 0;
     $error_log = [];
 
-    foreach ( $batch as $line ) {
-        if ( empty( trim( $line ) ) ) continue;
-        $row = str_getcsv( $line );
+    foreach ( $batch as $batch_index => $row ) {
+        if ( empty( array_filter( $row, 'strlen' ) ) ) continue;
 
         $first_name  = trim( $row[ $col['First Name'] ?? 0 ] ?? '' );
         $last_name   = trim( $row[ $col['Last Name'] ?? 1 ] ?? '' );
@@ -144,7 +176,7 @@ if ( isset( $_POST['sp_batch_action'] ) && $_POST['sp_batch_action'] === 'import
         // generate a unique internal email for the WP account (member won't see it) and
         // store the real shared email in sp_members.alt_email or notes.
         $user_id = null;
-        $row_num = $offset + array_search( $line, $batch ) + 1;
+        $row_num = $offset + $batch_index + 1;
 
         // Build username
         $username = sanitize_user( strtolower( $first_name . '.' . $last_name ) );
@@ -168,14 +200,24 @@ if ( isset( $_POST['sp_batch_action'] ) && $_POST['sp_batch_action'] === 'import
             $wp_email = $username . '@members.internal';
         }
 
-        $user_id = wp_insert_user( [
-            'user_login' => $username,
-            'user_email' => $wp_email,
-            'user_pass'  => wp_generate_password( 24 ),
-            'first_name' => $first_name,
-            'last_name'  => $last_name,
-            'role'       => 'subscriber',
-        ] );
+        // WHY: reuse an existing WP user when the email already belongs to one. A
+        // partial/crashed prior run can leave a WP user with no member record; without
+        // this check, every re-run would mint a fresh suffixed account (john.doe1,
+        // john.doe2, ...) that the Clear function — which only deletes users found in
+        // sp_members — can never reclaim.
+        $existing_user_id = $email ? (int) email_exists( $email ) : 0;
+        if ( $existing_user_id ) {
+            $user_id = $existing_user_id;
+        } else {
+            $user_id = wp_insert_user( [
+                'user_login' => $username,
+                'user_email' => $wp_email,
+                'user_pass'  => wp_generate_password( 24 ),
+                'first_name' => $first_name,
+                'last_name'  => $last_name,
+                'role'       => 'subscriber',
+            ] );
+        }
 
         if ( is_wp_error( $user_id ) ) {
             $errors++;
@@ -275,6 +317,7 @@ if ( isset( $_POST['sp_batch_action'] ) && $_POST['sp_batch_action'] === 'clear'
 
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
+    // No user-supplied parameters — table name is from $wpdb->prefix, not input.
     $member_ids = $wpdb->get_col( "SELECT user_id FROM {$prefix}members" );
     $cleared = 0;
 
@@ -608,9 +651,19 @@ $nonce = wp_create_nonce( 'sp_sample_data_nonce' );
             });
     }
 
-    function clearData() {
-        if (!confirm('Delete all member data? This cannot be undone.')) return;
+    // Project convention requires spConfirm() over native confirm(). This standalone
+    // installer page doesn't enqueue the plugin's helper, so delegate to it when present
+    // and degrade to the native dialog only as a last resort.
+    function spLocalConfirm(message, onConfirm) {
+        if (window.spConfirm) { spConfirm(message, onConfirm); return; }
+        if (confirm(message)) { onConfirm(); }
+    }
 
+    function clearData() {
+        spLocalConfirm('Delete all member data? This cannot be undone.', doClearData);
+    }
+
+    function doClearData() {
         var btn = document.getElementById('sp-clear-btn');
         btn.disabled = true;
         btn.textContent = 'Clearing...';

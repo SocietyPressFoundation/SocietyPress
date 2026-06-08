@@ -21,8 +21,6 @@ $filelist = array(
     'wp-activate.php',
     'wp-blog-header.php',
     'wp-comments-post.php',
-    'wp-config.php',
-    'wp-config-sample.php',
     'wp-cron.php',
     'wp-links-opml.php',
     'wp-load.php',
@@ -39,6 +37,11 @@ $filelist = array(
 
     // SocietyPress themes
     'wp-content/themes/societypress',
+    'wp-content/themes/coastline',
+    'wp-content/themes/heritage',
+    'wp-content/themes/ledger',
+    'wp-content/themes/parlor',
+    'wp-content/themes/prairie',
 
     // WordPress default content (safe to remove on uninstall)
     'wp-content/plugins/akismet',

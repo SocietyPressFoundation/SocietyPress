@@ -4308,6 +4308,34 @@ function sp_get_access_areas(): array {
 }
 
 /**
+ * Map of access-area slug => WordPress capability, with no translation.
+ *
+ * WHY a separate function from sp_get_access_areas(): capability checks run
+ *      before `init` (kses_init calls current_user_can during set_current_user),
+ *      and sp_get_access_areas() builds translated name/description via __().
+ *      Calling __() that early trips WP 6.7+'s _load_textdomain_just_in_time
+ *      notice, which every society then logs. The user_has_cap filters only
+ *      need the capability strings, so they read this translation-free map
+ *      instead. Keep the two in lockstep — same slugs, same caps.
+ *
+ * @return array<string,string> area_slug => capability.
+ */
+function sp_get_access_area_caps(): array {
+    return [
+        'members'        => 'sp_manage_members',
+        'events'         => 'sp_manage_events',
+        'library'        => 'sp_manage_library',
+        'finances'       => 'sp_manage_finances',
+        'communications' => 'sp_manage_communications',
+        'records'        => 'sp_manage_records',
+        'governance'     => 'sp_manage_governance',
+        'content'        => 'sp_manage_content',
+        'settings'       => 'sp_manage_settings',
+        'reports'        => 'sp_view_reports',
+    ];
+}
+
+/**
  * Get pre-built role templates.
  *
  * WHY: Harold shouldn't have to check 10 boxes every time he wants to give
@@ -4603,8 +4631,8 @@ add_filter( 'user_has_cap', function ( array $allcaps, array $caps, array $args,
 
     // If WordPress admin, grant all SocietyPress capabilities
     if ( ! empty( $allcaps['manage_options'] ) ) {
-        foreach ( sp_get_access_areas() as $area ) {
-            $allcaps[ $area['capability'] ] = true;
+        foreach ( sp_get_access_area_caps() as $capability ) {
+            $allcaps[ $capability ] = true;
         }
         // Also grant the umbrella cap used for menu visibility
         $allcaps['sp_access_admin'] = true;
@@ -4624,10 +4652,10 @@ add_filter( 'user_has_cap', function ( array $allcaps, array $caps, array $args,
     $allcaps['sp_access_admin'] = true;
 
     // Grant specific area capabilities
-    $areas = sp_get_access_areas();
+    $area_caps = sp_get_access_area_caps();
     foreach ( $user_areas as $area_slug ) {
-        if ( isset( $areas[ $area_slug ] ) ) {
-            $allcaps[ $areas[ $area_slug ]['capability'] ] = true;
+        if ( isset( $area_caps[ $area_slug ] ) ) {
+            $allcaps[ $area_caps[ $area_slug ] ] = true;
         }
     }
 
@@ -9711,7 +9739,7 @@ add_action( 'login_enqueue_scripts', function () {
             // quote, newline) — not for HTML or JS.
             $sp_login_title = $settings['organization_name'] ?? get_bloginfo( 'name' );
             $sp_login_title = html_entity_decode( $sp_login_title, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
-            $sp_login_title = preg_replace( '/[\x{2028}\x{2029}\x{FEFF}]/u', '', $sp_login_title );
+            $sp_login_title = preg_replace( '/[\x{0B}\x{0C}\x{2028}\x{2029}\x{FEFF}]/u', '', $sp_login_title );
             $sp_login_title = addcslashes( $sp_login_title, "\\'\"\n\r" );
             ?>
             content: '<?php echo $sp_login_title; ?>';
@@ -9936,7 +9964,11 @@ add_filter( 'login_message', function ( $message ) {
     }
 
     if ( $org_email ) {
-        $notice .= '<p>' . esc_html__( 'If you have any membership questions, please contact the Membership Chair at ', 'societypress' ) . sp_obfuscate_email( $org_email ) . '.</p>';
+        $notice .= '<p>' . sprintf(
+            /* translators: %s: organization contact email address */
+            esc_html__( 'If you have any membership questions, please contact the Membership Chair at %s.', 'societypress' ),
+            sp_obfuscate_email( $org_email )
+        ) . '</p>';
     } else {
         $notice .= '<p>' . esc_html__( 'If you have any membership questions, please contact the Membership Chair.', 'societypress' ) . '</p>';
     }
@@ -10117,7 +10149,11 @@ add_action( 'admin_footer', function () {
             }
             ?>
             <?php if ( $sp_ack_email ) : ?>
-                <p><?php echo esc_html__( 'If you have any questions, please contact us at ', 'societypress' ); ?><?php echo sp_obfuscate_email( $sp_ack_email ); ?>.</p>
+                <p><?php printf(
+                    /* translators: %s: organization contact email address */
+                    esc_html__( 'If you have any questions, please contact us at %s.', 'societypress' ),
+                    sp_obfuscate_email( $sp_ack_email )
+                ); ?></p>
             <?php endif; ?>
             </div>
             <button type="button" class="sp-acknowledge-btn" id="sp-login-ack-btn"><?php esc_html_e( 'I Understand', 'societypress' ); ?></button>
@@ -11051,37 +11087,54 @@ function sp_render_dashboard_page(): void {
     $thirty_days  = date( 'Y-m-d', strtotime( '+30 days', strtotime( $today ) ) );
 
     // ---- Stat queries ----
-    // WHY one query per stat: These are simple COUNT queries on indexed columns.
-    // They run in <1ms each, and keeping them separate makes the code easy to
-    // maintain vs one giant UNION that's hard to debug.
-    $total_members  = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}members" );
-    $active_members = (int) $wpdb->get_var(
-        "SELECT COUNT(*) FROM {$prefix}members WHERE status = 'active'"
-    );
-    $expired_members = (int) $wpdb->get_var(
-        "SELECT COUNT(*) FROM {$prefix}members WHERE status = 'expired'"
-    );
+    // WHY cached: these five COUNTs run on every dashboard load. They're cheap
+    // individually, but a write invalidates them immediately (sp_audit ->
+    // sp_invalidate_stat_caches), so the cache never shows a stale total after
+    // an admin action; the date stamp forces a recompute when the day rolls
+    // over (the expiring/recent windows are date-relative), and a 5-minute TTL
+    // backstops any unaudited public write.
+    $stats = get_transient( 'sp_dashboard_member_stats' );
+    if ( ! is_array( $stats ) || ( $stats['date'] ?? '' ) !== $today ) {
+        $stats = [
+            'date'   => $today,
+            'total'  => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}members" ),
+            'active' => (int) $wpdb->get_var(
+                "SELECT COUNT(*) FROM {$prefix}members WHERE status = 'active'"
+            ),
+            'expired' => (int) $wpdb->get_var(
+                "SELECT COUNT(*) FROM {$prefix}members WHERE status = 'expired'"
+            ),
+            // Members expiring in the next 30 days (still active, but running out)
+            'expiring' => (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$prefix}members
+                 WHERE status = 'active'
+                   AND expiration_date IS NOT NULL
+                   AND expiration_date BETWEEN %s AND %s",
+                $today, $thirty_days
+            ) ),
+            // New members in the last 30 days
+            'recent' => (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$prefix}members WHERE join_date >= %s",
+                date( 'Y-m-d', strtotime( '-30 days', strtotime( $today ) ) )
+            ) ),
+        ];
+        set_transient( 'sp_dashboard_member_stats', $stats, 5 * MINUTE_IN_SECONDS );
+    }
 
-    // Members expiring in the next 30 days (still active, but running out)
-    $expiring_soon = (int) $wpdb->get_var( $wpdb->prepare(
-        "SELECT COUNT(*) FROM {$prefix}members
-         WHERE status = 'active'
-           AND expiration_date IS NOT NULL
-           AND expiration_date BETWEEN %s AND %s",
-        $today, $thirty_days
-    ) );
-
-    // New members in the last 30 days
-    $recent_signup_count = (int) $wpdb->get_var( $wpdb->prepare(
-        "SELECT COUNT(*) FROM {$prefix}members WHERE join_date >= %s",
-        date( 'Y-m-d', strtotime( '-30 days', strtotime( $today ) ) )
-    ) );
+    $total_members       = $stats['total'];
+    $active_members      = $stats['active'];
+    $expired_members     = $stats['expired'];
+    $expiring_soon       = $stats['expiring'];
+    $recent_signup_count = $stats['recent'];
 
     // ---- Upcoming events (next 5) ----
+    // Events use the status workflow 'scheduled'/'cancelled'/'postponed'/
+    // 'completed' (see the save allowlist) — there is no 'published' status, so
+    // the old value matched nothing and this card was always empty.
     $upcoming_events = $wpdb->get_results( $wpdb->prepare(
         "SELECT id, title, slug, event_date, start_time, location_name
          FROM {$prefix}events
-         WHERE event_date >= %s AND status = 'published'
+         WHERE event_date >= %s AND status = 'scheduled'
          ORDER BY event_date ASC, start_time ASC
          LIMIT 5",
         $today
@@ -12100,7 +12153,7 @@ function sp_insights_bucket_counts( string $table_suffix, string $date_col, arra
     // Cache hot — the Insights dashboard fires a dozen of these per panel,
     // ten or more panels per load. A short transient is enough to make the
     // page viable on shared hosts with large datasets.
-    $cache_key = 'sp_insights_' . md5( $table_suffix . '|' . $date_col . '|' . wp_json_encode( $window ) . '|' . $extra_where );
+    $cache_key = 'sp_insights_' . md5( $table_suffix . '|' . $date_col . '|' . wp_json_encode( $window ) . '|' . $extra_where . '|' . sp_insights_cache_salt() );
     $cached    = get_transient( $cache_key );
     if ( is_array( $cached ) && isset( $cached['total'], $cached['sparkline'] ) ) {
         return $cached;
@@ -12223,7 +12276,7 @@ function sp_insights_stats_members( array $window ): array {
     // Cache hot: this panel renders on every Insights load alongside a dozen
     // others. A short transient keeps it viable on shared hosts with a large
     // access_log. Keyed on the window so each date range caches independently.
-    $cache_key = 'sp_insights_members_' . md5( wp_json_encode( $window ) );
+    $cache_key = 'sp_insights_members_' . md5( wp_json_encode( $window ) . '|' . sp_insights_cache_salt() );
     $cached    = get_transient( $cache_key );
     if ( is_array( $cached ) && isset( $cached['value'], $cached['sparkline'] ) ) {
         return [ 'label' => $label, 'value' => $cached['value'], 'value_kind' => 'count', 'sparkline' => $cached['sparkline'] ];
@@ -12317,7 +12370,7 @@ function sp_insights_stats_governance( array $window ): array {
     $zeroes = array_fill( 0, max( 1, (int) ( $window['buckets'] ?? 12 ) ), 0 );
     $label  = __( 'Volunteer hours', 'societypress' );
 
-    $cache_key = 'sp_insights_governance_' . md5( wp_json_encode( $window ) );
+    $cache_key = 'sp_insights_governance_' . md5( wp_json_encode( $window ) . '|' . sp_insights_cache_salt() );
     $cached    = get_transient( $cache_key );
     if ( is_array( $cached ) && isset( $cached['value'], $cached['sparkline'] ) ) {
         return [ 'label' => $label, 'value' => $cached['value'], 'value_kind' => 'hours', 'sparkline' => $cached['sparkline'] ];
@@ -12390,7 +12443,7 @@ function sp_insights_stats_donations( array $window ): array {
 
     $label = __( 'Total raised', 'societypress' );
 
-    $cache_key = 'sp_insights_donations_' . md5( wp_json_encode( $window ) );
+    $cache_key = 'sp_insights_donations_' . md5( wp_json_encode( $window ) . '|' . sp_insights_cache_salt() );
     $cached    = get_transient( $cache_key );
     if ( is_array( $cached ) && isset( $cached['value'], $cached['sparkline'] ) ) {
         return [ 'label' => $label, 'value' => $cached['value'], 'value_kind' => 'currency', 'sparkline' => $cached['sparkline'] ];
@@ -13610,11 +13663,12 @@ function sp_render_chair_page(): void {
     $opp_rows = $wpdb->get_results(
         "SELECT o.id, o.title, o.event_date, o.capacity,
                 c.name AS committee_name,
-                (SELECT COUNT(*) FROM {$prefix}volunteer_signups s
-                 WHERE s.opportunity_id = o.id AND s.status = 'confirmed') AS confirmed_count
+                COALESCE(SUM(CASE WHEN s.status = 'confirmed' THEN 1 ELSE 0 END), 0) AS confirmed_count
          FROM {$prefix}volunteer_opportunities o
          LEFT JOIN {$prefix}committees c ON c.id = o.committee_id
+         LEFT JOIN {$prefix}volunteer_signups s ON s.opportunity_id = o.id
          WHERE o.committee_id IN ({$id_list}) AND o.status = 'open'
+         GROUP BY o.id, o.title, o.event_date, o.capacity, c.name, o.sort_order
          ORDER BY o.event_date ASC, o.sort_order ASC
          LIMIT 10"
     );
@@ -16342,6 +16396,10 @@ function sp_render_member_edit_page(): void {
                          */
                         function calcExpiration(joinStr) {
                             if (!joinStr) return "";
+
+                            // Lifetime memberships never expire — leave the date blank.
+                            if (periodType === "lifetime") return "";
+
                             var parts = joinStr.split("-");
                             var joinYear  = parseInt(parts[0], 10);
                             var joinMonth = parseInt(parts[1], 10);
@@ -17762,7 +17820,6 @@ add_action( 'wp_ajax_sp_delete_all_others_ids', function () {
 
     $current_uid   = get_current_user_id();
     $current_user  = wp_get_current_user();
-    $current_login = $current_user->user_login;
     $admin_display = strtolower( trim( $current_user->display_name ) );
 
     $all_members = $wpdb->get_results(
@@ -17774,8 +17831,9 @@ add_action( 'wp_ajax_sp_delete_all_others_ids', function () {
         $uid = (int) $row->user_id;
         if ( $uid === $current_uid ) continue;
         if ( in_array( $uid, $admin_ids, true ) ) continue;
-        $target_user = get_userdata( $uid );
-        if ( $target_user && $target_user->user_login === $current_login ) continue;
+        // No per-row get_userdata() login check: a different user_id cannot
+        // share the current user's login, so the $uid === $current_uid guard
+        // above already covers it — and the lookup was an N+1 per member.
         $member_name = strtolower( trim( $row->first_name . ' ' . $row->last_name ) );
         if ( $member_name === $admin_display ) continue;
         $to_delete[] = $uid;
@@ -21268,6 +21326,13 @@ function sp_calculate_expiration( string $join_date, array $settings ): string {
     $start_month  = (int) ( $settings['membership_start_month'] ?? 7 );
     $credit_months = (int) ( $settings['late_join_months'] ?? 5 );
 
+    // --- Lifetime: no expiration. A blank date is the plugin's "never expires"
+    //     sentinel (sp_user_renewal_status treats empty/0000-00-00 as safe), so
+    //     return empty rather than falling through to the annual calculation. ---
+    if ( $period_type === 'lifetime' ) {
+        return '';
+    }
+
     // --- Rolling: simply add 12 months ---
     if ( $period_type === 'rolling' ) {
         $dt = date_create( $join_date );
@@ -22437,6 +22502,43 @@ function sp_audit( string $action, ?string $description = null, ?string $object_
         'ip_address'  => sp_get_remote_ip(),
         'created_at'  => current_time( 'mysql' ),
     ] );
+
+    // Any audited action is a data mutation, so the cached dashboard counts and
+    // Insights buckets may now be stale. Drop them here rather than wiring a
+    // bust into every write site. The transients' own TTL is the backstop for
+    // the rare write that isn't audited (e.g., a public join still reflects
+    // within five minutes).
+    sp_invalidate_stat_caches();
+}
+
+/**
+ * Monotonic salt mixed into every Insights transient key.
+ *
+ * WHY a salt instead of deleting keys: Insights caches under md5 keys that
+ *      vary by window and panel — there's no clean way to enumerate them for
+ *      deletion. Bumping this salt orphans the whole set at once; the stale
+ *      transients fall off on their own 5-minute TTL.
+ */
+function sp_insights_cache_salt(): int {
+    return (int) get_option( 'sp_insights_cache_gen', 0 );
+}
+
+/**
+ * Invalidate the cached dashboard counts and Insights buckets after a write.
+ *
+ * WHY the static guard: sp_audit() can fire several times in one request
+ *      (e.g., a bulk action). One bust per request is enough, and it keeps us
+ *      from writing the gen option repeatedly.
+ */
+function sp_invalidate_stat_caches(): void {
+    static $busted = false;
+    if ( $busted ) {
+        return;
+    }
+    $busted = true;
+
+    delete_transient( 'sp_dashboard_member_stats' );
+    update_option( 'sp_insights_cache_gen', sp_insights_cache_salt() + 1, false );
 }
 
 /**
@@ -22990,7 +23092,8 @@ function sp_render_access_log_page(): void {
             } else {
                 esc_html_e( 'Retention is set to "Forever" — entries are never pruned automatically.', 'societypress' );
             }
-            echo ' ' . number_format( $total ) . ' ' . esc_html__( 'total entries.', 'societypress' );
+            /* translators: %s: formatted number of audit-log entries */
+            printf( ' ' . esc_html__( '%s total entries.', 'societypress' ), number_format( $total ) );
             ?>
         </p>
     </div>
@@ -23732,6 +23835,12 @@ function sp_ajax_join_group(): void {
 
     if ( ! is_user_logged_in() ) {
         wp_send_json_error( [ 'message' => __( 'You must be logged in.', 'societypress' ) ] );
+    }
+
+    // Groups are a member benefit — a WP login alone isn't enough. Lapsed,
+    // suspended, or cancelled members who still have an account must not join.
+    if ( ! sp_user_is_active_member() ) {
+        wp_send_json_error( [ 'message' => __( 'An active membership is required to join groups.', 'societypress' ) ] );
     }
 
     global $wpdb;
@@ -28423,6 +28532,40 @@ function sp_render_themes_page(): void {
         var saveBtn     = document.getElementById('sp-builder-save');
         var statusDiv   = document.getElementById('sp-builder-status');
 
+        // ---- Modal accessibility: trigger focus return, background inert, Tab
+        //      trap. The modal had aria-modal but no focus management at all. ----
+        var spBuilderTrigger = null;
+        var spBuilderInert   = [];
+        var spBuilderDialog  = modal ? modal.querySelector('.sp-themes-modal-dialog') : null;
+
+        function spBuilderActivate() {
+            spBuilderTrigger = document.activeElement;
+            if (modal && modal.parentNode !== document.body) { document.body.appendChild(modal); }
+            spBuilderInert = [];
+            if (modal) {
+                for (var i = 0; i < document.body.children.length; i++) {
+                    var sib = document.body.children[i];
+                    if (sib !== modal && !sib.inert) { sib.inert = true; spBuilderInert.push(sib); }
+                }
+            }
+            if (spBuilderDialog) { try { spBuilderDialog.focus(); } catch (e) {} }
+        }
+
+        function spBuilderTrap(e) {
+            if (!modal || modal.style.display === 'none') return;
+            if (e.key === 'Escape') { closeBuilder(); return; }
+            if (e.key !== 'Tab') return;
+            var f = Array.prototype.filter.call(
+                modal.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'),
+                function (el) { return el.offsetParent !== null; }
+            );
+            if (!f.length) return;
+            var first = f[0], last = f[f.length - 1];
+            if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+            else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        }
+        if (modal) { modal.addEventListener('keydown', spBuilderTrap); }
+
         // Default colors (matches the parent theme defaults)
         var defaultColors = {
             primary:       '#1e3a5f',
@@ -28456,6 +28599,7 @@ function sp_render_themes_page(): void {
             updatePreview();
             modal.style.display = '';
             document.body.style.overflow = 'hidden';
+            spBuilderActivate();
         }
 
         // ---- Open modal for EDITING an existing custom theme ----
@@ -28481,12 +28625,19 @@ function sp_render_themes_page(): void {
             updatePreview();
             modal.style.display = '';
             document.body.style.overflow = 'hidden';
+            spBuilderActivate();
         }
 
         // ---- Close modal ----
         function closeBuilder() {
             modal.style.display = 'none';
             document.body.style.overflow = '';
+            spBuilderInert.forEach(function (s) { s.inert = false; });
+            spBuilderInert = [];
+            if (spBuilderTrigger && typeof spBuilderTrigger.focus === 'function') {
+                try { spBuilderTrigger.focus(); } catch (e) {}
+            }
+            spBuilderTrigger = null;
         }
 
         // ---- Set a color field (both the <input type="color"> and the hex text) ----
@@ -29492,13 +29643,13 @@ function sp_render_settings_design_page(): void {
 
                 <!-- Device width toggle buttons -->
                 <div class="sp-design-device-bar">
-                    <button type="button" class="button sp-preview-device sp-preview-device-active" data-width="100%">
+                    <button type="button" class="button sp-preview-device sp-preview-device-active" data-width="100%" aria-pressed="true">
                         <span class="dashicons dashicons-desktop sp-design-device-icon"></span> <?php esc_html_e( 'Desktop', 'societypress' ); ?>
                     </button>
-                    <button type="button" class="button sp-preview-device" data-width="768px">
+                    <button type="button" class="button sp-preview-device" data-width="768px" aria-pressed="false">
                         <span class="dashicons dashicons-tablet sp-design-device-icon"></span> <?php esc_html_e( 'Tablet', 'societypress' ); ?>
                     </button>
-                    <button type="button" class="button sp-preview-device" data-width="375px">
+                    <button type="button" class="button sp-preview-device" data-width="375px" aria-pressed="false">
                         <span class="dashicons dashicons-smartphone sp-design-device-icon"></span> <?php echo esc_html_x( 'Phone', 'device preview button', 'societypress' ); ?>
                     </button>
                 </div>
@@ -29772,8 +29923,9 @@ function sp_render_settings_design_page(): void {
         var previewContainer = document.getElementById('sp-preview-container');
         deviceBtns.forEach(function(btn) {
             btn.addEventListener('click', function() {
-                deviceBtns.forEach(function(b) { b.classList.remove('sp-preview-device-active'); });
+                deviceBtns.forEach(function(b) { b.classList.remove('sp-preview-device-active'); b.setAttribute('aria-pressed', 'false'); });
                 this.classList.add('sp-preview-device-active');
+                this.setAttribute('aria-pressed', 'true');
                 var width = this.getAttribute('data-width');
                 if (previewContainer) {
                     previewContainer.style.maxWidth = width;
@@ -30034,6 +30186,7 @@ function sp_render_settings_modules_page(): void {
                                            <?php checked( $is_on ); ?>
                                            onchange="this.closest('.sp-module-card').classList.toggle('sp-module-enabled', this.checked);">
                                     <span class="sp-toggle-slider"></span>
+                                    <span class="screen-reader-text"><?php echo esc_html( $mod['name'] ); ?></span>
                                 </label>
                             </div>
                             <div class="sp-module-card-desc"><?php echo esc_html( $mod['description'] ); ?></div>
@@ -30515,14 +30668,24 @@ add_action( "admin_enqueue_scripts", function ( $hook ) {
 
     $role_lookup = [];
     foreach ( $officers as $o ) {
-        $role_lookup[ (int) $o->user_id ][] = $o->role_title . ' (' . __( 'Officer', 'societypress' ) . ')';
+        $role_lookup[ (int) $o->user_id ][] = sprintf(
+            /* translators: %1$s: role title, %2$s: role type (Officer) */
+            __( '%1$s (%2$s)', 'societypress' ),
+            $o->role_title,
+            __( 'Officer', 'societypress' )
+        );
     }
     foreach ( $committees as $c ) {
         $label = $c->role_title;
         if ( $c->committee ) {
             $label .= ' — ' . $c->committee;
         }
-        $role_lookup[ (int) $c->user_id ][] = $label . ' (' . __( 'Committee', 'societypress' ) . ')';
+        $role_lookup[ (int) $c->user_id ][] = sprintf(
+            /* translators: %1$s: role label, %2$s: role type (Committee) */
+            __( '%1$s (%2$s)', 'societypress' ),
+            $label,
+            __( 'Committee', 'societypress' )
+        );
     }
 
     $members_data = [];
@@ -30983,8 +31146,9 @@ function sp_render_directory( array $settings ): void {
     // Build params: search/letter params + limit + offset
     $query_params = array_merge( $params, [ $per_page, $offset ] );
     $members      = $wpdb->get_results( $wpdb->prepare( $query, ...$query_params ) );
-    // Decrypt sensitive contact/address fields that are encrypted at rest
-    $members      = sp_member_decrypt_rows( $members );
+    // No decrypt pass here: the public directory renders none of the encrypted
+    // fields (cell/work_phone/alt_phone/fax), so decrypting every row was pure
+    // wasted crypto on each page load.
 
 
     // ---- Load surnames for all members on this page (one query, not N) ----
@@ -31236,7 +31400,8 @@ function sp_render_directory( array $settings ): void {
         } elseif ( $total_members === 1 ) {
             echo '<p>' . esc_html__( '1 member', 'societypress' ) . '</p>';
         } else {
-            printf( '<p>%s ' . esc_html__( 'members', 'societypress' ) . '</p>', number_format_i18n( $total_members ) );
+            /* translators: %s: formatted total number of members */
+            printf( '<p>' . esc_html__( '%s members', 'societypress' ) . '</p>', number_format_i18n( $total_members ) );
         }
         ?>
     </div>
@@ -33454,7 +33619,7 @@ function sp_builder_fields_contact_form( $index, array $settings ): void {
     <div class="sp-builder-field">
         <p class="description"><?php esc_html_e( 'Displays a simple name/email/message form. Submissions are emailed to the organization email from your SocietyPress settings.', 'societypress' ); ?></p>
         <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-intro_text"><?php esc_html_e( 'Introductory text (optional)', 'societypress' ); ?></label>
-        <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][intro_text]" id="sp-w-<?php echo esc_attr( $index ); ?>-intro_text" value="<?php echo esc_attr( $intro_text ); ?>" class="widefat" placeholder="e.g., We\'d love to hear from you!">
+        <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][intro_text]" id="sp-w-<?php echo esc_attr( $index ); ?>-intro_text" value="<?php echo esc_attr( $intro_text ); ?>" class="widefat" placeholder="<?php esc_attr_e( 'e.g., We\'d love to hear from you!', 'societypress' ); ?>">
         <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-preset_subject"><?php esc_html_e( 'Subject line (optional)', 'societypress' ); ?></label>
         <input type="text" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][preset_subject]" id="sp-w-<?php echo esc_attr( $index ); ?>-preset_subject" value="<?php echo esc_attr( $preset_subject ); ?>" class="widefat" placeholder="<?php esc_attr_e( 'e.g., Membership question', 'societypress' ); ?>">
         <p class="description"><?php esc_html_e( 'Sets the subject of the email this form sends — useful when you have separate contact forms on different pages so you can tell them apart in your inbox.', 'societypress' ); ?></p>
@@ -35550,10 +35715,13 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
                     // WHY: Event delegation from the parent container so buttons
                     //      added dynamically (unlikely here, but defensive) still work.
                     var spSurnameOpener = null;  // for focus return
+                    var spSurnameInert = [];     // siblings made inert while open
                     function spCloseSurnameModal() {
                         var m = document.getElementById('sp-surname-contact-modal');
                         if (!m) return;
                         m.style.display = 'none';
+                        spSurnameInert.forEach(function (s) { s.inert = false; });
+                        spSurnameInert = [];
                         if (spSurnameOpener && typeof spSurnameOpener.focus === 'function') {
                             try { spSurnameOpener.focus(); } catch (e) {}
                         }
@@ -35571,6 +35739,16 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
                         document.getElementById('sp-surname-contact-msg').style.display = 'none';
                         spSurnameOpener = btn;
                         modal.style.display = 'flex';
+                        // Mirror spConfirm: mark the rest of the page inert so older
+                        // AT (NVDA pre-2024, JAWS pre-2023) that ignores aria-modal
+                        // can't reach the background. The modal must be a body-level
+                        // element for sibling-inert to be correct.
+                        if (modal.parentNode !== document.body) { document.body.appendChild(modal); }
+                        spSurnameInert = [];
+                        for (var si = 0; si < document.body.children.length; si++) {
+                            var sib = document.body.children[si];
+                            if (sib !== modal && !sib.inert) { sib.inert = true; spSurnameInert.push(sib); }
+                        }
                         // Move focus into the modal so keyboard users can type
                         // immediately and Escape is reachable.
                         var firstField = modal.querySelector('textarea, input:not([type="hidden"]), button');
@@ -39252,7 +39430,7 @@ function sp_render_event_edit_page(): void {
                     return dt ? formatShort(dt) : s;
                 }).join(', ');
                 listHtml += '<span class="sp-recurrence-prev-more" hidden>, ' + extra + '</span>';
-                listHtml += ' <a href="#" class="sp-recurrence-prev-toggle" data-expanded="0">' +
+                listHtml += ' <a href="#" class="sp-recurrence-prev-toggle" data-expanded="0" aria-expanded="false">' +
                             I18N.show_all.replace('%d', all.length - LIMIT) + '</a>';
             }
             listHtml += '</div>';
@@ -39274,10 +39452,12 @@ function sp_render_event_edit_page(): void {
                         more.hidden = true;
                         toggle.textContent = I18N.show_all;
                         toggle.setAttribute('data-expanded', '0');
+                        toggle.setAttribute('aria-expanded', 'false');
                     } else {
                         more.hidden = false;
                         toggle.textContent = I18N.show_less;
                         toggle.setAttribute('data-expanded', '1');
+                        toggle.setAttribute('aria-expanded', 'true');
                     }
                 });
             }
@@ -40939,18 +41119,18 @@ add_action( 'admin_init', function () {
             ?>
             <div class="sp-stripe-keys-group" id="sp-stripe-test-keys">
                 <div class="sp-mb-8">
-                    <label class="sp-block-label"><?php esc_html_e( 'Publishable Key', 'societypress' ); ?></label>
-                    <input type="text" name="societypress_settings[stripe_test_publishable_key]"
+                    <label class="sp-block-label" for="sp-field-stripe-test-pub"><?php esc_html_e( 'Publishable Key', 'societypress' ); ?></label>
+                    <input type="text" id="sp-field-stripe-test-pub" name="societypress_settings[stripe_test_publishable_key]"
                            value="<?php echo esc_attr( $pub ); ?>" class="large-text"
                            placeholder="pk_test_..." autocomplete="off" spellcheck="false">
                 </div>
                 <div>
-                    <label class="sp-block-label"><?php esc_html_e( 'Secret Key', 'societypress' ); ?></label>
-                    <input type="password" name="societypress_settings[stripe_test_secret_key]"
+                    <label class="sp-block-label" for="sp-field-stripe-test-sec"><?php esc_html_e( 'Secret Key', 'societypress' ); ?></label>
+                    <input type="password" id="sp-field-stripe-test-sec" name="societypress_settings[stripe_test_secret_key]"
                            value="<?php echo esc_attr( $sec ); ?>" class="large-text"
                            placeholder="sk_test_..." autocomplete="off" spellcheck="false">
-                    <button type="button" class="button button-small sp-toggle-secret"
-                            class="sp-mt-4" onclick="var i=this.previousElementSibling;if(i.type==='password'){i.type='text';this.textContent='<?php echo esc_js( __( 'Hide', 'societypress' ) ); ?>';}else{i.type='password';this.textContent='<?php echo esc_js( __( 'Show', 'societypress' ) ); ?>';}">
+                    <button type="button" class="button button-small sp-toggle-secret sp-mt-4"
+                            onclick="var i=this.previousElementSibling;if(i.type==='password'){i.type='text';this.textContent='<?php echo esc_js( __( 'Hide', 'societypress' ) ); ?>';}else{i.type='password';this.textContent='<?php echo esc_js( __( 'Show', 'societypress' ) ); ?>';}">
                         <?php esc_html_e( 'Show', 'societypress' ); ?>
                     </button>
                 </div>
@@ -40974,18 +41154,18 @@ add_action( 'admin_init', function () {
             ?>
             <div class="sp-stripe-keys-group" id="sp-stripe-live-keys">
                 <div class="sp-mb-8">
-                    <label class="sp-block-label"><?php esc_html_e( 'Publishable Key', 'societypress' ); ?></label>
-                    <input type="text" name="societypress_settings[stripe_live_publishable_key]"
+                    <label class="sp-block-label" for="sp-field-stripe-live-pub"><?php esc_html_e( 'Publishable Key', 'societypress' ); ?></label>
+                    <input type="text" id="sp-field-stripe-live-pub" name="societypress_settings[stripe_live_publishable_key]"
                            value="<?php echo esc_attr( $pub ); ?>" class="large-text"
                            placeholder="pk_live_..." autocomplete="off" spellcheck="false">
                 </div>
                 <div>
-                    <label class="sp-block-label"><?php esc_html_e( 'Secret Key', 'societypress' ); ?></label>
-                    <input type="password" name="societypress_settings[stripe_live_secret_key]"
+                    <label class="sp-block-label" for="sp-field-stripe-live-sec"><?php esc_html_e( 'Secret Key', 'societypress' ); ?></label>
+                    <input type="password" id="sp-field-stripe-live-sec" name="societypress_settings[stripe_live_secret_key]"
                            value="<?php echo esc_attr( $sec ); ?>" class="large-text"
                            placeholder="sk_live_..." autocomplete="off" spellcheck="false">
-                    <button type="button" class="button button-small sp-toggle-secret"
-                            class="sp-mt-4" onclick="var i=this.previousElementSibling;if(i.type==='password'){i.type='text';this.textContent='<?php echo esc_js( __( 'Hide', 'societypress' ) ); ?>';}else{i.type='password';this.textContent='<?php echo esc_js( __( 'Show', 'societypress' ) ); ?>';}">
+                    <button type="button" class="button button-small sp-toggle-secret sp-mt-4"
+                            onclick="var i=this.previousElementSibling;if(i.type==='password'){i.type='text';this.textContent='<?php echo esc_js( __( 'Hide', 'societypress' ) ); ?>';}else{i.type='password';this.textContent='<?php echo esc_js( __( 'Show', 'societypress' ) ); ?>';}">
                         <?php esc_html_e( 'Show', 'societypress' ); ?>
                     </button>
                 </div>
@@ -41064,7 +41244,7 @@ add_action( 'admin_init', function () {
                 <span class="dashicons dashicons-superhero-alt sp-stripe-test-icon"></span>
                 <?php esc_html_e( 'Test Connection', 'societypress' ); ?>
             </button>
-            <span id="sp-stripe-test-result" class="sp-stripe-test-result"></span>
+            <span id="sp-stripe-test-result" class="sp-stripe-test-result" role="status" aria-live="polite" aria-atomic="true"></span>
             <p class="description"><?php esc_html_e( 'Checks that your API keys are valid. Save your settings first, then click this button.', 'societypress' ); ?></p>
             <script>
             (function() {
@@ -41192,14 +41372,14 @@ add_action( 'admin_init', function () {
             $sec      = $sec_raw ? ( sp_decrypt( $sec_raw ) ?: '' ) : '';
             ?>
             <div class="sp-mb-8">
-                <label class="sp-block-label"><?php esc_html_e( 'Client ID', 'societypress' ); ?></label>
-                <input type="text" name="societypress_settings[paypal_sandbox_client_id]"
+                <label class="sp-block-label" for="sp-field-paypal-sandbox-id"><?php esc_html_e( 'Client ID', 'societypress' ); ?></label>
+                <input type="text" id="sp-field-paypal-sandbox-id" name="societypress_settings[paypal_sandbox_client_id]"
                        value="<?php echo esc_attr( $client ); ?>" class="large-text"
                        placeholder="AV..." autocomplete="off" spellcheck="false">
             </div>
             <div>
-                <label class="sp-block-label"><?php esc_html_e( 'Secret', 'societypress' ); ?></label>
-                <input type="password" name="societypress_settings[paypal_sandbox_secret]"
+                <label class="sp-block-label" for="sp-field-paypal-sandbox-secret"><?php esc_html_e( 'Secret', 'societypress' ); ?></label>
+                <input type="password" id="sp-field-paypal-sandbox-secret" name="societypress_settings[paypal_sandbox_secret]"
                        value="<?php echo esc_attr( $sec ); ?>" class="large-text"
                        placeholder="EL..." autocomplete="off" spellcheck="false">
                 <button type="button" class="button button-small sp-toggle-secret"
@@ -41224,14 +41404,14 @@ add_action( 'admin_init', function () {
             $sec      = $sec_raw ? ( sp_decrypt( $sec_raw ) ?: '' ) : '';
             ?>
             <div class="sp-mb-8">
-                <label class="sp-block-label"><?php esc_html_e( 'Client ID', 'societypress' ); ?></label>
-                <input type="text" name="societypress_settings[paypal_live_client_id]"
+                <label class="sp-block-label" for="sp-field-paypal-live-id"><?php esc_html_e( 'Client ID', 'societypress' ); ?></label>
+                <input type="text" id="sp-field-paypal-live-id" name="societypress_settings[paypal_live_client_id]"
                        value="<?php echo esc_attr( $client ); ?>" class="large-text"
                        placeholder="AV..." autocomplete="off" spellcheck="false">
             </div>
             <div>
-                <label class="sp-block-label"><?php esc_html_e( 'Secret', 'societypress' ); ?></label>
-                <input type="password" name="societypress_settings[paypal_live_secret]"
+                <label class="sp-block-label" for="sp-field-paypal-live-secret"><?php esc_html_e( 'Secret', 'societypress' ); ?></label>
+                <input type="password" id="sp-field-paypal-live-secret" name="societypress_settings[paypal_live_secret]"
                        value="<?php echo esc_attr( $sec ); ?>" class="large-text"
                        placeholder="EL..." autocomplete="off" spellcheck="false">
                 <button type="button" class="button button-small sp-toggle-secret"
@@ -41255,7 +41435,7 @@ add_action( 'admin_init', function () {
                 <span class="dashicons dashicons-superhero-alt sp-paypal-test-icon"></span>
                 <?php esc_html_e( 'Test Connection', 'societypress' ); ?>
             </button>
-            <span id="sp-paypal-test-result" class="sp-paypal-test-result"></span>
+            <span id="sp-paypal-test-result" class="sp-paypal-test-result" role="status" aria-live="polite" aria-atomic="true"></span>
             <p class="description"><?php esc_html_e( 'Checks that your API credentials are valid. Save your settings first, then click this button.', 'societypress' ); ?></p>
             <script>
             (function() {
@@ -42538,7 +42718,7 @@ add_filter( 'template_include', function ( $template ) {
             echo '<input type="hidden" name="sp_cal_month" value="' . esc_attr( $current_cal_month ) . '">';
         }
 
-        echo '<select name="sp_cal_cat" class="sp-cal-filter-select">';
+        echo '<select name="sp_cal_cat" class="sp-cal-filter-select" aria-label="' . esc_attr__( 'Filter by category', 'societypress' ) . '">';
         echo '<option value="0">' . esc_html__( 'All Categories', 'societypress' ) . '</option>';
         foreach ( $categories as $cat ) {
             echo '<option value="' . esc_attr( $cat->id ) . '"' . selected( $cat_filter, (int) $cat->id, false ) . '>'
@@ -46348,6 +46528,12 @@ function sp_membership_compute_expiration( int $years, array $settings, ?string 
     $period_type = $settings['membership_period_type'] ?? 'annual';
     $start_month = (int) ( $settings['membership_start_month'] ?? 1 );
     $today       = new DateTime();
+
+    // Lifetime memberships never expire — blank sentinel (see sp_calculate_expiration).
+    if ( $period_type === 'lifetime' ) {
+        return '';
+    }
+
     if ( $period_type === 'rolling' ) {
         // Extend from whichever is later: today, or the member's current
         // expiration. WHY: a member who renews early shouldn't forfeit the
@@ -46366,7 +46552,13 @@ function sp_membership_compute_expiration( int $years, array $settings, ?string 
     $cy       = (int) $today->format( 'Y' );
     $cm       = (int) $today->format( 'n' );
     $exp_year = ( $cm >= $start_month ? $cy + 1 : $cy ) + ( $years - 1 );
-    return sprintf( '%04d-%02d-01', $exp_year, $start_month );
+    // The period ends the day BEFORE the next period's start month — the last
+    // day of the prior month — to match sp_calculate_expiration(). Returning the
+    // first of the start month expired online renewals one day later than
+    // admin-entered memberships under identical settings.
+    $end = DateTime::createFromFormat( 'Y-m-d', sprintf( '%04d-%02d-01', $exp_year, $start_month ) );
+    $end->modify( '-1 day' );
+    return $end->format( 'Y-m-d' );
 }
 
 /**
@@ -48251,20 +48443,27 @@ function sp_send_event_reminders(): void {
             $sent_lookup[ (int) $sr->event_id . ':' . (int) $sr->registration_id ] = true;
         }
 
+        // Batch-load confirmed registrations for every event in this timing in
+        // one query, then index by event_id. WHY: this was a per-event query
+        // inside the loop below — N events on the same date meant N queries per
+        // reminder type. $in_ids is a list of intval'd event ids, safe to inline.
+        $regs_by_event = [];
+        foreach ( (array) $wpdb->get_results(
+            "SELECT r.event_id, r.id AS reg_id, r.user_id, r.guest_email,
+                    u.user_email AS wp_email, m.pref_email_events
+             FROM {$reg_table} r
+             LEFT JOIN {$wpdb->users} u ON r.user_id = u.ID
+             LEFT JOIN {$wpdb->prefix}sp_members m ON r.user_id = m.user_id
+             WHERE r.event_id IN ({$in_ids}) AND r.status = 'confirmed'"
+        ) as $reg_row ) {
+            $regs_by_event[ (int) $reg_row->event_id ][] = $reg_row;
+        }
+
         foreach ( $events as $event ) {
-            // Get confirmed registrants for this event
-            // WHY: We join the members table to check pref_email_events — if a
-            //      member has opted out of event emails, skip them. Guests don't
-            //      have preferences (they always receive reminders).
-            $registrations = $wpdb->get_results( $wpdb->prepare(
-                "SELECT r.id AS reg_id, r.user_id, r.guest_email, u.user_email AS wp_email,
-                        m.pref_email_events
-                 FROM {$reg_table} r
-                 LEFT JOIN {$wpdb->users} u ON r.user_id = u.ID
-                 LEFT JOIN {$wpdb->prefix}sp_members m ON r.user_id = m.user_id
-                 WHERE r.event_id = %d AND r.status = 'confirmed'",
-                $event->id
-            ) );
+            // Confirmed registrants for this event, from the batched map above.
+            // The members join carries pref_email_events so opted-out members
+            // are skipped below; guests have no preference and always receive.
+            $registrations = $regs_by_event[ (int) $event->id ] ?? [];
 
             foreach ( $registrations as $reg ) {
                 // Respect event email preference for members
@@ -51570,9 +51769,15 @@ add_action( 'template_redirect', function () {
         ? " AND e.visibility IN ('public', 'members_only')"
         : " AND e.visibility = 'public'";
 
+    // Only the columns the .ics builders actually read. Keep this list in sync
+    // with sp_ical_build_dt_lines/location/description and the VEVENT loop below
+    // if any of them start reading another column.
     // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $visibility_sql is static
     $events = $wpdb->get_results( $wpdb->prepare(
-        "SELECT e.* FROM {$prefix}events e
+        "SELECT e.id, e.title, e.slug, e.description, e.event_date,
+                e.start_time, e.end_time, e.location_name, e.location_address,
+                e.is_virtual, e.virtual_url, e.external_url
+         FROM {$prefix}events e
          WHERE e.status != 'cancelled'
          AND (e.notice_only = 0 OR e.notice_only IS NULL)
          AND e.event_date >= %s
@@ -51586,8 +51791,10 @@ add_action( 'template_redirect', function () {
     // Build the VCALENDAR wrapper
     $site_name = get_bloginfo( 'name' );
     $cal_name  = $include_members_only
-        ? $site_name . ' ' . __( 'Events (Members)', 'societypress' )
-        : $site_name . ' ' . __( 'Events', 'societypress' );
+        /* translators: %s: site/organization name */
+        ? sprintf( __( '%s Events (Members)', 'societypress' ), $site_name )
+        /* translators: %s: site/organization name */
+        : sprintf( __( '%s Events', 'societypress' ), $site_name );
 
     $output  = "BEGIN:VCALENDAR\r\n";
     $output .= "VERSION:2.0\r\n";
@@ -52088,7 +52295,11 @@ function sp_render_builder_widget_volunteer_stats( array $s ): void {
             foreach ( $top as $v ) {
                 echo '<li class="sp-vol-top-item">';
                 echo esc_html( $v->first_name . ' ' . $v->last_name );
-                echo ' <span class="sp-text-secondary">(' . number_format( (float) $v->total_hours, 1 ) . ' hrs)</span>';
+                echo ' <span class="sp-text-secondary">(' . esc_html( sprintf(
+                    /* translators: %s: number of volunteer hours */
+                    __( '%s hrs', 'societypress' ),
+                    number_format( (float) $v->total_hours, 1 )
+                ) ) . ')</span>';
                 echo '</li>';
             }
             echo '</ol>';
@@ -52245,6 +52456,13 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
         if ( empty( $items ) ) {
             echo '<p class="sp-gallery-empty">' . esc_html__( 'No photos in this album yet.', 'societypress' ) . '</p>';
         } else {
+            // Prime attachment metadata in one query so the two
+            // wp_get_attachment_image_url() calls per photo below hit cache
+            // instead of a postmeta lookup each (N+1 on a cold object cache).
+            $att_ids = array_filter( array_map( static fn( $i ) => (int) $i->attachment_id, $items ) );
+            if ( $att_ids ) {
+                _prime_post_caches( array_unique( $att_ids ), false, true );
+            }
             /*
              * WHY inline style on the thumbnail <a>: $col_width is computed at
              * runtime from a user-configurable column count (2–6). A static CSS
@@ -52493,7 +52711,7 @@ function sp_render_builder_widget_resource_links( array $s ): void {
 .sp-resource-featured-badge { background: #fef0c7; color: #92400e; font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; font-weight: 500; margin-left: 4px; }
 .sp-resource-new { background: #e8f5e9; color: #166534; font-size: 0.7rem; padding: 2px 7px; border-radius: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin-left: 4px; }
 .sp-resource-desc { margin: 4px 0 0; color: #555; font-size: 13px; }
-.sp-resource-updated { margin: 3px 0 0; color: #888; font-size: 12px; font-style: italic; }
+.sp-resource-updated { margin: 3px 0 0; color: #767676; font-size: 12px; font-style: italic; }
 /* Grid mode: category blocks as cards in a responsive multi-column grid, so a
    links-heavy page reads as organized sections instead of one long column. */
 .sp-resource-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px; }
@@ -53129,7 +53347,8 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
             echo '<a href="' . esc_url( $filter_url ) . '" class="sp-catalog-type-card' . $is_active . '">';
             echo '<span class="sp-catalog-type-icon">' . $icon . '</span>';
             echo '<span class="sp-catalog-type-name">' . esc_html( $tc->media_type ) . '</span>';
-            echo '<span class="sp-catalog-type-count">' . number_format( $tc->cnt ) . ' ' . esc_html__( 'items', 'societypress' ) . '</span>';
+            /* translators: %s: formatted number of catalog items */
+            echo '<span class="sp-catalog-type-count">' . esc_html( sprintf( __( '%s items', 'societypress' ), number_format( $tc->cnt ) ) ) . '</span>';
             echo '</a>';
         }
         echo '</div>'; // close type grid
@@ -53157,7 +53376,12 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
 
     // ---- Active filter chips + result count ----
     echo '<div class="sp-catalog-status">';
-    echo '<span>' . number_format( $total ) . ' ' . esc_html( _n( 'item', 'items', $total, 'societypress' ) ) . ' ' . esc_html__( 'found', 'societypress' ) . '</span>';
+    echo '<span>' . esc_html( sprintf(
+        /* translators: %1$s: formatted count, %2$s: 'item' or 'items' */
+        __( '%1$s %2$s found', 'societypress' ),
+        number_format( $total ),
+        _n( 'item', 'items', $total, 'societypress' )
+    ) ) . '</span>';
 
     $remove_base = remove_query_arg( [ 'sp_lib_pg' ] );
     if ( $search ) {
@@ -55570,7 +55794,7 @@ function sp_render_help_requests_admin_page(): void {
                 </div>
             </div>
 
-            <h3><?php echo sprintf( _n( '%d Response', '%d Responses', count( $responses ), 'societypress' ), count( $responses ) ); ?></h3>
+            <h3><?php echo esc_html( sprintf( _n( '%d Response', '%d Responses', count( $responses ), 'societypress' ), count( $responses ) ) ); ?></h3>
             <?php foreach ( $responses as $resp ) : ?>
                 <div class="sp-help-admin-response">
                     <p class="sp-help-admin-resp-meta">
@@ -56154,7 +56378,7 @@ function sp_frontend_help_requests(): void {
         }
 
         // Responses
-        echo '<h3>' . sprintf( _n( '%d Response', '%d Responses', count( $responses ), 'societypress' ), count( $responses ) ) . '</h3>';
+        echo '<h3>' . esc_html( sprintf( _n( '%d Response', '%d Responses', count( $responses ), 'societypress' ), count( $responses ) ) ) . '</h3>';
 
         // Endorsement nonce — single nonce reused for every response
         $endorse_nonce = wp_create_nonce( 'sp_help_endorse' );
@@ -58270,11 +58494,15 @@ function sp_render_resources_page(): void {
  */
 add_action( 'wp_ajax_sp_reorder_resources', 'sp_ajax_reorder_resources' );
 function sp_ajax_reorder_resources(): void {
-    if ( ! current_user_can( 'manage_options' ) ) {
-        wp_send_json_error( [ 'message' => __( 'Permission denied.', 'societypress' ) ], 403 );
-    }
+    // Verify the nonce before the capability check (a failed nonce reveals
+    // nothing; a failed cap check confirms the endpoint exists). Gate on
+    // sp_manage_content to match the Resources admin page, so delegated content
+    // managers without manage_options can reorder.
     if ( ! check_ajax_referer( 'sp_reorder_resources', 'nonce', false ) ) {
         wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ], 400 );
+    }
+    if ( ! current_user_can( 'sp_manage_content' ) ) {
+        wp_send_json_error( [ 'message' => __( 'Permission denied.', 'societypress' ) ], 403 );
     }
     $ids = array_values( array_filter( array_map( 'absint', (array) ( $_POST['order'] ?? [] ) ) ) );
     if ( ! $ids ) {
@@ -59237,6 +59465,12 @@ add_action( 'wp_ajax_sp_volunteer_signup', function () {
         wp_send_json_error( __( 'Please log in to volunteer.', 'societypress' ) );
     }
 
+    // Only members in good standing may claim volunteer slots — sp_is_member()
+    // (used by the button gate) is true for any record regardless of standing.
+    if ( ! sp_user_is_active_member() ) {
+        wp_send_json_error( __( 'An active membership is required to sign up for volunteer opportunities.', 'societypress' ) );
+    }
+
     global $wpdb;
     $opp_id  = (int) ( $_POST['opportunity_id'] ?? 0 );
     $user_id = get_current_user_id();
@@ -59679,7 +59913,7 @@ function sp_render_volunteer_opportunities_frontend(): string {
                                class="sp-vol-login-link">
                                 <?php esc_html_e( 'Log In to Volunteer', 'societypress' ); ?>
                             </a>
-                        <?php elseif ( ! sp_is_member( get_current_user_id() ) ) : ?>
+                        <?php elseif ( ! sp_user_is_active_member() ) : ?>
                             <span class="sp-vol-members-only"><?php esc_html_e( 'Members only', 'societypress' ); ?></span>
                         <?php elseif ( $user_signup ) : ?>
                             <div class="sp-vol-status-row">
@@ -61262,7 +61496,10 @@ function sp_render_leadership_page(): void {
 
         <!-- Add Officer button / inline form -->
         <div class="sp-leadership-add-btn-wrap">
-            <button type="button" id="sp-toggle-officer-form" class="button button-primary" onclick="document.getElementById('sp-officer-form').style.display = document.getElementById('sp-officer-form').style.display === 'none' ? 'block' : 'none';">
+            <button type="button" id="sp-toggle-officer-form" class="button button-primary"
+                    aria-controls="sp-officer-form"
+                    aria-expanded="<?php echo ( $editing_section === 'officer' || $officer_search ) ? 'true' : 'false'; ?>"
+                    onclick="var f=document.getElementById('sp-officer-form');var open=f.style.display==='none';f.style.display=open?'block':'none';this.setAttribute('aria-expanded',open?'true':'false');">
                 <?php esc_html_e( 'Add Officer', 'societypress' ); ?>
             </button>
         </div>
@@ -61384,11 +61621,19 @@ function sp_render_leadership_page(): void {
         </h2>
 
         <?php if ( ! empty( $committees ) ) : ?>
+            <script>
+            // Shared toggle for the collapsible committee headers. WHY a role=button
+            // div + keydown rather than the bare onclick div it replaced: the old
+            // markup was mouse-only \u2014 no keyboard focus, activation, or state.
+            function spToggleCommittee(el){var body=el.nextElementSibling;var arrow=el.querySelector('.sp-arrow');var open=body.style.display!=='none';body.style.display=open?'none':'block';if(arrow)arrow.textContent=open?'\u25B6':'\u25BC';el.setAttribute('aria-expanded',open?'false':'true');}
+            </script>
             <?php foreach ( $committees as $committee_name => $members_list ) : ?>
                 <div class="sp-committee-group">
                     <!-- Collapsible committee header -->
-                    <div class="sp-leadership-committee-header"
-                         onclick="var body = this.nextElementSibling; var arrow = this.querySelector('.sp-arrow'); body.style.display = body.style.display === 'none' ? 'block' : 'none'; arrow.textContent = body.style.display === 'none' ? '\u25B6' : '\u25BC';">
+                    <div class="sp-leadership-committee-header" role="button" tabindex="0"
+                         aria-expanded="true" aria-controls="sp-committee-body-<?php echo esc_attr( sanitize_title( $committee_name ) ); ?>"
+                         onclick="spToggleCommittee(this);"
+                         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();spToggleCommittee(this);}">
                         <div data-sp-committee-name="<?php echo esc_attr( $committee_name ); ?>" class="sp-leadership-committee-header-title">
                             <span class="sp-arrow">&#9660;</span>
                             <?php echo esc_html( $committee_name ); ?>
@@ -61407,7 +61652,7 @@ function sp_render_leadership_page(): void {
                          the initial state so it's documented, but the JS reads/writes
                          element.style.display directly — that inline assignment is in JS,
                          not in markup, so it does not count as an inline style= attribute. -->
-                    <div class="sp-leadership-committee-body">
+                    <div class="sp-leadership-committee-body" id="sp-committee-body-<?php echo esc_attr( sanitize_title( $committee_name ) ); ?>">
                         <table class="wp-list-table widefat fixed striped sp-leadership-committee-table">
                             <thead>
                                 <tr>
@@ -61456,7 +61701,10 @@ function sp_render_leadership_page(): void {
 
         <!-- Add Committee Assignment button / inline form -->
         <div class="sp-leadership-add-btn-wrap">
-            <button type="button" id="sp-toggle-committee-form" class="button button-primary" onclick="document.getElementById('sp-committee-form').style.display = document.getElementById('sp-committee-form').style.display === 'none' ? 'block' : 'none';">
+            <button type="button" id="sp-toggle-committee-form" class="button button-primary"
+                    aria-controls="sp-committee-form"
+                    aria-expanded="<?php echo ( $editing_section === 'committee' || $committee_search ) ? 'true' : 'false'; ?>"
+                    onclick="var f=document.getElementById('sp-committee-form');var open=f.style.display==='none';f.style.display=open?'block':'none';this.setAttribute('aria-expanded',open?'true':'false');">
                 <?php esc_html_e( 'Add Committee Assignment', 'societypress' ); ?>
             </button>
         </div>
@@ -61963,7 +62211,7 @@ function sp_process_renewal_reminders(): void {
     if ( get_transient( 'sp_notification_batch_running' ) ) {
         return;
     }
-    set_transient( 'sp_notification_batch_running', true, 5 * MINUTE_IN_SECONDS );
+    set_transient( 'sp_notification_batch_running', true, 30 * MINUTE_IN_SECONDS );
 
     // Check which reminder intervals are enabled
     $intervals = [];
@@ -61994,8 +62242,7 @@ function sp_process_renewal_reminders(): void {
              WHERE m.expiration_date = %s
                AND m.status = 'active'
                AND u.user_email IS NOT NULL AND u.user_email != ''
-               AND rr.id IS NULL
-             LIMIT 100",
+               AND rr.id IS NULL",
             $reminder_key,
             $target_date
         ) );
@@ -62041,7 +62288,41 @@ function sp_process_renewal_reminders(): void {
     // ---- Send expired membership notices ----
     sp_process_expired_notices();
 
+    // ---- Keep member statuses accurate regardless of the email toggle ----
+    sp_expire_lapsed_members();
+
     delete_transient( 'sp_notification_batch_running' );
+}
+
+/**
+ * Promote every active member whose membership has lapsed to 'expired'.
+ *
+ * WHY separate from sp_process_expired_notices(): status accuracy must not
+ *      depend on whether expired-notice EMAILS are enabled — that setting
+ *      defaults off, which previously left lapsed members stuck as 'active'
+ *      forever (still able to reach member-only content, still receiving
+ *      renewal reminders). This runs unconditionally on the daily cron and
+ *      catches everyone, including members the email path skipped or that
+ *      lapsed while notices were off. Lifetime members — the per-member
+ *      lifetime flag or a blank/zero expiration sentinel (treated as "safe"
+ *      by sp_user_renewal_status) — are excluded.
+ */
+function sp_expire_lapsed_members(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    $today  = date( 'Y-m-d', current_time( 'timestamp' ) );
+
+    $wpdb->query( $wpdb->prepare(
+        "UPDATE {$prefix}members
+         SET status = 'expired', updated_at = %s
+         WHERE status = 'active'
+           AND lifetime = 0
+           AND expiration_date IS NOT NULL
+           AND expiration_date > '0000-00-00'
+           AND expiration_date < %s",
+        current_time( 'mysql' ),
+        $today
+    ) );
 }
 
 /**
@@ -62079,8 +62360,7 @@ function sp_process_expired_notices(): void {
          WHERE m.expiration_date = %s
            AND m.status = 'active'
            AND u.user_email IS NOT NULL AND u.user_email != ''
-           AND rr.id IS NULL
-         LIMIT 100",
+           AND rr.id IS NULL",
         $reminder_key,
         $yesterday
     ) );
@@ -66823,7 +67103,15 @@ function sp_privacy_export_member_data( string $email_address, int $page = 1 ): 
             $member->seasonal_address_1, $member->seasonal_city,
             $member->seasonal_state, $member->seasonal_postal_code, $member->seasonal_country,
         ] ) ) ];
-        $data[] = [ 'name' => __( 'Seasonal Period', 'societypress' ), 'value' => ( $member->seasonal_from ?: '?' ) . ' ' . __( 'to', 'societypress' ) . ' ' . ( $member->seasonal_to ?: '?' ) ];
+        $data[] = [
+            'name'  => __( 'Seasonal Period', 'societypress' ),
+            'value' => sprintf(
+                /* translators: %1$s: season start, %2$s: season end */
+                __( '%1$s to %2$s', 'societypress' ),
+                $member->seasonal_from ?: '?',
+                $member->seasonal_to ?: '?'
+            ),
+        ];
     }
 
     // Communication preferences
@@ -69725,6 +70013,18 @@ function sp_frontend_newsletter_archive(): void {
     $newsletters = $wpdb->get_results(
         "SELECT * FROM {$prefix}newsletters ORDER BY pub_date DESC, created_at DESC"
     );
+
+    // Prime attachment metadata in one query so the per-card
+    // wp_get_attachment_* calls below read from cache instead of firing a
+    // postmeta lookup per newsletter (N+1 on a cold object cache).
+    $att_ids = [];
+    foreach ( $newsletters as $nl ) {
+        if ( ! empty( $nl->cover_image_id ) ) $att_ids[] = (int) $nl->cover_image_id;
+        if ( ! empty( $nl->file_id ) )        $att_ids[] = (int) $nl->file_id;
+    }
+    if ( $att_ids ) {
+        _prime_post_caches( array_unique( $att_ids ), false, true );
+    }
     ?>
     <style id="sp-nl-archive-css">
         .sp-nl-search-input { width: 100%; max-width: 400px; padding: 10px 14px; border: 2px solid #dee2e6; border-radius: 6px; font-size: 16px; }
@@ -70981,6 +71281,7 @@ function sp_render_record_collections_page(): void {
                 <label class="sp-toggle">
                     <input type="checkbox" id="sp-gedcom-version-toggle">
                     <span class="sp-toggle-slider"></span>
+                    <span class="screen-reader-text"><?php esc_html_e( 'GEDCOM export version', 'societypress' ); ?></span>
                 </label>
                 <span class="sp-gedcom-version__opt"><?php esc_html_e( '7.0', 'societypress' ); ?></span>
                 <span class="sp-gedcom-version__hint"><?php esc_html_e( 'GEDCOM 5.5.1 works with every genealogy program. Switch to 7.0 only if you specifically need the newest format. This choice applies to the GEDCOM buttons below.', 'societypress' ); ?></span>
@@ -71749,7 +72050,10 @@ function sp_render_record_browse_page(): void {
             <?php if ( $total_pages > 1 ) : ?>
                 <div class="tablenav sp-mt-12">
                     <div class="tablenav-pages">
-                        <span class="displaying-num"><?php echo number_format( $total ) . ' ' . esc_html__( 'items', 'societypress' ); ?></span>
+                        <span class="displaying-num"><?php
+                            /* translators: %s: formatted number of items */
+                            printf( esc_html__( '%s items', 'societypress' ), number_format( $total ) );
+                        ?></span>
                         <?php
                         echo paginate_links( [
                             'base'    => add_query_arg( 'paged', '%#%' ),
@@ -74278,8 +74582,11 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
     if ( $active_coll_ids ) {
         $active_coll_ids  = array_values( array_map( 'absint', $active_coll_ids ) );
         $cid_placeholders = implode( ',', array_fill( 0, count( $active_coll_ids ), '%d' ) );
+        // Only the columns the frontend table/detail rendering reads.
         $all_fields = $wpdb->get_results( $wpdb->prepare(
-            "SELECT * FROM {$prefix}record_collection_fields WHERE collection_id IN ({$cid_placeholders}) ORDER BY sort_order ASC",
+            "SELECT id, collection_id, field_name, is_public
+             FROM {$prefix}record_collection_fields
+             WHERE collection_id IN ({$cid_placeholders}) ORDER BY sort_order ASC",
             ...$active_coll_ids
         ) );
         foreach ( $all_fields as $f ) {
@@ -74376,7 +74683,8 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
     echo '</form>';
 
     // Results count
-    echo '<div class="sp-records-status">' . number_format( $total ) . ' ' . esc_html__( 'records found', 'societypress' ) . '</div>';
+    /* translators: %s: formatted number of records */
+    echo '<div class="sp-records-status">' . esc_html( sprintf( __( '%s records found', 'societypress' ), number_format( $total ) ) ) . '</div>';
 
     if ( empty( $records ) ) {
         echo '<p class="sp-empty-search-result">' . esc_html__( 'No records match your search. Try broadening your query.', 'societypress' ) . '</p>';
@@ -74967,7 +75275,7 @@ function sp_render_store_frontend(): void {
         .sp-store-price-was {
             font-size: 16px;
             font-weight: 400;
-            color: #999;
+            color: #767676;
             text-decoration: line-through;
             margin-right: 6px;
         }
@@ -80588,6 +80896,21 @@ add_action( 'admin_init', function () {
     $prefix    = $wpdb->prefix . 'sp_';
     $ballot_id = (int) ( $_POST['ballot_id'] ?? 0 );
 
+    // Block edits to a ballot that is already open or closed. The save routine
+    // below runs a destructive question/choice sync that deletes anything not
+    // resubmitted — on a live or finished ballot that would orphan or wipe cast
+    // votes. Only drafts are editable.
+    if ( $ballot_id > 0 ) {
+        $current_status = $wpdb->get_var( $wpdb->prepare(
+            "SELECT status FROM {$prefix}ballots WHERE id = %d",
+            $ballot_id
+        ) );
+        if ( in_array( $current_status, [ 'open', 'closed' ], true ) ) {
+            wp_redirect( admin_url( 'admin.php?page=sp-ballot-edit&ballot_id=' . $ballot_id . '&error=locked' ) );
+            exit;
+        }
+    }
+
     // ---- Validate required fields ----
     $title = sanitize_text_field( $_POST['ballot_title'] ?? '' );
     if ( empty( $title ) ) {
@@ -80626,6 +80949,22 @@ add_action( 'admin_init', function () {
         $voting_end = sanitize_text_field( $_POST['voting_end_date'] ) . ' ' . $end_time . ':00';
     }
 
+    // Reject malformed datetimes before they reach the DB (MySQL would store
+    // '0000-00-00 00:00:00' or error out), and require start before end.
+    foreach ( [ $voting_start, $voting_end ] as $dt_val ) {
+        if ( $dt_val !== null ) {
+            $dt = DateTime::createFromFormat( 'Y-m-d H:i:s', $dt_val );
+            if ( ! $dt || $dt->format( 'Y-m-d H:i:s' ) !== $dt_val ) {
+                wp_redirect( admin_url( 'admin.php?page=sp-ballot-edit&ballot_id=' . $ballot_id . '&error=dates' ) );
+                exit;
+            }
+        }
+    }
+    if ( $voting_start !== null && $voting_end !== null && $voting_start >= $voting_end ) {
+        wp_redirect( admin_url( 'admin.php?page=sp-ballot-edit&ballot_id=' . $ballot_id . '&error=dates' ) );
+        exit;
+    }
+
     $data = [
         'title'              => $title,
         'description'        => sanitize_textarea_field( $_POST['ballot_description'] ?? '' ),
@@ -80646,7 +80985,13 @@ add_action( 'admin_init', function () {
         $data['created_by'] = get_current_user_id();
         $data['status']     = 'draft';
         $wpdb->insert( $prefix . 'ballots', $data );
-        $ballot_id = $wpdb->insert_id;
+        $ballot_id = (int) $wpdb->insert_id;
+        // A failed insert leaves insert_id at 0; bail before the question sync
+        // writes orphaned rows tied to ballot_id 0.
+        if ( ! $ballot_id ) {
+            wp_redirect( admin_url( 'admin.php?page=sp-ballots&error=db_failure' ) );
+            exit;
+        }
         sp_audit( 'ballot_created', sprintf( 'Ballot "%s" created', $title ), 'ballot', $ballot_id );
     }
 
@@ -80656,6 +81001,11 @@ add_action( 'admin_init', function () {
         "SELECT id FROM {$prefix}ballot_questions WHERE ballot_id = %d",
         $ballot_id
     ) );
+    // get_col() returns strings; cast to int so the strict in_array() checks
+    // below match the int-cast $q_id. Without this, every existing question
+    // reads as "new" and array_diff() flags the originals as deleted, wiping
+    // their votes.
+    $existing_question_ids  = array_map( 'intval', $existing_question_ids );
     $submitted_question_ids = [];
 
     foreach ( $questions_raw as $q_index => $q_data ) {
@@ -80692,6 +81042,8 @@ add_action( 'admin_init', function () {
             "SELECT id FROM {$prefix}ballot_choices WHERE question_id = %d",
             $q_id
         ) );
+        // Cast to int for the same strict-comparison reason as the questions above.
+        $existing_choice_ids  = array_map( 'intval', $existing_choice_ids );
         $submitted_choice_ids = [];
 
         // For yes/no questions, force exactly two choices
@@ -81545,16 +81897,25 @@ function sp_render_ballot_edit_page(): void {
             return;
         }
 
-        // Load questions with their choices
+        // Load questions, then batch-load all their choices in one IN() query
+        // (mirrors the results view) rather than one query per question.
         $raw_questions = $wpdb->get_results( $wpdb->prepare(
             "SELECT * FROM {$prefix}ballot_questions WHERE ballot_id = %d ORDER BY sort_order ASC",
             $ballot_id
         ) );
+        $choices_by_q = [];
+        $q_ids        = array_map( static fn( $q ) => (int) $q->id, $raw_questions );
+        if ( $q_ids ) {
+            $q_ph = implode( ',', array_fill( 0, count( $q_ids ), '%d' ) );
+            foreach ( $wpdb->get_results( $wpdb->prepare(
+                "SELECT * FROM {$prefix}ballot_choices WHERE question_id IN ({$q_ph}) ORDER BY sort_order ASC",
+                ...$q_ids
+            ) ) as $choice ) {
+                $choices_by_q[ (int) $choice->question_id ][] = $choice;
+            }
+        }
         foreach ( $raw_questions as $q ) {
-            $q->choices = $wpdb->get_results( $wpdb->prepare(
-                "SELECT * FROM {$prefix}ballot_choices WHERE question_id = %d ORDER BY sort_order ASC",
-                $q->id
-            ) );
+            $q->choices  = $choices_by_q[ (int) $q->id ] ?? [];
             $questions[] = $q;
         }
     }
@@ -81564,6 +81925,8 @@ function sp_render_ballot_edit_page(): void {
         $errors = [
             'title'     => __( 'Ballot title is required.', 'societypress' ),
             'questions' => __( 'At least one question is required.', 'societypress' ),
+            'locked'    => __( 'This ballot is open or closed and can no longer be edited. Duplicate it to make changes.', 'societypress' ),
+            'dates'     => __( 'Please enter valid voting start and end dates, with the start before the end.', 'societypress' ),
         ];
         $msg = $errors[ $_GET['error'] ] ?? __( 'An error occurred.', 'societypress' );
         echo '<div class="notice notice-error"><p>' . esc_html( $msg ) . '</p></div>';
@@ -82314,6 +82677,20 @@ add_action( 'wp_ajax_sp_submit_vote', function () {
         wp_send_json_error( __( 'This ballot has no questions.', 'societypress' ) );
     }
 
+    // Batch-load valid choice IDs per question in one query so the per-question
+    // validation below is a lookup, not a query per question on every vote.
+    $valid_choices_by_q = [];
+    $vq_ids = array_map( static fn( $q ) => (int) $q->id, $questions );
+    if ( $vq_ids ) {
+        $vq_ph = implode( ',', array_fill( 0, count( $vq_ids ), '%d' ) );
+        foreach ( $wpdb->get_results( $wpdb->prepare(
+            "SELECT question_id, id FROM {$prefix}ballot_choices WHERE question_id IN ({$vq_ph})",
+            ...$vq_ids
+        ) ) as $vc ) {
+            $valid_choices_by_q[ (int) $vc->question_id ][] = (int) $vc->id;
+        }
+    }
+
     // ---- Process each question ----
     $votes_to_insert = [];
 
@@ -82364,15 +82741,12 @@ add_action( 'wp_ajax_sp_submit_vote', function () {
             ) );
         }
 
-        // Validate each choice_id belongs to this question
-        $valid_choice_ids = $wpdb->get_col( $wpdb->prepare(
-            "SELECT id FROM {$prefix}ballot_choices WHERE question_id = %d",
-            $question->id
-        ) );
+        // Valid choice IDs for this question, from the batched map above.
+        $valid_choice_ids = $valid_choices_by_q[ (int) $question->id ] ?? [];
 
         foreach ( $selections as $choice_id ) {
             $choice_id = (int) $choice_id;
-            if ( ! in_array( $choice_id, array_map( 'intval', $valid_choice_ids ), true ) ) {
+            if ( ! in_array( $choice_id, $valid_choice_ids, true ) ) {
                 wp_send_json_error( __( 'Invalid choice selected.', 'societypress' ) );
             }
             $votes_to_insert[] = [
@@ -86473,6 +86847,13 @@ add_action( 'init', function () {
         wp_safe_redirect( add_query_arg( 'sp_donate_err', 'invalid_amount', $referer ) );
         exit;
     }
+    // A non-custom amount must match a configured preset — otherwise a crafted
+    // POST could set any value (e.g. underpay a campaign while the form shows
+    // a higher figure).
+    if ( $preset !== 'custom' && ! in_array( $amount, sp_donation_presets(), false ) ) {
+        wp_safe_redirect( add_query_arg( 'sp_donate_err', 'invalid_amount', $referer ) );
+        exit;
+    }
 
     // --- Mail-in check path -------------------------------------------------
     // WHY: Many society donors (often older) prefer to mail a check. Without
@@ -86709,6 +87090,13 @@ function sp_donation_mark_paid_from_session( int $donation_id, array $session ):
         "SELECT * FROM {$wpdb->prefix}sp_donations WHERE id = %d", $donation_id
     ) );
     if ( ! $donation ) return;
+
+    // Idempotency: Stripe retries webhook delivery for up to 72h, and the
+    // success-URL handler can race it. If this donation is already finalized,
+    // don't re-update or fire a second receipt.
+    if ( in_array( $donation->status, [ 'paid', 'subscription_active' ], true ) ) {
+        return;
+    }
 
     $payment_status = $session['payment_status'] ?? '';
     $mode           = $session['mode'] ?? 'payment';
@@ -87602,6 +87990,10 @@ function sp_donate_paypal_create_order(): void {
     if ( $amount < 1 ) {
         wp_send_json_error( [ 'message' => __( 'Please enter a donation amount of at least $1.', 'societypress' ) ] );
     }
+    // A non-custom amount must match a configured preset (see the Stripe handler).
+    if ( $preset !== 'custom' && ! in_array( $amount, sp_donation_presets(), false ) ) {
+        wp_send_json_error( [ 'message' => __( 'Please choose a valid donation amount.', 'societypress' ) ] );
+    }
 
     $cover_fees = ! empty( $_POST['cover_fees'] );
     $fee_amount = $cover_fees ? sp_donation_calculate_fee( $amount ) : 0.0;
@@ -87719,6 +88111,13 @@ function sp_donate_paypal_capture(): void {
     ) );
     if ( ! $donation ) {
         wp_send_json_error( [ 'message' => __( 'Donation record not found.', 'societypress' ) ] );
+    }
+
+    // If the donation is tied to a logged-in donor, only that donor may capture
+    // it (mirrors the Stripe finalize handler). Anonymous donations have no
+    // owner, so the unguessable PayPal order id is the access token.
+    if ( ! empty( $donation->user_id ) && (int) $donation->user_id !== get_current_user_id() ) {
+        wp_send_json_error( [ 'message' => __( 'Permission denied.', 'societypress' ) ], 403 );
     }
 
     // Idempotent: if already paid, just return the success redirect
@@ -89625,7 +90024,7 @@ add_action( 'init', function () {
                         $tag_url = add_query_arg( [ 'sp_help_tag' => $tag, 'sp_help_pg' => 1 ] );
                         $is_active = ( $tag === $tag_filter );
                         ?>
-                        <a href="<?php echo esc_url( $tag_url ); ?>" class="sp-help-tag-filter <?php echo $is_active ? 'active' : ''; ?>">
+                        <a href="<?php echo esc_url( $tag_url ); ?>" class="sp-help-tag-filter <?php echo $is_active ? 'active' : ''; ?>"<?php echo $is_active ? ' aria-current="true"' : ''; ?>>
                             <?php echo esc_html( $tag ); ?> <span class="count"><?php echo (int) $count; ?></span>
                         </a>
                     <?php endforeach; ?>
@@ -94183,6 +94582,7 @@ function sp_render_import_newsletters_page(): void {
         }
 
         echo '<h2>' . esc_html__( 'Import complete', 'societypress' ) . '</h2>';
+        /* translators: %d: number of newsletters added */
         echo '<p>' . sprintf( esc_html( _n( '%d newsletter added to the archive.', '%d newsletters added to the archive.', $created, 'societypress' ) ), $created ) . '</p>';
         if ( $errors ) {
             echo '<div class="notice notice-warning"><p><strong>' . esc_html__( 'Errors:', 'societypress' ) . '</strong></p><ul class="ul-disc">';
@@ -95011,6 +95411,7 @@ function sp_render_import_gallery_page(): void {
         }
 
         echo '<h2>' . esc_html__( 'Import complete', 'societypress' ) . '</h2>';
+        /* translators: %d: number of images added */
         echo '<p>' . sprintf( esc_html( _n( '%d image added to the album.', '%d images added to the album.', $added, 'societypress' ) ), $added ) . '</p>';
         if ( $errors ) {
             echo '<div class="notice notice-warning"><p><strong>' . esc_html__( 'Errors:', 'societypress' ) . '</strong></p><ul class="ul-disc">';

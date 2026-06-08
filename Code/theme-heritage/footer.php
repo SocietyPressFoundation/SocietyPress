@@ -44,8 +44,8 @@
                        reasonable placeholder. Once Harold adds widgets from
                        Appearance -> Widgets, these defaults disappear. */
                     ?>
-                    <h3><?php bloginfo( 'name' ); ?></h3>
-                    <p><?php bloginfo( 'description' ); ?></p>
+                    <h3><?php echo esc_html( get_bloginfo( 'name' ) ); ?></h3>
+                    <p><?php echo esc_html( get_bloginfo( 'description', 'display' ) ); ?></p>
                 <?php endif; ?>
             </div>
 
@@ -103,10 +103,10 @@
                 </span>
                 <span>
                     <?php
-                    printf(
+                    echo wp_kses(
                         /* translators: %s: SocietyPress link */
-                        esc_html__( 'Powered by %s', 'heritage' ),
-                        '<a href="https://getsocietypress.org">SocietyPress</a>'
+                        sprintf( __( 'Powered by %s', 'heritage' ), '<a href="https://getsocietypress.org">SocietyPress</a>' ),
+                        [ 'a' => [ 'href' => [] ] ]
                     );
                     ?>
                 </span>

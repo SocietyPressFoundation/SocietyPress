@@ -109,7 +109,7 @@
                      recognized as "menu." JS toggles ledger-nav-open on the nav and
                      is-active on this button, which CSS uses to animate the bars
                      into an X and reveal the mobile nav panel. -->
-                <button class="ledger-hamburger" aria-label="<?php esc_attr_e( 'Toggle navigation menu', 'ledger' ); ?>" aria-expanded="false">
+                <button class="ledger-hamburger" aria-label="<?php esc_attr_e( 'Toggle navigation menu', 'ledger' ); ?>" aria-expanded="false" aria-controls="ledger-primary-nav">
                     <span class="ledger-hamburger-bar"></span>
                     <span class="ledger-hamburger-bar"></span>
                     <span class="ledger-hamburger-bar"></span>
@@ -117,7 +117,7 @@
 
                 <!-- Primary navigation menu with 2-level dropdown support -->
                 <?php if ( has_nav_menu( 'primary' ) ) : ?>
-                <nav class="ledger-navigation" aria-label="<?php esc_attr_e( 'Primary navigation', 'ledger' ); ?>">
+                <nav id="ledger-primary-nav" class="ledger-navigation" aria-label="<?php esc_attr_e( 'Primary navigation', 'ledger' ); ?>">
                     <?php
                     wp_nav_menu( [
                         'theme_location' => 'primary',

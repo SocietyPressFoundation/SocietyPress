@@ -33,7 +33,7 @@
                     <!-- Default content when no widgets are configured.
                          WHY: The footer shouldn't look broken on first activation.
                          This gives societies a reasonable starting point. -->
-                    <h4 class="coastline-footer-default-title"><?php esc_html_e( 'About Us', 'coastline' ); ?></h4>
+                    <h3 class="coastline-footer-default-title"><?php esc_html_e( 'About Us', 'coastline' ); ?></h3>
                     <p class="coastline-footer-default-text">
                         <?php echo esc_html( get_bloginfo( 'description', 'display' ) ); ?>
                     </p>
@@ -45,7 +45,7 @@
                     <?php dynamic_sidebar( 'coastline-footer-2' ); ?>
                 <?php else : ?>
                     <!-- Default quick links when no widgets are configured. -->
-                    <h4 class="coastline-footer-default-title"><?php esc_html_e( 'Quick Links', 'coastline' ); ?></h4>
+                    <h3 class="coastline-footer-default-title"><?php esc_html_e( 'Quick Links', 'coastline' ); ?></h3>
                     <ul class="coastline-footer-default-links">
                         <li><a href="<?php echo esc_url( home_url( '/' ) ); ?>"><?php esc_html_e( 'Home', 'coastline' ); ?></a></li>
                         <?php if ( function_exists( 'sp_get_search_page_url' ) ) : ?>

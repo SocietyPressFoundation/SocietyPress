@@ -36,7 +36,7 @@ get_header();
        the default hero: site name, tagline, and a CTA button.
        ==================================================================== */
     ?>
-    <section class="heritage-hero">
+    <section class="heritage-hero" aria-label="<?php esc_attr_e( 'Welcome', 'heritage' ); ?>">
         <?php if ( is_active_sidebar( 'heritage-hero' ) ) : ?>
             <div class="heritage-hero-widgets">
                 <?php dynamic_sidebar( 'heritage-hero' ); ?>
@@ -62,14 +62,14 @@ get_header();
                 $join_page = get_page_by_path( 'join' );
                 if ( $join_page && 'publish' === $join_page->post_status ) {
                     $cta_url  = get_permalink( $join_page );
-                    $cta_text = esc_html__( 'Join Us', 'heritage' );
+                    $cta_text = __( 'Join Us', 'heritage' );
                 } else {
                     $cta_url  = home_url( '/' );
-                    $cta_text = esc_html__( 'Learn More', 'heritage' );
+                    $cta_text = __( 'Learn More', 'heritage' );
                 }
                 ?>
                 <a href="<?php echo esc_url( $cta_url ); ?>" class="heritage-hero-cta">
-                    <?php echo $cta_text; ?>
+                    <?php echo esc_html( $cta_text ); ?>
                 </a>
             </div>
         <?php endif; ?>
@@ -99,11 +99,11 @@ get_header();
     ] );
     if ( ! empty( $events_pages ) ) {
         $feature_cards[] = [
-            'title' => esc_html__( 'Events', 'heritage' ),
-            'desc'  => esc_html__( 'Browse upcoming meetings, workshops, and programs.', 'heritage' ),
+            'title' => __( 'Events', 'heritage' ),
+            'desc'  => __( 'Browse upcoming meetings, workshops, and programs.', 'heritage' ),
             'url'   => get_permalink( $events_pages[0]->ID ),
             /* Calendar icon — represents events/scheduling */
-            'icon'  => '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+            'icon'  => '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
         ];
     }
 
@@ -115,11 +115,11 @@ get_header();
     ] );
     if ( ! empty( $library_pages ) ) {
         $feature_cards[] = [
-            'title' => esc_html__( 'Library', 'heritage' ),
-            'desc'  => esc_html__( 'Search our catalog of books, periodicals, and research materials.', 'heritage' ),
+            'title' => __( 'Library', 'heritage' ),
+            'desc'  => __( 'Search our catalog of books, periodicals, and research materials.', 'heritage' ),
             'url'   => get_permalink( $library_pages[0]->ID ),
             /* Book icon — represents the library */
-            'icon'  => '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
+            'icon'  => '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
         ];
     }
 
@@ -127,17 +127,17 @@ get_header();
     $join_page_card = get_page_by_path( 'join' );
     if ( $join_page_card && 'publish' === $join_page_card->post_status ) {
         $feature_cards[] = [
-            'title' => esc_html__( 'Membership', 'heritage' ),
-            'desc'  => esc_html__( 'Become a member and support our mission of preserving history.', 'heritage' ),
+            'title' => __( 'Membership', 'heritage' ),
+            'desc'  => __( 'Become a member and support our mission of preserving history.', 'heritage' ),
             'url'   => get_permalink( $join_page_card ),
             /* Users icon — represents membership/community */
-            'icon'  => '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+            'icon'  => '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
         ];
     }
     ?>
 
     <?php if ( ! empty( $feature_cards ) ) : ?>
-    <section class="heritage-features">
+    <section class="heritage-features" aria-label="<?php esc_attr_e( 'Explore Our Society', 'heritage' ); ?>">
         <div class="heritage-features-inner">
             <h2 class="heritage-features-heading"><?php esc_html_e( 'Explore Our Society', 'heritage' ); ?></h2>
 
@@ -152,14 +152,14 @@ get_header();
                         echo $card['icon']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
                         ?>
                     </div>
-                    <h3 class="heritage-card-title"><?php echo $card['title']; ?></h3>
-                    <p class="heritage-card-desc"><?php echo $card['desc']; ?></p>
+                    <h3 class="heritage-card-title"><?php echo esc_html( $card['title'] ); ?></h3>
+                    <p class="heritage-card-desc"><?php echo esc_html( $card['desc'] ); ?></p>
                     <a href="<?php echo esc_url( $card['url'] ); ?>" class="heritage-card-link">
                         <?php
                         printf(
                             /* translators: %s: feature name (Events, Library, Membership) */
                             esc_html__( 'Visit %s', 'heritage' ),
-                            $card['title']
+                            esc_html( $card['title'] )
                         );
                         ?>
                     </a>
@@ -192,7 +192,7 @@ get_header();
                and trim to check if there's actual readable content. */
             if ( trim( wp_strip_all_tags( $page_content ) ) ) :
     ?>
-    <section class="heritage-about">
+    <section class="heritage-about" aria-label="<?php esc_attr_e( 'About Us', 'heritage' ); ?>">
         <div class="heritage-about-inner">
             <h2 class="heritage-about-heading"><?php esc_html_e( 'About Us', 'heritage' ); ?></h2>
             <div class="heritage-about-content">

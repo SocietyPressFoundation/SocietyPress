@@ -41,7 +41,7 @@
                  WHY: On mobile the left sidebar hides off-screen. This button
                  slides it in as an overlay panel. Uses a different class than
                  the parent's .sp-hamburger to avoid JS/CSS conflicts. -->
-            <button class="prairie-sidebar-toggle" aria-label="<?php esc_attr_e( 'Toggle sidebar navigation', 'prairie' ); ?>" aria-expanded="false">
+            <button class="prairie-sidebar-toggle" aria-label="<?php esc_attr_e( 'Toggle sidebar navigation', 'prairie' ); ?>" aria-expanded="false" aria-controls="prairie-sidebar-nav">
                 <span class="bar"></span>
                 <span class="bar"></span>
                 <span class="bar"></span>

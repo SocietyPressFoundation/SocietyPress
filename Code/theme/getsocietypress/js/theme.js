@@ -23,6 +23,54 @@
     var mobileNav = document.getElementById( 'mobile-nav' );
 
     if ( hamburger && mobileNav ) {
+
+        /* Selector for all keyboard-focusable elements inside the mobile nav */
+        var FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+        function closeMobileNav() {
+            hamburger.classList.remove( 'is-open' );
+            mobileNav.classList.remove( 'is-open' );
+            hamburger.setAttribute( 'aria-expanded', 'false' );
+            document.body.style.overflow = '';
+            document.removeEventListener( 'keydown', trapMobileNavFocus );
+            hamburger.focus();
+        }
+
+        /* Focus trap: cycle Tab/Shift+Tab within the open mobile nav; close on Escape */
+        function trapMobileNavFocus( e ) {
+            if ( e.key === 'Escape' ) {
+                closeMobileNav();
+                return;
+            }
+
+            if ( e.key !== 'Tab' ) {
+                return;
+            }
+
+            var focusables = mobileNav.querySelectorAll( FOCUSABLE );
+            if ( ! focusables.length ) {
+                e.preventDefault();
+                return;
+            }
+
+            var first = focusables[0];
+            var last  = focusables[ focusables.length - 1 ];
+
+            if ( e.shiftKey ) {
+                /* Shift+Tab: if focus is on the first element, wrap to the last */
+                if ( document.activeElement === first ) {
+                    e.preventDefault();
+                    last.focus();
+                }
+            } else {
+                /* Tab: if focus is on the last element, wrap to the first */
+                if ( document.activeElement === last ) {
+                    e.preventDefault();
+                    first.focus();
+                }
+            }
+        }
+
         hamburger.addEventListener( 'click', function() {
             var isOpen = hamburger.classList.toggle( 'is-open' );
             mobileNav.classList.toggle( 'is-open' );
@@ -32,16 +80,26 @@
 
             /* Prevent body scrolling while mobile menu is open */
             document.body.style.overflow = isOpen ? 'hidden' : '';
+
+            if ( isOpen ) {
+                /* Move focus to the first focusable element inside the nav */
+                var firstFocusable = mobileNav.querySelector( FOCUSABLE );
+                if ( firstFocusable ) {
+                    firstFocusable.focus();
+                }
+                /* Install focus trap while nav is open */
+                document.addEventListener( 'keydown', trapMobileNavFocus );
+            } else {
+                document.removeEventListener( 'keydown', trapMobileNavFocus );
+                hamburger.focus();
+            }
         } );
 
         /* Close the mobile nav when any link inside it is clicked */
         var mobileLinks = mobileNav.querySelectorAll( 'a' );
         for ( var i = 0; i < mobileLinks.length; i++ ) {
             mobileLinks[i].addEventListener( 'click', function() {
-                hamburger.classList.remove( 'is-open' );
-                mobileNav.classList.remove( 'is-open' );
-                hamburger.setAttribute( 'aria-expanded', 'false' );
-                document.body.style.overflow = '';
+                closeMobileNav();
             } );
         }
     }

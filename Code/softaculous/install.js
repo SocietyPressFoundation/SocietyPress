@@ -31,7 +31,7 @@ function formcheck() {
     }
 
     // Basic email validation
-    if ( email.value.indexOf('@') < 1 || email.value.indexOf('.') < 3 ) {
+    if ( !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test( email.value ) ) {
         alert('Please enter a valid email address.');
         return false;
     }

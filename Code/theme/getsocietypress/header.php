@@ -18,7 +18,7 @@ defined( 'ABSPATH' ) || exit;
 <head>
     <meta charset="<?php bloginfo( 'charset' ); ?>">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="<?php bloginfo( 'description' ); ?>">
+    <meta name="description" content="<?php echo esc_attr( get_bloginfo( 'description', 'display' ) ); ?>">
     <?php wp_head(); ?>
 </head>
 
@@ -28,7 +28,7 @@ defined( 'ABSPATH' ) || exit;
 <!-- Skip-to-content link — first focusable element, visually hidden until
      focused via keyboard. Lets screen-reader and keyboard users bypass
      the nav and go straight to the page content. -->
-<a class="skip-link" href="#main-content">Skip to main content</a>
+<a class="skip-link" href="#main-content"><?php esc_html_e( 'Skip to main content', 'getsocietypress' ); ?></a>
 
 <!-- ==========================================================================
      ANNOUNCEMENT BAR
@@ -44,7 +44,7 @@ if ( $announce_enabled && ! empty( $announce_text ) ) :
 ?>
 <div class="announce-bar" id="announce-bar">
     <span><?php echo wp_kses_post( $announce_text ); ?></span>
-    <button class="announce-bar__dismiss" id="announce-dismiss" aria-label="Dismiss announcement">&times;</button>
+    <button class="announce-bar__dismiss" id="announce-dismiss" aria-label="<?php esc_attr_e( 'Dismiss announcement', 'getsocietypress' ); ?>">&times;</button>
 </div>
 <?php endif; ?>
 
@@ -65,7 +65,7 @@ if ( $announce_enabled && ! empty( $announce_text ) ) :
                 /* Output just the <img> tag from the custom logo, no wrapping link */
                 $logo_id  = get_theme_mod( 'custom_logo' );
                 $logo_img = wp_get_attachment_image( $logo_id, 'full', false, array( 'class' => 'site-brand__logo' ) );
-                echo $logo_img;
+                echo wp_kses_post( $logo_img );
                 ?>
             <?php else : ?>
                 <!--
@@ -98,11 +98,11 @@ if ( $announce_enabled && ! empty( $announce_text ) ) :
         <!-- Right-side Action -->
         <div class="nav-actions">
             <?php if ( function_exists( 'gsp_render_search_form' ) ) gsp_render_search_form(); ?>
-            <a href="<?php echo esc_url( home_url( '/download/' ) ); ?>" class="btn btn-primary btn-sm">Download</a>
+            <a href="<?php echo esc_url( home_url( '/download/' ) ); ?>" class="btn btn-primary btn-sm"><?php esc_html_e( 'Download', 'getsocietypress' ); ?></a>
         </div>
 
         <!-- Hamburger Button — visible only on mobile (below 768px) -->
-        <button class="hamburger" id="hamburger" aria-label="Toggle navigation" aria-expanded="false">
+        <button class="hamburger" id="hamburger" aria-label="<?php esc_attr_e( 'Open navigation', 'getsocietypress' ); ?>" aria-expanded="false" aria-controls="mobile-nav">
             <div class="hamburger__lines">
                 <span></span>
                 <span></span>
@@ -128,7 +128,7 @@ if ( $announce_enabled && ! empty( $announce_text ) ) :
         'fallback_cb'    => false,
     ) );
     ?>
-    <a href="<?php echo esc_url( home_url( '/download/' ) ); ?>" class="btn btn-primary">Download</a>
+    <a href="<?php echo esc_url( home_url( '/download/' ) ); ?>" class="btn btn-primary"><?php esc_html_e( 'Download', 'getsocietypress' ); ?></a>
 </nav>
 
 <!-- Main content landmark — wraps all page template output so screen

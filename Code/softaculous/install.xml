@@ -20,7 +20,7 @@
                 <name>admin_username</name>
                 <default>admin</default>
             </input>
-            <input type="text">
+            <input type="password">
                 <head>[[admin_pass]]</head>
                 <name>admin_pass</name>
                 <default></default>

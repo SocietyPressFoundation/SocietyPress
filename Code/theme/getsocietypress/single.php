@@ -23,7 +23,7 @@ get_header();
                     <?php echo esc_html( get_the_date( 'F j, Y' ) ); ?>
                 </time>
             </div>
-            <h1 class="page-hero__title"><?php the_title(); ?></h1>
+            <h1 class="page-hero__title"><?php echo esc_html( get_the_title() ); ?></h1>
         </div>
     </div>
 </div>

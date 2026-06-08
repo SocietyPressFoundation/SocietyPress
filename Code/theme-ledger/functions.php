@@ -112,9 +112,9 @@ add_action( 'wp_enqueue_scripts', function () {
 add_action( 'widgets_init', function () {
 
     register_sidebar( [
-        'name'          => esc_html__( 'Footer Column 1 (About)', 'societypress' ),
+        'name'          => esc_html__( 'Footer Column 1 (About)', 'ledger' ),
         'id'            => 'ledger-footer-1',
-        'description'   => esc_html__( 'First footer column — typically organization info or mission.', 'societypress' ),
+        'description'   => esc_html__( 'First footer column — typically organization info or mission.', 'ledger' ),
         'before_widget' => '<div id="%1$s" class="widget %2$s">',
         'after_widget'  => '</div>',
         'before_title'  => '<h3 class="widget-title">',
@@ -122,9 +122,9 @@ add_action( 'widgets_init', function () {
     ] );
 
     register_sidebar( [
-        'name'          => esc_html__( 'Footer Column 2 (Navigation)', 'societypress' ),
+        'name'          => esc_html__( 'Footer Column 2 (Navigation)', 'ledger' ),
         'id'            => 'ledger-footer-2',
-        'description'   => esc_html__( 'Second footer column — typically quick links or navigation.', 'societypress' ),
+        'description'   => esc_html__( 'Second footer column — typically quick links or navigation.', 'ledger' ),
         'before_widget' => '<div id="%1$s" class="widget %2$s">',
         'after_widget'  => '</div>',
         'before_title'  => '<h3 class="widget-title">',
@@ -132,9 +132,9 @@ add_action( 'widgets_init', function () {
     ] );
 
     register_sidebar( [
-        'name'          => esc_html__( 'Footer Column 3 (Contact)', 'societypress' ),
+        'name'          => esc_html__( 'Footer Column 3 (Contact)', 'ledger' ),
         'id'            => 'ledger-footer-3',
-        'description'   => esc_html__( 'Third footer column — typically contact info or hours.', 'societypress' ),
+        'description'   => esc_html__( 'Third footer column — typically contact info or hours.', 'ledger' ),
         'before_widget' => '<div id="%1$s" class="widget %2$s">',
         'after_widget'  => '</div>',
         'before_title'  => '<h3 class="widget-title">',
@@ -162,6 +162,9 @@ add_action( 'widgets_init', function () {
  * On mobile: The toggle button is visible. JS adds/removes .is-open on the
  * parent <li> to show/hide the submenu.
  */
+// WHY a class: Walker_Nav_Menu has no non-OOP equivalent in WordPress. This
+// extension is the same justified exception as the plugin's WP_List_Table and
+// WP_Widget subclasses — the API forces it.
 class Ledger_Nav_Walker extends Walker_Nav_Menu {
 
     /**
@@ -184,7 +187,7 @@ class Ledger_Nav_Walker extends Walker_Nav_Menu {
         // If this item has children, add a toggle button for mobile
         if ( in_array( 'menu-item-has-children', $item->classes, true ) ) {
             $output .= '<button class="ledger-submenu-toggle" aria-expanded="false" aria-label="'
-                     . esc_attr__( 'Toggle submenu', 'societypress' ) . '">'
+                     . esc_attr__( 'Toggle submenu', 'ledger' ) . '">'
                      . '<span class="ledger-toggle-icon">&#9662;</span>'
                      . '</button>';
         }

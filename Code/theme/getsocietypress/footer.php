@@ -51,7 +51,7 @@ defined( 'ABSPATH' ) || exit;
 
             <!-- Column 2: Product Links -->
             <div class="footer-links">
-                <h2 class="footer-links__heading">Product</h2>
+                <p class="footer-links__heading">Product</p>
                 <ul>
                     <li><a href="<?php echo esc_url( home_url( '/features/' ) ); ?>">Features</a></li>
                     <li><a href="<?php echo esc_url( home_url( '/docs/requirements/' ) ); ?>">Requirements</a></li>
@@ -64,7 +64,7 @@ defined( 'ABSPATH' ) || exit;
 
             <!-- Column 3: Resources -->
             <div class="footer-links">
-                <h2 class="footer-links__heading">Resources</h2>
+                <p class="footer-links__heading">Resources</p>
                 <ul>
                     <li><a href="<?php echo esc_url( home_url( '/docs/' ) ); ?>">Documentation</a></li>
                     <li><a href="<?php echo esc_url( home_url( '/docs/faq/' ) ); ?>">FAQ</a></li>
@@ -77,7 +77,7 @@ defined( 'ABSPATH' ) || exit;
 
             <!-- Column 4: Community -->
             <div class="footer-links">
-                <h2 class="footer-links__heading">Community</h2>
+                <p class="footer-links__heading">Community</p>
                 <ul>
                     <li><a href="<?php echo esc_url( home_url( '/about/' ) ); ?>">About</a></li>
                     <li><a href="<?php echo esc_url( home_url( '/donate/' ) ); ?>">Donate</a></li>
@@ -90,7 +90,7 @@ defined( 'ABSPATH' ) || exit;
 
             <!-- Column 5: Legal -->
             <div class="footer-links">
-                <h2 class="footer-links__heading">Legal</h2>
+                <p class="footer-links__heading">Legal</p>
                 <ul>
                     <li><a href="<?php echo esc_url( home_url( '/privacy-policy/' ) ); ?>">Privacy Policy</a></li>
                     <li><a href="<?php echo esc_url( home_url( '/terms/' ) ); ?>">Terms of Use</a></li>
@@ -104,7 +104,7 @@ defined( 'ABSPATH' ) || exit;
 
         <!-- Copyright Bar -->
         <div class="footer-bottom">
-            <span>&copy; <?php echo esc_html( date( 'Y' ) ); ?> SocietyPress. Released under the GPL v2 license.</span>
+            <span>&copy; <?php echo esc_html( wp_date( 'Y' ) ); ?> SocietyPress. Released under the GPL v2 license.</span>
             <div class="footer-bottom__links">
                 <a href="https://github.com/SocietyPressFoundation/SocietyPress" rel="noopener">GitHub</a>
                 <a href="<?php echo esc_url( home_url( '/wp-sitemap.xml' ) ); ?>">XML Sitemap</a>

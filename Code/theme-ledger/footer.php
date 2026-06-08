@@ -119,10 +119,13 @@
             <div class="ledger-footer-bottom-inner">
                 <span>&copy; <?php echo esc_html( wp_date( 'Y' ) ); ?> <?php bloginfo( 'name' ); ?>. <?php esc_html_e( 'All rights reserved.', 'ledger' ); ?></span>
                 <span><?php
-                    printf(
-                        /* translators: %s: SocietyPress link */
-                        esc_html__( 'Powered by %s', 'ledger' ),
-                        '<a href="https://getsocietypress.org">SocietyPress</a>'
+                    echo wp_kses(
+                        sprintf(
+                            /* translators: %s: SocietyPress link */
+                            __( 'Powered by %s', 'ledger' ),
+                            '<a href="https://getsocietypress.org">SocietyPress</a>'
+                        ),
+                        [ 'a' => [ 'href' => [] ] ]
                     );
                 ?></span>
             </div>

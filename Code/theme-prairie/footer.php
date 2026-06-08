@@ -22,7 +22,7 @@
     <footer class="prairie-footer">
         <div class="prairie-footer-inner">
             <p class="prairie-footer-copy">
-                &copy; <?php echo wp_date( 'Y' ); ?> <?php bloginfo( 'name' ); ?>. <?php esc_html_e( 'All rights reserved.', 'prairie' ); ?>
+                &copy; <?php echo esc_html( wp_date( 'Y' ) ); ?> <?php bloginfo( 'name' ); ?>. <?php esc_html_e( 'All rights reserved.', 'prairie' ); ?>
             </p>
 
             <?php

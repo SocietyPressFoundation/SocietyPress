@@ -20,7 +20,7 @@ $feedback_error   = '';
 if ( isset( $_POST['gsp_feedback_submit'] ) ) {
     // Verify nonce
     if ( ! wp_verify_nonce( $_POST['gsp_feedback_nonce'] ?? '', 'gsp_feedback' ) ) {
-        $feedback_error = 'Security check failed. Please try again.';
+        $feedback_error = __( 'Security check failed. Please try again.', 'getsocietypress' );
     } else {
         $name    = sanitize_text_field( $_POST['gsp_name'] ?? '' );
         $email   = sanitize_email( $_POST['gsp_email'] ?? '' );
@@ -29,9 +29,9 @@ if ( isset( $_POST['gsp_feedback_submit'] ) ) {
 
         // Validate
         if ( empty( $name ) || empty( $email ) || empty( $message ) ) {
-            $feedback_error = 'Please fill in all required fields.';
+            $feedback_error = __( 'Please fill in all required fields.', 'getsocietypress' );
         } elseif ( ! is_email( $email ) ) {
-            $feedback_error = 'Please enter a valid email address.';
+            $feedback_error = __( 'Please enter a valid email address.', 'getsocietypress' );
         } else {
             // Rate limit — 3 submissions per hour per IP
             $ip        = sanitize_text_field( $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0' );
@@ -39,7 +39,7 @@ if ( isset( $_POST['gsp_feedback_submit'] ) ) {
             $count     = (int) get_transient( $cache_key );
 
             if ( $count >= 3 ) {
-                $feedback_error = 'Too many submissions. Please try again later.';
+                $feedback_error = __( 'Too many submissions. Please try again later.', 'getsocietypress' );
             } else {
                 // Build email
                 $type_labels = [
@@ -70,7 +70,7 @@ if ( isset( $_POST['gsp_feedback_submit'] ) ) {
                     $feedback_sent = true;
                     set_transient( $cache_key, $count + 1, HOUR_IN_SECONDS );
                 } else {
-                    $feedback_error = 'Something went wrong sending your message. Please try emailing us directly.';
+                    $feedback_error = __( 'Something went wrong sending your message. Please try emailing us directly.', 'getsocietypress' );
                 }
             }
         }
@@ -96,7 +96,7 @@ get_header();
 
                 <?php if ( $feedback_sent ) : ?>
 
-                    <div class="feedback-success">
+                    <div class="feedback-success" role="status">
                         <h2>Thank you!</h2>
                         <p>
                             Your feedback has been sent. We read every submission.
@@ -115,7 +115,7 @@ get_header();
                     </p>
 
                     <?php if ( $feedback_error ) : ?>
-                        <div class="feedback-error">
+                        <div class="feedback-error" role="alert">
                             <?php echo esc_html( $feedback_error ); ?>
                         </div>
                     <?php endif; ?>
@@ -193,149 +193,5 @@ get_header();
 
     </div>
 </div>
-
-<style>
-    /* ---- Feedback Page Styles ---- */
-    .feedback-layout {
-        display: grid;
-        grid-template-columns: 2fr 1fr;
-        gap: 48px;
-        max-width: 960px;
-        margin: 0 auto;
-    }
-
-    .feedback-intro {
-        font-size: var(--font-size-lg);
-        color: var(--color-text-secondary);
-        margin-bottom: 32px;
-    }
-
-    .feedback-form {
-        max-width: 100%;
-    }
-
-    .feedback-field {
-        margin-bottom: 24px;
-    }
-
-    .feedback-field label {
-        display: block;
-        font-weight: 600;
-        margin-bottom: 6px;
-        color: var(--color-text);
-        font-size: var(--font-size-base);
-    }
-
-    .feedback-field .required {
-        color: #d63638;
-    }
-
-    .feedback-field input,
-    .feedback-field select,
-    .feedback-field textarea {
-        width: 100%;
-        padding: 10px 14px;
-        border: 1px solid var(--color-border);
-        border-radius: 6px;
-        font-size: var(--font-size-base);
-        font-family: var(--font-family);
-        color: var(--color-text);
-        background: #fff;
-        transition: border-color 0.2s;
-    }
-
-    .feedback-field input:focus,
-    .feedback-field select:focus,
-    .feedback-field textarea:focus {
-        outline: none;
-        border-color: var(--color-accent);
-        box-shadow: 0 0 0 3px rgba(201, 151, 58, 0.15);
-    }
-
-    .feedback-field textarea {
-        resize: vertical;
-        min-height: 160px;
-    }
-
-    .feedback-error {
-        background: #fef2f2;
-        border: 1px solid #fecaca;
-        color: #991b1b;
-        padding: 12px 16px;
-        border-radius: 6px;
-        margin-bottom: 24px;
-        font-weight: 500;
-    }
-
-    .feedback-success {
-        text-align: center;
-        padding: 60px 20px;
-    }
-
-    .feedback-success h2 {
-        color: var(--color-primary);
-        margin-bottom: 12px;
-    }
-
-    .feedback-success p {
-        color: var(--color-text-secondary);
-        font-size: var(--font-size-lg);
-        margin-bottom: 32px;
-        max-width: 480px;
-        margin-left: auto;
-        margin-right: auto;
-    }
-
-    .feedback-sidebar-card {
-        background: var(--color-surface);
-        border: 1px solid var(--color-border);
-        border-radius: 8px;
-        padding: 24px;
-        margin-bottom: 20px;
-    }
-
-    .feedback-sidebar-card h3 {
-        font-size: var(--font-size-lg);
-        margin-bottom: 8px;
-        color: var(--color-primary);
-    }
-
-    .feedback-sidebar-card p {
-        color: var(--color-text-secondary);
-        font-size: var(--font-size-sm);
-        margin-bottom: 16px;
-    }
-
-    .feedback-sidebar-card ul {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-    }
-
-    .feedback-sidebar-card li {
-        padding: 6px 0;
-        font-size: var(--font-size-sm);
-        color: var(--color-text-secondary);
-        border-bottom: 1px solid var(--color-border);
-    }
-
-    .feedback-sidebar-card li:last-child {
-        border-bottom: none;
-    }
-
-    .feedback-sidebar-card li::before {
-        content: '\2022';
-        color: var(--color-accent);
-        font-weight: 700;
-        margin-right: 8px;
-    }
-
-    @media (max-width: 768px) {
-        .feedback-layout {
-            grid-template-columns: 1fr;
-            gap: 32px;
-        }
-    }
-</style>
 
 <?php get_footer(); ?>

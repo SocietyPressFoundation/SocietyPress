@@ -45,7 +45,7 @@ if ( ! empty( $join_pages ) ) {
 }
 ?>
 
-<div id="main-content">
+<main id="main-content">
 
     <!-- Hero banner -->
     <section class="ledger-hero">
@@ -176,10 +176,11 @@ if ( ! empty( $join_pages ) ) {
         if ( isset( $card_defs[ $tpl_slug ] ) ) {
             $def = $card_defs[ $tpl_slug ];
             $cards[] = [
-                'icon'  => $def['icon'],
-                'title' => $def['title'],
-                'desc'  => $def['desc'],
-                'url'   => get_permalink( $page_obj->ID ),
+                'icon'     => $def['icon'],
+                'title'    => $def['title'],
+                'desc'     => $def['desc'],
+                'url'      => get_permalink( $page_obj->ID ),
+                'template' => $tpl_slug,
             ];
         }
     }
@@ -195,10 +196,11 @@ if ( ! empty( $join_pages ) ) {
             if ( isset( $card_defs[ $tpl_slug ] ) ) {
                 $def = $card_defs[ $tpl_slug ];
                 $cards[] = [
-                    'icon'  => $def['icon'],
-                    'title' => $def['title'],
-                    'desc'  => $def['desc'],
-                    'url'   => home_url( '/' ),
+                    'icon'     => $def['icon'],
+                    'title'    => $def['title'],
+                    'desc'     => $def['desc'],
+                    'url'      => home_url( '/' ),
+                    'template' => $tpl_slug,
                 ];
             }
         }
@@ -206,15 +208,17 @@ if ( ! empty( $join_pages ) ) {
 
     // Don't show search in the card grid — it's in the header already.
     // Also skip calendar if events is already present (they're related).
-    $shown_templates = array_column( $cards, 'title' );
-    $cards = array_filter( $cards, function( $card ) use ( $shown_templates ) {
+    // WHY: Filter by template slug, not translated title — slug comparison is
+    // locale-independent and cannot produce false positives from translation collisions.
+    $shown_template_slugs = array_column( $cards, 'template' );
+    $cards = array_filter( $cards, function( $card ) use ( $shown_template_slugs ) {
         // Always skip Search card — search is in the header
-        if ( $card['title'] === __( 'Search', 'ledger' ) ) {
+        if ( $card['template'] === 'sp-search' ) {
             return false;
         }
         // Skip Calendar card if Events card is already showing
-        if ( $card['title'] === __( 'Calendar', 'ledger' )
-             && in_array( __( 'Events', 'ledger' ), $shown_templates, true ) ) {
+        if ( $card['template'] === 'sp-calendar'
+             && in_array( 'sp-events', $shown_template_slugs, true ) ) {
             return false;
         }
         return true;
@@ -267,7 +271,8 @@ if ( ! empty( $join_pages ) ) {
                 "SELECT id, title, event_date, location
                  FROM {$events_table}
                  WHERE event_date >= %s
-                 AND status = 'published'
+                 AND status = 'scheduled'
+                 AND visibility = 'public'
                  ORDER BY event_date ASC
                  LIMIT 3",
                 wp_date( 'Y-m-d' )
@@ -332,6 +337,6 @@ if ( ! empty( $join_pages ) ) {
         </a>
     </section>
 
-</div><!-- #main-content -->
+</main><!-- #main-content -->
 
 <?php get_footer(); ?>

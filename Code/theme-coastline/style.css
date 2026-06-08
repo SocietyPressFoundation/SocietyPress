@@ -38,11 +38,11 @@ Tags: genealogy, historical-society, modern, clean, coastal, sans-serif, magazin
     /* Override SocietyPress design vars */
     --sp-color-primary:       #1B3A5C;
     --sp-color-primary-hover: #5B9BD5;
-    --sp-color-accent:        #5B9BD5;
+    --sp-color-accent:        #2E78C2; /* WCAG-AA replacement for #5B9BD5 (was 2.96:1 on white) */
     --sp-color-secondary:     #EFF6FC;
     --sp-color-background:    #FFFFFF;
     --sp-color-text:          #1A2A3A;
-    --sp-color-text-muted:    #6B7D8E;
+    --sp-color-text-muted:    #5E6E7E; /* WCAG-AA replacement for #6B7D8E (was 4.24:1 on white) */
     --sp-color-border:        #D6E4F0;
     --sp-color-header-bg:     #1B3A5C;
     --sp-color-header-text:   #FFFFFF;

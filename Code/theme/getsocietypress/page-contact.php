@@ -30,6 +30,8 @@ get_header();
 <section class="contact-page section">
     <div class="container container--narrow">
 
+        <h2 class="sr-only"><?php esc_html_e( 'Contact paths', 'getsocietypress' ); ?></h2>
+
         <div class="contact-grid">
 
             <div class="contact-card">

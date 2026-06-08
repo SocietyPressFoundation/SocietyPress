@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'PARLOR_THEME_VERSION' ) ) {
-    define( 'PARLOR_THEME_VERSION', '1.0.0' );
+    define( 'PARLOR_THEME_VERSION', '1.1.0' );
 }
 
 /**
@@ -69,4 +69,49 @@ add_action( 'wp_enqueue_scripts', function () {
         [ 'societypress-style', 'parlor-google-fonts' ],
         PARLOR_THEME_VERSION
     );
+} );
+
+/**
+ * Register widget areas for the Parlor theme.
+ *
+ * WHY: footer.php references parlor-footer-1 and parlor-footer-2; sidebar.php
+ * and page.php reference parlor-sidebar. Without register_sidebar() calls for
+ * these IDs, WordPress never marks them active, so is_active_sidebar() always
+ * returns false and admins cannot add widgets to any of them. Every other SP
+ * child theme has this block — Parlor was missing it.
+ */
+add_action( 'widgets_init', function () {
+
+    // Sidebar — displayed on interior pages when widgets are present
+    register_sidebar( [
+        'name'          => esc_html__( 'Parlor Sidebar', 'parlor' ),
+        'id'            => 'parlor-sidebar',
+        'description'   => esc_html__( 'Sidebar widget area — displayed on interior pages when widgets are added.', 'parlor' ),
+        'before_widget' => '<div id="%1$s" class="widget %2$s">',
+        'after_widget'  => '</div>',
+        'before_title'  => '<h3 class="widget-title">',
+        'after_title'   => '</h3>',
+    ] );
+
+    // Footer column 1 — typically organization description or about text
+    register_sidebar( [
+        'name'          => esc_html__( 'Footer Column 1', 'parlor' ),
+        'id'            => 'parlor-footer-1',
+        'description'   => esc_html__( 'First footer column — typically organization description.', 'parlor' ),
+        'before_widget' => '<div id="%1$s" class="widget %2$s">',
+        'after_widget'  => '</div>',
+        'before_title'  => '<h3 class="widget-title">',
+        'after_title'   => '</h3>',
+    ] );
+
+    // Footer column 2 — typically quick links or navigation
+    register_sidebar( [
+        'name'          => esc_html__( 'Footer Column 2', 'parlor' ),
+        'id'            => 'parlor-footer-2',
+        'description'   => esc_html__( 'Second footer column — typically quick links or contact information.', 'parlor' ),
+        'before_widget' => '<div id="%1$s" class="widget %2$s">',
+        'after_widget'  => '</div>',
+        'before_title'  => '<h3 class="widget-title">',
+        'after_title'   => '</h3>',
+    ] );
 } );

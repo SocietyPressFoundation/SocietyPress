@@ -42,9 +42,9 @@ get_header();
                             <div class="update-card__date">
                                 <?php echo esc_html( get_the_date( 'F j, Y' ) ); ?>
                             </div>
-                            <h3><a href="<?php the_permalink(); ?>"><?php the_title(); ?></a></h3>
+                            <h3><a href="<?php the_permalink(); ?>"><?php echo esc_html( get_the_title() ); ?></a></h3>
                             <p class="update-card__excerpt"><?php the_excerpt(); ?></p>
-                            <a href="<?php the_permalink(); ?>" class="update-card__more">Read more &rarr;</a>
+                            <a href="<?php the_permalink(); ?>" class="update-card__more"><?php esc_html_e( 'Read more', 'getsocietypress' ); ?> &rarr;</a>
                         </div>
                     </article>
                 <?php endwhile; ?>
@@ -63,7 +63,7 @@ get_header();
 
         <?php else : ?>
 
-            <p class="text-center text-secondary">No posts found.</p>
+            <p class="text-center text-secondary"><?php esc_html_e( 'No posts found.', 'getsocietypress' ); ?></p>
 
         <?php endif; ?>
 

@@ -92,8 +92,13 @@ define( 'SP_INSTALLER_SALT_URL',    'https://api.wordpress.org/secret-key/1.1/sa
 // arbitrary file include. We now require the demo config to be at one fixed
 // absolute path that has nothing to do with $_SERVER. If the file isn't there,
 // demo mode is simply off.
-$sp_demo_config = '/home/charle24/private/sp-demo-config.php';
-if ( ! file_exists( $sp_demo_config ) ) {
+// WHY an environment variable, not a hardcoded path: a literal absolute path
+// would leak the hosting account's username and home-directory layout into the
+// public repository. The demo server sets SP_DEMO_CONFIG (via .htaccess or
+// php.ini) to the absolute path of the out-of-webroot config file. On any real
+// install the variable is simply unset, so demo mode stays off.
+$sp_demo_config = (string) getenv( 'SP_DEMO_CONFIG' );
+if ( $sp_demo_config === '' || ! file_exists( $sp_demo_config ) ) {
     $sp_demo_config = '';
 }
 define( 'SP_INSTALLER_DEMO_MODE', $sp_demo_config !== '' );
@@ -305,9 +310,32 @@ function sp_installer_check_requirements(): void {
  * never seen a database configuration screen before.
  */
 function sp_installer_show_form(): void {
+    // WHY regenerate the session ID: a session ID observed while the visitor is
+    // anonymous (e.g. on the requirements page) should not stay valid through
+    // the install POST. Rotating it on each fresh visit to the form, deleting
+    // the old session file (the true argument), closes that replay window.
+    if ( session_status() === PHP_SESSION_ACTIVE ) {
+        @session_regenerate_id( true );
+    }
+
     // Generate a one-time nonce for CSRF protection
     $nonce = bin2hex( random_bytes( 16 ) );
     $_SESSION['sp_install_nonce'] = $nonce;
+
+    // WHY: In demo mode the DB credentials must never reach the public HTML —
+    // anyone viewing page source could read the real database password. Stash
+    // the pre-verified demo credentials server-side in the session; the process
+    // handler reads them from there instead of from $_POST. The form transmits
+    // no DB fields at all in demo mode.
+    if ( SP_INSTALLER_DEMO_MODE ) {
+        $_SESSION['sp_demo_db'] = [
+            'name'   => SP_DEMO_DB_NAME,
+            'user'   => SP_DEMO_DB_USER,
+            'pass'   => SP_DEMO_DB_PASS,
+            'host'   => SP_DEMO_DB_HOST,
+            'prefix' => 'wp_',
+        ];
+    }
 
     // Retrieve saved form data and errors from session (if returning from a failed attempt)
     $saved = $_SESSION['sp_form_data'] ?? [];
@@ -349,13 +377,10 @@ function sp_installer_show_form(): void {
 
             <?php if ( SP_INSTALLER_DEMO_MODE ) : ?>
                 <!-- Demo mode: show realistic example fields (disabled) with coaching text.
-                     Real credentials are submitted via hidden inputs underneath. Howard sees
-                     what he'll encounter on his own hosting, with explanations. -->
-                <input type="hidden" name="db_name" value="<?php echo htmlspecialchars( SP_DEMO_DB_NAME , ENT_QUOTES, 'UTF-8'); ?>">
-                <input type="hidden" name="db_user" value="<?php echo htmlspecialchars( SP_DEMO_DB_USER , ENT_QUOTES, 'UTF-8'); ?>">
-                <input type="hidden" name="db_pass" value="<?php echo htmlspecialchars( SP_DEMO_DB_PASS , ENT_QUOTES, 'UTF-8'); ?>">
-                <input type="hidden" name="db_host" value="<?php echo htmlspecialchars( SP_DEMO_DB_HOST , ENT_QUOTES, 'UTF-8'); ?>">
-                <input type="hidden" name="db_prefix" value="wp_">
+                     Real credentials are NOT placed in the page — they live only in the
+                     PHP session (set in sp_installer_show_form before render) and are read
+                     server-side in sp_installer_process. Howard sees what he'll encounter
+                     on his own hosting, with explanations, but no secret ever hits the HTML. -->
 
                 <p style="color: #6B7280; font-size: 13px; margin-bottom: 16px;">
                     When you install on your own hosting, you'll fill in the database credentials
@@ -657,6 +682,13 @@ function sp_installer_process(): void {
         sp_installer_die( 'Security Error', 'Invalid session. Please go back and try again.' );
     }
     unset( $_SESSION['sp_install_nonce'] );
+    // WHY regenerate after consuming the nonce: rotate the session ID at the
+    // transition from "anonymous form visitor" to "running the install" so a
+    // previously observed ID cannot be replayed against the privileged step.
+    // The true argument deletes the old session file.
+    if ( session_status() === PHP_SESSION_ACTIVE ) {
+        @session_regenerate_id( true );
+    }
 
     // Honeypot check
     if ( ! empty( $_POST['sp_hp_field'] ) ) {
@@ -665,12 +697,25 @@ function sp_installer_process(): void {
         exit;
     }
 
-    // Collect and sanitize inputs
-    $db_name   = trim( $_POST['db_name'] ?? '' );
-    $db_user   = trim( $_POST['db_user'] ?? '' );
-    $db_pass   = $_POST['db_pass'] ?? '';
-    $db_host   = trim( $_POST['db_host'] ?? 'localhost' );
-    $db_prefix = preg_replace( '/[^a-zA-Z0-9_]/', '', $_POST['db_prefix'] ?? 'wp_' );
+    // Collect and sanitize inputs.
+    // WHY demo branch reads from session: in demo mode the DB credentials are
+    // never sent through the form (so the password can't be read from page
+    // source). They were stashed in the session when the form was rendered;
+    // pull them from there and never trust $_POST for these four values.
+    if ( SP_INSTALLER_DEMO_MODE && ! empty( $_SESSION['sp_demo_db'] ) ) {
+        $demo_db   = $_SESSION['sp_demo_db'];
+        $db_name   = trim( (string) ( $demo_db['name'] ?? '' ) );
+        $db_user   = trim( (string) ( $demo_db['user'] ?? '' ) );
+        $db_pass   = (string) ( $demo_db['pass'] ?? '' );
+        $db_host   = trim( (string) ( $demo_db['host'] ?? 'localhost' ) );
+        $db_prefix = preg_replace( '/[^a-zA-Z0-9_]/', '', (string) ( $demo_db['prefix'] ?? 'wp_' ) );
+    } else {
+        $db_name   = trim( $_POST['db_name'] ?? '' );
+        $db_user   = trim( $_POST['db_user'] ?? '' );
+        $db_pass   = $_POST['db_pass'] ?? '';
+        $db_host   = trim( $_POST['db_host'] ?? 'localhost' );
+        $db_prefix = preg_replace( '/[^a-zA-Z0-9_]/', '', $_POST['db_prefix'] ?? 'wp_' );
+    }
 
     $site_title  = trim( $_POST['site_title'] ?? '' );
     $admin_email = trim( $_POST['admin_email'] ?? '' );
@@ -908,7 +953,18 @@ function sp_installer_process(): void {
             if ( $item->isDir() ) {
                 @mkdir( $target, 0755, true );
             } else {
-                @rename( $item->getPathname(), $target );
+                // WHY copy+unlink fallback: on many cPanel/shared hosts the temp
+                // extraction and the install root can sit on different mount
+                // points, where rename() across devices fails silently. If the
+                // move fails, copy then delete the source — a universally
+                // reliable cross-mount pattern. If even the copy fails, abort
+                // loudly rather than logging a misleading "extracted" success.
+                if ( ! @rename( $item->getPathname(), $target ) ) {
+                    if ( ! @copy( $item->getPathname(), $target ) ) {
+                        sp_installer_die( 'Extract Failed', 'Could not move WordPress files into place. Check directory permissions and available disk space.' );
+                    }
+                    @unlink( $item->getPathname() );
+                }
             }
         }
         // Clean up the now-empty wordpress directory
@@ -1055,7 +1111,12 @@ add_action( 'login_init', function () {
     }
 
     if ( ! hash_equals( $secret, $provided ) ) {
-        // Mismatch — probably a crawler or scanner. Don't burn the transient.
+        // A present-but-wrong token can never be the legitimate click — the
+        // browser that followed the bridge redirect carries the exact correct
+        // token. So a mismatch is always a probe (crawler/scanner/attacker).
+        // Burn the transient immediately to close the brute-force window
+        // instead of leaving it alive for its full TTL.
+        delete_transient( 'sp_auto_login' );
         return;
     }
 
@@ -1126,11 +1187,14 @@ add_action( 'admin_init', function () {
     $hello_dir = WP_PLUGIN_DIR . '/hello-dolly';
     if ( is_dir( $hello_dir ) ) { sp_installer_mu_rmdir( $hello_dir ); }
 
-    // Delete default Twenty* themes — SocietyPress is the only theme needed
-    $default_themes = [ 'twentytwentythree', 'twentytwentyfour', 'twentytwentyfive' ];
-    foreach ( $default_themes as $slug ) {
-        $theme_dir = get_theme_root() . '/' . $slug;
-        if ( is_dir( $theme_dir ) ) {
+    // Delete default Twenty* themes — SocietyPress is the only theme needed.
+    // WHY glob instead of a hardcoded list: each WordPress release ships a new
+    // Twenty* theme. A fixed list goes stale and leaves the newest default on
+    // disk after every WP upgrade. Matching any twenty* directory future-proofs
+    // the cleanup with no maintenance.
+    $twenty_dirs = glob( get_theme_root() . '/twenty*', GLOB_ONLYDIR );
+    if ( is_array( $twenty_dirs ) ) {
+        foreach ( $twenty_dirs as $theme_dir ) {
             sp_installer_mu_rmdir( $theme_dir );
         }
     }
@@ -1158,8 +1222,27 @@ add_action( 'admin_init', function () {
     // installer writes these to a JSON file with a randomized filename
     // (sp-installer-config-<32hex>.json) that we glob for here, read,
     // merge into the SP settings, and delete.
+    // WHY initialize to null: $installer_config is only assigned inside the
+    // config-file block below. If glob finds nothing (write failed, or another
+    // process already cleaned the file), the is_array() check further down would
+    // otherwise read an undefined variable — a PHP 8 warning that silently skips
+    // admin member-record creation. Initialize so the guard is real, not luck.
+    $installer_config = null;
+
+    // WHY glob two locations: the installer writes this file one directory
+    // above the web root when that parent is writable (so it can't be fetched
+    // over HTTP), and falls back to ABSPATH otherwise. Check both.
     $config_file = '';
-    $candidates  = glob( ABSPATH . 'sp-installer-config-*.json' );
+    $candidates  = array_merge(
+        glob( ABSPATH . 'sp-installer-config-*.json' ) ?: [],
+        glob( dirname( untrailingslashit( ABSPATH ) ) . '/sp-installer-config-*.json' ) ?: []
+    );
+    // WHY validate the basename: glob only matched a wildcard. Pin each
+    // candidate to the exact randomized pattern (32 hex chars) so a file
+    // planted via some other writable-path vector can't be read as config.
+    $candidates = array_values( array_filter( $candidates, function ( $path ) {
+        return (bool) preg_match( '/^sp-installer-config-[a-f0-9]{32}\.json$/', basename( $path ) );
+    } ) );
     if ( $candidates ) {
         // Most recent wins if more than one exists (shouldn't, but defend).
         usort( $candidates, function ( $a, $b ) { return filemtime( $b ) <=> filemtime( $a ); } );
@@ -1254,7 +1337,9 @@ add_action( 'admin_init', function () {
 }, 1 );
 MUPLUGIN;
 
-    file_put_contents( $mu_dir . '/sp-auto-activate.php', $mu_plugin );
+    if ( false === file_put_contents( $mu_dir . '/sp-auto-activate.php', $mu_plugin ) ) {
+        sp_installer_die( 'Write Error', 'Could not write the auto-activator. Check that the directory is writable and you have enough disk space.' );
+    }
     $log[] = 'Auto-activator planted.';
 
     // ---- 6b. Write installer config for the mu-plugin to pick up ----
@@ -1269,6 +1354,13 @@ MUPLUGIN;
     // mu-plugin pickup. The file holds admin name/email/phone/address
     // (no passwords). Randomizing the filename closes blind URL probing
     // — the mu-plugin globs for the unique pattern.
+    //
+    // WHY one directory above the web root when possible: even with a random
+    // name, the file sits with no .htaccess protection (we rename .htaccess
+    // away below so the bridge is reachable). Writing it one level above
+    // __DIR__ takes it out of the document root entirely so it can never be
+    // fetched over HTTP. If that parent isn't writable (e.g. a root install),
+    // fall back to the install dir. The mu-plugin globs both locations.
     $installer_config = [
         'organization_name'    => $site_title,
         'organization_email'   => $org_email ?: '',
@@ -1280,7 +1372,14 @@ MUPLUGIN;
         'admin_last_name'      => $admin_last,
     ];
     $config_filename = 'sp-installer-config-' . bin2hex( random_bytes( 16 ) ) . '.json';
-    file_put_contents( $install_dir . '/' . $config_filename, json_encode( $installer_config ) );
+    $config_parent   = dirname( $install_dir );
+    $config_dir      = ( $config_parent && is_dir( $config_parent ) && is_writable( $config_parent ) )
+        ? $config_parent
+        : $install_dir;
+    if ( false === file_put_contents( $config_dir . '/' . $config_filename, json_encode( $installer_config ) ) ) {
+        // Last resort: try the install dir if the out-of-webroot write failed.
+        @file_put_contents( $install_dir . '/' . $config_filename, json_encode( $installer_config ) );
+    }
     $log[] = 'Installer config written.';
 
     // ---- 7. Create a bridge script that runs WordPress's install with our data ----
@@ -1320,6 +1419,17 @@ MUPLUGIN;
         . 'require_once __DIR__ . "/wp-load.php";' . "\n"
         . 'require_once ABSPATH . "wp-admin/includes/upgrade.php";' . "\n"
         . "\n"
+        . '// WHY the admin password comes from the session, not from this file:' . "\n"
+        . '// writing the plaintext password into a PHP file in the web root exposes' . "\n"
+        . '// it to any co-tenant process under the same system user (shared hosting)' . "\n"
+        . '// for the window before this script self-deletes, and indefinitely if the' . "\n"
+        . '// self-delete ever fails. The installer stored it in $_SESSION before the' . "\n"
+        . '// redirect; the browser carries the session cookie here, so we read it' . "\n"
+        . '// server-side and immediately unset it. Never written to disk.' . "\n"
+        . 'if ( session_status() !== PHP_SESSION_ACTIVE ) { session_start(); }' . "\n"
+        . '$sp_admin_pass = (string) ( $_SESSION["sp_bridge_pass"] ?? "" );' . "\n"
+        . 'unset( $_SESSION["sp_bridge_pass"] );' . "\n"
+        . "\n"
         . '// var_export() produces valid PHP string literals with proper escaping of quotes' . "\n"
         . '// and special characters, making it safe for embedding user input into generated PHP.' . "\n"
         . '// This is intentional — do not replace with string concatenation.' . "\n"
@@ -1330,7 +1440,7 @@ MUPLUGIN;
         . '    ' . var_export( $admin_email, true ) . ',' . "\n"
         . '    true,' . "\n"
         . '    "",' . "\n"
-        . '    ' . var_export( $admin_pass, true ) . "\n"
+        . '    $sp_admin_pass' . "\n"
         . ');' . "\n"
         . "\n"
         . 'if ( is_wp_error( $result ) ) {' . "\n"
@@ -1360,6 +1470,10 @@ MUPLUGIN;
         . '@unlink( __FILE__ );' . "\n"
         . '$installer = dirname( __FILE__ ) . "/sp-installer.php";' . "\n"
         . 'if ( file_exists( $installer ) ) { @unlink( $installer ); }' . "\n"
+        . '// Also remove the demo sample-data loader — a dev/demo utility that' . "\n"
+        . '// must not linger in the web root of a finished install.' . "\n"
+        . '$sample = dirname( __FILE__ ) . "/load-sample-data.php";' . "\n"
+        . 'if ( file_exists( $sample ) ) { @unlink( $sample ); }' . "\n"
         . '// WHY: leftover .htaccess.sp-bak would otherwise sit web-readable' . "\n"
         . '// on Apache hosts forever, exposing the prior rewrite config.' . "\n"
         . '$htaccess_bak = dirname( __FILE__ ) . "/.htaccess.sp-bak";' . "\n"
@@ -1368,10 +1482,16 @@ MUPLUGIN;
         . '// Redirect directly to wp-login.php carrying the secret. The mu-plugin\'s' . "\n"
         . '// login_init hook reads the transient, verifies sp_token matches the stored' . "\n"
         . '// secret, sets the auth cookie, and redirects to wp-admin.' . "\n"
-        . 'header( "Location: " . rtrim( dirname( $_SERVER["SCRIPT_NAME"] ), "/" ) . "/wp-login.php?sp_token=" . $sp_token_secret );' . "\n"
+        . '// WHY home_url() not SCRIPT_NAME: WordPress is loaded here (wp-load.php' . "\n"
+        . '// above), so home_url() is the authoritative, host-config-agnostic base.' . "\n"
+        . '// SCRIPT_NAME can be wrong on Nginx/cPanel and is spoofable on some stacks,' . "\n"
+        . '// which would send the 256-bit auto-login token to the wrong URL.' . "\n"
+        . 'header( "Location: " . home_url( "/wp-login.php" ) . "?sp_token=" . rawurlencode( $sp_token_secret ) );' . "\n"
         . 'exit;' . "\n";
 
-    file_put_contents( $bridge_script, $bridge_code );
+    if ( false === file_put_contents( $bridge_script, $bridge_code ) ) {
+        sp_installer_die( 'Write Error', 'Could not write the installation bridge script. Check that the directory is writable and you have enough disk space.' );
+    }
     $log[] = 'Bridge script created.';
 
     // Remove our .htaccess so the bridge script is reachable via HTTP
@@ -1508,7 +1628,22 @@ MUPLUGIN;
             sp_installer_die( 'Extract Failed', 'SocietyPress archive entry resolved outside wp-content. Aborting for safety.' );
         }
         if ( ! $is_dir ) {
-            file_put_contents( $target, $zip->getFromIndex( $index ) );
+            // WHY stream instead of getFromIndex(): getFromIndex() buffers the
+            // entire decompressed entry in a PHP string before writing. On a
+            // 64 MB shared host that peak allocation can OOM mid-extraction and
+            // leave a partial plugin directory. Streaming keeps memory flat,
+            // matching the WordPress extraction path above.
+            $entry_stream = $zip->getStreamIndex( $index );
+            if ( $entry_stream !== false ) {
+                $out = fopen( $target, 'wb' );
+                if ( $out !== false ) {
+                    stream_copy_to_stream( $entry_stream, $out );
+                    fclose( $out );
+                }
+                if ( is_resource( $entry_stream ) ) {
+                    fclose( $entry_stream );
+                }
+            }
         }
     };
 
@@ -1580,12 +1715,20 @@ MUPLUGIN;
     $log[] = 'Redirecting to WordPress installation...';
     $_SESSION['sp_install_log'] = $log;
 
-    // WHY rtrim($base): SCRIPT_NAME includes the filename (e.g. /subdir/install.php),
-    // so dirname() gives us /subdir. rtrim() guards against a trailing slash on root
-    // installs where dirname('/install.php') would return '/'.
+    // WHY: Hand the admin password to the bridge script via the server-side
+    // session instead of embedding it in the generated PHP file. The browser
+    // carries the session cookie to the bridge on the redirect below; the
+    // bridge reads and unsets it. This keeps the plaintext password off disk.
+    $_SESSION['sp_bridge_pass'] = $admin_pass;
+
+    // WHY a bare relative Location: the bridge script is a sibling of this
+    // installer in the same directory, so a relative target ("sp-bridge-
+    // install.php") is unambiguous to the browser and valid per RFC 7231.
+    // This avoids depending on $_SERVER['SCRIPT_NAME'], which can be wrong on
+    // Nginx/cPanel and is influenceable on some proxy/CGI setups — a path we
+    // don't want the install-bridge token riding on.
     // The token is appended so only this redirect can trigger the bridge script.
-    $base = dirname( $_SERVER['SCRIPT_NAME'] );
-    header( 'Location: ' . rtrim( $base, '/' ) . '/sp-bridge-install.php?token=' . urlencode( $bridge_token ) );
+    header( 'Location: sp-bridge-install.php?token=' . urlencode( $bridge_token ) );
     exit;
 }
 
@@ -1601,6 +1744,25 @@ function sp_installer_show_complete(): void {
     $admin_url = $_SESSION['sp_admin_url'] ?? '/wp-admin/';
     $site_url  = $_SESSION['sp_site_url'] ?? '/';
     $log       = $_SESSION['sp_install_log'] ?? [];
+
+    // WHY a scheme guard: htmlspecialchars stops HTML injection but not a
+    // javascript: URL used as an href. esc_url() isn't available here (WordPress
+    // isn't loaded in the bare installer), so reject anything that isn't a
+    // root-relative path or an http/https URL and fall back to safe defaults.
+    $sp_safe_href = static function ( string $url, string $fallback ): string {
+        if ( $url === '' ) {
+            return $fallback;
+        }
+        if ( $url[0] === '/' && ( ! isset( $url[1] ) || $url[1] !== '/' ) ) {
+            return $url; // root-relative path, e.g. /wp-admin/
+        }
+        if ( preg_match( '#^https?://#i', $url ) ) {
+            return $url;
+        }
+        return $fallback;
+    };
+    $admin_url = $sp_safe_href( (string) $admin_url, '/wp-admin/' );
+    $site_url  = $sp_safe_href( (string) $site_url, '/' );
 
     // Clear session data
     unset( $_SESSION['sp_install_complete'], $_SESSION['sp_install_log'],
@@ -1720,14 +1882,22 @@ function sp_installer_download( string $url, string $dest ): bool {
  * Download a URL and return the content as a string.
  */
 function sp_installer_download_string( string $url ): ?string {
+    // WHY a 1 MB cap: the only callers are the WordPress salt API (~1 KB) and
+    // the GitHub releases API (< 100 KB). A compromised or misbehaving endpoint
+    // returning a multi-megabyte body would otherwise grow unbounded in memory
+    // until the limit or timeout fires. 1 MB is far above any legitimate size.
+    $max_bytes = 1024 * 1024;
+
     if ( function_exists( 'curl_init' ) ) {
         $ch = curl_init( $url );
         curl_setopt_array( $ch, [
             CURLOPT_RETURNTRANSFER  => true,
             CURLOPT_FOLLOWLOCATION  => true,
+            CURLOPT_MAXREDIRS       => 5,
             CURLOPT_TIMEOUT         => 30,
             CURLOPT_SSL_VERIFYPEER  => true,
             CURLOPT_USERAGENT       => 'SocietyPress-Installer/1.0',
+            CURLOPT_MAXFILESIZE     => $max_bytes,
         ] );
         $result = curl_exec( $ch );
         curl_close( $ch );
@@ -1744,7 +1914,7 @@ function sp_installer_download_string( string $url ): ?string {
                 'verify_peer_name' => true,
             ],
         ] );
-        $result = @file_get_contents( $url, false, $ctx );
+        $result = @file_get_contents( $url, false, $ctx, 0, $max_bytes );
         if ( $result ) return $result;
     }
 
@@ -1827,6 +1997,15 @@ function sp_installer_rmdir( string $dir ): void {
  * Show an error page and stop.
  */
 function sp_installer_die( string $title, string $message ): void {
+    // WHY: If we already renamed .htaccess to .htaccess.sp-bak (so the bridge
+    // script could be reached over HTTP) and then hit a fatal error before the
+    // bridge ran its own cleanup, the site is left with no rewrite rules and
+    // every URL 404s on Apache. Restore the backup before showing the error.
+    $htaccess_bak = __DIR__ . '/.htaccess.sp-bak';
+    if ( file_exists( $htaccess_bak ) && ! file_exists( __DIR__ . '/.htaccess' ) ) {
+        @rename( $htaccess_bak, __DIR__ . '/.htaccess' );
+    }
+
     sp_installer_render_page( $title, function () use ( $message ) {
         echo '<div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 20px; margin-bottom: 24px;">';
         // WHY htmlspecialchars: most callers pass static literals, but a few

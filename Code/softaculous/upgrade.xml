@@ -14,7 +14,11 @@
         <files>
             <exclude>wp-config.php</exclude>
             <exclude>wp-content/uploads</exclude>
-            <exclude>wp-content/themes/*/style.css</exclude>
+            <exclude>wp-content/themes/coastline</exclude>
+            <exclude>wp-content/themes/heritage</exclude>
+            <exclude>wp-content/themes/ledger</exclude>
+            <exclude>wp-content/themes/parlor</exclude>
+            <exclude>wp-content/themes/prairie</exclude>
             <exclude>.htaccess</exclude>
         </files>
 

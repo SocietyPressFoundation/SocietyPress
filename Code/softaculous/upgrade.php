@@ -40,7 +40,13 @@ function __upgrade() {
 
     // Deactivate and reactivate to trigger dbDelta migrations
     deactivate_plugins( $plugin_file );
-    activate_plugin( $plugin_file );
+    $activated = activate_plugin( $plugin_file );
+    if ( is_wp_error( $activated ) ) {
+        // Attempt to re-activate the previous version is not possible here,
+        // but at minimum report the failure so Softaculous marks the upgrade as failed
+        $error[] = 'SocietyPress activation failed after upgrade: ' . $activated->get_error_message();
+        return false;
+    }
 
     // Flush rewrite rules in case new page templates were added
     flush_rewrite_rules();

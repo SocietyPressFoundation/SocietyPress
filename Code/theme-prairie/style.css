@@ -40,7 +40,7 @@ Tags: genealogy, historical-society, earthy, warm, natural, serif, sidebar-navig
 
     /* Override SocietyPress design vars */
     --sp-color-primary:       #2D5016;
-    --sp-color-primary-hover: #7A9A5E;
+    --sp-color-primary-hover: #4E7A34;
     --sp-color-accent:        #C4A265;
     --sp-color-secondary:     #E8DCC8;
     --sp-color-background:    #FAF7F2;
@@ -283,7 +283,7 @@ hr,
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: var(--prairie-muted);
+    color: #666060; /* WCAG-AA replacement for --prairie-muted (#7D7060, 4.06:1 on #F0EBE1 — fails at small text) */
     padding: 16px 20px 6px;
     margin: 0;
 }
@@ -358,7 +358,7 @@ hr,
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: var(--prairie-muted);
+    color: #666060; /* WCAG-AA replacement for --prairie-muted (#7D7060, 4.06:1 on #F0EBE1 — fails at small text) */
     margin: 0 0 8px;
     padding: 0;
 }

@@ -62,7 +62,7 @@ get_header();
                 $rendered = gsp_render_simple_markdown( $md, 1 );
                 set_transient( $cache_key, $rendered, HOUR_IN_SECONDS );
             }
-            echo '<article class="md-article">' . $rendered . '</article>';
+            echo '<article class="md-article">' . wp_kses_post( $rendered ) . '</article>';
 
         else :
             // Index view — list every .md file in the modules folder

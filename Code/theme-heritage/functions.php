@@ -94,9 +94,9 @@ add_action( 'widgets_init', function () {
 
     // Footer column 1 — typically "About" / organization description
     register_sidebar( [
-        'name'          => esc_html__( 'Footer Column 1', 'societypress' ),
+        'name'          => esc_html__( 'Footer Column 1', 'heritage' ),
         'id'            => 'heritage-footer-1',
-        'description'   => esc_html__( 'First footer column — typically organization description.', 'societypress' ),
+        'description'   => esc_html__( 'First footer column — typically organization description.', 'heritage' ),
         'before_widget' => '<div id="%1$s" class="widget %2$s">',
         'after_widget'  => '</div>',
         'before_title'  => '<h3 class="widget-title">',
@@ -105,9 +105,9 @@ add_action( 'widgets_init', function () {
 
     // Footer column 2 — typically quick links / navigation
     register_sidebar( [
-        'name'          => esc_html__( 'Footer Column 2', 'societypress' ),
+        'name'          => esc_html__( 'Footer Column 2', 'heritage' ),
         'id'            => 'heritage-footer-2',
-        'description'   => esc_html__( 'Second footer column — typically quick links.', 'societypress' ),
+        'description'   => esc_html__( 'Second footer column — typically quick links.', 'heritage' ),
         'before_widget' => '<div id="%1$s" class="widget %2$s">',
         'after_widget'  => '</div>',
         'before_title'  => '<h3 class="widget-title">',
@@ -116,9 +116,9 @@ add_action( 'widgets_init', function () {
 
     // Footer column 3 — typically contact info
     register_sidebar( [
-        'name'          => esc_html__( 'Footer Column 3', 'societypress' ),
+        'name'          => esc_html__( 'Footer Column 3', 'heritage' ),
         'id'            => 'heritage-footer-3',
-        'description'   => esc_html__( 'Third footer column — typically contact information.', 'societypress' ),
+        'description'   => esc_html__( 'Third footer column — typically contact information.', 'heritage' ),
         'before_widget' => '<div id="%1$s" class="widget %2$s">',
         'after_widget'  => '</div>',
         'before_title'  => '<h3 class="widget-title">',
@@ -127,9 +127,9 @@ add_action( 'widgets_init', function () {
 
     // Front page hero — optional widget area for admin-controlled hero content
     register_sidebar( [
-        'name'          => esc_html__( 'Front Page Hero', 'societypress' ),
+        'name'          => esc_html__( 'Front Page Hero', 'heritage' ),
         'id'            => 'heritage-hero',
-        'description'   => esc_html__( 'Hero section on the front page. Leave empty for the default hero (site name + tagline + button).', 'societypress' ),
+        'description'   => esc_html__( 'Hero section on the front page. Leave empty for the default hero (site name + tagline + button).', 'heritage' ),
         'before_widget' => '<div id="%1$s" class="widget heritage-hero-widget %2$s">',
         'after_widget'  => '</div>',
         'before_title'  => '<h2 class="heritage-hero-widget-title">',

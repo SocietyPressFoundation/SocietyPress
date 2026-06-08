@@ -37,11 +37,11 @@ Tags: genealogy, historical-society, traditional, warm, serif, one-column
     /* Override SocietyPress design vars */
     --sp-color-primary:       #3E2723;
     --sp-color-primary-hover: #B8860B;
-    --sp-color-accent:        #B8860B;
+    --sp-color-accent:        #8C6500;
     --sp-color-secondary:     #D4C5A9;
     --sp-color-background:    #FDF6EC;
     --sp-color-text:          #2C1810;
-    --sp-color-text-muted:    #8B7355;
+    --sp-color-text-muted:    #7A6240;
     --sp-color-border:        #D4C5A9;
     --sp-color-header-bg:     #3E2723;
     --sp-color-header-text:   #FDF6EC;

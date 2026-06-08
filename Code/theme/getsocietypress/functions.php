@@ -183,9 +183,14 @@ class GSP_Nav_Walker extends Walker_Nav_Menu {
         }
 
         if ( 0 === $depth && $has_children ) {
+            $panel_id     = 'nav-dd-' . $item->ID;
             $toggle_class = trim( 'nav-dropdown__toggle ' . implode( ' ', $state ) );
+            /* Store panel id so start_lvl() can emit the matching id attribute. */
+            if ( $args ) {
+                $args->current_panel_id = $panel_id;
+            }
             $output .= '<div class="nav-dropdown">';
-            $output .= '<button type="button" class="' . esc_attr( $toggle_class ) . '" aria-expanded="false" aria-haspopup="true">';
+            $output .= '<button type="button" class="' . esc_attr( $toggle_class ) . '" aria-expanded="false" aria-haspopup="menu" aria-controls="' . esc_attr( $panel_id ) . '">';
             $output .= esc_html( $item->title );
             $output .= '<span class="nav-dropdown__caret" aria-hidden="true"></span>';
             $output .= '</button>';
@@ -205,7 +210,9 @@ class GSP_Nav_Walker extends Walker_Nav_Menu {
 
     /* The drop down panel that holds the child links. */
     public function start_lvl( &$output, $depth = 0, $args = null ) {
-        $output .= '<div class="nav-dropdown__menu">';
+        $panel_id = ( $args && ! empty( $args->current_panel_id ) ) ? $args->current_panel_id : '';
+        $id_attr  = $panel_id ? ' id="' . esc_attr( $panel_id ) . '"' : '';
+        $output  .= '<div class="nav-dropdown__menu"' . $id_attr . '>';
     }
 
     public function end_lvl( &$output, $depth = 0, $args = null ) {
@@ -477,8 +484,8 @@ function gsp_dashboard_pulse_render() {
         <!-- SAYING -->
         <div class="gsp-pulse__panel">
             <h3 class="gsp-pulse__title">
-                What people are saying
-                <small>Latest posts across every forum</small>
+                <?php esc_html_e( 'What people are saying', 'getsocietypress' ); ?>
+                <small><?php esc_html_e( 'Latest posts across every forum', 'getsocietypress' ); ?></small>
             </h3>
             <?php if ( ! empty( $saying ) ) : ?>
                 <ul class="gsp-pulse__list">
@@ -487,15 +494,15 @@ function gsp_dashboard_pulse_render() {
                     <?php endforeach; ?>
                 </ul>
             <?php else : ?>
-                <p class="gsp-pulse__empty">Nothing posted yet.</p>
+                <p class="gsp-pulse__empty"><?php esc_html_e( 'Nothing posted yet.', 'getsocietypress' ); ?></p>
             <?php endif; ?>
         </div>
 
         <!-- ASKING -->
         <div class="gsp-pulse__panel">
             <h3 class="gsp-pulse__title">
-                What they're asking
-                <small>Topics with no replies yet</small>
+                <?php esc_html_e( "What they're asking", 'getsocietypress' ); ?>
+                <small><?php esc_html_e( 'Topics with no replies yet', 'getsocietypress' ); ?></small>
             </h3>
             <?php if ( ! empty( $asking ) ) : ?>
                 <ul class="gsp-pulse__list">
@@ -504,15 +511,15 @@ function gsp_dashboard_pulse_render() {
                     <?php endforeach; ?>
                 </ul>
             <?php else : ?>
-                <p class="gsp-pulse__empty">No open questions right now.</p>
+                <p class="gsp-pulse__empty"><?php esc_html_e( 'No open questions right now.', 'getsocietypress' ); ?></p>
             <?php endif; ?>
         </div>
 
         <!-- TALKING ABOUT -->
         <div class="gsp-pulse__panel">
             <h3 class="gsp-pulse__title">
-                What they're talking about
-                <small>Most active threads, last 30 days</small>
+                <?php esc_html_e( "What they're talking about", 'getsocietypress' ); ?>
+                <small><?php esc_html_e( 'Most active threads, last 30 days', 'getsocietypress' ); ?></small>
             </h3>
             <?php if ( ! empty( $talking ) ) : ?>
                 <ul class="gsp-pulse__list">
@@ -521,13 +528,13 @@ function gsp_dashboard_pulse_render() {
                     <?php endforeach; ?>
                 </ul>
             <?php else : ?>
-                <p class="gsp-pulse__empty">No active threads yet.</p>
+                <p class="gsp-pulse__empty"><?php esc_html_e( 'No active threads yet.', 'getsocietypress' ); ?></p>
             <?php endif; ?>
         </div>
 
         <div class="gsp-pulse__footer">
             <a href="<?php echo esc_url( home_url( '/forums/' ) ); ?>" target="_blank" rel="noopener">
-                Open the forums &rarr;
+                <?php esc_html_e( 'Open the forums', 'getsocietypress' ); ?> &rarr;
             </a>
         </div>
 
@@ -554,11 +561,11 @@ function gsp_dashboard_pulse_saying_row( $post ) {
         $link        = function_exists( 'bbp_get_reply_url' )
             ? bbp_get_reply_url( $post->ID )
             : get_permalink( $topic_id );
-        $action      = 'replied to';
+        $action      = __( 'replied to', 'getsocietypress' );
     } else {
         $topic_title = $post->post_title;
         $link        = get_permalink( $post->ID );
-        $action      = 'started';
+        $action      = __( 'started', 'getsocietypress' );
     }
     ?>
     <li class="gsp-pulse__item">
@@ -611,7 +618,7 @@ function gsp_register_dashboard_widgets() {
     }
     wp_add_dashboard_widget(
         'gsp_community_pulse',
-        'Community Pulse',
+        __( 'Community Pulse', 'getsocietypress' ),
         'gsp_dashboard_pulse_render'
     );
 }
@@ -886,7 +893,7 @@ function gsp_social_meta() {
         $local_path = str_replace( content_url(), WP_CONTENT_DIR, $default_og );
         if ( $default_og && file_exists( $local_path ) ) {
             $image = $default_og;
-            $size  = @getimagesize( $local_path );
+            $size  = getimagesize( $local_path );
             if ( is_array( $size ) ) {
                 $image_width  = (int) $size[0];
                 $image_height = (int) $size[1];
@@ -1233,66 +1240,17 @@ if ( ! function_exists( 'gsp_md_inline' ) ) {
     }
 }
 
-/**
- * Serve a self-contained XML sitemap at /sitemap.xml.
+/*
+ * The /sitemap.xml endpoint is handled by gsp_sitemap_rewrite_rules() and
+ * gsp_sitemap_render() above (lines 636–765). A second init-based handler
+ * that previously lived here has been removed — it shadowed the rewrite
+ * handler and produced different (incomplete) XML. The rewrite approach
+ * is the WordPress-idiomatic solution and includes forums, topics, priority,
+ * and changefreq attributes that the init handler omitted.
  *
- * WordPress 5.5+ ships a built-in sitemap at /wp-sitemap.xml, but it's
- * not wired up on this install (returns 404 — likely an interaction with
- * the bbPress install or a missing rewrite). Rather than chase that,
- * we emit our own simple flat XML sitemap covering every published page
- * and post. Crawlers default to /sitemap.xml so this is the path that
- * matters in practice.
- *
- * Cached for 12 hours via transient so we're not running a WP_Query on
- * every crawler hit.
+ * If /sitemap.xml returns 404 after a theme update, flush the rewrite rules:
+ * Settings → Permalinks → Save Changes.
  */
-add_action( 'init', function () {
-    $path = trim( wp_parse_url( $_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH ) ?? '', '/' );
-    if ( $path !== 'sitemap.xml' && $path !== 'sitemap_index.xml' ) {
-        return;
-    }
-
-    $xml = get_transient( 'gsp_sitemap_xml' );
-    if ( ! is_string( $xml ) || $xml === '' ) {
-        $urls = array();
-        // Home
-        $urls[] = array( 'loc' => home_url( '/' ), 'lastmod' => current_time( 'c' ) );
-
-        // Pages + posts in one query, public statuses only.
-        $items = get_posts( array(
-            'post_type'        => array( 'page', 'post' ),
-            'post_status'      => 'publish',
-            'numberposts'      => 500,
-            'orderby'          => 'modified',
-            'order'            => 'DESC',
-            'suppress_filters' => true,
-        ) );
-        foreach ( $items as $p ) {
-            $urls[] = array(
-                'loc'     => get_permalink( $p ),
-                'lastmod' => mysql2date( 'c', $p->post_modified_gmt, false ),
-            );
-        }
-
-        $xml  = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
-        $xml .= '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
-        foreach ( $urls as $u ) {
-            $xml .= "  <url>\n";
-            $xml .= '    <loc>' . esc_url( $u['loc'] ) . "</loc>\n";
-            if ( ! empty( $u['lastmod'] ) ) {
-                $xml .= '    <lastmod>' . esc_html( $u['lastmod'] ) . "</lastmod>\n";
-            }
-            $xml .= "  </url>\n";
-        }
-        $xml .= '</urlset>';
-        set_transient( 'gsp_sitemap_xml', $xml, 12 * HOUR_IN_SECONDS );
-    }
-
-    header( 'Content-Type: application/xml; charset=UTF-8' );
-    header( 'X-Robots-Tag: noindex' );
-    echo $xml; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped — pre-escaped XML
-    exit;
-}, 1 );
 
 
 /**

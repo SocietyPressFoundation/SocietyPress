@@ -78,12 +78,15 @@
              WHY separate bar: Visually anchors the page and gives a clear
              "end of page" signal. Standard pattern for organizational sites. -->
         <div class="parlor-footer-bottom">
-            <p>&copy; <?php echo wp_date( 'Y' ); ?> <?php bloginfo( 'name' ); ?>. <?php esc_html_e( 'All rights reserved.', 'parlor' ); ?></p>
+            <p>&copy; <?php echo esc_html( wp_date( 'Y' ) ); ?> <?php bloginfo( 'name' ); ?>. <?php esc_html_e( 'All rights reserved.', 'parlor' ); ?></p>
             <p class="parlor-powered-by"><?php
-                printf(
-                    /* translators: %s: SocietyPress link */
-                    esc_html__( 'Powered by %s', 'parlor' ),
-                    '<a href="https://getsocietypress.org">SocietyPress</a>'
+                echo wp_kses(
+                    sprintf(
+                        /* translators: %s: SocietyPress link */
+                        __( 'Powered by %s', 'parlor' ),
+                        '<a href="https://getsocietypress.org">SocietyPress</a>'
+                    ),
+                    [ 'a' => [ 'href' => [] ] ]
                 );
             ?></p>
         </div>

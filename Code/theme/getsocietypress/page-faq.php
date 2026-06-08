@@ -54,9 +54,10 @@ get_header();
                 </summary>
                 <div class="faq-item__answer">
                     <p>
-                        SocietyPress is a free, open-source platform built specifically for genealogical
-                        and historical societies. It provides membership management, event publishing,
-                        surname databases, a page builder, and a visual design system — all in one package.
+                        SocietyPress is an open-source platform built specifically for genealogy and
+                        history societies, offered completely without cost. It includes membership management,
+                        event scheduling and payments, member surname connections, and website design and
+                        management — and more, all in one package.
                     </p>
                 </div>
             </details>
@@ -177,10 +178,13 @@ get_header();
                 </summary>
                 <div class="faq-item__answer">
                     <p>
-                        The SocietyPress plugin and theme are designed to work together. The theme
-                        renders pages built with the page builder and responds to the design system
-                        settings. Using a different theme means you'd lose those integrations. We
-                        recommend using the included theme for the best experience.
+                        Technically yes, but we don't recommend swapping in an unrelated theme. The
+                        plugin and the SocietyPress theme are built as a matched set — the theme is what
+                        displays the pages you build and applies your color and font choices, so a
+                        different theme means those pieces stop working together. If you're familiar with
+                        WordPress theme and plugin coding, the right path is to create a SocietyPress child
+                        theme and build from there — that keeps every integration intact while giving you
+                        full control to customize.
                     </p>
                 </div>
             </details>
@@ -207,10 +211,10 @@ get_header();
                 </summary>
                 <div class="faq-item__answer">
                     <p>
-                        No. The entire download is about 8 MB and there are no external
-                        API calls, CDN dependencies, or bloated JavaScript libraries.
-                        The theme uses vanilla JS &mdash; no jQuery. It's built to be
-                        fast on cheap shared hosting.
+                        No. The entire download is only about 8 MB, and it loads
+                        everything from your own site instead of pulling in outside
+                        code or heavy add-ons that bog a page down. It's built to stay
+                        fast even on inexpensive shared hosting.
                     </p>
                 </div>
             </details>
@@ -342,7 +346,7 @@ get_header();
                     <p>
                         SocietyPress was designed with ENS societies in mind. Export
                         your members as a CSV from ENS (SocietyPress supports the
-                        standard 86-column ENS export format directly), upload it
+                        standard ENS export format directly), upload it
                         through Members &gt; Import, and the importer maps fields
                         automatically, detects organizational members, and handles
                         duplicates. Events, surname research, and library catalogs

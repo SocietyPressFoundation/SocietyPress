@@ -4,7 +4,7 @@ Theme URI: https://getsocietypress.org
 Author: SocietyPress Contributors
 Author URI: https://getsocietypress.org
 Description: The official theme for getsocietypress.org — the home of SocietyPress, a free, open-source WordPress platform for genealogical society administrators.
-Version: 0.61d
+Version: 0.63d
 License: GNU General Public License v2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 Text Domain: getsocietypress
@@ -173,7 +173,11 @@ img {
 }
 
 a {
-    color: var(--color-accent);
+    /* --color-primary (#0D1F3C) achieves 16.43:1 on white — passes WCAG AA.
+       --color-accent (#C9973A) only reaches 2.63:1 and fails for body text.
+       Dark-background contexts (nav, hero, CTAs) already override this with
+       their own color rules and are unaffected by this change. */
+    color: var(--color-primary);
     text-decoration: none;
     transition: color var(--transition-fast);
 }
@@ -851,7 +855,13 @@ body {
     align-items: center;
     gap: var(--spacing-sm);
     background-color: var(--color-badge-bg);
-    color: var(--color-badge-text);
+    /* Override --color-badge-text (#C9973A) with white: gold on the darker end of
+       the hero gradient (#162d54) only reaches ~4.15:1, below WCAG AA (4.5:1).
+       White achieves 14:1+ against any shade of the navy gradient. Other badge
+       users (setup-step__badge, ens-hero__badge) are on light backgrounds where
+       the gold --color-badge-text is appropriate; those are unaffected by this
+       targeted override. */
+    color: #FFFFFF;
     font-size: var(--font-size-sm);
     font-weight: var(--font-weight-semibold);
     padding: 0.4rem 1rem;
@@ -1416,11 +1426,13 @@ body {
     padding: var(--spacing-lg) 0;
     margin-top: var(--spacing-xl);
     font-size: var(--font-size-xs);
-    color: rgba(255, 255, 255, 0.4);
+    /* Raised from 0.4 — previous ratio ~3.68:1 fell below WCAG AA (4.5:1) for
+       12px text and interactive links on the navy footer background. 0.65 clears 5.1:1. */
+    color: rgba(255, 255, 255, 0.65);
 }
 
 .footer-bottom a {
-    color: rgba(255, 255, 255, 0.4);
+    color: rgba(255, 255, 255, 0.65);
     text-decoration: none;
 }
 
@@ -5832,6 +5844,17 @@ body.bbpress .page-content .container {
     word-wrap: normal !important;
 }
 
+/* Alias for .screen-reader-text — used where a shorter utility class name
+   is more readable in markup (e.g. visually-hidden structural headings). */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+}
+
 /* Skip-to-content link — the first focusable element in the DOM. Hidden
    off-screen until focused, then becomes visible at the top-left of the
    viewport. Keyboard users (Tab on page load) land here first and can
@@ -6900,3 +6923,147 @@ select:focus-visible,
 .site-footer .sp-subscribe-input { background: #fff; }
 .site-footer .sp-subscribe-btn { background: var(--color-accent); color: var(--color-primary); }
 .site-footer .sp-subscribe-btn:hover { background: #b5852f; }
+
+/* ==========================================================================
+   FEEDBACK PAGE
+   Styles for the public feedback form (page-feedback.php).
+   ========================================================================== */
+.feedback-layout {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 48px;
+    max-width: 960px;
+    margin: 0 auto;
+}
+
+.feedback-intro {
+    font-size: var(--font-size-lg);
+    color: var(--color-text-secondary);
+    margin-bottom: 32px;
+}
+
+.feedback-form {
+    max-width: 100%;
+}
+
+.feedback-field {
+    margin-bottom: 24px;
+}
+
+.feedback-field label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: var(--color-text);
+    font-size: var(--font-size-base);
+}
+
+.feedback-field .required {
+    color: #d63638;
+}
+
+.feedback-field input,
+.feedback-field select,
+.feedback-field textarea {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    font-size: var(--font-size-base);
+    font-family: var(--font-family);
+    color: var(--color-text);
+    background: #fff;
+    transition: border-color 0.2s;
+}
+
+.feedback-field input:focus,
+.feedback-field select:focus,
+.feedback-field textarea:focus {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px rgba(201, 151, 58, 0.15);
+}
+
+.feedback-field textarea {
+    resize: vertical;
+    min-height: 160px;
+}
+
+.feedback-error {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #991b1b;
+    padding: 12px 16px;
+    border-radius: 6px;
+    margin-bottom: 24px;
+    font-weight: 500;
+}
+
+.feedback-success {
+    text-align: center;
+    padding: 60px 20px;
+}
+
+.feedback-success h2 {
+    color: var(--color-primary);
+    margin-bottom: 12px;
+}
+
+.feedback-success p {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-lg);
+    margin-bottom: 32px;
+    max-width: 480px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.feedback-sidebar-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 20px;
+}
+
+.feedback-sidebar-card h3 {
+    font-size: var(--font-size-lg);
+    margin-bottom: 8px;
+    color: var(--color-primary);
+}
+
+.feedback-sidebar-card p {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    margin-bottom: 16px;
+}
+
+.feedback-sidebar-card ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.feedback-sidebar-card li {
+    padding: 6px 0;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.feedback-sidebar-card li:last-child {
+    border-bottom: none;
+}
+
+.feedback-sidebar-card li::before {
+    content: '\2022';
+    color: var(--color-accent);
+    font-weight: 700;
+    margin-right: 8px;
+}
+
+@media (max-width: 768px) {
+    .feedback-layout {
+        grid-template-columns: 1fr;
+        gap: 32px;
+    }
+}

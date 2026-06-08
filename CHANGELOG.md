@@ -13,6 +13,16 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [Unreleased]
+
+### Changed
+- Roadmap: planned an unsubscribe link on every non-transactional blast,
+  extending the existing one-click opt-out to member recipients (not just
+  public subscribers). Transactional mail (e.g. dues-renewal reminders)
+  stays exempt.
+
+---
+
 ## [1.0.0] — 2026-06-01
 
 First public release.

@@ -324,6 +324,33 @@ handle overlapping memberships), and a rollback plan.
 
 New capabilities for the software itself.
 
+### Unsubscribe on every non-transactional blast (members included)
+
+**Motivation:** Public subscribers already get a one-click unsubscribe
+link on every blast (CAN-SPAM), but members do not — the blast send loop
+only appends the footer link for recipients carrying an unsubscribe
+token, and members have none ("members manage email via their profile").
+That leaves a member who's tired of, say, the monthly newsletter blast
+with no in-email way out, and holds mass member mail to a lower consent
+bar than the public list. The only mail that should be exempt is the
+genuinely transactional kind a member can't reasonably opt out of —
+dues-renewal reminders, registration confirmations, and the existing
+"send even to opted-out members" critical-notice path.
+
+**Scope:** Give every member recipient of a blast (and any other
+mass/marketing email) a working unsubscribe link in the footer, exactly
+like the public-subscriber link today. Back it with a per-member
+unsubscribe token and an opt-out flag that the blast recipient query
+respects, while still letting transactional and explicitly-critical
+notices through. Keep the email preference editable from the member
+profile as it is now — the footer link is an addition, not a
+replacement. Wire the opt-out state into the existing GDPR
+exporters/erasers.
+
+**Blockers:** None — the public-subscriber unsubscribe token and
+standalone landing page (`?sp_unsubscribe=TOKEN`) already exist and can
+be extended to cover members.
+
 ### Events recurring-series improvements
 
 **Motivation:** The monthly-nth-day recurring logic is correct but

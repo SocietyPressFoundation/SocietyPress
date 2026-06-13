@@ -820,30 +820,45 @@ function sp_installer_process(): void {
     //      instead of returning an error code. The @ suppression operator doesn't
     //      catch exceptions, so without this try/catch the installer shows a raw
     //      fatal error instead of a friendly message.
+    // WHY we capture the error NUMBER, not just the text: the numeric MySQL
+    //      error code tells us *which* failure this is — wrong password (1045)
+    //      vs. database missing (1049) vs. user-not-added-to-database (1044)
+    //      vs. host-unreachable (2002/2003/2005). Each needs a completely
+    //      different fix, and "check your credentials" is useless when the real
+    //      problem is that the database user was never granted access to the
+    //      database in cPanel — the single most common HostGator install snag.
+    //      The number lets us hand the user the one specific fix.
     $log[] = 'Testing database connection...';
+    // WHY force MYSQLI_REPORT_OFF: hosts disagree on the default. Some pre-set
+    // MYSQLI_REPORT_STRICT (which throws), others leave it off (which sets
+    // connect_errno). We turn reporting off and read connect_errno ourselves so
+    // the branching below behaves identically on every host. The try/catch
+    // stays as a backstop in case a host ignores this and throws anyway.
+    if ( function_exists( 'mysqli_report' ) ) {
+        @mysqli_report( MYSQLI_REPORT_OFF );
+    }
+    $db_errno = 0;
     $db_error = '';
     try {
-        $conn = new mysqli( $db_host, $db_user, $db_pass, $db_name );
-        if ( $conn->connect_error ) {
-            $db_error = $conn->connect_error;
+        $conn = @new mysqli( $db_host, $db_user, $db_pass, $db_name );
+        if ( $conn->connect_errno ) {
+            $db_errno = (int) $conn->connect_errno;
+            $db_error = (string) $conn->connect_error;
         } else {
             $conn->close();
         }
     } catch ( mysqli_sql_exception $e ) {
+        $db_errno = (int) $e->getCode();
         $db_error = $e->getMessage();
     }
-    if ( $db_error ) {
-        // Redirect back to the form with a generic error — the raw mysqli
-        // message contains the username, hostname, and database name and
-        // confirms valid users to anyone probing an exposed installer.
-        // The detail still goes to error_log for the admin.
-        @error_log( 'SocietyPress installer: database connection failed: ' . $db_error );
-        $_SESSION['sp_form_errors'] = [
-            'Could not connect to the database. Check your credentials and try again.',
-            'If you are sure the credentials are right, ask your hosting provider whether the database is reachable.',
-        ];
-        header( 'Location: ?step=configure' );
-        exit;
+    if ( $db_errno || $db_error ) {
+        // The raw message names the username, host, and database, so it still
+        // goes only to the server error log. On screen we lead with a
+        // plain-English diagnosis chosen from the error number and tuck the raw
+        // text into a collapsible "Technical details" box for support calls.
+        @error_log( 'SocietyPress installer: database connection failed (errno '
+            . $db_errno . '): ' . $db_error );
+        sp_installer_db_error_page( $db_errno, $db_error, $db_host, $db_name, $db_user );
     }
     $log[] = 'Database connection successful.';
 
@@ -852,16 +867,33 @@ function sp_installer_process(): void {
     $wp_zip_path = $install_dir . '/wordpress-latest.zip';
     $wp_downloaded = sp_installer_download( SP_INSTALLER_WP_URL, $wp_zip_path );
     if ( ! $wp_downloaded ) {
-        sp_installer_die( 'Download Failed', 'Could not download WordPress from wordpress.org. Please check that your server allows outbound HTTP connections.' );
+        sp_installer_die(
+            'WordPress Couldn’t Be Downloaded',
+            'The installer couldn’t download WordPress from wordpress.org. This usually means your host is blocking outbound connections, or the connection timed out.',
+            $GLOBALS['sp_installer_last_download_error'] ?? '',
+            [
+                'Click Go Back and try again — a brief network hiccup is the most common cause.',
+                'If it keeps failing, ask your host to allow outbound HTTPS connections to wordpress.org.',
+            ]
+        );
     }
     $log[] = 'WordPress downloaded.';
 
     // ---- 3. Extract WordPress ----
     $log[] = 'Extracting WordPress...';
     $zip = new ZipArchive();
-    if ( $zip->open( $wp_zip_path ) !== true ) {
+    $wp_zip_open = $zip->open( $wp_zip_path );
+    if ( $wp_zip_open !== true ) {
         @unlink( $wp_zip_path );
-        sp_installer_die( 'Extract Failed', 'Could not open the WordPress ZIP file.' );
+        sp_installer_die(
+            'The WordPress Download Couldn’t Be Opened',
+            'WordPress downloaded, but the file couldn’t be opened as a ZIP archive. This almost always means the download was cut off partway, or your host returned an error page instead of the actual file.',
+            sp_installer_zip_err( $wp_zip_open ),
+            [
+                'Click Go Back and run the install again — a half-finished download is the most common cause.',
+                'If it keeps failing, your host may be blocking downloads from wordpress.org. Ask them to allow outbound connections to wordpress.org.',
+            ]
+        );
     }
 
     // WordPress ZIP extracts to a "wordpress/" subdirectory — we need to move
@@ -1047,8 +1079,18 @@ function sp_installer_process(): void {
         $config
     );
 
-    if ( ! file_put_contents( $install_dir . '/wp-config.php', $config ) ) {
-        sp_installer_die( 'Write Error', 'Could not write wp-config.php. Check that the directory is writable.' );
+    if ( false === @file_put_contents( $install_dir . '/wp-config.php', $config ) ) {
+        $write_err = error_get_last();
+        sp_installer_die(
+            'Couldn’t Save the Configuration File',
+            'WordPress downloaded fine, but the installer couldn’t write its configuration file (wp-config.php) into this folder. This is almost always a file-permissions problem.',
+            $write_err['message'] ?? '',
+            [
+                'In cPanel → File Manager, make sure the folder this installer is in is writable — its permissions should be 755.',
+                'If you’re not sure how, your host’s support can set the correct permissions in a few seconds.',
+                'Also confirm you haven’t run out of disk space.',
+            ]
+        );
     }
     $log[] = 'Configuration file written.';
 
@@ -1337,8 +1379,18 @@ add_action( 'admin_init', function () {
 }, 1 );
 MUPLUGIN;
 
-    if ( false === file_put_contents( $mu_dir . '/sp-auto-activate.php', $mu_plugin ) ) {
-        sp_installer_die( 'Write Error', 'Could not write the auto-activator. Check that the directory is writable and you have enough disk space.' );
+    if ( false === @file_put_contents( $mu_dir . '/sp-auto-activate.php', $mu_plugin ) ) {
+        $mu_err = error_get_last();
+        sp_installer_die(
+            'Couldn’t Finish Setting Up',
+            'WordPress and SocietyPress are downloaded, but the installer couldn’t write a small helper file it needs to finish activating SocietyPress. This is a file-permissions or disk-space problem in the wp-content folder.',
+            $mu_err['message'] ?? '',
+            [
+                'In cPanel → File Manager, confirm the wp-content folder is writable (permissions 755).',
+                'Confirm you haven’t run out of disk space.',
+                'Then click Go Back and try again.',
+            ]
+        );
     }
     $log[] = 'Auto-activator planted.';
 
@@ -1489,8 +1541,18 @@ MUPLUGIN;
         . 'header( "Location: " . home_url( "/wp-login.php" ) . "?sp_token=" . rawurlencode( $sp_token_secret ) );' . "\n"
         . 'exit;' . "\n";
 
-    if ( false === file_put_contents( $bridge_script, $bridge_code ) ) {
-        sp_installer_die( 'Write Error', 'Could not write the installation bridge script. Check that the directory is writable and you have enough disk space.' );
+    if ( false === @file_put_contents( $bridge_script, $bridge_code ) ) {
+        $bridge_err = error_get_last();
+        sp_installer_die(
+            'Couldn’t Finish Setting Up',
+            'Everything downloaded, but the installer couldn’t write the small script it uses to complete the WordPress setup. This is a file-permissions or disk-space problem in this folder.',
+            $bridge_err['message'] ?? '',
+            [
+                'In cPanel → File Manager, confirm the folder this installer is in is writable (permissions 755).',
+                'Confirm you haven’t run out of disk space.',
+                'Then click Go Back and try again.',
+            ]
+        );
     }
     $log[] = 'Bridge script created.';
 
@@ -1542,12 +1604,19 @@ MUPLUGIN;
     }
 
     if ( ! $sp_downloaded ) {
+        // WHY plain text, not the old inline <a> link: sp_installer_die()
+        // escapes the message, so an embedded anchor would render as literal
+        // markup anyway. The manual-install path is spelled out in the steps
+        // list instead, which is clearer for a non-technical user.
         sp_installer_die(
-            'SocietyPress Download Failed',
-            'WordPress was installed successfully, but we could not download SocietyPress. '
-            . 'You can install it manually: download the plugin from '
-            . '<a href="https://github.com/' . htmlspecialchars( SP_INSTALLER_GITHUB_REPO , ENT_QUOTES, 'UTF-8') . '/releases">GitHub</a> '
-            . 'and upload it through your WordPress admin panel.'
+            'SocietyPress Couldn’t Be Downloaded',
+            'WordPress installed successfully, but the installer couldn’t download SocietyPress itself. WordPress is fine — only the SocietyPress download failed.',
+            $GLOBALS['sp_installer_last_download_error'] ?? '',
+            [
+                'Click Go Back and try again — this is often a temporary network problem.',
+                'If it keeps failing, install SocietyPress by hand: download the latest release ZIP from github.com/' . SP_INSTALLER_GITHUB_REPO . '/releases',
+                'Then in your WordPress admin, go to Plugins → Add New → Upload Plugin, and upload that ZIP.',
+            ]
         );
     }
     if ( ! isset( $log[ count( $log ) - 1 ] ) || strpos( $log[ count( $log ) - 1 ], 'copied' ) === false ) {
@@ -1558,9 +1627,18 @@ MUPLUGIN;
     $log[] = 'Installing SocietyPress plugin and themes...';
 
     $zip = new ZipArchive();
-    if ( $zip->open( $sp_zip_path ) !== true ) {
+    $sp_zip_open = $zip->open( $sp_zip_path );
+    if ( $sp_zip_open !== true ) {
         @unlink( $sp_zip_path );
-        sp_installer_die( 'Extract Failed', 'Could not open the SocietyPress ZIP file.' );
+        sp_installer_die(
+            'The SocietyPress Download Couldn’t Be Opened',
+            'WordPress is installed, but the SocietyPress download couldn’t be opened as a ZIP archive — usually a download that was cut off partway.',
+            sp_installer_zip_err( $sp_zip_open ),
+            [
+                'Click Go Back and try again.',
+                'If it keeps failing, download SocietyPress from GitHub and upload it through your WordPress admin under Plugins → Add New → Upload Plugin.',
+            ]
+        );
     }
 
     // The bundle ZIP has a flat structure:
@@ -1811,6 +1889,12 @@ function sp_installer_show_complete(): void {
  * Tries cURL first, falls back to file_get_contents.
  */
 function sp_installer_download( string $url, string $dest ): bool {
+    // WHY a global last-error string: this function returns only true/false, but
+    // its callers want to tell the user *why* a download failed (a connection
+    // error, an HTTP 403/404, a host with neither cURL nor allow_url_fopen). We
+    // stash the reason here and the caller reads it into sp_installer_die()'s
+    // technical-details box. A global keeps the bool return signature intact.
+    $GLOBALS['sp_installer_last_download_error'] = '';
     // WHY a hard size cap: WordPress core is ~25 MB and the SocietyPress
     // bundle is ~9 MB. A compromised CDN or bad mirror serving an unbounded
     // response could exhaust disk space or PHP memory before the timeout
@@ -1821,7 +1905,10 @@ function sp_installer_download( string $url, string $dest ): bool {
     if ( function_exists( 'curl_init' ) ) {
         $ch = curl_init( $url );
         $fp = fopen( $dest, 'w' );
-        if ( ! $fp ) return false;
+        if ( ! $fp ) {
+            $GLOBALS['sp_installer_last_download_error'] = 'Could not open a local file to save the download — check this folder’s permissions and that the disk isn’t full.';
+            return false;
+        }
 
         curl_setopt_array( $ch, [
             CURLOPT_FILE            => $fp,
@@ -1841,13 +1928,25 @@ function sp_installer_download( string $url, string $dest ): bool {
             },
         ] );
 
-        $success = curl_exec( $ch );
-        $code    = curl_getinfo( $ch, CURLINFO_HTTP_CODE );
+        $success  = curl_exec( $ch );
+        $code     = curl_getinfo( $ch, CURLINFO_HTTP_CODE );
+        $curl_err = curl_error( $ch );
         curl_close( $ch );
         fclose( $fp );
 
-        if ( $success && $code >= 200 && $code < 400 && filesize( $dest ) > 1000 && filesize( $dest ) <= $max_bytes ) {
+        $size = @filesize( $dest );
+        if ( $success && $code >= 200 && $code < 400 && $size > 1000 && $size <= $max_bytes ) {
             return true;
+        }
+        // Record why cURL failed before we fall through to the fopen attempt.
+        // A real connection error (DNS, TLS, timeout) is the most useful thing
+        // to report; otherwise the HTTP status and byte count point at a server
+        // returning an error page or an empty body.
+        if ( $curl_err !== '' ) {
+            $GLOBALS['sp_installer_last_download_error'] = 'Connection error: ' . $curl_err;
+        } else {
+            $GLOBALS['sp_installer_last_download_error'] = 'The server responded with HTTP ' . (int) $code
+                . ( $size !== false ? ', ' . (int) $size . ' bytes received' : '' ) . '.';
         }
         @unlink( $dest );
     }
@@ -1873,6 +1972,14 @@ function sp_installer_download( string $url, string $dest ): bool {
         if ( $data && strlen( $data ) > 1000 && strlen( $data ) <= $max_bytes ) {
             return (bool) file_put_contents( $dest, $data );
         }
+        // Only overwrite the cURL reason if cURL wasn't even available — when
+        // both transports ran, the cURL error is the more specific one to keep.
+        if ( $GLOBALS['sp_installer_last_download_error'] === '' ) {
+            $fopen_err = error_get_last();
+            $GLOBALS['sp_installer_last_download_error'] = $fopen_err['message'] ?? 'The download could not be retrieved.';
+        }
+    } elseif ( ! function_exists( 'curl_init' ) ) {
+        $GLOBALS['sp_installer_last_download_error'] = 'This server has neither cURL nor allow_url_fopen enabled, so it can’t download files. Ask your host to enable one of them.';
     }
 
     return false;
@@ -1995,8 +2102,21 @@ function sp_installer_rmdir( string $dir ): void {
 
 /**
  * Show an error page and stop.
+ *
+ * @param string   $title   The page title / headline.
+ * @param string   $message The plain-English explanation of what went wrong.
+ * @param string   $detail  Optional raw technical detail (a PHP/MySQL/ZIP error
+ *                          string). Shown inside a collapsible "Technical
+ *                          details" box so a non-technical user can ignore it
+ *                          but still read it to their host's support line.
+ * @param string[] $steps   Optional numbered list of concrete things to try.
+ *
+ * WHY the extra params are optional: dozens of existing callers pass only a
+ * title and message. Defaulting $detail and $steps keeps every one of those
+ * working untouched while letting the failure paths that *do* know more (a
+ * MySQL error, a filesystem error, an HTTP status) surface it.
  */
-function sp_installer_die( string $title, string $message ): void {
+function sp_installer_die( string $title, string $message, string $detail = '', array $steps = [] ): void {
     // WHY: If we already renamed .htaccess to .htaccess.sp-bak (so the bridge
     // script could be reached over HTTP) and then hit a fatal error before the
     // bridge ran its own cleanup, the site is left with no rewrite rules and
@@ -2006,7 +2126,7 @@ function sp_installer_die( string $title, string $message ): void {
         @rename( $htaccess_bak, __DIR__ . '/.htaccess' );
     }
 
-    sp_installer_render_page( $title, function () use ( $message ) {
+    sp_installer_render_page( $title, function () use ( $message, $detail, $steps ) {
         echo '<div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 20px; margin-bottom: 24px;">';
         // WHY htmlspecialchars: most callers pass static literals, but a few
         // include dynamic content (like raw mysqli error messages, server
@@ -2014,9 +2134,213 @@ function sp_installer_die( string $title, string $message ): void {
         // accidentally inject unescaped output into the page.
         echo '<p style="color: #991B1B; margin: 0;">' . htmlspecialchars( $message, ENT_QUOTES, 'UTF-8' ) . '</p>';
         echo '</div>';
+        sp_installer_render_steps( $steps );
+        sp_installer_render_detail( $detail );
         echo '<a href="javascript:history.back()" class="sp-btn" style="background: #6B7280;">Go Back</a>';
     } );
     exit;
+}
+
+/**
+ * Render an ordered "things to try" list, or nothing if the list is empty.
+ *
+ * WHY a shared helper: both the generic error page and the dedicated database
+ * error page show numbered, non-technical fix steps. Keeping the markup in one
+ * place keeps them visually identical and keeps escaping consistent.
+ */
+function sp_installer_render_steps( array $steps ): void {
+    if ( ! $steps ) {
+        return;
+    }
+    echo '<p style="font-weight: 600; color: #0D1F3C; margin: 0 0 8px;">What to try:</p>';
+    echo '<ol style="margin: 0 0 24px; padding-left: 22px; color: #374151;">';
+    foreach ( $steps as $step ) {
+        echo '<li style="margin-bottom: 8px;">' . htmlspecialchars( (string) $step, ENT_QUOTES, 'UTF-8' ) . '</li>';
+    }
+    echo '</ol>';
+}
+
+/**
+ * Render a collapsed "Technical details" box, or nothing if there's no detail.
+ *
+ * WHY collapsed: Harold should never have to read a raw MySQL or PHP error to
+ * fix his install — the plain-English steps above cover that. But when he has
+ * to phone HostGator support, the raw string is exactly what they ask for. A
+ * <details> element keeps it out of the way until it's wanted.
+ */
+function sp_installer_render_detail( string $detail ): void {
+    $detail = trim( $detail );
+    if ( $detail === '' ) {
+        return;
+    }
+    echo '<details style="margin-bottom: 24px; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px 16px;">';
+    echo '<summary style="cursor: pointer; font-weight: 600; color: #6B7280; font-size: 13px;">Technical details (for your hosting provider)</summary>';
+    echo '<pre style="margin: 8px 0 0; font-size: 12px; color: #374151; white-space: pre-wrap; word-break: break-word;">'
+        . htmlspecialchars( $detail, ENT_QUOTES, 'UTF-8' ) . '</pre>';
+    echo '</details>';
+}
+
+/**
+ * Render a detailed, plain-English database-connection error page and stop.
+ *
+ * WHY this exists as its own function: the database step is the single most
+ * common place a non-technical user's install dies, and on shared hosting
+ * (HostGator above all) the cause is almost never "wrong password." It's the
+ * user-not-added-to-database step, or the cPanel name prefix, or the database
+ * simply not having been created yet. The old code reduced all of these to one
+ * useless "check your credentials" line. This reads the MySQL error number and
+ * gives the ONE matching fix, in cPanel terms, with the raw error tucked away
+ * for support calls.
+ */
+function sp_installer_db_error_page( int $errno, string $raw, string $db_host, string $db_name, string $db_user ): void {
+    // MySQL connection error numbers we recognize:
+    //   1045 — access denied (bad username or password)
+    //   1044 / 1142 — access denied to THIS database (user exists, not granted)
+    //   1049 — unknown database (name wrong, or not created yet)
+    //   2002 — can't connect locally (host wrong, or MySQL not running)
+    //   2003 — can't connect to host:port (remote host wrong/unreachable)
+    //   2005 — unknown host (the database host name doesn't resolve)
+    // The HostGator name-prefix tip shows on the credential/name errors because
+    // HostGator forces a "cpanelusername_" prefix on both the database and the
+    // user, and leaving it off is the usual root cause of 1045/1049.
+    $explain     = '';
+    $steps       = [];
+    $prefix_hint = false;
+
+    switch ( $errno ) {
+        case 1045:
+            // WHY we don't claim the database exists here: 1045 is rejected at
+            // the login stage, before MySQL ever selects the database, so we
+            // genuinely don't know whether the database is present. We also
+            // can't confirm the username is valid — MySQL returns the same 1045
+            // whether the password is wrong OR the user doesn't exist. So we
+            // state only what's actually proven: the server is reachable and the
+            // login was refused.
+            $explain = 'What we know: your database server is running and the installer reached it — but it wouldn’t accept this username and password together. Nine times out of ten that’s the password. The very same error also appears when the username doesn’t actually exist yet, so it’s worth checking both.';
+            $steps = [
+                'Double-check the password — it’s case-sensitive, and a stray space or a mis-pasted special character is the usual cause. The surest fix is to reset it in cPanel → MySQL Databases → "Current Users" → "Change Password" to something simple, then enter that exact password here.',
+                'Confirm the user actually saved — in cPanel → MySQL Databases, look under "Current Users" for the exact name you entered. cPanel sometimes silently drops a new user whose password failed its strength meter, so it looks created but isn’t.',
+                'Make sure you’re using the database user’s password — not your cPanel login or your WordPress password.',
+            ];
+            $prefix_hint = true;
+            break;
+        case 1044:
+        case 1142:
+            $explain = 'Good news: your username and password are correct and the database exists. The user just hasn’t been given permission to use this particular database yet. On HostGator and most cPanel hosts, creating the database and creating the user are two separate steps — and a third step links them together. That third step is missing.';
+            $steps = [
+                'Open cPanel → MySQL Databases.',
+                'Scroll to "Add User To Database."',
+                'Choose your user and your database in the two drop down menus, then click "Add."',
+                'On the next screen, check "ALL PRIVILEGES," then click "Make Changes."',
+                'Come back here and click Go Back, then try the install again.',
+            ];
+            break;
+        case 1049:
+            $explain = 'WordPress connected to your database server, but there’s no database with the name you entered. Either the name is slightly off, or the database hasn’t been created yet.';
+            $steps = [
+                'Open cPanel → MySQL Databases (or the "MySQL Database Wizard").',
+                'Under "Create New Database," enter a name and click "Create Database."',
+                'Add your user to it under "Add User To Database" with ALL PRIVILEGES.',
+                'Copy the full database name exactly as cPanel shows it and paste it back here.',
+            ];
+            $prefix_hint = true;
+            break;
+        case 2002:
+            $explain = 'WordPress tried to reach the database at the host you entered and got no answer. On shared hosting the host is almost always "localhost."';
+            $steps = [
+                'Set the Database Host field to "localhost" unless your host specifically told you otherwise.',
+                'A few hosts use a named database server instead — check your host’s welcome email for the MySQL host name.',
+                'If you just created the database, wait a minute and try again — some hosts take a moment to provision it.',
+            ];
+            break;
+        case 2003:
+            $explain = 'The database host you entered didn’t accept a connection. The host name or port may be wrong, or that server may not allow connections from this site.';
+            $steps = [
+                'On shared hosting, set the Database Host to "localhost."',
+                'If your host gave you a specific database server address, enter it exactly as provided.',
+            ];
+            break;
+        case 2005:
+            $explain = 'The Database Host you entered couldn’t be found. It may be misspelled.';
+            $steps = [
+                'On shared hosting, the host is almost always "localhost."',
+                'If your host gave you a named database server, check it carefully for typos.',
+            ];
+            break;
+        default:
+            $explain = 'WordPress couldn’t connect to your database. The exact reason from the database server is in "Technical details" below — that text is the most useful thing to give your hosting provider if you need to call them.';
+            $steps = [
+                'Re-check the database name, username, password, and host against what your host gave you.',
+                'Make sure the database and user both exist, and that the user has been added to the database with full privileges.',
+            ];
+            $prefix_hint = true;
+            break;
+    }
+
+    // Restore .htaccess if a prior step renamed it (defensive — the DB step
+    // runs before that rename, but sp_installer_die does the same guard and
+    // costs nothing here).
+    $htaccess_bak = __DIR__ . '/.htaccess.sp-bak';
+    if ( file_exists( $htaccess_bak ) && ! file_exists( __DIR__ . '/.htaccess' ) ) {
+        @rename( $htaccess_bak, __DIR__ . '/.htaccess' );
+    }
+
+    // Build the raw technical detail string from what we know, even if the
+    // server gave us no message text (some hosts return only a number).
+    $detail = 'MySQL error ' . $errno;
+    if ( trim( $raw ) !== '' ) {
+        $detail .= ': ' . $raw;
+    }
+    $detail .= "\nDatabase: " . $db_name . "\nUser: " . $db_user . "\nHost: " . $db_host;
+
+    sp_installer_render_page( 'Couldn’t Connect to the Database', function () use ( $explain, $steps, $prefix_hint, $detail, $db_name, $db_user ) {
+        echo '<div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 20px; margin-bottom: 24px;">';
+        echo '<p style="color: #991B1B; margin: 0;">' . htmlspecialchars( $explain, ENT_QUOTES, 'UTF-8' ) . '</p>';
+        echo '</div>';
+
+        if ( $prefix_hint ) {
+            // WHY a neutral example, not a real-looking account name: this text
+            // ships in the public repo and on the demo site. "yourname_" makes
+            // the pattern obvious without resembling any real cPanel username.
+            echo '<div style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px; padding: 12px 16px; margin-bottom: 24px; font-size: 13px; color: #92400E;">';
+            echo '<strong>HostGator tip:</strong> HostGator automatically puts your cPanel username and an underscore in front of <em>both</em> the database name and the database username — like <code>yourname_society</code> and <code>yourname_dbuser</code>. Make sure you included that prefix here, exactly as cPanel shows it.';
+            echo '</div>';
+        }
+
+        sp_installer_render_steps( $steps );
+        sp_installer_render_detail( $detail );
+
+        echo '<a href="?step=configure" class="sp-btn" style="background: #6B7280;">Go Back and Fix It</a>';
+        echo '<p style="color: #9CA3AF; font-size: 12px; margin-top: 12px;">Your other answers are saved — you only need to correct the database fields.</p>';
+    } );
+    exit;
+}
+
+/**
+ * Translate a ZipArchive::open() failure code into a readable reason.
+ *
+ * WHY: ZipArchive::open() returns true on success but an opaque integer on
+ * failure. "ZIP error code 19" means nothing to anyone; "Not a zip archive —
+ * the download was probably incomplete" points straight at the real cause,
+ * which on shared hosts is almost always a truncated or error-page download.
+ */
+function sp_installer_zip_err( $code ): string {
+    if ( $code === true ) {
+        return '';
+    }
+    $map = [
+        ZipArchive::ER_EXISTS => 'File already exists',
+        ZipArchive::ER_INCONS => 'Zip archive is inconsistent (likely a corrupt or partial download)',
+        ZipArchive::ER_INVAL  => 'Invalid argument',
+        ZipArchive::ER_MEMORY => 'The server ran out of memory opening the archive',
+        ZipArchive::ER_NOENT  => 'The file was not found',
+        ZipArchive::ER_NOZIP  => 'Not a zip archive — the download was probably incomplete, or the host returned an error page instead of the file',
+        ZipArchive::ER_OPEN   => 'The file could not be opened (check folder permissions)',
+        ZipArchive::ER_READ   => 'Read error while opening the archive',
+        ZipArchive::ER_SEEK   => 'Seek error while opening the archive',
+    ];
+    $reason = $map[ $code ] ?? 'Unknown ZIP error';
+    return 'ZIP error code ' . (int) $code . ': ' . $reason;
 }
 
 /**

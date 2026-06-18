@@ -16810,7 +16810,7 @@ function sp_render_placeholder_page(): void {
  * @param int    $batch_size Maximum rows to process in this call.
  * @return array Results with keys: imported, skipped, errors, tiers_created, rows_processed, done.
  */
-function sp_process_import_batch( string $file_path, array $field_map, int $offset = 0, int $batch_size = 50 ): array {
+function sp_process_import_batch( string $file_path, array $field_map, int $offset = 0, int $batch_size = 50, ?array $link_user_ids = null ): array {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
@@ -16828,12 +16828,17 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
 
     $results = [
         'imported'       => 0,
+        'linked'         => 0,
         'skipped'        => 0,
         'errors'         => [],
         'tiers_created'  => [],
         'rows_processed' => 0,
         'done'           => false,
     ];
+
+    // Timestamp stamped onto every account created in this batch, so we can
+    // later tell a member (or admin) roughly when they were migrated.
+    $import_ts = current_time( 'mysql' );
 
     if ( empty( $file_path ) || ! file_exists( $file_path ) ) {
         $results['errors'][] = __( 'No file was uploaded.', 'societypress' );
@@ -17382,6 +17387,12 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
         // Use the imported login if available, otherwise fall back to email
         $imported_login = sanitize_user( $get( $row, 'login' ), true );
 
+        // Whether THIS row creates a brand-new account that will need to set a
+        // password before it can sign in. Stays false for self-links (the admin,
+        // already activated) and for placeholder no-email accounts (unreachable).
+        // Flipped true only in the two branches that mint a real, emailable user.
+        $member_needs_setup = false;
+
         if ( ! empty( $email ) ) {
             $existing_user = get_user_by( 'email', $email );
             if ( $existing_user ) {
@@ -17402,49 +17413,94 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
                     continue;
                 }
 
-                // Different person sharing the same email (spouse, parent, etc.).
-                // Create a new WP user with a +suffix alias so WordPress
-                // accepts it as unique. Mail still delivers to the same inbox.
-                $parts  = explode( '@', $email );
-                $suffix = 2;
-                do {
-                    $unique_email = $parts[0] . '+sp' . $suffix . '@' . $parts[1];
-                    $suffix++;
-                } while ( get_user_by( 'email', $unique_email ) );
-
-                // For shared-email users, prefer imported login, then email alias
-                $use_login = ! empty( $imported_login ) ? $imported_login : $unique_email;
-                // Ensure login is unique — append number if taken
-                if ( username_exists( $use_login ) ) {
-                    $base = $use_login;
-                    $n = 2;
-                    do {
-                        $use_login = $base . $n;
-                        $n++;
-                    } while ( username_exists( $use_login ) );
+                // ---- Same person (link) vs. different person (separate account) ----
+                // This row's email matches an account that already exists on the
+                // site — most often the importing admin, who is a member of their
+                // own society and so appears in the CSV. Is it the SAME person
+                // (attach this profile to that account) or a DIFFERENT person who
+                // merely shares the inbox (give them their own +suffix account)?
+                //
+                // The admin answers that on the import preview, and their confirmed
+                // choices arrive here as $link_user_ids — the existing accounts they
+                // okayed for linking. When the list is provided (the normal UI path)
+                // we honor it exactly: no guessing. When it's null (a non-UI caller
+                // such as WP-CLI, which can't show a preview) we fall back to a
+                // conservative heuristic so the importing admin is still never
+                // silently turned into a phantom alias: link if the existing account
+                // can manage the site, or its name matches this row.
+                //
+                // $already is null on this path (a name-matching member row already
+                // short-circuited above), so linking can't collide with the members
+                // table's per-user primary key.
+                if ( is_array( $link_user_ids ) ) {
+                    $should_link = in_array( (int) $existing_user->ID, $link_user_ids, true );
+                } else {
+                    $existing_areas = get_user_meta( $existing_user->ID, 'sp_access_areas', true );
+                    $should_link = user_can( $existing_user, 'manage_options' )
+                        || ( is_array( $existing_areas ) && ! empty( $existing_areas ) )
+                        || $is_name_similar( $first_name, $last_name, [ [
+                            'first' => strtolower( trim( (string) $existing_user->first_name ) ),
+                            'last'  => strtolower( trim( (string) $existing_user->last_name ) ),
+                        ] ] );
                 }
 
-                // WHY: Org members display their organization name everywhere, while
-                //      individuals display "First Last". This affects the WP profile.
-                $import_display = ( $member_type === 'organization' && ! empty( $org_name ) )
-                    ? $org_name : trim( $first_name . ' ' . $last_name );
+                if ( ! $already && $should_link ) {
+                    // LINK: attach the member profile to the existing account.
+                    // Do NOT create a user, touch the role, or reset the password —
+                    // this person already has working credentials. The welcome
+                    // email + needs-password-setup flow deliberately skips users
+                    // linked here: they are already activated.
+                    $user_id = $existing_user->ID;
+                    $results['linked']++;
+                    /* translators: 1: row number, 2: first name, 3: last name, 4: existing account email */
+                    $results['errors'][] = sprintf( __( 'Row %1$d: Linked %2$s %3$s to the existing account (%4$s) — password left unchanged.', 'societypress' ), $row_num, $first_name, $last_name, $existing_user->user_email );
+                } else {
+                    // Different person sharing the same email (spouse, parent, etc.).
+                    // Create a new WP user with a +suffix alias so WordPress
+                    // accepts it as unique. Mail still delivers to the same inbox.
+                    $parts  = explode( '@', $email );
+                    $suffix = 2;
+                    do {
+                        $unique_email = $parts[0] . '+sp' . $suffix . '@' . $parts[1];
+                        $suffix++;
+                    } while ( get_user_by( 'email', $unique_email ) );
 
-                $random_pass = wp_generate_password( 16, true, true );
-                $user_id = wp_insert_user( [
-                    'user_login'   => $use_login,
-                    'user_email'   => $unique_email,
-                    'user_pass'    => $random_pass,
-                    'first_name'   => $first_name,
-                    'last_name'    => $last_name,
-                    'display_name' => $import_display,
-                    'role'         => 'subscriber',
-                ] );
+                    // For shared-email users, prefer imported login, then email alias
+                    $use_login = ! empty( $imported_login ) ? $imported_login : $unique_email;
+                    // Ensure login is unique — append number if taken
+                    if ( username_exists( $use_login ) ) {
+                        $base = $use_login;
+                        $n = 2;
+                        do {
+                            $use_login = $base . $n;
+                            $n++;
+                        } while ( username_exists( $use_login ) );
+                    }
 
-                if ( is_wp_error( $user_id ) ) {
-                    /* translators: 1: row number, 2: name being imported, 3: technical error */
-                    $results['errors'][] = sprintf( __( 'Row %1$d: Could not create user for %2$s — %3$s', 'societypress' ), $row_num, $import_display, $user_id->get_error_message() );
-                    $results['skipped']++;
-                    continue;
+                    // WHY: Org members display their organization name everywhere, while
+                    //      individuals display "First Last". This affects the WP profile.
+                    $import_display = ( $member_type === 'organization' && ! empty( $org_name ) )
+                        ? $org_name : trim( $first_name . ' ' . $last_name );
+
+                    $random_pass = wp_generate_password( 16, true, true );
+                    $user_id = wp_insert_user( [
+                        'user_login'   => $use_login,
+                        'user_email'   => $unique_email,
+                        'user_pass'    => $random_pass,
+                        'first_name'   => $first_name,
+                        'last_name'    => $last_name,
+                        'display_name' => $import_display,
+                        'role'         => 'subscriber',
+                    ] );
+
+                    if ( is_wp_error( $user_id ) ) {
+                        /* translators: 1: row number, 2: name being imported, 3: technical error */
+                        $results['errors'][] = sprintf( __( 'Row %1$d: Could not create user for %2$s — %3$s', 'societypress' ), $row_num, $import_display, $user_id->get_error_message() );
+                        $results['skipped']++;
+                        continue;
+                    }
+                    // New, emailable account (a different person sharing the inbox).
+                    $member_needs_setup = true;
                 }
             } else {
                 // Email not yet in WordPress — create fresh user.
@@ -17480,6 +17536,8 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
                     $results['skipped']++;
                     continue;
                 }
+                // New, emailable account (email wasn't in WordPress before).
+                $member_needs_setup = true;
             }
         } else {
             // No email — use imported login if available, otherwise generate
@@ -17633,6 +17691,18 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
             ];
         }
 
+        // Mark brand-new, emailable accounts as needing a one-time password
+        // setup. The graceful login-failure path reads this flag: when such a
+        // member first tries to sign in — typically with the OLD password from
+        // their previous system — we explain the change and email a setup link
+        // to their address on file, instead of a bare "wrong password" error.
+        // Self-links (the admin) and unreachable placeholder accounts are never
+        // flagged, so they never see the migration prompt.
+        if ( $member_needs_setup ) {
+            update_user_meta( $user_id, 'sp_needs_password_setup', 1 );
+            update_user_meta( $user_id, 'sp_imported_on', $import_ts );
+        }
+
         // ==============================================================
         // Insert payment record (if payment data exists)
         // ==============================================================
@@ -17783,7 +17853,17 @@ add_action( 'wp_ajax_sp_import_members_batch', function () {
     $offset     = absint( $_POST['offset'] ?? 0 );
     $batch_size = min( absint( $_POST['batch_size'] ?? 50 ), 100 );
 
-    $results = sp_process_import_batch( $temp_file, $field_map, $offset, $batch_size );
+    // Per-account link decisions the admin confirmed on the preview screen:
+    // existing user IDs whose imported row should attach to that account instead
+    // of spawning a separate one. Always sent on the UI path (possibly empty),
+    // so we pass an array — never null — which tells the processor to honor the
+    // admin's answers exactly rather than fall back to its own heuristic.
+    $link_user_ids = [];
+    if ( isset( $_POST['link_user_ids'] ) && is_array( $_POST['link_user_ids'] ) ) {
+        $link_user_ids = array_values( array_unique( array_map( 'absint', $_POST['link_user_ids'] ) ) );
+    }
+
+    $results = sp_process_import_batch( $temp_file, $field_map, $offset, $batch_size, $link_user_ids );
 
     // Clean up the temp file once the final batch completes.
     // WHY: The file persists between AJAX calls so subsequent batches can
@@ -17794,6 +17874,185 @@ add_action( 'wp_ajax_sp_import_members_batch', function () {
     }
 
     wp_send_json_success( $results );
+});
+
+
+/**
+ * Scan a mapped import file for rows that match an account already on the site.
+ *
+ * Returns one entry per existing account that a CSV row would collide with —
+ * matched by email or by username — so the admin can confirm, before anything is
+ * created, whether each is the same person (link) or a different person who
+ * should get their own account. The importing admin's own row is flagged so the
+ * UI can highlight it and pre-select "link."
+ *
+ * @return array<int,array<string,mixed>>
+ */
+function sp_import_find_existing_account_collisions( string $file_path, array $field_map ): array {
+    global $wpdb;
+    if ( ! is_readable( $file_path ) ) {
+        return [];
+    }
+
+    // Locate the CSV columns that hold the email, username, and name. $field_map
+    // is csv_column_name => target_key, so array_search finds the column name.
+    $email_col = array_search( 'email', $field_map, true );
+    $login_col = array_search( 'login', $field_map, true );
+    $first_col = array_search( 'first_name', $field_map, true );
+    $last_col  = array_search( 'last_name', $field_map, true );
+
+    $handle = fopen( $file_path, 'r' );
+    if ( ! $handle ) {
+        return [];
+    }
+    $headers = fgetcsv( $handle );
+    if ( ! $headers ) {
+        fclose( $handle );
+        return [];
+    }
+    $headers = array_map( fn( $h ) => trim( (string) $h, "\xEF\xBB\xBF \t\n\r\"" ), $headers );
+    $col = array_flip( $headers );
+
+    $email_idx = ( $email_col !== false && isset( $col[ $email_col ] ) ) ? $col[ $email_col ] : null;
+    $login_idx = ( $login_col !== false && isset( $col[ $login_col ] ) ) ? $col[ $login_col ] : null;
+    $first_idx = ( $first_col !== false && isset( $col[ $first_col ] ) ) ? $col[ $first_col ] : null;
+    $last_idx  = ( $last_col  !== false && isset( $col[ $last_col  ] ) ) ? $col[ $last_col  ] : null;
+
+    if ( $email_idx === null && $login_idx === null ) {
+        fclose( $handle );
+        return []; // No email or username column mapped — nothing to match on.
+    }
+
+    // Collect the distinct emails/usernames present in the file, each remembering
+    // the first display name seen for it.
+    $by_email = [];
+    $by_login = [];
+    $guard = 0;
+    while ( ( $row = fgetcsv( $handle ) ) !== false ) {
+        if ( ++$guard > 100000 ) {
+            break; // Sanity cap on absurdly large files.
+        }
+        $name = trim(
+            ( $first_idx !== null && isset( $row[ $first_idx ] ) ? $row[ $first_idx ] : '' ) . ' ' .
+            ( $last_idx  !== null && isset( $row[ $last_idx  ] ) ? $row[ $last_idx  ] : '' )
+        );
+        if ( $email_idx !== null && ! empty( $row[ $email_idx ] ) ) {
+            $e = strtolower( sanitize_email( $row[ $email_idx ] ) );
+            if ( $e !== '' && ! isset( $by_email[ $e ] ) ) {
+                $by_email[ $e ] = $name;
+            }
+        }
+        if ( $login_idx !== null && ! empty( $row[ $login_idx ] ) ) {
+            $l = strtolower( trim( (string) $row[ $login_idx ] ) );
+            if ( $l !== '' && ! isset( $by_login[ $l ] ) ) {
+                $by_login[ $l ] = $name;
+            }
+        }
+    }
+    fclose( $handle );
+
+    // Which of those identifiers already belong to an account here?
+    $found = []; // user_id => [ match_on, csv_name ]
+    if ( $by_email ) {
+        $emails = array_keys( $by_email );
+        $ph = implode( ',', array_fill( 0, count( $emails ), '%s' ) );
+        $rows = $wpdb->get_results( $wpdb->prepare(
+            "SELECT ID, user_email FROM {$wpdb->users} WHERE LOWER(user_email) IN ($ph)",
+            $emails
+        ) );
+        foreach ( $rows as $r ) {
+            $found[ (int) $r->ID ] = [
+                'match_on' => 'email',
+                'csv_name' => $by_email[ strtolower( $r->user_email ) ] ?? '',
+            ];
+        }
+    }
+    if ( $by_login ) {
+        $logins = array_keys( $by_login );
+        $ph = implode( ',', array_fill( 0, count( $logins ), '%s' ) );
+        $rows = $wpdb->get_results( $wpdb->prepare(
+            "SELECT ID, user_login FROM {$wpdb->users} WHERE LOWER(user_login) IN ($ph)",
+            $logins
+        ) );
+        foreach ( $rows as $r ) {
+            $id = (int) $r->ID;
+            if ( isset( $found[ $id ] ) ) {
+                $found[ $id ]['match_on'] = 'both';
+            } else {
+                $found[ $id ] = [
+                    'match_on' => 'username',
+                    'csv_name' => $by_login[ strtolower( $r->user_login ) ] ?? '',
+                ];
+            }
+        }
+    }
+    if ( ! $found ) {
+        return [];
+    }
+
+    $me = (int) get_current_user_id();
+    $collisions = [];
+    foreach ( $found as $uid => $info ) {
+        $u = get_user_by( 'id', $uid );
+        if ( ! $u ) {
+            continue;
+        }
+        $is_you   = ( $uid === $me );
+        $areas    = get_user_meta( $uid, 'sp_access_areas', true );
+        $is_admin = user_can( $u, 'manage_options' ) || ( is_array( $areas ) && ! empty( $areas ) );
+        $csv_name = trim( (string) $info['csv_name'] );
+        $exact    = ( $csv_name !== '' && strcasecmp( $csv_name, trim( (string) $u->display_name ) ) === 0 );
+        $collisions[] = [
+            'user_id'        => $uid,
+            'existing_login' => $u->user_login,
+            'existing_email' => $u->user_email,
+            'existing_name'  => $u->display_name ?: $u->user_login,
+            'csv_name'       => $csv_name !== '' ? $csv_name : ( $u->display_name ?: $u->user_login ),
+            'match_on'       => $info['match_on'],
+            'is_you'         => $is_you,
+            'is_admin'       => $is_admin,
+            // Pre-select "same person" only when it's clearly safe: it's literally
+            // you, it's a site manager (a wrong alias would lock an admin out of
+            // their own account), or the names match exactly. Everyone else
+            // defaults to "different person" so we never silently merge strangers.
+            'default_link'   => $is_you || $is_admin || $exact,
+        ];
+    }
+
+    // Surface the decisions that matter most — you, then other admins — first.
+    usort( $collisions, function ( $a, $b ) {
+        $aw = $a['is_you'] ? 2 : ( $a['is_admin'] ? 1 : 0 );
+        $bw = $b['is_you'] ? 2 : ( $b['is_admin'] ? 1 : 0 );
+        return $bw <=> $aw;
+    } );
+
+    return $collisions;
+}
+
+/**
+ * AJAX: detect existing-account collisions for the import preview confirmation.
+ */
+add_action( 'wp_ajax_sp_import_detect_collisions', function () {
+    check_ajax_referer( 'sp_import_members_batch' );
+    if ( ! current_user_can( 'sp_manage_members' ) ) {
+        wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
+    }
+
+    $token      = sanitize_file_name( $_POST['temp_file'] ?? '' );
+    $upload_dir = wp_upload_dir();
+    $temp_dir   = $upload_dir['basedir'] . '/sp-import-temp/';
+    $temp_file  = realpath( $temp_dir . $token );
+    if ( ! $temp_file || strpos( $temp_file, realpath( $temp_dir ) ) !== 0 || ! file_exists( $temp_file ) ) {
+        wp_send_json_error( __( 'Import file not found. Please upload again.', 'societypress' ) );
+    }
+
+    $raw_map   = isset( $_POST['field_map'] ) && is_array( $_POST['field_map'] ) ? $_POST['field_map'] : [];
+    $field_map = [];
+    foreach ( $raw_map as $csv_col => $target ) {
+        $field_map[ sanitize_text_field( $csv_col ) ] = sanitize_text_field( $target );
+    }
+
+    wp_send_json_success( [ 'collisions' => sp_import_find_existing_account_collisions( $temp_file, $field_map ) ] );
 });
 
 
@@ -18851,6 +19110,21 @@ function sp_render_import_page(): void {
                 <div class="sp-import-progress-errors" id="sp-import-progress-errors"></div>
             </div>
         </div>
+
+        <!-- Collision confirmation overlay — shown before the import runs when one
+             or more rows match an account that already exists. The admin confirms
+             same-person (link) vs different-person (separate) for each. -->
+        <div id="sp-import-collision-overlay" class="sp-import-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="sp-import-collision-title">
+            <div class="sp-import-overlay-inner sp-import-collision-box">
+                <h2 class="sp-import-overlay-title" id="sp-import-collision-title"><?php esc_html_e( 'Some names match existing accounts — please confirm each', 'societypress' ); ?></h2>
+                <p class="sp-import-collision-intro"><?php esc_html_e( 'Some people in your list match an account that already exists on this site — including, usually, you. For each one, tell us whether it is the same person (we will add their member details to that existing account) or a different person (we will create a separate account). We have pre-selected our best guess; please correct anything that is wrong.', 'societypress' ); ?></p>
+                <div id="sp-import-collision-list" class="sp-import-collision-list"></div>
+                <div class="sp-import-collision-actions">
+                    <button type="button" class="button" id="sp-import-collision-cancel"><?php esc_html_e( 'Cancel', 'societypress' ); ?></button>
+                    <button type="button" class="button button-primary" id="sp-import-collision-continue"><?php esc_html_e( 'Continue import', 'societypress' ); ?></button>
+                </div>
+            </div>
+        </div>
         <style>
             @keyframes sp-spin { to { transform: rotate(360deg); } }
             /* WHY reduced-motion guard: members with vestibular disorders can
@@ -18860,6 +19134,15 @@ function sp_render_import_page(): void {
             @media (prefers-reduced-motion: reduce) {
                 .sp-import-spinner, [class*="sp-spin"] { animation: none !important; }
             }
+            .sp-import-collision-box { max-width: 640px; text-align: left; max-height: 82vh; overflow-y: auto; }
+            .sp-import-collision-intro { color: #50575e; margin: 8px 0 18px; line-height: 1.5; }
+            .sp-import-collision-item { border: 1px solid #dcdcde; border-radius: 8px; padding: 14px 16px; margin-bottom: 12px; background: #fff; }
+            .sp-import-collision-head { margin: 0 0 10px; line-height: 1.5; }
+            .sp-import-collision-acct { color: #50575e; }
+            .sp-import-collision-you { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 10px; background: #d7f0db; color: #0a5a2b; font-size: 12px; font-weight: 600; }
+            .sp-import-collision-choice { display: flex; flex-direction: column; gap: 6px; }
+            .sp-import-collision-radio { display: block; cursor: pointer; }
+            .sp-import-collision-actions { margin-top: 16px; text-align: right; }
         </style>
         <script>
         /* AJAX batched member import with progress bar.
@@ -18876,22 +19159,128 @@ function sp_render_import_page(): void {
             var totalRows = <?php echo (int) ($preview['row_count'] ?? 0); ?>;
             var batchSize = 50;
 
-            form.addEventListener('submit', function(e) {
-                e.preventDefault();
+            // Lifted so detection, confirmation, and the batch loop can share them.
+            var fieldMap = {}, tempFile = '', nonce = '', submitBtn = null;
 
-                // Collect the field mapping from all the dropdown <select> elements.
-                // WHY: The admin may have changed mappings after the auto-detection.
-                //      We read every dropdown's current value and build the same
-                //      field_map[csv_col] = target_key structure the AJAX handler expects.
-                var fieldMap = {};
+            function readForm() {
+                // WHY: The admin may have changed mappings after auto-detection.
+                //      Read every dropdown's current value into the same
+                //      field_map[csv_col] = target_key structure the handlers expect.
+                fieldMap = {};
                 form.querySelectorAll('.sp-field-map-select').forEach(function(sel) {
                     var key = sel.name.replace('sp_field_map[', '').replace(']', '');
                     fieldMap[key] = sel.value;
                 });
+                tempFile = form.querySelector('input[name="sp_import_temp_file"]').value;
+                nonce    = document.getElementById('sp-import-batch-nonce').value;
+            }
 
-                var tempFile = form.querySelector('input[name="sp_import_temp_file"]').value;
-                var nonce    = document.getElementById('sp-import-batch-nonce').value;
+            // Step 1: before creating anything, ask the server which rows match an
+            // account that already exists. No matches → import straight away.
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                readForm();
+                submitBtn = form.querySelector('.button-primary');
+                if (submitBtn) submitBtn.disabled = true;
 
+                var data = new FormData();
+                data.append('action', 'sp_import_detect_collisions');
+                data.append('_ajax_nonce', nonce);
+                data.append('temp_file', tempFile);
+                Object.keys(fieldMap).forEach(function(key) {
+                    data.append('field_map[' + key + ']', fieldMap[key]);
+                });
+
+                fetch(ajaxUrl, { method: 'POST', body: data, credentials: 'same-origin' })
+                    .then(function(r) { return r.json(); })
+                    .then(function(resp) {
+                        if (resp && resp.success && resp.data && resp.data.collisions && resp.data.collisions.length) {
+                            showCollisionConfirm(resp.data.collisions);
+                        } else {
+                            startImport([]);
+                        }
+                    })
+                    .catch(function() { startImport([]); }); // Detection failed — don't block the import.
+            });
+
+            // Step 2: render the confirmation list. Each match gets link-vs-separate;
+            // "Continue import" carries the linked IDs into the batches.
+            function showCollisionConfirm(collisions) {
+                var overlayC = document.getElementById('sp-import-collision-overlay');
+                var list = document.getElementById('sp-import-collision-list');
+                list.innerHTML = '';
+
+                collisions.forEach(function(c) {
+                    var item = document.createElement('div');
+                    item.className = 'sp-import-collision-item';
+                    item.dataset.userId = c.user_id;
+
+                    var head = document.createElement('p');
+                    head.className = 'sp-import-collision-head';
+                    var who = document.createElement('strong');
+                    who.textContent = c.csv_name || '';
+                    head.appendChild(who);
+                    head.appendChild(document.createTextNode(' <?php echo esc_js( __( "matches an existing account:", "societypress" ) ); ?> '));
+                    var acct = document.createElement('span');
+                    acct.className = 'sp-import-collision-acct';
+                    acct.textContent = (c.existing_name || '') + ' (' + (c.existing_email || c.existing_login || '') + ')';
+                    head.appendChild(acct);
+                    if (c.is_you) {
+                        var badge = document.createElement('span');
+                        badge.className = 'sp-import-collision-you';
+                        badge.textContent = '<?php echo esc_js( __( "This looks like you", "societypress" ) ); ?>';
+                        head.appendChild(badge);
+                    }
+                    item.appendChild(head);
+
+                    var choices = document.createElement('div');
+                    choices.className = 'sp-import-collision-choice';
+                    choices.setAttribute('role', 'radiogroup');
+                    choices.setAttribute('aria-label', c.csv_name || '');
+                    var rName = 'sp_collide_' + c.user_id;
+                    choices.appendChild(makeChoice(rName, 'link', c.default_link, '<?php echo esc_js( __( "Same person — use their existing account", "societypress" ) ); ?>'));
+                    choices.appendChild(makeChoice(rName, 'separate', !c.default_link, '<?php echo esc_js( __( "Different person — create a separate account", "societypress" ) ); ?>'));
+                    item.appendChild(choices);
+
+                    list.appendChild(item);
+                });
+
+                overlayC.style.display = 'flex';
+                var firstRadio = list.querySelector('input[type="radio"]');
+                if (firstRadio) firstRadio.focus();
+
+                document.getElementById('sp-import-collision-cancel').onclick = function() {
+                    // Back out without losing the field mapping — just re-enable the form.
+                    overlayC.style.display = 'none';
+                    if (submitBtn) submitBtn.disabled = false;
+                };
+                document.getElementById('sp-import-collision-continue').onclick = function() {
+                    var linkIds = [];
+                    list.querySelectorAll('.sp-import-collision-item').forEach(function(item) {
+                        var uid = item.dataset.userId;
+                        var sel = item.querySelector('input[name="sp_collide_' + uid + '"]:checked');
+                        if (sel && sel.value === 'link') linkIds.push(uid);
+                    });
+                    overlayC.style.display = 'none';
+                    startImport(linkIds);
+                };
+            }
+
+            function makeChoice(name, value, checked, labelText) {
+                var lbl = document.createElement('label');
+                lbl.className = 'sp-import-collision-radio';
+                var inp = document.createElement('input');
+                inp.type = 'radio';
+                inp.name = name;
+                inp.value = value;
+                if (checked) inp.checked = true;
+                lbl.appendChild(inp);
+                lbl.appendChild(document.createTextNode(' ' + labelText));
+                return lbl;
+            }
+
+            // Step 3: run the batched import, carrying the confirmed link IDs.
+            function startImport(linkUserIds) {
                 var overlay     = document.getElementById('sp-import-overlay');
                 var progressBar = document.getElementById('sp-import-progress-fill');
                 var countEl     = document.getElementById('sp-import-progress-count');
@@ -18900,16 +19289,14 @@ function sp_render_import_page(): void {
                 var errorsEl    = document.getElementById('sp-import-progress-errors');
                 var spinnerEl   = document.getElementById('sp-import-spinner');
                 overlay.style.display = 'flex';
-
-                var submitBtn = form.querySelector('.button-primary');
                 if (submitBtn) submitBtn.disabled = true;
 
                 // Running totals across all batches
-                var totals = { imported: 0, skipped: 0, errors: [], tiers_created: [] };
+                var totals = { imported: 0, linked: 0, skipped: 0, errors: [], tiers_created: [] };
                 var offset = 0;
 
                 function updateProgress() {
-                    var processed = totals.imported + totals.skipped;
+                    var processed = totals.imported + totals.linked + totals.skipped;
                     var pct = totalRows > 0 ? Math.min(100, Math.round((processed / totalRows) * 100)) : 0;
                     progressBar.style.width = pct + '%';
                     progressBar.setAttribute('aria-valuenow', pct);
@@ -18926,6 +19313,9 @@ function sp_render_import_page(): void {
                     Object.keys(fieldMap).forEach(function(key) {
                         data.append('field_map[' + key + ']', fieldMap[key]);
                     });
+                    linkUserIds.forEach(function(id) {
+                        data.append('link_user_ids[]', id);
+                    });
 
                     fetch(ajaxUrl, { method: 'POST', body: data, credentials: 'same-origin' })
                         .then(function(r) { return r.json(); })
@@ -18938,6 +19328,7 @@ function sp_render_import_page(): void {
                             }
                             var d = resp.data;
                             totals.imported += d.imported || 0;
+                            totals.linked   += d.linked || 0;
                             totals.skipped  += d.skipped || 0;
                             if (d.errors && d.errors.length) totals.errors = totals.errors.concat(d.errors);
                             if (d.tiers_created && d.tiers_created.length) totals.tiers_created = totals.tiers_created.concat(d.tiers_created);
@@ -18963,7 +19354,7 @@ function sp_render_import_page(): void {
                     progressBar.style.width = '100%';
                     progressBar.setAttribute('aria-valuenow', 100);
                     titleEl.textContent = '<?php echo esc_js( __( "Import Complete", "societypress" ) ); ?>';
-                    messageEl.textContent = totals.imported + ' <?php echo esc_js( __( "imported", "societypress" ) ); ?>, ' + totals.skipped + ' <?php echo esc_js( __( "skipped", "societypress" ) ); ?>';
+                    messageEl.textContent = totals.imported + ' <?php echo esc_js( __( "imported", "societypress" ) ); ?>, ' + totals.linked + ' <?php echo esc_js( __( "linked", "societypress" ) ); ?>, ' + totals.skipped + ' <?php echo esc_js( __( "skipped", "societypress" ) ); ?>';
 
                     if (totals.errors.length > 0) {
                         // WHY textContent (not innerHTML): error strings include
@@ -18993,12 +19384,12 @@ function sp_render_import_page(): void {
                     closeBtn.addEventListener('click', function() {
                         window.location.href = '<?php echo esc_url( admin_url( "admin.php?page=sp-members" ) ); ?>';
                     });
-                    document.querySelector('.sp-import-overlay-inner').appendChild(closeBtn);
+                    document.querySelector('#sp-import-overlay .sp-import-overlay-inner').appendChild(closeBtn);
                 }
 
                 updateProgress();
                 runBatch();
-            });
+            }
         })();
         </script>
     </div>
@@ -21155,6 +21546,69 @@ add_action( 'admin_init', function () {
 
 
     // ====================================================================
+    // SECTION: New-Member Welcome & Migration
+    //
+    // WHY: Societies almost always arrive from another system, so installing
+    //      SocietyPress is really a migration. Imported members get a random
+    //      password they never see; these texts are how we tell them — in
+    //      plain language — to set up a sign-in. All three ship with sensible
+    //      defaults, so a society that does nothing still gets working,
+    //      friendly wording. Leave a box blank to use the default.
+    // ====================================================================
+    add_settings_section(
+        'sp_member_welcome_section',
+        __( 'New-Member Welcome & Migration', 'societypress' ),
+        function () {
+            echo '<p>' . esc_html__( 'Wording for the "set up your password" email new and imported members receive, and the message shown if a member tries to sign in with a password from your old website. Leave any box blank to use the built-in default.', 'societypress' ) . '</p>';
+            echo '<p class="description">' . esc_html__( 'In the email you can use these placeholders: {member_name}, {society_name}, and {setup_link} (the button members click to choose a password).', 'societypress' ) . '</p>';
+        },
+        'sp-settings-privacy'
+    );
+
+    add_settings_field(
+        'migration_welcome_subject',
+        __( 'Welcome email — subject', 'societypress' ),
+        function () {
+            $val = (string) ( sp_settings()['migration_welcome_subject'] ?? '' );
+            ?>
+            <input type="text" name="societypress_settings[migration_welcome_subject]" value="<?php echo esc_attr( $val ); ?>" class="large-text" placeholder="<?php echo esc_attr( sp_migration_welcome_subject_default() ); ?>">
+            <p class="description"><?php esc_html_e( 'The subject line of the welcome email. Leave blank to use the default shown in grey.', 'societypress' ); ?></p>
+            <?php
+        },
+        'sp-settings-privacy',
+        'sp_member_welcome_section'
+    );
+
+    add_settings_field(
+        'migration_welcome_body',
+        __( 'Welcome email — message', 'societypress' ),
+        function () {
+            $val = (string) ( sp_settings()['migration_welcome_body'] ?? '' );
+            ?>
+            <textarea name="societypress_settings[migration_welcome_body]" rows="12" cols="80" class="large-text" placeholder="<?php echo esc_attr( sp_migration_welcome_body_default() ); ?>"><?php echo esc_textarea( $val ); ?></textarea>
+            <p class="description"><?php esc_html_e( 'The body of the welcome email. Put {setup_link} on its own line where you want the "Set up my password" button to appear. Separate paragraphs with a blank line.', 'societypress' ); ?></p>
+            <?php
+        },
+        'sp-settings-privacy',
+        'sp_member_welcome_section'
+    );
+
+    add_settings_field(
+        'migration_login_message',
+        __( 'Message when an old password is used', 'societypress' ),
+        function () {
+            $val = (string) ( sp_settings()['migration_login_message'] ?? '' );
+            ?>
+            <textarea name="societypress_settings[migration_login_message]" rows="5" cols="80" class="large-text" placeholder="<?php echo esc_attr( sp_migration_login_message_default() ); ?>"><?php echo esc_textarea( $val ); ?></textarea>
+            <p class="description"><?php esc_html_e( 'Shown on the sign-in screen when an imported member enters the password from your old website. A one-time setup link is emailed to the address on file at the same time. You can use {society_name} and {username} (the name or email they typed) in this message.', 'societypress' ); ?></p>
+            <?php
+        },
+        'sp-settings-privacy',
+        'sp_member_welcome_section'
+    );
+
+
+    // ====================================================================
     // SECTION: Directory
     //
     // WHY: The society decides which member information appears on the
@@ -21595,6 +22049,13 @@ function sp_sanitize_settings( array $input ): array {
         // survive a save round-trip. wp_kses_post on render protects on output.
         'login_pre_notice'        => fn() => isset( $input['login_pre_notice'] ) ? wp_check_invalid_utf8( (string) $input['login_pre_notice'] ) : '',
         'login_ack_text'          => fn() => isset( $input['login_ack_text'] ) ? wp_check_invalid_utf8( (string) $input['login_ack_text'] ) : '',
+
+        // New-member welcome + migration login (Privacy tab). Subject is a
+        // single line; body and login message preserve newlines so the admin's
+        // paragraph breaks survive. Blank means "use the shipped default".
+        'migration_welcome_subject' => fn() => isset( $input['migration_welcome_subject'] ) ? sanitize_text_field( $input['migration_welcome_subject'] ) : '',
+        'migration_welcome_body'    => fn() => isset( $input['migration_welcome_body'] ) ? sanitize_textarea_field( (string) $input['migration_welcome_body'] ) : '',
+        'migration_login_message'   => fn() => isset( $input['migration_login_message'] ) ? sanitize_textarea_field( (string) $input['migration_login_message'] ) : '',
 
         // Name prefix/suffix picklists (Membership tab). Clean each line:
         // strip tags, trim, cap to the column width (VARCHAR(20)), drop blanks
@@ -47993,6 +48454,296 @@ function sp_build_email_html( string $heading, string $body_html ): string {
 </td></tr></table>
 </body></html>';
 }
+
+
+/**
+ * ============================================================================
+ * MEMBER MIGRATION UX — shared "set up your password" spine
+ *
+ * When a society migrates from another system, imported members arrive with a
+ * random throwaway password they never see. These helpers give them one secure
+ * way to claim their account: a single-use link (WordPress's own password-reset
+ * key) that lets them choose a password and sign in.
+ *
+ * The same link/email is reused three ways: the post-import welcome blast, the
+ * graceful login-failure path (a member typing their OLD password), and the
+ * magic-link box on the login page.
+ *
+ * Every member-facing string ships with a plain-English default written for a
+ * non-technical senior member, and every one is overridable from
+ * Settings → Privacy → New-Member Welcome.
+ * ============================================================================
+ */
+
+/**
+ * Default subject line for the welcome / set-up-your-password email.
+ */
+function sp_migration_welcome_subject_default(): string {
+    /* translators: %s: society / website name */
+    return sprintf( __( 'Welcome to the new %s website — set up your sign-in', 'societypress' ), get_bloginfo( 'name' ) );
+}
+
+/**
+ * Default body for the welcome email. Plain English, no jargon. Supports the
+ * placeholders {member_name}, {society_name}, and {setup_link}.
+ */
+function sp_migration_welcome_body_default(): string {
+    /* translators: {member_name} = the member's name; {society_name} = the site name; {setup_link} = the "Set up my password" button/link. Keep these tokens as-is. */
+    return __(
+        "Hello {member_name},\n\n"
+        . "We've moved {society_name} to a brand-new website. Your membership and all "
+        . "of your information came with us — but for your security, your old password "
+        . "did not.\n\n"
+        . "To sign in for the first time, please set up a new password. It only takes "
+        . "a moment:\n\n"
+        . "{setup_link}\n\n"
+        . "If you weren't expecting this email, you can safely ignore it.\n\n"
+        . "Warm regards,\n"
+        . "{society_name}",
+        'societypress'
+    );
+}
+
+/**
+ * Default friendly message shown when a migrated member tries to sign in with
+ * their old password before they've set a new one.
+ */
+function sp_migration_login_message_default(): string {
+    /* translators: {society_name} = the site name; {username} = the name or email the visitor typed at sign-in. Keep these tokens as-is. */
+    return __(
+        "{society_name} has recently updated its website, so the password you used "
+        . "before won't work here. To keep your account safe, you'll choose a new one "
+        . "— it only takes a moment.\n\n"
+        . "If an account matching \"{username}\" is in our records, we've just emailed a "
+        . "one-time link to the email address we have on file for you. Please check your "
+        . "inbox in a few minutes (and your spam or junk folder, just in case).\n\n"
+        . "We'll only ask you to do this once.",
+        'societypress'
+    );
+}
+
+/**
+ * Saved welcome-email subject, or the shipped default when blank.
+ */
+function sp_migration_welcome_subject(): string {
+    $v = trim( (string) ( sp_settings()['migration_welcome_subject'] ?? '' ) );
+    return $v !== '' ? $v : sp_migration_welcome_subject_default();
+}
+
+/**
+ * Saved welcome-email body, or the shipped default when blank.
+ */
+function sp_migration_welcome_body(): string {
+    $v = trim( (string) ( sp_settings()['migration_welcome_body'] ?? '' ) );
+    return $v !== '' ? $v : sp_migration_welcome_body_default();
+}
+
+/**
+ * Saved migration login message, or the shipped default when blank.
+ */
+function sp_migration_login_message(): string {
+    $v = trim( (string) ( sp_settings()['migration_login_message'] ?? '' ) );
+    return $v !== '' ? $v : sp_migration_login_message_default();
+}
+
+/**
+ * Build a one-time "set your password and sign in" link for a member.
+ *
+ * WHY WordPress's own reset key: it's already secure, time-limited, single-use,
+ * and stored hashed in user_activation_key. Clicking the link lands the member
+ * on WordPress's "choose a new password" screen; completing it fires
+ * after_password_reset, where we clear the not-yet-activated flag.
+ *
+ * @return string Absolute login URL, or '' if a key couldn't be generated.
+ */
+function sp_member_setup_link( WP_User $user ): string {
+    $key = get_password_reset_key( $user );
+    if ( is_wp_error( $key ) ) {
+        return '';
+    }
+    return network_site_url(
+        'wp-login.php?action=rp&key=' . rawurlencode( $key ) . '&login=' . rawurlencode( $user->user_login ),
+        'login'
+    );
+}
+
+/**
+ * Email a member their one-time setup link.
+ *
+ * Pulls the (admin-editable) subject and body, fills the placeholders, renders
+ * {setup_link} as a branded button, and sends through the standard SocietyPress
+ * HTML email wrapper. Members without a real, deliverable email are skipped.
+ *
+ * @param WP_User|int $user A user object or ID.
+ * @return bool True if the email was accepted by wp_mail.
+ */
+function sp_send_member_setup_email( $user ): bool {
+    if ( is_numeric( $user ) ) {
+        $user = get_user_by( 'id', (int) $user );
+    }
+    if ( ! $user instanceof WP_User || empty( $user->user_email ) ) {
+        return false;
+    }
+    // Placeholder accounts (imported members with no email) can't be reached.
+    if ( str_ends_with( strtolower( $user->user_email ), '@placeholder.invalid' ) ) {
+        return false;
+    }
+
+    $link = sp_member_setup_link( $user );
+    if ( $link === '' ) {
+        return false;
+    }
+
+    $society = get_bloginfo( 'name' );
+    $name    = $user->display_name ? $user->display_name : $user->user_login;
+
+    $subject = str_replace(
+        [ '{member_name}', '{society_name}' ],
+        [ $name, $society ],
+        sp_migration_welcome_subject()
+    );
+
+    // Render the body: swap {setup_link} for a sentinel first so escaping and
+    // paragraph-wrapping don't mangle the URL, then drop in the branded button.
+    $sentinel = '%%SP_SETUP_BUTTON%%';
+    $text = str_replace( '{setup_link}', $sentinel, sp_migration_welcome_body() );
+    $text = str_replace( [ '{member_name}', '{society_name}' ], [ $name, $society ], $text );
+    $body = wpautop( esc_html( $text ) );
+
+    $brand  = sp_settings()['design_color_primary'] ?? '#2271b1';
+    $button = '<p style="text-align: center; margin: 28px 0;">'
+        . '<a href="' . esc_url( $link ) . '" style="display: inline-block; background: ' . esc_attr( $brand ) . '; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 6px; font-size: 16px; font-weight: 600;">'
+        . esc_html__( 'Set up my password', 'societypress' ) . '</a></p>';
+
+    // Replace whether the placeholder sat on its own line (preferred) or inline.
+    $body = str_replace( '<p>' . $sentinel . '</p>', $button, $body );
+    $body = str_replace( $sentinel, $button, $body );
+
+    // Clickable fallback link for email clients that strip buttons.
+    $body .= '<p style="font-size: 13px; color: #6d7175;">'
+        . esc_html__( 'If the button does not work, use this link instead:', 'societypress' )
+        . '<br><a href="' . esc_url( $link ) . '" style="word-break: break-all;">' . esc_url( $link ) . '</a></p>';
+
+    $html = sp_build_email_html( $subject, $body );
+
+    add_filter( 'wp_mail_content_type', 'sp_email_content_type_html' );
+    $ok = wp_mail( $user->user_email, $subject, $html );
+    remove_filter( 'wp_mail_content_type', 'sp_email_content_type_html' );
+
+    return (bool) $ok;
+}
+
+/**
+ * Send a migrated member their setup link at most once per 5 minutes.
+ *
+ * WHY rate-limit: the login form is the trigger, so a member (or a bot)
+ * retrying repeatedly must not flood the on-file inbox with setup emails.
+ *
+ * @return bool True if an email was sent on this call.
+ */
+function sp_maybe_send_setup_email( WP_User $user ): bool {
+    $key = 'sp_setup_sent_' . md5( strtolower( $user->user_email ) );
+    if ( get_transient( $key ) ) {
+        return false; // Already sent recently — the earlier email still stands.
+    }
+    if ( sp_send_member_setup_email( $user ) ) {
+        set_transient( $key, 1, 5 * MINUTE_IN_SECONDS );
+        return true;
+    }
+    return false;
+}
+
+/**
+ * ============================================================================
+ * MIGRATION-AWARE SIGN-IN
+ *
+ * Imported members carry sp_needs_password_setup until they choose a password.
+ * The FIRST time such a member tries to sign in — almost always with the old
+ * password from their previous system — we don't just say "wrong password."
+ * We explain that a software change requires a new password and email a setup
+ * link to the address already on file.
+ *
+ * Anti-abuse, exactly as specified: the email goes ONLY to the on-file address,
+ * and ONLY when the identifier typed at the login form matches a real,
+ * not-yet-activated account. A login that matches nobody (a stranger, a typo,
+ * an attacker probing addresses) gets the ordinary WordPress error and triggers
+ * no email at all.
+ * ============================================================================
+ */
+add_filter( 'authenticate', function ( $user, $username, $password ) {
+    // Only step in on a genuine failed attempt. A success (WP_User) or a blank
+    // form (WordPress's own empty_username / empty_password errors) passes through.
+    if ( ! is_wp_error( $user ) ) {
+        return $user;
+    }
+    if ( '' === trim( (string) $username ) || '' === (string) $password ) {
+        return $user;
+    }
+
+    // Resolve the typed identifier to a real account — email first, then login
+    // name (WordPress accepts either at sign-in).
+    $candidate = get_user_by( 'email', trim( (string) $username ) );
+    if ( ! $candidate ) {
+        $candidate = get_user_by( 'login', $username );
+    }
+
+    // Unknown account, or one that has already set its password: leave the
+    // normal "incorrect password" behavior — and send nothing.
+    if ( ! $candidate || ! get_user_meta( $candidate->ID, 'sp_needs_password_setup', true ) ) {
+        return $user;
+    }
+
+    // A migrated member who hasn't set a password yet. Email the setup link to
+    // their on-file address (rate-limited) and replace the bare error with the
+    // friendly, admin-editable explanation.
+    sp_maybe_send_setup_email( $candidate );
+
+    // Flag this request so the login screen below hides the "Lost your password?"
+    // link (see the login_footer hook). It's the wrong mental model for someone
+    // who never had a password on the new site, and the message just told them to
+    // check their email. Same request: wp-login.php renders the form after this.
+    $GLOBALS['sp_migration_login_notice'] = true;
+
+    // Personalize, then escape: the visitor's typed identifier is echoed back, so
+    // esc_html runs AFTER substitution to neutralize any HTML they may have typed.
+    $message = str_replace(
+        [ '{society_name}', '{username}' ],
+        [ get_bloginfo( 'name' ), (string) $username ],
+        sp_migration_login_message()
+    );
+
+    return new WP_Error( 'sp_needs_password_setup', wpautop( esc_html( $message ) ) );
+}, 30, 3 );
+
+/**
+ * Hide the "Lost your password?" link on the sign-in screen when a migrated
+ * member has just been shown the "set up your password" message. They never had
+ * a password here to lose, and the message already points them to their email,
+ * so the link only confuses. Scoped to that exact moment: a normal visitor, and
+ * the pristine first view of the login page, still see the link as usual.
+ */
+add_action( 'login_footer', function () {
+    if ( empty( $GLOBALS['sp_migration_login_notice'] ) ) {
+        return;
+    }
+    echo '<style>.login #nav a[href*="action=lostpassword"], #sp-login-help { display: none; }</style>';
+} );
+
+/**
+ * Clear the not-yet-activated flag the moment a member sets a password through
+ * the setup/reset link (after_password_reset), or signs in successfully by any
+ * route (wp_login) — belt and suspenders so the migration prompt never lingers.
+ */
+add_action( 'after_password_reset', function ( $user ) {
+    if ( $user instanceof WP_User ) {
+        delete_user_meta( $user->ID, 'sp_needs_password_setup' );
+    }
+} );
+add_action( 'wp_login', function ( $user_login, $user ) {
+    if ( $user instanceof WP_User && get_user_meta( $user->ID, 'sp_needs_password_setup', true ) ) {
+        delete_user_meta( $user->ID, 'sp_needs_password_setup' );
+    }
+}, 10, 2 );
 
 
 /**

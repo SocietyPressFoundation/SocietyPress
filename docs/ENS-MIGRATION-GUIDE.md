@@ -15,7 +15,7 @@ You'll want about **two to four hours** of uninterrupted time, plus a calm follo
 Have these ready:
 
 1. **Administrator access to your current ENS site** — the login that lets you export member data.
-2. **A web hosting account** — almost any cPanel host works (HostGator, Bluehost, Skystra, SiteGround, A2, GreenGeeks, etc.). You'll need:
+2. **A web hosting account** — almost any cPanel host works (Bluehost, Skystra, SiteGround, A2, GreenGeeks, etc.). You'll need:
    - A domain name (your existing one or a new one)
    - PHP 8.0 or newer enabled (cPanel's "MultiPHP Manager" or "PHP Selector")
    - The ability to create a MySQL database and database user

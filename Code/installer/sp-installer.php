@@ -826,7 +826,7 @@ function sp_installer_process(): void {
     //      vs. host-unreachable (2002/2003/2005). Each needs a completely
     //      different fix, and "check your credentials" is useless when the real
     //      problem is that the database user was never granted access to the
-    //      database in cPanel — the single most common HostGator install snag.
+    //      database in cPanel — the single most common shared-host install snag.
     //      The number lets us hand the user the one specific fix.
     $log[] = 'Testing database connection...';
     // WHY force MYSQLI_REPORT_OFF: hosts disagree on the default. Some pre-set
@@ -2165,7 +2165,7 @@ function sp_installer_render_steps( array $steps ): void {
  *
  * WHY collapsed: Harold should never have to read a raw MySQL or PHP error to
  * fix his install — the plain-English steps above cover that. But when he has
- * to phone HostGator support, the raw string is exactly what they ask for. A
+ * to phone his host's support, the raw string is exactly what they ask for. A
  * <details> element keeps it out of the way until it's wanted.
  */
 function sp_installer_render_detail( string $detail ): void {
@@ -2185,7 +2185,7 @@ function sp_installer_render_detail( string $detail ): void {
  *
  * WHY this exists as its own function: the database step is the single most
  * common place a non-technical user's install dies, and on shared hosting
- * (HostGator above all) the cause is almost never "wrong password." It's the
+ * (shared cPanel hosts above all) the cause is almost never "wrong password." It's the
  * user-not-added-to-database step, or the cPanel name prefix, or the database
  * simply not having been created yet. The old code reduced all of these to one
  * useless "check your credentials" line. This reads the MySQL error number and
@@ -2200,8 +2200,8 @@ function sp_installer_db_error_page( int $errno, string $raw, string $db_host, s
     //   2002 — can't connect locally (host wrong, or MySQL not running)
     //   2003 — can't connect to host:port (remote host wrong/unreachable)
     //   2005 — unknown host (the database host name doesn't resolve)
-    // The HostGator name-prefix tip shows on the credential/name errors because
-    // HostGator forces a "cpanelusername_" prefix on both the database and the
+    // The cPanel name-prefix tip shows on the credential/name errors because
+    // many cPanel hosts force a "cpanelusername_" prefix on both the database and the
     // user, and leaving it off is the usual root cause of 1045/1049.
     $explain     = '';
     $steps       = [];
@@ -2226,7 +2226,7 @@ function sp_installer_db_error_page( int $errno, string $raw, string $db_host, s
             break;
         case 1044:
         case 1142:
-            $explain = 'Good news: your username and password are correct and the database exists. The user just hasn’t been given permission to use this particular database yet. On HostGator and most cPanel hosts, creating the database and creating the user are two separate steps — and a third step links them together. That third step is missing.';
+            $explain = 'Good news: your username and password are correct and the database exists. The user just hasn’t been given permission to use this particular database yet. On most cPanel hosts, creating the database and creating the user are two separate steps — and a third step links them together. That third step is missing.';
             $steps = [
                 'Open cPanel → MySQL Databases.',
                 'Scroll to "Add User To Database."',
@@ -2303,7 +2303,7 @@ function sp_installer_db_error_page( int $errno, string $raw, string $db_host, s
             // ships in the public repo and on the demo site. "yourname_" makes
             // the pattern obvious without resembling any real cPanel username.
             echo '<div style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px; padding: 12px 16px; margin-bottom: 24px; font-size: 13px; color: #92400E;">';
-            echo '<strong>HostGator tip:</strong> HostGator automatically puts your cPanel username and an underscore in front of <em>both</em> the database name and the database username — like <code>yourname_society</code> and <code>yourname_dbuser</code>. Make sure you included that prefix here, exactly as cPanel shows it.';
+            echo '<strong>cPanel tip:</strong> Many cPanel hosts automatically put your cPanel username and an underscore in front of <em>both</em> the database name and the database username — like <code>yourname_society</code> and <code>yourname_dbuser</code>. Make sure you included that prefix here, exactly as cPanel shows it.';
             echo '</div>';
         }
 

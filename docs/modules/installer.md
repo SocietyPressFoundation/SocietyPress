@@ -21,7 +21,7 @@ You end up with a clean, ready-to-use SocietyPress site. The Setup Wizard runs a
 
 ## What you need before starting
 
-- **A web hosting account.** Any cPanel host works — HostGator, Bluehost, Skystra, SiteGround, A2, GreenGeeks, namecheap, etc. Shared hosting is fine; you don't need a VPS.
+- **A web hosting account.** Any cPanel host works — Bluehost, Skystra, SiteGround, A2, GreenGeeks, namecheap, etc. Shared hosting is fine; you don't need a VPS.
 - **A domain name.** Existing or new. The installer doesn't care — it runs at whatever URL you point it at.
 - **PHP 8.0 or newer.** Most hosts let you toggle PHP version via cPanel's "MultiPHP Manager" or "PHP Selector." Set it to 8.0+ before running the installer.
 - **A MySQL database.** Create one in cPanel's "MySQL Databases" tool. Note the database name, username, password, and host (usually `localhost`).

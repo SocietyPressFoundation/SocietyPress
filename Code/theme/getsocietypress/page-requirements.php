@@ -352,19 +352,6 @@ get_header();
             </div>
 
             <div class="req-hosting-card">
-                <h3><a href="https://www.hostgator.com" target="_blank" rel="noopener">HostGator</a></h3>
-                <p>
-                    A long-established, budget-friendly host with standard cPanel and
-                    the Softaculous one-click installer right on the cPanel home
-                    screen. A solid, inexpensive choice for a small society that wants
-                    the simplest possible setup.
-                </p>
-                <div class="req-hosting-card__price">
-                    A few dollars/month
-                </div>
-            </div>
-
-            <div class="req-hosting-card">
                 <h3><a href="https://skystra.com" target="_blank" rel="noopener">Skystra</a></h3>
                 <p>
                     The cPanel host we run our own demo site on. It includes cPanel

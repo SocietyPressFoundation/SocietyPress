@@ -17871,6 +17871,12 @@ add_action( 'wp_ajax_sp_import_members_batch', function () {
     //      (which contains PII) sitting in the uploads directory.
     if ( ! empty( $results['done'] ) ) {
         wp_delete_file( $temp_file );
+
+        // WHY: Once a roster has been imported, the post-setup "import your
+        //      members" nudge (set when the wizard finishes) has served its
+        //      purpose. Clear it so we don't keep prompting an admin who has
+        //      already brought their members over.
+        delete_option( 'sp_show_import_reminder' );
     }
 
     wp_send_json_success( $results );
@@ -22422,6 +22428,19 @@ function sp_render_setup_wizard(): void {
     $settings = sp_settings();
     $step     = (int) ( $_GET['step'] ?? 1 );
 
+    // WHY: Skipping setup is a deliberate exit from onboarding, not an
+    //      abandonment. Mark the wizard complete so post-setup nudges (e.g. the
+    //      Store payment-processor notice) behave the same for skippers as for
+    //      those who finish the steps.
+    if ( isset( $_GET['sp_skip_setup'] ) && check_admin_referer( 'sp_skip_setup' ) ) {
+        update_option( 'sp_wizard_completed', 1 );
+        if ( function_exists( 'sp_audit' ) ) {
+            sp_audit( 'wizard_skipped', 'Setup wizard skipped.', 'settings' );
+        }
+        wp_safe_redirect( admin_url( 'admin.php?page=societypress' ) );
+        exit;
+    }
+
     // Handle form submission
     if ( $_SERVER['REQUEST_METHOD'] === 'POST' && isset( $_POST['sp_wizard_nonce'] ) ) {
         check_admin_referer( 'sp_setup_wizard', 'sp_wizard_nonce' );
@@ -22468,12 +22487,20 @@ function sp_render_setup_wizard(): void {
                 // Mark wizard as complete
                 update_option( 'sp_wizard_completed', 1 );
 
+                // WHY: A society migrating from another platform almost always wants
+                //      its existing roster brought over first. Flag the post-setup
+                //      import nudge so a dashboard reminder appears until they either
+                //      import (auto-cleared in sp_import_members_batch) or dismiss it.
+                update_option( 'sp_show_import_reminder', 1 );
+
                 // Log it
                 if ( function_exists( 'sp_audit' ) ) {
                     sp_audit( 'wizard_completed', 'Setup wizard completed.', 'settings' );
                 }
 
-                wp_safe_redirect( admin_url( 'admin.php?page=societypress&wizard=done' ) );
+                // The final screen hands off to the member importer rather than
+                // dropping straight onto the dashboard — see step 5 below.
+                wp_safe_redirect( admin_url( 'admin.php?page=sp-setup-wizard&step=5' ) );
                 exit;
         }
     }
@@ -22511,6 +22538,11 @@ function sp_render_setup_wizard(): void {
         .sp-wizard-skip:hover { color: #2271b1; }
         .sp-wizard-note { margin-top: 12px; font-size: 12px; color: #646970; }
         .sp-wizard-field--row { display: flex; gap: 20px; }
+        .sp-wizard-actions--center { justify-content: center; flex-direction: column; align-items: center; gap: 12px; }
+        .sp-wizard-import { text-align: center; padding: 8px 0; }
+        .sp-wizard-import-icon { font-size: 44px; width: 44px; height: 44px; color: #2271b1; }
+        .sp-wizard-import-lead { font-weight: 600; font-size: 15px; margin: 12px 0 4px; }
+        .sp-wizard-import-text { color: #646970; font-size: 13px; margin: 0 auto; max-width: 440px; line-height: 1.5; }
     </style>
 
     <div class="sp-wizard-wrap">
@@ -22527,7 +22559,9 @@ function sp_render_setup_wizard(): void {
             <div class="sp-wizard-step-line"></div>
             <div class="sp-wizard-step <?php echo $step === 3 ? 'active' : ( $step > 3 ? 'done' : 'pending' ); ?>">3</div>
             <div class="sp-wizard-step-line"></div>
-            <div class="sp-wizard-step <?php echo $step === 4 ? 'active' : 'pending'; ?>">4</div>
+            <div class="sp-wizard-step <?php echo $step === 4 ? 'active' : ( $step > 4 ? 'done' : 'pending' ); ?>">4</div>
+            <div class="sp-wizard-step-line"></div>
+            <div class="sp-wizard-step <?php echo $step === 5 ? 'active' : 'pending'; ?>">5</div>
         </div>
 
         <div class="sp-wizard-card">
@@ -22566,7 +22600,7 @@ function sp_render_setup_wizard(): void {
                     </div>
 
                     <div class="sp-wizard-actions">
-                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=societypress' ) ); ?>" class="sp-wizard-skip"><?php esc_html_e( 'Skip setup', 'societypress' ); ?></a>
+                        <a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=sp-setup-wizard&sp_skip_setup=1' ), 'sp_skip_setup' ) ); ?>" class="sp-wizard-skip"><?php esc_html_e( 'Skip setup', 'societypress' ); ?></a>
                         <button type="submit" class="button button-primary"><?php esc_html_e( 'Continue →', 'societypress' ); ?></button>
                     </div>
 
@@ -22702,12 +22736,92 @@ function sp_render_setup_wizard(): void {
                         <button type="submit" class="button button-primary"><?php esc_html_e( 'Finish Setup', 'societypress' ); ?> &check;</button>
                     </div>
 
+                <?php elseif ( $step === 5 ) : ?>
+                    <!-- Step 5: Member import hand-off -->
+                    <h2><?php esc_html_e( "You're all set!", 'societypress' ); ?></h2>
+                    <p class="desc"><?php esc_html_e( 'Your society website is ready to go. One last thing — bring your members over.', 'societypress' ); ?></p>
+
+                    <div class="sp-wizard-import">
+                        <span class="dashicons dashicons-groups sp-wizard-import-icon" aria-hidden="true"></span>
+                        <p class="sp-wizard-import-lead"><?php esc_html_e( 'Already have a membership list?', 'societypress' ); ?></p>
+                        <p class="sp-wizard-import-text"><?php esc_html_e( 'Import your members from a spreadsheet or a file exported from your old website. SocietyPress walks you through matching the columns — no technical know-how required.', 'societypress' ); ?></p>
+                    </div>
+
+                    <div class="sp-wizard-actions sp-wizard-actions--center">
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-import' ) ); ?>" class="button button-primary button-hero"><?php esc_html_e( 'Import My Members', 'societypress' ); ?></a>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=societypress&wizard=done' ) ); ?>" class="sp-wizard-skip"><?php esc_html_e( "I'll do this later", 'societypress' ); ?></a>
+                    </div>
+
                 <?php endif; ?>
             </form>
         </div>
     </div>
     <?php
 }
+
+/**
+ * Show a dismissible "import your members" reminder after setup.
+ *
+ * WHY: When an admin finishes the setup wizard and chooses "I'll do this
+ *      later" instead of importing immediately, the roster never gets brought
+ *      over and the site sits empty. This nudge keeps the importer one click
+ *      away on every SocietyPress screen until they either import (the flag is
+ *      cleared in the import-batch handler) or dismiss it here.
+ */
+function sp_import_reminder_notice(): void {
+    if ( ! get_option( 'sp_show_import_reminder' ) ) {
+        return;
+    }
+    // Only people who can actually run the importer should see the nudge.
+    if ( ! current_user_can( 'sp_manage_members' ) ) {
+        return;
+    }
+    // Confine the notice to SocietyPress admin screens so it doesn't follow the
+    // admin onto unrelated WordPress pages.
+    $screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+    if ( ! $screen || strpos( (string) $screen->id, 'societypress' ) === false && strpos( (string) $screen->id, 'sp-' ) === false ) {
+        return;
+    }
+
+    $import_url = admin_url( 'admin.php?page=sp-import' );
+    $nonce      = wp_create_nonce( 'sp_dismiss_import_reminder' );
+    ?>
+    <div class="notice notice-info is-dismissible sp-import-reminder" data-sp-import-nonce="<?php echo esc_attr( $nonce ); ?>">
+        <p>
+            <strong><?php esc_html_e( 'Bring your members over', 'societypress' ); ?></strong>
+            &mdash;
+            <?php esc_html_e( 'Import your existing membership list from a spreadsheet or a file from your old website.', 'societypress' ); ?>
+            <a href="<?php echo esc_url( $import_url ); ?>" class="button button-small"><?php esc_html_e( 'Import members', 'societypress' ); ?></a>
+        </p>
+    </div>
+    <script>
+    ( function () {
+        var notice = document.querySelector( '.sp-import-reminder' );
+        if ( ! notice ) { return; }
+        notice.addEventListener( 'click', function ( e ) {
+            if ( ! e.target.classList.contains( 'notice-dismiss' ) ) { return; }
+            var body = new FormData();
+            body.append( 'action', 'sp_dismiss_import_reminder' );
+            body.append( '_wpnonce', notice.getAttribute( 'data-sp-import-nonce' ) );
+            fetch( ajaxurl, { method: 'POST', credentials: 'same-origin', body: body } );
+        } );
+    } )();
+    </script>
+    <?php
+}
+add_action( 'admin_notices', 'sp_import_reminder_notice' );
+
+/**
+ * Persist the dismissal of the post-setup member-import reminder.
+ */
+add_action( 'wp_ajax_sp_dismiss_import_reminder', function () {
+    check_ajax_referer( 'sp_dismiss_import_reminder' );
+    if ( ! current_user_can( 'sp_manage_members' ) ) {
+        wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
+    }
+    delete_option( 'sp_show_import_reminder' );
+    wp_send_json_success();
+});
 
 // ============================================================================
 // MEMBER RELATIONSHIPS — Family/household connections
@@ -77086,13 +77200,20 @@ function sp_send_store_order_email( int $order_id ): void {
 //
 // WHY: If the Store module is on but no payment processor is configured, the
 //      storefront is a dead end — members can fill a cart and hit a wall.
-//      Surface a loud, persistent admin notice so the administrator fixes it
-//      before shoppers notice. Links straight to the Payments settings tab.
+//      Nudge the administrator to fix it, but only once they're actually
+//      running the site. During the welcome wizard the Store-on/no-processor
+//      state is expected, not broken, so an alarm there just spikes anxiety
+//      before the user has done anything. Hold the notice until setup is
+//      complete, and keep it an amber heads-up rather than a red error —
+//      unconfigured payments is a config gap, not a failure.
 // ============================================================================
 
 add_action( 'admin_notices', function () {
     if ( ! current_user_can( 'manage_options' ) ) return;
     if ( ! function_exists( 'sp_module_enabled' ) || ! sp_module_enabled( 'store' ) ) return;
+
+    // Don't shout about checkout while the admin is still being onboarded.
+    if ( ! get_option( 'sp_wizard_completed' ) ) return;
 
     $settings = sp_settings();
     $stripe   = function_exists( 'sp_stripe_is_configured' ) && sp_stripe_is_configured( $settings );
@@ -77106,7 +77227,7 @@ add_action( 'admin_notices', function () {
         .sp-store-notice-p { font-size: 14px; margin: 10px 0; }
         .sp-store-notice-btn { margin-left: 8px; }
     </style>
-    <div class="notice notice-error sp-store-notice">
+    <div class="notice notice-warning sp-store-notice">
         <p class="sp-store-notice-p">
             <strong><?php esc_html_e( 'SocietyPress Store:', 'societypress' ); ?></strong>
             <?php esc_html_e( 'The Store module is enabled, but no payment processor is set up. Members can add items to their cart but cannot check out.', 'societypress' ); ?>

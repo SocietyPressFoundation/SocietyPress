@@ -367,7 +367,7 @@ function sp_installer_show_form(): void {
             </p>
         <?php endif; ?>
 
-        <form method="post" action="?step=configure" id="sp-install-form">
+        <form method="post" action="?step=configure" id="sp-install-form" enctype="multipart/form-data">
             <input type="hidden" name="sp_install_nonce" value="<?php echo htmlspecialchars( $nonce , ENT_QUOTES, 'UTF-8'); ?>">
 
             <!-- Database Settings -->
@@ -626,6 +626,28 @@ function sp_installer_show_form(): void {
                 </tr>
             </table>
 
+            <?php if ( ! SP_INSTALLER_DEMO_MODE ) : ?>
+            <!-- Membership Import -->
+            <h2 style="font-size: 18px; font-weight: 700; color: #0D1F3C; margin: 32px 0 16px; padding-bottom: 8px; border-bottom: 2px solid #C9973A;">
+                Import Your Membership List (Optional)
+            </h2>
+            <table>
+                <tr>
+                    <th><label for="membership_csv">Membership File</label></th>
+                    <td>
+                        <input type="file" id="membership_csv" name="membership_csv" accept=".csv,text/csv">
+                        <p class="desc">
+                            Already have your members in a spreadsheet? Save it as a CSV file and
+                            choose it here — we'll bring everyone in automatically right after setup.
+                            Coming from EasyNetSites? Your exported member file works as-is.
+                            Leave this blank to add members later. (If anything else on this form
+                            needs fixing, you'll need to choose your file again.)
+                        </p>
+                    </td>
+                </tr>
+            </table>
+            <?php endif; ?>
+
             <!-- Honeypot — bots fill this in, humans don't see it -->
             <div style="position: absolute; left: -9999px;" aria-hidden="true">
                 <input type="text" name="sp_hp_field" tabindex="-1" autocomplete="off">
@@ -792,6 +814,30 @@ function sp_installer_process(): void {
     if ( ! in_array( $membership_period, [ 'annual', 'rolling', 'lifetime' ], true ) ) {
         $membership_period = 'annual';
     }
+
+    // Validate the optional membership-list upload.
+    // WHY here, not at move time: a bad file should send Harold back to the
+    // form with a plain-English reason, alongside any other field errors.
+    // The actual move happens later (after the config file is written), once
+    // we know the out-of-webroot directory; PHP keeps the upload temp file for
+    // the whole request, so it's still available then.
+    // WHY guarded by demo mode: the public demo site has no import field, and
+    // we never want anonymous member lists landing on it.
+    $member_csv_valid = false;
+    if ( ! SP_INSTALLER_DEMO_MODE && isset( $_FILES['membership_csv'] )
+        && ( $_FILES['membership_csv']['error'] ?? UPLOAD_ERR_NO_FILE ) !== UPLOAD_ERR_NO_FILE ) {
+        $up = $_FILES['membership_csv'];
+        if ( (int) $up['error'] !== UPLOAD_ERR_OK || ! is_uploaded_file( $up['tmp_name'] ?? '' ) ) {
+            $errors[] = 'The membership file did not upload correctly. Please choose it again.';
+        } elseif ( (int) $up['size'] > 20 * 1024 * 1024 ) {
+            $errors[] = 'The membership file is too large (limit 20 MB). Split it or contact support.';
+        } elseif ( ! preg_match( '/\.csv$/i', (string) $up['name'] ) ) {
+            $errors[] = 'The membership file must be a .csv file. Open your spreadsheet and "Save As" CSV.';
+        } else {
+            $member_csv_valid = true;
+        }
+    }
+
     // WHY db_host pattern: this value flows into wp-config.php via a regex
     // replacement below. A value containing newlines, quotes, or PHP tokens
     // could escape the constant string and inject code. Restrict to the
@@ -1369,6 +1415,39 @@ add_action( 'admin_init', function () {
         }
     }
 
+    // ---- Import the membership list, if the installer staged one ----
+    // WHY here: SocietyPress is active and its tables exist, so the plugin's
+    // own batched importer (sp_process_import_batch) is available — we reuse
+    // it rather than re-implement CSV parsing. An empty field map makes it
+    // fall back to the built-in auto-detection, which recognizes both a plain
+    // First Name / Last Name / Email CSV and a full EasyNetSites export.
+    // We page in chunks so a large list can't time out the request, then
+    // delete the file — it holds member PII and must not linger on disk.
+    if ( function_exists( 'sp_process_import_batch' ) ) {
+        $member_files = array_merge(
+            glob( ABSPATH . 'sp-installer-members-*.csv' ) ?: [],
+            glob( dirname( untrailingslashit( ABSPATH ) ) . '/sp-installer-members-*.csv' ) ?: []
+        );
+        // Pin to the exact randomized pattern so only a file we wrote is read.
+        $member_files = array_values( array_filter( $member_files, function ( $path ) {
+            return (bool) preg_match( '/^sp-installer-members-[a-f0-9]{32}\.csv$/', basename( $path ) );
+        } ) );
+        foreach ( $member_files as $member_csv ) {
+            $offset = 0;
+            // Hard ceiling: defend against a malformed batch that never reports
+            // done — better to stop than spin the request forever.
+            for ( $guard = 0; $guard < 5000; $guard++ ) {
+                $res       = sp_process_import_batch( $member_csv, [], $offset, 100 );
+                $processed = (int) ( $res['rows_processed'] ?? 0 );
+                $offset   += $processed;
+                if ( ! empty( $res['done'] ) || $processed === 0 ) {
+                    break;
+                }
+            }
+            @unlink( $member_csv );
+        }
+    }
+
     // Self-destruct
     @unlink( __FILE__ );
 
@@ -1433,6 +1512,22 @@ MUPLUGIN;
         @file_put_contents( $install_dir . '/' . $config_filename, json_encode( $installer_config ) );
     }
     $log[] = 'Installer config written.';
+
+    // ---- 6c. Stash the membership CSV for the mu-plugin to import ----
+    // WHY: Members can't be imported here — WordPress and the SocietyPress
+    // tables don't exist yet. We move the uploaded CSV next to the config
+    // file (one level above the web root when possible, so the member list
+    // is never fetchable over HTTP) under a randomized name. The mu-plugin
+    // globs for it after SocietyPress activates, feeds it to the plugin's
+    // own batched importer, and deletes it.
+    if ( ! empty( $member_csv_valid ) ) {
+        $member_filename = 'sp-installer-members-' . bin2hex( random_bytes( 16 ) ) . '.csv';
+        if ( ! @move_uploaded_file( $_FILES['membership_csv']['tmp_name'], $config_dir . '/' . $member_filename ) ) {
+            // Last resort: the install dir, mirroring the config-file fallback.
+            @move_uploaded_file( $_FILES['membership_csv']['tmp_name'], $install_dir . '/' . $member_filename );
+        }
+        $log[] = 'Membership list staged for import.';
+    }
 
     // ---- 7. Create a bridge script that runs WordPress's install with our data ----
     // WHY: We already collected the society name, admin email, username, and password

@@ -59,9 +59,18 @@ get_header();
             </div>
             <div class="setup-step__screenshot">
                 <div class="setup-screenshot" aria-label="Screenshot: SocietyPress dashboard after first activation">
-                    <img src="<?php echo esc_url( get_template_directory_uri() ); ?>/img/setup/dashboard.jpg"
-                         alt="The SocietyPress dashboard showing member count, upcoming events, and sidebar navigation"
-                         loading="lazy">
+                    <div class="setup-screenshot__placeholder">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                            <circle cx="8.5" cy="8.5" r="1.5"/>
+                            <polyline points="21 15 16 10 5 21"/>
+                        </svg>
+                        <span>Screenshot: SocietyPress dashboard — member counts, upcoming events, recent activity</span>
+                    </div>
+                    <!-- Replace placeholder div above with:
+                         <img src="<?php echo esc_url( get_template_directory_uri() ); ?>/img/setup/dashboard.png"
+                              alt="The SocietyPress dashboard showing member count, upcoming events, and sidebar navigation"
+                              width="800" height="500" loading="lazy"> -->
                 </div>
                 <p class="setup-screenshot__caption">The SocietyPress dashboard — your home base for managing everything.</p>
             </div>

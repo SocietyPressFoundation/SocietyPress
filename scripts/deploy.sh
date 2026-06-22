@@ -30,8 +30,12 @@ DEMO_BASE="~/domains/getsocietypress.org/public_html/demo/wp-content"
 LOCAL_BASE="$(cd "$(dirname "$0")/.." && pwd)"
 
 # Optional secondary deploy target — sourced from a gitignored local file.
+# SECONDARY_HOST lets the second site live on a different server than the
+# primary (e.g. a FastComet box vs. the Skystra demo); it defaults to the
+# primary HOST when unset, preserving older same-server configs.
 SECONDARY_BASE=""
 SECONDARY_LABEL=""
+SECONDARY_HOST=""
 if [ -f "$LOCAL_BASE/scripts/deploy.local.sh" ]; then
     # shellcheck source=/dev/null
     source "$LOCAL_BASE/scripts/deploy.local.sh"
@@ -52,24 +56,25 @@ OVERALL_STATUS=0
 deploy_plugin_to() {
     local target_base="$1"
     local label="$2"
+    local host="${3:-$HOST}"
     echo "Deploying plugin to $label..."
 
     # Main plugin PHP file. If the parent directory doesn't exist on the
     # server (e.g. the site isn't provisioned), scp will fail with
     # "No such file or directory" — catch that and mark the deploy as
     # FAILED so the script exit code reflects reality.
-    if ! scp "$LOCAL_BASE/Code/plugin/societypress.php" "$HOST:$target_base/plugins/societypress/societypress.php"; then
+    if ! scp "$LOCAL_BASE/Code/plugin/societypress.php" "$host:$target_base/plugins/societypress/societypress.php"; then
         echo "  FAILED: $label plugin scp did not complete."
         OVERALL_STATUS=1
         return 1
     fi
 
     # Optional POT file — not required for deploy success (suppress errors)
-    scp "$LOCAL_BASE/Code/plugin/languages/societypress.pot" "$HOST:$target_base/plugins/societypress/languages/societypress.pot" 2>/dev/null || true
+    scp "$LOCAL_BASE/Code/plugin/languages/societypress.pot" "$host:$target_base/plugins/societypress/languages/societypress.pot" 2>/dev/null || true
 
     # Optional assets directory — same (suppress errors)
     if [ -d "$LOCAL_BASE/Code/plugin/assets" ]; then
-        scp -r "$LOCAL_BASE/Code/plugin/assets/"* "$HOST:$target_base/plugins/societypress/assets/" 2>/dev/null || true
+        scp -r "$LOCAL_BASE/Code/plugin/assets/"* "$host:$target_base/plugins/societypress/assets/" 2>/dev/null || true
     fi
 
     echo "  OK: plugin deployed to $label."
@@ -88,6 +93,7 @@ deploy_theme_to() {
     local theme_name="$2"
     local target_base="$3"
     local label="$4"
+    local host="${5:-$HOST}"
     echo "Deploying $theme_name theme to $label..."
 
     if [ ! -d "$LOCAL_BASE/Code/$local_dir" ]; then
@@ -116,7 +122,7 @@ deploy_theme_to() {
             --exclude='getsocietypress' \
             --exclude='.DS_Store' \
             . \
-        | ssh "$HOST" "tar xzf - -C $target_base/themes/$theme_name"; then
+        | ssh "$host" "tar xzf - -C $target_base/themes/$theme_name"; then
         echo "  FAILED: $theme_name theme tar-pipe to $label did not complete."
         OVERALL_STATUS=1
         return 1
@@ -132,7 +138,7 @@ deploy_theme_to() {
 deploy_plugin_all_sites() {
     deploy_plugin_to "$DEMO_BASE" "demo.getsocietypress.org"
     if [ -n "$SECONDARY_BASE" ] && [ -n "$SECONDARY_LABEL" ]; then
-        deploy_plugin_to "$SECONDARY_BASE" "$SECONDARY_LABEL"
+        deploy_plugin_to "$SECONDARY_BASE" "$SECONDARY_LABEL" "${SECONDARY_HOST:-$HOST}"
     fi
 }
 
@@ -141,7 +147,7 @@ deploy_theme_all_sites() {
     local theme_name="$2"
     deploy_theme_to "$local_dir" "$theme_name" "$DEMO_BASE" "demo.getsocietypress.org"
     if [ -n "$SECONDARY_BASE" ] && [ -n "$SECONDARY_LABEL" ]; then
-        deploy_theme_to "$local_dir" "$theme_name" "$SECONDARY_BASE" "$SECONDARY_LABEL"
+        deploy_theme_to "$local_dir" "$theme_name" "$SECONDARY_BASE" "$SECONDARY_LABEL" "${SECONDARY_HOST:-$HOST}"
     fi
 }
 

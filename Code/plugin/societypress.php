@@ -93534,6 +93534,112 @@ add_action( 'admin_post_sp_theme_preset_import', function () {
 
 
 // ============================================================================
+// SAVED-LOOK LIBRARY
+//
+// WHY: Export/import alone means juggling downloaded .json files to keep or
+//      re-apply a look. A saved-look library lets a society keep a shelf of
+//      named looks in the database and re-apply any of them with one click.
+//      These stay on this site — nothing is shared unless the admin explicitly
+//      exports a look as a portable preset file. Stored in the sp_saved_presets
+//      option as id => preset-payload (the same societypress.preset.v1 shape
+//      sp_theme_preset_build() produces).
+// ============================================================================
+
+function sp_get_saved_presets(): array {
+    $presets = get_option( 'sp_saved_presets', [] );
+    return is_array( $presets ) ? $presets : [];
+}
+
+/**
+ * Save the current site look into the library under a name.
+ */
+add_action( 'admin_post_sp_theme_preset_save_named', function () {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( __( 'Insufficient permissions.', 'societypress' ) );
+    }
+    check_admin_referer( 'sp_theme_preset_save_named' );
+
+    $back = admin_url( 'admin.php?page=sp-theme-presets' );
+    $name = sanitize_text_field( wp_unslash( $_POST['preset_name'] ?? '' ) );
+    if ( $name === '' ) {
+        wp_safe_redirect( add_query_arg( 'sp_preset_err', 'save_no_name', $back ) );
+        exit;
+    }
+    $desc = sanitize_textarea_field( wp_unslash( $_POST['preset_description'] ?? '' ) );
+
+    $presets = sp_get_saved_presets();
+    // Stable id from the name so re-saving the same name updates in place rather
+    // than piling up duplicates. Fall back to a counter if the name has no
+    // sluggable characters.
+    $id = sanitize_title( $name );
+    if ( $id === '' ) {
+        $id = 'look-' . ( count( $presets ) + 1 );
+    }
+    $presets[ $id ] = sp_theme_preset_build( $name, $desc );
+    update_option( 'sp_saved_presets', $presets );
+
+    wp_safe_redirect( add_query_arg( [
+        'sp_preset_saved' => 1,
+        'sp_preset_name'  => urlencode( $name ),
+    ], $back ) );
+    exit;
+} );
+
+/**
+ * Apply a saved look by id.
+ */
+add_action( 'admin_post_sp_theme_preset_apply_named', function () {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( __( 'Insufficient permissions.', 'societypress' ) );
+    }
+    check_admin_referer( 'sp_theme_preset_apply_named' );
+
+    $back    = admin_url( 'admin.php?page=sp-theme-presets' );
+    $id      = sanitize_text_field( wp_unslash( $_POST['preset_id'] ?? '' ) );
+    $presets = sp_get_saved_presets();
+    if ( ! isset( $presets[ $id ] ) ) {
+        wp_safe_redirect( add_query_arg( 'sp_preset_err', 'not_found', $back ) );
+        exit;
+    }
+
+    $result = sp_theme_preset_apply( $presets[ $id ] );
+    if ( is_wp_error( $result ) ) {
+        wp_safe_redirect( add_query_arg( [
+            'sp_preset_err'     => 'apply_failed',
+            'sp_preset_err_msg' => urlencode( $result->get_error_message() ),
+        ], $back ) );
+        exit;
+    }
+
+    wp_safe_redirect( add_query_arg( [
+        'sp_preset_imported' => 1,
+        'sp_preset_name'     => urlencode( $presets[ $id ]['name'] ?? $id ),
+    ], $back ) );
+    exit;
+} );
+
+/**
+ * Delete a saved look by id.
+ */
+add_action( 'admin_post_sp_theme_preset_delete_named', function () {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( __( 'Insufficient permissions.', 'societypress' ) );
+    }
+    check_admin_referer( 'sp_theme_preset_delete_named' );
+
+    $back    = admin_url( 'admin.php?page=sp-theme-presets' );
+    $id      = sanitize_text_field( wp_unslash( $_POST['preset_id'] ?? '' ) );
+    $presets = sp_get_saved_presets();
+    if ( isset( $presets[ $id ] ) ) {
+        unset( $presets[ $id ] );
+        update_option( 'sp_saved_presets', $presets );
+    }
+    wp_safe_redirect( add_query_arg( 'sp_preset_deleted', 1, $back ) );
+    exit;
+} );
+
+
+// ============================================================================
 // THEME EXCHANGE — TIER 2 — .spchildtheme archive bundles
 //
 // A .spchildtheme is a ZIP containing:
@@ -93835,6 +93941,9 @@ function sp_render_theme_presets_page(): void {
         .sp-tp-tip           { background: #fff3cd; border-left: 4px solid #b45309; padding: 10px 14px; border-radius: 0 4px 4px 0; font-size: 13px; }
         .sp-tp-inline-notice { padding: 6px 12px; }
         .sp-tp-active-bundle { margin-top: 12px; font-size: 12px; color: #555; }
+        .sp-saved-looks-table { margin-bottom: 16px; }
+        .sp-saved-swatch { display: inline-block; width: 20px; height: 20px; border-radius: 3px; border: 1px solid #ccc; vertical-align: middle; margin-right: 2px; }
+        .sp-saved-look-actions form { display: inline-block; margin: 0 4px 0 0; }
     </style>
     <div class="wrap">
         <h1><?php esc_html_e( 'Theme Presets', 'societypress' ); ?></h1>
@@ -93860,6 +93969,105 @@ function sp_render_theme_presets_page(): void {
                 <strong><?php echo esc_html( $err_msg ); ?></strong>
             </p></div>
         <?php endif; ?>
+
+        <?php if ( isset( $_GET['sp_preset_saved'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p>
+                <?php printf( esc_html__( 'Saved look "%s".', 'societypress' ), esc_html( sanitize_text_field( urldecode( $_GET['sp_preset_name'] ?? '' ) ) ) ); ?>
+            </p></div>
+        <?php endif; ?>
+        <?php if ( isset( $_GET['sp_preset_deleted'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Saved look deleted.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+        <?php if ( $err === 'save_no_name' ) : ?>
+            <div class="notice notice-error is-dismissible"><p><?php esc_html_e( 'Please give the look a name before saving.', 'societypress' ); ?></p></div>
+        <?php elseif ( $err === 'not_found' ) : ?>
+            <div class="notice notice-error is-dismissible"><p><?php esc_html_e( 'That saved look no longer exists.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+
+        <?php $sp_saved_presets = sp_get_saved_presets(); ?>
+        <div class="postbox">
+            <h2 class="hndle sp-hndle-padded"><?php esc_html_e( 'Saved looks', 'societypress' ); ?></h2>
+            <div class="inside">
+                <p><?php esc_html_e( 'Save your current design as a named look you can re-apply any time with one click. Saved looks stay on this site — they are not shared unless you export one as a preset file below.', 'societypress' ); ?></p>
+
+                <?php if ( $sp_saved_presets ) : ?>
+                    <table class="widefat striped sp-saved-looks-table">
+                        <thead>
+                            <tr>
+                                <th scope="col"><?php esc_html_e( 'Name', 'societypress' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Colors', 'societypress' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        <?php foreach ( $sp_saved_presets as $sp_id => $sp_preset ) :
+                            $sp_tokens  = $sp_preset['tokens'] ?? [];
+                            $sp_primary = $sp_tokens['design_color_primary'] ?? '#cccccc';
+                            $sp_accent  = $sp_tokens['design_color_accent']  ?? '#cccccc';
+                            $sp_name    = $sp_preset['name'] ?? $sp_id;
+                        ?>
+                            <tr>
+                                <td>
+                                    <strong><?php echo esc_html( $sp_name ); ?></strong>
+                                    <?php if ( ! empty( $sp_preset['description'] ) ) : ?>
+                                        <p class="sp-tp-meta-text"><?php echo esc_html( $sp_preset['description'] ); ?></p>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <span class="sp-saved-swatch" style="background:<?php echo esc_attr( $sp_primary ); ?>;" title="<?php echo esc_attr( $sp_primary ); ?>"></span>
+                                    <span class="sp-saved-swatch" style="background:<?php echo esc_attr( $sp_accent ); ?>;" title="<?php echo esc_attr( $sp_accent ); ?>"></span>
+                                </td>
+                                <td class="sp-saved-look-actions">
+                                    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+                                        <input type="hidden" name="action" value="sp_theme_preset_apply_named">
+                                        <input type="hidden" name="preset_id" value="<?php echo esc_attr( $sp_id ); ?>">
+                                        <?php wp_nonce_field( 'sp_theme_preset_apply_named' ); ?>
+                                        <button type="submit" class="button button-primary"><?php esc_html_e( 'Apply', 'societypress' ); ?></button>
+                                    </form>
+                                    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="sp-saved-look-delete" data-look-name="<?php echo esc_attr( $sp_name ); ?>">
+                                        <input type="hidden" name="action" value="sp_theme_preset_delete_named">
+                                        <input type="hidden" name="preset_id" value="<?php echo esc_attr( $sp_id ); ?>">
+                                        <?php wp_nonce_field( 'sp_theme_preset_delete_named' ); ?>
+                                        <button type="submit" class="button sp-btn-danger"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                                    </form>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                <?php else : ?>
+                    <p class="sp-tp-meta-text"><?php esc_html_e( 'No saved looks yet. Save your current design below to start your shelf.', 'societypress' ); ?></p>
+                <?php endif; ?>
+
+                <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+                    <input type="hidden" name="action" value="sp_theme_preset_save_named">
+                    <?php wp_nonce_field( 'sp_theme_preset_save_named' ); ?>
+                    <table class="form-table">
+                        <tr>
+                            <th scope="row"><label for="sp_saved_name"><?php esc_html_e( 'Save current look as', 'societypress' ); ?></label></th>
+                            <td><input type="text" id="sp_saved_name" name="preset_name" class="regular-text" placeholder="<?php esc_attr_e( 'e.g. Our 2026 look', 'societypress' ); ?>" required></td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="sp_saved_desc"><?php esc_html_e( 'Note (optional)', 'societypress' ); ?></label></th>
+                            <td><textarea id="sp_saved_desc" name="preset_description" rows="2" class="large-text"></textarea></td>
+                        </tr>
+                    </table>
+                    <?php submit_button( __( 'Save current look', 'societypress' ), 'secondary' ); ?>
+                </form>
+            </div>
+        </div>
+
+        <script>
+        ( function () {
+            var msg = <?php echo wp_json_encode( __( 'Delete the saved look', 'societypress' ) ); ?>;
+            document.querySelectorAll( '.sp-saved-look-delete' ).forEach( function ( f ) {
+                f.addEventListener( 'submit', function ( e ) {
+                    e.preventDefault();
+                    spConfirm( msg + ' "' + ( f.getAttribute( 'data-look-name' ) || '' ) + '"?', function () { f.submit(); } );
+                } );
+            } );
+        } )();
+        </script>
 
         <div class="sp-2col-flex">
 

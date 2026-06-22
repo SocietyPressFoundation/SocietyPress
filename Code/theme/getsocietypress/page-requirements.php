@@ -338,20 +338,6 @@ get_header();
         <div class="req-hosting-grid">
 
             <div class="req-hosting-card">
-                <h3><a href="https://www.bluehost.com" target="_blank" rel="noopener">Bluehost</a></h3>
-                <p>
-                    One of the hosts <a href="https://wordpress.org/hosting/" target="_blank" rel="noopener">WordPress.org itself recommends</a>,
-                    so it's a name most people already trust. It includes cPanel and
-                    the Softaculous one-click installer. On Bluehost you reach
-                    Softaculous through their portal: <em>Hosting &rarr; cPanel &rarr;
-                    Software &rarr; Softaculous Apps Installer</em>.
-                </p>
-                <div class="req-hosting-card__price">
-                    A few dollars/month
-                </div>
-            </div>
-
-            <div class="req-hosting-card">
                 <h3><a href="https://skystra.com" target="_blank" rel="noopener">Skystra</a></h3>
                 <p>
                     The cPanel host we run our own demo site on. It includes cPanel
@@ -361,6 +347,72 @@ get_header();
                 </p>
                 <div class="req-hosting-card__price">
                     A few dollars/month
+                </div>
+            </div>
+
+            <div class="req-hosting-card">
+                <h3><a href="https://www.namecheap.com" target="_blank" rel="noopener">Namecheap</a></h3>
+                <p>
+                    The lowest-cost option here, and one of the most widely used
+                    hosts anywhere &mdash; which means if you ever get stuck, a
+                    step-by-step guide or video for almost any task is a quick
+                    search away. Real cPanel with the Softaculous one-click
+                    installer.
+                </p>
+                <div class="req-hosting-card__price">
+                    Often around $2/month
+                </div>
+            </div>
+
+            <div class="req-hosting-card">
+                <h3><a href="https://www.fastcomet.com" target="_blank" rel="noopener">FastComet</a></h3>
+                <p>
+                    cPanel and Softaculous like the others, with one standout: the
+                    price you start at is the price you keep. Many hosts advertise a
+                    low rate that jumps at renewal &mdash; FastComet doesn't, which
+                    makes budgeting easier for a society.
+                </p>
+                <div class="req-hosting-card__price">
+                    A few dollars/month, fixed
+                </div>
+            </div>
+
+            <div class="req-hosting-card">
+                <h3><a href="https://chemicloud.com" target="_blank" rel="noopener">ChemiCloud</a></h3>
+                <p>
+                    A well-rounded budget host with real cPanel and the Softaculous
+                    one-click installer. A solid middle-of-the-road choice if you
+                    want a little more than the rock-bottom tier without paying
+                    premium prices.
+                </p>
+                <div class="req-hosting-card__price">
+                    Around $5/month
+                </div>
+            </div>
+
+            <div class="req-hosting-card">
+                <h3><a href="https://www.inmotionhosting.com" target="_blank" rel="noopener">InMotion Hosting</a></h3>
+                <p>
+                    A US-based host known for hands-on support, which matters if
+                    you'd rather call someone than read a help page. cPanel and
+                    Softaculous throughout. A good fit for a society that wants
+                    someone to lean on.
+                </p>
+                <div class="req-hosting-card__price">
+                    Around $5/month
+                </div>
+            </div>
+
+            <div class="req-hosting-card">
+                <h3><a href="https://www.tmdhosting.com" target="_blank" rel="noopener">TMDHosting</a></h3>
+                <p>
+                    Another support-focused host with real cPanel and the
+                    Softaculous one-click installer. A little pricier than the
+                    others, but well regarded for helping smaller organizations get
+                    set up and stay running.
+                </p>
+                <div class="req-hosting-card__price">
+                    Around $9/month
                 </div>
             </div>
 

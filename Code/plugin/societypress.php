@@ -22388,6 +22388,27 @@ function sp_register_wizard_page(): void {
 add_action( 'admin_menu', 'sp_register_wizard_page', 1 );
 
 /**
+ * Suppress every admin notice while the setup wizard is on screen.
+ *
+ * WHY: The wizard is a focused, full-screen onboarding flow. Any notice
+ *      there — ours, WordPress core's, or another plugin's — competes with
+ *      the one task at hand and can alarm a first-time admin before they've
+ *      done anything (e.g. the Store "no payment processor" nag firing on
+ *      step 1). The individual notices already try to hold off until
+ *      sp_wizard_completed is set, but that flag persists across runs, so
+ *      revisiting the wizard later slips past those guards. Clearing the
+ *      notice hooks on the wizard screen itself is the reliable fix.
+ */
+function sp_suppress_notices_on_wizard(): void {
+    if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'sp-setup-wizard' ) {
+        return;
+    }
+    remove_all_actions( 'admin_notices' );
+    remove_all_actions( 'all_admin_notices' );
+}
+add_action( 'in_admin_header', 'sp_suppress_notices_on_wizard' );
+
+/**
  * On first admin visit after activation, redirect to the setup wizard.
  *
  * WHY: We use a transient set during activation (sp_activation_redirect)

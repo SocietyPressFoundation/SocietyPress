@@ -7292,6 +7292,29 @@ function sp_member_locked_section_for_action( string $action ): string {
     return ( $section !== '' && sp_member_section_locked( $section ) ) ? $section : '';
 }
 
+/**
+ * Canonical list of supported external genealogy services: key => label.
+ *
+ * WHY: The member account form, both save handlers (frontend + AJAX), and the
+ *      public-profile reader all need this exact list. It used to be copy-pasted
+ *      in each spot — precisely the kind of drift that silently breaks things
+ *      (see the font-list bug). One source of truth: add a service here and
+ *      every consumer picks it up. Each key doubles as the user_meta suffix
+ *      (sp_genealogy_<key>) and the POST field suffix (genealogy_<key>).
+ */
+function sp_genealogy_services(): array {
+    return [
+        'wikitree'     => 'WikiTree',
+        'familysearch' => 'FamilySearch',
+        'geni'         => 'Geni',
+        'werelate'     => 'WeRelate',
+        'ancestry'     => 'Ancestry',
+        'myheritage'   => 'MyHeritage',
+        'findagrave'   => 'Find A Grave',
+        '23andme'      => '23andMe',
+    ];
+}
+
 add_action( 'template_redirect', 'sp_handle_account_forms' );
 
 function sp_handle_account_forms() {
@@ -7487,7 +7510,7 @@ function sp_handle_account_forms() {
             wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) );
             exit;
         }
-        $service_keys = [ 'wikitree', 'familysearch', 'geni', 'werelate', 'ancestry', 'myheritage', 'findagrave', '23andme' ];
+        $service_keys = array_keys( sp_genealogy_services() );
         foreach ( $service_keys as $key ) {
             $value = esc_url_raw( $_POST[ 'genealogy_' . $key ] ?? '' );
             update_user_meta( $user->ID, 'sp_genealogy_' . $key, $value );
@@ -8472,7 +8495,7 @@ add_action( 'wp_ajax_sp_save_account', function() {
         if ( ! wp_verify_nonce( $_POST['sp_genealogy_nonce'] ?? '', 'sp_update_genealogy_services' ) ) {
             wp_send_json_error( [ 'message' => __( 'Security check failed. Please reload the page.', 'societypress' ) ] );
         }
-        $service_keys = [ 'wikitree', 'familysearch', 'geni', 'werelate', 'ancestry', 'myheritage', 'findagrave', '23andme' ];
+        $service_keys = array_keys( sp_genealogy_services() );
         foreach ( $service_keys as $key ) {
             $value = esc_url_raw( $_POST[ 'genealogy_' . $key ] ?? '' );
             update_user_meta( $user->ID, 'sp_genealogy_' . $key, $value );
@@ -32993,16 +33016,7 @@ function sp_ajax_member_detail(): void {
     // Genealogy service profiles — links to external platforms.
     // WHY: These are public-facing profile links that members chose to share.
     // No privacy toggle needed — if they entered a URL, they want it shown.
-    $service_labels = [
-        'wikitree'     => 'WikiTree',
-        'familysearch' => 'FamilySearch',
-        'geni'         => 'Geni',
-        'werelate'     => 'WeRelate',
-        'ancestry'     => 'Ancestry',
-        'myheritage'   => 'MyHeritage',
-        'findagrave'   => 'Find A Grave',
-        '23andme'      => '23andMe',
-    ];
+    $service_labels = sp_genealogy_services();
     $gen_links = [];
     foreach ( $service_labels as $key => $label ) {
         $url = get_user_meta( $user_id, 'sp_genealogy_' . $key, true );

@@ -1228,20 +1228,10 @@ $sp_section_locked = function ( $section ) {
             ?>
             <?php if ( $member ) : ?>
             <?php
-                // Fixed set of supported genealogy services. These keys and labels
-                // MUST stay in sync with the plugin's update_genealogy_services save
-                // handler and the public-profile reader so links round-trip and
-                // surface on the member's profile.
-                $sp_gen_services = [
-                    'wikitree'     => 'WikiTree',
-                    'familysearch' => 'FamilySearch',
-                    'geni'         => 'Geni',
-                    'werelate'     => 'WeRelate',
-                    'ancestry'     => 'Ancestry',
-                    'myheritage'   => 'MyHeritage',
-                    'findagrave'   => 'Find A Grave',
-                    '23andme'      => '23andMe',
-                ];
+                // Supported genealogy services come from the plugin's single
+                // source of truth so this form, the save handlers, and the
+                // profile reader can never drift apart.
+                $sp_gen_services = function_exists( 'sp_genealogy_services' ) ? sp_genealogy_services() : [];
             ?>
             <section class="sp-account-section" id="genealogy-services">
                 <h2><?php esc_html_e( 'Genealogy Service Profiles', 'societypress' ); ?></h2>

@@ -1271,3 +1271,44 @@ function gsp_render_search_form(): void {
     </form>
     <?php
 }
+
+
+/**
+ * Pre-launch cloak — present the public site as a generic 404 until SocietyPress
+ * is officially introduced (after SAGHS has migrated).
+ *
+ * WHY: The product shouldn't be discoverable before the flagship society is live
+ *      on it. A generic "Not Found" leaks nothing — unlike a "coming soon" page,
+ *      which advertises that something is brewing — and returns a real 404 status
+ *      so search engines drop the pages.
+ *
+ * Scope and safety:
+ *   - OFF by default. Controlled by the gsp_cloak_site option so it toggles
+ *     instantly via WP-CLI, no redeploy:
+ *         wp option update gsp_cloak_site 1   # cloak ON
+ *         wp option update gsp_cloak_site 0   # cloak OFF (launch day)
+ *   - Logged-in users are exempt, so an admin can still preview the real site.
+ *   - Only affects normal front-end page views. wp-admin, wp-login, the REST
+ *     API, and cron do not fire template_redirect, so they keep working.
+ *   - /downloads/ is a static directory outside WordPress, so the one-click
+ *     installer's fetch of societypress-latest.zip is unaffected.
+ *   - Emits a bare, unbranded 404 body (NOT the themed 404.php, which would
+ *     expose SocietyPress branding) — the domain should look empty, not styled.
+ */
+function gsp_prelaunch_cloak(): void {
+    if ( ! get_option( 'gsp_cloak_site' ) ) {
+        return; // inert until explicitly turned on
+    }
+    if ( is_user_logged_in() ) {
+        return; // signed-in admins see the real site
+    }
+
+    status_header( 404 );
+    nocache_headers();
+    header( 'Content-Type: text/html; charset=utf-8' );
+    echo "<!DOCTYPE html>\n";
+    echo '<html><head><meta charset="utf-8"><meta name="robots" content="noindex,nofollow"><title>404 Not Found</title></head>';
+    echo '<body><h1>Not Found</h1><p>The requested URL was not found on this server.</p></body></html>';
+    exit;
+}
+add_action( 'template_redirect', 'gsp_prelaunch_cloak', 0 );

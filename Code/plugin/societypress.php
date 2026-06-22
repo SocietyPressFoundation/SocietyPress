@@ -40268,6 +40268,7 @@ function sp_render_event_edit_page(): void {
                         regenBtn.disabled = false;
                         regenStatus.textContent = spRegenI18n.wrong;
                     });
+                });
             });
         }
 
@@ -40293,6 +40294,7 @@ function sp_render_event_edit_page(): void {
                             detachBtn.disabled = false;
                         }
                     });
+                });
             });
         }
 
@@ -40323,6 +40325,7 @@ function sp_render_event_edit_page(): void {
                             detachFeedBtn.textContent = '<?php echo esc_js( __( 'Detach from Feed', 'societypress' ) ); ?>';
                         }
                     });
+                });
             });
         }
 

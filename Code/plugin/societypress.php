@@ -93345,7 +93345,13 @@ function sp_theme_preset_apply( array $payload ) {
 
     // Sanitization rules per token key — mirrors the design-page save handler.
     // Anything we don't recognize is ignored (defense in depth).
-    $valid_fonts          = [ 'system', 'georgia', 'palatino', 'garamond', 'merriweather', 'lora', 'roboto', 'open-sans', 'source-sans', 'nunito' ];
+    //
+    // WHY array_keys( sp_get_font_family_options() ): the design-page save
+    //      handler validates fonts against that canonical list. An earlier
+    //      hardcoded copy here drifted out of sync (it omitted fonts the UI
+    //      offers, e.g. Playfair), so valid imported fonts were silently
+    //      dropped to the default. Use the one source of truth instead.
+    $valid_fonts          = array_keys( sp_get_font_family_options() );
     $valid_heading_fonts  = array_merge( [ 'inherit' ], $valid_fonts );
     $valid_font_sizes     = [ 'compact', 'comfortable', 'large' ];
     $valid_heading_scales = [ 'small', 'normal', 'large' ];

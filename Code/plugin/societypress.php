@@ -11323,6 +11323,7 @@ function sp_render_dashboard_page(): void {
                             btn.disabled    = false;
                             btn.textContent = <?php echo wp_json_encode( __( 'Retry', 'societypress' ) ); ?>;
                         });
+                    });
                 });
             })();
             </script>
@@ -14371,6 +14372,7 @@ function sp_render_members_page(): void {
                     });
                     spinnerEl.parentNode.appendChild(doneBtn);
                 }
+                });
             });
         })();
         </script>
@@ -61034,6 +61036,7 @@ function sp_render_volunteer_opportunities_frontend(): string {
                             btn.textContent = '<?php echo esc_js( __( "Cancel", "societypress" ) ); ?>';
                         }
                     });
+                });
             });
         });
 
@@ -81555,6 +81558,7 @@ function sp_render_external_calendars_page(): void {
                             if (row) row.remove();
                         }
                     });
+                });
             });
         });
     })();

@@ -29509,6 +29509,7 @@ function sp_render_themes_page(): void {
                 .catch(function() {
                     spAlert(<?php echo wp_json_encode( __( 'Network error.', 'societypress' ) ); ?>);
                 });
+            });
         }
 
         // ==================================================================

@@ -11425,6 +11425,7 @@ function sp_render_dashboard_page(): void {
                                 parentBtn.disabled = false;
                                 parentBtn.textContent = <?php echo wp_json_encode( __( 'Retry', 'societypress' ) ); ?>;
                             });
+                        });
                     });
                 }
 
@@ -11471,6 +11472,7 @@ function sp_render_dashboard_page(): void {
                                 thisBtn.disabled = false;
                                 thisBtn.textContent = <?php echo wp_json_encode( __( 'Retry', 'societypress' ) ); ?>;
                             });
+                        });
                     });
                 });
             })();
@@ -63992,6 +63994,7 @@ function sp_render_email_templates_page(): void {
                             }
                         }
                     });
+                });
             });
         }
     })();

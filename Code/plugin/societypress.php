@@ -22443,11 +22443,25 @@ function sp_maybe_redirect_to_wizard(): void {
 add_action( 'admin_init', 'sp_maybe_redirect_to_wizard' );
 
 /**
- * Render the multi-step setup wizard.
+ * Process setup-wizard form submissions before any output is sent.
+ *
+ * WHY: Each wizard step saves its fields and then wp_safe_redirect()s to the
+ *      next step, and redirects must run before any HTML is emitted. This logic
+ *      previously lived inside the page-render callback, which fires in the
+ *      admin body — long after admin_head has already sent output (e.g. the
+ *      admin-utilities <style> block). That made every "Continue" redirect fail
+ *      with "headers already sent" and left the user on a blank step. admin_init
+ *      runs before output, so the redirects work from here.
  */
-function sp_render_setup_wizard(): void {
+function sp_handle_setup_wizard_submit(): void {
+    if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'sp-setup-wizard' ) {
+        return;
+    }
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+
     $settings = sp_settings();
-    $step     = (int) ( $_GET['step'] ?? 1 );
 
     // WHY: Skipping setup is a deliberate exit from onboarding, not an
     //      abandonment. Mark the wizard complete so post-setup nudges (e.g. the
@@ -22462,69 +22476,78 @@ function sp_render_setup_wizard(): void {
         exit;
     }
 
-    // Handle form submission
-    if ( $_SERVER['REQUEST_METHOD'] === 'POST' && isset( $_POST['sp_wizard_nonce'] ) ) {
-        check_admin_referer( 'sp_setup_wizard', 'sp_wizard_nonce' );
-        $step = (int) ( $_POST['wizard_step'] ?? 1 );
-
-        switch ( $step ) {
-            case 1: // Organization info
-                $settings['organization_name']    = sanitize_text_field( $_POST['organization_name'] ?? '' );
-                $settings['organization_email']   = sanitize_email( $_POST['organization_email'] ?? '' );
-                $settings['organization_address'] = sanitize_textarea_field( $_POST['organization_address'] ?? '' );
-                $settings['organization_phone']   = sanitize_text_field( $_POST['organization_phone'] ?? '' );
-                update_option( 'societypress_settings', $settings );
-                wp_safe_redirect( admin_url( 'admin.php?page=sp-setup-wizard&step=2' ) );
-                exit;
-
-            case 2: // Membership settings
-                $settings['membership_period_type'] = sanitize_text_field( $_POST['membership_period_type'] ?? 'annual' );
-                $settings['membership_start_month'] = (int) ( $_POST['membership_start_month'] ?? 7 );
-                update_option( 'societypress_settings', $settings );
-                wp_safe_redirect( admin_url( 'admin.php?page=sp-setup-wizard&step=3' ) );
-                exit;
-
-            case 3: // Feature selection
-                // WHY: Collect which modules the admin wants enabled. All are
-                // checked by default in the form. Unchecked modules get disabled.
-                $all_module_slugs = array_keys( sp_get_modules() );
-                $enabled = [];
-                foreach ( $all_module_slugs as $slug ) {
-                    if ( ! empty( $_POST['sp_module_' . $slug] ) ) {
-                        $enabled[] = $slug;
-                    }
-                }
-                update_option( 'sp_enabled_modules', $enabled );
-                wp_safe_redirect( admin_url( 'admin.php?page=sp-setup-wizard&step=4' ) );
-                exit;
-
-            case 4: // Appearance
-                $settings['design_color_primary'] = sanitize_hex_color( $_POST['design_color_primary'] ?? '#1e3a5f' );
-                $settings['design_color_accent']  = sanitize_hex_color( $_POST['design_color_accent'] ?? '#667eea' );
-                $settings['email_from_name']      = sanitize_text_field( $_POST['email_from_name'] ?? '' );
-                $settings['email_from_email']     = sanitize_email( $_POST['email_from_email'] ?? '' );
-                update_option( 'societypress_settings', $settings );
-
-                // Mark wizard as complete
-                update_option( 'sp_wizard_completed', 1 );
-
-                // WHY: A society migrating from another platform almost always wants
-                //      its existing roster brought over first. Flag the post-setup
-                //      import nudge so a dashboard reminder appears until they either
-                //      import (auto-cleared in sp_import_members_batch) or dismiss it.
-                update_option( 'sp_show_import_reminder', 1 );
-
-                // Log it
-                if ( function_exists( 'sp_audit' ) ) {
-                    sp_audit( 'wizard_completed', 'Setup wizard completed.', 'settings' );
-                }
-
-                // The final screen hands off to the member importer rather than
-                // dropping straight onto the dashboard — see step 5 below.
-                wp_safe_redirect( admin_url( 'admin.php?page=sp-setup-wizard&step=5' ) );
-                exit;
-        }
+    if ( $_SERVER['REQUEST_METHOD'] !== 'POST' || ! isset( $_POST['sp_wizard_nonce'] ) ) {
+        return;
     }
+    check_admin_referer( 'sp_setup_wizard', 'sp_wizard_nonce' );
+    $step = (int) ( $_POST['wizard_step'] ?? 1 );
+
+    switch ( $step ) {
+        case 1: // Organization info
+            $settings['organization_name']    = sanitize_text_field( $_POST['organization_name'] ?? '' );
+            $settings['organization_email']   = sanitize_email( $_POST['organization_email'] ?? '' );
+            $settings['organization_address'] = sanitize_textarea_field( $_POST['organization_address'] ?? '' );
+            $settings['organization_phone']   = sanitize_text_field( $_POST['organization_phone'] ?? '' );
+            update_option( 'societypress_settings', $settings );
+            wp_safe_redirect( admin_url( 'admin.php?page=sp-setup-wizard&step=2' ) );
+            exit;
+
+        case 2: // Membership settings
+            $settings['membership_period_type'] = sanitize_text_field( $_POST['membership_period_type'] ?? 'annual' );
+            $settings['membership_start_month'] = (int) ( $_POST['membership_start_month'] ?? 7 );
+            update_option( 'societypress_settings', $settings );
+            wp_safe_redirect( admin_url( 'admin.php?page=sp-setup-wizard&step=3' ) );
+            exit;
+
+        case 3: // Feature selection
+            // WHY: Collect which modules the admin wants enabled. All are
+            // checked by default in the form. Unchecked modules get disabled.
+            $all_module_slugs = array_keys( sp_get_modules() );
+            $enabled = [];
+            foreach ( $all_module_slugs as $slug ) {
+                if ( ! empty( $_POST['sp_module_' . $slug] ) ) {
+                    $enabled[] = $slug;
+                }
+            }
+            update_option( 'sp_enabled_modules', $enabled );
+            wp_safe_redirect( admin_url( 'admin.php?page=sp-setup-wizard&step=4' ) );
+            exit;
+
+        case 4: // Appearance
+            $settings['design_color_primary'] = sanitize_hex_color( $_POST['design_color_primary'] ?? '#1e3a5f' );
+            $settings['design_color_accent']  = sanitize_hex_color( $_POST['design_color_accent'] ?? '#667eea' );
+            $settings['email_from_name']      = sanitize_text_field( $_POST['email_from_name'] ?? '' );
+            $settings['email_from_email']     = sanitize_email( $_POST['email_from_email'] ?? '' );
+            update_option( 'societypress_settings', $settings );
+
+            // Mark wizard as complete
+            update_option( 'sp_wizard_completed', 1 );
+
+            // WHY: A society migrating from another platform almost always wants
+            //      its existing roster brought over first. Flag the post-setup
+            //      import nudge so a dashboard reminder appears until they either
+            //      import (auto-cleared in sp_import_members_batch) or dismiss it.
+            update_option( 'sp_show_import_reminder', 1 );
+
+            // Log it
+            if ( function_exists( 'sp_audit' ) ) {
+                sp_audit( 'wizard_completed', 'Setup wizard completed.', 'settings' );
+            }
+
+            // The final screen hands off to the member importer rather than
+            // dropping straight onto the dashboard — see step 5 below.
+            wp_safe_redirect( admin_url( 'admin.php?page=sp-setup-wizard&step=5' ) );
+            exit;
+    }
+}
+add_action( 'admin_init', 'sp_handle_setup_wizard_submit' );
+
+/**
+ * Render the multi-step setup wizard.
+ */
+function sp_render_setup_wizard(): void {
+    $settings = sp_settings();
+    $step     = (int) ( $_GET['step'] ?? 1 );
 
     // Prevent the default admin UI from wrapping our wizard
     ?>

@@ -40765,6 +40765,7 @@ function sp_render_event_categories_page(): void {
                         btn.textContent = '<?php echo esc_js( __( 'Delete', 'societypress' ) ); ?>';
                         btn.disabled = false;
                     });
+                });
             }
         });
     })();
@@ -41284,6 +41285,7 @@ function sp_render_member_tiers_page(): void {
                         btn.textContent = '<?php echo esc_js( __( 'Delete', 'societypress' ) ); ?>';
                         btn.disabled = false;
                     });
+                });
             }
         });
     })();
@@ -45598,6 +45600,7 @@ function sp_events_frontend_scripts(): void {
                             row.innerHTML = '<span class="sp-text-muted-italic"><?php echo esc_js( __( "Cancelled", "societypress" ) ); ?></span>';
                         }
                     });
+                });
             });
         });
 
@@ -45674,6 +45677,7 @@ function sp_events_frontend_scripts(): void {
                     spAlert('<?php echo esc_js( __( 'Something went wrong. Please try again.', 'societypress' ) ); ?>');
                     btn.disabled = false;
                     btn.textContent = '<?php echo esc_js( __( "Cancel My Registration", "societypress" ) ); ?>';
+                });
                 });
             });
         }
@@ -46847,6 +46851,7 @@ function sp_render_event_registrations_section( object $event ): void {
                             spAlert(data.data || '<?php echo esc_js( __( 'Could not cancel.', 'societypress' ) ); ?>');
                         }
                     });
+                });
             });
         });
 
@@ -46895,6 +46900,7 @@ function sp_render_event_registrations_section( object $event ): void {
                             spAlert(data.data || '<?php echo esc_js( __( 'Could not update attendance.', 'societypress' ) ); ?>');
                         }
                     });
+                });
             });
         }
 
@@ -46932,6 +46938,7 @@ function sp_render_event_registrations_section( object $event ): void {
                         refundBtn.disabled = false;
                         refundBtn.textContent = '<?php echo esc_js( __( "Refund", "societypress" ) ); ?>';
                     });
+                });
             });
         });
 

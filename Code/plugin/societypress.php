@@ -22782,19 +22782,54 @@ function sp_render_setup_wizard(): void {
 
                 <?php elseif ( $step === 5 ) : ?>
                     <!-- Step 5: Member import hand-off -->
+                    <?php
+                    // WHY: If a roster is already in place — imported earlier or
+                    //      members added by hand — nudging the admin to "Import My
+                    //      Members" invites a duplicate import. Count members other
+                    //      than the admin; when any exist, show a plain completion
+                    //      state instead of the import call-to-action.
+                    global $wpdb;
+                    $existing_members = (int) $wpdb->get_var( $wpdb->prepare(
+                        "SELECT COUNT(*) FROM {$wpdb->prefix}sp_members WHERE user_id != %d",
+                        get_current_user_id()
+                    ) );
+                    ?>
                     <h2><?php esc_html_e( "You're all set!", 'societypress' ); ?></h2>
-                    <p class="desc"><?php esc_html_e( 'Your society website is ready to go. One last thing — bring your members over.', 'societypress' ); ?></p>
 
-                    <div class="sp-wizard-import">
-                        <span class="dashicons dashicons-groups sp-wizard-import-icon" aria-hidden="true"></span>
-                        <p class="sp-wizard-import-lead"><?php esc_html_e( 'Already have a membership list?', 'societypress' ); ?></p>
-                        <p class="sp-wizard-import-text"><?php esc_html_e( 'Import your members from a spreadsheet or a file exported from your old website. SocietyPress walks you through matching the columns — no technical know-how required.', 'societypress' ); ?></p>
-                    </div>
+                    <?php if ( $existing_members > 0 ) : ?>
+                        <p class="desc"><?php esc_html_e( 'Your society website is ready to go.', 'societypress' ); ?></p>
 
-                    <div class="sp-wizard-actions sp-wizard-actions--center">
-                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-import' ) ); ?>" class="button button-primary button-hero"><?php esc_html_e( 'Import My Members', 'societypress' ); ?></a>
-                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=societypress&wizard=done' ) ); ?>" class="sp-wizard-skip"><?php esc_html_e( "I'll do this later", 'societypress' ); ?></a>
-                    </div>
+                        <div class="sp-wizard-import">
+                            <span class="dashicons dashicons-yes-alt sp-wizard-import-icon" aria-hidden="true"></span>
+                            <p class="sp-wizard-import-lead">
+                                <?php
+                                printf(
+                                    /* translators: %s: number of members already in the roster. */
+                                    esc_html( _n( '%s member is already in your roster.', '%s members are already in your roster.', $existing_members, 'societypress' ) ),
+                                    esc_html( number_format_i18n( $existing_members ) )
+                                );
+                                ?>
+                            </p>
+                            <p class="sp-wizard-import-text"><?php esc_html_e( 'Your members are imported and ready. You can manage them anytime from the Members area.', 'societypress' ); ?></p>
+                        </div>
+
+                        <div class="sp-wizard-actions sp-wizard-actions--center">
+                            <a href="<?php echo esc_url( admin_url( 'admin.php?page=societypress&wizard=done' ) ); ?>" class="button button-primary button-hero"><?php esc_html_e( 'Go to Dashboard', 'societypress' ); ?></a>
+                        </div>
+                    <?php else : ?>
+                        <p class="desc"><?php esc_html_e( 'Your society website is ready to go. One last thing — bring your members over.', 'societypress' ); ?></p>
+
+                        <div class="sp-wizard-import">
+                            <span class="dashicons dashicons-groups sp-wizard-import-icon" aria-hidden="true"></span>
+                            <p class="sp-wizard-import-lead"><?php esc_html_e( 'Already have a membership list?', 'societypress' ); ?></p>
+                            <p class="sp-wizard-import-text"><?php esc_html_e( 'Import your members from a spreadsheet or a file exported from your old website. SocietyPress walks you through matching the columns — no technical know-how required.', 'societypress' ); ?></p>
+                        </div>
+
+                        <div class="sp-wizard-actions sp-wizard-actions--center">
+                            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-import' ) ); ?>" class="button button-primary button-hero"><?php esc_html_e( 'Import My Members', 'societypress' ); ?></a>
+                            <a href="<?php echo esc_url( admin_url( 'admin.php?page=societypress&wizard=done' ) ); ?>" class="sp-wizard-skip"><?php esc_html_e( "I'll do this later", 'societypress' ); ?></a>
+                        </div>
+                    <?php endif; ?>
 
                 <?php endif; ?>
             </form>
@@ -22816,6 +22851,20 @@ function sp_import_reminder_notice(): void {
     if ( ! get_option( 'sp_show_import_reminder' ) ) {
         return;
     }
+
+    // WHY: A roster already in place — imported, or members added by hand —
+    //      makes this nudge not just useless but risky: clicking through invites
+    //      a duplicate import. Retire the reminder for good and stay quiet.
+    global $wpdb;
+    $existing_members = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}sp_members WHERE user_id != %d",
+        get_current_user_id()
+    ) );
+    if ( $existing_members > 0 ) {
+        delete_option( 'sp_show_import_reminder' );
+        return;
+    }
+
     // Only people who can actually run the importer should see the nudge.
     if ( ! current_user_can( 'sp_manage_members' ) ) {
         return;

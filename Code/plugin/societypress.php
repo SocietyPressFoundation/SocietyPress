@@ -7206,9 +7206,12 @@ add_filter( 'wp_nav_menu_objects', function ( array $items ): array {
 
 function sp_user_menu() {
     if ( ! is_user_logged_in() ) {
-        // Logged out: simple "Log In" link styled like a nav item.
-        echo '<a href="' . esc_url( wp_login_url( get_permalink() ) ) . '" class="sp-user-nav-link">'
+        // Logged out: a single "Log In" link, wrapped in the same nav slot the
+        // logged-in dropdown uses so it sits consistently in the header.
+        echo '<nav class="main-navigation sp-user-menu" aria-label="' . esc_attr__( 'Account', 'societypress' ) . '"><ul><li>';
+        echo '<a href="' . esc_url( wp_login_url( get_permalink() ) ) . '" class="sp-user-login-link">'
              . esc_html__( 'Log In', 'societypress' ) . '</a>';
+        echo '</li></ul></nav>';
         return;
     }
 
@@ -7228,22 +7231,49 @@ function sp_user_menu() {
     if ( empty( $short_name ) ) {
         $short_name = $user->first_name;
     }
-    $display_name = esc_html( $short_name ?: $user->display_name );
+    $display_name = $short_name ?: $user->display_name;
     $account_url  = sp_get_my_account_url();
     $logout_url   = wp_logout_url( home_url( '/' ) );
     $avatar_url   = get_avatar_url( $user->ID, [ 'size' => 56 ] );
 
-    // Logged in: small round avatar + name link + Log Out link.
-    // The avatar is inside the same <a> as the name so clicking either
-    // the image or the text takes you to My Account.
-    echo '<a href="' . esc_url( $account_url ) . '" class="sp-user-nav-link sp-user-nav-link--with-avatar">';
+    // Logged in: avatar + name act as a trigger that opens a dropdown of
+    // account actions. The trigger links to My Account as a no-JS fallback;
+    // the footer toggle script opens the dropdown on click/tap, and CSS opens
+    // it on hover/focus.
+    echo '<nav class="main-navigation sp-user-menu" aria-label="' . esc_attr__( 'Account', 'societypress' ) . '"><ul><li>';
+
+    echo '<a href="' . esc_url( $account_url ) . '" class="sp-user-trigger" aria-haspopup="true">';
     if ( $avatar_url ) {
         echo '<img class="sp-user-avatar" src="' . esc_url( $avatar_url ) . '" alt="" width="28" height="28" loading="lazy">';
     }
-    echo '<span class="sp-user-name">' . $display_name . '</span>';
+    echo '<span class="sp-user-name">' . esc_html( $display_name ) . '</span>';
+    echo '<span class="sp-user-caret" aria-hidden="true">&#9662;</span>';
     echo '</a>';
-    echo '<a href="' . esc_url( $logout_url ) . '" class="sp-user-nav-link">'
-         . esc_html__( 'Log Out', 'societypress' ) . '</a>';
+
+    echo '<div class="sp-user-dropdown">';
+
+    echo '<a href="' . esc_url( $account_url ) . '" class="sp-user-dropdown-item">'
+       . '<span class="dashicons dashicons-id sp-user-dropdown-icon" aria-hidden="true"></span>'
+       . esc_html__( 'My Account', 'societypress' ) . '</a>';
+
+    // Admin link — shown only to users who can reach a SocietyPress admin area
+    // (WP admins, delegated role holders, committee chairs). Points at the
+    // SocietyPress dashboard, not the bare WordPress dashboard.
+    if ( sp_user_can_access_admin() ) {
+        echo '<a href="' . esc_url( admin_url( 'admin.php?page=societypress' ) ) . '" class="sp-user-dropdown-item">'
+           . '<span class="dashicons dashicons-dashboard sp-user-dropdown-icon" aria-hidden="true"></span>'
+           . esc_html__( 'Admin', 'societypress' ) . '</a>';
+    }
+
+    echo '<div class="sp-user-dropdown-divider"></div>';
+
+    echo '<a href="' . esc_url( $logout_url ) . '" class="sp-user-dropdown-item sp-user-dropdown-item--logout">'
+       . '<span class="dashicons dashicons-exit sp-user-dropdown-icon" aria-hidden="true"></span>'
+       . esc_html__( 'Log Out', 'societypress' ) . '</a>';
+
+    echo '</div>'; // .sp-user-dropdown
+
+    echo '</li></ul></nav>';
 }
 
 

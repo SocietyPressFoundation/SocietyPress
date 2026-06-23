@@ -29327,7 +29327,7 @@ function sp_render_themes_page(): void {
             document.getElementById('sp-builder-font-heading').value = 'inherit';
 
             updatePreview();
-            modal.style.display = '';
+            modal.style.display = 'flex';
             document.body.style.overflow = 'hidden';
             spBuilderActivate();
         }
@@ -29353,7 +29353,7 @@ function sp_render_themes_page(): void {
             document.getElementById('sp-builder-font-heading').value = config.font_heading || 'inherit';
 
             updatePreview();
-            modal.style.display = '';
+            modal.style.display = 'flex';
             document.body.style.overflow = 'hidden';
             spBuilderActivate();
         }

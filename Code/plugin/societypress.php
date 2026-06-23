@@ -10173,6 +10173,16 @@ add_action( 'admin_footer', function () {
     $needs_ack = get_transient( 'sp_login_ack_' . $user_id );
     if ( ! $needs_ack ) return;
 
+    // WHY: Clear the flag the moment we render the modal, not only when the
+    //      "I Understand" AJAX lands. The button removes the overlay
+    //      client-side instantly, but if that AJAX never completes (stale
+    //      nonce behind a page cache, a JS error, a dropped request) the
+    //      transient would survive and re-trap the member on every page load
+    //      for the rest of the hour. Deleting here means seeing the modal
+    //      once is enough to satisfy "show after login," and a simple reload
+    //      always escapes it. The AJAX handler stays as a harmless backup.
+    delete_transient( 'sp_login_ack_' . $user_id );
+
     $settings  = sp_settings();
     $primary   = $settings['design_color_primary'] ?? '#1e3a5f';
     $primary_hover = $settings['design_color_primary_hover'] ?? '#2c5282';

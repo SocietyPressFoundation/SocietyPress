@@ -12993,6 +12993,13 @@ class SP_Members_List_Table extends WP_List_Table {
             $actions['delete'] = '<a href="#" class="sp-text-danger" onclick="spConfirm(\'' . esc_js( __( 'Delete this member? This removes their account and cannot be undone.', 'societypress' ) ) . '\', function(){var f=document.createElement(\'form\');f.method=\'post\';f.action=\'' . esc_url( admin_url( 'admin.php?page=sp-members' ) ) . '\';var d=[[\'_wpnonce\',\'' . wp_create_nonce( 'sp_delete_member_' . $item->user_id ) . '\'],[\'action\',\'delete\'],[\'member\',\'' . (int) $item->user_id . '\']];d.forEach(function(p){var i=document.createElement(\'input\');i.type=\'hidden\';i.name=p[0];i.value=p[1];f.appendChild(i);});document.body.appendChild(f);f.submit();});return false;">' . esc_html__( 'Delete', 'societypress' ) . '</a>';
         }
 
+        // Reset password and email a one-time sign-in link. Not on your own row —
+        // you'd lock yourself out. Resetting another admin is allowed: they may be
+        // the one who's locked out.
+        if ( (int) $item->user_id !== get_current_user_id() ) {
+            $actions['reset_invite'] = '<a href="#" onclick="spConfirm(\'' . esc_js( __( 'Reset this member\'s password and email them a new sign-in link? Their current password will stop working.', 'societypress' ) ) . '\', function(){var f=document.createElement(\'form\');f.method=\'post\';f.action=\'' . esc_url( admin_url( 'admin.php?page=sp-members' ) ) . '\';var d=[[\'_wpnonce\',\'' . wp_create_nonce( 'sp_reset_invite_' . $item->user_id ) . '\'],[\'sp_action\',\'reset_invite\'],[\'member\',\'' . (int) $item->user_id . '\']];d.forEach(function(p){var i=document.createElement(\'input\');i.type=\'hidden\';i.name=p[0];i.value=p[1];f.appendChild(i);});document.body.appendChild(f);f.submit();});return false;">' . esc_html__( 'Send sign-in invite', 'societypress' ) . '</a>';
+        }
+
         return $name . $this->row_actions( $actions );
     }
 
@@ -14197,6 +14204,16 @@ function sp_render_members_page(): void {
         if ( isset( $_GET['saved'] ) ) {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Member saved.', 'societypress' ) . '</p></div>';
         }
+        if ( isset( $_GET['sp_invite'] ) ) {
+            $iv = sanitize_key( wp_unslash( $_GET['sp_invite'] ) );
+            if ( $iv === 'sent' ) {
+                echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Password reset. A one-time sign-in link has been emailed to the member.', 'societypress' ) . '</p></div>';
+            } elseif ( $iv === 'self' ) {
+                echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'You can\'t reset your own sign-in here. Use the "Lost your password?" link on the sign-in screen instead.', 'societypress' ) . '</p></div>';
+            } else {
+                echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Couldn\'t send the sign-in invite — the member may not have a valid email address on file.', 'societypress' ) . '</p></div>';
+            }
+        }
         if ( isset( $_GET['group_assigned'] ) ) {
             $count = (int) $_GET['group_assigned'];
             printf(
@@ -15250,6 +15267,23 @@ function sp_render_member_edit_page(): void {
             </div>
         <?php endif; ?>
 
+        <?php if ( isset( $_GET['sp_invite'] ) ) :
+            $sp_iv = sanitize_key( wp_unslash( $_GET['sp_invite'] ) ); ?>
+            <?php if ( $sp_iv === 'sent' ) : ?>
+                <div class="notice notice-success is-dismissible">
+                    <p><?php esc_html_e( 'Password reset. A one-time sign-in link has been emailed to the member.', 'societypress' ); ?></p>
+                </div>
+            <?php elseif ( $sp_iv === 'self' ) : ?>
+                <div class="notice notice-error is-dismissible">
+                    <p><?php esc_html_e( 'You can\'t reset your own sign-in here. Use the "Lost your password?" link on the sign-in screen instead.', 'societypress' ); ?></p>
+                </div>
+            <?php else : ?>
+                <div class="notice notice-error is-dismissible">
+                    <p><?php esc_html_e( 'Couldn\'t send the sign-in invite — the member may not have a valid email address on file.', 'societypress' ); ?></p>
+                </div>
+            <?php endif; ?>
+        <?php endif; ?>
+
         <form method="post" action="" enctype="multipart/form-data">
             <?php wp_nonce_field( 'sp_save_member', 'sp_member_nonce' ); ?>
             <input type="hidden" name="user_id" value="<?php echo esc_attr( $user_id ); ?>">
@@ -15822,6 +15856,21 @@ function sp_render_member_edit_page(): void {
             <!--      a place to upload those photos without switching to My   -->
             <!--      Account. Only shown when editing (not on Add New).      -->
             <!-- ============================================================ -->
+            <?php if ( $is_edit && (int) $user_id !== get_current_user_id() ) : ?>
+            <div class="sp-section">
+                <h2><?php esc_html_e( 'Sign-in Help', 'societypress' ); ?></h2>
+                <div class="sp-section-body">
+                    <p class="description">
+                        <?php esc_html_e( 'If this member can\'t sign in, reset their password and email them a one-time link to choose a new one. Their current password stops working right away.', 'societypress' ); ?>
+                    </p>
+                    <button type="button" class="button"
+                        onclick="spConfirm('<?php echo esc_js( __( 'Reset this member\'s password and email them a new sign-in link? Their current password will stop working.', 'societypress' ) ); ?>', function(){var f=document.createElement('form');f.method='post';f.action='<?php echo esc_url( admin_url( 'admin.php?page=sp-members' ) ); ?>';var d=[['_wpnonce','<?php echo esc_js( wp_create_nonce( 'sp_reset_invite_' . $user_id ) ); ?>'],['sp_action','reset_invite'],['member','<?php echo (int) $user_id; ?>'],['redirect_to','edit']];d.forEach(function(p){var i=document.createElement('input');i.type='hidden';i.name=p[0];i.value=p[1];f.appendChild(i);});document.body.appendChild(f);f.submit();});return false;">
+                        <?php esc_html_e( 'Reset password &amp; send sign-in invite', 'societypress' ); ?>
+                    </button>
+                </div>
+            </div>
+            <?php endif; ?>
+
             <?php if ( $is_edit ) : ?>
             <div class="sp-section">
                 <h2><?php esc_html_e( 'Profile Photo', 'societypress' ); ?></h2>
@@ -21682,6 +21731,34 @@ add_action( 'admin_init', function () {
         'sp_member_welcome_section'
     );
 
+    add_settings_field(
+        'member_reset_invite_subject',
+        __( 'Sign-in invite — subject', 'societypress' ),
+        function () {
+            $val = (string) ( sp_settings()['member_reset_invite_subject'] ?? '' );
+            ?>
+            <input type="text" name="societypress_settings[member_reset_invite_subject]" value="<?php echo esc_attr( $val ); ?>" class="large-text" placeholder="<?php echo esc_attr( sp_member_reset_invite_subject_default() ); ?>">
+            <p class="description"><?php esc_html_e( 'The subject line of the email sent when you reset a member\'s password from their record. Leave blank to use the default shown in grey.', 'societypress' ); ?></p>
+            <?php
+        },
+        'sp-settings-privacy',
+        'sp_member_welcome_section'
+    );
+
+    add_settings_field(
+        'member_reset_invite_body',
+        __( 'Sign-in invite — message', 'societypress' ),
+        function () {
+            $val = (string) ( sp_settings()['member_reset_invite_body'] ?? '' );
+            ?>
+            <textarea name="societypress_settings[member_reset_invite_body]" rows="12" cols="80" class="large-text" placeholder="<?php echo esc_attr( sp_member_reset_invite_body_default() ); ?>"><?php echo esc_textarea( $val ); ?></textarea>
+            <p class="description"><?php esc_html_e( 'Sent when an administrator resets a member\'s password and emails them a new sign-in link. Put {setup_link} on its own line where you want the "Set up my password" button to appear. You can also use {member_name} and {society_name}.', 'societypress' ); ?></p>
+            <?php
+        },
+        'sp-settings-privacy',
+        'sp_member_welcome_section'
+    );
+
 
     // ====================================================================
     // SECTION: Directory
@@ -22131,6 +22208,11 @@ function sp_sanitize_settings( array $input ): array {
         'migration_welcome_subject' => fn() => isset( $input['migration_welcome_subject'] ) ? sanitize_text_field( $input['migration_welcome_subject'] ) : '',
         'migration_welcome_body'    => fn() => isset( $input['migration_welcome_body'] ) ? sanitize_textarea_field( (string) $input['migration_welcome_body'] ) : '',
         'migration_login_message'   => fn() => isset( $input['migration_login_message'] ) ? sanitize_textarea_field( (string) $input['migration_login_message'] ) : '',
+
+        // Admin-initiated password reset + sign-in invite (Privacy tab). Subject
+        // is a single line; body keeps newlines so paragraph breaks survive.
+        'member_reset_invite_subject' => fn() => isset( $input['member_reset_invite_subject'] ) ? sanitize_text_field( $input['member_reset_invite_subject'] ) : '',
+        'member_reset_invite_body'    => fn() => isset( $input['member_reset_invite_body'] ) ? sanitize_textarea_field( (string) $input['member_reset_invite_body'] ) : '',
 
         // Name prefix/suffix picklists (Membership tab). Clean each line:
         // strip tags, trim, cap to the column width (VARCHAR(20)), drop blanks
@@ -48934,6 +49016,182 @@ function sp_maybe_send_setup_email( WP_User $user ): bool {
     }
     return false;
 }
+
+/**
+ * ============================================================================
+ * ADMIN-INITIATED PASSWORD RESET + SIGN-IN INVITE
+ *
+ * A member phones the society: "I can't sign in." An administrator opens their
+ * record (or clicks the Members-list row action) and chooses "Reset password &
+ * send sign-in invite." We immediately scramble the member's current password so
+ * the old one stops working, then email them a one-time link to choose a new one.
+ *
+ * The wording is its own admin-editable subject/body, kept separate from the
+ * migration welcome: this member already belongs to the society and isn't being
+ * welcomed for the first time — they just need a way back in.
+ * ============================================================================
+ */
+
+/**
+ * Default subject for the admin-initiated sign-in invite.
+ */
+function sp_member_reset_invite_subject_default(): string {
+    /* translators: %s: society / website name */
+    return sprintf( __( 'Your sign-in link for %s', 'societypress' ), get_bloginfo( 'name' ) );
+}
+
+/**
+ * Default body for the admin-initiated sign-in invite. Plain English, no jargon.
+ * Supports the placeholders {member_name}, {society_name}, and {setup_link}.
+ */
+function sp_member_reset_invite_body_default(): string {
+    /* translators: {member_name} = the member's name; {society_name} = the site name; {setup_link} = the "Set up my password" button/link. Keep these tokens as-is. */
+    return __(
+        "Hello {member_name},\n\n"
+        . "We've reset the password on your {society_name} account so you can sign in "
+        . "again. For your security, your previous password no longer works.\n\n"
+        . "To get back in, please choose a new password — it only takes a moment:\n\n"
+        . "{setup_link}\n\n"
+        . "If you didn't ask for this, please let us know. You can safely ignore this "
+        . "email in the meantime — no one can reach your account without the link "
+        . "above.\n\n"
+        . "Warm regards,\n"
+        . "{society_name}",
+        'societypress'
+    );
+}
+
+/**
+ * Saved sign-in-invite subject, or the shipped default when blank.
+ */
+function sp_member_reset_invite_subject(): string {
+    $v = trim( (string) ( sp_settings()['member_reset_invite_subject'] ?? '' ) );
+    return $v !== '' ? $v : sp_member_reset_invite_subject_default();
+}
+
+/**
+ * Saved sign-in-invite body, or the shipped default when blank.
+ */
+function sp_member_reset_invite_body(): string {
+    $v = trim( (string) ( sp_settings()['member_reset_invite_body'] ?? '' ) );
+    return $v !== '' ? $v : sp_member_reset_invite_body_default();
+}
+
+/**
+ * Invalidate a member's password and email them a one-time sign-in link.
+ *
+ * WHY scramble the password first: an administrator triggers this when a member
+ * is locked out, so the safest outcome is that the ONLY way back in is the link
+ * we email. We set the password to a long random value nobody knows, then send
+ * WordPress's own reset link (reused via sp_member_setup_link), which lands the
+ * member on the "choose a new password" screen. sp_needs_password_setup is set so
+ * the friendly login message applies if they fumble a sign-in before finishing.
+ *
+ * @param WP_User|int $user A user object or ID.
+ * @return bool True if the invite email was accepted by wp_mail.
+ */
+function sp_send_member_reset_invite( $user ): bool {
+    if ( is_numeric( $user ) ) {
+        $user = get_user_by( 'id', (int) $user );
+    }
+    if ( ! $user instanceof WP_User || empty( $user->user_email ) ) {
+        return false;
+    }
+    // Placeholder accounts (imported members with no real email) can't be reached.
+    if ( str_ends_with( strtolower( $user->user_email ), '@placeholder.invalid' ) ) {
+        return false;
+    }
+
+    // Scramble the current password so the old one stops working immediately.
+    // 24 random characters, never shown to anyone — the member sets their own
+    // through the link below.
+    wp_set_password( wp_generate_password( 24, true, true ), $user->ID );
+    update_user_meta( $user->ID, 'sp_needs_password_setup', 1 );
+
+    $link = sp_member_setup_link( $user );
+    if ( $link === '' ) {
+        return false;
+    }
+
+    $society = get_bloginfo( 'name' );
+    $name    = $user->display_name ? $user->display_name : $user->user_login;
+
+    $subject = str_replace(
+        [ '{member_name}', '{society_name}' ],
+        [ $name, $society ],
+        sp_member_reset_invite_subject()
+    );
+
+    // Render the body: swap {setup_link} for a sentinel first so escaping and
+    // paragraph-wrapping don't mangle the URL, then drop in the branded button.
+    $sentinel = '%%SP_SETUP_BUTTON%%';
+    $text = str_replace( '{setup_link}', $sentinel, sp_member_reset_invite_body() );
+    $text = str_replace( [ '{member_name}', '{society_name}' ], [ $name, $society ], $text );
+    $body = wpautop( esc_html( $text ) );
+
+    $brand  = sp_settings()['design_color_primary'] ?? '#2271b1';
+    $button = '<p style="text-align: center; margin: 28px 0;">'
+        . '<a href="' . esc_url( $link ) . '" style="display: inline-block; background: ' . esc_attr( $brand ) . '; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 6px; font-size: 16px; font-weight: 600;">'
+        . esc_html__( 'Set up my password', 'societypress' ) . '</a></p>';
+
+    // Replace whether the placeholder sat on its own line (preferred) or inline.
+    $body = str_replace( '<p>' . $sentinel . '</p>', $button, $body );
+    $body = str_replace( $sentinel, $button, $body );
+
+    // Clickable fallback link for email clients that strip buttons.
+    $body .= '<p style="font-size: 13px; color: #6d7175;">'
+        . esc_html__( 'If the button does not work, use this link instead:', 'societypress' )
+        . '<br><a href="' . esc_url( $link ) . '" style="word-break: break-all;">' . esc_url( $link ) . '</a></p>';
+
+    $html = sp_build_email_html( $subject, $body );
+
+    add_filter( 'wp_mail_content_type', 'sp_email_content_type_html' );
+    $ok = wp_mail( $user->user_email, $subject, $html );
+    remove_filter( 'wp_mail_content_type', 'sp_email_content_type_html' );
+
+    return (bool) $ok;
+}
+
+/**
+ * Handle the admin-initiated "Reset password & send sign-in invite" action.
+ *
+ * Triggered from the Members-list row action and the member edit screen. POST
+ * only (a JS-built form, like the single-delete action), nonce-protected per
+ * member, gated on sp_manage_members. Resetting your own sign-in from here is
+ * blocked — it's a foot-gun. On success the member's password is scrambled and
+ * a one-time link emailed; we redirect back to wherever the admin clicked from.
+ */
+add_action( 'admin_init', function () {
+    if ( ! isset( $_POST['sp_action'] ) || $_POST['sp_action'] !== 'reset_invite' || ! isset( $_POST['member'] ) ) {
+        return;
+    }
+    $user_id = (int) $_POST['member'];
+    check_admin_referer( 'sp_reset_invite_' . $user_id );
+
+    if ( ! current_user_can( 'sp_manage_members' ) ) {
+        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+    }
+
+    // Where to land afterward — the edit screen passes its own URL; otherwise the
+    // Members list. Only ever redirect within our own admin pages.
+    $base = ( isset( $_POST['redirect_to'] ) && $_POST['redirect_to'] === 'edit' )
+        ? admin_url( 'admin.php?page=sp-member-edit&user_id=' . $user_id )
+        : admin_url( 'admin.php?page=sp-members' );
+
+    // Never reset your own sign-in from here — invalidating your own password
+    // mid-session is the wrong tool. Use "Lost your password?" instead.
+    if ( $user_id === get_current_user_id() ) {
+        wp_safe_redirect( add_query_arg( 'sp_invite', 'self', $base ) );
+        exit;
+    }
+
+    $sent = sp_send_member_reset_invite( $user_id );
+    if ( $sent ) {
+        sp_audit( 'member_reset_invite', 'Password reset and sign-in invite sent: User #' . $user_id, 'member', $user_id );
+    }
+    wp_safe_redirect( add_query_arg( 'sp_invite', $sent ? 'sent' : 'failed', $base ) );
+    exit;
+} );
 
 /**
  * ============================================================================
@@ -84579,6 +84837,25 @@ function sp_render_modal_module(): void {
         if (opts.cancelText)  noBtn.textContent  = opts.cancelText;
 
         yesBtn.className = 'button sp-confirm-btn sp-confirm-btn--' + (opts.type || 'danger');
+        // WHY reparent to <body>: other modals (member-detail, login-ack)
+        // inert every direct child of <body> when they open. On WordPress 7.0
+        // this overlay's markup renders INSIDE #wpwrap, so inerting #wpwrap
+        // inerts this overlay through inheritance — and inert inherited from an
+        // ancestor cannot be cleared on the descendant. Clearing overlay.inert
+        // below is then a no-op and every click inside the dialog dies
+        // silently. Hoisting the overlay to be a direct child of <body> (which
+        // is never itself inerted) restores the invariant those loops assume
+        // and makes the un-inert below authoritative.
+        if (overlay.parentNode !== document.body) {
+            document.body.appendChild(overlay);
+        }
+        // WHY: Another modal on the page (member-detail, login-ack, spAlert)
+        // may have marked every body sibling inert and not yet restored this
+        // overlay — e.g. the Members screen's detail modal inerts siblings on
+        // open. If we display an inert overlay, every click inside it, Cancel
+        // included, is silently dead. Asserting the active dialog is never
+        // inert is the correct invariant and must hold at show-time.
+        overlay.inert = false;
         overlay.style.display = 'flex';
 
         /* WHY inert on the rest of the page: aria-modal="true" on this
@@ -84740,6 +85017,16 @@ function sp_render_modal_module(): void {
         var trigger = document.activeElement;
 
         msgEl.textContent = message;
+        // WHY reparent to <body>: see spConfirm — on WP 7.0 this overlay renders
+        // inside #wpwrap, so a modal that inerts #wpwrap inerts this dialog by
+        // inheritance, which the per-element un-inert below cannot clear. Hoist
+        // to a direct body child first so the un-inert is authoritative.
+        if (overlay.parentNode !== document.body) {
+            document.body.appendChild(overlay);
+        }
+        // WHY: see spConfirm — a prior modal may have left this overlay inert.
+        // The active dialog must never be inert, or its OK button goes dead.
+        overlay.inert = false;
         overlay.style.display = 'flex';
 
         // Inert siblings — same belt-and-suspenders pattern as spConfirm.

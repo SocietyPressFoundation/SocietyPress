@@ -39,7 +39,7 @@ jobs:
           echo "tag=$tag"         >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Verify plugin Version: header matches the tag
+      - name: "Verify plugin Version header matches the tag"
         env:
           EXPECTED: ${{ steps.ver.outputs.version }}
         run: |

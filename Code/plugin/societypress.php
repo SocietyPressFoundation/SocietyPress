@@ -10636,6 +10636,10 @@ function sp_get_github_release( bool $force_check = false ): ?object {
     $release = (object) [
         'version'       => $version,
         'download_url'  => $download_url,
+        // Always keep the source zipball URL available. The plugin self-update
+        // uses download_url (the attached plugin asset when present), but the
+        // theme installers need the full repo source — the asset is plugin-only.
+        'zipball_url'   => $body->zipball_url ?? '',
         'has_asset'     => $has_asset,
         'html_url'      => $body->html_url ?? '',
         'published_at'  => $body->published_at ?? '',
@@ -11060,13 +11064,15 @@ add_action( 'wp_ajax_sp_update_parent_theme', function () {
     }
 
     $release = sp_get_github_release();
-    if ( ! $release || empty( $release->download_url ) ) {
+    // Use the source zipball, not download_url: the latter may be the plugin-only
+    // release asset, which contains no theme directory.
+    if ( ! $release || empty( $release->zipball_url ) ) {
         wp_send_json_error( [ 'message' => __( 'Could not reach GitHub.', 'societypress' ) ] );
     }
 
     // Download the release zipball
     require_once ABSPATH . 'wp-admin/includes/file.php';
-    $tmp_file = download_url( $release->download_url, 120 );
+    $tmp_file = download_url( $release->zipball_url, 120 );
     if ( is_wp_error( $tmp_file ) ) {
         wp_send_json_error( [ 'message' => $tmp_file->get_error_message() ] );
     }
@@ -11092,7 +11098,9 @@ add_action( 'wp_ajax_sp_update_parent_theme', function () {
     $source_path    = null;
 
     foreach ( $extracted_dirs as $dir ) {
-        $candidate = $dir . '/theme/';
+        // Themes live under Code/ in the repo, so the zipball path is
+        // <repo-sha>/Code/theme/.
+        $candidate = $dir . '/Code/theme/';
         if ( is_dir( $candidate ) && file_exists( $candidate . 'style.css' ) ) {
             $source_path = $candidate;
             break;
@@ -27019,14 +27027,15 @@ add_action( 'wp_ajax_sp_install_theme', function () {
     $theme_info = $registry[ $theme_slug ];
     $repo_path  = $theme_info['repo_path'];
 
-    // Get the latest release download URL
+    // Get the latest release. Use the source zipball (full repo), not
+    // download_url — that may be the plugin-only asset, which has no themes.
     $release = sp_get_github_release();
-    if ( ! $release || empty( $release->download_url ) ) {
+    if ( ! $release || empty( $release->zipball_url ) ) {
         wp_send_json_error( [ 'message' => __( 'Could not reach GitHub. Try again later.', 'societypress' ) ] );
     }
 
     // Download the release zipball
-    $tmp_file = download_url( $release->download_url, 120 );
+    $tmp_file = download_url( $release->zipball_url, 120 );
     if ( is_wp_error( $tmp_file ) ) {
         wp_send_json_error( [ 'message' => $tmp_file->get_error_message() ] );
     }
@@ -27059,7 +27068,8 @@ add_action( 'wp_ajax_sp_install_theme', function () {
     $source_path    = null;
 
     foreach ( $extracted_dirs as $dir ) {
-        $candidate = $dir . '/' . $repo_path . '/';
+        // Themes live under Code/ in the repo (e.g. <repo-sha>/Code/theme-heritage/).
+        $candidate = $dir . '/Code/' . $repo_path . '/';
         if ( is_dir( $candidate ) ) {
             $source_path = $candidate;
             break;

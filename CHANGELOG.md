@@ -13,6 +13,118 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.0.1] — 2026-06-27
+
+A large maintenance-and-feature release on top of the first public 1.0:
+bulk importers across every module, online membership dues, deeper
+per-society configurability, and a sustained security, accessibility, and
+performance pass.
+
+### Added
+
+**Importers**
+- ENS Page Maintenance importer (Settings → Import ENS Pages)
+- Newsletters bulk importer — multi-PDF upload with automatic cover
+  generation and metadata
+- Library catalog importer with column-variant auto-detection
+- Events importer supporting recurrence, speakers, and slots
+- Gallery importer — file upload or URL fetch into a new album
+- Bulk records importer — N CSVs become N collections in one pass
+- CSV export for record collections
+
+**Membership & dues**
+- Online membership dues and multi-year renewal via Stripe
+- Escalating renewal banner on the My Account page
+- Per-section member self-edit locks
+- Society-configurable new-member email-preference defaults
+- Admin-managed name prefix/suffix dropdowns
+- Print / PDF view for the admin Members list
+
+**Records & genealogy**
+- GEDCOM 7.0 export
+- Per-surname alternate-spelling lists, used in surname search
+- A–Z browse mode for the surname widget
+- Researched-surname collection on the join form
+- Public (non-member) surname contact on public registries
+- Split death-notice vs obituary fields in the obituary record template
+
+**Store**
+- Member vs non-member pricing, with "Apply member pricing" on order detail
+- Flat-rate shipping option and a complimentary (comp) order action
+- Mail-in check donation path for `[sp_donate]`
+- Search + date filters and inline sort-order editing in the orders and
+  products admin
+
+**Blast email**
+- File attachments on blasts
+- Status-based audience segments and per-tier audience narrowing
+- Per-blast sender name / From-address override
+- Clone action, opt-out override for critical notices, and audience
+  name + count shown in the send confirmation
+- One-click member email health scan
+
+**Documents & resources**
+- Members-only access at the document-category level
+- Recency filter, per-category "last updated", and Month/Year display
+  format for documents
+- Drag-to-reorder and optional last-updated date for Resource Links;
+  grid layout option on the Resource Links widget
+
+**Events, donations & governance**
+- Per-event file attachments and an "Email this event" row action
+- Admin-configurable default range for the public Events page
+- All-source income summary on the Finances page
+- Society notification when a donation arrives; donation search by
+  processor transaction ID; Year filter on the donations admin
+- Chair dashboard widget and a URL shortener
+- Contact form routing to a specific officer or committee chair, with an
+  optional preset subject
+- Theme exchange Tier 2 — `.spchildtheme` bundle import; Playfair Display
+  as a selectable font; a saved-look preset library
+
+### Changed
+- Single source of truth for the genealogy service list
+- Early renewals stack onto remaining days in rolling mode
+- Duplicating an event resets its date to today instead of inheriting the
+  original
+- Pending/failed donations excluded from campaign raised totals
+- Removed HostGator from recommended hosting; refreshed installer
+  diagnostics with errno-aware failure messages
+
+### Security
+- Hardened the backup feature (capability, path, headers) and added a
+  scheduled-backup admin UI with secure download and nightly email
+- Closed a ballot double-vote race with an atomic participation gate
+- Nonce ordering on refund/help handlers; tightened Reply-To and
+  ownership checks
+- `ENT_QUOTES`/UTF-8 flags on installer `htmlspecialchars` calls
+- Post-rebaseline audit pass over the new importers
+
+### Performance
+- Bounded export memory and replaced whole-membership dropdowns
+- Streamed GEDCOM export in batches
+- Eliminated cold-load and ballot N+1 query overhead
+
+### Accessibility
+- `focus-visible` styles and color-contrast fixes
+- `aria-describedby` field hints; modal `inert` and `aria-describedby`
+- Clearer library catalog tab and calendar-cell semantics
+- Confirm-dialog buttons labeled with the action verb; save confirmations
+  brought into view and focused
+
+### Fixed
+- Frozen password-reset dialog on WordPress 7.0
+- Login-acknowledgment modal that could re-trap members
+- Theme builder modal that never opened, and numerous unclosed
+  `spConfirm()` handlers across the admin
+- Setup wizard blank page on Continue, and stray admin notices on the
+  wizard screen
+- My Account fatal from an unbuilt feature; preset import dropping valid
+  fonts via a stale allowlist
+- Dead Documents frontend; GENRECORD parser brought into spec conformance
+
+---
+
 ## [1.0.0] — 2026-06-01
 
 First public release.

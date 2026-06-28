@@ -1275,7 +1275,7 @@ function gsp_render_search_form(): void {
 
 /**
  * Pre-launch cloak — present the public site as a generic 404 until SocietyPress
- * is officially introduced (after SAGHS has migrated).
+ * is officially introduced (after the flagship society has migrated).
  *
  * WHY: The product shouldn't be discoverable before the flagship society is live
  *      on it. A generic "Not Found" leaks nothing — unlike a "coming soon" page,

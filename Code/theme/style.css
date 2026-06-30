@@ -1466,6 +1466,18 @@ article.post:last-child {
     max-width: 900px;
 }
 
+/* Eyebrow — small kicker line above the headline (e.g. "Welcome to the") */
+.sp-front-hero-eyebrow {
+    font-family: var(--sp-font-heading, 'Playfair Display', Georgia, serif);
+    font-size: clamp(1.3rem, 3vw, 2rem);
+    font-weight: 300;
+    color: #fff;
+    line-height: 1.2;
+    margin: 0 0 4px 0;
+    letter-spacing: 0.02em;
+    text-shadow: 0 2px 20px rgba(0, 0, 0, 0.3);
+}
+
 /* Headline — large, elegant serif (Playfair Display by default) */
 .sp-front-hero-headline {
     font-family: var(--sp-font-heading, 'Playfair Display', Georgia, serif);

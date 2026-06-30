@@ -23,6 +23,7 @@ $sp         = get_option( 'societypress_settings', [] );
 $hero_type  = $sp['homepage_hero_type']      ?? 'none';
 $hero_media = $sp['homepage_hero_media']     ?? '';
 $hero_poster = $sp['homepage_hero_poster']   ?? '';
+$hero_eyebrow  = $sp['homepage_hero_eyebrow']  ?? '';
 $hero_headline = $sp['homepage_hero_headline'] ?? '';
 $hero_subtitle = $sp['homepage_hero_subtitle'] ?? '';
 $hero_cta_text = $sp['homepage_hero_cta_text'] ?? '';
@@ -82,6 +83,10 @@ $show_hero = ( $hero_type !== 'none' );
     <div class="sp-front-hero-overlay"></div>
 
     <div class="sp-front-hero-content">
+        <?php if ( $hero_eyebrow ) : ?>
+            <p class="sp-front-hero-eyebrow"><?php echo esc_html( $hero_eyebrow ); ?></p>
+        <?php endif; ?>
+
         <?php if ( $hero_headline ) : ?>
             <h1 class="sp-front-hero-headline"><?php echo esc_html( $hero_headline ); ?></h1>
         <?php endif; ?>

@@ -10213,11 +10213,23 @@ add_action( 'admin_footer', function () {
                 echo '<p>' . wp_kses_post( nl2br( $sp_ack_p ) ) . '</p>';
             }
             ?>
-            <?php if ( $sp_ack_email ) : ?>
+            <?php if ( $sp_ack_email && is_email( $sp_ack_email ) ) : ?>
+                <?php
+                // WHY: This modal renders inside wp-admin, where the frontend
+                // email-assembler script never runs — so sp_obfuscate_email()'s
+                // placeholder span would stay empty ("contact us at ."). Members
+                // viewing this are already logged in, so harvester obfuscation
+                // buys nothing here; render a plain mailto link instead.
+                $sp_ack_email_link = sprintf(
+                    '<a href="%s">%s</a>',
+                    esc_url( 'mailto:' . $sp_ack_email ),
+                    esc_html( $sp_ack_email )
+                );
+                ?>
                 <p><?php printf(
                     /* translators: %s: organization contact email address */
                     esc_html__( 'If you have any questions, please contact us at %s.', 'societypress' ),
-                    sp_obfuscate_email( $sp_ack_email )
+                    $sp_ack_email_link
                 ); ?></p>
             <?php endif; ?>
             </div>
@@ -10302,6 +10314,19 @@ add_action( 'admin_footer', function () {
             if (!overlay || !btn) return;
 
             var trigger = document.activeElement;
+
+            // WHY: WordPress fires admin_footer INSIDE #wpwrap, so this overlay
+            //      renders as a descendant of #wpwrap, not a direct child of
+            //      <body>. The inert sweep below walks body's direct children
+            //      and would mark #wpwrap inert — which cascades down and
+            //      disables the overlay's own "I Understand" button, leaving it
+            //      visible but unclickable (the modal traps the member). Promote
+            //      the overlay to a real top-level element first so inerting the
+            //      siblings can never reach inside the dialog.
+            if (overlay.parentNode !== document.body) {
+                document.body.appendChild(overlay);
+            }
+
             var sibs    = [];
             for (var i = 0; i < document.body.children.length; i++) {
                 var child = document.body.children[i];
@@ -27157,39 +27182,135 @@ function sp_get_custom_themes(): array {
 }
 
 /**
- * Generate the style.css content for a custom child theme.
+ * Capture the site's full design + homepage-hero state from the live settings.
  *
- * WHY: This creates a proper WordPress child theme stylesheet header (so WP
- *      recognizes it as a child of societypress) plus :root overrides that
- *      set the theme's colors and fonts. The child CSS loads after the parent
- *      and after the plugin's inline <style>, so these :root values win.
+ * WHY: A SocietyPress child theme is a complete identity — activating it should
+ *      turn the whole site into that theme (colors, fonts, logo, hero video,
+ *      layout, chrome). To bottle that, the Theme Builder snapshots every
+ *      design_* and homepage_hero_* key from the current settings at creation
+ *      time and bakes them into the generated theme's activation hook. Keys the
+ *      site hasn't set are simply absent, so a theme only restores what it
+ *      actually captured.
  *
- * @param string $name         Theme display name.
- * @param string $slug         Theme directory slug.
- * @param array  $colors       Associative array of color keys => hex values.
- * @param string $font_body    Font key for body text.
- * @param string $font_heading Font key for headings.
- * @return string Complete style.css file content.
+ * @return array Subset of societypress_settings limited to design_* + homepage_hero_* keys.
  */
-function sp_generate_custom_theme_css( string $name, string $slug, array $colors, string $font_body, string $font_heading ): string {
-    $font_map    = sp_get_font_family_options();
-    $body_family = $font_map[ $font_body ] ?? $font_map['system'];
+function sp_capture_theme_design_snapshot(): array {
+    $settings = get_option( 'societypress_settings', [] );
+    $snapshot = [];
+    foreach ( $settings as $key => $value ) {
+        if ( strpos( $key, 'design_' ) === 0 || strpos( $key, 'homepage_hero_' ) === 0 ) {
+            $snapshot[ $key ] = $value;
+        }
+    }
+    return $snapshot;
+}
 
-    // "inherit" means "same as body font"
-    if ( $font_heading === 'inherit' || $font_heading === $font_body ) {
-        $heading_family = $body_family;
-    } else {
-        $heading_family = $font_map[ $font_heading ] ?? 'inherit';
+/**
+ * Resolve a media reference (attachment ID or URL) to an absolute local path.
+ *
+ * WHY: To bundle the active logo and hero media into a generated theme we need
+ *      the file on disk. The logo is stored as an attachment ID; the hero media
+ *      and poster are stored as URLs that may point at the uploads directory or
+ *      at another theme's /assets folder. Returns '' when the reference can't be
+ *      mapped to a readable local file (e.g. a truly external URL).
+ *
+ * @param mixed $ref Attachment ID, site URL, or absolute path.
+ * @return string Absolute local path, or '' if it can't be resolved.
+ */
+function sp_resolve_media_path( $ref ): string {
+    if ( is_numeric( $ref ) ) {
+        $path = get_attached_file( (int) $ref );
+        return ( $path && file_exists( $path ) ) ? $path : '';
     }
 
+    $ref = (string) $ref;
+    if ( $ref === '' ) {
+        return '';
+    }
+
+    // Compare scheme-insensitively: the stored media URL may be https while
+    // content_url()/uploads come back http (e.g. under WP-CLI, or a site mid
+    // http→https move), which would break a literal prefix match.
+    $strip   = static function ( $url ) { return preg_replace( '#^https?:#', '', (string) $url ); };
+    $ref_ss  = $strip( $ref );
+
+    // A URL under the uploads directory.
+    $uploads = wp_get_upload_dir();
+    if ( ! empty( $uploads['baseurl'] ) ) {
+        $base_ss = $strip( $uploads['baseurl'] );
+        if ( strpos( $ref_ss, $base_ss ) === 0 ) {
+            $path = $uploads['basedir'] . substr( $ref_ss, strlen( $base_ss ) );
+            return file_exists( $path ) ? $path : '';
+        }
+    }
+
+    // A URL elsewhere under wp-content (e.g. another theme's /assets).
+    $content_ss = $strip( content_url() );
+    if ( strpos( $ref_ss, $content_ss ) === 0 ) {
+        $path = WP_CONTENT_DIR . substr( $ref_ss, strlen( $content_ss ) );
+        return file_exists( $path ) ? $path : '';
+    }
+
+    // Already an absolute path.
+    if ( $ref[0] === '/' && file_exists( $ref ) ) {
+        return $ref;
+    }
+
+    return '';
+}
+
+/**
+ * Copy a media file into a theme's /assets directory under a stable basename.
+ *
+ * WHY: Bundling the logo and hero media inside the theme folder is what lets the
+ *      look travel — the activation hook then serves them from /assets. The
+ *      original file extension is preserved so the browser and WordPress treat
+ *      the copy correctly (an .mp4 stays an .mp4). Returns the written filename
+ *      (e.g. "logo.png") or '' if there was nothing to copy.
+ *
+ * @param string $src_path        Absolute source path (from sp_resolve_media_path).
+ * @param string $assets_dir      Absolute path to the theme's /assets directory.
+ * @param string $target_basename Basename without extension (e.g. "logo").
+ * @return string Written filename, or '' on failure / no source.
+ */
+function sp_bundle_theme_asset( string $src_path, string $assets_dir, string $target_basename ): string {
+    if ( ! $src_path || ! file_exists( $src_path ) ) {
+        return '';
+    }
+    $ext  = strtolower( pathinfo( $src_path, PATHINFO_EXTENSION ) );
+    $name = $target_basename . ( $ext ? '.' . $ext : '' );
+    if ( ! @copy( $src_path, trailingslashit( $assets_dir ) . $name ) ) {
+        return '';
+    }
+    return $name;
+}
+
+/**
+ * Generate the style.css for a custom child theme.
+ *
+ * WHY: WordPress needs a style.css with a valid child-theme header just to
+ *      register the theme. The theme's actual appearance no longer lives here —
+ *      it's captured as a full design snapshot and written into the plugin
+ *      settings by the activation hook in functions.php (see
+ *      sp_generate_custom_theme_functions). That's the only way the look can
+ *      truly travel: the plugin renders colors, fonts, logo, and hero from its
+ *      own settings and emits its own late :root block, so a passive :root here
+ *      would simply be overwritten. We keep this file to a valid header plus a
+ *      pointer to where the real design lives, leaving room for hand CSS tweaks.
+ *
+ * @param string $name Theme display name.
+ * @param string $slug Theme directory slug (text domain).
+ * @return string Complete style.css file content.
+ */
+function sp_generate_custom_theme_css( string $name, string $slug ): string {
     $esc_name = str_replace( [ '/', '*' ], '', $name ); // Prevent CSS comment injection
 
-    $css = "/*\n";
+    $css  = "/*\n";
     $css .= "Theme Name: {$esc_name}\n";
     $css .= "Theme URI: https://getsocietypress.org\n";
-    $css .= "Author: Custom Theme Builder\n";
+    $css .= "Author: SocietyPress Theme Builder\n";
     $css .= "Author URI: https://getsocietypress.org\n";
-    $css .= "Description: Custom theme created with the SocietyPress Theme Builder.\n";
+    $css .= "Description: A self-contained SocietyPress child theme. Activating it restores its captured look — colors, fonts, layout, logo, and homepage hero — across the whole site.\n";
     $css .= "Version: 1.0.0\n";
     $css .= "Template: societypress\n";
     $css .= "Requires at least: 6.0\n";
@@ -27199,116 +27320,162 @@ function sp_generate_custom_theme_css( string $name, string $slug, array $colors
     $css .= "Text Domain: {$slug}\n";
     $css .= "*/\n\n";
 
-    $css .= "/* ============================================================================\n";
-    $css .= "   CUSTOM THEME — Generated by SocietyPress Theme Builder\n";
-    $css .= "   WHY: These :root overrides set the colors and fonts chosen in the builder.\n";
-    $css .= "   The parent theme and all plugin widgets read --sp-* variables, so changing\n";
-    $css .= "   them here cascades everywhere without touching template files.\n";
-    $css .= "   ============================================================================ */\n\n";
-
-    $css .= ":root {\n";
-    $css .= "    --sp-color-primary:       {$colors['primary']};\n";
-    $css .= "    --sp-color-primary-hover: {$colors['primary_hover']};\n";
-    $css .= "    --sp-color-accent:        {$colors['accent']};\n";
-    $css .= "    --sp-color-header-bg:     {$colors['header_bg']};\n";
-    $css .= "    --sp-color-header-text:   {$colors['header_text']};\n";
-    $css .= "    --sp-color-footer-bg:     {$colors['footer_bg']};\n";
-    $css .= "    --sp-color-footer-text:   {$colors['footer_text']};\n";
-    $css .= "    --sp-font-body:    {$body_family};\n";
-    $css .= "    --sp-font-heading: {$heading_family};\n";
-    $css .= "}\n\n";
-
-    $css .= "/* Link colors derived from the palette */\n";
-    $css .= "a { color: {$colors['accent']}; }\n";
-    $css .= "a:hover { color: {$colors['primary']}; }\n\n";
-
-    $css .= "/* Button colors */\n";
-    $css .= ".sp-btn,\n";
-    $css .= "button.sp-btn,\n";
-    $css .= "input[type=\"submit\"] {\n";
-    $css .= "    background-color: {$colors['primary']};\n";
-    $css .= "    border-color: {$colors['primary']};\n";
-    $css .= "}\n";
-    $css .= ".sp-btn:hover,\n";
-    $css .= "button.sp-btn:hover,\n";
-    $css .= "input[type=\"submit\"]:hover {\n";
-    $css .= "    background-color: {$colors['primary_hover']};\n";
-    $css .= "    border-color: {$colors['primary_hover']};\n";
-    $css .= "}\n";
+    $css .= "/* This theme's appearance is applied on activation by functions.php, which\n";
+    $css .= "   writes its captured design into the SocietyPress settings and serves its\n";
+    $css .= "   bundled logo and hero media from /assets. Add custom CSS tweaks below if\n";
+    $css .= "   you like — this stylesheet loads after the parent theme and the plugin's\n";
+    $css .= "   own overrides, so rules here win. */\n";
 
     return $css;
 }
 
 /**
- * Generate the functions.php content for a custom child theme.
+ * Generate the functions.php for a custom child theme.
  *
- * WHY: Every child theme needs a functions.php that enqueues the parent
- *      stylesheet (so the base layout loads) and the child stylesheet (so
- *      our :root overrides take effect). If the chosen fonts are Google Fonts,
- *      we also need to load them via a <link> tag.
+ * WHY: This is what makes a child theme a complete, portable identity. On
+ *      activation it writes the captured design snapshot into the plugin
+ *      settings, installs the bundled logo into the media library, and points
+ *      the homepage hero at the theme's own /assets — so the entire look
+ *      (colors, fonts, layout, logo, hero video/poster) travels with the
+ *      folder. Fonts and colors flow through societypress_settings, which the
+ *      plugin already renders and (for Google fonts) loads, so we don't fight
+ *      its late :root override — we feed it.
  *
- * @param string $slug         Theme slug (used for handle prefixes).
- * @param string $name         Theme display name (for the file header comment).
- * @param string $font_body    Font key for body text.
- * @param string $font_heading Font key for headings.
+ * @param string $slug     Theme slug (handle/identifier prefix).
+ * @param string $name     Theme display name (for the file header comment).
+ * @param array  $snapshot Captured design_* / homepage_hero_* settings to restore.
+ * @param array  $bundled  ['logo'=>filename|'', 'hero_media'=>..., 'hero_poster'=>...].
  * @return string Complete functions.php file content.
  */
-function sp_generate_custom_theme_functions( string $slug, string $name, string $font_body, string $font_heading ): string {
-    $google_font_urls = sp_get_google_font_urls();
-    $esc_name = str_replace( "'", "\\'", $name );
+function sp_generate_custom_theme_functions( string $slug, string $name, array $snapshot, array $bundled ): string {
+    $esc_name = str_replace( '*/', '', $name );
+    $const    = strtoupper( str_replace( '-', '_', $slug ) ) . '_THEME_VERSION';
+    $fn       = 'sp_ct_' . str_replace( '-', '_', $slug );
 
-    // Determine which Google Fonts need loading
-    $families = [];
-    if ( isset( $google_font_urls[ $font_body ] ) ) {
-        $families[] = $google_font_urls[ $font_body ];
-    }
-    if ( $font_heading !== 'inherit' && $font_heading !== $font_body && isset( $google_font_urls[ $font_heading ] ) ) {
-        $families[] = $google_font_urls[ $font_heading ];
-    }
+    $logo   = $bundled['logo']        ?? '';
+    $hero_m = $bundled['hero_media']  ?? '';
+    $hero_p = $bundled['hero_poster'] ?? '';
 
-    $php = "<?php\n";
+    // Media is restored from /assets by the activation hook below, so drop the
+    // captured IDs/URLs — they point at wherever the media lived when the theme
+    // was built and would otherwise reference another theme or a since-changed
+    // attachment.
+    unset( $snapshot['design_logo_id'], $snapshot['homepage_hero_media'], $snapshot['homepage_hero_poster'] );
+
+    $snapshot_export = var_export( $snapshot, true );
+
+    $php  = "<?php\n";
     $php .= "/**\n";
-    $php .= " * {$esc_name} — Custom Child Theme Functions\n";
+    $php .= " * {$esc_name} — SocietyPress child theme (generated by the Theme Builder).\n";
     $php .= " *\n";
-    $php .= " * Generated by the SocietyPress Theme Builder. This file:\n";
-    $php .= " * 1. Loads any required Google Fonts\n";
-    $php .= " * 2. Enqueues the child stylesheet after the parent so our :root overrides win\n";
+    $php .= " * A SocietyPress child theme is a complete identity. On activation this file\n";
+    $php .= " * restores the captured look into the live settings and serves its bundled\n";
+    $php .= " * media from /assets, so the whole appearance — colors, fonts, layout, logo,\n";
+    $php .= " * and homepage hero — travels with the folder.\n";
     $php .= " *\n";
     $php .= " * @package {$slug}\n";
     $php .= " */\n\n";
     $php .= "if ( ! defined( 'ABSPATH' ) ) {\n";
     $php .= "    exit;\n";
     $php .= "}\n\n";
+    $php .= "if ( ! defined( '{$const}' ) ) {\n";
+    $php .= "    define( '{$const}', '1.0.0' );\n";
+    $php .= "}\n\n";
 
-    $const = strtoupper( str_replace( '-', '_', $slug ) ) . '_THEME_VERSION';
-    $php .= "define( '{$const}', '1.0.0' );\n\n";
+    $php .= "/**\n";
+    $php .= " * The design this theme restores into societypress_settings on activation.\n";
+    $php .= " */\n";
+    $php .= "function {$fn}_design_snapshot() {\n";
+    $php .= "    return {$snapshot_export};\n";
+    $php .= "}\n\n";
 
-    $php .= "add_action( 'wp_enqueue_scripts', function () {\n\n";
-
-    // Google Fonts loading (if needed)
-    if ( ! empty( $families ) ) {
-        $font_url = 'https://fonts.googleapis.com/css2?family=' . implode( '&family=', $families ) . '&display=swap';
-        $php .= "    // Google Fonts — loaded before stylesheets so the font is available\n";
-        $php .= "    wp_enqueue_style(\n";
-        $php .= "        '{$slug}-google-fonts',\n";
-        $php .= "        '{$font_url}',\n";
-        $php .= "        [],\n";
-        $php .= "        null\n";
-        $php .= "    );\n\n";
-
-        $deps = "[ 'societypress-style', '{$slug}-google-fonts' ]";
-    } else {
-        $deps = "[ 'societypress-style' ]";
+    if ( $logo ) {
+        $php .= "/**\n";
+        $php .= " * Install this theme's bundled logo into the media library (once) and return\n";
+        $php .= " * its attachment ID. The plugin renders the header logo from an attachment\n";
+        $php .= " * ID, so a theme file can't be used directly — it must live in the library.\n";
+        $php .= " * A per-theme meta marker keeps repeated activations from piling up copies.\n";
+        $php .= " */\n";
+        $php .= "function {$fn}_ensure_logo() {\n";
+        $php .= "    \$marker   = '_sp_theme_logo_{$slug}';\n";
+        $php .= "    \$existing = get_posts( array(\n";
+        $php .= "        'post_type'      => 'attachment',\n";
+        $php .= "        'posts_per_page' => 1,\n";
+        $php .= "        'fields'         => 'ids',\n";
+        $php .= "        'meta_key'       => \$marker,\n";
+        $php .= "        'meta_value'     => '1',\n";
+        $php .= "        'no_found_rows'  => true,\n";
+        $php .= "    ) );\n";
+        $php .= "    if ( ! empty( \$existing ) && wp_get_attachment_url( (int) \$existing[0] ) ) {\n";
+        $php .= "        return (int) \$existing[0];\n";
+        $php .= "    }\n";
+        $php .= "    \$src = get_stylesheet_directory() . '/assets/{$logo}';\n";
+        $php .= "    if ( ! file_exists( \$src ) ) {\n";
+        $php .= "        return 0;\n";
+        $php .= "    }\n";
+        $php .= "    require_once ABSPATH . 'wp-admin/includes/file.php';\n";
+        $php .= "    require_once ABSPATH . 'wp-admin/includes/media.php';\n";
+        $php .= "    require_once ABSPATH . 'wp-admin/includes/image.php';\n";
+        $php .= "    // Copy to a temp file first: media_handle_sideload() deletes the file it's\n";
+        $php .= "    // handed, and we must not let it eat the bundled asset.\n";
+        $php .= "    \$tmp = wp_tempnam( '{$logo}' );\n";
+        $php .= "    if ( ! \$tmp || ! @copy( \$src, \$tmp ) ) {\n";
+        $php .= "        return 0;\n";
+        $php .= "    }\n";
+        $php .= "    \$file_array = array( 'name' => '{$logo}', 'tmp_name' => \$tmp );\n";
+        $php .= "    \$id = media_handle_sideload( \$file_array, 0 );\n";
+        $php .= "    if ( is_wp_error( \$id ) ) {\n";
+        $php .= "        @unlink( \$tmp );\n";
+        $php .= "        return 0;\n";
+        $php .= "    }\n";
+        $php .= "    update_post_meta( \$id, \$marker, '1' );\n";
+        $php .= "    return (int) \$id;\n";
+        $php .= "}\n\n";
     }
 
-    $php .= "    // Child stylesheet — loads after parent so our :root overrides win\n";
-    $php .= "    wp_enqueue_style(\n";
-    $php .= "        '{$slug}-style',\n";
-    $php .= "        get_stylesheet_uri(),\n";
-    $php .= "        {$deps},\n";
-    $php .= "        {$const}\n";
-    $php .= "    );\n";
-    $php .= "} );\n";
+    $php .= "/**\n";
+    $php .= " * On activation, become this theme: push the captured design into the live\n";
+    $php .= " * settings, install the bundled logo, and serve the hero media from /assets.\n";
+    $php .= " * Read/write the option directly — the plugin may be mid-switch.\n";
+    $php .= " */\n";
+    $php .= "add_action( 'after_switch_theme', function () {\n";
+    $php .= "    \$settings = get_option( 'societypress_settings', array() );\n";
+    $php .= "    \$settings = array_merge( \$settings, {$fn}_design_snapshot() );\n\n";
+    $php .= "    // Build the assets URL on the site's own scheme so it isn't blocked as\n";
+    $php .= "    // mixed content when activation runs outside an HTTPS request (e.g. WP-CLI).\n";
+    $php .= "    \$scheme = ( 0 === strpos( home_url(), 'https' ) ) ? 'https' : 'http';\n";
+    $php .= "    \$assets = set_url_scheme( get_stylesheet_directory_uri() . '/assets', \$scheme );\n";
+    if ( $logo ) {
+        $php .= "\n    // Logo — only set when the import succeeds, so a failure never blanks it.\n";
+        $php .= "    \$logo_id = {$fn}_ensure_logo();\n";
+        $php .= "    if ( \$logo_id ) {\n";
+        $php .= "        \$settings['design_logo_id'] = \$logo_id;\n";
+        $php .= "    }\n";
+    }
+    if ( $hero_m ) {
+        $php .= "\n    \$settings['homepage_hero_media']  = \$assets . '/{$hero_m}';\n";
+    }
+    if ( $hero_p ) {
+        $php .= "    \$settings['homepage_hero_poster'] = \$assets . '/{$hero_p}';\n";
+    }
+    $php .= "\n    update_option( 'societypress_settings', \$settings );\n";
+    $php .= "} );\n\n";
+
+    $php .= "/**\n";
+    $php .= " * Load this theme's style.css last — after the parent stylesheet and the\n";
+    $php .= " * plugin's design-override block — so any custom CSS here wins. Priority 1000\n";
+    $php .= " * guarantees the plugin's late (priority 999) handle is already registered.\n";
+    $php .= " */\n";
+    $php .= "add_action( 'wp_enqueue_scripts', function () {\n";
+    $php .= "    \$deps = array();\n";
+    $php .= "    if ( wp_style_is( 'societypress-style', 'registered' ) ) {\n";
+    $php .= "        \$deps[] = 'societypress-style';\n";
+    $php .= "    }\n";
+    $php .= "    if ( wp_style_is( 'sp-design-overrides', 'registered' ) ) {\n";
+    $php .= "        \$deps[] = 'sp-design-overrides';\n";
+    $php .= "    }\n";
+    $php .= "    wp_enqueue_style( '{$slug}-style', get_stylesheet_uri(), \$deps, {$const} );\n";
+    $php .= "}, 1000 );\n";
 
     return $php;
 }
@@ -27368,15 +27535,41 @@ add_action( 'wp_ajax_sp_create_custom_theme', function () {
     if ( ! in_array( $font_body, $valid_fonts, true ) ) $font_body = 'system';
     if ( $font_heading !== 'inherit' && ! in_array( $font_heading, $valid_fonts, true ) ) $font_heading = 'inherit';
 
-    // Generate the theme files
-    $css_content = sp_generate_custom_theme_css( $name, $slug, $colors, $font_body, $font_heading );
-    $php_content = sp_generate_custom_theme_functions( $slug, $name, $font_body, $font_heading );
+    // Snapshot the site's current full design, then lay the builder's chosen
+    // colors and fonts on top. Everything else the snapshot captured — layout,
+    // chrome, hero copy, custom CSS — rides along so the theme is a complete
+    // identity, not just a palette.
+    $snapshot = sp_capture_theme_design_snapshot();
+    $snapshot['design_color_primary']       = $colors['primary'];
+    $snapshot['design_color_primary_hover'] = $colors['primary_hover'];
+    $snapshot['design_color_accent']        = $colors['accent'];
+    $snapshot['design_color_header_bg']     = $colors['header_bg'];
+    $snapshot['design_color_header_text']   = $colors['header_text'];
+    $snapshot['design_color_footer_bg']     = $colors['footer_bg'];
+    $snapshot['design_color_footer_text']   = $colors['footer_text'];
+    $snapshot['design_font_body']           = $font_body;
+    $snapshot['design_font_heading']        = $font_heading;
 
-    // Write to wp-content/themes/{slug}/
-    $theme_dir = get_theme_root() . '/' . $slug;
-    if ( ! wp_mkdir_p( $theme_dir ) ) {
+    // Write to wp-content/themes/{slug}/ (with an /assets folder for media).
+    $theme_dir  = get_theme_root() . '/' . $slug;
+    $assets_dir = $theme_dir . '/assets';
+    if ( ! wp_mkdir_p( $assets_dir ) ) {
         wp_send_json_error( [ 'message' => __( 'Could not create theme directory. Check file permissions.', 'societypress' ) ] );
     }
+
+    // Bundle the live logo and homepage-hero media into the theme so they travel
+    // with it. Each returns '' if there's nothing to copy, and the generated
+    // functions.php only restores what was actually bundled.
+    $live    = get_option( 'societypress_settings', [] );
+    $bundled = [
+        'logo'        => sp_bundle_theme_asset( sp_resolve_media_path( $live['design_logo_id'] ?? '' ),       $assets_dir, 'logo' ),
+        'hero_media'  => sp_bundle_theme_asset( sp_resolve_media_path( $live['homepage_hero_media'] ?? '' ),  $assets_dir, 'hero-media' ),
+        'hero_poster' => sp_bundle_theme_asset( sp_resolve_media_path( $live['homepage_hero_poster'] ?? '' ), $assets_dir, 'hero-poster' ),
+    ];
+
+    // Generate the theme files
+    $css_content = sp_generate_custom_theme_css( $name, $slug );
+    $php_content = sp_generate_custom_theme_functions( $slug, $name, $snapshot, $bundled );
 
     $css_written = file_put_contents( $theme_dir . '/style.css', $css_content );
     $php_written = file_put_contents( $theme_dir . '/functions.php', $php_content );
@@ -27385,7 +27578,9 @@ add_action( 'wp_ajax_sp_create_custom_theme', function () {
         wp_send_json_error( [ 'message' => __( 'Could not write theme files. Check file permissions.', 'societypress' ) ] );
     }
 
-    // Save the builder values so Harold can edit later
+    // Save the builder values so Harold can edit later. The full snapshot and
+    // bundled-media map are stored too, so an edit can regenerate without
+    // re-reading (and re-bundling) the live site.
     $custom_themes = sp_get_custom_themes();
     $custom_themes[ $slug ] = [
         'name'         => $name,
@@ -27393,6 +27588,8 @@ add_action( 'wp_ajax_sp_create_custom_theme', function () {
         'colors'       => $colors,
         'font_body'    => $font_body,
         'font_heading' => $font_heading,
+        'snapshot'     => $snapshot,
+        'bundled'      => $bundled,
         'created'      => current_time( 'mysql' ),
         'updated'      => current_time( 'mysql' ),
     ];
@@ -27452,9 +27649,26 @@ add_action( 'wp_ajax_sp_update_custom_theme', function () {
     if ( ! in_array( $font_body, $valid_fonts, true ) ) $font_body = 'system';
     if ( $font_heading !== 'inherit' && ! in_array( $font_heading, $valid_fonts, true ) ) $font_heading = 'inherit';
 
+    // Overlay the new colors and fonts onto the theme's stored snapshot, keeping
+    // everything else it captured (layout, chrome, hero copy, custom CSS). Fall
+    // back to the live design if an older theme predates snapshot storage.
+    $snapshot = $custom_themes[ $slug ]['snapshot'] ?? sp_capture_theme_design_snapshot();
+    $snapshot['design_color_primary']       = $colors['primary'];
+    $snapshot['design_color_primary_hover'] = $colors['primary_hover'];
+    $snapshot['design_color_accent']        = $colors['accent'];
+    $snapshot['design_color_header_bg']     = $colors['header_bg'];
+    $snapshot['design_color_header_text']   = $colors['header_text'];
+    $snapshot['design_color_footer_bg']     = $colors['footer_bg'];
+    $snapshot['design_color_footer_text']   = $colors['footer_text'];
+    $snapshot['design_font_body']           = $font_body;
+    $snapshot['design_font_heading']        = $font_heading;
+
+    // Bundled media doesn't change on an edit — it's already in /assets.
+    $bundled = $custom_themes[ $slug ]['bundled'] ?? [ 'logo' => '', 'hero_media' => '', 'hero_poster' => '' ];
+
     // Regenerate theme files
-    $css_content = sp_generate_custom_theme_css( $name, $slug, $colors, $font_body, $font_heading );
-    $php_content = sp_generate_custom_theme_functions( $slug, $name, $font_body, $font_heading );
+    $css_content = sp_generate_custom_theme_css( $name, $slug );
+    $php_content = sp_generate_custom_theme_functions( $slug, $name, $snapshot, $bundled );
 
     $theme_dir = get_theme_root() . '/' . $slug;
     file_put_contents( $theme_dir . '/style.css', $css_content );
@@ -27464,8 +27678,20 @@ add_action( 'wp_ajax_sp_update_custom_theme', function () {
     $custom_themes[ $slug ]['colors']       = $colors;
     $custom_themes[ $slug ]['font_body']    = $font_body;
     $custom_themes[ $slug ]['font_heading'] = $font_heading;
+    $custom_themes[ $slug ]['snapshot']     = $snapshot;
     $custom_themes[ $slug ]['updated']      = current_time( 'mysql' );
     update_option( 'sp_custom_themes', $custom_themes );
+
+    // If Harold is editing the theme that's currently active, apply the color
+    // and font changes to the live site now — the activation hook only fires on
+    // a theme switch, so without this his edits wouldn't show until he toggled
+    // themes. Media keys are left untouched (already correct from activation).
+    if ( get_stylesheet() === $slug ) {
+        $live  = get_option( 'societypress_settings', [] );
+        $merge = $snapshot;
+        unset( $merge['design_logo_id'], $merge['homepage_hero_media'], $merge['homepage_hero_poster'] );
+        update_option( 'societypress_settings', array_merge( $live, $merge ) );
+    }
 
     sp_audit(
         'custom_theme_updated',

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.0.1
+ * Version:     1.0.2
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.1' );
+define( 'SOCIETYPRESS_VERSION', '1.0.2' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -1149,6 +1149,90 @@ function sp_create_tables(): void {
         PRIMARY KEY (id),
         UNIQUE KEY event_reg_type (event_id, registration_id, reminder_type),
         KEY reminder_type_event (reminder_type, event_id)
+    ) {$charset_collate};" );
+
+    // ========================================================================
+    // sp_event_reg_option_groups — Per-event registration question lists
+    //
+    // WHY: Many events need to ask each attendee a question at sign-up — the
+    //      classic case is a seminar with a plated lunch where every seat picks
+    //      a meal. A group is one such question ("Meal choice"); an event can
+    //      have several (meal, t-shirt size, session track). is_required forces
+    //      a pick; is_active lets us retire a group without destroying the
+    //      selections already tied to it.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}event_reg_option_groups (
+        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        event_id        BIGINT(20) UNSIGNED NOT NULL,
+        title           VARCHAR(200)        NOT NULL,
+        is_required     TINYINT(1)          NOT NULL DEFAULT 1,
+        sort_order      INT UNSIGNED        NOT NULL DEFAULT 0,
+        is_active       TINYINT(1)          NOT NULL DEFAULT 1,
+        created_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY event_id (event_id)
+    ) {$charset_collate};" );
+
+    // ========================================================================
+    // sp_event_reg_option_choices — The selectable answers within a group
+    //
+    // WHY: Each choice is one answer ("Salad", "Meal #1"). price_adjust lets a
+    //      choice change the ticket price up or down (a meal that costs extra,
+    //      or a discount for "No meal"). capacity is an optional cap so the
+    //      organizer can limit a choice to what the caterer will actually make
+    //      once the order is placed (NULL = unlimited). is_active soft-retires a
+    //      choice so historical selections never dangle.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}event_reg_option_choices (
+        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        group_id        BIGINT(20) UNSIGNED NOT NULL,
+        label           VARCHAR(200)        NOT NULL,
+        price_adjust    DECIMAL(10,2)       NOT NULL DEFAULT 0.00,
+        capacity        INT UNSIGNED        NULL,
+        sort_order      INT UNSIGNED        NOT NULL DEFAULT 0,
+        is_active       TINYINT(1)          NOT NULL DEFAULT 1,
+        PRIMARY KEY (id),
+        KEY group_id (group_id)
+    ) {$charset_collate};" );
+
+    // ========================================================================
+    // sp_event_reg_attendees — One row per seat inside a registration
+    //
+    // WHY: A single registration (the "order") can cover several seats — a
+    //      member registering a spouse and a guest. Each seat needs its own
+    //      name (for the attendee list and name badges) and its own set of
+    //      answers, so the caterer headcount is right. member_user_id links a
+    //      seat to a member account when known, which is how we show "member
+    //      since 1975" from the member's join_date; NULL means non-member.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}event_reg_attendees (
+        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        registration_id BIGINT(20) UNSIGNED NOT NULL,
+        event_id        BIGINT(20) UNSIGNED NOT NULL,
+        seat_no         INT UNSIGNED        NOT NULL DEFAULT 1,
+        attendee_name   VARCHAR(200)        NOT NULL,
+        member_user_id  BIGINT(20) UNSIGNED NULL,
+        created_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY registration_id (registration_id),
+        KEY event_id (event_id)
+    ) {$charset_collate};" );
+
+    // ========================================================================
+    // sp_event_reg_selections — Which choice each seat picked, per group
+    //
+    // WHY: Join row tying an attendee (seat) to the choice they selected for a
+    //      given group. Indexed by choice_id so the caterer tally — "Salad x18,
+    //      Meal #1 x22" — is a single grouped count.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}event_reg_selections (
+        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        attendee_id     BIGINT(20) UNSIGNED NOT NULL,
+        group_id        BIGINT(20) UNSIGNED NOT NULL,
+        choice_id       BIGINT(20) UNSIGNED NOT NULL,
+        PRIMARY KEY (id),
+        KEY attendee_id (attendee_id),
+        KEY choice_id (choice_id)
     ) {$charset_collate};" );
 
     // ========================================================================
@@ -37980,6 +38064,473 @@ function sp_slots_delete_by_event( int $event_id, bool $soft_delete = true ): bo
 
 
 // ============================================================================
+// EVENTS — REGISTRATION OPTIONS (per-seat questions, e.g. meal choice)
+// ============================================================================
+//
+// WHY: Some events need each attendee to answer a question at sign-up — a
+//      seminar with a plated lunch where every seat picks a meal is the driving
+//      case. A "group" is one question ("Meal choice"); its "choices" are the
+//      answers ("Salad", "Meal #1"), each of which can nudge the price and cap
+//      how many seats may pick it. Selections are recorded per seat (attendee),
+//      not per order, so the caterer headcount is right when one person buys
+//      several tickets.
+
+/**
+ * Fetch an event's option groups, each with its choices attached as ->choices.
+ *
+ * @param int  $event_id    The event.
+ * @param bool $active_only Only live groups/choices (hide soft-retired ones).
+ * @return array Array of group rows, each with a ->choices array.
+ */
+function sp_event_option_groups_get( int $event_id, bool $active_only = true ): array {
+    global $wpdb;
+    $groups_table  = $wpdb->prefix . 'sp_event_reg_option_groups';
+    $choices_table = $wpdb->prefix . 'sp_event_reg_option_choices';
+
+    $g_active = $active_only ? 'AND is_active = 1' : '';
+
+    $groups = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$groups_table}
+         WHERE event_id = %d {$g_active}
+         ORDER BY sort_order ASC, id ASC",
+        $event_id
+    ) );
+
+    if ( ! $groups ) {
+        return [];
+    }
+
+    // Fetch every choice for these groups in one query, then bucket them by
+    // group, instead of a query per group (N+1). This runs on every public
+    // event-detail page load, so the round trips add up fast.
+    $group_ids   = wp_list_pluck( $groups, 'id' );
+    $placeholders = implode( ',', array_fill( 0, count( $group_ids ), '%d' ) );
+    $c_active     = $active_only ? 'AND is_active = 1' : '';
+    $all_choices  = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$choices_table}
+         WHERE group_id IN ({$placeholders}) {$c_active}
+         ORDER BY sort_order ASC, id ASC",
+        $group_ids
+    ) );
+
+    $by_group = [];
+    foreach ( $all_choices as $choice ) {
+        $by_group[ (int) $choice->group_id ][] = $choice;
+    }
+    foreach ( $groups as $group ) {
+        $group->choices = $by_group[ (int) $group->id ] ?? [];
+    }
+
+    return $groups;
+}
+
+/**
+ * Save the option groups + choices posted from the event edit form.
+ *
+ * Existing rows (those carrying an id) are updated; new rows are inserted;
+ * rows the organizer removed are SOFT-deleted (is_active = 0) so any selections
+ * already tied to them survive as a historical record. Groups/choices with a
+ * blank title/label are ignored.
+ *
+ * @param int   $event_id    The event.
+ * @param array $groups_data Raw $_POST['event_optgroups'] structure.
+ */
+function sp_event_options_save( int $event_id, array $groups_data ): void {
+    global $wpdb;
+    $groups_table  = $wpdb->prefix . 'sp_event_reg_option_groups';
+    $choices_table = $wpdb->prefix . 'sp_event_reg_option_choices';
+
+    $surviving_group_ids = [];
+    $group_sort          = 0;
+
+    // Defense-in-depth cap: a legitimate event has a handful of questions, not
+    // hundreds. Bound the loop so a malformed or hostile POST can't spawn
+    // thousands of rows in one save.
+    $groups_data = array_slice( $groups_data, 0, 50 );
+
+    foreach ( $groups_data as $g ) {
+        $title = sanitize_text_field( $g['title'] ?? '' );
+        $group_id    = isset( $g['id'] ) ? (int) $g['id'] : 0;
+
+        // A blank title on a brand-new row means "nothing here" — skip it. But a
+        // blank title on an EXISTING group would otherwise sweep that group into
+        // the removal set below, silently deleting a question (and all its
+        // choices) the organizer never meant to touch. Leave existing groups
+        // alone: keep them in the surviving set and move on.
+        if ( $title === '' ) {
+            if ( $group_id > 0 ) {
+                $surviving_group_ids[] = $group_id;
+            }
+            continue;
+        }
+
+        $is_required = ! empty( $g['is_required'] ) ? 1 : 0;
+
+        // Cross-event guard (IDOR): group IDs are sequential and enumerable, and
+        // the event form's nonce isn't event-specific. Before trusting a
+        // submitted group_id, confirm it actually belongs to THIS event —
+        // otherwise a chair editing their own event could pass another event's
+        // group id and edit or wipe its options. A foreign/forged id is dropped.
+        if ( $group_id > 0 ) {
+            $owner_event_id = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT event_id FROM {$groups_table} WHERE id = %d",
+                $group_id
+            ) );
+            if ( $owner_event_id !== $event_id ) {
+                continue;
+            }
+            $wpdb->update(
+                $groups_table,
+                [ 'title' => $title, 'is_required' => $is_required, 'sort_order' => $group_sort, 'is_active' => 1 ],
+                [ 'id' => $group_id, 'event_id' => $event_id ],
+                [ '%s', '%d', '%d', '%d' ],
+                [ '%d', '%d' ]
+            );
+        } else {
+            $wpdb->insert(
+                $groups_table,
+                [ 'event_id' => $event_id, 'title' => $title, 'is_required' => $is_required, 'sort_order' => $group_sort, 'is_active' => 1 ],
+                [ '%d', '%s', '%d', '%d', '%d' ]
+            );
+            $group_id = (int) $wpdb->insert_id;
+        }
+
+        $surviving_group_ids[] = $group_id;
+        $group_sort++;
+
+        // Choices within this group
+        $surviving_choice_ids = [];
+        $choice_sort          = 0;
+        $choices_data         = isset( $g['choices'] ) && is_array( $g['choices'] ) ? $g['choices'] : [];
+        $choices_data         = array_slice( $choices_data, 0, 50 ); // Same defense-in-depth cap as groups.
+
+        foreach ( $choices_data as $c ) {
+            $label     = sanitize_text_field( $c['label'] ?? '' );
+            $choice_id = isset( $c['id'] ) ? (int) $c['id'] : 0;
+
+            // Blank label: skip a new row outright, but preserve an existing
+            // choice (don't let a cleared field silently retire it — same
+            // reasoning as the group title above).
+            if ( $label === '' ) {
+                if ( $choice_id > 0 ) {
+                    $surviving_choice_ids[] = $choice_id;
+                }
+                continue;
+            }
+
+            $price_adjust = number_format( (float) ( $c['price_adjust'] ?? 0 ), 2, '.', '' );
+            $capacity     = ( isset( $c['capacity'] ) && $c['capacity'] !== '' ) ? max( 0, (int) $c['capacity'] ) : null;
+
+            if ( $choice_id > 0 ) {
+                $wpdb->update(
+                    $choices_table,
+                    [ 'label' => $label, 'price_adjust' => $price_adjust, 'capacity' => $capacity, 'sort_order' => $choice_sort, 'is_active' => 1 ],
+                    [ 'id' => $choice_id, 'group_id' => $group_id ],
+                    [ '%s', '%f', $capacity === null ? '%s' : '%d', '%d', '%d' ],
+                    [ '%d', '%d' ]
+                );
+            } else {
+                $wpdb->insert(
+                    $choices_table,
+                    [ 'group_id' => $group_id, 'label' => $label, 'price_adjust' => $price_adjust, 'capacity' => $capacity, 'sort_order' => $choice_sort, 'is_active' => 1 ],
+                    [ '%d', '%s', '%f', $capacity === null ? '%s' : '%d', '%d', '%d' ]
+                );
+                $choice_id = (int) $wpdb->insert_id;
+            }
+
+            $surviving_choice_ids[] = $choice_id;
+            $choice_sort++;
+        }
+
+        // Soft-retire choices in this group that were removed in the form
+        $existing_choice_ids = $wpdb->get_col( $wpdb->prepare(
+            "SELECT id FROM {$choices_table} WHERE group_id = %d AND is_active = 1",
+            $group_id
+        ) );
+        $removed = array_diff( array_map( 'intval', $existing_choice_ids ), $surviving_choice_ids );
+        foreach ( $removed as $rid ) {
+            $wpdb->update( $choices_table, [ 'is_active' => 0 ], [ 'id' => (int) $rid ], [ '%d' ], [ '%d' ] );
+        }
+    }
+
+    // Soft-retire groups removed in the form
+    $existing_group_ids = $wpdb->get_col( $wpdb->prepare(
+        "SELECT id FROM {$groups_table} WHERE event_id = %d AND is_active = 1",
+        $event_id
+    ) );
+    $removed_groups = array_diff( array_map( 'intval', $existing_group_ids ), $surviving_group_ids );
+    foreach ( $removed_groups as $rgid ) {
+        $wpdb->update( $groups_table, [ 'is_active' => 0 ], [ 'id' => (int) $rgid ], [ '%d' ], [ '%d' ] );
+        // Cascade the retirement to the group's choices so no "active" choice is
+        // ever left dangling under a retired parent — keeps any direct query on
+        // the choices table (report, export, repair script) internally consistent.
+        $wpdb->update( $choices_table, [ 'is_active' => 0 ], [ 'group_id' => (int) $rgid ], [ '%d' ], [ '%d' ] );
+    }
+}
+
+/**
+ * Remaining capacity for a single choice.
+ *
+ * @param int $choice_id The choice.
+ * @return int|null Seats still available for this choice, or null if uncapped.
+ */
+function sp_event_choice_remaining( int $choice_id ): ?int {
+    global $wpdb;
+    $choices_table = $wpdb->prefix . 'sp_event_reg_option_choices';
+
+    $capacity = $wpdb->get_var( $wpdb->prepare(
+        "SELECT capacity FROM {$choices_table} WHERE id = %d",
+        $choice_id
+    ) );
+
+    if ( $capacity === null ) {
+        return null; // Uncapped.
+    }
+
+    $taken = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*)
+         FROM {$wpdb->prefix}sp_event_reg_selections sel
+         JOIN {$wpdb->prefix}sp_event_reg_attendees att ON sel.attendee_id = att.id
+         JOIN {$wpdb->prefix}sp_event_registrations reg ON att.registration_id = reg.id
+         WHERE sel.choice_id = %d AND reg.status = 'confirmed'",
+        $choice_id
+    ) );
+
+    return max( 0, (int) $capacity - $taken );
+}
+
+/**
+ * Remaining capacity for many choices at once.
+ *
+ * WHY: Rendering the registration form (and the caterer tally) needs the
+ *      remaining count for every choice on the event. Calling
+ *      sp_event_choice_remaining() in a loop is two queries per choice — dozens
+ *      on a single public page load. This does it in two queries total: one for
+ *      capacities, one for confirmed demand grouped by choice.
+ *
+ * @param int[] $choice_ids The choices to measure.
+ * @return array<int,int|null> choice_id => seats left (null = uncapped).
+ */
+function sp_event_choices_remaining_bulk( array $choice_ids ): array {
+    global $wpdb;
+    $choice_ids = array_values( array_unique( array_map( 'intval', $choice_ids ) ) );
+    if ( empty( $choice_ids ) ) {
+        return [];
+    }
+    $choices_table = $wpdb->prefix . 'sp_event_reg_option_choices';
+    $placeholders  = implode( ',', array_fill( 0, count( $choice_ids ), '%d' ) );
+
+    $caps = $wpdb->get_results( $wpdb->prepare(
+        "SELECT id, capacity FROM {$choices_table} WHERE id IN ({$placeholders})",
+        $choice_ids
+    ) );
+
+    $demand = $wpdb->get_results( $wpdb->prepare(
+        "SELECT sel.choice_id AS choice_id, COUNT(*) AS taken
+         FROM {$wpdb->prefix}sp_event_reg_selections sel
+         JOIN {$wpdb->prefix}sp_event_reg_attendees att ON sel.attendee_id = att.id
+         JOIN {$wpdb->prefix}sp_event_registrations reg ON att.registration_id = reg.id
+         WHERE sel.choice_id IN ({$placeholders}) AND reg.status = 'confirmed'
+         GROUP BY sel.choice_id",
+        $choice_ids
+    ) );
+    $taken_by = [];
+    foreach ( $demand as $d ) {
+        $taken_by[ (int) $d->choice_id ] = (int) $d->taken;
+    }
+
+    $out = [];
+    foreach ( $caps as $c ) {
+        if ( $c->capacity === null ) {
+            $out[ (int) $c->id ] = null; // Uncapped.
+        } else {
+            $out[ (int) $c->id ] = max( 0, (int) $c->capacity - ( $taken_by[ (int) $c->id ] ?? 0 ) );
+        }
+    }
+    return $out;
+}
+
+/**
+ * Delete a registration and everything hanging off it.
+ *
+ * WHY: A registration's seats (attendees) and their answers (selections) are
+ *      inserted before the payment step. If checkout can't be created we discard
+ *      the whole thing — but deleting only the registration row would leave the
+ *      attendee/selection rows orphaned (pointing at an id that no longer
+ *      exists). This tears down all three, child rows first, so nothing dangles.
+ *
+ * @param int $registration_id The registration to remove.
+ * @return void
+ */
+function sp_event_registration_discard( int $registration_id ): void {
+    global $wpdb;
+    if ( $registration_id <= 0 ) {
+        return;
+    }
+    $att_table = $wpdb->prefix . 'sp_event_reg_attendees';
+    $sel_table = $wpdb->prefix . 'sp_event_reg_selections';
+    $reg_table = $wpdb->prefix . 'sp_event_registrations';
+
+    $attendee_ids = $wpdb->get_col( $wpdb->prepare(
+        "SELECT id FROM {$att_table} WHERE registration_id = %d",
+        $registration_id
+    ) );
+    foreach ( $attendee_ids as $aid ) {
+        $wpdb->delete( $sel_table, [ 'attendee_id' => (int) $aid ], [ '%d' ] );
+    }
+    $wpdb->delete( $att_table, [ 'registration_id' => $registration_id ], [ '%d' ] );
+    $wpdb->delete( $reg_table, [ 'id' => $registration_id ], [ '%d' ] );
+}
+
+/**
+ * Would confirming this registration fit within every capped choice it picked?
+ *
+ * WHY: Registration-time enforces per-choice capacity, but waitlist promotion is
+ *      a second door onto a confirmed seat. Without this, promoting a waitlisted
+ *      party that picked a full choice (e.g. "Salad", capacity 10, already full)
+ *      would overshoot the caterer's order. Uncapped choices always fit.
+ *
+ * @param int $registration_id The waitlisted registration being considered.
+ * @return bool True if every capped choice still has room for this party.
+ */
+function sp_event_registration_choices_have_room( int $registration_id ): bool {
+    global $wpdb;
+    $att_table = $wpdb->prefix . 'sp_event_reg_attendees';
+    $sel_table = $wpdb->prefix . 'sp_event_reg_selections';
+
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT sel.choice_id AS choice_id, COUNT(*) AS want
+         FROM {$sel_table} sel
+         JOIN {$att_table} att ON sel.attendee_id = att.id
+         WHERE att.registration_id = %d
+         GROUP BY sel.choice_id",
+        $registration_id
+    ) );
+    foreach ( $rows as $row ) {
+        $left = sp_event_choice_remaining( (int) $row->choice_id );
+        if ( $left !== null && $left < (int) $row->want ) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Caterer tally: confirmed demand for each choice, grouped by question.
+ *
+ * WHY: The whole point of asking each attendee "which meal?" is to hand the
+ *      caterer a headcount — "Salad x18, Beef x22." This rolls the confirmed
+ *      selections up by question and choice in a single query. Choices with zero
+ *      confirmed picks still appear (count 0) so a question reads completely.
+ *
+ * @param int $event_id The event.
+ * @return array<int,object> Ordered questions, each with ->title and ->choices
+ *                           (each choice: ->label, ->count, ->capacity).
+ */
+function sp_event_choice_tally( int $event_id ): array {
+    global $wpdb;
+    $groups_table  = $wpdb->prefix . 'sp_event_reg_option_groups';
+    $choices_table = $wpdb->prefix . 'sp_event_reg_option_choices';
+    $sel_table     = $wpdb->prefix . 'sp_event_reg_selections';
+    $att_table     = $wpdb->prefix . 'sp_event_reg_attendees';
+    $reg_table     = $wpdb->prefix . 'sp_event_registrations';
+
+    // reg.status lives in the JOIN (not WHERE) so uncounted choices survive as
+    // count 0; COUNT(reg.id) then tallies only the confirmed matches.
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT g.id AS group_id, g.title AS group_title, g.sort_order AS g_sort,
+                c.id AS choice_id, c.label AS choice_label, c.capacity AS capacity,
+                c.sort_order AS c_sort, COUNT(reg.id) AS cnt
+         FROM {$groups_table} g
+         JOIN {$choices_table} c ON c.group_id = g.id AND c.is_active = 1
+         LEFT JOIN {$sel_table} sel ON sel.choice_id = c.id
+         LEFT JOIN {$att_table} att ON att.id = sel.attendee_id
+         LEFT JOIN {$reg_table} reg ON reg.id = att.registration_id AND reg.status = 'confirmed'
+         WHERE g.event_id = %d AND g.is_active = 1
+         GROUP BY c.id
+         ORDER BY g.sort_order ASC, g.id ASC, c.sort_order ASC, c.id ASC",
+        $event_id
+    ) );
+
+    $groups = [];
+    foreach ( $rows as $row ) {
+        $gid = (int) $row->group_id;
+        if ( ! isset( $groups[ $gid ] ) ) {
+            $groups[ $gid ]          = new stdClass();
+            $groups[ $gid ]->title   = $row->group_title;
+            $groups[ $gid ]->choices = [];
+        }
+        $choice           = new stdClass();
+        $choice->label    = $row->choice_label;
+        $choice->count    = (int) $row->cnt;
+        $choice->capacity = ( $row->capacity === null ) ? null : (int) $row->capacity;
+        $groups[ $gid ]->choices[] = $choice;
+    }
+    return array_values( $groups );
+}
+
+/**
+ * Per-registration attendee roster: each seat's name and its picks.
+ *
+ * WHY: For the check-in list and name badges, the organizer needs each seat's
+ *      name and what they chose — bucketed by registration so the admin table
+ *      can show them under the right row. One query for the whole event, then
+ *      grouped in PHP, so the registrations table never fires a query per row.
+ *
+ * @param int $event_id The event.
+ * @return array<int,array> registration_id => ordered list of seats, each:
+ *                          [ 'name' => string, 'is_member' => bool,
+ *                            'picks' => [ question_title => choice_label ] ].
+ */
+function sp_event_attendees_by_registration( int $event_id ): array {
+    global $wpdb;
+    $att_table     = $wpdb->prefix . 'sp_event_reg_attendees';
+    $sel_table     = $wpdb->prefix . 'sp_event_reg_selections';
+    $choices_table = $wpdb->prefix . 'sp_event_reg_option_choices';
+    $groups_table  = $wpdb->prefix . 'sp_event_reg_option_groups';
+
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT att.registration_id, att.id AS attendee_id, att.seat_no,
+                att.attendee_name, att.member_user_id,
+                g.title AS group_title, g.sort_order AS g_sort, c.label AS choice_label
+         FROM {$att_table} att
+         LEFT JOIN {$sel_table} sel ON sel.attendee_id = att.id
+         LEFT JOIN {$choices_table} c ON c.id = sel.choice_id
+         LEFT JOIN {$groups_table} g ON g.id = sel.group_id
+         WHERE att.event_id = %d
+         ORDER BY att.registration_id ASC, att.seat_no ASC, g.sort_order ASC, g.id ASC",
+        $event_id
+    ) );
+
+    $by_reg = [];
+    foreach ( $rows as $row ) {
+        $rid = (int) $row->registration_id;
+        $aid = (int) $row->attendee_id;
+        if ( ! isset( $by_reg[ $rid ] ) ) {
+            $by_reg[ $rid ] = [];
+        }
+        if ( ! isset( $by_reg[ $rid ][ $aid ] ) ) {
+            $by_reg[ $rid ][ $aid ] = [
+                'name'      => $row->attendee_name,
+                'is_member' => ! empty( $row->member_user_id ),
+                'picks'     => [],
+            ];
+        }
+        if ( $row->group_title !== null && $row->choice_label !== null ) {
+            $by_reg[ $rid ][ $aid ]['picks'][ $row->group_title ] = $row->choice_label;
+        }
+    }
+
+    // Drop the attendee-id keys; callers just want an ordered seat list per reg.
+    $out = [];
+    foreach ( $by_reg as $rid => $seats ) {
+        $out[ $rid ] = array_values( $seats );
+    }
+    return $out;
+}
+
+
+// ============================================================================
 // EVENTS — LIST TABLE (Admin)
 // ============================================================================
 //
@@ -38880,6 +39431,16 @@ add_action( 'admin_init', function () {
         }
     }
 
+    // ---- Save registration options (per-seat questions) ----
+    // WHY: Same create/update/soft-delete pattern as slots. If none were
+    //      submitted, soft-retire any the event had so removed questions stop
+    //      appearing — selections already made against them are preserved.
+    if ( ! empty( $_POST['event_optgroups'] ) && is_array( $_POST['event_optgroups'] ) ) {
+        sp_event_options_save( $event_id, wp_unslash( $_POST['event_optgroups'] ) );
+    } elseif ( $event_id > 0 ) {
+        sp_event_options_save( $event_id, [] );
+    }
+
     // ---- Save recurrence rule ----
     // WHY: If this is a new event or an existing parent event, save the
     //      recurrence rule and end date so "Generate Occurrences" can work.
@@ -39543,6 +40104,120 @@ function sp_render_event_edit_page(): void {
                                     <input type="text" name="event_slots[__IDX__][description]" class="sp-event-edit-slot-description" placeholder="<?php echo esc_attr__( 'e.g., Session A', 'societypress' ); ?>">
                                 </label>
                                 <button type="button" class="button sp-remove-slot sp-event-edit-remove-btn" aria-label="<?php echo esc_attr__( 'Remove this slot', 'societypress' ); ?>">&times;</button>
+                            </div>
+                        </template>
+                    </td>
+                </tr>
+
+                <!-- ============================================================ -->
+                <!-- SECTION 4c: Registration Options (per-seat questions)         -->
+                <!-- ============================================================ -->
+                <!--
+                    WHY: Lets the organizer ask each attendee a question at
+                    sign-up — the driving case is a seminar meal choice. Each
+                    "question" is a group; its choices can adjust the price and
+                    cap how many seats may pick them.
+                -->
+
+                <tr>
+                    <td colspan="2" class="sp-event-edit-section-header-cell">
+                        <h2 class="sp-event-edit-section-heading"><?php esc_html_e( 'Registration Options', 'societypress' ); ?> <span class="sp-event-edit-optional-label"><?php esc_html_e( '(optional)', 'societypress' ); ?></span></h2>
+                        <p class="description">
+                            <?php esc_html_e( 'Ask each attendee a question when they register — for example, a meal choice. Each choice can add to or reduce the price, and you can cap how many seats may pick it.', 'societypress' ); ?>
+                        </p>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th scope="row"><?php esc_html_e( 'Questions', 'societypress' ); ?></th>
+                    <td>
+                        <div id="sp-event-optgroups-container">
+                            <?php
+                            $opt_groups = $event ? sp_event_option_groups_get( $event->id, true ) : [];
+                            foreach ( $opt_groups as $gi => $og ) :
+                            ?>
+                                <div class="sp-optgroup-row sp-event-edit-optgroup" data-gidx="<?php echo (int) $gi; ?>" data-cidx="<?php echo count( $og->choices ); ?>">
+                                    <input type="hidden" name="event_optgroups[<?php echo (int) $gi; ?>][id]" value="<?php echo esc_attr( $og->id ); ?>">
+                                    <div class="sp-optgroup-head">
+                                        <label class="sp-event-edit-optgroup-title">
+                                            <?php esc_html_e( 'Question', 'societypress' ); ?>
+                                            <input type="text" name="event_optgroups[<?php echo (int) $gi; ?>][title]"
+                                                   value="<?php echo esc_attr( $og->title ); ?>"
+                                                   class="regular-text" placeholder="<?php echo esc_attr__( 'e.g., Meal choice', 'societypress' ); ?>">
+                                        </label>
+                                        <label class="sp-event-edit-optgroup-required">
+                                            <input type="checkbox" name="event_optgroups[<?php echo (int) $gi; ?>][is_required]" value="1" <?php checked( (int) $og->is_required, 1 ); ?>>
+                                            <?php esc_html_e( 'Everyone must pick one', 'societypress' ); ?>
+                                        </label>
+                                        <button type="button" class="button sp-remove-optgroup" aria-label="<?php echo esc_attr__( 'Remove this question', 'societypress' ); ?>"><?php esc_html_e( '× Remove question', 'societypress' ); ?></button>
+                                    </div>
+                                    <div class="sp-optchoices-container">
+                                        <?php foreach ( $og->choices as $ci => $oc ) : ?>
+                                            <div class="sp-optchoice-row sp-event-edit-optchoice">
+                                                <input type="hidden" name="event_optgroups[<?php echo (int) $gi; ?>][choices][<?php echo (int) $ci; ?>][id]" value="<?php echo esc_attr( $oc->id ); ?>">
+                                                <label class="sp-event-edit-optchoice-label">
+                                                    <?php esc_html_e( 'Choice', 'societypress' ); ?>
+                                                    <input type="text" name="event_optgroups[<?php echo (int) $gi; ?>][choices][<?php echo (int) $ci; ?>][label]"
+                                                           value="<?php echo esc_attr( $oc->label ); ?>"
+                                                           placeholder="<?php echo esc_attr__( 'e.g., Salad', 'societypress' ); ?>">
+                                                </label>
+                                                <label class="sp-event-edit-optchoice-price">
+                                                    <?php esc_html_e( 'Price +/− ($)', 'societypress' ); ?>
+                                                    <input type="number" step="0.01" name="event_optgroups[<?php echo (int) $gi; ?>][choices][<?php echo (int) $ci; ?>][price_adjust]"
+                                                           value="<?php echo esc_attr( number_format( (float) $oc->price_adjust, 2, '.', '' ) ); ?>" class="small-text">
+                                                </label>
+                                                <label class="sp-event-edit-optchoice-cap">
+                                                    <?php esc_html_e( 'Limit', 'societypress' ); ?>
+                                                    <input type="number" min="0" name="event_optgroups[<?php echo (int) $gi; ?>][choices][<?php echo (int) $ci; ?>][capacity]"
+                                                           value="<?php echo $oc->capacity !== null ? esc_attr( $oc->capacity ) : ''; ?>" class="small-text" placeholder="&#8734;">
+                                                </label>
+                                                <button type="button" class="button sp-remove-optchoice" aria-label="<?php echo esc_attr__( 'Remove this choice', 'societypress' ); ?>">&times;</button>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                    <button type="button" class="button sp-add-optchoice"><?php esc_html_e( '+ Add choice', 'societypress' ); ?></button>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <button type="button" class="button sp-event-edit-add-btn" id="sp-add-optgroup-btn">
+                            <?php esc_html_e( '+ Add Question', 'societypress' ); ?>
+                        </button>
+
+                        <!-- Template: a question (group) block -->
+                        <template id="sp-optgroup-template">
+                            <div class="sp-optgroup-row sp-event-edit-optgroup" data-gidx="__GIDX__" data-cidx="0">
+                                <div class="sp-optgroup-head">
+                                    <label class="sp-event-edit-optgroup-title">
+                                        <?php esc_html_e( 'Question', 'societypress' ); ?>
+                                        <input type="text" name="event_optgroups[__GIDX__][title]" class="regular-text" placeholder="<?php echo esc_attr__( 'e.g., Meal choice', 'societypress' ); ?>">
+                                    </label>
+                                    <label class="sp-event-edit-optgroup-required">
+                                        <input type="checkbox" name="event_optgroups[__GIDX__][is_required]" value="1" checked>
+                                        <?php esc_html_e( 'Everyone must pick one', 'societypress' ); ?>
+                                    </label>
+                                    <button type="button" class="button sp-remove-optgroup" aria-label="<?php echo esc_attr__( 'Remove this question', 'societypress' ); ?>"><?php esc_html_e( '× Remove question', 'societypress' ); ?></button>
+                                </div>
+                                <div class="sp-optchoices-container"></div>
+                                <button type="button" class="button sp-add-optchoice"><?php esc_html_e( '+ Add choice', 'societypress' ); ?></button>
+                            </div>
+                        </template>
+
+                        <!-- Template: one choice row within a question -->
+                        <template id="sp-optchoice-template">
+                            <div class="sp-optchoice-row sp-event-edit-optchoice">
+                                <label class="sp-event-edit-optchoice-label">
+                                    <?php esc_html_e( 'Choice', 'societypress' ); ?>
+                                    <input type="text" name="event_optgroups[__GIDX__][choices][__CIDX__][label]" placeholder="<?php echo esc_attr__( 'e.g., Salad', 'societypress' ); ?>">
+                                </label>
+                                <label class="sp-event-edit-optchoice-price">
+                                    <?php esc_html_e( 'Price +/− ($)', 'societypress' ); ?>
+                                    <input type="number" step="0.01" name="event_optgroups[__GIDX__][choices][__CIDX__][price_adjust]" value="0.00" class="small-text">
+                                </label>
+                                <label class="sp-event-edit-optchoice-cap">
+                                    <?php esc_html_e( 'Limit', 'societypress' ); ?>
+                                    <input type="number" min="0" name="event_optgroups[__GIDX__][choices][__CIDX__][capacity]" class="small-text" placeholder="&#8734;">
+                                </label>
+                                <button type="button" class="button sp-remove-optchoice" aria-label="<?php echo esc_attr__( 'Remove this choice', 'societypress' ); ?>">&times;</button>
                             </div>
                         </template>
                     </td>
@@ -40373,6 +41048,67 @@ function sp_render_event_edit_page(): void {
             btn.addEventListener('click', function() {
                 this.closest('.sp-speaker-row').remove();
             });
+        });
+
+        // ---- Registration Options: nested question / choice rows ----
+        // WHY: Two levels of repeatable rows — a question (group) block, and
+        //      choice rows inside it. Each block carries its own running choice
+        //      index in data-cidx so cloned field names stay unique. Groups use
+        //      a page-wide counter so two questions never collide.
+        var optGroupsContainer = document.getElementById('sp-event-optgroups-container');
+        var addOptGroupBtn     = document.getElementById('sp-add-optgroup-btn');
+        var optGroupTemplate   = document.getElementById('sp-optgroup-template');
+        var optChoiceTemplate  = document.getElementById('sp-optchoice-template');
+        var optGroupIdx        = document.querySelectorAll('.sp-optgroup-row').length;
+
+        function spAddChoiceRow(groupBlock) {
+            var gi = groupBlock.getAttribute('data-gidx');
+            var ci = parseInt(groupBlock.getAttribute('data-cidx') || '0', 10);
+            var html = optChoiceTemplate.innerHTML
+                .replace(/__GIDX__/g, gi)
+                .replace(/__CIDX__/g, ci);
+            var temp = document.createElement('div');
+            temp.innerHTML = html.trim();
+            var row = temp.firstElementChild;
+            groupBlock.querySelector('.sp-optchoices-container').appendChild(row);
+            groupBlock.setAttribute('data-cidx', ci + 1);
+            row.querySelector('.sp-remove-optchoice').addEventListener('click', function() {
+                row.remove();
+            });
+        }
+
+        function spWireGroupBlock(groupBlock) {
+            groupBlock.querySelector('.sp-add-optchoice').addEventListener('click', function() {
+                spAddChoiceRow(groupBlock);
+            });
+            var removeBtn = groupBlock.querySelector('.sp-remove-optgroup');
+            if (removeBtn) {
+                removeBtn.addEventListener('click', function() {
+                    groupBlock.remove();
+                });
+            }
+            groupBlock.querySelectorAll('.sp-remove-optchoice').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    btn.closest('.sp-optchoice-row').remove();
+                });
+            });
+        }
+
+        if (addOptGroupBtn && optGroupTemplate && optChoiceTemplate && optGroupsContainer) {
+            addOptGroupBtn.addEventListener('click', function() {
+                var html = optGroupTemplate.innerHTML.replace(/__GIDX__/g, optGroupIdx++);
+                var temp = document.createElement('div');
+                temp.innerHTML = html.trim();
+                var block = temp.firstElementChild;
+                optGroupsContainer.appendChild(block);
+                spWireGroupBlock(block);
+                spAddChoiceRow(block); // Start a new question with one blank choice.
+            });
+        }
+
+        // Wire the groups already on the page (editing an existing event)
+        document.querySelectorAll('#sp-event-optgroups-container .sp-optgroup-row').forEach(function(block) {
+            spWireGroupBlock(block);
         });
 
         // ---- Recurrence toggle + live preview ----
@@ -44930,7 +45666,54 @@ function sp_render_event_detail( string $slug, array $settings ): void {
     $sp_settings    = sp_settings();
     $stripe_ready   = sp_stripe_is_configured( $sp_settings );
     $payment_mode   = $event->payment_mode ?? 'none';
-    $has_fee        = ( (float) $event->member_price > 0 || (float) $event->nonmember_price > 0 );
+
+    // Does the person viewing this page get member pricing? Keyed off ACTIVE
+    // membership to match store pricing (and the server-side fee calc), so a
+    // logged-in member whose dues lapsed sees — and is charged — the nonmember
+    // price. The member form is only rendered for logged-in users, so this
+    // doubles as "the effective per-person price for this viewer."
+    $viewer_member_pricing = is_user_logged_in() && sp_user_is_active_member();
+
+    // Registration options (per-seat questions, e.g. meal choice). Built here
+    // so both the form template and the spRegData JS object can use them, and
+    // so a priced choice counts toward $has_fee even when the base ticket is
+    // free (a free seminar with a paid lunch add-on still needs a payment path).
+    $sp_opt_groups        = $event->registration_enabled ? sp_event_option_groups_get( (int) $event->id, true ) : [];
+    $has_priced_options   = false;
+    $sp_opt_groups_js     = [];
+
+    // Remaining capacity for every choice, resolved in one batch rather than a
+    // per-choice query inside the loop below (this is a public page load).
+    $sp_choice_ids = [];
+    foreach ( $sp_opt_groups as $og ) {
+        foreach ( $og->choices as $oc ) {
+            $sp_choice_ids[] = (int) $oc->id;
+        }
+    }
+    $sp_remaining_map = sp_event_choices_remaining_bulk( $sp_choice_ids );
+
+    foreach ( $sp_opt_groups as $og ) {
+        $choices_js = [];
+        foreach ( $og->choices as $oc ) {
+            if ( (float) $oc->price_adjust != 0.0 ) {
+                $has_priced_options = true;
+            }
+            $choices_js[] = [
+                'id'           => (int) $oc->id,
+                'label'        => $oc->label,
+                'price_adjust' => (float) $oc->price_adjust,
+                'remaining'    => $sp_remaining_map[ (int) $oc->id ] ?? null,
+            ];
+        }
+        $sp_opt_groups_js[] = [
+            'id'          => (int) $og->id,
+            'title'       => $og->title,
+            'is_required' => (int) $og->is_required,
+            'choices'     => $choices_js,
+        ];
+    }
+
+    $has_fee        = ( (float) $event->member_price > 0 || (float) $event->nonmember_price > 0 || $has_priced_options );
     $show_pay_btn   = $has_fee && $stripe_ready && in_array( $payment_mode, [ 'online', 'either' ], true );
     $show_door_btn  = $has_fee && in_array( $payment_mode, [ 'at_door', 'either' ], true );
     $pay_only       = $has_fee && $payment_mode === 'online' && $stripe_ready;
@@ -45395,13 +46178,21 @@ function sp_render_event_detail( string $slug, array $settings ): void {
                                         <?php endfor; ?>
                                     </select>
                                 </div>
+                                <?php if ( ! empty( $sp_opt_groups_js ) ) : ?>
+                                    <!-- Per-seat blocks (name + option choices) built by JS from party size -->
+                                    <div class="sp-seat-blocks" id="sp-seat-blocks"></div>
+                                <?php endif; ?>
                                 <?php
                                 // Show fee info if this event costs money
                                 // WHY: People need to know what they're going to pay BEFORE
                                 //      they click the button. The fee summary updates dynamically
                                 //      via JS when party size changes.
-                                $member_fee = (float) $event->member_price;
-                                if ( $member_fee > 0 ) : ?>
+                                // Effective per-person price for this viewer: member
+                                // rate only for an active member, else nonmember rate.
+                                $member_fee = $viewer_member_pricing
+                                    ? (float) $event->member_price
+                                    : (float) $event->nonmember_price;
+                                if ( $member_fee > 0 || $has_priced_options ) : ?>
                                     <div class="sp-reg-fee-summary" id="sp-fee-summary">
                                         <span class="sp-fee-label"><?php esc_html_e( 'Fee:', 'societypress' ); ?></span>
                                         <span class="sp-fee-amount" id="sp-fee-display">
@@ -45495,10 +46286,14 @@ function sp_render_event_detail( string $slug, array $settings ): void {
                                         <?php endfor; ?>
                                     </select>
                                 </div>
+                                <?php if ( ! empty( $sp_opt_groups_js ) ) : ?>
+                                    <!-- Per-seat blocks (name + option choices) built by JS from party size -->
+                                    <div class="sp-seat-blocks" id="sp-seat-blocks"></div>
+                                <?php endif; ?>
                                 <?php
                                 // Show fee info for guests (non-member pricing)
                                 $guest_fee = (float) $event->nonmember_price;
-                                if ( $guest_fee > 0 ) : ?>
+                                if ( $guest_fee > 0 || $has_priced_options ) : ?>
                                     <div class="sp-reg-fee-summary" id="sp-guest-fee-summary">
                                         <span class="sp-fee-label"><?php esc_html_e( 'Fee:', 'societypress' ); ?></span>
                                         <span class="sp-fee-amount" id="sp-guest-fee-display">
@@ -45597,7 +46392,11 @@ function sp_render_event_detail( string $slug, array $settings ): void {
             payOnly:      <?php echo $pay_only ? 'true' : 'false'; ?>,
             memberPrice:  <?php echo (float) $event->member_price; ?>,
             nonmemberPrice: <?php echo (float) $event->nonmember_price; ?>,
-            currency:     '<?php echo strtoupper( $sp_settings['stripe_currency'] ?? 'USD' ); ?>'
+            memberPricing: <?php echo $viewer_member_pricing ? 'true' : 'false'; ?>,
+            currency:     '<?php echo strtoupper( $sp_settings['stripe_currency'] ?? 'USD' ); ?>',
+            hasOptions:   <?php echo ! empty( $sp_opt_groups_js ) ? 'true' : 'false'; ?>,
+            optGroups:    <?php echo wp_json_encode( $sp_opt_groups_js ); ?>,
+            memberName:   <?php echo wp_json_encode( is_user_logged_in() ? wp_get_current_user()->display_name : '' ); ?>
         };
         </script>
     <?php endif; ?>
@@ -45750,17 +46549,23 @@ function sp_events_frontend_scripts(): void {
             });
         }
 
-        // Member fee display updates
-        if (typeof spRegData !== 'undefined' && spRegData.memberPrice > 0) {
+        // Member-form fee display (skipped when options own the fee). The member
+        // form is shown to logged-in users, but the price they actually pay is
+        // the member rate only when they're an active member — a lapsed member
+        // pays the nonmember rate, matching the server.
+        var spMemberFormPrice = (typeof spRegData !== 'undefined' && spRegData.memberPricing)
+            ? spRegData.memberPrice
+            : (typeof spRegData !== 'undefined' ? spRegData.nonmemberPrice : 0);
+        if (typeof spRegData !== 'undefined' && spMemberFormPrice > 0 && !spRegData.hasOptions) {
             updateFeeDisplay(
                 document.getElementById('sp-reg-party-size'),
-                spRegData.memberPrice,
+                spMemberFormPrice,
                 document.getElementById('sp-fee-display'),
                 document.getElementById('sp-fee-per-person')
             );
         }
-        // Guest fee display updates
-        if (typeof spRegData !== 'undefined' && spRegData.nonmemberPrice > 0) {
+        // Guest fee display updates (skipped when options own the fee)
+        if (typeof spRegData !== 'undefined' && spRegData.nonmemberPrice > 0 && !spRegData.hasOptions) {
             updateFeeDisplay(
                 document.getElementById('sp-guest-party-size'),
                 spRegData.nonmemberPrice,
@@ -45768,6 +46573,162 @@ function sp_events_frontend_scripts(): void {
                 document.getElementById('sp-guest-fee-per-person')
             );
         }
+
+        // ---- Per-seat capture: names + option choices (e.g. meal) ----
+        // WHY: When an event asks each attendee a question, every seat needs its
+        //      own name and answers so the caterer count and name badges are
+        //      right. Seat blocks are (re)built from the "how many attending"
+        //      value; the running total folds in each choice's price change.
+        var spCollectSeats = null;
+        (function() {
+            if (typeof spRegData === 'undefined' || !spRegData.hasOptions) { return; }
+            var seatContainer = document.getElementById('sp-seat-blocks');
+            if (!seatContainer) { return; }
+
+            var isMemberForm = !!document.getElementById('sp-reg-party-size');
+            var partySel  = document.getElementById(isMemberForm ? 'sp-reg-party-size' : 'sp-guest-party-size');
+            // Member form bills the member rate only for an active member (a lapsed
+            // member pays nonmember rate); the guest form always bills nonmember.
+            var memberFormPrice = spRegData.memberPricing ? (spRegData.memberPrice || 0) : (spRegData.nonmemberPrice || 0);
+            var basePrice = isMemberForm ? memberFormPrice : (spRegData.nonmemberPrice || 0);
+            var feeDisplay = document.getElementById(isMemberForm ? 'sp-fee-display' : 'sp-guest-fee-display');
+            var feePerEl   = document.getElementById(isMemberForm ? 'sp-fee-per-person' : 'sp-guest-fee-per-person');
+
+            var i18n = {
+                attendee: <?php echo wp_json_encode( __( 'Attendee', 'societypress' ) ); ?>,
+                fullName: <?php echo wp_json_encode( __( 'Full name', 'societypress' ) ); ?>,
+                choose:   <?php echo wp_json_encode( __( '— Choose —', 'societypress' ) ); ?>,
+                full:     <?php echo wp_json_encode( __( '(full)', 'societypress' ) ); ?>,
+                perPerson:<?php echo wp_json_encode( __( '/person', 'societypress' ) ); ?>,
+                noName:   <?php echo wp_json_encode( __( 'Please enter a name for each attendee.', 'societypress' ) ); ?>,
+                noPick:   <?php echo wp_json_encode( __( 'Please complete every choice for each attendee.', 'societypress' ) ); ?>
+            };
+
+            function adjLabel(adj) {
+                if (!adj) { return ''; }
+                var sign = adj > 0 ? '+' : '−';
+                return ' (' + sign + spFmtCurrency(Math.abs(adj).toFixed(2)) + ')';
+            }
+
+            function recomputeFee() {
+                var n = parseInt(partySel ? partySel.value : '1', 10) || 1;
+                var total = basePrice * n;
+                seatContainer.querySelectorAll('.sp-seat-choice').forEach(function(s) {
+                    var opt = s.options[s.selectedIndex];
+                    if (opt && opt.value) { total += parseFloat(opt.getAttribute('data-adjust') || '0') || 0; }
+                });
+                if (total < 0) { total = 0; } // Match the server: a discount choice can't drive the total below zero.
+                if (feeDisplay) { feeDisplay.textContent = spFmtCurrency(total.toFixed(2)); }
+                if (feePerEl && basePrice > 0) {
+                    feePerEl.textContent = '(' + spFmtCurrency(basePrice.toFixed(2)) + i18n.perPerson + ' × ' + n + ')';
+                }
+            }
+
+            function buildSeat(idx) {
+                var wrap = document.createElement('div');
+                wrap.className = 'sp-seat-block';
+                wrap.setAttribute('data-seat', idx);
+
+                var h = document.createElement('p');
+                h.className = 'sp-seat-heading';
+                h.textContent = i18n.attendee + ' ' + (idx + 1);
+                wrap.appendChild(h);
+
+                var nameRow = document.createElement('div');
+                nameRow.className = 'sp-reg-form-row';
+                var nameInput = document.createElement('input');
+                nameInput.type = 'text';
+                nameInput.className = 'sp-seat-name';
+                nameInput.required = true;
+                nameInput.placeholder = i18n.fullName;
+                if (idx === 0 && spRegData.memberName) { nameInput.value = spRegData.memberName; }
+                nameRow.appendChild(nameInput);
+                wrap.appendChild(nameRow);
+
+                spRegData.optGroups.forEach(function(g) {
+                    var row = document.createElement('div');
+                    row.className = 'sp-reg-form-row';
+                    var lbl = document.createElement('label');
+                    lbl.textContent = g.title;
+                    row.appendChild(lbl);
+
+                    var sel = document.createElement('select');
+                    sel.className = 'sp-seat-choice';
+                    sel.setAttribute('data-group-id', g.id);
+                    sel.setAttribute('data-required', g.is_required ? '1' : '0');
+
+                    var blank = document.createElement('option');
+                    blank.value = '';
+                    blank.textContent = i18n.choose;
+                    sel.appendChild(blank);
+
+                    g.choices.forEach(function(c) {
+                        var o = document.createElement('option');
+                        o.value = c.id;
+                        o.setAttribute('data-adjust', c.price_adjust);
+                        var txt = c.label + adjLabel(c.price_adjust);
+                        if (c.remaining !== null && c.remaining <= 0) {
+                            o.disabled = true;
+                            txt += ' ' + i18n.full;
+                        }
+                        o.textContent = txt;
+                        sel.appendChild(o);
+                    });
+                    sel.addEventListener('change', recomputeFee);
+                    row.appendChild(sel);
+                    wrap.appendChild(row);
+                });
+                return wrap;
+            }
+
+            function renderSeats() {
+                var n = parseInt(partySel ? partySel.value : '1', 10) || 1;
+                // Preserve what's already entered, by seat index
+                var prev = [];
+                seatContainer.querySelectorAll('.sp-seat-block').forEach(function(b) {
+                    var rec = { name: b.querySelector('.sp-seat-name').value, sel: {} };
+                    b.querySelectorAll('.sp-seat-choice').forEach(function(s) {
+                        rec.sel[s.getAttribute('data-group-id')] = s.value;
+                    });
+                    prev.push(rec);
+                });
+                seatContainer.innerHTML = '';
+                for (var i = 0; i < n; i++) {
+                    var block = buildSeat(i);
+                    seatContainer.appendChild(block);
+                    if (prev[i]) {
+                        block.querySelector('.sp-seat-name').value = prev[i].name || '';
+                        block.querySelectorAll('.sp-seat-choice').forEach(function(s) {
+                            var v = prev[i].sel[s.getAttribute('data-group-id')];
+                            if (v) { s.value = v; }
+                        });
+                    }
+                }
+                recomputeFee();
+            }
+
+            if (partySel) { partySel.addEventListener('change', renderSeats); }
+            renderSeats();
+
+            spCollectSeats = function() {
+                var seats = [];
+                var blocks = seatContainer.querySelectorAll('.sp-seat-block');
+                for (var i = 0; i < blocks.length; i++) {
+                    var b = blocks[i];
+                    var name = b.querySelector('.sp-seat-name').value.trim();
+                    if (!name) { return { error: i18n.noName }; }
+                    var selections = {};
+                    var choiceEls = b.querySelectorAll('.sp-seat-choice');
+                    for (var j = 0; j < choiceEls.length; j++) {
+                        var s = choiceEls[j];
+                        if (s.getAttribute('data-required') === '1' && !s.value) { return { error: i18n.noPick }; }
+                        if (s.value) { selections[s.getAttribute('data-group-id')] = s.value; }
+                    }
+                    seats.push({ name: name, selections: selections });
+                }
+                return { seats: seats };
+            };
+        })();
 
         // ---- Shared registration handler ----
         // WHY: Both member and guest registration (and both "pay online" and
@@ -45779,6 +46740,17 @@ function sp_events_frontend_scripts(): void {
             var eventId   = btn.getAttribute('data-event-id');
             var payMethod = btn.getAttribute('data-pay-method') || 'none';
             var btnText   = btn.textContent;
+
+            // When the event asks per-seat questions, gather and validate every
+            // seat's name + choices before we touch the button, and let the seat
+            // count be the authoritative party size.
+            if (typeof spRegData !== 'undefined' && spRegData.hasOptions && spCollectSeats) {
+                var collected = spCollectSeats();
+                if (collected.error) { showRegMsg(collected.error, 'error'); return; }
+                extraFields = extraFields || {};
+                extraFields.seats = JSON.stringify(collected.seats);
+                extraFields.party_size = collected.seats.length;
+            }
 
             btn.disabled = true;
             btn.textContent = payMethod === 'online' ? '<?php echo esc_js( __( "Redirecting to payment\u2026", "societypress" ) ); ?>' : '<?php echo esc_js( __( "Registering\u2026", "societypress" ) ); ?>';
@@ -46194,13 +47166,98 @@ function sp_ajax_register_for_event(): void {
         }
     }
 
+    // ---- Per-seat options (meal choices, etc.) ----
+    // WHY: When the event asks each attendee a question, the form sends a
+    //      `seats` payload — one entry per seat with a name and the choices
+    //      picked. We validate every choice against this event's active options
+    //      so nothing can be forged, tally per-choice demand for the capacity
+    //      check below, and fold each choice's price change into the fee. The
+    //      seat count then becomes the authoritative party size.
+    $event_groups  = sp_event_option_groups_get( $event_id, true );
+    $parsed_seats  = [];
+    $options_fee   = 0.0;
+    $choice_demand = []; // choice_id => number of seats that picked it
+    if ( ! empty( $event_groups ) ) {
+        $raw_seats = json_decode( wp_unslash( $_POST['seats'] ?? '' ), true );
+        if ( ! is_array( $raw_seats ) || count( $raw_seats ) < 1 ) {
+            wp_send_json_error( __( 'Please provide details for each attendee.', 'societypress' ) );
+        }
+        if ( count( $raw_seats ) > 20 ) {
+            wp_send_json_error( __( 'That is more attendees than one registration allows.', 'societypress' ) );
+        }
+
+        // Valid choices for this event: choice_id => [group_id, price_adjust].
+        $valid_choices   = [];
+        $required_groups = [];
+        foreach ( $event_groups as $eg ) {
+            if ( (int) $eg->is_required ) {
+                $required_groups[ (int) $eg->id ] = true;
+            }
+            foreach ( $eg->choices as $ec ) {
+                $valid_choices[ (int) $ec->id ] = [
+                    'group_id'     => (int) $eg->id,
+                    'price_adjust' => (float) $ec->price_adjust,
+                ];
+            }
+        }
+
+        foreach ( $raw_seats as $seat ) {
+            $seat_name = sanitize_text_field( $seat['name'] ?? '' );
+            if ( $seat_name === '' ) {
+                wp_send_json_error( __( 'Please enter a name for each attendee.', 'societypress' ) );
+            }
+
+            $seat_selections = [];
+            $picked_groups   = [];
+            $raw_sel = ( isset( $seat['selections'] ) && is_array( $seat['selections'] ) ) ? $seat['selections'] : [];
+            // A seat can answer at most one choice per group, so a well-formed
+            // payload never carries more entries than the event has groups. Bound
+            // it before iterating so an oversized selections object can't burn CPU.
+            $raw_sel = array_slice( $raw_sel, 0, count( $event_groups ), true );
+            foreach ( $raw_sel as $gid => $cid ) {
+                $gid = (int) $gid;
+                $cid = (int) $cid;
+                if ( $cid === 0 ) {
+                    continue;
+                }
+                if ( ! isset( $valid_choices[ $cid ] ) || $valid_choices[ $cid ]['group_id'] !== $gid ) {
+                    wp_send_json_error( __( 'One of the selected options is no longer available. Please refresh and try again.', 'societypress' ) );
+                }
+                $seat_selections[ $gid ] = $cid;
+                $picked_groups[ $gid ]   = true;
+                $options_fee            += $valid_choices[ $cid ]['price_adjust'];
+                $choice_demand[ $cid ]   = ( $choice_demand[ $cid ] ?? 0 ) + 1;
+            }
+
+            // Every required question must be answered for this seat.
+            foreach ( $required_groups as $rgid => $_ignored ) {
+                if ( empty( $picked_groups[ $rgid ] ) ) {
+                    wp_send_json_error( __( 'Please complete every choice for each attendee.', 'societypress' ) );
+                }
+            }
+
+            $parsed_seats[] = [ 'name' => $seat_name, 'selections' => $seat_selections ];
+        }
+
+        // The seat list is the source of truth for how many people are coming.
+        $party_size = count( $parsed_seats );
+    }
+
     // Serialize the capacity check and the insert below for this event. Without
     // it, two simultaneous registrations for the last seat can both read "room
     // available" and both confirm, overshooting capacity. The lock is released
-    // immediately after the insert. A 5s wait then proceed keeps a stuck lock
-    // from blocking sign-ups entirely (degrades to today's behavior, no worse).
+    // immediately after the insert.
+    //
+    // We MUST verify the lock was actually acquired: GET_LOCK returns 1 on
+    // success, 0 on timeout, NULL on error. Proceeding on a 0/NULL would run the
+    // capacity check unsynchronized against a request that genuinely holds the
+    // lock — the exact oversell race the lock exists to prevent. On a busy event
+    // we'd rather ask the visitor to retry than risk overselling a capped seat.
     $reg_lock = 'sp_event_reg_' . $event_id;
-    $wpdb->query( $wpdb->prepare( 'SELECT GET_LOCK(%s, 5)', $reg_lock ) );
+    $got_lock = $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, 5)', $reg_lock ) );
+    if ( (int) $got_lock !== 1 ) {
+        wp_send_json_error( __( 'This event is busy right now. Please try again in a moment.', 'societypress' ) );
+    }
 
     // Determine status: confirmed if there's room, waitlisted if full
     // WHY: When a slot_id is provided, we check slot-level capacity instead of
@@ -46230,13 +47287,34 @@ function sp_ajax_register_for_event(): void {
         }
     }
 
-    // Calculate fee: members get member pricing, guests get non-member pricing
-    // WHY: Fee is per-person multiplied by party size. We store the total so
-    //      the treasurer doesn't have to do math when reconciling payments.
-    $per_person_fee = $is_guest
-        ? (float) $event->nonmember_price
-        : (float) $event->member_price;
-    $fee_amount = $per_person_fee * $party_size;
+    // Per-choice capacity: block a confirmed sign-up that would oversell a
+    // capped choice (e.g., only so many salads were ordered from the caterer).
+    // Waitlisted sign-ups don't hold a confirmed seat, so they're exempt. Done
+    // inside the lock so concurrent sign-ups can't both slip past the last seat.
+    if ( $status === 'confirmed' && ! empty( $choice_demand ) ) {
+        foreach ( $choice_demand as $cid => $want ) {
+            $left = sp_event_choice_remaining( (int) $cid );
+            if ( $left !== null && $left < $want ) {
+                $wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $reg_lock ) );
+                wp_send_json_error( __( 'One of the choices just filled up. Please pick another option and try again.', 'societypress' ) );
+            }
+        }
+    }
+
+    // Calculate fee, plus any price changes from the choices each seat picked.
+    // WHY: Member pricing keys off ACTIVE membership, matching store pricing
+    //      (sp_user_is_active_member) — a logged-in member whose dues lapsed pays
+    //      the nonmember price, so the event discount tracks good standing. A
+    //      lapsed member is still a real registration (user_id set), not a guest.
+    //      We store the total so the treasurer doesn't have to do math.
+    $member_pricing = ! $is_guest && sp_user_is_active_member();
+    $per_person_fee = $member_pricing
+        ? (float) $event->member_price
+        : (float) $event->nonmember_price;
+    $fee_amount = ( $per_person_fee * $party_size ) + $options_fee;
+    if ( $fee_amount < 0 ) {
+        $fee_amount = 0.0; // A discount choice can't drive the total below zero.
+    }
 
     // Determine payment method from the frontend
     // WHY: The frontend sends 'online', 'at_door', or 'none' based on which
@@ -46279,7 +47357,60 @@ function sp_ajax_register_for_event(): void {
     $wpdb->insert( $reg_table, $insert_data, $insert_format );
     $registration_id = $wpdb->insert_id;
 
-    // Capacity decision and insert are done — release the per-event lock.
+    // Record each seat and its selections while still under the lock, so the
+    // next request's capacity check sees them. One order can cover several
+    // people; each seat carries its own name (for the attendee list and name
+    // badges) and its own answers (for the caterer count).
+    if ( $registration_id && ! empty( $parsed_seats ) ) {
+        $att_table = $wpdb->prefix . 'sp_event_reg_attendees';
+        $sel_table = $wpdb->prefix . 'sp_event_reg_selections';
+
+        // Figure out which seat is the logged-in member before inserting, so we
+        // link "member since <year>" to the right person. The seat-name fields
+        // are freely editable and often reordered (spouse first, guest, then the
+        // member), so we can't just assume seat 0 is the account holder. Match by
+        // display name; only fall back to seat 0 if the member's own name doesn't
+        // appear on any seat, and never link a seat for a guest checkout.
+        $member_seat_no = null;
+        if ( ! $is_guest ) {
+            $member_name = trim( wp_get_current_user()->display_name );
+            foreach ( $parsed_seats as $sn => $s ) {
+                if ( strcasecmp( trim( $s['name'] ), $member_name ) === 0 ) {
+                    $member_seat_no = $sn;
+                    break;
+                }
+            }
+            if ( $member_seat_no === null ) {
+                $member_seat_no = 0; // Name not found among seats — best guess.
+            }
+        }
+
+        foreach ( $parsed_seats as $seat_no => $seat ) {
+            $seat_member_id = ( $seat_no === $member_seat_no ) ? get_current_user_id() : null;
+            $wpdb->insert(
+                $att_table,
+                [
+                    'registration_id' => $registration_id,
+                    'event_id'        => $event_id,
+                    'seat_no'         => $seat_no + 1,
+                    'attendee_name'   => $seat['name'],
+                    'member_user_id'  => $seat_member_id,
+                    'created_at'      => current_time( 'mysql' ),
+                ],
+                [ '%d', '%d', '%d', '%s', '%d', '%s' ]
+            );
+            $attendee_id = (int) $wpdb->insert_id;
+            foreach ( $seat['selections'] as $gid => $cid ) {
+                $wpdb->insert(
+                    $sel_table,
+                    [ 'attendee_id' => $attendee_id, 'group_id' => (int) $gid, 'choice_id' => (int) $cid ],
+                    [ '%d', '%d', '%d' ]
+                );
+            }
+        }
+    }
+
+    // Capacity decision and inserts are done — release the per-event lock.
     $wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $reg_lock ) );
 
     if ( ! $registration_id ) {
@@ -46308,16 +47439,16 @@ function sp_ajax_register_for_event(): void {
         $sp_settings = sp_settings();
 
         if ( ! sp_stripe_is_configured( $sp_settings ) ) {
-            // Clean up the registration since we can't complete payment
-            $wpdb->delete( $reg_table, [ 'id' => $registration_id ] );
+            // Discard the registration (and its seats/selections) since we can't complete payment
+            sp_event_registration_discard( $registration_id );
             wp_send_json_error( __( 'Online payments are not configured. Please contact the site administrator.', 'societypress' ) );
         }
 
         $checkout_url = sp_create_stripe_checkout_session( $event, $registration_id, $fee_amount, $sp_settings );
 
         if ( is_wp_error( $checkout_url ) ) {
-            // Clean up the registration since payment failed to initialize
-            $wpdb->delete( $reg_table, [ 'id' => $registration_id ] );
+            // Discard the registration (and its seats/selections) since payment failed to initialize
+            sp_event_registration_discard( $registration_id );
             wp_send_json_error( $checkout_url->get_error_message() );
         }
 
@@ -46503,7 +47634,9 @@ function sp_maybe_promote_from_waitlist( int $event_id, ?int $slot_id = null ): 
         ) );
 
         foreach ( $waitlisted as $wait_reg ) {
-            if ( (int) $wait_reg->party_size <= $available ) {
+            // Fits the slot AND doesn't oversell any capped choice it picked.
+            if ( (int) $wait_reg->party_size <= $available
+                && sp_event_registration_choices_have_room( (int) $wait_reg->id ) ) {
                 $wpdb->update(
                     $reg_table,
                     [ 'status' => 'confirmed' ],
@@ -46573,7 +47706,9 @@ function sp_maybe_promote_from_waitlist( int $event_id, ?int $slot_id = null ): 
     ) );
 
     foreach ( $waitlisted as $wait_reg ) {
-        if ( (int) $wait_reg->party_size <= $available ) {
+        // Fits the event AND doesn't oversell any capped choice it picked.
+        if ( (int) $wait_reg->party_size <= $available
+            && sp_event_registration_choices_have_room( (int) $wait_reg->id ) ) {
             $wpdb->update(
                 $reg_table,
                 [ 'status' => 'confirmed' ],
@@ -46663,6 +47798,13 @@ function sp_render_event_registrations_section( object $event ): void {
     //      tracking attendance for something that hasn't happened yet.
     $event_past = $event->event_date < current_time( 'Y-m-d' );
 
+    // Registration options read-side: the caterer tally (confirmed demand per
+    // choice) and each registration's per-seat roster. Both come back empty for
+    // events that don't ask attendees anything, so the extra UI below simply
+    // doesn't render for the common no-options event.
+    $sp_reg_tally     = sp_event_choice_tally( (int) $event->id );
+    $sp_reg_attendees = sp_event_attendees_by_registration( (int) $event->id );
+
     ?>
     <style>
         /*
@@ -46732,6 +47874,66 @@ function sp_render_event_registrations_section( object $event ): void {
         .sp-event-reg-empty {
             color: #6d7175;
             font-style: italic;
+        }
+
+        /* ---- Caterer tally panel (per-question confirmed counts) ---- */
+        .sp-event-reg-tally {
+            margin: 16px 0;
+            padding: 14px 16px;
+            background: #f6f7f7;
+            border: 1px solid #c3c4c7;
+            border-radius: 4px;
+        }
+        .sp-event-reg-tally h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+        }
+        .sp-event-reg-tally-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .sp-event-reg-tally-q {
+            min-width: 180px;
+        }
+        .sp-event-reg-tally-q h4 {
+            margin: 0 0 6px 0;
+            font-size: 13px;
+            color: #1d2327;
+        }
+        .sp-event-reg-tally-q ul {
+            margin: 0;
+            list-style: none;
+        }
+        .sp-event-reg-tally-q li {
+            font-size: 13px;
+            padding: 1px 0;
+        }
+        .sp-event-reg-tally-count {
+            font-weight: 600;
+        }
+        /* Warns the organizer a capped choice is at/over its limit */
+        .sp-event-reg-tally-full {
+            color: #a51d1d;
+        }
+
+        /* ---- Per-seat attendee roster under a registration's name ---- */
+        .sp-event-reg-seats {
+            margin: 6px 0 0 0;
+            list-style: none;
+            font-size: 12px;
+            color: #3c434a;
+        }
+        .sp-event-reg-seats li {
+            padding: 1px 0;
+        }
+        .sp-event-reg-seat-picks {
+            color: #6d7175;
+        }
+        /* Marks the seat linked to the member account that placed the order */
+        .sp-event-reg-seat-member {
+            color: #1d6b30;
+            font-weight: 600;
         }
 
         /* ---- Registrations table column widths ---- */
@@ -46848,6 +48050,38 @@ function sp_render_event_registrations_section( object $event ): void {
                 ?>
             </span>
         </h2>
+
+        <?php if ( ! empty( $sp_reg_tally ) ) : ?>
+            <!-- Caterer tally: confirmed count for each choice, per question. -->
+            <!-- WHY: Turns 40 individual meal picks into the one number Harold  -->
+            <!--      hands the caterer — "Salad 18, Beef 22". Confirmed only.    -->
+            <div class="sp-event-reg-tally">
+                <h3><?php esc_html_e( 'Choice totals (confirmed)', 'societypress' ); ?></h3>
+                <div class="sp-event-reg-tally-grid">
+                    <?php foreach ( $sp_reg_tally as $tq ) : ?>
+                        <div class="sp-event-reg-tally-q">
+                            <h4><?php echo esc_html( $tq->title ); ?></h4>
+                            <ul>
+                                <?php foreach ( $tq->choices as $tc ) :
+                                    // Flag a capped choice that has met or passed its limit.
+                                    $tc_full = ( $tc->capacity !== null && $tc->count >= $tc->capacity );
+                                ?>
+                                    <li>
+                                        <span class="sp-event-reg-tally-count<?php echo $tc_full ? ' sp-event-reg-tally-full' : ''; ?>"><?php echo (int) $tc->count; ?></span>
+                                        <?php echo esc_html( $tc->label ); ?><?php
+                                        if ( $tc->capacity !== null ) {
+                                            /* translators: %d: choice capacity limit */
+                                            echo ' ' . esc_html( sprintf( __( '(cap %d)', 'societypress' ), (int) $tc->capacity ) );
+                                        }
+                                        ?>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+        <?php endif; ?>
 
         <!-- Action buttons row -->
         <div class="sp-event-reg-actions">
@@ -46984,6 +48218,32 @@ function sp_render_event_registrations_section( object $event ): void {
                                 <span class="sp-event-reg-type-label">(<?php echo $type_label; ?>)</span>
                                 <?php if ( ! empty( $reg->notes ) ) : ?>
                                     <br><em class="sp-event-reg-notes"><?php echo esc_html( $reg->notes ); ?></em>
+                                <?php endif; ?>
+                                <?php
+                                // Per-seat roster: each attendee's name and picks,
+                                // for the check-in list and name badges. Only events
+                                // that ask attendees questions have seats recorded.
+                                $reg_seats = $sp_reg_attendees[ (int) $reg->id ] ?? [];
+                                if ( ! empty( $reg_seats ) ) : ?>
+                                    <ul class="sp-event-reg-seats">
+                                        <?php foreach ( $reg_seats as $seat ) : ?>
+                                            <li>
+                                                <?php echo esc_html( $seat['name'] ); ?>
+                                                <?php if ( ! empty( $seat['is_member'] ) ) : ?>
+                                                    <span class="sp-event-reg-seat-member"><?php esc_html_e( '(member)', 'societypress' ); ?></span>
+                                                <?php endif; ?>
+                                                <?php
+                                                if ( ! empty( $seat['picks'] ) ) {
+                                                    $pick_parts = [];
+                                                    foreach ( $seat['picks'] as $q_title => $c_label ) {
+                                                        $pick_parts[] = $c_label;
+                                                    }
+                                                    echo ' <span class="sp-event-reg-seat-picks">— ' . esc_html( implode( ', ', $pick_parts ) ) . '</span>';
+                                                }
+                                                ?>
+                                            </li>
+                                        <?php endforeach; ?>
+                                    </ul>
                                 <?php endif; ?>
                             </td>
                             <td><?php echo $display_email; ?></td>
@@ -47518,6 +48778,12 @@ function sp_ajax_export_registrations(): void {
         $event_id
     ) );
 
+    // Per-seat roster keyed by registration. Only events that ask attendees a
+    // question have any, so the extra column below is added only when there's
+    // data to fill it — a plain event's CSV keeps its original shape.
+    $export_attendees = sp_event_attendees_by_registration( $event_id );
+    $has_seat_data    = ! empty( $export_attendees );
+
     // Send CSV headers for browser file download
     header( 'Content-Type: text/csv; charset=utf-8' );
     header( 'Content-Disposition: attachment; filename="registrations-' . $safe_title . '.csv"' );
@@ -47526,12 +48792,16 @@ function sp_ajax_export_registrations(): void {
     $output = fopen( 'php://output', 'w' );
 
     // CSV header row — i18n so exported files match the admin's language
-    fputcsv( $output, [
+    $csv_header = [
         __( 'Name', 'societypress' ), __( 'Email', 'societypress' ), __( 'Phone', 'societypress' ),
         __( 'Type', 'societypress' ), __( 'Party Size', 'societypress' ), __( 'Status', 'societypress' ),
         __( 'Fee', 'societypress' ), __( 'Payment Status', 'societypress' ), __( 'Attended', 'societypress' ),
         __( 'Notes', 'societypress' ), __( 'Registered At', 'societypress' )
-    ] );
+    ];
+    if ( $has_seat_data ) {
+        $csv_header[] = __( 'Attendees & Choices', 'societypress' );
+    }
+    fputcsv( $output, $csv_header );
 
     // WHY: i18n status labels — translators need static strings, not ucfirst() on DB values
     $csv_status_labels = [
@@ -47554,7 +48824,7 @@ function sp_ajax_export_registrations(): void {
             $attended_label = (int) $reg->attended === 1 ? __( 'Yes', 'societypress' ) : __( 'No-show', 'societypress' );
         }
 
-        fputcsv( $output, [
+        $csv_row = [
             $name,
             $email,
             $phone,
@@ -47566,7 +48836,24 @@ function sp_ajax_export_registrations(): void {
             $attended_label,
             $reg->notes ?? '',
             $reg->registered_at,
-        ] );
+        ];
+
+        if ( $has_seat_data ) {
+            // Pack each seat as "Name (pick1, pick2)", seats separated by " | ",
+            // so one registration stays one row and the caterer/roster detail
+            // rides in a single readable column.
+            $seat_strings = [];
+            foreach ( ( $export_attendees[ (int) $reg->id ] ?? [] ) as $seat ) {
+                $s = $seat['name'];
+                if ( ! empty( $seat['picks'] ) ) {
+                    $s .= ' (' . implode( ', ', array_values( $seat['picks'] ) ) . ')';
+                }
+                $seat_strings[] = $s;
+            }
+            $csv_row[] = implode( ' | ', $seat_strings );
+        }
+
+        fputcsv( $output, $csv_row );
     }
 
     fclose( $output );

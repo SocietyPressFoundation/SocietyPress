@@ -6567,7 +6567,7 @@ function sp_get_design_override_css(): string {
     // Content width — always use the px value directly.
     // WHY: The old dropdown (narrow/standard/wide/custom) was replaced with
     //      a simple px input. Harold types the number he wants.
-    $content_width = max( 600, min( 2400, (int) ( $settings['design_content_width_px'] ?? 1100 ) ) ) . 'px';
+    $content_width = (int) ( $settings['design_content_width_px'] ?? 1100 ) . 'px';
 
     $header_height  = (int) ( $settings['design_header_height'] ?? 0 );
     $logo_height    = (int) ( $settings['design_logo_height'] ?? 0 );
@@ -22511,7 +22511,7 @@ function sp_sanitize_settings( array $input ): array {
         // Content width in exact pixels. Replaces the old preset dropdown.
         // WHY: Harold may need to match a specific design width (e.g., 975px).
         //      Clamped to 600–2000px to prevent unusable layouts.
-        'design_content_width_px'     => fn() => max( 600, min( 2000, (int) ( $input['design_content_width_px'] ?? 1100 ) ) ),
+        'design_content_width_px'     => fn() => (int) ( $input['design_content_width_px'] ?? 1100 ),
         'design_logo_height'          => fn() => max( 0, min( 300, (int) ( $input['design_logo_height'] ?? 0 ) ) ),
         'design_header_padding'       => fn() => max( 0, min( 100, (int) ( $input['design_header_padding'] ?? 0 ) ) ),
         'design_nav_font_size'        => fn() => max( 0, min( 72, (int) ( $input['design_nav_font_size'] ?? 0 ) ) ),
@@ -30746,9 +30746,7 @@ function sp_render_settings_design_page(): void {
                                    id="sp-design-content-width-px"
                                    name="societypress_settings[design_content_width_px]"
                                    value="<?php echo esc_attr( $d_content_width_px ); ?>"
-                                   min="600"
-                                   max="2400"
-                                   step="10"
+                                   step="1"
                                    class="sp-design-control sp-design-input-narrow-md">
                             <span>px</span>
                             <p class="description"><?php esc_html_e( 'Width of the main content area in pixels. The slider always goes edge-to-edge regardless of this value.', 'societypress' ); ?></p>

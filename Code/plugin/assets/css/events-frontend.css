@@ -235,10 +235,56 @@
             font-weight: 600;
             color: #1d2327;
         }
+        /* Jump controls: Month/Year dropdowns, date picker, Today button */
+        .sp-cal-jump {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        .sp-cal-jump-form {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .sp-cal-jump-select,
+        .sp-cal-date-input {
+            padding: 7px 10px;
+            font-size: 14px;
+            color: #1d2327;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            background: #fff;
+        }
+        .sp-cal-jump-select:focus,
+        .sp-cal-date-input:focus {
+            border-color: var(--sp-color-primary);
+            outline: 2px solid var(--sp-color-primary);
+            outline-offset: 1px;
+        }
+        .sp-cal-jump-go,
+        .sp-cal-today-btn {
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--sp-color-primary);
+            text-decoration: none;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            background: #fff;
+            cursor: pointer;
+        }
+        .sp-cal-jump-go:hover,
+        .sp-cal-today-btn:hover { border-color: var(--sp-color-primary); }
+        /* Day the visitor jumped to via the date picker */
+        .sp-cal-jumped {
+            box-shadow: inset 0 0 0 2px var(--sp-color-primary);
+        }
         .sp-calendar-grid {
             display: grid;
             grid-template-columns: repeat(7, 1fr);
-            border: 1px solid #e0e0e0;
+            border: 1px solid #c3c9d2;
             border-radius: 8px;
             overflow: hidden;
         }
@@ -249,13 +295,21 @@
             text-align: center;
             color: #555;
             background: #f7f7f7;
-            border-bottom: 1px solid #e0e0e0;
+            border-bottom: 1px solid #c3c9d2;
         }
         .sp-cal-day {
+            /* Square cells: height tracks the column width. A day busy enough to
+               overflow the square simply grows taller (its row grows with it). */
+            aspect-ratio: 1 / 1;
             min-height: 100px;
+            /* min-width:0 overrides the grid item's default min-width:auto so a
+               long event title can't set the column's minimum width and widen
+               the day. With it, the cell holds its 1/7 share and the event
+               pill's ellipsis truncates instead. */
+            min-width: 0;
             padding: 6px;
-            border-right: 1px solid #eee;
-            border-bottom: 1px solid #eee;
+            border-right: 1px solid #c3c9d2;
+            border-bottom: 1px solid #c3c9d2;
             background: #fff;
             position: relative;
         }
@@ -293,9 +347,12 @@
             text-decoration: none;
             font-size: 0.75rem;
             line-height: 1.3;
-            overflow: hidden;
-            white-space: nowrap;
-            text-overflow: ellipsis;
+            /* Show the whole title: wrap onto as many lines as needed rather
+               than truncating. overflow-wrap:anywhere breaks even a long
+               unbroken word, so — with min-width:0 on the day cell — a single
+               event still can't widen its column. */
+            white-space: normal;
+            overflow-wrap: anywhere;
             transition: opacity 0.15s;
         }
         .sp-cal-event:hover { opacity: 0.85; }

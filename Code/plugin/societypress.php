@@ -88,6 +88,7 @@ register_activation_hook( __FILE__, function () {
             'events_guest_registration'    => 0,
             'events_per_page'              => 12,
             'events_calendar_start_day'    => 0,        // 0 = Sunday, 1 = Monday
+            'events_default_view'          => 'list',   // Which view the public Events page opens on: list or calendar
             'events_reminder_1_day'        => 1,
             'events_reminder_3_days'       => 1,
             'events_reminder_1_week'       => 0,
@@ -6252,7 +6253,98 @@ add_action( 'admin_bar_menu', function ( $wp_admin_bar ) {
         'href'   => admin_url( 'admin.php?page=societypress' ),
     ] );
 
+    // Contextual "Edit" shortcut in the toolbar. Any front-end SocietyPress view
+    // that called sp_frontend_edit_link() records where its edit screen lives;
+    // we surface that same jump as a top-level toolbar node.
+    // WHY this works despite the toolbar building late: admin_bar_menu renders at
+    // wp_footer — after the page content has run and set the target.
+    if ( ! is_admin() && ! empty( $GLOBALS['sp_frontend_edit_target'] ) ) {
+        $sp_edit_target = $GLOBALS['sp_frontend_edit_target'];
+        $wp_admin_bar->add_node( [
+            'id'    => 'sp-edit-current',
+            'title' => $sp_edit_target['label'],
+            'href'  => $sp_edit_target['url'],
+            'meta'  => [ 'title' => $sp_edit_target['label'] ],
+        ] );
+    }
+
 }, 999 ); // Late priority to run after WP adds its default nodes
+
+
+/**
+ * Render an admin-only "Edit" shortcut on a public-facing page.
+ *
+ * WHY: A logged-in editor viewing the live site shouldn't have to burrow back
+ *      through wp-admin to find the screen for whatever they're looking at. This
+ *      drops a small, capability-gated button right on the page AND records the
+ *      same target for the toolbar node (sp-edit-current), so the jump is there
+ *      both inline and up top. It renders nothing for viewers who lack the
+ *      capability, so callers can invoke it unconditionally in any template.
+ *
+ * @param string $capability Capability the viewer must have (e.g. 'sp_manage_events').
+ * @param string $edit_url   Admin URL to jump to.
+ * @param string $label      Already-translated button label, e.g. "Edit this event".
+ */
+function sp_frontend_edit_link( string $capability, string $edit_url, string $label ): void {
+    if ( is_admin() || ! is_user_logged_in() || ! current_user_can( $capability ) ) {
+        return;
+    }
+
+    // First caller on the page owns the toolbar node — views render their most
+    // specific content first, so the earliest call is the best target.
+    if ( empty( $GLOBALS['sp_frontend_edit_target'] ) ) {
+        $GLOBALS['sp_frontend_edit_target'] = [ 'url' => $edit_url, 'label' => $label ];
+    }
+
+    sp_frontend_edit_link_styles();
+
+    printf(
+        '<a href="%s" class="sp-frontend-edit-link"><span class="sp-frontend-edit-icon" aria-hidden="true">&#9998;</span> %s</a>',
+        esc_url( $edit_url ),
+        esc_html( $label )
+    );
+}
+
+/**
+ * Print the edit-link styles once per request.
+ *
+ * WHY a guarded <style> instead of the enqueue pipeline: the link can appear on
+ * any front-end view (events, library, gallery, the front page…), many of which
+ * don't load the events stylesheet. A one-time inline block keeps the button
+ * self-contained wherever it lands.
+ */
+function sp_frontend_edit_link_styles(): void {
+    static $printed = false;
+    if ( $printed ) {
+        return;
+    }
+    $printed = true;
+    ?>
+    <style id="sp-frontend-edit-link-css">
+        .sp-frontend-edit-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            margin: 0 0 16px;
+            font-size: 14px;
+            font-weight: 600;
+            line-height: 1.4;
+            color: #fff;
+            background: var(--sp-color-primary, #0d1f3c);
+            border-radius: 6px;
+            text-decoration: none;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+        }
+        .sp-frontend-edit-link:hover,
+        .sp-frontend-edit-link:focus {
+            color: #fff;
+            opacity: 0.9;
+        }
+        .sp-frontend-edit-icon { font-size: 13px; }
+    </style>
+    <?php
+}
 
 
 // ============================================================================
@@ -22429,6 +22521,8 @@ function sp_sanitize_settings( array $input ): array {
                                                    ? (int) $input['events_per_page'] : 12,
         'events_calendar_start_day'   => fn() => in_array( (int) ( $input['events_calendar_start_day'] ?? -1 ), [ 0, 1 ], true )
                                                    ? (int) $input['events_calendar_start_day'] : 0,
+        'events_default_view'         => fn() => in_array( $input['events_default_view'] ?? 'list', [ 'list', 'calendar' ], true )
+                                                   ? $input['events_default_view'] : 'list',
         'events_ical_feed_enabled'    => fn() => ! empty( $input['events_ical_feed_enabled'] ) ? 1 : 0,
         'events_reminder_1_day'       => fn() => ! empty( $input['events_reminder_1_day'] ) ? 1 : 0,
         'events_reminder_3_days'      => fn() => ! empty( $input['events_reminder_3_days'] ) ? 1 : 0,
@@ -22580,7 +22674,8 @@ function sp_sanitize_settings( array $input ): array {
         $page_keys = array_merge( $page_keys, [
             'events_default_visibility', 'events_default_registration',
             'events_guest_registration', 'events_per_page',
-            'events_calendar_start_day', 'events_ical_feed_enabled',
+            'events_calendar_start_day', 'events_default_view',
+            'events_ical_feed_enabled',
             'events_reminder_1_day', 'events_reminder_3_days',
             'events_reminder_1_week', 'events_confirmation_subject',
             'events_reminder_subject', 'stripe_test_mode',
@@ -42667,6 +42762,28 @@ add_action( 'admin_init', function () {
         'sp_events_section'
     );
 
+    // --- Default View ---
+    // WHY: Decides what a visitor sees the instant they land on the public
+    //      Events page — a list of upcoming events or the month calendar.
+    //      The List/Calendar toggle stays either way, so neither view is lost.
+    add_settings_field(
+        'events_default_view',
+        __( 'Default View', 'societypress' ),
+        function () {
+            $settings = sp_settings();
+            $current  = $settings['events_default_view'] ?? 'list';
+            ?>
+            <select name="societypress_settings[events_default_view]">
+                <option value="list" <?php selected( $current, 'list' ); ?>><?php esc_html_e( 'List — upcoming events as cards', 'societypress' ); ?></option>
+                <option value="calendar" <?php selected( $current, 'calendar' ); ?>><?php esc_html_e( 'Calendar — month grid', 'societypress' ); ?></option>
+            </select>
+            <p class="description"><?php esc_html_e( 'What visitors see first on the Events page. They can still switch views with the List / Calendar buttons on the page.', 'societypress' ); ?></p>
+            <?php
+        },
+        'sp-settings-events',
+        'sp_events_section'
+    );
+
     // --- Calendar Subscription Feed ---
     // WHY: Some societies may want to disable the public iCal feed if they
     //      don't want their event schedule syndicated or scraped. Enabled by
@@ -44595,18 +44712,35 @@ function sp_render_calendar_grid( int $category_id = 0, string $base_url = '', a
     }
 
     // ---- Determine which month to display ----
-    // WHY: The sp_cal_month query param lets users navigate months via
-    //      prev/next links. Default to current month if not set or invalid.
-    $cal_month = isset( $_GET['sp_cal_month'] ) ? sanitize_text_field( $_GET['sp_cal_month'] ) : wp_date( 'Y-m' );
-    if ( ! preg_match( '/^\d{4}-\d{2}$/', $cal_month ) ) {
-        $cal_month = wp_date( 'Y-m' );
+    // WHY: Several controls can drive the calendar, checked in priority order:
+    //        1. sp_cal_date (YYYY-MM-DD) — the date picker. Jumps to that day's
+    //           month and highlights the day.
+    //        2. sp_cal_m + sp_cal_y — the Month/Year dropdowns.
+    //        3. sp_cal_month (YYYY-MM) — the Prev/Next links.
+    //      Anything missing or invalid falls back to the current month.
+    $jump_day  = 0; // Day-of-month to highlight when arriving via the date picker.
+    $cal_month = wp_date( 'Y-m' );
+
+    if ( isset( $_GET['sp_cal_date'] ) && preg_match( '/^(\d{4})-(\d{2})-(\d{2})$/', sanitize_text_field( wp_unslash( $_GET['sp_cal_date'] ) ), $dm ) ) {
+        $cal_month = $dm[1] . '-' . $dm[2];
+        $jump_day  = (int) $dm[3];
+    } elseif ( isset( $_GET['sp_cal_m'], $_GET['sp_cal_y'] )
+        && ctype_digit( (string) $_GET['sp_cal_m'] ) && ctype_digit( (string) $_GET['sp_cal_y'] ) ) {
+        $pm = max( 1, min( 12, (int) $_GET['sp_cal_m'] ) );
+        $py = max( 1900, min( 2999, (int) $_GET['sp_cal_y'] ) );
+        $cal_month = sprintf( '%04d-%02d', $py, $pm );
+    } elseif ( isset( $_GET['sp_cal_month'] ) && preg_match( '/^\d{4}-\d{2}$/', sanitize_text_field( wp_unslash( $_GET['sp_cal_month'] ) ) ) ) {
+        $cal_month = sanitize_text_field( wp_unslash( $_GET['sp_cal_month'] ) );
     }
 
     $cal_year    = (int) substr( $cal_month, 0, 4 );
     $cal_mon     = (int) substr( $cal_month, 5, 2 );
     $days_in     = (int) date( 't', mktime( 0, 0, 0, $cal_mon, 1, $cal_year ) );
     $first_dow   = (int) date( 'w', mktime( 0, 0, 0, $cal_mon, 1, $cal_year ) ); // 0=Sun
-    $month_label = wp_date( 'F Y', mktime( 0, 0, 0, $cal_mon, 1, $cal_year ) );
+    // Labels format at noon, never midnight: a site timezone behind the server
+    // would otherwise roll a midnight-of-the-1st timestamp back into the prior
+    // month, so the header could read "February" while the grid shows March.
+    $month_label = wp_date( 'F Y', mktime( 12, 0, 0, $cal_mon, 1, $cal_year ) );
 
     // ---- Start day of week (Sunday or Monday) ----
     $start_day  = (int) ( $settings['events_calendar_start_day'] ?? 0 );
@@ -44663,18 +44797,40 @@ function sp_render_calendar_grid( int $category_id = 0, string $base_url = '', a
         $events_page_url = get_permalink( $events_pages[0]->ID );
     }
 
+    // ---- Base args for jump controls ----
+    // WHY: The jump forms and Today link must preserve filter/view state
+    //      (category, search, timeframe, sp_view) but never inherit a stale
+    //      month/date param, or two navigation sources would fight each other.
+    $jump_base_args = $extra_args;
+    unset( $jump_base_args['sp_cal_month'], $jump_base_args['sp_cal_date'], $jump_base_args['sp_cal_m'], $jump_base_args['sp_cal_y'] );
+
     // ---- Prev/Next month links ----
     $prev_month = date( 'Y-m', mktime( 0, 0, 0, $cal_mon - 1, 1, $cal_year ) );
     $next_month = date( 'Y-m', mktime( 0, 0, 0, $cal_mon + 1, 1, $cal_year ) );
-    $cal_nav_args = $extra_args;
-    $cal_nav_args['sp_cal_month'] = $prev_month;
-    $prev_url = add_query_arg( $cal_nav_args, $base_url );
-    $cal_nav_args['sp_cal_month'] = $next_month;
-    $next_url = add_query_arg( $cal_nav_args, $base_url );
+    $prev_url = add_query_arg( array_merge( $jump_base_args, [ 'sp_cal_month' => $prev_month ] ), $base_url );
+    $next_url = add_query_arg( array_merge( $jump_base_args, [ 'sp_cal_month' => $next_month ] ), $base_url );
+    $today_url = add_query_arg( array_merge( $jump_base_args, [ 'sp_cal_month' => wp_date( 'Y-m' ) ] ), $base_url );
 
     // Descriptive aria-labels for prev/next: "Previous month — February 2026"
-    $prev_label = wp_date( 'F Y', mktime( 0, 0, 0, $cal_mon - 1, 1, $cal_year ) );
-    $next_label = wp_date( 'F Y', mktime( 0, 0, 0, $cal_mon + 1, 1, $cal_year ) );
+    $prev_label = wp_date( 'F Y', mktime( 12, 0, 0, $cal_mon - 1, 1, $cal_year ) );
+    $next_label = wp_date( 'F Y', mktime( 12, 0, 0, $cal_mon + 1, 1, $cal_year ) );
+
+    // ---- Year range for the Year dropdown ----
+    // WHY: Bound the dropdown to years that actually hold events the visitor
+    //      may see, so nobody lands on an empty year. The current year and the
+    //      displayed year are always folded in as anchors.
+    $yr_row   = $wpdb->get_row(
+        "SELECT MIN(YEAR(e.event_date)) AS min_y, MAX(YEAR(e.event_date)) AS max_y
+         FROM {$events_table} e
+         WHERE e.status != 'cancelled' AND " . sp_event_visibility_sql( 'e' )
+    );
+    $cur_year   = (int) wp_date( 'Y' );
+    $year_anchors = array_filter( [ (int) ( $yr_row->min_y ?? 0 ), (int) ( $yr_row->max_y ?? 0 ), $cur_year, $cal_year ] );
+    $year_from  = min( $year_anchors );
+    $year_to    = max( $year_anchors );
+
+    // Is the calendar already sitting on the current month? (hides a redundant Today jump)
+    $is_current_month = ( $cal_month === wp_date( 'Y-m' ) );
 
     ?>
     <div class="sp-calendar-wrap">
@@ -44687,6 +44843,44 @@ function sp_render_calendar_grid( int $category_id = 0, string $base_url = '', a
             <a href="<?php echo esc_url( $next_url ); ?>"
                class="sp-cal-nav-btn"
                aria-label="<?php echo esc_attr( sprintf( __( 'Next month — %s', 'societypress' ), $next_label ) ); ?>"><?php echo esc_html__( 'Next', 'societypress' ); ?> &raquo;</a>
+        </div>
+
+        <!-- Jump controls: Month/Year dropdowns, date picker, Today. Each is a
+             self-contained GET form so it works with no JavaScript; the inline
+             calendar script (below) auto-submits on change and hides the Go
+             buttons for a one-tap experience. -->
+        <div class="sp-cal-jump">
+            <form method="get" action="<?php echo esc_url( $base_url ); ?>" class="sp-cal-jump-form sp-cal-jump-month">
+                <?php foreach ( $jump_base_args as $jk => $jv ) : ?>
+                    <input type="hidden" name="<?php echo esc_attr( $jk ); ?>" value="<?php echo esc_attr( $jv ); ?>">
+                <?php endforeach; ?>
+                <label class="screen-reader-text" for="sp-cal-m-<?php echo esc_attr( $cal_month ); ?>"><?php esc_html_e( 'Month', 'societypress' ); ?></label>
+                <select name="sp_cal_m" id="sp-cal-m-<?php echo esc_attr( $cal_month ); ?>" class="sp-cal-jump-select">
+                    <?php for ( $m = 1; $m <= 12; $m++ ) : ?>
+                        <option value="<?php echo $m; ?>" <?php selected( $cal_mon, $m ); ?>><?php echo esc_html( wp_date( 'F', mktime( 12, 0, 0, $m, 1, $cal_year ) ) ); ?></option>
+                    <?php endfor; ?>
+                </select>
+                <label class="screen-reader-text" for="sp-cal-y-<?php echo esc_attr( $cal_month ); ?>"><?php esc_html_e( 'Year', 'societypress' ); ?></label>
+                <select name="sp_cal_y" id="sp-cal-y-<?php echo esc_attr( $cal_month ); ?>" class="sp-cal-jump-select">
+                    <?php for ( $y = $year_from; $y <= $year_to; $y++ ) : ?>
+                        <option value="<?php echo $y; ?>" <?php selected( $cal_year, $y ); ?>><?php echo $y; ?></option>
+                    <?php endfor; ?>
+                </select>
+                <button type="submit" class="sp-cal-jump-go"><?php esc_html_e( 'Go', 'societypress' ); ?></button>
+            </form>
+
+            <form method="get" action="<?php echo esc_url( $base_url ); ?>" class="sp-cal-jump-form sp-cal-jump-date">
+                <?php foreach ( $jump_base_args as $jk => $jv ) : ?>
+                    <input type="hidden" name="<?php echo esc_attr( $jk ); ?>" value="<?php echo esc_attr( $jv ); ?>">
+                <?php endforeach; ?>
+                <label class="screen-reader-text" for="sp-cal-date-<?php echo esc_attr( $cal_month ); ?>"><?php esc_html_e( 'Jump to a specific date', 'societypress' ); ?></label>
+                <input type="date" name="sp_cal_date" id="sp-cal-date-<?php echo esc_attr( $cal_month ); ?>" class="sp-cal-date-input" value="<?php echo esc_attr( sprintf( '%04d-%02d-%02d', $cal_year, $cal_mon, $jump_day > 0 ? $jump_day : 1 ) ); ?>">
+                <button type="submit" class="sp-cal-jump-go"><?php esc_html_e( 'Go', 'societypress' ); ?></button>
+            </form>
+
+            <?php if ( ! $is_current_month ) : ?>
+                <a href="<?php echo esc_url( $today_url ); ?>" class="sp-cal-today-btn"><?php esc_html_e( 'Today', 'societypress' ); ?></a>
+            <?php endif; ?>
         </div>
 
         <!-- Calendar Grid -->
@@ -44710,9 +44904,10 @@ function sp_render_calendar_grid( int $category_id = 0, string $base_url = '', a
                 $day_class = 'sp-cal-day';
                 if ( $is_today ) $day_class .= ' sp-cal-today';
                 if ( $has_events ) $day_class .= ' sp-cal-has-events';
+                if ( $jump_day === $d ) $day_class .= ' sp-cal-jumped';
 
                 // Accessible label: full date + event count for screen readers
-                $aria_date   = wp_date( 'F j, Y', mktime( 0, 0, 0, $cal_mon, $d, $cal_year ) );
+                $aria_date   = wp_date( 'F j, Y', mktime( 12, 0, 0, $cal_mon, $d, $cal_year ) );
                 $event_count = isset( $events_by_day[ $d ] ) ? count( $events_by_day[ $d ] ) : 0;
                 $aria_label  = $event_count > 0
                     ? sprintf( __( '%1$s — %2$d events', 'societypress' ), $aria_date, $event_count )
@@ -44797,6 +44992,31 @@ function sp_render_calendar_grid( int $category_id = 0, string $base_url = '', a
         </div>
     </div>
     <?php
+    // Progressive enhancement for the jump controls. The forms already work on
+    // their own with the Go buttons; this makes the dropdowns and date picker
+    // navigate the instant they change and hides the now-redundant Go buttons.
+    // Guarded + delegated so it binds once no matter how many calendars render.
+    if ( ! defined( 'SP_CAL_JUMP_JS_PRINTED' ) ) {
+        define( 'SP_CAL_JUMP_JS_PRINTED', true );
+        ?>
+        <script id="sp-cal-jump-js">
+        (function() {
+            'use strict';
+            // Hide Go buttons — with JS, changing a control submits on its own.
+            document.querySelectorAll('.sp-cal-jump .sp-cal-jump-go').forEach(function(btn) {
+                btn.style.display = 'none';
+            });
+            // Delegate change events so this covers every calendar on the page.
+            document.addEventListener('change', function(e) {
+                var control = e.target;
+                if (!control.matches('.sp-cal-jump-select, .sp-cal-date-input')) return;
+                var form = control.closest('form');
+                if (form) form.submit();
+            });
+        })();
+        </script>
+        <?php
+    }
 }
 
 
@@ -45089,7 +45309,11 @@ function sp_render_events_listing( array $settings ): void {
         $default_timeframe = '12months';
     }
     $timeframe  = isset( $_GET['sp_time'] ) ? sanitize_text_field( $_GET['sp_time'] ) : $default_timeframe;
-    $view       = isset( $_GET['sp_view'] ) ? sanitize_text_field( $_GET['sp_view'] ) : 'list';
+    // Which view opens by default is admin-configurable (Settings → Events);
+    // the sp_view query arg (set by the List/Calendar toggle) always wins.
+    $default_view = in_array( $sp_evt_settings['events_default_view'] ?? 'list', [ 'list', 'calendar' ], true )
+                  ? $sp_evt_settings['events_default_view'] : 'list';
+    $view       = isset( $_GET['sp_view'] ) ? sanitize_text_field( $_GET['sp_view'] ) : $default_view;
 
     // ---- Build the WHERE clause ----
     $where  = [ "e.status != 'cancelled'" ];
@@ -45192,7 +45416,10 @@ function sp_render_events_listing( array $settings ): void {
     if ( $search !== '' ) $page_args['sp_search'] = $search;
     if ( $cat_filter > 0 ) $page_args['sp_cat'] = $cat_filter;
     if ( $timeframe !== $default_timeframe ) $page_args['sp_time'] = $timeframe;
-    if ( $view !== 'list' ) $page_args['sp_view'] = $view;
+    // Only carry sp_view when it differs from the site default, so links stay
+    // clean and a non-default view (e.g. List under a Calendar-default site) is
+    // preserved across pagination and filtering.
+    if ( $view !== $default_view ) $page_args['sp_view'] = $view;
 
     ?>
 
@@ -45551,6 +45778,13 @@ function sp_render_event_detail( string $slug, array $settings ): void {
         echo '</div>';
         return;
     }
+
+    // Admin shortcut: jump straight to this event's edit screen from the front end.
+    sp_frontend_edit_link(
+        'sp_manage_events',
+        admin_url( 'admin.php?page=sp-event-edit&event_id=' . (int) $event->id ),
+        __( 'Edit this event', 'societypress' )
+    );
 
     // External events show a minimal card with key info and a prominent link
     // to the external event page. We don't redirect because showing the title,
@@ -46419,7 +46653,11 @@ function sp_render_event_detail( string $slug, array $settings ): void {
  */
 function sp_events_frontend_styles(): void {
     $href = SOCIETYPRESS_PLUGIN_URL . 'assets/css/events-frontend.css';
-    $ver  = SOCIETYPRESS_VERSION;
+    $path = SOCIETYPRESS_PLUGIN_DIR . 'assets/css/events-frontend.css';
+    // Append the file's modification time so any edit to the stylesheet busts
+    // the browser cache on its own — no plugin version bump required, and no
+    // asking anyone to hard-refresh.
+    $ver  = SOCIETYPRESS_VERSION . ( file_exists( $path ) ? '.' . filemtime( $path ) : '' );
     echo '<link rel="stylesheet" id="sp-events-frontend-css" href="' . esc_url( $href ) . '?ver=' . esc_attr( $ver ) . '" media="all">' . "\n";
 }
 
@@ -51702,10 +51940,16 @@ function sp_render_speaker_edit_page(): void {
         var photoInput  = document.getElementById('speaker_photo_id');
         var photoPreview = document.getElementById('sp-speaker-photo-preview');
 
-        if (photoBtn && typeof wp !== 'undefined' && wp.media) {
+        if (photoBtn) {
             var frame;
             photoBtn.addEventListener('click', function(e) {
                 e.preventDefault();
+                // wp.media is enqueued by wp_enqueue_media(), but its scripts
+                // print in the admin footer — after this inline script parses.
+                // Checking at click time (instead of gating the whole handler on
+                // it up front) is what keeps the button from being dead when the
+                // media library hasn't finished loading yet.
+                if (typeof wp === 'undefined' || ! wp.media) { return; }
                 if (frame) { frame.open(); return; }
 
                 frame = wp.media({
@@ -52482,10 +52726,54 @@ function sp_events_calendar_styles(): void {
             font-weight: 600;
             color: #1d2327;
         }
+        .sp-cal-jump {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        .sp-cal-jump-form {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .sp-cal-jump-select,
+        .sp-cal-date-input {
+            padding: 7px 10px;
+            font-size: 14px;
+            color: #1d2327;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            background: #fff;
+        }
+        .sp-cal-jump-select:focus,
+        .sp-cal-date-input:focus {
+            border-color: var(--sp-color-primary);
+            outline: 2px solid var(--sp-color-primary);
+            outline-offset: 1px;
+        }
+        .sp-cal-jump-go,
+        .sp-cal-today-btn {
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--sp-color-primary);
+            text-decoration: none;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            background: #fff;
+            cursor: pointer;
+        }
+        .sp-cal-jump-go:hover,
+        .sp-cal-today-btn:hover { border-color: var(--sp-color-primary); }
+        .sp-cal-jumped {
+            box-shadow: inset 0 0 0 2px var(--sp-color-primary);
+        }
         .sp-calendar-grid {
             display: grid;
             grid-template-columns: repeat(7, 1fr);
-            border: 1px solid #e0e0e0;
+            border: 1px solid #c3c9d2;
             border-radius: 8px;
             overflow: hidden;
         }
@@ -52496,13 +52784,20 @@ function sp_events_calendar_styles(): void {
             text-align: center;
             color: #555;
             background: #f7f7f7;
-            border-bottom: 1px solid #e0e0e0;
+            border-bottom: 1px solid #c3c9d2;
         }
         .sp-cal-day {
+            /* Square cells: height tracks the column width; a busy day grows
+               taller rather than staying boxed. */
+            aspect-ratio: 1 / 1;
             min-height: 100px;
+            /* min-width:0 overrides the grid item's default min-width:auto so a
+               long event title can't set the column's minimum width and widen
+               the day. The event pill's ellipsis truncates instead. */
+            min-width: 0;
             padding: 6px;
-            border-right: 1px solid #eee;
-            border-bottom: 1px solid #eee;
+            border-right: 1px solid #c3c9d2;
+            border-bottom: 1px solid #c3c9d2;
             background: #fff;
             position: relative;
         }
@@ -52540,9 +52835,11 @@ function sp_events_calendar_styles(): void {
             text-decoration: none;
             font-size: 0.75rem;
             line-height: 1.3;
-            overflow: hidden;
-            white-space: nowrap;
-            text-overflow: ellipsis;
+            /* Show the whole title: wrap rather than truncate. overflow-wrap
+               breaks long words so — with min-width:0 on the day cell — a
+               single event still can't widen its column. */
+            white-space: normal;
+            overflow-wrap: anywhere;
             transition: opacity 0.15s;
         }
         .sp-cal-event:hover { opacity: 0.85; }
@@ -97525,10 +97822,38 @@ function sp_newsletters_parse_filename( string $filename ): array {
         }
     }
 
+    // Numeric month sitting next to the year — the single most common real-world
+    // pattern ("2016_11", "2018_06_07"). Anchoring to the year (rather than
+    // grabbing any 1-2 digit run) keeps us from mistaking a volume or issue
+    // number for a month. A trailing "-07" is a bi-monthly range; we take the
+    // first month and flag it so the review step can note the span.
+    $is_range = false;
+    if ( $month === 0 && $year > 0
+        && preg_match( '/(?:19[5-9]\d|20\d\d|21\d\d)[_\-\s]+(\d{1,2})([_\-]\d{1,2})?/', $base, $m ) ) {
+        $mm = (int) $m[1];
+        if ( $mm >= 1 && $mm <= 12 ) {
+            $month    = $mm;
+            $is_range = ! empty( $m[2] );
+        }
+    }
+    // Month-before-year variant ("03_2011").
+    if ( $month === 0 && $year > 0
+        && preg_match( '/(?<!\d)(\d{1,2})[_\-\s]+(?:19[5-9]\d|20\d\d|21\d\d)/', $base, $m ) ) {
+        $mm = (int) $m[1];
+        if ( $mm >= 1 && $mm <= 12 ) {
+            $month = $mm;
+        }
+    }
+
     $pub_date = '';
     if ( $year > 0 ) {
         $pub_date = sprintf( '%04d-%02d-01', $year, $month > 0 ? $month : 1 );
     }
+
+    // Confidence tells the review step which rows to surface first: "high" is
+    // safe to accept in bulk, "medium" (year but no month) and "unknown" (no
+    // date at all) are the ones a volunteer should eyeball.
+    $confidence = ( $year > 0 && $month > 0 ) ? 'high' : ( $year > 0 ? 'medium' : 'unknown' );
 
     return [
         'title'        => $human,
@@ -97537,6 +97862,9 @@ function sp_newsletters_parse_filename( string $filename ): array {
         'issue_number' => $issue,
         'season'       => $season,
         'year'         => $year,
+        'month'        => $month,
+        'is_range'     => $is_range,
+        'confidence'   => $confidence,
     ];
 }
 

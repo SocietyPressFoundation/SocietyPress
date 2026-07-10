@@ -34902,6 +34902,7 @@ function sp_builder_fields_upcoming_events( $index, array $settings ): void {
     $show_date     = $settings['show_date'] ?? 1;
     $show_time     = $settings['show_time'] ?? 1;
     $show_location = $settings['show_location'] ?? 1;
+    $window_days   = $settings['window_days'] ?? 0;
 
     // Fetch active categories for the dropdown
     $categories = $wpdb->get_results(
@@ -34920,6 +34921,14 @@ function sp_builder_fields_upcoming_events( $index, array $settings ): void {
             <option value="list" <?php selected( $layout, 'list' ); ?>><?php esc_html_e( 'Compact List', 'societypress' ); ?></option>
             <option value="cards" <?php selected( $layout, 'cards' ); ?>><?php esc_html_e( 'Photo Cards (grid)', 'societypress' ); ?></option>
         </select>
+
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-window"><?php esc_html_e( 'Show events within the next', 'societypress' ); ?></label>
+        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][window_days]" id="sp-w-<?php echo esc_attr( $index ); ?>-window">
+            <?php foreach ( [ 0 => __( 'Any upcoming (no limit)', 'societypress' ), 7 => __( '1 week', 'societypress' ), 14 => __( '2 weeks', 'societypress' ), 30 => __( '1 month', 'societypress' ), 90 => __( '3 months', 'societypress' ) ] as $days => $lbl ) : ?>
+                <option value="<?php echo esc_attr( $days ); ?>" <?php selected( $window_days, $days ); ?>><?php echo esc_html( $lbl ); ?></option>
+            <?php endforeach; ?>
+        </select>
+        <p class="description"><?php esc_html_e( 'When a window is set, every event inside it is listed; the number below then acts only as a safety cap.', 'societypress' ); ?></p>
 
         <label class="sp-block-section-label"><?php esc_html_e( 'Number of events to show', 'societypress' ); ?></label>
         <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][count]">
@@ -52431,10 +52440,17 @@ function sp_render_builder_widget_upcoming_events( array $s ): void {
     $show_date     = ! empty( $s['show_date'] );
     $show_time     = ! empty( $s['show_time'] );
     $show_location = ! empty( $s['show_location'] );
+    $window_days   = (int) ( $s['window_days'] ?? 0 );
 
     // Build the query — future, scheduled events the current viewer can see.
     $where  = "WHERE e.event_date >= CURDATE() AND e.status = 'scheduled' AND " . sp_event_visibility_sql( 'e' );
     $params = [];
+
+    // Upper date bound — when a window is set, list every event within it.
+    if ( $window_days > 0 ) {
+        $where   .= ' AND e.event_date <= DATE_ADD( CURDATE(), INTERVAL %d DAY )';
+        $params[] = $window_days;
+    }
 
     if ( $category_id > 0 ) {
         $where   .= ' AND e.category_id = %d';
@@ -52447,7 +52463,8 @@ function sp_render_builder_widget_upcoming_events( array $s ): void {
             {$where}
             ORDER BY e.event_date ASC, e.start_time ASC
             LIMIT %d";
-    $params[] = $count;
+    // A window means every event inside it (up to a safety backstop); otherwise honor the chosen count.
+    $params[] = ( $window_days > 0 ? 500 : $count );
 
     if ( count( $params ) > 1 ) {
         $events = $wpdb->get_results( $wpdb->prepare( $sql, ...$params ) );
@@ -64141,6 +64158,532 @@ function sp_render_committee_edit_page(): void {
     <?php
 }
 
+/**
+ * Public leadership display — [societypress_officers] and
+ * [societypress_committees].
+ *
+ * WHY: The Leadership page needs to show the officers and committees that
+ *      were assigned under Governance, and stay current automatically as
+ *      those assignments change — the admin should never hand-edit names
+ *      into the page. These shortcodes read the active volunteer_roles and
+ *      render them, so the page the placeholder promised now actually exists.
+ */
+add_action( 'init', function () {
+    add_shortcode( 'societypress_officers', 'sp_shortcode_officers' );
+    add_shortcode( 'societypress_committees', 'sp_shortcode_committees' );
+} );
+
+/**
+ * Emit the leadership list styles once per request. WHY a guarded static:
+ * the two shortcodes can both appear on one page; this prevents a duplicate
+ * <style> block without relying on the theme carrying these rules.
+ */
+function sp_leadership_public_styles(): void {
+    static $done = false;
+    if ( $done ) {
+        return;
+    }
+    $done = true;
+    ?>
+    <style id="sp-leadership-public-css">
+        .sp-officer-list { list-style: none; margin: 0 0 1.5em; padding: 0; }
+        .sp-officer-list li { display: flex; flex-wrap: wrap; gap: 0.2em 1em; padding: 0.6em 0; border-bottom: 1px solid var(--color-border, #e5e7eb); }
+        .sp-officer-title { font-weight: 700; min-width: 12em; }
+        .sp-committee-group { margin: 0 0 1.75em; }
+        .sp-committee-group h3 { margin: 0 0 0.35em; }
+        .sp-leadership-empty { font-style: italic; color: var(--color-text-secondary, #6b7280); }
+    </style>
+    <?php
+}
+
+/**
+ * Format an officer/committee member's display name from a joined member row.
+ * Prefers the preferred name over the legal first name and includes prefix
+ * (Mr./Dr.) and suffix (Jr./III) when present.
+ */
+/**
+ * sp_proper_name() — a genealogy-aware PROPER().
+ *
+ * WHY: Legacy rosters store names in ALL CAPS, and a naive ucwords() mangles
+ *      exactly the names a genealogical society handles most — it turns
+ *      McDONALD into "Mcdonald", O'BRIEN into "O'brien", and SMITH III into
+ *      "Smith Iii". This does it properly.
+ *
+ * Guard: only reformats a name that is entirely upper- OR entirely lower-case.
+ *        A name that already carries mixed case is assumed hand-entered and is
+ *        returned untouched — so "McDonald" or "Charles Stricklin" is never
+ *        disturbed. This makes it safe to run over a whole roster.
+ *
+ * Rules when reformatting:
+ *   - Mc prefix        -> McDonald
+ *   - Apostrophes      -> O'Brien, D'Angelo
+ *   - Hyphens          -> Smith-Jones (each part cased)
+ *   - Roman numerals   -> II, III, IV, VI ... stay upper
+ *   - Jr / Sr          -> Jr. / Sr.
+ *   - Particles        -> de, del, van, von, la ... stay lower unless they
+ *                         lead the name (you can't start a name lowercase)
+ *
+ * Known limitation: "Mac" is left as simple title-case (Macey vs MacArthur is
+ * genuinely ambiguous), and bare initials lose their periods. Both are rare on
+ * a member roster and easy to fix by hand.
+ */
+/**
+ * Canonical casing for known Mac/Mc surnames.
+ *
+ * WHY: "Mac" is genuinely ambiguous to any rules engine (Macey and Machado do
+ *      NOT capitalize the next letter; MacArthur and MacDonald do). This
+ *      authoritative list — a curated Scottish/Irish surname reference — lets
+ *      sp_proper_name() render these correctly no matter how an import mangled
+ *      the casing. Keyed lowercase => canonical; looked up case-insensitively.
+ */
+function sp_mac_names(): array {
+    static $map = null;
+    if ( null === $map ) {
+        $map = array(
+            'macadam' => 'MacAdam', 'macalister' => 'MacAlister', 'macallister' => 'MacAllister', 'macaloon' => 'MacAloon',
+            'macalpine' => 'MacAlpine', 'macandrew' => 'MacAndrew', 'macaree' => 'MacAree', 'macarthur' => 'MacArthur',
+            'macaskill' => 'MacAskill', 'macateer' => 'MacAteer', 'macaulay' => 'MacAulay', 'macavinchey' => 'MacAvinchey',
+            'macbain' => 'MacBain', 'macbeth' => 'MacBeth', 'macbey' => 'MacBey', 'macbrayne' => 'MacBrayne',
+            'macbride' => 'MacBride', 'macburnie' => 'MacBurnie', 'maccabe' => 'MacCabe', 'maccaffery' => 'MacCaffery',
+            'maccallum' => 'MacCallum', 'maccance' => 'MacCance', 'maccandlish' => 'MacCandlish', 'maccartan' => 'MacCartan',
+            'maccarthy' => 'MacCarthy', 'macclary' => 'MacClary', 'maccloy' => 'MacCloy', 'macclure' => 'MacClure',
+            'macclymont' => 'MacClymont', 'maccodrum' => 'MacCodrum', 'maccoll' => 'MacColl', 'macconachie' => 'MacConachie',
+            'macconnell' => 'MacConnell', 'maccorkindale' => 'MacCorkindale', 'maccormack' => 'MacCormack', 'maccosham' => 'MacCosham',
+            'maccoubrey' => 'MacCoubrey', 'maccracken' => 'MacCracken', 'maccrae' => 'MacCrae', 'maccrimmon' => 'MacCrimmon',
+            'maccuish' => 'MacCuish', 'maccullough' => 'MacCullough', 'maccuspic' => 'MacCuspic', 'macdade' => 'MacDade',
+            'macdermott' => 'MacDermott', 'macdevitt' => 'MacDevitt', 'macdiarmid' => 'MacDiarmid', 'macdicken' => 'MacDicken',
+            'macdonald' => 'MacDonald', 'macdonell' => 'MacDonell', 'macdougall' => 'MacDougall', 'macdowell' => 'MacDowell',
+            'macduff' => 'MacDuff', 'maceachern' => 'MacEachern', 'maceachran' => 'MacEachran', 'macelhinney' => 'MacElhinney',
+            'macentee' => 'MacEntee', 'macerlean' => 'MacErlean', 'macewan' => 'MacEwan', 'macfadden' => 'MacFadden',
+            'macfadyen' => 'MacFadyen', 'macfall' => 'MacFall', 'macfarlane' => 'MacFarlane', 'macfeeters' => 'MacFeeters',
+            'macfie' => 'MacFie', 'macgarva' => 'MacGarva', 'macgeagh' => 'MacGeagh', 'macgeoch' => 'MacGeoch',
+            'macgettrick' => 'MacGettrick', 'macgibbon' => 'MacGibbon', 'macgilchrist' => 'MacGilchrist', 'macgill' => 'MacGill',
+            'macgillivray' => 'MacGillivray', 'macgilp' => 'MacGilp', 'macginnis' => 'MacGinnis', 'macglynn' => 'MacGlynn',
+            'macgonagle' => 'MacGonagle', 'macgoogan' => 'MacGoogan', 'macgorman' => 'MacGorman', 'macgowan' => 'MacGowan',
+            'macgranaghan' => 'MacGranaghan', 'macgrath' => 'MacGrath', 'macgregor' => 'MacGregor', 'macguckian' => 'MacGuckian',
+            'macguire' => 'MacGuire', 'machale' => 'MacHale', 'machardy' => 'MacHardy', 'machattie' => 'MacHattie',
+            'macildowie' => 'MacIldowie', 'macilravey' => 'MacIlravey', 'macilvenna' => 'MacIlvenna', 'macilwraith' => 'MacIlwraith',
+            'macinally' => 'MacInally', 'macindoe' => 'MacIndoe', 'macinerney' => 'MacInerney', 'macininch' => 'MacIninch',
+            'macinnes' => 'MacInnes', 'macintosh' => 'MacIntosh', 'macintyre' => 'MacIntyre', 'macisaac' => 'MacIsaac',
+            'maciver' => 'MacIver', 'macivor' => 'MacIvor', 'macjannet' => 'MacJannet', 'mackail' => 'MacKail',
+            'mackames' => 'MacKames', 'mackay' => 'MacKay', 'mackeachie' => 'MacKeachie', 'mackeage' => 'MacKeage',
+            'mackeamish' => 'MacKeamish', 'mackeand' => 'MacKeand', 'mackechnie' => 'MacKechnie', 'mackellar' => 'MacKellar',
+            'mackendrick' => 'MacKendrick', 'mackenzie' => 'MacKenzie', 'mackerracher' => 'MacKerracher', 'mackerrell' => 'MacKerrell',
+            'mackessock' => 'MacKessock', 'mackichan' => 'MacKichan', 'mackie' => 'MacKie', 'mackillican' => 'MacKillican',
+            'mackinlay' => 'MacKinlay', 'mackinnon' => 'MacKinnon', 'mackintosh' => 'MacKintosh', 'mackirdy' => 'MacKirdy',
+            'mackissock' => 'MacKissock', 'maclachlan' => 'MacLachlan', 'maclagan' => 'MacLagan', 'maclaine' => 'MacLaine',
+            'maclardy' => 'MacLardy', 'maclaren' => 'MacLaren', 'maclarnon' => 'MacLarnon', 'maclatchie' => 'MacLatchie',
+            'maclaurin' => 'MacLaurin', 'maclaverty' => 'MacLaverty', 'maclaws' => 'MacLaws', 'maclean' => 'MacLean',
+            'macleay' => 'MacLeay', 'maclehose' => 'MacLehose', 'macleish' => 'MacLeish', 'maclellan' => 'MacLellan',
+            'macleman' => 'MacLeman', 'maclennan' => 'MacLennan', 'macleod' => 'MacLeod', 'maclise' => 'MacLise',
+            'maclucas' => 'MacLucas', 'maclullich' => 'MacLullich', 'maclure' => 'MacLure', 'macmahon' => 'MacMahon',
+            'macmanus' => 'MacManus', 'macmaster' => 'MacMaster', 'macmenamin' => 'MacMenamin', 'macmenemy' => 'MacMenemy',
+            'macmillan' => 'MacMillan', 'macmonagle' => 'MacMonagle', 'macmorran' => 'MacMorran', 'macmurchie' => 'MacMurchie',
+            'macmurdo' => 'MacMurdo', 'macmurray' => 'MacMurray', 'macnab' => 'MacNab', 'macnair' => 'MacNair',
+            'macnally' => 'MacNally', 'macnamara' => 'MacNamara', 'macnaught' => 'MacNaught', 'macnaughton' => 'MacNaughton',
+            'macnee' => 'MacNee', 'macneice' => 'MacNeice', 'macneil' => 'MacNeil', 'macneill' => 'MacNeill',
+            'macnevin' => 'MacNevin', 'macnicol' => 'MacNicol', 'macniven' => 'MacNiven', 'macnulty' => 'MacNulty',
+            'macpartlin' => 'MacPartlin', 'macpeake' => 'MacPeake', 'macphail' => 'MacPhail', 'macphee' => 'MacPhee',
+            'macpherson' => 'MacPherson', 'macquarrie' => 'MacQuarrie', 'macqueen' => 'MacQueen', 'macquilkin' => 'MacQuilkin',
+            'macquistin' => 'MacQuistin', 'macrae' => 'MacRae', 'macranald' => 'MacRanald', 'macritchie' => 'MacRitchie',
+            'macrobb' => 'MacRobb', 'macrobbie' => 'MacRobbie', 'macrury' => 'MacRury', 'macshane' => 'MacShane',
+            'macsherry' => 'MacSherry', 'macsorley' => 'MacSorley', 'macsporran' => 'MacSporran', 'macswan' => 'MacSwan',
+            'macsween' => 'MacSween', 'macsymon' => 'MacSymon', 'mactaggart' => 'MacTaggart', 'mactavish' => 'MacTavish',
+            'macthomas' => 'MacThomas', 'mactier' => 'MacTier', 'macturk' => 'MacTurk', 'macure' => 'MacUre',
+            'macvanish' => 'MacVanish', 'macvarish' => 'MacVarish', 'macvean' => 'MacVean', 'macvey' => 'MacVey',
+            'macvicar' => 'MacVicar', 'macvinish' => 'MacVinish', 'macvitie' => 'MacVitie', 'macwalter' => 'MacWalter',
+            'macwatt' => 'MacWatt', 'macwhannell' => 'MacWhannell', 'macwhinney' => 'MacWhinney', 'macwhirter' => 'MacWhirter',
+            'macwilliams' => 'MacWilliams', 'mcadam' => 'McAdam', 'mcadams' => 'McAdams', 'mcaden' => 'McAden',
+            'mcadoo' => 'McAdoo', 'mcadory' => 'McAdory', 'mcafee' => 'McAfee', 'mcalarney' => 'McAlarney',
+            'mcalary' => 'McAlary', 'mcalear' => 'McAlear', 'mcaleavey' => 'McAleavey', 'mcaleer' => 'McAleer',
+            'mcaleese' => 'McAleese', 'mcalevey' => 'McAlevey', 'mcalinden' => 'McAlinden', 'mcalinney' => 'McAlinney',
+            'mcalister' => 'McAlister', 'mcallister' => 'McAllister', 'mcaloney' => 'McAloney', 'mcaloon' => 'McAloon',
+            'mcalpin' => 'McAlpin', 'mcalpine' => 'McAlpine', 'mcanally' => 'McAnally', 'mcanany' => 'McAnany',
+            'mcanaw' => 'McAnaw', 'mcandrew' => 'McAndrew', 'mcanelly' => 'McAnelly', 'mcaneny' => 'McAneny',
+            'mcanerney' => 'McAnerney', 'mcaninch' => 'McAninch', 'mcanulty' => 'McAnulty', 'mcardle' => 'McArdle',
+            'mcarver' => 'McArver', 'mcaskill' => 'McAskill', 'mcatee' => 'McAtee', 'mcateer' => 'McAteer',
+            'mcaughtry' => 'McAughtry', 'mcauley' => 'McAuley', 'mcauliffe' => 'McAuliffe', 'mcavinue' => 'McAvinue',
+            'mcavoy' => 'McAvoy', 'mcbain' => 'McBain', 'mcbane' => 'McBane', 'mcbeath' => 'McBeath',
+            'mcbee' => 'McBee', 'mcbeth' => 'McBeth', 'mcbirney' => 'McBirney', 'mcbrayer' => 'McBrayer',
+            'mcbrearty' => 'McBrearty', 'mcbreen' => 'McBreen', 'mcbride' => 'McBride', 'mcbrien' => 'McBrien',
+            'mcbroom' => 'McBroom', 'mcbryde' => 'McBryde', 'mcburney' => 'McBurney', 'mccabe' => 'McCabe',
+            'mccadden' => 'McCadden', 'mccafferty' => 'McCafferty', 'mccaffery' => 'McCaffery', 'mccaffrey' => 'McCaffrey',
+            'mccaghren' => 'McCaghren', 'mccahill' => 'McCahill', 'mccaig' => 'McCaig', 'mccain' => 'McCain',
+            'mccaleb' => 'McCaleb', 'mccalip' => 'McCalip', 'mccalister' => 'McCalister', 'mccall' => 'McCall',
+            'mccalla' => 'McCalla', 'mccallion' => 'McCallion', 'mccallister' => 'McCallister', 'mccallum' => 'McCallum',
+            'mccalman' => 'McCalman', 'mccalmont' => 'McCalmont', 'mccambridge' => 'McCambridge', 'mccammack' => 'McCammack',
+            'mccammon' => 'McCammon', 'mccampbell' => 'McCampbell', 'mccandless' => 'McCandless', 'mccanless' => 'McCanless',
+            'mccann' => 'McCann', 'mccanna' => 'McCanna', 'mccants' => 'McCants', 'mccard' => 'McCard',
+            'mccardell' => 'McCardell', 'mccarey' => 'McCarey', 'mccargar' => 'McCargar', 'mccarley' => 'McCarley',
+            'mccarn' => 'McCarn', 'mccarrell' => 'McCarrell', 'mccarrick' => 'McCarrick', 'mccarroll' => 'McCarroll',
+            'mccarron' => 'McCarron', 'mccarson' => 'McCarson', 'mccart' => 'McCart', 'mccartan' => 'McCartan',
+            'mccarter' => 'McCarter', 'mccarthy' => 'McCarthy', 'mccartin' => 'McCartin', 'mccartney' => 'McCartney',
+            'mccarty' => 'McCarty', 'mccarver' => 'McCarver', 'mccarville' => 'McCarville', 'mccary' => 'McCary',
+            'mccash' => 'McCash', 'mccaskey' => 'McCaskey', 'mccaskill' => 'McCaskill', 'mccasland' => 'McCasland',
+            'mccaslin' => 'McCaslin', 'mccastle' => 'McCastle', 'mccathern' => 'McCathern', 'mccaughan' => 'McCaughan',
+            'mccaughey' => 'McCaughey', 'mccaul' => 'McCaul', 'mccauley' => 'McCauley', 'mccauliffe' => 'McCauliffe',
+            'mccaulley' => 'McCaulley', 'mccaw' => 'McCaw', 'mccawley' => 'McCawley', 'mccay' => 'McCay',
+            'mcchesney' => 'McChesney', 'mcchristian' => 'McChristian', 'mcclaflin' => 'McClaflin', 'mcclain' => 'McClain',
+            'mcclanahan' => 'McClanahan', 'mcclanan' => 'McClanan', 'mcclane' => 'McClane', 'mcclaran' => 'McClaran',
+            'mcclard' => 'McClard', 'mcclaren' => 'McClaren', 'mcclarnon' => 'McClarnon', 'mcclarty' => 'McClarty',
+            'mcclary' => 'McClary', 'mcclaskey' => 'McClaskey', 'mcclaugherty' => 'McClaugherty', 'mcclave' => 'McClave',
+            'mccleaf' => 'McCleaf', 'mcclean' => 'McClean', 'mccleary' => 'McCleary', 'mccleave' => 'McCleave',
+            'mccleery' => 'McCleery', 'mcclees' => 'McClees', 'mccleese' => 'McCleese', 'mcclellan' => 'McClellan',
+            'mcclelland' => 'McClelland', 'mcclenaghan' => 'McClenaghan', 'mcclenahan' => 'McClenahan', 'mcclenathan' => 'McClenathan',
+            'mcclendon' => 'McClendon', 'mcclennan' => 'McClennan', 'mcclenny' => 'McClenny', 'mccleskey' => 'McCleskey',
+            'mcclimans' => 'McClimans', 'mccline' => 'McCline', 'mcclintock' => 'McClintock', 'mcclinton' => 'McClinton',
+            'mcclish' => 'McClish', 'mcclory' => 'McClory', 'mccloskey' => 'McCloskey', 'mcclosky' => 'McClosky',
+            'mccloud' => 'McCloud', 'mccloy' => 'McCloy', 'mcclung' => 'McClung', 'mcclure' => 'McClure',
+            'mcclurg' => 'McClurg', 'mccluskey' => 'McCluskey', 'mcclymonds' => 'McClymonds', 'mccoach' => 'McCoach',
+            'mccoig' => 'McCoig', 'mccoin' => 'McCoin', 'mccolgan' => 'McColgan', 'mccoll' => 'McColl',
+            'mccollam' => 'McCollam', 'mccolley' => 'McColley', 'mccollister' => 'McCollister', 'mccollough' => 'McCollough',
+            'mccollum' => 'McCollum', 'mccolm' => 'McColm', 'mccomas' => 'McComas', 'mccomb' => 'McComb',
+            'mccomber' => 'McComber', 'mccombie' => 'McCombie', 'mccombs' => 'McCombs', 'mcconaghy' => 'McConaghy',
+            'mcconahay' => 'McConahay', 'mcconathy' => 'McConathy', 'mcconaughey' => 'McConaughey', 'mcconchie' => 'McConchie',
+            'mccone' => 'McCone', 'mcconega' => 'McConega', 'mcconkey' => 'McConkey', 'mcconn' => 'McConn',
+            'mcconnaughey' => 'McConnaughey', 'mcconnaughhay' => 'McConnaughhay', 'mcconnell' => 'McConnell', 'mcconney' => 'McConney',
+            'mcconnico' => 'McConnico', 'mcconomy' => 'McConomy', 'mcconville' => 'McConville', 'mccooey' => 'McCooey',
+            'mccook' => 'McCook', 'mccool' => 'McCool', 'mccoole' => 'McCoole', 'mccord' => 'McCord',
+            'mccorkell' => 'McCorkell', 'mccorkindale' => 'McCorkindale', 'mccorkle' => 'McCorkle', 'mccormac' => 'McCormac',
+            'mccormack' => 'McCormack', 'mccormick' => 'McCormick', 'mccorquodale' => 'McCorquodale', 'mccorry' => 'McCorry',
+            'mccort' => 'McCort', 'mccosker' => 'McCosker', 'mccotter' => 'McCotter', 'mccoughtry' => 'McCoughtry',
+            'mccoulskey' => 'McCoulskey', 'mccourt' => 'McCourt', 'mccowan' => 'McCowan', 'mccowen' => 'McCowen',
+            'mccown' => 'McCown', 'mccoy' => 'McCoy', 'mccracken' => 'McCracken', 'mccrackin' => 'McCrackin',
+            'mccracklin' => 'McCracklin', 'mccrae' => 'McCrae', 'mccraney' => 'McCraney', 'mccranie' => 'McCranie',
+            'mccrary' => 'McCrary', 'mccraven' => 'McCraven', 'mccraw' => 'McCraw', 'mccray' => 'McCray',
+            'mccrea' => 'McCrea', 'mccreadie' => 'McCreadie', 'mccready' => 'McCready', 'mccreary' => 'McCreary',
+            'mccredie' => 'McCredie', 'mccree' => 'McCree', 'mccreedy' => 'McCreedy', 'mccreery' => 'McCreery',
+            'mccreesh' => 'McCreesh', 'mccreight' => 'McCreight', 'mccrickard' => 'McCrickard', 'mccrillis' => 'McCrillis',
+            'mccrindle' => 'McCrindle', 'mccrone' => 'McCrone', 'mccrory' => 'McCrory', 'mccrossan' => 'McCrossan',
+            'mccrudden' => 'McCrudden', 'mccruden' => 'McCruden', 'mccrum' => 'McCrum', 'mccrystal' => 'McCrystal',
+            'mccuaig' => 'McCuaig', 'mccubbin' => 'McCubbin', 'mccubbins' => 'McCubbins', 'mccuddy' => 'McCuddy',
+            'mccue' => 'McCue', 'mccuen' => 'McCuen', 'mccuiston' => 'McCuiston', 'mcculla' => 'McCulla',
+            'mccullagh' => 'McCullagh', 'mccullah' => 'McCullah', 'mccullar' => 'McCullar', 'mccullars' => 'McCullars',
+            'mccullen' => 'McCullen', 'mcculler' => 'McCuller', 'mccullers' => 'McCullers', 'mcculley' => 'McCulley',
+            'mcculloch' => 'McCulloch', 'mccullough' => 'McCullough', 'mccullum' => 'McCullum', 'mccully' => 'McCully',
+            'mccumber' => 'McCumber', 'mccune' => 'McCune', 'mccunn' => 'McCunn', 'mccurdie' => 'McCurdie',
+            'mccurdy' => 'McCurdy', 'mccurley' => 'McCurley', 'mccurry' => 'McCurry', 'mccusker' => 'McCusker',
+            'mccutchan' => 'McCutchan', 'mccutchen' => 'McCutchen', 'mccutcheon' => 'McCutcheon', 'mcdade' => 'McDade',
+            'mcdanel' => 'McDanel', 'mcdaniel' => 'McDaniel', 'mcdaniels' => 'McDaniels', 'mcdaris' => 'McDaris',
+            'mcdavid' => 'McDavid', 'mcdearmon' => 'McDearmon', 'mcdermitt' => 'McDermitt', 'mcdermott' => 'McDermott',
+            'mcdevit' => 'McDevit', 'mcdevitt' => 'McDevitt', 'mcdiarmid' => 'McDiarmid', 'mcdill' => 'McDill',
+            'mcdole' => 'McDole', 'mcdonagh' => 'McDonagh', 'mcdonald' => 'McDonald', 'mcdonell' => 'McDonell',
+            'mcdonnel' => 'McDonnel', 'mcdonnell' => 'McDonnell', 'mcdonough' => 'McDonough', 'mcdorman' => 'McDorman',
+            'mcdougal' => 'McDougal', 'mcdougald' => 'McDougald', 'mcdougall' => 'McDougall', 'mcdougle' => 'McDougle',
+            'mcdow' => 'McDow', 'mcdowall' => 'McDowall', 'mcdowell' => 'McDowell', 'mcduff' => 'McDuff',
+            'mcduffee' => 'McDuffee', 'mcduffie' => 'McDuffie', 'mceachern' => 'McEachern', 'mceachin' => 'McEachin',
+            'mceachran' => 'McEachran', 'mcelderry' => 'McElderry', 'mceldowney' => 'McEldowney', 'mcelduff' => 'McElduff',
+            'mcelfresh' => 'McElfresh', 'mcelhaney' => 'McElhaney', 'mcelhannon' => 'McElhannon', 'mcelhany' => 'McElhany',
+            'mcelhatton' => 'McElhatton', 'mcelheny' => 'McElheny', 'mcelhinney' => 'McElhinney', 'mcelhone' => 'McElhone',
+            'mcelhose' => 'McElhose', 'mcelligott' => 'McElligott', 'mcelmurray' => 'McElmurray', 'mcelrath' => 'McElrath',
+            'mcelravy' => 'McElravy', 'mcelreath' => 'McElreath', 'mcelroy' => 'McElroy', 'mcelvain' => 'McElvain',
+            'mcelvany' => 'McElvany', 'mcelveen' => 'McElveen', 'mcelwain' => 'McElwain', 'mcelwee' => 'McElwee',
+            'mcelyea' => 'McElyea', 'mcenaney' => 'McEnaney', 'mcenany' => 'McEnany', 'mcendree' => 'McEndree',
+            'mceneaney' => 'McEneaney', 'mcenery' => 'McEnery', 'mceniry' => 'McEniry', 'mcenroe' => 'McEnroe',
+            'mcentee' => 'McEntee', 'mcentire' => 'McEntire', 'mcentyre' => 'McEntyre', 'mcerlain' => 'McErlain',
+            'mcerlane' => 'McErlane', 'mceuen' => 'McEuen', 'mcevers' => 'McEvers', 'mcevilly' => 'McEvilly',
+            'mcevoy' => 'McEvoy', 'mcewan' => 'McEwan', 'mcewen' => 'McEwen', 'mcfadden' => 'McFadden',
+            'mcfadin' => 'McFadin', 'mcfadyen' => 'McFadyen', 'mcfall' => 'McFall', 'mcfalls' => 'McFalls',
+            'mcfann' => 'McFann', 'mcfarland' => 'McFarland', 'mcfarlane' => 'McFarlane', 'mcfarlin' => 'McFarlin',
+            'mcfarren' => 'McFarren', 'mcfater' => 'McFater', 'mcfaul' => 'McFaul', 'mcfeaters' => 'McFeaters',
+            'mcfee' => 'McFee', 'mcfeeley' => 'McFeeley', 'mcfeely' => 'McFeely', 'mcferran' => 'McFerran',
+            'mcferren' => 'McFerren', 'mcferrin' => 'McFerrin', 'mcfetridge' => 'McFetridge', 'mcgaffey' => 'McGaffey',
+            'mcgaffigan' => 'McGaffigan', 'mcgaha' => 'McGaha', 'mcgahan' => 'McGahan', 'mcgahee' => 'McGahee',
+            'mcgahey' => 'McGahey', 'mcgalliard' => 'McGalliard', 'mcgann' => 'McGann', 'mcgannon' => 'McGannon',
+            'mcgarity' => 'McGarity', 'mcgarr' => 'McGarr', 'mcgarrah' => 'McGarrah', 'mcgarrell' => 'McGarrell',
+            'mcgarrigle' => 'McGarrigle', 'mcgarrity' => 'McGarrity', 'mcgarry' => 'McGarry', 'mcgarvey' => 'McGarvey',
+            'mcgarvin' => 'McGarvin', 'mcgary' => 'McGary', 'mcgaugh' => 'McGaugh', 'mcgaughey' => 'McGaughey',
+            'mcgaughy' => 'McGaughy', 'mcgauley' => 'McGauley', 'mcgavock' => 'McGavock', 'mcgeachy' => 'McGeachy',
+            'mcgeady' => 'McGeady', 'mcgeary' => 'McGeary', 'mcgeath' => 'McGeath', 'mcgee' => 'McGee',
+            'mcgeehan' => 'McGeehan', 'mcgeever' => 'McGeever', 'mcgehearty' => 'McGehearty', 'mcgehee' => 'McGehee',
+            'mcgeorge' => 'McGeorge', 'mcgeough' => 'McGeough', 'mcgerr' => 'McGerr', 'mcgettigan' => 'McGettigan',
+            'mcghee' => 'McGhee', 'mcgibbon' => 'McGibbon', 'mcgiffin' => 'McGiffin', 'mcgilberry' => 'McGilberry',
+            'mcgill' => 'McGill', 'mcgillicuddy' => 'McGillicuddy', 'mcgilvery' => 'McGilvery', 'mcgilvray' => 'McGilvray',
+            'mcgimsey' => 'McGimsey', 'mcginity' => 'McGinity', 'mcginley' => 'McGinley', 'mcginn' => 'McGinn',
+            'mcginnes' => 'McGinnes', 'mcginness' => 'McGinness', 'mcginnis' => 'McGinnis', 'mcgintee' => 'McGintee',
+            'mcginty' => 'McGinty', 'mcgirr' => 'McGirr', 'mcgirt' => 'McGirt', 'mcgivern' => 'McGivern',
+            'mcgivney' => 'McGivney', 'mcgladdery' => 'McGladdery', 'mcglade' => 'McGlade', 'mcglamery' => 'McGlamery',
+            'mcglashan' => 'McGlashan', 'mcglaughlin' => 'McGlaughlin', 'mcglaun' => 'McGlaun', 'mcgleam' => 'McGleam',
+            'mcglensey' => 'McGlensey', 'mcglinchey' => 'McGlinchey', 'mcglinn' => 'McGlinn', 'mcgloin' => 'McGloin',
+            'mcglone' => 'McGlone', 'mcglory' => 'McGlory', 'mcglothen' => 'McGlothen', 'mcglothern' => 'McGlothern',
+            'mcglothlin' => 'McGlothlin', 'mcglynn' => 'McGlynn', 'mcgoey' => 'McGoey', 'mcgoldrick' => 'McGoldrick',
+            'mcgolrick' => 'McGolrick', 'mcgonagill' => 'McGonagill', 'mcgonagle' => 'McGonagle', 'mcgonegal' => 'McGonegal',
+            'mcgonigle' => 'McGonigle', 'mcgoogan' => 'McGoogan', 'mcgoon' => 'McGoon', 'mcgorman' => 'McGorman',
+            'mcgorry' => 'McGorry', 'mcgough' => 'McGough', 'mcgourty' => 'McGourty', 'mcgovern' => 'McGovern',
+            'mcgowan' => 'McGowan', 'mcgowen' => 'McGowen', 'mcgowin' => 'McGowin', 'mcgrady' => 'McGrady',
+            'mcgrail' => 'McGrail', 'mcgranaghan' => 'McGranaghan', 'mcgranahan' => 'McGranahan', 'mcgrane' => 'McGrane',
+            'mcgrann' => 'McGrann', 'mcgrath' => 'McGrath', 'mcgrattan' => 'McGrattan', 'mcgraw' => 'McGraw',
+            'mcgreal' => 'McGreal', 'mcgreevey' => 'McGreevey', 'mcgreevy' => 'McGreevy', 'mcgregor' => 'McGregor',
+            'mcgregory' => 'McGregory', 'mcgrew' => 'McGrew', 'mcgriff' => 'McGriff', 'mcgroarty' => 'McGroarty',
+            'mcgrogan' => 'McGrogan', 'mcgrory' => 'McGrory', 'mcgruder' => 'McGruder', 'mcguane' => 'McGuane',
+            'mcguckin' => 'McGuckin', 'mcguff' => 'McGuff', 'mcguffee' => 'McGuffee', 'mcguffey' => 'McGuffey',
+            'mcguffin' => 'McGuffin', 'mcgugan' => 'McGugan', 'mcguigan' => 'McGuigan', 'mcguiggan' => 'McGuiggan',
+            'mcguinn' => 'McGuinn', 'mcguinness' => 'McGuinness', 'mcguire' => 'McGuire', 'mcguirk' => 'McGuirk',
+            'mcguirt' => 'McGuirt', 'mcgunnigle' => 'McGunnigle', 'mcgurk' => 'McGurk', 'mcgurl' => 'McGurl',
+            'mcgurn' => 'McGurn', 'mchaffie' => 'McHaffie', 'mchale' => 'McHale', 'mcham' => 'McHam',
+            'mchan' => 'McHan', 'mchaney' => 'McHaney', 'mcharg' => 'McHarg', 'mchargue' => 'McHargue',
+            'mchatton' => 'McHatton', 'mchenry' => 'McHenry', 'mchone' => 'McHone', 'mchugh' => 'McHugh',
+            'mchughes' => 'McHughes', 'mcilhargey' => 'McIlhargey', 'mcilhenny' => 'McIlhenny', 'mcilhinney' => 'McIlhinney',
+            'mcilmoyle' => 'McIlmoyle', 'mcilnay' => 'McIlnay', 'mcilrath' => 'McIlrath', 'mcilravy' => 'McIlravy',
+            'mcilroy' => 'McIlroy', 'mcilvain' => 'McIlvain', 'mcilvaine' => 'McIlvaine', 'mcilveen' => 'McIlveen',
+            'mcilvenny' => 'McIlvenny', 'mcilwain' => 'McIlwain', 'mcilwaine' => 'McIlwaine', 'mcilwee' => 'McIlwee',
+            'mcinally' => 'McInally', 'mcinch' => 'McInch', 'mcindoe' => 'McIndoe', 'mcinerney' => 'McInerney',
+            'mcinerny' => 'McInerny', 'mcinnis' => 'McInnis', 'mcinroy' => 'McInroy', 'mcintire' => 'McIntire',
+            'mcintosh' => 'McIntosh', 'mcinturf' => 'McInturf', 'mcintyre' => 'McIntyre', 'mcinvale' => 'McInvale',
+            'mcirvin' => 'McIrvin', 'mcisaac' => 'McIsaac', 'mcissac' => 'McIssac', 'mciver' => 'McIver',
+            'mcivor' => 'McIvor', 'mcjilton' => 'McJilton', 'mcjunkin' => 'McJunkin', 'mckager' => 'McKager',
+            'mckahan' => 'McKahan', 'mckaig' => 'McKaig', 'mckain' => 'McKain', 'mckale' => 'McKale',
+            'mckamey' => 'McKamey', 'mckamie' => 'McKamie', 'mckane' => 'McKane', 'mckanna' => 'McKanna',
+            'mckarnin' => 'McKarnin', 'mckaskle' => 'McKaskle', 'mckathan' => 'McKathan', 'mckay' => 'McKay',
+            'mckeag' => 'McKeag', 'mckeague' => 'McKeague', 'mckean' => 'McKean', 'mckeand' => 'McKeand',
+            'mckearney' => 'McKearney', 'mckechnie' => 'McKechnie', 'mckee' => 'McKee', 'mckeegan' => 'McKeegan',
+            'mckeehan' => 'McKeehan', 'mckeel' => 'McKeel', 'mckeelson' => 'McKeelson', 'mckeen' => 'McKeen',
+            'mckeever' => 'McKeever', 'mckeithan' => 'McKeithan', 'mckeithen' => 'McKeithen', 'mckell' => 'McKell',
+            'mckellar' => 'McKellar', 'mckellips' => 'McKellips', 'mckelvey' => 'McKelvey', 'mckelvie' => 'McKelvie',
+            'mckemie' => 'McKemie', 'mckendree' => 'McKendree', 'mckendrick' => 'McKendrick', 'mckendry' => 'McKendry',
+            'mckenire' => 'McKenire', 'mckenna' => 'McKenna', 'mckenney' => 'McKenney', 'mckennon' => 'McKennon',
+            'mckenny' => 'McKenny', 'mckensie' => 'McKensie', 'mckenzie' => 'McKenzie', 'mckeogh' => 'McKeogh',
+            'mckeon' => 'McKeon', 'mckeone' => 'McKeone', 'mckeough' => 'McKeough', 'mckeown' => 'McKeown',
+            'mckercher' => 'McKercher', 'mckernan' => 'McKernan', 'mckerrall' => 'McKerrall', 'mckerrow' => 'McKerrow',
+            'mckesson' => 'McKesson', 'mckethan' => 'McKethan', 'mckevitt' => 'McKevitt', 'mckey' => 'McKey',
+            'mckibben' => 'McKibben', 'mckibbin' => 'McKibbin', 'mckiddy' => 'McKiddy', 'mckie' => 'McKie',
+            'mckiernan' => 'McKiernan', 'mckillip' => 'McKillip', 'mckillop' => 'McKillop', 'mckim' => 'McKim',
+            'mckimmey' => 'McKimmey', 'mckimmy' => 'McKimmy', 'mckindles' => 'McKindles', 'mckinion' => 'McKinion',
+            'mckinlay' => 'McKinlay', 'mckinley' => 'McKinley', 'mckinney' => 'McKinney', 'mckinnie' => 'McKinnie',
+            'mckinnis' => 'McKinnis', 'mckinnon' => 'McKinnon', 'mckinstry' => 'McKinstry', 'mckinzie' => 'McKinzie',
+            'mckirdy' => 'McKirdy', 'mckisick' => 'McKisick', 'mckissack' => 'McKissack', 'mckissick' => 'McKissick',
+            'mckisson' => 'McKisson', 'mckitrick' => 'McKitrick', 'mckittrick' => 'McKittrick', 'mckiven' => 'McKiven',
+            'mcknabb' => 'McKnabb', 'mckneely' => 'McKneely', 'mcknew' => 'McKnew', 'mcknight' => 'McKnight',
+            'mcknitt' => 'McKnitt', 'mckone' => 'McKone', 'mckoon' => 'McKoon', 'mckowen' => 'McKowen',
+            'mckown' => 'McKown', 'mckoy' => 'McKoy', 'mckune' => 'McKune', 'mckusick' => 'McKusick',
+            'mclachlan' => 'McLachlan', 'mclafferty' => 'McLafferty', 'mclagan' => 'McLagan', 'mclain' => 'McLain',
+            'mclamb' => 'McLamb', 'mclanahan' => 'McLanahan', 'mclane' => 'McLane', 'mclaney' => 'McLaney',
+            'mclaren' => 'McLaren', 'mclarney' => 'McLarney', 'mclarnon' => 'McLarnon', 'mclarry' => 'McLarry',
+            'mclarty' => 'McLarty', 'mclaughlin' => 'McLaughlin', 'mclaurin' => 'McLaurin', 'mclaury' => 'McLaury',
+            'mclaverty' => 'McLaverty', 'mclawhon' => 'McLawhon', 'mclawhorn' => 'McLawhorn', 'mclay' => 'McLay',
+            'mclean' => 'McLean', 'mcleary' => 'McLeary', 'mcleay' => 'McLeay', 'mclee' => 'McLee',
+            'mclees' => 'McLees', 'mcleese' => 'McLeese', 'mcleish' => 'McLeish', 'mclellan' => 'McLellan',
+            'mclelland' => 'McLelland', 'mcleming' => 'McLeming', 'mclemore' => 'McLemore', 'mclendon' => 'McLendon',
+            'mclennan' => 'McLennan', 'mclennon' => 'McLennon', 'mcleod' => 'McLeod', 'mcleon' => 'McLeon',
+            'mcleroy' => 'McLeroy', 'mclerran' => 'McLerran', 'mclester' => 'McLester', 'mcley' => 'McLey',
+            'mclimans' => 'McLimans', 'mclin' => 'McLin', 'mclinden' => 'McLinden', 'mclinn' => 'McLinn',
+            'mclish' => 'McLish', 'mcloney' => 'McLoney', 'mcloone' => 'McLoone', 'mcloud' => 'McLoud',
+            'mcloughlin' => 'McLoughlin', 'mclouth' => 'McLouth', 'mcloy' => 'McLoy', 'mclucas' => 'McLucas',
+            'mcluckie' => 'McLuckie', 'mclure' => 'McLure', 'mclymont' => 'McLymont', 'mcmackin' => 'McMackin',
+            'mcmackle' => 'McMackle', 'mcmahan' => 'McMahan', 'mcmahen' => 'McMahen', 'mcmahill' => 'McMahill',
+            'mcmahon' => 'McMahon', 'mcmains' => 'McMains', 'mcmanama' => 'McManama', 'mcmanaman' => 'McManaman',
+            'mcmanamon' => 'McManamon', 'mcmanaway' => 'McManaway', 'mcmanigal' => 'McManigal', 'mcmanis' => 'McManis',
+            'mcmann' => 'McMann', 'mcmanners' => 'McManners', 'mcmannis' => 'McMannis', 'mcmannus' => 'McMannus',
+            'mcmanus' => 'McManus', 'mcmartin' => 'McMartin', 'mcmaster' => 'McMaster', 'mcmasters' => 'McMasters',
+            'mcmasterson' => 'McMasterson', 'mcmath' => 'McMath', 'mcmeans' => 'McMeans', 'mcmechan' => 'McMechan',
+            'mcmeekin' => 'McMeekin', 'mcmeen' => 'McMeen', 'mcmenamin' => 'McMenamin', 'mcmenamy' => 'McMenamy',
+            'mcmenemy' => 'McMenemy', 'mcmennamy' => 'McMennamy', 'mcmichael' => 'McMichael', 'mcmichen' => 'McMichen',
+            'mcmickle' => 'McMickle', 'mcmillan' => 'McMillan', 'mcmillen' => 'McMillen', 'mcmillian' => 'McMillian',
+            'mcmillin' => 'McMillin', 'mcmillon' => 'McMillon', 'mcminds' => 'McMinds', 'mcminn' => 'McMinn',
+            'mcmonagle' => 'McMonagle', 'mcmonigle' => 'McMonigle', 'mcmorran' => 'McMorran', 'mcmorris' => 'McMorris',
+            'mcmorrisey' => 'McMorrisey', 'mcmorrow' => 'McMorrow', 'mcmuldren' => 'McMuldren', 'mcmullan' => 'McMullan',
+            'mcmullen' => 'McMullen', 'mcmullin' => 'McMullin', 'mcmullins' => 'McMullins', 'mcmunn' => 'McMunn',
+            'mcmurchy' => 'McMurchy', 'mcmurdo' => 'McMurdo', 'mcmurphy' => 'McMurphy', 'mcmurray' => 'McMurray',
+            'mcmurrey' => 'McMurrey', 'mcmurry' => 'McMurry', 'mcmurtrey' => 'McMurtrey', 'mcmurtrie' => 'McMurtrie',
+            'mcmurtry' => 'McMurtry', 'mcnab' => 'McNab', 'mcnabb' => 'McNabb', 'mcnabney' => 'McNabney',
+            'mcnaff' => 'McNaff', 'mcnair' => 'McNair', 'mcnall' => 'McNall', 'mcnalley' => 'McNalley',
+            'mcnally' => 'McNally', 'mcnamara' => 'McNamara', 'mcnamee' => 'McNamee', 'mcnamer' => 'McNamer',
+            'mcnaney' => 'McNaney', 'mcnaron' => 'McNaron', 'mcnary' => 'McNary', 'mcnatt' => 'McNatt',
+            'mcnaught' => 'McNaught', 'mcnaughten' => 'McNaughten', 'mcnaughton' => 'McNaughton', 'mcnay' => 'McNay',
+            'mcneai' => 'McNeai', 'mcneal' => 'McNeal', 'mcnear' => 'McNear', 'mcneary' => 'McNeary',
+            'mcnease' => 'McNease', 'mcneece' => 'McNeece', 'mcneeley' => 'McNeeley', 'mcneely' => 'McNeely',
+            'mcnees' => 'McNees', 'mcneese' => 'McNeese', 'mcneff' => 'McNeff', 'mcneice' => 'McNeice',
+            'mcneil' => 'McNeil', 'mcneilage' => 'McNeilage', 'mcneill' => 'McNeill', 'mcneilly' => 'McNeilly',
+            'mcnelis' => 'McNelis', 'mcnelly' => 'McNelly', 'mcnerlin' => 'McNerlin', 'mcnerney' => 'McNerney',
+            'mcnett' => 'McNett', 'mcnevin' => 'McNevin', 'mcnew' => 'McNew', 'mcney' => 'McNey',
+            'mcnichol' => 'McNichol', 'mcnicholas' => 'McNicholas', 'mcnichols' => 'McNichols', 'mcnicholson' => 'McNicholson',
+            'mcnickle' => 'McNickle', 'mcnicoll' => 'McNicoll', 'mcniece' => 'McNiece', 'mcniel' => 'McNiel',
+            'mcniff' => 'McNiff', 'mcnight' => 'McNight', 'mcninch' => 'McNinch', 'mcnish' => 'McNish',
+            'mcnitt' => 'McNitt', 'mcnorton' => 'McNorton', 'mcnulty' => 'McNulty', 'mcnutt' => 'McNutt',
+            'mcnutty' => 'McNutty', 'mcomber' => 'McOmber', 'mcowen' => 'McOwen', 'mcpadden' => 'McPadden',
+            'mcpartland' => 'McPartland', 'mcpartlin' => 'McPartlin', 'mcpeak' => 'McPeak', 'mcpeake' => 'McPeake',
+            'mcpeck' => 'McPeck', 'mcpeek' => 'McPeek', 'mcpeters' => 'McPeters', 'mcphail' => 'McPhail',
+            'mcphatter' => 'McPhatter', 'mcphaul' => 'McPhaul', 'mcphearson' => 'McPhearson', 'mcphee' => 'McPhee',
+            'mcpheeters' => 'McPheeters', 'mcpheeterson' => 'McPheeterson', 'mcpherson' => 'McPherson', 'mcphie' => 'McPhie',
+            'mcphillips' => 'McPhillips', 'mcpike' => 'McPike', 'mcpoland' => 'McPoland', 'mcpolin' => 'McPolin',
+            'mcquade' => 'McQuade', 'mcquage' => 'McQuage', 'mcquaid' => 'McQuaid', 'mcquaig' => 'McQuaig',
+            'mcquain' => 'McQuain', 'mcquarrie' => 'McQuarrie', 'mcquary' => 'McQuary', 'mcquate' => 'McQuate',
+            'mcquattie' => 'McQuattie', 'mcquay' => 'McQuay', 'mcqueary' => 'McQueary', 'mcqueen' => 'McQueen',
+            'mcqueeney' => 'McQueeney', 'mcquerry' => 'McQuerry', 'mcquigg' => 'McQuigg', 'mcquilkin' => 'McQuilkin',
+            'mcquillan' => 'McQuillan', 'mcquillen' => 'McQuillen', 'mcquillian' => 'McQuillian', 'mcquinn' => 'McQuinn',
+            'mcquirk' => 'McQuirk', 'mcquirter' => 'McQuirter', 'mcquiston' => 'McQuiston', 'mcquitty' => 'McQuitty',
+            'mcquoid' => 'McQuoid', 'mcrae' => 'McRae', 'mcraney' => 'McRaney', 'mcrary' => 'McRary',
+            'mcray' => 'McRay', 'mcree' => 'McRee', 'mcrell' => 'McRell', 'mcreynold' => 'McReynold',
+            'mcreynolds' => 'McReynolds', 'mcright' => 'McRight', 'mcrill' => 'McRill', 'mcritchie' => 'McRitchie',
+            'mcrobbie' => 'McRobbie', 'mcroberts' => 'McRoberts', 'mcrorie' => 'McRorie', 'mcroy' => 'McRoy',
+            'mcruer' => 'McRuer', 'mcshan' => 'McShan', 'mcshane' => 'McShane', 'mcshann' => 'McShann',
+            'mcsharry' => 'McSharry', 'mcshea' => 'McShea', 'mcsheehy' => 'McSheehy', 'mcsherry' => 'McSherry',
+            'mcsherrys' => 'McSherrys', 'mcsorley' => 'McSorley', 'mcspadden' => 'McSpadden', 'mcspedon' => 'McSpedon',
+            'mcstay' => 'McStay', 'mcswain' => 'McSwain', 'mcsweeney' => 'McSweeney', 'mcswiney' => 'McSwiney',
+            'mctaggart' => 'McTaggart', 'mctague' => 'McTague', 'mctagues' => 'McTagues', 'mctavish' => 'McTavish',
+            'mcteague' => 'McTeague', 'mctee' => 'McTee', 'mcternan' => 'McTernan', 'mctier' => 'McTier',
+            'mctiernan' => 'McTiernan', 'mctighe' => 'McTighe', 'mctigue' => 'McTigue', 'mcvay' => 'McVay',
+            'mcvea' => 'McVea', 'mcvean' => 'McVean', 'mcveigh' => 'McVeigh', 'mcvey' => 'McVey',
+            'mcvicar' => 'McVicar', 'mcvicars' => 'McVicars', 'mcvicker' => 'McVicker', 'mcwade' => 'McWade',
+            'mcwain' => 'McWain', 'mcward' => 'McWard', 'mcwaters' => 'McWaters', 'mcwatters' => 'McWatters',
+            'mcwayne' => 'McWayne', 'mcweeney' => 'McWeeney', 'mcwethy' => 'McWethy', 'mcwhinney' => 'McWhinney',
+            'mcwhinnie' => 'McWhinnie', 'mcwhirter' => 'McWhirter', 'mcwhite' => 'McWhite', 'mcwhorter' => 'McWhorter',
+            'mcwilliam' => 'McWilliam', 'mcwilliams' => 'McWilliams', 'mcwright' => 'McWright', 'mcingvale' => 'McIngVale',
+        );
+    }
+    return $map;
+}
+
+function sp_ucfirst_u( string $s ): string {
+    if ( '' === $s ) {
+        return $s;
+    }
+    if ( function_exists( 'mb_substr' ) ) {
+        return mb_strtoupper( mb_substr( $s, 0, 1, 'UTF-8' ), 'UTF-8' ) . mb_substr( $s, 1, null, 'UTF-8' );
+    }
+    return ucfirst( $s );
+}
+
+function sp_proper_name_token( string $tok, bool $is_first ): string {
+    if ( '' === $tok ) {
+        return $tok;
+    }
+    static $particles = array( 'de','del','della','di','da','dos','das','du','la','le','van','von','der','den','ter','ten','of','y','e','al','bin' );
+    static $romans    = array( 'ii','iii','iv','vi','vii','viii','ix','xi','xii','xiii' );
+
+    $bare = rtrim( $tok, '.' );
+    if ( in_array( $bare, $romans, true ) ) {
+        return strtoupper( $bare );
+    }
+    if ( 'jr' === $bare || 'sr' === $bare ) {
+        return sp_ucfirst_u( $bare ) . '.';
+    }
+    $mac = sp_mac_names();
+    if ( isset( $mac[ $tok ] ) ) {
+        return $mac[ $tok ];
+    }
+    if ( ! $is_first && in_array( $tok, $particles, true ) ) {
+        return $tok;
+    }
+    if ( false !== strpos( $tok, '-' ) ) {
+        $parts = array();
+        foreach ( explode( '-', $tok ) as $p ) {
+            $parts[] = sp_proper_name_token( $p, true );
+        }
+        return implode( '-', $parts );
+    }
+    foreach ( array( "'", "\u{2019}" ) as $apos ) {
+        if ( false !== strpos( $tok, $apos ) ) {
+            $parts = array();
+            foreach ( explode( $apos, $tok ) as $p ) {
+                $parts[] = sp_ucfirst_u( $p );
+            }
+            return implode( $apos, $parts );
+        }
+    }
+    if ( strlen( $tok ) > 2 && 'mc' === substr( $tok, 0, 2 ) ) {
+        return 'Mc' . sp_ucfirst_u( substr( $tok, 2 ) );
+    }
+    // Period-separated initials: "j.r." -> "J.R.", "a.j." -> "A.J.". Treat the
+    // dot as a separator and capitalize each piece.
+    if ( false !== strpos( $tok, '.' ) ) {
+        $parts = array();
+        foreach ( explode( '.', $tok ) as $p ) {
+            $parts[] = sp_ucfirst_u( $p );
+        }
+        return implode( '.', $parts );
+    }
+    return sp_ucfirst_u( $tok );
+}
+
+function sp_proper_name( $name ): string {
+    $name = trim( (string) $name );
+    if ( '' === $name ) {
+        return '';
+    }
+    // Respect intentional casing: act only on all-upper or all-lower input.
+    $has_upper = (bool) preg_match( '/\p{Lu}/u', $name );
+    $has_lower = (bool) preg_match( '/\p{Ll}/u', $name );
+    if ( $has_upper && $has_lower ) {
+        return $name;
+    }
+    $lower  = function_exists( 'mb_strtolower' ) ? mb_strtolower( $name, 'UTF-8' ) : strtolower( $name );
+    $tokens = preg_split( '/\s+/', $lower );
+    $out    = array();
+    foreach ( $tokens as $i => $tok ) {
+        $out[] = sp_proper_name_token( $tok, 0 === $i );
+    }
+    return implode( ' ', $out );
+}
+
+function sp_leadership_person_name( $r ): string {
+    $assembled = trim(
+        ( ! empty( $r->prefix ) ? $r->prefix . ' ' : '' )
+        . ( ! empty( $r->preferred_name ) ? $r->preferred_name : $r->first_name )
+        . ' ' . $r->last_name
+        . ( ! empty( $r->suffix ) ? ' ' . $r->suffix : '' )
+    );
+    return sp_proper_name( $assembled );
+}
+
+function sp_shortcode_officers( $atts = array() ): string {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    $rows = $wpdb->get_results(
+        "SELECT vr.role_title, m.prefix, m.first_name, m.preferred_name, m.last_name, m.suffix
+         FROM {$prefix}volunteer_roles vr
+         LEFT JOIN {$prefix}members m ON m.user_id = vr.user_id
+         WHERE vr.role_type = 'officer' AND vr.status = 'active'
+         ORDER BY vr.id ASC"
+    );
+    ob_start();
+    sp_leadership_public_styles();
+    if ( empty( $rows ) ) {
+        echo '<p class="sp-leadership-empty">' . esc_html__( 'Officer positions will be listed here once they are filled.', 'societypress' ) . '</p>';
+    } else {
+        echo '<ul class="sp-officer-list">';
+        foreach ( $rows as $r ) {
+            echo '<li><span class="sp-officer-title">' . esc_html( $r->role_title ) . '</span>'
+               . '<span class="sp-officer-name">' . esc_html( sp_leadership_person_name( $r ) ) . '</span></li>';
+        }
+        echo '</ul>';
+    }
+    return ob_get_clean();
+}
+
+function sp_shortcode_committees( $atts = array() ): string {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    $rows = $wpdb->get_results(
+        "SELECT vr.committee, vr.role_title, m.prefix, m.first_name, m.preferred_name, m.last_name, m.suffix
+         FROM {$prefix}volunteer_roles vr
+         LEFT JOIN {$prefix}members m ON m.user_id = vr.user_id
+         WHERE vr.role_type = 'committee' AND vr.status = 'active'
+         ORDER BY vr.committee ASC, vr.id ASC"
+    );
+    ob_start();
+    sp_leadership_public_styles();
+    if ( empty( $rows ) ) {
+        echo '<p class="sp-leadership-empty">' . esc_html__( 'Committee information will be posted here soon.', 'societypress' ) . '</p>';
+    } else {
+        $current = null;
+        foreach ( $rows as $r ) {
+            if ( $r->committee !== $current ) {
+                if ( null !== $current ) {
+                    echo '</ul></div>';
+                }
+                $current = $r->committee;
+                echo '<div class="sp-committee-group"><h3>' . esc_html( $r->committee ? $r->committee : __( 'Committee', 'societypress' ) ) . '</h3><ul class="sp-officer-list">';
+            }
+            $role = $r->role_title ? $r->role_title : __( 'Member', 'societypress' );
+            echo '<li><span class="sp-officer-title">' . esc_html( $role ) . '</span>'
+               . '<span class="sp-officer-name">' . esc_html( sp_leadership_person_name( $r ) ) . '</span></li>';
+        }
+        echo '</ul></div>';
+    }
+    return ob_get_clean();
+}
+
 function sp_render_leadership_page(): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
@@ -64658,12 +65201,25 @@ function sp_render_leadership_page(): void {
                 </div>
                 <?php if ( $officer_search ) : ?>
                     <div class="sp-leadership-search-count">
-                        <?php echo esc_html( sprintf(
-                            /* translators: %1$d is the number of matching members, %2$s is the search term */
-                            __( '%1$d members matching "%2$s"', 'societypress' ),
-                            count( $officer_members ),
-                            $officer_search
-                        ) ); ?>
+                        <?php if ( empty( $officer_members ) ) : ?>
+                            <?php echo esc_html( sprintf(
+                                /* translators: %s is the search term */
+                                __( 'No active members found matching "%s".', 'societypress' ),
+                                $officer_search
+                            ) ); ?>
+                        <?php else : ?>
+                            <strong><?php echo esc_html( sprintf(
+                                /* translators: %d is the number of matching members */
+                                _n( '%d member found:', '%d members found:', count( $officer_members ), 'societypress' ),
+                                count( $officer_members )
+                            ) ); ?></strong>
+                            <ul class="sp-leadership-search-results-list">
+                                <?php foreach ( $officer_members as $m ) : ?>
+                                    <li><?php echo esc_html( $m->last_name . ', ' . $m->first_name ); ?></li>
+                                <?php endforeach; ?>
+                            </ul>
+                            <span class="description"><?php esc_html_e( 'Selected in the Member field below — set the position title and click Add Officer.', 'societypress' ); ?></span>
+                        <?php endif; ?>
                     </div>
                 <?php endif; ?>
             </form>
@@ -64684,7 +65240,7 @@ function sp_render_leadership_page(): void {
                                 <?php else : ?>
                                     <option value=""><?php echo '— ' . esc_html__( 'Select Member', 'societypress' ) . ' —'; ?></option>
                                     <?php foreach ( $officer_members as $m ) : ?>
-                                        <option value="<?php echo (int) $m->user_id; ?>" <?php selected( ( $editing_section === 'officer' ? ( $editing->user_id ?? 0 ) : 0 ), $m->user_id ); ?>>
+                                        <option value="<?php echo (int) $m->user_id; ?>" <?php selected( ( $editing_section === 'officer' ? ( $editing->user_id ?? 0 ) : ( count( $officer_members ) === 1 ? (int) $officer_members[0]->user_id : 0 ) ), $m->user_id ); ?>>
                                             <?php echo esc_html( $m->last_name . ', ' . $m->first_name ); ?>
                                         </option>
                                     <?php endforeach; ?>

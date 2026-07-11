@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.2' );
+define( 'SOCIETYPRESS_VERSION', '1.0.3' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -1846,6 +1846,64 @@ function sp_create_tables(): void {
         KEY request_id (request_id),
         KEY user_id (user_id),
         KEY is_resolved_answer (is_resolved_answer)
+    ) {$charset_collate};" );
+
+    // ========================================================================
+    // sp_forms — Volunteer-built forms (Forms module)
+    //
+    // WHY: Societies need to spin up arbitrary public forms on demand —
+    //      "Volunteer Interest," "Cemetery Access Request," "Ask the
+    //      Librarian" — without a developer. Each form owns its field list
+    //      (stored as JSON so the schema stays fixed while the questions
+    //      vary) plus its own email-delivery settings, so different forms
+    //      can route to different officers. Submissions are stored (see
+    //      sp_form_submissions) AND emailed, so a dropped notification on
+    //      flaky shared hosting never loses an inquiry.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}forms (
+        id                    BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        name                  VARCHAR(255)        NOT NULL,
+        title                 VARCHAR(500)        NULL,
+        status                VARCHAR(20)         NOT NULL DEFAULT 'published',
+        fields                LONGTEXT            NULL,
+        email_subject         VARCHAR(500)        NULL,
+        send_to_email         VARCHAR(255)        NULL,
+        send_to_name          VARCHAR(255)        NULL,
+        reply_to_email        VARCHAR(255)        NULL,
+        reply_to_name         VARCHAR(255)        NULL,
+        email_intro           LONGTEXT            NULL,
+        confirmation_message  TEXT                NULL,
+        submissions_count     INT UNSIGNED        NOT NULL DEFAULT 0,
+        created_at            DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at            DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY status (status)
+    ) {$charset_collate};" );
+
+    // ========================================================================
+    // sp_form_submissions — One row per submitted form (Forms module)
+    //
+    // WHY: The submitted values are stored as JSON keyed by field label so
+    //      a form's questions can change over time without orphaning old
+    //      submissions. submitter_email / submitter_name are denormalized
+    //      out of the JSON so GDPR export/erase and the admin viewer can
+    //      query them directly. ip_hash is a salted hash (never the raw IP)
+    //      kept only for abuse triage.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}form_submissions (
+        id               BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        form_id          BIGINT(20) UNSIGNED NOT NULL,
+        data             LONGTEXT            NULL,
+        submitter_name   VARCHAR(255)        NULL,
+        submitter_email  VARCHAR(255)        NULL,
+        ip_hash          VARCHAR(64)         NULL,
+        is_read          TINYINT(1)          NOT NULL DEFAULT 0,
+        created_at       DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY form_id (form_id),
+        KEY submitter_email (submitter_email),
+        KEY is_read (is_read),
+        KEY created_at (created_at)
     ) {$charset_collate};" );
 
 
@@ -4113,6 +4171,12 @@ function sp_get_modules(): array {
             'icon'        => 'dashicons-clipboard',
             'menu_slugs'  => [ 'sp-research-cases', 'sp-research-case-edit' ],
         ],
+        'forms' => [
+            'name'        => __( 'Forms', 'societypress' ),
+            'description' => __( 'Build your own contact and request forms — volunteer sign-ups, research questions, cemetery access requests — and route each one to the right person. Every submission is saved and emailed.', 'societypress' ),
+            'icon'        => 'dashicons-feedback',
+            'menu_slugs'  => [ 'sp-forms', 'sp-form-edit', 'sp-form-submissions' ],
+        ],
     ];
 }
 
@@ -5305,6 +5369,36 @@ add_action( 'admin_menu', function () {
         'sp_render_help_requests_admin_page'
     );
 
+    // Forms — volunteer-built contact / request forms.
+    add_submenu_page(
+        'societypress',
+        __( 'Forms — SocietyPress', 'societypress' ),
+        __( 'Forms', 'societypress' ),
+        'manage_options',
+        'sp-forms',
+        'sp_render_forms_admin_page'
+    );
+
+    // Form Edit — hidden (accessed via Add New / Edit row actions)
+    add_submenu_page(
+        '',
+        __( 'Edit Form — SocietyPress', 'societypress' ),
+        __( 'Edit Form', 'societypress' ),
+        'manage_options',
+        'sp-form-edit',
+        'sp_render_form_edit_page'
+    );
+
+    // Form Submissions — hidden (accessed via the Submissions row action)
+    add_submenu_page(
+        '',
+        __( 'Form Submissions — SocietyPress', 'societypress' ),
+        __( 'Form Submissions', 'societypress' ),
+        'manage_options',
+        'sp-form-submissions',
+        'sp_render_form_submissions_page'
+    );
+
     // Newsletter Archive — PDF newsletter archive with cover thumbnails.
     // WHY: Admins upload PDF newsletters and the system auto-generates cover
     //      thumbnails. Members can browse, preview, and download past issues.
@@ -6022,6 +6116,11 @@ function sp_get_menu_capability_map(): array {
         'sp-resource-categories'   => 'sp_manage_content',
         'sp-import-links'          => 'sp_manage_content',
         'sp-help-requests'         => 'sp_manage_content',
+
+        // Forms
+        'sp-forms'                 => 'sp_manage_content',
+        'sp-form-edit'             => 'sp_manage_content',
+        'sp-form-submissions'      => 'sp_manage_content',
 
         // Communications
         'sp-newsletter-archive'    => 'sp_manage_communications',
@@ -34240,6 +34339,12 @@ function sp_get_widget_registry(): array {
             'icon'        => 'email',
             'category'    => 'action',
         ],
+        'form' => [
+            'label'       => __( 'Form', 'societypress' ),
+            'description' => __( 'Drop in one of your custom forms (built under Forms) — sign-ups, requests, questions.', 'societypress' ),
+            'icon'        => 'feedback',
+            'category'    => 'action',
+        ],
         'upcoming_events' => [
             'label'       => __( 'Upcoming Events', 'societypress' ),
             'description' => __( 'Compact list of upcoming events with links to detail pages.', 'societypress' ),
@@ -35947,6 +36052,11 @@ function sp_sanitize_builder_widget( string $type, array $settings ): array {
             return [
                 'address' => sanitize_text_field( $settings['address'] ?? '' ),
                 'height'  => $height,
+            ];
+
+        case 'form':
+            return [
+                'form_id' => absint( $settings['form_id'] ?? 0 ),
             ];
 
         default:
@@ -70676,6 +70786,12 @@ add_filter( 'wp_privacy_personal_data_exporters', function ( $exporters ) {
         'callback'               => 'sp_privacy_export_help_data',
     ];
 
+    // Form submissions exporter
+    $exporters['societypress-form-submissions'] = [
+        'exporter_friendly_name' => 'SocietyPress Form Submissions',
+        'callback'               => 'sp_privacy_export_form_data',
+    ];
+
     // Donation data exporter
     $exporters['societypress-donations'] = [
         'exporter_friendly_name' => 'SocietyPress Donations',
@@ -70984,6 +71100,12 @@ add_filter( 'wp_privacy_personal_data_erasers', function ( $erasers ) {
     $erasers['societypress-help-requests'] = [
         'eraser_friendly_name' => 'SocietyPress Help Requests',
         'callback'             => 'sp_privacy_erase_help_data',
+    ];
+
+    // Form submissions eraser
+    $erasers['societypress-form-submissions'] = [
+        'eraser_friendly_name' => 'SocietyPress Form Submissions',
+        'callback'             => 'sp_privacy_erase_form_data',
     ];
 
     // Donation data eraser
@@ -99779,4 +99901,1568 @@ function sp_render_short_links_admin_page(): void {
     })();
     </script>
     <?php
+}
+
+
+// ============================================================================
+// ============================================================================
+// FORMS MODULE — Volunteer-built contact / request forms
+//
+// WHY: Parity with EasyNetSites' Forms tool, done better. A volunteer builds a
+//      named form with arbitrary fields, sets who each submission emails, then
+//      drops it on a page via the "Form" page-builder widget or the
+//      [societypress_form id=N] shortcode. Every submission is STORED (so a
+//      dropped email on flaky shared hosting never loses an inquiry) AND
+//      emailed. Spam is caught with a honeypot + a signed timing trap — no
+//      third-party captcha, no external dependency.
+//
+// Tables: sp_forms (definition + delivery), sp_form_submissions (one per send).
+// ============================================================================
+// ============================================================================
+
+
+/**
+ * The field types a volunteer can add to a form.
+ *
+ * WHY a single source of truth: the editor dropdown, the front-end renderer,
+ * and the submission validator all read this so a new type is added in one
+ * place. 'options' flags the types that need a choice list; 'multi' flags the
+ * types that can submit more than one value (checkboxes).
+ *
+ * @return array[] Keyed by type slug.
+ */
+function sp_forms_field_types(): array {
+    return [
+        'text'       => [ 'label' => __( 'Single line text', 'societypress' ), 'options' => false, 'multi' => false ],
+        'textarea'   => [ 'label' => __( 'Paragraph text', 'societypress' ),   'options' => false, 'multi' => false ],
+        'email'      => [ 'label' => __( 'Email address', 'societypress' ),     'options' => false, 'multi' => false ],
+        'phone'      => [ 'label' => __( 'Phone number', 'societypress' ),      'options' => false, 'multi' => false ],
+        'number'     => [ 'label' => __( 'Number', 'societypress' ),            'options' => false, 'multi' => false ],
+        'date'       => [ 'label' => __( 'Date', 'societypress' ),              'options' => false, 'multi' => false ],
+        'select'     => [ 'label' => __( 'Drop down menu', 'societypress' ),    'options' => true,  'multi' => false ],
+        'radio'      => [ 'label' => __( 'Multiple choice (pick one)', 'societypress' ), 'options' => true, 'multi' => false ],
+        'checkboxes' => [ 'label' => __( 'Checkboxes (pick many)', 'societypress' ),     'options' => true, 'multi' => true  ],
+        'file'       => [ 'label' => __( 'File upload', 'societypress' ),        'options' => false, 'multi' => false ],
+    ];
+}
+
+/**
+ * File extensions/mimes accepted by a form's file-upload field.
+ *
+ * WHY a tight allowlist: without one, a form becomes an arbitrary-file drop —
+ * including .php. Genealogy societies attach documents and images, so we allow
+ * common document and image types and nothing executable.
+ *
+ * @return array Extension-pattern => mime, for wp_handle_upload's 'mimes'.
+ */
+function sp_forms_allowed_upload_mimes(): array {
+    return [
+        'jpg|jpeg' => 'image/jpeg',
+        'png'      => 'image/png',
+        'gif'      => 'image/gif',
+        'webp'     => 'image/webp',
+        'pdf'      => 'application/pdf',
+        'doc'      => 'application/msword',
+        'docx'     => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'txt'      => 'text/plain',
+        'csv'      => 'text/csv',
+    ];
+}
+
+/**
+ * Decode a form's stored fields JSON into a clean, ordered list of field defs.
+ *
+ * @param object|null $form A row from sp_forms.
+ * @return array[] Each: key, type, label, required(bool), options(array), placeholder.
+ */
+function sp_forms_get_fields( $form ): array {
+    if ( ! $form || empty( $form->fields ) ) {
+        return [];
+    }
+    $decoded = json_decode( $form->fields, true );
+    if ( ! is_array( $decoded ) ) {
+        return [];
+    }
+    $types  = sp_forms_field_types();
+    $fields = [];
+    foreach ( $decoded as $f ) {
+        if ( ! is_array( $f ) || empty( $f['type'] ) || ! isset( $types[ $f['type'] ] ) ) {
+            continue;
+        }
+        $fields[] = [
+            'key'         => (string) ( $f['key'] ?? '' ),
+            'type'        => (string) $f['type'],
+            'label'       => (string) ( $f['label'] ?? '' ),
+            'required'    => ! empty( $f['required'] ),
+            'options'     => array_values( array_filter( array_map( 'strval', (array) ( $f['options'] ?? [] ) ) ) ),
+            'placeholder' => (string) ( $f['placeholder'] ?? '' ),
+        ];
+    }
+    return $fields;
+}
+
+/**
+ * Fetch a single form by id.
+ *
+ * @param int $id
+ * @return object|null
+ */
+function sp_get_form( int $id ) {
+    global $wpdb;
+    if ( $id <= 0 ) {
+        return null;
+    }
+    return $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_forms WHERE id = %d",
+        $id
+    ) );
+}
+
+/**
+ * Fetch all forms, newest first (admin listing + widget picker).
+ *
+ * @param bool $published_only When true, only published forms (for the picker).
+ * @return object[]
+ */
+function sp_forms_get_all( bool $published_only = false ): array {
+    global $wpdb;
+    $where = $published_only ? "WHERE status = 'published'" : '';
+    return $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}sp_forms {$where} ORDER BY name ASC" );
+}
+
+
+// ----------------------------------------------------------------------------
+// ADMIN — Forms list page
+// ----------------------------------------------------------------------------
+
+/**
+ * Render the Forms admin listing (Settings-gated by the Forms module).
+ */
+function sp_render_forms_admin_page(): void {
+    if ( ! sp_module_enabled( 'forms' ) ) {
+        wp_die( esc_html__( 'The Forms module is not enabled.', 'societypress' ) );
+    }
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You do not have permission to manage forms.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // Handle delete (POST only, nonce-guarded).
+    if ( isset( $_POST['sp_delete_form'] ) ) {
+        $form_id = absint( $_POST['form_id'] ?? 0 );
+        check_admin_referer( 'sp_delete_form_' . $form_id );
+        if ( $form_id ) {
+            $wpdb->delete( $prefix . 'form_submissions', [ 'form_id' => $form_id ], [ '%d' ] );
+            $wpdb->delete( $prefix . 'forms', [ 'id' => $form_id ], [ '%d' ] );
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Form deleted.', 'societypress' ) . '</p></div>';
+        }
+    }
+
+    $forms = sp_forms_get_all();
+    $new_url = esc_url( admin_url( 'admin.php?page=sp-form-edit' ) );
+    ?>
+    <div class="wrap">
+        <h1 class="wp-heading-inline"><?php esc_html_e( 'Forms', 'societypress' ); ?></h1>
+        <a href="<?php echo $new_url; ?>" class="page-title-action"><?php esc_html_e( 'Add New Form', 'societypress' ); ?></a>
+        <hr class="wp-header-end">
+
+        <p class="description"><?php esc_html_e( 'Build a form once, then place it on any page with the Form widget in the page builder, or with its shortcode. Every submission is saved here and emailed to the people you choose.', 'societypress' ); ?></p>
+
+        <?php if ( empty( $forms ) ) : ?>
+            <div class="sp-empty-state" style="text-align:center; padding:48px 20px;">
+                <p style="font-size:15px;"><?php esc_html_e( 'You haven\'t built any forms yet.', 'societypress' ); ?></p>
+                <a href="<?php echo $new_url; ?>" class="button button-primary button-hero"><?php esc_html_e( 'Create Your First Form', 'societypress' ); ?></a>
+            </div>
+        <?php else : ?>
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th scope="col"><?php esc_html_e( 'Name', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Fields', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Submissions', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Shortcode', 'societypress' ); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ( $forms as $form ) :
+                        $edit_url    = esc_url( admin_url( 'admin.php?page=sp-form-edit&form_id=' . (int) $form->id ) );
+                        $subs_url    = esc_url( admin_url( 'admin.php?page=sp-form-submissions&form_id=' . (int) $form->id ) );
+                        $field_count = count( sp_forms_get_fields( $form ) );
+                        $unread      = (int) $wpdb->get_var( $wpdb->prepare(
+                            "SELECT COUNT(*) FROM {$prefix}form_submissions WHERE form_id = %d AND is_read = 0",
+                            (int) $form->id
+                        ) );
+                        $shortcode   = '[societypress_form id="' . (int) $form->id . '"]';
+                    ?>
+                        <tr>
+                            <td>
+                                <strong><a href="<?php echo $edit_url; ?>"><?php echo esc_html( $form->name ); ?></a></strong>
+                                <div class="row-actions">
+                                    <span class="edit"><a href="<?php echo $edit_url; ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> | </span>
+                                    <span class="view"><a href="<?php echo $subs_url; ?>"><?php esc_html_e( 'Submissions', 'societypress' ); ?></a> | </span>
+                                    <span class="trash">
+                                        <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-forms' ) ); ?>" class="sp-inline" data-sp-confirm="<?php echo esc_attr__( 'Delete this form and all of its saved submissions? This cannot be undone.', 'societypress' ); ?>">
+                                            <?php wp_nonce_field( 'sp_delete_form_' . (int) $form->id ); ?>
+                                            <input type="hidden" name="form_id" value="<?php echo (int) $form->id; ?>">
+                                            <button type="submit" name="sp_delete_form" class="button-link sp-text-danger"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                                        </form>
+                                    </span>
+                                </div>
+                            </td>
+                            <td>
+                                <?php if ( 'published' === $form->status ) : ?>
+                                    <span style="color:#008a20; font-weight:600;"><?php esc_html_e( 'Published', 'societypress' ); ?></span>
+                                <?php else : ?>
+                                    <span style="color:#996800; font-weight:600;"><?php esc_html_e( 'Draft', 'societypress' ); ?></span>
+                                <?php endif; ?>
+                            </td>
+                            <td><?php echo (int) $field_count; ?></td>
+                            <td>
+                                <a href="<?php echo $subs_url; ?>"><?php echo (int) $form->submissions_count; ?></a>
+                                <?php if ( $unread > 0 ) : ?>
+                                    <span class="awaiting-mod" style="display:inline-block; min-width:18px; height:18px; line-height:18px; text-align:center; border-radius:9px; background:#d63638; color:#fff; font-size:11px; padding:0 5px;"><?php echo (int) $unread; ?></span>
+                                <?php endif; ?>
+                            </td>
+                            <td><code style="user-select:all;"><?php echo esc_html( $shortcode ); ?></code></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+    </div>
+    <?php
+}
+
+
+// ----------------------------------------------------------------------------
+// ADMIN — Form editor (create / edit)
+// ----------------------------------------------------------------------------
+
+/**
+ * Render the form editor: field builder + email-delivery settings.
+ */
+function sp_render_form_edit_page(): void {
+    if ( ! sp_module_enabled( 'forms' ) ) {
+        wp_die( esc_html__( 'The Forms module is not enabled.', 'societypress' ) );
+    }
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You do not have permission to manage forms.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $prefix  = $wpdb->prefix . 'sp_';
+    $form_id = absint( $_GET['form_id'] ?? 0 );
+
+    // Save.
+    if ( isset( $_POST['sp_save_form'] ) ) {
+        check_admin_referer( 'sp_save_form' );
+        $form_id = sp_forms_handle_save( $form_id );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-form-edit&form_id=' . $form_id . '&saved=1' ) );
+        exit;
+    }
+
+    $form   = $form_id ? sp_get_form( $form_id ) : null;
+    $fields = sp_forms_get_fields( $form );
+
+    $name        = $form ? $form->name : '';
+    $title       = $form ? (string) $form->title : '';
+    $status      = $form ? $form->status : 'published';
+    $subject     = $form ? (string) $form->email_subject : '';
+    $to_email    = $form ? (string) $form->send_to_email : '';
+    $to_name     = $form ? (string) $form->send_to_name : '';
+    $reply_email = $form ? (string) $form->reply_to_email : '';
+    $reply_name  = $form ? (string) $form->reply_to_name : '';
+    $intro       = $form ? (string) $form->email_intro : '';
+    $confirm     = $form ? (string) $form->confirmation_message : '';
+    if ( '' === $confirm ) {
+        $confirm = __( 'Thank you! Your message has been sent.', 'societypress' );
+    }
+    $org_email = sp_settings()['organization_email'] ?? get_option( 'admin_email' );
+
+    $field_types = sp_forms_field_types();
+    ?>
+    <div class="wrap sp-form-editor">
+        <h1><?php echo $form_id ? esc_html__( 'Edit Form', 'societypress' ) : esc_html__( 'Add New Form', 'societypress' ); ?></h1>
+
+        <?php if ( isset( $_GET['saved'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Form saved.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+
+        <form method="post" id="sp-form-edit-form">
+            <?php wp_nonce_field( 'sp_save_form' ); ?>
+
+            <div class="sp-form-editor-grid">
+                <div class="sp-form-editor-main">
+
+                    <div class="sp-form-card">
+                        <table class="form-table" role="presentation">
+                            <tr>
+                                <th scope="row"><label for="sp-form-name"><?php esc_html_e( 'Form name', 'societypress' ); ?></label></th>
+                                <td>
+                                    <input type="text" id="sp-form-name" name="name" value="<?php echo esc_attr( $name ); ?>" class="regular-text" required>
+                                    <p class="description"><?php esc_html_e( 'For your reference in this list (e.g. "Volunteer Interest").', 'societypress' ); ?></p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="sp-form-title"><?php esc_html_e( 'Heading shown to visitors', 'societypress' ); ?></label></th>
+                                <td>
+                                    <input type="text" id="sp-form-title" name="title" value="<?php echo esc_attr( $title ); ?>" class="regular-text">
+                                    <p class="description"><?php esc_html_e( 'Optional. Displayed above the form on the page. Leave blank for no heading.', 'societypress' ); ?></p>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <div class="sp-form-card">
+                        <h2><?php esc_html_e( 'Fields', 'societypress' ); ?></h2>
+                        <p class="description"><?php esc_html_e( 'Add the questions this form asks. Drag is not needed — use the arrows to reorder.', 'societypress' ); ?></p>
+
+                        <div id="sp-fields-list">
+                            <?php
+                            if ( $fields ) {
+                                foreach ( $fields as $i => $f ) {
+                                    sp_forms_render_field_row( $i, $f, $field_types );
+                                }
+                            }
+                            ?>
+                        </div>
+
+                        <p>
+                            <button type="button" class="button button-secondary" id="sp-add-field">
+                                <span class="dashicons dashicons-plus-alt2" style="vertical-align:text-bottom;"></span>
+                                <?php esc_html_e( 'Add Field', 'societypress' ); ?>
+                            </button>
+                        </p>
+                    </div>
+
+                    <div class="sp-form-card">
+                        <h2><?php esc_html_e( 'Delivery', 'societypress' ); ?></h2>
+                        <p class="description"><?php esc_html_e( 'What happens when someone submits this form. The submission is always saved here; these settings control the email notification.', 'societypress' ); ?></p>
+                        <table class="form-table" role="presentation">
+                            <tr>
+                                <th scope="row"><label for="sp-form-subject"><?php esc_html_e( 'Email subject', 'societypress' ); ?></label></th>
+                                <td>
+                                    <input type="text" id="sp-form-subject" name="email_subject" value="<?php echo esc_attr( $subject ); ?>" class="large-text" placeholder="<?php echo esc_attr( sprintf( __( 'e.g. New %s submission', 'societypress' ), $name ? $name : __( 'form', 'societypress' ) ) ); ?>">
+                                    <p class="description"><?php esc_html_e( 'The subject line of the notification email. Leave blank to use the form name.', 'societypress' ); ?></p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><?php esc_html_e( 'Send notifications to', 'societypress' ); ?></th>
+                                <td>
+                                    <input type="email" name="send_to_email" value="<?php echo esc_attr( $to_email ); ?>" class="regular-text" placeholder="<?php echo esc_attr( $org_email ); ?>">
+                                    <input type="text" name="send_to_name" value="<?php echo esc_attr( $to_name ); ?>" class="regular-text" placeholder="<?php esc_attr_e( 'Name (optional)', 'societypress' ); ?>">
+                                    <p class="description"><?php esc_html_e( 'Who receives each submission. Leave the email blank to use your organization email.', 'societypress' ); ?></p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><?php esc_html_e( 'Reply-to', 'societypress' ); ?></th>
+                                <td>
+                                    <input type="email" name="reply_to_email" value="<?php echo esc_attr( $reply_email ); ?>" class="regular-text" placeholder="<?php esc_attr_e( 'Defaults to the submitter', 'societypress' ); ?>">
+                                    <input type="text" name="reply_to_name" value="<?php echo esc_attr( $reply_name ); ?>" class="regular-text" placeholder="<?php esc_attr_e( 'Name (optional)', 'societypress' ); ?>">
+                                    <p class="description"><?php esc_html_e( 'When you hit Reply on the notification, this is who it goes to. Leave blank and it replies to whoever submitted the form (if they gave an email).', 'societypress' ); ?></p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="sp-form-intro"><?php esc_html_e( 'Note at top of email', 'societypress' ); ?></label></th>
+                                <td>
+                                    <textarea id="sp-form-intro" name="email_intro" rows="3" class="large-text"><?php echo esc_textarea( $intro ); ?></textarea>
+                                    <p class="description"><?php esc_html_e( 'Optional text placed above the submitted answers in the notification email.', 'societypress' ); ?></p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="sp-form-confirm"><?php esc_html_e( 'Thank-you message', 'societypress' ); ?></label></th>
+                                <td>
+                                    <input type="text" id="sp-form-confirm" name="confirmation_message" value="<?php echo esc_attr( $confirm ); ?>" class="large-text">
+                                    <p class="description"><?php esc_html_e( 'Shown to the visitor on the page after they submit.', 'societypress' ); ?></p>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="sp-form-editor-side">
+                    <div class="sp-form-card">
+                        <h2><?php esc_html_e( 'Publish', 'societypress' ); ?></h2>
+                        <p>
+                            <label for="sp-form-status"><strong><?php esc_html_e( 'Status', 'societypress' ); ?></strong></label><br>
+                            <select id="sp-form-status" name="status" style="width:100%; margin-top:6px;">
+                                <option value="published" <?php selected( $status, 'published' ); ?>><?php esc_html_e( 'Published — live on the site', 'societypress' ); ?></option>
+                                <option value="draft" <?php selected( $status, 'draft' ); ?>><?php esc_html_e( 'Draft — hidden from visitors', 'societypress' ); ?></option>
+                            </select>
+                        </p>
+                        <?php if ( $form_id ) : ?>
+                            <p class="description"><?php esc_html_e( 'Place this form with:', 'societypress' ); ?></p>
+                            <p><code style="user-select:all; display:block; padding:6px;">[societypress_form id="<?php echo (int) $form_id; ?>"]</code></p>
+                            <p class="description"><?php esc_html_e( '…or add the "Form" widget in the page builder.', 'societypress' ); ?></p>
+                        <?php endif; ?>
+                        <p style="margin-top:16px;">
+                            <button type="submit" name="sp_save_form" class="button button-primary button-large" style="width:100%;"><?php esc_html_e( 'Save Form', 'societypress' ); ?></button>
+                        </p>
+                        <p style="text-align:center;">
+                            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-forms' ) ); ?>"><?php esc_html_e( 'Back to all forms', 'societypress' ); ?></a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <?php // Hidden template row for JS-added fields. ?>
+    <template id="sp-field-row-template">
+        <?php sp_forms_render_field_row( '__INDEX__', [], $field_types ); ?>
+    </template>
+
+    <style>
+        .sp-form-editor-grid { display:flex; gap:20px; align-items:flex-start; margin-top:16px; }
+        .sp-form-editor-main { flex:1 1 auto; min-width:0; }
+        .sp-form-editor-side { flex:0 0 260px; }
+        .sp-form-card { background:#fff; border:1px solid #c3c4c7; border-radius:4px; padding:16px 20px; margin-bottom:20px; }
+        .sp-form-card h2 { margin-top:0; }
+        .sp-field-row { border:1px solid #dcdcde; border-radius:4px; padding:12px 14px; margin-bottom:12px; background:#f6f7f7; }
+        .sp-field-row-head { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+        .sp-field-row-head .sp-field-type { min-width:180px; }
+        .sp-field-row-head .sp-field-label-input { flex:1 1 200px; }
+        .sp-field-row-actions { display:flex; gap:4px; margin-left:auto; }
+        .sp-field-row-body { margin-top:10px; display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; }
+        .sp-field-options-wrap { flex:1 1 260px; }
+        .sp-field-options-wrap textarea { width:100%; }
+        .sp-field-required-wrap { flex:0 0 auto; padding-top:4px; }
+        @media (max-width:900px){ .sp-form-editor-grid { flex-direction:column; } .sp-form-editor-side { flex-basis:auto; width:100%; } }
+    </style>
+
+    <script>
+    (function(){
+        var list  = document.getElementById('sp-fields-list');
+        var tpl   = document.getElementById('sp-field-row-template');
+        var addBtn = document.getElementById('sp-add-field');
+        if ( ! list || ! tpl || ! addBtn ) return;
+
+        // Field indexes only need to be unique within the form; PHP reindexes on
+        // save, so a monotonically increasing counter is enough.
+        var counter = list.querySelectorAll('.sp-field-row').length;
+
+        function optionsNeeded(type){ return type === 'select' || type === 'radio' || type === 'checkboxes'; }
+
+        function syncRow(row){
+            var typeSel = row.querySelector('.sp-field-type');
+            var optWrap = row.querySelector('.sp-field-options-wrap');
+            if ( typeSel && optWrap ) {
+                optWrap.style.display = optionsNeeded(typeSel.value) ? '' : 'none';
+            }
+        }
+
+        function wireRow(row){
+            var typeSel = row.querySelector('.sp-field-type');
+            if ( typeSel ) typeSel.addEventListener('change', function(){ syncRow(row); });
+            row.addEventListener('click', function(e){
+                var btn = e.target.closest('button');
+                if ( ! btn ) return;
+                if ( btn.classList.contains('sp-field-remove') ) {
+                    e.preventDefault();
+                    row.parentNode.removeChild(row);
+                } else if ( btn.classList.contains('sp-field-up') ) {
+                    e.preventDefault();
+                    var prev = row.previousElementSibling;
+                    if ( prev ) row.parentNode.insertBefore(row, prev);
+                } else if ( btn.classList.contains('sp-field-down') ) {
+                    e.preventDefault();
+                    var next = row.nextElementSibling;
+                    if ( next ) row.parentNode.insertBefore(next, row);
+                }
+            });
+            syncRow(row);
+        }
+
+        Array.prototype.forEach.call(list.querySelectorAll('.sp-field-row'), wireRow);
+
+        addBtn.addEventListener('click', function(){
+            var html = tpl.innerHTML.replace(/__INDEX__/g, 'n' + (counter++));
+            var temp = document.createElement('div');
+            temp.innerHTML = html.trim();
+            var row = temp.firstElementChild;
+            list.appendChild(row);
+            wireRow(row);
+            var lbl = row.querySelector('.sp-field-label-input');
+            if ( lbl ) lbl.focus();
+        });
+    })();
+    </script>
+    <?php
+}
+
+/**
+ * Render one field-builder row (used for existing fields and the JS template).
+ *
+ * @param int|string $index       Row index (or the '__INDEX__' template token).
+ * @param array      $field       Field def (empty for a fresh row).
+ * @param array      $field_types Output of sp_forms_field_types().
+ */
+function sp_forms_render_field_row( $index, array $field, array $field_types ): void {
+    $type        = $field['type'] ?? 'text';
+    $label       = $field['label'] ?? '';
+    $required    = ! empty( $field['required'] );
+    $placeholder = $field['placeholder'] ?? '';
+    $options     = ! empty( $field['options'] ) ? implode( "\n", (array) $field['options'] ) : '';
+    $base        = 'fields[' . esc_attr( $index ) . ']';
+    ?>
+    <div class="sp-field-row">
+        <div class="sp-field-row-head">
+            <select class="sp-field-type" name="<?php echo $base; ?>[type]" aria-label="<?php esc_attr_e( 'Field type', 'societypress' ); ?>">
+                <?php foreach ( $field_types as $slug => $meta ) : ?>
+                    <option value="<?php echo esc_attr( $slug ); ?>" <?php selected( $type, $slug ); ?>><?php echo esc_html( $meta['label'] ); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <input type="text" class="sp-field-label-input" name="<?php echo $base; ?>[label]" value="<?php echo esc_attr( $label ); ?>" placeholder="<?php esc_attr_e( 'Question label (e.g. Your Name)', 'societypress' ); ?>">
+            <span class="sp-field-row-actions">
+                <button type="button" class="button sp-field-up" aria-label="<?php esc_attr_e( 'Move up', 'societypress' ); ?>"><span class="dashicons dashicons-arrow-up-alt2"></span></button>
+                <button type="button" class="button sp-field-down" aria-label="<?php esc_attr_e( 'Move down', 'societypress' ); ?>"><span class="dashicons dashicons-arrow-down-alt2"></span></button>
+                <button type="button" class="button sp-field-remove" aria-label="<?php esc_attr_e( 'Remove field', 'societypress' ); ?>"><span class="dashicons dashicons-trash"></span></button>
+            </span>
+        </div>
+        <div class="sp-field-row-body">
+            <label class="sp-field-required-wrap">
+                <input type="checkbox" name="<?php echo $base; ?>[required]" value="1" <?php checked( $required ); ?>>
+                <?php esc_html_e( 'Required', 'societypress' ); ?>
+            </label>
+            <div class="sp-field-options-wrap">
+                <label style="display:block; font-weight:600; margin-bottom:2px;"><?php esc_html_e( 'Choices (one per line)', 'societypress' ); ?></label>
+                <textarea name="<?php echo $base; ?>[options]" rows="3" placeholder="<?php esc_attr_e( "Option one\nOption two", 'societypress' ); ?>"><?php echo esc_textarea( $options ); ?></textarea>
+            </div>
+        </div>
+        <input type="hidden" name="<?php echo $base; ?>[placeholder]" value="<?php echo esc_attr( $placeholder ); ?>">
+    </div>
+    <?php
+}
+
+/**
+ * Sanitize and persist the posted form editor data.
+ *
+ * @param int $form_id 0 to insert, or an existing id to update.
+ * @return int The saved form id.
+ */
+function sp_forms_handle_save( int $form_id ): int {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    $types  = sp_forms_field_types();
+
+    // Fields.
+    $raw_fields = isset( $_POST['fields'] ) && is_array( $_POST['fields'] ) ? wp_unslash( $_POST['fields'] ) : [];
+    $fields     = [];
+    $n          = 0;
+    foreach ( $raw_fields as $rf ) {
+        if ( ! is_array( $rf ) ) {
+            continue;
+        }
+        $ftype = sanitize_key( $rf['type'] ?? '' );
+        if ( ! isset( $types[ $ftype ] ) ) {
+            continue;
+        }
+        $flabel = sanitize_text_field( $rf['label'] ?? '' );
+        if ( '' === $flabel ) {
+            continue; // A field with no label has no meaning to a visitor.
+        }
+        $opts = [];
+        if ( $types[ $ftype ]['options'] ) {
+            $lines = preg_split( '/\r\n|\r|\n/', (string) ( $rf['options'] ?? '' ) );
+            foreach ( $lines as $line ) {
+                $line = sanitize_text_field( $line );
+                if ( '' !== $line ) {
+                    $opts[] = $line;
+                }
+            }
+        }
+        $fields[] = [
+            'key'         => 'f' . ( ++$n ),
+            'type'        => $ftype,
+            'label'       => $flabel,
+            'required'    => ! empty( $rf['required'] ),
+            'options'     => $opts,
+            'placeholder' => sanitize_text_field( $rf['placeholder'] ?? '' ),
+        ];
+    }
+
+    $data = [
+        'name'                 => sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) ),
+        'title'                => sanitize_text_field( wp_unslash( $_POST['title'] ?? '' ) ),
+        'status'               => ( 'draft' === ( $_POST['status'] ?? '' ) ) ? 'draft' : 'published',
+        'fields'               => wp_json_encode( $fields ),
+        'email_subject'        => sanitize_text_field( wp_unslash( $_POST['email_subject'] ?? '' ) ),
+        'send_to_email'        => sanitize_email( wp_unslash( $_POST['send_to_email'] ?? '' ) ),
+        'send_to_name'         => sanitize_text_field( wp_unslash( $_POST['send_to_name'] ?? '' ) ),
+        'reply_to_email'       => sanitize_email( wp_unslash( $_POST['reply_to_email'] ?? '' ) ),
+        'reply_to_name'        => sanitize_text_field( wp_unslash( $_POST['reply_to_name'] ?? '' ) ),
+        'email_intro'          => sanitize_textarea_field( wp_unslash( $_POST['email_intro'] ?? '' ) ),
+        'confirmation_message' => sanitize_text_field( wp_unslash( $_POST['confirmation_message'] ?? '' ) ),
+    ];
+    if ( '' === $data['name'] ) {
+        $data['name'] = __( 'Untitled form', 'societypress' );
+    }
+
+    $formats = [ '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' ];
+
+    if ( $form_id ) {
+        $wpdb->update( $prefix . 'forms', $data, [ 'id' => $form_id ], $formats, [ '%d' ] );
+        return $form_id;
+    }
+
+    $wpdb->insert( $prefix . 'forms', $data, $formats );
+    return (int) $wpdb->insert_id;
+}
+
+
+// ----------------------------------------------------------------------------
+// ADMIN — Submissions viewer
+// ----------------------------------------------------------------------------
+
+/**
+ * WP_List_Table for a single form's submissions.
+ *
+ * WHY a List Table: gives us WP-native pagination, bulk delete, and the
+ * standard admin look for free — the same pattern the rest of the plugin uses.
+ */
+class SP_Form_Submissions_List_Table extends WP_List_Table {
+
+    /** @var int */
+    protected $form_id;
+
+    public function __construct( int $form_id ) {
+        $this->form_id = $form_id;
+        parent::__construct( [
+            'singular' => 'form_submission',
+            'plural'   => 'form_submissions',
+            'ajax'     => false,
+        ] );
+    }
+
+    public function no_items(): void {
+        esc_html_e( 'No submissions yet.', 'societypress' );
+    }
+
+    public function get_columns(): array {
+        return [
+            'cb'         => '<input type="checkbox" />',
+            'submitted'  => __( 'Received', 'societypress' ),
+            'submitter'  => __( 'From', 'societypress' ),
+            'preview'    => __( 'Summary', 'societypress' ),
+        ];
+    }
+
+    protected function get_bulk_actions(): array {
+        return [
+            'delete'     => __( 'Delete', 'societypress' ),
+            'mark_read'  => __( 'Mark as read', 'societypress' ),
+        ];
+    }
+
+    protected function column_cb( $item ): string {
+        return sprintf( '<input type="checkbox" name="submission[]" value="%d" />', (int) $item->id );
+    }
+
+    protected function column_submitted( $item ): string {
+        $view_url = esc_url( add_query_arg( [
+            'page'          => 'sp-form-submissions',
+            'form_id'       => $this->form_id,
+            'submission_id' => (int) $item->id,
+        ], admin_url( 'admin.php' ) ) );
+
+        $when = mysql2date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $item->created_at );
+        $bold = $item->is_read ? '%s' : '<strong>%s</strong>';
+        $out  = '<a href="' . $view_url . '">' . sprintf( $bold, esc_html( $when ) ) . '</a>';
+
+        $delete_url = wp_nonce_url( add_query_arg( [
+            'page'          => 'sp-form-submissions',
+            'form_id'       => $this->form_id,
+            'action'        => 'delete',
+            'submission_id' => (int) $item->id,
+        ], admin_url( 'admin.php' ) ), 'sp_delete_submission_' . (int) $item->id );
+
+        $actions = [
+            'view'   => '<a href="' . $view_url . '">' . esc_html__( 'View', 'societypress' ) . '</a>',
+            'delete' => '<a href="' . esc_url( $delete_url ) . '" style="color:#b32d2e;">' . esc_html__( 'Delete', 'societypress' ) . '</a>',
+        ];
+        return $out . $this->row_actions( $actions );
+    }
+
+    protected function column_submitter( $item ): string {
+        $name  = $item->submitter_name ? esc_html( $item->submitter_name ) : '<em>' . esc_html__( 'Anonymous', 'societypress' ) . '</em>';
+        $email = $item->submitter_email ? '<br><a href="mailto:' . esc_attr( $item->submitter_email ) . '">' . esc_html( $item->submitter_email ) . '</a>' : '';
+        return $name . $email;
+    }
+
+    protected function column_preview( $item ): string {
+        $data = json_decode( (string) $item->data, true );
+        if ( ! is_array( $data ) ) {
+            return '';
+        }
+        $bits = [];
+        foreach ( $data as $label => $value ) {
+            if ( is_array( $value ) ) {
+                $value = implode( ', ', $value );
+            }
+            $bits[] = $label . ': ' . (string) $value;
+        }
+        $text = wp_trim_words( implode( ' • ', $bits ), 20, '…' );
+        return '<span class="sp-form-sub-preview">' . esc_html( $text ) . '</span>';
+    }
+
+    public function prepare_items(): void {
+        global $wpdb;
+        $prefix = $wpdb->prefix . 'sp_';
+
+        $per_page = 25;
+        $paged    = max( 1, (int) $this->get_pagenum() );
+        $offset   = ( $paged - 1 ) * $per_page;
+
+        $total = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$prefix}form_submissions WHERE form_id = %d",
+            $this->form_id
+        ) );
+
+        $this->items = $wpdb->get_results( $wpdb->prepare(
+            "SELECT * FROM {$prefix}form_submissions WHERE form_id = %d ORDER BY created_at DESC LIMIT %d OFFSET %d",
+            $this->form_id,
+            $per_page,
+            $offset
+        ) );
+
+        $this->_column_headers = [ $this->get_columns(), [], [] ];
+        $this->set_pagination_args( [
+            'total_items' => $total,
+            'per_page'    => $per_page,
+            'total_pages' => (int) ceil( $total / $per_page ),
+        ] );
+    }
+}
+
+/**
+ * Render the submissions admin page for one form (list, detail, CSV export).
+ */
+function sp_render_form_submissions_page(): void {
+    if ( ! sp_module_enabled( 'forms' ) ) {
+        wp_die( esc_html__( 'The Forms module is not enabled.', 'societypress' ) );
+    }
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You do not have permission to view form submissions.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $prefix  = $wpdb->prefix . 'sp_';
+    $form_id = absint( $_GET['form_id'] ?? 0 );
+    $form    = sp_get_form( $form_id );
+    if ( ! $form ) {
+        wp_die( esc_html__( 'Form not found.', 'societypress' ) );
+    }
+
+    $list_url = esc_url( admin_url( 'admin.php?page=sp-form-submissions&form_id=' . $form_id ) );
+
+    // Single-submission delete (nonce-guarded link).
+    if ( 'delete' === ( $_GET['action'] ?? '' ) && isset( $_GET['submission_id'] ) ) {
+        $sid = absint( $_GET['submission_id'] );
+        check_admin_referer( 'sp_delete_submission_' . $sid );
+        $wpdb->delete( $prefix . 'form_submissions', [ 'id' => $sid, 'form_id' => $form_id ], [ '%d', '%d' ] );
+        sp_forms_recount( $form_id );
+        wp_safe_redirect( $list_url . '&deleted=1' );
+        exit;
+    }
+
+    // Bulk actions.
+    if ( isset( $_POST['submission'] ) && is_array( $_POST['submission'] ) ) {
+        check_admin_referer( 'bulk-form_submissions' );
+        $ids     = array_map( 'absint', $_POST['submission'] );
+        $ids     = array_filter( $ids );
+        $action  = ( ( $_POST['action'] ?? '-1' ) !== '-1' ) ? sanitize_key( $_POST['action'] ) : sanitize_key( $_POST['action2'] ?? '-1' );
+        if ( $ids ) {
+            $in = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+            if ( 'delete' === $action ) {
+                $params = array_merge( $ids, [ $form_id ] );
+                $wpdb->query( $wpdb->prepare(
+                    "DELETE FROM {$prefix}form_submissions WHERE id IN ($in) AND form_id = %d",
+                    ...$params
+                ) );
+                sp_forms_recount( $form_id );
+            } elseif ( 'mark_read' === $action ) {
+                $params = array_merge( $ids, [ $form_id ] );
+                $wpdb->query( $wpdb->prepare(
+                    "UPDATE {$prefix}form_submissions SET is_read = 1 WHERE id IN ($in) AND form_id = %d",
+                    ...$params
+                ) );
+            }
+        }
+        wp_safe_redirect( $list_url );
+        exit;
+    }
+
+    // Detail view of a single submission.
+    if ( isset( $_GET['submission_id'] ) ) {
+        $sid = absint( $_GET['submission_id'] );
+        $sub = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$prefix}form_submissions WHERE id = %d AND form_id = %d",
+            $sid, $form_id
+        ) );
+        if ( $sub ) {
+            // Mark read on view.
+            if ( ! $sub->is_read ) {
+                $wpdb->update( $prefix . 'form_submissions', [ 'is_read' => 1 ], [ 'id' => $sid ], [ '%d' ], [ '%d' ] );
+            }
+            sp_forms_render_submission_detail( $form, $sub, $list_url );
+            return;
+        }
+    }
+
+    $table = new SP_Form_Submissions_List_Table( $form_id );
+    $table->prepare_items();
+    $export_url = wp_nonce_url( add_query_arg( [
+        'page'      => 'sp-form-submissions',
+        'form_id'   => $form_id,
+        'sp_action' => 'export_csv',
+    ], admin_url( 'admin.php' ) ), 'sp_export_form_' . $form_id );
+    ?>
+    <div class="wrap">
+        <h1 class="wp-heading-inline">
+            <?php /* translators: %s: form name */ echo esc_html( sprintf( __( 'Submissions: %s', 'societypress' ), $form->name ) ); ?>
+        </h1>
+        <a href="<?php echo esc_url( $export_url ); ?>" class="page-title-action"><?php esc_html_e( 'Download CSV', 'societypress' ); ?></a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-forms' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Back to Forms', 'societypress' ); ?></a>
+        <hr class="wp-header-end">
+
+        <?php if ( isset( $_GET['deleted'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Submission deleted.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+
+        <form method="post">
+            <?php
+            wp_nonce_field( 'bulk-form_submissions' );
+            $table->display();
+            ?>
+        </form>
+    </div>
+    <?php
+}
+
+/**
+ * Render the read-only detail of a single submission.
+ *
+ * @param object $form
+ * @param object $sub
+ * @param string $list_url
+ */
+function sp_forms_render_submission_detail( $form, $sub, string $list_url ): void {
+    $data = json_decode( (string) $sub->data, true );
+    if ( ! is_array( $data ) ) {
+        $data = [];
+    }
+    $when = mysql2date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $sub->created_at );
+    ?>
+    <div class="wrap">
+        <h1><?php /* translators: %s: form name */ echo esc_html( sprintf( __( 'Submission — %s', 'societypress' ), $form->name ) ); ?></h1>
+        <p><a href="<?php echo esc_url( $list_url ); ?>">&larr; <?php esc_html_e( 'Back to all submissions', 'societypress' ); ?></a></p>
+
+        <div class="sp-form-card" style="background:#fff; border:1px solid #c3c4c7; border-radius:4px; padding:8px 20px 20px; max-width:760px;">
+            <p><strong><?php esc_html_e( 'Received:', 'societypress' ); ?></strong> <?php echo esc_html( $when ); ?></p>
+            <table class="widefat striped">
+                <tbody>
+                    <?php foreach ( $data as $label => $value ) :
+                        if ( is_array( $value ) ) {
+                            $value = implode( ', ', $value );
+                        }
+                        // File-upload values are stored as URLs; link them.
+                        $is_url = is_string( $value ) && preg_match( '#^https?://#', $value );
+                        ?>
+                        <tr>
+                            <th scope="row" style="width:30%;"><?php echo esc_html( $label ); ?></th>
+                            <td>
+                                <?php if ( $is_url ) : ?>
+                                    <a href="<?php echo esc_url( $value ); ?>" target="_blank" rel="noopener"><?php echo esc_html( wp_basename( $value ) ); ?></a>
+                                <?php else : ?>
+                                    <?php echo nl2br( esc_html( (string) $value ) ); ?>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <?php
+}
+
+/**
+ * Recalculate a form's cached submissions_count.
+ *
+ * @param int $form_id
+ */
+function sp_forms_recount( int $form_id ): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    $count  = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$prefix}form_submissions WHERE form_id = %d",
+        $form_id
+    ) );
+    $wpdb->update( $prefix . 'forms', [ 'submissions_count' => $count ], [ 'id' => $form_id ], [ '%d' ], [ '%d' ] );
+}
+
+/**
+ * Stream a CSV of one form's submissions. Hooked on admin_init so it can send
+ * headers before any output.
+ */
+add_action( 'admin_init', function () {
+    if ( ( $_GET['page'] ?? '' ) !== 'sp-form-submissions' || ( $_GET['sp_action'] ?? '' ) !== 'export_csv' ) {
+        return;
+    }
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You do not have permission to export submissions.', 'societypress' ) );
+    }
+    $form_id = absint( $_GET['form_id'] ?? 0 );
+    check_admin_referer( 'sp_export_form_' . $form_id );
+
+    $form = sp_get_form( $form_id );
+    if ( ! $form ) {
+        wp_die( esc_html__( 'Form not found.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    $rows   = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$prefix}form_submissions WHERE form_id = %d ORDER BY created_at DESC",
+        $form_id
+    ) );
+
+    // Column set = the form's current field labels, plus meta columns. Older
+    // submissions that predate a field simply have blanks for it.
+    $labels = [];
+    foreach ( sp_forms_get_fields( $form ) as $f ) {
+        $labels[] = $f['label'];
+    }
+
+    $filename = 'form-' . $form_id . '-submissions-' . gmdate( 'Ymd' ) . '.csv';
+    nocache_headers();
+    header( 'Content-Type: text/csv; charset=utf-8' );
+    header( 'Content-Disposition: attachment; filename=' . $filename );
+
+    $out = fopen( 'php://output', 'w' );
+    fputs( $out, "\xEF\xBB\xBF" ); // UTF-8 BOM so Excel reads accents correctly.
+    fputcsv( $out, array_merge( [ __( 'Received', 'societypress' ) ], $labels ) );
+
+    foreach ( $rows as $row ) {
+        $data = json_decode( (string) $row->data, true );
+        $data = is_array( $data ) ? $data : [];
+        $line = [ $row->created_at ];
+        foreach ( $labels as $label ) {
+            $val = $data[ $label ] ?? '';
+            if ( is_array( $val ) ) {
+                $val = implode( '; ', $val );
+            }
+            $line[] = (string) $val;
+        }
+        fputcsv( $out, $line );
+    }
+    fclose( $out );
+    exit;
+} );
+
+
+// ----------------------------------------------------------------------------
+// FRONT END — Shortcode, widget, and rendering
+// ----------------------------------------------------------------------------
+
+/**
+ * [societypress_form id="N"] — render a published form.
+ */
+add_shortcode( 'societypress_form', function ( $atts ) {
+    if ( ! sp_module_enabled( 'forms' ) ) {
+        return '';
+    }
+    $atts = shortcode_atts( [ 'id' => 0 ], $atts, 'societypress_form' );
+    $form = sp_get_form( absint( $atts['id'] ) );
+    if ( ! $form ) {
+        return '';
+    }
+    return sp_forms_render_form( $form );
+} );
+
+/**
+ * Page-builder "Form" widget — settings editor (pick which form to show).
+ *
+ * @param int|string $index
+ * @param array      $settings
+ */
+function sp_builder_fields_form( $index, array $settings ): void {
+    $selected = (int) ( $settings['form_id'] ?? 0 );
+    $forms    = sp_forms_get_all();
+    ?>
+    <div class="sp-builder-field">
+        <?php if ( empty( $forms ) ) : ?>
+            <p class="description">
+                <?php
+                printf(
+                    /* translators: %s: link to the Forms admin page */
+                    esc_html__( 'You have no forms yet. %s first, then choose it here.', 'societypress' ),
+                    '<a href="' . esc_url( admin_url( 'admin.php?page=sp-form-edit' ) ) . '" target="_blank">' . esc_html__( 'Build a form', 'societypress' ) . '</a>'
+                );
+                ?>
+            </p>
+        <?php else : ?>
+            <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-form_id"><?php esc_html_e( 'Which form?', 'societypress' ); ?></label>
+            <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][form_id]" id="sp-w-<?php echo esc_attr( $index ); ?>-form_id" class="widefat">
+                <option value="0"><?php esc_html_e( '— Select a form —', 'societypress' ); ?></option>
+                <?php foreach ( $forms as $f ) : ?>
+                    <option value="<?php echo (int) $f->id; ?>" <?php selected( $selected, (int) $f->id ); ?>>
+                        <?php echo esc_html( $f->name ); ?><?php echo 'published' === $f->status ? '' : ' ' . esc_html__( '(draft)', 'societypress' ); ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+            <p class="description"><?php esc_html_e( 'Build and edit forms under the Forms menu. Draft forms won\'t show to visitors.', 'societypress' ); ?></p>
+        <?php endif; ?>
+    </div>
+    <?php
+}
+
+/**
+ * Page-builder "Form" widget — front-end render.
+ *
+ * @param array $s
+ */
+function sp_render_builder_widget_form( array $s ): void {
+    if ( ! sp_module_enabled( 'forms' ) ) {
+        return;
+    }
+    $form = sp_get_form( (int) ( $s['form_id'] ?? 0 ) );
+    if ( ! $form ) {
+        if ( current_user_can( 'sp_manage_content' ) || current_user_can( 'manage_options' ) ) {
+            echo '<p class="sp-form-notice">' . esc_html__( 'Select a form for this widget in the page builder.', 'societypress' ) . '</p>';
+        }
+        return;
+    }
+    echo sp_forms_render_form( $form ); // Escaped internally.
+}
+
+/**
+ * Build the public HTML for a form. Shared by the shortcode and the widget.
+ *
+ * @param object $form
+ * @return string
+ */
+function sp_forms_render_form( $form ): string {
+    // Draft forms are invisible to visitors, but an admin previewing the page
+    // gets a heads-up instead of silence.
+    if ( 'published' !== $form->status ) {
+        if ( current_user_can( 'sp_manage_content' ) || current_user_can( 'manage_options' ) ) {
+            return '<p class="sp-form-notice">' . esc_html(
+                sprintf( /* translators: %s: form name */ __( 'The form "%s" is a draft and is only visible to editors.', 'societypress' ), $form->name )
+            ) . '</p>';
+        }
+        return '';
+    }
+
+    $fields = sp_forms_get_fields( $form );
+    $uid    = 'sp-form-' . (int) $form->id . '-' . wp_unique_id();
+
+    // Signed timestamp for the timing trap: a real person needs a few seconds
+    // to fill a form; instant submissions are bots. The hash stops tampering.
+    $ts    = time();
+    $token = wp_hash( 'sp_form_ts_' . $ts );
+
+    $has_file = false;
+    foreach ( $fields as $f ) {
+        if ( 'file' === $f['type'] ) {
+            $has_file = true;
+            break;
+        }
+    }
+
+    ob_start();
+    sp_forms_print_frontend_assets();
+    ?>
+    <div class="sp-form-wrap" id="<?php echo esc_attr( $uid ); ?>">
+        <?php if ( ! empty( $form->title ) ) : ?>
+            <h2 class="sp-form-title"><?php echo esc_html( $form->title ); ?></h2>
+        <?php endif; ?>
+        <div class="sp-form-message" role="status" aria-live="polite"></div>
+        <form class="sp-form" method="post"<?php echo $has_file ? ' enctype="multipart/form-data"' : ''; ?> data-sp-form="1" novalidate>
+            <?php wp_nonce_field( 'sp_form_submit', 'sp_form_nonce' ); ?>
+            <input type="hidden" name="action" value="sp_form_submit">
+            <input type="hidden" name="form_id" value="<?php echo (int) $form->id; ?>">
+            <input type="hidden" name="sp_form_ts" value="<?php echo (int) $ts; ?>">
+            <input type="hidden" name="sp_form_tk" value="<?php echo esc_attr( $token ); ?>">
+            <div class="sp-form-hp" aria-hidden="true">
+                <label><?php esc_html_e( 'Leave this field empty', 'societypress' ); ?><input type="text" name="sp_website_url" tabindex="-1" autocomplete="off"></label>
+            </div>
+
+            <?php foreach ( $fields as $i => $f ) :
+                $fid = $uid . '-' . $f['key'];
+                $req = $f['required'] ? ' required' : '';
+                $star = $f['required'] ? ' <span class="sp-form-required" aria-hidden="true">*</span>' : '';
+                $name = 'field_' . $f['key'];
+                ?>
+                <div class="sp-form-field sp-form-field--<?php echo esc_attr( $f['type'] ); ?>">
+                    <?php if ( 'checkboxes' === $f['type'] || 'radio' === $f['type'] ) : ?>
+                        <fieldset>
+                            <legend class="sp-form-label"><?php echo esc_html( $f['label'] ); ?><?php echo $star; // phpcs:ignore ?></legend>
+                            <?php foreach ( $f['options'] as $oi => $opt ) :
+                                $oid = $fid . '-' . $oi;
+                                if ( 'checkboxes' === $f['type'] ) : ?>
+                                    <label class="sp-form-choice" for="<?php echo esc_attr( $oid ); ?>">
+                                        <input type="checkbox" id="<?php echo esc_attr( $oid ); ?>" name="<?php echo esc_attr( $name ); ?>[]" value="<?php echo esc_attr( $opt ); ?>">
+                                        <?php echo esc_html( $opt ); ?>
+                                    </label>
+                                <?php else : ?>
+                                    <label class="sp-form-choice" for="<?php echo esc_attr( $oid ); ?>">
+                                        <input type="radio" id="<?php echo esc_attr( $oid ); ?>" name="<?php echo esc_attr( $name ); ?>" value="<?php echo esc_attr( $opt ); ?>"<?php echo $req; // phpcs:ignore ?>>
+                                        <?php echo esc_html( $opt ); ?>
+                                    </label>
+                                <?php endif;
+                            endforeach; ?>
+                        </fieldset>
+                    <?php else : ?>
+                        <label class="sp-form-label" for="<?php echo esc_attr( $fid ); ?>"><?php echo esc_html( $f['label'] ); ?><?php echo $star; // phpcs:ignore ?></label>
+                        <?php
+                        switch ( $f['type'] ) :
+                            case 'textarea': ?>
+                                <textarea id="<?php echo esc_attr( $fid ); ?>" name="<?php echo esc_attr( $name ); ?>" rows="5" class="sp-form-input"<?php echo $req; // phpcs:ignore ?> placeholder="<?php echo esc_attr( $f['placeholder'] ); ?>"></textarea>
+                                <?php break;
+                            case 'select': ?>
+                                <select id="<?php echo esc_attr( $fid ); ?>" name="<?php echo esc_attr( $name ); ?>" class="sp-form-input"<?php echo $req; // phpcs:ignore ?>>
+                                    <option value=""><?php esc_html_e( '— Select —', 'societypress' ); ?></option>
+                                    <?php foreach ( $f['options'] as $opt ) : ?>
+                                        <option value="<?php echo esc_attr( $opt ); ?>"><?php echo esc_html( $opt ); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <?php break;
+                            case 'file': ?>
+                                <input type="file" id="<?php echo esc_attr( $fid ); ?>" name="<?php echo esc_attr( $name ); ?>" class="sp-form-input"<?php echo $req; // phpcs:ignore ?>>
+                                <?php break;
+                            default:
+                                $input_type = [ 'email' => 'email', 'phone' => 'tel', 'number' => 'number', 'date' => 'date' ][ $f['type'] ] ?? 'text';
+                                ?>
+                                <input type="<?php echo esc_attr( $input_type ); ?>" id="<?php echo esc_attr( $fid ); ?>" name="<?php echo esc_attr( $name ); ?>" class="sp-form-input"<?php echo $req; // phpcs:ignore ?> placeholder="<?php echo esc_attr( $f['placeholder'] ); ?>">
+                            <?php
+                        endswitch; ?>
+                    <?php endif; ?>
+                </div>
+            <?php endforeach; ?>
+
+            <div class="sp-form-actions">
+                <button type="submit" class="sp-form-submit"><?php esc_html_e( 'Submit', 'societypress' ); ?></button>
+            </div>
+        </form>
+    </div>
+    <?php
+    return ob_get_clean();
+}
+
+/**
+ * Print the form CSS + the vanilla-JS submit handler once per request.
+ *
+ * WHY inline + guarded: forms appear via a shortcode on any page (not just
+ * builder pages), so there's no single enqueue point to hang a stylesheet on.
+ * A once-per-request print keeps it self-contained with no extra HTTP request,
+ * matching how the public help-request form ships its own styles.
+ */
+function sp_forms_print_frontend_assets(): void {
+    static $printed = false;
+    if ( $printed ) {
+        return;
+    }
+    $printed = true;
+    $ajax = esc_url( admin_url( 'admin-ajax.php' ) );
+    ?>
+    <style id="sp-forms-frontend-css">
+        .sp-form-wrap { max-width:640px; margin:1.5em 0; }
+        .sp-form-title { margin:0 0 .75em; }
+        .sp-form-field { margin-bottom:1.1em; }
+        .sp-form-label { display:block; font-weight:600; margin-bottom:.35em; }
+        .sp-form-required { color:#b32d2e; }
+        .sp-form-input { width:100%; padding:.6em .7em; border:1px solid #b7b7b7; border-radius:6px; font-size:1em; box-sizing:border-box; }
+        .sp-form-input:focus { outline:2px solid #2271b1; outline-offset:1px; }
+        .sp-form-field fieldset { border:none; margin:0; padding:0; }
+        .sp-form-field legend { padding:0; }
+        .sp-form-choice { display:block; font-weight:400; margin:.3em 0; }
+        .sp-form-choice input { margin-right:.5em; }
+        .sp-form-submit { padding:.7em 1.6em; font-size:1em; border:none; border-radius:6px; background:#2271b1; color:#fff; cursor:pointer; }
+        .sp-form-submit:hover { background:#135e96; }
+        .sp-form-submit[disabled] { opacity:.6; cursor:default; }
+        .sp-form-message { margin-bottom:1em; }
+        .sp-form-message.sp-form-error { color:#b32d2e; font-weight:600; }
+        .sp-form-message.sp-form-success { padding:1em; background:#edfaef; border:1px solid #b7e4c0; border-radius:6px; color:#0a7a2f; font-weight:600; }
+        .sp-form-notice { padding:.75em 1em; background:#fcf9e8; border:1px solid #e6db55; border-radius:6px; }
+        .sp-form-hp { position:absolute; left:-5000px; }
+    </style>
+    <script id="sp-forms-frontend-js">
+    (function(){
+        var endpoint = '<?php echo $ajax; ?>';
+        document.addEventListener('submit', function(e){
+            var form = e.target;
+            if ( ! form.matches || ! form.matches('form.sp-form[data-sp-form]') ) return;
+            e.preventDefault();
+
+            var wrap = form.closest('.sp-form-wrap');
+            var msg  = wrap ? wrap.querySelector('.sp-form-message') : null;
+            var btn  = form.querySelector('.sp-form-submit');
+
+            // Native validity check first, so required fields get browser prompts.
+            if ( ! form.checkValidity() ) { form.reportValidity(); return; }
+
+            if ( msg ) { msg.className = 'sp-form-message'; msg.textContent = ''; }
+            if ( btn ) { btn.disabled = true; }
+
+            fetch(endpoint, { method:'POST', body: new FormData(form), credentials:'same-origin' })
+                .then(function(r){ return r.json(); })
+                .then(function(res){
+                    if ( res && res.success ) {
+                        if ( msg ) {
+                            msg.className = 'sp-form-message sp-form-success';
+                            msg.textContent = res.data && res.data.message ? res.data.message : 'Thank you!';
+                        }
+                        form.style.display = 'none';
+                        if ( msg ) msg.focus && msg.focus();
+                    } else {
+                        if ( msg ) {
+                            msg.className = 'sp-form-message sp-form-error';
+                            msg.textContent = ( res && res.data && res.data.message ) ? res.data.message : 'Something went wrong. Please try again.';
+                        }
+                        if ( btn ) btn.disabled = false;
+                    }
+                })
+                .catch(function(){
+                    if ( msg ) { msg.className = 'sp-form-message sp-form-error'; msg.textContent = 'Something went wrong. Please try again.'; }
+                    if ( btn ) btn.disabled = false;
+                });
+        });
+    })();
+    </script>
+    <?php
+}
+
+
+// ----------------------------------------------------------------------------
+// FRONT END — Submission handler (public)
+// ----------------------------------------------------------------------------
+
+add_action( 'wp_ajax_sp_form_submit', 'sp_handle_form_submission' );
+add_action( 'wp_ajax_nopriv_sp_form_submit', 'sp_handle_form_submission' );
+
+/**
+ * Validate, store, and email a public form submission.
+ */
+function sp_handle_form_submission(): void {
+    if ( ! sp_module_enabled( 'forms' ) ) {
+        wp_send_json_error( [ 'message' => __( 'This form is not available.', 'societypress' ) ] );
+    }
+    if ( ! check_ajax_referer( 'sp_form_submit', 'sp_form_nonce', false ) ) {
+        wp_send_json_error( [ 'message' => __( 'Security check failed. Please refresh the page and try again.', 'societypress' ) ] );
+    }
+
+    // Rate limit per IP (REMOTE_ADDR only — X-Forwarded-For is spoofable).
+    $ip = sp_get_remote_ip();
+    if ( sp_rate_limit_hit( 'sp_form_rate_' . md5( $ip ), 10, HOUR_IN_SECONDS ) ) {
+        wp_send_json_error( [ 'message' => __( 'Too many submissions. Please try again later.', 'societypress' ) ] );
+    }
+
+    // Honeypot: a hidden field only a bot fills. Pretend success so bots don't learn.
+    if ( ! empty( $_POST['sp_website_url'] ) ) {
+        wp_send_json_success( [ 'message' => __( 'Thank you!', 'societypress' ) ] );
+    }
+
+    // Timing trap: verify the signed timestamp and require a human pause.
+    $ts = absint( $_POST['sp_form_ts'] ?? 0 );
+    $tk = (string) ( $_POST['sp_form_tk'] ?? '' );
+    if ( ! $ts || ! hash_equals( wp_hash( 'sp_form_ts_' . $ts ), $tk ) || ( time() - $ts ) < 3 ) {
+        wp_send_json_error( [ 'message' => __( 'That was too quick — please try again.', 'societypress' ) ] );
+    }
+
+    $form = sp_get_form( absint( $_POST['form_id'] ?? 0 ) );
+    if ( ! $form || 'published' !== $form->status ) {
+        wp_send_json_error( [ 'message' => __( 'This form is no longer available.', 'societypress' ) ] );
+    }
+
+    $fields = sp_forms_get_fields( $form );
+
+    $stored          = [];   // label => value(s), for storage + email
+    $submitter_email = '';
+    $submitter_name  = '';
+
+    foreach ( $fields as $f ) {
+        $name  = 'field_' . $f['key'];
+        $label = $f['label'];
+
+        if ( 'file' === $f['type'] ) {
+            $result = sp_forms_handle_upload( $name );
+            if ( is_wp_error( $result ) ) {
+                wp_send_json_error( [ 'message' => $result->get_error_message() ] );
+            }
+            if ( '' === $result && $f['required'] ) {
+                /* translators: %s: field label */
+                wp_send_json_error( [ 'message' => sprintf( __( 'Please attach a file for "%s".', 'societypress' ), $label ) ] );
+            }
+            if ( '' !== $result ) {
+                $stored[ $label ] = $result;
+            }
+            continue;
+        }
+
+        $raw = $_POST[ $name ] ?? '';
+
+        if ( 'checkboxes' === $f['type'] ) {
+            $values = is_array( $raw ) ? array_map( 'sanitize_text_field', wp_unslash( $raw ) ) : [];
+            // Keep only values that are actual options.
+            $values = array_values( array_intersect( $values, $f['options'] ) );
+            if ( empty( $values ) && $f['required'] ) {
+                /* translators: %s: field label */
+                wp_send_json_error( [ 'message' => sprintf( __( 'Please answer "%s".', 'societypress' ), $label ) ] );
+            }
+            if ( $values ) {
+                $stored[ $label ] = $values;
+            }
+            continue;
+        }
+
+        $value = sanitize_textarea_field( wp_unslash( is_array( $raw ) ? '' : $raw ) );
+
+        // Type-specific validation.
+        if ( 'email' === $f['type'] && '' !== $value && ! is_email( $value ) ) {
+            /* translators: %s: field label */
+            wp_send_json_error( [ 'message' => sprintf( __( 'Please enter a valid email for "%s".', 'societypress' ), $label ) ] );
+        }
+        if ( in_array( $f['type'], [ 'select', 'radio' ], true ) && '' !== $value && ! in_array( $value, $f['options'], true ) ) {
+            $value = ''; // Ignore a value that isn't one of the offered choices.
+        }
+        if ( '' === $value && $f['required'] ) {
+            /* translators: %s: field label */
+            wp_send_json_error( [ 'message' => sprintf( __( 'Please answer "%s".', 'societypress' ), $label ) ] );
+        }
+
+        if ( '' !== $value ) {
+            $stored[ $label ] = $value;
+
+            // First email field = the submitter; first text field = their name.
+            if ( 'email' === $f['type'] && '' === $submitter_email ) {
+                $submitter_email = $value;
+            }
+            if ( 'text' === $f['type'] && '' === $submitter_name && stripos( $label, 'name' ) !== false ) {
+                $submitter_name = $value;
+            }
+        }
+    }
+    // Fallback: if no field was literally labelled "name", use the first text answer.
+    if ( '' === $submitter_name ) {
+        foreach ( $fields as $f ) {
+            if ( 'text' === $f['type'] && ! empty( $stored[ $f['label'] ] ) && ! is_array( $stored[ $f['label'] ] ) ) {
+                $submitter_name = $stored[ $f['label'] ];
+                break;
+            }
+        }
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $wpdb->insert(
+        $prefix . 'form_submissions',
+        [
+            'form_id'         => (int) $form->id,
+            'data'            => wp_json_encode( $stored ),
+            'submitter_name'  => $submitter_name,
+            'submitter_email' => $submitter_email,
+            'ip_hash'         => hash_hmac( 'sha256', $ip, wp_salt() ),
+        ],
+        [ '%d', '%s', '%s', '%s', '%s' ]
+    );
+    sp_forms_recount( (int) $form->id );
+
+    sp_forms_send_notification( $form, $stored, $submitter_name, $submitter_email );
+
+    $message = $form->confirmation_message ? $form->confirmation_message : __( 'Thank you! Your message has been sent.', 'societypress' );
+    wp_send_json_success( [ 'message' => $message ] );
+}
+
+/**
+ * Handle a single file-upload field. Returns the stored URL, '' if none, or a
+ * WP_Error on a rejected/failed upload.
+ *
+ * @param string $field_name The $_FILES key.
+ * @return string|WP_Error
+ */
+function sp_forms_handle_upload( string $field_name ) {
+    if ( empty( $_FILES[ $field_name ] ) || ! isset( $_FILES[ $field_name ]['name'] ) || '' === $_FILES[ $field_name ]['name'] ) {
+        return '';
+    }
+    // 8 MB cap — generous for a scanned document, small enough to deter abuse.
+    if ( (int) ( $_FILES[ $field_name ]['size'] ?? 0 ) > 8 * MB_IN_BYTES ) {
+        return new WP_Error( 'sp_form_file_size', __( 'That file is too large (8 MB maximum).', 'societypress' ) );
+    }
+
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+
+    $overrides = [
+        'test_form' => false,
+        'mimes'     => sp_forms_allowed_upload_mimes(),
+    ];
+    $moved = wp_handle_upload( $_FILES[ $field_name ], $overrides );
+
+    if ( isset( $moved['error'] ) ) {
+        return new WP_Error( 'sp_form_file_error', __( 'That file type is not allowed. Please attach a PDF, image, or document.', 'societypress' ) );
+    }
+    if ( empty( $moved['url'] ) ) {
+        return new WP_Error( 'sp_form_file_error', __( 'The file could not be uploaded. Please try again.', 'societypress' ) );
+    }
+    return esc_url_raw( $moved['url'] );
+}
+
+/**
+ * Email a submission notification to the form's recipient.
+ *
+ * @param object $form
+ * @param array  $stored          label => value(s)
+ * @param string $submitter_name
+ * @param string $submitter_email
+ */
+function sp_forms_send_notification( $form, array $stored, string $submitter_name, string $submitter_email ): void {
+    $settings  = sp_settings();
+    $org_email = $settings['organization_email'] ?? get_option( 'admin_email' );
+
+    $to = is_email( $form->send_to_email ) ? $form->send_to_email : $org_email;
+    if ( ! is_email( $to ) ) {
+        return; // Nowhere valid to send — the submission is still stored.
+    }
+
+    $subject = $form->email_subject ? $form->email_subject : sprintf(
+        /* translators: %s: form name */
+        __( 'New submission: %s', 'societypress' ),
+        $form->name
+    );
+
+    // Body: optional intro, then a clean two-column table of answers.
+    $body = '';
+    if ( ! empty( $form->email_intro ) ) {
+        $body .= wpautop( esc_html( $form->email_intro ) );
+    }
+    $body .= '<table style="width:100%; border-collapse:collapse;">';
+    foreach ( $stored as $label => $value ) {
+        if ( is_array( $value ) ) {
+            $value = implode( ', ', $value );
+        }
+        $is_url    = is_string( $value ) && preg_match( '#^https?://#', $value );
+        $value_out = $is_url
+            ? '<a href="' . esc_url( $value ) . '">' . esc_html( wp_basename( $value ) ) . '</a>'
+            : nl2br( esc_html( (string) $value ) );
+        $body .= '<tr>'
+            . '<td style="padding:6px 12px 6px 0; vertical-align:top; font-weight:600; border-bottom:1px solid #eee;">' . esc_html( $label ) . '</td>'
+            . '<td style="padding:6px 0; vertical-align:top; border-bottom:1px solid #eee;">' . $value_out . '</td>'
+            . '</tr>';
+    }
+    $body .= '</table>';
+
+    $heading = $form->name;
+    $html    = sp_build_email_html( $heading, $body );
+
+    // Headers: start from the site defaults, then override the Reply-To so a
+    // hit of "Reply" reaches the person who submitted (or the form's fixed
+    // reply-to). All values are CR/LF/<>-stripped to block header injection.
+    $headers = sp_get_email_headers();
+    $headers = array_filter( $headers, static function ( $h ) {
+        return stripos( $h, 'reply-to:' ) !== 0;
+    } );
+
+    $reply_email = is_email( $form->reply_to_email ) ? $form->reply_to_email : $submitter_email;
+    $reply_name  = $form->reply_to_name ? $form->reply_to_name : $submitter_name;
+    if ( is_email( $reply_email ) ) {
+        $safe_name = str_replace( [ "\r", "\n", '<', '>' ], '', (string) $reply_name );
+        $headers[] = $safe_name
+            ? sprintf( 'Reply-To: %s <%s>', $safe_name, $reply_email )
+            : 'Reply-To: ' . $reply_email;
+    }
+
+    $to_name = str_replace( [ "\r", "\n", '<', '>' ], '', (string) $form->send_to_name );
+    $to_final = ( $to === $form->send_to_email && $to_name ) ? sprintf( '%s <%s>', $to_name, $to ) : $to;
+
+    wp_mail( $to_final, $subject, $html, $headers );
+}
+
+
+// ----------------------------------------------------------------------------
+// GDPR — Form submissions are PII (names, emails, free text)
+// ----------------------------------------------------------------------------
+
+/**
+ * GDPR exporter: every submission tied to an email address.
+ *
+ * @param string $email_address
+ * @param int    $page
+ * @return array
+ */
+function sp_privacy_export_form_data( string $email_address, int $page = 1 ): array {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT s.*, f.name AS form_name
+         FROM {$prefix}form_submissions s
+         LEFT JOIN {$prefix}forms f ON f.id = s.form_id
+         WHERE s.submitter_email = %s",
+        $email_address
+    ) );
+
+    $export_items = [];
+    foreach ( $rows as $row ) {
+        $data = json_decode( (string) $row->data, true );
+        $data = is_array( $data ) ? $data : [];
+
+        $item_data = [
+            [ 'name' => __( 'Form', 'societypress' ), 'value' => $row->form_name ],
+            [ 'name' => __( 'Submitted', 'societypress' ), 'value' => $row->created_at ],
+        ];
+        foreach ( $data as $label => $value ) {
+            if ( is_array( $value ) ) {
+                $value = implode( ', ', $value );
+            }
+            $item_data[] = [ 'name' => (string) $label, 'value' => (string) $value ];
+        }
+
+        $export_items[] = [
+            'group_id'    => 'sp-form-submissions',
+            'group_label' => __( 'Form Submissions', 'societypress' ),
+            'item_id'     => 'sp-form-submission-' . (int) $row->id,
+            'data'        => $item_data,
+        ];
+    }
+
+    return [ 'data' => $export_items, 'done' => true ];
+}
+
+/**
+ * GDPR eraser: delete every submission tied to an email address.
+ *
+ * @param string $email_address
+ * @param int    $page
+ * @return array
+ */
+function sp_privacy_erase_form_data( string $email_address, int $page = 1 ): array {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // Capture affected forms so their cached counts can be corrected.
+    $form_ids = $wpdb->get_col( $wpdb->prepare(
+        "SELECT DISTINCT form_id FROM {$prefix}form_submissions WHERE submitter_email = %s",
+        $email_address
+    ) );
+
+    $removed = (int) $wpdb->delete(
+        $prefix . 'form_submissions',
+        [ 'submitter_email' => $email_address ],
+        [ '%s' ]
+    );
+
+    foreach ( $form_ids as $fid ) {
+        sp_forms_recount( (int) $fid );
+    }
+
+    return [
+        'items_removed'  => $removed > 0,
+        'items_retained' => false,
+        'messages'       => [],
+        'done'           => true,
+    ];
 }

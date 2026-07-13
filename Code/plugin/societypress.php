@@ -17249,7 +17249,7 @@ function sp_render_placeholder_page(): void {
  * @param int    $batch_size Maximum rows to process in this call.
  * @return array Results with keys: imported, skipped, errors, tiers_created, rows_processed, done.
  */
-function sp_process_import_batch( string $file_path, array $field_map, int $offset = 0, int $batch_size = 50, ?array $link_user_ids = null ): array {
+function sp_process_import_batch( string $file_path, array $field_map, int $offset = 0, int $batch_size = 50, ?array $link_user_ids = null, bool $update_existing = true ): array {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
@@ -17267,6 +17267,7 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
 
     $results = [
         'imported'       => 0,
+        'updated'        => 0,
         'linked'         => 0,
         'skipped'        => 0,
         'errors'         => [],
@@ -17595,6 +17596,21 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
         ];
     }
 
+    // Preload existing members keyed by ENS Record ID — the stable, unique
+    // identifier the legacy export carries. This is what lets a re-import
+    // recognize an already-imported member and UPDATE them in place instead
+    // of creating a duplicate, even if their name/email/address changed.
+    $existing_by_ens = [];
+    if ( $update_existing ) {
+        $ens_rows = $wpdb->get_results(
+            "SELECT user_id, ens_record_id FROM {$prefix}members
+             WHERE ens_record_id IS NOT NULL AND ens_record_id > 0"
+        );
+        foreach ( $ens_rows as $er ) {
+            $existing_by_ens[ (int) $er->ens_record_id ] = (int) $er->user_id;
+        }
+    }
+
     // ================================================================
     // Helper: check if a name matches any existing member under the
     //         same email. "Similar" means identical last name AND first
@@ -17692,13 +17708,26 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
             }
         }
 
-        // Skip only if this email + name combination already exists.
+        // Re-import sync: does this row match an existing member by stable ENS
+        // Record ID? If so, we UPDATE that member below rather than skipping or
+        // duplicating them. The match is by ID alone — authoritative and immune
+        // to name/email edits — so it never collides with the email+name
+        // family-member heuristic used for brand-new rows.
+        $update_user_id = null;
+        $csv_ens_id     = (int) ( $get( $row, 'ens_record_id' ) ?: 0 );
+        if ( $update_existing && $csv_ens_id > 0 && isset( $existing_by_ens[ $csv_ens_id ] ) ) {
+            $update_user_id = (int) $existing_by_ens[ $csv_ens_id ];
+        }
+
+        // Skip only if this email + name combination already exists — and only
+        // when we're NOT updating this row by ENS ID (an ENS match is a sync,
+        // not a skip).
         // WHY: Same email ≠ same person. Married couples share addresses.
         //      We compare names under that email — if the last name matches
         //      and the first name is identical or one contains the other,
         //      it's a true duplicate. Otherwise it's a family member who
         //      happens to share an inbox.
-        if ( ! empty( $email ) && isset( $existing_members[ strtolower( $email ) ] ) ) {
+        if ( null === $update_user_id && ! empty( $email ) && isset( $existing_members[ strtolower( $email ) ] ) ) {
             if ( $is_name_similar( $first_name, $last_name, $existing_members[ strtolower( $email ) ] ) ) {
                 $results['skipped']++;
                 /* translators: 1: row number, 2: first name, 3: last name */
@@ -17832,7 +17861,11 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
         // Flipped true only in the two branches that mint a real, emailable user.
         $member_needs_setup = false;
 
-        if ( ! empty( $email ) ) {
+        if ( null !== $update_user_id ) {
+            // ENS-matched re-import: reuse the member's existing account. No
+            // new WordPress user is minted, and login/email stay as they are.
+            $user_id = $update_user_id;
+        } elseif ( ! empty( $email ) ) {
             $existing_user = get_user_by( 'email', $email );
             if ( $existing_user ) {
                 // A WP user already has this email. Check if that user is
@@ -18101,6 +18134,50 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
             'dir_show_photo'        => $yes_no( $get( $row, 'dir_show_photo' ) ),
         ];
 
+        // Normalize personal-name casing so imported rosters land properly
+        // cased instead of the ALL-CAPS that legacy exports (ENS) ship. Uses
+        // the same sp_proper_name() as display — it only rewrites all-upper
+        // or all-lower values and leaves intentional mixed case alone.
+        // organization_name is intentionally excluded: it carries acronyms
+        // (BYU, DAR) the filter would wrongly downcase, and for organization
+        // members first_name/last_name hold that org name, so skip them too.
+        $sp_name_keys = [ 'preferred_name', 'middle_name', 'maiden_name', 'label_name' ];
+        if ( 'organization' !== $member_type ) {
+            $sp_name_keys[] = 'first_name';
+            $sp_name_keys[] = 'last_name';
+        }
+        foreach ( $sp_name_keys as $sp_nk ) {
+            if ( ! empty( $member_data[ $sp_nk ] ) ) {
+                $member_data[ $sp_nk ] = sp_proper_name( $member_data[ $sp_nk ] );
+            }
+        }
+
+        // Re-import sync: update the matched member in place instead of
+        // inserting. The file is the source of truth, but only non-empty values
+        // overwrite — a blank or absent column never erases data already on
+        // file. user_id is the primary key and must not change. Payment and
+        // meta inserts below are intentionally skipped (the continue) so a
+        // re-import never duplicates a member's payment history.
+        if ( null !== $update_user_id ) {
+            unset( $member_data['user_id'] );
+            $update_data = [];
+            foreach ( $member_data as $mk => $mv ) {
+                if ( null !== $mv && '' !== $mv ) {
+                    $update_data[ $mk ] = $mv;
+                }
+            }
+            sp_member_encrypt_fields( $update_data );
+            $wpdb->update( $prefix . 'members', $update_data, [ 'user_id' => $update_user_id ] );
+            // Keep the linked WordPress account's name in step (login/email untouched).
+            wp_update_user( [
+                'ID'         => $update_user_id,
+                'first_name' => $first_name,
+                'last_name'  => $last_name,
+            ] );
+            $results['updated']++;
+            continue;
+        }
+
         // Encrypt sensitive contact fields before writing to DB
         sp_member_encrypt_fields( $member_data );
         $inserted = $wpdb->insert( $prefix . 'members', $member_data );
@@ -18302,7 +18379,12 @@ add_action( 'wp_ajax_sp_import_members_batch', function () {
         $link_user_ids = array_values( array_unique( array_map( 'absint', $_POST['link_user_ids'] ) ) );
     }
 
-    $results = sp_process_import_batch( $temp_file, $field_map, $offset, $batch_size, $link_user_ids );
+    // Whether re-imported rows update existing members (matched by ENS Record
+    // ID) or are add-only. Controlled by the import screen's sync checkbox;
+    // defaults on when the flag is absent.
+    $update_existing = ! isset( $_POST['update_existing'] ) || (int) $_POST['update_existing'] === 1;
+
+    $results = sp_process_import_batch( $temp_file, $field_map, $offset, $batch_size, $link_user_ids, $update_existing );
 
     // Clean up the temp file once the final batch completes.
     // WHY: The file persists between AJAX calls so subsequent batches can
@@ -18435,9 +18517,28 @@ function sp_import_find_existing_account_collisions( string $file_path, array $f
         return [];
     }
 
+    // Existing SocietyPress members are handled by the importer itself —
+    // updated in place when matched by ENS Record ID, or skipped as duplicates.
+    // Exclude them from the collision prompt, or a re-import would ask the admin
+    // to reconfirm every member already on file. The prompt is only for CSV rows
+    // that match a non-member account (the admin, a manually-created user).
+    $member_ids = [];
+    $ids = array_map( 'intval', array_keys( $found ) );
+    $ph  = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+    $member_rows = $wpdb->get_col( $wpdb->prepare(
+        "SELECT user_id FROM {$wpdb->prefix}sp_members WHERE user_id IN ($ph)",
+        $ids
+    ) );
+    foreach ( $member_rows as $mid ) {
+        $member_ids[ (int) $mid ] = true;
+    }
+
     $me = (int) get_current_user_id();
     $collisions = [];
     foreach ( $found as $uid => $info ) {
+        if ( isset( $member_ids[ (int) $uid ] ) ) {
+            continue;
+        }
         $u = get_user_by( 'id', $uid );
         if ( ! $u ) {
             continue;
@@ -19452,7 +19553,17 @@ function sp_render_import_page(): void {
                     <div class="sp-import-confirm-box">
                             <p class="sp-import-confirm-intro">
                                 <strong><?php printf( esc_html__( 'Ready to import %d members?', 'societypress' ), (int) $preview['row_count'] ); ?></strong><br>
-                                <?php esc_html_e( 'This will create login accounts for each member (no welcome emails are sent). Duplicates are automatically skipped.', 'societypress' ); ?>
+                                <?php esc_html_e( 'This will create login accounts for each new member (no welcome emails are sent).', 'societypress' ); ?>
+                            </p>
+
+                            <p class="sp-import-sync-option">
+                                <label>
+                                    <input type="checkbox" id="sp-import-update-existing" checked>
+                                    <?php esc_html_e( 'Update members already in the system from this file', 'societypress' ); ?>
+                                </label>
+                                <span class="description">
+                                    <?php esc_html_e( 'Recommended for re-imports: members matched by their record ID are refreshed from the file (names, status, renewal date, contact info), and new members are added. Uncheck to add new members only and leave existing ones untouched.', 'societypress' ); ?>
+                                </span>
                             </p>
 
                             <?php submit_button( __( 'Run Import', 'societypress' ), 'primary', 'sp_import_submit', false ); ?>
@@ -19737,11 +19848,13 @@ function sp_render_import_page(): void {
                 if (submitBtn) submitBtn.disabled = true;
 
                 // Running totals across all batches
-                var totals = { imported: 0, linked: 0, skipped: 0, errors: [], tiers_created: [] };
+                var totals = { imported: 0, updated: 0, linked: 0, skipped: 0, errors: [], tiers_created: [] };
+                var updateExistingEl = document.getElementById('sp-import-update-existing');
+                var updateExisting = updateExistingEl ? (updateExistingEl.checked ? 1 : 0) : 1;
                 var offset = 0;
 
                 function updateProgress() {
-                    var processed = totals.imported + totals.linked + totals.skipped;
+                    var processed = totals.imported + totals.updated + totals.linked + totals.skipped;
                     var pct = totalRows > 0 ? Math.min(100, Math.round((processed / totalRows) * 100)) : 0;
                     progressBar.style.width = pct + '%';
                     progressBar.setAttribute('aria-valuenow', pct);
@@ -19761,6 +19874,7 @@ function sp_render_import_page(): void {
                     linkUserIds.forEach(function(id) {
                         data.append('link_user_ids[]', id);
                     });
+                    data.append('update_existing', updateExisting);
 
                     fetch(ajaxUrl, { method: 'POST', body: data, credentials: 'same-origin' })
                         .then(function(r) { return r.json(); })
@@ -19773,6 +19887,7 @@ function sp_render_import_page(): void {
                             }
                             var d = resp.data;
                             totals.imported += d.imported || 0;
+                            totals.updated  += d.updated || 0;
                             totals.linked   += d.linked || 0;
                             totals.skipped  += d.skipped || 0;
                             if (d.errors && d.errors.length) totals.errors = totals.errors.concat(d.errors);
@@ -19799,7 +19914,7 @@ function sp_render_import_page(): void {
                     progressBar.style.width = '100%';
                     progressBar.setAttribute('aria-valuenow', 100);
                     titleEl.textContent = '<?php echo esc_js( __( "Import Complete", "societypress" ) ); ?>';
-                    messageEl.textContent = totals.imported + ' <?php echo esc_js( __( "imported", "societypress" ) ); ?>, ' + totals.linked + ' <?php echo esc_js( __( "linked", "societypress" ) ); ?>, ' + totals.skipped + ' <?php echo esc_js( __( "skipped", "societypress" ) ); ?>';
+                    messageEl.textContent = totals.imported + ' <?php echo esc_js( __( "imported", "societypress" ) ); ?>, ' + totals.updated + ' <?php echo esc_js( __( "updated", "societypress" ) ); ?>, ' + totals.linked + ' <?php echo esc_js( __( "linked", "societypress" ) ); ?>, ' + totals.skipped + ' <?php echo esc_js( __( "skipped", "societypress" ) ); ?>';
 
                     if (totals.errors.length > 0) {
                         // WHY textContent (not innerHTML): error strings include
@@ -32063,6 +32178,41 @@ add_action( "admin_enqueue_scripts", function ( $hook ) {
             'addOfficer'   => __( 'Add as Officer', 'societypress' ),
             'addCommittee' => __( 'Add to Committee', 'societypress' ),
         ],
+    ] );
+} );
+
+// Type-to-search upgrade for the governance member-picker dropdowns. Each of
+// these forms lists the full active roster in a plain <select>; on a real
+// society roster that is an unscannable scroll. sp-searchable-select.js turns
+// any <select class="sp-searchable"> into a filterable combobox while the
+// native control still submits the value.
+add_action( 'admin_enqueue_scripts', function () {
+    $pages = [
+        'sp-committee-edit',             // Committee chair
+        'sp-volunteer-roster',           // Volunteer role member
+        'sp-volunteer-hours',            // Logged-hours member
+        'sp-volunteer-opportunity-edit', // Opportunity contact
+    ];
+    if ( ! in_array( $_GET['page'] ?? '', $pages, true ) ) {
+        return;
+    }
+
+    wp_enqueue_style(
+        'sp-searchable-select',
+        plugin_dir_url( SOCIETYPRESS_PLUGIN_FILE ) . 'assets/css/sp-searchable-select.css',
+        [],
+        SOCIETYPRESS_VERSION
+    );
+    wp_enqueue_script(
+        'sp-searchable-select',
+        plugin_dir_url( SOCIETYPRESS_PLUGIN_FILE ) . 'assets/js/sp-searchable-select.js',
+        [],
+        SOCIETYPRESS_VERSION,
+        true // load in footer
+    );
+    wp_localize_script( 'sp-searchable-select', 'spSearchableSelect', [
+        'typeToSearch' => __( 'Type a name to search…', 'societypress' ),
+        'noMatch'      => __( 'No matching members', 'societypress' ),
     ] );
 } );
 
@@ -63641,7 +63791,7 @@ function sp_render_volunteer_opportunity_edit_page(): void {
                 <tr>
                     <th scope="col"><label for="opp_contact"><?php esc_html_e( 'Contact Person', 'societypress' ); ?></label></th>
                     <td>
-                        <select id="opp_contact" name="opp_contact">
+                        <select id="opp_contact" name="opp_contact" class="sp-searchable" data-placeholder="<?php esc_attr_e( 'Type a name to search…', 'societypress' ); ?>">
                             <option value=""><?php esc_html_e( '— None —', 'societypress' ); ?></option>
                             <?php foreach ( $members as $m ) : ?>
                                 <option value="<?php echo esc_attr( $m->user_id ); ?>" <?php selected( $val('contact_user_id'), $m->user_id ); ?>>
@@ -64286,7 +64436,7 @@ function sp_render_committee_edit_page(): void {
                 <tr>
                     <th scope="col"><label for="sp-com-chair"><?php esc_html_e( 'Chair', 'societypress' ); ?></label></th>
                     <td>
-                        <select name="chair_user_id" id="sp-com-chair">
+                        <select name="chair_user_id" id="sp-com-chair" class="sp-searchable" data-placeholder="<?php esc_attr_e( 'Type a name to search…', 'societypress' ); ?>">
                             <option value=""><?php esc_html_e( '— None —', 'societypress' ); ?></option>
                             <?php foreach ( $member_rows as $m ) :
                                 $name = trim( ( $m->first_name ?? '' ) . ' ' . ( $m->last_name ?? '' ) ); ?>
@@ -64354,6 +64504,9 @@ function sp_leadership_public_styles(): void {
         .sp-officer-title { font-weight: 700; min-width: 12em; }
         .sp-committee-group { margin: 0 0 1.75em; }
         .sp-committee-group h3 { margin: 0 0 0.35em; }
+        .sp-committee-list { list-style: none; margin: 0 0 1.5em; padding: 0; }
+        .sp-committee-list li { padding: 0.6em 0; border-bottom: 1px solid var(--color-border, #e5e7eb); }
+        .sp-committee-list .sp-committee-name { font-weight: 700; }
         .sp-leadership-empty { font-style: italic; color: var(--color-text-secondary, #6b7280); }
     </style>
     <?php
@@ -64817,32 +64970,37 @@ function sp_shortcode_officers( $atts = array() ): string {
 function sp_shortcode_committees( $atts = array() ): string {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
+    // WHY the committees table (not volunteer_roles): committees and their
+    // chairs are defined on Governance → Committees. Reading them here keeps
+    // the public roster in step with what the admin actually set up — each
+    // committee shows with its chair, and new committees appear automatically.
     $rows = $wpdb->get_results(
-        "SELECT vr.committee, vr.role_title, m.prefix, m.first_name, m.preferred_name, m.last_name, m.suffix
-         FROM {$prefix}volunteer_roles vr
-         LEFT JOIN {$prefix}members m ON m.user_id = vr.user_id
-         WHERE vr.role_type = 'committee' AND vr.status = 'active'
-         ORDER BY vr.committee ASC, vr.id ASC"
+        "SELECT c.name, m.prefix, m.first_name, m.preferred_name, m.last_name, m.suffix
+         FROM {$prefix}committees c
+         LEFT JOIN {$prefix}members m ON m.user_id = c.chair_user_id
+         WHERE c.active = 1
+         ORDER BY c.sort_order ASC, c.name ASC"
     );
     ob_start();
     sp_leadership_public_styles();
     if ( empty( $rows ) ) {
         echo '<p class="sp-leadership-empty">' . esc_html__( 'Committee information will be posted here soon.', 'societypress' ) . '</p>';
     } else {
-        $current = null;
+        echo '<ul class="sp-committee-list">';
         foreach ( $rows as $r ) {
-            if ( $r->committee !== $current ) {
-                if ( null !== $current ) {
-                    echo '</ul></div>';
-                }
-                $current = $r->committee;
-                echo '<div class="sp-committee-group"><h3>' . esc_html( $r->committee ? $r->committee : __( 'Committee', 'societypress' ) ) . '</h3><ul class="sp-officer-list">';
+            // A committee with no chair assigned yet still lists — just the
+            // name — so the roster reflects every committee.
+            $chair = ( ! empty( $r->first_name ) || ! empty( $r->last_name ) )
+                ? sp_leadership_person_name( $r ) : '';
+            // One line per committee: "Education Chair Charles Stricklin".
+            echo '<li><span class="sp-committee-name">' . esc_html( $r->name ) . '</span>';
+            if ( '' !== $chair ) {
+                echo ' <span class="sp-committee-role">' . esc_html__( 'Chair', 'societypress' ) . '</span> '
+                   . '<span class="sp-officer-name">' . esc_html( $chair ) . '</span>';
             }
-            $role = $r->role_title ? $r->role_title : __( 'Member', 'societypress' );
-            echo '<li><span class="sp-officer-title">' . esc_html( $role ) . '</span>'
-               . '<span class="sp-officer-name">' . esc_html( sp_leadership_person_name( $r ) ) . '</span></li>';
+            echo '</li>';
         }
-        echo '</ul></div>';
+        echo '</ul>';
     }
     return ob_get_clean();
 }
@@ -65748,7 +65906,7 @@ function sp_render_volunteers_page(): void {
                     <tr>
                         <th scope="col"><label for="user_id"><?php esc_html_e( 'Member', 'societypress' ); ?></label></th>
                         <td>
-                            <select name="user_id" id="user_id" required class="sp-vol-member-select">
+                            <select name="user_id" id="user_id" required class="sp-vol-member-select sp-searchable" data-placeholder="<?php esc_attr_e( 'Type a name to search…', 'societypress' ); ?>">
                                 <option value=""><?php echo '— ' . esc_html__( 'Select Member', 'societypress' ) . ' —'; ?></option>
                                 <?php foreach ( $members as $m ) : ?>
                                     <option value="<?php echo esc_attr( (int) $m->user_id ); ?>" <?php selected( $editing->user_id ?? 0, $m->user_id ); ?>>
@@ -65970,7 +66128,7 @@ function sp_render_volunteer_hours_page(): void {
                 <?php wp_nonce_field( 'sp_volunteer_hours_save' ); ?>
                 <div>
                     <label class="sp-vol-hours-field-label" for="sp-vh-member"><?php esc_html_e( 'Member', 'societypress' ); ?></label>
-                    <select id="sp-vh-member" name="user_id" required class="sp-vol-hours-select-member">
+                    <select id="sp-vh-member" name="user_id" required class="sp-vol-hours-select-member sp-searchable" data-placeholder="<?php esc_attr_e( 'Type a name to search…', 'societypress' ); ?>">
                         <option value=""><?php esc_html_e( '— Select —', 'societypress' ); ?></option>
                         <?php foreach ( $members as $m ) : ?>
                             <option value="<?php echo esc_attr( (int) $m->user_id ); ?>"><?php echo esc_html( $m->last_name . ', ' . $m->first_name ); ?></option>

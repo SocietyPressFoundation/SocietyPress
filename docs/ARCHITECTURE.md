@@ -78,48 +78,55 @@ Additional standalone options:
 
 ---
 
-## Database Tables (~60)
+## Database Tables (69)
 
-All prefixed with `{$wpdb->prefix}sp_`.
+All prefixed with `{$wpdb->prefix}sp_`. Created by a single `dbDelta()` pass
+in `sp_create_tables()`.
 
-### Members (6 tables)
+### Members (10 tables)
 | Table | Description |
 |-------|-------------|
 | `sp_members` | Core member records (individual + org) |
-| `sp_member_groups` | Named groups for organizing members |
-| `sp_member_group_assignments` | Many-to-many: members ↔ groups |
+| `sp_member_meta` | Key/value profile extension per member |
+| `sp_member_notes` | Admin-authored notes attached to a member |
+| `sp_member_payments` | Recorded dues/payment history per member |
 | `sp_member_surnames` | Surnames being researched (per member) |
 | `sp_member_research_areas` | Geographic research areas with time periods |
 | `sp_member_relationships` | Member-to-member relationships (spouse, family, referral) |
+| `sp_pending_profile_changes` | Queued profile changes awaiting admin approval |
+| `sp_groups` | Named member groups with a leader |
+| `sp_group_members` | Many-to-many: members ↔ groups |
 
 ### Membership (1 table)
 | Table | Description |
 |-------|-------------|
 | `sp_membership_tiers` | Tier definitions with pricing and duration |
 
-### Events (6 tables)
+### Events (10 tables)
 | Table | Description |
 |-------|-------------|
 | `sp_events` | Event records |
 | `sp_event_categories` | Event category taxonomy |
-| `sp_event_category_assignments` | Many-to-many: events ↔ categories |
 | `sp_event_registrations` | Registration records with status + attendance |
-| `sp_event_speakers` | Speaker profiles per event |
-| `sp_event_time_slots` | Multiple time slots per event |
+| `sp_event_speakers` | Speaker profiles |
+| `sp_event_speaker_assignments` | Many-to-many: speakers ↔ events |
+| `sp_event_slots` | Time slots per event with capacity |
+| `sp_event_reg_option_groups` | Registration option groups (e.g., meal choice) |
+| `sp_event_reg_option_choices` | Choices within a registration option group |
+| `sp_event_reg_attendees` | Attendee records per registration |
+| `sp_event_reg_selections` | Selected option choices per attendee |
 
 ### Library (2 tables)
 | Table | Description |
 |-------|-------------|
 | `sp_library_items` | Catalog items (books, maps, periodicals, etc.) |
-| `sp_library_categories` | Library categories (unused — real taxonomy is media_type/subject fields) |
+| `sp_library_categories` | Library categories |
 
-### Committees & Leadership (4 tables)
+### Committees & Leadership (2 tables)
 | Table | Description |
 |-------|-------------|
 | `sp_committees` | Committee definitions |
-| `sp_committee_members` | Many-to-many: members ↔ committees with roles |
-| `sp_leadership_positions` | Named positions (President, VP, etc.) |
-| `sp_leadership_terms` | Term records linking members to positions with date ranges |
+| `sp_meetings` | Committee/board meeting records with date |
 
 ### Volunteers (4 tables)
 | Table | Description |
@@ -134,7 +141,7 @@ All prefixed with `{$wpdb->prefix}sp_`.
 |-------|-------------|
 | `sp_email_log` | All outgoing emails logged via `pre_wp_mail` |
 | `sp_blast_emails` | Blast email campaigns |
-| `sp_blast_email_recipients` | Per-recipient delivery tracking for blasts |
+| `sp_subscribers` | Public mailing-list subscribers (double opt-in tokens) |
 | `sp_renewal_reminders` | Dedup table for renewal reminder emails |
 
 ### Finances (2 tables)
@@ -143,13 +150,14 @@ All prefixed with `{$wpdb->prefix}sp_`.
 | `sp_donations` | Individual donation records |
 | `sp_campaigns` | Fundraising campaign definitions |
 
-### Content (4 tables)
+### Content (5 tables)
 | Table | Description |
 |-------|-------------|
 | `sp_newsletters` | Newsletter archive (PDF + cover metadata) |
 | `sp_resources` | External resource links |
 | `sp_resource_categories` | Resource link categories |
-| `sp_pages` | Plugin-managed pages (internal tracking) |
+| `sp_forms` | Custom form-builder definitions (JSON field schema) |
+| `sp_form_submissions` | Submitted form entries |
 
 ### Genealogical Records (4 tables, EAV architecture)
 | Table | Description |
@@ -165,24 +173,21 @@ All prefixed with `{$wpdb->prefix}sp_`.
 | `sp_documents` | Document records with file metadata, access level, category |
 | `sp_document_categories` | Document categories (Meeting Minutes, Society Documents, etc.) |
 
-### Store (2 tables)
+### Store (3 tables)
 | Table | Description |
 |-------|-------------|
-| `sp_store_orders` | Order records with status, totals, Stripe session/payment IDs |
-| `sp_store_order_items` | Line items per order (product, quantity, price) |
+| `sp_orders` | Order records with status and money totals |
+| `sp_order_items` | Line items per order (library item or product) |
+| `sp_store_products` | Sellable product catalog (SKU, price) |
 
-### Members — Additional (1 table)
-| Table | Description |
-|-------|-------------|
-| `sp_pending_profile_changes` | Queued profile changes awaiting admin approval |
-
-### Voting (4 tables)
+### Voting (5 tables)
 | Table | Description |
 |-------|-------------|
 | `sp_ballots` | Ballot definitions with open/close windows |
 | `sp_ballot_questions` | Questions per ballot |
 | `sp_ballot_choices` | Choices per question (yes/no, single, multi) |
 | `sp_ballot_votes` | Per-voter cast records (dedup-enforced) |
+| `sp_ballot_voters` | Per-ballot voted-status ledger (turnout, dedup) |
 
 ### Lineage Programs (3 tables)
 | Table | Description |
@@ -212,11 +217,12 @@ All prefixed with `{$wpdb->prefix}sp_`.
 | `sp_ical_feeds` | External iCal subscription feeds |
 | `sp_event_reminders` | Sent-reminder dedup ledger |
 
-### System (2 tables)
+### System (3 tables)
 | Table | Description |
 |-------|-------------|
 | `sp_audit_log` | Audit trail for member/status/position changes |
 | `sp_access_log` | Access-control event log |
+| `sp_backups` | Backup archive records (filename, size, type) |
 
 ---
 
@@ -532,7 +538,7 @@ All frontend emails rendered via `sp_obfuscate_email()`:
 - Custom login page with society branding
 
 ### Activation
-- Creates all ~60 tables via `dbDelta()`
+- Creates all 69 tables via `dbDelta()`
 - Seeds default settings (~40 keys)
 - Seeds default membership tiers
 - Schedules cron jobs

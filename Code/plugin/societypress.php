@@ -17249,7 +17249,7 @@ function sp_render_placeholder_page(): void {
  * @param int    $batch_size Maximum rows to process in this call.
  * @return array Results with keys: imported, skipped, errors, tiers_created, rows_processed, done.
  */
-function sp_process_import_batch( string $file_path, array $field_map, int $offset = 0, int $batch_size = 50, ?array $link_user_ids = null, bool $update_existing = true ): array {
+function sp_process_import_batch( string $file_path, array $field_map, int $offset = 0, int $batch_size = 50, ?array $link_user_ids = null, bool $update_existing = true, bool $replace_on_newer = false ): array {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
@@ -17600,14 +17600,16 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
     // identifier the legacy export carries. This is what lets a re-import
     // recognize an already-imported member and UPDATE them in place instead
     // of creating a duplicate, even if their name/email/address changed.
-    $existing_by_ens = [];
+    $existing_by_ens      = [];
+    $existing_ens_updated = []; // ens_record_id → the record's own last_updated_date
     if ( $update_existing ) {
         $ens_rows = $wpdb->get_results(
-            "SELECT user_id, ens_record_id FROM {$prefix}members
+            "SELECT user_id, ens_record_id, last_updated_date FROM {$prefix}members
              WHERE ens_record_id IS NOT NULL AND ens_record_id > 0"
         );
         foreach ( $ens_rows as $er ) {
-            $existing_by_ens[ (int) $er->ens_record_id ] = (int) $er->user_id;
+            $existing_by_ens[ (int) $er->ens_record_id ]      = (int) $er->user_id;
+            $existing_ens_updated[ (int) $er->ens_record_id ] = $er->last_updated_date;
         }
     }
 
@@ -18153,19 +18155,49 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
         }
 
         // Re-import sync: update the matched member in place instead of
-        // inserting. The file is the source of truth, but only non-empty values
-        // overwrite — a blank or absent column never erases data already on
-        // file. user_id is the primary key and must not change. Payment and
+        // inserting. user_id is the primary key and must not change. Payment and
         // meta inserts below are intentionally skipped (the continue) so a
         // re-import never duplicates a member's payment history.
+        //
+        // Two update behaviors:
+        //   - Default merge (the safe one): only non-empty values overwrite, so
+        //     a blank or absent column never erases data already on file. Good
+        //     for partial CSVs that carry only some of each member's fields.
+        //   - Date-gated full replace ($replace_on_newer): when the admin has
+        //     confirmed the file is a complete export, a matched member is
+        //     overwritten wholesale — blanks and all — but ONLY when the file's
+        //     Last Updated Date is newer than the record already on file. A
+        //     record that is as current as (or newer than) the file is left
+        //     untouched, so edits made inside SocietyPress since the export
+        //     aren't clobbered by stale file data.
         if ( null !== $update_user_id ) {
             unset( $member_data['user_id'] );
-            $update_data = [];
-            foreach ( $member_data as $mk => $mv ) {
-                if ( null !== $mv && '' !== $mv ) {
-                    $update_data[ $mk ] = $mv;
+
+            if ( $replace_on_newer ) {
+                // Compare the file's Last Updated Date against the record's own.
+                // A missing date on either side counts as epoch (0), so a dated
+                // file always beats an undated record and an undated file never
+                // overwrites a dated record.
+                $file_ts = ! empty( $member_data['last_updated_date'] ) ? strtotime( $member_data['last_updated_date'] ) : 0;
+                $db_date = $existing_ens_updated[ $csv_ens_id ] ?? null;
+                $db_ts   = ! empty( $db_date ) ? strtotime( $db_date ) : 0;
+                if ( $file_ts <= $db_ts ) {
+                    $results['skipped']++;
+                    /* translators: 1: row number, 2: first name, 3: last name */
+                    $results['errors'][] = sprintf( __( 'Row %1$d: Kept %2$s %3$s — the record on file is already as current as the import.', 'societypress' ), $row_num, $first_name, $last_name );
+                    continue;
+                }
+                // File is newer: overwrite every mapped column, blanks included.
+                $update_data = $member_data;
+            } else {
+                $update_data = [];
+                foreach ( $member_data as $mk => $mv ) {
+                    if ( null !== $mv && '' !== $mv ) {
+                        $update_data[ $mk ] = $mv;
+                    }
                 }
             }
+
             sp_member_encrypt_fields( $update_data );
             $wpdb->update( $prefix . 'members', $update_data, [ 'user_id' => $update_user_id ] );
             // Keep the linked WordPress account's name in step (login/email untouched).
@@ -18384,7 +18416,13 @@ add_action( 'wp_ajax_sp_import_members_batch', function () {
     // defaults on when the flag is absent.
     $update_existing = ! isset( $_POST['update_existing'] ) || (int) $_POST['update_existing'] === 1;
 
-    $results = sp_process_import_batch( $temp_file, $field_map, $offset, $batch_size, $link_user_ids, $update_existing );
+    // Optional: when updating existing members, replace a matched record
+    // wholesale (blanks included) if the file's Last Updated Date is newer than
+    // the record on file. Off unless the import screen's checkbox is ticked, and
+    // meaningless — so forced off — when we're not updating existing members.
+    $replace_on_newer = $update_existing && isset( $_POST['replace_on_newer'] ) && (int) $_POST['replace_on_newer'] === 1;
+
+    $results = sp_process_import_batch( $temp_file, $field_map, $offset, $batch_size, $link_user_ids, $update_existing, $replace_on_newer );
 
     // Clean up the temp file once the final batch completes.
     // WHY: The file persists between AJAX calls so subsequent batches can
@@ -19566,6 +19604,16 @@ function sp_render_import_page(): void {
                                 </span>
                             </p>
 
+                            <p class="sp-import-replace-option">
+                                <label>
+                                    <input type="checkbox" id="sp-import-replace-newer">
+                                    <?php esc_html_e( 'Replace a member completely when this file is newer', 'societypress' ); ?>
+                                </label>
+                                <span class="description">
+                                    <?php esc_html_e( 'For complete exports only, such as a full EasyNetSites roster. When a member already in the system is matched and this file\'s "last updated" date is newer than the record on file, the whole record is overwritten from the file — including any fields the file leaves blank. Records already as current as the file are left untouched. Leave this off if your file carries only some of each member\'s fields, or it will erase the fields it omits.', 'societypress' ); ?>
+                                </span>
+                            </p>
+
                             <?php submit_button( __( 'Run Import', 'societypress' ), 'primary', 'sp_import_submit', false ); ?>
                             <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-import' ) ); ?>"
                                class="button sp-import-cancel-btn"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
@@ -19711,6 +19759,19 @@ function sp_render_import_page(): void {
             var form = document.getElementById('sp-import-confirm-form');
             if (!form) return;
 
+            // "Replace when newer" only means anything while existing members are
+            // being updated, so tie its enabled state to the update checkbox.
+            var updateChk  = document.getElementById('sp-import-update-existing');
+            var replaceChk = document.getElementById('sp-import-replace-newer');
+            if (updateChk && replaceChk) {
+                var syncReplaceState = function() {
+                    replaceChk.disabled = !updateChk.checked;
+                    if (!updateChk.checked) replaceChk.checked = false;
+                };
+                updateChk.addEventListener('change', syncReplaceState);
+                syncReplaceState();
+            }
+
             var ajaxUrl   = '<?php echo esc_url( admin_url( "admin-ajax.php" ) ); ?>';
             var totalRows = <?php echo (int) ($preview['row_count'] ?? 0); ?>;
             var batchSize = 50;
@@ -19851,6 +19912,8 @@ function sp_render_import_page(): void {
                 var totals = { imported: 0, updated: 0, linked: 0, skipped: 0, errors: [], tiers_created: [] };
                 var updateExistingEl = document.getElementById('sp-import-update-existing');
                 var updateExisting = updateExistingEl ? (updateExistingEl.checked ? 1 : 0) : 1;
+                var replaceNewerEl = document.getElementById('sp-import-replace-newer');
+                var replaceNewer = (replaceNewerEl && replaceNewerEl.checked && updateExisting) ? 1 : 0;
                 var offset = 0;
 
                 function updateProgress() {
@@ -19875,6 +19938,7 @@ function sp_render_import_page(): void {
                         data.append('link_user_ids[]', id);
                     });
                     data.append('update_existing', updateExisting);
+                    data.append('replace_on_newer', replaceNewer);
 
                     fetch(ajaxUrl, { method: 'POST', body: data, credentials: 'same-origin' })
                         .then(function(r) { return r.json(); })
@@ -64505,8 +64569,8 @@ function sp_leadership_public_styles(): void {
         .sp-committee-group { margin: 0 0 1.75em; }
         .sp-committee-group h3 { margin: 0 0 0.35em; }
         .sp-committee-list { list-style: none; margin: 0 0 1.5em; padding: 0; }
-        .sp-committee-list li { padding: 0.6em 0; border-bottom: 1px solid var(--color-border, #e5e7eb); }
-        .sp-committee-list .sp-committee-name { font-weight: 700; }
+        .sp-committee-list li { display: flex; flex-wrap: wrap; gap: 0.2em 1em; padding: 0.6em 0; border-bottom: 1px solid var(--color-border, #e5e7eb); }
+        .sp-committee-list .sp-committee-name { font-weight: 700; min-width: 12em; }
         .sp-leadership-empty { font-style: italic; color: var(--color-text-secondary, #6b7280); }
     </style>
     <?php
@@ -64992,11 +65056,13 @@ function sp_shortcode_committees( $atts = array() ): string {
             // name — so the roster reflects every committee.
             $chair = ( ! empty( $r->first_name ) || ! empty( $r->last_name ) )
                 ? sp_leadership_person_name( $r ) : '';
-            // One line per committee: "Education Chair Charles Stricklin".
+            // One committee per line, laid out like the officers above: the
+            // committee name in the left column, its chair's name tabbed over to
+            // the same column the officer names sit in. No "Chair" label — the
+            // committee name already carries the meaning.
             echo '<li><span class="sp-committee-name">' . esc_html( $r->name ) . '</span>';
             if ( '' !== $chair ) {
-                echo ' <span class="sp-committee-role">' . esc_html__( 'Chair', 'societypress' ) . '</span> '
-                   . '<span class="sp-officer-name">' . esc_html( $chair ) . '</span>';
+                echo '<span class="sp-officer-name">' . esc_html( $chair ) . '</span>';
             }
             echo '</li>';
         }

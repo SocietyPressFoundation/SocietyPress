@@ -11208,26 +11208,16 @@ add_action( 'wp_ajax_sp_check_update', function () {
 // ============================================================================
 
 /**
- * The latest parent theme version available in the repo.
- *
- * WHY tied to SOCIETYPRESS_VERSION: Plugin and parent theme are bumped
- *      together on every release (see CLAUDE.md). Hardcoding a separate
- *      version here created a 24-release drift — the plugin kept moving
- *      while this function kept returning "1.0.4", silently breaking
- *      parent-theme update notifications for everyone running >= 1.0.4.
- *      Reading from SOCIETYPRESS_VERSION removes the whole class of bug.
- *
- * WHY a function, not a constant: The theme's functions.php also defines
- *      SOCIETYPRESS_THEME_VERSION (for cache-busting its enqueued assets).
- *      That constant reflects the INSTALLED version. A function avoids
- *      the naming collision entirely.
- */
-function sp_latest_parent_theme_version(): string {
-    return SOCIETYPRESS_VERSION;
-}
-
-/**
  * Check if the installed parent theme needs an update.
+ *
+ * WHY the newest GitHub release, not SOCIETYPRESS_VERSION: "available" must be
+ *      a version we can actually install. The running plugin's constant moves
+ *      the moment new code is deployed, but the only thing the updater can pull
+ *      is a published GitHub release. Keying off the constant advertised
+ *      updates no release could satisfy — the updater would reinstall the
+ *      latest release, the installed version wouldn't reach the constant, and
+ *      the "update available" nag would return forever. The release version is
+ *      the true ceiling of what's installable.
  *
  * @return array|null Array with 'installed' and 'available' keys, or null if up to date.
  */
@@ -11237,12 +11227,16 @@ function sp_check_parent_theme_update(): ?array {
         return null;
     }
 
+    $release = sp_get_github_release();
+    if ( ! $release || empty( $release->version ) ) {
+        return null; // Can't reach GitHub — advertise nothing rather than guess.
+    }
+
     $installed_version = $installed_theme->get( 'Version' );
-    $latest = sp_latest_parent_theme_version();
-    if ( version_compare( $installed_version, $latest, '<' ) ) {
+    if ( version_compare( $installed_version, $release->version, '<' ) ) {
         return [
             'installed' => $installed_version,
-            'available' => $latest,
+            'available' => $release->version,
         ];
     }
 
@@ -11296,9 +11290,13 @@ add_filter( 'pre_set_site_transient_update_themes', function ( $transient ) {
         return $transient;
     }
 
-    // Get the download URL from the latest GitHub release
+    // Get the download URL from the latest GitHub release. Use the source
+    // zipball, NOT download_url: the latter is the plugin-only release asset,
+    // which has no style.css and fails WordPress's theme validation. The
+    // zipball carries the full repo, including Code/theme/ — the rescue filter
+    // below relocates it to where WordPress expects it.
     $release = sp_get_github_release();
-    if ( ! $release || empty( $release->download_url ) ) {
+    if ( ! $release || empty( $release->zipball_url ) ) {
         return $transient;
     }
 
@@ -11306,7 +11304,7 @@ add_filter( 'pre_set_site_transient_update_themes', function ( $transient ) {
         'theme'       => 'societypress',
         'new_version' => $update['available'],
         'url'         => $release->html_url,
-        'package'     => $release->download_url,
+        'package'     => $release->zipball_url,
         'requires'    => '6.0',
         'requires_php'=> '8.0',
     ];
@@ -11318,10 +11316,11 @@ add_filter( 'pre_set_site_transient_update_themes', function ( $transient ) {
  * Rename the extracted directory when WordPress updates the parent theme
  * from a GitHub zipball.
  *
- * WHY: GitHub's zipball extracts to "charles-stricklin-SocietyPress-abc1234/"
- *      but WordPress expects the theme directory to be "societypress/".
- *      We intercept the extraction and rename the directory. Only acts
- *      on our theme — other themes are unaffected.
+ * WHY: GitHub's zipball extracts to "SocietyPressFoundation-SocietyPress-abc1234/"
+ *      with the parent theme nested at Code/theme/, but WordPress expects the
+ *      theme directory to be "societypress/" at the archive root. We intercept
+ *      the extraction and relocate Code/theme/ into place. Only acts on our
+ *      theme — other themes are unaffected.
  */
 add_filter( 'upgrader_source_selection', function ( $source, $remote_source, $upgrader, $hook_extra ) {
     // Only act on theme upgrades for our theme
@@ -11329,7 +11328,8 @@ add_filter( 'upgrader_source_selection', function ( $source, $remote_source, $up
         return $source;
     }
 
-    // Look for the theme/ subdirectory inside the extracted repo
+    // WordPress descends into the zipball's single root folder, so $source is
+    // already the repo root. Glob its top-level children (Code, docs, …).
     $extracted_dirs = glob( rtrim( $source, '/' ) . '/*', GLOB_ONLYDIR );
 
     // If the source already IS the theme dir (has style.css), leave it alone
@@ -11337,7 +11337,8 @@ add_filter( 'upgrader_source_selection', function ( $source, $remote_source, $up
         return $source;
     }
 
-    // GitHub zipball: repo root is inside. Look for theme/ subdir.
+    // The parent theme lives at Code/theme/ — i.e. <child>/theme/ where the
+    // matching child is the repo's Code/ directory.
     foreach ( $extracted_dirs as $dir ) {
         $theme_subdir = $dir . '/theme/';
         if ( is_dir( $theme_subdir ) && file_exists( $theme_subdir . 'style.css' ) ) {
@@ -43289,7 +43290,7 @@ add_action( 'admin_init', function () {
                 <?php esc_html_e( 'Test Connection', 'societypress' ); ?>
             </button>
             <span id="sp-stripe-test-result" class="sp-stripe-test-result" role="status" aria-live="polite" aria-atomic="true"></span>
-            <p class="description"><?php esc_html_e( 'Checks that your API keys are valid. Save your settings first, then click this button.', 'societypress' ); ?></p>
+            <p class="description"><?php esc_html_e( 'Checks that your API keys are valid — enter them above and click this button. You don\'t have to save first.', 'societypress' ); ?></p>
             <script>
             (function() {
                 var btn = document.getElementById('sp-stripe-test-btn');
@@ -43306,6 +43307,15 @@ add_action( 'admin_init', function () {
                     formData.append('action', 'sp_test_stripe_connection');
                     formData.append('nonce', '<?php echo wp_create_nonce( "sp_stripe_test" ); ?>');
 
+                    // Test the key that's in the field right now, so it works
+                    // before saving. Read the active mode's secret field live.
+                    var testToggle = document.getElementById('sp-stripe-test-mode-toggle');
+                    var useTest = testToggle ? testToggle.checked : true;
+                    var secField = document.getElementById(useTest ? 'sp-field-stripe-test-sec' : 'sp-field-stripe-live-sec');
+                    if (secField && secField.value.trim() !== '') {
+                        formData.append('secret_key', secField.value.trim());
+                    }
+
                     fetch('<?php echo esc_js( admin_url( "admin-ajax.php" ) ); ?>', {
                         method: 'POST',
                         body: formData,
@@ -43314,7 +43324,7 @@ add_action( 'admin_init', function () {
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
                         if (data.success) {
-                            result.textContent = '\u2705 <?php echo esc_js( __( 'Connected! Your Stripe keys are working.', 'societypress' ) ); ?>';
+                            result.textContent = '\u2705 <?php echo esc_js( __( 'Connected! Your Stripe keys are working. Click Save Changes to keep them.', 'societypress' ) ); ?>';
                             result.style.color = '#00a32a';
                         } else {
                             result.textContent = '\u274C ' + (data.data || '<?php echo esc_js( __( 'Connection failed. Check your keys and try again.', 'societypress' ) ); ?>');
@@ -43395,7 +43405,7 @@ add_action( 'admin_init', function () {
             ?>
             <label>
                 <input type="checkbox" name="societypress_settings[paypal_test_mode]" value="1"
-                    <?php checked( $current, 1 ); ?>>
+                    <?php checked( $current, 1 ); ?> id="sp-paypal-test-mode-toggle">
                 <strong><?php esc_html_e( 'Use sandbox mode', 'societypress' ); ?></strong> — <?php esc_html_e( 'no real charges will be made', 'societypress' ); ?>
             </label>
             <p class="description"><?php esc_html_e( 'Keep this checked until you\'re ready to accept real payments. Sandbox mode uses separate API credentials.', 'societypress' ); ?></p>
@@ -43480,7 +43490,7 @@ add_action( 'admin_init', function () {
                 <?php esc_html_e( 'Test Connection', 'societypress' ); ?>
             </button>
             <span id="sp-paypal-test-result" class="sp-paypal-test-result" role="status" aria-live="polite" aria-atomic="true"></span>
-            <p class="description"><?php esc_html_e( 'Checks that your API credentials are valid. Save your settings first, then click this button.', 'societypress' ); ?></p>
+            <p class="description"><?php esc_html_e( 'Checks that your API credentials are valid — enter them above and click this button. You don\'t have to save first.', 'societypress' ); ?></p>
             <script>
             (function() {
                 var btn = document.getElementById('sp-paypal-test-btn');
@@ -43496,6 +43506,18 @@ add_action( 'admin_init', function () {
                     var formData = new FormData();
                     formData.append('action', 'sp_test_paypal_connection');
                     formData.append('nonce', '<?php echo wp_create_nonce( "sp_test_paypal" ); ?>');
+
+                    // Test the credentials that are in the fields right now, so it
+                    // works before saving. Pick sandbox vs live from the toggle.
+                    var ppToggle = document.getElementById('sp-paypal-test-mode-toggle');
+                    var ppUseTest = ppToggle ? ppToggle.checked : true;
+                    var ppId = document.getElementById(ppUseTest ? 'sp-field-paypal-sandbox-id' : 'sp-field-paypal-live-id');
+                    var ppSec = document.getElementById(ppUseTest ? 'sp-field-paypal-sandbox-secret' : 'sp-field-paypal-live-secret');
+                    if (ppId && ppSec && ppId.value.trim() !== '' && ppSec.value.trim() !== '') {
+                        formData.append('client_id', ppId.value.trim());
+                        formData.append('secret', ppSec.value.trim());
+                        formData.append('test_mode', ppUseTest ? '1' : '0');
+                    }
 
                     fetch('<?php echo esc_url( admin_url( "admin-ajax.php" ) ); ?>', {
                         method: 'POST',
@@ -53421,18 +53443,26 @@ function sp_paypal_get_secret( array $settings ): string {
  * @param array $settings The societypress_settings option array.
  * @return string|WP_Error The access token, or WP_Error on failure.
  */
-function sp_paypal_get_access_token( array $settings ) {
+function sp_paypal_get_access_token( array $settings, string $client_id = '', string $secret = '', bool $use_cache = true ) {
     $mode          = ! empty( $settings['paypal_test_mode'] ) ? 'sandbox' : 'live';
     $transient_key = 'sp_paypal_token_' . $mode;
 
-    // Check cache first
-    $cached = get_transient( $transient_key );
-    if ( $cached ) {
-        return $cached;
+    // Check cache first — but never when testing caller-supplied credentials,
+    // since a token cached from the SAVED creds would mask the ones being tested.
+    if ( $use_cache ) {
+        $cached = get_transient( $transient_key );
+        if ( $cached ) {
+            return $cached;
+        }
     }
 
-    $client_id = sp_paypal_get_client_id( $settings );
-    $secret    = sp_paypal_get_secret( $settings );
+    // Explicit creds (from the settings field, pre-save) win over saved ones.
+    if ( '' === $client_id ) {
+        $client_id = sp_paypal_get_client_id( $settings );
+    }
+    if ( '' === $secret ) {
+        $secret = sp_paypal_get_secret( $settings );
+    }
 
     if ( empty( $client_id ) || empty( $secret ) ) {
         return new WP_Error( 'paypal_not_configured', __( 'PayPal API credentials are not configured.', 'societypress' ) );
@@ -53460,9 +53490,13 @@ function sp_paypal_get_access_token( array $settings ) {
         return new WP_Error( 'paypal_auth_failed', $error_msg );
     }
 
-    // Cache the token — expires_in is in seconds, subtract 60s safety buffer
-    $expires_in = max( 0, ( $body['expires_in'] ?? 3600 ) - 60 );
-    set_transient( $transient_key, $body['access_token'], $expires_in );
+    // Cache the token only when it came from saved creds — expires_in is in
+    // seconds, subtract 60s safety buffer. A test of unsaved field creds must
+    // not poison the cache for the real (saved) credentials.
+    if ( $use_cache ) {
+        $expires_in = max( 0, ( $body['expires_in'] ?? 3600 ) - 60 );
+        set_transient( $transient_key, $body['access_token'], $expires_in );
+    }
 
     return $body['access_token'];
 }
@@ -53631,7 +53665,19 @@ add_action( 'wp_ajax_sp_test_paypal_connection', function(): void {
     check_ajax_referer( 'sp_test_paypal' );
 
     $settings = sp_settings();
-    $token    = sp_paypal_get_access_token( $settings );
+
+    // Prefer the credentials currently in the form so Harold can verify BEFORE
+    // saving. Both fields must be present; the posted mode picks sandbox vs live
+    // (PayPal's endpoint isn't self-identifying the way a Stripe key is).
+    $posted_client = isset( $_POST['client_id'] ) ? sanitize_text_field( wp_unslash( $_POST['client_id'] ) ) : '';
+    $posted_secret = isset( $_POST['secret'] ) ? sanitize_text_field( wp_unslash( $_POST['secret'] ) ) : '';
+
+    if ( '' !== $posted_client && '' !== $posted_secret ) {
+        $settings['paypal_test_mode'] = isset( $_POST['test_mode'] ) && '1' === $_POST['test_mode'] ? 1 : 0;
+        $token = sp_paypal_get_access_token( $settings, $posted_client, $posted_secret, false );
+    } else {
+        $token = sp_paypal_get_access_token( $settings );
+    }
 
     if ( is_wp_error( $token ) ) {
         wp_send_json_error( $token->get_error_message() );
@@ -53640,7 +53686,7 @@ add_action( 'wp_ajax_sp_test_paypal_connection', function(): void {
     $mode = ! empty( $settings['paypal_test_mode'] ) ? __( 'Sandbox', 'societypress' ) : __( 'Live', 'societypress' );
     wp_send_json_success( sprintf(
         /* translators: %s: PayPal mode (Sandbox or Live) */
-        __( 'Connected to PayPal (%s) successfully.', 'societypress' ),
+        __( 'Connected to PayPal (%s) successfully. Click Save Changes to keep these credentials.', 'societypress' ),
         $mode
     ) );
 } );
@@ -55206,11 +55252,18 @@ add_action( 'wp_ajax_sp_test_stripe_connection', function () {
         wp_send_json_error( __( 'Security check failed.', 'societypress' ) );
     }
 
-    $settings   = sp_settings();
-    $secret_key = sp_stripe_get_secret_key( $settings );
+    $settings = sp_settings();
+
+    // Prefer the key currently typed into the settings field so Harold can
+    // verify BEFORE saving — that's the first thing everyone tries. Falls back
+    // to the saved (encrypted) key when the field wasn't submitted.
+    $posted_key = isset( $_POST['secret_key'] )
+        ? sanitize_text_field( wp_unslash( $_POST['secret_key'] ) )
+        : '';
+    $secret_key = '' !== $posted_key ? $posted_key : sp_stripe_get_secret_key( $settings );
 
     if ( empty( $secret_key ) ) {
-        wp_send_json_error( __( 'No API keys found. Please enter your keys and save settings first.', 'societypress' ) );
+        wp_send_json_error( __( 'No API keys found. Enter your keys above, then click this button.', 'societypress' ) );
     }
 
     // Call Stripe's /v1/balance endpoint — the simplest authenticated call

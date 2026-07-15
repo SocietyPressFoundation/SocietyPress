@@ -34,7 +34,9 @@ get_header();
             <!-- Welcome section — the page title and content the admin writes
                  in the page editor. This is the society's greeting to visitors. -->
             <div class="prairie-welcome">
-                <h1><?php the_title(); ?></h1>
+                <?php /* h2, not h1: the header already renders the site-title <h1> on the
+                         front page. A second <h1> breaks heading hierarchy (WCAG 2.4.6). */ ?>
+                <h2><?php the_title(); ?></h2>
                 <?php if ( get_the_content() ) : ?>
                 <div class="entry-content">
                     <?php the_content(); ?>

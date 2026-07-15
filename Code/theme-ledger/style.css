@@ -34,7 +34,7 @@ Tags: genealogy, historical-society, formal, archival, professional, sans-serif,
     --ledger-steel:     #6B6B6B;
     --ledger-silver:    #D4D0CB;
     --ledger-text:      #1A1A1A;
-    --ledger-muted:     #808080;
+    --ledger-muted:     #808080; /* UNUSED — do NOT apply on dark backgrounds (3.54:1, fails AA). Use --ledger-silver there. Kept only for reference. */
 
     /* Override SocietyPress design vars */
     --sp-color-primary:       #2C2C2C;
@@ -356,7 +356,7 @@ h1, h2, h3, h4, h5, h6 {
     margin: 0 auto;
 }
 
-.ledger-hero h1 {
+.ledger-hero h2 {
     font-size: 2.5rem;
     font-weight: 700;
     margin-bottom: 16px;
@@ -851,7 +851,7 @@ h1, h2, h3, h4, h5, h6 {
         grid-template-columns: repeat(2, 1fr);
     }
 
-    .ledger-hero h1 {
+    .ledger-hero h2 {
         font-size: 2rem;
     }
 }
@@ -982,7 +982,7 @@ h1, h2, h3, h4, h5, h6 {
         padding: 56px 20px;
     }
 
-    .ledger-hero h1 {
+    .ledger-hero h2 {
         font-size: 1.6rem;
     }
 
@@ -1027,7 +1027,7 @@ h1, h2, h3, h4, h5, h6 {
    ============================================================================ */
 
 @media (max-width: 480px) {
-    .ledger-hero h1 {
+    .ledger-hero h2 {
         font-size: 1.35rem;
     }
 

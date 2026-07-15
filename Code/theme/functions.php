@@ -244,7 +244,10 @@ add_action( 'widgets_init', function () {
         'description'   => esc_html__( 'Widgets in this area appear on blog posts and archive pages.', 'societypress' ),
         'before_widget' => '<div id="%1$s" class="widget %2$s">',
         'after_widget'  => '</div>',
-        'before_title'  => '<h3 class="widget-title">',
-        'after_title'   => '</h3>',
+        // <h2>, not <h3>: on a single post the only other heading is the post's
+        // <h1>, so <h3> widget titles skipped a level (WCAG 1.3.1). Styling is by
+        // the .widget-title class, so the tag change is invisible visually.
+        'before_title'  => '<h2 class="widget-title">',
+        'after_title'   => '</h2>',
     ]);
 });

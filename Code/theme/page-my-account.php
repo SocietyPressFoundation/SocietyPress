@@ -105,7 +105,7 @@ $sp_section_locked = function ( $section ) {
     margin-bottom: 20px;
 }
 .sp-gen-category-label {
-    font-size: 14px;
+    font-size: calc(var(--sp-font-size-base, 18px) * 0.78);
     font-weight: 600;
     color: var(--sp-text-muted, #666);
     text-transform: uppercase;
@@ -132,7 +132,7 @@ $sp_section_locked = function ( $section ) {
     align-items: center;
     gap: 6px;
     flex: 0 0 200px;
-    font-size: 14px;
+    font-size: calc(var(--sp-font-size-base, 18px) * 0.78);
     white-space: nowrap;
 }
 .sp-gen-icon {
@@ -160,7 +160,7 @@ $sp_section_locked = function ( $section ) {
     display: flex;
     align-items: center;
     gap: 4px;
-    font-size: 13px;
+    font-size: calc(var(--sp-font-size-base, 18px) * 0.72);
     color: var(--sp-text-muted, #666);
     white-space: nowrap;
     cursor: pointer;
@@ -200,7 +200,7 @@ $sp_section_locked = function ( $section ) {
 .sp-surname-row .sp-surname-detail {
     flex: 1;
     color: var(--sp-text-muted, #666);
-    font-size: 13px;
+    font-size: calc(var(--sp-font-size-base, 18px) * 0.72);
 }
 .sp-surname-row .sp-surname-remove {
     background: none;
@@ -261,7 +261,7 @@ $sp_section_locked = function ( $section ) {
 }
 .sp-event-card__details {
     color: var(--sp-text-muted, #666);
-    font-size: 13px;
+    font-size: calc(var(--sp-font-size-base, 18px) * 0.72);
 }
 .sp-event-badge--waitlisted {
     display: inline-block;
@@ -281,14 +281,14 @@ $sp_section_locked = function ( $section ) {
 }
 .sp-event-ics-btn {
     background: var(--sp-color-primary, #2271b1);
-    font-size: 13px;
+    font-size: calc(var(--sp-font-size-base, 18px) * 0.72);
     padding: 6px 14px;
     text-decoration: none;
 }
 .sp-event-ics-btn:hover { opacity: 0.85; }
 .sp-event-cancel-btn {
     background: var(--sp-danger, #b32d2e);
-    font-size: 13px;
+    font-size: calc(var(--sp-font-size-base, 18px) * 0.72);
     padding: 6px 14px;
 }
 .sp-events-empty {
@@ -298,7 +298,7 @@ $sp_section_locked = function ( $section ) {
 .sp-events-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 13px;
+    font-size: calc(var(--sp-font-size-base, 18px) * 0.72);
 }
 .sp-events-table thead tr {
     border-bottom: 2px solid var(--sp-border, #e0e0e0);
@@ -330,7 +330,7 @@ $sp_section_locked = function ( $section ) {
     display: inline-block;
     padding: 6px 14px;
     border-radius: 4px;
-    font-size: 14px;
+    font-size: calc(var(--sp-font-size-base, 18px) * 0.78);
     margin-right: 12px;
     animation: sp-fade-in 0.2s ease-out;
 }
@@ -379,7 +379,12 @@ $sp_section_locked = function ( $section ) {
                 $sp_join_page = get_page_by_path( 'join' );
                 $sp_renew_url = $sp_join_page ? get_permalink( $sp_join_page ) : home_url( '/join/' );
             ?>
-                <div class="sp-renewal-banner sp-renewal-banner--<?php echo esc_attr( $sp_renewal ); ?>" role="alert">
+                <?php /* role="status", not "alert": this banner is present on every
+                         page load for the whole renewal window, so an assertive alert
+                         would interrupt a screen-reader user each visit. The save
+                         success/error notices below correctly use role="alert" because
+                         they only appear as a result of an action. */ ?>
+                <div class="sp-renewal-banner sp-renewal-banner--<?php echo esc_attr( $sp_renewal ); ?>" role="status">
                     <div class="sp-renewal-banner__text">
                         <strong class="sp-renewal-banner__title">
                             <?php
@@ -530,7 +535,7 @@ $sp_section_locked = function ( $section ) {
             //      and at meetings. A gentle prompt on their first visit helps.
             if ( ! $custom_photo && $member ) :
             ?>
-            <div class="sp-account-notice sp-account-notice--info">
+            <div class="sp-notice sp-notice--info">
                 <p><?php esc_html_e( 'Your profile is missing a photo. Adding one helps other members recognize you!', 'societypress' ); ?></p>
                 <a href="#photo" class="sp-button sp-button--secondary sp-button--small"><?php esc_html_e( 'Add a Photo', 'societypress' ); ?></a>
             </div>
@@ -779,8 +784,8 @@ $sp_section_locked = function ( $section ) {
                     //      Rather than guess, we ask which one they prefer.
                     $pref_phone = sp_m( $member, 'preferred_phone' ) ?: 'cell';
                     ?>
-                    <div class="sp-form-field">
-                        <label><?php esc_html_e( 'Preferred Phone', 'societypress' ); ?></label>
+                    <fieldset class="sp-form-field sp-form-fieldset">
+                        <legend><?php esc_html_e( 'Preferred Phone', 'societypress' ); ?></legend>
                         <div class="sp-radio-row">
                             <label class="sp-radio-row__option">
                                 <input type="radio" name="preferred_phone" value="phone"
@@ -798,7 +803,7 @@ $sp_section_locked = function ( $section ) {
                                 <?php esc_html_e( 'Work', 'societypress' ); ?>
                             </label>
                         </div>
-                    </div>
+                    </fieldset>
 
                     <div class="sp-form-field">
                         <label for="sp-website"><?php esc_html_e( 'Website', 'societypress' ); ?></label>
@@ -995,7 +1000,7 @@ $sp_section_locked = function ( $section ) {
             <?php if ( $show_joint_section ) : ?>
             <section class="sp-account-section" id="joint-member">
                 <h2><?php esc_html_e( 'Joint Member', 'societypress' ); ?></h2>
-                <p class="sp-section-desc">
+                <p class="sp-section-description">
                     <?php esc_html_e( 'Your membership plan includes a second household member. Both names will appear in the directory and both people can attend events.', 'societypress' ); ?>
                 </p>
 

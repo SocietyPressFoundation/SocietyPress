@@ -1864,6 +1864,7 @@ function sp_create_tables(): void {
         id                    BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
         name                  VARCHAR(255)        NOT NULL,
         title                 VARCHAR(500)        NULL,
+        submit_label          VARCHAR(255)        NULL,
         status                VARCHAR(20)         NOT NULL DEFAULT 'published',
         fields                LONGTEXT            NULL,
         email_subject         VARCHAR(500)        NULL,
@@ -2810,7 +2811,7 @@ function sp_maybe_seed_event_categories(): void {
 
     $defaults = [
         [ 'name' => 'General Meeting',  'slug' => 'general-meeting',  'color' => '#2271b1', 'sort_order' => 1 ],
-        [ 'name' => 'Workshop',         'slug' => 'workshop',         'color' => '#00a32a', 'sort_order' => 2 ],
+        [ 'name' => 'Workshop',         'slug' => 'workshop',         'color' => '#1d6b30', 'sort_order' => 2 ],
         [ 'name' => 'SIG',              'slug' => 'sig',              'color' => '#9b59b6', 'sort_order' => 3 ],
         [ 'name' => 'Annual Seminar',   'slug' => 'annual-seminar',   'color' => '#d63638', 'sort_order' => 4 ],
         [ 'name' => 'Class',            'slug' => 'class',            'color' => '#e67e22', 'sort_order' => 5 ],
@@ -9104,7 +9105,11 @@ add_action( 'admin_head', function () {
 .sp-text-danger    { color: #b32d2e; }
 .sp-text-error     { color: #d63638; }
 .sp-text-success   { color: #0a6b2e; }
-.sp-text-success-strong { color: #00a32a; font-weight: 600; }
+.sp-text-success-strong { color: #1d6b30; font-weight: 600; }
+
+/* Live "these colors may be hard to read" warning under the header/footer text
+   color pickers (Design settings). Toggled by the contrast check in updatePreview. */
+.sp-contrast-warn { color: #b32d2e; font-weight: 600; }
 .sp-text-info      { color: #2271b1; }
 .sp-text-info-link { color: #0073aa; font-weight: 500; }
 .sp-text-muted     { color: #6d7175; } /* WCAG-AA-safe replacement for #787c82, used in 20+ admin labels */
@@ -9295,6 +9300,42 @@ add_action( 'admin_footer', function () {
                 if (el && el.classList && el.classList.contains('sp-autosubmit') && el.form) {
                     el.form.submit();
                 }
+            });
+        }
+        // Confirm destructive bulk actions before they run. WHY: several list
+        // tables (Pages, Volunteers, Volunteer Hours, Subscribers, Form
+        // Submissions, Members, Events) perform permanent bulk deletion the
+        // instant "Apply" is clicked — unlike their per-row Delete links, which
+        // all route through spConfirm(). This wires the bulk path to the same
+        // safety net, keyed on the *selected* action so non-destructive bulk
+        // actions (e.g. Assign to Group) are never intercepted. Guarded to bind
+        // once; falls through to a normal submit if spConfirm isn't available.
+        if (!window.spBulkConfirmBound) {
+            window.spBulkConfirmBound = true;
+            var SP_DESTRUCTIVE   = ['delete', 'bulk_delete', 'trash', 'delete_all'];
+            var SP_BULK_MSG_ONE  = <?php echo wp_json_encode( __( 'Delete the selected item? This cannot be undone.', 'societypress' ) ); ?>;
+            var SP_BULK_MSG_MANY = <?php echo wp_json_encode( __( 'Delete the %d selected items? This cannot be undone.', 'societypress' ) ); ?>;
+            document.addEventListener('submit', function (e) {
+                if (typeof spConfirm !== 'function') return;
+                var form = e.target;
+                if (!form || form.dataset.spBulkConfirmed === '1') {
+                    if (form) { delete form.dataset.spBulkConfirmed; }
+                    return;
+                }
+                var table = form.querySelector('.wp-list-table');
+                if (!table) return;
+                var top    = form.querySelector('select[name="action"]');
+                var bottom = form.querySelector('select[name="action2"]');
+                var act    = (top && top.value !== '-1') ? top.value : (bottom ? bottom.value : '-1');
+                if (SP_DESTRUCTIVE.indexOf(act) === -1) return;
+                var checked = table.querySelectorAll('tbody input[type="checkbox"]:checked').length;
+                if (checked === 0) return; // nothing selected — let WP handle the no-op
+                e.preventDefault();
+                var msg = (checked === 1) ? SP_BULK_MSG_ONE : SP_BULK_MSG_MANY.replace('%d', checked);
+                spConfirm(msg, function () {
+                    form.dataset.spBulkConfirmed = '1';
+                    form.submit();
+                });
             });
         }
     })();
@@ -11636,7 +11677,7 @@ function sp_render_dashboard_page(): void {
                                 banner.style.borderColor = '#00a32a';
                                 banner.style.borderLeftColor = '#00a32a';
                                 banner.style.background = '#edfaef';
-                                status.style.color = '#00a32a';
+                                status.style.color = '#1d6b30';
                                 status.textContent = r.data.message;
                                 btn.style.display = 'none';
                                 // Reload after 2 seconds to show the new version
@@ -11740,7 +11781,7 @@ function sp_render_dashboard_page(): void {
                             .then(function(r) { return r.json(); })
                             .then(function(r) {
                                 if (r.success) {
-                                    parentStatus.style.color = '#00a32a';
+                                    parentStatus.style.color = '#1d6b30';
                                     parentStatus.textContent = r.data.message;
                                     parentBtn.style.display = 'none';
                                     setTimeout(function() { location.reload(); }, 2000);
@@ -11782,7 +11823,7 @@ function sp_render_dashboard_page(): void {
                             .then(function(r) {
                                 if (r.success) {
                                     if (statusEl) {
-                                        statusEl.style.color = '#00a32a';
+                                        statusEl.style.color = '#1d6b30';
                                         statusEl.textContent = r.data.message;
                                     }
                                     thisBtn.style.display = 'none';
@@ -11853,7 +11894,7 @@ function sp_render_dashboard_page(): void {
             .sp-dash-stat-link:hover .sp-dash-stat-number { text-decoration: underline; }
 
             /* Accent colors for different stat types */
-            .sp-dash-stat-active   { border-left-color: #00a32a; }
+            .sp-dash-stat-active   { border-left-color: #1d6b30; }
             .sp-dash-stat-expiring { border-left-color: #dba617; }
             .sp-dash-stat-expired  { border-left-color: #d63638; }
             .sp-dash-stat-new      { border-left-color: #2271b1; }
@@ -13375,15 +13416,15 @@ class SP_Members_List_Table extends WP_List_Table {
      */
     protected function column_status( $item ): string {
         $colors = [
-            'active'   => '#00a32a',
+            'active'   => '#1d6b30',
             'expired'  => '#d63638',
             'lapsed'   => '#d63638',
             'grace'    => '#8a6500',
             'pending'  => '#8a6500',
-            'deceased' => '#787c82',
-            'inactive' => '#787c82',
+            'deceased' => '#6d7175',
+            'inactive' => '#6d7175',
         ];
-        $color = $colors[ $item->status ] ?? '#787c82';
+        $color = $colors[ $item->status ] ?? '#6d7175';
 
         // Use the canonical status labels so "grace" shows "Grace Period", etc.
         $statuses = sp_get_member_statuses();
@@ -13847,7 +13888,12 @@ add_action( 'admin_init', function () {
     }
 
     // ---- Bulk delete (checkbox + dropdown action) ----
-    if ( isset( $_POST['action'] ) && $_POST['action'] === 'delete' && ! empty( $_POST['member'] ) ) {
+    // WHY $_REQUEST: the members list table submits via GET, and the bulk action
+    // can come from either the top ("action") or bottom ("action2") dropdown.
+    // Reading only $_POST['action'] meant this block never fired — the selected
+    // IDs arrived in $_GET — so bulk delete silently did nothing. This mirrors the
+    // Assign-to-Group handler just below, which already reads $_REQUEST correctly.
+    if ( ( ( $_REQUEST['action'] ?? '' ) === 'delete' || ( $_REQUEST['action2'] ?? '' ) === 'delete' ) && ! empty( $_REQUEST['member'] ) ) {
         check_admin_referer( 'bulk-members' );
 
         global $wpdb;
@@ -13857,7 +13903,7 @@ add_action( 'admin_init', function () {
 
         require_once ABSPATH . 'wp-admin/includes/user.php';
 
-        foreach ( (array) $_POST['member'] as $user_id ) {
+        foreach ( (array) $_REQUEST['member'] as $user_id ) {
             $user_id = (int) $user_id;
 
             // Belt: skip by ID
@@ -14756,10 +14802,10 @@ add_action( 'admin_init', function () {
         return;
     }
     if ( ! wp_verify_nonce( $_POST['sp_member_nonce'], 'sp_save_member' ) ) {
-        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+        wp_die( esc_html__( 'Your session expired or the security check failed. Please go back and try again.', 'societypress' ), esc_html__( 'Security check failed', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
     if ( ! current_user_can( 'sp_manage_members' ) ) {
-        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ), esc_html__( 'Permission denied', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
 
     global $wpdb;
@@ -19116,7 +19162,7 @@ function sp_render_import_page(): void {
            Overrides WP's default notice padding and uses green accent color. */
         .sp-import-notice-success {
             padding: 16px;
-            border-left-color: #00a32a;
+            border-left-color: #1d6b30;
             margin-top: 20px;
         }
 
@@ -23219,7 +23265,7 @@ function sp_render_setup_wizard(): void {
         .sp-wizard-steps { display: flex; justify-content: center; gap: 8px; margin-bottom: 32px; }
         .sp-wizard-step { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; }
         .sp-wizard-step.active { background: #2271b1; color: #fff; }
-        .sp-wizard-step.done { background: #00a32a; color: #fff; }
+        .sp-wizard-step.done { background: #1d6b30; color: #fff; }
         .sp-wizard-step.pending { background: #dcdcde; color: #646970; }
         .sp-wizard-step-line { width: 40px; height: 2px; background: #dcdcde; align-self: center; }
         .sp-wizard-card { background: #fff; border: 1px solid #c3c4c7; border-radius: 8px; padding: 32px; }
@@ -23941,7 +23987,7 @@ function sp_render_audit_log_page(): void {
     // function with this guard so non-WP callers (CLI, REST, plugin code)
     // can't bypass it.
     if ( ! current_user_can( 'sp_manage_settings' ) ) {
-        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ), esc_html__( 'Permission denied', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
 
     global $wpdb;
@@ -24272,7 +24318,7 @@ add_action( 'admin_menu', 'sp_register_access_log_menu', 99 );
  */
 function sp_render_access_log_page(): void {
     if ( ! current_user_can( 'sp_manage_settings' ) ) {
-        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ), esc_html__( 'Permission denied', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
 
     global $wpdb;
@@ -25340,7 +25386,7 @@ class SP_Pages_List_Table extends WP_List_Table {
         }
 
         // Delete — JS-based POST to avoid nested forms inside the list table
-        $actions['delete'] = '<a href="#" class="sp-text-danger" onclick="spConfirm(\'' . esc_js( __( 'Delete this page?', 'societypress' ) ) . '\', function(){var f=document.createElement(\'form\');f.method=\'post\';f.action=\'' . esc_url( admin_url( 'admin.php?page=sp-pages' ) ) . '\';var d=[[\'_wpnonce\',\'' . wp_create_nonce( 'sp_delete_page_' . $item->ID ) . '\'],[\'action\',\'delete\'],[\'post_id\',\'' . (int) $item->ID . '\']];d.forEach(function(p){var i=document.createElement(\'input\');i.type=\'hidden\';i.name=p[0];i.value=p[1];f.appendChild(i);});document.body.appendChild(f);f.submit();});return false;">' . esc_html__( 'Delete', 'societypress' ) . '</a>';
+        $actions['delete'] = '<a href="#" class="sp-text-danger" onclick="spConfirm(\'' . esc_js( __( 'Delete this page? This cannot be undone.', 'societypress' ) ) . '\', function(){var f=document.createElement(\'form\');f.method=\'post\';f.action=\'' . esc_url( admin_url( 'admin.php?page=sp-pages' ) ) . '\';var d=[[\'_wpnonce\',\'' . wp_create_nonce( 'sp_delete_page_' . $item->ID ) . '\'],[\'action\',\'delete\'],[\'post_id\',\'' . (int) $item->ID . '\']];d.forEach(function(p){var i=document.createElement(\'input\');i.type=\'hidden\';i.name=p[0];i.value=p[1];f.appendChild(i);});document.body.appendChild(f);f.submit();});return false;">' . esc_html__( 'Delete', 'societypress' ) . '</a>';
 
         return $name . $this->row_actions( $actions );
     }
@@ -25942,7 +25988,7 @@ function sp_render_page_edit(): void {
             </p>
         </form>
         <?php if ( $is_edit ) : ?>
-            <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-pages' ) ); ?>" class="sp-inline-form sp-inline-form--tight" data-sp-confirm="<?php echo esc_attr( __( 'Delete this page?', 'societypress' ) ); ?>">
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-pages' ) ); ?>" class="sp-inline-form sp-inline-form--tight" data-sp-confirm="<?php echo esc_attr( __( 'Delete this page? This cannot be undone.', 'societypress' ) ); ?>">
                 <?php wp_nonce_field( 'sp_delete_page_' . $post_id ); ?>
                 <input type="hidden" name="action" value="delete">
                 <input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>">
@@ -25988,7 +26034,7 @@ function sp_render_page_edit(): void {
 function sp_handle_page_save(): void {
     // Verify nonce
     if ( ! wp_verify_nonce( $_POST['sp_page_nonce'] ?? '', 'sp_save_page' ) ) {
-        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+        wp_die( esc_html__( 'Your session expired or the security check failed. Please go back and try again.', 'societypress' ), esc_html__( 'Security check failed', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
 
     if ( ! current_user_can( 'sp_manage_content' ) ) {
@@ -26177,11 +26223,11 @@ function sp_render_groups_frontend( $content ): string {
     <style>
         .sp-groups-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
         .sp-group-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; }
-        .sp-group-card.sp-in-group { border-color: #00a32a; border-width: 2px; }
+        .sp-group-card.sp-in-group { border-color: #1d6b30; border-width: 2px; }
         .sp-group-card h3 { margin: 0 0 8px; font-size: 18px; }
         .sp-group-card .sp-group-meta { font-size: 13px; color: #646970; margin-bottom: 12px; }
         .sp-group-card .sp-group-desc { margin-bottom: 16px; }
-        .sp-group-card .sp-group-badge { display: inline-block; background: #00a32a; color: #fff; font-size: 0.75rem; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
+        .sp-group-card .sp-group-badge { display: inline-block; background: #1d6b30; color: #fff; font-size: 0.75rem; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
         .sp-group-btn { display: inline-block; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
         .sp-group-btn.join { background: #2271b1; color: #fff; }
         .sp-group-btn.join:hover { background: #135e96; }
@@ -26430,7 +26476,7 @@ function sp_render_finances_page(): void {
             .sp-finance-income-note { max-width: 760px; margin-top: -4px; }
             .sp-finance-stat .stat-label { font-size: 12px; color: #646970; text-transform: uppercase; letter-spacing: 0.5px; }
             .sp-finance-stat .stat-value { font-size: 24px; font-weight: 600; margin-top: 4px; }
-            .sp-finance-stat .stat-value.money { color: #00a32a; }
+            .sp-finance-stat .stat-value.money { color: #1d6b30; }
             .sp-finance-filters { background: #fff; border: 1px solid #c3c4c7; padding: 12px; margin-bottom: 12px; display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
             .sp-finance-filters label { font-size: 12px; display: block; margin-bottom: 2px; color: #646970; }
             .sp-finance-filters select,
@@ -26743,10 +26789,10 @@ function sp_render_settings_website_page(): void {
  */
 add_action( 'wp_ajax_sp_export_settings_json', function () {
     if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_settings_json' ) ) {
-        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+        wp_die( esc_html__( 'Your session expired or the security check failed. Please go back and try again.', 'societypress' ), esc_html__( 'Security check failed', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
     if ( ! current_user_can( 'sp_manage_settings' ) ) {
-        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ), esc_html__( 'Permission denied', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
 
     $settings = sp_settings();
@@ -27421,7 +27467,7 @@ add_action( 'admin_init', function () {
     if ( ! isset( $_POST['sp_activate_theme'] ) ) return;
     if ( ! current_user_can( 'sp_manage_settings' ) ) return;
     if ( ! wp_verify_nonce( $_POST['_sp_theme_nonce'] ?? '', 'sp_switch_theme' ) ) {
-        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+        wp_die( esc_html__( 'Your session expired or the security check failed. Please go back and try again.', 'societypress' ), esc_html__( 'Security check failed', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
 
     $theme_slug = sanitize_text_field( $_POST['sp_activate_theme'] );
@@ -30012,7 +30058,7 @@ function sp_render_themes_page(): void {
                 .then(function(r) {
                     if (r.success) {
                         if (statusEl) {
-                            statusEl.style.color = '#00a32a';
+                            statusEl.style.color = '#1d6b30';
                             statusEl.textContent = r.data.message;
                         }
                         setTimeout(function() { location.reload(); }, 1000);
@@ -31021,6 +31067,7 @@ function sp_render_settings_design_page(): void {
                         <td>
                             <input type="text" id="sp-design-header-text" name="societypress_settings[design_color_header_text]"
                                    value="<?php echo esc_attr( $d_header_text ); ?>" class="sp-color-picker" data-default-color="#ffffff">
+                            <p class="description sp-contrast-warn" id="sp-contrast-warn-header" hidden></p>
                         </td>
                     </tr>
                     <tr>
@@ -31035,6 +31082,7 @@ function sp_render_settings_design_page(): void {
                         <td>
                             <input type="text" id="sp-design-footer-text" name="societypress_settings[design_color_footer_text]"
                                    value="<?php echo esc_attr( $d_footer_text ); ?>" class="sp-color-picker" data-default-color="#ffffff">
+                            <p class="description sp-contrast-warn" id="sp-contrast-warn-footer" hidden></p>
                         </td>
                     </tr>
                     <tr>
@@ -31289,6 +31337,9 @@ function sp_render_settings_design_page(): void {
                         }
                     });
                 });
+                // Run once now so a saved low-contrast header/footer combo warns
+                // on load, not only after the visitor touches a color picker.
+                setTimeout(updatePreview, 60);
             }
         });
 
@@ -31337,7 +31388,50 @@ function sp_render_settings_design_page(): void {
          * in the cascade), we override the saved values with the unsaved
          * form values. This gives Harold an instant preview without saving.
          */
+        // WCAG contrast ratio between two hex colors — same math as the PHP
+        // sp_color_luminance() helper. Powers the live readability warnings.
+        function spContrastRatio(h1, h2) {
+            function lum(hex) {
+                hex = (hex || '').replace('#', '');
+                if (hex.length === 3) { hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2]; }
+                var r = parseInt(hex.substr(0,2),16)/255,
+                    g = parseInt(hex.substr(2,2),16)/255,
+                    b = parseInt(hex.substr(4,2),16)/255;
+                function lin(c){ return c <= 0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4); }
+                return 0.2126*lin(r) + 0.7152*lin(g) + 0.0722*lin(b);
+            }
+            var a = lum(h1), b = lum(h2);
+            var hi = Math.max(a, b), lo = Math.min(a, b);
+            return (hi + 0.05) / (lo + 0.05);
+        }
+
+        var SP_CONTRAST_MSG = <?php echo wp_json_encode( __( 'These colors may be hard to read for some visitors (contrast %s:1; aim for at least 4.5:1).', 'societypress' ) ); ?>;
+
+        function spToggleContrastWarn(elId, bg, text) {
+            var el = document.getElementById(elId);
+            if (!el) return;
+            var hexRe = /^#?[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?$/;
+            if (!hexRe.test(bg || '') || !hexRe.test(text || '')) { el.hidden = true; return; }
+            var ratio = spContrastRatio(bg, text);
+            if (ratio < 4.5) {
+                el.textContent = SP_CONTRAST_MSG.replace('%s', ratio.toFixed(1));
+                el.hidden = false;
+            } else {
+                el.hidden = true;
+            }
+        }
+
         function updatePreview() {
+            // Live readability guardrail — runs before the iframe guard below so it
+            // still updates when the preview iframe isn't ready yet. WHY here: this
+            // function already fires on every color-picker change and on load.
+            spToggleContrastWarn('sp-contrast-warn-header',
+                getColorValue('sp-design-header-bg', '#1e3a5f'),
+                getColorValue('sp-design-header-text', '#ffffff'));
+            spToggleContrastWarn('sp-contrast-warn-footer',
+                getColorValue('sp-design-footer-bg', '#1e3a5f'),
+                getColorValue('sp-design-footer-text', '#ffffff'));
+
             if (!iframe || !iframe.contentDocument) return;
 
             try {
@@ -37685,7 +37779,9 @@ function sp_render_builder_widget_contact_form( array $s ): void {
     if ( $intro ) {
         echo '<p class="sp-contact-intro">' . esc_html( $intro ) . '</p>';
     }
-    echo '<div class="sp-contact-message"></div>';
+    // role="status" + aria-live so submit success/failure is announced to
+    // screen-reader users, matching the join form's result banner.
+    echo '<div class="sp-contact-message" role="status" aria-live="polite"></div>';
     ?>
     <form class="sp-builder-contact-form-inner" method="post">
         <?php wp_nonce_field( 'sp_builder_contact', 'sp_builder_contact_nonce' ); ?>
@@ -37957,6 +38053,7 @@ function sp_builder_frontend_styles(): void {
         .sp-feature-card p { color: #666; font-size: 0.95rem; line-height: 1.6; margin: 0 0 20px; }
         .sp-feature-card-btn { display: inline-block; padding: 10px 24px; font-size: 0.85rem; font-weight: 600; text-decoration: none; border-radius: 4px; background: var(--sp-color-primary, #1e3a5f); color: #fff; transition: background 0.2s; }
         .sp-feature-card-btn:hover { background: var(--sp-color-primary-hover, #2c5282); color: #fff; }
+        @media (max-width: 1024px) { .sp-feature-cards-grid { grid-template-columns: repeat(2, 1fr) !important; } }
         @media (max-width: 768px) { .sp-feature-cards-grid { grid-template-columns: 1fr !important; } }
 
         /* ------------------------------------------------------------------ */
@@ -39183,9 +39280,9 @@ class SP_Events_List_Table extends WP_List_Table {
             'scheduled' => '#2271b1',
             'cancelled' => '#d63638',
             'postponed' => '#8a6500',
-            'completed' => '#00a32a',
+            'completed' => '#1d6b30',
         ];
-        $color = $colors[ $item->status ] ?? '#787c82';
+        $color = $colors[ $item->status ] ?? '#6d7175';
         $label = sp_localized_status( $item->status );
 
         return sprintf(
@@ -39452,10 +39549,14 @@ add_action( 'admin_init', function () {
     }
 
     // ---- Bulk delete ----
-    if ( $action === 'delete' && ! empty( $_POST['event'] ) ) {
+    // WHY $_REQUEST: the events list table submits via GET, so the selected IDs
+    // arrive in $_GET, and the action may come from the bottom ("action2")
+    // dropdown too. The old $_POST['event'] gate never matched, so bulk delete
+    // silently did nothing.
+    if ( ( $action === 'delete' || ( $_REQUEST['action2'] ?? '' ) === 'delete' ) && ! empty( $_REQUEST['event'] ) ) {
         check_admin_referer( 'bulk-events' );
 
-        $ids = array_map( 'intval', (array) $_POST['event'] );
+        $ids = array_map( 'intval', (array) $_REQUEST['event'] );
 
         // Fetch titles before deletion so the audit log has something useful
         // WHY: Once the rows are gone, we can't look up the names.
@@ -39659,10 +39760,10 @@ add_action( 'admin_init', function () {
         return;
     }
     if ( ! wp_verify_nonce( $_POST['sp_event_nonce'], 'sp_save_event' ) ) {
-        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+        wp_die( esc_html__( 'Your session expired or the security check failed. Please go back and try again.', 'societypress' ), esc_html__( 'Security check failed', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
     if ( ! current_user_can( 'sp_manage_events' ) ) {
-        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ), esc_html__( 'Permission denied', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
 
     global $wpdb;
@@ -42124,7 +42225,7 @@ function sp_render_event_categories_page(): void {
             if (!name) return;
 
             addStatus.textContent = '<?php echo esc_js( __( 'Saving...', 'societypress' ) ); ?>';
-            addStatus.style.color = '#787c82';
+            addStatus.style.color = '#6d7175';
 
             var data = new FormData();
             data.append('action', 'sp_save_event_category');
@@ -42138,7 +42239,7 @@ function sp_render_event_categories_page(): void {
                 .then(function(r) {
                     if (r.success) {
                         addStatus.textContent = '<?php echo esc_js( __( 'Saved!', 'societypress' ) ); ?>';
-                        addStatus.style.color = '#00a32a';
+                        addStatus.style.color = '#1d6b30';
                         // Reload to show the new row (simpler than DOM manipulation)
                         setTimeout(function() { location.reload(); }, 500);
                     } else {
@@ -42608,7 +42709,7 @@ function sp_render_member_tiers_page(): void {
             if (!name) return;
 
             addStatus.textContent = '<?php echo esc_js( __( 'Saving...', 'societypress' ) ); ?>';
-            addStatus.style.color = '#787c82';
+            addStatus.style.color = '#6d7175';
 
             var data = new FormData();
             data.append('action', 'sp_save_membership_tier');
@@ -42625,7 +42726,7 @@ function sp_render_member_tiers_page(): void {
                 .then(function(r) {
                     if (r.success) {
                         addStatus.textContent = '<?php echo esc_js( __( 'Saved!', 'societypress' ) ); ?>';
-                        addStatus.style.color = '#00a32a';
+                        addStatus.style.color = '#1d6b30';
                         // Reload to show the new row (simpler than DOM manipulation)
                         setTimeout(function() { location.reload(); }, 500);
                     } else {
@@ -43253,7 +43354,7 @@ add_action( 'admin_init', function () {
                 .sp-stripe-info-icon            { font-size: 24px; color: #2271b1; }
                 .sp-stripe-info-title           { font-size: 14px; }
                 .sp-stripe-info-desc            { color: #666; font-size: 13px; }
-                .sp-stripe-badge-connected      { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; background: #00a32a22; color: #00a32a; border-radius: 4px; font-size: 13px; font-weight: 600; }
+                .sp-stripe-badge-connected      { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; background: #00a32a22; color: #1d6b30; border-radius: 4px; font-size: 13px; font-weight: 600; }
                 .sp-stripe-badge-disconnected   { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; background: #78787822; color: #787878; border-radius: 4px; font-size: 13px; font-weight: 600; }
                 .sp-stripe-details              { margin-top: 8px; }
                 .sp-stripe-summary              { cursor: pointer; font-weight: 600; color: #2271b1; font-size: 13px; }
@@ -43539,7 +43640,7 @@ add_action( 'admin_init', function () {
                     .then(function(data) {
                         if (data.success) {
                             result.textContent = '\u2705 <?php echo esc_js( __( 'Connected! Your Stripe keys are working. Click Save Changes to keep them.', 'societypress' ) ); ?>';
-                            result.style.color = '#00a32a';
+                            result.style.color = '#1d6b30';
                         } else {
                             result.textContent = '\u274C ' + (data.data || '<?php echo esc_js( __( 'Connection failed. Check your keys and try again.', 'societypress' ) ); ?>');
                             result.style.color = '#d63638';
@@ -43581,7 +43682,7 @@ add_action( 'admin_init', function () {
                 : '<span class="sp-paypal-badge sp-paypal-badge--disconnected">' . esc_html__( 'Not Connected', 'societypress' ) . '</span>';
             echo '<style id="sp-paypal-settings-css">
                 .sp-paypal-badge                { padding: 3px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; }
-                .sp-paypal-badge--connected     { background: #00a32a; color: #fff; }
+                .sp-paypal-badge--connected     { background: #1d6b30; color: #fff; }
                 .sp-paypal-badge--disconnected  { background: #ddd; color: #555; }
                 .sp-paypal-info-box             { background: #f0f6fc; border: 1px solid #c5d9ed; border-radius: 6px; padding: 16px 20px; margin-bottom: 12px; }
                 .sp-paypal-steps                { margin-top: 8px; padding-left: 20px; }
@@ -43742,7 +43843,7 @@ add_action( 'admin_init', function () {
                     .then(function(data) {
                         if (data.success) {
                             result.textContent = '\u2705 ' + data.data;
-                            result.style.color = '#00a32a';
+                            result.style.color = '#1d6b30';
                         } else {
                             result.textContent = '\u274C ' + (data.data || <?php echo wp_json_encode( __( 'Connection failed. Check your credentials and try again.', 'societypress' ) ); ?>);
                             result.style.color = '#d63638';
@@ -45977,13 +46078,13 @@ function sp_render_events_listing( array $settings ): void {
                             <div class="sp-event-meta">
                                 <?php if ( $time_str ) : ?>
                                     <span class="sp-event-meta-item sp-event-time">
-                                        &#128339; <?php echo esc_html( $time_str ); ?>
+                                        <span aria-hidden="true">&#128339;</span> <?php echo esc_html( $time_str ); ?>
                                     </span>
                                 <?php endif; ?>
 
                                 <?php if ( $location ) : ?>
                                     <span class="sp-event-meta-item sp-event-location">
-                                        &#128205; <?php echo esc_html( $location ); ?>
+                                        <span aria-hidden="true">&#128205;</span> <?php echo esc_html( $location ); ?>
                                     </span>
                                 <?php endif; ?>
                             </div>
@@ -46182,7 +46283,7 @@ function sp_render_event_detail( string $slug, array $settings ): void {
 
                 <?php if ( ! empty( $event->location_name ) ) : ?>
                 <div class="sp-event-detail-item">
-                    <span class="sp-detail-icon">&#128205;</span>
+                    <span class="sp-detail-icon" aria-hidden="true">&#128205;</span>
                     <div><strong><?php echo esc_html( $event->location_name ); ?></strong></div>
                 </div>
                 <?php endif; ?>
@@ -46451,7 +46552,7 @@ function sp_render_event_detail( string $slug, array $settings ): void {
 
             <?php if ( ! empty( $event->location_name ) || $event->is_virtual ) : ?>
             <div class="sp-event-detail-item">
-                <span class="sp-detail-icon">&#128205;</span>
+                <span class="sp-detail-icon" aria-hidden="true">&#128205;</span>
                 <div>
                     <?php if ( ! empty( $event->location_name ) ) : ?>
                         <strong><?php echo esc_html( $event->location_name ); ?></strong>
@@ -48882,12 +48983,12 @@ function sp_render_event_registrations_section( object $event ): void {
                                     <?php
                                     // Color-code the payment status badge for quick visual scanning
                                     $pay_colors = [
-                                        'paid'     => '#00a32a',
+                                        'paid'     => '#1d6b30',
                                         'refunded' => '#d63638',
                                         'pending'  => '#8a6500',
-                                        'none'     => '#787c82',
+                                        'none'     => '#6d7175',
                                     ];
-                                    $pay_color = $pay_colors[ $reg->payment_status ] ?? '#787c82';
+                                    $pay_color = $pay_colors[ $reg->payment_status ] ?? '#6d7175';
                                     ?>
                                     <?php
                                     /*
@@ -49338,10 +49439,10 @@ add_action( 'wp_ajax_sp_export_registrations', 'sp_ajax_export_registrations' );
 
 function sp_ajax_export_registrations(): void {
     if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_registrations' ) ) {
-        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+        wp_die( esc_html__( 'Your session expired or the security check failed. Please go back and try again.', 'societypress' ), esc_html__( 'Security check failed', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
     if ( ! current_user_can( 'sp_manage_events' ) ) {
-        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ), esc_html__( 'Permission denied', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
 
     global $wpdb;
@@ -49898,7 +49999,7 @@ function sp_render_join_form(): string {
     if ( $result ) {
         echo '<style>'
            . '.sp-join-result { padding: 12px 16px; margin-bottom: 20px; border-radius: 4px; border: 1px solid; }'
-           . '.sp-join-result--success { background: #edfaef; border-color: #00a32a; }'
+           . '.sp-join-result--success { background: #edfaef; border-color: #1d6b30; }'
            . '.sp-join-result--error   { background: #fcf0f1; border-color: #d63638; }'
            . '</style>';
         $class    = $result['success'] ? 'sp-join-result sp-join-result--success' : 'sp-join-result sp-join-result--error';
@@ -51301,7 +51402,7 @@ add_action( 'admin_init', function () {
     check_admin_referer( 'sp_reset_invite_' . $user_id );
 
     if ( ! current_user_can( 'sp_manage_members' ) ) {
-        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ), esc_html__( 'Permission denied', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
 
     // Where to land afterward — the edit screen passes its own URL; otherwise the
@@ -52104,7 +52205,7 @@ function sp_render_speakers_page(): void {
     ?>
     <style>
         .sp-speaker-photo-thumb { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; vertical-align: middle; margin-right: 8px; }
-        .sp-speaker-status-active { color: #00a32a; font-weight: 500; }
+        .sp-speaker-status-active { color: #1d6b30; font-weight: 500; }
     </style>
     <div class="wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Speakers', 'societypress' ); ?></h1>
@@ -52136,10 +52237,10 @@ add_action( 'admin_init', function () {
         return;
     }
     if ( ! wp_verify_nonce( $_POST['sp_speaker_nonce'], 'sp_save_speaker' ) ) {
-        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+        wp_die( esc_html__( 'Your session expired or the security check failed. Please go back and try again.', 'societypress' ), esc_html__( 'Security check failed', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
     if ( ! current_user_can( 'sp_manage_events' ) ) {
-        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ), esc_html__( 'Permission denied', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
 
     global $wpdb;
@@ -52951,10 +53052,10 @@ function sp_render_builder_widget_upcoming_events( array $s ): void {
                 if ( $event->end_time ) {
                     $time_str .= ' – ' . wp_date( 'g:i A', strtotime( $event->end_time ) );
                 }
-                $meta_parts[] = '<span>🕐 ' . esc_html( $time_str ) . '</span>';
+                $meta_parts[] = '<span><span aria-hidden="true">🕐</span> ' . esc_html( $time_str ) . '</span>';
             }
             if ( $show_location && $event->location_name ) {
-                $meta_parts[] = '<span>📍 ' . esc_html( $event->location_name ) . '</span>';
+                $meta_parts[] = '<span><span aria-hidden="true">📍</span> ' . esc_html( $event->location_name ) . '</span>';
             }
             if ( ! $show_date ) {
                 $meta_parts[] = '<span>📅 ' . esc_html( $full_date ) . '</span>';
@@ -52993,10 +53094,10 @@ function sp_render_builder_widget_upcoming_events( array $s ): void {
         echo '</ul>';
     }
 
-    // "View All Events" link — list layout only. Card layout already has
+    // "View Events Calendar" link — list layout only. Card layout already has
     // "Details" buttons on each card, so this link would be redundant.
     if ( $events_page_url && 'cards' !== $layout ) {
-        echo '<a href="' . esc_url( $events_page_url ) . '" class="sp-ue-view-all">' . esc_html__( 'View All Events', 'societypress' ) . ' &rarr;</a>';
+        echo '<a href="' . esc_url( $events_page_url ) . '" class="sp-ue-view-all">' . esc_html__( 'View Events Calendar', 'societypress' ) . ' &rarr;</a>';
     }
 
     echo '</div>';
@@ -53379,7 +53480,7 @@ function sp_events_calendar_styles(): void {
             transition: background 0.2s;
         }
         .sp-ical-copy-btn:hover { background: var(--sp-color-primary-hover, #2c5282); }
-        .sp-ical-copy-btn.sp-ical-copied { background: #00a32a; }
+        .sp-ical-copy-btn.sp-ical-copied { background: #1d6b30; }
         .sp-ical-hint {
             font-size: 0.75rem;
             color: #6d7175;
@@ -55997,6 +56098,11 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
             // of the thumbnail link's styles can live in the static block above.
             echo '<style>
 .sp-gallery-thumb-link { aspect-ratio: 1; overflow: hidden; border-radius: 6px; display: block; }
+/* On phones, cap the gallery at 2 columns regardless of the admin column count.
+   The per-thumb width is an inline calc() from that setting, so a 4-6 column
+   gallery would otherwise render as postage-stamp thumbnails on a narrow screen.
+   !important is required to beat the inline style. */
+@media (max-width: 600px) { .sp-gallery-photo-grid .sp-gallery-thumb-link { width: calc(50% - 8px) !important; } }
 </style>';
 
             echo '<div class="sp-gallery-photo-grid">';
@@ -56984,7 +57090,7 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
 
             // Title cell — clickable to expand detail
             echo '<td data-label="' . esc_attr__( 'Title', 'societypress' ) . '">';
-            echo '<a class="sp-item-title" data-item-id="' . esc_attr( $item->id ) . '">' . esc_html( $item->title ) . '</a>';
+            echo '<a class="sp-item-title" role="button" tabindex="0" aria-expanded="false" data-item-id="' . esc_attr( $item->id ) . '">' . esc_html( $item->title ) . '</a>';
             if ( $item->item_condition ) {
                 echo ' <span class="sp-item-condition" style="color:' . esc_attr( $cond_color ) . ';">(' . esc_html( sp_localized_status( $item->item_condition, 'condition' ) ) . ')</span>';
             }
@@ -57088,6 +57194,18 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
         // WHY: Clicking a title row fetches full item details via AJAX and injects
         //      a detail panel below the row. Clicking again collapses it. No page
         //      reload — the researcher stays in context of their results.
+        // Keyboard access: each title is rendered as role="button" tabindex="0",
+        // so Enter/Space must activate it like a mouse click. We reuse the click
+        // handler below rather than duplicating the toggle logic. Without this,
+        // keyboard and screen-reader users could not open any item detail.
+        container.addEventListener('keydown', function(e) {
+            if ( e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar' ) return;
+            var titleLink = e.target.closest('.sp-item-title');
+            if ( ! titleLink ) return;
+            e.preventDefault(); // stop Space from scrolling the page
+            titleLink.click();
+        });
+
         container.addEventListener('click', function(e) {
             var titleLink = e.target.closest('.sp-item-title');
             if ( ! titleLink ) return;
@@ -57101,12 +57219,15 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
             var existingDetail = parentRow.nextElementSibling;
             if ( existingDetail && existingDetail.classList.contains('sp-catalog-detail-row') ) {
                 existingDetail.remove();
+                titleLink.setAttribute('aria-expanded', 'false');
                 openRow = null;
                 return;
             }
 
             // Close any other open detail row
             if ( openRow ) {
+                var prevTitle = openRow.previousElementSibling ? openRow.previousElementSibling.querySelector('.sp-item-title') : null;
+                if ( prevTitle ) prevTitle.setAttribute('aria-expanded', 'false');
                 openRow.remove();
                 openRow = null;
             }
@@ -57120,6 +57241,7 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
             detailRow.appendChild(detailCell);
             parentRow.after(detailRow);
             openRow = detailRow;
+            titleLink.setAttribute('aria-expanded', 'true');
 
             // Fetch item details
             fetch(ajaxUrl + '?action=sp_library_item_detail&item_id=' + itemId, { credentials: 'same-origin' })
@@ -57443,7 +57565,8 @@ function sp_render_builder_widget_feature_cards( array $s ): void {
         ?>
             <div class="sp-feature-card">
                 <?php if ( $img_url ) : ?>
-                    <img class="sp-feature-card-img" src="<?php echo esc_url( $img_url ); ?>" alt="<?php echo esc_attr( $card['title'] ?? '' ); ?>">
+                    <?php // alt="" — the image is decorative; the card's <h3> right below states the same title, so alt text would just be read twice. ?>
+                    <img class="sp-feature-card-img" src="<?php echo esc_url( $img_url ); ?>" alt="">
                 <?php endif; ?>
                 <h3><?php echo esc_html( $card['title'] ?? '' ); ?></h3>
                 <?php if ( ! empty( $card['description'] ) ) : ?>
@@ -58076,7 +58199,7 @@ function sp_render_reports_page(): void {
             .sp-reports-stat-number--green {
                 font-size: 32px;
                 font-weight: 700;
-                color: #00a32a;
+                color: #1d6b30;
             }
 
             /* Reports page: descriptive label beneath the big number */
@@ -58725,7 +58848,7 @@ function sp_render_membership_reports_page(): void {
         }
         .sp-mr-stat-number--warning { color: #8a6500; }
         .sp-mr-stat-number--danger  { color: #b32d2e; }
-        .sp-mr-stat-number--green   { color: #00a32a; }
+        .sp-mr-stat-number--green   { color: #1d6b30; }
         .sp-mr-revenue-total        { font-size: 24px; font-weight: 700; margin-bottom: 12px; }
         .sp-mr-stat-number--muted   { color: #6d7175; }
         .sp-mr-stat-label {
@@ -58842,7 +58965,7 @@ function sp_render_membership_reports_page(): void {
             min-height: 4px;
             transition: height 0.3s;
         }
-        .sp-mr-chart-bar--green { background: #00a32a; }
+        .sp-mr-chart-bar--green { background: #1d6b30; }
         .sp-mr-chart-value {
             font-size: 0.75rem;
             font-weight: 600;
@@ -61943,7 +62066,7 @@ function sp_render_resources_page(): void {
         </table>
         <style>
             #sp-resources-table .sp-resource-drag-col { width: 28px; }
-            #sp-resources-table .sp-resource-drag-handle { cursor: grab; text-align: center; color: #787c82; font-size: 16px; user-select: none; }
+            #sp-resources-table .sp-resource-drag-handle { cursor: grab; text-align: center; color: #6d7175; font-size: 16px; user-select: none; }
             #sp-resources-table tr.sp-row-dragging { opacity: 0.5; }
             #sp-resources-table tr.sp-row-saved { animation: spRowSaved 1s ease; }
             @keyframes spRowSaved { 0% { background: #f0f6e6; } 100% { background: transparent; } }
@@ -63290,7 +63413,7 @@ function sp_render_volunteer_opportunities_frontend(): string {
         font-size: 0.9em;
         font-weight: 600;
     }
-    .sp-vol-status-label--confirmed  { color: #00a32a; }
+    .sp-vol-status-label--confirmed  { color: #1d6b30; }
     .sp-vol-status-label--waitlisted { color: #8a6500; }
     /* Cancel button --------------------------------------------------------- */
     .sp-vol-cancel-btn {
@@ -63493,7 +63616,7 @@ function sp_render_volunteer_opportunities_frontend(): string {
                         if (data.success) {
                             var icon = data.data.status === 'waitlisted' ? '\uD83D\uDCCB <?php echo esc_js( __( "Waitlisted", "societypress" ) ); ?>' : '\u2705 <?php echo esc_js( __( "Signed Up", "societypress" ) ); ?>';
                             btn.parentNode.innerHTML = '<span style="font-weight:600;color:' +
-                                (data.data.status === 'confirmed' ? '#00a32a' : '#dba617') + ';">' + icon + '</span>' +
+                                (data.data.status === 'confirmed' ? '#1d6b30' : '#dba617') + ';">' + icon + '</span>' +
                                 ' <em style="font-size:0.85em;color:#6d7175;"><?php echo esc_js( __( "(reload to update)", "societypress" ) ); ?></em>';
                         } else {
                             spAlert(data.data || '<?php echo esc_js( __( "Could not sign up.", "societypress" ) ); ?>');
@@ -63900,11 +64023,11 @@ function sp_render_volunteer_opportunity_edit_page(): void {
                     <tbody>
                     <?php foreach ( $signups as $s ) :
                         $name = $s->first_name ? $s->first_name . ' ' . $s->last_name : $s->display_name;
-                        $badge = [ 'confirmed' => '#00a32a', 'waitlisted' => '#8a6500', 'cancelled' => '#d63638' ];
+                        $badge = [ 'confirmed' => '#1d6b30', 'waitlisted' => '#8a6500', 'cancelled' => '#d63638' ];
                     ?>
                         <tr>
                             <td><?php echo esc_html( $name ); ?></td>
-                            <td><span style="display:inline-block;padding:2px 8px;border-radius:3px;background:<?php echo ($badge[$s->status] ?? '#787c82') . '22'; ?>;color:<?php echo $badge[$s->status] ?? '#787c82'; ?>;font-size:12px;"><?php echo esc_html( sp_localized_status( $s->status ) ); ?></span></td>
+                            <td><span style="display:inline-block;padding:2px 8px;border-radius:3px;background:<?php echo ($badge[$s->status] ?? '#6d7175') . '22'; ?>;color:<?php echo $badge[$s->status] ?? '#6d7175'; ?>;font-size:12px;"><?php echo esc_html( sp_localized_status( $s->status ) ); ?></span></td>
                             <td><?php echo esc_html( date_i18n( 'M j, Y g:i A', strtotime( $s->signed_up_at ) ) ); ?></td>
                         </tr>
                     <?php endforeach; ?>
@@ -65225,7 +65348,7 @@ function sp_render_leadership_page(): void {
     // extracted to sp-leadership-status-badge in the <style> block above.
     $status_badge = function ( string $status ): string {
         $colors = [
-            'active'   => [ 'bg' => '#00a32a22', 'text' => '#00a32a' ],
+            'active'   => [ 'bg' => '#00a32a22', 'text' => '#1d6b30' ],
             'inactive' => [ 'bg' => '#b32d2e22', 'text' => '#b32d2e' ],
         ];
         $c = $colors[ $status ] ?? [ 'bg' => '#78788222', 'text' => '#787882' ];
@@ -67188,7 +67311,7 @@ function sp_render_email_log_page(): void {
         }
 
         /* Color per status for the count number */
-        .sp-email-log-stat-sent-num    { color: #00a32a; }
+        .sp-email-log-stat-sent-num    { color: #1d6b30; }
         .sp-email-log-stat-blocked-num { color: #8a6500; }
         .sp-email-log-stat-failed-num  { color: #d63638; }
         .sp-email-log-stat-total-num   { color: #2271b1; }
@@ -67372,7 +67495,7 @@ function sp_render_email_log_page(): void {
                         // resolved from a PHP array keyed on $item->status, so they cannot be
                         // expressed as static CSS — they must stay as inline style attributes.
                         $badge_colors = [
-                            'sent'    => [ 'bg' => '#edfaef', 'text' => '#00a32a', 'border' => '#00a32a' ],
+                            'sent'    => [ 'bg' => '#edfaef', 'text' => '#1d6b30', 'border' => '#1d6b30' ],
                             'blocked' => [ 'bg' => '#fef8ee', 'text' => '#996800', 'border' => '#dba617' ],
                             'failed'  => [ 'bg' => '#fcf0f1', 'text' => '#d63638', 'border' => '#d63638' ],
                             'pending' => [ 'bg' => '#f0f0f1', 'text' => '#50575e', 'border' => '#8c8f94' ],
@@ -67440,7 +67563,7 @@ function sp_render_email_log_detail( int $log_id ): void {
     // These are data-driven (not static), so the color values stay as inline styles below.
     // Only the static layout properties (padding, border-radius, etc.) are in the CSS class.
     $badge_colors = [
-        'sent'    => [ 'bg' => '#edfaef', 'text' => '#00a32a', 'border' => '#00a32a' ],
+        'sent'    => [ 'bg' => '#edfaef', 'text' => '#1d6b30', 'border' => '#1d6b30' ],
         'blocked' => [ 'bg' => '#fef8ee', 'text' => '#996800', 'border' => '#dba617' ],
         'failed'  => [ 'bg' => '#fcf0f1', 'text' => '#d63638', 'border' => '#d63638' ],
         'pending' => [ 'bg' => '#f0f0f1', 'text' => '#50575e', 'border' => '#8c8f94' ],
@@ -67905,12 +68028,12 @@ function sp_render_blast_email_page(): void {
                             <td>
                                 <?php
                                 $status_colors = [
-                                    'draft'   => '#787c82',
+                                    'draft'   => '#6d7175',
                                     'sending' => '#8a6500',
-                                    'sent'    => '#00a32a',
+                                    'sent'    => '#1d6b30',
                                     'failed'  => '#d63638',
                                 ];
-                                $color = $status_colors[ $row->status ] ?? '#787c82';
+                                $color = $status_colors[ $row->status ] ?? '#6d7175';
                                 printf( '<span class="sp-status-badge" style="color: %s;">%s</span>', esc_attr( $color ), esc_html( sp_localized_status( $row->status ) ) );
                                 ?>
                             </td>
@@ -68377,7 +68500,7 @@ function sp_render_blast_email_compose_page(): void {
     .sp-blast-no-groups           { color: #6d7175; }
     .sp-blast-merge-hint          { margin-bottom: 8px; }
     .sp-blast-submit-row          { display: flex; gap: 8px; align-items: center; }
-    .sp-blast-send-btn            { background: #00a32a; border-color: #00a32a; }
+    .sp-blast-send-btn            { background: #1d6b30; border-color: #1d6b30; }
     </style>
     <div class="wrap sp-admin-wrap">
         <h1><?php echo $blast_id ? esc_html__( 'Edit Blast Email', 'societypress' ) : esc_html__( 'Compose Blast Email', 'societypress' ); ?></h1>
@@ -69413,13 +69536,13 @@ class SP_Subscribers_List_Table extends WP_List_Table {
     }
 
     protected function column_status( $item ): string {
-        $colors = [ 'confirmed' => '#00a32a', 'pending' => '#8a6500', 'unsubscribed' => '#787c82' ];
+        $colors = [ 'confirmed' => '#1d6b30', 'pending' => '#8a6500', 'unsubscribed' => '#6d7175' ];
         $labels = [
             'confirmed'    => __( 'Confirmed', 'societypress' ),
             'pending'      => __( 'Pending', 'societypress' ),
             'unsubscribed' => __( 'Unsubscribed', 'societypress' ),
         ];
-        $color = $colors[ $item->status ] ?? '#787c82';
+        $color = $colors[ $item->status ] ?? '#6d7175';
         $label = $labels[ $item->status ] ?? $item->status;
         return '<span class="sp-status-badge" style="color:' . esc_attr( $color ) . ';">' . esc_html( $label ) . '</span>';
     }
@@ -69449,7 +69572,7 @@ class SP_Subscribers_List_Table extends WP_List_Table {
     }
 
     public function no_items(): void {
-        esc_html_e( 'No subscribers yet.', 'societypress' );
+        esc_html_e( 'Subscribers will appear here when someone signs up for your mailing list.', 'societypress' );
     }
 
     public function prepare_items(): void {
@@ -69857,7 +69980,7 @@ function sp_render_donations_page(): void {
             .sp-donation-stat { background: #fff; border: 1px solid #c3c4c7; border-radius: 4px; padding: 12px 20px; min-width: 140px; }
             .sp-donation-stat .stat-label { font-size: 12px; color: #646970; text-transform: uppercase; letter-spacing: 0.5px; }
             .sp-donation-stat .stat-value { font-size: 24px; font-weight: 600; margin-top: 4px; }
-            .sp-donation-stat .stat-value.money { color: #00a32a; }
+            .sp-donation-stat .stat-value.money { color: #1d6b30; }
 
             /* Filter bar: white card with flex layout */
             .sp-donations-filter-form {
@@ -69908,7 +70031,7 @@ function sp_render_donations_page(): void {
 
             /* Acknowledged checkmark — green */
             .sp-donations-ack-yes {
-                color: #00a32a;
+                color: #1d6b30;
             }
 
             /* Not-acknowledged dash — muted */
@@ -70502,8 +70625,8 @@ function sp_render_campaigns_page(): void {
                             </td>
                             <td>
                                 <?php
-                                $status_colors = [ 'active' => '#00a32a', 'closed' => '#787c82', 'draft' => '#8a6500' ];
-                                $color = $status_colors[ $c->status ] ?? '#787c82';
+                                $status_colors = [ 'active' => '#1d6b30', 'closed' => '#6d7175', 'draft' => '#8a6500' ];
+                                $color = $status_colors[ $c->status ] ?? '#6d7175';
                                 printf( '<span class="sp-status-badge" style="color: %s;">%s</span>', esc_attr( $color ), esc_html( sp_localized_status( $c->status ) ) );
                                 ?>
                             </td>
@@ -71996,7 +72119,7 @@ function sp_ajax_export_library(): void {
     }
 
     if ( ! current_user_can( 'sp_manage_library' ) ) {
-        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ), esc_html__( 'Permission denied', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
 
     global $wpdb;
@@ -72148,10 +72271,10 @@ function sp_export_stream_csv( $out, string $base_sql, callable $to_row, int $ba
  */
 add_action( 'wp_ajax_sp_export_events', function () {
     if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_events' ) ) {
-        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+        wp_die( esc_html__( 'Your session expired or the security check failed. Please go back and try again.', 'societypress' ), esc_html__( 'Security check failed', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
     if ( ! current_user_can( 'sp_manage_events' ) ) {
-        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ), esc_html__( 'Permission denied', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
 
     global $wpdb;
@@ -72204,10 +72327,10 @@ add_action( 'wp_ajax_sp_export_events', function () {
  */
 add_action( 'wp_ajax_sp_export_donations', function () {
     if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_donations' ) ) {
-        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+        wp_die( esc_html__( 'Your session expired or the security check failed. Please go back and try again.', 'societypress' ), esc_html__( 'Security check failed', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
     if ( ! current_user_can( 'sp_manage_finances' ) ) {
-        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ), esc_html__( 'Permission denied', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
 
     global $wpdb;
@@ -72257,10 +72380,10 @@ add_action( 'wp_ajax_sp_export_donations', function () {
  */
 add_action( 'wp_ajax_sp_export_leadership', function () {
     if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_leadership' ) ) {
-        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+        wp_die( esc_html__( 'Your session expired or the security check failed. Please go back and try again.', 'societypress' ), esc_html__( 'Security check failed', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
     if ( ! current_user_can( 'sp_manage_governance' ) ) {
-        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ), esc_html__( 'Permission denied', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
 
     global $wpdb;
@@ -72303,10 +72426,10 @@ add_action( 'wp_ajax_sp_export_leadership', function () {
 // another database when sharing a transcribed set.
 add_action( 'wp_ajax_sp_export_records', function () {
     if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_records' ) ) {
-        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+        wp_die( esc_html__( 'Your session expired or the security check failed. Please go back and try again.', 'societypress' ), esc_html__( 'Security check failed', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
     if ( ! current_user_can( 'sp_manage_records' ) ) {
-        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ), esc_html__( 'Permission denied', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
 
     global $wpdb;
@@ -72385,10 +72508,10 @@ add_action( 'wp_ajax_sp_export_records', function () {
  */
 add_action( 'wp_ajax_sp_export_orders', function () {
     if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_orders' ) ) {
-        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+        wp_die( esc_html__( 'Your session expired or the security check failed. Please go back and try again.', 'societypress' ), esc_html__( 'Security check failed', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
     if ( ! current_user_can( 'sp_manage_finances' ) ) {
-        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ), esc_html__( 'Permission denied', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
 
     global $wpdb;
@@ -72445,10 +72568,10 @@ add_action( 'wp_ajax_sp_export_orders', function () {
  */
 add_action( 'wp_ajax_sp_export_email_log', function () {
     if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_email_log' ) ) {
-        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+        wp_die( esc_html__( 'Your session expired or the security check failed. Please go back and try again.', 'societypress' ), esc_html__( 'Security check failed', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
     if ( ! current_user_can( 'sp_manage_communications' ) ) {
-        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ), esc_html__( 'Permission denied', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
 
     global $wpdb;
@@ -72508,10 +72631,10 @@ add_action( 'wp_ajax_sp_export_email_log', function () {
  */
 add_action( 'wp_ajax_sp_export_full_site', function () {
     if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_full_site' ) ) {
-        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+        wp_die( esc_html__( 'Your session expired or the security check failed. Please go back and try again.', 'societypress' ), esc_html__( 'Security check failed', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
     if ( ! current_user_can( 'sp_manage_settings' ) ) {
-        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ), esc_html__( 'Permission denied', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
 
     @set_time_limit( 600 );
@@ -72714,10 +72837,10 @@ add_action( 'wp_ajax_sp_export_full_site', function () {
  */
 add_action( 'wp_ajax_sp_export_resources', function () {
     if ( ! wp_verify_nonce( $_GET['nonce'] ?? '', 'sp_export_resources' ) ) {
-        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+        wp_die( esc_html__( 'Your session expired or the security check failed. Please go back and try again.', 'societypress' ), esc_html__( 'Security check failed', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
     if ( ! current_user_can( 'sp_manage_content' ) ) {
-        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ), esc_html__( 'Permission denied', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
 
     global $wpdb;
@@ -77643,7 +77766,7 @@ add_action( 'wp_ajax_sp_export_genrecord', 'sp_ajax_export_genrecord' );
 function sp_ajax_export_genrecord(): void {
     check_ajax_referer( 'sp_export_genrecord' );
     if ( ! current_user_can( 'sp_manage_records' ) ) {
-        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ), esc_html__( 'Permission denied', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
 
     $collection_id  = absint( $_GET['collection_id'] ?? 0 );
@@ -78297,7 +78420,7 @@ add_action( 'wp_ajax_sp_export_gedcom', 'sp_ajax_export_gedcom' );
 function sp_ajax_export_gedcom(): void {
     check_ajax_referer( 'sp_export_gedcom' );
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ), esc_html__( 'Permission denied', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
 
     global $wpdb;
@@ -79260,7 +79383,7 @@ function sp_render_store_frontend(): void {
 
         /* Main content */
         .sp-store-main { flex: 1; min-width: 0; }
-        .sp-store-count { font-size: 14px; color: var(--sp-color-text-secondary, #888); margin-bottom: 20px; }
+        .sp-store-count { font-size: 14px; color: var(--sp-color-text-secondary, #6d7175); margin-bottom: 20px; }
 
         .sp-store-grid {
             display: grid;
@@ -79340,7 +79463,7 @@ function sp_render_store_frontend(): void {
         }
         .sp-store-author {
             font-size: 13px;
-            color: var(--sp-color-text-secondary, #888);
+            color: var(--sp-color-text-secondary, #6d7175);
             margin-bottom: 10px;
         }
         .sp-store-desc {
@@ -81948,7 +82071,7 @@ function sp_render_order_detail_page(): void {
                             .then(function(r){ return r.json(); })
                             .then(function(d){
                                 if (d.success) {
-                                    status.style.color = '#00a32a';
+                                    status.style.color = '#1d6b30';
                                     status.textContent = d.data.message || <?php echo wp_json_encode( __( 'Refund issued.', 'societypress' ) ); ?>;
                                     setTimeout(function(){ window.location.reload(); }, 1200);
                                 } else {
@@ -84099,7 +84222,7 @@ function sp_validate_external_feed_url( string $url ): string {
 
 function sp_render_external_calendars_page(): void {
     if ( ! current_user_can( 'sp_manage_events' ) ) {
-        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ), esc_html__( 'Permission denied', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
 
     global $wpdb;
@@ -84436,14 +84559,14 @@ function sp_render_external_calendars_page(): void {
 
                     // Status badge
                     $status_colors = [
-                        'success' => '#00a32a',
+                        'success' => '#1d6b30',
                         'error'   => '#d63638',
                         'pending' => '#8a6500',
                     ];
-                    $status_color = $status_colors[ $feed->last_status ] ?? '#787c82';
+                    $status_color = $status_colors[ $feed->last_status ] ?? '#6d7175';
                     $status_label = sp_localized_status( $feed->last_status );
                     if ( ! $feed->is_active ) {
-                        $status_color = '#787c82';
+                        $status_color = '#6d7175';
                         $status_label = __( 'Paused', 'societypress' );
                     }
                 ?>
@@ -84978,10 +85101,10 @@ add_action( 'admin_init', function () {
         return;
     }
     if ( ! wp_verify_nonce( $_POST['sp_ballot_nonce'], 'sp_save_ballot' ) ) {
-        wp_die( esc_html__( 'Security check failed.', 'societypress' ) );
+        wp_die( esc_html__( 'Your session expired or the security check failed. Please go back and try again.', 'societypress' ), esc_html__( 'Security check failed', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
     if ( ! current_user_can( 'sp_manage_governance' ) ) {
-        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ), esc_html__( 'Permission denied', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
 
     global $wpdb;
@@ -86902,7 +87025,7 @@ add_action( 'wp_ajax_sp_submit_vote', function () {
 // --------------------------------------------------------------------------
 add_action( 'wp_ajax_sp_export_ballot_results', function () {
     if ( ! current_user_can( 'sp_manage_governance' ) ) {
-        wp_die( esc_html__( 'Unauthorized.', 'societypress' ) );
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ), esc_html__( 'Permission denied', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
 
     check_ajax_referer( 'sp_export_ballot_results' );
@@ -100444,9 +100567,10 @@ function sp_render_form_edit_page(): void {
     $form   = $form_id ? sp_get_form( $form_id ) : null;
     $fields = sp_forms_get_fields( $form );
 
-    $name        = $form ? $form->name : '';
-    $title       = $form ? (string) $form->title : '';
-    $status      = $form ? $form->status : 'published';
+    $name         = $form ? $form->name : '';
+    $title        = $form ? (string) $form->title : '';
+    $submit_label = $form ? (string) ( $form->submit_label ?? '' ) : '';
+    $status       = $form ? $form->status : 'published';
     $subject     = $form ? (string) $form->email_subject : '';
     $to_email    = $form ? (string) $form->send_to_email : '';
     $to_name     = $form ? (string) $form->send_to_name : '';
@@ -100488,6 +100612,13 @@ function sp_render_form_edit_page(): void {
                                 <td>
                                     <input type="text" id="sp-form-title" name="title" value="<?php echo esc_attr( $title ); ?>" class="regular-text">
                                     <p class="description"><?php esc_html_e( 'Optional. Displayed above the form on the page. Leave blank for no heading.', 'societypress' ); ?></p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="sp-form-submit-label"><?php esc_html_e( 'Submit button text', 'societypress' ); ?></label></th>
+                                <td>
+                                    <input type="text" id="sp-form-submit-label" name="submit_label" value="<?php echo esc_attr( $submit_label ); ?>" class="regular-text" placeholder="<?php esc_attr_e( 'Submit', 'societypress' ); ?>">
+                                    <p class="description"><?php esc_html_e( 'Wording on the button visitors press to send the form (e.g. "Send Message", "Sign Me Up"). Leave blank for "Submit".', 'societypress' ); ?></p>
                                 </td>
                             </tr>
                         </table>
@@ -100764,6 +100895,7 @@ function sp_forms_handle_save( int $form_id ): int {
     $data = [
         'name'                 => sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) ),
         'title'                => sanitize_text_field( wp_unslash( $_POST['title'] ?? '' ) ),
+        'submit_label'         => sanitize_text_field( wp_unslash( $_POST['submit_label'] ?? '' ) ),
         'status'               => ( 'draft' === ( $_POST['status'] ?? '' ) ) ? 'draft' : 'published',
         'fields'               => wp_json_encode( $fields ),
         'email_subject'        => sanitize_text_field( wp_unslash( $_POST['email_subject'] ?? '' ) ),
@@ -100778,7 +100910,7 @@ function sp_forms_handle_save( int $form_id ): int {
         $data['name'] = __( 'Untitled form', 'societypress' );
     }
 
-    $formats = [ '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' ];
+    $formats = [ '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' ];
 
     if ( $form_id ) {
         $wpdb->update( $prefix . 'forms', $data, [ 'id' => $form_id ], $formats, [ '%d' ] );
@@ -101322,7 +101454,8 @@ function sp_forms_render_form( $form ): string {
             <?php endforeach; ?>
 
             <div class="sp-form-actions">
-                <button type="submit" class="sp-form-submit"><?php esc_html_e( 'Submit', 'societypress' ); ?></button>
+                <?php $sp_submit_text = '' !== trim( (string) ( $form->submit_label ?? '' ) ) ? $form->submit_label : __( 'Submit', 'societypress' ); ?>
+                <button type="submit" class="sp-form-submit"><?php echo esc_html( $sp_submit_text ); ?></button>
             </div>
         </form>
     </div>

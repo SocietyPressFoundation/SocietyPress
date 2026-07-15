@@ -37,7 +37,7 @@ Tags: genealogy, historical-society, modern, clean, coastal, sans-serif, magazin
 
     /* Override SocietyPress design vars */
     --sp-color-primary:       #1B3A5C;
-    --sp-color-primary-hover: #5B9BD5;
+    --sp-color-primary-hover: #2E78C2; /* WCAG-AA replacement for #5B9BD5 (was 2.96:1 on white) */
     --sp-color-accent:        #2E78C2; /* WCAG-AA replacement for #5B9BD5 (was 2.96:1 on white) */
     --sp-color-secondary:     #EFF6FC;
     --sp-color-background:    #FFFFFF;
@@ -444,7 +444,7 @@ input[type="submit"]:hover {
 }
 
 .coastline-footer-col .widget a:hover {
-    color: var(--coast-sky);
+    color: #9BC4EA; /* lighter than --coast-sky, which fails (2.54:1) on the navy footer */
 }
 
 .coastline-footer-col p {
@@ -504,7 +504,7 @@ input[type="submit"]:hover {
 }
 
 .coastline-footer-bottom a {
-    color: var(--coast-sky);
+    color: #9BC4EA; /* lighter than --coast-sky, which fails (2.54:1) on the navy footer */
     text-decoration: none;
 }
 

@@ -158,7 +158,7 @@ hr,
     text-decoration: none;
 }
 .prairie-header .site-title a:hover {
-    color: var(--prairie-clay);
+    color: #E0C088; /* lighter than --prairie-clay, which fails (3.83:1) on the forest header */
 }
 
 .prairie-header .site-description {
@@ -199,7 +199,7 @@ hr,
 .prairie-top-nav a:hover,
 .prairie-top-nav .current-menu-item > a {
     background-color: rgba(255, 255, 255, 0.15);
-    color: var(--prairie-clay);
+    color: #E0C088; /* lighter than --prairie-clay, which fails (3.83:1) on the forest nav */
 }
 
 
@@ -435,7 +435,7 @@ hr,
     border-bottom: 2px solid var(--prairie-wheat);
 }
 
-.prairie-welcome h1 {
+.prairie-welcome h2 {
     font-size: 1.75rem;
     font-weight: 700;
     color: var(--prairie-forest);
@@ -551,7 +551,7 @@ hr,
 }
 
 .prairie-footer-links a {
-    color: var(--prairie-clay);
+    color: #E0C088; /* lighter than --prairie-clay, which fails (3.83:1) on the forest footer */
     text-decoration: none;
     transition: color 0.2s ease;
 }

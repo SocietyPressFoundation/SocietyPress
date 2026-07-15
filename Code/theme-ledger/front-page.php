@@ -50,7 +50,9 @@ if ( ! empty( $join_pages ) ) {
     <!-- Hero banner -->
     <section class="ledger-hero">
         <div class="ledger-hero-content">
-            <h1><?php echo esc_html( $site_name ); ?></h1>
+            <?php /* h2, not h1: the header already renders the site-title <h1> on the
+                     front page. A second <h1> breaks heading hierarchy (WCAG 2.4.6). */ ?>
+            <h2><?php echo esc_html( $site_name ); ?></h2>
             <?php if ( $site_desc ) : ?>
                 <p><?php echo esc_html( $site_desc ); ?></p>
             <?php else : ?>

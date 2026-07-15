@@ -36,7 +36,7 @@ Tags: genealogy, historical-society, traditional, warm, serif, one-column
 
     /* Override SocietyPress design vars */
     --sp-color-primary:       #3E2723;
-    --sp-color-primary-hover: #B8860B;
+    --sp-color-primary-hover: #8C6500; /* WCAG-AA replacement for #B8860B (was 3.25:1 on white) */
     --sp-color-accent:        #8C6500;
     --sp-color-secondary:     #D4C5A9;
     --sp-color-background:    #FDF6EC;
@@ -262,7 +262,7 @@ body:not(.home) .content-area-full .entry-content {
 }
 
 .heritage-hero-cta:hover {
-    background-color: #9a7209;
+    background-color: #855f08; /* was #9a7209 (4.39:1 white text); #855f08 = ~5.7:1 */
     color: #fff;
     transform: translateY(-1px);
 }

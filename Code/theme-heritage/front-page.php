@@ -43,7 +43,9 @@ get_header();
             </div>
         <?php else : ?>
             <div class="heritage-hero-inner">
-                <h1 class="heritage-hero-title"><?php bloginfo( 'name' ); ?></h1>
+                <?php /* h2, not h1: the header already renders the site-title <h1> on the
+                         front page. A second <h1> breaks heading hierarchy (WCAG 2.4.6). */ ?>
+                <h2 class="heritage-hero-title"><?php bloginfo( 'name' ); ?></h2>
 
                 <?php
                 $tagline = get_bloginfo( 'description', 'display' );

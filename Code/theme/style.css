@@ -455,7 +455,7 @@ img {
    detect it by URL (the Join page). */
 .main-navigation .menu-item-join > a,
 .main-navigation .sp-nav-cta > a {
-    background: var(--sp-color-accent, #667eea);
+    background: var(--sp-color-accent, #454FBF);
     color: #fff;
     border-radius: 4px;
     font-weight: 600;
@@ -464,7 +464,7 @@ img {
 .main-navigation .menu-item-join > a:hover,
 .main-navigation .sp-nav-cta > a:hover {
     opacity: 0.9;
-    background: var(--sp-color-accent, #667eea);
+    background: var(--sp-color-accent, #454FBF);
 }
 
 /* Renewal CTA — visually distinct from the Join CTA so it reads as
@@ -473,7 +473,7 @@ img {
    settings (or a child theme) to match their palette. A subtle pulse
    draws the eye without being obnoxious. */
 .main-navigation .sp-show-when-expiring > a {
-    background: var(--sp-color-warning, #c97b2a);
+    background: var(--sp-color-warning, #A0560F);
     color: #fff;
     border-radius: 4px;
     font-weight: 600;
@@ -483,7 +483,7 @@ img {
 
 .main-navigation .sp-show-when-expiring > a:hover {
     opacity: 0.92;
-    background: var(--sp-color-warning, #c97b2a);
+    background: var(--sp-color-warning, #A0560F);
     animation-play-state: paused;
 }
 
@@ -661,6 +661,8 @@ img {
     border: none;
     cursor: pointer;
     padding: 8px;
+    min-width: 44px;  /* 44x44 minimum touch target (WCAG 2.5.5) */
+    min-height: 44px;
     z-index: 1001;
 }
 
@@ -738,8 +740,8 @@ img {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
+    width: 44px;   /* 44x44 minimum touch target (WCAG 2.5.5) */
+    height: 44px;
     border-radius: 50%;
     color: var(--sp-color-header-text, #fff);
     opacity: 0.7;
@@ -780,6 +782,8 @@ img {
     border: none;
     cursor: pointer;
     padding: 6px;
+    min-width: 44px;   /* 44x44 minimum touch target (WCAG 2.5.5) */
+    min-height: 44px;
     color: rgba(255, 255, 255, 0.8);
     display: flex;
     align-items: center;
@@ -837,7 +841,7 @@ img {
 }
 
 .sp-header-search input[type="text"]::placeholder {
-    color: rgba(255, 255, 255, 0.6);
+    color: rgba(255, 255, 255, 0.78); /* 0.6 read at ~3.8:1 on the dark header; 0.78 clears AA */
 }
 
 /* WHY solid white: rgba(255,255,255,0.7) border and subtle background
@@ -1101,7 +1105,7 @@ img {
 }
 
 .entry-content blockquote {
-    border-left: 4px solid var(--sp-color-accent, #667eea);
+    border-left: 4px solid var(--sp-color-accent, #454FBF);
     padding: 16px 24px;
     margin: 2em 0;
     background: #f8f9fb;
@@ -1125,7 +1129,7 @@ img {
 }
 
 .read-more:hover {
-    color: var(--sp-color-accent, #667eea);
+    color: var(--sp-color-accent, #454FBF);
 }
 
 /* Post separator in archive/index views */
@@ -1440,7 +1444,7 @@ article.post:last-child {
     background: linear-gradient(135deg,
         var(--sp-color-primary, #1e3a5f) 0%,
         color-mix(in srgb, var(--sp-color-primary, #1e3a5f), #000 30%) 50%,
-        var(--sp-color-accent, #667eea) 100%
+        var(--sp-color-accent, #454FBF) 100%
     );
 }
 
@@ -1617,9 +1621,9 @@ textarea {
 
 input:focus,
 textarea:focus {
-    outline: 2px solid var(--sp-color-accent, #667eea);
+    outline: 2px solid var(--sp-color-accent, #454FBF);
     outline-offset: 2px;
-    border-color: var(--sp-color-accent, #667eea);
+    border-color: var(--sp-color-accent, #454FBF);
 }
 
 button,
@@ -1901,6 +1905,31 @@ input[type="submit"]:focus-visible {
     color: var(--sp-color-primary, #1e3a5f);
 }
 
+/* A .sp-form-field that is a <fieldset> (e.g. the Preferred Phone radio group):
+   strip the browser's default fieldset chrome and style its <legend> to match
+   the plain field labels above, so the semantic grouping is invisible visually
+   but announced to screen readers. */
+.sp-form-fieldset {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    min-width: 0;
+}
+.sp-form-fieldset > legend {
+    padding: 0;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--sp-color-primary, #1e3a5f);
+}
+
+/* Free-text research note on a surname / research-area / relationship row.
+   Smaller and muted so it reads as a note, not another surname. */
+.sp-surname-note {
+    font-size: 0.85em;
+    font-style: italic;
+    color: var(--sp-color-text-secondary, #6b7280);
+}
+
 /* Inline radio group inside a .sp-form-field — used for preferred-phone
    choices and other "pick one" rows. */
 .sp-radio-row {
@@ -1987,9 +2016,9 @@ select {
 }
 
 select:focus {
-    outline: 2px solid var(--sp-color-accent, #667eea);
+    outline: 2px solid var(--sp-color-accent, #454FBF);
     outline-offset: 2px;
-    border-color: var(--sp-color-accent, #667eea);
+    border-color: var(--sp-color-accent, #454FBF);
 }
 
 /* Date inputs — match text input styling */
@@ -2004,9 +2033,9 @@ input[type="date"] {
 }
 
 input[type="date"]:focus {
-    outline: 2px solid var(--sp-color-accent, #667eea);
+    outline: 2px solid var(--sp-color-accent, #454FBF);
     outline-offset: 2px;
-    border-color: var(--sp-color-accent, #667eea);
+    border-color: var(--sp-color-accent, #454FBF);
 }
 
 /* Checkbox group — vertical stack with comfortable spacing */
@@ -2122,11 +2151,11 @@ input[type="date"]:focus {
    ============================================================================ */
 
 /* ============================================================================
-   NAV COLLAPSE — 1024px
-   WHY 1024px instead of 768px: With 7 nav items plus social icons, search,
-   and user menu, the horizontal nav wraps awkwardly between 768–1024px.
-   Collapsing at 1024px matches the iPad landscape/portrait divide and
-   prevents the nav from ever wrapping to two lines.
+   NAV COLLAPSE — 1280px
+   WHY 1280px instead of 768px: With 7 nav items plus social icons, search,
+   and user menu, the horizontal nav wraps awkwardly between 768–1280px.
+   Collapsing at 1280px (the media query below) prevents the nav from ever
+   wrapping to two lines on smaller laptops and tablets.
    ============================================================================ */
 
 @media (max-width: 1280px) {

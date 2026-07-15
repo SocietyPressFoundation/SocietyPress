@@ -83,7 +83,11 @@
     // On desktop, clicking still toggles — hover handles the rest via CSS.
 
     function initSubMenus() {
-        var parentItems = document.querySelectorAll('.main-navigation > ul > li.menu-item-has-children');
+        // All parents at ANY depth, not just top-level: the CSS supports level-2
+        // flyouts (Resources → Library → Catalog), but on touch there's no :hover,
+        // so a nested parent needs the same tap-to-toggle wiring or its children
+        // are unreachable on phones/tablets.
+        var parentItems = document.querySelectorAll('.main-navigation li.menu-item-has-children');
 
         if (!parentItems.length) {
             return;
@@ -120,9 +124,12 @@
                     var isOpen = item.classList.toggle('sp-submenu-open');
                     setExpanded(item, isOpen);
 
-                    // Close other open sub-menus
+                    // Close other open sub-menus — but NOT this item's own
+                    // ancestors, or opening a level-2 flyout would collapse the
+                    // level-1 menu containing it. other.contains(item) is true
+                    // only for ancestors, so we skip exactly those.
                     parentItems.forEach(function (other) {
-                        if (other !== item) {
+                        if (other !== item && !other.contains(item)) {
                             other.classList.remove('sp-submenu-open');
                             setExpanded(other, false);
                         }

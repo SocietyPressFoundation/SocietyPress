@@ -28,7 +28,10 @@ $hero_headline = $sp['homepage_hero_headline'] ?? '';
 $hero_subtitle = $sp['homepage_hero_subtitle'] ?? '';
 $hero_cta_text = $sp['homepage_hero_cta_text'] ?? '';
 $hero_cta_url  = $sp['homepage_hero_cta_url']  ?? '';
-$hero_overlay  = (int) ( $sp['homepage_hero_overlay'] ?? 40 );
+// Clamp to a 20% floor: over a bright hero photo, too little overlay leaves the
+// headline unreadable. 20% + the text-shadow keeps text legible on any image,
+// while still allowing plenty of the photo through. Upper-bounded at 100.
+$hero_overlay  = max( 20, min( 100, (int) ( $sp['homepage_hero_overlay'] ?? 40 ) ) );
 $hero_height   = $sp['homepage_hero_height']   ?? 'fullscreen';
 
 // Use organization name as default headline if none set

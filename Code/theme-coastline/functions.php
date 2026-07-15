@@ -45,8 +45,8 @@ add_action( 'after_switch_theme', function () {
     $settings = get_option( 'societypress_settings', [] );
 
     $settings['design_color_primary']       = '#1B3A5C';
-    $settings['design_color_primary_hover'] = '#5B9BD5';
-    $settings['design_color_accent']        = '#5B9BD5';
+    $settings['design_color_primary_hover'] = '#2E78C2';
+    $settings['design_color_accent']        = '#2E78C2';
     $settings['design_color_header_bg']     = '#1B3A5C';
     $settings['design_color_header_text']   = '#FFFFFF';
     $settings['design_color_footer_bg']     = '#1B3A5C';

@@ -46,7 +46,7 @@ add_action( 'after_switch_theme', function () {
     $settings = get_option( 'societypress_settings', [] );
 
     $settings['design_color_primary']       = '#2D5016';
-    $settings['design_color_primary_hover'] = '#7A9A5E';
+    $settings['design_color_primary_hover'] = '#4E7A34';
     $settings['design_color_accent']        = '#C4A265';
     $settings['design_color_header_bg']     = '#2D5016';
     $settings['design_color_header_text']   = '#FAF7F2';

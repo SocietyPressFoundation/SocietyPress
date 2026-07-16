@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.0.3' );
+define( 'SOCIETYPRESS_VERSION', '1.0.4' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -943,6 +943,34 @@ function sp_create_tables(): void {
         KEY user_id (user_id),
         KEY meta_key (meta_key),
         KEY user_meta (user_id, meta_key)
+    ) {$charset_collate};" );
+
+    // ========================================================================
+    // sp_notes — Shared admin notepad
+    //
+    // WHY: A society's website is run by rotating volunteers. Someone stops
+    //      mid-task for the night; the next admin has no idea what was left
+    //      undone. This is a shared board of persistent notes — reminders,
+    //      to-do items, handoffs — that outlive any single admin's session.
+    //      The rich-text body (formatting + inline graphics) is stored as
+    //      HTML in `content` and sanitized with wp_kses_post on the way in
+    //      and out. is_pinned floats a note to the top; is_done checks it off
+    //      and drops it to the bottom without deleting the record.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}notes (
+        id          BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        title       VARCHAR(255)        NULL,
+        content     LONGTEXT            NOT NULL,
+        author_id   BIGINT(20) UNSIGNED NOT NULL,
+        updated_by  BIGINT(20) UNSIGNED NULL,
+        is_pinned   TINYINT(1)          NOT NULL DEFAULT 0,
+        is_done     TINYINT(1)          NOT NULL DEFAULT 0,
+        created_at  DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at  DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY is_pinned (is_pinned),
+        KEY is_done (is_done),
+        KEY created_at (created_at)
     ) {$charset_collate};" );
 
     // ========================================================================
@@ -4976,6 +5004,37 @@ add_action( 'admin_menu', function () {
         'sp_chair',
         'sp-chair',
         'sp_render_chair_page'
+    );
+
+    // -----------------------------------------------------------------
+    // NOTEPAD — shared admin notes / to-do handoff board
+    // WHY sp_access_admin (not manage_options): the notepad is a handoff
+    //      tool for everyone who helps run the site — Treasurer, Librarian,
+    //      committee chairs — so every backend user who can see the
+    //      SocietyPress menu can read it and post to it.
+    // -----------------------------------------------------------------
+    add_submenu_page(
+        'societypress',
+        __( 'Notepad — SocietyPress', 'societypress' ),
+        __( 'Notepad', 'societypress' ),
+        'sp_access_admin',
+        'sp-notepad',
+        'sp_render_notepad_page'
+    );
+
+    // -----------------------------------------------------------------
+    // MENU LAYOUT — drag-and-drop editor for the sidebar itself
+    // WHY manage_options: reordering the whole admin menu is a structural,
+    //      site-wide change, so it's limited to full administrators rather
+    //      than every delegated SP staffer.
+    // -----------------------------------------------------------------
+    add_submenu_page(
+        'societypress',
+        __( 'Menu Layout — SocietyPress', 'societypress' ),
+        __( 'Menu Layout', 'societypress' ),
+        'manage_options',
+        'sp-menu-layout',
+        'sp_render_menu_layout_page'
     );
 
     // -----------------------------------------------------------------
@@ -9483,6 +9542,28 @@ add_action( 'admin_head', function () {
     display: none;
 }
 
+/* Sub-heading — a labelled divider inside a drop down (admin-added via
+   Appearance → Menu Layout). Not clickable; it just groups the items below. */
+.sp-flyout-subheading {
+    display: block;
+    padding: 9px 16px 4px;
+    margin-top: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #a7aaad;
+    border-top: 1px solid rgba(255,255,255,0.10);
+}
+.sp-flyout-subheading:first-of-type {
+    border-top: none;
+    margin-top: 0;
+}
+/* Items sitting under a sub-heading are inset so they read as belonging to it. */
+.sp-menu-flyout li.sp-flyout-indented a {
+    padding-left: 36px;
+}
+
 /* Individual menu items — generous click targets */
 .sp-menu-flyout li {
     margin: 0 !important;
@@ -9566,89 +9647,12 @@ add_action( 'admin_head', function () {
  * spMenuConfig — tells the JS below which submenu items belong to which
  * flyout group. Items not listed in any group stay as standalone entries.
  */
-var spMenuConfig = {
-    groups: [
-        {
-            id:    'members',
-            label: 'Members',
-            icon:  'dashicons-id',
-            items: ['sp-members', 'sp-import', 'sp-export', 'sp-member-tiers', 'sp-groups', 'sp-pending-changes']
-        },
-        {
-            id:    'events',
-            label: 'Events',
-            icon:  'dashicons-calendar-alt',
-            items: ['sp-events', 'sp-event-categories', 'sp-speakers', 'sp-import-events', 'sp-external-calendars']
-        },
-        {
-            id:    'governance',
-            label: 'Governance',
-            icon:  'dashicons-building',
-            items: ['sp-governance', 'sp-committees', 'sp-meetings', 'sp-volunteer-roster', 'sp-volunteer-hours', 'sp-volunteer-opportunities', 'sp-ballots']
-        },
-        {
-            id:    'gallery',
-            label: 'Add Images',
-            icon:  'dashicons-format-gallery',
-            items: ['sp-gallery']
-        },
-        {
-            id:    'library',
-            label: 'Library',
-            icon:  'dashicons-book-alt',
-            items: ['sp-library', 'sp-resource-categories', 'sp-library-catalog', 'sp-library-categories', 'sp-import-library', 'sp-library-enrich', 'sp-import-links', 'sp-help-requests', 'sp-newsletter-archive', 'sp-documents', 'sp-document-categories']
-        },
-        {
-            id:    'genealogy',
-            label: 'Genealogy',
-            icon:  'dashicons-book',
-            items: ['sp-record-collections', 'sp-import-records', 'sp-database-subscriptions', 'sp-research-guides']
-        },
-        {
-            id:    'lineage',
-            label: 'Lineage',
-            icon:  'dashicons-awards',
-            items: ['sp-lineage-programs', 'sp-lineage-applications']
-        },
-        {
-            id:    'research_services',
-            label: 'Research Services',
-            icon:  'dashicons-search',
-            items: ['sp-research-cases']
-        },
-        {
-            id:    'finances',
-            label: 'Finances',
-            icon:  'dashicons-money-alt',
-            items: ['sp-finances', 'sp-record-payment', 'sp-donations', 'sp-campaigns', 'sp-store-products', 'sp-orders']
-        },
-        {
-            id:    'communications',
-            label: 'Communications',
-            icon:  'dashicons-email-alt',
-            items: ['sp-blast-email', 'sp-email-templates', 'sp-email-log']
-        },
-        {
-            id:    'appearance',
-            label: 'Appearance',
-            icon:  'dashicons-admin-appearance',
-            items: ['sp-themes', 'sp-theme-presets', 'sp-pages', 'upload.php', 'nav-menus.php', 'widgets.php', 'customize.php', 'sp-settings-design']
-        },
-        {
-            id:    'reports',
-            label: 'Reports',
-            icon:  'dashicons-chart-bar',
-            items: ['sp-reports', 'sp-insights', 'sp-annual-report', 'sp-membership-reports', 'sp-audit-log', 'sp-access-log']
-        },
-        {
-            id:    'settings',
-            label: 'Settings',
-            icon:  'dashicons-admin-generic',
-            items: ['sp-settings-website', 'sp-settings-organization', 'sp-settings-membership', 'sp-settings-directory', 'sp-settings-events', 'sp-settings-privacy', 'privacy-policy-guide.php', 'sp-settings-export', 'sp-settings-modules', 'sp-user-access']
-        }
-    ],
-    standalone: []
-};
+// WHY PHP-generated now: the group order, labels, visibility, and which items
+// live in which drop down are admin-editable via Appearance → Menu Layout.
+// sp_get_effective_menu_config() merges the saved layout over the code defaults
+// (sp_default_menu_config()) so a feature shipped later still appears even after
+// an admin has customised their menu. `hidden` lists items to pull entirely.
+var spMenuConfig = <?php echo wp_json_encode( sp_get_effective_menu_config() ); ?>;
 </script>
 
 <script id="sp-flyout-menu-js">
@@ -9689,9 +9693,13 @@ var spMenuConfig = {
         }
 
         // --- Find which group a slug belongs to ---
+        // Items are entry objects now ({slug:…} or {heading:…}); match on slug.
         function findGroup(slug) {
             for (var g = 0; g < config.groups.length; g++) {
-                if (config.groups[g].items.indexOf(slug) !== -1) return config.groups[g];
+                var its = config.groups[g].items;
+                for (var i = 0; i < its.length; i++) {
+                    if (its[i] && its[i].slug === slug) return config.groups[g];
+                }
             }
             return null;
         }
@@ -9710,6 +9718,19 @@ var spMenuConfig = {
                 isCurrent: li.classList.contains('current')
             });
         });
+
+        // --- Remove admin-hidden items entirely ---
+        // WHY: a hidden item must not linger as a standalone sidebar entry, so we
+        //      drop its <li> before grouping. Driven by the saved Menu Layout.
+        if (config.hidden && config.hidden.length) {
+            items = items.filter(function(it) {
+                if (config.hidden.indexOf(it.slug) !== -1) {
+                    if (it.el && it.el.parentNode) it.el.parentNode.removeChild(it.el);
+                    return false;
+                }
+                return true;
+            });
+        }
 
         // --- Create the scrim (click-to-close overlay behind panels) ---
         var scrim = document.createElement('div');
@@ -9739,32 +9760,39 @@ var spMenuConfig = {
             groupLi.className = 'sp-menu-group';
             groupLi.setAttribute('data-group', gc.id);
 
-            // Collect matching submenu items
-            var childItems = [];
+            // Build the ordered render sequence: sub-heading dividers plus the
+            // submenu items that actually exist for this install.
+            var seq = [];
+            var realItems = [];
             var hasCurrent = false;
-            gc.items.forEach(function(itemSlug) {
+            gc.items.forEach(function(entry) {
+                if (entry.heading) {
+                    seq.push({ heading: entry.heading });
+                    return;
+                }
                 for (var j = 0; j < items.length; j++) {
-                    if (items[j].slug === itemSlug) {
-                        childItems.push(items[j]);
+                    if (items[j].slug === entry.slug) {
+                        seq.push({ item: items[j] });
+                        realItems.push(items[j]);
                         if (items[j].isCurrent) hasCurrent = true;
                         break;
                     }
                 }
             });
 
-            // Empty groups (e.g. when every feature module they contain is
-            // disabled) shouldn't render at all.
-            if (childItems.length === 0) {
+            // Empty groups (e.g. every feature module inside is disabled) don't
+            // render — a lone sub-heading with no items doesn't count.
+            if (realItems.length === 0) {
                 return;
             }
 
             // Single-item groups render as a flat sidebar link instead of a
             // flyout. WHY: a flyout that opens to reveal one identical-looking
             // link is two clicks for nothing — Harold should land on the page
-            // in one click. The item keeps its configured group position.
-            if (childItems.length === 1) {
-                if (hasCurrent) childItems[0].el.classList.add('sp-group-has-current');
-                builtGroups[gc.id] = childItems[0].el;
+            // in one click. Any sub-heading is dropped in that case.
+            if (realItems.length === 1) {
+                if (hasCurrent) realItems[0].el.classList.add('sp-group-has-current');
+                builtGroups[gc.id] = realItems[0].el;
                 return;
             }
 
@@ -9790,18 +9818,28 @@ var spMenuConfig = {
             flyoutUl.className = 'sp-menu-flyout';
             flyoutUl.setAttribute('role', 'list');
 
-            // Group heading inside the panel — hide if only 1 item (redundant).
-            // aria-hidden because the group header already announces this label.
+            // Group heading inside the panel (announces the group label).
             var heading = document.createElement('li');
             heading.className = 'sp-flyout-heading';
             heading.setAttribute('aria-hidden', 'true');
-            if (childItems.length <= 1) heading.className += ' sp-heading-hidden';
             heading.textContent = gc.label;
             flyoutUl.appendChild(heading);
 
-            // Move child items into the panel
-            childItems.forEach(function(ci) {
-                flyoutUl.appendChild(ci.el);
+            // Render items and sub-heading dividers in their configured order.
+            // Items after a sub-heading are inset so their grouping is obvious.
+            var underHeading = false;
+            seq.forEach(function(s) {
+                if (s.heading) {
+                    underHeading = true;
+                    var sh = document.createElement('li');
+                    sh.className = 'sp-flyout-subheading';
+                    sh.setAttribute('aria-hidden', 'true');
+                    sh.textContent = s.heading;
+                    flyoutUl.appendChild(sh);
+                } else {
+                    if (underHeading) s.item.el.classList.add('sp-flyout-indented');
+                    flyoutUl.appendChild(s.item.el);
+                }
             });
 
             if (hasCurrent) groupLi.classList.add('sp-group-has-current');
@@ -9908,6 +9946,815 @@ var spMenuConfig = {
 </script>
 <?php
 });
+
+
+// ============================================================================
+// ADMIN MENU LAYOUT — admin-editable order, grouping, labels, visibility
+// ============================================================================
+//
+// WHY: The sidebar's drop down groups and their order used to be a hardcoded
+//      JS map. Societies differ in what they emphasise, so this makes the whole
+//      arrangement editable from Appearance → Menu Layout: reorder groups,
+//      reorder items, drag an item into a different drop down, rename a group,
+//      hide what you don't use, or add your own group. One global layout for
+//      everyone (the access-area system already hides items a person can't use).
+//
+//      The saved layout is stored as an OVERRIDE on top of the code defaults,
+//      so any feature SocietyPress ships later still appears automatically even
+//      after an admin has customised their menu — it drops into its home group.
+// ============================================================================
+
+/**
+ * The built-in menu arrangement — the source of truth for defaults.
+ *
+ * WHY PHP not JS now: this feeds both the live sidebar (via the flyout config)
+ *      and the merge logic that keeps new features visible. Group labels are
+ *      translatable; icons are fixed per group.
+ *
+ * @return array{groups: array<int, array{id:string,label:string,icon:string,items:string[]}>, standalone: string[]}
+ */
+function sp_default_menu_config(): array {
+    return [
+        'groups' => [
+            [ 'id' => 'members', 'label' => __( 'Members', 'societypress' ), 'icon' => 'dashicons-id',
+              'items' => [ 'sp-members', 'sp-import', 'sp-export', 'sp-member-tiers', 'sp-groups', 'sp-pending-changes' ] ],
+            [ 'id' => 'events', 'label' => __( 'Events', 'societypress' ), 'icon' => 'dashicons-calendar-alt',
+              'items' => [ 'sp-events', 'sp-event-categories', 'sp-speakers', 'sp-import-events', 'sp-external-calendars' ] ],
+            [ 'id' => 'governance', 'label' => __( 'Governance', 'societypress' ), 'icon' => 'dashicons-building',
+              'items' => [ 'sp-governance', 'sp-committees', 'sp-meetings', 'sp-volunteer-roster', 'sp-volunteer-hours', 'sp-volunteer-opportunities', 'sp-ballots' ] ],
+            [ 'id' => 'gallery', 'label' => __( 'Add Images', 'societypress' ), 'icon' => 'dashicons-format-gallery',
+              'items' => [ 'sp-gallery' ] ],
+            [ 'id' => 'library', 'label' => __( 'Library', 'societypress' ), 'icon' => 'dashicons-book-alt',
+              'items' => [ 'sp-library', 'sp-resource-categories', 'sp-library-catalog', 'sp-library-categories', 'sp-import-library', 'sp-library-enrich', 'sp-import-links', 'sp-help-requests', 'sp-newsletter-archive', 'sp-documents', 'sp-document-categories' ] ],
+            [ 'id' => 'genealogy', 'label' => __( 'Genealogy', 'societypress' ), 'icon' => 'dashicons-book',
+              'items' => [ 'sp-record-collections', 'sp-import-records', 'sp-database-subscriptions', 'sp-research-guides' ] ],
+            [ 'id' => 'lineage', 'label' => __( 'Lineage', 'societypress' ), 'icon' => 'dashicons-awards',
+              'items' => [ 'sp-lineage-programs', 'sp-lineage-applications' ] ],
+            [ 'id' => 'research_services', 'label' => __( 'Research Services', 'societypress' ), 'icon' => 'dashicons-search',
+              'items' => [ 'sp-research-cases' ] ],
+            [ 'id' => 'finances', 'label' => __( 'Finances', 'societypress' ), 'icon' => 'dashicons-money-alt',
+              'items' => [ 'sp-finances', 'sp-record-payment', 'sp-donations', 'sp-campaigns', 'sp-store-products', 'sp-orders' ] ],
+            [ 'id' => 'communications', 'label' => __( 'Communications', 'societypress' ), 'icon' => 'dashicons-email-alt',
+              'items' => [ 'sp-blast-email', 'sp-email-templates', 'sp-email-log' ] ],
+            [ 'id' => 'appearance', 'label' => __( 'Appearance', 'societypress' ), 'icon' => 'dashicons-admin-appearance',
+              'items' => [ 'sp-themes', 'sp-theme-presets', 'sp-pages', 'upload.php', 'nav-menus.php', 'widgets.php', 'customize.php', 'sp-settings-design', 'sp-menu-layout' ] ],
+            [ 'id' => 'reports', 'label' => __( 'Reports', 'societypress' ), 'icon' => 'dashicons-chart-bar',
+              'items' => [ 'sp-reports', 'sp-insights', 'sp-annual-report', 'sp-membership-reports', 'sp-audit-log', 'sp-access-log' ] ],
+            [ 'id' => 'settings', 'label' => __( 'Settings', 'societypress' ), 'icon' => 'dashicons-admin-generic',
+              'items' => [ 'sp-settings-website', 'sp-settings-organization', 'sp-settings-membership', 'sp-settings-directory', 'sp-settings-events', 'sp-settings-privacy', 'privacy-policy-guide.php', 'sp-settings-export', 'sp-settings-modules', 'sp-user-access' ] ],
+        ],
+        'standalone' => [],
+    ];
+}
+
+/**
+ * The saved custom layout, or null if the admin hasn't customised anything.
+ *
+ * @return array|null
+ */
+function sp_get_saved_menu_layout(): ?array {
+    $saved = get_option( 'sp_menu_layout', null );
+    return ( is_array( $saved ) && ! empty( $saved['groups'] ) ) ? $saved : null;
+}
+
+/**
+ * The effective flyout config consumed by the sidebar JS: saved layout merged
+ * over the code defaults, with hidden items collected for removal.
+ *
+ * INVARIANT: any item or group added to the code defaults later still appears
+ *            even under a saved layout — new items append to their home group,
+ *            new groups append at the end.
+ *
+ * @return array{groups: array<int, array{id:string,label:string,icon:string,items:string[]}>, standalone: string[], hidden: string[]}
+ */
+function sp_get_effective_menu_config(): array {
+    $default = sp_default_menu_config();
+    $saved   = sp_get_saved_menu_layout();
+
+    // Normalise a default group's plain slug list into entry objects. Every
+    // group's items are entry objects downstream: { slug: … } or { heading: … }.
+    $to_entries = function ( array $slugs ): array {
+        return array_map( function ( $s ) {
+            return [ 'slug' => $s ];
+        }, $slugs );
+    };
+
+    if ( ! $saved ) {
+        $groups = [];
+        foreach ( $default['groups'] as $g ) {
+            $g['items'] = $to_entries( $g['items'] );
+            $groups[]   = $g;
+        }
+        return [ 'groups' => $groups, 'standalone' => [], 'hidden' => [] ];
+    }
+
+    $default_by_id = [];
+    foreach ( $default['groups'] as $g ) {
+        $default_by_id[ $g['id'] ] = $g;
+    }
+
+    // Every slug the admin has explicitly placed (grouped OR ungrouped). Used to
+    // decide which default items are brand-new and need re-homing.
+    $placed = [];
+    foreach ( (array) ( $saved['groups'] ?? [] ) as $sg ) {
+        foreach ( (array) ( $sg['items'] ?? [] ) as $it ) {
+            if ( ! empty( $it['slug'] ) ) {
+                $placed[ $it['slug'] ] = true;
+            }
+        }
+    }
+    foreach ( (array) ( $saved['ungrouped'] ?? [] ) as $it ) {
+        if ( ! empty( $it['slug'] ) ) {
+            $placed[ $it['slug'] ] = true;
+        }
+    }
+
+    $hidden     = [];
+    $out_groups = [];
+    $seen_gids  = [];
+
+    foreach ( (array) $saved['groups'] as $sg ) {
+        $gid = sanitize_key( $sg['id'] ?? '' );
+        if ( '' === $gid ) {
+            continue;
+        }
+        $seen_gids[ $gid ] = true;
+        $dg           = $default_by_id[ $gid ] ?? null;
+        $icon         = $dg['icon'] ?? 'dashicons-menu';
+        $label        = ( isset( $sg['label'] ) && '' !== $sg['label'] ) ? (string) $sg['label'] : ( $dg['label'] ?? $gid );
+        $group_hidden = ! empty( $sg['hidden'] );
+
+        $items      = [];
+        $seen_slugs = [];
+        foreach ( (array) ( $sg['items'] ?? [] ) as $it ) {
+            // Sub-heading entry — a labelled divider, no slug.
+            if ( isset( $it['heading'] ) ) {
+                $h = sanitize_text_field( (string) $it['heading'] );
+                if ( '' !== $h ) {
+                    $items[] = [ 'heading' => $h ];
+                }
+                continue;
+            }
+            $slug = sanitize_text_field( $it['slug'] ?? '' );
+            if ( '' === $slug || isset( $seen_slugs[ $slug ] ) ) {
+                continue;
+            }
+            $seen_slugs[ $slug ] = true;
+            $items[]             = [ 'slug' => $slug ];
+            if ( ! $group_hidden && ! empty( $it['hidden'] ) ) {
+                $hidden[] = $slug;
+            }
+        }
+
+        // Re-home any brand-new default items belonging to this group.
+        if ( $dg ) {
+            foreach ( $dg['items'] as $slug ) {
+                if ( empty( $placed[ $slug ] ) && ! isset( $seen_slugs[ $slug ] ) ) {
+                    $seen_slugs[ $slug ] = true;
+                    $items[]             = [ 'slug' => $slug ];
+                }
+            }
+        }
+
+        // A hidden group renders nothing and takes all its items out of the menu.
+        if ( $group_hidden ) {
+            foreach ( $items as $entry ) {
+                if ( ! empty( $entry['slug'] ) ) {
+                    $hidden[] = $entry['slug'];
+                }
+            }
+            continue;
+        }
+
+        $out_groups[] = [ 'id' => $gid, 'label' => $label, 'icon' => $icon, 'items' => $items ];
+    }
+
+    // Brand-new default groups the saved layout never saw.
+    foreach ( $default['groups'] as $g ) {
+        if ( empty( $seen_gids[ $g['id'] ] ) ) {
+            $g['items']   = $to_entries( $g['items'] );
+            $out_groups[] = $g;
+        }
+    }
+
+    // Ungrouped items the admin hid still need pulling from the sidebar.
+    foreach ( (array) ( $saved['ungrouped'] ?? [] ) as $it ) {
+        if ( ! empty( $it['slug'] ) && ! empty( $it['hidden'] ) ) {
+            $hidden[] = sanitize_text_field( $it['slug'] );
+        }
+    }
+
+    return [ 'groups' => $out_groups, 'standalone' => [], 'hidden' => array_values( array_unique( $hidden ) ) ];
+}
+
+/**
+ * Build the editable model for the Menu Layout screen: the current arrangement
+ * reconciled against the live, capability-and-module-aware submenu so every
+ * real item shows up exactly once, with its real display label.
+ *
+ * @return array{groups: array<int, array>, ungrouped: array<int, array>}
+ */
+function sp_menu_layout_editor_model(): array {
+    global $submenu;
+
+    // Live items actually present for this install (respects module toggles).
+    $live = [];
+    foreach ( (array) ( $submenu['societypress'] ?? [] ) as $entry ) {
+        $slug = $entry[2] ?? '';
+        if ( '' === $slug || 'societypress' === $slug ) {
+            continue; // skip the top-level Dashboard row
+        }
+        $label = isset( $entry[0] ) ? trim( wp_strip_all_tags( (string) $entry[0] ) ) : '';
+        $live[ $slug ] = '' !== $label ? $label : $slug;
+    }
+
+    $default = sp_default_menu_config();
+    $saved   = sp_get_saved_menu_layout();
+
+    // Normalise defaults into the saved shape so one loop handles both.
+    $source = $saved ?: [
+        'groups' => array_map( function ( $g ) {
+            return [
+                'id'     => $g['id'],
+                'label'  => $g['label'],
+                'custom' => false,
+                'hidden' => false,
+                'items'  => array_map( function ( $s ) {
+                    return [ 'slug' => $s, 'hidden' => false ];
+                }, $g['items'] ),
+            ];
+        }, $default['groups'] ),
+        'ungrouped' => [],
+    ];
+
+    $default_by_id = [];
+    foreach ( $default['groups'] as $g ) {
+        $default_by_id[ $g['id'] ] = $g;
+    }
+
+    $used       = [];
+    $groups_out = [];
+
+    foreach ( (array) $source['groups'] as $sg ) {
+        $gid = $sg['id'] ?? '';
+        if ( '' === $gid ) {
+            continue;
+        }
+        $dg     = $default_by_id[ $gid ] ?? null;
+        $label  = $sg['label'] ?? ( $dg['label'] ?? $gid );
+        $custom = ! $dg; // groups with no default match are admin-created (deletable)
+
+        $items_out = [];
+        foreach ( (array) ( $sg['items'] ?? [] ) as $it ) {
+            // Sub-heading entry — carry it through so the editor can show/drag it.
+            if ( is_array( $it ) && isset( $it['heading'] ) ) {
+                $h = sanitize_text_field( (string) $it['heading'] );
+                if ( '' !== $h ) {
+                    $items_out[] = [ 'heading' => $h ];
+                }
+                continue;
+            }
+            $slug = is_array( $it ) ? ( $it['slug'] ?? '' ) : $it;
+            if ( '' === $slug || isset( $used[ $slug ] ) || ! isset( $live[ $slug ] ) ) {
+                continue;
+            }
+            $used[ $slug ] = true;
+            $items_out[]   = [ 'slug' => $slug, 'label' => $live[ $slug ], 'hidden' => ! empty( $it['hidden'] ) ];
+        }
+        // New default items for this group.
+        if ( $dg ) {
+            foreach ( $dg['items'] as $slug ) {
+                if ( isset( $live[ $slug ] ) && ! isset( $used[ $slug ] ) ) {
+                    $used[ $slug ] = true;
+                    $items_out[]   = [ 'slug' => $slug, 'label' => $live[ $slug ], 'hidden' => false ];
+                }
+            }
+        }
+
+        $groups_out[] = [ 'id' => $gid, 'label' => $label, 'custom' => $custom, 'hidden' => ! empty( $sg['hidden'] ), 'items' => $items_out ];
+    }
+
+    // Brand-new default groups not present in the saved layout.
+    foreach ( $default['groups'] as $g ) {
+        $seen = false;
+        foreach ( $groups_out as $go ) {
+            if ( $go['id'] === $g['id'] ) {
+                $seen = true;
+                break;
+            }
+        }
+        if ( $seen ) {
+            continue;
+        }
+        $items_out = [];
+        foreach ( $g['items'] as $slug ) {
+            if ( isset( $live[ $slug ] ) && ! isset( $used[ $slug ] ) ) {
+                $used[ $slug ] = true;
+                $items_out[]   = [ 'slug' => $slug, 'label' => $live[ $slug ], 'hidden' => false ];
+            }
+        }
+        $groups_out[] = [ 'id' => $g['id'], 'label' => $g['label'], 'custom' => false, 'hidden' => false, 'items' => $items_out ];
+    }
+
+    // Ungrouped: saved ungrouped first, then any live item not yet placed.
+    $ungrouped = [];
+    foreach ( (array) ( $source['ungrouped'] ?? [] ) as $it ) {
+        $slug = is_array( $it ) ? ( $it['slug'] ?? '' ) : $it;
+        if ( '' === $slug || isset( $used[ $slug ] ) || ! isset( $live[ $slug ] ) ) {
+            continue;
+        }
+        $used[ $slug ] = true;
+        $ungrouped[]   = [ 'slug' => $slug, 'label' => $live[ $slug ], 'hidden' => ! empty( $it['hidden'] ) ];
+    }
+    foreach ( $live as $slug => $label ) {
+        if ( ! isset( $used[ $slug ] ) ) {
+            $ungrouped[] = [ 'slug' => $slug, 'label' => $label, 'hidden' => false ];
+        }
+    }
+
+    return [ 'groups' => $groups_out, 'ungrouped' => $ungrouped ];
+}
+
+/**
+ * Render the Menu Layout editor page.
+ */
+function sp_render_menu_layout_page(): void {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You do not have permission to view this page.', 'societypress' ) );
+    }
+
+    $model = sp_menu_layout_editor_model();
+    $nonce = wp_create_nonce( 'sp_menu_layout_nonce' );
+    ?>
+    <div class="wrap sp-ml">
+        <h1><?php esc_html_e( 'Menu Layout', 'societypress' ); ?></h1>
+        <p class="description sp-ml-intro">
+            <?php esc_html_e( 'Design your SocietyPress menu. Drag a group or an item by its handle to reorder it, drag an item from one group into another, rename a group, or hide anything you don\'t use. This sets the menu for everyone who signs in to the back office.', 'societypress' ); ?>
+        </p>
+
+        <style>
+        .sp-ml-intro { max-width: 760px; }
+        .sp-ml-toolbar { margin: 16px 0 20px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .sp-ml-reset { color: #b32d2e; }
+        .sp-ml-msg { margin-left: 6px; }
+        .sp-ml-msg.is-error { color: #b32d2e; }
+        .sp-ml-msg.is-ok { color: #1e7e34; }
+        .sp-ml-groups, .sp-ml-ungrouped { max-width: 760px; }
+        .sp-ml-group {
+            background: #fff;
+            border: 1px solid #dcdcde;
+            border-radius: 6px;
+            margin-bottom: 12px;
+        }
+        .sp-ml-group.sp-ml-ghidden { opacity: 0.6; }
+        .sp-ml-group-head {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-bottom: 1px solid #f0f0f1;
+            background: #f6f7f7;
+            border-radius: 6px 6px 0 0;
+        }
+        .sp-ml-group-handle, .sp-ml-handle {
+            cursor: grab;
+            color: #8c8f94;
+        }
+        .sp-ml-label-input { flex: 1; max-width: 320px; font-weight: 600; }
+        .sp-ml-hide { font-size: 12px; color: #646970; white-space: nowrap; }
+        .sp-ml-del { margin-left: auto; }
+        .sp-ml-items {
+            padding: 8px 12px 12px;
+            min-height: 34px;
+        }
+        .sp-ml-ungrouped {
+            padding: 8px 12px 12px;
+            background: #fff;
+            border: 1px dashed #c3c4c7;
+            border-radius: 6px;
+            min-height: 40px;
+        }
+        .sp-ml-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 7px 10px;
+            margin: 6px 0;
+            background: #fff;
+            border: 1px solid #e2e4e7;
+            border-radius: 5px;
+        }
+        .sp-ml-item-label { font-weight: 500; }
+        .sp-ml-slug { color: #8c8f94; font-size: 11px; background: #f6f7f7; padding: 1px 6px; border-radius: 3px; }
+        .sp-ml-item .sp-ml-hide { margin-left: auto; }
+        .sp-ml-dragging { opacity: 0.45; outline: 2px dashed #2271b1; }
+        .sp-ml-subhead { background: #f6f7f7; border-style: dashed; }
+        .sp-ml-subhead-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #8c8f94; }
+        .sp-ml-subhead-input { flex: 1; max-width: 260px; font-weight: 600; }
+        .sp-ml-add-sub { font-size: 12px; white-space: nowrap; }
+        .sp-ml-item.sp-ml-indented { margin-left: 30px; }
+        .sp-ml-items.sp-ml-empty::after,
+        .sp-ml-ungrouped.sp-ml-empty::after {
+            content: attr(data-empty);
+            color: #a7aaad;
+            font-style: italic;
+            font-size: 12px;
+        }
+        .sp-ml-ungrouped-h { margin-top: 26px; }
+        </style>
+
+        <div class="sp-ml-toolbar">
+            <button type="button" class="button button-primary" id="sp-ml-save"><?php esc_html_e( 'Save Layout', 'societypress' ); ?></button>
+            <button type="button" class="button" id="sp-ml-add-group"><?php esc_html_e( 'Add Group', 'societypress' ); ?></button>
+            <button type="button" class="button sp-ml-reset" id="sp-ml-reset"><?php esc_html_e( 'Reset to Default', 'societypress' ); ?></button>
+            <span class="sp-ml-msg" id="sp-ml-msg" role="status" aria-live="polite"></span>
+        </div>
+
+        <div class="sp-ml-groups" id="sp-ml-groups"></div>
+
+        <h2 class="sp-ml-ungrouped-h"><?php esc_html_e( 'Ungrouped items', 'societypress' ); ?></h2>
+        <p class="description"><?php esc_html_e( 'These show as single links in the sidebar. Drag any into a group above.', 'societypress' ); ?></p>
+        <div class="sp-ml-ungrouped sp-ml-items" id="sp-ml-ungrouped" data-empty="<?php esc_attr_e( 'Nothing here — drag an item down to ungroup it.', 'societypress' ); ?>"></div>
+    </div>
+
+    <script>
+    ( function () {
+        var SP_ML = <?php echo wp_json_encode( [
+            'ajax'           => admin_url( 'admin-ajax.php' ),
+            'nonce'          => $nonce,
+            'model'          => $model,
+            'hideLabel'      => __( 'Hide', 'societypress' ),
+            'hideGroupLabel' => __( 'Hide group', 'societypress' ),
+            'deleteLabel'    => __( 'Delete', 'societypress' ),
+            'newGroupLabel'  => __( 'New Group', 'societypress' ),
+            'addSubheadLabel' => __( '+ Sub-heading', 'societypress' ),
+            'newSubheadLabel' => __( 'New sub-heading', 'societypress' ),
+            'subheadTag'     => __( 'Sub-heading', 'societypress' ),
+            'emptyItems'     => __( 'Drag items here.', 'societypress' ),
+            'saving'         => __( 'Saving…', 'societypress' ),
+            'saved'          => __( 'Saved. Reloading…', 'societypress' ),
+            'error'          => __( 'Something went wrong. Please try again.', 'societypress' ),
+            'confirmReset'   => __( 'Reset the menu to its original layout? Your customisations will be lost.', 'societypress' ),
+        ] ); ?>;
+
+        function escapeHtml( s ) {
+            return String( s ).replace( /[&<>"']/g, function ( c ) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ c ];
+            } );
+        }
+
+        var groupsWrap = document.getElementById( 'sp-ml-groups' );
+        var ungrouped  = document.getElementById( 'sp-ml-ungrouped' );
+        var msg        = document.getElementById( 'sp-ml-msg' );
+
+        function showMsg( text, cls ) {
+            msg.textContent = text;
+            msg.className = 'sp-ml-msg' + ( cls ? ' ' + cls : '' );
+        }
+
+        function markEmpty( container ) {
+            if ( ! container ) { return; }
+            var has = container.querySelector( '.sp-ml-item' );
+            container.classList.toggle( 'sp-ml-empty', ! has );
+        }
+        // Inset every item that sits below a sub-heading (until the next one),
+        // so the grouping is visible at a glance. Recomputed after any move.
+        function applyIndent() {
+            document.querySelectorAll( '#sp-ml-groups .sp-ml-items' ).forEach( function ( container ) {
+                var under = false;
+                Array.prototype.slice.call( container.children ).forEach( function ( row ) {
+                    if ( row.classList.contains( 'sp-ml-subhead' ) ) {
+                        under = true;
+                        row.classList.remove( 'sp-ml-indented' );
+                    } else if ( row.classList.contains( 'sp-ml-item' ) ) {
+                        row.classList.toggle( 'sp-ml-indented', under );
+                    }
+                } );
+            } );
+        }
+
+        function refreshEmpty() {
+            document.querySelectorAll( '.sp-ml-items' ).forEach( markEmpty );
+            markEmpty( ungrouped );
+            applyIndent();
+        }
+
+        function buildItem( d ) {
+            var el = document.createElement( 'div' );
+            el.className = 'sp-ml-row sp-ml-item';
+            el.setAttribute( 'data-slug', d.slug );
+            el.draggable = true;
+            el.innerHTML =
+                '<span class="sp-ml-handle dashicons dashicons-menu" aria-hidden="true"></span>' +
+                '<span class="sp-ml-item-label"></span>' +
+                '<code class="sp-ml-slug"></code>' +
+                '<label class="sp-ml-hide"><input type="checkbox" class="sp-ml-hide-cb"> ' + escapeHtml( SP_ML.hideLabel ) + '</label>';
+            el.querySelector( '.sp-ml-item-label' ).textContent = d.label;
+            el.querySelector( '.sp-ml-slug' ).textContent = d.slug;
+            if ( d.hidden ) { el.querySelector( '.sp-ml-hide-cb' ).checked = true; }
+            return el;
+        }
+
+        function buildHeading( d ) {
+            var el = document.createElement( 'div' );
+            el.className = 'sp-ml-row sp-ml-subhead';
+            el.innerHTML =
+                '<span class="sp-ml-handle dashicons dashicons-menu" aria-hidden="true"></span>' +
+                '<span class="sp-ml-subhead-tag">' + escapeHtml( SP_ML.subheadTag ) + '</span>' +
+                '<input type="text" class="sp-ml-subhead-input" placeholder="' + escapeHtml( SP_ML.newSubheadLabel ) + '">' +
+                '<button type="button" class="button-link sp-ml-del sp-text-danger"></button>';
+            el.querySelector( '.sp-ml-subhead-input' ).value = d.heading || '';
+            el.querySelector( '.sp-ml-del' ).textContent = SP_ML.deleteLabel;
+            el.querySelector( '.sp-ml-del' ).addEventListener( 'click', function () {
+                el.parentNode.removeChild( el );
+                refreshEmpty();
+            } );
+            // The handle arms dragging so the label field stays editable.
+            var handle = el.querySelector( '.sp-ml-handle' );
+            handle.addEventListener( 'mousedown', function () { el.draggable = true; } );
+            handle.addEventListener( 'mouseup', function () { el.draggable = false; } );
+            el.addEventListener( 'dragend', function () { el.draggable = false; } );
+            return el;
+        }
+
+        function buildGroup( d ) {
+            var g = document.createElement( 'div' );
+            g.className = 'sp-ml-group';
+            g.setAttribute( 'data-id', d.id );
+            if ( d.custom ) { g.setAttribute( 'data-custom', '1' ); }
+
+            var head = document.createElement( 'div' );
+            head.className = 'sp-ml-group-head';
+            head.innerHTML =
+                '<span class="sp-ml-group-handle dashicons dashicons-menu" aria-hidden="true" title="' + escapeHtml( SP_ML.dragTitle || '' ) + '"></span>' +
+                '<input type="text" class="sp-ml-label-input">' +
+                '<label class="sp-ml-hide"><input type="checkbox" class="sp-ml-ghide-cb"> ' + escapeHtml( SP_ML.hideGroupLabel ) + '</label>';
+            head.querySelector( '.sp-ml-label-input' ).value = d.label;
+            var ghide = head.querySelector( '.sp-ml-ghide-cb' );
+            if ( d.hidden ) { ghide.checked = true; g.classList.add( 'sp-ml-ghidden' ); }
+            ghide.addEventListener( 'change', function () {
+                g.classList.toggle( 'sp-ml-ghidden', ghide.checked );
+            } );
+
+            // Add a sub-heading (a labelled divider) to this group.
+            var addSub = document.createElement( 'button' );
+            addSub.type = 'button';
+            addSub.className = 'button-link sp-ml-add-sub';
+            addSub.textContent = SP_ML.addSubheadLabel;
+            addSub.addEventListener( 'click', function () {
+                var container = g.querySelector( '.sp-ml-items' );
+                var row = buildHeading( { heading: SP_ML.newSubheadLabel } );
+                container.appendChild( row );
+                refreshEmpty();
+                var inp = row.querySelector( '.sp-ml-subhead-input' );
+                if ( inp ) { inp.focus(); inp.select(); }
+            } );
+            head.appendChild( addSub );
+
+            if ( d.custom ) {
+                var del = document.createElement( 'button' );
+                del.type = 'button';
+                del.className = 'button-link sp-ml-del sp-text-danger';
+                del.textContent = SP_ML.deleteLabel;
+                del.addEventListener( 'click', function () {
+                    // Move its items to Ungrouped so nothing is lost, then remove.
+                    g.querySelectorAll( '.sp-ml-item' ).forEach( function ( it ) { ungrouped.appendChild( it ); } );
+                    g.parentNode.removeChild( g );
+                    refreshEmpty();
+                } );
+                head.appendChild( del );
+            }
+
+            // Only the handle arms group dragging, so the label field stays usable.
+            var handle = head.querySelector( '.sp-ml-group-handle' );
+            handle.addEventListener( 'mousedown', function () { g.draggable = true; } );
+            handle.addEventListener( 'mouseup', function () { g.draggable = false; } );
+            g.addEventListener( 'dragend', function () { g.draggable = false; } );
+
+            g.appendChild( head );
+
+            var items = document.createElement( 'div' );
+            items.className = 'sp-ml-items';
+            items.setAttribute( 'data-empty', SP_ML.emptyItems );
+            ( d.items || [] ).forEach( function ( it ) {
+                items.appendChild( ( it && it.heading !== undefined ) ? buildHeading( it ) : buildItem( it ) );
+            } );
+            g.appendChild( items );
+
+            return g;
+        }
+
+        // --- Render the model ---
+        SP_ML.model.groups.forEach( function ( g ) { groupsWrap.appendChild( buildGroup( g ) ); } );
+        SP_ML.model.ungrouped.forEach( function ( it ) { ungrouped.appendChild( buildItem( it ) ); } );
+        refreshEmpty();
+
+        // --- Drag and drop ---
+        var dragEl = null, dragType = null;
+
+        function getAfter( container, y, selector ) {
+            var els = Array.prototype.slice.call( container.querySelectorAll( selector + ':not(.sp-ml-dragging)' ) );
+            var closest = { offset: Number.NEGATIVE_INFINITY, element: null };
+            els.forEach( function ( child ) {
+                var box = child.getBoundingClientRect();
+                var offset = y - box.top - box.height / 2;
+                if ( offset < 0 && offset > closest.offset ) {
+                    closest = { offset: offset, element: child };
+                }
+            } );
+            return closest.element;
+        }
+
+        document.addEventListener( 'dragstart', function ( e ) {
+            var item = e.target.closest ? e.target.closest( '.sp-ml-row' ) : null;
+            if ( item && groupsWrap.contains( item ) || ( item && ungrouped.contains( item ) ) ) {
+                dragEl = item; dragType = 'item';
+            } else {
+                var grp = e.target.closest ? e.target.closest( '.sp-ml-group' ) : null;
+                if ( grp && grp.draggable ) { dragEl = grp; dragType = 'group'; }
+            }
+            if ( dragEl ) {
+                dragEl.classList.add( 'sp-ml-dragging' );
+                e.dataTransfer.effectAllowed = 'move';
+                try { e.dataTransfer.setData( 'text/plain', '' ); } catch ( err ) {}
+            }
+        } );
+
+        document.addEventListener( 'dragover', function ( e ) {
+            if ( ! dragEl ) { return; }
+            if ( dragType === 'item' ) {
+                var container = e.target.closest ? e.target.closest( '.sp-ml-items' ) : null;
+                if ( ! container ) { return; }
+                e.preventDefault();
+                var after = getAfter( container, e.clientY, '.sp-ml-row' );
+                if ( after == null ) { container.appendChild( dragEl ); }
+                else { container.insertBefore( dragEl, after ); }
+            } else {
+                e.preventDefault();
+                var after2 = getAfter( groupsWrap, e.clientY, '.sp-ml-group' );
+                if ( after2 == null ) { groupsWrap.appendChild( dragEl ); }
+                else { groupsWrap.insertBefore( dragEl, after2 ); }
+            }
+        } );
+
+        document.addEventListener( 'drop', function ( e ) {
+            if ( dragEl ) { e.preventDefault(); }
+        } );
+
+        document.addEventListener( 'dragend', function () {
+            if ( dragEl ) { dragEl.classList.remove( 'sp-ml-dragging' ); }
+            dragEl = null; dragType = null;
+            refreshEmpty();
+        } );
+
+        // --- Add group ---
+        document.getElementById( 'sp-ml-add-group' ).addEventListener( 'click', function () {
+            var id = 'custom-' + Math.random().toString( 36 ).slice( 2, 9 );
+            var g = buildGroup( { id: id, label: SP_ML.newGroupLabel, custom: true, hidden: false, items: [] } );
+            groupsWrap.appendChild( g );
+            refreshEmpty();
+            g.scrollIntoView( { behavior: 'smooth', block: 'center' } );
+            var input = g.querySelector( '.sp-ml-label-input' );
+            if ( input ) { input.focus(); input.select(); }
+        } );
+
+        // --- Serialize + save ---
+        function serialize() {
+            var groups = [];
+            groupsWrap.querySelectorAll( ':scope > .sp-ml-group' ).forEach( function ( g ) {
+                var items = [];
+                g.querySelectorAll( '.sp-ml-items > .sp-ml-row' ).forEach( function ( row ) {
+                    if ( row.classList.contains( 'sp-ml-subhead' ) ) {
+                        var v = row.querySelector( '.sp-ml-subhead-input' ).value.trim();
+                        if ( v ) { items.push( { heading: v } ); }
+                    } else {
+                        items.push( { slug: row.getAttribute( 'data-slug' ), hidden: row.querySelector( '.sp-ml-hide-cb' ).checked } );
+                    }
+                } );
+                groups.push( {
+                    id: g.getAttribute( 'data-id' ),
+                    label: g.querySelector( '.sp-ml-label-input' ).value,
+                    custom: g.getAttribute( 'data-custom' ) === '1',
+                    hidden: g.querySelector( '.sp-ml-ghide-cb' ).checked,
+                    items: items
+                } );
+            } );
+            var ung = [];
+            ungrouped.querySelectorAll( ':scope > .sp-ml-row' ).forEach( function ( row ) {
+                if ( row.classList.contains( 'sp-ml-subhead' ) ) { return; } // sub-headings belong to a group
+                ung.push( { slug: row.getAttribute( 'data-slug' ), hidden: row.querySelector( '.sp-ml-hide-cb' ).checked } );
+            } );
+            return { groups: groups, ungrouped: ung };
+        }
+
+        function post( action, extra, onDone ) {
+            var fd = new FormData();
+            fd.append( 'action', action );
+            fd.append( 'nonce', SP_ML.nonce );
+            if ( extra ) { Object.keys( extra ).forEach( function ( k ) { fd.append( k, extra[ k ] ); } ); }
+            fetch( SP_ML.ajax, { method: 'POST', credentials: 'same-origin', body: fd } )
+                .then( function ( r ) { return r.json(); } )
+                .then( onDone )
+                .catch( function () { onDone( { success: false, data: { message: SP_ML.error } } ); } );
+        }
+
+        var saveBtn = document.getElementById( 'sp-ml-save' );
+        saveBtn.addEventListener( 'click', function () {
+            saveBtn.disabled = true;
+            showMsg( SP_ML.saving, '' );
+            post( 'sp_menu_layout_save', { layout: JSON.stringify( serialize() ) }, function ( res ) {
+                if ( res && res.success ) {
+                    showMsg( SP_ML.saved, 'is-ok' );
+                    window.location.reload();
+                } else {
+                    saveBtn.disabled = false;
+                    showMsg( ( res && res.data && res.data.message ) || SP_ML.error, 'is-error' );
+                }
+            } );
+        } );
+
+        document.getElementById( 'sp-ml-reset' ).addEventListener( 'click', function () {
+            spConfirm( SP_ML.confirmReset, function () {
+                post( 'sp_menu_layout_reset', null, function ( res ) {
+                    if ( res && res.success ) { window.location.reload(); }
+                    else { showMsg( ( res && res.data && res.data.message ) || SP_ML.error, 'is-error' ); }
+                } );
+            } );
+        } );
+    } )();
+    </script>
+    <?php
+}
+
+/**
+ * AJAX: save the custom menu layout.
+ */
+add_action( 'wp_ajax_sp_menu_layout_save', function () {
+    check_ajax_referer( 'sp_menu_layout_nonce', 'nonce' );
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => __( 'You do not have permission to do that.', 'societypress' ) ] );
+    }
+
+    $data = json_decode( wp_unslash( $_POST['layout'] ?? '' ), true );
+    if ( ! is_array( $data ) ) {
+        wp_send_json_error( [ 'message' => __( 'Could not read the layout.', 'societypress' ) ] );
+    }
+
+    $clean = [ 'groups' => [], 'ungrouped' => [] ];
+
+    foreach ( (array) ( $data['groups'] ?? [] ) as $g ) {
+        $gid = sanitize_key( $g['id'] ?? '' );
+        if ( '' === $gid ) {
+            continue;
+        }
+        $items = [];
+        foreach ( (array) ( $g['items'] ?? [] ) as $it ) {
+            // Sub-heading entry — a labelled divider inside the group.
+            if ( isset( $it['heading'] ) ) {
+                $h = sanitize_text_field( $it['heading'] );
+                if ( '' !== $h ) {
+                    $items[] = [ 'heading' => $h ];
+                }
+                continue;
+            }
+            $slug = sanitize_text_field( $it['slug'] ?? '' );
+            if ( '' === $slug ) {
+                continue;
+            }
+            $items[] = [ 'slug' => $slug, 'hidden' => ! empty( $it['hidden'] ) ];
+        }
+        $clean['groups'][] = [
+            'id'     => $gid,
+            'label'  => sanitize_text_field( $g['label'] ?? '' ),
+            'custom' => ! empty( $g['custom'] ),
+            'hidden' => ! empty( $g['hidden'] ),
+            'items'  => $items,
+        ];
+    }
+
+    foreach ( (array) ( $data['ungrouped'] ?? [] ) as $it ) {
+        $slug = sanitize_text_field( $it['slug'] ?? '' );
+        if ( '' === $slug ) {
+            continue;
+        }
+        $clean['ungrouped'][] = [ 'slug' => $slug, 'hidden' => ! empty( $it['hidden'] ) ];
+    }
+
+    update_option( 'sp_menu_layout', $clean, false );
+    wp_send_json_success();
+} );
+
+/**
+ * AJAX: reset the menu to the built-in default.
+ */
+add_action( 'wp_ajax_sp_menu_layout_reset', function () {
+    check_ajax_referer( 'sp_menu_layout_nonce', 'nonce' );
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => __( 'You do not have permission to do that.', 'societypress' ) ] );
+    }
+    delete_option( 'sp_menu_layout' );
+    wp_send_json_success();
+} );
 
 
 // ============================================================================
@@ -14457,6 +15304,178 @@ add_action( 'admin_init', function () {
     exit;
 } );
 
+/**
+ * Print view of the member directory — a formatted two-column booklet grouped
+ * by last-name letter, a full contact block per member.
+ *
+ * WHY separate from the sp_print list above: that one mirrors the on-screen
+ * admin table (filtered rows, management columns) for staff. This is the
+ * member-facing directory a society hands out — name, mailing address, phones,
+ * email — active members only, and it honours each member's "show my phone /
+ * email in the directory" choice. Same zero-dependency approach: a clean
+ * standalone page, and the browser's "Save as PDF" does the rest.
+ */
+add_action( 'admin_init', function () {
+    if ( ( $_GET['page'] ?? '' ) !== 'sp-members' || empty( $_GET['sp_directory'] ) ) {
+        return;
+    }
+    if ( ! current_user_can( 'sp_manage_members' ) ) {
+        wp_die( esc_html__( 'You do not have permission to view this.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $prefix   = $wpdb->prefix . 'sp_';
+    $settings = sp_settings();
+    $org_name = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+    $when     = date_i18n( get_option( 'date_format', 'F j, Y' ) );
+
+    // Active members plus their account email; decrypt the sensitive columns
+    // (cell, work_phone, address_*) that sp_member_decrypt_rows() handles.
+    $rows = $wpdb->get_results(
+        "SELECT m.*, u.user_email
+         FROM {$prefix}members m
+         LEFT JOIN {$wpdb->users} u ON u.ID = m.user_id
+         WHERE m.status = 'active'"
+    );
+    $rows = sp_member_decrypt_rows( (array) $rows );
+
+    // Build display entries with a sort key and an A–Z grouping letter.
+    $entries = [];
+    foreach ( $rows as $m ) {
+        $is_org = ( 'organization' === $m->member_type && ! empty( $m->organization_name ) );
+        if ( $is_org ) {
+            $sortname = $m->organization_name;
+            $display  = $m->organization_name;
+        } else {
+            $sortname = trim( $m->last_name . ' ' . $m->first_name );
+            $display  = trim( $m->last_name . ', ' . $m->first_name, ', ' );
+            // Joint membership → list as a household ("Smith, John & Jane").
+            if ( ! empty( $m->joint_first_name ) ) {
+                $joint_last = ( ! empty( $m->joint_last_name ) && 0 !== strcasecmp( $m->joint_last_name, $m->last_name ) )
+                    ? ' ' . $m->joint_last_name : '';
+                $display .= ' & ' . $m->joint_first_name . $joint_last;
+            }
+        }
+        if ( '' === trim( $sortname ) ) {
+            continue; // nothing to file them under
+        }
+
+        $letter = strtoupper( mb_substr( $sortname, 0, 1 ) );
+        if ( ! preg_match( '/[A-Z]/', $letter ) ) {
+            $letter = '#';
+        }
+
+        $addr_bits = array_filter( [
+            trim( (string) $m->address_1 ),
+            trim( (string) $m->address_2 ),
+            trim( trim( (string) $m->city ) . ( $m->state ? ', ' . $m->state : '' ) . ( $m->postal_code ? ' ' . $m->postal_code : '' ), ', ' ),
+        ] );
+        $address = implode( ', ', $addr_bits );
+
+        // Phones — only if the member allows their phone in the directory.
+        $phones = [];
+        if ( ! empty( $m->dir_show_phone ) ) {
+            if ( ! empty( $m->phone ) )      { $phones[] = __( 'Home', 'societypress' ) . ' ' . $m->phone; }
+            if ( ! empty( $m->cell ) )       { $phones[] = __( 'Cell', 'societypress' ) . ' ' . $m->cell; }
+            if ( ! empty( $m->work_phone ) ) { $phones[] = __( 'Work', 'societypress' ) . ' ' . $m->work_phone; }
+        }
+
+        // Email — only if the member allows their email in the directory.
+        $email = '';
+        if ( ! empty( $m->dir_show_email ) ) {
+            $email = $m->user_email ?: ( $m->alt_email ?? '' );
+        }
+
+        $entries[] = [
+            'sort'    => $sortname,
+            'letter'  => $letter,
+            'name'    => $display,
+            'address' => $address,
+            'phones'  => $phones,
+            'email'   => $email,
+        ];
+    }
+
+    usort( $entries, function ( $a, $b ) {
+        return strcasecmp( $a['sort'], $b['sort'] );
+    } );
+
+    header( 'Content-Type: text/html; charset=utf-8' );
+    ?><!doctype html>
+<html lang="<?php echo esc_attr( get_bloginfo( 'language' ) ); ?>">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title><?php echo esc_html( sprintf( __( '%s — Member Directory', 'societypress' ), $org_name ) ); ?></title>
+<style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #1a1a1a; margin: 32px; }
+    h1 { font-size: 20px; margin: 0 0 2px; }
+    .dir-meta { color: #555; font-size: 12px; margin: 0 0 18px; }
+    .dir-toolbar { margin: 0 0 18px; }
+    .dir-btn { padding: 8px 18px; font-size: 14px; border: 1px solid #333; background: #fff; border-radius: 5px; cursor: pointer; }
+    .dir-count { color: #555; font-size: 12px; margin-left: 10px; }
+    .dir-list { column-count: 2; column-gap: 34px; }
+    .dir-letter {
+        font-size: 15px; font-weight: 700; letter-spacing: 0.04em;
+        border-bottom: 1px solid #333; padding-bottom: 2px; margin: 12px 0 8px;
+        break-inside: avoid; break-after: avoid; -webkit-column-break-after: avoid;
+    }
+    .dir-entry {
+        break-inside: avoid; -webkit-column-break-inside: avoid;
+        margin: 0 0 11px; font-size: 12.5px; line-height: 1.35;
+    }
+    .dir-name { font-weight: 700; }
+    .dir-line { color: #333; }
+    .dir-empty { color: #555; }
+    @media print {
+        body { margin: 0.5in; }
+        .dir-toolbar { display: none; }
+    }
+</style>
+</head>
+<body>
+    <div class="dir-toolbar">
+        <button type="button" class="dir-btn" onclick="window.print();"><?php esc_html_e( 'Print / Save as PDF', 'societypress' ); ?></button>
+        <span class="dir-count"><?php echo esc_html( sprintf( _n( '%d member', '%d members', count( $entries ), 'societypress' ), count( $entries ) ) ); ?></span>
+    </div>
+    <h1><?php echo esc_html( sprintf( __( '%s — Member Directory', 'societypress' ), $org_name ) ); ?></h1>
+    <p class="dir-meta"><?php echo esc_html( sprintf( __( 'Generated %s', 'societypress' ), $when ) ); ?></p>
+
+    <?php if ( empty( $entries ) ) : ?>
+        <p class="dir-empty"><?php esc_html_e( 'No active members to list yet.', 'societypress' ); ?></p>
+    <?php else : ?>
+        <div class="dir-list">
+            <?php
+            $current_letter = null;
+            foreach ( $entries as $e ) {
+                if ( $e['letter'] !== $current_letter ) {
+                    $current_letter = $e['letter'];
+                    echo '<div class="dir-letter">' . esc_html( $current_letter ) . '</div>';
+                }
+                echo '<div class="dir-entry">';
+                echo '<div class="dir-name">' . esc_html( $e['name'] ) . '</div>';
+                if ( '' !== $e['address'] ) {
+                    echo '<div class="dir-line">' . esc_html( $e['address'] ) . '</div>';
+                }
+                if ( ! empty( $e['phones'] ) ) {
+                    echo '<div class="dir-line">' . esc_html( implode( '   •   ', $e['phones'] ) ) . '</div>';
+                }
+                if ( '' !== $e['email'] ) {
+                    echo '<div class="dir-line">' . esc_html( $e['email'] ) . '</div>';
+                }
+                echo '</div>';
+            }
+            ?>
+        </div>
+    <?php endif; ?>
+    <script>window.addEventListener('load', function () { window.print(); });</script>
+</body>
+</html>
+    <?php
+    exit;
+} );
+
 function sp_render_members_page(): void {
     $table = new SP_Members_List_Table();
     $table->prepare_items();
@@ -14521,6 +15540,14 @@ function sp_render_members_page(): void {
         ?>
         <a href="<?php echo esc_url( add_query_arg( $sp_print_args, admin_url( 'admin.php' ) ) ); ?>" class="page-title-action" target="_blank" rel="noopener">
             <?php esc_html_e( 'Print / PDF', 'societypress' ); ?>
+        </a>
+        <?php
+        // Print Directory — a formatted, member-facing directory booklet of ALL
+        // active members (not the filtered admin table). Deliberately ignores the
+        // on-screen filters so the printout is the complete directory.
+        ?>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-members&sp_directory=1' ) ); ?>" class="page-title-action" target="_blank" rel="noopener">
+            <?php esc_html_e( 'Print Directory', 'societypress' ); ?>
         </a>
         <hr class="wp-header-end">
 
@@ -25274,6 +26301,507 @@ function sp_ajax_leave_group(): void {
     wp_send_json_success( [ 'message' => __( 'You have left the group.', 'societypress' ) ] );
 }
 add_action( 'wp_ajax_sp_leave_group', 'sp_ajax_leave_group' );
+
+// =========================================================================
+// NOTEPAD — shared admin notes / to-do handoff board
+// =========================================================================
+//
+// WHY: Societies are run by rotating volunteers who each work a shift and
+//      leave. Without a shared, persistent place to jot "here's what I did,
+//      here's what still needs doing," every handoff loses context. The
+//      notepad is that place: a board of rich-text notes (formatting +
+//      inline graphics) that any backend user can post, pin, check off,
+//      edit, or delete. Notes live in sp_notes and outlast any session.
+// =========================================================================
+
+/**
+ * Render one note as a board card.
+ *
+ * WHY a shared helper: the page renders every note on load, and keeping the
+ *      markup in one place means the card can't drift out of sync with the
+ *      board's styles or escaping rules. Returns a fully-escaped HTML string.
+ *
+ * @param object $note Row from sp_notes.
+ * @return string
+ */
+function sp_notepad_note_card( $note ): string {
+    $datetime_format = get_option( 'date_format' ) . ' ' . get_option( 'time_format' );
+
+    $author      = get_userdata( (int) $note->author_id );
+    $author_name = $author ? $author->display_name : __( 'Unknown', 'societypress' );
+    $created     = mysql2date( $datetime_format, $note->created_at );
+
+    $meta = sprintf(
+        /* translators: 1: author name, 2: date and time the note was posted */
+        esc_html__( 'Posted by %1$s on %2$s', 'societypress' ),
+        esc_html( $author_name ),
+        esc_html( $created )
+    );
+
+    // Only show an "edited" line when someone actually changed the note after
+    // it was first posted — a fresh note has updated_at === created_at.
+    $edited_line = '';
+    if ( ! empty( $note->updated_by ) && $note->updated_at !== $note->created_at ) {
+        $editor      = get_userdata( (int) $note->updated_by );
+        $editor_name = $editor ? $editor->display_name : __( 'Unknown', 'societypress' );
+        $edited      = mysql2date( $datetime_format, $note->updated_at );
+        $edited_line = '<span class="sp-note-edited">' . sprintf(
+            /* translators: 1: editor name, 2: date and time the note was edited */
+            esc_html__( 'edited by %1$s on %2$s', 'societypress' ),
+            esc_html( $editor_name ),
+            esc_html( $edited )
+        ) . '</span>';
+    }
+
+    $is_pinned = 1 === (int) $note->is_pinned;
+    $is_done   = 1 === (int) $note->is_done;
+
+    $classes = 'sp-note';
+    if ( $is_pinned ) {
+        $classes .= ' is-pinned';
+    }
+    if ( $is_done ) {
+        $classes .= ' is-done';
+    }
+
+    ob_start();
+    ?>
+    <div class="<?php echo esc_attr( $classes ); ?>" data-id="<?php echo (int) $note->id; ?>">
+        <div class="sp-note-head">
+            <?php if ( $is_pinned ) : ?>
+                <span class="sp-note-pin-badge" aria-hidden="true">&#128204;</span>
+                <span class="screen-reader-text"><?php esc_html_e( 'Pinned', 'societypress' ); ?></span>
+            <?php endif; ?>
+            <?php if ( ! empty( $note->title ) ) : ?>
+                <h3 class="sp-note-title"><?php echo esc_html( $note->title ); ?></h3>
+            <?php endif; ?>
+        </div>
+        <div class="sp-note-body"><?php echo wp_kses_post( $note->content ); ?></div>
+        <div class="sp-note-meta"><?php
+            echo $meta;        // phpcs:ignore WordPress.Security.EscapeOutput -- assembled from esc_html() parts
+            echo $edited_line; // phpcs:ignore WordPress.Security.EscapeOutput -- assembled from esc_html() parts
+        ?></div>
+        <div class="sp-note-actions">
+            <button type="button" class="button-link sp-note-done" data-id="<?php echo (int) $note->id; ?>">
+                <?php echo $is_done ? esc_html__( 'Reopen', 'societypress' ) : esc_html__( 'Mark done', 'societypress' ); ?>
+            </button>
+            <button type="button" class="button-link sp-note-pin" data-id="<?php echo (int) $note->id; ?>">
+                <?php echo $is_pinned ? esc_html__( 'Unpin', 'societypress' ) : esc_html__( 'Pin', 'societypress' ); ?>
+            </button>
+            <button type="button" class="button-link sp-note-edit" data-id="<?php echo (int) $note->id; ?>">
+                <?php esc_html_e( 'Edit', 'societypress' ); ?>
+            </button>
+            <button type="button" class="button-link sp-text-danger sp-note-delete" data-id="<?php echo (int) $note->id; ?>">
+                <?php esc_html_e( 'Delete', 'societypress' ); ?>
+            </button>
+        </div>
+    </div>
+    <?php
+    return ob_get_clean();
+}
+
+/**
+ * Render the Notepad admin page.
+ */
+function sp_render_notepad_page(): void {
+    if ( ! sp_user_can_access_admin() ) {
+        wp_die( esc_html__( 'You do not have permission to view this page.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    // WHY: the "Add Media" button inside the rich-text editor needs WordPress's
+    //      media modal scripts, which aren't loaded on custom admin pages by
+    //      default.
+    wp_enqueue_media();
+
+    // Sort: open notes first, pinned floated to the top of each group, then
+    // most-recently-touched. Done notes sink to the bottom without deleting.
+    $notes = $wpdb->get_results(
+        "SELECT * FROM {$prefix}notes
+         ORDER BY is_done ASC, is_pinned DESC, updated_at DESC, id DESC"
+    );
+
+    $nonce = wp_create_nonce( 'sp_notepad_nonce' );
+    ?>
+    <div class="wrap sp-notepad">
+        <h1 class="wp-heading-inline"><?php esc_html_e( 'Notepad', 'societypress' ); ?></h1>
+        <p class="description sp-notepad-intro">
+            <?php esc_html_e( 'A shared board for reminders, to-do items, and handoff notes. Anything you post stays here for whoever runs the site next.', 'societypress' ); ?>
+        </p>
+
+        <style>
+        /**
+         * Notepad admin page — page-scoped presentation styles.
+         *
+         * WHY here: keeps the markup clean and follows the no-inline-styles
+         *      rule. Class prefix sp-note* is page-scoped to avoid collisions.
+         *      Only display:none (JS-toggled) stays inline on elements.
+         */
+        .sp-notepad-intro { max-width: 700px; }
+        .sp-notepad-composer {
+            background: #fff;
+            border: 1px solid #dcdcde;
+            border-radius: 6px;
+            padding: 16px 20px 20px;
+            margin: 16px 0 24px;
+            max-width: 900px;
+        }
+        .sp-notepad-composer-title { margin-top: 0; }
+        .sp-notepad-label { display: block; font-weight: 600; margin-bottom: 4px; }
+        .sp-notepad-title-input { width: 100%; max-width: 600px; margin-bottom: 12px; }
+        .sp-notepad-composer-actions { margin-top: 12px; margin-bottom: 0; }
+        .sp-notepad-msg { margin-left: 10px; }
+        .sp-notepad-msg.is-error { color: #b32d2e; }
+        .sp-notepad-board { max-width: 900px; }
+        .sp-notepad-empty { color: #646970; font-style: italic; }
+        .sp-note {
+            background: #fff;
+            border: 1px solid #dcdcde;
+            border-left: 4px solid #dcdcde;
+            border-radius: 6px;
+            padding: 14px 18px;
+            margin-bottom: 14px;
+        }
+        .sp-note.is-pinned { border-left-color: #C9973A; background: #fffdf7; }
+        .sp-note.is-done { opacity: 0.62; border-left-color: #46b450; }
+        .sp-note.is-done .sp-note-title { text-decoration: line-through; }
+        .sp-note-head { display: flex; align-items: center; gap: 8px; }
+        .sp-note-pin-badge { font-size: 15px; }
+        .sp-note-title { margin: 0; font-size: 16px; }
+        .sp-note-body { margin: 8px 0 10px; }
+        .sp-note-body img { max-width: 100%; height: auto; }
+        .sp-note-meta { color: #646970; font-size: 12px; }
+        .sp-note-edited { margin-left: 8px; font-style: italic; }
+        .sp-note-actions { margin-top: 10px; display: flex; gap: 14px; flex-wrap: wrap; }
+        .sp-note-actions .button-link { text-decoration: none; }
+        </style>
+
+        <div class="sp-notepad-composer" id="sp-notepad-composer">
+            <h2 class="sp-notepad-composer-title" id="sp-notepad-composer-title"><?php esc_html_e( 'New note', 'societypress' ); ?></h2>
+            <input type="hidden" id="sp-note-id" value="">
+            <label class="sp-notepad-label" for="sp-note-title"><?php esc_html_e( 'Title (optional)', 'societypress' ); ?></label>
+            <input type="text" id="sp-note-title" class="sp-notepad-title-input" maxlength="255" placeholder="<?php esc_attr_e( 'e.g. Renew hosting before it expires', 'societypress' ); ?>">
+            <?php
+            wp_editor( '', 'sp_note_editor', [
+                'textarea_name' => 'sp_note_content',
+                'textarea_rows' => 8,
+                'media_buttons' => true,
+                'teeny'         => false,
+                'quicktags'     => true,
+            ] );
+            ?>
+            <p class="sp-notepad-composer-actions">
+                <button type="button" class="button button-primary" id="sp-note-save"><?php esc_html_e( 'Add Note', 'societypress' ); ?></button>
+                <button type="button" class="button" id="sp-note-cancel" style="display:none;"><?php esc_html_e( 'Cancel', 'societypress' ); ?></button>
+                <span class="sp-notepad-msg" id="sp-notepad-msg" role="status" aria-live="polite"></span>
+            </p>
+        </div>
+
+        <div class="sp-notepad-board" id="sp-notepad-board">
+            <?php if ( empty( $notes ) ) : ?>
+                <p class="sp-notepad-empty" id="sp-notepad-empty"><?php esc_html_e( 'No notes yet. Add the first one above.', 'societypress' ); ?></p>
+            <?php else : ?>
+                <?php
+                foreach ( $notes as $note ) {
+                    echo sp_notepad_note_card( $note ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped inside helper
+                }
+                ?>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <script>
+    ( function () {
+        var SP_NOTEPAD = <?php echo wp_json_encode( [
+            'ajax'          => admin_url( 'admin-ajax.php' ),
+            'nonce'         => $nonce,
+            'addLabel'      => __( 'Add Note', 'societypress' ),
+            'updateLabel'   => __( 'Update Note', 'societypress' ),
+            'newHeading'    => __( 'New note', 'societypress' ),
+            'editHeading'   => __( 'Edit note', 'societypress' ),
+            'saving'        => __( 'Saving…', 'societypress' ),
+            'error'         => __( 'Something went wrong. Please try again.', 'societypress' ),
+            'emptyMsg'      => __( 'Add a title or some text first.', 'societypress' ),
+            'confirmDelete' => __( 'Delete this note? This cannot be undone.', 'societypress' ),
+        ] ); ?>;
+
+        var editorId = 'sp_note_editor';
+        var saveBtn   = document.getElementById( 'sp-note-save' );
+        var cancelBtn = document.getElementById( 'sp-note-cancel' );
+        var idField   = document.getElementById( 'sp-note-id' );
+        var titleEl   = document.getElementById( 'sp-note-title' );
+        var heading   = document.getElementById( 'sp-notepad-composer-title' );
+        var board     = document.getElementById( 'sp-notepad-board' );
+
+        function showMsg( text, isError ) {
+            var el = document.getElementById( 'sp-notepad-msg' );
+            el.textContent = text;
+            el.className = 'sp-notepad-msg' + ( isError ? ' is-error' : '' );
+        }
+
+        // Read/write editor content whether it's in Visual (TinyMCE) or Text mode.
+        function getContent() {
+            if ( window.tinyMCE ) {
+                tinyMCE.triggerSave();
+            }
+            return document.getElementById( editorId ).value;
+        }
+        function setContent( html ) {
+            var ed = window.tinyMCE ? tinyMCE.get( editorId ) : null;
+            if ( ed && ! ed.isHidden() ) {
+                ed.setContent( html || '' );
+            } else {
+                document.getElementById( editorId ).value = html || '';
+            }
+        }
+
+        function post( data, onDone ) {
+            data.append( 'nonce', SP_NOTEPAD.nonce );
+            fetch( SP_NOTEPAD.ajax, {
+                method: 'POST',
+                credentials: 'same-origin',
+                body: data
+            } ).then( function ( r ) {
+                return r.json();
+            } ).then( onDone ).catch( function () {
+                onDone( { success: false, data: { message: SP_NOTEPAD.error } } );
+            } );
+        }
+
+        function resetComposer() {
+            idField.value = '';
+            titleEl.value = '';
+            setContent( '' );
+            heading.textContent = SP_NOTEPAD.newHeading;
+            saveBtn.textContent = SP_NOTEPAD.addLabel;
+            cancelBtn.style.display = 'none';
+            showMsg( '', false );
+        }
+
+        saveBtn.addEventListener( 'click', function () {
+            var content = getContent().trim();
+            var title   = titleEl.value.trim();
+            if ( ! content && ! title ) {
+                showMsg( SP_NOTEPAD.emptyMsg, true );
+                return;
+            }
+            saveBtn.disabled = true;
+            showMsg( SP_NOTEPAD.saving, false );
+            var fd = new FormData();
+            fd.append( 'action', 'sp_notepad_save' );
+            fd.append( 'note_id', idField.value );
+            fd.append( 'title', title );
+            fd.append( 'content', content );
+            post( fd, function ( res ) {
+                if ( res && res.success ) {
+                    window.location.reload();
+                } else {
+                    saveBtn.disabled = false;
+                    showMsg( ( res && res.data && res.data.message ) || SP_NOTEPAD.error, true );
+                }
+            } );
+        } );
+
+        cancelBtn.addEventListener( 'click', resetComposer );
+
+        function loadForEdit( id ) {
+            var fd = new FormData();
+            fd.append( 'action', 'sp_notepad_get' );
+            fd.append( 'note_id', id );
+            post( fd, function ( res ) {
+                if ( ! res || ! res.success ) {
+                    showMsg( ( res && res.data && res.data.message ) || SP_NOTEPAD.error, true );
+                    return;
+                }
+                idField.value = id;
+                titleEl.value = res.data.title || '';
+                setContent( res.data.content || '' );
+                heading.textContent = SP_NOTEPAD.editHeading;
+                saveBtn.textContent = SP_NOTEPAD.updateLabel;
+                cancelBtn.style.display = '';
+                document.getElementById( 'sp-notepad-composer' ).scrollIntoView( { behavior: 'smooth', block: 'start' } );
+            } );
+        }
+
+        function toggle( id, field ) {
+            var fd = new FormData();
+            fd.append( 'action', 'sp_notepad_toggle' );
+            fd.append( 'note_id', id );
+            fd.append( 'field', field );
+            post( fd, function ( res ) {
+                if ( res && res.success ) {
+                    window.location.reload();
+                } else {
+                    showMsg( ( res && res.data && res.data.message ) || SP_NOTEPAD.error, true );
+                }
+            } );
+        }
+
+        function remove( id ) {
+            spConfirm( SP_NOTEPAD.confirmDelete, function () {
+                var fd = new FormData();
+                fd.append( 'action', 'sp_notepad_delete' );
+                fd.append( 'note_id', id );
+                post( fd, function ( res ) {
+                    if ( res && res.success ) {
+                        window.location.reload();
+                    } else {
+                        showMsg( ( res && res.data && res.data.message ) || SP_NOTEPAD.error, true );
+                    }
+                } );
+            } );
+        }
+
+        // One delegated listener covers every card, including any added later.
+        board.addEventListener( 'click', function ( e ) {
+            var btn = e.target.closest ? e.target.closest( 'button' ) : null;
+            if ( ! btn ) {
+                return;
+            }
+            var id = btn.getAttribute( 'data-id' );
+            if ( ! id ) {
+                return;
+            }
+            if ( btn.classList.contains( 'sp-note-edit' ) ) {
+                loadForEdit( id );
+            } else if ( btn.classList.contains( 'sp-note-delete' ) ) {
+                remove( id );
+            } else if ( btn.classList.contains( 'sp-note-pin' ) ) {
+                toggle( id, 'pin' );
+            } else if ( btn.classList.contains( 'sp-note-done' ) ) {
+                toggle( id, 'done' );
+            }
+        } );
+    } )();
+    </script>
+    <?php
+}
+
+/**
+ * AJAX: create or update a note.
+ */
+add_action( 'wp_ajax_sp_notepad_save', function () {
+    check_ajax_referer( 'sp_notepad_nonce', 'nonce' );
+    if ( ! sp_user_can_access_admin() ) {
+        wp_send_json_error( [ 'message' => __( 'You do not have permission to do that.', 'societypress' ) ] );
+    }
+
+    global $wpdb;
+    $prefix  = $wpdb->prefix . 'sp_';
+    $note_id = (int) ( $_POST['note_id'] ?? 0 );
+    $title   = sanitize_text_field( wp_unslash( $_POST['title'] ?? '' ) );
+    // wp_kses_post keeps formatting and inline images while stripping unsafe
+    // markup; it expects unslashed input.
+    $content = wp_kses_post( wp_unslash( $_POST['content'] ?? '' ) );
+
+    if ( '' === trim( wp_strip_all_tags( $content ) ) && '' === $title ) {
+        wp_send_json_error( [ 'message' => __( 'A note needs a title or some text.', 'societypress' ) ] );
+    }
+
+    $now = current_time( 'mysql' );
+    $uid = get_current_user_id();
+
+    if ( $note_id > 0 ) {
+        $wpdb->update(
+            $prefix . 'notes',
+            [
+                'title'      => $title,
+                'content'    => $content,
+                'updated_by' => $uid,
+                'updated_at' => $now,
+            ],
+            [ 'id' => $note_id ]
+        );
+        wp_send_json_success( [ 'id' => $note_id ] );
+    }
+
+    $wpdb->insert(
+        $prefix . 'notes',
+        [
+            'title'      => $title,
+            'content'    => $content,
+            'author_id'  => $uid,
+            'updated_by' => $uid,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]
+    );
+    wp_send_json_success( [ 'id' => (int) $wpdb->insert_id ] );
+} );
+
+/**
+ * AJAX: fetch a single note's raw fields for editing.
+ */
+add_action( 'wp_ajax_sp_notepad_get', function () {
+    check_ajax_referer( 'sp_notepad_nonce', 'nonce' );
+    if ( ! sp_user_can_access_admin() ) {
+        wp_send_json_error( [ 'message' => __( 'You do not have permission to do that.', 'societypress' ) ] );
+    }
+
+    global $wpdb;
+    $prefix  = $wpdb->prefix . 'sp_';
+    $note_id = (int) ( $_POST['note_id'] ?? 0 );
+
+    $note = $wpdb->get_row( $wpdb->prepare(
+        "SELECT title, content FROM {$prefix}notes WHERE id = %d",
+        $note_id
+    ) );
+    if ( ! $note ) {
+        wp_send_json_error( [ 'message' => __( 'Note not found.', 'societypress' ) ] );
+    }
+
+    wp_send_json_success( [
+        'title'   => $note->title,
+        'content' => $note->content,
+    ] );
+} );
+
+/**
+ * AJAX: delete a note.
+ */
+add_action( 'wp_ajax_sp_notepad_delete', function () {
+    check_ajax_referer( 'sp_notepad_nonce', 'nonce' );
+    if ( ! sp_user_can_access_admin() ) {
+        wp_send_json_error( [ 'message' => __( 'You do not have permission to do that.', 'societypress' ) ] );
+    }
+
+    global $wpdb;
+    $prefix  = $wpdb->prefix . 'sp_';
+    $note_id = (int) ( $_POST['note_id'] ?? 0 );
+
+    $wpdb->delete( $prefix . 'notes', [ 'id' => $note_id ] );
+    wp_send_json_success();
+} );
+
+/**
+ * AJAX: flip a note's pinned or done flag.
+ */
+add_action( 'wp_ajax_sp_notepad_toggle', function () {
+    check_ajax_referer( 'sp_notepad_nonce', 'nonce' );
+    if ( ! sp_user_can_access_admin() ) {
+        wp_send_json_error( [ 'message' => __( 'You do not have permission to do that.', 'societypress' ) ] );
+    }
+
+    global $wpdb;
+    $prefix  = $wpdb->prefix . 'sp_';
+    $note_id = (int) ( $_POST['note_id'] ?? 0 );
+    // Whitelist to a real column name so it's safe to interpolate below.
+    $field   = ( ( $_POST['field'] ?? '' ) === 'pin' ) ? 'is_pinned' : 'is_done';
+
+    $current = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT {$field} FROM {$prefix}notes WHERE id = %d",
+        $note_id
+    ) );
+
+    $wpdb->update(
+        $prefix . 'notes',
+        [ $field => $current ? 0 : 1 ],
+        [ 'id' => $note_id ]
+    );
+    wp_send_json_success( [ 'value' => $current ? 0 : 1 ] );
+} );
 
 // =========================================================================
 // PAGES MANAGEMENT

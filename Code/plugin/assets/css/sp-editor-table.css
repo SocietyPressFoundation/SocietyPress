@@ -1,0 +1,25 @@
+/**
+ * SocietyPress — styling for tables inserted via the page editor's Table button.
+ *
+ * Loaded inside the TinyMCE editor (via the mce_css filter) and on the front end
+ * for any page whose content contains an sp-content-table, so the table reads
+ * the same while editing and when published.
+ */
+.sp-content-table {
+	border-collapse: collapse;
+	width: 100%;
+	margin: 1em 0;
+}
+
+.sp-content-table td,
+.sp-content-table th {
+	border: 1px solid #767676;
+	padding: 8px 10px;
+	text-align: left;
+	vertical-align: top;
+}
+
+.sp-content-table th {
+	background: #f0f0f1;
+	font-weight: 600;
+}

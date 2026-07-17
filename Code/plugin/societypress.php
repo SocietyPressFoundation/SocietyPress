@@ -4957,16 +4957,21 @@ add_action( 'admin_init', function () {
  *   ├── Appearance       → Pages, Media
  *   └── Settings         → Settings
  */
+// ---- SocietyPress = Dashboard (parent menu) — registered EARLY ----
+// WHY priority 5, ahead of every submenu: WordPress derives each submenu page's
+// internal hook from its parent menu. If the parent doesn't exist yet when a
+// submenu registers, the hook is computed as admin_page_* instead of
+// societypress_page_*, and at page-load WordPress then refuses the page with
+// "Sorry, you are not allowed to access this page." Several pages register in
+// their own admin_menu callbacks at priority 25/99 (the import screens, Insights,
+// Research Guides, Short Links, Database Subscriptions, Theme Presets, and the
+// audit/access logs) — all BEFORE the main menu block below, which runs at
+// priority 999 so its remove_menu_page() calls land after core menus. Because
+// the parent didn't exist yet, every one of those pages was silently
+// inaccessible. Registering the parent here, first, gives them all the correct
+// hook. Position 2 pins it to the top; sp_access_admin lets non-admin SP staff
+// (Treasurer, Librarian, etc.) see it, while WP admins get it via manage_options.
 add_action( 'admin_menu', function () {
-    global $wpdb;
-
-    // ---- SocietyPress = Dashboard (parent menu) ----
-    // Clicking "SocietyPress" in the sidebar takes the user straight to their
-    // dashboard. Position 2 puts it at the very top of the sidebar.
-    // WHY sp_access_admin: Non-admin SP staff (Treasurer, Librarian, etc.)
-    // need to see this top-level menu. The user_has_cap filter grants
-    // sp_access_admin to anyone with at least one access area. WordPress
-    // admins (manage_options) get it automatically.
     add_menu_page(
         'SocietyPress',
         'SocietyPress',
@@ -4976,6 +4981,13 @@ add_action( 'admin_menu', function () {
         'dashicons-groups',
         2
     );
+}, 5 );
+
+add_action( 'admin_menu', function () {
+    global $wpdb;
+
+    // The top-level "SocietyPress" menu is registered earlier, at priority 5
+    // (see the block just above), so it exists before any submenu registers.
 
     // WordPress automatically creates a submenu entry that duplicates the parent.
     // WHY: Instead of removing it (which makes clicking "SocietyPress" fall through
@@ -14152,6 +14164,7 @@ class SP_Members_List_Table extends WP_List_Table {
     protected function get_bulk_actions(): array {
         return [
             'assign_to_group' => __( 'Assign to Group', 'societypress' ),
+            'change_plan'     => __( 'Change Plan', 'societypress' ),
             'delete'          => __( 'Delete', 'societypress' ),
         ];
     }
@@ -14838,6 +14851,63 @@ add_action( 'admin_init', function () {
         }
 
         wp_redirect( admin_url( 'admin.php?page=sp-members&group_assigned=' . $added ) );
+        exit;
+    }
+
+    // ---- Bulk Change Plan ----
+    // WHY: Societies routinely consolidate or retire membership tiers — e.g.
+    //      merging "Senior" into "Individual" or moving everyone off a
+    //      discontinued plan. Without a bulk action the admin would have to
+    //      open and re-save every affected member by hand. This moves every
+    //      selected member to the chosen tier in one pass. Mirrors the
+    //      Assign-to-Group handler above.
+    if ( ( ( $_REQUEST['action'] ?? '' ) === 'change_plan' || ( $_REQUEST['action2'] ?? '' ) === 'change_plan' )
+         && ! empty( $_REQUEST['member'] ) && ! empty( $_REQUEST['sp_change_tier_id'] ) ) {
+        check_admin_referer( 'bulk-members' );
+
+        if ( ! current_user_can( 'sp_manage_members' ) ) {
+            wp_die( esc_html__( 'You do not have permission to change member plans.', 'societypress' ) );
+        }
+
+        global $wpdb;
+        $prefix  = $wpdb->prefix . 'sp_';
+        $tier_id = (int) $_REQUEST['sp_change_tier_id'];
+        $moved   = 0;
+
+        // Confirm the target tier exists and is active before moving anyone —
+        // a stale or tampered tier id must not park members on a dead plan.
+        $tier_name = $wpdb->get_var( $wpdb->prepare(
+            "SELECT name FROM {$prefix}membership_tiers WHERE id = %d AND active = 1", $tier_id
+        ) );
+
+        if ( $tier_name !== null ) {
+            foreach ( (array) $_REQUEST['member'] as $user_id ) {
+                $user_id = (int) $user_id;
+                $updated = $wpdb->update(
+                    $prefix . 'members',
+                    [ 'tier_id' => $tier_id ],
+                    [ 'user_id' => $user_id ],
+                    [ '%d' ],
+                    [ '%d' ]
+                );
+                // update() returns 0 when the member is already on this tier;
+                // only count rows that actually changed.
+                if ( $updated ) {
+                    $moved++;
+                }
+            }
+
+            if ( $moved ) {
+                sp_audit(
+                    'member_plan_changed',
+                    sprintf( '%d member(s) moved to plan "%s"', $moved, $tier_name ),
+                    'member',
+                    0
+                );
+            }
+        }
+
+        wp_redirect( admin_url( 'admin.php?page=sp-members&plan_changed=' . $moved ) );
         exit;
     }
 
@@ -15619,6 +15689,17 @@ function sp_render_members_page(): void {
                 ) )
             );
         }
+        if ( isset( $_GET['plan_changed'] ) ) {
+            $count = (int) $_GET['plan_changed'];
+            printf(
+                '<div class="notice notice-success is-dismissible"><p>%s</p></div>',
+                esc_html( sprintf(
+                    /* translators: %d: number of members moved to a new plan */
+                    _n( '%d member moved to the new plan.', '%d members moved to the new plan.', $count, 'societypress' ),
+                    $count
+                ) )
+            );
+        }
         ?>
 
         <?php
@@ -15628,6 +15709,10 @@ function sp_render_members_page(): void {
         //      "Assign to Group" action is selected.
         $assign_groups = $wpdb->get_results(
             "SELECT id, name FROM {$wpdb->prefix}sp_groups WHERE status = 'active' ORDER BY sort_order, name"
+        );
+        // Active tiers for the "Change Plan" bulk action picker.
+        $assign_tiers = $wpdb->get_results(
+            "SELECT id, name FROM {$wpdb->prefix}sp_membership_tiers WHERE active = 1 ORDER BY sort_order, name"
         );
         ?>
         <form method="get">
@@ -15643,6 +15728,16 @@ function sp_render_members_page(): void {
                 </select>
             </div>
 
+            <div id="sp-plan-change-wrap" class="sp-group-assign-wrap" style="display:none;">
+                <label for="sp-change-tier-id" class="sp-assign-label"><?php esc_html_e( 'Change plan to:', 'societypress' ); ?></label>
+                <select name="sp_change_tier_id" id="sp-change-tier-id">
+                    <option value=""><?php echo esc_html( '— ' . __( 'Select Plan', 'societypress' ) . ' —' ); ?></option>
+                    <?php foreach ( $assign_tiers as $at ) : ?>
+                        <option value="<?php echo esc_attr( $at->id ); ?>"><?php echo esc_html( $at->name ); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
             <?php
             $table->search_box( __( 'Search Members', 'societypress' ), 'sp-member-search' );
             $table->display();
@@ -15653,17 +15748,21 @@ function sp_render_members_page(): void {
         // Show the group selector only when "Assign to Group" is selected
         // WHY: Keeps the UI clean — the dropdown only appears when it's relevant.
         (function() {
-            function toggleGroupPicker() {
+            function toggleBulkPickers() {
                 var sel = document.querySelector('select[name="action"]');
-                var wrap = document.getElementById('sp-group-assign-wrap');
-                if (sel && wrap) {
-                    wrap.style.display = sel.value === 'assign_to_group' ? '' : 'none';
+                var groupWrap = document.getElementById('sp-group-assign-wrap');
+                var planWrap = document.getElementById('sp-plan-change-wrap');
+                if (sel && groupWrap) {
+                    groupWrap.style.display = sel.value === 'assign_to_group' ? '' : 'none';
+                }
+                if (sel && planWrap) {
+                    planWrap.style.display = sel.value === 'change_plan' ? '' : 'none';
                 }
             }
             var sel = document.querySelector('select[name="action"]');
             if (sel) {
-                sel.addEventListener('change', toggleGroupPicker);
-                toggleGroupPicker();
+                sel.addEventListener('change', toggleBulkPickers);
+                toggleBulkPickers();
             }
         })();
         </script>
@@ -27328,6 +27427,67 @@ function sp_handle_quick_edit_page(): void {
 add_action( 'wp_ajax_sp_quick_edit_page', 'sp_handle_quick_edit_page' );
 
 
+// ============================================================================
+// PAGE EDITOR — TABLE BUTTON
+//
+// WordPress core ships TinyMCE without the table plugin, so the Content editor
+// on the SocietyPress page screen had no way to build a table short of
+// hand-writing HTML. assets/js/sp-editor-table.js is a small, dependency-free
+// TinyMCE plugin that adds a Table menu (insert, add/delete rows and columns)
+// to the toolbar. It is opted in for the page editor only, via
+// sp_page_editor_enable_table() called immediately before wp_editor().
+// ============================================================================
+
+/**
+ * Turn on the dependency-free table button for the next wp_editor() render.
+ *
+ * WHY: Registering the mce_* filters right before the page editor's wp_editor()
+ *      call scopes the button to that editor — no other rich-text box on the
+ *      site gains a table button unless it opts in the same way.
+ */
+function sp_page_editor_enable_table(): void {
+    add_filter( 'mce_external_plugins', 'sp_page_editor_table_plugin' );
+    add_filter( 'mce_buttons', 'sp_page_editor_table_button' );
+    add_filter( 'mce_css', 'sp_page_editor_table_css' );
+}
+
+function sp_page_editor_table_plugin( array $plugins ): array {
+    $plugins['sp_table'] = SOCIETYPRESS_PLUGIN_URL . 'assets/js/sp-editor-table.js';
+    return $plugins;
+}
+
+function sp_page_editor_table_button( array $buttons ): array {
+    $buttons[] = 'sp_table';
+    return $buttons;
+}
+
+function sp_page_editor_table_css( string $css ): string {
+    $url = SOCIETYPRESS_PLUGIN_URL . 'assets/css/sp-editor-table.css';
+    return $css === '' ? $url : $css . ',' . $url;
+}
+
+/**
+ * Load the table styling on the front end for pages that contain a table.
+ *
+ * WHY: Inserted tables carry the sp-content-table class; without this stylesheet
+ *      they would render borderless for visitors even though they look right in
+ *      the editor.
+ */
+add_action( 'wp_enqueue_scripts', function (): void {
+    if ( ! is_singular() ) {
+        return;
+    }
+    $post = get_post();
+    if ( $post && str_contains( (string) $post->post_content, 'sp-content-table' ) ) {
+        wp_enqueue_style(
+            'sp-content-table',
+            SOCIETYPRESS_PLUGIN_URL . 'assets/css/sp-editor-table.css',
+            [],
+            SOCIETYPRESS_VERSION
+        );
+    }
+} );
+
 /**
  * Render the Page add/edit form.
  *
@@ -27453,6 +27613,7 @@ function sp_render_page_edit(): void {
                         // content. For Standard Pages this is the main content. For
                         // template pages (Events, Directory, etc.) this content appears
                         // above the template output — useful for intro text.
+                        sp_page_editor_enable_table();
                         wp_editor(
                             $content,
                             'page_content',

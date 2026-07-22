@@ -4027,6 +4027,49 @@ function sp_pref_email_defaults(): array {
 }
 
 /**
+ * Format a stored wall-clock date/time for display, without timezone math.
+ *
+ * WHY: Event times, slot times, volunteer shifts, and ballot windows are stored
+ *      as site-local wall clock — TIME columns hold "15:00:00" meaning 3 PM
+ *      local, and ballot DATETIMEs are assembled from current_time() plus what
+ *      the volunteer typed. None of them carry a timezone.
+ *
+ *      WordPress runs PHP with the default timezone pinned to UTC, so
+ *      strtotime('15:00:00') yields a timestamp meaning 3 PM *UTC*. Handing
+ *      that to wp_date() then converts UTC into the site's zone and silently
+ *      shifts the value by the site's offset — on a -5 site, a 3 PM event
+ *      displays as 10 AM. The edit screen echoes the raw column and is right;
+ *      every other screen was wrong.
+ *
+ *      Formatting in UTC cancels the conversion out, returning the exact wall
+ *      clock that was entered, while still routing through wp_date() so am/pm
+ *      markers and month names stay translated.
+ *
+ *      Do NOT use this for values genuinely stored in UTC (post dates, log
+ *      timestamps) — those want a plain wp_date().
+ *
+ * @param string|null $value  Wall-clock value: 'H:i:s', 'Y-m-d', or 'Y-m-d H:i:s'.
+ * @param string      $format PHP date format. Defaults to the site time format.
+ * @return string Formatted value, or empty string when the input is unusable.
+ */
+function sp_format_wall_clock( ?string $value, string $format = '' ): string {
+    if ( empty( $value ) ) {
+        return '';
+    }
+
+    if ( '' === $format ) {
+        $format = get_option( 'time_format', 'g:i A' );
+    }
+
+    $timestamp = strtotime( $value );
+    if ( false === $timestamp ) {
+        return '';
+    }
+
+    return wp_date( $format, $timestamp, new DateTimeZone( 'UTC' ) );
+}
+
+/**
  * Format a monetary amount with the configured currency symbol/position.
  *
  * @param int|float $amount
@@ -11698,8 +11741,8 @@ function sp_render_chair_dashboard_widget(): void {
 
         echo '<table class="widefat striped sp-cev-table"><tbody>';
         foreach ( $events as $e ) {
-            $when    = wp_date( 'M j', strtotime( (string) $e->event_date ) );
-            if ( $e->start_time ) $when .= ' ' . wp_date( 'g:ia', strtotime( $e->start_time ) );
+            $when    = sp_format_wall_clock( (string) $e->event_date, 'M j' );
+            if ( $e->start_time ) $when .= ' ' . sp_format_wall_clock( $e->start_time, 'g:ia' );
             $where   = $e->is_virtual ? __( 'Virtual', 'societypress' ) : ( $e->location_name ?: '—' );
             $regd    = $reg_counts[ (int) $e->id ] ?? 0;
             $cap     = (int) $e->registration_limit;
@@ -13071,7 +13114,7 @@ function sp_render_dashboard_page(): void {
                         </thead>
                         <tbody>
                             <?php foreach ( $upcoming_events as $evt ) :
-                                $date_display = wp_date( 'M j', strtotime( $evt->event_date ) );
+                                $date_display = sp_format_wall_clock( $evt->event_date, 'M j' );
                                 $edit_url     = admin_url( 'admin.php?page=sp-event-edit&event_id=' . $evt->id );
                             ?>
                                 <tr>
@@ -13109,7 +13152,7 @@ function sp_render_dashboard_page(): void {
                                     ? $em->organization_name
                                     : trim( $em->first_name . ' ' . $em->last_name );
                                 $edit_url = admin_url( 'admin.php?page=sp-member-edit&user_id=' . $em->user_id );
-                                $exp_display = wp_date( 'M j, Y', strtotime( $em->expiration_date ) );
+                                $exp_display = sp_format_wall_clock( $em->expiration_date, 'M j, Y' );
                                 $days_left   = (int) ( ( strtotime( $em->expiration_date ) - strtotime( $today ) ) / DAY_IN_SECONDS );
                             ?>
                                 <tr>
@@ -13248,7 +13291,7 @@ function sp_render_dashboard_page(): void {
                         $days = (int) ( $time_diff / 86400 );
                         $time_label = sprintf( _n( '%d day ago', '%d days ago', $days, 'societypress' ), $days );
                     } else {
-                        $time_label = wp_date( 'M j, Y', strtotime( $act->created_at ) );
+                        $time_label = sp_format_wall_clock( $act->created_at, 'M j, Y' );
                     }
 
                     $who = $act->user_name ?: __( 'System', 'societypress' );
@@ -14304,7 +14347,7 @@ class SP_Members_List_Table extends WP_List_Table {
         if ( empty( $item->expiration_date ) ) {
             return '<em>' . esc_html__( 'Lifetime', 'societypress' ) . '</em>';
         }
-        return esc_html( date_i18n( get_option( 'date_format', 'F j, Y' ), strtotime( $item->expiration_date ) ) );
+        return esc_html( sp_format_wall_clock( $item->expiration_date, get_option( 'date_format', 'F j, Y' ) ) );
     }
 
     /**
@@ -15119,7 +15162,7 @@ function sp_render_chair_page(): void {
                             <li>
                                 <a href="<?php echo esc_url( $meeting_edit( (int) $m->id ) ); ?>"><strong><?php echo esc_html( $m->title ); ?></strong></a>
                                 <span class="sp-chair-meta">
-                                    <?php echo esc_html( wp_date( $date_format, strtotime( $m->meeting_date . ' 12:00:00' ) ) ); ?>
+                                    <?php echo esc_html( sp_format_wall_clock( $m->meeting_date . ' 12:00:00', $date_format ) ); ?>
                                     <?php if ( count( $committees ) > 1 && $m->committee_name ) : ?>
                                         · <?php echo esc_html( $m->committee_name ); ?>
                                     <?php endif; ?>
@@ -15140,9 +15183,9 @@ function sp_render_chair_page(): void {
                             <li>
                                 <a href="<?php echo esc_url( $event_edit( (int) $e->id ) ); ?>"><strong><?php echo esc_html( $e->title ); ?></strong></a>
                                 <span class="sp-chair-meta">
-                                    <?php echo esc_html( wp_date( $date_format, strtotime( $e->event_date . ' 12:00:00' ) ) ); ?>
+                                    <?php echo esc_html( sp_format_wall_clock( $e->event_date . ' 12:00:00', $date_format ) ); ?>
                                     <?php if ( $e->start_time ) : ?>
-                                        @ <?php echo esc_html( wp_date( $time_format, strtotime( $e->event_date . ' ' . $e->start_time ) ) ); ?>
+                                        @ <?php echo esc_html( sp_format_wall_clock( $e->event_date . ' ' . $e->start_time, $time_format ) ); ?>
                                     <?php endif; ?>
                                     <?php if ( $e->visibility === 'committee_only' ) : ?>
                                         · <em><?php esc_html_e( 'Committee only', 'societypress' ); ?></em>
@@ -15179,7 +15222,7 @@ function sp_render_chair_page(): void {
                                 <span class="sp-chair-meta">
                                     <?php echo esc_html( $cap_label ); ?>
                                     <?php if ( $o->event_date ) : ?>
-                                        · <?php echo esc_html( wp_date( $date_format, strtotime( $o->event_date . ' 12:00:00' ) ) ); ?>
+                                        · <?php echo esc_html( sp_format_wall_clock( $o->event_date . ' 12:00:00', $date_format ) ); ?>
                                     <?php endif; ?>
                                 </span>
                             </li>
@@ -15198,7 +15241,7 @@ function sp_render_chair_page(): void {
                             <li>
                                 <a href="<?php echo esc_url( $m->minutes_url ); ?>" target="_blank" rel="noopener"><strong><?php echo esc_html( $m->title ); ?></strong></a>
                                 <span class="sp-chair-meta">
-                                    <?php echo esc_html( wp_date( $date_format, strtotime( $m->meeting_date . ' 12:00:00' ) ) ); ?>
+                                    <?php echo esc_html( sp_format_wall_clock( $m->meeting_date . ' 12:00:00', $date_format ) ); ?>
                                     · <a href="<?php echo esc_url( $meeting_edit( (int) $m->id ) ); ?>"><?php esc_html_e( 'edit', 'societypress' ); ?></a>
                                 </span>
                             </li>
@@ -15352,7 +15395,7 @@ add_action( 'admin_init', function () {
                         : trim( $m->last_name . ', ' . $m->first_name, ', ' );
                     $exp  = empty( $m->expiration_date )
                         ? __( 'Lifetime', 'societypress' )
-                        : date_i18n( get_option( 'date_format', 'F j, Y' ), strtotime( $m->expiration_date ) );
+                        : sp_format_wall_clock( $m->expiration_date, get_option( 'date_format', 'F j, Y' ) );
                     $phone = $m->phone ?: ( $m->cell ?? '' );
                 ?>
                     <tr>
@@ -16591,7 +16634,7 @@ function sp_render_member_edit_admin_notes_section( array $notes ): void {
                         <div><?php echo nl2br( esc_html( $note->content ) ); ?></div>
                         <div class="sp-note-meta">
                             <?php echo esc_html( $author_name ); ?> &mdash;
-                            <?php echo esc_html( date_i18n( 'M j, Y g:i A', strtotime( $note->created_at ) ) ); ?>
+                            <?php echo esc_html( sp_format_wall_clock( $note->created_at, 'M j, Y g:i A' ) ); ?>
                         </div>
                     </div>
                 <?php endforeach; ?>
@@ -25224,7 +25267,7 @@ function sp_render_audit_log_page(): void {
                     <?php foreach ( $rows as $row ) : ?>
                         <tr>
                             <!-- WHY: wp_date() respects the site's timezone setting; PHP date() uses server timezone. -->
-                            <td class="sp-audit-date"><?php echo esc_html( wp_date( 'M j, Y g:i A', strtotime( $row->created_at ) ) ); ?></td>
+                            <td class="sp-audit-date"><?php echo esc_html( sp_format_wall_clock( $row->created_at, 'M j, Y g:i A' ) ); ?></td>
                             <td><?php echo $row->user_name ? esc_html( $row->user_name ) : '<span class="sp-text-muted">System</span>'; ?></td>
                             <td><span class="sp-audit-action"><?php echo esc_html( $row->action ); ?></span></td>
                             <td><?php echo $row->description ? esc_html( $row->description ) : ''; ?></td>
@@ -25548,7 +25591,7 @@ function sp_render_access_log_page(): void {
                 <?php else : ?>
                     <?php foreach ( $rows as $row ) : ?>
                         <tr>
-                            <td class="sp-access-date"><?php echo esc_html( wp_date( 'M j, Y g:i A', strtotime( $row->created_at ) ) ); ?></td>
+                            <td class="sp-access-date"><?php echo esc_html( sp_format_wall_clock( $row->created_at, 'M j, Y g:i A' ) ); ?></td>
                             <td><?php echo $row->user_name ? esc_html( $row->user_name ) : '<span class="sp-text-muted">' . esc_html__( 'Anonymous', 'societypress' ) . '</span>'; ?></td>
                             <td class="sp-access-url"><?php echo esc_html( $row->url ); ?>
                                 <?php if ( ! empty( $row->user_agent ) ) : ?>
@@ -28891,7 +28934,7 @@ function sp_render_settings_export_page(): void {
                     'sp_download_backup_' . (int) $b->id
                 );
                 echo '<tr>';
-                echo '<td>' . esc_html( wp_date( $date_fmt, strtotime( $b->created_at ) ) ) . '</td>';
+                echo '<td>' . esc_html( sp_format_wall_clock( $b->created_at, $date_fmt ) ) . '</td>';
                 echo '<td>' . esc_html( size_format( (int) $b->file_size ) ) . '</td>';
                 echo '<td>' . esc_html( implode( ', ', $inc ) ) . '</td>';
                 echo '<td>' . esc_html( $b->trigger_type === 'scheduled' ? __( 'Scheduled', 'societypress' ) : __( 'Manual', 'societypress' ) ) . '</td>';
@@ -39647,6 +39690,17 @@ function sp_builder_frontend_styles(): void {
         /* Rich text images */
         .sp-widget-rich-text img { max-width: 100%; height: auto; border-radius: 6px; }
 
+        /* Rich text blank lines
+           WHY: When a volunteer presses Enter on an empty line, the editor
+           stores a genuinely empty block — <div></div> or <p></p>. Nothing
+           strips it, but an empty block element computes to zero height, so
+           the deliberate blank line silently vanishes on the front end while
+           still showing in the editor. Injecting a non-breaking space gives
+           the block exactly one line's height, scaled to whatever font-size
+           and line-height apply, so what renders matches what was typed. */
+        .sp-widget-rich-text p:empty::before,
+        .sp-widget-rich-text div:empty::before { content: "\00a0"; }
+
         /* ------------------------------------------------------------------ */
         /* CONTACT FORM — all visual styling for the builder contact widget   */
         /* WHY here instead of inline: Keeps the form HTML clean, easy to     */
@@ -40135,8 +40189,9 @@ function sp_slot_has_capacity( int $slot_id ): bool {
  * Format a slot's time range for display.
  *
  * WHY: Provides a human-readable time range like "10:00 AM – 11:00 AM"
- *      for the frontend and admin. Uses WordPress date_i18n() so the format
- *      respects the site's locale settings.
+ *      for the frontend and admin. Formats through sp_format_wall_clock() so
+ *      the stored TIME columns render as the wall clock they represent, with
+ *      am/pm markers still routed through the site's locale.
  *
  * @param object|array $slot   Slot data with start_time and end_time.
  * @param string       $format PHP time format. Default 'g:i A'.
@@ -40150,7 +40205,7 @@ function sp_slot_format_time_range( $slot, string $format = 'g:i A' ): string {
         return '';
     }
 
-    return wp_date( $format, strtotime( $start ) ) . ' \u2013 ' . wp_date( $format, strtotime( $end ) );
+    return sp_format_wall_clock( $start, $format ) . ' – ' . sp_format_wall_clock( $end, $format );
 }
 
 /**
@@ -40886,13 +40941,13 @@ class SP_Events_List_Table extends WP_List_Table {
      *      Harold sees everywhere else on the site.
      */
     protected function column_event_date( $item ): string {
-        $date = date_i18n( get_option( 'date_format', 'F j, Y' ), strtotime( $item->event_date ) );
+        $date = sp_format_wall_clock( $item->event_date, get_option( 'date_format', 'F j, Y' ) );
         $output = '<strong>' . esc_html( $date ) . '</strong>';
 
         if ( ! empty( $item->start_time ) ) {
-            $time_str = date_i18n( get_option( 'time_format', 'g:i A' ), strtotime( $item->start_time ) );
+            $time_str = sp_format_wall_clock( $item->start_time, get_option( 'time_format', 'g:i A' ) );
             if ( ! empty( $item->end_time ) ) {
-                $time_str .= ' – ' . date_i18n( get_option( 'time_format', 'g:i A' ), strtotime( $item->end_time ) );
+                $time_str .= ' – ' . sp_format_wall_clock( $item->end_time, get_option( 'time_format', 'g:i A' ) );
             }
             $output .= '<br><span class="sp-text-muted">' . esc_html( $time_str ) . '</span>';
         }
@@ -43547,7 +43602,7 @@ function sp_render_event_edit_page(): void {
             regenBtn.addEventListener('click', function() {
                 spConfirm('<?php echo esc_js( __( 'Generate future occurrences? Existing events in the series will not be affected.', 'societypress' ) ); ?>', function() {
                 regenBtn.disabled = true;
-                regenStatus.textContent = <?php echo wp_json_encode( __( 'Generating\u2026', 'societypress' ) ); ?>;
+                regenStatus.textContent = <?php echo wp_json_encode( __( 'Generating…', 'societypress' ) ); ?>;
 
                 var fd = new FormData();
                 fd.append('action', 'sp_regenerate_occurrences');
@@ -44433,6 +44488,33 @@ function sp_render_member_tiers_page(): void {
         var table = document.getElementById('sp-tiers-table');
         if (!table) return;
 
+        /*
+         * Re-order the rows to match the sort numbers on screen.
+         *
+         * WHY: Changing a plan's sort number IS how you move a plan. The save
+         *      persists correctly, but the success handler only rewrote the
+         *      number in its cell — the row itself never moved, because the
+         *      table is ordered server-side and only at page load. To the
+         *      volunteer that reads as "moving plans doesn't work": they set
+         *      Individual to 3, the 3 appears, and the row sits exactly where
+         *      it was. Re-sorting the DOM here makes the move visible at the
+         *      moment it happens. Ordering matches the SQL that renders the
+         *      table — sort_order ascending, then name as the tiebreaker.
+         */
+        function spTiersResort() {
+            var tbody = table.tBodies[0];
+            if (!tbody) return;
+            var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr[data-tier-id]'));
+            rows.sort(function (a, b) {
+                var sa = parseInt(a.querySelector('.sp-tier-display-sort').textContent, 10) || 0;
+                var sb = parseInt(b.querySelector('.sp-tier-display-sort').textContent, 10) || 0;
+                if (sa !== sb) return sa - sb;
+                return a.querySelector('.sp-tier-display-name').textContent
+                    .localeCompare(b.querySelector('.sp-tier-display-name').textContent);
+            });
+            rows.forEach(function (r) { tbody.appendChild(r); });
+        }
+
         table.addEventListener('click', function(e) {
             var btn = e.target;
             var row = btn.closest('tr');
@@ -44538,6 +44620,10 @@ function sp_render_member_tiers_page(): void {
                             row.querySelector('.sp-tier-cancel-btn').style.display = 'none';
                             var delBtn = row.querySelector('.sp-tier-delete-btn');
                             if (delBtn) delBtn.style.display = '';
+
+                            // Move the row to its new position now that the
+                            // sort number has changed.
+                            spTiersResort();
                         } else {
                             spAlert(r.data.message || '<?php echo esc_js( __( 'Error saving plan.', 'societypress' ) ); ?>');
                         }
@@ -45303,7 +45389,7 @@ add_action( 'admin_init', function () {
 
                 btn.addEventListener('click', function() {
                     btn.disabled = true;
-                    btn.textContent = '<?php echo esc_js( __( "Testing\u2026", "societypress" ) ); ?>';
+                    btn.textContent = '<?php echo esc_js( __( "Testing…", "societypress" ) ); ?>';
                     result.textContent = '';
                     result.style.color = '';
 
@@ -45503,7 +45589,7 @@ add_action( 'admin_init', function () {
 
                 btn.addEventListener('click', function() {
                     btn.disabled = true;
-                    btn.textContent = <?php echo wp_json_encode( __( 'Testing\u2026', 'societypress' ) ); ?>;
+                    btn.textContent = <?php echo wp_json_encode( __( 'Testing…', 'societypress' ) ); ?>;
                     result.textContent = '';
                     result.style.color = '';
 
@@ -47089,7 +47175,7 @@ function sp_render_calendar_grid( int $category_id = 0, string $base_url = '', a
                                    title="<?php echo esc_attr( $ce->title ); ?>"<?php echo $link_target; ?>>
                                     <span class="sp-cal-event-title"><?php echo esc_html( $ce->title ); ?><?php if ( $is_external ) { echo ' <span aria-hidden="true">&#8599;</span><span class="screen-reader-text">' . esc_html__( '(opens in new tab)', 'societypress' ) . '</span>'; } ?></span>
                                     <?php if ( $ce->start_time ) : ?>
-                                        <span class="sp-cal-event-time"><?php echo esc_html( wp_date( 'g:iA', strtotime( $ce->start_time ) ) ); ?></span>
+                                        <span class="sp-cal-event-time"><?php echo esc_html( sp_format_wall_clock( $ce->start_time, 'g:iA' ) ); ?></span>
                                     <?php endif; ?>
                                 </a>
                                 <?php else : ?>
@@ -47098,7 +47184,7 @@ function sp_render_calendar_grid( int $category_id = 0, string $base_url = '', a
                                       title="<?php echo esc_attr( $ce->title ); ?>">
                                     <span class="sp-cal-event-title"><?php echo esc_html( $ce->title ); ?></span>
                                     <?php if ( $ce->start_time ) : ?>
-                                        <span class="sp-cal-event-time"><?php echo esc_html( wp_date( 'g:iA', strtotime( $ce->start_time ) ) ); ?></span>
+                                        <span class="sp-cal-event-time"><?php echo esc_html( sp_format_wall_clock( $ce->start_time, 'g:iA' ) ); ?></span>
                                     <?php endif; ?>
                                 </span>
                                 <?php endif; ?>
@@ -47719,9 +47805,9 @@ function sp_render_events_listing( array $settings ): void {
                 // Build time string
                 $time_str = '';
                 if ( ! empty( $ev->start_time ) ) {
-                    $time_str = wp_date( 'g:i A', strtotime( $ev->start_time ) );
+                    $time_str = sp_format_wall_clock( $ev->start_time, 'g:i A' );
                     if ( ! empty( $ev->end_time ) ) {
-                        $time_str .= ' – ' . wp_date( 'g:i A', strtotime( $ev->end_time ) );
+                        $time_str .= ' – ' . sp_format_wall_clock( $ev->end_time, 'g:i A' );
                     }
                 }
 
@@ -47935,12 +48021,12 @@ function sp_render_event_detail( string $slug, array $settings ): void {
     // to the external event page. We don't redirect because showing the title,
     // date, and description is useful context — the user can click through when ready.
     if ( ! empty( $event->external_url ) ) {
-        $ext_date_display = date_i18n( 'l, F j, Y', strtotime( $event->event_date ) );
+        $ext_date_display = sp_format_wall_clock( $event->event_date, 'l, F j, Y' );
         $ext_time_display = '';
         if ( ! empty( $event->start_time ) ) {
-            $ext_time_display = wp_date( 'g:i A', strtotime( $event->start_time ) );
+            $ext_time_display = sp_format_wall_clock( $event->start_time, 'g:i A' );
             if ( ! empty( $event->end_time ) ) {
-                $ext_time_display .= ' – ' . wp_date( 'g:i A', strtotime( $event->end_time ) );
+                $ext_time_display .= ' – ' . sp_format_wall_clock( $event->end_time, 'g:i A' );
             }
         }
         ?>
@@ -48001,7 +48087,7 @@ function sp_render_event_detail( string $slug, array $settings ): void {
     if ( ! empty( $event->notice_only ) ) {
         echo '<div class="sp-event-not-found">';
         echo '<h2>' . esc_html( $event->title ) . '</h2>';
-        echo '<p>' . esc_html( date_i18n( 'l, F j, Y', strtotime( $event->event_date ) ) ) . '</p>';
+        echo '<p>' . esc_html( sp_format_wall_clock( $event->event_date, 'l, F j, Y' ) ) . '</p>';
         echo '<p>' . esc_html__( 'This is a calendar notice — no additional details or registration are available.', 'societypress' ) . '</p>';
         echo '<p><a href="' . esc_url( get_permalink() ) . '">&larr; ' . esc_html__( 'Back to Events', 'societypress' ) . '</a></p>';
         echo '</div>';
@@ -48142,9 +48228,9 @@ function sp_render_event_detail( string $slug, array $settings ): void {
     // Format time
     $time_display = '';
     if ( ! empty( $event->start_time ) ) {
-        $time_display = wp_date( 'g:i A', strtotime( $event->start_time ) );
+        $time_display = sp_format_wall_clock( $event->start_time, 'g:i A' );
         if ( ! empty( $event->end_time ) ) {
-            $time_display .= ' – ' . wp_date( 'g:i A', strtotime( $event->end_time ) );
+            $time_display .= ' – ' . sp_format_wall_clock( $event->end_time, 'g:i A' );
         }
     }
 
@@ -48499,7 +48585,7 @@ function sp_render_event_detail( string $slug, array $settings ): void {
                                             <div class="sp-user-slot-reg-row sp-event-detail-reg-row">
                                                 <span class="sp-event-detail-reg-slot-name">
                                                     <?php if ( $usr->slot_start ) : ?>
-                                                        <?php echo esc_html( wp_date( 'g:i A', strtotime( $usr->slot_start ) ) . ' – ' . wp_date( 'g:i A', strtotime( $usr->slot_end ) ) ); ?>
+                                                        <?php echo esc_html( sp_format_wall_clock( $usr->slot_start, 'g:i A' ) . ' – ' . sp_format_wall_clock( $usr->slot_end, 'g:i A' ) ); ?>
                                                         <?php if ( $usr->slot_desc ) : ?>
                                                             <span class="sp-event-detail-slot-desc-note"> — <?php echo esc_html( $usr->slot_desc ); ?></span>
                                                         <?php endif; ?>
@@ -49134,7 +49220,7 @@ function sp_events_frontend_scripts(): void {
             }
 
             btn.disabled = true;
-            btn.textContent = payMethod === 'online' ? '<?php echo esc_js( __( "Redirecting to payment\u2026", "societypress" ) ); ?>' : '<?php echo esc_js( __( "Registering\u2026", "societypress" ) ); ?>';
+            btn.textContent = payMethod === 'online' ? '<?php echo esc_js( __( "Redirecting to payment…", "societypress" ) ); ?>' : '<?php echo esc_js( __( "Registering…", "societypress" ) ); ?>';
 
             var formData = new FormData();
             formData.append('action', 'sp_register_for_event');
@@ -49285,7 +49371,7 @@ function sp_events_frontend_scripts(): void {
                 var row     = this.closest('.sp-user-slot-reg-row');
 
                 this.disabled = true;
-                this.textContent = '<?php echo esc_js( __( "Cancelling\u2026", "societypress" ) ); ?>';
+                this.textContent = '<?php echo esc_js( __( "Cancelling…", "societypress" ) ); ?>';
 
                 var fd = new FormData();
                 fd.append('action', 'sp_cancel_registration');
@@ -49351,7 +49437,7 @@ function sp_events_frontend_scripts(): void {
                 var regId   = btn.getAttribute('data-reg-id');
 
                 btn.disabled = true;
-                btn.textContent = '<?php echo esc_js( __( "Cancelling\u2026", "societypress" ) ); ?>';
+                btn.textContent = '<?php echo esc_js( __( "Cancelling…", "societypress" ) ); ?>';
 
                 var formData = new FormData();
                 formData.append('action', 'sp_cancel_registration');
@@ -50632,7 +50718,7 @@ function sp_render_event_registrations_section( object $event ): void {
                                 <td>
                                     <?php if ( $reg->slot_start ) : ?>
                                         <span class="sp-event-reg-slot-time">
-                                            <?php echo esc_html( wp_date( 'g:i A', strtotime( $reg->slot_start ) ) . ' – ' . wp_date( 'g:i A', strtotime( $reg->slot_end ) ) ); ?>
+                                            <?php echo esc_html( sp_format_wall_clock( $reg->slot_start, 'g:i A' ) . ' – ' . sp_format_wall_clock( $reg->slot_end, 'g:i A' ) ); ?>
                                         </span>
                                         <?php if ( $reg->slot_desc ) : ?>
                                             <br><em class="sp-event-reg-slot-desc"><?php echo esc_html( $reg->slot_desc ); ?></em>
@@ -50781,7 +50867,7 @@ function sp_render_event_registrations_section( object $event ): void {
                 }
 
                 walkinSave.disabled = true;
-                walkinSave.textContent = '<?php echo esc_js( __( "Adding\u2026", "societypress" ) ); ?>';
+                walkinSave.textContent = '<?php echo esc_js( __( "Adding…", "societypress" ) ); ?>';
 
                 var fd = new FormData();
                 fd.append('action', 'sp_admin_add_walkin');
@@ -50904,7 +50990,7 @@ function sp_render_event_registrations_section( object $event ): void {
                 var regId = refundBtn.getAttribute('data-reg-id');
 
                 refundBtn.disabled = true;
-                refundBtn.textContent = '<?php echo esc_js( __( "Refunding\u2026", "societypress" ) ); ?>';
+                refundBtn.textContent = '<?php echo esc_js( __( "Refunding…", "societypress" ) ); ?>';
 
                 var fd = new FormData();
                 fd.append('action', 'sp_admin_refund_payment');
@@ -53219,13 +53305,13 @@ add_action( 'wp_login', function ( $user_login, $user ) {
  * @return string HTML for the event details block.
  */
 function sp_email_event_details_block( object $event ): string {
-    $date_str = wp_date( 'l, F j, Y', strtotime( $event->event_date ) );
+    $date_str = sp_format_wall_clock( $event->event_date, 'l, F j, Y' );
 
     $time_str = '';
     if ( $event->start_time ) {
-        $time_str = wp_date( 'g:i A', strtotime( $event->start_time ) );
+        $time_str = sp_format_wall_clock( $event->start_time, 'g:i A' );
         if ( $event->end_time ) {
-            $time_str .= ' – ' . wp_date( 'g:i A', strtotime( $event->end_time ) );
+            $time_str .= ' – ' . sp_format_wall_clock( $event->end_time, 'g:i A' );
         }
     }
 
@@ -54643,9 +54729,9 @@ function sp_render_builder_widget_upcoming_events( array $s ): void {
             $date_str   = wp_date( 'F j, Y', $ts );
             $time_str   = '';
             if ( $show_time && $event->start_time ) {
-                $time_str = wp_date( 'g:i A', strtotime( $event->start_time ) );
+                $time_str = sp_format_wall_clock( $event->start_time, 'g:i A' );
                 if ( $event->end_time ) {
-                    $time_str .= ' – ' . wp_date( 'g:i A', strtotime( $event->end_time ) );
+                    $time_str .= ' – ' . sp_format_wall_clock( $event->end_time, 'g:i A' );
                 }
             }
 
@@ -54737,9 +54823,9 @@ function sp_render_builder_widget_upcoming_events( array $s ): void {
 
             $meta_parts = [];
             if ( $show_time && $event->start_time ) {
-                $time_str = wp_date( 'g:i A', strtotime( $event->start_time ) );
+                $time_str = sp_format_wall_clock( $event->start_time, 'g:i A' );
                 if ( $event->end_time ) {
-                    $time_str .= ' – ' . wp_date( 'g:i A', strtotime( $event->end_time ) );
+                    $time_str .= ' – ' . sp_format_wall_clock( $event->end_time, 'g:i A' );
                 }
                 $meta_parts[] = '<span><span aria-hidden="true">🕐</span> ' . esc_html( $time_str ) . '</span>';
             }
@@ -56358,7 +56444,7 @@ function sp_notify_backup_ready( int $backup_id ): void {
     $org  = wp_strip_all_tags( $settings['organization_name'] ?? get_bloginfo( 'name' ) );
     $url  = admin_url( 'admin.php?page=sp-settings-export' );
     $size = size_format( (int) $backup->file_size );
-    $when = wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $backup->completed_at ) );
+    $when = sp_format_wall_clock( $backup->completed_at, get_option( 'date_format' ) . ' ' . get_option( 'time_format' ) );
 
     $subject = sprintf( __( '[%s] Your backup is ready to download', 'societypress' ), $org );
 
@@ -57475,46 +57561,66 @@ function sp_render_builder_widget_newsletter_archive( array $s ): void {
     $show_excerpt = $s['show_excerpt'] ?? true;
     $show_date    = $s['show_date'] ?? true;
 
-    // Get the Newsletter category — created on activation
-    $cat = get_category_by_slug( 'newsletter' );
-    if ( ! $cat ) {
-        if ( current_user_can( 'manage_options' ) ) {
-            echo '<p class="sp-newsletter-setup-warning">' . esc_html__( 'Newsletter setup issue: the Newsletter category is missing. Go to Settings → Modules, switch Newsletters off and save, then back on and save.', 'societypress' ) . '</p>';
-        }
-        return;
-    }
+    // WHY query the sp_newsletters table rather than the Newsletter post
+    // category: the Newsletters module stores every issue as a row in
+    // {prefix}sp_newsletters with its own PDF attachment, cover image, and
+    // visibility flag. This widget used to run get_posts() against a
+    // 'newsletter' post category, which is where newsletters lived under an
+    // earlier design. Nothing writes to that category any more, so the query
+    // always came back empty and the widget rendered "No newsletters
+    // published yet" on sites with a full archive.
+    global $wpdb;
+    $prefix    = $wpdb->prefix . 'sp_';
+    $logged_in = is_user_logged_in();
 
-    $posts = get_posts( [
-        'category'       => $cat->term_id,
-        'posts_per_page' => $count,
-        'post_status'    => 'publish',
-        'orderby'        => 'date',
-        'order'          => 'DESC',
-    ] );
+    $newsletters = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$prefix}newsletters ORDER BY pub_date DESC, created_at DESC LIMIT %d",
+        $count
+    ) );
 
     echo '<style>
 .sp-newsletter-archive-item { padding: 16px 0; border-bottom: 1px solid #eee; }
 .sp-newsletter-archive-link { font-size: 17px; font-weight: 600; color: var(--sp-color-primary); text-decoration: none; }
 .sp-newsletter-archive-date { display: block; color: #6d7175; font-size: 13px; margin-top: 2px; }
 .sp-newsletter-archive-excerpt { margin: 6px 0 0; color: #555; font-size: 14px; }
+.sp-newsletter-archive-locked { display: block; color: #6d7175; font-size: 13px; margin-top: 2px; font-style: italic; }
 </style>';
 
     echo '<div class="sp-widget-newsletter-archive">';
-    if ( empty( $posts ) ) {
+    if ( empty( $newsletters ) ) {
         echo '<p class="sp-text-secondary sp-italic">' . esc_html__( 'No newsletters published yet.', 'societypress' ) . '</p>';
     } else {
         echo '<ul class="sp-list-reset">';
-        foreach ( $posts as $post ) {
+        foreach ( $newsletters as $nl ) {
+            // Members-only issues stay listed for logged-out visitors so they
+            // can see the archive is worth joining for — the download link is
+            // what's withheld, not the title.
+            $can_access = ( 'public' === $nl->visibility ) || $logged_in;
+
             echo '<li class="sp-newsletter-archive-item">';
-            echo '<a href="' . esc_url( get_permalink( $post ) ) . '" class="sp-newsletter-archive-link">';
-            echo esc_html( $post->post_title ) . '</a>';
-            if ( $show_date ) {
+
+            if ( $can_access && $nl->file_id ) {
+                $download_url = admin_url( 'admin-ajax.php?action=sp_newsletter_download&newsletter_id=' . (int) $nl->id );
+                echo '<a href="' . esc_url( $download_url ) . '" class="sp-newsletter-archive-link">'
+                   . esc_html( $nl->title ) . '</a>';
+            } else {
+                echo '<span class="sp-newsletter-archive-link">' . esc_html( $nl->title ) . '</span>';
+            }
+
+            if ( $show_date && $nl->pub_date ) {
                 echo '<span class="sp-newsletter-archive-date">'
-                   . esc_html( get_the_date( '', $post ) ) . '</span>';
+                   . esc_html( sp_format_wall_clock( $nl->pub_date, 'F Y' ) ) . '</span>';
             }
-            if ( $show_excerpt && $post->post_excerpt ) {
-                echo '<p class="sp-newsletter-archive-excerpt">' . esc_html( $post->post_excerpt ) . '</p>';
+
+            if ( ! $can_access ) {
+                echo '<span class="sp-newsletter-archive-locked">'
+                   . esc_html__( 'Members only — log in to read this issue.', 'societypress' ) . '</span>';
             }
+
+            if ( $show_excerpt && ! empty( $nl->description ) ) {
+                echo '<p class="sp-newsletter-archive-excerpt">' . esc_html( $nl->description ) . '</p>';
+            }
+
             echo '</li>';
         }
         echo '</ul>';
@@ -60846,7 +60952,7 @@ function sp_render_membership_reports_page(): void {
                                     ? $pm->organization_name
                                     : trim( $pm->first_name . ' ' . $pm->last_name );
                             ?>
-                            <li><?php echo esc_html( $name ); ?> — <?php echo esc_html( wp_date( get_option( 'date_format' ), strtotime( $pm->expiration_date ) ) ); ?>
+                            <li><?php echo esc_html( $name ); ?> — <?php echo esc_html( sp_format_wall_clock( $pm->expiration_date, get_option( 'date_format' ) ) ); ?>
                                 <?php if ( $pm->tier_name ) : ?><small>(<?php echo esc_html( $pm->tier_name ); ?>)</small><?php endif; ?>
                             </li>
                             <?php endforeach; ?>
@@ -61108,7 +61214,7 @@ function sp_render_help_requests_admin_page(): void {
             <div class="sp-card">
                 <p class="sp-help-admin-meta">
                     Asked by <?php echo esc_html( $request->first_name . ' ' . $request->last_name ); ?>
-                    on <?php echo esc_html( wp_date( 'M j, Y g:i A', strtotime( $request->created_at ) ) ); ?>
+                    on <?php echo esc_html( sp_format_wall_clock( $request->created_at, 'M j, Y g:i A' ) ); ?>
                     — <?php esc_html_e( 'Status:', 'societypress' ); ?> <strong><?php echo esc_html( sp_localized_status( $request->status ) ); ?></strong>
                 </p>
                 <div class="sp-help-admin-body"><?php echo wpautop( esc_html( $request->description ) ); ?></div>
@@ -61132,7 +61238,7 @@ function sp_render_help_requests_admin_page(): void {
                 <div class="sp-help-admin-response">
                     <p class="sp-help-admin-resp-meta">
                         <strong><?php echo esc_html( $resp->first_name . ' ' . $resp->last_name ); ?></strong>
-                        — <?php echo esc_html( wp_date( 'M j, Y g:i A', strtotime( $resp->created_at ) ) ); ?>
+                        — <?php echo esc_html( sp_format_wall_clock( $resp->created_at, 'M j, Y g:i A' ) ); ?>
                     </p>
                     <div class="sp-help-admin-resp-body"><?php echo wpautop( esc_html( $resp->content ) ); ?></div>
                 </div>
@@ -61191,7 +61297,7 @@ function sp_render_help_requests_admin_page(): void {
                                 <?php $sc = $req->status === 'open' ? '#0a6b2e' : '#666'; ?>
                                 <span style="color:<?php echo $sc; ?>; font-weight:600;"><?php echo esc_html( sp_localized_status( $req->status ) ); ?></span>
                             </td>
-                            <td><?php echo esc_html( wp_date( 'M j, Y', strtotime( $req->created_at ) ) ); ?></td>
+                            <td><?php echo esc_html( sp_format_wall_clock( $req->created_at, 'M j, Y' ) ); ?></td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -61688,7 +61794,7 @@ function sp_frontend_help_requests(): void {
                 /* translators: %1$s = author name, %2$s = date */
                 esc_html__( 'Asked by %1$s on %2$s', 'societypress' ),
                 esc_html( $request->first_name . ' ' . $request->last_name ),
-                esc_html( wp_date( 'F j, Y', strtotime( $request->created_at ) ) )
+                esc_html( sp_format_wall_clock( $request->created_at, 'F j, Y' ) )
              )
            . ' — <span style="color:' . $status_color . ';">' . esc_html( $help_status_labels[ $request->status ] ?? sp_localized_status( $request->status ) ) . '</span></p>';
         echo '<div class="sp-help-question-body">' . wpautop( esc_html( $request->description ) ) . '</div>';
@@ -61738,7 +61844,7 @@ function sp_frontend_help_requests(): void {
             echo '<div class="sp-help-response-card"' . $card_style . '>';
             echo '<p class="sp-help-response-byline">'
                . '<strong>' . esc_html( $resp->first_name . ' ' . $resp->last_name ) . '</strong>'
-               . ' — ' . esc_html( wp_date( 'M j, Y g:i A', strtotime( $resp->created_at ) ) );
+               . ' — ' . esc_html( sp_format_wall_clock( $resp->created_at, 'M j, Y g:i A' ) );
             if ( $is_resolved_answer ) {
                 echo ' &nbsp;<span class="sp-help-accepted-badge">' . esc_html__( 'ACCEPTED ANSWER', 'societypress' ) . '</span>';
             }
@@ -61906,7 +62012,7 @@ function sp_frontend_help_requests(): void {
                 echo '<h3><a href="' . esc_url( $view_url ) . '">' . esc_html( $req->title ) . '</a></h3>';
                 echo '<p class="sp-help-question-card-meta">'
                    . esc_html( $req->first_name . ' ' . $req->last_name )
-                   . ' &middot; ' . esc_html( wp_date( 'M j, Y', strtotime( $req->created_at ) ) )
+                   . ' &middot; ' . esc_html( sp_format_wall_clock( $req->created_at, 'M j, Y' ) )
                    . ' &middot; ' . sprintf( _n( '%d response', '%d responses', (int) $req->responses_count, 'societypress' ), (int) $req->responses_count )
                    . '</p>';
                 if ( $req->description ) {
@@ -65192,10 +65298,10 @@ function sp_render_volunteer_opportunities_frontend(): string {
 
                         <?php if ( $opp->event_date ) : ?>
                             <p class="sp-vol-card-date">
-                                <strong><?php esc_html_e( 'When:', 'societypress' ); ?></strong> <?php echo esc_html( date_i18n( 'l, F j, Y', strtotime( $opp->event_date ) ) ); ?>
+                                <strong><?php esc_html_e( 'When:', 'societypress' ); ?></strong> <?php echo esc_html( sp_format_wall_clock( $opp->event_date, 'l, F j, Y' ) ); ?>
                                 <?php if ( $opp->start_time ) : ?>
-                                    <?php echo esc_html( wp_date( 'g:i A', strtotime( $opp->start_time ) ) ); ?>
-                                    <?php if ( $opp->end_time ) echo '– ' . esc_html( wp_date( 'g:i A', strtotime( $opp->end_time ) ) ); ?>
+                                    <?php echo esc_html( sp_format_wall_clock( $opp->start_time, 'g:i A' ) ); ?>
+                                    <?php if ( $opp->end_time ) echo '– ' . esc_html( sp_format_wall_clock( $opp->end_time, 'g:i A' ) ); ?>
                                 <?php endif; ?>
                             </p>
                         <?php endif; ?>
@@ -65292,7 +65398,7 @@ function sp_render_volunteer_opportunities_frontend(): string {
                 var oppId = this.getAttribute('data-opp-id');
                 var origText = this.textContent;
                 this.disabled = true;
-                this.textContent = '<?php echo esc_js( __( "Signing up\u2026", "societypress" ) ); ?>';
+                this.textContent = '<?php echo esc_js( __( "Signing up…", "societypress" ) ); ?>';
 
                 var fd = new FormData();
                 fd.append('action', 'sp_volunteer_signup');
@@ -65328,7 +65434,7 @@ function sp_render_volunteer_opportunities_frontend(): string {
                 spConfirm('<?php echo esc_js( __( 'Cancel your volunteer signup?', 'societypress' ) ); ?>', function() {
                 var signupId = self.getAttribute('data-signup-id');
                 self.disabled = true;
-                self.textContent = '<?php echo esc_js( __( "Cancelling\u2026", "societypress" ) ); ?>';
+                self.textContent = '<?php echo esc_js( __( "Cancelling…", "societypress" ) ); ?>';
 
                 var fd = new FormData();
                 fd.append('action', 'sp_volunteer_cancel');
@@ -65467,7 +65573,7 @@ function sp_render_volunteer_opportunities_page(): void {
                         <td><strong><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-volunteer-opportunity-edit&opp_id=' . $opp->id ) ); ?>"><?php echo esc_html( $opp->title ); ?></a></strong></td>
                         <td><?php echo esc_html( $type_labels[ $opp->opportunity_type ] ?? $opp->opportunity_type ); ?></td>
                         <td><?php echo esc_html( ! empty( $opp->committee_name ) ? $opp->committee_name : __( 'Society-Wide', 'societypress' ) ); ?></td>
-                        <td><?php echo $opp->event_date ? esc_html( date_i18n( 'M j, Y', strtotime( $opp->event_date ) ) ) : '—'; ?></td>
+                        <td><?php echo $opp->event_date ? esc_html( sp_format_wall_clock( $opp->event_date, 'M j, Y' ) ) : '—'; ?></td>
                         <td>
                             <?php echo (int) $opp->signup_count; ?>
                             <?php if ( $opp->capacity ) echo ' / ' . (int) $opp->capacity; ?>
@@ -65892,7 +65998,7 @@ function sp_render_meetings_page(): void {
                                     <span class="delete"><a href="<?php echo esc_url( $del_url ); ?>" class="sp-text-danger" onclick="spConfirm(<?php echo wp_json_encode( __( 'Delete this meeting record? Attached files in the Media Library are kept.', 'societypress' ) ); ?>, function(){window.location=this.href;}.bind(this));return false;"><?php esc_html_e( 'Delete', 'societypress' ); ?></a></span>
                                 </div>
                             </td>
-                            <td><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $m->meeting_date ) ) ); ?></td>
+                            <td><?php echo esc_html( sp_format_wall_clock( $m->meeting_date, get_option( 'date_format' ) ) ); ?></td>
                             <td><?php echo $m->committee_name ? esc_html( $m->committee_name ) : '—'; ?></td>
                             <td><?php echo esc_html( $vis_labels[ $m->visibility ] ?? $m->visibility ); ?></td>
                             <td>
@@ -68395,7 +68501,7 @@ function sp_replace_merge_tags( string $content, object $member, array $extra = 
         '{{tier}}'                  => $tier_name,
         '{{status}}'                => sp_localized_status( $member->status ?? '' ),
         '{{join_date}}'             => ! empty( $member->join_date ) ? date_i18n( 'F j, Y', strtotime( $member->join_date ) ) : '',
-        '{{expiration_date}}'       => ! empty( $member->expiration_date ) ? date_i18n( 'F j, Y', strtotime( $member->expiration_date ) ) : '',
+        '{{expiration_date}}'       => ! empty( $member->expiration_date ) ? sp_format_wall_clock( $member->expiration_date, 'F j, Y' ) : '',
         '{{days_until_expiration}}' => $extra['days_until_expiration'] ?? $days_until,
         '{{days}}'                  => $extra['days_until_expiration'] ?? $days_until,
         '{{organization_name}}'     => $settings['organization_name'] ?? get_bloginfo( 'name' ),
@@ -69209,7 +69315,7 @@ function sp_render_email_log_page(): void {
                             </td>
                             <td><?php echo esc_html( $item->subject ); ?></td>
                             <td class="sp-email-log-date-cell">
-                                <?php echo esc_html( date_i18n( 'M j, Y g:i a', strtotime( $item->created_at ) ) ); ?>
+                                <?php echo esc_html( sp_format_wall_clock( $item->created_at, 'M j, Y g:i a' ) ); ?>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -69384,7 +69490,7 @@ function sp_render_email_log_detail( int $log_id ): void {
                 <?php endif; ?>
                 <tr>
                     <th scope="row" class="sp-email-detail-th"><?php esc_html_e( 'Created', 'societypress' ); ?></th>
-                    <td><?php echo esc_html( date_i18n( 'F j, Y \a\t g:i:s a', strtotime( $entry->created_at ) ) ); ?></td>
+                    <td><?php echo esc_html( sp_format_wall_clock( $entry->created_at, 'F j, Y \a\t g:i:s a' ) ); ?></td>
                 </tr>
                 <?php if ( $entry->sent_at ) : ?>
                     <tr>
@@ -69996,9 +70102,9 @@ function sp_render_blast_email_compose_page(): void {
             (int) $_GET['sp_event']
         ) );
         if ( $event ) {
-            $when = $event->event_date ? wp_date( get_option( 'date_format', 'F j, Y' ), strtotime( $event->event_date ) ) : '';
+            $when = $event->event_date ? sp_format_wall_clock( $event->event_date, get_option( 'date_format', 'F j, Y' ) ) : '';
             if ( $when !== '' && $event->start_time ) {
-                $when .= ' ' . __( 'at', 'societypress' ) . ' ' . wp_date( get_option( 'time_format', 'g:i a' ), strtotime( $event->event_date . ' ' . $event->start_time ) );
+                $when .= ' ' . __( 'at', 'societypress' ) . ' ' . sp_format_wall_clock( $event->event_date . ' ' . $event->start_time, get_option( 'time_format', 'g:i a' ) );
             }
             $where = trim( (string) $event->location_name );
             if ( $event->location_address ) {
@@ -71249,7 +71355,7 @@ class SP_Subscribers_List_Table extends WP_List_Table {
         if ( empty( $item->created_at ) ) {
             return '—';
         }
-        return esc_html( date_i18n( get_option( 'date_format', 'F j, Y' ), strtotime( $item->created_at ) ) );
+        return esc_html( sp_format_wall_clock( $item->created_at, get_option( 'date_format', 'F j, Y' ) ) );
     }
 
     protected function column_default( $item, $column_name ): string {
@@ -75310,7 +75416,7 @@ function sp_render_newsletter_archive_page(): void {
                     if ( $nl->issue_number ) $vol_issue .= ( $vol_issue ? ', ' : '' ) . esc_html__( 'No.', 'societypress' ) . '&nbsp;' . $nl->issue_number;
 
                     // Format the publication date
-                    $date_display = $nl->pub_date ? wp_date( 'M j, Y', strtotime( $nl->pub_date ) ) : '';
+                    $date_display = $nl->pub_date ? sp_format_wall_clock( $nl->pub_date, 'M j, Y' ) : '';
                 ?>
                     <div class="sp-newsletter-archive-card">
                         <!-- Cover image area -->
@@ -75956,7 +76062,7 @@ function sp_frontend_newsletter_archive(): void {
                     if ( $nl->issue_number ) $vol_issue .= ( $vol_issue ? ', ' : '' ) . esc_html__( 'No.', 'societypress' ) . '&nbsp;' . $nl->issue_number;
 
                     // Format date
-                    $date_display = $nl->pub_date ? wp_date( 'F Y', strtotime( $nl->pub_date ) ) : '';
+                    $date_display = $nl->pub_date ? sp_format_wall_clock( $nl->pub_date, 'F Y' ) : '';
 
                     // Download URL goes through our AJAX endpoint for access control
                     $download_url = admin_url( 'admin-ajax.php?action=sp_newsletter_download&newsletter_id=' . $nl->id );
@@ -76687,9 +76793,9 @@ function sp_render_search_events( array $items ): void {
     foreach ( $items as $event ) {
         $date_str = '';
         if ( ! empty( $event->event_date ) ) {
-            $date_str = date_i18n( get_option( 'date_format', 'F j, Y' ), strtotime( $event->event_date ) );
+            $date_str = sp_format_wall_clock( $event->event_date, get_option( 'date_format', 'F j, Y' ) );
             if ( ! empty( $event->start_time ) ) {
-                $date_str .= ' · ' . date_i18n( get_option( 'time_format', 'g:i A' ), strtotime( $event->start_time ) );
+                $date_str .= ' · ' . sp_format_wall_clock( $event->start_time, get_option( 'time_format', 'g:i A' ) );
             }
         }
         ?>
@@ -76834,7 +76940,7 @@ function sp_render_search_newsletters( array $items ): void {
     foreach ( $items as $nl ) {
         $date_str = '';
         if ( ! empty( $nl->pub_date ) ) {
-            $date_str = date_i18n( 'F Y', strtotime( $nl->pub_date ) );
+            $date_str = sp_format_wall_clock( $nl->pub_date, 'F Y' );
         }
 
         $vol_issue = '';
@@ -83360,7 +83466,7 @@ function sp_render_orders_page(): void {
                                     <?php echo esc_html( $status_labels[ $o->status ] ?? sp_localized_status( $o->status ) ); ?>
                                 </span>
                             </td>
-                            <td class="sp-text-secondary"><?php echo date_i18n( 'M j, Y g:i a', strtotime( $o->created_at ) ); ?></td>
+                            <td class="sp-text-secondary"><?php echo sp_format_wall_clock( $o->created_at, 'M j, Y g:i a' ); ?></td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -83620,7 +83726,7 @@ function sp_render_order_detail_page(): void {
                 <h3 class="sp-order-detail-box-heading"><?php esc_html_e( 'Order Information', 'societypress' ); ?></h3>
                 <table class="form-table sp-order-detail-info-table">
                     <tr><th scope="col"><?php esc_html_e( 'Status', 'societypress' ); ?></th><td><strong><?php echo esc_html( $status_labels[ $order->status ] ?? sp_localized_status( $order->status ) ); ?></strong></td></tr>
-                    <tr><th scope="col"><?php esc_html_e( 'Date', 'societypress' ); ?></th><td><?php echo date_i18n( 'F j, Y g:i a', strtotime( $order->created_at ) ); ?></td></tr>
+                    <tr><th scope="col"><?php esc_html_e( 'Date', 'societypress' ); ?></th><td><?php echo sp_format_wall_clock( $order->created_at, 'F j, Y g:i a' ); ?></td></tr>
                     <tr><th scope="col"><?php esc_html_e( 'Payment', 'societypress' ); ?></th><td><?php echo esc_html( $order->payment_method ? sp_localized_status( $order->payment_method, 'payment_type' ) : __( 'N/A', 'societypress' ) ); ?></td></tr>
                     <?php if ( $order->stripe_payment_intent ) : ?>
                         <tr><th scope="col"><?php esc_html_e( 'Stripe PI', 'societypress' ); ?></th><td><code class="sp-order-detail-stripe-pi"><?php echo esc_html( $order->stripe_payment_intent ); ?></code></td></tr>
@@ -84164,7 +84270,7 @@ function sp_render_documents_page(): void {
                     <tr>
                         <td><strong><?php echo esc_html( $doc->title ); ?></strong></td>
                         <td><?php echo esc_html( $doc->category_name ?? '—' ); ?></td>
-                        <td><?php echo $doc->document_date ? esc_html( wp_date( 'M j, Y', strtotime( $doc->document_date ) ) ) : '—'; ?></td>
+                        <td><?php echo $doc->document_date ? esc_html( sp_format_wall_clock( $doc->document_date, 'M j, Y' ) ) : '—'; ?></td>
                         <td><?php echo esc_html( strtoupper( pathinfo( $doc->file_name, PATHINFO_EXTENSION ) ) ?: '—' ); ?></td>
                         <td><?php echo $doc->file_size ? esc_html( size_format( $doc->file_size ) ) : '—'; ?></td>
                         <td>
@@ -85208,7 +85314,7 @@ function sp_frontend_documents(): void {
             echo '<ul class="sp-doc-monthyear">';
             foreach ( $rows as $d ) {
                 $label = ! empty( $d->document_date )
-                    ? wp_date( 'F Y', strtotime( $d->document_date ) )
+                    ? sp_format_wall_clock( $d->document_date, 'F Y' )
                     : $d->title;
                 $can_access = ( $d->access_level === 'public' ) || $is_member;
                 echo '<li>';
@@ -85251,7 +85357,7 @@ function sp_render_document_row( object $doc, bool $is_member, string $login_url
 
     $meta_parts = [];
     if ( $doc->document_date ) {
-        $meta_parts[] = wp_date( 'F j, Y', strtotime( $doc->document_date ) );
+        $meta_parts[] = sp_format_wall_clock( $doc->document_date, 'F j, Y' );
     }
     $ext = strtoupper( pathinfo( $doc->file_name, PATHINFO_EXTENSION ) );
     if ( $ext ) {
@@ -87149,7 +87255,7 @@ function sp_render_voting_frontend(): void {
 
             echo '<p class="sp-ballot-period">';
             echo '<strong>' . esc_html__( 'Voting closes:', 'societypress' ) . '</strong> ';
-            echo esc_html( wp_date( 'F j, Y \a\t g:i A', strtotime( $ballot->voting_end ) ) );
+            echo esc_html( sp_format_wall_clock( $ballot->voting_end, 'F j, Y \a\t g:i A' ) );
             echo '</p>';
 
             if ( $has_voted > 0 ) {
@@ -87612,8 +87718,8 @@ class SP_Ballots_List_Table extends WP_List_Table {
                 if ( empty( $item->voting_start ) && empty( $item->voting_end ) ) {
                     return '<span class="sp-text-muted">' . esc_html__( 'Not set', 'societypress' ) . '</span>';
                 }
-                $start = $item->voting_start ? wp_date( 'M j, Y g:i A', strtotime( $item->voting_start ) ) : '—';
-                $end   = $item->voting_end   ? wp_date( 'M j, Y g:i A', strtotime( $item->voting_end ) )   : '—';
+                $start = $item->voting_start ? sp_format_wall_clock( $item->voting_start, 'M j, Y g:i A' ) : '—';
+                $end   = $item->voting_end   ? sp_format_wall_clock( $item->voting_end, 'M j, Y g:i A' )   : '—';
                 return esc_html( $start . ' – ' . $end );
 
             case 'votes_cast':
@@ -87960,15 +88066,15 @@ function sp_render_ballot_edit_page(): void {
                 <tr>
                     <th scope="col"><label><?php esc_html_e( 'Start', 'societypress' ); ?></label></th>
                     <td>
-                        <input type="date" name="voting_start_date" value="<?php echo esc_attr( $ballot && $ballot->voting_start ? wp_date( 'Y-m-d', strtotime( $ballot->voting_start ) ) : '' ); ?>">
-                        <input type="time" name="voting_start_time" value="<?php echo esc_attr( $ballot && $ballot->voting_start ? wp_date( 'H:i', strtotime( $ballot->voting_start ) ) : '' ); ?>">
+                        <input type="date" name="voting_start_date" value="<?php echo esc_attr( $ballot && $ballot->voting_start ? sp_format_wall_clock( $ballot->voting_start, 'Y-m-d' ) : '' ); ?>">
+                        <input type="time" name="voting_start_time" value="<?php echo esc_attr( $ballot && $ballot->voting_start ? sp_format_wall_clock( $ballot->voting_start, 'H:i' ) : '' ); ?>">
                     </td>
                 </tr>
                 <tr>
                     <th scope="col"><label><?php esc_html_e( 'End', 'societypress' ); ?></label></th>
                     <td>
-                        <input type="date" name="voting_end_date" value="<?php echo esc_attr( $ballot && $ballot->voting_end ? wp_date( 'Y-m-d', strtotime( $ballot->voting_end ) ) : '' ); ?>">
-                        <input type="time" name="voting_end_time" value="<?php echo esc_attr( $ballot && $ballot->voting_end ? wp_date( 'H:i', strtotime( $ballot->voting_end ) ) : '' ); ?>">
+                        <input type="date" name="voting_end_date" value="<?php echo esc_attr( $ballot && $ballot->voting_end ? sp_format_wall_clock( $ballot->voting_end, 'Y-m-d' ) : '' ); ?>">
+                        <input type="time" name="voting_end_time" value="<?php echo esc_attr( $ballot && $ballot->voting_end ? sp_format_wall_clock( $ballot->voting_end, 'H:i' ) : '' ); ?>">
                     </td>
                 </tr>
             </table>
@@ -88333,9 +88439,9 @@ function sp_render_ballot_results_page(): void {
             <?php if ( $ballot->voting_start && $ballot->voting_end ) : ?>
                 <p>
                     <strong><?php esc_html_e( 'Voting Period:', 'societypress' ); ?></strong>
-                    <?php echo esc_html( wp_date( 'M j, Y g:i A', strtotime( $ballot->voting_start ) ) ); ?>
+                    <?php echo esc_html( sp_format_wall_clock( $ballot->voting_start, 'M j, Y g:i A' ) ); ?>
                     &mdash;
-                    <?php echo esc_html( wp_date( 'M j, Y g:i A', strtotime( $ballot->voting_end ) ) ); ?>
+                    <?php echo esc_html( sp_format_wall_clock( $ballot->voting_end, 'M j, Y g:i A' ) ); ?>
                 </p>
             <?php endif; ?>
         </div>
@@ -89550,9 +89656,31 @@ function sp_render_modal_module(): void {
             form.removeAttribute('data-sp-confirmed');
             return;  /* Already confirmed — let the submit proceed */
         }
+        /* WHY capture the submitter: a form can post several different actions
+           from several named buttons (Delete, Reject, Approve), with the action
+           carried in the button's own name/value rather than a hidden input.
+           The spec only includes that pair when the submit is user-initiated —
+           a bare form.submit() drops it, so the handler's isset() check fails
+           and the action silently does nothing while the page reloads looking
+           untouched. Re-submitting through the original button preserves it. */
+        var submitter = e.submitter;
         e.preventDefault();
         spConfirm(msg, function () {
             form.dataset.spConfirmed = '1';
+            /* requestSubmit() also re-runs HTML5 validation, which form.submit()
+               skips entirely. Fall back to carrying the pair in a hidden input
+               on browsers too old to have it. */
+            if (typeof form.requestSubmit === 'function') {
+                form.requestSubmit(submitter || undefined);
+                return;
+            }
+            if (submitter && submitter.name) {
+                var carry = document.createElement('input');
+                carry.type  = 'hidden';
+                carry.name  = submitter.name;
+                carry.value = submitter.value;
+                form.appendChild(carry);
+            }
             form.submit();
         });
     });
@@ -101503,6 +101631,126 @@ add_action( 'admin_menu', function () {
     );
 }, 25 );
 
+/**
+ * AJAX: import one batch of images into an album.
+ *
+ * WHY: PHP caps a single POST at max_file_uploads files — 20 by default, and
+ *      most shared hosts ship the default. A volunteer who selects 53 photos
+ *      gets 20 with no error of any kind: PHP simply drops the rest before the
+ *      request ever reaches us, so the "53 images added" they expected reads
+ *      "20 images added" and nobody can tell whether the other 33 failed or
+ *      were never sent. Raising the ini would only fix one server; the plugin
+ *      ships to societies on hosting they don't control.
+ *
+ *      So the browser slices the selection into batches small enough that no
+ *      realistic host limit applies and posts them one at a time. The first
+ *      call creates the album, later calls append to it. Sort order continues
+ *      from whatever is already stored, so batches can't collide.
+ */
+add_action( 'wp_ajax_sp_gallery_import_batch', 'sp_ajax_gallery_import_batch' );
+function sp_ajax_gallery_import_batch(): void {
+    check_ajax_referer( 'sp_gal_import_batch', 'nonce' );
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => __( 'You do not have permission to import galleries.', 'societypress' ) ] );
+    }
+
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+    require_once ABSPATH . 'wp-admin/includes/image.php';
+    require_once ABSPATH . 'wp-admin/includes/media.php';
+
+    global $wpdb;
+
+    $album_id = absint( $_POST['album_id'] ?? 0 );
+    if ( ! $album_id ) {
+        $album_id = sp_gallery_import_create_album(
+            (string) ( $_POST['album_title'] ?? '' ),
+            (string) ( $_POST['album_description'] ?? '' ),
+            (string) ( $_POST['album_visibility'] ?? 'public' )
+        );
+        if ( ! $album_id ) {
+            wp_send_json_error( [ 'message' => __( 'Album title is required.', 'societypress' ) ] );
+        }
+    }
+
+    // Continue numbering after whatever previous batches already stored.
+    $sort = 1 + (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COALESCE( MAX( sort_order ), -1 ) FROM {$wpdb->prefix}sp_photo_album_items WHERE album_id = %d",
+        $album_id
+    ) );
+
+    $added  = 0;
+    $errors = [];
+
+    $files = $_FILES['gal_images'] ?? null;
+    if ( $files && ! empty( $files['name'] ) ) {
+        $count = count( (array) $files['name'] );
+        for ( $i = 0; $i < $count; $i++ ) {
+            $name = $files['name'][ $i ] ?? '';
+            if ( '' === $name ) continue;
+
+            $err = $files['error'][ $i ] ?? UPLOAD_ERR_NO_FILE;
+            if ( UPLOAD_ERR_OK !== $err ) {
+                /* translators: 1: file name, 2: upload error code */
+                $errors[] = sprintf( __( '%1$s: upload error code %2$d', 'societypress' ), $name, (int) $err );
+                continue;
+            }
+
+            $attach_id = media_handle_sideload(
+                [ 'name' => $name, 'tmp_name' => $files['tmp_name'][ $i ] ],
+                0
+            );
+            if ( is_wp_error( $attach_id ) ) {
+                /* translators: 1: file name, 2: error message */
+                $errors[] = sprintf( __( '%1$s: %2$s', 'societypress' ), $name, $attach_id->get_error_message() );
+                continue;
+            }
+
+            sp_gallery_import_add_item( $album_id, (int) $attach_id, $sort, preg_replace( '/\.[^.]+$/', '', $name ) );
+            $sort++;
+            $added++;
+        }
+    }
+
+    foreach ( (array) ( $_POST['gal_urls'] ?? [] ) as $url ) {
+        $url = trim( (string) $url );
+        if ( '' === $url ) continue;
+
+        $result = sp_gallery_import_fetch_url( $url );
+        if ( is_wp_error( $result ) ) {
+            $errors[] = sprintf( '%s: %s', $url, $result->get_error_message() );
+            continue;
+        }
+        sp_gallery_import_add_item( $album_id, (int) $result, $sort );
+        $sort++;
+        $added++;
+    }
+
+    // WHY re-check rather than only setting it on the first batch: the first
+    // batch can fail every one of its files, which would leave the album
+    // permanently coverless. Checking each time costs one indexed lookup and
+    // settles on the first image that actually made it in.
+    $albums_table = $wpdb->prefix . 'sp_photo_albums';
+    $has_cover    = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COALESCE( cover_image_id, 0 ) FROM {$albums_table} WHERE id = %d",
+        $album_id
+    ) );
+    if ( ! $has_cover ) {
+        $first = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT attachment_id FROM {$wpdb->prefix}sp_photo_album_items WHERE album_id = %d ORDER BY sort_order ASC LIMIT 1",
+            $album_id
+        ) );
+        if ( $first ) {
+            $wpdb->update( $albums_table, [ 'cover_image_id' => $first ], [ 'id' => $album_id ] );
+        }
+    }
+
+    wp_send_json_success( [
+        'album_id' => $album_id,
+        'added'    => $added,
+        'errors'   => $errors,
+    ] );
+}
+
 function sp_render_import_gallery_page(): void {
     if ( ! current_user_can( 'manage_options' ) ) {
         wp_die( esc_html__( 'You do not have permission to import galleries.', 'societypress' ) );
@@ -101609,7 +101857,7 @@ function sp_render_import_gallery_form(): void {
     $max_size = size_format( wp_max_upload_size() );
     echo '<p>' . esc_html__( 'Create a new photo album from local image files, remote image URLs, or both. Each file or URL becomes a photo in the album; the first image is set as the cover automatically.', 'societypress' ) . '</p>';
 
-    echo '<form method="post" enctype="multipart/form-data">';
+    echo '<form method="post" enctype="multipart/form-data" id="sp-gal-import-form">';
     wp_nonce_field( 'sp_gal_import' );
     echo '<input type="hidden" name="sp_gal_action" value="upload">';
 
@@ -101629,7 +101877,7 @@ function sp_render_import_gallery_form(): void {
     echo '<tr><th scope="row"><label for="gal_images">' . esc_html__( 'Image files', 'societypress' ) . '</label></th><td>';
     echo '<input type="file" id="gal_images" name="gal_images[]" accept="image/*" multiple>';
     /* translators: %s: human-readable max upload file size */
-    echo '<p class="description">' . sprintf( esc_html__( 'Max %s per file. JPG, PNG, GIF, WEBP supported.', 'societypress' ), esc_html( $max_size ) ) . '</p></td></tr>';
+    echo '<p class="description">' . sprintf( esc_html__( 'Select as many images as you like — they upload in small batches, so there is no limit on how many. Max %s per file. JPG, PNG, GIF, WEBP supported.', 'societypress' ), esc_html( $max_size ) ) . '</p></td></tr>';
 
     echo '<tr><th scope="row"><label for="gal_urls">' . esc_html__( 'Or paste image URLs', 'societypress' ) . '</label></th><td>';
     echo '<textarea id="gal_urls" name="gal_urls" class="large-text code" rows="6" placeholder="https://example.org/upload/menu/image1.jpg&#10;https://example.org/upload/menu/image2.jpg"></textarea>';
@@ -101637,7 +101885,165 @@ function sp_render_import_gallery_form(): void {
 
     echo '</tbody></table>';
     submit_button( __( 'Create Album', 'societypress' ), 'primary' );
+
+    // Progress readout. Hidden until an import actually starts — see the CSS
+    // below rather than an inline style attribute.
+    echo '<div id="sp-gal-progress" class="sp-gal-progress" hidden>';
+    echo '<div class="sp-gal-progress-track"><div class="sp-gal-progress-bar" id="sp-gal-progress-bar"></div></div>';
+    echo '<p class="sp-gal-progress-status" id="sp-gal-progress-status" role="status" aria-live="polite"></p>';
+    echo '<ul class="ul-disc sp-gal-progress-errors" id="sp-gal-progress-errors"></ul>';
+    echo '</div>';
+
     echo '</form>';
+
+    ?>
+    <style>
+        .sp-gal-progress { margin-top: 16px; max-width: 600px; }
+        .sp-gal-progress-track { height: 20px; background: #e6e6e6; border-radius: 10px; overflow: hidden; }
+        .sp-gal-progress-bar { height: 100%; width: 0; background: #2271b1; transition: width .2s ease; }
+        .sp-gal-progress-status { margin: 8px 0 0; font-weight: 600; }
+        .sp-gal-progress-errors { margin: 8px 0 0; color: #b32d2e; }
+    </style>
+    <script>
+    (function () {
+        var form = document.getElementById('sp-gal-import-form');
+        if (!form || !window.FormData || !window.fetch) return;  /* falls back to a plain POST */
+
+        /* WHY 10: PHP's max_file_uploads defaults to 20 and shared hosts rarely
+           raise it. Half the default leaves room for the other form fields and
+           still keeps each request quick enough to feel responsive. */
+        var BATCH = 10;
+
+        var fileInput = document.getElementById('gal_images');
+        var urlsInput = document.getElementById('gal_urls');
+        var wrap      = document.getElementById('sp-gal-progress');
+        var bar       = document.getElementById('sp-gal-progress-bar');
+        var statusEl  = document.getElementById('sp-gal-progress-status');
+        var errorsEl  = document.getElementById('sp-gal-progress-errors');
+        var submitBtn = form.querySelector('input[type="submit"], button[type="submit"]');
+
+        var STR = <?php echo wp_json_encode( [
+            'working'  => __( 'Adding %1$d of %2$d…', 'societypress' ),
+            'done'     => __( 'Done — %d added.', 'societypress' ),
+            'failed'   => __( 'The import stopped early. %d added before it failed.', 'societypress' ),
+            'network'  => __( 'Lost contact with the server.', 'societypress' ),
+            'noTitle'  => __( 'Album title is required.', 'societypress' ),
+            'goAlbums' => __( 'Go to Photo Albums', 'societypress' ),
+        ] ); ?>;
+
+        var AJAX  = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
+        var NONCE = <?php echo wp_json_encode( wp_create_nonce( 'sp_gal_import_batch' ) ); ?>;
+        var ALBUM_URL = <?php echo wp_json_encode( admin_url( 'admin.php?page=sp-gallery-albums' ) ); ?>;
+
+        function fmt(tpl, a, b) {
+            return tpl.replace('%1$d', a).replace('%2$d', b).replace('%d', a);
+        }
+
+        form.addEventListener('submit', function (e) {
+            var files = fileInput && fileInput.files ? Array.prototype.slice.call(fileInput.files) : [];
+            var urls  = urlsInput
+                ? urlsInput.value.split(/\r?\n/).map(function (u) { return u.trim(); }).filter(Boolean)
+                : [];
+
+            /* Nothing chosen — let the normal POST run so the server's own
+               validation messages still apply. */
+            if (!files.length && !urls.length) return;
+
+            if (!form.album_title.value.trim()) {
+                e.preventDefault();
+                if (window.spAlert) { spAlert(STR.noTitle); } else { form.album_title.focus(); }
+                return;
+            }
+
+            e.preventDefault();
+
+            /* Build the work list: every file, then every URL. */
+            var jobs = [];
+            var i;
+            for (i = 0; i < files.length; i += BATCH) jobs.push({ files: files.slice(i, i + BATCH) });
+            for (i = 0; i < urls.length;  i += BATCH) jobs.push({ urls:  urls.slice(i, i + BATCH) });
+
+            var total   = files.length + urls.length;
+            var done    = 0;
+            var added   = 0;
+            var albumId = 0;
+            var jobIdx  = 0;
+
+            wrap.hidden = false;
+            errorsEl.textContent = '';
+            if (submitBtn) submitBtn.disabled = true;
+            statusEl.textContent = fmt(STR.working, 0, total);
+
+            function showErrors(list) {
+                list.forEach(function (msg) {
+                    var li = document.createElement('li');
+                    li.textContent = msg;
+                    errorsEl.appendChild(li);
+                });
+            }
+
+            function finish(ok) {
+                bar.style.width = '100%';
+                statusEl.textContent = ok ? fmt(STR.done, added) : fmt(STR.failed, added);
+                var p = document.createElement('p');
+                var a = document.createElement('a');
+                a.className = 'button button-primary';
+                a.href = ALBUM_URL;
+                a.textContent = STR.goAlbums;
+                p.appendChild(a);
+                wrap.appendChild(p);
+            }
+
+            function runNext() {
+                if (jobIdx >= jobs.length) { finish(true); return; }
+
+                var job  = jobs[jobIdx];
+                var size = job.files ? job.files.length : job.urls.length;
+                var data = new FormData();
+
+                data.append('action', 'sp_gallery_import_batch');
+                data.append('nonce', NONCE);
+                data.append('album_id', albumId);
+                data.append('album_title', form.album_title.value);
+                data.append('album_description', form.album_description ? form.album_description.value : '');
+                data.append('album_visibility', form.album_visibility ? form.album_visibility.value : 'public');
+
+                if (job.files) {
+                    job.files.forEach(function (f) { data.append('gal_images[]', f); });
+                } else {
+                    job.urls.forEach(function (u) { data.append('gal_urls[]', u); });
+                }
+
+                fetch(AJAX, { method: 'POST', body: data, credentials: 'same-origin' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (r) {
+                        if (!r || !r.success) {
+                            showErrors([(r && r.data && r.data.message) || STR.network]);
+                            finish(false);
+                            return;
+                        }
+                        albumId = r.data.album_id;
+                        added  += r.data.added;
+                        done   += size;
+                        if (r.data.errors && r.data.errors.length) showErrors(r.data.errors);
+
+                        bar.style.width = Math.round((done / total) * 100) + '%';
+                        statusEl.textContent = fmt(STR.working, done, total);
+
+                        jobIdx++;
+                        runNext();
+                    })
+                    .catch(function () {
+                        showErrors([STR.network]);
+                        finish(false);
+                    });
+            }
+
+            runNext();
+        });
+    })();
+    </script>
+    <?php
 }
 
 

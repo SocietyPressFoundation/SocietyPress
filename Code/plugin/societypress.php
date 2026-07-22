@@ -61348,6 +61348,21 @@ add_filter( 'template_include', function( $template ) {
     echo '<style>.sp-page-template-content { max-width: 960px; margin: 40px auto; padding: 0 20px; }</style>';
     echo '<div class="entry-content sp-page-template-content">';
 
+    // WHY output the page's own content first: these templates replace the
+    // page entirely, so anything a volunteer typed into the editor was thrown
+    // away without a word. That silently breaks two reasonable expectations —
+    // a shortcode placed on the page (a form, say) never renders, and there is
+    // nowhere to put a sentence of explanation or directions above the module.
+    // Both read as "the page is broken" rather than "this template ignores
+    // content". Rendering it above the module output makes what you type
+    // appear where you'd expect, and pages with an empty editor are unchanged.
+    $sp_tpl_post = get_post();
+    if ( $sp_tpl_post && '' !== trim( (string) $sp_tpl_post->post_content ) ) {
+        echo '<div class="sp-page-template-intro">'
+           . apply_filters( 'the_content', $sp_tpl_post->post_content )
+           . '</div>';
+    }
+
     switch ( $page_template ) {
         case 'sp-help-requests':
             sp_frontend_help_requests();

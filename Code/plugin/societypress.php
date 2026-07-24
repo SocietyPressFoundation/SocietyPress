@@ -34086,40 +34086,80 @@ function sp_render_user_access_page(): void {
 
         <!-- Add New User -->
         <h2 class="sp-access-grant-heading"><?php esc_html_e( 'Grant Access to a User', 'societypress' ); ?></h2>
-        <p><?php esc_html_e( 'Search for a user to grant them SocietyPress admin access. Site administrators already have full access and don\'t need to be added here.', 'societypress' ); ?></p>
+        <p><?php esc_html_e( 'Search for a member by name or email to grant them SocietyPress admin access. Site administrators already have full access and don\'t need to be added here.', 'societypress' ); ?></p>
 
         <?php
-        // Get all WP users who are NOT admins and NOT already SP staff
+        // WHY a search instead of a dropdown: the old picker listed the first
+        // 200 users and stopped, so on a society with more members than that
+        // the rest could never be granted access at all. A name/email search
+        // scales to any roster size and is far easier than scanning a long
+        // list. Members are WordPress users, so we search the user table.
         $exclude_ids = array_merge( [ 0 ], array_map( 'intval', $sp_staff_ids ) );
-        $available_users = get_users( [
-            'exclude'  => $exclude_ids,
-            'number'   => 200,
-            'orderby'  => 'display_name',
-            'order'    => 'ASC',
-        ] );
-        // Filter out admins
-        $available_users = array_filter( $available_users, function( $u ) {
-            return ! user_can( $u, 'manage_options' );
-        } );
+        $user_search = isset( $_GET['user_search'] ) ? sanitize_text_field( wp_unslash( $_GET['user_search'] ) ) : '';
         ?>
 
-        <?php if ( ! empty( $available_users ) ) : ?>
-            <form method="get" class="sp-access-user-form">
-                <input type="hidden" name="page" value="sp-user-access">
-                <div class="sp-access-user-form-row">
-                    <select name="edit_user" class="sp-access-user-select">
-                        <option value=""><?php esc_html_e( '— Select a user —', 'societypress' ); ?></option>
-                        <?php foreach ( $available_users as $au ) : ?>
-                            <option value="<?php echo esc_attr( $au->ID ); ?>">
-                                <?php echo esc_html( $au->display_name . ' (' . $au->user_email . ')' ); ?>
-                            </option>
+        <form method="get" class="sp-access-user-form">
+            <input type="hidden" name="page" value="sp-user-access">
+            <p class="search-box">
+                <label for="sp-access-user-search" class="screen-reader-text"><?php esc_html_e( 'Search by name or email', 'societypress' ); ?></label>
+                <input type="search" id="sp-access-user-search" name="user_search" value="<?php echo esc_attr( $user_search ); ?>" placeholder="<?php echo esc_attr__( 'Search by name or email…', 'societypress' ); ?>">
+                <button type="submit" class="button"><?php esc_html_e( 'Search Users', 'societypress' ); ?></button>
+                <?php if ( '' !== $user_search ) : ?>
+                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-user-access' ) ); ?>" class="button"><?php esc_html_e( 'Clear', 'societypress' ); ?></a>
+                <?php endif; ?>
+            </p>
+        </form>
+
+        <?php if ( '' !== $user_search ) :
+            $found_users = get_users( [
+                'exclude'        => $exclude_ids,
+                'search'         => '*' . $user_search . '*',
+                'search_columns' => [ 'display_name', 'user_login', 'user_email', 'user_nicename' ],
+                'number'         => 50,
+                'orderby'        => 'display_name',
+                'order'          => 'ASC',
+            ] );
+            // Admins already have full access — never offer to "grant" it.
+            $found_users = array_filter( $found_users, function ( $u ) {
+                return ! user_can( $u, 'manage_options' );
+            } );
+        ?>
+            <?php if ( empty( $found_users ) ) : ?>
+                <p class="sp-access-muted"><?php echo esc_html( sprintf(
+                    /* translators: %s: the search term */
+                    __( 'No users found matching "%s" who don\'t already have access.', 'societypress' ),
+                    $user_search
+                ) ); ?></p>
+            <?php else : ?>
+                <table class="widefat striped sp-access-staff-table">
+                    <thead>
+                        <tr>
+                            <th scope="col"><?php esc_html_e( 'User', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Action', 'societypress' ); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ( $found_users as $fu ) : ?>
+                            <tr>
+                                <td>
+                                    <strong><?php echo esc_html( $fu->display_name ); ?></strong><br>
+                                    <span class="sp-access-user-email"><?php echo esc_html( $fu->user_email ); ?></span>
+                                </td>
+                                <td>
+                                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-user-access&edit_user=' . $fu->ID ) ); ?>" class="button button-primary button-small">
+                                        <?php esc_html_e( 'Grant Access', 'societypress' ); ?>
+                                    </a>
+                                </td>
+                            </tr>
                         <?php endforeach; ?>
-                    </select>
-                    <button type="submit" class="button button-primary"><?php esc_html_e( 'Edit Access', 'societypress' ); ?></button>
-                </div>
-            </form>
+                    </tbody>
+                </table>
+                <?php if ( count( $found_users ) >= 50 ) : ?>
+                    <p class="sp-access-muted"><?php esc_html_e( 'Showing the first 50 matches — narrow your search if you don\'t see the person.', 'societypress' ); ?></p>
+                <?php endif; ?>
+            <?php endif; ?>
         <?php else : ?>
-            <p class="sp-access-muted"><?php esc_html_e( 'All available users are either administrators or already have SP access assigned.', 'societypress' ); ?></p>
+            <p class="sp-access-muted"><?php esc_html_e( 'Type a name or email above and click Search Users to find someone to grant access to.', 'societypress' ); ?></p>
         <?php endif; ?>
     </div>
     <?php

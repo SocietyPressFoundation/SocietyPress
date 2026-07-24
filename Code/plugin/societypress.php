@@ -10877,11 +10877,130 @@ add_action( 'template_redirect', function () {
         return;
     }
 
+    // A valid draft review link is allowed through even while the site is
+    // locked down — sharing a page for review is exactly what that link is
+    // for, and it only ever unlocks the single draft it was issued for.
+    if ( ! empty( $GLOBALS['sp_review_ok'] ) ) {
+        return;
+    }
+
     // Require login AND administrator role to see any frontend page
     if ( ! is_user_logged_in() || ! current_user_can( 'manage_options' ) ) {
         auth_redirect();
     }
 } );
+
+/**
+ * Draft review links.
+ *
+ * WHY: A volunteer building a page often wants a colleague to look it over
+ *      before it goes live — but a WordPress draft returns "not found" to
+ *      anyone who isn't logged in with edit rights, so there's no link they
+ *      can just send. This gives every page a private, secret-token URL that
+ *      lets anyone open THAT ONE draft, read-only, without an account. The
+ *      token is a 20-character secret stored in post meta; the link stops
+ *      mattering once the page is published (it's public then anyway) and can
+ *      be revoked by generating a new one, which invalidates the old link.
+ */
+
+/**
+ * Get the review token for a page, creating one if it doesn't exist yet.
+ *
+ * @param int  $post_id
+ * @param bool $regenerate  Force a new token, invalidating any old link.
+ */
+function sp_page_review_token( int $post_id, bool $regenerate = false ): string {
+    $token = (string) get_post_meta( $post_id, '_sp_review_token', true );
+    if ( $regenerate || '' === $token ) {
+        // Unambiguous alphanumeric only — no special characters to url-encode
+        // or misread when a link is pasted into an email.
+        $token = wp_generate_password( 20, false, false );
+        update_post_meta( $post_id, '_sp_review_token', $token );
+    }
+    return $token;
+}
+
+/**
+ * The full, shareable review URL for a draft page.
+ *
+ * WHY ?page_id= rather than the pretty permalink: a draft's permalink is not
+ * yet stable, and ?page_id= resolves the page regardless of permalink
+ * settings or publish status, so the link a reviewer receives always works.
+ */
+function sp_page_review_url( int $post_id ): string {
+    return add_query_arg(
+        'sp_review',
+        sp_page_review_token( $post_id ),
+        home_url( '/?page_id=' . $post_id )
+    );
+}
+
+/**
+ * Does the current request carry the correct review token for this page?
+ */
+function sp_review_token_valid_for( int $post_id ): bool {
+    $token = isset( $_GET['sp_review'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_review'] ) ) : '';
+    if ( '' === $token ) {
+        return false;
+    }
+    $stored = (string) get_post_meta( $post_id, '_sp_review_token', true );
+    // hash_equals: constant-time compare so a wrong token can't be narrowed
+    // down by timing.
+    return '' !== $stored && hash_equals( $stored, $token );
+}
+
+// Open draft/pending pages to the main query when a review token is present —
+// but only for a single-page request, never a listing, so an unpublished post
+// can never leak into an archive or the blog index via ?sp_review=.
+add_action( 'pre_get_posts', function ( $q ) {
+    if ( is_admin() || ! $q->is_main_query() ) {
+        return;
+    }
+    if ( empty( $_GET['sp_review'] ) ) {
+        return;
+    }
+    if ( empty( $q->get( 'page_id' ) ) && empty( $q->get( 'pagename' ) ) && empty( $q->get( 'name' ) ) ) {
+        return;
+    }
+    $q->set( 'post_status', [ 'publish', 'draft', 'pending' ] );
+} );
+
+// Gate the render. A draft resolves only when the request carries ITS token;
+// a present-but-wrong token is treated as not found so guessing a slug reveals
+// nothing. Published pages need no gating. On success we flag the request so
+// the members-only gate lets the reviewer through too.
+add_action( 'wp', function () {
+    if ( empty( $_GET['sp_review'] ) || ! is_page() ) {
+        return;
+    }
+    $obj = get_queried_object();
+    if ( ! $obj instanceof WP_Post ) {
+        return;
+    }
+    if ( 'publish' === $obj->post_status ) {
+        return;
+    }
+    if ( sp_review_token_valid_for( $obj->ID ) ) {
+        $GLOBALS['sp_review_ok'] = $obj->ID;
+        nocache_headers();
+        // A draft under review must never be indexed even if a search engine
+        // somehow follows the link.
+        add_filter( 'wp_robots', 'wp_robots_no_robots' );
+        // WHY suppress both: a ?page_id= request for an unpublished page is
+        // sent to wp-login by WordPress's canonical/auth handling — it assumes
+        // only an editor would want a draft. The token already authorizes this
+        // viewer, so drop the redirect that would otherwise bounce a logged-out
+        // reviewer to a login screen.
+        remove_action( 'template_redirect', 'redirect_canonical' );
+        remove_action( 'template_redirect', 'wp_redirect_admin_locations', 1000 );
+        return;
+    }
+    global $wp_query;
+    $wp_query->set_404();
+    status_header( 404 );
+    nocache_headers();
+} );
+
 
 /**
  * Gate members-only pages for non-logged-in visitors.
@@ -10900,6 +11019,12 @@ add_action( 'template_redirect', function () {
 add_filter( 'the_content', function ( $content ) {
     if ( ! is_page() ) return $content;
     if ( is_user_logged_in() ) return $content;
+
+    // A valid draft review link lets an outside reviewer see the page even
+    // when it is members-only — a reviewer isn't a member yet.
+    if ( ! empty( $GLOBALS['sp_review_ok'] ) && (int) $GLOBALS['sp_review_ok'] === (int) get_the_ID() ) {
+        return $content;
+    }
 
     $members_only = get_post_meta( get_the_ID(), '_sp_members_only', true );
     if ( $members_only !== '1' ) return $content;
@@ -27573,6 +27698,9 @@ function sp_render_page_edit(): void {
     <style id="sp-page-edit-css">
         .sp-page-edit-title-input { width: 100%; max-width: 600px; }
         .sp-page-edit-type-select { min-width: 250px; }
+        .sp-review-link-input { width: 100%; max-width: 520px; font-family: monospace; }
+        .sp-review-link-row .button { margin-left: 6px; }
+        .sp-review-link-reset { display: inline-block; margin-top: 8px; }
     </style>
     <div class="wrap">
         <h1><?php echo $is_edit ? esc_html__( 'Edit Page', 'societypress' ) : esc_html__( 'Add New Page', 'societypress' ); ?></h1>
@@ -27680,8 +27808,26 @@ function sp_render_page_edit(): void {
                             <option value="publish" <?php selected( $status, 'publish' ); ?>><?php esc_html_e( 'Published', 'societypress' ); ?></option>
                             <option value="draft" <?php selected( $status, 'draft' ); ?>><?php esc_html_e( 'Draft', 'societypress' ); ?></option>
                         </select>
+                        <p class="description"><?php esc_html_e( 'Draft keeps the page off the live site. Use the review link below to show it to someone first, then switch to Published to make it live.', 'societypress' ); ?></p>
                     </td>
                 </tr>
+
+                <!-- Review link -->
+                <?php if ( $is_edit ) : $sp_review_url = sp_page_review_url( $post_id ); ?>
+                <tr class="sp-review-link-row">
+                    <th scope="row"><?php esc_html_e( 'Review link', 'societypress' ); ?></th>
+                    <td>
+                        <p class="description"><?php esc_html_e( 'A private link for reviewing this page before it goes live — anyone with the link can view it, no account needed. It stops working once the page is published or when you generate a new link.', 'societypress' ); ?></p>
+                        <input type="text" id="sp-review-link" class="sp-review-link-input" readonly value="<?php echo esc_attr( $sp_review_url ); ?>">
+                        <button type="button" class="button" id="sp-copy-review-link"><?php esc_html_e( 'Copy link', 'societypress' ); ?></button>
+                        <a href="<?php echo esc_url( $sp_review_url ); ?>" class="button" target="_blank" rel="noopener"><?php esc_html_e( 'Preview', 'societypress' ); ?></a>
+                        <label class="sp-review-link-reset">
+                            <input type="checkbox" name="sp_reset_review_link" value="1">
+                            <?php esc_html_e( 'Generate a new link when I save (turns off the old one)', 'societypress' ); ?>
+                        </label>
+                    </td>
+                </tr>
+                <?php endif; ?>
 
                 <!-- Members Only access restriction -->
                 <?php
@@ -27726,6 +27872,29 @@ function sp_render_page_edit(): void {
                 <input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>">
                 <button type="submit" class="button sp-btn-danger"><?php esc_html_e( 'Delete Page', 'societypress' ); ?></button>
             </form>
+            <script>
+            (function () {
+                var btn   = document.getElementById('sp-copy-review-link');
+                var field = document.getElementById('sp-review-link');
+                if (!btn || !field) return;
+                var label = btn.textContent;
+                btn.addEventListener('click', function () {
+                    field.select();
+                    field.setSelectionRange(0, field.value.length);
+                    var done = function () {
+                        btn.textContent = <?php echo wp_json_encode( __( 'Copied!', 'societypress' ) ); ?>;
+                        setTimeout(function () { btn.textContent = label; }, 1500);
+                    };
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(field.value).then(done, function () {
+                            document.execCommand('copy'); done();
+                        });
+                    } else {
+                        document.execCommand('copy'); done();
+                    }
+                });
+            })();
+            </script>
         <?php endif; ?>
     </div>
 
@@ -27890,6 +28059,10 @@ function sp_handle_page_save(): void {
         // Not a builder page — remove widget meta if it exists
         delete_post_meta( $saved_id, '_sp_page_widgets' );
     }
+
+    // Review link: reset it on request (invalidating the old link), otherwise
+    // ensure one exists so the Copy Review Link button always has a URL.
+    sp_page_review_token( $saved_id, ! empty( $_POST['sp_reset_review_link'] ) );
 
     wp_redirect( admin_url( 'admin.php?page=sp-pages&saved=1' ) );
     exit;

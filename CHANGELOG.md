@@ -15,6 +15,24 @@ Pre-1.0 development iterations are archived in
 
 ## [Unreleased]
 
+### Added
+
+**Draft review links**
+
+Any page can now be shared for review before it goes live. Save the page as
+a draft and use the new **Review link** on the page editor: it's a private
+link anyone can open — no account needed — to see the page exactly as it
+will look, with a Preview button and a one-click Copy. The link only ever
+unlocks that one draft, works even while the site is set to require login,
+and can be turned off at any time by generating a new one. Publishing the
+page makes it public in the normal way.
+
+**Description and directions above the Events list**
+
+The Events page now shows whatever you type into its page editor above the
+list of events, so you can add a welcome, meeting location, or directions —
+matching the other SocietyPress page templates.
+
 ### Fixed
 
 **Dates and times displayed in the site's timezone instead of as entered**

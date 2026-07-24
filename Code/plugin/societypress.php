@@ -75519,6 +75519,32 @@ function sp_render_newsletter_archive_page(): void {
         echo '<div class="notice notice-success"><p>' . esc_html__( 'Newsletter deleted.', 'societypress' ) . '</p></div>';
     }
 
+    // ========== HANDLE BULK VISIBILITY ==========
+    // WHY: Flipping many issues between Public and Members Only one card at a
+    // time is tedious on an archive with dozens of newsletters. Select the
+    // ones to change, pick a visibility, apply once.
+    if ( ( $_POST['action'] ?? '' ) === 'bulk_visibility' ) {
+        check_admin_referer( 'sp_newsletter_bulk' );
+        $vis = $_POST['bulk_visibility'] ?? '';
+        $ids = array_filter( array_map( 'absint', (array) ( $_POST['newsletter_ids'] ?? [] ) ) );
+        if ( ! in_array( $vis, [ 'public', 'members_only' ], true ) ) {
+            echo '<div class="notice notice-error"><p>' . esc_html__( 'Choose a visibility to apply.', 'societypress' ) . '</p></div>';
+        } elseif ( empty( $ids ) ) {
+            echo '<div class="notice notice-warning"><p>' . esc_html__( 'Select at least one newsletter first.', 'societypress' ) . '</p></div>';
+        } else {
+            foreach ( $ids as $id ) {
+                $wpdb->update( $prefix . 'newsletters', [ 'visibility' => $vis ], [ 'id' => $id ] );
+            }
+            $label = 'public' === $vis ? __( 'Public', 'societypress' ) : __( 'Members Only', 'societypress' );
+            echo '<div class="notice notice-success"><p>' . esc_html( sprintf(
+                /* translators: 1: number of newsletters, 2: visibility label */
+                _n( '%1$d newsletter set to %2$s.', '%1$d newsletters set to %2$s.', count( $ids ), 'societypress' ),
+                count( $ids ),
+                $label
+            ) ) . '</p></div>';
+        }
+    }
+
     // ========== SEARCH FILTER ==========
     $search = sanitize_text_field( $_GET['s'] ?? '' );
 
@@ -75545,6 +75571,9 @@ function sp_render_newsletter_archive_page(): void {
     <style>
         /* ---- Outer layout ---- */
         .sp-newsletter-archive-search-form   { margin: 16px 0; }
+        .sp-newsletter-archive-bulkbar       { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 12px 0; padding: 10px 12px; background: #f6f7f7; border: 1px solid #dcdcde; border-radius: 6px; }
+        .sp-newsletter-archive-bulkbar select { min-width: 160px; }
+        .sp-newsletter-archive-card-select   { display: block; margin-bottom: 8px; font-size: 13px; color: #50575e; }
         .sp-newsletter-archive-grid          { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px; }
 
         /* ---- Individual newsletter card ---- */
@@ -75606,6 +75635,23 @@ function sp_render_newsletter_archive_page(): void {
         <?php if ( empty( $newsletters ) ) : ?>
             <p><?php esc_html_e( 'No newsletters yet.', 'societypress' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-newsletter-edit' ) ); ?>"><?php esc_html_e( 'Upload your first newsletter', 'societypress' ); ?></a>.</p>
         <?php else : ?>
+            <!-- Bulk visibility toolbar. WHY the form= attribute on the card
+                 checkboxes below: each card already has its own delete form, so
+                 wrapping the grid in a second form would nest forms (invalid).
+                 Instead the checkboxes bind to this toolbar form by id. -->
+            <form method="post" id="sp-nl-bulk-form" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-newsletter-archive' ) ); ?>" class="sp-newsletter-archive-bulkbar">
+                <?php wp_nonce_field( 'sp_newsletter_bulk' ); ?>
+                <input type="hidden" name="action" value="bulk_visibility">
+                <label><input type="checkbox" id="sp-nl-select-all"> <?php esc_html_e( 'Select all', 'societypress' ); ?></label>
+                <label for="sp-nl-bulk-visibility"><?php esc_html_e( 'Set selected to:', 'societypress' ); ?></label>
+                <select id="sp-nl-bulk-visibility" name="bulk_visibility">
+                    <option value=""><?php esc_html_e( '— Choose —', 'societypress' ); ?></option>
+                    <option value="public"><?php esc_html_e( 'Public', 'societypress' ); ?></option>
+                    <option value="members_only"><?php esc_html_e( 'Members Only', 'societypress' ); ?></option>
+                </select>
+                <button type="submit" class="button"><?php esc_html_e( 'Apply', 'societypress' ); ?></button>
+            </form>
+
             <div class="sp-newsletter-archive-grid">
                 <?php foreach ( $newsletters as $nl ) :
                     // Cover thumbnail — use auto-generated cover, fall back to placeholder
@@ -75637,6 +75683,10 @@ function sp_render_newsletter_archive_page(): void {
                         </a>
                         <!-- Card body -->
                         <div class="sp-newsletter-archive-card-body">
+                            <label class="sp-newsletter-archive-card-select">
+                                <input type="checkbox" class="sp-nl-bulk-cb" name="newsletter_ids[]" value="<?php echo (int) $nl->id; ?>" form="sp-nl-bulk-form">
+                                <?php esc_html_e( 'Select', 'societypress' ); ?>
+                            </label>
                             <h4 class="sp-newsletter-archive-title">
                                 <a href="<?php echo esc_url( $edit_url ); ?>" class="sp-newsletter-archive-title-link">
                                     <?php echo esc_html( $nl->title ); ?>
@@ -75667,6 +75717,16 @@ function sp_render_newsletter_archive_page(): void {
                     </div>
                 <?php endforeach; ?>
             </div>
+            <script>
+            (function () {
+                var all = document.getElementById('sp-nl-select-all');
+                if (!all) return;
+                var boxes = document.querySelectorAll('.sp-nl-bulk-cb');
+                all.addEventListener('change', function () {
+                    boxes.forEach(function (b) { b.checked = all.checked; });
+                });
+            })();
+            </script>
         <?php endif; ?>
     </div>
     <?php

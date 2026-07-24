@@ -46776,6 +46776,19 @@ add_filter( 'template_include', function ( $template ) {
         if ( ! empty( $event_slug ) ) {
             sp_render_event_detail( $event_slug, $settings );
         } else {
+            // WHY output the page's own content first: this template replaces
+            // the page entirely, so anything typed into the editor was thrown
+            // away without a word — leaving nowhere to put the description or
+            // directions that belong above the events list. Mirrors the other
+            // SocietyPress page templates. Only on the listing: a single event
+            // detail has its own heading and would read oddly under the page
+            // intro. Pages with an empty editor are unchanged.
+            $sp_evt_page = get_post();
+            if ( $sp_evt_page && '' !== trim( (string) $sp_evt_page->post_content ) ) {
+                echo '<div class="sp-page-template-intro">'
+                   . apply_filters( 'the_content', $sp_evt_page->post_content )
+                   . '</div>';
+            }
             sp_render_events_listing( $settings );
         }
 

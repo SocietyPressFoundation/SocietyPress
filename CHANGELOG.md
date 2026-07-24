@@ -13,6 +13,71 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+**Dates and times displayed in the site's timezone instead of as entered**
+
+Event times, meeting dates, newsletter publication dates, membership
+expiration dates, document dates, and ballot voting windows are all stored
+as plain wall-clock values — 3:00 PM means 3:00 PM, with no timezone
+attached. Every screen that displayed them was converting them as though
+they were UTC, shifting each one by the site's offset.
+
+On a US Central site that meant:
+
+- A 3:00 PM–5:30 PM event listed as 10:00 AM–12:30 PM
+- Any date on the first of a month displayed as the previous month, and any
+  date in January displayed as the previous year — a newsletter published
+  2016-01-01 read "December 2015"
+- Membership expiration dates displayed a day early, including the
+  `{{expiration_date}}` token in renewal emails
+- Ballot edit screens reloaded the shifted time into their own fields, so
+  each re-save moved the voting window further back
+
+The stored data was correct throughout; only the display was wrong, so no
+repair of existing records is needed. Voting-window comparisons were already
+consistent and were not affected.
+
+**Buttons that appeared to do nothing**
+
+Any admin action whose confirmation dialog re-sent the form lost the button
+that triggered it, so the request arrived with no action and the page simply
+reloaded unchanged. This affected **Forms → Delete** and **Picture Wall →
+Reject**. Confirmation dialogs now also restore the browser validation that
+had been skipped.
+
+**Photo album imports silently stopped at 20 images**
+
+Selecting more than 20 images imported only the first 20, with no error and
+no indication anything was missing — PHP discards the surplus before the
+upload reaches the plugin. Images now upload in small batches with a
+progress bar and a per-image error list, so album size is limited only by
+available storage.
+
+**Page content ignored on SocietyPress page templates**
+
+Pages using the Research Help, Resources, Library Catalog, Records, Store,
+Cart, or Documents templates discarded anything typed into the page editor.
+A shortcode placed on such a page never rendered, and there was no way to
+add a line of explanation above the listing. Page content now appears above
+the module.
+
+**Other fixes**
+
+- The Newsletter Archive page-builder widget showed "No newsletters
+  published yet" on sites with a full archive; it was reading a location
+  newsletters are no longer stored in.
+- Reordering membership plans saved correctly but left the row in place, so
+  the change was invisible until the page was reloaded.
+- Blank lines added in the page builder's Rich Text block showed in the
+  editor but not on the published page.
+- Several buttons and time ranges displayed raw escape codes instead of an
+  ellipsis or dash.
+
+---
+
 ## [1.0.1] — 2026-06-27
 
 A large maintenance-and-feature release on top of the first public 1.0:

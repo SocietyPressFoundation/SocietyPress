@@ -13197,7 +13197,7 @@ function sp_render_dashboard_page(): void {
                                     : trim( $rs->first_name . ' ' . $rs->last_name );
                                 $edit_url     = admin_url( 'admin.php?page=sp-member-edit&user_id=' . $rs->user_id );
                                 $join_display = ( $rs->join_date && $rs->join_date !== '0000-00-00' )
-                                    ? wp_date( 'M j, Y', strtotime( $rs->join_date ) )
+                                    ? sp_format_wall_clock( $rs->join_date, 'M j, Y' )
                                     : '—';
                             ?>
                                 <tr>
@@ -34969,7 +34969,7 @@ function sp_render_directory( array $settings ): void {
                         <td class="sp-col-date" data-label="<?php echo esc_attr__( 'Member Since', 'societypress' ); ?>">
                             <?php
                             if ( $m->join_date && $m->join_date !== '0000-00-00' ) {
-                                echo esc_html( wp_date( get_option( 'date_format', 'F j, Y' ), strtotime( $m->join_date ) ) );
+                                echo esc_html( sp_format_wall_clock( $m->join_date, get_option( 'date_format', 'F j, Y' ) ) );
                             }
                             ?>
                         </td>
@@ -35669,7 +35669,7 @@ function sp_ajax_member_detail(): void {
 
     // Join date — society setting (no member-level toggle)
     if ( ! empty( $settings['dir_show_join_date'] ) && $member->join_date && $member->join_date !== '0000-00-00' ) {
-        $data['join_date'] = wp_date( get_option( 'date_format', 'F j, Y' ), strtotime( $member->join_date ) );
+        $data['join_date'] = sp_format_wall_clock( $member->join_date, get_option( 'date_format', 'F j, Y' ) );
     }
 
     // Interests and skills — always show if they have them (not sensitive data)
@@ -47797,10 +47797,11 @@ function sp_render_events_listing( array $settings ): void {
                     : add_query_arg( 'sp_event', $ev->slug, $base_url );
                 $link_target = $is_external ? ' target="_blank" rel="noopener"' : '';
 
-                $date_ts    = strtotime( $ev->event_date );
-                $day_num    = wp_date( 'j', $date_ts );
-                $day_name   = wp_date( 'D', $date_ts );
-                $month_name = wp_date( 'M', $date_ts );
+                // Wall-clock date — pin to UTC so a bare DATE never shifts a
+                // day backward in timezones west of UTC.
+                $day_num    = sp_format_wall_clock( $ev->event_date, 'j' );
+                $day_name   = sp_format_wall_clock( $ev->event_date, 'D' );
+                $month_name = sp_format_wall_clock( $ev->event_date, 'M' );
 
                 // Build time string
                 $time_str = '';
@@ -54725,8 +54726,11 @@ function sp_render_builder_widget_upcoming_events( array $s ): void {
         // ==================================================================
         echo '<div class="sp-ue-cards-grid">';
         foreach ( $events as $event ) {
-            $ts         = strtotime( $event->event_date );
-            $date_str   = wp_date( 'F j, Y', $ts );
+            // WHY sp_format_wall_clock(): event_date is a bare DATE with no
+            // timezone. A plain wp_date() interprets it as midnight UTC and
+            // renders it in the site timezone, shifting the day backward for
+            // any zone west of UTC (e.g. Oct 17 shows as Oct 16 in Central).
+            $date_str   = sp_format_wall_clock( $event->event_date, 'F j, Y' );
             $time_str   = '';
             if ( $show_time && $event->start_time ) {
                 $time_str = sp_format_wall_clock( $event->start_time, 'g:i A' );
@@ -54779,11 +54783,12 @@ function sp_render_builder_widget_upcoming_events( array $s ): void {
         echo '<ul class="sp-upcoming-events-list">';
 
         foreach ( $events as $event ) {
-            $ts        = strtotime( $event->event_date );
-            $month     = wp_date( 'M', $ts );
-            $day       = wp_date( 'j', $ts );
-            $weekday   = wp_date( 'D', $ts );
-            $full_date = wp_date( 'l, F j, Y', $ts );
+            // Wall-clock date — pin to UTC so the day never shifts (see note
+            // in the card layout above).
+            $month     = sp_format_wall_clock( $event->event_date, 'M' );
+            $day       = sp_format_wall_clock( $event->event_date, 'j' );
+            $weekday   = sp_format_wall_clock( $event->event_date, 'D' );
+            $full_date = sp_format_wall_clock( $event->event_date, 'l, F j, Y' );
 
             $is_external = ! empty( $event->external_url );
             $detail_url  = '';
@@ -64624,8 +64629,8 @@ class SP_Volunteers_List_Table extends WP_List_Table {
         switch ( $column_name ) {
             case 'role_title': return esc_html( $item->role_title ?: '—' );
             case 'committee':  return esc_html( $item->committee ?: '—' );
-            case 'start_date': return $item->start_date ? esc_html( wp_date( 'M j, Y', strtotime( $item->start_date ) ) ) : '—';
-            case 'end_date':   return $item->end_date ? esc_html( wp_date( 'M j, Y', strtotime( $item->end_date ) ) ) : esc_html__( 'Ongoing', 'societypress' );
+            case 'start_date': return $item->start_date ? esc_html( sp_format_wall_clock( $item->start_date, 'M j, Y' ) ) : '—';
+            case 'end_date':   return $item->end_date ? esc_html( sp_format_wall_clock( $item->end_date, 'M j, Y' ) ) : esc_html__( 'Ongoing', 'societypress' );
             case 'status':
                 $colors = [ 'active' => '#0a6b2e', 'inactive' => '#b32d2e' ];
                 $color = $colors[ $item->status ] ?? '#666';
@@ -64764,7 +64769,7 @@ class SP_VolunteerHours_List_Table extends WP_List_Table {
             case 'activity':      return esc_html( $item->activity ?: '—' );
             case 'committee':     return esc_html( $item->committee ?: '—' );
             case 'hours':         return esc_html( number_format( (float) $item->hours, 1 ) );
-            case 'activity_date': return $item->activity_date ? esc_html( wp_date( 'M j, Y', strtotime( $item->activity_date ) ) ) : '—';
+            case 'activity_date': return $item->activity_date ? esc_html( sp_format_wall_clock( $item->activity_date, 'M j, Y' ) ) : '—';
             default: return '';
         }
     }
@@ -67457,8 +67462,8 @@ function sp_render_leadership_page(): void {
                         <div class="sp-leadership-card-term">
                             <?php
                             // Show term dates — "Jan 1, 2025 – Dec 31, 2025" or "Jan 1, 2025 – Ongoing"
-                            $start = $o->start_date ? wp_date( 'M j, Y', strtotime( $o->start_date ) ) : '—';
-                            $end   = $o->end_date ? wp_date( 'M j, Y', strtotime( $o->end_date ) ) : __( 'Ongoing', 'societypress' );
+                            $start = $o->start_date ? sp_format_wall_clock( $o->start_date, 'M j, Y' ) : '—';
+                            $end   = $o->end_date ? sp_format_wall_clock( $o->end_date, 'M j, Y' ) : __( 'Ongoing', 'societypress' );
                             echo esc_html( $start . ' – ' . $end );
                             ?>
                         </div>
@@ -67670,8 +67675,8 @@ function sp_render_leadership_page(): void {
                             <tbody>
                                 <?php foreach ( $members_list as $cm ) :
                                     $cm_name  = esc_html( $cm->first_name . ' ' . $cm->last_name );
-                                    $cm_start = $cm->start_date ? wp_date( 'M j, Y', strtotime( $cm->start_date ) ) : '—';
-                                    $cm_end   = $cm->end_date ? wp_date( 'M j, Y', strtotime( $cm->end_date ) ) : __( 'Ongoing', 'societypress' );
+                                    $cm_start = $cm->start_date ? sp_format_wall_clock( $cm->start_date, 'M j, Y' ) : '—';
+                                    $cm_end   = $cm->end_date ? sp_format_wall_clock( $cm->end_date, 'M j, Y' ) : __( 'Ongoing', 'societypress' );
                                     $cm_edit  = admin_url( 'admin.php?page=sp-governance&action=edit&role_id=' . $cm->id );
                                 ?>
                                     <tr class="sp-committee-row">
@@ -72259,7 +72264,7 @@ function sp_replace_donation_merge_tags( string $content, object $donation ): st
         '{{donor_email}}'         => $donation->donor_email ?? '',
         '{{amount}}'              => $amount_display,
         '{{campaign}}'            => $campaign_display,
-        '{{donation_date}}'       => ! empty( $donation->date ) ? wp_date( 'F j, Y', strtotime( $donation->date ) ) : '',
+        '{{donation_date}}'       => ! empty( $donation->date ) ? sp_format_wall_clock( $donation->date, 'F j, Y' ) : '',
         '{{donation_type}}'       => sp_localized_status( $donation->type ?? '', 'payment_type' ),
         '{{in_kind_description}}' => $donation->in_kind_description ?? '',
         '{{organization_name}}'   => $org_name,

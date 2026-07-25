@@ -25405,6 +25405,104 @@ function sp_invalidate_stat_caches(): void {
 }
 
 /**
+ * Stream matching audit entries to the browser as a CSV.
+ *
+ * WHY download-then-delete rather than a separate export button: the moment
+ * anybody wants a copy is the moment they are about to destroy the original.
+ * Splitting it into two actions means the archive only exists when somebody
+ * remembers to take it first, which is exactly when they will not.
+ *
+ * Sends and exits — nothing may render after this.
+ *
+ * @param int  $older_than_days Entries older than this many days. 0 means
+ *                              everything before today.
+ * @param bool $then_delete     Delete the exported rows once written.
+ */
+function sp_audit_log_stream_csv( int $older_than_days, bool $then_delete = false ): void {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_audit_log';
+
+    // 0 means "everything before today", which is one day, not no limit.
+    $days = $older_than_days > 0 ? $older_than_days : 1;
+
+    $rows = $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT a.id, a.created_at, a.action, a.object_type, a.object_id,
+                    a.description, a.ip_address, a.user_id, u.display_name, u.user_login
+             FROM {$table} a
+             LEFT JOIN {$wpdb->users} u ON a.user_id = u.ID
+             WHERE a.created_at < DATE_SUB( NOW(), INTERVAL %d DAY )
+             ORDER BY a.created_at ASC",
+            $days
+        )
+    );
+
+    $filename = 'activity-log-' . wp_date( 'Y-m-d' ) . '.csv';
+
+    header( 'Content-Type: text/csv; charset=utf-8' );
+    header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+    nocache_headers();
+
+    $out = fopen( 'php://output', 'w' );
+
+    // Byte-order mark so Excel opens accented names correctly rather than as
+    // mojibake — genealogical societies have plenty of them.
+    fwrite( $out, "\xEF\xBB\xBF" );
+
+    fputcsv(
+        $out,
+        [
+            __( 'Date and time', 'societypress' ),
+            __( 'Who', 'societypress' ),
+            __( 'Username', 'societypress' ),
+            __( 'Action', 'societypress' ),
+            __( 'Description', 'societypress' ),
+            __( 'Type', 'societypress' ),
+            __( 'Item ID', 'societypress' ),
+            __( 'IP address', 'societypress' ),
+        ]
+    );
+
+    foreach ( $rows as $r ) {
+        fputcsv(
+            $out,
+            [
+                $r->created_at,
+                $r->display_name ?: ( $r->user_id ? sprintf( /* translators: %d: user ID */ __( 'User #%d', 'societypress' ), (int) $r->user_id ) : __( 'System', 'societypress' ) ),
+                $r->user_login ?: '',
+                $r->action,
+                $r->description ?: '',
+                $r->object_type ?: '',
+                $r->object_id ?: '',
+                $r->ip_address ?: '',
+            ]
+        );
+    }
+
+    fclose( $out );
+
+    // Delete only after the file is written, and only the exact rows that went
+    // into it — re-running the date query could catch entries created while the
+    // export was streaming, deleting rows the archive does not contain.
+    if ( $then_delete && $rows ) {
+        $ids          = array_map( static fn( $r ) => (int) $r->id, $rows );
+        $placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+
+        $wpdb->query(
+            $wpdb->prepare( "DELETE FROM {$table} WHERE id IN ({$placeholders})", ...$ids )
+        );
+
+        sp_audit(
+            'audit_log_archived',
+            sprintf( 'Downloaded and removed %d audit entries', count( $ids ) ),
+            'settings'
+        );
+    }
+
+    exit;
+}
+
+/**
  * How long audit entries are kept, in days.
  *
  * Defaults to a year, which is what this pruner used before the value was
@@ -25556,6 +25654,15 @@ function sp_render_audit_log_page(): void {
     // ---- Tidy up: delete old entries, and set how long new ones are kept ----
     $sp_audit_notice = '';
 
+    // Download actions run before anything renders — a CSV cannot follow HTML.
+    if ( isset( $_POST['sp_audit_download'] ) && check_admin_referer( 'sp_audit_tidy' ) ) {
+        sp_audit_log_stream_csv( (int) ( $_POST['sp_audit_older_than'] ?? 0 ), false );
+    }
+
+    if ( isset( $_POST['sp_audit_archive'] ) && check_admin_referer( 'sp_audit_tidy' ) ) {
+        sp_audit_log_stream_csv( (int) ( $_POST['sp_audit_older_than'] ?? 0 ), true );
+    }
+
     if ( isset( $_POST['sp_audit_tidy'] ) && check_admin_referer( 'sp_audit_tidy' ) ) {
         $older_than = (int) ( $_POST['sp_audit_older_than'] ?? 0 );
 
@@ -25631,8 +25738,13 @@ function sp_render_audit_log_page(): void {
                     <option value="365"><?php esc_html_e( '1 year', 'societypress' ); ?></option>
                     <option value="0"><?php esc_html_e( 'everything before today', 'societypress' ); ?></option>
                 </select>
-                <button type="submit" name="sp_audit_tidy" value="1" class="button"><?php esc_html_e( 'Delete them', 'societypress' ); ?></button>
+                <button type="submit" name="sp_audit_download" value="1" class="button"><?php esc_html_e( 'Download a copy', 'societypress' ); ?></button>
+                <button type="submit" name="sp_audit_archive" value="1" class="button button-primary"><?php esc_html_e( 'Download and delete', 'societypress' ); ?></button>
+                <button type="submit" name="sp_audit_tidy" value="1" class="button"><?php esc_html_e( 'Delete without a copy', 'societypress' ); ?></button>
             </form>
+            <p class="description sp-audit-tidy-hint">
+                <?php esc_html_e( 'Download and delete saves the entries to a spreadsheet file first, then removes them from the log. The full site backup under Settings includes the activity log too.', 'societypress' ); ?>
+            </p>
 
             <form method="post" class="sp-audit-tidy-form">
                 <?php wp_nonce_field( 'sp_audit_tidy' ); ?>
@@ -25661,16 +25773,39 @@ function sp_render_audit_log_page(): void {
             var form = document.getElementById('sp-audit-tidy-form');
             if (!form) { return; }
 
+            /* Remember which button was used: submitter is not on the event in
+               every browser, and the plain download must not be confirmed. */
+            var pressed = null;
+            form.addEventListener('click', function (e) {
+                var b = e.target.closest('button[type="submit"]');
+                if (b) { pressed = b.name; }
+            });
+
             form.addEventListener('submit', function (e) {
                 if (form.dataset.confirmed === '1') { return; }
+
+                var name = (e.submitter && e.submitter.name) || pressed;
+
+                /* Downloading a copy destroys nothing — no prompt. */
+                if (name === 'sp_audit_download') { return; }
+
                 e.preventDefault();
 
                 var sel   = document.getElementById('sp-audit-older-than');
                 var label = sel.options[sel.selectedIndex].textContent;
-                var msg   = <?php echo wp_json_encode( __( 'Permanently delete audit entries older than %s? This cannot be undone.', 'societypress' ) ); ?>.replace('%s', label);
+
+                var msg = (name === 'sp_audit_archive')
+                    ? <?php echo wp_json_encode( __( 'Save entries older than %s to a file, then remove them from the log?', 'societypress' ) ); ?>.replace('%s', label)
+                    : <?php echo wp_json_encode( __( 'Permanently delete entries older than %s with no copy kept? This cannot be undone.', 'societypress' ) ); ?>.replace('%s', label);
 
                 if (typeof spConfirm === 'function') {
-                    spConfirm(msg, function () { form.dataset.confirmed = '1'; form.submit(); });
+                    spConfirm(msg, function () {
+                        form.dataset.confirmed = '1';
+                        /* Re-press the same button so the server knows which
+                           action was chosen; a bare submit() sends neither. */
+                        var btn = form.querySelector('button[name="' + name + '"]');
+                        if (btn) { btn.click(); } else { form.submit(); }
+                    });
                 } else {
                     form.dataset.confirmed = '1';
                     form.submit();
@@ -25682,6 +25817,7 @@ function sp_render_audit_log_page(): void {
         <style>
             .sp-audit-tidy { background: #fff; border: 1px solid #c3c4c7; padding: 12px 16px; margin: 12px 0; }
             .sp-audit-tidy-count { margin: 0 0 10px; font-weight: 600; }
+            .sp-audit-tidy-hint { margin: 8px 0 0; }
             .sp-audit-tidy-form { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-right: 24px; }
             .sp-audit-filters { background: #fff; border: 1px solid #c3c4c7; padding: 12px; margin: 12px 0; display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
             .sp-audit-filters label { font-size: 12px; display: block; margin-bottom: 2px; color: #646970; }

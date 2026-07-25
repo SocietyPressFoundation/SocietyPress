@@ -17,6 +17,74 @@ Pre-1.0 development iterations are archived in
 
 ### Added
 
+**Folders for the media library**
+
+Images, PDFs and documents are now sorted into folders — Newsletters, Photo
+Galleries, Events, Documents and Site Design — instead of one long list.
+Files are filed automatically as they arrive: importing newsletters puts
+them in Newsletters, adding gallery photos puts them in Photo Galleries.
+You can create your own folders and move files between them at any time,
+and anything SocietyPress moves is never moved back out from under you.
+A folder filter appears both in the media library and in the file picker.
+Existing files are sorted on upgrade, so the folders are useful immediately
+rather than after somebody sorts thousands of files by hand.
+
+**Progress bars on every import**
+
+Newsletter, records and bulk records imports now upload in small batches
+with a progress bar, a running count, and a list naming any file that
+failed. Previously a large upload could stop partway with nothing on screen
+to say how far it got.
+
+**Uploading more files than the server allows now says so**
+
+Selecting more newsletters or CSVs than the server accepts in one go used to
+discard the extras silently — pick forty newsletters, get twenty, with no
+warning. The importers now upload in batches so there is no practical limit,
+and the older non-JavaScript path says plainly when files were not received.
+
+**Give someone access to only certain pages**
+
+Content access used to be all or nothing. Under **User Access**, someone with
+Content access can now be limited to specific pages: they see only those pages
+in their list and cannot open the others. Administrators are never limited.
+
+**List view for album photos**
+
+The album editor has a **Thumbnails / List by name** toggle, so an album of a
+hundred similar photographs can be scanned by filename instead of by sight.
+Captions, reordering and removal work the same in both views.
+
+**Sort a menu into alphabetical order**
+
+Appearance → Menus has a **Sort A→Z** button. Items nested under another item
+stay where they are and are sorted among themselves.
+
+**Samples and previews for store items**
+
+A store item can now link to a sample — a chapter PDF, a table of contents,
+or a page on the site — shown as a **See a sample** link on the store page,
+so a buyer can look before paying.
+
+**Tidying the audit log**
+
+The Audit Log screen now shows how many entries it holds, offers to delete
+entries older than a period you choose, and lets you set how long entries are
+kept from then on. Previously entries were kept for a year with no way to
+change it.
+
+**The shared notepad is open to everyone with backend access**
+
+The notepad is a handoff board — what was left half-done, what the next
+person needs to know — so it is now available to anyone who can edit content,
+not only to people holding a SocietyPress access area. Members cannot see it.
+
+**Hiding a document category**
+
+A document category can be hidden from visitors without deleting it. Its
+documents stay in place and it keeps working in the admin; it simply stops
+appearing on the website.
+
 **Draft review links**
 
 Any page can now be shared for review before it goes live. Save the page as
@@ -34,6 +102,25 @@ list of events, so you can add a welcome, meeting location, or directions —
 matching the other SocietyPress page templates.
 
 ### Fixed
+
+**Event categories could not be added, renamed or deleted**
+
+The Events → Categories screen looked complete but did nothing: adding a
+category, renaming one, changing its colour and deleting one all silently
+failed, on every site. Every society was limited to the categories created
+when SocietyPress was installed. All of it now works. Deleting a category
+leaves its events in place and simply uncategorises them.
+
+**Colouring a table's header row appeared to do nothing**
+
+Using Table → Row background color on a header row had no visible effect,
+because the header's own grey covered it. Body rows were unaffected, which
+made the feature look unreliable rather than broken.
+
+**Sorting the page list by title appeared to do nothing**
+
+The Pages list showed its Title column as already sorted A→Z when it was not,
+so the first click sorted Z→A and looked like nothing had happened.
 
 **Dates and times displayed in the site's timezone instead of as entered**
 

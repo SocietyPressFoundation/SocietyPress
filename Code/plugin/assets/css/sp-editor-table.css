@@ -23,3 +23,16 @@
 	background: #f0f0f1;
 	font-weight: 600;
 }
+
+/*
+ * A row given its own colour with Table → Row background color has to win over
+ * the default header grey.
+ *
+ * WHY this rule is needed at all: in CSS table painting, cell backgrounds sit
+ * ON TOP of row backgrounds. So a coloured header row was covered by the th
+ * grey and looked as though the colour picker had done nothing — on the header
+ * row, which is the first one anyone tries to colour.
+ */
+.sp-content-table tr[style*="background"] th {
+	background: transparent;
+}

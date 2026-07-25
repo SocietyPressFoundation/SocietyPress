@@ -2328,6 +2328,7 @@ function sp_create_tables(): void {
         show_updated TINYINT(1)          NOT NULL DEFAULT 0,
         list_sort    VARCHAR(20)         NOT NULL DEFAULT 'manual',
         sort_order   INT                 NOT NULL DEFAULT 0,
+        active       TINYINT(1)          NOT NULL DEFAULT 1,
         created_at   DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         UNIQUE KEY slug (slug)
@@ -4463,6 +4464,150 @@ add_filter( 'template_include', function ( $template ) {
  *
  * @return array Associative array of area_slug => area_info.
  */
+/**
+ * Which pages may this user edit?
+ *
+ * An empty array means "no restriction" — that is the state every existing
+ * user is in, so switching this feature on changes nothing until somebody
+ * deliberately narrows a volunteer down.
+ *
+ * @param int $user_id User to check.
+ * @return int[] Page IDs, or [] for unrestricted.
+ */
+function sp_get_user_page_access( int $user_id ): array {
+    $ids = get_user_meta( $user_id, 'sp_page_access', true );
+
+    if ( ! is_array( $ids ) || empty( $ids ) ) {
+        return [];
+    }
+
+    return array_values( array_filter( array_map( 'absint', $ids ) ) );
+}
+
+/**
+ * Is this user's page editing narrowed to a specific list?
+ *
+ * Administrators are never restricted. Page access exists to scope a
+ * delegated volunteer, and a society that locks its own administrator out of
+ * the home page has been handed a footgun, not a feature.
+ */
+function sp_user_has_page_restriction( int $user_id ): bool {
+    if ( user_can( $user_id, 'manage_options' ) ) {
+        return false;
+    }
+
+    return ! empty( sp_get_user_page_access( $user_id ) );
+}
+
+/**
+ * Enforce per-page editing rights.
+ *
+ * WHY map_meta_cap rather than a screen-level check: the page list, the editor,
+ * Quick Edit, bulk actions, the REST API and the trash all ask the same
+ * question through this filter. Answering it in one place means a volunteer
+ * cannot reach a page they were not given by going in a side door.
+ *
+ * @param string[] $caps    Required primitive capabilities.
+ * @param string   $cap     Capability being checked.
+ * @param int      $user_id User being checked.
+ * @param array    $args    Context; $args[0] is the post ID for post caps.
+ * @return string[]
+ */
+function sp_filter_page_access_caps( array $caps, string $cap, int $user_id, array $args ): array {
+    static $checking = false;
+
+    // user_can() below re-enters this filter; without the guard it recurses.
+    if ( $checking ) {
+        return $caps;
+    }
+
+    if ( ! in_array( $cap, [ 'edit_post', 'delete_post', 'publish_post' ], true ) ) {
+        return $caps;
+    }
+
+    $post_id = isset( $args[0] ) ? absint( $args[0] ) : 0;
+    if ( ! $post_id || 'page' !== get_post_type( $post_id ) ) {
+        return $caps;
+    }
+
+    $checking = true;
+    $limited  = sp_user_has_page_restriction( $user_id );
+    $checking = false;
+
+    if ( ! $limited ) {
+        return $caps;
+    }
+
+    if ( in_array( $post_id, sp_get_user_page_access( $user_id ), true ) ) {
+        return $caps;
+    }
+
+    // do_not_allow is WordPress's own way of saying no — it cannot be granted
+    // by any role, so nothing downstream can quietly undo this.
+    return [ 'do_not_allow' ];
+}
+add_filter( 'map_meta_cap', 'sp_filter_page_access_caps', 10, 4 );
+
+/**
+ * Show a restricted volunteer only the pages they can actually edit.
+ *
+ * Without this the list is full of rows that error the moment they are
+ * clicked, which reads as a broken site rather than a deliberate boundary.
+ *
+ * @param WP_Query $query Current query.
+ */
+function sp_filter_page_list_by_access( $query ): void {
+    if ( ! is_admin() || ! $query->is_main_query() ) {
+        return;
+    }
+
+    if ( 'page' !== $query->get( 'post_type' ) ) {
+        return;
+    }
+
+    $user_id = get_current_user_id();
+    if ( ! $user_id || ! sp_user_has_page_restriction( $user_id ) ) {
+        return;
+    }
+
+    $query->set( 'post__in', sp_get_user_page_access( $user_id ) );
+}
+add_action( 'pre_get_posts', 'sp_filter_page_list_by_access' );
+
+/**
+ * Tell a restricted volunteer why the list is short, rather than leaving them
+ * to wonder where the rest of the site went.
+ */
+function sp_page_access_notice(): void {
+    $screen = get_current_screen();
+    if ( ! $screen || 'edit-page' !== $screen->id ) {
+        return;
+    }
+
+    $user_id = get_current_user_id();
+    if ( ! sp_user_has_page_restriction( $user_id ) ) {
+        return;
+    }
+
+    $count = count( sp_get_user_page_access( $user_id ) );
+
+    echo '<div class="notice notice-info"><p>';
+    printf(
+        esc_html(
+            /* translators: %d: number of pages the user may edit */
+            _n(
+                'You have been given editing access to %d page. Other pages on the site are not shown here.',
+                'You have been given editing access to %d pages. Other pages on the site are not shown here.',
+                $count,
+                'societypress'
+            )
+        ),
+        (int) $count
+    );
+    echo '</p></div>';
+}
+add_action( 'admin_notices', 'sp_page_access_notice' );
+
 function sp_get_access_areas(): array {
     return [
         'members' => [
@@ -4656,6 +4801,38 @@ function sp_user_can_access_admin(): bool {
 
     return sp_user_is_chair();
 }
+
+/**
+ * May this user read and post to the shared notepad?
+ *
+ * Deliberately looser than sp_user_can_access_admin(). The notepad is a
+ * handoff board — "the caterer wants numbers by Friday", "I stopped halfway
+ * through the cemetery upload" — and it only works if everyone who touches the
+ * site can see it. Requiring a SocietyPress access area left out volunteers
+ * given a plain WordPress role, who are exactly the people leaving work
+ * half-finished for somebody else to pick up.
+ *
+ * The line is edit_posts rather than read. Members are Subscribers, and
+ * Subscribers can reach wp-admin for their profile page; opening an internal
+ * staff board to the whole membership would be a privacy leak, not a feature.
+ */
+function sp_user_can_use_notepad(): bool {
+    return sp_user_can_access_admin() || current_user_can( 'edit_posts' );
+}
+
+/**
+ * Expose the notepad rule as a capability.
+ *
+ * add_submenu_page() and add_menu_page() take a capability string, not a
+ * callback, so the rule has to exist as a cap for the menu to honour it.
+ */
+add_filter( 'user_has_cap', function ( array $allcaps ): array {
+    if ( ! empty( $allcaps['manage_options'] ) || ! empty( $allcaps['sp_access_admin'] ) || ! empty( $allcaps['edit_posts'] ) ) {
+        $allcaps['sp_use_notepad'] = true;
+    }
+
+    return $allcaps;
+}, 12, 1 );
 
 /**
  * IDs of every active committee the given user chairs.
@@ -5063,19 +5240,36 @@ add_action( 'admin_menu', function () {
 
     // -----------------------------------------------------------------
     // NOTEPAD — shared admin notes / to-do handoff board
-    // WHY sp_access_admin (not manage_options): the notepad is a handoff
+    // WHY sp_use_notepad (not sp_access_admin): the notepad is a handoff
     //      tool for everyone who helps run the site — Treasurer, Librarian,
-    //      committee chairs — so every backend user who can see the
-    //      SocietyPress menu can read it and post to it.
+    //      committee chairs, and volunteers holding nothing but a plain
+    //      WordPress role. See sp_user_can_use_notepad() for where the line
+    //      sits and why it stops short of members.
     // -----------------------------------------------------------------
     add_submenu_page(
         'societypress',
         __( 'Notepad — SocietyPress', 'societypress' ),
         __( 'Notepad', 'societypress' ),
-        'sp_access_admin',
+        'sp_use_notepad',
         'sp-notepad',
         'sp_render_notepad_page'
     );
+
+    // A volunteer with no SocietyPress access area never sees the
+    // SocietyPress menu, so the submenu above is invisible to them however
+    // the capability reads. Give that person the notepad on its own rather
+    // than exposing a whole menu of screens they cannot open.
+    if ( current_user_can( 'sp_use_notepad' ) && ! current_user_can( 'sp_access_admin' ) ) {
+        add_menu_page(
+            __( 'Notepad — SocietyPress', 'societypress' ),
+            __( 'Notepad', 'societypress' ),
+            'sp_use_notepad',
+            'sp-notepad',
+            'sp_render_notepad_page',
+            'dashicons-clipboard',
+            26
+        );
+    }
 
     // -----------------------------------------------------------------
     // MENU LAYOUT — drag-and-drop editor for the sidebar itself
@@ -26671,7 +26865,7 @@ function sp_notepad_note_card( $note ): string {
  * Render the Notepad admin page.
  */
 function sp_render_notepad_page(): void {
-    if ( ! sp_user_can_access_admin() ) {
+    if ( ! sp_user_can_use_notepad() ) {
         wp_die( esc_html__( 'You do not have permission to view this page.', 'societypress' ) );
     }
 
@@ -26951,7 +27145,7 @@ function sp_render_notepad_page(): void {
  */
 add_action( 'wp_ajax_sp_notepad_save', function () {
     check_ajax_referer( 'sp_notepad_nonce', 'nonce' );
-    if ( ! sp_user_can_access_admin() ) {
+    if ( ! sp_user_can_use_notepad() ) {
         wp_send_json_error( [ 'message' => __( 'You do not have permission to do that.', 'societypress' ) ] );
     }
 
@@ -27003,7 +27197,7 @@ add_action( 'wp_ajax_sp_notepad_save', function () {
  */
 add_action( 'wp_ajax_sp_notepad_get', function () {
     check_ajax_referer( 'sp_notepad_nonce', 'nonce' );
-    if ( ! sp_user_can_access_admin() ) {
+    if ( ! sp_user_can_use_notepad() ) {
         wp_send_json_error( [ 'message' => __( 'You do not have permission to do that.', 'societypress' ) ] );
     }
 
@@ -27030,7 +27224,7 @@ add_action( 'wp_ajax_sp_notepad_get', function () {
  */
 add_action( 'wp_ajax_sp_notepad_delete', function () {
     check_ajax_referer( 'sp_notepad_nonce', 'nonce' );
-    if ( ! sp_user_can_access_admin() ) {
+    if ( ! sp_user_can_use_notepad() ) {
         wp_send_json_error( [ 'message' => __( 'You do not have permission to do that.', 'societypress' ) ] );
     }
 
@@ -27047,7 +27241,7 @@ add_action( 'wp_ajax_sp_notepad_delete', function () {
  */
 add_action( 'wp_ajax_sp_notepad_toggle', function () {
     check_ajax_referer( 'sp_notepad_nonce', 'nonce' );
-    if ( ! sp_user_can_access_admin() ) {
+    if ( ! sp_user_can_use_notepad() ) {
         wp_send_json_error( [ 'message' => __( 'You do not have permission to do that.', 'societypress' ) ] );
     }
 
@@ -27123,9 +27317,16 @@ class SP_Pages_List_Table extends WP_List_Table {
      * Which columns can be clicked to sort the list.
      */
     public function get_sortable_columns(): array {
+        // The second element marks which column the list is CURRENTLY sorted
+        // by, not a default to apply. Claiming title here while prepare_items()
+        // actually orders by menu_order made the Title header render as though
+        // it were already sorted A→Z — so the first click appeared to do
+        // nothing, because it flipped to descending instead.
+        $orderby = sanitize_key( $_GET['orderby'] ?? 'menu_order' ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
         return [
-            'title' => [ 'post_title', true ],   // Default sort: title A→Z
-            'date'  => [ 'post_date', false ],
+            'title' => [ 'post_title', 'post_title' === $orderby ],
+            'date'  => [ 'post_date', 'post_date' === $orderby ],
         ];
     }
 
@@ -33790,9 +33991,32 @@ function sp_render_user_access_page(): void {
                     // No areas selected — remove all SP access
                     delete_user_meta( $target_user_id, 'sp_access_areas' );
                     delete_user_meta( $target_user_id, 'sp_role_template' );
+                    delete_user_meta( $target_user_id, 'sp_page_access' );
                 } else {
                     update_user_meta( $target_user_id, 'sp_access_areas', $granted );
                     update_user_meta( $target_user_id, 'sp_role_template', $role_template );
+
+                    // Page scope only means anything alongside Content access,
+                    // and only when "only these pages" is actually chosen.
+                    // Anything else clears it back to unrestricted, so the
+                    // setting can never linger invisibly after Content is
+                    // revoked and later granted again.
+                    $scope = sanitize_key( $_POST['sp_page_scope'] ?? 'all' );
+
+                    if ( in_array( 'content', $granted, true ) && 'selected' === $scope ) {
+                        $page_ids = array_values( array_filter( array_map( 'absint', (array) ( $_POST['sp_page_access'] ?? [] ) ) ) );
+
+                        if ( $page_ids ) {
+                            update_user_meta( $target_user_id, 'sp_page_access', $page_ids );
+                        } else {
+                            // "Only these pages" with nothing ticked would lock
+                            // the volunteer out of every page. Treat it as
+                            // unrestricted rather than as a silent lockout.
+                            delete_user_meta( $target_user_id, 'sp_page_access' );
+                        }
+                    } else {
+                        delete_user_meta( $target_user_id, 'sp_page_access' );
+                    }
                 }
 
                 sp_audit(
@@ -33890,6 +34114,27 @@ function sp_render_user_access_page(): void {
         .sp-access-areas-legend {
             font-weight: 600;
             padding: 0 8px;
+        }
+        /* Page scope picker. Capped and scrollable because a mature society
+           site runs to dozens of pages and this sits mid-form. */
+        .sp-page-scope-fieldset {
+            margin-top: 16px;
+        }
+        .sp-page-scope-list {
+            max-height: 260px;
+            overflow-y: auto;
+            margin-top: 10px;
+            padding: 10px 12px;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            background: #fbfbfb;
+        }
+        .sp-page-scope-item {
+            display: block;
+            padding: 3px 0;
+        }
+        .sp-page-scope-item input {
+            margin-right: 8px;
         }
         /* Each checkbox row — flex so icon, checkbox, and description stay aligned */
         .sp-access-area-label {
@@ -34011,6 +34256,46 @@ function sp_render_user_access_page(): void {
                         <?php endforeach; ?>
                     </fieldset>
 
+                    <?php
+                    // Page scope. Shown only when Content access is ticked —
+                    // there is nothing to scope otherwise.
+                    $user_pages   = sp_get_user_page_access( $editing_user->ID );
+                    $has_content  = in_array( 'content', $user_areas, true );
+                    $all_pages    = get_pages( [ 'sort_column' => 'menu_order,post_title', 'post_status' => 'publish,draft' ] );
+                    ?>
+                    <fieldset class="sp-access-areas-fieldset sp-page-scope-fieldset" id="sp-page-scope" <?php echo $has_content ? '' : 'hidden'; ?>>
+                        <legend class="sp-access-areas-legend"><?php esc_html_e( 'Which pages?', 'societypress' ); ?></legend>
+                        <p class="sp-access-area-desc">
+                            <?php esc_html_e( 'Content access normally covers every page on the site. Narrow it here if this person should only work on some of them.', 'societypress' ); ?>
+                        </p>
+
+                        <label class="sp-access-area-label">
+                            <input type="radio" name="sp_page_scope" value="all" class="sp-page-scope-radio" <?php checked( empty( $user_pages ) ); ?>>
+                            <span><strong><?php esc_html_e( 'Every page', 'societypress' ); ?></strong></span>
+                        </label>
+                        <label class="sp-access-area-label">
+                            <input type="radio" name="sp_page_scope" value="selected" class="sp-page-scope-radio" <?php checked( ! empty( $user_pages ) ); ?>>
+                            <span><strong><?php esc_html_e( 'Only the pages I tick below', 'societypress' ); ?></strong></span>
+                        </label>
+
+                        <div id="sp-page-scope-list" class="sp-page-scope-list" <?php echo empty( $user_pages ) ? 'hidden' : ''; ?>>
+                            <?php if ( empty( $all_pages ) ) : ?>
+                                <p class="sp-access-area-desc"><?php esc_html_e( 'There are no pages on the site yet.', 'societypress' ); ?></p>
+                            <?php else : ?>
+                                <?php foreach ( $all_pages as $pg ) : ?>
+                                    <label class="sp-page-scope-item">
+                                        <input type="checkbox" name="sp_page_access[]" value="<?php echo (int) $pg->ID; ?>"
+                                               <?php checked( in_array( (int) $pg->ID, $user_pages, true ) ); ?>>
+                                        <?php echo esc_html( $pg->post_title ? $pg->post_title : __( '(no title)', 'societypress' ) ); ?>
+                                        <?php if ( 'draft' === $pg->post_status ) : ?>
+                                            <em class="sp-access-area-desc"><?php esc_html_e( '— draft', 'societypress' ); ?></em>
+                                        <?php endif; ?>
+                                    </label>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </div>
+                    </fieldset>
+
                     <p class="sp-access-form-actions">
                         <?php submit_button( __( 'Save Access', 'societypress' ), 'primary', 'submit', false ); ?>
                         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-user-access' ) ); ?>" class="button sp-access-cancel-btn">
@@ -34020,19 +34305,49 @@ function sp_render_user_access_page(): void {
                 </form>
             </div>
 
-            <!-- JS: Role template auto-fills checkboxes -->
+            <!-- JS: Role template auto-fills checkboxes; Content reveals page scope -->
             <script>
             (function() {
                 'use strict';
-                var select = document.getElementById('sp-role-template');
-                if (!select) return;
-                select.addEventListener('change', function() {
-                    var opt   = this.options[this.selectedIndex];
-                    var areas = JSON.parse(opt.getAttribute('data-areas') || '[]');
-                    document.querySelectorAll('.sp-area-checkbox').forEach(function(cb) {
-                        cb.checked = areas.indexOf(cb.getAttribute('data-area')) !== -1;
-                    });
+
+                var scopeBox  = document.getElementById('sp-page-scope');
+                var scopeList = document.getElementById('sp-page-scope-list');
+
+                /* The page picker is meaningless without Content access, so it
+                   follows that checkbox rather than sitting there inert. */
+                function syncScopeVisibility() {
+                    if (!scopeBox) return;
+                    var content = document.querySelector('.sp-area-checkbox[data-area="content"]');
+                    scopeBox.hidden = !(content && content.checked);
+                }
+
+                function syncScopeList() {
+                    if (!scopeList) return;
+                    var selected = document.querySelector('.sp-page-scope-radio[value="selected"]');
+                    scopeList.hidden = !(selected && selected.checked);
+                }
+
+                document.querySelectorAll('.sp-area-checkbox').forEach(function(cb) {
+                    cb.addEventListener('change', syncScopeVisibility);
                 });
+                document.querySelectorAll('.sp-page-scope-radio').forEach(function(r) {
+                    r.addEventListener('change', syncScopeList);
+                });
+
+                var select = document.getElementById('sp-role-template');
+                if (select) {
+                    select.addEventListener('change', function() {
+                        var opt   = this.options[this.selectedIndex];
+                        var areas = JSON.parse(opt.getAttribute('data-areas') || '[]');
+                        document.querySelectorAll('.sp-area-checkbox').forEach(function(cb) {
+                            cb.checked = areas.indexOf(cb.getAttribute('data-area')) !== -1;
+                        });
+                        syncScopeVisibility();
+                    });
+                }
+
+                syncScopeVisibility();
+                syncScopeList();
             })();
             </script>
         <?php endif; ?>
@@ -44340,6 +44655,129 @@ function sp_render_event_categories_page(): void {
     })();
     </script>
     <?php
+}
+
+// ----------------------------------------------------------------------------
+// EVENT CATEGORY WRITE HANDLERS
+//
+// The categories screen is driven entirely by fetch() calls to these two
+// actions. Neither was ever registered, so admin-ajax answered "0" and the
+// screen silently did nothing — no add, no rename, no colour change, no
+// delete. The only categories on any site were the ones seeded at install.
+// ----------------------------------------------------------------------------
+
+/**
+ * Create or update one event category.
+ */
+add_action( 'wp_ajax_sp_save_event_category', 'sp_ajax_save_event_category' );
+function sp_ajax_save_event_category(): void {
+    check_ajax_referer( 'sp_event_category_nonce', 'nonce' );
+
+    if ( ! current_user_can( 'sp_manage_events' ) ) {
+        wp_send_json_error( [ 'message' => __( 'You do not have permission to manage event categories.', 'societypress' ) ] );
+    }
+
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_event_categories';
+
+    $name = sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) );
+    if ( '' === $name ) {
+        wp_send_json_error( [ 'message' => __( 'Category name is required.', 'societypress' ) ] );
+    }
+
+    $color = sanitize_hex_color( wp_unslash( $_POST['color'] ?? '' ) ) ?: '#2271b1';
+    $sort  = absint( $_POST['sort_order'] ?? 0 );
+    $id    = absint( $_POST['category_id'] ?? 0 );
+
+    if ( $id ) {
+        // Slug deliberately left alone on rename: it appears in filter links
+        // people bookmark and share, and a tidier slug is not worth breaking
+        // them.
+        $updated = $wpdb->update(
+            $table,
+            [
+                'name'       => $name,
+                'color'      => $color,
+                'sort_order' => $sort,
+                'active'     => empty( $_POST['active'] ) ? 0 : 1,
+            ],
+            [ 'id' => $id ],
+            [ '%s', '%s', '%d', '%d' ],
+            [ '%d' ]
+        );
+
+        if ( false === $updated ) {
+            wp_send_json_error( [ 'message' => __( 'That category could not be saved.', 'societypress' ) ] );
+        }
+
+        wp_send_json_success( [ 'category_id' => $id ] );
+    }
+
+    // New category — build a slug that does not collide with an existing one.
+    $base = sanitize_title( $name ) ?: 'category';
+    $slug = $base;
+    $n    = 2;
+    while ( $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$table} WHERE slug = %s", $slug ) ) ) {
+        $slug = $base . '-' . $n;
+        $n++;
+    }
+
+    $inserted = $wpdb->insert(
+        $table,
+        [
+            'name'       => $name,
+            'slug'       => $slug,
+            'color'      => $color,
+            'sort_order' => $sort,
+            'active'     => 1,
+        ],
+        [ '%s', '%s', '%s', '%d', '%d' ]
+    );
+
+    if ( ! $inserted ) {
+        wp_send_json_error( [ 'message' => __( 'That category could not be saved.', 'societypress' ) ] );
+    }
+
+    wp_send_json_success( [ 'category_id' => (int) $wpdb->insert_id ] );
+}
+
+/**
+ * Delete one event category.
+ *
+ * Events keep their own records — their category_id is cleared rather than the
+ * events being removed with it. Losing a year of programme history because
+ * somebody tidied up a category list would be indefensible.
+ */
+add_action( 'wp_ajax_sp_delete_event_category', 'sp_ajax_delete_event_category' );
+function sp_ajax_delete_event_category(): void {
+    check_ajax_referer( 'sp_event_category_nonce', 'nonce' );
+
+    if ( ! current_user_can( 'sp_manage_events' ) ) {
+        wp_send_json_error( [ 'message' => __( 'You do not have permission to manage event categories.', 'societypress' ) ] );
+    }
+
+    global $wpdb;
+
+    $id = absint( $_POST['category_id'] ?? 0 );
+    if ( ! $id ) {
+        wp_send_json_error( [ 'message' => __( 'That category could not be found.', 'societypress' ) ] );
+    }
+
+    $wpdb->update(
+        $wpdb->prefix . 'sp_events',
+        [ 'category_id' => null ],
+        [ 'category_id' => $id ],
+        [ '%s' ],
+        [ '%d' ]
+    );
+
+    $deleted = $wpdb->delete( $wpdb->prefix . 'sp_event_categories', [ 'id' => $id ], [ '%d' ] );
+
+    if ( ! $deleted ) {
+        wp_send_json_error( [ 'message' => __( 'That category could not be deleted.', 'societypress' ) ] );
+    }
+
+    wp_send_json_success( [ 'category_id' => $id ] );
 }
 
 function sp_render_member_tiers_page(): void {
@@ -59937,6 +60375,25 @@ function sp_render_album_edit_page(): void {
     .sp-album-edit-photo-img     { width: 120px; height: 120px; object-fit: cover; border-radius: 6px; }
     .sp-album-edit-caption-input { width: 120px; font-size: 0.75rem; margin-top: 4px; padding: 2px 4px; border: 1px solid #ccc; border-radius: 3px; }
     .sp-album-edit-remove-btn    { position: absolute; top: -6px; right: -6px; background: #b32d2e; color: #fff; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; font-size: 14px; line-height: 18px; }
+
+    /* The filename only earns its space in list view; in thumbnail view it
+       would push the tiles apart for no gain. */
+    .sp-album-photo-name         { display: none; }
+
+    .sp-album-view-toggle        { margin-bottom: 8px; }
+    .sp-album-view-btn[aria-pressed="true"] { background: #2271b1; border-color: #2271b1; color: #fff; }
+
+    /* List view restyles the same tiles rather than rendering a second copy,
+       so drag-to-reorder, captions and remove all keep working untouched. */
+    .sp-album-edit-photos-grid.sp-view-list                            { display: block; padding: 0; background: #fff; border-style: solid; border-color: #c3c4c7; }
+    .sp-album-edit-photos-grid.sp-view-list .sp-album-edit-photo-tile  { display: flex; align-items: center; gap: 12px; width: auto; padding: 6px 30px 6px 10px; border-bottom: 1px solid #f0f0f1; }
+    .sp-album-edit-photos-grid.sp-view-list .sp-album-edit-photo-tile:last-child { border-bottom: 0; }
+    .sp-album-edit-photos-grid.sp-view-list .sp-album-edit-photo-tile:nth-child(odd) { background: #f6f7f7; }
+    .sp-album-edit-photos-grid.sp-view-list .sp-album-edit-photo-img   { width: 40px; height: 40px; flex: 0 0 40px; }
+    .sp-album-edit-photos-grid.sp-view-list .sp-album-photo-name       { display: block; flex: 1 1 40%; font-family: monospace; font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sp-album-edit-photos-grid.sp-view-list .sp-album-edit-caption-input { width: auto; flex: 1 1 40%; margin-top: 0; font-size: 0.85rem; padding: 4px 6px; }
+    .sp-album-edit-photos-grid.sp-view-list .sp-album-edit-remove-btn  { position: absolute; top: 50%; right: 8px; transform: translateY(-50%); }
+    .sp-album-edit-photos-grid.sp-view-list .sp-album-edit-photo-tile  { position: relative; }
     </style>
     <div class="wrap">
         <h1><?php echo $album ? esc_html__( 'Edit Album', 'societypress' ) : esc_html__( 'Add New Album', 'societypress' ); ?></h1>
@@ -59987,13 +60444,25 @@ function sp_render_album_edit_page(): void {
             <h3><?php esc_html_e( 'Photos', 'societypress' ); ?></h3>
             <input type="hidden" name="photo_ids" id="photo_ids" value="<?php echo esc_attr( implode( ',', array_column( $photos, 'attachment_id' ) ) ); ?>">
 
+            <div class="sp-album-view-toggle">
+                <button type="button" class="button sp-album-view-btn" data-view="grid" aria-pressed="true"><?php esc_html_e( 'Thumbnails', 'societypress' ); ?></button>
+                <button type="button" class="button sp-album-view-btn" data-view="list" aria-pressed="false"><?php esc_html_e( 'List by name', 'societypress' ); ?></button>
+            </div>
+
             <div id="album-photos" class="sp-album-edit-photos-grid">
                 <?php foreach ( $photos as $photo ) :
                     $thumb = wp_get_attachment_image_url( $photo->attachment_id, 'thumbnail' );
                     if ( ! $thumb ) continue;
+
+                    // The filename is what a volunteer scans for when an album
+                    // holds hundreds of photos and every thumbnail looks alike.
+                    // Fall back to the media title when the file is gone.
+                    $photo_path = get_attached_file( $photo->attachment_id );
+                    $photo_name = $photo_path ? basename( $photo_path ) : get_the_title( $photo->attachment_id );
                 ?>
                     <div class="sp-album-photo sp-album-edit-photo-tile" data-id="<?php echo $photo->attachment_id; ?>" draggable="true">
                         <img src="<?php echo esc_url( $thumb ); ?>" class="sp-album-edit-photo-img">
+                        <span class="sp-album-photo-name" title="<?php echo esc_attr( $photo_name ); ?>"><?php echo esc_html( $photo_name ); ?></span>
                         <input type="text" name="photo_captions[<?php echo $photo->attachment_id; ?>]" value="<?php echo esc_attr( $photo->caption ); ?>" placeholder="<?php echo esc_attr__( 'Caption', 'societypress' ); ?>" class="sp-album-edit-caption-input">
                         <button type="button" class="sp-remove-photo sp-album-edit-remove-btn" data-id="<?php echo $photo->attachment_id; ?>" aria-label="<?php esc_attr_e( 'Remove photo', 'societypress' ); ?>">&times;</button>
                     </div>
@@ -60071,8 +60540,13 @@ function sp_render_album_edit_page(): void {
                             return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
                                 .replace(/</g, '&lt;').replace(/>/g, '&gt;');
                         };
+                        /* Newly added tiles carry the filename too, so switching
+                           to list view straight after adding photos does not
+                           show a run of blank names. */
+                        var fname = att.filename || att.title || '';
                         var html = '<div class="sp-album-photo sp-album-edit-photo-tile" data-id="' + att.id + '" draggable="true">'
                             + '<img src="' + thumb + '" class="sp-album-edit-photo-img">'
+                            + '<span class="sp-album-photo-name" title="' + esc(fname) + '">' + esc(fname) + '</span>'
                             + '<input type="text" name="photo_captions[' + att.id + ']" value="' + esc(seed) + '" placeholder="<?php echo esc_js( __( 'Caption', 'societypress' ) ); ?>" class="sp-album-edit-caption-input">'
                             + '<button type="button" class="sp-remove-photo sp-album-edit-remove-btn" data-id="' + att.id + '" aria-label="<?php echo esc_js( __( 'Remove photo', 'societypress' ) ); ?>">&times;</button>'
                             + '</div>';
@@ -60083,6 +60557,37 @@ function sp_render_album_edit_page(): void {
                 frame.open();
             });
         }
+
+        // Thumbnails / list toggle.
+        // WHY localStorage rather than user meta: this is a per-person viewing
+        // habit, not society data. Storing it in the browser keeps the choice
+        // sticky without adding a save endpoint or a database write.
+        (function () {
+            var buttons = document.querySelectorAll('.sp-album-view-btn');
+            if (!buttons.length || !albumPhotos) return;
+
+            var KEY = 'spAlbumPhotoView';
+
+            function apply(view) {
+                albumPhotos.classList.toggle('sp-view-list', view === 'list');
+                Array.prototype.forEach.call(buttons, function (b) {
+                    b.setAttribute('aria-pressed', b.dataset.view === view ? 'true' : 'false');
+                });
+            }
+
+            var saved = '';
+            try { saved = window.localStorage.getItem(KEY) || ''; } catch (e) { saved = ''; }
+            apply(saved === 'list' ? 'list' : 'grid');
+
+            Array.prototype.forEach.call(buttons, function (b) {
+                b.addEventListener('click', function () {
+                    apply(b.dataset.view);
+                    /* Private browsing throws on write — the toggle still works
+                       for this visit, it just will not be remembered. */
+                    try { window.localStorage.setItem(KEY, b.dataset.view); } catch (e) {}
+                });
+            });
+        })();
 
         // Remove photo — uses event delegation on document for dynamically added elements
         document.addEventListener('click', function(e) {
@@ -78679,9 +79184,7 @@ function sp_render_record_import_page(): void {
                     fclose( $temp_handle );
 
                     // Import using existing processor
-                    $results = sp_process_record_import( $temp_file, $new_collection_id, $import_map );
-
-                    // Show results — look up the human-readable label for the GENRECORD type code
+                    // Look up the human-readable label for the GENRECORD type code
                     $gr_type_label = $gr_type;
                     foreach ( sp_genrecord_type_labels() as $group_labels ) {
                         if ( isset( $group_labels[ $gr_type ] ) ) {
@@ -78689,46 +79192,34 @@ function sp_render_record_import_page(): void {
                             break;
                         }
                     }
-                    echo '<div class="notice notice-success"><p>';
-                    printf(
-                        /* translators: 1: collection name, 2: GENRECORD type, 3: field count, 4: imported count, 5: duplicate count */
-                        esc_html__( 'GENRECORD import complete. Created collection "%1$s" (type: %2$s) with %3$d fields. Imported %4$d records, %5$d duplicates skipped.', 'societypress' ),
+
+                    $gr_intro = sprintf(
+                        /* translators: 1: collection name, 2: GENRECORD type, 3: number of fields */
+                        esc_html__( 'GENRECORD import: created collection "%1$s" (type: %2$s) with %3$d fields.', 'societypress' ),
                         esc_html( $col_name ),
                         esc_html( $gr_type_label ),
-                        count( $import_map ),
-                        $results['imported'],
-                        $results['duplicates'] ?? 0
+                        count( $import_map )
                     );
-                    echo '</p></div>';
 
+                    // Attribution belongs with the result, not in a separate
+                    // notice that outlives the import it describes.
                     if ( ! empty( $header['society'] ) ) {
-                        echo '<div class="notice notice-info"><p>';
-                        printf(
+                        $gr_intro .= '<br>' . sprintf(
                             /* translators: %s: source society name */
                             esc_html__( 'Source: %s', 'societypress' ),
                             esc_html( $source_info )
                         );
-                        echo '</p></div>';
                     }
 
-                    if ( $results['skipped'] > 0 ) {
-                        echo '<div class="notice notice-warning"><p>';
-                        printf( esc_html__( '%d rows skipped (empty).', 'societypress' ), $results['skipped'] );
-                        echo '</p></div>';
-                    }
-
-                    if ( $results['errors'] ) {
-                        echo '<div class="notice notice-warning"><p><strong>' . esc_html__( 'Errors:', 'societypress' ) . '</strong><br>';
-                        foreach ( array_slice( $results['errors'], 0, 10 ) as $err ) {
-                            echo esc_html( $err ) . '<br>';
-                        }
-                        if ( count( $results['errors'] ) > 10 ) {
-                            printf( '<br>' . esc_html__( '...and %d more.', 'societypress' ), count( $results['errors'] ) - 10 );
-                        }
-                        echo '</p></div>';
-                    }
-
-                    wp_delete_file( $temp_file );
+                    sp_render_record_import_progress(
+                        $temp_file,
+                        $new_collection_id,
+                        $import_map,
+                        $gr_intro,
+                        [
+                            admin_url( 'admin.php?page=sp-record-browse&collection_id=' . (int) $new_collection_id ) => __( 'Browse records', 'societypress' ),
+                        ]
+                    );
                     } // end temp_handle success
                 }
             }
@@ -78941,37 +79432,22 @@ function sp_render_record_import_page(): void {
                     }
 
                     // Import the records using the existing processor
-                    $results = sp_process_record_import( $temp_file, $new_collection_id, $import_map );
-
-                    // Show results
-                    echo '<div class="notice notice-success"><p>';
-                    printf(
-                        /* translators: 1: collection name, 2: field count, 3: record count */
-                        esc_html__( 'Created collection "%1$s" with %2$d fields. Imported %3$d records.', 'societypress' ),
-                        esc_html( $col_name ),
-                        count( $import_map ),
-                        $results['imported']
+                    // The collection and its fields exist now; the rows import
+                    // in batches from the browser so a large CSV cannot time out.
+                    sp_render_record_import_progress(
+                        $temp_file,
+                        $new_collection_id,
+                        $import_map,
+                        sprintf(
+                            /* translators: 1: collection name, 2: number of fields */
+                            esc_html__( 'Created collection "%1$s" with %2$d fields.', 'societypress' ),
+                            esc_html( $col_name ),
+                            count( $import_map )
+                        ),
+                        [
+                            admin_url( 'admin.php?page=sp-record-browse&collection_id=' . (int) $new_collection_id ) => __( 'Browse records', 'societypress' ),
+                        ]
                     );
-                    echo '</p></div>';
-
-                    if ( $results['skipped'] > 0 ) {
-                        echo '<div class="notice notice-warning"><p>';
-                        printf( esc_html__( '%d rows skipped.', 'societypress' ), $results['skipped'] );
-                        echo '</p></div>';
-                    }
-
-                    if ( $results['errors'] ) {
-                        echo '<div class="notice notice-warning"><p><strong>' . esc_html__( 'Errors:', 'societypress' ) . '</strong><br>';
-                        foreach ( array_slice( $results['errors'], 0, 10 ) as $err ) {
-                            echo esc_html( $err ) . '<br>';
-                        }
-                        if ( count( $results['errors'] ) > 10 ) {
-                            printf( '<br>' . esc_html__( '...and %d more.', 'societypress' ), count( $results['errors'] ) - 10 );
-                        }
-                        echo '</p></div>';
-                    }
-
-                    wp_delete_file( $temp_file );
                 }
             }
         }
@@ -79003,27 +79479,17 @@ function sp_render_record_import_page(): void {
                 }
             }
 
-            $results = sp_process_record_import( $temp_file, $collection_id, $import_map );
-
-            echo '<div class="notice notice-success"><p>';
-            printf(
-                esc_html__( 'Import complete: %d records imported, %d skipped, %d duplicates, %d errors.', 'societypress' ),
-                $results['imported'],
-                $results['skipped'],
-                $results['duplicates'] ?? 0,
-                count( $results['errors'] )
+            // The browser drives the import in batches from here; the temp file
+            // is removed by the batch handler once the last row is read.
+            sp_render_record_import_progress(
+                $temp_file,
+                $collection_id,
+                $import_map,
+                '<strong>' . esc_html__( 'Import complete.', 'societypress' ) . '</strong>',
+                [
+                    admin_url( 'admin.php?page=sp-record-browse&collection_id=' . $collection_id ) => __( 'Browse records', 'societypress' ),
+                ]
             );
-            echo '</p></div>';
-
-            if ( $results['errors'] ) {
-                echo '<div class="notice notice-warning"><p><strong>' . esc_html__( 'Errors:', 'societypress' ) . '</strong><br>';
-                foreach ( $results['errors'] as $err ) {
-                    echo esc_html( $err ) . '<br>';
-                }
-                echo '</p></div>';
-            }
-
-            wp_delete_file( $temp_file );
         }
     }
 
@@ -79422,12 +79888,25 @@ function sp_render_record_import_page(): void {
  *      sp_records + sp_record_values, and builds search_text for each. Updates
  *      the collection's record_count when done.
  *
+ * Can run in one pass or resume from an offset. Batching exists because a
+ * cemetery index of 40,000 rows will not finish inside a shared host's
+ * execution limit, and a timeout mid-import leaves records written, no count
+ * updated, and nothing on screen to say how far it got.
+ *
+ * Duplicate fingerprints are rebuilt from the database on every call, which
+ * costs a scan per batch but means a row imported in batch 1 is still
+ * recognised as a duplicate in batch 4 — correctness the cheaper approach of
+ * caching them across calls would lose.
+ *
  * @param  string $file_path     Path to the uploaded CSV temp file.
  * @param  int    $collection_id The collection to import into.
  * @param  array  $import_map    Column index => field_id mapping.
- * @return array  Results with imported/skipped/errors counts.
+ * @param  int    $offset        Data rows to skip before importing. 0 starts at the top.
+ * @param  int    $limit         Maximum rows to process this call. 0 means every remaining row.
+ * @return array  Results with imported/skipped/duplicates/errors counts, plus
+ *                rows_read and done for callers that are batching.
  */
-function sp_process_record_import( string $file_path, int $collection_id, array $import_map ): array {
+function sp_process_record_import( string $file_path, int $collection_id, array $import_map, int $offset = 0, int $limit = 0 ): array {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
@@ -79489,9 +79968,35 @@ function sp_process_record_import( string $file_path, int $collection_id, array 
     }
     $results['duplicates'] = 0;
 
+    // Resume point. Row numbers stay absolute so an error on row 8,214 says
+    // 8,214 regardless of which batch happened to reach it.
     $row_num = 1;
-    while ( ( $row = fgetcsv( $handle ) ) !== false ) {
+    for ( $i = 0; $i < $offset; $i++ ) {
+        if ( fgetcsv( $handle ) === false ) {
+            break;
+        }
         $row_num++;
+    }
+
+    $rows_read = 0;
+    $done      = true;
+
+    while ( true ) {
+        if ( $limit > 0 && $rows_read >= $limit ) {
+            // Budget spent. Peek at the next row to tell "more to come" apart
+            // from "that was the last one" — otherwise a file that divides
+            // evenly into batches always costs one extra empty round trip.
+            $done = ( fgetcsv( $handle ) === false );
+            break;
+        }
+
+        $row = fgetcsv( $handle );
+        if ( false === $row ) {
+            break;
+        }
+
+        $row_num++;
+        $rows_read++;
 
         // Check if the row has any mapped, non-empty values
         $has_data = false;
@@ -79576,13 +80081,296 @@ function sp_process_record_import( string $file_path, int $collection_id, array 
 
     fclose( $handle );
 
-    // Update collection record count
+    // Refreshed after every batch, not only the last one: an import abandoned
+    // halfway then still shows a truthful count rather than the pre-import one.
     $new_count = (int) $wpdb->get_var( $wpdb->prepare(
         "SELECT COUNT(*) FROM {$prefix}records WHERE collection_id = %d", $collection_id
     ) );
     $wpdb->update( $prefix . 'record_collections', [ 'record_count' => $new_count ], [ 'id' => $collection_id ] );
 
+    $results['rows_read'] = $rows_read;
+    $results['done']      = $done;
+
     return $results;
+}
+
+/**
+ * Count the data rows in an import CSV, header excluded.
+ *
+ * The browser needs a denominator before the first batch runs so the progress
+ * bar means something from the outset.
+ */
+function sp_count_record_import_rows( string $file_path ): int {
+    $handle = fopen( $file_path, 'r' );
+    if ( ! $handle ) {
+        return 0;
+    }
+
+    fgetcsv( $handle );   // header
+
+    $rows = 0;
+    while ( fgetcsv( $handle ) !== false ) {
+        $rows++;
+    }
+
+    fclose( $handle );
+
+    return $rows;
+}
+
+/**
+ * Resolve an import token to a real path inside the temp directory.
+ *
+ * The token crosses the wire, so it is treated as hostile: reduced to a bare
+ * filename, then required to resolve inside the temp directory and nowhere
+ * else.
+ *
+ * @return string  Absolute path, or '' if the token does not resolve safely.
+ */
+function sp_resolve_record_import_token( string $token ): string {
+    $token = basename( sanitize_file_name( $token ) );
+    if ( '' === $token ) {
+        return '';
+    }
+
+    $upload_dir = wp_upload_dir();
+    $temp_dir   = realpath( $upload_dir['basedir'] . '/sp-import-temp' );
+    if ( ! $temp_dir ) {
+        return '';
+    }
+
+    $path = realpath( $temp_dir . '/' . $token );
+    if ( ! $path || 0 !== strpos( $path, $temp_dir ) || ! file_exists( $path ) ) {
+        return '';
+    }
+
+    return $path;
+}
+
+/**
+ * Import one slice of a record CSV.
+ */
+add_action( 'wp_ajax_sp_record_import_batch', 'sp_ajax_record_import_batch' );
+function sp_ajax_record_import_batch(): void {
+    check_ajax_referer( 'sp_record_import_batch', 'nonce' );
+
+    if ( ! current_user_can( 'sp_manage_records' ) ) {
+        wp_send_json_error( [ 'message' => __( 'You do not have permission to import records.', 'societypress' ) ] );
+    }
+
+    $collection_id = absint( $_POST['collection_id'] ?? 0 );
+    $offset        = absint( $_POST['offset'] ?? 0 );
+    $limit         = absint( $_POST['limit'] ?? 100 );
+    $path          = sp_resolve_record_import_token( (string) ( $_POST['token'] ?? '' ) );
+
+    if ( ! $collection_id || ! $path ) {
+        wp_send_json_error( [ 'message' => __( 'That upload could not be found. It may have already finished importing.', 'societypress' ) ] );
+    }
+
+    // Rebuild the column → field map, discarding anything that is not a pair
+    // of positive integers.
+    $import_map = [];
+    foreach ( (array) ( $_POST['import_map'] ?? [] ) as $col_idx => $field_id ) {
+        $field_id = absint( $field_id );
+        if ( $field_id > 0 ) {
+            $import_map[ (int) $col_idx ] = $field_id;
+        }
+    }
+
+    if ( ! $import_map ) {
+        wp_send_json_error( [ 'message' => __( 'No columns were mapped to fields.', 'societypress' ) ] );
+    }
+
+    $results = sp_process_record_import( $path, $collection_id, $import_map, $offset, $limit ?: 100 );
+
+    if ( ! empty( $results['done'] ) ) {
+        wp_delete_file( $path );
+    }
+
+    wp_send_json_success( [
+        'imported'   => (int) $results['imported'],
+        'skipped'    => (int) $results['skipped'],
+        'duplicates' => (int) ( $results['duplicates'] ?? 0 ),
+        'errors'     => array_values( (array) $results['errors'] ),
+        'rows_read'  => (int) ( $results['rows_read'] ?? 0 ),
+        'done'       => ! empty( $results['done'] ),
+    ] );
+}
+
+/**
+ * Hand a prepared import over to the browser to run in batches.
+ *
+ * The three flows that reach this point (new collection from CSV, new
+ * collection from GENRECORD, and import into an existing collection) have each
+ * already created whatever schema they needed. What differs afterwards is only
+ * the sentence describing what was built, which arrives as $intro_html — the
+ * record counts are reported the same way for all three.
+ *
+ * @param string $temp_file  Absolute path to the CSV already in the temp dir.
+ * @param int    $collection_id Target collection.
+ * @param array  $import_map Column index => field_id.
+ * @param string $intro_html Escaped, flow-specific summary shown on completion.
+ * @param array  $links      [ url => label ] buttons shown when the import ends.
+ */
+function sp_render_record_import_progress( string $temp_file, int $collection_id, array $import_map, string $intro_html, array $links = [] ): void {
+    $total = sp_count_record_import_rows( $temp_file );
+    $uid   = 'sp-recimp-' . wp_generate_password( 6, false, false );
+    ?>
+    <div id="<?php echo esc_attr( $uid ); ?>" class="sp-recimp" data-total="<?php echo esc_attr( $total ); ?>">
+        <noscript>
+            <div class="notice notice-error"><p>
+                <?php esc_html_e( 'This import runs in your browser so it can handle large files without timing out, which means it needs JavaScript switched on. Turn JavaScript on and upload the file again.', 'societypress' ); ?>
+            </p></div>
+        </noscript>
+        <div class="sp-recimp-progress">
+            <div class="sp-recimp-track"><div class="sp-recimp-bar"></div></div>
+            <p class="sp-recimp-status" role="status" aria-live="polite"></p>
+        </div>
+        <div class="sp-recimp-results" hidden></div>
+        <ul class="ul-disc sp-recimp-errors"></ul>
+    </div>
+    <style>
+        .sp-recimp { margin-top: 16px; max-width: 640px; }
+        .sp-recimp-track { height: 20px; background: #e6e6e6; border-radius: 10px; overflow: hidden; }
+        .sp-recimp-bar { height: 100%; width: 0; background: #2271b1; transition: width .2s ease; }
+        .sp-recimp-status { margin: 8px 0 0; font-weight: 600; }
+        .sp-recimp-errors { margin: 8px 0 0; color: #b32d2e; }
+    </style>
+    <script>
+    (function () {
+        var root = document.getElementById(<?php echo wp_json_encode( $uid ); ?>);
+        if (!root) return;
+
+        var bar      = root.querySelector('.sp-recimp-bar');
+        var statusEl = root.querySelector('.sp-recimp-status');
+        var resultEl = root.querySelector('.sp-recimp-results');
+        var errorsEl = root.querySelector('.sp-recimp-errors');
+
+        var TOTAL = parseInt(root.getAttribute('data-total'), 10) || 0;
+        var BATCH = 100;
+
+        var STR = <?php echo wp_json_encode( [
+            'working' => __( 'Importing %1$s of %2$s records…', 'societypress' ),
+            'counts'  => __( 'Imported %1$s records. %2$s duplicates skipped, %3$s empty rows skipped.', 'societypress' ),
+            'network' => __( 'Lost contact with the server. %s records were imported before it stopped.', 'societypress' ),
+            'more'    => __( '…and %s more.', 'societypress' ),
+        ] ); ?>;
+
+        var AJAX  = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
+        var NONCE = <?php echo wp_json_encode( wp_create_nonce( 'sp_record_import_batch' ) ); ?>;
+        var TOKEN = <?php echo wp_json_encode( basename( $temp_file ) ); ?>;
+        var COLL  = <?php echo wp_json_encode( (int) $collection_id ); ?>;
+        var MAP   = <?php echo wp_json_encode( $import_map ); ?>;
+        var INTRO = <?php echo wp_json_encode( $intro_html ); ?>;
+        var LINKS = <?php echo wp_json_encode( $links ); ?>;
+
+        var offset = 0;
+        var totals = { imported: 0, skipped: 0, duplicates: 0, errors: [] };
+
+        function num(n) { return n.toLocaleString(); }
+
+        function fill(tpl, a, b, c) {
+            return tpl.replace('%1$s', a).replace('%2$s', b).replace('%3$s', c).replace('%s', a);
+        }
+
+        function finish(interrupted) {
+            bar.style.width = '100%';
+            statusEl.textContent = '';
+
+            var note = document.createElement('div');
+            note.className = interrupted ? 'notice notice-warning' : 'notice notice-success';
+
+            /* INTRO is server-built markup naming the collection; the counts are
+               numbers. Neither carries raw user input. */
+            var p = document.createElement('p');
+            p.innerHTML = INTRO;
+            note.appendChild(p);
+
+            var counts = document.createElement('p');
+            counts.textContent = fill(STR.counts, num(totals.imported), num(totals.duplicates), num(totals.skipped));
+            note.appendChild(counts);
+
+            resultEl.appendChild(note);
+
+            if (totals.errors.length) {
+                totals.errors.slice(0, 10).forEach(function (msg) {
+                    var li = document.createElement('li');
+                    li.textContent = msg;   /* DB error text — never innerHTML */
+                    errorsEl.appendChild(li);
+                });
+                if (totals.errors.length > 10) {
+                    var more = document.createElement('li');
+                    more.textContent = fill(STR.more, num(totals.errors.length - 10));
+                    errorsEl.appendChild(more);
+                }
+            }
+
+            Object.keys(LINKS).forEach(function (url) {
+                var a = document.createElement('a');
+                a.className = 'button button-primary';
+                a.href = url;
+                a.textContent = LINKS[url];
+                a.style.marginRight = '8px';
+                resultEl.appendChild(a);
+            });
+
+            resultEl.hidden = false;
+        }
+
+        function runNext() {
+            var data = new FormData();
+            data.append('action', 'sp_record_import_batch');
+            data.append('nonce', NONCE);
+            data.append('token', TOKEN);
+            data.append('collection_id', COLL);
+            data.append('offset', offset);
+            data.append('limit', BATCH);
+            Object.keys(MAP).forEach(function (col) {
+                data.append('import_map[' + col + ']', MAP[col]);
+            });
+
+            fetch(AJAX, { method: 'POST', body: data, credentials: 'same-origin' })
+                .then(function (r) { return r.json(); })
+                .then(function (r) {
+                    if (!r || !r.success) {
+                        totals.errors.push((r && r.data && r.data.message) || '');
+                        finish(true);
+                        return;
+                    }
+
+                    totals.imported   += r.data.imported;
+                    totals.skipped    += r.data.skipped;
+                    totals.duplicates += r.data.duplicates;
+                    if (r.data.errors && r.data.errors.length) {
+                        totals.errors = totals.errors.concat(r.data.errors);
+                    }
+
+                    offset += r.data.rows_read;
+
+                    if (TOTAL > 0) {
+                        bar.style.width = Math.min(100, Math.round((offset / TOTAL) * 100)) + '%';
+                    }
+                    statusEl.textContent = fill(STR.working, num(offset), num(TOTAL));
+
+                    /* rows_read of 0 with done unset would spin forever — treat
+                       a batch that consumed nothing as the end of the file. */
+                    if (r.data.done || r.data.rows_read === 0) {
+                        finish(false);
+                    } else {
+                        runNext();
+                    }
+                })
+                .catch(function () {
+                    statusEl.textContent = fill(STR.network, num(totals.imported));
+                    finish(true);
+                });
+        }
+
+        statusEl.textContent = fill(STR.working, '0', num(TOTAL));
+        runNext();
+    })();
+    </script>
+    <?php
 }
 
 
@@ -84417,6 +85205,10 @@ add_action( 'admin_init', function () {
         'list_sort'    => in_array( $_POST['category_list_sort'] ?? '', [ 'manual', 'date_desc', 'title' ], true )
             ? $_POST['category_list_sort'] : 'manual',
         'sort_order'   => (int) ( $_POST['category_sort_order'] ?? 0 ),
+        // Hidden categories stay in the admin list and keep their documents;
+        // they simply stop appearing to visitors. Deleting would orphan the
+        // files, which is a much bigger hammer than "not this year".
+        'active'       => empty( $_POST['category_active'] ) ? 0 : 1,
     ];
 
     if ( $cat_id ) {
@@ -84636,6 +85428,7 @@ function sp_render_document_categories_page(): void {
         /* sp_render_document_categories_page() — scoped layout styles */
         .sp-doc-cat-layout { display: flex; gap: 40px; flex-wrap: wrap; margin-top: 20px; }
         .sp-doc-cat-form   { flex: 0 0 320px; }
+        .sp-doc-cat-hidden { color: #767676; font-weight: normal; font-style: italic; }
     </style>
     <div class="wrap">
         <h1><?php esc_html_e( 'Document Categories', 'societypress' ); ?></h1>
@@ -84710,6 +85503,23 @@ function sp_render_document_categories_page(): void {
                             <th scope="col"><label for="category_sort_order"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label></th>
                             <td><input type="number" id="category_sort_order" name="category_sort_order" value="<?php echo (int) ( $edit_cat->sort_order ?? 0 ); ?>" min="0" class="sp-w-80"></td>
                         </tr>
+                        <tr>
+                            <th scope="col"><?php esc_html_e( 'Visible', 'societypress' ); ?></th>
+                            <td>
+                                <?php
+                                // A brand-new category defaults to visible; an
+                                // existing one reflects what was saved.
+                                $cat_is_active = $edit_cat ? ! empty( $edit_cat->active ) : true;
+                                ?>
+                                <label>
+                                    <input type="checkbox" name="category_active" value="1" <?php checked( $cat_is_active ); ?>>
+                                    <?php esc_html_e( 'Show this category on the website', 'societypress' ); ?>
+                                </label>
+                                <p class="description">
+                                    <?php esc_html_e( 'Unticking hides the category and its documents from visitors. Nothing is deleted, and you can show it again at any time.', 'societypress' ); ?>
+                                </p>
+                            </td>
+                        </tr>
                     </table>
 
                     <?php submit_button( $edit_cat ? __( 'Update Category', 'societypress' ) : __( 'Add Category', 'societypress' ) ); ?>
@@ -84738,7 +85548,12 @@ function sp_render_document_categories_page(): void {
                         <?php else : ?>
                             <?php foreach ( $categories as $cat ) : ?>
                             <tr>
-                                <td><strong><?php echo esc_html( $cat->name ); ?></strong></td>
+                                <td>
+                                    <strong><?php echo esc_html( $cat->name ); ?></strong>
+                                    <?php if ( isset( $cat->active ) && ! $cat->active ) : ?>
+                                        <span class="sp-doc-cat-hidden">— <?php esc_html_e( 'hidden from visitors', 'societypress' ); ?></span>
+                                    <?php endif; ?>
+                                </td>
                                 <td><code><?php echo esc_html( $cat->slug ); ?></code></td>
                                 <td><?php echo (int) ( $doc_counts[ $cat->id ]->cnt ?? 0 ); ?></td>
                                 <td><?php echo (int) $cat->sort_order; ?></td>
@@ -85509,6 +86324,7 @@ function sp_frontend_documents(): void {
          FROM {$prefix}documents d
          LEFT JOIN {$prefix}document_categories c ON d.category_id = c.id
          WHERE d.status = 'published'{$time_where}
+           AND ( d.category_id IS NULL OR c.active = 1 )
          ORDER BY (d.category_id IS NULL) ASC, c.sort_order ASC, c.name ASC,
                   d.sort_order ASC, d.title ASC"
     );
@@ -90111,6 +90927,234 @@ function sp_render_modal_module(): void {
     <?php
 }
 
+// ============================================================================
+// ALPHABETIZE A NAVIGATION MENU
+//
+// WordPress's menu editor is drag-and-drop only. A society whose menu has
+// grown to thirty items over five years has no way to tidy it short of
+// dragging each one, and the drop targets are small enough that a slip
+// re-parents an item instead of moving it.
+//
+// Sorting is per-level: top-level items are alphabetised among themselves and
+// each item's children among themselves. Flattening the tree would be faster
+// to write and would destroy the menu.
+// ============================================================================
+
+/**
+ * Reorder one nav menu's items alphabetically, preserving nesting.
+ *
+ * @param int $menu_id Menu term ID.
+ * @return int|WP_Error Number of items reordered.
+ */
+function sp_alphabetize_nav_menu( int $menu_id ) {
+    $menu = wp_get_nav_menu_object( $menu_id );
+    if ( ! $menu ) {
+        return new WP_Error( 'sp_menu_missing', __( 'That menu could not be found.', 'societypress' ) );
+    }
+
+    $items = wp_get_nav_menu_items( $menu_id, [ 'post_status' => 'publish,draft' ] );
+    if ( empty( $items ) ) {
+        return 0;
+    }
+
+    // Group by parent so each level is sorted only against its own siblings.
+    $by_parent = [];
+    foreach ( $items as $item ) {
+        $by_parent[ (int) $item->menu_item_parent ][] = $item;
+    }
+
+    // Natural, case-insensitive: "Item 2" sorts before "Item 10", and "about"
+    // sits with "About" rather than after every capitalised title.
+    foreach ( $by_parent as &$siblings ) {
+        usort(
+            $siblings,
+            static function ( $a, $b ) {
+                return strnatcasecmp( $a->title, $b->title );
+            }
+        );
+    }
+    unset( $siblings );
+
+    // WHY a depth-first walk rather than numbering each level from 1:
+    // menu_order is a single flat sequence across the whole menu. Nesting is
+    // expressed by menu_item_parent, but WordPress lays the menu out by
+    // menu_order, so a child has to sit immediately after its parent in that
+    // one sequence. Numbering levels independently interleaves children under
+    // whichever item happens to share their number.
+    $positions = [];
+    $next      = 1;
+
+    $walk = static function ( int $parent_id ) use ( &$walk, &$by_parent, &$positions, &$next ): void {
+        if ( empty( $by_parent[ $parent_id ] ) ) {
+            return;
+        }
+
+        foreach ( $by_parent[ $parent_id ] as $item ) {
+            $positions[ (int) $item->ID ] = $next++;
+            $walk( (int) $item->ID );
+        }
+    };
+
+    $walk( 0 );
+
+    $updated = 0;
+    foreach ( $items as $item ) {
+        $id = (int) $item->ID;
+
+        // An item whose parent was deleted leaves an orphan group the walk
+        // never reaches. Leave it alone rather than moving it to the top.
+        if ( ! isset( $positions[ $id ] ) ) {
+            continue;
+        }
+
+        if ( (int) $item->menu_order !== $positions[ $id ] ) {
+            // wp_update_nav_menu_item() would rebuild the whole item from
+            // POST-shaped input and drop anything not passed. menu_order
+            // lives on the post itself, so moving it is a post update.
+            wp_update_post(
+                [
+                    'ID'         => $id,
+                    'menu_order' => $positions[ $id ],
+                ]
+            );
+            $updated++;
+        }
+    }
+
+    return $updated;
+}
+
+/**
+ * Handle the Sort A→Z button on the menu editor.
+ */
+function sp_handle_alphabetize_nav_menu(): void {
+    if ( ! current_user_can( 'edit_theme_options' ) ) {
+        wp_die( esc_html__( 'You do not have permission to edit menus.', 'societypress' ) );
+    }
+
+    $menu_id = absint( $_POST['menu_id'] ?? 0 );
+    check_admin_referer( 'sp_alphabetize_menu_' . $menu_id );
+
+    $result = sp_alphabetize_nav_menu( $menu_id );
+
+    $args = [ 'menu' => $menu_id ];
+    if ( is_wp_error( $result ) ) {
+        $args['sp_sorted'] = 'error';
+    } else {
+        $args['sp_sorted'] = (int) $result;
+    }
+
+    wp_safe_redirect( add_query_arg( $args, admin_url( 'nav-menus.php' ) ) );
+    exit;
+}
+add_action( 'admin_post_sp_alphabetize_menu', 'sp_handle_alphabetize_nav_menu' );
+
+/**
+ * Report the result after a sort.
+ */
+function sp_alphabetize_nav_menu_notice(): void {
+    $screen = get_current_screen();
+    if ( ! $screen || 'nav-menus' !== $screen->base || ! isset( $_GET['sp_sorted'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+        return;
+    }
+
+    $sorted = sanitize_text_field( wp_unslash( $_GET['sp_sorted'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
+    if ( 'error' === $sorted ) {
+        echo '<div class="notice notice-error is-dismissible"><p>'
+           . esc_html__( 'That menu could not be sorted.', 'societypress' ) . '</p></div>';
+        return;
+    }
+
+    $count = (int) $sorted;
+
+    echo '<div class="notice notice-success is-dismissible"><p>';
+    if ( $count > 0 ) {
+        printf(
+            esc_html(
+                /* translators: %d: number of menu items moved */
+                _n(
+                    'Menu sorted A to Z. %d item moved.',
+                    'Menu sorted A to Z. %d items moved.',
+                    $count,
+                    'societypress'
+                )
+            ),
+            $count
+        );
+    } else {
+        esc_html_e( 'That menu was already in alphabetical order.', 'societypress' );
+    }
+    echo '</p></div>';
+}
+add_action( 'admin_notices', 'sp_alphabetize_nav_menu_notice' );
+
+/**
+ * Put a Sort A→Z button on the menu editor, beside Save Menu.
+ */
+function sp_alphabetize_nav_menu_button(): void {
+    $screen = get_current_screen();
+    if ( ! $screen || 'nav-menus' !== $screen->base || ! current_user_can( 'edit_theme_options' ) ) {
+        return;
+    }
+
+    $menu_id = absint( $_GET['menu'] ?? 0 ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+    if ( ! $menu_id || ! wp_get_nav_menu_object( $menu_id ) ) {
+        return;
+    }
+    ?>
+    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" id="sp-alphabetize-menu-form" class="sp-alphabetize-form">
+        <input type="hidden" name="action" value="sp_alphabetize_menu">
+        <input type="hidden" name="menu_id" value="<?php echo (int) $menu_id; ?>">
+        <?php wp_nonce_field( 'sp_alphabetize_menu_' . $menu_id ); ?>
+        <button type="submit" class="button" id="sp-alphabetize-menu-btn"><?php esc_html_e( 'Sort A→Z', 'societypress' ); ?></button>
+    </form>
+    <style>
+        /* Sits inline next to Save Menu once JS relocates it; if that fails it
+           still renders and still works, just lower down the page. */
+        .sp-alphabetize-form { display: inline-block; margin-right: 8px; }
+    </style>
+    <script>
+    (function () {
+        var form = document.getElementById('sp-alphabetize-menu-form');
+        if (!form) return;
+
+        /* Move the button next to Save Menu, where someone tidying a menu is
+           already looking. Two publishing bars exist (top and bottom); the
+           last one is the one at the foot of the menu structure. */
+        var bars = document.querySelectorAll('#menu-management .major-publishing-actions');
+        if (bars.length) {
+            var target = bars[bars.length - 1].querySelector('.publishing-action');
+            if (target) target.parentNode.insertBefore(form, target);
+        }
+
+        form.addEventListener('submit', function (e) {
+            if (form.dataset.confirmed === '1') return;
+            e.preventDefault();
+
+            var msg = <?php echo wp_json_encode(
+                __( 'Sort every item in this menu into alphabetical order? Items nested under another item stay where they are and are sorted among themselves. This replaces the current arrangement.', 'societypress' )
+            ); ?>;
+
+            if (typeof spConfirm === 'function') {
+                spConfirm(msg, function () {
+                    form.dataset.confirmed = '1';
+                    form.submit();
+                });
+            } else {
+                /* spConfirm ships with SocietyPress; if something stopped it
+                   loading, sort without a prompt rather than dead-ending the
+                   button on a screen we do not own. */
+                form.dataset.confirmed = '1';
+                form.submit();
+            }
+        });
+    })();
+    </script>
+    <?php
+}
+add_action( 'admin_footer', 'sp_alphabetize_nav_menu_button' );
+
 // Render on SocietyPress admin pages — spConfirm/spAlert are heavily used
 // from admin JS. Scope avoids leaking the modal HTML/CSS/JS onto every
 // unrelated admin screen (Plugins, Updates, third-party plugins).
@@ -90124,6 +91168,10 @@ add_action( 'admin_footer', function () {
         || strpos( $screen_id,   'societypress' ) !== false
         || strpos( $screen_base, 'sp-' )         !== false
         || strpos( $screen_base, 'societypress' ) !== false
+        // nav-menus.php is a core screen, but SocietyPress adds a Sort A→Z
+        // button there which needs spConfirm — reordering a hand-arranged
+        // menu is not something to do on a stray click.
+        || 'nav-menus' === $screen_base
     );
     if ( ! $is_sp_screen ) return;
     sp_render_modal_module();
@@ -94584,6 +95632,7 @@ add_action( 'admin_init', function () {
             'display_format' => "ALTER TABLE {$wpdb->prefix}sp_document_categories ADD COLUMN display_format VARCHAR(20) NOT NULL DEFAULT 'title_desc' AFTER access_level",
             'show_updated'   => "ALTER TABLE {$wpdb->prefix}sp_document_categories ADD COLUMN show_updated TINYINT(1) NOT NULL DEFAULT 0 AFTER display_format",
             'list_sort'      => "ALTER TABLE {$wpdb->prefix}sp_document_categories ADD COLUMN list_sort VARCHAR(20) NOT NULL DEFAULT 'manual' AFTER show_updated",
+            'active'         => "ALTER TABLE {$wpdb->prefix}sp_document_categories ADD COLUMN active TINYINT(1) NOT NULL DEFAULT 1 AFTER sort_order",
         ],
         'sp_blast_emails'   => [
             'override_optout'     => "ALTER TABLE {$wpdb->prefix}sp_blast_emails ADD COLUMN override_optout TINYINT(1) NOT NULL DEFAULT 0 AFTER total_failed",
@@ -101135,6 +102184,193 @@ add_action( 'admin_menu', function () {
     );
 }, 25 );
 
+/**
+ * Turn one uploaded PDF into a preview row: validate it, move it into the
+ * media library, generate a cover, and parse the filename for metadata.
+ *
+ * WHY this is its own function: the browser uploads in small batches over
+ * AJAX, but a browser without JavaScript still posts the whole form at once.
+ * Both paths have to treat a file identically or the two would drift.
+ *
+ * @param  array $file  One normalized $_FILES row: name, tmp_name, type, error, size.
+ * @return array|WP_Error  Preview row on success.
+ */
+function sp_newsletter_import_handle_file( array $file ) {
+    $name     = (string) ( $file['name'] ?? '' );
+    $tmp_name = (string) ( $file['tmp_name'] ?? '' );
+    $err      = (int) ( $file['error'] ?? UPLOAD_ERR_NO_FILE );
+
+    if ( '' === $name || UPLOAD_ERR_NO_FILE === $err ) {
+        return new WP_Error( 'sp_nl_no_file', __( 'No file was received.', 'societypress' ) );
+    }
+
+    if ( UPLOAD_ERR_OK !== $err ) {
+        /* translators: 1: file name, 2: upload error code */
+        return new WP_Error( 'sp_nl_upload_error', sprintf( __( '%1$s: upload error code %2$d', 'societypress' ), $name, $err ) );
+    }
+
+    // Trust the file's own bytes, not the name or the browser-supplied type.
+    $real_type = (string) ( $file['type'] ?? '' );
+    if ( function_exists( 'finfo_open' ) ) {
+        $finfo = finfo_open( FILEINFO_MIME_TYPE );
+        if ( $finfo ) {
+            $real_type = (string) finfo_file( $finfo, $tmp_name );
+            finfo_close( $finfo );
+        }
+    }
+    if ( 'application/pdf' !== $real_type ) {
+        /* translators: 1: file name, 2: detected MIME type */
+        return new WP_Error( 'sp_nl_not_pdf', sprintf( __( '%1$s: not a PDF (detected %2$s)', 'societypress' ), $name, $real_type ?: __( 'unknown', 'societypress' ) ) );
+    }
+
+    $handled = wp_handle_upload(
+        [
+            'name'     => $name,
+            'tmp_name' => $tmp_name,
+            'type'     => 'application/pdf',
+            'error'    => 0,
+            'size'     => (int) ( $file['size'] ?? 0 ),
+        ],
+        [ 'test_form' => false, 'action' => 'sp_nl_import' ]
+    );
+
+    if ( ! empty( $handled['error'] ) ) {
+        /* translators: 1: file name, 2: error message */
+        return new WP_Error( 'sp_nl_move_failed', sprintf( __( '%1$s: %2$s', 'societypress' ), $name, $handled['error'] ) );
+    }
+
+    $attachment_id = wp_insert_attachment( [
+        'post_mime_type' => 'application/pdf',
+        'post_title'     => preg_replace( '/\.pdf$/i', '', $name ),
+        'post_status'    => 'inherit',
+    ], $handled['file'] );
+
+    if ( is_wp_error( $attachment_id ) || ! $attachment_id ) {
+        /* translators: %s: file name */
+        return new WP_Error( 'sp_nl_attach_failed', sprintf( __( '%s: could not register as attachment', 'societypress' ), $name ) );
+    }
+
+    wp_update_attachment_metadata(
+        (int) $attachment_id,
+        wp_generate_attachment_metadata( (int) $attachment_id, $handled['file'] )
+    );
+
+    // Cover generation is best-effort: a missing thumbnail is cosmetic, and
+    // Imagick is absent on plenty of shared hosts.
+    $cover    = sp_generate_newsletter_cover_for_pdf( (int) $attachment_id );
+    $cover_id = is_wp_error( $cover ) ? 0 : (int) $cover;
+
+    // File both the PDF and its cover away now, while we still know what they
+    // are. The cover is an image with a generated name and would otherwise be
+    // indistinguishable from any other upload.
+    sp_media_file_into( (int) $attachment_id, 'newsletters' );
+    if ( $cover_id ) {
+        sp_media_file_into( $cover_id, 'newsletters' );
+    }
+
+    $parsed = sp_newsletters_parse_filename( $name );
+
+    return [
+        'file_id'      => (int) $attachment_id,
+        'cover_id'     => $cover_id,
+        'filename'     => $name,
+        'title'        => $parsed['title'],
+        'pub_date'     => $parsed['pub_date'],
+        'volume'       => $parsed['volume'],
+        'issue_number' => $parsed['issue_number'],
+    ];
+}
+
+/**
+ * Render one row of the review table.
+ *
+ * Returned as a string rather than echoed so the AJAX handler can hand
+ * finished markup back to the browser, which appends it as each batch lands.
+ * That keeps the table's shape defined once, here, instead of once in PHP and
+ * again in JavaScript.
+ */
+function sp_newsletter_import_preview_row( array $row, int $idx ): string {
+    $cover_url = ! empty( $row['cover_id'] ) ? wp_get_attachment_image_url( (int) $row['cover_id'], 'thumbnail' ) : '';
+    $field     = 'sp_nl_items[' . $idx . ']';
+
+    $out  = '<tr>';
+    $out .= '<td><input type="hidden" name="' . esc_attr( $field ) . '[file_id]" value="' . (int) $row['file_id'] . '">';
+    $out .= '<input type="hidden" name="' . esc_attr( $field ) . '[cover_id]" value="' . (int) $row['cover_id'] . '">';
+    $out .= '<input type="checkbox" name="' . esc_attr( $field ) . '[import]" value="1" checked aria-label="' . esc_attr__( 'Import this newsletter', 'societypress' ) . '"></td>';
+    $out .= '<td>' . ( $cover_url
+        ? '<img src="' . esc_url( $cover_url ) . '" alt="" class="sp-nl-cover-img">'
+        : '<em class="sp-nl-no-cover">' . esc_html__( 'none', 'societypress' ) . '</em>'
+    ) . '</td>';
+    $out .= '<td><input type="text" name="' . esc_attr( $field ) . '[title]" value="' . esc_attr( $row['title'] ) . '" class="regular-text"><br><small class="sp-nl-filename">' . esc_html( $row['filename'] ) . '</small></td>';
+    $out .= '<td><input type="date" name="' . esc_attr( $field ) . '[pub_date]" value="' . esc_attr( $row['pub_date'] ) . '"></td>';
+    $out .= '<td><input type="number" name="' . esc_attr( $field ) . '[volume]" value="' . (int) $row['volume'] . '" min="0" class="small-text"></td>';
+    $out .= '<td><input type="number" name="' . esc_attr( $field ) . '[issue_number]" value="' . (int) $row['issue_number'] . '" min="0" class="small-text"></td>';
+    $out .= '<td><select name="' . esc_attr( $field ) . '[visibility]" aria-label="' . esc_attr__( 'Visibility', 'societypress' ) . '"><option value="members_only">' . esc_html__( 'Members only', 'societypress' ) . '</option><option value="public">' . esc_html__( 'Public', 'societypress' ) . '</option></select></td>';
+    $out .= '</tr>';
+
+    return $out;
+}
+
+/**
+ * Upload one batch of newsletter PDFs and return their review rows.
+ *
+ * WHY batching matters here: PHP's max_file_uploads caps a single POST at 20
+ * files by default, and it drops the surplus without raising an error. A
+ * volunteer selecting a 40-issue back catalogue got 20 newsletters and no
+ * warning that half the archive never arrived.
+ */
+add_action( 'wp_ajax_sp_nl_import_batch', 'sp_ajax_newsletter_import_batch' );
+function sp_ajax_newsletter_import_batch(): void {
+    check_ajax_referer( 'sp_nl_import_batch', 'nonce' );
+
+    if ( ! current_user_can( 'sp_manage_communications' ) ) {
+        wp_send_json_error( [ 'message' => __( 'You do not have permission to import newsletters.', 'societypress' ) ] );
+    }
+
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+    require_once ABSPATH . 'wp-admin/includes/image.php';
+    require_once ABSPATH . 'wp-admin/includes/media.php';
+
+    // The browser numbers the rows so field names stay unique across batches.
+    $start = absint( $_POST['start_index'] ?? 0 );
+
+    $files = $_FILES['nl_pdfs'] ?? null;
+    if ( empty( $files ) || empty( $files['name'] ) ) {
+        wp_send_json_error( [ 'message' => __( 'No files were received.', 'societypress' ) ] );
+    }
+
+    $rows_html = [];
+    $errors    = [];
+    $added     = 0;
+    $count     = count( (array) $files['name'] );
+
+    for ( $i = 0; $i < $count; $i++ ) {
+        $result = sp_newsletter_import_handle_file( [
+            'name'     => $files['name'][ $i ]     ?? '',
+            'tmp_name' => $files['tmp_name'][ $i ] ?? '',
+            'type'     => $files['type'][ $i ]     ?? '',
+            'error'    => $files['error'][ $i ]    ?? UPLOAD_ERR_NO_FILE,
+            'size'     => $files['size'][ $i ]     ?? 0,
+        ] );
+
+        if ( is_wp_error( $result ) ) {
+            if ( 'sp_nl_no_file' !== $result->get_error_code() ) {
+                $errors[] = $result->get_error_message();
+            }
+            continue;
+        }
+
+        $rows_html[] = sp_newsletter_import_preview_row( $result, $start + $added );
+        $added++;
+    }
+
+    wp_send_json_success( [
+        'added'  => $added,
+        'rows'   => $rows_html,
+        'errors' => $errors,
+    ] );
+}
+
 function sp_render_import_newsletters_page(): void {
     if ( ! current_user_can( 'sp_manage_communications' ) ) {
         wp_die( esc_html__( 'You do not have permission to import newsletters.', 'societypress' ) );
@@ -101224,70 +102460,36 @@ function sp_render_import_newsletters_page(): void {
         $errors = [];
 
         for ( $i = 0; $i < $count; $i++ ) {
-            $name     = $files['name'][ $i ]     ?? '';
-            $tmp_name = $files['tmp_name'][ $i ] ?? '';
-            $type     = $files['type'][ $i ]     ?? '';
-            $err      = $files['error'][ $i ]    ?? UPLOAD_ERR_NO_FILE;
+            $result = sp_newsletter_import_handle_file( [
+                'name'     => $files['name'][ $i ]     ?? '',
+                'tmp_name' => $files['tmp_name'][ $i ] ?? '',
+                'type'     => $files['type'][ $i ]     ?? '',
+                'error'    => $files['error'][ $i ]    ?? UPLOAD_ERR_NO_FILE,
+                'size'     => $files['size'][ $i ]     ?? 0,
+            ] );
 
-            if ( $name === '' || $err === UPLOAD_ERR_NO_FILE ) continue;
-            if ( $err !== UPLOAD_ERR_OK ) {
-                $errors[] = sprintf( /* translators: 1: file name, 2: upload error code */ __( '%1$s: upload error code %2$d', 'societypress' ), $name, (int) $err );
-                continue;
-            }
-            // Validate it's actually a PDF
-            $real_type = function_exists( 'finfo_open' )
-                ? ( $finfo = finfo_open( FILEINFO_MIME_TYPE ) ) ? finfo_file( $finfo, $tmp_name ) : ''
-                : $type;
-            if ( $real_type !== 'application/pdf' ) {
-                $errors[] = sprintf( /* translators: 1: file name, 2: detected MIME type */ __( '%1$s: not a PDF (detected %2$s)', 'societypress' ), $name, $real_type ?: __( 'unknown', 'societypress' ) );
-                continue;
-            }
-
-            // wp_handle_upload moves the file into the uploads dir, then we
-            // register it as an attachment.
-            $file_array  = [
-                'name'     => $name,
-                'tmp_name' => $tmp_name,
-                'type'     => 'application/pdf',
-                'error'    => 0,
-                'size'     => $files['size'][ $i ] ?? 0,
-            ];
-            $handled = wp_handle_upload( $file_array, [ 'test_form' => false, 'action' => 'sp_nl_import' ] );
-            if ( ! empty( $handled['error'] ) ) {
-                $errors[] = sprintf( /* translators: 1: file name, 2: error message */ __( '%1$s: %2$s', 'societypress' ), $name, $handled['error'] );
+            if ( is_wp_error( $result ) ) {
+                // An empty slot is not a failure worth reporting — browsers pad
+                // multi-file inputs with blanks.
+                if ( 'sp_nl_no_file' !== $result->get_error_code() ) {
+                    $errors[] = $result->get_error_message();
+                }
                 continue;
             }
 
-            $attachment_id = wp_insert_attachment( [
-                'post_mime_type' => 'application/pdf',
-                'post_title'     => preg_replace( '/\.pdf$/i', '', $name ),
-                'post_status'    => 'inherit',
-            ], $handled['file'] );
+            $rows[] = $result;
+        }
 
-            if ( is_wp_error( $attachment_id ) || ! $attachment_id ) {
-                $errors[] = sprintf( /* translators: %s: file name */ __( '%s: could not register as attachment', 'societypress' ), $name );
-                continue;
-            }
-            $metadata = wp_generate_attachment_metadata( (int) $attachment_id, $handled['file'] );
-            wp_update_attachment_metadata( (int) $attachment_id, $metadata );
-
-            // Cover gen — non-fatal on failure.
-            $cover_id = 0;
-            $cover    = sp_generate_newsletter_cover_for_pdf( (int) $attachment_id );
-            if ( ! is_wp_error( $cover ) ) {
-                $cover_id = (int) $cover;
-            }
-
-            $parsed = sp_newsletters_parse_filename( $name );
-            $rows[] = [
-                'file_id'      => (int) $attachment_id,
-                'cover_id'     => $cover_id,
-                'filename'     => $name,
-                'title'        => $parsed['title'],
-                'pub_date'     => $parsed['pub_date'],
-                'volume'       => $parsed['volume'],
-                'issue_number' => $parsed['issue_number'],
-            ];
+        // This path only runs without JavaScript, where PHP's max_file_uploads
+        // silently discards everything past the 20th file. Say so rather than
+        // letting half an archive vanish quietly.
+        $max_uploads = (int) ini_get( 'max_file_uploads' );
+        if ( $max_uploads > 0 && $count >= $max_uploads ) {
+            $errors[] = sprintf(
+                /* translators: %d: server's max_file_uploads limit */
+                __( 'This server accepts at most %d files in a single upload, and your browser sent them all at once. Any files past that limit were not received — upload the rest in a second pass.', 'societypress' ),
+                $max_uploads
+            );
         }
 
         if ( ! $rows ) {
@@ -101327,21 +102529,8 @@ function sp_render_import_newsletters_page(): void {
         echo '</tr></thead><tbody>';
 
         foreach ( $rows as $i => $row ) {
-            $cover_url = $row['cover_id'] ? wp_get_attachment_image_url( $row['cover_id'], 'thumbnail' ) : '';
-            echo '<tr>';
-            echo '<td><input type="hidden" name="sp_nl_items[' . (int) $i . '][file_id]" value="' . (int) $row['file_id'] . '">';
-            echo '<input type="hidden" name="sp_nl_items[' . (int) $i . '][cover_id]" value="' . (int) $row['cover_id'] . '">';
-            echo '<input type="checkbox" name="sp_nl_items[' . (int) $i . '][import]" value="1" checked aria-label="' . esc_attr__( 'Import this newsletter', 'societypress' ) . '"></td>';
-            echo '<td>' . ( $cover_url
-                ? '<img src="' . esc_url( $cover_url ) . '" alt="" class="sp-nl-cover-img">'
-                : '<em class="sp-nl-no-cover">' . esc_html__( 'none', 'societypress' ) . '</em>'
-            ) . '</td>';
-            echo '<td><input type="text" name="sp_nl_items[' . (int) $i . '][title]" value="' . esc_attr( $row['title'] ) . '" class="regular-text"><br><small class="sp-nl-filename">' . esc_html( $row['filename'] ) . '</small></td>';
-            echo '<td><input type="date" name="sp_nl_items[' . (int) $i . '][pub_date]" value="' . esc_attr( $row['pub_date'] ) . '"></td>';
-            echo '<td><input type="number" name="sp_nl_items[' . (int) $i . '][volume]" value="' . (int) $row['volume'] . '" min="0" class="small-text"></td>';
-            echo '<td><input type="number" name="sp_nl_items[' . (int) $i . '][issue_number]" value="' . (int) $row['issue_number'] . '" min="0" class="small-text"></td>';
-            echo '<td><select name="sp_nl_items[' . (int) $i . '][visibility]" aria-label="' . esc_attr__( 'Visibility', 'societypress' ) . '"><option value="members_only">' . esc_html__( 'Members only', 'societypress' ) . '</option><option value="public">' . esc_html__( 'Public', 'societypress' ) . '</option></select></td>';
-            echo '</tr>';
+            // Every value is escaped inside the row builder.
+            echo sp_newsletter_import_preview_row( $row, (int) $i ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
         }
         echo '</tbody></table>';
 
@@ -101549,6 +102738,59 @@ add_action( 'admin_menu', function () {
     );
 }, 25 );
 
+/**
+ * Import one uploaded CSV into its own collection and report what happened.
+ *
+ * WHY one file per request: a bulk import is typically six CSVs, each with
+ * thousands of rows. Committing them in a single POST meant one request
+ * carrying the whole migration — and on shared hosting it would hit the
+ * execution limit partway through, leaving some collections built, some
+ * missing, and nothing on screen to say which was which. One request per file
+ * gives each its own time budget and lets the browser report progress.
+ */
+add_action( 'wp_ajax_sp_recb_import_file', 'sp_ajax_records_bulk_import_file' );
+function sp_ajax_records_bulk_import_file(): void {
+    check_ajax_referer( 'sp_recb_import_file', 'nonce' );
+
+    if ( ! current_user_can( 'sp_manage_records' ) ) {
+        wp_send_json_error( [ 'message' => __( 'You do not have permission to import records.', 'societypress' ) ] );
+    }
+
+    $temp_dir = sp_ensure_import_temp_dir();
+    $token    = basename( sanitize_file_name( (string) ( $_POST['token'] ?? '' ) ) );
+    $path     = realpath( $temp_dir . $token );
+    $real_tmp = realpath( $temp_dir );
+
+    // Confine the import to the temp directory — the token arrives from the
+    // browser and must never be able to point outside it.
+    if ( ! $token || ! $path || ! $real_tmp || 0 !== strpos( $path, $real_tmp ) || ! file_exists( $path ) ) {
+        wp_send_json_error( [ 'message' => __( 'That upload could not be found. It may have already been imported.', 'societypress' ) ] );
+    }
+
+    $name   = sanitize_text_field( (string) ( $_POST['name'] ?? '' ) );
+    $type   = sanitize_text_field( (string) ( $_POST['type'] ?? 'general' ) );
+    $access = in_array( $_POST['access'] ?? '', [ 'public', 'members' ], true )
+        ? sanitize_key( $_POST['access'] )
+        : 'public';
+
+    $result = sp_records_bulk_import_csv(
+        $path,
+        $name ?: __( 'Imported Records', 'societypress' ),
+        $type,
+        $access
+    );
+
+    wp_delete_file( $path );
+
+    wp_send_json_success( [
+        'collection_id' => (int) ( $result['collection_id'] ?? 0 ),
+        'fields'        => (int) ( $result['fields'] ?? 0 ),
+        'records'       => (int) ( $result['records'] ?? 0 ),
+        'errors'        => array_values( (array) ( $result['errors'] ?? [] ) ),
+        'browse_url'    => admin_url( 'admin.php?page=sp-record-browse&collection_id=' . (int) ( $result['collection_id'] ?? 0 ) ),
+    ] );
+}
+
 function sp_render_import_records_bulk_page(): void {
     if ( ! current_user_can( 'sp_manage_records' ) ) {
         wp_die( esc_html__( 'You do not have permission to import records.', 'societypress' ) );
@@ -101655,6 +102897,18 @@ function sp_render_import_records_bulk_page(): void {
                     'sample'   => $sample  ?: [],
                 ];
             }
+
+            // PHP drops everything past max_file_uploads without complaint. A
+            // society arriving with more CSVs than the limit would otherwise
+            // believe the whole migration came across.
+            $max_uploads = (int) ini_get( 'max_file_uploads' );
+            if ( $max_uploads > 0 && $count >= $max_uploads ) {
+                $errors[] = sprintf(
+                    /* translators: %d: server's max_file_uploads limit */
+                    __( 'This server accepts at most %d files in a single upload. Any files past that limit were not received — upload the rest in a second pass.', 'societypress' ),
+                    $max_uploads
+                );
+            }
         }
 
         if ( ! $rows ) {
@@ -101678,7 +102932,7 @@ function sp_render_import_records_bulk_page(): void {
         echo '<h2>' . esc_html__( 'Review and confirm', 'societypress' ) . '</h2>';
         echo '<p>' . esc_html__( 'One collection will be created per file. Adjust the auto-detected name and type, set access level, and click Import.', 'societypress' ) . '</p>';
 
-        echo '<form method="post">';
+        echo '<form method="post" id="sp-recb-review-form">';
         wp_nonce_field( 'sp_recb_import' );
         echo '<input type="hidden" name="sp_recb_action" value="commit">';
 
@@ -101696,7 +102950,9 @@ function sp_render_import_records_bulk_page(): void {
         ];
 
         foreach ( $rows as $i => $row ) {
-            echo '<div class="card sp-recb-file-card">';
+            // data-index lets the batching script find each card's fields
+            // without re-parsing the sp_recb_items[...] name syntax.
+            echo '<div class="card sp-recb-file-card" data-index="' . (int) $i . '">';
             echo '<h3 class="sp-mt-0">' . esc_html( $row['filename'] ) . '</h3>';
             echo '<input type="hidden" name="sp_recb_items[' . (int) $i . '][token]" value="' . esc_attr( $row['token'] ) . '">';
             echo '<input type="hidden" name="sp_recb_items[' . (int) $i . '][filename]" value="' . esc_attr( $row['filename'] ) . '">';
@@ -101735,7 +102991,173 @@ function sp_render_import_records_bulk_page(): void {
         echo '<p class="sp-mt-only-0">';
         submit_button( __( 'Import all collections', 'societypress' ), 'primary', 'submit', false );
         echo ' &nbsp; <a class="button" href="' . esc_url( admin_url( 'admin.php?page=sp-import-records-bulk' ) ) . '">' . esc_html__( 'Cancel', 'societypress' ) . '</a></p>';
+
+        echo '<div id="sp-recb-progress" class="sp-recb-progress" hidden>';
+        echo '<div class="sp-recb-progress-track"><div class="sp-recb-progress-bar" id="sp-recb-progress-bar"></div></div>';
+        echo '<p class="sp-recb-progress-status" id="sp-recb-progress-status" role="status" aria-live="polite"></p>';
+        echo '</div>';
         echo '</form>';
+
+        echo '<div id="sp-recb-results" hidden>';
+        echo '<h2>' . esc_html__( 'Import complete', 'societypress' ) . '</h2>';
+        echo '<table class="widefat striped"><thead><tr>';
+        echo '<th scope="col">' . esc_html__( 'File', 'societypress' ) . '</th>';
+        echo '<th scope="col">' . esc_html__( 'Fields', 'societypress' ) . '</th>';
+        echo '<th scope="col">' . esc_html__( 'Records', 'societypress' ) . '</th>';
+        echo '<th scope="col">' . esc_html__( 'Collection', 'societypress' ) . '</th>';
+        echo '</tr></thead><tbody id="sp-recb-results-rows"></tbody></table>';
+        echo '<p><a class="button button-primary" href="' . esc_url( admin_url( 'admin.php?page=sp-record-collections' ) ) . '">' . esc_html__( 'View All Collections', 'societypress' ) . '</a></p>';
+        echo '</div>';
+        ?>
+        <style>
+            .sp-recb-progress { margin-top: 16px; max-width: 600px; }
+            .sp-recb-progress-track { height: 20px; background: #e6e6e6; border-radius: 10px; overflow: hidden; }
+            .sp-recb-progress-bar { height: 100%; width: 0; background: #2271b1; transition: width .2s ease; }
+            .sp-recb-progress-status { margin: 8px 0 0; font-weight: 600; }
+        </style>
+        <script>
+        (function () {
+            var form = document.getElementById('sp-recb-review-form');
+            if (!form || !window.FormData || !window.fetch) return;  /* falls back to a plain POST */
+
+            var wrap       = document.getElementById('sp-recb-progress');
+            var bar        = document.getElementById('sp-recb-progress-bar');
+            var statusEl   = document.getElementById('sp-recb-progress-status');
+            var results    = document.getElementById('sp-recb-results');
+            var resultRows = document.getElementById('sp-recb-results-rows');
+            var submitBtn  = form.querySelector('input[type="submit"], button[type="submit"]');
+
+            var STR = <?php echo wp_json_encode( [
+                'working' => __( 'Importing %1$s — file %2$d of %3$d…', 'societypress' ),
+                'none'    => __( 'Nothing selected to import.', 'societypress' ),
+                'network' => __( 'Lost contact with the server.', 'societypress' ),
+                'browse'  => __( 'Browse', 'societypress' ),
+                'failed'  => __( 'failed', 'societypress' ),
+            ] ); ?>;
+
+            var AJAX  = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
+            var NONCE = <?php echo wp_json_encode( wp_create_nonce( 'sp_recb_import_file' ) ); ?>;
+
+            function field(idx, key) {
+                return form.querySelector('[name="sp_recb_items[' + idx + '][' + key + ']"]');
+            }
+
+            function cell(row, text) {
+                var td = document.createElement('td');
+                td.textContent = text;   /* filenames and DB errors are user-supplied */
+                row.appendChild(td);
+                return td;
+            }
+
+            form.addEventListener('submit', function (e) {
+                /* Build the work list from the cards the user left ticked. */
+                var jobs = [];
+                Array.prototype.forEach.call(form.querySelectorAll('.sp-recb-file-card'), function (card) {
+                    var idx = card.getAttribute('data-index');
+                    var box = field(idx, 'import');
+                    if (!box || !box.checked) return;
+                    jobs.push({
+                        token:    field(idx, 'token').value,
+                        filename: field(idx, 'filename').value,
+                        name:     field(idx, 'name').value,
+                        type:     field(idx, 'type').value,
+                        access:   field(idx, 'access').value
+                    });
+                });
+
+                if (!jobs.length) return;   /* let the server say nothing was chosen */
+
+                e.preventDefault();
+
+                var jobIdx = 0;
+                wrap.hidden = false;
+                if (submitBtn) submitBtn.disabled = true;
+
+                function addResult(job, data, failed) {
+                    var tr = document.createElement('tr');
+                    cell(tr, job.filename);
+                    cell(tr, failed ? '—' : String(data.fields));
+                    cell(tr, failed ? '—' : String(data.records));
+
+                    var last = document.createElement('td');
+                    if (failed) {
+                        last.textContent = data;   /* an error message string */
+                        last.className = 'sp-recb-error-row';
+                    } else {
+                        var a = document.createElement('a');
+                        a.href = data.browse_url;
+                        a.textContent = STR.browse;
+                        last.appendChild(a);
+                    }
+                    tr.appendChild(last);
+                    resultRows.appendChild(tr);
+
+                    if (!failed && data.errors && data.errors.length) {
+                        data.errors.forEach(function (msg) {
+                            var er = document.createElement('tr');
+                            er.className = 'sp-recb-error-row';
+                            var td = document.createElement('td');
+                            td.colSpan = 4;
+                            td.textContent = msg;
+                            er.appendChild(td);
+                            resultRows.appendChild(er);
+                        });
+                    }
+                }
+
+                function finish() {
+                    bar.style.width = '100%';
+                    wrap.hidden = true;
+                    form.hidden = true;
+                    results.hidden = false;
+                    results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+
+                function runNext() {
+                    if (jobIdx >= jobs.length) { finish(); return; }
+
+                    var job = jobs[jobIdx];
+                    statusEl.textContent = STR.working
+                        .replace('%1$s', job.filename)
+                        .replace('%2$d', jobIdx + 1)
+                        .replace('%3$d', jobs.length);
+
+                    var data = new FormData();
+                    data.append('action', 'sp_recb_import_file');
+                    data.append('nonce', NONCE);
+                    data.append('token', job.token);
+                    data.append('name', job.name);
+                    data.append('type', job.type);
+                    data.append('access', job.access);
+
+                    fetch(AJAX, { method: 'POST', body: data, credentials: 'same-origin' })
+                        .then(function (r) { return r.json(); })
+                        .then(function (r) {
+                            if (!r || !r.success) {
+                                addResult(job, (r && r.data && r.data.message) || STR.network, true);
+                            } else {
+                                addResult(job, r.data, false);
+                            }
+                            jobIdx++;
+                            bar.style.width = Math.round((jobIdx / jobs.length) * 100) + '%';
+                            runNext();
+                        })
+                        .catch(function () {
+                            /* One file failing must not abandon the rest — a
+                               migration half-done with no report is the thing
+                               this whole change exists to prevent. */
+                            addResult(job, STR.network, true);
+                            jobIdx++;
+                            bar.style.width = Math.round((jobIdx / jobs.length) * 100) + '%';
+                            runNext();
+                        });
+                }
+
+                runNext();
+            });
+        })();
+        </script>
+        <?php
         echo '</div>';
         return;
     }
@@ -101805,7 +103227,12 @@ function sp_gallery_import_create_album( string $title, string $description, str
 /**
  * Add an attachment to an album.
  */
+/**
+ * Attach an image to an album, filing it under Photo Galleries as it goes.
+ */
 function sp_gallery_import_add_item( int $album_id, int $attachment_id, int $sort_order, string $caption = '' ): int {
+    sp_media_file_into( $attachment_id, 'photo-galleries' );
+
     global $wpdb;
     $table = $wpdb->prefix . 'sp_photo_album_items';
     $wpdb->insert( $table, [
@@ -102355,17 +103782,671 @@ function sp_render_import_gallery_form(): void {
 
 function sp_render_import_newsletters_upload_form(): void {
     $max_size = size_format( wp_max_upload_size() );
-    echo '<form method="post" enctype="multipart/form-data">';
+
+    echo '<form method="post" enctype="multipart/form-data" id="sp-nl-import-form">';
     wp_nonce_field( 'sp_nl_import' );
     echo '<input type="hidden" name="sp_nl_import_action" value="upload">';
     echo '<p><label for="nl_pdfs">' . esc_html__( 'Select PDFs:', 'societypress' ) . '</label> ';
     echo '<input type="file" id="nl_pdfs" name="nl_pdfs[]" accept="application/pdf,.pdf" multiple required></p>';
     /* translators: %s: human-readable max upload file size */
-    echo '<p class="description">' . sprintf( esc_html__( 'Maximum upload size per file: %s. Pick as many PDFs as your server allows in one POST.', 'societypress' ), esc_html( $max_size ) ) . '</p>';
+    echo '<p class="description">' . sprintf( esc_html__( 'Select as many PDFs as you like — they upload in small batches, so there is no limit on how many. Maximum %s per file.', 'societypress' ), esc_html( $max_size ) ) . '</p>';
     submit_button( __( 'Upload PDFs', 'societypress' ), 'primary' );
+
+    // Progress readout, hidden until an upload starts. Kept inside the upload
+    // form so it disappears with it once the review table takes over.
+    echo '<div id="sp-nl-progress" class="sp-nl-progress" hidden>';
+    echo '<div class="sp-nl-progress-track"><div class="sp-nl-progress-bar" id="sp-nl-progress-bar"></div></div>';
+    echo '<p class="sp-nl-progress-status" id="sp-nl-progress-status" role="status" aria-live="polite"></p>';
+    echo '<ul class="ul-disc sp-nl-progress-errors" id="sp-nl-progress-errors"></ul>';
+    echo '</div>';
     echo '</form>';
+
+    // The review form is a sibling, not a child — forms cannot nest. It stays
+    // empty and hidden until the uploads finish, then the rows land in it.
+    echo '<div id="sp-nl-review" hidden>';
+    echo '<h2>' . esc_html__( 'Review and confirm', 'societypress' ) . '</h2>';
+    echo '<p>' . esc_html__( 'Each row will become a newsletter archive entry. Adjust the auto-detected fields, uncheck any you do not want to import, then save.', 'societypress' ) . '</p>';
+    echo '<form method="post">';
+    wp_nonce_field( 'sp_nl_import' );
+    echo '<input type="hidden" name="sp_nl_import_action" value="commit">';
+    echo '<table class="widefat striped">';
+    echo '<thead><tr>';
+    echo '<th scope="col">' . esc_html__( 'Import?', 'societypress' ) . '</th>';
+    echo '<th scope="col">' . esc_html__( 'Cover', 'societypress' ) . '</th>';
+    echo '<th scope="col">' . esc_html__( 'Title', 'societypress' ) . '</th>';
+    echo '<th scope="col">' . esc_html__( 'Date', 'societypress' ) . '</th>';
+    echo '<th scope="col">' . esc_html__( 'Vol.', 'societypress' ) . '</th>';
+    echo '<th scope="col">' . esc_html__( 'Issue', 'societypress' ) . '</th>';
+    echo '<th scope="col">' . esc_html__( 'Visibility', 'societypress' ) . '</th>';
+    echo '</tr></thead><tbody id="sp-nl-review-rows"></tbody>';
+    echo '</table>';
+    echo '<p class="sp-mt-only-0">';
+    submit_button( __( 'Add to Newsletter Archive', 'societypress' ), 'primary', 'submit', false );
+    echo ' &nbsp; <a class="button" href="' . esc_url( admin_url( 'admin.php?page=sp-import-newsletters' ) ) . '">' . esc_html__( 'Cancel', 'societypress' ) . '</a></p>';
+    echo '</form>';
+    echo '</div>';
+    ?>
+    <style>
+        .sp-nl-progress { margin-top: 16px; max-width: 600px; }
+        .sp-nl-progress-track { height: 20px; background: #e6e6e6; border-radius: 10px; overflow: hidden; }
+        .sp-nl-progress-bar { height: 100%; width: 0; background: #2271b1; transition: width .2s ease; }
+        .sp-nl-progress-status { margin: 8px 0 0; font-weight: 600; }
+        .sp-nl-progress-errors { margin: 8px 0 0; color: #b32d2e; }
+    </style>
+    <script>
+    (function () {
+        var form = document.getElementById('sp-nl-import-form');
+        if (!form || !window.FormData || !window.fetch) return;  /* falls back to a plain POST */
+
+        /* WHY 5 and not the gallery's 10: each PDF also gets a cover rendered
+           by Imagick, which is far heavier than storing an image. Smaller
+           batches keep each request inside the server's timeout. */
+        var BATCH = 5;
+
+        var fileInput = document.getElementById('nl_pdfs');
+        var wrap      = document.getElementById('sp-nl-progress');
+        var bar       = document.getElementById('sp-nl-progress-bar');
+        var statusEl  = document.getElementById('sp-nl-progress-status');
+        var errorsEl  = document.getElementById('sp-nl-progress-errors');
+        var review    = document.getElementById('sp-nl-review');
+        var reviewRows = document.getElementById('sp-nl-review-rows');
+        var submitBtn = form.querySelector('input[type="submit"], button[type="submit"]');
+
+        var STR = <?php echo wp_json_encode( [
+            'working' => __( 'Uploading %1$d of %2$d…', 'societypress' ),
+            'done'    => __( 'Done — %d ready to review.', 'societypress' ),
+            'failed'  => __( 'The upload stopped early. %d ready to review.', 'societypress' ),
+            'none'    => __( 'No valid PDFs were uploaded.', 'societypress' ),
+            'network' => __( 'Lost contact with the server.', 'societypress' ),
+        ] ); ?>;
+
+        var AJAX  = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
+        var NONCE = <?php echo wp_json_encode( wp_create_nonce( 'sp_nl_import_batch' ) ); ?>;
+
+        function fmt(tpl, a, b) {
+            return tpl.replace('%1$d', a).replace('%2$d', b).replace('%d', a);
+        }
+
+        function showErrors(list) {
+            list.forEach(function (msg) {
+                var li = document.createElement('li');
+                li.textContent = msg;   /* file names are user-supplied — never innerHTML */
+                errorsEl.appendChild(li);
+            });
+        }
+
+        form.addEventListener('submit', function (e) {
+            var files = fileInput && fileInput.files ? Array.prototype.slice.call(fileInput.files) : [];
+            if (!files.length) return;   /* let the server's own validation speak */
+
+            e.preventDefault();
+
+            var jobs = [];
+            for (var i = 0; i < files.length; i += BATCH) jobs.push(files.slice(i, i + BATCH));
+
+            var total  = files.length;
+            var done   = 0;
+            var added  = 0;
+            var jobIdx = 0;
+
+            wrap.hidden = false;
+            errorsEl.textContent = '';
+            if (submitBtn) submitBtn.disabled = true;
+            statusEl.textContent = fmt(STR.working, 0, total);
+
+            function finish(ok) {
+                bar.style.width = '100%';
+
+                if (!added) {
+                    statusEl.textContent = STR.none;
+                    if (submitBtn) submitBtn.disabled = false;
+                    return;
+                }
+
+                statusEl.textContent = ok ? fmt(STR.done, added) : fmt(STR.failed, added);
+
+                /* Hand the page over to the review table. Errors stay visible by
+                   moving with it, so a partial failure is not hidden by success. */
+                review.hidden = false;
+                if (errorsEl.children.length) review.insertBefore(errorsEl, review.firstChild);
+                form.hidden = true;
+                review.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+
+            function runNext() {
+                if (jobIdx >= jobs.length) { finish(true); return; }
+
+                var job  = jobs[jobIdx];
+                var data = new FormData();
+
+                data.append('action', 'sp_nl_import_batch');
+                data.append('nonce', NONCE);
+                data.append('start_index', added);
+                job.forEach(function (f) { data.append('nl_pdfs[]', f); });
+
+                fetch(AJAX, { method: 'POST', body: data, credentials: 'same-origin' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (r) {
+                        if (!r || !r.success) {
+                            showErrors([(r && r.data && r.data.message) || STR.network]);
+                            finish(false);
+                            return;
+                        }
+
+                        if (r.data.rows && r.data.rows.length) {
+                            /* Server-rendered markup, escaped field by field in
+                               sp_newsletter_import_preview_row(). */
+                            reviewRows.insertAdjacentHTML('beforeend', r.data.rows.join(''));
+                        }
+                        added += r.data.added;
+                        done  += job.length;
+                        if (r.data.errors && r.data.errors.length) showErrors(r.data.errors);
+
+                        bar.style.width = Math.round((done / total) * 100) + '%';
+                        statusEl.textContent = fmt(STR.working, done, total);
+
+                        jobIdx++;
+                        runNext();
+                    })
+                    .catch(function () {
+                        showErrors([STR.network]);
+                        finish(false);
+                    });
+            }
+
+            runNext();
+        });
+    })();
+    </script>
+    <?php
 }
 
+
+// ============================================================================
+// MEDIA FOLDERS
+//
+// The WordPress media library is one flat pile. A society three years into
+// using SocietyPress has newsletter PDFs, gallery photos, event images, board
+// minutes and the site logo all mixed together, and every picker in the admin
+// shows all of it at once.
+//
+// Folders here are a taxonomy on attachments, filled automatically. Every
+// SocietyPress upload path already knows what it is handling — the newsletter
+// importer knows it has newsletters — so the file is put away at the moment it
+// arrives rather than left for a volunteer to sort later. Harold can still
+// make his own folders and move things between them; the automatic filing is a
+// starting point, not a cage.
+//
+// "Unfiled" is the absence of a term rather than a folder of its own, so
+// nothing has to be written to the database for a file nobody has classified.
+// ============================================================================
+
+/**
+ * The folders SocietyPress creates and fills on its own.
+ *
+ * @return array<string,string> slug => label
+ */
+function sp_media_folders_default(): array {
+    return [
+        'newsletters'     => __( 'Newsletters', 'societypress' ),
+        'photo-galleries' => __( 'Photo Galleries', 'societypress' ),
+        'events'          => __( 'Events', 'societypress' ),
+        'documents'       => __( 'Documents', 'societypress' ),
+        'site-design'     => __( 'Site Design', 'societypress' ),
+    ];
+}
+
+/**
+ * Register the folder taxonomy.
+ *
+ * Hierarchical so a society that wants Newsletters → 1998 can have it, without
+ * forcing that structure on anyone who does not.
+ */
+function sp_register_media_folders(): void {
+    register_taxonomy(
+        'sp_media_folder',
+        'attachment',
+        [
+            'labels'            => [
+                'name'              => __( 'Media Folders', 'societypress' ),
+                'singular_name'     => __( 'Folder', 'societypress' ),
+                'menu_name'         => __( 'Folders', 'societypress' ),
+                'all_items'         => __( 'All Folders', 'societypress' ),
+                'edit_item'         => __( 'Edit Folder', 'societypress' ),
+                'add_new_item'      => __( 'Add Folder', 'societypress' ),
+                'new_item_name'     => __( 'New folder name', 'societypress' ),
+                'parent_item'       => __( 'Inside folder', 'societypress' ),
+                'search_items'      => __( 'Search folders', 'societypress' ),
+                'not_found'         => __( 'No folders yet.', 'societypress' ),
+            ],
+            'public'            => false,
+            'show_ui'           => true,
+            'show_admin_column' => true,
+            'show_in_menu'      => true,
+            'hierarchical'      => true,
+            'rewrite'           => false,
+            // WHY not the default counter: WordPress counts only posts with
+            // status 'publish', and attachments are 'inherit'. Left alone,
+            // every folder reports zero files no matter how full it is.
+            'update_count_callback' => '_update_generic_term_count',
+            'capabilities'      => [
+                'manage_terms' => 'upload_files',
+                'edit_terms'   => 'upload_files',
+                'delete_terms' => 'upload_files',
+                'assign_terms' => 'upload_files',
+            ],
+        ]
+    );
+}
+add_action( 'init', 'sp_register_media_folders' );
+
+/**
+ * Create the default folders once.
+ *
+ * Guarded by an option rather than by checking whether the terms exist: a
+ * society that deliberately deletes "Site Design" should not have it come back
+ * on the next page load.
+ */
+function sp_seed_media_folders(): void {
+    if ( get_option( 'sp_media_folders_seeded' ) ) {
+        return;
+    }
+
+    if ( ! taxonomy_exists( 'sp_media_folder' ) ) {
+        sp_register_media_folders();
+    }
+
+    foreach ( sp_media_folders_default() as $slug => $label ) {
+        if ( ! term_exists( $slug, 'sp_media_folder' ) ) {
+            wp_insert_term( $label, 'sp_media_folder', [ 'slug' => $slug ] );
+        }
+    }
+
+    update_option( 'sp_media_folders_seeded', 1, true );
+}
+add_action( 'admin_init', 'sp_seed_media_folders' );
+
+/**
+ * Put an attachment into a folder.
+ *
+ * Does nothing if the file is already filed, so re-running the backfill or
+ * re-saving a newsletter never overwrites a folder somebody chose by hand.
+ * Pass $force to move a file regardless.
+ *
+ * @param int    $attachment_id Attachment to file.
+ * @param string $slug          Folder slug; created if missing.
+ * @param bool   $force         Move even if already filed.
+ */
+function sp_media_file_into( int $attachment_id, string $slug, bool $force = false ): void {
+    if ( $attachment_id <= 0 || '' === $slug ) {
+        return;
+    }
+
+    if ( 'attachment' !== get_post_type( $attachment_id ) ) {
+        return;
+    }
+
+    if ( ! $force ) {
+        $existing = wp_get_object_terms( $attachment_id, 'sp_media_folder', [ 'fields' => 'ids' ] );
+        if ( ! is_wp_error( $existing ) && ! empty( $existing ) ) {
+            return;
+        }
+    }
+
+    $term = term_exists( $slug, 'sp_media_folder' );
+    if ( ! $term ) {
+        $defaults = sp_media_folders_default();
+        $label    = $defaults[ $slug ] ?? ucwords( str_replace( '-', ' ', $slug ) );
+        $term     = wp_insert_term( $label, 'sp_media_folder', [ 'slug' => $slug ] );
+    }
+
+    if ( is_wp_error( $term ) ) {
+        return;
+    }
+
+    wp_set_object_terms( $attachment_id, [ (int) $term['term_id'] ], 'sp_media_folder', false );
+}
+
+/**
+ * Work out which folder an upload belongs in from the screen it came from.
+ *
+ * WHY the referer: uploads started from the WordPress media picker are posted
+ * to async-upload.php, which knows nothing about the SocietyPress screen the
+ * volunteer was looking at. The referring URL still carries the admin page
+ * slug, and that is enough to file a logo picked on the Design screen into
+ * Site Design rather than leaving it unfiled.
+ *
+ * Returns '' when the source is not recognised — an unfiled file is a better
+ * outcome than a confidently wrong one.
+ */
+function sp_media_folder_from_context(): string {
+    $referer = wp_get_referer();
+    if ( ! $referer ) {
+        return '';
+    }
+
+    $query = (string) wp_parse_url( $referer, PHP_URL_QUERY );
+    if ( '' === $query ) {
+        return '';
+    }
+
+    parse_str( $query, $args );
+    $page = isset( $args['page'] ) ? sanitize_key( $args['page'] ) : '';
+    if ( '' === $page ) {
+        return '';
+    }
+
+    // Longest-prefix wins, so sp-album-edit is not caught by a shorter rule.
+    $map = [
+        'sp-import-newsletters' => 'newsletters',
+        'sp-newsletter'         => 'newsletters',
+        'sp-import-gallery'     => 'photo-galleries',
+        'sp-album-edit'         => 'photo-galleries',
+        'sp-gallery'            => 'photo-galleries',
+        'sp-photo'              => 'photo-galleries',
+        'sp-event'              => 'events',
+        'sp-document'           => 'documents',
+        'sp-settings'           => 'site-design',
+        'sp-design'             => 'site-design',
+    ];
+
+    foreach ( $map as $prefix => $folder ) {
+        if ( 0 === strpos( $page, $prefix ) ) {
+            return $folder;
+        }
+    }
+
+    return '';
+}
+
+/**
+ * File anything uploaded from a SocietyPress screen.
+ *
+ * Runs on every new attachment. Explicit sp_media_file_into() calls in the
+ * importers have already run by this point for those paths, and this function
+ * never overwrites an existing folder, so the two cannot fight.
+ */
+function sp_media_autofile_new_attachment( int $attachment_id ): void {
+    $folder = sp_media_folder_from_context();
+    if ( '' !== $folder ) {
+        sp_media_file_into( $attachment_id, $folder );
+    }
+}
+add_action( 'add_attachment', 'sp_media_autofile_new_attachment' );
+
+/**
+ * Add a folder filter above the Media Library list table.
+ */
+function sp_media_folder_list_filter(): void {
+    $screen = get_current_screen();
+    if ( ! $screen || 'upload' !== $screen->base ) {
+        return;
+    }
+
+    $selected = isset( $_GET['sp_media_folder'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_media_folder'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
+    $terms = get_terms( [ 'taxonomy' => 'sp_media_folder', 'hide_empty' => false ] );
+    if ( is_wp_error( $terms ) || empty( $terms ) ) {
+        return;
+    }
+
+    echo '<label class="screen-reader-text" for="sp_media_folder">' . esc_html__( 'Filter by folder', 'societypress' ) . '</label>';
+    echo '<select name="sp_media_folder" id="sp_media_folder">';
+    echo '<option value="">' . esc_html__( 'All folders', 'societypress' ) . '</option>';
+    echo '<option value="sp-unfiled"' . selected( $selected, 'sp-unfiled', false ) . '>' . esc_html__( 'Unfiled', 'societypress' ) . '</option>';
+    foreach ( $terms as $term ) {
+        printf(
+            '<option value="%1$s"%2$s>%3$s (%4$d)</option>',
+            esc_attr( $term->slug ),
+            selected( $selected, $term->slug, false ),
+            esc_html( $term->name ),
+            (int) $term->count
+        );
+    }
+    echo '</select>';
+}
+add_action( 'restrict_manage_posts', 'sp_media_folder_list_filter' );
+
+/**
+ * Translate the folder filter into a query, including the Unfiled case.
+ *
+ * @param WP_Query $query Current query.
+ */
+function sp_media_folder_filter_query( $query ): void {
+    if ( ! is_admin() || ! $query->is_main_query() || 'attachment' !== $query->get( 'post_type' ) ) {
+        return;
+    }
+
+    $folder = isset( $_GET['sp_media_folder'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_media_folder'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+    if ( '' === $folder ) {
+        return;
+    }
+
+    $query->set( 'tax_query', [ sp_media_folder_tax_clause( $folder ) ] );
+}
+add_action( 'pre_get_posts', 'sp_media_folder_filter_query' );
+
+/**
+ * Build the tax_query clause for a folder slug.
+ *
+ * "Unfiled" is expressed as NOT EXISTS rather than as a term, which is why it
+ * needs its own branch here.
+ *
+ * @return array<string,mixed>
+ */
+function sp_media_folder_tax_clause( string $folder ): array {
+    if ( 'sp-unfiled' === $folder ) {
+        return [
+            'taxonomy' => 'sp_media_folder',
+            'operator' => 'NOT EXISTS',
+        ];
+    }
+
+    return [
+        'taxonomy' => 'sp_media_folder',
+        'field'    => 'slug',
+        'terms'    => $folder,
+    ];
+}
+
+/**
+ * Honour the folder filter inside the media picker modal.
+ *
+ * @param array<string,mixed> $args Query args the modal is about to run.
+ * @return array<string,mixed>
+ */
+function sp_media_folder_modal_query( array $args ): array {
+    $folder = isset( $_POST['query']['sp_media_folder'] ) // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+        ? sanitize_text_field( wp_unslash( $_POST['query']['sp_media_folder'] ) ) // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+        : '';
+
+    if ( '' !== $folder ) {
+        $args['tax_query'] = [ sp_media_folder_tax_clause( $folder ) ];
+    }
+
+    return $args;
+}
+add_filter( 'ajax_query_attachments_args', 'sp_media_folder_modal_query' );
+
+/**
+ * Add the folder dropdown to the media picker modal.
+ *
+ * The modal is a Backbone application, so the filter has to be registered as a
+ * view rather than printed as HTML. Loaded on any admin screen that has called
+ * wp_enqueue_media().
+ */
+function sp_media_folder_modal_script(): void {
+    if ( ! did_action( 'wp_enqueue_media' ) ) {
+        return;
+    }
+
+    $terms = get_terms( [ 'taxonomy' => 'sp_media_folder', 'hide_empty' => false ] );
+    if ( is_wp_error( $terms ) ) {
+        $terms = [];
+    }
+
+    $options = [];
+    foreach ( $terms as $term ) {
+        $options[] = [ 'slug' => $term->slug, 'name' => $term->name ];
+    }
+    ?>
+    <script>
+    (function () {
+        if (!window.wp || !wp.media || !wp.media.view || !wp.media.view.AttachmentFilters) return;
+
+        var FOLDERS = <?php echo wp_json_encode( $options ); ?>;
+        var STR = <?php echo wp_json_encode( [
+            'all'     => __( 'All folders', 'societypress' ),
+            'unfiled' => __( 'Unfiled', 'societypress' ),
+        ] ); ?>;
+
+        if (!FOLDERS.length) return;
+
+        var SPFolderFilter = wp.media.view.AttachmentFilters.extend({
+            id: 'sp-media-folder-filter',
+
+            createFilters: function () {
+                var filters = {};
+
+                filters.all = {
+                    text:  STR.all,
+                    props: { sp_media_folder: '' },
+                    priority: 10
+                };
+
+                filters.unfiled = {
+                    text:  STR.unfiled,
+                    props: { sp_media_folder: 'sp-unfiled' },
+                    priority: 20
+                };
+
+                FOLDERS.forEach(function (folder, i) {
+                    filters['sp-' + folder.slug] = {
+                        text:  folder.name,
+                        props: { sp_media_folder: folder.slug },
+                        priority: 30 + i
+                    };
+                });
+
+                this.filters = filters;
+            }
+        });
+
+        /* Attach the dropdown to the modal's toolbar as it is built. */
+        var Attachments = wp.media.view.AttachmentsBrowser;
+        wp.media.view.AttachmentsBrowser = Attachments.extend({
+            createToolbar: function () {
+                Attachments.prototype.createToolbar.call(this);
+
+                this.toolbar.set('spMediaFolderFilter', new SPFolderFilter({
+                    controller: this.controller,
+                    model:      this.collection.props,
+                    priority:   -75
+                }).render());
+            }
+        });
+    })();
+    </script>
+    <?php
+}
+add_action( 'admin_print_footer_scripts', 'sp_media_folder_modal_script', 100 );
+
+/**
+ * Backfill folders for files that predate this feature.
+ *
+ * Sources are read from SocietyPress's own tables rather than guessed from
+ * filenames, so a newsletter PDF is filed as a newsletter because the
+ * newsletter row points at it — not because its name happened to contain the
+ * word.
+ *
+ * @param bool $force Re-file attachments that already have a folder.
+ * @return array<string,int> Folder slug => number of attachments filed.
+ */
+function sp_media_folders_backfill( bool $force = false ): array {
+    global $wpdb;
+
+    $p      = $wpdb->prefix . 'sp_';
+    $tally  = [];
+    $sources = [];
+
+    // Newsletters: the PDF itself and its generated cover.
+    if ( sp_table_exists( $p . 'newsletters' ) ) {
+        $ids = $wpdb->get_col( "SELECT file_id FROM {$p}newsletters WHERE file_id > 0" );
+        $ids = array_merge( $ids, (array) $wpdb->get_col( "SELECT cover_image_id FROM {$p}newsletters WHERE cover_image_id > 0" ) );
+        $sources['newsletters'] = $ids;
+    }
+
+    // Gallery photos.
+    if ( sp_table_exists( $p . 'photo_album_items' ) ) {
+        $sources['photo-galleries'] = (array) $wpdb->get_col( "SELECT attachment_id FROM {$p}photo_album_items WHERE attachment_id > 0" );
+    }
+
+    // Event images.
+    if ( sp_table_exists( $p . 'events' ) ) {
+        $ids = (array) $wpdb->get_col( "SELECT image_id FROM {$p}events WHERE image_id > 0" );
+        $ids = array_merge( $ids, (array) $wpdb->get_col( "SELECT attachment_id FROM {$p}events WHERE attachment_id > 0" ) );
+        $sources['events'] = $ids;
+    }
+
+    foreach ( $sources as $folder => $ids ) {
+        $tally[ $folder ] = 0;
+        foreach ( array_unique( array_map( 'intval', $ids ) ) as $id ) {
+            if ( $id > 0 ) {
+                sp_media_file_into( $id, $folder, $force );
+                $tally[ $folder ]++;
+            }
+        }
+    }
+
+    // Documents store a URL rather than an attachment ID, so each one has to be
+    // resolved back to its attachment. Skipped silently when it does not
+    // resolve — a document uploaded outside the media library has no attachment
+    // to file.
+    if ( sp_table_exists( $p . 'documents' ) ) {
+        $tally['documents'] = 0;
+        $urls = (array) $wpdb->get_col( "SELECT file_url FROM {$p}documents WHERE file_url <> ''" );
+        foreach ( $urls as $url ) {
+            $id = attachment_url_to_postid( $url );
+            if ( $id ) {
+                sp_media_file_into( (int) $id, 'documents', $force );
+                $tally['documents']++;
+            }
+        }
+    }
+
+    return $tally;
+}
+
+/**
+ * Does a table exist? Used so backfill degrades quietly on installs where a
+ * module has never been switched on.
+ */
+function sp_table_exists( string $table ): bool {
+    global $wpdb;
+    return (bool) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
+}
+
+if ( defined( 'WP_CLI' ) && WP_CLI ) {
+    /**
+     * wp sp media-folders backfill [--force]
+     */
+    WP_CLI::add_command( 'sp media-folders', function ( $args, $assoc_args ) {
+        $sub = $args[0] ?? '';
+
+        if ( 'backfill' !== $sub ) {
+            WP_CLI::error( 'Usage: wp sp media-folders backfill [--force]' );
+        }
+
+        sp_seed_media_folders();
+        $tally = sp_media_folders_backfill( isset( $assoc_args['force'] ) );
+
+        foreach ( $tally as $folder => $count ) {
+            WP_CLI::log( sprintf( '%-18s %d', $folder, $count ) );
+        }
+
+        WP_CLI::success( sprintf( 'Considered %d attachment(s).', array_sum( $tally ) ) );
+    } );
+}
 
 // ============================================================================
 // URL SHORTENER — society-local short links at /r/{code}

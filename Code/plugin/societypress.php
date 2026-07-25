@@ -2136,6 +2136,7 @@ function sp_create_tables(): void {
         member_price    DECIMAL(10,2)       NULL,
         shipping_fee    DECIMAL(10,2)       NOT NULL DEFAULT 0.00,
         image_url       VARCHAR(500)        NULL,
+        preview_url     VARCHAR(2048)       NULL,
         store_category  VARCHAR(50)         NULL,
         stock_qty       INT                 NULL,
         active          TINYINT(1)          NOT NULL DEFAULT 1,
@@ -25404,17 +25405,38 @@ function sp_invalidate_stat_caches(): void {
 }
 
 /**
- * Prune old audit log entries (older than 1 year).
+ * How long audit entries are kept, in days.
  *
- * WHY: The audit log grows continuously. Entries older than a year are
- *      rarely useful and just take up space. We prune on a daily cron
- *      to keep the table lean.
+ * Defaults to a year, which is what this pruner used before the value was
+ * configurable — so an upgrade changes nothing until somebody chooses.
+ * Zero means keep everything.
+ */
+function sp_audit_log_retention_days(): int {
+    $settings = sp_settings();
+    $days     = (int) ( $settings['audit_log_retention_days'] ?? 365 );
+
+    return max( 0, $days );
+}
+
+/**
+ * Prune audit entries past the retention window, on the daily cron.
+ *
+ * WHY configurable: a year was hardcoded, and a busy society can find its log
+ * unreadable inside a month. Keeping a year of entries nobody will ever scroll
+ * to is not a safety feature, it is just a long list.
  */
 function sp_prune_audit_log(): void {
+    $days = sp_audit_log_retention_days();
+    if ( $days <= 0 ) {
+        return;   // Keep everything.
+    }
+
     global $wpdb;
     $wpdb->query(
-        "DELETE FROM {$wpdb->prefix}sp_audit_log
-         WHERE created_at < DATE_SUB(NOW(), INTERVAL 1 YEAR)"
+        $wpdb->prepare(
+            "DELETE FROM {$wpdb->prefix}sp_audit_log WHERE created_at < DATE_SUB( NOW(), INTERVAL %d DAY )",
+            $days
+        )
     );
 }
 add_action( 'sp_daily_maintenance', 'sp_prune_audit_log' );
@@ -25530,10 +25552,137 @@ function sp_render_audit_log_page(): void {
     $actions = $wpdb->get_col( "SELECT DISTINCT action FROM {$table} ORDER BY action" );
 
     ?>
+    <?php
+    // ---- Tidy up: delete old entries, and set how long new ones are kept ----
+    $sp_audit_notice = '';
+
+    if ( isset( $_POST['sp_audit_tidy'] ) && check_admin_referer( 'sp_audit_tidy' ) ) {
+        $older_than = (int) ( $_POST['sp_audit_older_than'] ?? 0 );
+
+        if ( $older_than > 0 ) {
+            $removed = (int) $wpdb->query(
+                $wpdb->prepare(
+                    "DELETE FROM {$table} WHERE created_at < DATE_SUB( NOW(), INTERVAL %d DAY )",
+                    $older_than
+                )
+            );
+        } else {
+            // "Everything" still spares today, so the record of the tidy-up
+            // itself survives the tidy-up.
+            $removed = (int) $wpdb->query(
+                "DELETE FROM {$table} WHERE created_at < DATE_SUB( NOW(), INTERVAL 1 DAY )"
+            );
+        }
+
+        sp_audit( 'audit_log_tidied', sprintf( 'Removed %d audit entries', $removed ), 'settings' );
+
+        $sp_audit_notice = sprintf(
+            /* translators: %s: number of entries removed */
+            _n( '%s entry removed.', '%s entries removed.', $removed, 'societypress' ),
+            number_format_i18n( $removed )
+        );
+    }
+
+    if ( isset( $_POST['sp_audit_save_retention'] ) && check_admin_referer( 'sp_audit_tidy' ) ) {
+        $keep     = max( 0, (int) ( $_POST['sp_audit_retention'] ?? 365 ) );
+        $settings = get_option( 'societypress_settings', [] );
+        $settings['audit_log_retention_days'] = $keep;
+        update_option( 'societypress_settings', $settings );
+
+        $sp_audit_notice = $keep > 0
+            ? sprintf(
+                /* translators: %s: number of days */
+                __( 'Entries will be kept for %s days from now on.', 'societypress' ),
+                number_format_i18n( $keep )
+            )
+            : __( 'Entries will be kept indefinitely from now on.', 'societypress' );
+    }
+
+    $sp_audit_total     = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" );
+    $sp_audit_retention = sp_audit_log_retention_days();
+    ?>
     <div class="wrap sp-admin-wrap">
         <h1><?php esc_html_e( 'Audit Log', 'societypress' ); ?></h1>
 
+        <?php if ( $sp_audit_notice ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php echo esc_html( $sp_audit_notice ); ?></p></div>
+        <?php endif; ?>
+
+        <div class="sp-audit-tidy">
+            <p class="sp-audit-tidy-count">
+                <?php
+                printf(
+                    esc_html(
+                        /* translators: %s: number of entries currently stored */
+                        _n( 'The log holds %s entry.', 'The log holds %s entries.', $sp_audit_total, 'societypress' )
+                    ),
+                    esc_html( number_format_i18n( $sp_audit_total ) )
+                );
+                ?>
+            </p>
+
+            <form method="post" class="sp-audit-tidy-form" id="sp-audit-tidy-form">
+                <?php wp_nonce_field( 'sp_audit_tidy' ); ?>
+                <label for="sp-audit-older-than"><?php esc_html_e( 'Delete entries older than', 'societypress' ); ?></label>
+                <select name="sp_audit_older_than" id="sp-audit-older-than">
+                    <option value="30"><?php esc_html_e( '30 days', 'societypress' ); ?></option>
+                    <option value="90" selected><?php esc_html_e( '90 days', 'societypress' ); ?></option>
+                    <option value="180"><?php esc_html_e( '6 months', 'societypress' ); ?></option>
+                    <option value="365"><?php esc_html_e( '1 year', 'societypress' ); ?></option>
+                    <option value="0"><?php esc_html_e( 'everything before today', 'societypress' ); ?></option>
+                </select>
+                <button type="submit" name="sp_audit_tidy" value="1" class="button"><?php esc_html_e( 'Delete them', 'societypress' ); ?></button>
+            </form>
+
+            <form method="post" class="sp-audit-tidy-form">
+                <?php wp_nonce_field( 'sp_audit_tidy' ); ?>
+                <label for="sp-audit-retention"><?php esc_html_e( 'From now on, keep entries for', 'societypress' ); ?></label>
+                <select name="sp_audit_retention" id="sp-audit-retention">
+                    <?php
+                    $sp_keep_options = [
+                        30  => __( '30 days', 'societypress' ),
+                        90  => __( '90 days', 'societypress' ),
+                        180 => __( '6 months', 'societypress' ),
+                        365 => __( '1 year', 'societypress' ),
+                        0   => __( 'forever', 'societypress' ),
+                    ];
+                    foreach ( $sp_keep_options as $sp_days => $sp_label ) :
+                        ?>
+                        <option value="<?php echo (int) $sp_days; ?>" <?php selected( $sp_audit_retention, $sp_days ); ?>><?php echo esc_html( $sp_label ); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <button type="submit" name="sp_audit_save_retention" value="1" class="button"><?php esc_html_e( 'Save', 'societypress' ); ?></button>
+                <span class="description"><?php esc_html_e( 'Older entries are cleared automatically once a day.', 'societypress' ); ?></span>
+            </form>
+        </div>
+
+        <script>
+        (function () {
+            var form = document.getElementById('sp-audit-tidy-form');
+            if (!form) { return; }
+
+            form.addEventListener('submit', function (e) {
+                if (form.dataset.confirmed === '1') { return; }
+                e.preventDefault();
+
+                var sel   = document.getElementById('sp-audit-older-than');
+                var label = sel.options[sel.selectedIndex].textContent;
+                var msg   = <?php echo wp_json_encode( __( 'Permanently delete audit entries older than %s? This cannot be undone.', 'societypress' ) ); ?>.replace('%s', label);
+
+                if (typeof spConfirm === 'function') {
+                    spConfirm(msg, function () { form.dataset.confirmed = '1'; form.submit(); });
+                } else {
+                    form.dataset.confirmed = '1';
+                    form.submit();
+                }
+            });
+        })();
+        </script>
+
         <style>
+            .sp-audit-tidy { background: #fff; border: 1px solid #c3c4c7; padding: 12px 16px; margin: 12px 0; }
+            .sp-audit-tidy-count { margin: 0 0 10px; font-weight: 600; }
+            .sp-audit-tidy-form { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-right: 24px; }
             .sp-audit-filters { background: #fff; border: 1px solid #c3c4c7; padding: 12px; margin: 12px 0; display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
             .sp-audit-filters label { font-size: 12px; display: block; margin-bottom: 2px; color: #646970; }
             .sp-audit-filters select,
@@ -82055,7 +82204,7 @@ function sp_store_get_unified_listing( array $args = [] ): array {
         $prod_where .= $wpdb->prepare( ' AND store_category = %s', $category );
     }
     $prod_rows = $wpdb->get_results(
-        "SELECT id, title, sku, description, price, member_price, image_url, store_category, stock_qty, sort_order, created_at
+        "SELECT id, title, sku, description, price, member_price, image_url, preview_url, store_category, stock_qty, sort_order, created_at
          FROM {$prefix}store_products
          WHERE {$prod_where}"
     );
@@ -82079,6 +82228,7 @@ function sp_store_get_unified_listing( array $args = [] ): array {
             'member_price'   => null,
             'is_new'         => false,
             'image_url'      => $row->cover_url ?: null,
+            'preview_url'    => null,
             'store_category' => $row->store_category ?: null,
             'sku'            => null,
             'in_stock'       => true,
@@ -82099,6 +82249,7 @@ function sp_store_get_unified_listing( array $args = [] ): array {
             'member_price'   => ( $row->member_price === null ) ? null : (float) $row->member_price,
             'is_new'         => sp_is_new_item( $row->created_at ?? '' ),
             'image_url'      => $row->image_url ?: null,
+            'preview_url'    => $row->preview_url ?: null,
             'store_category' => $row->store_category ?: null,
             'sku'            => $row->sku ?: null,
             // NULL stock_qty means "untracked / unlimited" — always available
@@ -82136,7 +82287,7 @@ function sp_store_lookup( string $source, int $id ): ?array {
 
     if ( $source === 'product' ) {
         $row = $wpdb->get_row( $wpdb->prepare(
-            "SELECT id, title, sku, description, price, member_price, shipping_fee, image_url, store_category, stock_qty
+            "SELECT id, title, sku, description, price, member_price, shipping_fee, image_url, preview_url, store_category, stock_qty
              FROM {$prefix}store_products
              WHERE id = %d AND active = 1",
             $id
@@ -82157,6 +82308,7 @@ function sp_store_lookup( string $source, int $id ): ?array {
             'member_price'   => ( $row->member_price === null ) ? null : (float) $row->member_price,
             'shipping_fee'   => (float) ( $row->shipping_fee ?? 0 ),
             'image_url'      => $row->image_url ?: null,
+            'preview_url'    => $row->preview_url ?: null,
             'store_category' => $row->store_category ?: null,
             'sku'            => $row->sku ?: null,
             'in_stock'       => ( $row->stock_qty === null || (int) $row->stock_qty > 0 ),
@@ -82361,6 +82513,13 @@ function sp_render_store_frontend(): void {
             line-height: 1.5;
             margin-bottom: 16px;
             flex: 1;
+        }
+        .sp-store-preview {
+            margin: 0 0 10px;
+            font-size: 0.9rem;
+        }
+        .sp-store-preview a {
+            text-decoration: underline;
         }
         .sp-store-price {
             font-size: 22px;
@@ -82575,6 +82734,13 @@ function sp_render_store_frontend(): void {
                                         /* translators: %s: discounted member price */
                                         echo esc_html( sprintf( __( 'Members pay %s', 'societypress' ), sp_format_currency( $mem_price ) ) );
                                     ?></div>
+                                <?php endif; ?>
+                                <?php if ( ! empty( $entry['preview_url'] ) ) : ?>
+                                    <div class="sp-store-preview">
+                                        <a href="<?php echo esc_url( $entry['preview_url'] ); ?>" target="_blank" rel="noopener">
+                                            <?php esc_html_e( 'See a sample', 'societypress' ); ?>
+                                        </a>
+                                    </div>
                                 <?php endif; ?>
                                 <div class="sp-store-actions">
                                     <?php if ( $entry['in_stock'] ) : ?>
@@ -84256,6 +84422,10 @@ function sp_render_store_product_edit_page(): void {
                                 ? null : max( 0, round( (float) $_POST['member_price'], 2 ) ),
             'shipping_fee'   => max( 0, round( (float) ( $_POST['shipping_fee'] ?? 0 ), 2 ) ),
             'image_url'      => esc_url_raw( $_POST['image_url'] ?? '' ) ?: null,
+            // A sample page or PDF a buyer can look at before paying. Stored
+            // as a plain URL so it can point at a media-library file or at any
+            // page on the site without needing two fields.
+            'preview_url'    => esc_url_raw( $_POST['preview_url'] ?? '' ) ?: null,
             'store_category' => sanitize_text_field( $_POST['store_category'] ?? '' ) ?: null,
             // NULL stock_qty means unlimited / untracked. Empty string in
             // the form maps to NULL; an explicit 0 means "out of stock".
@@ -84350,6 +84520,24 @@ function sp_render_store_product_edit_page(): void {
                         <?php endif; ?>
                     </td>
                 </tr>
+                <?php
+                // Custom admin screens do not enqueue the media library, and the
+                // Choose a file button is dead without it.
+                wp_enqueue_media();
+                ?>
+                <tr>
+                    <th scope="col"><label for="sp-prod-preview"><?php esc_html_e( 'Sample or Preview', 'societypress' ); ?></label></th>
+                    <td>
+                        <input type="url" name="preview_url" id="sp-prod-preview" value="<?php echo esc_attr( $product->preview_url ?? '' ); ?>" class="large-text" placeholder="https://...">
+                        <button type="button" class="button" id="sp-prod-preview-pick"><?php esc_html_e( 'Choose a file', 'societypress' ); ?></button>
+                        <p class="description"><?php esc_html_e( 'Optional. A sample chapter, a table of contents, or a page on this site that shows what the buyer is getting. Choose a file to pick a PDF you have already uploaded, or paste the address of any page.', 'societypress' ); ?></p>
+                        <?php if ( ! empty( $product->preview_url ) ) : ?>
+                            <p class="sp-mt-12">
+                                <a href="<?php echo esc_url( $product->preview_url ); ?>" target="_blank" rel="noopener"><?php esc_html_e( 'Open the current sample', 'societypress' ); ?></a>
+                            </p>
+                        <?php endif; ?>
+                    </td>
+                </tr>
                 <tr>
                     <th scope="col"><label for="sp-prod-stock"><?php esc_html_e( 'Stock Quantity', 'societypress' ); ?></label></th>
                     <td>
@@ -84378,6 +84566,34 @@ function sp_render_store_product_edit_page(): void {
             </p>
         </form>
     </div>
+    <script>
+    (function () {
+        var btn   = document.getElementById('sp-prod-preview-pick');
+        var field = document.getElementById('sp-prod-preview');
+        if (!btn || !field) { return; }
+
+        var frame;
+        btn.addEventListener('click', function () {
+            /* wp.media prints in the admin footer, after this script parses, so
+               the check belongs at click time rather than up front. */
+            if (typeof wp === 'undefined' || !wp.media) { return; }
+            if (frame) { frame.open(); return; }
+
+            frame = wp.media({
+                title:    <?php echo wp_json_encode( __( 'Choose a sample file', 'societypress' ) ); ?>,
+                button:   { text: <?php echo wp_json_encode( __( 'Use this file', 'societypress' ) ); ?> },
+                multiple: false
+            });
+
+            frame.on('select', function () {
+                var att = frame.state().get('selection').first().toJSON();
+                field.value = att.url;
+            });
+
+            frame.open();
+        });
+    })();
+    </script>
     <?php
 }
 
@@ -95617,6 +95833,7 @@ add_action( 'admin_init', function () {
         'sp_store_products' => [
             'shipping_fee' => "ALTER TABLE {$wpdb->prefix}sp_store_products ADD COLUMN shipping_fee DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER price",
             'member_price' => "ALTER TABLE {$wpdb->prefix}sp_store_products ADD COLUMN member_price DECIMAL(10,2) NULL AFTER price",
+            'preview_url'  => "ALTER TABLE {$wpdb->prefix}sp_store_products ADD COLUMN preview_url VARCHAR(2048) NULL AFTER image_url",
         ],
         'sp_orders'         => [
             'shipping_total' => "ALTER TABLE {$wpdb->prefix}sp_orders ADD COLUMN shipping_total DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER subtotal",

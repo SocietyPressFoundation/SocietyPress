@@ -151,6 +151,17 @@
             color: #787c82;
             text-transform: uppercase;
         }
+        .sp-event-card-image {
+            flex: 0 0 160px;
+            overflow: hidden;
+            border-right: 1px solid #e8e8e8;
+        }
+        .sp-event-card-image img {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
         .sp-event-details {
             flex: 1;
             padding: 16px 20px;
@@ -1116,6 +1127,12 @@
                 padding: 10px 16px;
             }
             .sp-event-day { font-size: 20px; }
+            .sp-event-card-image {
+                flex: 0 0 auto;
+                border-right: none;
+                border-bottom: 1px solid #e8e8e8;
+            }
+            .sp-event-card-image img { height: 160px; }
             .sp-event-details { padding: 12px 16px; }
             .sp-event-title { font-size: 16px; }
             .sp-event-meta { flex-direction: column; gap: 4px; }

@@ -48742,6 +48742,14 @@ function sp_render_events_listing( array $settings ): void {
                 $reg_counts[ (int) $c->event_id ] = (int) $c->total;
             }
         }
+
+        // WHY: Prime the attachment cache in one pass so the per-card thumbnail
+        //      lookup below doesn't fire its own pair of queries for every event
+        //      (N+1). Same reasoning as the registration counts above.
+        $image_ids = array_map( 'intval', array_filter( wp_list_pluck( $events, 'image_id' ) ) );
+        if ( $image_ids ) {
+            _prime_post_caches( $image_ids, false, true );
+        }
         ?>
         <div class="sp-events-list">
             <?php foreach ( $events as $ev ) :
@@ -48792,6 +48800,13 @@ function sp_render_events_listing( array $settings ): void {
                         }
                     }
                 }
+
+                // Thumbnail is optional. An event without a picture keeps the
+                // original two-column card, so a society that never uploads
+                // photos sees no empty frames or ragged rows.
+                $card_image = ! empty( $ev->image_id )
+                    ? wp_get_attachment_image_url( (int) $ev->image_id, 'medium' )
+                    : '';
             ?>
                 <article class="sp-event-card">
                     <a href="<?php echo esc_url( $detail_url ); ?>" class="sp-event-card-link"<?php echo $link_target; ?>>
@@ -48802,6 +48817,14 @@ function sp_render_events_listing( array $settings ): void {
                             <span class="sp-event-day"><?php echo esc_html( $day_num ); ?></span>
                             <span class="sp-event-dow"><?php echo esc_html( $day_name ); ?></span>
                         </div>
+
+                        <?php if ( $card_image ) : ?>
+                            <!-- Thumbnail. Decorative on purpose: the card's title sits
+                                 right beside it, so alt text would just be announced twice. -->
+                            <div class="sp-event-card-image">
+                                <img src="<?php echo esc_url( $card_image ); ?>" alt="" aria-hidden="true" loading="lazy">
+                            </div>
+                        <?php endif; ?>
 
                         <!-- Event details -->
                         <div class="sp-event-details">

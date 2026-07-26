@@ -17,6 +17,16 @@ Pre-1.0 development iterations are archived in
 
 ### Added
 
+**A Records page is created for you**
+
+New sites now get a Records page, in the main menu alongside Library, showing
+the searchable index of your transcribed records. Every other part of
+SocietyPress that has a public page already got one automatically; records
+did not, so a society could transcribe and import thousands of cemetery,
+census or obituary entries and have nowhere for a visitor to reach them
+short of building the page by hand. If you already have a site, add a page
+and choose the **Genealogical Records Search** template.
+
 **Folders for the media library**
 
 Images, PDFs and documents are now sorted into folders — Newsletters, Photo
@@ -102,6 +112,17 @@ list of events, so you can add a welcome, meeting location, or directions —
 matching the other SocietyPress page templates.
 
 ### Fixed
+
+**Imported GENRECORD files lost their record type**
+
+A GENRECORD file that named its type the way the published format guide
+does — `Cemetery`, `Marriage`, `Military` and most of the rest — imported as
+an untyped general collection. Ten of the fourteen documented types were
+affected; only Census, Court, Land and Tax happened to work. The record type
+decides how a collection is labelled and grouped, so a shared cemetery index
+arrived looking like a miscellaneous pile. Both the spelled-out names and the
+short codes are now recognised, and existing collections can be corrected by
+editing the collection and choosing the right type.
 
 **Event categories could not be added, renamed or deleted**
 

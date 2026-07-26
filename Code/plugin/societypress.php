@@ -538,6 +538,12 @@ function sp_maybe_create_default_pages(): void {
         [ 'title' => 'My Account',          'slug' => 'my-account',  'template' => 'sp-my-account' ],
         [ 'title' => 'Newsletters',         'slug' => 'newsletters', 'template' => 'sp-newsletter-archive' ],
         [ 'title' => 'Library',             'slug' => 'library',     'template' => 'sp-library-catalog' ],
+        // WHY: Every other module that has a front end gets a page here, but
+        // Records didn't — so a society could transcribe and import thousands
+        // of records and have no page a visitor could reach them from. The
+        // sp-records template is public (it's in the no-login-required list),
+        // which is the point: searchable records are what draws researchers in.
+        [ 'title' => 'Records',             'slug' => 'records',     'template' => 'sp-records' ],
         [ 'title' => 'Search',              'slug' => 'search',      'template' => 'sp-search' ],
     ];
 
@@ -603,6 +609,7 @@ function sp_maybe_create_default_pages(): void {
                 [ 'slug' => 'about',       'label' => __( 'About', 'societypress' ) ],
                 [ 'slug' => 'events',      'label' => __( 'Events', 'societypress' ) ],
                 [ 'slug' => 'library',     'label' => __( 'Library', 'societypress' ) ],
+                [ 'slug' => 'records',     'label' => __( 'Records', 'societypress' ) ],
                 [ 'slug' => 'newsletters', 'label' => __( 'Newsletters', 'societypress' ) ],
                 [ 'slug' => 'join',        'label' => __( 'Join', 'societypress' ) ],
                 [ 'slug' => 'directory',   'label' => __( 'Directory', 'societypress' ) ],
@@ -80727,6 +80734,24 @@ function sp_genrecord_type_to_sp(): array {
         'BIO'      => 'general',
         'BIBLE'    => 'general',
         'FUNERAL'  => 'general',
+
+        // The GENRECORD spec's own Standard Record Type Vocabulary uses whole
+        // words ("Cemetery", "Marriage"), not the GEDCOM-style abbreviations
+        // above, and the spec's worked example is `#Type: Cemetery`. Without
+        // these entries a file written exactly to our published spec imports
+        // as "general" and loses its record type — only Census, Court, Land,
+        // and Tax happened to work, because there the word and the
+        // abbreviation are the same string.
+        'CEMETERY'    => 'cemetery',
+        'CHURCH'      => 'church',
+        'IMMIGRATION' => 'immigration',
+        'MARRIAGE'    => 'marriage',
+        'MILITARY'    => 'military',
+        'NEWSPAPER'   => 'newspaper',
+        'OBITUARY'    => 'obituary',
+        'PROBATE'     => 'probate',
+        'VITAL'       => 'vital',
+        'GENERAL'     => 'general',
     ];
 }
 

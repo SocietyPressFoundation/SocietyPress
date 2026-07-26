@@ -540,6 +540,107 @@ if ( $grp_count > 0 ) {
 }
 
 // ---------------------------------------------------------------------------
+// Bulk record inserter — shared by the CSV collections and the GENRECORD load.
+//
+// WHY: Both importers originally issued one INSERT per record plus one INSERT
+// per field value plus an UPDATE to backfill search_text. Across ~8,100 records
+// that came to roughly 62,000 round trips and pushed the nightly rebuild past
+// ten minutes. Batching into multi-row INSERTs, with search_text computed
+// up front so the UPDATE disappears, cuts that to a few hundred queries.
+//
+// The record IDs come from $wpdb->insert_id after a multi-row INSERT, which
+// returns the id of the FIRST row in the batch; the rest follow sequentially.
+// That holds because this seeder is the only writer while it runs — a safe
+// assumption for a script that just truncated every table it touches.
+//
+// $rows is a list of ordered value arrays; $field_ids maps column index to the
+// record_collection_fields row id. Returns the number of records written.
+// ---------------------------------------------------------------------------
+
+function kgs_bulk_insert_records( $wpdb, string $prefix, int $collection_id, array $field_ids, array $rows ): int {
+	if ( empty( $rows ) ) {
+		return 0;
+	}
+
+	$now          = current_time( 'mysql' );
+	$record_chunk = 500;
+	$value_chunk  = 2000;
+
+	// ---- Pass 1: the record rows, with search_text already assembled ----
+	$search_texts = [];
+	foreach ( $rows as $row ) {
+		$parts = [];
+		foreach ( $row as $val ) {
+			$val = trim( (string) $val );
+			if ( $val !== '' ) {
+				$parts[] = $val;
+			}
+		}
+		$search_texts[] = implode( ' ', $parts );
+	}
+
+	$record_ids = [];
+	foreach ( array_chunk( $search_texts, $record_chunk ) as $chunk ) {
+		$placeholders = [];
+		$values       = [];
+		foreach ( $chunk as $search_text ) {
+			$placeholders[] = '(%d, %s, %s, %s)';
+			$values[]       = $collection_id;
+			$values[]       = $search_text;
+			$values[]       = $now;
+			$values[]       = $now;
+		}
+		$sql = "INSERT INTO {$prefix}records (collection_id, search_text, created_at, updated_at) VALUES "
+			. implode( ', ', $placeholders );
+		$wpdb->query( $wpdb->prepare( $sql, $values ) );
+
+		$first_id = (int) $wpdb->insert_id;
+		if ( ! $first_id ) {
+			// Without ids there is nothing to hang the field values on, so stop
+			// rather than write orphaned rows.
+			return count( $record_ids );
+		}
+		for ( $i = 0; $i < count( $chunk ); $i++ ) {
+			$record_ids[] = $first_id + $i;
+		}
+	}
+
+	// ---- Pass 2: the field values ----
+	$pending = [];
+	foreach ( $rows as $idx => $row ) {
+		if ( ! isset( $record_ids[ $idx ] ) ) {
+			continue;
+		}
+		foreach ( $row as $col_idx => $val ) {
+			if ( ! isset( $field_ids[ $col_idx ] ) ) {
+				continue;
+			}
+			$val = trim( (string) $val );
+			if ( $val === '' ) {
+				continue;
+			}
+			$pending[] = [ $record_ids[ $idx ], $field_ids[ $col_idx ], $val ];
+		}
+	}
+
+	foreach ( array_chunk( $pending, $value_chunk ) as $chunk ) {
+		$placeholders = [];
+		$values       = [];
+		foreach ( $chunk as $triple ) {
+			$placeholders[] = '(%d, %d, %s)';
+			$values[]       = $triple[0];
+			$values[]       = $triple[1];
+			$values[]       = $triple[2];
+		}
+		$sql = "INSERT INTO {$prefix}record_values (record_id, field_id, field_value) VALUES "
+			. implode( ', ', $placeholders );
+		$wpdb->query( $wpdb->prepare( $sql, $values ) );
+	}
+
+	return count( $record_ids );
+}
+
+// ---------------------------------------------------------------------------
 // 10. RECORDS — Import from CSV files
 // ---------------------------------------------------------------------------
 
@@ -611,33 +712,13 @@ if ( $rec_count > 0 ) {
 			$field_ids[ $idx ] = $wpdb->insert_id;
 		}
 
-		$imported = 0;
+		$csv_rows = [];
 		while ( ( $row = fgetcsv( $fh ) ) !== false ) {
-			$search_parts = [];
-			$wpdb->insert( "{$prefix}records", [
-				'collection_id' => $collection_id,
-				'search_text'   => '',
-				'created_at'    => current_time( 'mysql' ),
-				'updated_at'    => current_time( 'mysql' ),
-			] );
-			$record_id = $wpdb->insert_id;
-
-			foreach ( $row as $col_idx => $value ) {
-				if ( ! isset( $field_ids[ $col_idx ] ) ) continue;
-				$value = trim( $value );
-				if ( $value === '' ) continue;
-				$wpdb->insert( "{$prefix}record_values", [
-					'record_id'   => $record_id,
-					'field_id'    => $field_ids[ $col_idx ],
-					'field_value' => $value,
-				] );
-				$search_parts[] = $value;
-			}
-
-			$wpdb->update( "{$prefix}records", [ 'search_text' => implode( ' ', $search_parts ) ], [ 'id' => $record_id ] );
-			$imported++;
+			$csv_rows[] = $row;
 		}
 		fclose( $fh );
+
+		$imported = kgs_bulk_insert_records( $wpdb, $prefix, $collection_id, $field_ids, $csv_rows );
 
 		$wpdb->update( "{$prefix}record_collections", [ 'record_count' => $imported ], [ 'id' => $collection_id ] );
 		WP_CLI::log( "  {$coll[1]}: $imported records." );
@@ -694,10 +775,14 @@ if ( ! file_exists( $gr_path ) ) {
 				'slug'         => $slug,
 				'description'  => $description,
 				'record_type'  => $sp_type,
-				'source_info'  => trim(
-					( $header['society'] ?? '' )
-					. ( ! empty( $header['license'] ) ? ' | License: ' . $header['license'] : '' )
-				),
+				// WHY: Society is an optional GENRECORD header and is absent on
+				// third-party data like the Hart Island set — NYC didn't compile
+				// it for a genealogical society. Join only the parts that exist
+				// so the field never opens with a dangling " | " separator.
+				'source_info'  => implode( ' | ', array_filter( [
+					trim( (string) ( $header['society'] ?? '' ) ),
+					! empty( $header['license'] ) ? 'License: ' . $header['license'] : '',
+				] ) ),
 				'date_range'   => $date_range,
 				'location'     => $location,
 				'access_level' => 'public',
@@ -721,31 +806,7 @@ if ( ! file_exists( $gr_path ) ) {
 				$field_ids[ $i ] = (int) $wpdb->insert_id;
 			}
 
-			$record_count = 0;
-			foreach ( $rows as $row ) {
-				$search_parts = [];
-				foreach ( $row as $val ) {
-					$val = trim( (string) $val );
-					if ( $val !== '' ) $search_parts[] = $val;
-				}
-				$wpdb->insert( "{$prefix}records", [
-					'collection_id' => $gr_collection_id,
-					'search_text'   => implode( ' ', $search_parts ),
-				] );
-				$record_id = (int) $wpdb->insert_id;
-				if ( ! $record_id ) continue;
-				foreach ( $row as $i => $val ) {
-					if ( ! isset( $field_ids[ $i ] ) ) continue;
-					$val = trim( (string) $val );
-					if ( $val === '' ) continue;
-					$wpdb->insert( "{$prefix}record_values", [
-						'record_id'   => $record_id,
-						'field_id'    => $field_ids[ $i ],
-						'field_value' => $val,
-					] );
-				}
-				$record_count++;
-			}
+			$record_count = kgs_bulk_insert_records( $wpdb, $prefix, $gr_collection_id, $field_ids, $rows );
 			$wpdb->update( "{$prefix}record_collections", [ 'record_count' => $record_count ], [ 'id' => $gr_collection_id ] );
 			WP_CLI::log( "  Hart Island: $record_count records, " . count( $field_ids ) . ' fields.' );
 		}
@@ -798,6 +859,151 @@ if ( $demo_user ) {
 		WP_CLI::log( '  Demo admin already has a member record.' );
 	}
 }
+
+// ---------------------------------------------------------------------------
+// 11b. STATIC PAGE COPY
+//
+// WHY: sp_maybe_create_default_pages() seeds About, Events, and Resources with
+// bracketed authoring prompts — "[Describe your society's mission here.]" —
+// which is right for a real society staring at a blank site, and wrong for a
+// public demo, where a visitor reads the brackets as unfinished software. Fill
+// them in with copy that matches the rest of the Kindred dataset. The plugin's
+// prompts are left untouched so a fresh install still guides the admin.
+// ---------------------------------------------------------------------------
+
+// The plugin now ships a Records page, but sp_maybe_create_default_pages()
+// returns early the moment any published page exists, so an already-built demo
+// never receives it. Create it here as well, idempotently, and add it to the
+// primary menu — otherwise thousands of imported records stay reachable only
+// from wp-admin.
+WP_CLI::log( 'Ensuring the Records page exists...' );
+
+$records_page = get_page_by_path( 'records' );
+if ( ! $records_page ) {
+	$records_id = wp_insert_post( [
+		'post_title'   => 'Records',
+		'post_content' => '',
+		'post_status'  => 'publish',
+		'post_type'    => 'page',
+		'post_name'    => 'records',
+	] );
+	if ( $records_id && ! is_wp_error( $records_id ) ) {
+		update_post_meta( $records_id, '_wp_page_template', 'sp-records' );
+		WP_CLI::log( '  Created Records page.' );
+	}
+} else {
+	$records_id = $records_page->ID;
+	update_post_meta( $records_id, '_wp_page_template', 'sp-records' );
+	WP_CLI::log( '  Records page already present.' );
+}
+
+// Slot it into the primary menu next to Library, where a researcher looking for
+// holdings would expect to find it.
+if ( ! empty( $records_id ) && ! is_wp_error( $records_id ) ) {
+	$menu = wp_get_nav_menu_object( 'Primary Menu' );
+	if ( $menu ) {
+		$already = false;
+		foreach ( wp_get_nav_menu_items( $menu->term_id ) ?: [] as $item ) {
+			if ( (int) $item->object_id === (int) $records_id && $item->object === 'page' ) {
+				$already = true;
+				break;
+			}
+		}
+		if ( ! $already ) {
+			$library     = get_page_by_path( 'library' );
+			$library_pos = 0;
+			foreach ( wp_get_nav_menu_items( $menu->term_id ) ?: [] as $item ) {
+				if ( $library && (int) $item->object_id === (int) $library->ID ) {
+					$library_pos = (int) $item->menu_order;
+				}
+			}
+			wp_update_nav_menu_item( $menu->term_id, 0, [
+				'menu-item-title'     => 'Records',
+				'menu-item-object'    => 'page',
+				'menu-item-object-id' => $records_id,
+				'menu-item-type'      => 'post_type',
+				'menu-item-status'    => 'publish',
+				'menu-item-position'  => $library_pos ? $library_pos + 1 : 0,
+			] );
+			WP_CLI::log( '  Added Records to the primary menu.' );
+		}
+	}
+}
+
+WP_CLI::log( 'Filling in static page copy...' );
+
+$page_copy = [
+	'about' => '<h2>Our Mission</h2>'
+		. '<p>Kindred Genealogical Society collects, preserves, and shares the'
+		. ' genealogical and historical record of Cass County and the Red River'
+		. ' Valley. We help researchers of every experience level trace families'
+		. ' who homesteaded, farmed, and built communities across eastern North'
+		. ' Dakota — and we make sure the records that document them survive.</p>'
+		. '<h2>Our History</h2>'
+		. '<p>The society was founded in 1995 by eleven researchers who met in the'
+		. ' basement of the Kindred public library to index local cemetery'
+		. ' inscriptions. That first project grew into a catalog of transcribed'
+		. ' cemetery, church, census, and courthouse records covering more than a'
+		. ' century of county history. Today we hold a research library, publish a'
+		. ' quarterly newsletter, and maintain searchable record collections'
+		. ' available to anyone.</p>'
+		. '<h2>Meetings</h2>'
+		. '<p>We meet the first Saturday of each month at 10:00 AM in the community'
+		. ' room at 402 Elm Street, Kindred, North Dakota. Meetings run about two'
+		. ' hours and usually include a program or guest speaker. Visitors are'
+		. ' welcome and no reservation is needed — come find out whether we can'
+		. ' help with your family.</p>',
+
+	'events' => '<p>Check our calendar for upcoming meetings, workshops, and'
+		. ' special events.</p>'
+		. '<h2>Regular Meetings</h2>'
+		. '<p>Our general meeting is the first Saturday of every month at 10:00 AM'
+		. ' in the community room at 402 Elm Street, Kindred. The board meets the'
+		. ' third Tuesday of each month at 6:30 PM, and board meetings are open to'
+		. ' any member who wants to attend.</p>'
+		. '<h2>Special Programs</h2>'
+		. '<p>Several times a year we host workshops on the skills our members ask'
+		. ' about most: reading German script and Norwegian parish registers,'
+		. ' searching federal land records, using DNA results alongside paper'
+		. ' research, and preserving family photographs. Our annual fall seminar'
+		. ' brings in a visiting speaker and fills quickly, so watch the newsletter'
+		. ' and the calendar for registration.</p>',
+
+	'resources' => '<p>Browse our collection of research materials and guides.</p>'
+		. '<h2>Research Databases</h2>'
+		. '<p>Our transcribed record collections — cemetery inscriptions, census'
+		. ' transcriptions, church registers, obituaries, marriages, vital'
+		. ' records, military service, land and deed records, probate files,'
+		. ' naturalizations, newspaper abstracts, and tax lists — are searchable'
+		. ' free of charge from our Records page. Members also have access to'
+		. ' subscription databases on the workstations in our research library.</p>'
+		. '<h2>How-To Guides</h2>'
+		. '<p>New to genealogy, or new to North Dakota research? Our guides cover'
+		. ' getting started with what your family already knows, locating a'
+		. ' homestead file, tracing Germans from Russia and Norwegian immigrant'
+		. ' lines, and finding records when the county courthouse burned. Members'
+		. ' can download all of them from the member portal.</p>'
+		. '<h2>Society Library</h2>'
+		. '<p>Our library holds county and family histories, plat books, church'
+		. ' anniversary volumes, periodicals, and a vertical file of surname'
+		. ' folders built up over thirty years. The catalog is online and open to'
+		. ' everyone. The reading room is open Tuesdays and Saturdays, and members'
+		. ' may borrow circulating material for three weeks.</p>',
+];
+
+$copy_updated = 0;
+foreach ( $page_copy as $slug => $content ) {
+	$page = get_page_by_path( $slug );
+	if ( ! $page ) {
+		continue;
+	}
+	wp_update_post( [
+		'ID'           => $page->ID,
+		'post_content' => $content,
+	] );
+	$copy_updated++;
+}
+WP_CLI::log( "  Filled in $copy_updated pages." );
 
 // ---------------------------------------------------------------------------
 // 12. HOMEPAGE PAGE BUILDER WIDGETS

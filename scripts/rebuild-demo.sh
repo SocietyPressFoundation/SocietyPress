@@ -3,10 +3,12 @@
 #
 # Resets demo.getsocietypress.org to a clean state every night.
 # Truncates all SP tables, re-seeds defaults, then populates with
-# sample data for "Heritage Valley Historical Society."
+# sample data for "Kindred Genealogical Society" — the fictional society
+# seed-demo.php builds, which also overwrites the WordPress site title.
 #
-# Designed to run unattended via cron at 3 AM Central:
-#   0 3 * * * /home/charle24/rebuild-demo.sh >> /home/charle24/rebuild-demo.log 2>&1
+# Designed to run unattended via cron at 3 AM Central. The server clock is US
+# Eastern (one hour ahead of Central), so the cron fires at 04:00 server time:
+#   0 4 * * * /home/charle24/rebuild-demo.sh >> /home/charle24/rebuild-demo.log 2>&1
 #
 # Can also be run manually (no confirmation prompt like reset-demo.sh).
 
@@ -24,13 +26,42 @@ echo "=== SocietyPress Demo Rebuild — $(date) ==="
 echo "Removing previous member user accounts..."
 USER_IDS=$($WP user list --role=subscriber --field=ID 2>/dev/null)
 if [ -n "$USER_IDS" ]; then
-    for uid in $USER_IDS; do
-        $WP user delete "$uid" --yes 2>/dev/null
-    done
-    echo "  Removed subscriber accounts."
+    # WHY: `wp user delete` takes any number of IDs at once. Looping one ID per
+    # call spawned a fresh PHP process and full WordPress bootstrap per member,
+    # which cost minutes once the demo carried a real 570-member roster.
+    COUNT=$(echo "$USER_IDS" | wc -w | tr -d ' ')
+    $WP user delete $USER_IDS --yes 2>/dev/null
+    echo "  Removed $COUNT subscriber accounts."
 else
     echo "  No subscriber accounts to remove."
 fi
+
+# ---------------------------------------------------------------------------
+# 1b. Remove WordPress's stock content
+# ---------------------------------------------------------------------------
+# WHY: sp-installer.php strips "Hello world!", "Sample Page", and the canned
+# comment on a real install, but a demo rebuilt straight from WP-CLI never
+# goes through the installer. Repeat the sweep here so the demo can never
+# greet a visitor with WordPress boilerplate. This must run before seeding:
+# sp_maybe_create_default_pages() only builds a Home page when no published
+# page exists, and "Sample Page" is enough to suppress it.
+
+echo "Removing WordPress default content..."
+
+$WP eval '
+$hello = get_page_by_path( "hello-world", OBJECT, "post" );
+if ( $hello ) { wp_delete_post( $hello->ID, true ); WP_CLI::log( "  Deleted \"Hello world!\" post." ); }
+
+$sample = get_page_by_path( "sample-page" );
+if ( $sample ) { wp_delete_post( $sample->ID, true ); WP_CLI::log( "  Deleted \"Sample Page\"." ); }
+
+$comments = get_comments( [ "number" => 100 ] );
+foreach ( $comments as $c ) { wp_delete_comment( $c->comment_ID, true ); }
+if ( $comments ) { WP_CLI::log( "  Deleted " . count( $comments ) . " default comment(s)." ); }
+' 2>&1
+
+# Hello Dolly ships with WordPress and has no place on a society demo.
+rm -f "$WP_PATH/wp-content/plugins/hello.php"
 
 # ---------------------------------------------------------------------------
 # 2. Truncate all SP tables and re-seed defaults

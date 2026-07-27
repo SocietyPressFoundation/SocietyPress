@@ -113,6 +113,17 @@ matching the other SocietyPress page templates.
 
 ### Fixed
 
+**Apostrophes and quotation marks collected stray backslashes**
+
+Anything typed with an apostrophe or a quotation mark came back with a
+backslash in front of it — `Beginner's` saved as `Beginner\'s` — and
+removing the backslash by hand didn't help, because saving the form put it
+straight back. This affected event titles and descriptions, member names and
+notes, research surnames, library and resource entries, document titles,
+ballot questions, page-builder text, and the sign-up form when it redisplayed
+what a visitor had typed. Existing entries are corrected the next time you
+save them; anything already stored keeps its stray backslash until then.
+
 **Imported GENRECORD files lost their record type**
 
 A GENRECORD file that named its type the way the published format guide

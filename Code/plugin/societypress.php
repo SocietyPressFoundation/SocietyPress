@@ -3057,6 +3057,226 @@ add_action( 'admin_init', function () {
 });
 
 // ============================================================================
+// ONE-TIME REPAIR: strip the backslashes left by the missing wp_unslash()
+//
+// WHY: Until this was fixed, every sanitizer in the plugin read $_POST/$_GET
+//      directly. WordPress slash-escapes those superglobals on load, so an
+//      apostrophe a volunteer typed reached the database as \' and stayed
+//      there — and re-saving the form put it straight back. The code fix stops
+//      new corruption but cannot clean what sites already stored, and a society
+//      running this has no way to repair it without shell access.
+//
+// WHY only \' and \" are touched: those two sequences are what the escaping
+//      actually produced, and neither occurs in real society text. A genuine
+//      backslash (a Windows path in a document note, say) was stored as \\ —
+//      ambiguous to reverse, and stripslashes() on the whole value would eat
+//      the backslash out of "C:\Users". We leave those alone rather than risk
+//      destroying real data to tidy a cosmetic one.
+//
+// WHY chunked: this walks every text column in ~70 tables, and content columns
+//      have no index to help. Doing it in one pass would stall admin_init on
+//      shared hosting. We process a slice per admin page load and remember the
+//      queue, so the repair finishes over the first few visits and no single
+//      request does enough work to time out.
+// ============================================================================
+
+/**
+ * Columns whose contents are append-only history rather than editable content.
+ * Repairing them would rewrite the record of what happened, so we skip them.
+ */
+function sp_slash_repair_skipped_tables(): array {
+    return [ 'sp_audit_log', 'sp_email_log', 'sp_access_log' ];
+}
+
+/**
+ * Build the work queue: every text column in a plugin-owned table, paired with
+ * that table's single-column primary key so rows can be updated individually.
+ */
+function sp_slash_repair_build_queue(): array {
+    global $wpdb;
+
+    $prefix = $wpdb->prefix . 'sp_';
+    $like   = $wpdb->esc_like( $prefix ) . '%';
+
+    $pks = [];
+    $pk_rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE
+         WHERE TABLE_SCHEMA = DATABASE() AND CONSTRAINT_NAME = 'PRIMARY'
+           AND TABLE_NAME LIKE %s",
+        $like
+    ) );
+    foreach ( $pk_rows as $row ) {
+        // A composite key gives us no single column to update on — record the
+        // clash so the table is skipped below rather than half-repaired.
+        $pks[ $row->TABLE_NAME ] = isset( $pks[ $row->TABLE_NAME ] ) ? '' : $row->COLUMN_NAME;
+    }
+
+    $cols = $wpdb->get_results( $wpdb->prepare(
+        "SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE %s
+           AND DATA_TYPE IN ('varchar','text','mediumtext','longtext','tinytext')
+         ORDER BY TABLE_NAME, COLUMN_NAME",
+        $like
+    ) );
+
+    $skip  = sp_slash_repair_skipped_tables();
+    $queue = [];
+
+    foreach ( $cols as $col ) {
+        $table = $col->TABLE_NAME;
+        $short = substr( $table, strlen( $wpdb->prefix ) );
+
+        if ( in_array( $short, $skip, true ) || strpos( $short, '_backup_' ) !== false ) {
+            continue;
+        }
+        if ( empty( $pks[ $table ] ) ) {
+            continue;
+        }
+        // Identifiers are interpolated into the repair query, so anything that
+        // isn't a plain identifier is dropped rather than escaped.
+        if ( ! preg_match( '/^[A-Za-z0-9_]+$/', $table ) || ! preg_match( '/^[A-Za-z0-9_]+$/', $col->COLUMN_NAME ) ) {
+            continue;
+        }
+
+        $queue[] = [ $table, $col->COLUMN_NAME, $pks[ $table ] ];
+    }
+
+    return $queue;
+}
+
+/**
+ * Repair one column. Returns the number of rows changed.
+ *
+ * @param int $limit Most rows to touch in this pass, so one badly affected
+ *                   column can't monopolise the request.
+ */
+function sp_slash_repair_column( string $table, string $column, string $pk, int $limit = 500 ): int {
+    global $wpdb;
+
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT `{$pk}` AS pk_val, `{$column}` AS col_val FROM `{$table}`
+         WHERE INSTR(`{$column}`, CONCAT(CHAR(92), CHAR(39))) > 0
+            OR INSTR(`{$column}`, CONCAT(CHAR(92), CHAR(34))) > 0
+         LIMIT %d",
+        $limit
+    ) );
+
+    $fixed = 0;
+    foreach ( $rows as $row ) {
+        $clean = strtr( (string) $row->col_val, [ "\\'" => "'", '\\"' => '"' ] );
+        if ( $clean === $row->col_val ) {
+            continue;
+        }
+        $wpdb->update( $table, [ $column => $clean ], [ $pk => $row->pk_val ] );
+        $fixed++;
+    }
+
+    return $fixed;
+}
+
+/**
+ * Page-builder widget settings live in serialized post meta rather than a
+ * plugin table, so they need their own pass over the same two sequences.
+ */
+function sp_slash_repair_page_widgets(): int {
+    global $wpdb;
+
+    $post_ids = $wpdb->get_col(
+        "SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_sp_page_widgets'"
+    );
+
+    $walk = static function ( $value ) use ( &$walk ) {
+        if ( is_array( $value ) ) {
+            return array_map( $walk, $value );
+        }
+        if ( is_string( $value ) ) {
+            return strtr( $value, [ "\\'" => "'", '\\"' => '"' ] );
+        }
+        return $value;
+    };
+
+    $fixed = 0;
+    foreach ( $post_ids as $post_id ) {
+        $widgets = get_post_meta( (int) $post_id, '_sp_page_widgets', true );
+        if ( ! is_array( $widgets ) ) {
+            continue;
+        }
+        $clean = $walk( $widgets );
+        if ( $clean !== $widgets ) {
+            update_post_meta( (int) $post_id, '_sp_page_widgets', $clean );
+            $fixed++;
+        }
+    }
+
+    return $fixed;
+}
+
+/**
+ * Advance the repair by one slice. Safe to call repeatedly; does nothing once
+ * the run has finished.
+ *
+ * @param int $budget Columns to process in this pass.
+ * @return array The stored repair state.
+ */
+function sp_run_slash_repair_pass( int $budget = 20 ): array {
+    $state = get_option( 'sp_slash_repair_v1' );
+
+    if ( is_array( $state ) && ! empty( $state['done'] ) ) {
+        return $state;
+    }
+
+    if ( ! is_array( $state ) ) {
+        $state = [
+            'done'    => false,
+            'queue'   => sp_slash_repair_build_queue(),
+            'fixed'   => 0,
+            'widgets' => false,
+        ];
+    }
+
+    while ( $budget-- > 0 && ! empty( $state['queue'] ) ) {
+        list( $table, $column, $pk ) = array_shift( $state['queue'] );
+        $state['fixed'] += sp_slash_repair_column( $table, $column, $pk );
+    }
+
+    if ( empty( $state['queue'] ) ) {
+        if ( empty( $state['widgets'] ) ) {
+            $state['fixed']  += sp_slash_repair_page_widgets();
+            $state['widgets'] = true;
+        }
+        $state['done'] = true;
+
+        if ( $state['fixed'] > 0 ) {
+            sp_audit(
+                'text_repaired',
+                sprintf(
+                    /* translators: %d: number of repaired entries */
+                    _n(
+                        'Removed stray backslashes from %d entry',
+                        'Removed stray backslashes from %d entries',
+                        $state['fixed'],
+                        'societypress'
+                    ),
+                    $state['fixed']
+                ),
+                'settings',
+                null
+            );
+        }
+    }
+
+    update_option( 'sp_slash_repair_v1', $state, false );
+
+    return $state;
+}
+
+// Columns per admin page load: small enough that the repair is invisible on
+// shared hosting, large enough to finish in a handful of visits.
+add_action( 'admin_init', function () {
+    sp_run_slash_repair_pass( 20 );
+});
+
+// ============================================================================
 // MIGRATION: Add role_type column to sp_volunteer_roles for existing installs
 //
 // WHY: The role_type column distinguishes officers, committee assignments, and

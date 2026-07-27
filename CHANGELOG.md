@@ -121,8 +121,13 @@ removing the backslash by hand didn't help, because saving the form put it
 straight back. This affected event titles and descriptions, member names and
 notes, research surnames, library and resource entries, document titles,
 ballot questions, page-builder text, and the sign-up form when it redisplayed
-what a visitor had typed. Existing entries are corrected the next time you
-save them; anything already stored keeps its stray backslash until then.
+what a visitor had typed.
+
+Entries already stored with a stray backslash are cleaned up for you. The
+repair runs by itself the next few times you visit the admin, works through
+your existing entries a little at a time so nothing slows down, and notes in
+the audit log how many it corrected. Genuine backslashes — a file path in a
+document note, for instance — are left alone.
 
 **Imported GENRECORD files lost their record type**
 

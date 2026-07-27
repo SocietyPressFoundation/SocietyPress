@@ -3066,12 +3066,14 @@ add_action( 'admin_init', function () {
 //      new corruption but cannot clean what sites already stored, and a society
 //      running this has no way to repair it without shell access.
 //
-// WHY only \' and \" are touched: those two sequences are what the escaping
-//      actually produced, and neither occurs in real society text. A genuine
-//      backslash (a Windows path in a document note, say) was stored as \\ —
-//      ambiguous to reverse, and stripslashes() on the whole value would eat
-//      the backslash out of "C:\Users". We leave those alone rather than risk
-//      destroying real data to tidy a cosmetic one.
+// WHY only backslashes directly before a quote are touched: that is what the
+//      escaping produced, and it is unambiguous — no real society text has a
+//      backslash immediately before an apostrophe. Anything that was saved and
+//      re-saved escaped its own escapes, so the run can be more than one
+//      character deep (\\' as well as \'); collapsing the whole run handles
+//      every depth in one pass. A genuine backslash is left intact, because it
+//      is followed by ordinary text — stripslashes() on the whole value would
+//      have eaten the backslash out of "C:\Users" instead.
 //
 // WHY chunked: this walks every text column in ~70 tables, and content columns
 //      have no index to help. Doing it in one pass would stall admin_init on
@@ -3079,6 +3081,19 @@ add_action( 'admin_init', function () {
 //      queue, so the repair finishes over the first few visits and no single
 //      request does enough work to time out.
 // ============================================================================
+
+/**
+ * Drop the escaping backslashes in front of a quote, however many deep.
+ *
+ * A backslash that isn't followed by a quote is left where it is — that's a
+ * real one somebody typed.
+ */
+function sp_slash_repair_value( string $value ): string {
+    if ( strpos( $value, '\\' ) === false ) {
+        return $value;
+    }
+    return preg_replace( '/\\\\+(["\'])/', '$1', $value );
+}
 
 /**
  * Columns whose contents are append-only history rather than editable content.
@@ -3163,7 +3178,7 @@ function sp_slash_repair_column( string $table, string $column, string $pk, int 
 
     $fixed = 0;
     foreach ( $rows as $row ) {
-        $clean = strtr( (string) $row->col_val, [ "\\'" => "'", '\\"' => '"' ] );
+        $clean = sp_slash_repair_value( (string) $row->col_val );
         if ( $clean === $row->col_val ) {
             continue;
         }
@@ -3190,7 +3205,7 @@ function sp_slash_repair_page_widgets(): int {
             return array_map( $walk, $value );
         }
         if ( is_string( $value ) ) {
-            return strtr( $value, [ "\\'" => "'", '\\"' => '"' ] );
+            return sp_slash_repair_value( $value );
         }
         return $value;
     };

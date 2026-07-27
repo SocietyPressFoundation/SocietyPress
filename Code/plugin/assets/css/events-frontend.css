@@ -162,6 +162,11 @@
             height: 100%;
             object-fit: cover;
         }
+        /* Reserved-but-empty slot: holds the column width so titles line up,
+           without drawing a border that would read as a stray vertical rule. */
+        .sp-event-card-image-empty {
+            border-right: none;
+        }
         .sp-event-details {
             flex: 1;
             padding: 16px 20px;
@@ -1133,6 +1138,9 @@
                 border-bottom: 1px solid #e8e8e8;
             }
             .sp-event-card-image img { height: 160px; }
+            /* Stacked cards have nothing to align to, so an empty slot would
+               just be a dead band above the text. */
+            .sp-event-card-image-empty { display: none; }
             .sp-event-details { padding: 12px 16px; }
             .sp-event-title { font-size: 16px; }
             .sp-event-meta { flex-direction: column; gap: 4px; }

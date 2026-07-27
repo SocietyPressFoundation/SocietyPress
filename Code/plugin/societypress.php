@@ -37559,22 +37559,19 @@ function sp_builder_fields_rich_text( $index, array $settings ): void {
     echo '<div class="sp-builder-field">';
     echo '<label class="sp-field-label" for="' . esc_attr( $editor_id ) . '">' . esc_html__( 'Content', 'societypress' ) . '</label>';
 
-    if ( is_numeric( $index ) ) {
-        wp_editor( $content, $editor_id, [
-            'textarea_name' => $name,
-            'textarea_rows' => 10,
-            'media_buttons' => true,
-            'teeny'         => false,
-            'quicktags'     => true,
-        ] );
-    } else {
-        printf(
-            '<textarea name="%s" id="%s" class="sp-builder-wysiwyg sp-full-width" rows="10">%s</textarea>',
-            esc_attr( $name ),
-            esc_attr( $editor_id ),
-            esc_textarea( $content )
-        );
-    }
+    // WHY a bare textarea rather than wp_editor(): the builder clones this markup
+    // to create newly added widgets and moves whole cards around the DOM to
+    // reorder them. A server-rendered TinyMCE survives neither — a freshly added
+    // Rich Text widget arrived as a plain box full of raw HTML, and reordering a
+    // saved one killed its toolbar. The builder script attaches and reattaches
+    // the editor to every one of these, so adding, reordering, and reloading all
+    // land in the same place.
+    printf(
+        '<textarea name="%s" id="%s" class="sp-builder-wysiwyg sp-full-width" rows="10">%s</textarea>',
+        esc_attr( $name ),
+        esc_attr( $editor_id ),
+        esc_textarea( $content )
+    );
 
     echo '</div>';
 }
@@ -38970,6 +38967,14 @@ add_action( 'admin_head', function () {
         .sp-builder-card-header:hover { background: #f0f0f1; }
         .sp-builder-card-body { padding: 15px; }
         .sp-builder-field { margin-bottom: 12px; }
+        .sp-builder-editor-fallback {
+            margin: 6px 0 0;
+            padding: 8px 10px;
+            border-left: 4px solid #dba617;
+            background: #fcf9e8;
+            color: #1d2327;
+            font-size: 13px;
+        }
         .sp-builder-field:last-child { margin-bottom: 0; }
         .sp-builder-btn { background: none; border: 1px solid transparent; border-radius: 3px; cursor: pointer; padding: 2px 6px; font-size: 14px; line-height: 1; color: #50575e; }
         .sp-builder-btn:hover { background: #dcdcde; border-color: #c3c4c7; }
@@ -39101,10 +39106,17 @@ add_action( 'admin_footer', function () {
                         clone.querySelectorAll('input, select, textarea').forEach(function(el) {
                             el.disabled = false;
                         });
+                        spTeardownEditors();
                         list.appendChild(clone);
                         reindex();
                         var body = clone.querySelector('.sp-builder-card-body');
                         if (body) body.style.display = '';
+                        // Header ships collapsed in the template; the new card opens
+                        // straight away, so its state has to say so out loud.
+                        var newHeader = clone.querySelector('.sp-builder-card-header');
+                        if (newHeader) newHeader.setAttribute('aria-expanded', 'true');
+                        // Attach only now that the card is actually visible.
+                        spInitEditors();
                     }
                 }
                 picker.style.display = 'none';
@@ -39120,6 +39132,7 @@ add_action( 'admin_footer', function () {
                 e.stopPropagation();
                 var card = removeBtn.closest('.sp-builder-card');
                 spConfirm('<?php echo esc_js( __( 'Remove this widget?', 'societypress' ) ); ?>', function() {
+                    spTeardownEditors();
                     if (card) card.remove();
                     reindex();
                 });
@@ -39138,6 +39151,7 @@ add_action( 'admin_footer', function () {
                     prev = prev.previousElementSibling;
                 }
                 if (prev) {
+                    spTeardownEditors();
                     prev.parentNode.insertBefore(card, prev);
                     reindex();
                 }
@@ -39156,6 +39170,7 @@ add_action( 'admin_footer', function () {
                     next = next.nextElementSibling;
                 }
                 if (next) {
+                    spTeardownEditors();
                     next.parentNode.insertBefore(card, next.nextSibling);
                     reindex();
                 }
@@ -39168,8 +39183,12 @@ add_action( 'admin_footer', function () {
                 var body = header.parentNode.querySelector('.sp-builder-card-body');
                 if (!body) return;
                 var isOpen = body.style.display !== 'none';
+                // Collapsing: drop the editor first so its content is flushed back
+                // into the textarea while the container is still visible.
+                if (isOpen) spTeardownEditors();
                 body.style.display = isOpen ? 'none' : '';
                 header.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
+                if (!isOpen) spInitEditors();
             }
 
             // Toggle expand/collapse — clicking card header
@@ -39297,7 +39316,91 @@ add_action( 'admin_footer', function () {
                     }
                 });
             });
+            spInitEditors();
         }
+
+        // ---- Rich Text editors ----
+        // Two constraints drive all of this. TinyMCE cannot survive having its
+        // container cloned or moved, and reindex() renames the very IDs it is
+        // keyed on — so anything live has to come down before the DOM changes and
+        // go back up afterward. wp.editor.remove() writes the visible content
+        // back into the textarea on its way out, so the round trip is lossless.
+        //
+        // The second constraint is subtler: widget cards start collapsed, and
+        // TinyMCE builds a broken toolbar if it is created inside a display:none
+        // container. So an editor is attached when its card is opened and dropped
+        // when it is closed, never on page load. That also keeps the churn small
+        // — reordering a card only rebuilds whatever the volunteer actually has
+        // open, instead of every Rich Text widget on the page.
+        function spBuilderEditors() {
+            return Array.prototype.filter.call(
+                document.querySelectorAll('.sp-builder-wysiwyg'),
+                function(el) {
+                    // Templates are cloned, never edited in place — binding to
+                    // them would copy a live editor into every new card.
+                    return el.id && !el.closest('#sp-builder-templates');
+                }
+            );
+        }
+
+        function spEditorIsLive(el) {
+            return !!(window.tinymce && tinymce.get(el.id));
+        }
+
+        function spCardIsOpen(el) {
+            var body = el.closest('.sp-builder-card-body');
+            return !!body && body.style.display !== 'none';
+        }
+
+        // A volunteer who loses the toolbar is staring at raw HTML with no idea
+        // why. Say so in the field rather than leaving them to guess.
+        function spEditorFallbackNotice(el, show) {
+            var existing = el.parentNode.querySelector('.sp-builder-editor-fallback');
+            if (show && !existing) {
+                var note = document.createElement('p');
+                note.className = 'sp-builder-editor-fallback';
+                note.textContent = '<?php echo esc_js( __( 'Formatting buttons could not load, so this box is showing the page text exactly as it is stored, HTML tags and all. You can still type here. Reloading the page usually brings the buttons back.', 'societypress' ) ); ?>';
+                el.parentNode.insertBefore(note, el.nextSibling);
+            } else if (!show && existing) {
+                existing.remove();
+            }
+        }
+
+        function spTeardownEditors() {
+            if (!window.wp || !wp.editor || !wp.editor.remove) return;
+            spBuilderEditors().forEach(function(el) {
+                if (!spEditorIsLive(el)) return;
+                try { wp.editor.remove(el.id); } catch (err) {}
+            });
+        }
+
+        function spInitEditors() {
+            if (!window.wp || !wp.editor || !wp.editor.initialize) return;
+            spBuilderEditors().forEach(function(el) {
+                // Hidden card: nothing to attach to yet. Already live: leave it be.
+                if (!spCardIsOpen(el) || spEditorIsLive(el)) return;
+                try {
+                    wp.editor.initialize(el.id, {
+                        tinymce: { wpautop: true },
+                        quicktags: true,
+                        mediaButtons: true
+                    });
+                } catch (err) {}
+                spEditorFallbackNotice(el, !spEditorIsLive(el));
+            });
+        }
+
+        // Flush every editor into its textarea before the page is saved.
+        var spBuilderForm = list ? list.closest('form') : null;
+        if (spBuilderForm) {
+            spBuilderForm.addEventListener('submit', function() {
+                if (window.tinymce) {
+                    try { tinymce.triggerSave(); } catch (err) {}
+                }
+            });
+        }
+
+        spInitEditors();
     });
     </script>
     <?php
@@ -48818,13 +48921,17 @@ function sp_render_events_listing( array $settings ): void {
                             <span class="sp-event-dow"><?php echo esc_html( $day_name ); ?></span>
                         </div>
 
-                        <?php if ( $card_image ) : ?>
-                            <!-- Thumbnail. Decorative on purpose: the card's title sits
-                                 right beside it, so alt text would just be announced twice. -->
-                            <div class="sp-event-card-image">
+                        <!-- Thumbnail. Decorative on purpose: the card's title sits
+                             right beside it, so alt text would just be announced twice.
+                             The slot is reserved even when there is no picture, so every
+                             title in the list starts at the same place — a society with
+                             one illustrated event out of twelve gets a tidy column, not
+                             one card jutting out looking like a mistake. -->
+                        <div class="sp-event-card-image<?php echo $card_image ? '' : ' sp-event-card-image-empty'; ?>">
+                            <?php if ( $card_image ) : ?>
                                 <img src="<?php echo esc_url( $card_image ); ?>" alt="" aria-hidden="true" loading="lazy">
-                            </div>
-                        <?php endif; ?>
+                            <?php endif; ?>
+                        </div>
 
                         <!-- Event details -->
                         <div class="sp-event-details">

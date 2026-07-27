@@ -7958,7 +7958,7 @@ function sp_handle_account_forms() {
     if ( $_SERVER['REQUEST_METHOD'] !== 'POST' || empty( $_POST['sp_action'] ) ) return;
     if ( ! is_user_logged_in() ) return;
 
-    $action      = sanitize_text_field( $_POST['sp_action'] );
+    $action      = sanitize_text_field( wp_unslash( $_POST['sp_action'] ) );
     $user        = wp_get_current_user();
     $account_url = sp_get_my_account_url();
     $table       = $wpdb->prefix . 'sp_members';
@@ -7977,14 +7977,14 @@ function sp_handle_account_forms() {
 
     if ( $action === 'update_profile' ) {
         if ( ! wp_verify_nonce( $_POST['sp_profile_nonce'] ?? '', 'sp_update_profile' ) ) { wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
-        $first_name     = sanitize_text_field( $_POST['first_name'] ?? '' );
-        $middle_name    = sanitize_text_field( $_POST['middle_name'] ?? '' );
-        $last_name      = sanitize_text_field( $_POST['last_name'] ?? '' );
-        $preferred_name = sanitize_text_field( $_POST['preferred_name'] ?? '' );
-        $maiden_name    = sanitize_text_field( $_POST['maiden_name'] ?? '' );
-        $prefix         = sanitize_text_field( $_POST['prefix'] ?? '' );
-        $suffix         = sanitize_text_field( $_POST['suffix'] ?? '' );
-        $dob            = sanitize_text_field( $_POST['date_of_birth'] ?? '' );
+        $first_name     = sanitize_text_field( wp_unslash( $_POST['first_name'] ?? '' ) );
+        $middle_name    = sanitize_text_field( wp_unslash( $_POST['middle_name'] ?? '' ) );
+        $last_name      = sanitize_text_field( wp_unslash( $_POST['last_name'] ?? '' ) );
+        $preferred_name = sanitize_text_field( wp_unslash( $_POST['preferred_name'] ?? '' ) );
+        $maiden_name    = sanitize_text_field( wp_unslash( $_POST['maiden_name'] ?? '' ) );
+        $prefix         = sanitize_text_field( wp_unslash( $_POST['prefix'] ?? '' ) );
+        $suffix         = sanitize_text_field( wp_unslash( $_POST['suffix'] ?? '' ) );
+        $dob            = sanitize_text_field( wp_unslash( $_POST['date_of_birth'] ?? '' ) );
 
         $new_data = [
             'prefix' => $prefix, 'first_name' => $first_name, 'preferred_name' => $preferred_name,
@@ -8009,11 +8009,11 @@ function sp_handle_account_forms() {
 
     if ( $action === 'update_contact' ) {
         if ( ! wp_verify_nonce( $_POST['sp_contact_nonce'] ?? '', 'sp_update_contact' ) ) { wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
-        $email          = sanitize_email( $_POST['user_email'] ?? '' );
-        $phone          = sanitize_text_field( $_POST['phone'] ?? '' );
-        $cell           = sanitize_text_field( $_POST['cell'] ?? '' );
-        $website        = esc_url_raw( $_POST['website'] ?? '' );
-        $preferred_phone = sanitize_text_field( $_POST['preferred_phone'] ?? 'cell' );
+        $email          = sanitize_email( wp_unslash( $_POST['user_email'] ?? '' ) );
+        $phone          = sanitize_text_field( wp_unslash( $_POST['phone'] ?? '' ) );
+        $cell           = sanitize_text_field( wp_unslash( $_POST['cell'] ?? '' ) );
+        $website        = esc_url_raw( wp_unslash( $_POST['website'] ?? '' ) );
+        $preferred_phone = sanitize_text_field( wp_unslash( $_POST['preferred_phone'] ?? 'cell' ) );
         if ( ! in_array( $preferred_phone, [ 'phone', 'cell', 'work_phone' ], true ) ) {
             $preferred_phone = 'cell';
         }
@@ -8046,14 +8046,14 @@ function sp_handle_account_forms() {
         if ( ! sp_user_has_member_record( $user->ID ) ) { wp_redirect( add_query_arg( 'sp-error', 'no-member', $account_url ) ); exit; }
 
         $new_data = [
-            'address_1' => sanitize_text_field( $_POST['address_1'] ?? '' ), 'address_2' => sanitize_text_field( $_POST['address_2'] ?? '' ),
-            'city' => sanitize_text_field( $_POST['city'] ?? '' ), 'state' => sanitize_text_field( $_POST['state'] ?? '' ),
-            'postal_code' => sanitize_text_field( $_POST['postal_code'] ?? '' ), 'country' => sanitize_text_field( $_POST['country'] ?? '' ),
+            'address_1' => sanitize_text_field( wp_unslash( $_POST['address_1'] ?? '' ) ), 'address_2' => sanitize_text_field( wp_unslash( $_POST['address_2'] ?? '' ) ),
+            'city' => sanitize_text_field( wp_unslash( $_POST['city'] ?? '' ) ), 'state' => sanitize_text_field( wp_unslash( $_POST['state'] ?? '' ) ),
+            'postal_code' => sanitize_text_field( wp_unslash( $_POST['postal_code'] ?? '' ) ), 'country' => sanitize_text_field( wp_unslash( $_POST['country'] ?? '' ) ),
             'seasonal' => ! empty( $_POST['seasonal'] ) ? 1 : 0,
-            'seasonal_from' => sanitize_text_field( $_POST['seasonal_from'] ?? '' ), 'seasonal_to' => sanitize_text_field( $_POST['seasonal_to'] ?? '' ),
-            'seasonal_address_1' => sanitize_text_field( $_POST['seasonal_address_1'] ?? '' ), 'seasonal_city' => sanitize_text_field( $_POST['seasonal_city'] ?? '' ),
-            'seasonal_state' => sanitize_text_field( $_POST['seasonal_state'] ?? '' ), 'seasonal_postal_code' => sanitize_text_field( $_POST['seasonal_postal_code'] ?? '' ),
-            'seasonal_country' => sanitize_text_field( $_POST['seasonal_country'] ?? '' ),
+            'seasonal_from' => sanitize_text_field( wp_unslash( $_POST['seasonal_from'] ?? '' ) ), 'seasonal_to' => sanitize_text_field( wp_unslash( $_POST['seasonal_to'] ?? '' ) ),
+            'seasonal_address_1' => sanitize_text_field( wp_unslash( $_POST['seasonal_address_1'] ?? '' ) ), 'seasonal_city' => sanitize_text_field( wp_unslash( $_POST['seasonal_city'] ?? '' ) ),
+            'seasonal_state' => sanitize_text_field( wp_unslash( $_POST['seasonal_state'] ?? '' ) ), 'seasonal_postal_code' => sanitize_text_field( wp_unslash( $_POST['seasonal_postal_code'] ?? '' ) ),
+            'seasonal_country' => sanitize_text_field( wp_unslash( $_POST['seasonal_country'] ?? '' ) ),
         ];
 
         if ( $require_approval ) {
@@ -8077,16 +8077,16 @@ function sp_handle_account_forms() {
         if ( ! wp_verify_nonce( $_POST['sp_joint_nonce'] ?? '', 'sp_update_joint' ) ) { wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
         if ( ! sp_user_has_member_record( $user->ID ) ) { wp_redirect( add_query_arg( 'sp-error', 'no-member', $account_url ) ); exit; }
 
-        $joint_first = sanitize_text_field( $_POST['joint_first_name'] ?? '' );
+        $joint_first = sanitize_text_field( wp_unslash( $_POST['joint_first_name'] ?? '' ) );
         $has_joint   = ! empty( $joint_first );
 
         $joint_data = [
             'joint_member'         => $has_joint ? 1 : 0,
             'joint_first_name'     => $has_joint ? $joint_first : null,
-            'joint_last_name'      => $has_joint ? sanitize_text_field( $_POST['joint_last_name'] ?? '' ) ?: null : null,
-            'joint_preferred_name' => $has_joint ? sanitize_text_field( $_POST['joint_preferred_name'] ?? '' ) ?: null : null,
-            'joint_email'          => $has_joint ? sanitize_email( $_POST['joint_email'] ?? '' ) ?: null : null,
-            'joint_phone'          => $has_joint ? sanitize_text_field( $_POST['joint_phone'] ?? '' ) ?: null : null,
+            'joint_last_name'      => $has_joint ? sanitize_text_field( wp_unslash( $_POST['joint_last_name'] ?? '' ) ) ?: null : null,
+            'joint_preferred_name' => $has_joint ? sanitize_text_field( wp_unslash( $_POST['joint_preferred_name'] ?? '' ) ) ?: null : null,
+            'joint_email'          => $has_joint ? sanitize_email( wp_unslash( $_POST['joint_email'] ?? '' ) ) ?: null : null,
+            'joint_phone'          => $has_joint ? sanitize_text_field( wp_unslash( $_POST['joint_phone'] ?? '' ) ) ?: null : null,
             'updated_at'           => current_time( 'mysql' ),
         ];
         $wpdb->update( $table, $joint_data, [ 'user_id' => $user->ID ] );
@@ -8130,8 +8130,8 @@ function sp_handle_account_forms() {
         if ( ! wp_verify_nonce( $_POST['sp_interests_nonce'] ?? '', 'sp_update_interests' ) ) { wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
         if ( ! sp_user_has_member_record( $user->ID ) ) { wp_redirect( add_query_arg( 'sp-error', 'no-member', $account_url ) ); exit; }
         $wpdb->update( $table, [
-            'interests'  => sanitize_textarea_field( $_POST['interests'] ?? '' ),
-            'skills'     => sanitize_textarea_field( $_POST['skills'] ?? '' ),
+            'interests'  => sanitize_textarea_field( wp_unslash( $_POST['interests'] ?? '' ) ),
+            'skills'     => sanitize_textarea_field( wp_unslash( $_POST['skills'] ?? '' ) ),
             'updated_at' => current_time( 'mysql' ),
         ], [ 'user_id' => $user->ID ] );
         wp_redirect( add_query_arg( 'sp-updated', 'interests', $account_url . '#interests' ) ); exit;
@@ -8148,7 +8148,7 @@ function sp_handle_account_forms() {
         }
         $service_keys = array_keys( sp_genealogy_services() );
         foreach ( $service_keys as $key ) {
-            $value = esc_url_raw( $_POST[ 'genealogy_' . $key ] ?? '' );
+            $value = esc_url_raw( wp_unslash( $_POST[ 'genealogy_' . $key ] ?? '' ) );
             update_user_meta( $user->ID, 'sp_genealogy_' . $key, $value );
         }
         wp_redirect( add_query_arg( 'sp-updated', 'genealogy', $account_url . '#genealogy-services' ) );
@@ -8265,6 +8265,10 @@ function sp_handle_account_forms() {
 
     if ( $action === 'update_password' ) {
         if ( ! wp_verify_nonce( $_POST['sp_password_nonce'] ?? '', 'sp_update_password' ) ) { wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
+        // WHY no wp_unslash here (deliberate, do not "fix"): wp_signon() reads
+        // $_POST['pwd'] raw, so core hashes the slash-escaped password at login.
+        // Unslashing on the way in would store a hash that login can never match
+        // for any password containing a quote or backslash.
         $current = $_POST['current_password'] ?? '';
         $new     = $_POST['new_password']      ?? '';
         $confirm = $_POST['confirm_password']  ?? '';
@@ -8285,14 +8289,14 @@ function sp_handle_account_forms() {
             wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url . '#surnames' ) );
             exit;
         }
-        $surname   = strtoupper( sanitize_text_field( $_POST['new_surname'] ?? '' ) );
-        $county    = sanitize_text_field( $_POST['new_county'] ?? '' );
-        $state     = sanitize_text_field( $_POST['new_state'] ?? '' );
-        $country   = sanitize_text_field( $_POST['new_country'] ?? '' );
+        $surname   = strtoupper( sanitize_text_field( wp_unslash( $_POST['new_surname'] ?? '' ) ) );
+        $county    = sanitize_text_field( wp_unslash( $_POST['new_county'] ?? '' ) );
+        $state     = sanitize_text_field( wp_unslash( $_POST['new_state'] ?? '' ) );
+        $country   = sanitize_text_field( wp_unslash( $_POST['new_country'] ?? '' ) );
         $year_from = absint( $_POST['new_year_from'] ?? 0 );
         $year_to   = absint( $_POST['new_year_to'] ?? 0 );
-        $note      = sanitize_textarea_field( $_POST['new_surname_note'] ?? '' );
-        $alternates = sanitize_text_field( $_POST['new_surname_alternates'] ?? '' );
+        $note      = sanitize_textarea_field( wp_unslash( $_POST['new_surname_note'] ?? '' ) );
+        $alternates = sanitize_text_field( wp_unslash( $_POST['new_surname_alternates'] ?? '' ) );
         if ( $surname ) {
             $wpdb->insert( $wpdb->prefix . 'sp_member_surnames', [
                 'user_id'        => $user->ID,
@@ -8339,11 +8343,11 @@ function sp_handle_account_forms() {
             wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url . '#research-areas' ) );
             exit;
         }
-        $area      = sanitize_text_field( $_POST['new_area'] ?? '' );
-        $area_type = sanitize_text_field( $_POST['new_area_type'] ?? '' );
+        $area      = sanitize_text_field( wp_unslash( $_POST['new_area'] ?? '' ) );
+        $area_type = sanitize_text_field( wp_unslash( $_POST['new_area_type'] ?? '' ) );
         $year_from = absint( $_POST['new_area_year_from'] ?? 0 );
         $year_to   = absint( $_POST['new_area_year_to'] ?? 0 );
-        $note      = sanitize_textarea_field( $_POST['new_area_note'] ?? '' );
+        $note      = sanitize_textarea_field( wp_unslash( $_POST['new_area_note'] ?? '' ) );
         if ( $area ) {
             $wpdb->insert( $wpdb->prefix . 'sp_member_research_areas', [
                 'user_id'   => $user->ID,
@@ -8574,8 +8578,8 @@ function sp_render_pending_changes_page(): void {
         check_admin_referer( 'sp_pending_changes', 'sp_pending_nonce' );
 
         $change_id  = (int) ( $_POST['change_id'] ?? 0 );
-        $decision   = sanitize_text_field( $_POST['sp_decision'] ?? '' );
-        $admin_note = sanitize_textarea_field( $_POST['admin_note'] ?? '' );
+        $decision   = sanitize_text_field( wp_unslash( $_POST['sp_decision'] ?? '' ) );
+        $admin_note = sanitize_textarea_field( wp_unslash( $_POST['admin_note'] ?? '' ) );
 
         $change = $wpdb->get_row( $wpdb->prepare(
             "SELECT * FROM {$table} WHERE id = %d AND status = 'pending'", $change_id
@@ -8646,7 +8650,7 @@ function sp_render_pending_changes_page(): void {
     }
 
     // Load pending changes (pending first, then recent reviewed)
-    $filter = sanitize_text_field( $_GET['status'] ?? 'pending' );
+    $filter = sanitize_text_field( wp_unslash( $_GET['status'] ?? 'pending' ) );
     $valid_statuses = [ 'pending', 'approved', 'rejected', 'all' ];
     if ( ! in_array( $filter, $valid_statuses, true ) ) {
         $filter = 'pending';
@@ -8890,7 +8894,7 @@ function sp_render_pending_changes_page(): void {
 add_action( 'wp_ajax_sp_save_account', function() {
     global $wpdb;
 
-    $action = sanitize_text_field( $_POST['sp_action'] ?? '' );
+    $action = sanitize_text_field( wp_unslash( $_POST['sp_action'] ?? '' ) );
 
     // Top-level dispatch validation. Each branch below verifies its own
     // per-action nonce; this registry is the central contract that says
@@ -8959,14 +8963,14 @@ add_action( 'wp_ajax_sp_save_account', function() {
     // ---- Profile (personal info) ----
     if ( $action === 'update_profile' ) {
         // Nonce already verified by the dispatch map at the top of this handler.
-        $first_name     = sanitize_text_field( $_POST['first_name'] ?? '' );
-        $middle_name    = sanitize_text_field( $_POST['middle_name'] ?? '' );
-        $last_name      = sanitize_text_field( $_POST['last_name'] ?? '' );
-        $preferred_name = sanitize_text_field( $_POST['preferred_name'] ?? '' );
-        $maiden_name    = sanitize_text_field( $_POST['maiden_name'] ?? '' );
-        $prefix         = sanitize_text_field( $_POST['prefix'] ?? '' );
-        $suffix         = sanitize_text_field( $_POST['suffix'] ?? '' );
-        $dob            = sanitize_text_field( $_POST['date_of_birth'] ?? '' );
+        $first_name     = sanitize_text_field( wp_unslash( $_POST['first_name'] ?? '' ) );
+        $middle_name    = sanitize_text_field( wp_unslash( $_POST['middle_name'] ?? '' ) );
+        $last_name      = sanitize_text_field( wp_unslash( $_POST['last_name'] ?? '' ) );
+        $preferred_name = sanitize_text_field( wp_unslash( $_POST['preferred_name'] ?? '' ) );
+        $maiden_name    = sanitize_text_field( wp_unslash( $_POST['maiden_name'] ?? '' ) );
+        $prefix         = sanitize_text_field( wp_unslash( $_POST['prefix'] ?? '' ) );
+        $suffix         = sanitize_text_field( wp_unslash( $_POST['suffix'] ?? '' ) );
+        $dob            = sanitize_text_field( wp_unslash( $_POST['date_of_birth'] ?? '' ) );
 
         $new_data = [
             'prefix' => $prefix, 'first_name' => $first_name, 'preferred_name' => $preferred_name,
@@ -8993,11 +8997,11 @@ add_action( 'wp_ajax_sp_save_account', function() {
     // ---- Contact ----
     if ( $action === 'update_contact' ) {
         // Nonce already verified by the dispatch map at the top of this handler.
-        $email          = sanitize_email( $_POST['user_email'] ?? '' );
-        $phone          = sanitize_text_field( $_POST['phone'] ?? '' );
-        $cell           = sanitize_text_field( $_POST['cell'] ?? '' );
-        $website        = esc_url_raw( $_POST['website'] ?? '' );
-        $preferred_phone = sanitize_text_field( $_POST['preferred_phone'] ?? 'cell' );
+        $email          = sanitize_email( wp_unslash( $_POST['user_email'] ?? '' ) );
+        $phone          = sanitize_text_field( wp_unslash( $_POST['phone'] ?? '' ) );
+        $cell           = sanitize_text_field( wp_unslash( $_POST['cell'] ?? '' ) );
+        $website        = esc_url_raw( wp_unslash( $_POST['website'] ?? '' ) );
+        $preferred_phone = sanitize_text_field( wp_unslash( $_POST['preferred_phone'] ?? 'cell' ) );
         // Validate preferred_phone against allowed values
         if ( ! in_array( $preferred_phone, [ 'phone', 'cell', 'work_phone' ], true ) ) {
             $preferred_phone = 'cell';
@@ -9045,20 +9049,20 @@ add_action( 'wp_ajax_sp_save_account', function() {
         }
 
         $new_data = [
-            'address_1' => sanitize_text_field( $_POST['address_1'] ?? '' ),
-            'address_2' => sanitize_text_field( $_POST['address_2'] ?? '' ),
-            'city'      => sanitize_text_field( $_POST['city'] ?? '' ),
-            'state'     => sanitize_text_field( $_POST['state'] ?? '' ),
-            'postal_code' => sanitize_text_field( $_POST['postal_code'] ?? '' ),
-            'country'   => sanitize_text_field( $_POST['country'] ?? '' ),
+            'address_1' => sanitize_text_field( wp_unslash( $_POST['address_1'] ?? '' ) ),
+            'address_2' => sanitize_text_field( wp_unslash( $_POST['address_2'] ?? '' ) ),
+            'city'      => sanitize_text_field( wp_unslash( $_POST['city'] ?? '' ) ),
+            'state'     => sanitize_text_field( wp_unslash( $_POST['state'] ?? '' ) ),
+            'postal_code' => sanitize_text_field( wp_unslash( $_POST['postal_code'] ?? '' ) ),
+            'country'   => sanitize_text_field( wp_unslash( $_POST['country'] ?? '' ) ),
             'seasonal'  => ! empty( $_POST['seasonal'] ) ? 1 : 0,
-            'seasonal_from' => sanitize_text_field( $_POST['seasonal_from'] ?? '' ),
-            'seasonal_to'   => sanitize_text_field( $_POST['seasonal_to'] ?? '' ),
-            'seasonal_address_1'    => sanitize_text_field( $_POST['seasonal_address_1'] ?? '' ),
-            'seasonal_city'         => sanitize_text_field( $_POST['seasonal_city'] ?? '' ),
-            'seasonal_state'        => sanitize_text_field( $_POST['seasonal_state'] ?? '' ),
-            'seasonal_postal_code'  => sanitize_text_field( $_POST['seasonal_postal_code'] ?? '' ),
-            'seasonal_country'      => sanitize_text_field( $_POST['seasonal_country'] ?? '' ),
+            'seasonal_from' => sanitize_text_field( wp_unslash( $_POST['seasonal_from'] ?? '' ) ),
+            'seasonal_to'   => sanitize_text_field( wp_unslash( $_POST['seasonal_to'] ?? '' ) ),
+            'seasonal_address_1'    => sanitize_text_field( wp_unslash( $_POST['seasonal_address_1'] ?? '' ) ),
+            'seasonal_city'         => sanitize_text_field( wp_unslash( $_POST['seasonal_city'] ?? '' ) ),
+            'seasonal_state'        => sanitize_text_field( wp_unslash( $_POST['seasonal_state'] ?? '' ) ),
+            'seasonal_postal_code'  => sanitize_text_field( wp_unslash( $_POST['seasonal_postal_code'] ?? '' ) ),
+            'seasonal_country'      => sanitize_text_field( wp_unslash( $_POST['seasonal_country'] ?? '' ) ),
         ];
 
         // Queue for approval if enabled
@@ -9119,8 +9123,8 @@ add_action( 'wp_ajax_sp_save_account', function() {
             wp_send_json_error( [ 'message' => __( 'Member record not found.', 'societypress' ) ] );
         }
         $wpdb->update( $table, [
-            'interests'  => sanitize_textarea_field( $_POST['interests'] ?? '' ),
-            'skills'     => sanitize_textarea_field( $_POST['skills'] ?? '' ),
+            'interests'  => sanitize_textarea_field( wp_unslash( $_POST['interests'] ?? '' ) ),
+            'skills'     => sanitize_textarea_field( wp_unslash( $_POST['skills'] ?? '' ) ),
             'updated_at' => current_time( 'mysql' ),
         ], [ 'user_id' => $user->ID ] );
         wp_send_json_success( [ 'message' => __( 'Interests and skills saved.', 'societypress' ) ] );
@@ -9133,7 +9137,7 @@ add_action( 'wp_ajax_sp_save_account', function() {
         }
         $service_keys = array_keys( sp_genealogy_services() );
         foreach ( $service_keys as $key ) {
-            $value = esc_url_raw( $_POST[ 'genealogy_' . $key ] ?? '' );
+            $value = esc_url_raw( wp_unslash( $_POST[ 'genealogy_' . $key ] ?? '' ) );
             update_user_meta( $user->ID, 'sp_genealogy_' . $key, $value );
         }
         wp_send_json_success( [ 'message' => __( 'Genealogy profiles saved.', 'societypress' ) ] );
@@ -14845,7 +14849,7 @@ class SP_Members_List_Table extends WP_List_Table {
         // WHY: Clicking a stat card number on the dashboard (e.g., "New (30 Days)")
         //      links here with sp_filter=new_30 so Harold sees exactly who those
         //      members are, not just a count.
-        $sp_filter = sanitize_text_field( $_GET['sp_filter'] ?? '' );
+        $sp_filter = sanitize_text_field( wp_unslash( $_GET['sp_filter'] ?? '' ) );
         $today_str = current_time( 'Y-m-d' );
         switch ( $sp_filter ) {
             case 'new_30':
@@ -16312,58 +16316,58 @@ add_action( 'admin_init', function () {
     // restrict to known-good values. Without these checks an authenticated
     // user with sp_manage_members could write arbitrary strings to columns
     // that the rest of the plugin treats as enums.
-    $member_type    = sanitize_text_field( $_POST['member_type'] ?? 'individual' );
+    $member_type    = sanitize_text_field( wp_unslash( $_POST['member_type'] ?? 'individual' ) );
     if ( ! in_array( $member_type, [ 'individual', 'organization' ], true ) ) {
         $member_type = 'individual';
     }
-    $organization_name  = sanitize_text_field( $_POST['organization_name'] ?? '' );
-    $email          = sanitize_email( $_POST['email'] ?? '' );
-    $first_name     = sanitize_text_field( $_POST['first_name'] ?? '' );
-    $last_name      = sanitize_text_field( $_POST['last_name'] ?? '' );
-    $preferred_name = sanitize_text_field( $_POST['preferred_name'] ?? '' );
-    $middle_name    = sanitize_text_field( $_POST['middle_name'] ?? '' );
-    $maiden_name    = sanitize_text_field( $_POST['maiden_name'] ?? '' );
-    $member_prefix  = sanitize_text_field( $_POST['prefix'] ?? '' );
-    $suffix         = sanitize_text_field( $_POST['suffix'] ?? '' );
-    $member_number  = sanitize_text_field( $_POST['member_number'] ?? '' );
-    $date_of_birth  = sanitize_text_field( $_POST['date_of_birth'] ?? '' );
-    $status         = sanitize_text_field( $_POST['status'] ?? 'active' );
+    $organization_name  = sanitize_text_field( wp_unslash( $_POST['organization_name'] ?? '' ) );
+    $email          = sanitize_email( wp_unslash( $_POST['email'] ?? '' ) );
+    $first_name     = sanitize_text_field( wp_unslash( $_POST['first_name'] ?? '' ) );
+    $last_name      = sanitize_text_field( wp_unslash( $_POST['last_name'] ?? '' ) );
+    $preferred_name = sanitize_text_field( wp_unslash( $_POST['preferred_name'] ?? '' ) );
+    $middle_name    = sanitize_text_field( wp_unslash( $_POST['middle_name'] ?? '' ) );
+    $maiden_name    = sanitize_text_field( wp_unslash( $_POST['maiden_name'] ?? '' ) );
+    $member_prefix  = sanitize_text_field( wp_unslash( $_POST['prefix'] ?? '' ) );
+    $suffix         = sanitize_text_field( wp_unslash( $_POST['suffix'] ?? '' ) );
+    $member_number  = sanitize_text_field( wp_unslash( $_POST['member_number'] ?? '' ) );
+    $date_of_birth  = sanitize_text_field( wp_unslash( $_POST['date_of_birth'] ?? '' ) );
+    $status         = sanitize_text_field( wp_unslash( $_POST['status'] ?? 'active' ) );
     if ( ! array_key_exists( $status, sp_get_member_statuses() ) ) {
         $status = 'active';
     }
     $tier_id        = absint( $_POST['tier_id'] ?? 0 );
-    $join_date      = sanitize_text_field( $_POST['join_date'] ?? '' );
-    $expiration_date = sanitize_text_field( $_POST['expiration_date'] ?? '' );
+    $join_date      = sanitize_text_field( wp_unslash( $_POST['join_date'] ?? '' ) );
+    $expiration_date = sanitize_text_field( wp_unslash( $_POST['expiration_date'] ?? '' ) );
     $household_id        = absint( $_POST['household_id'] ?? 0 );
     $joint_member        = isset( $_POST['joint_member'] ) ? 1 : 0;
-    $joint_first_name    = sanitize_text_field( $_POST['joint_first_name'] ?? '' );
-    $joint_last_name     = sanitize_text_field( $_POST['joint_last_name'] ?? '' );
-    $joint_preferred_name = sanitize_text_field( $_POST['joint_preferred_name'] ?? '' );
-    $joint_email         = sanitize_email( $_POST['joint_email'] ?? '' );
-    $joint_phone         = sanitize_text_field( $_POST['joint_phone'] ?? '' );
-    $phone          = sanitize_text_field( $_POST['phone'] ?? '' );
-    $cell           = sanitize_text_field( $_POST['cell'] ?? '' );
-    $preferred_phone = sanitize_text_field( $_POST['preferred_phone'] ?? 'cell' );
+    $joint_first_name    = sanitize_text_field( wp_unslash( $_POST['joint_first_name'] ?? '' ) );
+    $joint_last_name     = sanitize_text_field( wp_unslash( $_POST['joint_last_name'] ?? '' ) );
+    $joint_preferred_name = sanitize_text_field( wp_unslash( $_POST['joint_preferred_name'] ?? '' ) );
+    $joint_email         = sanitize_email( wp_unslash( $_POST['joint_email'] ?? '' ) );
+    $joint_phone         = sanitize_text_field( wp_unslash( $_POST['joint_phone'] ?? '' ) );
+    $phone          = sanitize_text_field( wp_unslash( $_POST['phone'] ?? '' ) );
+    $cell           = sanitize_text_field( wp_unslash( $_POST['cell'] ?? '' ) );
+    $preferred_phone = sanitize_text_field( wp_unslash( $_POST['preferred_phone'] ?? 'cell' ) );
     if ( ! in_array( $preferred_phone, [ 'phone', 'cell', 'work_phone' ], true ) ) {
         $preferred_phone = 'cell';
     }
-    $website        = esc_url_raw( $_POST['website'] ?? '' );
-    $address_1      = sanitize_text_field( $_POST['address_1'] ?? '' );
-    $address_2      = sanitize_text_field( $_POST['address_2'] ?? '' );
-    $city           = sanitize_text_field( $_POST['city'] ?? '' );
-    $state          = sanitize_text_field( $_POST['state'] ?? '' );
-    $postal_code    = sanitize_text_field( $_POST['postal_code'] ?? '' );
-    $country        = sanitize_text_field( $_POST['country'] ?? '' );
+    $website        = esc_url_raw( wp_unslash( $_POST['website'] ?? '' ) );
+    $address_1      = sanitize_text_field( wp_unslash( $_POST['address_1'] ?? '' ) );
+    $address_2      = sanitize_text_field( wp_unslash( $_POST['address_2'] ?? '' ) );
+    $city           = sanitize_text_field( wp_unslash( $_POST['city'] ?? '' ) );
+    $state          = sanitize_text_field( wp_unslash( $_POST['state'] ?? '' ) );
+    $postal_code    = sanitize_text_field( wp_unslash( $_POST['postal_code'] ?? '' ) );
+    $country        = sanitize_text_field( wp_unslash( $_POST['country'] ?? '' ) );
 
     // Seasonal address fields
     $seasonal               = isset( $_POST['seasonal'] ) ? 1 : 0;
-    $seasonal_from          = sanitize_text_field( $_POST['seasonal_from'] ?? '' );
-    $seasonal_to            = sanitize_text_field( $_POST['seasonal_to'] ?? '' );
-    $seasonal_address_1     = sanitize_text_field( $_POST['seasonal_address_1'] ?? '' );
-    $seasonal_city          = sanitize_text_field( $_POST['seasonal_city'] ?? '' );
-    $seasonal_state         = sanitize_text_field( $_POST['seasonal_state'] ?? '' );
-    $seasonal_postal_code   = sanitize_text_field( $_POST['seasonal_postal_code'] ?? '' );
-    $seasonal_country       = sanitize_text_field( $_POST['seasonal_country'] ?? '' );
+    $seasonal_from          = sanitize_text_field( wp_unslash( $_POST['seasonal_from'] ?? '' ) );
+    $seasonal_to            = sanitize_text_field( wp_unslash( $_POST['seasonal_to'] ?? '' ) );
+    $seasonal_address_1     = sanitize_text_field( wp_unslash( $_POST['seasonal_address_1'] ?? '' ) );
+    $seasonal_city          = sanitize_text_field( wp_unslash( $_POST['seasonal_city'] ?? '' ) );
+    $seasonal_state         = sanitize_text_field( wp_unslash( $_POST['seasonal_state'] ?? '' ) );
+    $seasonal_postal_code   = sanitize_text_field( wp_unslash( $_POST['seasonal_postal_code'] ?? '' ) );
+    $seasonal_country       = sanitize_text_field( wp_unslash( $_POST['seasonal_country'] ?? '' ) );
 
     // Preferences — checkboxes: present = 1, absent = 0
     $receive_print          = isset( $_POST['receive_print'] ) ? 1 : 0;
@@ -16510,7 +16514,7 @@ add_action( 'admin_init', function () {
         //      WordPress roles; everyone else can only assign safe member-tier
         //      roles. We also never let an admin change their own role —
         //      that's how you accidentally lock yourself out.
-        $new_role = sanitize_text_field( $_POST['wp_role'] ?? '' );
+        $new_role = sanitize_text_field( wp_unslash( $_POST['wp_role'] ?? '' ) );
         if ( $new_role && (int) $editing_user_id !== get_current_user_id() ) {
             $safe_roles = [ 'subscriber', 'contributor' ];
             $allowed_roles = current_user_can( 'manage_options' )
@@ -16642,14 +16646,14 @@ add_action( 'admin_init', function () {
     //      and safer to wipe and re-insert. The form sends parallel arrays.
     $wpdb->delete( $prefix . 'member_surnames', [ 'user_id' => $user_id ] );
 
-    $surnames = $_POST['surname'] ?? [];
+    $surnames = wp_unslash( $_POST['surname'] ?? [] );
     if ( is_array( $surnames ) ) {
-        $counties   = $_POST['surname_county'] ?? [];
-        $states     = $_POST['surname_state'] ?? [];
-        $countries  = $_POST['surname_country'] ?? [];
+        $counties   = wp_unslash( $_POST['surname_county'] ?? [] );
+        $states     = wp_unslash( $_POST['surname_state'] ?? [] );
+        $countries  = wp_unslash( $_POST['surname_country'] ?? [] );
         $year_froms = $_POST['surname_year_from'] ?? [];
         $year_tos   = $_POST['surname_year_to'] ?? [];
-        $alternates = $_POST['surname_alternates'] ?? [];
+        $alternates = wp_unslash( $_POST['surname_alternates'] ?? [] );
 
         foreach ( $surnames as $i => $surname ) {
             $surname = sanitize_text_field( $surname );
@@ -16674,7 +16678,7 @@ add_action( 'admin_init', function () {
     // ================================================================
     // NEW NOTE — Only insert if Harold actually typed something
     // ================================================================
-    $new_note = sanitize_textarea_field( $_POST['new_note'] ?? '' );
+    $new_note = sanitize_textarea_field( wp_unslash( $_POST['new_note'] ?? '' ) );
     if ( ! empty( $new_note ) ) {
         $wpdb->insert( $prefix . 'member_notes', [
             'user_id'   => $user_id,
@@ -16691,10 +16695,10 @@ add_action( 'admin_init', function () {
         $wpdb->insert( $prefix . 'member_payments', [
             'user_id'     => $user_id,
             'amount'      => $new_payment_amount,
-            'type'        => sanitize_text_field( $_POST['new_payment_type'] ?? 'dues' ),
-            'method'      => sanitize_text_field( $_POST['new_payment_method'] ?? '' ) ?: null,
-            'date'        => sanitize_text_field( $_POST['new_payment_date'] ?? '' ) ?: current_time( 'Y-m-d' ),
-            'note'        => sanitize_text_field( $_POST['new_payment_note'] ?? '' ) ?: null,
+            'type'        => sanitize_text_field( wp_unslash( $_POST['new_payment_type'] ?? 'dues' ) ),
+            'method'      => sanitize_text_field( wp_unslash( $_POST['new_payment_method'] ?? '' ) ) ?: null,
+            'date'        => sanitize_text_field( wp_unslash( $_POST['new_payment_date'] ?? '' ) ) ?: current_time( 'Y-m-d' ),
+            'note'        => sanitize_text_field( wp_unslash( $_POST['new_payment_note'] ?? '' ) ) ?: null,
             'recorded_by' => get_current_user_id(),
         ] );
     }
@@ -19926,7 +19930,7 @@ add_action( 'wp_ajax_sp_import_members_batch', function () {
         wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
     }
 
-    $token     = sanitize_file_name( $_POST['temp_file'] ?? '' );
+    $token     = sanitize_file_name( wp_unslash( $_POST['temp_file'] ?? '' ) );
     $upload_dir = wp_upload_dir();
     $temp_dir   = $upload_dir['basedir'] . '/sp-import-temp/';
     $temp_file  = realpath( $temp_dir . $token );
@@ -20164,7 +20168,7 @@ add_action( 'wp_ajax_sp_import_detect_collisions', function () {
         wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
     }
 
-    $token      = sanitize_file_name( $_POST['temp_file'] ?? '' );
+    $token      = sanitize_file_name( wp_unslash( $_POST['temp_file'] ?? '' ) );
     $upload_dir = wp_upload_dir();
     $temp_dir   = $upload_dir['basedir'] . '/sp-import-temp/';
     $temp_file  = realpath( $temp_dir . $token );
@@ -21819,7 +21823,7 @@ add_action( 'wp_ajax_sp_export_count', function () {
     $where  = [];
     $values = [];
 
-    $status = sanitize_text_field( $_POST['status'] ?? '' );
+    $status = sanitize_text_field( wp_unslash( $_POST['status'] ?? '' ) );
     if ( ! empty( $status ) && $status !== 'all' ) {
         $where[]  = 'status = %s';
         $values[] = $status;
@@ -21831,8 +21835,8 @@ add_action( 'wp_ajax_sp_export_count', function () {
         $values[] = $tier_id;
     }
 
-    $join_from = sanitize_text_field( $_POST['join_from'] ?? '' );
-    $join_to   = sanitize_text_field( $_POST['join_to'] ?? '' );
+    $join_from = sanitize_text_field( wp_unslash( $_POST['join_from'] ?? '' ) );
+    $join_to   = sanitize_text_field( wp_unslash( $_POST['join_to'] ?? '' ) );
     if ( ! empty( $join_from ) ) {
         $where[]  = 'join_date >= %s';
         $values[] = $join_from;
@@ -21842,8 +21846,8 @@ add_action( 'wp_ajax_sp_export_count', function () {
         $values[] = $join_to;
     }
 
-    $exp_from = sanitize_text_field( $_POST['exp_from'] ?? '' );
-    $exp_to   = sanitize_text_field( $_POST['exp_to'] ?? '' );
+    $exp_from = sanitize_text_field( wp_unslash( $_POST['exp_from'] ?? '' ) );
+    $exp_to   = sanitize_text_field( wp_unslash( $_POST['exp_to'] ?? '' ) );
     if ( ! empty( $exp_from ) ) {
         $where[]  = 'expiration_date >= %s';
         $values[] = $exp_from;
@@ -24686,16 +24690,16 @@ function sp_handle_setup_wizard_submit(): void {
 
     switch ( $step ) {
         case 1: // Organization info
-            $settings['organization_name']    = sanitize_text_field( $_POST['organization_name'] ?? '' );
-            $settings['organization_email']   = sanitize_email( $_POST['organization_email'] ?? '' );
-            $settings['organization_address'] = sanitize_textarea_field( $_POST['organization_address'] ?? '' );
-            $settings['organization_phone']   = sanitize_text_field( $_POST['organization_phone'] ?? '' );
+            $settings['organization_name']    = sanitize_text_field( wp_unslash( $_POST['organization_name'] ?? '' ) );
+            $settings['organization_email']   = sanitize_email( wp_unslash( $_POST['organization_email'] ?? '' ) );
+            $settings['organization_address'] = sanitize_textarea_field( wp_unslash( $_POST['organization_address'] ?? '' ) );
+            $settings['organization_phone']   = sanitize_text_field( wp_unslash( $_POST['organization_phone'] ?? '' ) );
             update_option( 'societypress_settings', $settings );
             wp_safe_redirect( admin_url( 'admin.php?page=sp-setup-wizard&step=2' ) );
             exit;
 
         case 2: // Membership settings
-            $settings['membership_period_type'] = sanitize_text_field( $_POST['membership_period_type'] ?? 'annual' );
+            $settings['membership_period_type'] = sanitize_text_field( wp_unslash( $_POST['membership_period_type'] ?? 'annual' ) );
             $settings['membership_start_month'] = (int) ( $_POST['membership_start_month'] ?? 7 );
             update_option( 'societypress_settings', $settings );
             wp_safe_redirect( admin_url( 'admin.php?page=sp-setup-wizard&step=3' ) );
@@ -24718,8 +24722,8 @@ function sp_handle_setup_wizard_submit(): void {
         case 4: // Appearance
             $settings['design_color_primary'] = sanitize_hex_color( $_POST['design_color_primary'] ?? '#1e3a5f' );
             $settings['design_color_accent']  = sanitize_hex_color( $_POST['design_color_accent'] ?? '#667eea' );
-            $settings['email_from_name']      = sanitize_text_field( $_POST['email_from_name'] ?? '' );
-            $settings['email_from_email']     = sanitize_email( $_POST['email_from_email'] ?? '' );
+            $settings['email_from_name']      = sanitize_text_field( wp_unslash( $_POST['email_from_name'] ?? '' ) );
+            $settings['email_from_email']     = sanitize_email( wp_unslash( $_POST['email_from_email'] ?? '' ) );
             update_option( 'societypress_settings', $settings );
 
             // Mark wizard as complete
@@ -25231,8 +25235,8 @@ function sp_ajax_add_relationship(): void {
 
     $user_a = (int) ( $_POST['user_a'] ?? 0 );
     $user_b = (int) ( $_POST['user_b'] ?? 0 );
-    $type   = sanitize_text_field( $_POST['relationship'] ?? 'spouse' );
-    $note   = sanitize_text_field( $_POST['note'] ?? '' );
+    $type   = sanitize_text_field( wp_unslash( $_POST['relationship'] ?? 'spouse' ) );
+    $note   = sanitize_text_field( wp_unslash( $_POST['note'] ?? '' ) );
 
     if ( ! $user_a || ! $user_b ) {
         wp_send_json_error( [ 'message' => __( 'Both members are required.', 'societypress' ) ] );
@@ -25609,9 +25613,9 @@ function sp_render_audit_log_page(): void {
     $table = $wpdb->prefix . 'sp_audit_log';
 
     // Filters
-    $filter_action = sanitize_text_field( $_GET['action_filter'] ?? '' );
+    $filter_action = sanitize_text_field( wp_unslash( $_GET['action_filter'] ?? '' ) );
     $filter_user   = (int) ( $_GET['user_filter'] ?? 0 );
-    $search        = sanitize_text_field( $_GET['s'] ?? '' );
+    $search        = sanitize_text_field( wp_unslash( $_GET['s'] ?? '' ) );
     $per_page      = 50;
     $paged         = max( 1, (int) ( $_GET['paged'] ?? 1 ) );
     $offset        = ( $paged - 1 ) * $per_page;
@@ -26035,8 +26039,8 @@ function sp_log_url_access(): void {
     $row = [
         'user_id'    => $user_id ?: null,
         'url'        => substr( esc_url_raw( home_url( $req ) ), 0, 2048 ),
-        'referer'    => isset( $_SERVER['HTTP_REFERER'] ) ? substr( esc_url_raw( $_SERVER['HTTP_REFERER'] ), 0, 2048 ) : null,
-        'user_agent' => isset( $_SERVER['HTTP_USER_AGENT'] ) ? substr( sanitize_text_field( $_SERVER['HTTP_USER_AGENT'] ), 0, 500 ) : null,
+        'referer'    => isset( $_SERVER['HTTP_REFERER'] ) ? substr( esc_url_raw( wp_unslash( $_SERVER['HTTP_REFERER'] ) ), 0, 2048 ) : null,
+        'user_agent' => isset( $_SERVER['HTTP_USER_AGENT'] ) ? substr( sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) ), 0, 500 ) : null,
         'ip_address' => sp_get_remote_ip(),
         'created_at' => current_time( 'mysql' ),
     ];
@@ -26105,7 +26109,7 @@ function sp_render_access_log_page(): void {
     $table = $wpdb->prefix . 'sp_access_log';
 
     $filter_user = (int) ( $_GET['user_filter'] ?? 0 );
-    $search      = sanitize_text_field( $_GET['s'] ?? '' );
+    $search      = sanitize_text_field( wp_unslash( $_GET['s'] ?? '' ) );
     $per_page    = 50;
     $paged       = max( 1, (int) ( $_GET['paged'] ?? 1 ) );
     $offset      = ( $paged - 1 ) * $per_page;
@@ -26819,7 +26823,7 @@ function sp_render_group_edit_page(): void {
     if ( $_SERVER['REQUEST_METHOD'] === 'POST' && isset( $_POST['sp_group_nonce'] ) ) {
         check_admin_referer( 'sp_save_group', 'sp_group_nonce' );
 
-        $name = sanitize_text_field( $_POST['name'] ?? '' );
+        $name = sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) );
         if ( ! $name ) {
             echo '<div class="notice notice-error"><p>' . esc_html__( 'Group name is required.', 'societypress' ) . '</p></div>';
         } else {
@@ -26827,10 +26831,10 @@ function sp_render_group_edit_page(): void {
             $data = [
                 'name'         => $name,
                 'slug'         => $slug,
-                'description'  => sanitize_textarea_field( $_POST['description'] ?? '' ) ?: null,
+                'description'  => sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) ) ?: null,
                 'leader_id'    => (int) ( $_POST['leader_id'] ?? 0 ) ?: null,
-                'meeting_info' => sanitize_text_field( $_POST['meeting_info'] ?? '' ) ?: null,
-                'status'       => sanitize_text_field( $_POST['status'] ?? 'active' ),
+                'meeting_info' => sanitize_text_field( wp_unslash( $_POST['meeting_info'] ?? '' ) ) ?: null,
+                'status'       => sanitize_text_field( wp_unslash( $_POST['status'] ?? 'active' ) ),
                 'sort_order'   => (int) ( $_POST['sort_order'] ?? 0 ),
             ];
 
@@ -28051,10 +28055,10 @@ function sp_handle_quick_edit_page(): void {
     }
 
     $post_id  = (int) ( $_POST['post_id'] ?? 0 );
-    $title    = sanitize_text_field( $_POST['title'] ?? '' );
+    $title    = sanitize_text_field( wp_unslash( $_POST['title'] ?? '' ) );
     $status   = in_array( $_POST['status'] ?? '', [ 'publish', 'draft' ], true )
                 ? $_POST['status'] : 'draft';
-    $template = sanitize_text_field( $_POST['template'] ?? '' );
+    $template = sanitize_text_field( wp_unslash( $_POST['template'] ?? '' ) );
 
     if ( ! $post_id || ! get_post( $post_id ) ) {
         wp_send_json_error( __( 'Page not found.', 'societypress' ) );
@@ -28436,12 +28440,12 @@ function sp_handle_page_save(): void {
     }
 
     $post_id  = (int) ( $_POST['post_id'] ?? 0 );
-    $title    = sanitize_text_field( $_POST['page_title'] ?? '' );
-    $content  = wp_kses_post( $_POST['page_content'] ?? '' );
+    $title    = sanitize_text_field( wp_unslash( $_POST['page_title'] ?? '' ) );
+    $content  = wp_kses_post( wp_unslash( $_POST['page_content'] ?? '' ) );
     $status   = in_array( $_POST['page_status'] ?? '', [ 'publish', 'draft' ], true )
                 ? $_POST['page_status']
                 : 'draft';
-    $template = sanitize_text_field( $_POST['page_type'] ?? '' );
+    $template = sanitize_text_field( wp_unslash( $_POST['page_type'] ?? '' ) );
 
     // Validate template slug — must be empty (Standard Page) or a known SP template
     $valid_templates = array_keys( sp_get_page_type_labels() );
@@ -28518,8 +28522,11 @@ function sp_handle_page_save(): void {
          && isset( $_POST['sp_page_builder_nonce'] )
          && wp_verify_nonce( $_POST['sp_page_builder_nonce'], 'sp_page_builder_save' )
     ) {
-        $registry    = sp_get_widget_registry();
-        $raw_widgets = $_POST['sp_widgets'] ?? [];
+        $registry = sp_get_widget_registry();
+        // Unslash the whole tree once here rather than in each of the widget
+        // cases downstream — sp_sanitize_builder_widget() is only ever fed from
+        // this call site, so one unslash covers every widget's settings.
+        $raw_widgets = wp_unslash( $_POST['sp_widgets'] ?? [] );
         $clean       = [];
 
         foreach ( $raw_widgets as $w ) {
@@ -28752,11 +28759,11 @@ function sp_render_finances_page(): void {
     }
 
     // Filters
-    $filter_type   = sanitize_text_field( $_GET['type'] ?? '' );
-    $filter_method = sanitize_text_field( $_GET['method'] ?? '' );
-    $filter_from   = sanitize_text_field( $_GET['from'] ?? '' );
-    $filter_to     = sanitize_text_field( $_GET['to'] ?? '' );
-    $search        = sanitize_text_field( $_GET['s'] ?? '' );
+    $filter_type   = sanitize_text_field( wp_unslash( $_GET['type'] ?? '' ) );
+    $filter_method = sanitize_text_field( wp_unslash( $_GET['method'] ?? '' ) );
+    $filter_from   = sanitize_text_field( wp_unslash( $_GET['from'] ?? '' ) );
+    $filter_to     = sanitize_text_field( wp_unslash( $_GET['to'] ?? '' ) );
+    $search        = sanitize_text_field( wp_unslash( $_GET['s'] ?? '' ) );
     $per_page      = 50;
     $paged         = max( 1, (int) ( $_GET['paged'] ?? 1 ) );
     $offset        = ( $paged - 1 ) * $per_page;
@@ -29051,10 +29058,10 @@ function sp_render_record_payment_page(): void {
             $wpdb->insert( $prefix . 'member_payments', [
                 'user_id'     => $user_id,
                 'amount'      => $amount,
-                'type'        => sanitize_text_field( $_POST['type'] ?? 'dues' ),
-                'method'      => sanitize_text_field( $_POST['method'] ?? '' ) ?: null,
-                'date'        => sanitize_text_field( $_POST['date'] ?? '' ) ?: current_time( 'Y-m-d' ),
-                'note'        => sanitize_text_field( $_POST['note'] ?? '' ) ?: null,
+                'type'        => sanitize_text_field( wp_unslash( $_POST['type'] ?? 'dues' ) ),
+                'method'      => sanitize_text_field( wp_unslash( $_POST['method'] ?? '' ) ) ?: null,
+                'date'        => sanitize_text_field( wp_unslash( $_POST['date'] ?? '' ) ) ?: current_time( 'Y-m-d' ),
+                'note'        => sanitize_text_field( wp_unslash( $_POST['note'] ?? '' ) ) ?: null,
                 'recorded_by' => get_current_user_id(),
                 'created_at'  => current_time( 'mysql' ),
             ] );
@@ -29678,7 +29685,7 @@ function sp_preview_get_slug(): ?string {
     if ( is_admin() ) return null;
     if ( ! isset( $_GET['sp_preview_theme'] ) ) return null;
 
-    $candidate = sanitize_text_field( $_GET['sp_preview_theme'] );
+    $candidate = sanitize_text_field( wp_unslash( $_GET['sp_preview_theme'] ) );
     if ( empty( $candidate ) ) return null;
 
     if ( ! current_user_can( 'sp_manage_settings' ) ) return null;
@@ -29868,7 +29875,7 @@ add_action( 'admin_init', function () {
         wp_die( esc_html__( 'Your session expired or the security check failed. Please go back and try again.', 'societypress' ), esc_html__( 'Security check failed', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
     }
 
-    $theme_slug = sanitize_text_field( $_POST['sp_activate_theme'] );
+    $theme_slug = sanitize_text_field( wp_unslash( $_POST['sp_activate_theme'] ) );
     $theme = wp_get_theme( $theme_slug );
 
     // Only allow activating the parent theme or its child themes
@@ -29962,7 +29969,7 @@ add_action( 'wp_ajax_sp_install_theme', function () {
         wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ] );
     }
 
-    $theme_slug = sanitize_text_field( $_POST['theme_slug'] ?? '' );
+    $theme_slug = sanitize_text_field( wp_unslash( $_POST['theme_slug'] ?? '' ) );
     $registry   = sp_get_theme_registry();
 
     if ( ! isset( $registry[ $theme_slug ] ) ) {
@@ -30415,7 +30422,7 @@ add_action( 'wp_ajax_sp_create_custom_theme', function () {
         wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ] );
     }
 
-    $name = sanitize_text_field( trim( $_POST['theme_name'] ?? '' ) );
+    $name = sanitize_text_field( wp_unslash( trim( $_POST['theme_name'] ?? '' ) ) );
     if ( empty( $name ) ) {
         wp_send_json_error( [ 'message' => __( 'Please enter a theme name.', 'societypress' ) ] );
     }
@@ -30450,8 +30457,8 @@ add_action( 'wp_ajax_sp_create_custom_theme', function () {
 
     // Sanitize font selections
     $valid_fonts = array_keys( sp_get_font_family_options() );
-    $font_body    = sanitize_text_field( $_POST['font_body'] ?? 'system' );
-    $font_heading = sanitize_text_field( $_POST['font_heading'] ?? 'inherit' );
+    $font_body    = sanitize_text_field( wp_unslash( $_POST['font_body'] ?? 'system' ) );
+    $font_heading = sanitize_text_field( wp_unslash( $_POST['font_heading'] ?? 'inherit' ) );
     if ( ! in_array( $font_body, $valid_fonts, true ) ) $font_body = 'system';
     if ( $font_heading !== 'inherit' && ! in_array( $font_heading, $valid_fonts, true ) ) $font_heading = 'inherit';
 
@@ -30542,7 +30549,7 @@ add_action( 'wp_ajax_sp_update_custom_theme', function () {
         wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ] );
     }
 
-    $slug = sanitize_text_field( $_POST['theme_slug'] ?? '' );
+    $slug = sanitize_text_field( wp_unslash( $_POST['theme_slug'] ?? '' ) );
     $custom_themes = sp_get_custom_themes();
 
     if ( ! isset( $custom_themes[ $slug ] ) ) {
@@ -30564,8 +30571,8 @@ add_action( 'wp_ajax_sp_update_custom_theme', function () {
 
     // Sanitize fonts
     $valid_fonts = array_keys( sp_get_font_family_options() );
-    $font_body    = sanitize_text_field( $_POST['font_body'] ?? 'system' );
-    $font_heading = sanitize_text_field( $_POST['font_heading'] ?? 'inherit' );
+    $font_body    = sanitize_text_field( wp_unslash( $_POST['font_body'] ?? 'system' ) );
+    $font_heading = sanitize_text_field( wp_unslash( $_POST['font_heading'] ?? 'inherit' ) );
     if ( ! in_array( $font_body, $valid_fonts, true ) ) $font_body = 'system';
     if ( $font_heading !== 'inherit' && ! in_array( $font_heading, $valid_fonts, true ) ) $font_heading = 'inherit';
 
@@ -30639,7 +30646,7 @@ add_action( 'wp_ajax_sp_delete_custom_theme', function () {
         wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ] );
     }
 
-    $slug = sanitize_text_field( $_POST['theme_slug'] ?? '' );
+    $slug = sanitize_text_field( wp_unslash( $_POST['theme_slug'] ?? '' ) );
     $custom_themes = sp_get_custom_themes();
 
     if ( ! isset( $custom_themes[ $slug ] ) ) {
@@ -31248,7 +31255,7 @@ add_action( 'wp_ajax_sp_extract_site_colors', function () {
         wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ] );
     }
 
-    $url = esc_url_raw( trim( $_POST['site_url'] ?? '' ) );
+    $url = esc_url_raw( wp_unslash( trim( $_POST['site_url'] ?? '' ) ) );
     if ( empty( $url ) || ! filter_var( $url, FILTER_VALIDATE_URL ) ) {
         wp_send_json_error( [ 'message' => __( 'Please enter a valid URL (e.g., https://example.org).', 'societypress' ) ] );
     }
@@ -31409,7 +31416,7 @@ function sp_render_themes_page(): void {
     }
 
     // Check for activation success message
-    $activated = isset( $_GET['activated'] ) ? sanitize_text_field( $_GET['activated'] ) : '';
+    $activated = isset( $_GET['activated'] ) ? sanitize_text_field( wp_unslash( $_GET['activated'] ) ) : '';
 
     $install_nonce = wp_create_nonce( 'sp_install_theme_nonce' );
     $custom_nonce  = wp_create_nonce( 'sp_custom_theme_nonce' );
@@ -34277,7 +34284,7 @@ function sp_render_user_access_page(): void {
                         $granted[] = $area_slug;
                     }
                 }
-                $role_template = sanitize_text_field( $_POST['sp_role_template'] ?? '' );
+                $role_template = sanitize_text_field( wp_unslash( $_POST['sp_role_template'] ?? '' ) );
 
                 if ( empty( $granted ) ) {
                     // No areas selected — remove all SP access
@@ -35181,13 +35188,13 @@ function sp_render_directory( array $settings ): void {
     $search = isset( $_GET['sp_search'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_search'] ) ) : '';
 
     // Letter filter — single uppercase letter or empty for "all"
-    $letter = isset( $_GET['sp_letter'] ) ? strtoupper( sanitize_text_field( $_GET['sp_letter'] ) ) : '';
+    $letter = isset( $_GET['sp_letter'] ) ? strtoupper( sanitize_text_field( wp_unslash( $_GET['sp_letter'] ) ) ) : '';
     if ( $letter && ! preg_match( '/^[A-Z]$/', $letter ) ) {
         $letter = ''; // Invalid letter — show all
     }
 
     // Status filter — default to "active" so the directory shows current members
-    $status_filter = isset( $_GET['sp_status'] ) ? sanitize_text_field( $_GET['sp_status'] ) : 'active';
+    $status_filter = isset( $_GET['sp_status'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_status'] ) ) : 'active';
     $allowed_statuses = [ 'active', 'inactive', 'all' ];
     if ( ! in_array( $status_filter, $allowed_statuses, true ) ) {
         $status_filter = 'active';
@@ -39650,7 +39657,7 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
     }
 
     $prefix = $wpdb->prefix . 'sp_';
-    $search = isset( $_GET['sp_surname'] ) ? sanitize_text_field( $_GET['sp_surname'] ) : '';
+    $search = isset( $_GET['sp_surname'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_surname'] ) ) : '';
 
     echo '<div class="sp-widget-surname-lookup">';
 
@@ -40499,9 +40506,9 @@ function sp_handle_builder_contact_form(): void {
         wp_send_json_success( [ 'message' => __( 'Thank you for your message!', 'societypress' ) ] );
     }
 
-    $name    = sanitize_text_field( $_POST['sp_contact_name'] ?? '' );
-    $email   = sanitize_email( $_POST['sp_contact_email'] ?? '' );
-    $message = sanitize_textarea_field( $_POST['sp_contact_message'] ?? '' );
+    $name    = sanitize_text_field( wp_unslash( $_POST['sp_contact_name'] ?? '' ) );
+    $email   = sanitize_email( wp_unslash( $_POST['sp_contact_email'] ?? '' ) );
+    $message = sanitize_textarea_field( wp_unslash( $_POST['sp_contact_message'] ?? '' ) );
 
     if ( ! $name || ! $email || ! $message ) {
         wp_send_json_error( [ 'message' => __( 'Please fill in all required fields.', 'societypress' ) ] );
@@ -40543,7 +40550,7 @@ function sp_handle_builder_contact_form(): void {
 
     // Optional per-form subject (set on the Contact Form widget). Newlines
     // stripped to prevent header injection. Falls back to the default subject.
-    $preset_subject = trim( str_replace( [ "\r", "\n" ], '', sanitize_text_field( $_POST['sp_contact_subject'] ?? '' ) ) );
+    $preset_subject = trim( str_replace( [ "\r", "\n" ], '', sanitize_text_field( wp_unslash( $_POST['sp_contact_subject'] ?? '' ) ) ) );
     $subject = $preset_subject !== ''
         ? sprintf( '[%1$s] %2$s', $site_name, $preset_subject )
         /* translators: 1: site/society name, 2: sender name */
@@ -42494,9 +42501,9 @@ add_action( 'admin_init', function () {
         'committee_id'         => ! empty( $_POST['event_committee_id'] ) ? (int) $_POST['event_committee_id'] : null,
         'status'               => in_array( $_POST['event_status'] ?? '', [ 'scheduled', 'cancelled', 'postponed', 'completed' ], true )
                                   ? $_POST['event_status'] : 'scheduled',
-        'event_date'           => sanitize_text_field( $_POST['event_date'] ?? '' ),
-        'start_time'           => ! empty( $_POST['event_start_time'] ) ? sanitize_text_field( $_POST['event_start_time'] ) : null,
-        'end_time'             => ! empty( $_POST['event_end_time'] ) ? sanitize_text_field( $_POST['event_end_time'] ) : null,
+        'event_date'           => sanitize_text_field( wp_unslash( $_POST['event_date'] ?? '' ) ),
+        'start_time'           => ! empty( $_POST['event_start_time'] ) ? sanitize_text_field( wp_unslash( $_POST['event_start_time'] ) ) : null,
+        'end_time'             => ! empty( $_POST['event_end_time'] ) ? sanitize_text_field( wp_unslash( $_POST['event_end_time'] ) ) : null,
         'location_name'        => sanitize_text_field( wp_unslash( $_POST['event_location_name'] ?? '' ) ),
         'location_address'     => sanitize_textarea_field( wp_unslash( $_POST['event_location_address'] ?? '' ) ),
         'is_virtual'           => ! empty( $_POST['event_is_virtual'] ) ? 1 : 0,
@@ -42642,7 +42649,7 @@ add_action( 'admin_init', function () {
     // ---- Save recurrence rule ----
     // WHY: If this is a new event or an existing parent event, save the
     //      recurrence rule and end date so "Generate Occurrences" can work.
-    $recurrence_type = sanitize_text_field( $_POST['event_recurrence_type'] ?? '' );
+    $recurrence_type = sanitize_text_field( wp_unslash( $_POST['event_recurrence_type'] ?? '' ) );
     if ( $recurrence_type && ! empty( $data['event_date'] ) ) {
         // WHY date() not wp_date() below: $event_date_ts is a site-tz calendar
         // date parsed from admin input; the weekday/day-of-month extraction is
@@ -42667,7 +42674,7 @@ add_action( 'admin_init', function () {
 
         if ( $rule ) {
             $end_date = ! empty( $_POST['event_recurrence_end'] )
-                ? sanitize_text_field( $_POST['event_recurrence_end'] )
+                ? sanitize_text_field( wp_unslash( $_POST['event_recurrence_end'] ) )
                 : date( 'Y-m-d', strtotime( '+12 months', $event_date_ts ) );
 
             $wpdb->update( $events_table, [
@@ -45759,7 +45766,7 @@ add_action( 'wp_ajax_sp_save_membership_tier', function () {
     $table = $wpdb->prefix . 'sp_membership_tiers';
 
     $tier_id         = (int) ( $_POST['tier_id'] ?? 0 );
-    $name            = sanitize_text_field( $_POST['name'] ?? '' );
+    $name            = sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) );
     $price           = floatval( $_POST['price'] ?? 0 );
     $lifetime        = ( $_POST['lifetime'] ?? '0' ) === '1';
     $duration_months = $lifetime ? null : max( 1, (int) ( $_POST['duration_months'] ?? 12 ) );
@@ -47306,7 +47313,7 @@ function sp_render_import_events_page(): void {
         check_admin_referer( 'sp_import_events' );
 
         // Reconstruct full path from basename token — never trust full paths from HTML
-        $token     = sanitize_file_name( $_POST['sp_import_temp_file'] ?? '' );
+        $token     = sanitize_file_name( wp_unslash( $_POST['sp_import_temp_file'] ?? '' ) );
         $upload_dir = wp_upload_dir();
         $temp_dir   = $upload_dir['basedir'] . '/sp-import-temp/';
         $temp_file  = realpath( $temp_dir . $token );
@@ -47931,7 +47938,7 @@ add_filter( 'template_include', function ( $template ) {
         echo '<form method="get" action="' . esc_url( $base_url ) . '" class="sp-cal-filter-form">';
 
         // Preserve the current month if set
-        $current_cal_month = isset( $_GET['sp_cal_month'] ) ? sanitize_text_field( $_GET['sp_cal_month'] ) : '';
+        $current_cal_month = isset( $_GET['sp_cal_month'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_cal_month'] ) ) : '';
         if ( $current_cal_month && preg_match( '/^\d{4}-\d{2}$/', $current_cal_month ) ) {
             echo '<input type="hidden" name="sp_cal_month" value="' . esc_attr( $current_cal_month ) . '">';
         }
@@ -48601,12 +48608,12 @@ function sp_render_events_listing( array $settings ): void {
     if ( ! in_array( $default_timeframe, [ '30days', '3months', '6months', '12months', 'all' ], true ) ) {
         $default_timeframe = '12months';
     }
-    $timeframe  = isset( $_GET['sp_time'] ) ? sanitize_text_field( $_GET['sp_time'] ) : $default_timeframe;
+    $timeframe  = isset( $_GET['sp_time'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_time'] ) ) : $default_timeframe;
     // Which view opens by default is admin-configurable (Settings → Events);
     // the sp_view query arg (set by the List/Calendar toggle) always wins.
     $default_view = in_array( $sp_evt_settings['events_default_view'] ?? 'list', [ 'list', 'calendar' ], true )
                   ? $sp_evt_settings['events_default_view'] : 'list';
-    $view       = isset( $_GET['sp_view'] ) ? sanitize_text_field( $_GET['sp_view'] ) : $default_view;
+    $view       = isset( $_GET['sp_view'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_view'] ) ) : $default_view;
 
     // ---- Build the WHERE clause ----
     $where  = [ "e.status != 'cancelled'" ];
@@ -50667,9 +50674,9 @@ function sp_ajax_register_for_event(): void {
     $guest_email = '';
     $guest_phone = '';
     if ( $is_guest ) {
-        $guest_name  = sanitize_text_field( $_POST['guest_name'] ?? '' );
-        $guest_email = sanitize_email( $_POST['guest_email'] ?? '' );
-        $guest_phone = sanitize_text_field( $_POST['guest_phone'] ?? '' );
+        $guest_name  = sanitize_text_field( wp_unslash( $_POST['guest_name'] ?? '' ) );
+        $guest_email = sanitize_email( wp_unslash( $_POST['guest_email'] ?? '' ) );
+        $guest_phone = sanitize_text_field( wp_unslash( $_POST['guest_phone'] ?? '' ) );
 
         if ( empty( $guest_name ) || empty( $guest_email ) ) {
             wp_send_json_error( __( 'Please provide your name and email address.', 'societypress' ) );
@@ -50877,7 +50884,7 @@ function sp_ajax_register_for_event(): void {
     // WHY: The frontend sends 'online', 'at_door', or 'none' based on which
     //      button was clicked. If 'online', we create a Stripe Checkout Session
     //      and send back the URL for the redirect. Otherwise, register normally.
-    $pay_method = sanitize_text_field( $_POST['pay_method'] ?? 'none' );
+    $pay_method = sanitize_text_field( wp_unslash( $_POST['pay_method'] ?? 'none' ) );
 
     // Determine the correct payment_status based on method and fee
     $payment_status = 'none';
@@ -52129,7 +52136,7 @@ function sp_ajax_admin_add_walkin(): void {
     $reg_table = $wpdb->prefix . 'sp_event_registrations';
 
     $event_id   = (int) ( $_POST['event_id'] ?? 0 );
-    $guest_name = sanitize_text_field( $_POST['guest_name'] ?? '' );
+    $guest_name = sanitize_text_field( wp_unslash( $_POST['guest_name'] ?? '' ) );
 
     if ( ! $event_id || ! $guest_name ) {
         wp_send_json_error( __( 'Event ID and name are required.', 'societypress' ) );
@@ -52142,13 +52149,13 @@ function sp_ajax_admin_add_walkin(): void {
         'slot_id'        => $slot_id,
         'user_id'        => null,
         'guest_name'     => $guest_name,
-        'guest_email'    => sanitize_email( $_POST['guest_email'] ?? '' ),
-        'guest_phone'    => sanitize_text_field( $_POST['guest_phone'] ?? '' ),
+        'guest_email'    => sanitize_email( wp_unslash( $_POST['guest_email'] ?? '' ) ),
+        'guest_phone'    => sanitize_text_field( wp_unslash( $_POST['guest_phone'] ?? '' ) ),
         'status'         => 'confirmed',
         'party_size'     => max( 1, (int) ( $_POST['party_size'] ?? 1 ) ),
         'fee_amount'     => 0.00,
         'payment_status' => 'none',
-        'notes'          => sanitize_text_field( $_POST['notes'] ?? '' ),
+        'notes'          => sanitize_text_field( wp_unslash( $_POST['notes'] ?? '' ) ),
         'registered_at'  => current_time( 'mysql' ),
     ] );
 
@@ -52575,9 +52582,9 @@ add_action( 'init', function () {
     }
 
     // Validate required fields
-    $first_name = sanitize_text_field( $_POST['first_name'] ?? '' );
-    $last_name  = sanitize_text_field( $_POST['last_name'] ?? '' );
-    $email      = sanitize_email( $_POST['email'] ?? '' );
+    $first_name = sanitize_text_field( wp_unslash( $_POST['first_name'] ?? '' ) );
+    $last_name  = sanitize_text_field( wp_unslash( $_POST['last_name'] ?? '' ) );
+    $email      = sanitize_email( wp_unslash( $_POST['email'] ?? '' ) );
     $tier_id    = absint( $_POST['tier_id'] ?? 0 );
 
     if ( ! $first_name || ! $last_name || ! $email || ! $tier_id ) {
@@ -52648,8 +52655,8 @@ add_action( 'init', function () {
     $joint_first = '';
     $joint_last  = '';
     if ( ! empty( $tier->allows_joint ) ) {
-        $joint_first = sanitize_text_field( $_POST['joint_first_name'] ?? '' );
-        $joint_last  = sanitize_text_field( $_POST['joint_last_name'] ?? '' );
+        $joint_first = sanitize_text_field( wp_unslash( $_POST['joint_first_name'] ?? '' ) );
+        $joint_last  = sanitize_text_field( wp_unslash( $_POST['joint_last_name'] ?? '' ) );
     }
     $has_joint = ! empty( $joint_first );
 
@@ -52664,21 +52671,21 @@ add_action( 'init', function () {
         'tier_id'         => $tier_id,
         'first_name'      => $first_name,
         'last_name'       => $last_name,
-        'preferred_name'  => sanitize_text_field( $_POST['preferred_name'] ?? '' ),
+        'preferred_name'  => sanitize_text_field( wp_unslash( $_POST['preferred_name'] ?? '' ) ),
         'joint_member'    => $has_joint ? 1 : 0,
         'joint_first_name'     => $has_joint ? $joint_first : null,
         'joint_last_name'      => $has_joint ? $joint_last : null,
-        'joint_preferred_name' => $has_joint ? sanitize_text_field( $_POST['joint_preferred_name'] ?? '' ) ?: null : null,
-        'joint_email'          => $has_joint ? sanitize_email( $_POST['joint_email'] ?? '' ) ?: null : null,
-        'joint_phone'          => $has_joint ? sanitize_text_field( $_POST['joint_phone'] ?? '' ) ?: null : null,
-        'phone'           => sanitize_text_field( $_POST['phone'] ?? '' ),
-        'cell'            => sanitize_text_field( $_POST['cell'] ?? '' ),
-        'address_1'       => sanitize_text_field( $_POST['address_1'] ?? '' ),
-        'address_2'       => sanitize_text_field( $_POST['address_2'] ?? '' ),
-        'city'            => sanitize_text_field( $_POST['city'] ?? '' ),
-        'state'           => sanitize_text_field( $_POST['state'] ?? '' ),
-        'postal_code'     => sanitize_text_field( $_POST['postal_code'] ?? '' ),
-        'country'         => sanitize_text_field( $_POST['country'] ?? 'US' ),
+        'joint_preferred_name' => $has_joint ? sanitize_text_field( wp_unslash( $_POST['joint_preferred_name'] ?? '' ) ) ?: null : null,
+        'joint_email'          => $has_joint ? sanitize_email( wp_unslash( $_POST['joint_email'] ?? '' ) ) ?: null : null,
+        'joint_phone'          => $has_joint ? sanitize_text_field( wp_unslash( $_POST['joint_phone'] ?? '' ) ) ?: null : null,
+        'phone'           => sanitize_text_field( wp_unslash( $_POST['phone'] ?? '' ) ),
+        'cell'            => sanitize_text_field( wp_unslash( $_POST['cell'] ?? '' ) ),
+        'address_1'       => sanitize_text_field( wp_unslash( $_POST['address_1'] ?? '' ) ),
+        'address_2'       => sanitize_text_field( wp_unslash( $_POST['address_2'] ?? '' ) ),
+        'city'            => sanitize_text_field( wp_unslash( $_POST['city'] ?? '' ) ),
+        'state'           => sanitize_text_field( wp_unslash( $_POST['state'] ?? '' ) ),
+        'postal_code'     => sanitize_text_field( wp_unslash( $_POST['postal_code'] ?? '' ) ),
+        'country'         => sanitize_text_field( wp_unslash( $_POST['country'] ?? 'US' ) ),
         'join_date'       => $join_date,
         'expiration_date' => $exp_date,
         // Email-preference defaults are society-configurable (Settings → Privacy).
@@ -52990,18 +52997,18 @@ function sp_render_join_form(): string {
                 <div class="sp-field">
                     <label for="sp-first-name"><?php esc_html_e( 'First Name', 'societypress' ); ?> <span class="required" aria-hidden="true">*</span></label>
                     <input type="text" id="sp-first-name" name="first_name" required autocomplete="given-name"
-                           value="<?php echo esc_attr( $_POST['first_name'] ?? '' ); ?>">
+                           value="<?php echo esc_attr( wp_unslash( $_POST['first_name'] ?? '' ) ); ?>">
                 </div>
                 <div class="sp-field">
                     <label for="sp-last-name"><?php esc_html_e( 'Last Name', 'societypress' ); ?> <span class="required" aria-hidden="true">*</span></label>
                     <input type="text" id="sp-last-name" name="last_name" required autocomplete="family-name"
-                           value="<?php echo esc_attr( $_POST['last_name'] ?? '' ); ?>">
+                           value="<?php echo esc_attr( wp_unslash( $_POST['last_name'] ?? '' ) ); ?>">
                 </div>
             </div>
             <div class="sp-field">
                 <label for="sp-preferred-name"><?php esc_html_e( 'Preferred Name', 'societypress' ); ?> <small class="sp-text-secondary sp-fw-normal"><?php esc_html_e( "(what you'd like to be called)", 'societypress' ); ?></small></label>
                 <input type="text" id="sp-preferred-name" name="preferred_name" autocomplete="nickname"
-                       value="<?php echo esc_attr( $_POST['preferred_name'] ?? '' ); ?>">
+                       value="<?php echo esc_attr( wp_unslash( $_POST['preferred_name'] ?? '' ) ); ?>">
             </div>
         </fieldset>
 
@@ -53011,18 +53018,18 @@ function sp_render_join_form(): string {
             <div class="sp-field">
                 <label for="sp-email"><?php esc_html_e( 'Email Address', 'societypress' ); ?> <span class="required" aria-hidden="true">*</span></label>
                 <input type="email" id="sp-email" name="email" required autocomplete="email"
-                       value="<?php echo esc_attr( $_POST['email'] ?? '' ); ?>">
+                       value="<?php echo esc_attr( wp_unslash( $_POST['email'] ?? '' ) ); ?>">
             </div>
             <div class="sp-field-row">
                 <div class="sp-field">
                     <label for="sp-phone"><?php esc_html_e( 'Phone', 'societypress' ); ?></label>
                     <input type="tel" id="sp-phone" name="phone" autocomplete="home tel"
-                           value="<?php echo esc_attr( $_POST['phone'] ?? '' ); ?>">
+                           value="<?php echo esc_attr( wp_unslash( $_POST['phone'] ?? '' ) ); ?>">
                 </div>
                 <div class="sp-field">
                     <label for="sp-cell"><?php esc_html_e( 'Cell', 'societypress' ); ?></label>
                     <input type="tel" id="sp-cell" name="cell" autocomplete="mobile tel"
-                           value="<?php echo esc_attr( $_POST['cell'] ?? '' ); ?>">
+                           value="<?php echo esc_attr( wp_unslash( $_POST['cell'] ?? '' ) ); ?>">
                 </div>
             </div>
         </fieldset>
@@ -53050,29 +53057,29 @@ function sp_render_join_form(): string {
                 <div class="sp-field">
                     <label for="sp-joint-first"><?php esc_html_e( 'First Name', 'societypress' ); ?></label>
                     <input type="text" id="sp-joint-first" name="joint_first_name"
-                           value="<?php echo esc_attr( $_POST['joint_first_name'] ?? '' ); ?>">
+                           value="<?php echo esc_attr( wp_unslash( $_POST['joint_first_name'] ?? '' ) ); ?>">
                 </div>
                 <div class="sp-field">
                     <label for="sp-joint-last"><?php esc_html_e( 'Last Name', 'societypress' ); ?></label>
                     <input type="text" id="sp-joint-last" name="joint_last_name"
-                           value="<?php echo esc_attr( $_POST['joint_last_name'] ?? '' ); ?>">
+                           value="<?php echo esc_attr( wp_unslash( $_POST['joint_last_name'] ?? '' ) ); ?>">
                 </div>
             </div>
             <div class="sp-field">
                 <label for="sp-joint-preferred"><?php esc_html_e( 'Preferred Name', 'societypress' ); ?> <small class="sp-text-secondary sp-fw-normal">(<?php esc_html_e( 'optional', 'societypress' ); ?>)</small></label>
                 <input type="text" id="sp-joint-preferred" name="joint_preferred_name"
-                       value="<?php echo esc_attr( $_POST['joint_preferred_name'] ?? '' ); ?>">
+                       value="<?php echo esc_attr( wp_unslash( $_POST['joint_preferred_name'] ?? '' ) ); ?>">
             </div>
             <div class="sp-field-row">
                 <div class="sp-field">
                     <label for="sp-joint-email2"><?php esc_html_e( 'Email', 'societypress' ); ?> <small class="sp-text-secondary sp-fw-normal">(<?php esc_html_e( 'optional', 'societypress' ); ?>)</small></label>
                     <input type="email" id="sp-joint-email2" name="joint_email"
-                           value="<?php echo esc_attr( $_POST['joint_email'] ?? '' ); ?>">
+                           value="<?php echo esc_attr( wp_unslash( $_POST['joint_email'] ?? '' ) ); ?>">
                 </div>
                 <div class="sp-field">
                     <label for="sp-joint-phone2"><?php esc_html_e( 'Phone', 'societypress' ); ?> <small class="sp-text-secondary sp-fw-normal">(<?php esc_html_e( 'optional', 'societypress' ); ?>)</small></label>
                     <input type="tel" id="sp-joint-phone2" name="joint_phone"
-                           value="<?php echo esc_attr( $_POST['joint_phone'] ?? '' ); ?>">
+                           value="<?php echo esc_attr( wp_unslash( $_POST['joint_phone'] ?? '' ) ); ?>">
                 </div>
             </div>
         </fieldset>
@@ -53083,28 +53090,28 @@ function sp_render_join_form(): string {
             <div class="sp-field">
                 <label for="sp-address1"><?php esc_html_e( 'Street Address', 'societypress' ); ?></label>
                 <input type="text" id="sp-address1" name="address_1"
-                       value="<?php echo esc_attr( $_POST['address_1'] ?? '' ); ?>">
+                       value="<?php echo esc_attr( wp_unslash( $_POST['address_1'] ?? '' ) ); ?>">
             </div>
             <div class="sp-field">
                 <label for="sp-address2"><?php esc_html_e( 'Apt / Suite / Unit', 'societypress' ); ?></label>
                 <input type="text" id="sp-address2" name="address_2"
-                       value="<?php echo esc_attr( $_POST['address_2'] ?? '' ); ?>">
+                       value="<?php echo esc_attr( wp_unslash( $_POST['address_2'] ?? '' ) ); ?>">
             </div>
             <div class="sp-field-row">
                 <div class="sp-field">
                     <label for="sp-city"><?php esc_html_e( 'City', 'societypress' ); ?></label>
                     <input type="text" id="sp-city" name="city"
-                           value="<?php echo esc_attr( $_POST['city'] ?? '' ); ?>">
+                           value="<?php echo esc_attr( wp_unslash( $_POST['city'] ?? '' ) ); ?>">
                 </div>
                 <div class="sp-field sp-join-field-state">
                     <label for="sp-state"><?php esc_html_e( 'State', 'societypress' ); ?></label>
                     <input type="text" id="sp-state" name="state" maxlength="2" class="sp-join-state-input"
-                           value="<?php echo esc_attr( $_POST['state'] ?? '' ); ?>">
+                           value="<?php echo esc_attr( wp_unslash( $_POST['state'] ?? '' ) ); ?>">
                 </div>
                 <div class="sp-field sp-join-field-zip">
                     <label for="sp-zip"><?php esc_html_e( 'ZIP', 'societypress' ); ?></label>
                     <input type="text" id="sp-zip" name="postal_code"
-                           value="<?php echo esc_attr( $_POST['postal_code'] ?? '' ); ?>">
+                           value="<?php echo esc_attr( wp_unslash( $_POST['postal_code'] ?? '' ) ); ?>">
                 </div>
             </div>
         </fieldset>
@@ -53115,7 +53122,7 @@ function sp_render_join_form(): string {
             <div class="sp-field">
                 <label for="sp-research-surnames"><?php esc_html_e( 'Surnames you\'re researching', 'societypress' ); ?></label>
                 <input type="text" id="sp-research-surnames" name="research_surnames"
-                       value="<?php echo esc_attr( $_POST['research_surnames'] ?? '' ); ?>"
+                       value="<?php echo esc_attr( wp_unslash( $_POST['research_surnames'] ?? '' ) ); ?>"
                        placeholder="<?php echo esc_attr__( 'e.g. Whitfield, Mueller, Stricklin', 'societypress' ); ?>">
                 <p class="sp-field-help"><?php esc_html_e( 'Optional. Separate names with commas — other members can find you by the family lines you study.', 'societypress' ); ?></p>
             </div>
@@ -54968,7 +54975,7 @@ class SP_Speakers_List_Table extends WP_List_Table {
 
         // Search filter
         $where = '';
-        $search = sanitize_text_field( $_GET['s'] ?? '' );
+        $search = sanitize_text_field( wp_unslash( $_GET['s'] ?? '' ) );
         if ( $search ) {
             $like  = '%' . $wpdb->esc_like( $search ) . '%';
             $where = $wpdb->prepare( " WHERE s.name LIKE %s OR s.title LIKE %s OR s.email LIKE %s", $like, $like, $like );
@@ -55113,12 +55120,12 @@ add_action( 'admin_init', function () {
     $speaker_id     = (int) ( $_POST['speaker_id'] ?? 0 );
 
     $data = [
-        'name'     => sanitize_text_field( $_POST['speaker_name'] ?? '' ),
-        'title'    => sanitize_text_field( $_POST['speaker_title'] ?? '' ),
-        'bio'      => sanitize_textarea_field( $_POST['speaker_bio'] ?? '' ),
-        'email'    => sanitize_email( $_POST['speaker_email'] ?? '' ),
-        'phone'    => sanitize_text_field( $_POST['speaker_phone'] ?? '' ),
-        'website'  => esc_url_raw( $_POST['speaker_website'] ?? '' ),
+        'name'     => sanitize_text_field( wp_unslash( $_POST['speaker_name'] ?? '' ) ),
+        'title'    => sanitize_text_field( wp_unslash( $_POST['speaker_title'] ?? '' ) ),
+        'bio'      => sanitize_textarea_field( wp_unslash( $_POST['speaker_bio'] ?? '' ) ),
+        'email'    => sanitize_email( wp_unslash( $_POST['speaker_email'] ?? '' ) ),
+        'phone'    => sanitize_text_field( wp_unslash( $_POST['speaker_phone'] ?? '' ) ),
+        'website'  => esc_url_raw( wp_unslash( $_POST['speaker_website'] ?? '' ) ),
         'photo_id' => ! empty( $_POST['speaker_photo_id'] ) ? (int) $_POST['speaker_photo_id'] : null,
         'active'   => ! empty( $_POST['speaker_active'] ) ? 1 : 0,
     ];
@@ -55571,9 +55578,9 @@ function sp_ajax_preview_recurrence(): void {
         wp_send_json_error( __( 'Unauthorized.', 'societypress' ) );
     }
 
-    $event_date      = sanitize_text_field( $_POST['event_date'] ?? '' );
-    $recurrence_type = sanitize_text_field( $_POST['recurrence_type'] ?? '' );
-    $recurrence_end  = sanitize_text_field( $_POST['recurrence_end'] ?? '' );
+    $event_date      = sanitize_text_field( wp_unslash( $_POST['event_date'] ?? '' ) );
+    $recurrence_type = sanitize_text_field( wp_unslash( $_POST['recurrence_type'] ?? '' ) );
+    $recurrence_end  = sanitize_text_field( wp_unslash( $_POST['recurrence_end'] ?? '' ) );
 
     if ( ! $event_date || ! $recurrence_type ) {
         wp_send_json_success( [ 'dates' => [], 'summary' => '' ] );
@@ -57651,13 +57658,13 @@ add_action( 'admin_post_sp_save_backup_settings', function () {
     }
 
     $settings = sp_settings();
-    $freq = sanitize_text_field( $_POST['backup_frequency'] ?? 'weekly' );
+    $freq = sanitize_text_field( wp_unslash( $_POST['backup_frequency'] ?? 'weekly' ) );
     $settings['backup_frequency']       = in_array( $freq, [ 'off', 'daily', 'weekly' ], true ) ? $freq : 'weekly';
     $settings['backup_retention']       = max( 1, min( 50, (int) ( $_POST['backup_retention'] ?? 5 ) ) );
     $settings['backup_hour']            = max( 0, min( 23, (int) ( $_POST['backup_hour'] ?? 3 ) ) );
     $settings['backup_include_uploads'] = empty( $_POST['backup_include_uploads'] ) ? 0 : 1;
     $settings['backup_notify']          = empty( $_POST['backup_notify'] ) ? 0 : 1;
-    $settings['backup_notify_email']    = sanitize_email( $_POST['backup_notify_email'] ?? '' );
+    $settings['backup_notify_email']    = sanitize_email( wp_unslash( $_POST['backup_notify_email'] ?? '' ) );
     update_option( 'societypress_settings', $settings );
 
     // Clear the cron so the init scheduler re-creates it with the new frequency
@@ -57797,8 +57804,8 @@ add_action( 'template_redirect', function () {
     // Only process Stripe returns on the events page
     if ( ! is_page() || get_page_template_slug() !== 'sp-events' ) return;
 
-    $payment_status = sanitize_text_field( $_GET['sp_payment'] ?? '' );
-    $session_id     = sanitize_text_field( $_GET['sp_session'] ?? '' );
+    $payment_status = sanitize_text_field( wp_unslash( $_GET['sp_payment'] ?? '' ) );
+    $session_id     = sanitize_text_field( wp_unslash( $_GET['sp_session'] ?? '' ) );
 
     // Only handle successful returns with a session ID. Validate the session
     // ID format before appending it to the Stripe API URL — sanitize_text_field
@@ -58185,7 +58192,7 @@ add_action( 'template_redirect', function () {
 add_action( 'template_redirect', function () {
     if ( ! isset( $_GET['sp_ical_feed'] ) ) return;
 
-    $feed_param = sanitize_text_field( $_GET['sp_ical_feed'] );
+    $feed_param = sanitize_text_field( wp_unslash( $_GET['sp_ical_feed'] ) );
     if ( ! $feed_param ) return;
 
     // Bail if the events module is disabled
@@ -59316,12 +59323,12 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
     $per_page       = max( 1, (int) ( $s['count'] ?? 25 ) );
 
     // ---- Read URL parameters ----
-    $search       = isset( $_GET['sp_lib_search'] ) ? sanitize_text_field( $_GET['sp_lib_search'] ) : '';
-    $search_field = isset( $_GET['sp_lib_field'] ) ? sanitize_text_field( $_GET['sp_lib_field'] ) : 'keyword';
-    $media_filter = isset( $_GET['sp_lib_media'] ) ? sanitize_text_field( $_GET['sp_lib_media'] ) : '';
-    $subj_filter  = isset( $_GET['sp_lib_subject'] ) ? sanitize_text_field( $_GET['sp_lib_subject'] ) : '';
-    $acq_filter   = isset( $_GET['sp_lib_acq'] ) ? sanitize_text_field( $_GET['sp_lib_acq'] ) : '';
-    $sort_by      = isset( $_GET['sp_lib_sort'] ) ? sanitize_text_field( $_GET['sp_lib_sort'] ) : 'title';
+    $search       = isset( $_GET['sp_lib_search'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_lib_search'] ) ) : '';
+    $search_field = isset( $_GET['sp_lib_field'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_lib_field'] ) ) : 'keyword';
+    $media_filter = isset( $_GET['sp_lib_media'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_lib_media'] ) ) : '';
+    $subj_filter  = isset( $_GET['sp_lib_subject'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_lib_subject'] ) ) : '';
+    $acq_filter   = isset( $_GET['sp_lib_acq'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_lib_acq'] ) ) : '';
+    $sort_by      = isset( $_GET['sp_lib_sort'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_lib_sort'] ) ) : 'title';
     $page_num     = max( 1, absint( $_GET['sp_lib_pg'] ?? 1 ) );
 
     // Validate search field tab
@@ -60554,9 +60561,9 @@ function sp_handle_surname_contact(): void {
     }
 
     $researcher_id = absint( $_POST['researcher_id'] ?? 0 );
-    $sender_name   = sanitize_text_field( $_POST['sender_name'] ?? '' );
-    $sender_email  = sanitize_email( $_POST['sender_email'] ?? '' );
-    $message       = sanitize_textarea_field( $_POST['message'] ?? '' );
+    $sender_name   = sanitize_text_field( wp_unslash( $_POST['sender_name'] ?? '' ) );
+    $sender_email  = sanitize_email( wp_unslash( $_POST['sender_email'] ?? '' ) );
+    $message       = sanitize_textarea_field( wp_unslash( $_POST['message'] ?? '' ) );
 
     if ( ! $researcher_id || ! $sender_name || ! $sender_email || ! $message ) {
         wp_send_json_error( __( 'Please fill in all fields.', 'societypress' ) );
@@ -60740,12 +60747,12 @@ function sp_render_album_edit_page(): void {
     // Handle save
     if ( isset( $_POST['sp_save_album'] ) && check_admin_referer( 'sp_album_save' ) ) {
         $data = [
-            'title'          => sanitize_text_field( $_POST['title'] ?? '' ),
-            'slug'           => sanitize_title( $_POST['title'] ?? '' ),
-            'description'    => sanitize_textarea_field( $_POST['description'] ?? '' ),
+            'title'          => sanitize_text_field( wp_unslash( $_POST['title'] ?? '' ) ),
+            'slug'           => sanitize_title( wp_unslash( $_POST['title'] ?? '' ) ),
+            'description'    => sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) ),
             'cover_image_id' => absint( $_POST['cover_image_id'] ?? 0 ),
             'event_id'       => absint( $_POST['event_id'] ?? 0 ) ?: null,
-            'visibility'     => sanitize_text_field( $_POST['visibility'] ?? 'public' ),
+            'visibility'     => sanitize_text_field( wp_unslash( $_POST['visibility'] ?? 'public' ) ),
             'sort_order'     => absint( $_POST['sort_order'] ?? 0 ),
         ];
 
@@ -61499,7 +61506,7 @@ function sp_ajax_export_membership_report(): void {
     $today  = current_time( 'Y-m-d' );
 
     // Period filter — same logic as the render function
-    $period = sanitize_text_field( $_GET['period'] ?? 'this_year' );
+    $period = sanitize_text_field( wp_unslash( $_GET['period'] ?? 'this_year' ) );
     $valid  = [ '30days', '90days', 'this_year', 'last_year', 'all_time' ];
     if ( ! in_array( $period, $valid, true ) ) $period = 'this_year';
 
@@ -61636,7 +61643,7 @@ function sp_render_membership_reports_page(): void {
     $today  = current_time( 'Y-m-d' );
 
     // ---- Period filter ----
-    $period = sanitize_text_field( $_GET['period'] ?? 'this_year' );
+    $period = sanitize_text_field( wp_unslash( $_GET['period'] ?? 'this_year' ) );
     $valid  = [ '30days', '90days', 'this_year', 'last_year', 'all_time' ];
     if ( ! in_array( $period, $valid, true ) ) $period = 'this_year';
 
@@ -62410,7 +62417,7 @@ function sp_render_help_requests_admin_page(): void {
     }
 
     // List all requests
-    $status_filter = sanitize_text_field( $_GET['status'] ?? '' );
+    $status_filter = sanitize_text_field( wp_unslash( $_GET['status'] ?? '' ) );
     $where = '1=1';
     if ( $status_filter ) {
         $where = $wpdb->prepare( 'hr.status = %s', $status_filter );
@@ -62577,13 +62584,13 @@ add_filter( 'template_include', function( $template ) {
 function sp_frontend_help_requests(): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
-    $view   = sanitize_text_field( $_GET['sp_help'] ?? 'list' );
+    $view   = sanitize_text_field( wp_unslash( $_GET['sp_help'] ?? 'list' ) );
     $current_user_id = get_current_user_id();
 
     // Handle new response submission
     if ( isset( $_POST['sp_submit_response'] ) && check_admin_referer( 'sp_help_response' ) ) {
         $request_id = absint( $_POST['request_id'] ?? 0 );
-        $content    = sanitize_textarea_field( $_POST['response_content'] ?? '' );
+        $content    = sanitize_textarea_field( wp_unslash( $_POST['response_content'] ?? '' ) );
 
         // Volunteer-hours capture — required, defaults to 15 min if missing
         $minutes_pick = $_POST['response_minutes'] ?? '15';
@@ -62688,8 +62695,8 @@ function sp_frontend_help_requests(): void {
 
     // Handle new question submission
     if ( isset( $_POST['sp_submit_question'] ) && check_admin_referer( 'sp_help_question' ) ) {
-        $title = sanitize_text_field( $_POST['question_title'] ?? '' );
-        $desc  = sanitize_textarea_field( $_POST['question_description'] ?? '' );
+        $title = sanitize_text_field( wp_unslash( $_POST['question_title'] ?? '' ) );
+        $desc  = sanitize_textarea_field( wp_unslash( $_POST['question_description'] ?? '' ) );
 
         if ( $title && $desc ) {
             $wpdb->insert( $prefix . 'help_requests', [
@@ -63202,7 +63209,7 @@ function sp_frontend_help_requests(): void {
 function sp_frontend_resources_directory(): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
-    $search     = isset( $_GET['sp_resource'] ) ? sanitize_text_field( $_GET['sp_resource'] ) : '';
+    $search     = isset( $_GET['sp_resource'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_resource'] ) ) : '';
     $cat_filter = absint( $_GET['sp_rcat'] ?? 0 );
 
     // Fetch categories sorted alphabetically for the dropdown
@@ -63340,10 +63347,10 @@ function sp_render_library_catalog_page(): void {
     }
 
     // Filters
-    $search       = isset( $_GET['s'] ) ? sanitize_text_field( $_GET['s'] ) : '';
-    $media_filter = isset( $_GET['media_type'] ) ? sanitize_text_field( $_GET['media_type'] ) : '';
-    $shelf_filter = isset( $_GET['shelf'] ) ? sanitize_text_field( $_GET['shelf'] ) : '';
-    $acq_filter   = isset( $_GET['acq_code'] ) ? sanitize_text_field( $_GET['acq_code'] ) : '';
+    $search       = isset( $_GET['s'] ) ? sanitize_text_field( wp_unslash( $_GET['s'] ) ) : '';
+    $media_filter = isset( $_GET['media_type'] ) ? sanitize_text_field( wp_unslash( $_GET['media_type'] ) ) : '';
+    $shelf_filter = isset( $_GET['shelf'] ) ? sanitize_text_field( wp_unslash( $_GET['shelf'] ) ) : '';
+    $acq_filter   = isset( $_GET['acq_code'] ) ? sanitize_text_field( wp_unslash( $_GET['acq_code'] ) ) : '';
 
     // Get distinct values for filter dropdowns
     $media_types     = $wpdb->get_col( "SELECT DISTINCT media_type FROM {$prefix}library_items WHERE media_type IS NOT NULL AND media_type != '' ORDER BY media_type ASC" );
@@ -63714,43 +63721,43 @@ function sp_render_library_item_edit_page(): void {
 
         $data = [
             'system_id'           => $parse_int( $_POST['system_id'] ?? '' ),
-            'title'               => sanitize_text_field( $_POST['title'] ?? '' ),
-            'author'              => sanitize_text_field( $_POST['author'] ?? '' ) ?: null,
-            'description'         => sanitize_textarea_field( $_POST['description'] ?? '' ) ?: null,
-            'publisher'           => sanitize_text_field( $_POST['publisher'] ?? '' ) ?: null,
-            'publisher_location'  => sanitize_text_field( $_POST['publisher_location'] ?? '' ) ?: null,
+            'title'               => sanitize_text_field( wp_unslash( $_POST['title'] ?? '' ) ),
+            'author'              => sanitize_text_field( wp_unslash( $_POST['author'] ?? '' ) ) ?: null,
+            'description'         => sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) ) ?: null,
+            'publisher'           => sanitize_text_field( wp_unslash( $_POST['publisher'] ?? '' ) ) ?: null,
+            'publisher_location'  => sanitize_text_field( wp_unslash( $_POST['publisher_location'] ?? '' ) ) ?: null,
             'pub_year'            => $parse_int( $_POST['pub_year'] ?? '' ),
             'pub_month'           => $parse_int( $_POST['pub_month'] ?? '' ),
             'pub_day'             => $parse_int( $_POST['pub_day'] ?? '' ),
-            'media_type'          => sanitize_text_field( $_POST['media_type'] ?? '' ) ?: null,
+            'media_type'          => sanitize_text_field( wp_unslash( $_POST['media_type'] ?? '' ) ) ?: null,
             'use_serials'         => ! empty( $_POST['use_serials'] ) ? 1 : 0,
-            'isbn'                => sanitize_text_field( $_POST['isbn'] ?? '' ) ?: null,
-            'call_number'         => sanitize_text_field( $_POST['call_number'] ?? '' ) ?: null,
-            'lccn'                => sanitize_text_field( $_POST['lccn'] ?? '' ) ?: null,
+            'isbn'                => sanitize_text_field( wp_unslash( $_POST['isbn'] ?? '' ) ) ?: null,
+            'call_number'         => sanitize_text_field( wp_unslash( $_POST['call_number'] ?? '' ) ) ?: null,
+            'lccn'                => sanitize_text_field( wp_unslash( $_POST['lccn'] ?? '' ) ) ?: null,
             'category_id'         => absint( $_POST['category_id'] ?? 0 ) ?: null,
-            'shelf_location'      => sanitize_text_field( $_POST['shelf_location'] ?? '' ) ?: null,
-            'geographic_location' => sanitize_text_field( $_POST['geographic_location'] ?? '' ) ?: null,
+            'shelf_location'      => sanitize_text_field( wp_unslash( $_POST['shelf_location'] ?? '' ) ) ?: null,
+            'geographic_location' => sanitize_text_field( wp_unslash( $_POST['geographic_location'] ?? '' ) ) ?: null,
             'acquisition_number'  => $parse_int( $_POST['acquisition_number'] ?? '' ),
             'acq_year'            => $parse_int( $_POST['acq_year'] ?? '' ),
             'acq_month'           => $parse_int( $_POST['acq_month'] ?? '' ),
             'acq_day'             => $parse_int( $_POST['acq_day'] ?? '' ),
-            'acq_code'            => sanitize_text_field( $_POST['acq_code'] ?? '' ) ?: null,
-            'donor'               => sanitize_text_field( $_POST['donor'] ?? '' ) ?: null,
+            'acq_code'            => sanitize_text_field( wp_unslash( $_POST['acq_code'] ?? '' ) ) ?: null,
+            'donor'               => sanitize_text_field( wp_unslash( $_POST['donor'] ?? '' ) ) ?: null,
             'item_value'          => $parse_decimal( $_POST['item_value'] ?? '' ),
             'shipping_fee'        => max( 0, round( (float) ( $_POST['shipping_fee'] ?? 0 ), 2 ) ),
-            'county'              => sanitize_text_field( $_POST['county'] ?? '' ) ?: null,
-            'state'               => sanitize_text_field( $_POST['state'] ?? '' ) ?: null,
-            'surname'             => sanitize_text_field( $_POST['surname'] ?? '' ) ?: null,
-            'subject'             => sanitize_text_field( $_POST['subject'] ?? '' ) ?: null,
-            'librarian_notes'     => sanitize_textarea_field( $_POST['librarian_notes'] ?? '' ) ?: null,
-            'item_condition'      => sanitize_text_field( $_POST['item_condition'] ?? 'good' ),
+            'county'              => sanitize_text_field( wp_unslash( $_POST['county'] ?? '' ) ) ?: null,
+            'state'               => sanitize_text_field( wp_unslash( $_POST['state'] ?? '' ) ) ?: null,
+            'surname'             => sanitize_text_field( wp_unslash( $_POST['surname'] ?? '' ) ) ?: null,
+            'subject'             => sanitize_text_field( wp_unslash( $_POST['subject'] ?? '' ) ) ?: null,
+            'librarian_notes'     => sanitize_textarea_field( wp_unslash( $_POST['librarian_notes'] ?? '' ) ) ?: null,
+            'item_condition'      => sanitize_text_field( wp_unslash( $_POST['item_condition'] ?? 'good' ) ),
             'available'           => ! empty( $_POST['available'] ) ? 1 : 0,
-            'cover_url'           => esc_url_raw( $_POST['cover_url'] ?? '' ) ?: null,
+            'cover_url'           => esc_url_raw( wp_unslash( $_POST['cover_url'] ?? '' ) ) ?: null,
             // Store-only fields. Set independently from library metadata so a
             // for-sale item can carry marketing copy without polluting the
             // catalog's physical/bibliographic description.
-            'store_category'      => sanitize_text_field( $_POST['store_category'] ?? '' ) ?: null,
-            'store_description'   => sanitize_textarea_field( $_POST['store_description'] ?? '' ) ?: null,
+            'store_category'      => sanitize_text_field( wp_unslash( $_POST['store_category'] ?? '' ) ) ?: null,
+            'store_description'   => sanitize_textarea_field( wp_unslash( $_POST['store_description'] ?? '' ) ) ?: null,
         ];
 
         if ( ! empty( $data['title'] ) ) {
@@ -64074,8 +64081,8 @@ function sp_render_library_categories_page(): void {
     if ( isset( $_POST['sp_save_library_cat'] ) && check_admin_referer( 'sp_library_cat_save' ) ) {
         $cat_id = absint( $_POST['cat_id'] ?? 0 );
         $data = [
-            'name'       => sanitize_text_field( $_POST['name'] ?? '' ),
-            'slug'       => sanitize_title( $_POST['name'] ?? '' ),
+            'name'       => sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) ),
+            'slug'       => sanitize_title( wp_unslash( $_POST['name'] ?? '' ) ),
             'sort_order' => absint( $_POST['sort_order'] ?? 0 ),
             'active'     => ! empty( $_POST['active'] ) ? 1 : 0,
         ];
@@ -64415,7 +64422,7 @@ function sp_render_library_import_page(): void {
         check_admin_referer( 'sp_import_library' );
 
         // Reconstruct full path from basename token — never trust full paths from HTML
-        $token     = sanitize_file_name( $_POST['sp_import_temp_file'] ?? '' );
+        $token     = sanitize_file_name( wp_unslash( $_POST['sp_import_temp_file'] ?? '' ) );
         $upload_dir = wp_upload_dir();
         $temp_dir   = $upload_dir['basedir'] . '/sp-import-temp/';
         $temp_file  = realpath( $temp_dir . $token );
@@ -64900,9 +64907,9 @@ function sp_render_resources_page(): void {
     if ( isset( $_POST['sp_save_resource'] ) && check_admin_referer( 'sp_resource_save' ) ) {
         $rid  = absint( $_POST['resource_id'] ?? 0 );
         $data = [
-            'title'       => sanitize_text_field( $_POST['title'] ?? '' ),
-            'url'         => esc_url_raw( $_POST['url'] ?? '' ),
-            'description' => sanitize_textarea_field( $_POST['description'] ?? '' ),
+            'title'       => sanitize_text_field( wp_unslash( $_POST['title'] ?? '' ) ),
+            'url'         => esc_url_raw( wp_unslash( $_POST['url'] ?? '' ) ),
+            'description' => sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) ),
             'category_id' => absint( $_POST['category_id'] ?? 0 ) ?: null,
             'featured'    => ! empty( $_POST['featured'] ) ? 1 : 0,
             'active'      => ! empty( $_POST['active'] ) ? 1 : 0,
@@ -65144,8 +65151,8 @@ function sp_render_resource_categories_page(): void {
     if ( isset( $_POST['sp_save_resource_cat'] ) && check_admin_referer( 'sp_resource_cat_save' ) ) {
         $cat_id = absint( $_POST['cat_id'] ?? 0 );
         $data = [
-            'name'       => sanitize_text_field( $_POST['name'] ?? '' ),
-            'slug'       => sanitize_title( $_POST['name'] ?? '' ),
+            'name'       => sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) ),
+            'slug'       => sanitize_title( wp_unslash( $_POST['name'] ?? '' ) ),
             'sort_order' => absint( $_POST['sort_order'] ?? 0 ),
             'active'     => ! empty( $_POST['active'] ) ? 1 : 0,
         ];
@@ -65449,7 +65456,7 @@ function sp_render_links_import_page(): void {
         check_admin_referer( 'sp_import_links' );
 
         // Reconstruct full path from basename token — never trust full paths from HTML
-        $token     = sanitize_file_name( $_POST['sp_import_temp_file'] ?? '' );
+        $token     = sanitize_file_name( wp_unslash( $_POST['sp_import_temp_file'] ?? '' ) );
         $upload_dir = wp_upload_dir();
         $temp_dir   = $upload_dir['basedir'] . '/sp-import-temp/';
         $temp_file  = realpath( $temp_dir . $token );
@@ -65822,7 +65829,7 @@ class SP_Volunteers_List_Table extends WP_List_Table {
             $orderby = 'last_name';
         }
         $order   = strtoupper( $_GET['order'] ?? 'ASC' ) === 'DESC' ? 'DESC' : 'ASC';
-        $search  = isset( $_GET['s'] ) ? sanitize_text_field( $_GET['s'] ) : '';
+        $search  = isset( $_GET['s'] ) ? sanitize_text_field( wp_unslash( $_GET['s'] ) ) : '';
 
         // WHY: Filter to role_type = 'volunteer' (or empty/NULL for backwards compat).
         // Officers and committee members now live on the Leadership & Committees page;
@@ -66829,17 +66836,17 @@ function sp_render_volunteer_opportunity_edit_page(): void {
         }
 
         $data = [
-            'title'            => sanitize_text_field( $_POST['opp_title'] ?? '' ),
-            'description'      => wp_kses_post( $_POST['opp_description'] ?? '' ),
+            'title'            => sanitize_text_field( wp_unslash( $_POST['opp_title'] ?? '' ) ),
+            'description'      => wp_kses_post( wp_unslash( $_POST['opp_description'] ?? '' ) ),
             'committee_id'     => $posted_cid,
             'opportunity_type' => in_array( $_POST['opp_type'] ?? '', [ 'one_time', 'recurring', 'ongoing' ], true )
                                   ? $_POST['opp_type'] : 'one_time',
-            'event_date'       => ! empty( $_POST['opp_date'] ) ? sanitize_text_field( $_POST['opp_date'] ) : null,
-            'start_time'       => ! empty( $_POST['opp_start_time'] ) ? sanitize_text_field( $_POST['opp_start_time'] ) : null,
-            'end_time'         => ! empty( $_POST['opp_end_time'] ) ? sanitize_text_field( $_POST['opp_end_time'] ) : null,
-            'location'         => sanitize_text_field( $_POST['opp_location'] ?? '' ),
+            'event_date'       => ! empty( $_POST['opp_date'] ) ? sanitize_text_field( wp_unslash( $_POST['opp_date'] ) ) : null,
+            'start_time'       => ! empty( $_POST['opp_start_time'] ) ? sanitize_text_field( wp_unslash( $_POST['opp_start_time'] ) ) : null,
+            'end_time'         => ! empty( $_POST['opp_end_time'] ) ? sanitize_text_field( wp_unslash( $_POST['opp_end_time'] ) ) : null,
+            'location'         => sanitize_text_field( wp_unslash( $_POST['opp_location'] ?? '' ) ),
             'capacity'         => ( $_POST['opp_capacity'] ?? '' ) !== '' ? absint( $_POST['opp_capacity'] ) : null,
-            'skills_needed'    => sanitize_textarea_field( $_POST['opp_skills'] ?? '' ),
+            'skills_needed'    => sanitize_textarea_field( wp_unslash( $_POST['opp_skills'] ?? '' ) ),
             'contact_user_id'  => ! empty( $_POST['opp_contact'] ) ? (int) $_POST['opp_contact'] : null,
             'status'           => in_array( $_POST['opp_status'] ?? '', [ 'open', 'filled', 'closed', 'cancelled' ], true )
                                   ? $_POST['opp_status'] : 'open',
@@ -67051,7 +67058,7 @@ function sp_render_meetings_page(): void {
     // Row actions
     if ( isset( $_GET['action'], $_GET['meeting'], $_GET['_wpnonce'] ) ) {
         $mid    = (int) $_GET['meeting'];
-        $action = sanitize_text_field( $_GET['action'] );
+        $action = sanitize_text_field( wp_unslash( $_GET['action'] ) );
         if ( $action === 'delete' && wp_verify_nonce( $_GET['_wpnonce'], 'sp_meeting_delete_' . $mid ) ) {
             $wpdb->delete( $prefix . 'meetings', [ 'id' => $mid ] );
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Meeting deleted.', 'societypress' ) . '</p></div>';
@@ -67059,7 +67066,7 @@ function sp_render_meetings_page(): void {
     }
 
     // Filters
-    $filter_type      = sanitize_text_field( $_GET['type'] ?? '' );
+    $filter_type      = sanitize_text_field( wp_unslash( $_GET['type'] ?? '' ) );
     $filter_committee = (int) ( $_GET['committee'] ?? 0 );
 
     $where  = '1=1';
@@ -67252,13 +67259,13 @@ function sp_render_meeting_edit_page(): void {
         $data = [
             'meeting_type'   => $meeting_type,
             'committee_id'   => $committee_id,
-            'title'          => sanitize_text_field( $_POST['title'] ?? '' ),
-            'meeting_date'   => sanitize_text_field( $_POST['meeting_date'] ?? '' ),
-            'location'       => sanitize_text_field( $_POST['location'] ?? '' ) ?: null,
-            'attendance'     => sanitize_text_field( $_POST['attendance'] ?? '' ) ?: null,
-            'agenda_url'     => esc_url_raw( $_POST['agenda_url'] ?? '' ) ?: null,
-            'minutes_url'    => esc_url_raw( $_POST['minutes_url'] ?? '' ) ?: null,
-            'notes'          => wp_kses_post( $_POST['notes'] ?? '' ) ?: null,
+            'title'          => sanitize_text_field( wp_unslash( $_POST['title'] ?? '' ) ),
+            'meeting_date'   => sanitize_text_field( wp_unslash( $_POST['meeting_date'] ?? '' ) ),
+            'location'       => sanitize_text_field( wp_unslash( $_POST['location'] ?? '' ) ) ?: null,
+            'attendance'     => sanitize_text_field( wp_unslash( $_POST['attendance'] ?? '' ) ) ?: null,
+            'agenda_url'     => esc_url_raw( wp_unslash( $_POST['agenda_url'] ?? '' ) ) ?: null,
+            'minutes_url'    => esc_url_raw( wp_unslash( $_POST['minutes_url'] ?? '' ) ) ?: null,
+            'notes'          => wp_kses_post( wp_unslash( $_POST['notes'] ?? '' ) ) ?: null,
             'visibility'     => $visibility,
             'author_user_id' => get_current_user_id() ?: null,
         ];
@@ -67415,7 +67422,7 @@ function sp_render_committees_page(): void {
     // Row actions
     if ( isset( $_GET['action'], $_GET['committee'], $_GET['_wpnonce'] ) ) {
         $cid    = (int) $_GET['committee'];
-        $action = sanitize_text_field( $_GET['action'] );
+        $action = sanitize_text_field( wp_unslash( $_GET['action'] ) );
         if ( wp_verify_nonce( $_GET['_wpnonce'], 'sp_committee_' . $action . '_' . $cid ) ) {
             if ( $action === 'delete' ) {
                 $wpdb->delete( $prefix . 'committees', [ 'id' => $cid ] );
@@ -67530,9 +67537,9 @@ function sp_render_committee_edit_page(): void {
 
     if ( isset( $_POST['sp_save_committee'] ) && check_admin_referer( 'sp_committee_save' ) ) {
         $data = [
-            'name'          => sanitize_text_field( $_POST['name'] ?? '' ),
-            'slug'          => sanitize_title( $_POST['slug'] ?? ( $_POST['name'] ?? '' ) ) ?: null,
-            'description'   => sanitize_textarea_field( $_POST['description'] ?? '' ) ?: null,
+            'name'          => sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) ),
+            'slug'          => sanitize_title( wp_unslash( $_POST['slug'] ?? ( $_POST['name'] ?? '' ) ) ) ?: null,
+            'description'   => sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) ) ?: null,
             'chair_user_id' => ! empty( $_POST['chair_user_id'] ) ? (int) $_POST['chair_user_id'] : null,
             'active'        => ! empty( $_POST['active'] ) ? 1 : 0,
             'sort_order'    => max( 0, (int) ( $_POST['sort_order'] ?? 0 ) ),
@@ -68175,12 +68182,12 @@ function sp_render_leadership_page(): void {
     if ( isset( $_POST['sp_save_leadership'] ) && check_admin_referer( 'sp_leadership_save' ) ) {
         $role_id    = absint( $_POST['role_id'] ?? 0 );
         $user_id    = absint( $_POST['user_id'] ?? 0 );
-        $role_title = sanitize_text_field( $_POST['role_title'] ?? '' );
-        $committee  = sanitize_text_field( $_POST['committee'] ?? '' );
-        $role_type  = sanitize_text_field( $_POST['role_type'] ?? 'officer' );
-        $start_date = sanitize_text_field( $_POST['start_date'] ?? '' );
-        $end_date   = sanitize_text_field( $_POST['end_date'] ?? '' );
-        $status     = sanitize_text_field( $_POST['status'] ?? 'active' );
+        $role_title = sanitize_text_field( wp_unslash( $_POST['role_title'] ?? '' ) );
+        $committee  = sanitize_text_field( wp_unslash( $_POST['committee'] ?? '' ) );
+        $role_type  = sanitize_text_field( wp_unslash( $_POST['role_type'] ?? 'officer' ) );
+        $start_date = sanitize_text_field( wp_unslash( $_POST['start_date'] ?? '' ) );
+        $end_date   = sanitize_text_field( wp_unslash( $_POST['end_date'] ?? '' ) );
+        $status     = sanitize_text_field( wp_unslash( $_POST['status'] ?? 'active' ) );
 
         // Validate role_type — only allow officer or committee on this page
         if ( ! in_array( $role_type, [ 'officer', 'committee' ], true ) ) {
@@ -68231,13 +68238,13 @@ function sp_render_leadership_page(): void {
     // WHY: Server-side member search — when the admin types a name and
     // clicks "Filter", the page reloads with only matching members in
     // the dropdown. This avoids any dependency on JavaScript for search.
-    $member_search = sanitize_text_field( $_GET['member_search'] ?? '' );
+    $member_search = sanitize_text_field( wp_unslash( $_GET['member_search'] ?? '' ) );
 
     // WHY: Each form (officer / committee) has its own member search.
     // Dropdowns start empty — the admin searches within the form they're
     // using, and only matching members appear in that dropdown.
-    $officer_search   = sanitize_text_field( $_GET['officer_search'] ?? '' );
-    $committee_search = sanitize_text_field( $_GET['committee_search'] ?? '' );
+    $officer_search   = sanitize_text_field( wp_unslash( $_GET['officer_search'] ?? '' ) );
+    $committee_search = sanitize_text_field( wp_unslash( $_GET['committee_search'] ?? '' ) );
 
     // Build filtered member lists per form
     $officer_members   = [];
@@ -68998,12 +69005,12 @@ function sp_render_volunteers_page(): void {
     if ( isset( $_POST['sp_save_volunteer_role'] ) && check_admin_referer( 'sp_volunteer_role_save' ) ) {
         $role_id    = absint( $_POST['role_id'] ?? 0 );
         $user_id    = absint( $_POST['user_id'] ?? 0 );
-        $role_title = sanitize_text_field( $_POST['role_title'] ?? '' );
-        $committee  = sanitize_text_field( $_POST['committee'] ?? '' );
-        $role_type  = sanitize_text_field( $_POST['role_type'] ?? 'volunteer' );
-        $start_date = sanitize_text_field( $_POST['start_date'] ?? '' );
-        $end_date   = sanitize_text_field( $_POST['end_date'] ?? '' );
-        $status     = sanitize_text_field( $_POST['status'] ?? 'active' );
+        $role_title = sanitize_text_field( wp_unslash( $_POST['role_title'] ?? '' ) );
+        $committee  = sanitize_text_field( wp_unslash( $_POST['committee'] ?? '' ) );
+        $role_type  = sanitize_text_field( wp_unslash( $_POST['role_type'] ?? 'volunteer' ) );
+        $start_date = sanitize_text_field( wp_unslash( $_POST['start_date'] ?? '' ) );
+        $end_date   = sanitize_text_field( wp_unslash( $_POST['end_date'] ?? '' ) );
+        $status     = sanitize_text_field( wp_unslash( $_POST['status'] ?? 'active' ) );
 
         if ( $user_id && $role_title ) {
             $data = [
@@ -69136,10 +69143,10 @@ function sp_render_volunteer_hours_page(): void {
     // Handle form submission
     if ( isset( $_POST['sp_log_volunteer_hours'] ) && check_admin_referer( 'sp_volunteer_hours_save' ) ) {
         $user_id       = absint( $_POST['user_id'] ?? 0 );
-        $activity      = sanitize_text_field( $_POST['activity'] ?? '' );
-        $committee     = sanitize_text_field( $_POST['committee'] ?? '' );
+        $activity      = sanitize_text_field( wp_unslash( $_POST['activity'] ?? '' ) );
+        $committee     = sanitize_text_field( wp_unslash( $_POST['committee'] ?? '' ) );
         $hours         = floatval( $_POST['hours'] ?? 0 );
-        $activity_date = sanitize_text_field( $_POST['activity_date'] ?? '' );
+        $activity_date = sanitize_text_field( wp_unslash( $_POST['activity_date'] ?? '' ) );
 
         if ( $user_id && $hours > 0 ) {
             $wpdb->insert( $prefix . 'volunteer_hours', [
@@ -70217,9 +70224,9 @@ function sp_render_email_log_page(): void {
     }
 
     // Gather filter parameters
-    $current_status = sanitize_text_field( $_GET['status'] ?? '' );
-    $current_type   = sanitize_text_field( $_GET['email_type'] ?? '' );
-    $search         = sanitize_text_field( $_GET['s'] ?? '' );
+    $current_status = sanitize_text_field( wp_unslash( $_GET['status'] ?? '' ) );
+    $current_type   = sanitize_text_field( wp_unslash( $_GET['email_type'] ?? '' ) );
+    $search         = sanitize_text_field( wp_unslash( $_GET['s'] ?? '' ) );
     $paged          = max( 1, absint( $_GET['paged'] ?? 1 ) );
     $per_page       = 20;
 
@@ -70774,7 +70781,7 @@ function sp_render_blast_email_page(): void {
     }
 
     // Filters
-    $filter_status = sanitize_text_field( $_GET['status'] ?? '' );
+    $filter_status = sanitize_text_field( wp_unslash( $_GET['status'] ?? '' ) );
     $per_page      = 20;
     $paged         = max( 1, (int) ( $_GET['paged'] ?? 1 ) );
     $offset        = ( $paged - 1 ) * $per_page;
@@ -71324,10 +71331,10 @@ function sp_render_blast_email_compose_page(): void {
     if ( $_SERVER['REQUEST_METHOD'] === 'POST' && isset( $_POST['sp_blast_nonce'] ) ) {
         check_admin_referer( 'sp_save_blast', 'sp_blast_nonce' );
 
-        $subject        = sanitize_text_field( $_POST['blast_subject'] ?? '' );
-        $body           = wp_kses_post( $_POST['blast_body'] ?? '' );
-        $recipient_type = sanitize_text_field( $_POST['recipient_type'] ?? 'all_members' );
-        $action         = sanitize_text_field( $_POST['sp_blast_action'] ?? 'save_draft' );
+        $subject        = sanitize_text_field( wp_unslash( $_POST['blast_subject'] ?? '' ) );
+        $body           = wp_kses_post( wp_unslash( $_POST['blast_body'] ?? '' ) );
+        $recipient_type = sanitize_text_field( wp_unslash( $_POST['recipient_type'] ?? 'all_members' ) );
+        $action         = sanitize_text_field( wp_unslash( $_POST['sp_blast_action'] ?? 'save_draft' ) );
         $override_optout = ! empty( $_POST['override_optout'] ) ? 1 : 0;
         // Comma-separated media IDs from the attachment picker → clean, deduped
         // int list.
@@ -71337,8 +71344,8 @@ function sp_render_blast_email_compose_page(): void {
         // their own name). CR/LF stripped to block header injection; an invalid
         // email is discarded so we fall back to the society default rather than
         // emit a broken From header.
-        $from_name_override  = sanitize_text_field( $_POST['blast_from_name'] ?? '' );
-        $from_email_override = sanitize_email( $_POST['blast_from_email'] ?? '' );
+        $from_name_override  = sanitize_text_field( wp_unslash( $_POST['blast_from_name'] ?? '' ) );
+        $from_email_override = sanitize_email( wp_unslash( $_POST['blast_from_email'] ?? '' ) );
         if ( $from_email_override && ! is_email( $from_email_override ) ) {
             $from_email_override = '';
         }
@@ -72242,7 +72249,7 @@ add_shortcode( 'societypress_subscribe', function ( $atts ) {
         'show_name' => '1',
     ], $atts, 'societypress_subscribe' );
 
-    $msg     = sanitize_text_field( $_GET['sp_sub_msg'] ?? '' );
+    $msg     = sanitize_text_field( wp_unslash( $_GET['sp_sub_msg'] ?? '' ) );
     $notices = [
         'check_email' => [ 'ok',  __( 'Almost there! Check your inbox for a confirmation link to finish subscribing.', 'societypress' ) ],
         'already'     => [ 'ok',  __( 'You\'re already subscribed — thanks!', 'societypress' ) ],
@@ -72698,7 +72705,7 @@ function sp_render_subscribers_page(): void {
     $counts   = sp_subscriber_status_counts();
     $status   = isset( $_GET['status'] ) ? sanitize_text_field( wp_unslash( $_GET['status'] ) ) : '';
     $base_url = admin_url( 'admin.php?page=sp-subscribers' );
-    $notice   = sanitize_text_field( $_GET['sp_sub_admin'] ?? '' );
+    $notice   = sanitize_text_field( wp_unslash( $_GET['sp_sub_admin'] ?? '' ) );
     $notices  = [
         'added'   => [ 'success', __( 'Subscriber added.', 'societypress' ) ],
         'exists'  => [ 'warning', __( 'That email is already on the list.', 'societypress' ) ],
@@ -72772,7 +72779,7 @@ function sp_ajax_blast_recipient_count(): void {
         wp_send_json_error( __( 'Unauthorized', 'societypress' ) );
     }
 
-    $type   = sanitize_text_field( $_POST['recipient_type'] ?? 'all_members' );
+    $type   = sanitize_text_field( wp_unslash( $_POST['recipient_type'] ?? 'all_members' ) );
     $filter = null;
 
     if ( $type === 'group' && ! empty( $_POST['group_ids'] ) ) {
@@ -72833,11 +72840,11 @@ function sp_render_donations_page(): void {
 
     // Filters
     $filter_campaign = (int) ( $_GET['campaign'] ?? 0 );
-    $filter_type     = sanitize_text_field( $_GET['type'] ?? '' );
-    $filter_from     = sanitize_text_field( $_GET['from'] ?? '' );
-    $filter_to       = sanitize_text_field( $_GET['to'] ?? '' );
+    $filter_type     = sanitize_text_field( wp_unslash( $_GET['type'] ?? '' ) );
+    $filter_from     = sanitize_text_field( wp_unslash( $_GET['from'] ?? '' ) );
+    $filter_to       = sanitize_text_field( wp_unslash( $_GET['to'] ?? '' ) );
     $filter_year     = (int) ( $_GET['year'] ?? 0 );
-    $search          = sanitize_text_field( $_GET['s'] ?? '' );
+    $search          = sanitize_text_field( wp_unslash( $_GET['s'] ?? '' ) );
     $per_page        = 50;
 
     // Years present in the data, for the quick year filter (annual/IRS review).
@@ -73222,8 +73229,8 @@ function sp_render_donation_edit_page(): void {
         check_admin_referer( 'sp_save_donation', 'sp_donation_nonce' );
 
         $member_id   = (int) ( $_POST['member_id'] ?? 0 );
-        $donor_name  = sanitize_text_field( $_POST['donor_name'] ?? '' );
-        $donor_email = sanitize_email( $_POST['donor_email'] ?? '' );
+        $donor_name  = sanitize_text_field( wp_unslash( $_POST['donor_name'] ?? '' ) );
+        $donor_email = sanitize_email( wp_unslash( $_POST['donor_email'] ?? '' ) );
 
         // If a member was selected, pull their name/email
         if ( $member_id ) {
@@ -73245,10 +73252,10 @@ function sp_render_donation_edit_page(): void {
             'donor_name'          => $donor_name,
             'donor_email'         => $donor_email,
             'amount'              => (float) ( $_POST['amount'] ?? 0 ),
-            'type'                => sanitize_text_field( $_POST['donation_type'] ?? 'cash' ),
-            'in_kind_description' => sanitize_textarea_field( $_POST['in_kind_description'] ?? '' ) ?: null,
-            'date'                => sanitize_text_field( $_POST['donation_date'] ?? current_time( 'Y-m-d' ) ),
-            'note'                => sanitize_textarea_field( $_POST['note'] ?? '' ) ?: null,
+            'type'                => sanitize_text_field( wp_unslash( $_POST['donation_type'] ?? 'cash' ) ),
+            'in_kind_description' => sanitize_textarea_field( wp_unslash( $_POST['in_kind_description'] ?? '' ) ) ?: null,
+            'date'                => sanitize_text_field( wp_unslash( $_POST['donation_date'] ?? current_time( 'Y-m-d' ) ) ),
+            'note'                => sanitize_textarea_field( wp_unslash( $_POST['note'] ?? '' ) ) ?: null,
             'is_anonymous'        => isset( $_POST['is_anonymous'] ) ? 1 : 0,
             'recorded_by'         => get_current_user_id(),
         ];
@@ -73657,18 +73664,18 @@ function sp_render_campaign_edit_page(): void {
     if ( $_SERVER['REQUEST_METHOD'] === 'POST' && isset( $_POST['sp_campaign_nonce'] ) ) {
         check_admin_referer( 'sp_save_campaign', 'sp_campaign_nonce' );
 
-        $name = sanitize_text_field( $_POST['name'] ?? '' );
+        $name = sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) );
         if ( ! $name ) {
             echo '<div class="notice notice-error"><p>' . esc_html__( 'Campaign name is required.', 'societypress' ) . '</p></div>';
         } else {
             $data = [
                 'name'        => $name,
                 'slug'        => sanitize_title( $name ),
-                'description' => sanitize_textarea_field( $_POST['description'] ?? '' ) ?: null,
+                'description' => sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) ) ?: null,
                 'goal_amount' => (float) ( $_POST['goal_amount'] ?? 0 ) ?: null,
-                'start_date'  => sanitize_text_field( $_POST['start_date'] ?? '' ) ?: null,
-                'end_date'    => sanitize_text_field( $_POST['end_date'] ?? '' ) ?: null,
-                'status'      => sanitize_text_field( $_POST['campaign_status'] ?? 'active' ),
+                'start_date'  => sanitize_text_field( wp_unslash( $_POST['start_date'] ?? '' ) ) ?: null,
+                'end_date'    => sanitize_text_field( wp_unslash( $_POST['end_date'] ?? '' ) ) ?: null,
+                'status'      => sanitize_text_field( wp_unslash( $_POST['campaign_status'] ?? 'active' ) ),
                 'updated_at'  => current_time( 'mysql' ),
             ];
 
@@ -75098,7 +75105,7 @@ function sp_ajax_export_library(): void {
 
     // Apply same filters the admin catalog page uses, so "export what you see"
     $where = [ '1=1' ];
-    $search = isset( $_GET['s'] ) ? sanitize_text_field( $_GET['s'] ) : '';
+    $search = isset( $_GET['s'] ) ? sanitize_text_field( wp_unslash( $_GET['s'] ) ) : '';
     if ( $search ) {
         $like = '%' . $wpdb->esc_like( $search ) . '%';
         $where[] = $wpdb->prepare(
@@ -75106,15 +75113,15 @@ function sp_ajax_export_library(): void {
             $like, $like, $like, $like, $like
         );
     }
-    $media_filter = isset( $_GET['media_type'] ) ? sanitize_text_field( $_GET['media_type'] ) : '';
+    $media_filter = isset( $_GET['media_type'] ) ? sanitize_text_field( wp_unslash( $_GET['media_type'] ) ) : '';
     if ( $media_filter ) {
         $where[] = $wpdb->prepare( 'li.media_type = %s', $media_filter );
     }
-    $shelf_filter = isset( $_GET['shelf'] ) ? sanitize_text_field( $_GET['shelf'] ) : '';
+    $shelf_filter = isset( $_GET['shelf'] ) ? sanitize_text_field( wp_unslash( $_GET['shelf'] ) ) : '';
     if ( $shelf_filter ) {
         $where[] = $wpdb->prepare( 'li.shelf_location = %s', $shelf_filter );
     }
-    $acq_filter = isset( $_GET['acq_code'] ) ? sanitize_text_field( $_GET['acq_code'] ) : '';
+    $acq_filter = isset( $_GET['acq_code'] ) ? sanitize_text_field( wp_unslash( $_GET['acq_code'] ) ) : '';
     if ( $acq_filter ) {
         $where[] = $wpdb->prepare( 'li.acq_code = %s', $acq_filter );
     }
@@ -76516,7 +76523,7 @@ function sp_render_newsletter_archive_page(): void {
     }
 
     // ========== SEARCH FILTER ==========
-    $search = sanitize_text_field( $_GET['s'] ?? '' );
+    $search = sanitize_text_field( wp_unslash( $_GET['s'] ?? '' ) );
 
     // ========== FETCH NEWSLETTERS ==========
     $sql = "SELECT * FROM {$prefix}newsletters";
@@ -76717,16 +76724,16 @@ add_action( 'admin_init', function () {
     $newsletter_id = absint( $_GET['newsletter_id'] ?? 0 );
 
     $data = [
-        'title'          => sanitize_text_field( $_POST['title'] ?? '' ),
-        'slug'           => sanitize_title( $_POST['title'] ?? '' ),
-        'description'    => sanitize_textarea_field( $_POST['description'] ?? '' ),
-        'toc'            => sanitize_textarea_field( $_POST['toc'] ?? '' ),
-        'pub_date'       => sanitize_text_field( $_POST['pub_date'] ?? '' ) ?: null,
+        'title'          => sanitize_text_field( wp_unslash( $_POST['title'] ?? '' ) ),
+        'slug'           => sanitize_title( wp_unslash( $_POST['title'] ?? '' ) ),
+        'description'    => sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) ),
+        'toc'            => sanitize_textarea_field( wp_unslash( $_POST['toc'] ?? '' ) ),
+        'pub_date'       => sanitize_text_field( wp_unslash( $_POST['pub_date'] ?? '' ) ) ?: null,
         'volume'         => absint( $_POST['volume'] ?? 0 ) ?: null,
         'issue_number'   => absint( $_POST['issue_number'] ?? 0 ) ?: null,
         'file_id'        => absint( $_POST['file_id'] ?? 0 ) ?: null,
         'cover_image_id' => absint( $_POST['cover_image_id'] ?? 0 ) ?: null,
-        'visibility'     => sanitize_text_field( $_POST['visibility'] ?? 'members_only' ),
+        'visibility'     => sanitize_text_field( wp_unslash( $_POST['visibility'] ?? 'members_only' ) ),
     ];
 
     if ( $newsletter_id ) {
@@ -78255,7 +78262,7 @@ function sp_unified_search(): void {
         }
     }
 
-    $query = isset( $_GET['sp_q'] ) ? sanitize_text_field( trim( $_GET['sp_q'] ) ) : '';
+    $query = isset( $_GET['sp_q'] ) ? sanitize_text_field( wp_unslash( trim( $_GET['sp_q'] ) ) ) : '';
 
     if ( strlen( $query ) < 2 ) {
         wp_send_json_error( [ 'message' => __( 'Query must be at least 2 characters.', 'societypress' ) ] );
@@ -78766,13 +78773,13 @@ function sp_render_record_collection_edit_page(): void {
     if ( isset( $_POST['sp_save_collection'] ) && check_admin_referer( 'sp_record_collection_save' ) ) {
 
         $data = [
-            'name'         => sanitize_text_field( $_POST['name'] ?? '' ),
-            'slug'         => sanitize_title( $_POST['name'] ?? '' ),
-            'description'  => sanitize_textarea_field( $_POST['description'] ?? '' ) ?: null,
-            'record_type'  => sanitize_text_field( $_POST['record_type'] ?? 'general' ),
-            'source_info'  => sanitize_textarea_field( $_POST['source_info'] ?? '' ) ?: null,
-            'date_range'   => sanitize_text_field( $_POST['date_range'] ?? '' ) ?: null,
-            'location'     => sanitize_text_field( $_POST['location'] ?? '' ) ?: null,
+            'name'         => sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) ),
+            'slug'         => sanitize_title( wp_unslash( $_POST['name'] ?? '' ) ),
+            'description'  => sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) ) ?: null,
+            'record_type'  => sanitize_text_field( wp_unslash( $_POST['record_type'] ?? 'general' ) ),
+            'source_info'  => sanitize_textarea_field( wp_unslash( $_POST['source_info'] ?? '' ) ) ?: null,
+            'date_range'   => sanitize_text_field( wp_unslash( $_POST['date_range'] ?? '' ) ) ?: null,
+            'location'     => sanitize_text_field( wp_unslash( $_POST['location'] ?? '' ) ) ?: null,
             'access_level' => in_array( $_POST['access_level'] ?? '', [ 'public', 'members' ], true ) ? $_POST['access_level'] : 'members',
             'status'       => in_array( $_POST['status'] ?? '', [ 'active', 'draft' ], true ) ? $_POST['status'] : 'draft',
         ];
@@ -78794,7 +78801,7 @@ function sp_render_record_collection_edit_page(): void {
             // would silently orphan all existing record values. This update-in-place
             // approach preserves existing IDs: we UPDATE fields that already exist,
             // INSERT new ones, and only DELETE fields that were actually removed.
-            $field_names      = $_POST['field_name'] ?? [];
+            $field_names      = wp_unslash( $_POST['field_name'] ?? [] );
             $field_types_post = $_POST['field_type'] ?? [];
             $field_searchable = $_POST['field_searchable'] ?? [];
             $field_public     = $_POST['field_public'] ?? [];
@@ -79176,7 +79183,7 @@ function sp_render_record_browse_page(): void {
     ) );
 
     // Search + pagination
-    $search   = isset( $_GET['s'] ) ? sanitize_text_field( $_GET['s'] ) : '';
+    $search   = isset( $_GET['s'] ) ? sanitize_text_field( wp_unslash( $_GET['s'] ) ) : '';
     $per_page = 50;
     $page_num = max( 1, absint( $_GET['paged'] ?? 1 ) );
     $offset   = ( $page_num - 1 ) * $per_page;
@@ -79358,7 +79365,7 @@ function sp_render_record_edit_page(): void {
         // Insert field values + build search text
         $search_parts = [];
         foreach ( $fields as $f ) {
-            $val = sanitize_textarea_field( $_POST[ 'field_' . $f->id ] ?? '' );
+            $val = sanitize_textarea_field( wp_unslash( $_POST[ 'field_' . $f->id ] ?? '' ) );
             if ( $val !== '' ) {
                 $wpdb->insert( $prefix . 'record_values', [
                     'record_id'   => $record_id,
@@ -79664,7 +79671,7 @@ function sp_render_record_import_page(): void {
             ? $_POST['access_level']
             : 'public';
 
-        $collection_name = sanitize_text_field( $_POST['collection_name'] ?? '' );
+        $collection_name = sanitize_text_field( wp_unslash( $_POST['collection_name'] ?? '' ) );
         if ( empty( $collection_name ) ) {
             $collection_name = __( 'GEDCOM Import', 'societypress' );
         }
@@ -79775,10 +79782,10 @@ function sp_render_record_import_page(): void {
     //      separate mapping step. The CSV headers ARE the schema.
     // ----------------------------------------------------------------
     if ( isset( $_POST['sp_create_and_import'] ) && check_admin_referer( 'sp_record_import' ) ) {
-        $col_name     = sanitize_text_field( $_POST['collection_name'] ?? '' );
-        $record_type  = sanitize_text_field( $_POST['record_type'] ?? 'general' );
-        $access_level = sanitize_text_field( $_POST['access_level'] ?? 'public' );
-        $description  = sanitize_textarea_field( $_POST['description'] ?? '' );
+        $col_name     = sanitize_text_field( wp_unslash( $_POST['collection_name'] ?? '' ) );
+        $record_type  = sanitize_text_field( wp_unslash( $_POST['record_type'] ?? 'general' ) );
+        $access_level = sanitize_text_field( wp_unslash( $_POST['access_level'] ?? 'public' ) );
+        $description  = sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) );
 
         if ( empty( $col_name ) ) {
             echo '<div class="notice notice-error"><p>' . esc_html__( 'Please enter a collection name.', 'societypress' ) . '</p></div>';
@@ -79881,10 +79888,10 @@ function sp_render_record_import_page(): void {
     // STEP 2: Process the import
     if ( isset( $_POST['sp_process_record_import'] ) && check_admin_referer( 'sp_record_import' ) ) {
         $collection_id = absint( $_POST['collection_id'] );
-        $field_map     = $_POST['field_map'] ?? [];
+        $field_map     = wp_unslash( $_POST['field_map'] ?? [] );
 
         // Reconstruct full path from basename token — never trust full paths from HTML
-        $token      = sanitize_file_name( $_POST['temp_file'] ?? '' );
+        $token      = sanitize_file_name( wp_unslash( $_POST['temp_file'] ?? '' ) );
         $upload_dir = wp_upload_dir();
         $temp_dir   = $upload_dir['basedir'] . '/sp-import-temp/';
         $temp_file  = realpath( $temp_dir . $token );
@@ -80040,7 +80047,7 @@ function sp_render_record_import_page(): void {
     //      be able to upload the CSV and have the system create everything from the
     //      column headers. Power users who already have collections can still import
     //      into them directly.
-    $mode = sanitize_text_field( $_GET['mode'] ?? '' );
+    $mode = sanitize_text_field( wp_unslash( $_GET['mode'] ?? '' ) );
     ?>
     <div class="wrap">
         <h1><?php esc_html_e( 'Import Records', 'societypress' ); ?></h1>
@@ -81102,7 +81109,7 @@ function sp_ajax_export_genrecord(): void {
     }
 
     $collection_id  = absint( $_GET['collection_id'] ?? 0 );
-    $genrecord_type = sanitize_text_field( $_GET['genrecord_type'] ?? '' );
+    $genrecord_type = sanitize_text_field( wp_unslash( $_GET['genrecord_type'] ?? '' ) );
 
     // Validate genrecord_type against the known type list
     // WHY: The type code is written directly into the file header. Even though
@@ -82051,7 +82058,7 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
     $fixed_coll_id = absint( $widget_settings['collection_id'] ?? 0 );
 
     // Read search params
-    $search        = isset( $_GET['sp_rec_q'] ) ? sanitize_text_field( $_GET['sp_rec_q'] ) : '';
+    $search        = isset( $_GET['sp_rec_q'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_rec_q'] ) ) : '';
     $coll_filter   = $fixed_coll_id ?: ( isset( $_GET['sp_rec_coll'] ) ? absint( $_GET['sp_rec_coll'] ) : 0 );
     $per_page      = 25;
     $page_num      = max( 1, absint( $_GET['sp_rec_pg'] ?? 1 ) );
@@ -82667,7 +82674,7 @@ function sp_render_store_frontend(): void {
     $store_acq_code = trim( $settings['store_acq_code'] ?? '' );
 
     // Read active category filter from URL
-    $active_cat = isset( $_GET['sp_store_cat'] ) ? sanitize_text_field( $_GET['sp_store_cat'] ) : '';
+    $active_cat = isset( $_GET['sp_store_cat'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_store_cat'] ) ) : '';
 
     // Pull both library-source publications AND pure store products through
     // the unified helper. Filtered list (for the grid) and unfiltered list
@@ -83618,7 +83625,7 @@ add_action( 'wp_ajax_sp_store_finalize_stripe', function () {
         wp_send_json_error( [ 'message' => __( 'Stripe is not configured.', 'societypress' ) ] );
     }
 
-    $pi_id = sanitize_text_field( $_POST['payment_intent'] ?? '' );
+    $pi_id = sanitize_text_field( wp_unslash( $_POST['payment_intent'] ?? '' ) );
     if ( empty( $pi_id ) || ! sp_stripe_payment_intent_id_is_valid( $pi_id ) ) {
         wp_send_json_error( [ 'message' => __( 'Missing payment reference.', 'societypress' ) ] );
     }
@@ -83667,7 +83674,7 @@ add_action( 'wp_ajax_sp_store_finalize_stripe', function () {
  */
 add_action( 'template_redirect', function () {
     if ( ! is_page() || is_admin() ) return;
-    $pi_id = sanitize_text_field( $_GET['payment_intent'] ?? '' );
+    $pi_id = sanitize_text_field( wp_unslash( $_GET['payment_intent'] ?? '' ) );
     if ( empty( $pi_id ) || ! sp_stripe_payment_intent_id_is_valid( $pi_id ) ) return;
 
     $settings   = sp_settings();
@@ -83780,7 +83787,7 @@ add_action( 'wp_ajax_sp_store_capture_paypal_order', function () {
         wp_send_json_error( [ 'message' => __( 'PayPal is not set up on this site.', 'societypress' ) ] );
     }
 
-    $paypal_order_id = sanitize_text_field( $_POST['paypal_order_id'] ?? '' );
+    $paypal_order_id = sanitize_text_field( wp_unslash( $_POST['paypal_order_id'] ?? '' ) );
     if ( empty( $paypal_order_id ) ) {
         wp_send_json_error( [ 'message' => __( 'Missing PayPal order reference.', 'societypress' ) ] );
     }
@@ -84577,7 +84584,7 @@ function sp_render_store_products_page(): void {
     // Handle row actions (delete, toggle active)
     if ( isset( $_GET['action'], $_GET['product'], $_GET['_wpnonce'] ) ) {
         $product_id = (int) $_GET['product'];
-        $action     = sanitize_text_field( $_GET['action'] );
+        $action     = sanitize_text_field( wp_unslash( $_GET['action'] ) );
         if ( wp_verify_nonce( $_GET['_wpnonce'], 'sp_store_product_' . $action . '_' . $product_id ) ) {
             if ( $action === 'delete' ) {
                 $wpdb->delete( $prefix . 'store_products', [ 'id' => $product_id ] );
@@ -84706,21 +84713,21 @@ function sp_render_store_product_edit_page(): void {
     if ( isset( $_POST['sp_save_store_product'] ) && check_admin_referer( 'sp_store_product_save' ) ) {
         $stock_raw = trim( (string) ( $_POST['stock_qty'] ?? '' ) );
         $data = [
-            'title'          => sanitize_text_field( $_POST['title'] ?? '' ),
-            'sku'            => sanitize_text_field( $_POST['sku'] ?? '' ) ?: null,
-            'description'    => sanitize_textarea_field( $_POST['description'] ?? '' ) ?: null,
+            'title'          => sanitize_text_field( wp_unslash( $_POST['title'] ?? '' ) ),
+            'sku'            => sanitize_text_field( wp_unslash( $_POST['sku'] ?? '' ) ) ?: null,
+            'description'    => sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) ) ?: null,
             'price'          => round( (float) ( $_POST['price'] ?? 0 ), 2 ),
             // Blank member price = no member pricing (NULL). A value stores the
             // member rate; it only applies when it's actually lower than price.
             'member_price'   => ( trim( (string) ( $_POST['member_price'] ?? '' ) ) === '' )
                                 ? null : max( 0, round( (float) $_POST['member_price'], 2 ) ),
             'shipping_fee'   => max( 0, round( (float) ( $_POST['shipping_fee'] ?? 0 ), 2 ) ),
-            'image_url'      => esc_url_raw( $_POST['image_url'] ?? '' ) ?: null,
+            'image_url'      => esc_url_raw( wp_unslash( $_POST['image_url'] ?? '' ) ) ?: null,
             // A sample page or PDF a buyer can look at before paying. Stored
             // as a plain URL so it can point at a media-library file or at any
             // page on the site without needing two fields.
-            'preview_url'    => esc_url_raw( $_POST['preview_url'] ?? '' ) ?: null,
-            'store_category' => sanitize_text_field( $_POST['store_category'] ?? '' ) ?: null,
+            'preview_url'    => esc_url_raw( wp_unslash( $_POST['preview_url'] ?? '' ) ) ?: null,
+            'store_category' => sanitize_text_field( wp_unslash( $_POST['store_category'] ?? '' ) ) ?: null,
             // NULL stock_qty means unlimited / untracked. Empty string in
             // the form maps to NULL; an explicit 0 means "out of stock".
             'stock_qty'      => ( $stock_raw === '' ) ? null : max( 0, (int) $stock_raw ),
@@ -84904,16 +84911,16 @@ function sp_render_orders_page(): void {
     $prefix = $wpdb->prefix . 'sp_';
 
     // Handle status update from detail page redirect
-    $updated = sanitize_text_field( $_GET['updated'] ?? '' );
+    $updated = sanitize_text_field( wp_unslash( $_GET['updated'] ?? '' ) );
 
     // Status filter
-    $status_filter = sanitize_text_field( $_GET['status'] ?? '' );
+    $status_filter = sanitize_text_field( wp_unslash( $_GET['status'] ?? '' ) );
     $valid_statuses = [ 'pending', 'paid', 'shipped', 'completed', 'refunded', 'failed' ];
 
     // Name/email/order-# search and date range — parity with the donations admin.
-    $search    = sanitize_text_field( $_GET['s'] ?? '' );
-    $filter_from = sanitize_text_field( $_GET['from'] ?? '' );
-    $filter_to   = sanitize_text_field( $_GET['to'] ?? '' );
+    $search    = sanitize_text_field( wp_unslash( $_GET['s'] ?? '' ) );
+    $filter_from = sanitize_text_field( wp_unslash( $_GET['from'] ?? '' ) );
+    $filter_to   = sanitize_text_field( wp_unslash( $_GET['to'] ?? '' ) );
 
     // Counts for tab badges
     $counts = [];
@@ -85101,8 +85108,8 @@ function sp_render_order_detail_page(): void {
     // Handle status update
     if ( $_SERVER['REQUEST_METHOD'] === 'POST' && isset( $_POST['sp_order_nonce'] ) ) {
         check_admin_referer( 'sp_update_order', 'sp_order_nonce' );
-        $new_status = sanitize_text_field( $_POST['order_status'] ?? '' );
-        $admin_note = sanitize_textarea_field( $_POST['admin_note'] ?? '' );
+        $new_status = sanitize_text_field( wp_unslash( $_POST['order_status'] ?? '' ) );
+        $admin_note = sanitize_textarea_field( wp_unslash( $_POST['admin_note'] ?? '' ) );
 
         if ( in_array( $new_status, [ 'pending', 'paid', 'shipped', 'completed', 'refunded' ], true ) ) {
             $wpdb->update( $prefix . 'orders', [
@@ -85177,7 +85184,7 @@ function sp_render_order_detail_page(): void {
     // what was given away.
     if ( $_SERVER['REQUEST_METHOD'] === 'POST' && isset( $_POST['sp_comp_nonce'] ) ) {
         check_admin_referer( 'sp_comp_order_' . $order_id, 'sp_comp_nonce' );
-        $reason    = sanitize_text_field( $_POST['comp_reason'] ?? '' );
+        $reason    = sanitize_text_field( wp_unslash( $_POST['comp_reason'] ?? '' ) );
         $order_row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$prefix}orders WHERE id = %d", $order_id ) );
         if ( $order_row && ! in_array( $order_row->status, [ 'refunded', 'failed' ], true ) ) {
             $tag  = $reason !== ''
@@ -85216,7 +85223,7 @@ function sp_render_order_detail_page(): void {
         "SELECT * FROM {$prefix}order_items WHERE order_id = %d", $order_id
     ) );
 
-    $updated = sanitize_text_field( $_GET['updated'] ?? '' );
+    $updated = sanitize_text_field( wp_unslash( $_GET['updated'] ?? '' ) );
 
     $status_labels = [
         'pending'   => __( 'Pending', 'societypress' ),
@@ -85539,16 +85546,16 @@ add_action( 'admin_init', function () {
     $doc_id  = (int) ( $_POST['document_id'] ?? 0 );
 
     $data = [
-        'title'         => sanitize_text_field( $_POST['document_title'] ?? '' ),
-        'description'   => sanitize_textarea_field( $_POST['document_description'] ?? '' ),
+        'title'         => sanitize_text_field( wp_unslash( $_POST['document_title'] ?? '' ) ),
+        'description'   => sanitize_textarea_field( wp_unslash( $_POST['document_description'] ?? '' ) ),
         'category_id'   => (int) ( $_POST['document_category'] ?? 0 ) ?: null,
-        'file_url'      => esc_url_raw( $_POST['document_file_url'] ?? '' ),
-        'file_name'     => sanitize_file_name( $_POST['document_file_name'] ?? '' ),
+        'file_url'      => esc_url_raw( wp_unslash( $_POST['document_file_url'] ?? '' ) ),
+        'file_name'     => sanitize_file_name( wp_unslash( $_POST['document_file_name'] ?? '' ) ),
         'file_size'     => (int) ( $_POST['document_file_size'] ?? 0 ),
-        'file_type'     => sanitize_text_field( $_POST['document_file_type'] ?? '' ),
+        'file_type'     => sanitize_text_field( wp_unslash( $_POST['document_file_type'] ?? '' ) ),
         'access_level'  => in_array( $_POST['document_access'] ?? '', [ 'public', 'members_only' ], true )
                            ? $_POST['document_access'] : 'members_only',
-        'document_date' => sanitize_text_field( $_POST['document_date'] ?? '' ) ?: null,
+        'document_date' => sanitize_text_field( wp_unslash( $_POST['document_date'] ?? '' ) ) ?: null,
         'status'        => in_array( $_POST['document_status'] ?? '', [ 'published', 'draft' ], true )
                            ? $_POST['document_status'] : 'published',
         'sort_order'    => (int) ( $_POST['document_sort_order'] ?? 0 ),
@@ -85696,7 +85703,7 @@ add_action( 'admin_init', function () {
     global $wpdb;
     $table  = $wpdb->prefix . 'sp_document_categories';
     $cat_id = (int) ( $_POST['category_id'] ?? 0 );
-    $name   = sanitize_text_field( $_POST['category_name'] ?? '' );
+    $name   = sanitize_text_field( wp_unslash( $_POST['category_name'] ?? '' ) );
 
     if ( empty( $name ) ) {
         wp_redirect( admin_url( 'admin.php?page=sp-document-categories&sp_error=no_name' ) );
@@ -85706,7 +85713,7 @@ add_action( 'admin_init', function () {
     $data = [
         'name'         => $name,
         'slug'         => sanitize_title( $name ),
-        'description'  => sanitize_textarea_field( $_POST['category_description'] ?? '' ),
+        'description'  => sanitize_textarea_field( wp_unslash( $_POST['category_description'] ?? '' ) ),
         'access_level' => in_array( $_POST['category_access'] ?? '', [ 'public', 'members_only' ], true )
             ? $_POST['category_access'] : 'public',
         'display_format' => in_array( $_POST['category_display_format'] ?? '', [ 'title_desc', 'month_year' ], true )
@@ -85776,9 +85783,9 @@ function sp_render_documents_page(): void {
     $cats_table = $wpdb->prefix . 'sp_document_categories';
 
     // Filters
-    $search      = sanitize_text_field( $_GET['s'] ?? '' );
+    $search      = sanitize_text_field( wp_unslash( $_GET['s'] ?? '' ) );
     $filter_cat  = (int) ( $_GET['cat'] ?? 0 );
-    $filter_access = sanitize_text_field( $_GET['access'] ?? '' );
+    $filter_access = sanitize_text_field( wp_unslash( $_GET['access'] ?? '' ) );
 
     $where = '1=1';
     $params = [];
@@ -86298,11 +86305,11 @@ add_action( 'admin_init', function () {
                     ? $_POST['bulk_status'] : 'published';
 
     // Per-file data arrays
-    $urls   = $_POST['bulk_file_url']  ?? [];
-    $names  = $_POST['bulk_file_name'] ?? [];
+    $urls   = wp_unslash( $_POST['bulk_file_url'] ?? [] );
+    $names  = wp_unslash( $_POST['bulk_file_name'] ?? [] );
     $sizes  = $_POST['bulk_file_size'] ?? [];
     $types  = $_POST['bulk_file_type'] ?? [];
-    $titles = $_POST['bulk_title']     ?? [];
+    $titles = wp_unslash( $_POST['bulk_title'] ?? [] );
     $dates  = $_POST['bulk_date']      ?? [];
 
     $count = 0;
@@ -86813,7 +86820,7 @@ function sp_frontend_documents(): void {
     // Optional recency filter (?sp_doc_time): narrow to documents dated within
     // the last N months. Undated documents are excluded while a range is active
     // (there's no date to judge them by); the default "all" shows everything.
-    $doc_time   = sanitize_text_field( $_GET['sp_doc_time'] ?? 'all' );
+    $doc_time   = sanitize_text_field( wp_unslash( $_GET['sp_doc_time'] ?? 'all' ) );
     $time_months = [ '3months' => 3, '6months' => 6, '12months' => 12 ];
     $time_where = '';
     if ( isset( $time_months[ $doc_time ] ) ) {
@@ -87662,8 +87669,8 @@ function sp_render_external_calendars_page(): void {
 
     // Add new feed
     if ( isset( $_POST['sp_add_ical_feed_nonce'] ) && wp_verify_nonce( $_POST['sp_add_ical_feed_nonce'], 'sp_add_ical_feed' ) ) {
-        $label = sanitize_text_field( $_POST['feed_label'] ?? '' );
-        $url   = esc_url_raw( $_POST['feed_url'] ?? '' );
+        $label = sanitize_text_field( wp_unslash( $_POST['feed_label'] ?? '' ) );
+        $url   = esc_url_raw( wp_unslash( $_POST['feed_url'] ?? '' ) );
 
         if ( empty( $label ) || empty( $url ) ) {
             $error = __( 'Label and URL are required.', 'societypress' );
@@ -87702,8 +87709,8 @@ function sp_render_external_calendars_page(): void {
     // Update existing feed
     if ( isset( $_POST['sp_update_ical_feed_nonce'] ) && wp_verify_nonce( $_POST['sp_update_ical_feed_nonce'], 'sp_update_ical_feed' ) ) {
         $edit_id = (int) ( $_POST['edit_feed_id'] ?? 0 );
-        $label   = sanitize_text_field( $_POST['feed_label'] ?? '' );
-        $url     = esc_url_raw( $_POST['feed_url'] ?? '' );
+        $label   = sanitize_text_field( wp_unslash( $_POST['feed_label'] ?? '' ) );
+        $url     = esc_url_raw( wp_unslash( $_POST['feed_url'] ?? '' ) );
 
         if ( $edit_id > 0 && ! empty( $label ) && ! empty( $url ) ) {
             $url_error = sp_validate_external_feed_url( $url );
@@ -88554,14 +88561,14 @@ add_action( 'admin_init', function () {
     }
 
     // ---- Validate required fields ----
-    $title = sanitize_text_field( $_POST['ballot_title'] ?? '' );
+    $title = sanitize_text_field( wp_unslash( $_POST['ballot_title'] ?? '' ) );
     if ( empty( $title ) ) {
         wp_redirect( admin_url( 'admin.php?page=sp-ballot-edit&ballot_id=' . $ballot_id . '&error=title' ) );
         exit;
     }
 
     // ---- Validate at least one question with choices ----
-    $questions_raw = $_POST['sp_questions'] ?? [];
+    $questions_raw = wp_unslash( $_POST['sp_questions'] ?? [] );
     if ( empty( $questions_raw ) ) {
         wp_redirect( admin_url( 'admin.php?page=sp-ballot-edit&ballot_id=' . $ballot_id . '&error=questions' ) );
         exit;
@@ -88582,13 +88589,13 @@ add_action( 'admin_init', function () {
     // ---- Build start/end datetimes ----
     $voting_start = null;
     if ( ! empty( $_POST['voting_start_date'] ) ) {
-        $start_time   = ! empty( $_POST['voting_start_time'] ) ? sanitize_text_field( $_POST['voting_start_time'] ) : '00:00';
-        $voting_start = sanitize_text_field( $_POST['voting_start_date'] ) . ' ' . $start_time . ':00';
+        $start_time   = ! empty( $_POST['voting_start_time'] ) ? sanitize_text_field( wp_unslash( $_POST['voting_start_time'] ) ) : '00:00';
+        $voting_start = sanitize_text_field( wp_unslash( $_POST['voting_start_date'] ) ) . ' ' . $start_time . ':00';
     }
     $voting_end = null;
     if ( ! empty( $_POST['voting_end_date'] ) ) {
-        $end_time   = ! empty( $_POST['voting_end_time'] ) ? sanitize_text_field( $_POST['voting_end_time'] ) : '23:59';
-        $voting_end = sanitize_text_field( $_POST['voting_end_date'] ) . ' ' . $end_time . ':00';
+        $end_time   = ! empty( $_POST['voting_end_time'] ) ? sanitize_text_field( wp_unslash( $_POST['voting_end_time'] ) ) : '23:59';
+        $voting_end = sanitize_text_field( wp_unslash( $_POST['voting_end_date'] ) ) . ' ' . $end_time . ':00';
     }
 
     // Reject malformed datetimes before they reach the DB (MySQL would store
@@ -88609,7 +88616,7 @@ add_action( 'admin_init', function () {
 
     $data = [
         'title'              => $title,
-        'description'        => sanitize_textarea_field( $_POST['ballot_description'] ?? '' ),
+        'description'        => sanitize_textarea_field( wp_unslash( $_POST['ballot_description'] ?? '' ) ),
         'ballot_type'        => $ballot_type,
         'eligibility_type'   => $eligibility_type,
         'eligible_tiers'     => $eligible_tiers,
@@ -89251,7 +89258,7 @@ class SP_Ballots_List_Table extends WP_List_Table {
     protected function get_views(): array {
         global $wpdb;
         $prefix      = $wpdb->prefix . 'sp_';
-        $current     = sanitize_text_field( $_GET['ballot_status'] ?? '' );
+        $current     = sanitize_text_field( wp_unslash( $_GET['ballot_status'] ?? '' ) );
         $base_url    = admin_url( 'admin.php?page=sp-ballots' );
 
         $total       = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}ballots" );
@@ -89380,12 +89387,12 @@ class SP_Ballots_List_Table extends WP_List_Table {
         $this->_column_headers = [ $this->get_columns(), [], $this->get_sortable_columns() ];
 
         $where = '1=1';
-        $status_filter = sanitize_text_field( $_GET['ballot_status'] ?? '' );
+        $status_filter = sanitize_text_field( wp_unslash( $_GET['ballot_status'] ?? '' ) );
         if ( in_array( $status_filter, [ 'draft', 'open', 'closed', 'cancelled' ], true ) ) {
             $where .= $wpdb->prepare( ' AND status = %s', $status_filter );
         }
 
-        $search = isset( $_GET['s'] ) ? sanitize_text_field( $_GET['s'] ) : '';
+        $search = isset( $_GET['s'] ) ? sanitize_text_field( wp_unslash( $_GET['s'] ) ) : '';
         if ( $search ) {
             $like  = '%' . $wpdb->esc_like( $search ) . '%';
             $where .= $wpdb->prepare( ' AND title LIKE %s', $like );
@@ -89500,7 +89507,7 @@ function sp_render_ballots_page(): void {
             <input type="hidden" name="page" value="sp-ballots">
             <?php
             if ( ! empty( $_GET['ballot_status'] ) ) {
-                echo '<input type="hidden" name="ballot_status" value="' . esc_attr( $_GET['ballot_status'] ) . '">';
+                echo '<input type="hidden" name="ballot_status" value="' . esc_attr( wp_unslash( $_GET['ballot_status'] ) ) . '">';
             }
             $table->search_box( __( 'Search Ballots', 'societypress' ), 'sp-ballot-search' );
             ?>
@@ -91731,7 +91738,7 @@ add_action( 'admin_init', function () {
             exit;
         }
 
-        $slug = sanitize_title( $_POST['slug'] ?? $name );
+        $slug = sanitize_title( wp_unslash( $_POST['slug'] ?? $name ) );
         // Ensure slug uniqueness when adding/changing
         $existing = $wpdb->get_var( $wpdb->prepare(
             "SELECT id FROM {$programs_table} WHERE slug = %s AND id <> %d",
@@ -92142,9 +92149,9 @@ function sp_render_lineage_applications_page(): void {
 
     $programs = $wpdb->get_results( "SELECT id, name FROM {$prog_t} ORDER BY sort_order, name" );
 
-    $status_filter  = sanitize_text_field( $_GET['status']  ?? '' );
+    $status_filter  = sanitize_text_field( wp_unslash( $_GET['status']  ?? '' ) );
     $program_filter = (int) ( $_GET['program'] ?? 0 );
-    $search         = sanitize_text_field( $_GET['s']       ?? '' );
+    $search         = sanitize_text_field( wp_unslash( $_GET['s']       ?? '' ) );
 
     $where  = [ '1=1' ];
     $params = [];
@@ -92738,7 +92745,7 @@ add_action( 'init', function () {
     if ( ! sp_module_enabled( 'lineage' ) ) return;
 
     $user_id = get_current_user_id();
-    $action  = sanitize_text_field( $_POST['sp_lineage_action'] );
+    $action  = sanitize_text_field( wp_unslash( $_POST['sp_lineage_action'] ) );
 
     global $wpdb;
     $apps_t   = $wpdb->prefix . 'sp_lineage_applications';
@@ -92815,7 +92822,7 @@ add_action( 'init', function () {
             require_once ABSPATH . 'wp-admin/includes/media.php';
             require_once ABSPATH . 'wp-admin/includes/image.php';
 
-            $labels = $_POST['proof_labels'] ?? [];
+            $labels = wp_unslash( $_POST['proof_labels'] ?? [] );
             $labels = is_array( $labels ) ? $labels : [];
 
             foreach ( $_FILES['proofs']['name'] as $i => $name ) {
@@ -93049,8 +93056,8 @@ add_shortcode( 'sp_lineage_apply', function ( $atts ) {
         }
     }
 
-    $msg = sanitize_text_field( $_GET['sp_lineage_msg'] ?? '' );
-    $err = sanitize_text_field( $_GET['sp_lineage_error'] ?? '' );
+    $msg = sanitize_text_field( wp_unslash( $_GET['sp_lineage_msg'] ?? '' ) );
+    $err = sanitize_text_field( wp_unslash( $_GET['sp_lineage_error'] ?? '' ) );
 
     ob_start();
     ?>
@@ -93408,7 +93415,7 @@ add_action( 'init', function () {
     if ( empty( $_POST['sp_picture_wall_action'] ) ) return;
     if ( ! is_user_logged_in() ) return;
 
-    $action = sanitize_text_field( $_POST['sp_picture_wall_action'] );
+    $action = sanitize_text_field( wp_unslash( $_POST['sp_picture_wall_action'] ) );
 
     if ( $action === 'submit' ) {
         global $wpdb;
@@ -93659,8 +93666,8 @@ add_shortcode( 'sp_picture_wall_submit', function ( $atts ) {
         return '<p>' . esc_html__( 'This album is not accepting submissions.', 'societypress' ) . '</p>';
     }
 
-    $msg = sanitize_text_field( $_GET['sp_pw_msg'] ?? '' );
-    $err = sanitize_text_field( $_GET['sp_pw_error'] ?? '' );
+    $msg = sanitize_text_field( wp_unslash( $_GET['sp_pw_msg'] ?? '' ) );
+    $err = sanitize_text_field( wp_unslash( $_GET['sp_pw_error'] ?? '' ) );
 
     ob_start();
     ?>
@@ -94387,8 +94394,8 @@ add_shortcode( 'sp_donate', function ( $atts ) {
     }
 
     // Status messaging back from Stripe
-    $msg = sanitize_text_field( $_GET['sp_donate_msg'] ?? '' );
-    $err = sanitize_text_field( $_GET['sp_donate_err'] ?? '' );
+    $msg = sanitize_text_field( wp_unslash( $_GET['sp_donate_msg'] ?? '' ) );
+    $err = sanitize_text_field( wp_unslash( $_GET['sp_donate_err'] ?? '' ) );
 
     // Mail-in check path: after recording a pending gift, show the printable
     // slip in place of the form rather than sending the donor to a processor.
@@ -94763,9 +94770,9 @@ add_action( 'init', function () {
     }
 
     // Resolve amount
-    $preset = sanitize_text_field( $_POST['amount_preset'] ?? '' );
+    $preset = sanitize_text_field( wp_unslash( $_POST['amount_preset'] ?? '' ) );
     $amount = $preset === 'custom'
-        ? floatval( sanitize_text_field( $_POST['custom_amount'] ?? '0' ) )
+        ? floatval( sanitize_text_field( wp_unslash( $_POST['custom_amount'] ?? '0' ) ) )
         : (float) $preset;
     $amount = round( max( 0, $amount ), 2 );
     if ( $amount < 1 ) {
@@ -94790,7 +94797,7 @@ add_action( 'init', function () {
         global $wpdb;
 
         $donor_name  = sanitize_text_field( wp_unslash( $_POST['donor_name'] ?? '' ) );
-        $donor_email = sanitize_email( $_POST['donor_email'] ?? '' );
+        $donor_email = sanitize_email( wp_unslash( $_POST['donor_email'] ?? '' ) );
         if ( $donor_name === '' || ! is_email( $donor_email ) ) {
             wp_safe_redirect( add_query_arg( 'sp_donate_err', 'invalid_amount', $referer ) );
             exit;
@@ -94860,7 +94867,7 @@ add_action( 'init', function () {
     $currency = strtolower( $settings['stripe_currency'] ?? 'usd' );
 
     $donor_name  = sanitize_text_field( wp_unslash( $_POST['donor_name'] ?? '' ) );
-    $donor_email = sanitize_email( $_POST['donor_email'] ?? '' );
+    $donor_email = sanitize_email( wp_unslash( $_POST['donor_email'] ?? '' ) );
     $is_anon     = ! empty( $_POST['is_anonymous'] );
     $dedication  = sanitize_text_field( wp_unslash( $_POST['dedication'] ?? '' ) );
     $message     = sanitize_textarea_field( wp_unslash( $_POST['donation_message'] ?? '' ) );
@@ -94975,8 +94982,8 @@ add_action( 'init', function () {
  */
 add_action( 'template_redirect', function () {
     $donation_id = (int) ( $_GET['sp_donation'] ?? 0 );
-    $session_id  = sanitize_text_field( $_GET['sp_session'] ?? '' );
-    $msg         = sanitize_text_field( $_GET['sp_donate_msg'] ?? '' );
+    $session_id  = sanitize_text_field( wp_unslash( $_GET['sp_session'] ?? '' ) );
+    $msg         = sanitize_text_field( wp_unslash( $_GET['sp_donate_msg'] ?? '' ) );
     if ( ! $donation_id || $msg !== 'success' || ! sp_stripe_session_id_is_valid( $session_id ) ) return;
 
     global $wpdb;
@@ -95313,7 +95320,7 @@ add_action( 'admin_init', function () {
         check_admin_referer( 'sp_save_db_subscription', 'sp_dbs_nonce' );
         $idx         = isset( $_POST['edit_index'] ) && $_POST['edit_index'] !== '' ? (int) $_POST['edit_index'] : null;
         $name        = sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) );
-        $url         = esc_url_raw( $_POST['login_url'] ?? '' );
+        $url         = esc_url_raw( wp_unslash( $_POST['login_url'] ?? '' ) );
         $description = sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) );
         $members_only= ! empty( $_POST['members_only'] );
 
@@ -95500,8 +95507,8 @@ add_action( 'admin_init', function () {
 
     if ( ! empty( $_POST['sp_save_research_guide'] ) ) {
         check_admin_referer( 'sp_save_research_guide', 'sp_rg_nonce' );
-        $orig_slug = sanitize_title( $_POST['orig_slug'] ?? '' );
-        $slug      = sanitize_title( $_POST['slug'] ?? '' );
+        $orig_slug = sanitize_title( wp_unslash( $_POST['orig_slug'] ?? '' ) );
+        $slug      = sanitize_title( wp_unslash( $_POST['slug'] ?? '' ) );
         $title     = sanitize_text_field( wp_unslash( $_POST['title'] ?? '' ) );
         $intro     = wp_kses_post( wp_unslash( $_POST['intro'] ?? '' ) );
 
@@ -95558,7 +95565,7 @@ add_action( 'admin_init', function () {
     }
 
     if ( ( $_POST['action'] ?? '' ) === 'delete_research_guide' ) {
-        $slug = sanitize_title( $_POST['slug'] ?? '' );
+        $slug = sanitize_title( wp_unslash( $_POST['slug'] ?? '' ) );
         check_admin_referer( 'sp_delete_research_guide_' . $slug );
         $settings = sp_settings();
         $guides   = $settings['research_guides'] ?? [];
@@ -95580,7 +95587,7 @@ function sp_render_research_guides_page(): void {
     $guides   = $settings['research_guides'] ?? [];
     if ( ! is_array( $guides ) ) $guides = [];
 
-    $edit_slug = sanitize_title( $_GET['edit'] ?? '' );
+    $edit_slug = sanitize_title( wp_unslash( $_GET['edit'] ?? '' ) );
     $editing   = $edit_slug && isset( $guides[ $edit_slug ] ) ? $guides[ $edit_slug ] : null;
     $is_new    = ! $edit_slug && isset( $_GET['new'] );
 
@@ -95907,9 +95914,9 @@ function sp_donate_paypal_create_order(): void {
     }
 
     // Resolve amount (mirrors the Stripe handler)
-    $preset = sanitize_text_field( $_POST['amount_preset'] ?? '' );
+    $preset = sanitize_text_field( wp_unslash( $_POST['amount_preset'] ?? '' ) );
     $amount = $preset === 'custom'
-        ? floatval( sanitize_text_field( $_POST['custom_amount'] ?? '0' ) )
+        ? floatval( sanitize_text_field( wp_unslash( $_POST['custom_amount'] ?? '0' ) ) )
         : (float) $preset;
     $amount = round( max( 0, $amount ), 2 );
     if ( $amount < 1 ) {
@@ -95925,7 +95932,7 @@ function sp_donate_paypal_create_order(): void {
     $gross      = round( $amount + $fee_amount, 2 );
 
     $donor_name  = sanitize_text_field( wp_unslash( $_POST['donor_name'] ?? '' ) );
-    $donor_email = sanitize_email( $_POST['donor_email'] ?? '' );
+    $donor_email = sanitize_email( wp_unslash( $_POST['donor_email'] ?? '' ) );
     if ( ! $donor_name || ! is_email( $donor_email ) ) {
         wp_send_json_error( [ 'message' => __( 'Please provide your name and email.', 'societypress' ) ] );
     }
@@ -96024,7 +96031,7 @@ function sp_donate_paypal_capture(): void {
         wp_send_json_error( [ 'message' => __( 'Bad request — please refresh the page.', 'societypress' ) ], 400 );
     }
 
-    $paypal_order_id = sanitize_text_field( $_POST['paypal_order_id'] ?? '' );
+    $paypal_order_id = sanitize_text_field( wp_unslash( $_POST['paypal_order_id'] ?? '' ) );
     if ( ! $paypal_order_id ) {
         wp_send_json_error( [ 'message' => __( 'Missing PayPal order id.', 'societypress' ) ] );
     }
@@ -96178,8 +96185,8 @@ add_action( 'admin_init', function () {
 
 add_action( 'template_redirect', function () {
     $app_id     = (int) ( $_GET['sp_lineage_app']  ?? 0 );
-    $msg        = sanitize_text_field( $_GET['sp_lineage_msg']  ?? '' );
-    $session_id = sanitize_text_field( $_GET['sp_lineage_sess'] ?? '' );
+    $msg        = sanitize_text_field( wp_unslash( $_GET['sp_lineage_msg']  ?? '' ) );
+    $session_id = sanitize_text_field( wp_unslash( $_GET['sp_lineage_sess'] ?? '' ) );
     if ( ! $app_id || $msg !== 'paid' || ! sp_stripe_session_id_is_valid( $session_id ) ) return;
 
     global $wpdb;
@@ -97251,7 +97258,7 @@ add_shortcode( 'sp_help_request_submit', function () {
         return '<p>' . esc_html__( 'Public research-help submissions are not currently accepted on this site.', 'societypress' ) . '</p>';
     }
 
-    $msg     = sanitize_text_field( $_GET['sp_help_msg'] ?? '' );
+    $msg     = sanitize_text_field( wp_unslash( $_GET['sp_help_msg'] ?? '' ) );
     $current = wp_get_current_user();
 
     $captcha = sp_help_make_captcha();
@@ -97368,7 +97375,7 @@ add_action( 'init', function () {
     }
 
     // Captcha
-    $captcha_token  = sanitize_text_field( $_POST['captcha_token']  ?? '' );
+    $captcha_token  = sanitize_text_field( wp_unslash( $_POST['captcha_token']  ?? '' ) );
     $captcha_answer = (int) ( $_POST['captcha_answer'] ?? -1 );
     if ( ! sp_help_verify_captcha( $captcha_token, $captcha_answer ) ) {
         wp_safe_redirect( add_query_arg( 'sp_help_msg', 'captcha_failed', $referer ) );
@@ -97436,7 +97443,7 @@ add_action( 'init', function () {
  * Verification link handler — runs early so the redirect lands cleanly.
  */
 add_action( 'init', function () {
-    $token = sanitize_text_field( $_GET['sp_help_verify'] ?? '' );
+    $token = sanitize_text_field( wp_unslash( $_GET['sp_help_verify'] ?? '' ) );
     if ( ! $token ) return;
 
     global $wpdb;
@@ -97516,7 +97523,7 @@ add_shortcode( 'sp_help_requests_archive', function ( $atts ) {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
-    $search = sanitize_text_field( $_GET['sp_help_q'] ?? '' );
+    $search = sanitize_text_field( wp_unslash( $_GET['sp_help_q'] ?? '' ) );
     $page   = max( 1, (int) ( $_GET['sp_help_pg'] ?? 1 ) );
     $per    = max( 5, min( 100, (int) $atts['per_page'] ) );
     $offset = ( $page - 1 ) * $per;
@@ -97735,7 +97742,7 @@ add_action( 'admin_init', function () {
 
     check_admin_referer( 'sp_help_bulk' );
 
-    $action = sanitize_text_field( $_POST['sp_help_bulk_action'] );
+    $action = sanitize_text_field( wp_unslash( $_POST['sp_help_bulk_action'] ) );
     $ids    = array_map( 'intval', (array) ( $_POST['help_ids'] ?? [] ) );
     $ids    = array_filter( $ids );
 
@@ -97864,8 +97871,8 @@ add_action( 'init', function () {
         global $wpdb;
         $prefix = $wpdb->prefix . 'sp_';
 
-        $search    = sanitize_text_field( $_GET['sp_help_q']   ?? '' );
-        $tag_filter = strtolower( sanitize_text_field( $_GET['sp_help_tag'] ?? '' ) );
+        $search    = sanitize_text_field( wp_unslash( $_GET['sp_help_q']   ?? '' ) );
+        $tag_filter = strtolower( sanitize_text_field( wp_unslash( $_GET['sp_help_tag'] ?? '' ) ) );
         $page      = max( 1, (int) ( $_GET['sp_help_pg'] ?? 1 ) );
         $per       = max( 5, min( 100, (int) $atts['per_page'] ) );
         $offset    = ( $page - 1 ) * $per;
@@ -98129,8 +98136,8 @@ function sp_render_research_cases_page(): void {
     $cases_t = $wpdb->prefix . 'sp_research_cases';
     $users_t = $wpdb->users;
 
-    $status_filter = sanitize_text_field( $_GET['status'] ?? '' );
-    $search        = sanitize_text_field( $_GET['s']      ?? '' );
+    $status_filter = sanitize_text_field( wp_unslash( $_GET['status'] ?? '' ) );
+    $search        = sanitize_text_field( wp_unslash( $_GET['s']      ?? '' ) );
 
     $where  = [ '1=1' ];
     $params = [];
@@ -98519,8 +98526,8 @@ add_shortcode( 'sp_research_request', function () {
     $org      = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
     $current  = wp_get_current_user();
 
-    $msg = sanitize_text_field( $_GET['sp_research_msg'] ?? '' );
-    $err = sanitize_text_field( $_GET['sp_research_err'] ?? '' );
+    $msg = sanitize_text_field( wp_unslash( $_GET['sp_research_msg'] ?? '' ) );
+    $err = sanitize_text_field( wp_unslash( $_GET['sp_research_err'] ?? '' ) );
 
     ob_start();
     ?>
@@ -98764,8 +98771,8 @@ add_action( 'init', function () {
  */
 add_action( 'template_redirect', function () {
     $case_id    = (int) ( $_GET['sp_research_case'] ?? 0 );
-    $msg        = sanitize_text_field( $_GET['sp_research_msg'] ?? '' );
-    $session_id = sanitize_text_field( $_GET['sp_session']      ?? '' );
+    $msg        = sanitize_text_field( wp_unslash( $_GET['sp_research_msg'] ?? '' ) );
+    $session_id = sanitize_text_field( wp_unslash( $_GET['sp_session']      ?? '' ) );
     if ( ! $case_id || $msg !== 'paid' || ! sp_stripe_session_id_is_valid( $session_id ) ) return;
 
     global $wpdb;
@@ -98909,7 +98916,7 @@ add_action( 'admin_init', function () {
     ) );
     if ( ! $case ) return;
 
-    $previous = sanitize_text_field( $_POST['_status_was'] ?? '' );
+    $previous = sanitize_text_field( wp_unslash( $_POST['_status_was'] ?? '' ) );
     if ( $previous && $previous !== $case->status ) {
         sp_research_send_status_email( $id, $case->status );
     }
@@ -99233,7 +99240,7 @@ add_action( 'init', function () {
  */
 add_action( 'template_redirect', function () {
     $inv_id     = (int) ( $_GET['sp_research_inv']      ?? 0 );
-    $session_id = sanitize_text_field( $_GET['sp_session'] ?? '' );
+    $session_id = sanitize_text_field( wp_unslash( $_GET['sp_session'] ?? '' ) );
     if ( ! $inv_id || ! sp_stripe_session_id_is_valid( $session_id ) ) return;
     if ( empty( $_GET['sp_research_invoice_paid'] ) ) return;
 
@@ -99480,7 +99487,7 @@ add_shortcode( 'sp_my_research_assignments', function () {
     // Handle inline claim or log-hours actions (member-side, NOT the admin handlers)
     $msg = '';
     if ( ! empty( $_POST['sp_research_member_action'] ) ) {
-        $member_action = sanitize_text_field( $_POST['sp_research_member_action'] );
+        $member_action = sanitize_text_field( wp_unslash( $_POST['sp_research_member_action'] ) );
         $case_id       = (int) ( $_POST['case_id'] ?? 0 );
 
         if ( $member_action === 'claim' && wp_verify_nonce( $_POST['_wpnonce'] ?? '', 'sp_research_claim_' . $case_id ) ) {
@@ -100891,9 +100898,9 @@ function sp_render_theme_presets_page(): void {
     $settings = sp_settings();
     $org      = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
 
-    $imported_name = isset( $_GET['sp_preset_imported'] ) ? sanitize_text_field( urldecode( $_GET['sp_preset_name'] ?? '' ) ) : '';
-    $err           = sanitize_text_field( $_GET['sp_preset_err'] ?? '' );
-    $err_msg       = sanitize_text_field( urldecode( $_GET['sp_preset_err_msg'] ?? '' ) );
+    $imported_name = isset( $_GET['sp_preset_imported'] ) ? sanitize_text_field( urldecode( wp_unslash( $_GET['sp_preset_name'] ?? '' ) ) ) : '';
+    $err           = sanitize_text_field( wp_unslash( $_GET['sp_preset_err'] ?? '' ) );
+    $err_msg       = sanitize_text_field( urldecode( wp_unslash( $_GET['sp_preset_err_msg'] ?? '' ) ) );
 
     ?>
     <style id="sp-theme-presets-css">
@@ -100934,7 +100941,7 @@ function sp_render_theme_presets_page(): void {
 
         <?php if ( isset( $_GET['sp_preset_saved'] ) ) : ?>
             <div class="notice notice-success is-dismissible"><p>
-                <?php printf( esc_html__( 'Saved look "%s".', 'societypress' ), esc_html( sanitize_text_field( urldecode( $_GET['sp_preset_name'] ?? '' ) ) ) ); ?>
+                <?php printf( esc_html__( 'Saved look "%s".', 'societypress' ), esc_html( sanitize_text_field( urldecode( wp_unslash( $_GET['sp_preset_name'] ?? '' ) ) ) ) ); ?>
             </p></div>
         <?php endif; ?>
         <?php if ( isset( $_GET['sp_preset_deleted'] ) ) : ?>
@@ -101102,9 +101109,9 @@ function sp_render_theme_presets_page(): void {
                     <div class="inside">
                         <p><?php esc_html_e( 'A themed bundle goes beyond a preset — it can include custom CSS overrides and image assets (logo, hero background, decorative imagery). The CSS is sanitized to strip executable content; images are validated by extension and MIME before they land in your uploads folder.', 'societypress' ); ?></p>
                         <?php
-                        $bundle_err     = sanitize_text_field( $_GET['sp_bundle_err'] ?? '' );
-                        $bundle_err_msg = sanitize_text_field( urldecode( $_GET['sp_bundle_err_msg'] ?? '' ) );
-                        $bundle_imp     = isset( $_GET['sp_bundle_imported'] ) ? sanitize_text_field( urldecode( $_GET['sp_bundle_name'] ?? '' ) ) : '';
+                        $bundle_err     = sanitize_text_field( wp_unslash( $_GET['sp_bundle_err'] ?? '' ) );
+                        $bundle_err_msg = sanitize_text_field( urldecode( wp_unslash( $_GET['sp_bundle_err_msg'] ?? '' ) ) );
+                        $bundle_imp     = isset( $_GET['sp_bundle_imported'] ) ? sanitize_text_field( urldecode( wp_unslash( $_GET['sp_bundle_name'] ?? '' ) ) ) : '';
                         ?>
                         <?php if ( $bundle_imp ) : ?>
                             <p class="notice notice-success sp-tp-inline-notice"><?php printf( esc_html__( 'Bundle "%s" applied.', 'societypress' ), esc_html( $bundle_imp ) ); ?></p>
@@ -101553,7 +101560,7 @@ function sp_help_send_status_email( int $request_id, string $new_status ): void 
  * the admin page — we detect the transition and queue the email.
  */
 add_action( 'admin_init', function () {
-    $action = sanitize_text_field( $_GET['action'] ?? '' );
+    $action = sanitize_text_field( wp_unslash( $_GET['action'] ?? '' ) );
     if ( ! in_array( $action, [ 'close', 'reopen' ], true ) ) return;
     if ( ( $_GET['page'] ?? '' ) !== 'sp-help-requests' ) return;
 
@@ -101583,7 +101590,7 @@ add_action( 'admin_init', function () {
     if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) return;
     if ( ! isset( $_POST['_wpnonce'] ) || ! wp_verify_nonce( $_POST['_wpnonce'], 'sp_help_bulk' ) ) return;
 
-    $action = sanitize_text_field( $_POST['sp_help_bulk_action'] );
+    $action = sanitize_text_field( wp_unslash( $_POST['sp_help_bulk_action'] ) );
     if ( ! in_array( $action, [ 'approve', 'mark_resolved' ], true ) ) return;
 
     $ids = array_filter( array_map( 'intval', (array) ( $_POST['help_ids'] ?? [] ) ) );
@@ -101669,7 +101676,7 @@ function sp_render_help_tags_admin_page(): void {
     // Handle rename / merge / delete
     if ( ! empty( $_POST['sp_tags_action'] ) ) {
         check_admin_referer( 'sp_help_tags' );
-        $action = sanitize_text_field( $_POST['sp_tags_action'] );
+        $action = sanitize_text_field( wp_unslash( $_POST['sp_tags_action'] ) );
         $from   = strtolower( trim( wp_unslash( $_POST['from_tag'] ?? '' ) ) );
         $to     = strtolower( trim( wp_unslash( $_POST['to_tag']   ?? '' ) ) );
 
@@ -102421,9 +102428,9 @@ function sp_render_ens_pages_import_page(): void {
         }
     } elseif ( $action === 'run_import' ) {
         check_admin_referer( 'sp_ens_import' );
-        $token     = sanitize_file_name( $_POST['sp_ens_token'] ?? '' );
+        $token     = sanitize_file_name( wp_unslash( $_POST['sp_ens_token'] ?? '' ) );
         $temp_file = realpath( $temp_dir . $token );
-        $menu_name = sanitize_text_field( $_POST['sp_ens_menu_name'] ?? __( 'Imported from ENS', 'societypress' ) );
+        $menu_name = sanitize_text_field( wp_unslash( $_POST['sp_ens_menu_name'] ?? __( 'Imported from ENS', 'societypress' ) ) );
 
         if ( ! $temp_file || strpos( $temp_file, realpath( $temp_dir ) ) !== 0 || ! file_exists( $temp_file ) ) {
             echo '<div class="notice notice-error"><p>' . esc_html__( 'The uploaded preview has expired. Please upload again.', 'societypress' ) . '</p></div>';
@@ -103268,7 +103275,7 @@ function sp_ajax_records_bulk_import_file(): void {
     }
 
     $temp_dir = sp_ensure_import_temp_dir();
-    $token    = basename( sanitize_file_name( (string) ( $_POST['token'] ?? '' ) ) );
+    $token    = basename( sanitize_file_name( wp_unslash( (string) ( $_POST['token'] ?? '' ) ) ) );
     $path     = realpath( $temp_dir . $token );
     $real_tmp = realpath( $temp_dir );
 
@@ -103278,8 +103285,8 @@ function sp_ajax_records_bulk_import_file(): void {
         wp_send_json_error( [ 'message' => __( 'That upload could not be found. It may have already been imported.', 'societypress' ) ] );
     }
 
-    $name   = sanitize_text_field( (string) ( $_POST['name'] ?? '' ) );
-    $type   = sanitize_text_field( (string) ( $_POST['type'] ?? 'general' ) );
+    $name   = sanitize_text_field( wp_unslash( (string) ( $_POST['name'] ?? '' ) ) );
+    $type   = sanitize_text_field( wp_unslash( (string) ( $_POST['type'] ?? 'general' ) ) );
     $access = in_array( $_POST['access'] ?? '', [ 'public', 'members' ], true )
         ? sanitize_key( $_POST['access'] )
         : 'public';
@@ -105129,7 +105136,7 @@ function sp_render_short_links_admin_page(): void {
         $row_id     = (int) ( $_POST['row_id'] ?? 0 );
         $raw_code   = (string) ( $_POST['code'] ?? '' );
         $raw_target = trim( (string) ( $_POST['target_url'] ?? '' ) );
-        $label      = sanitize_text_field( (string) ( $_POST['label'] ?? '' ) );
+        $label      = sanitize_text_field( wp_unslash( (string) ( $_POST['label'] ?? '' ) ) );
 
         if ( $action === 'delete' && $row_id ) {
             $wpdb->delete( $table, [ 'id' => $row_id ] );

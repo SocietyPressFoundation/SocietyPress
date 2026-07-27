@@ -42469,7 +42469,10 @@ add_action( 'admin_init', function () {
     // WHY: Slugs are used in frontend event URLs (?sp_event=slug). We create
     //      them from the title automatically so Harold doesn't have to think
     //      about URL formatting. sanitize_title() handles the heavy lifting.
-    $title = sanitize_text_field( $_POST['event_title'] ?? '' );
+    // WHY wp_unslash: WordPress slash-escapes every superglobal on load, so an
+    //      apostrophe arrives as \' and would be stored literally. Without this
+    //      the backslash reappears on every save no matter how Harold edits it.
+    $title = sanitize_text_field( wp_unslash( $_POST['event_title'] ?? '' ) );
     $slug  = sanitize_title( $title );
 
     // Ensure slug uniqueness — append a number if the slug already exists
@@ -42486,7 +42489,7 @@ add_action( 'admin_init', function () {
     $data = [
         'title'                => $title,
         'slug'                 => $slug,
-        'description'          => wp_kses_post( $_POST['event_description'] ?? '' ),
+        'description'          => wp_kses_post( wp_unslash( $_POST['event_description'] ?? '' ) ),
         'category_id'          => ! empty( $_POST['event_category_id'] ) ? (int) $_POST['event_category_id'] : null,
         'committee_id'         => ! empty( $_POST['event_committee_id'] ) ? (int) $_POST['event_committee_id'] : null,
         'status'               => in_array( $_POST['event_status'] ?? '', [ 'scheduled', 'cancelled', 'postponed', 'completed' ], true )
@@ -42494,10 +42497,10 @@ add_action( 'admin_init', function () {
         'event_date'           => sanitize_text_field( $_POST['event_date'] ?? '' ),
         'start_time'           => ! empty( $_POST['event_start_time'] ) ? sanitize_text_field( $_POST['event_start_time'] ) : null,
         'end_time'             => ! empty( $_POST['event_end_time'] ) ? sanitize_text_field( $_POST['event_end_time'] ) : null,
-        'location_name'        => sanitize_text_field( $_POST['event_location_name'] ?? '' ),
-        'location_address'     => sanitize_textarea_field( $_POST['event_location_address'] ?? '' ),
+        'location_name'        => sanitize_text_field( wp_unslash( $_POST['event_location_name'] ?? '' ) ),
+        'location_address'     => sanitize_textarea_field( wp_unslash( $_POST['event_location_address'] ?? '' ) ),
         'is_virtual'           => ! empty( $_POST['event_is_virtual'] ) ? 1 : 0,
-        'virtual_url'          => esc_url_raw( $_POST['event_virtual_url'] ?? '' ),
+        'virtual_url'          => esc_url_raw( wp_unslash( $_POST['event_virtual_url'] ?? '' ) ),
         'image_id'             => ! empty( $_POST['event_image_id'] ) ? (int) $_POST['event_image_id'] : null,
         'attachment_id'        => ! empty( $_POST['event_attachment_id'] ) ? (int) $_POST['event_attachment_id'] : null,
         'visibility'           => in_array( $_POST['event_visibility'] ?? '', [ 'public', 'members_only', 'committee_only' ], true )
@@ -42510,15 +42513,15 @@ add_action( 'admin_init', function () {
         'nonmember_price'      => ! empty( $_POST['event_nonmember_price'] ) ? number_format( (float) $_POST['event_nonmember_price'], 2, '.', '' ) : '0.00',
         'payment_mode'         => in_array( $_POST['event_payment_mode'] ?? '', [ 'none', 'at_door', 'online', 'either' ], true )
                                   ? $_POST['event_payment_mode'] : 'none',
-        'price_description'    => sanitize_text_field( $_POST['event_price_description'] ?? '' ),
-        'contact_name'         => sanitize_text_field( $_POST['event_contact_name'] ?? '' ),
-        'contact_email'        => sanitize_email( $_POST['event_contact_email'] ?? '' ),
-        'contact_phone'        => sanitize_text_field( $_POST['event_contact_phone'] ?? '' ),
+        'price_description'    => sanitize_text_field( wp_unslash( $_POST['event_price_description'] ?? '' ) ),
+        'contact_name'         => sanitize_text_field( wp_unslash( $_POST['event_contact_name'] ?? '' ) ),
+        'contact_email'        => sanitize_email( wp_unslash( $_POST['event_contact_email'] ?? '' ) ),
+        'contact_phone'        => sanitize_text_field( wp_unslash( $_POST['event_contact_phone'] ?? '' ) ),
         // External URL — links this event to an outside website instead of showing
         // a SocietyPress detail page. When set manually, external_source = 'manual'.
         // iCal-imported events use 'ical_feed' and are managed by the sync process —
         // we DON'T overwrite their external_source when saving via the form.
-        'external_url'         => ! empty( $_POST['event_external_url'] ) ? esc_url_raw( $_POST['event_external_url'] ) : null,
+        'external_url'         => ! empty( $_POST['event_external_url'] ) ? esc_url_raw( wp_unslash( $_POST['event_external_url'] ) ) : null,
     ];
 
     // Determine external_source — preserve 'ical_feed' for events still attached
@@ -42681,7 +42684,7 @@ add_action( 'admin_init', function () {
     }
 
     // Audit log: event create or update
-    $event_title = sanitize_text_field( $_POST['event_title'] ?? '' );
+    $event_title = sanitize_text_field( wp_unslash( $_POST['event_title'] ?? '' ) );
     if ( (int) ( $_POST['event_id'] ?? 0 ) > 0 ) {
         sp_audit( 'event_updated', "Event updated: {$event_title}", 'event', $event_id );
     } else {

@@ -40249,22 +40249,24 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
             echo '</tr></thead><tbody>';
 
             // Batch-load the surname-contact opt-out for every researcher in
-            // the result set in one query. WHY: this was a meta lookup per
-            // unique researcher — one round-trip each inside the row loop.
-            //      Default to allowed unless an explicit '0' opt-out exists.
+            // the result set in one query. WHY: reads the pref_email_surnames
+            // column on sp_members — the same column the member's My Account
+            // preferences form writes. (This previously read a member_meta key
+            // that nothing ever wrote, so the opt-out never took effect.)
+            //      Default to allowed unless the column is explicitly 0.
             $researcher_ids        = array_values( array_unique( array_map( static fn( $r ) => (int) $r->user_id, $results ) ) );
             $contact_allowed_cache = [];
             if ( ! empty( $researcher_ids ) ) {
                 $in_rids = implode( ',', $researcher_ids );
                 $optouts = [];
                 foreach ( (array) $wpdb->get_results(
-                    "SELECT user_id, meta_value FROM {$prefix}member_meta
-                     WHERE meta_key = 'pref_email_surnames' AND user_id IN ({$in_rids})"
+                    "SELECT user_id, pref_email_surnames FROM {$prefix}members
+                     WHERE user_id IN ({$in_rids})"
                 ) as $mr ) {
-                    $optouts[ (int) $mr->user_id ] = $mr->meta_value;
+                    $optouts[ (int) $mr->user_id ] = $mr->pref_email_surnames;
                 }
                 foreach ( $researcher_ids as $rid ) {
-                    $contact_allowed_cache[ $rid ] = ! ( isset( $optouts[ $rid ] ) && $optouts[ $rid ] === '0' );
+                    $contact_allowed_cache[ $rid ] = ! ( isset( $optouts[ $rid ] ) && (int) $optouts[ $rid ] === 0 );
                 }
             }
 
@@ -60883,13 +60885,15 @@ function sp_handle_surname_contact(): void {
         wp_send_json_error( __( 'Unable to contact this researcher at this time.', 'societypress' ) );
     }
 
-    // Check opt-out preference
+    // Check opt-out preference — the member's surname-research email choice
+    // is the pref_email_surnames column on sp_members (written by the My
+    // Account preferences form). Column is NOT NULL DEFAULT 1, so a null here
+    // means "not a member row" and we don't block.
     $opted_out = $wpdb->get_var( $wpdb->prepare(
-        "SELECT meta_value FROM {$prefix}member_meta
-         WHERE user_id = %d AND meta_key = 'pref_email_surnames'",
+        "SELECT pref_email_surnames FROM {$prefix}members WHERE user_id = %d",
         $researcher_id
     ) );
-    if ( $opted_out === '0' ) {
+    if ( $opted_out !== null && (int) $opted_out === 0 ) {
         wp_send_json_error( __( 'This researcher has opted out of contact messages.', 'societypress' ) );
     }
 

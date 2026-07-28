@@ -2,14 +2,14 @@
 # This file is distributed under the GPL-2.0-or-later.
 msgid ""
 msgstr ""
-"Project-Id-Version: SocietyPress 1.0.5\n"
-"Report-Msgid-Bugs-To: https://github.com/SocietyPressFoundation/SocietyPress/issues\n"
+"Project-Id-Version: SocietyPress 1.0.6\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/theme/societypress\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-07-25T23:07:00+00:00\n"
+"POT-Creation-Date: 2026-07-28T16:36:24+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: societypress\n"
@@ -96,19 +96,19 @@ msgstr ""
 msgid "Primary navigation"
 msgstr ""
 
-#: header.php:139
+#: header.php:144
 msgid "Open search"
 msgstr ""
 
-#: header.php:143
+#: header.php:148
 msgid "Search…"
 msgstr ""
 
-#: header.php:143
+#: header.php:148
 msgid "Search the site"
 msgstr ""
 
-#: header.php:144
+#: header.php:149
 msgid "Search"
 msgstr ""
 
@@ -257,7 +257,7 @@ msgid "Your session has expired. Please try again."
 msgstr ""
 
 #: page-my-account.php:506
-#: page-my-account.php:1874
+#: page-my-account.php:1923
 msgid "Something went wrong. Please try again."
 msgstr ""
 
@@ -302,7 +302,7 @@ msgid "Suffix"
 msgstr ""
 
 #: page-my-account.php:670
-#: page-my-account.php:1013
+#: page-my-account.php:1024
 msgid "First Name"
 msgstr ""
 
@@ -311,12 +311,12 @@ msgid "Middle Name"
 msgstr ""
 
 #: page-my-account.php:681
-#: page-my-account.php:1018
+#: page-my-account.php:1029
 msgid "Last Name"
 msgstr ""
 
 #: page-my-account.php:691
-#: page-my-account.php:1025
+#: page-my-account.php:1036
 msgid "Preferred Name"
 msgstr ""
 
@@ -345,572 +345,582 @@ msgid "Your contact information is managed by your society. Please contact an ad
 msgstr ""
 
 #: page-my-account.php:734
-#: page-my-account.php:755
+#: page-my-account.php:759
 msgid "Email Address"
 msgstr ""
 
 #: page-my-account.php:737
-#: page-my-account.php:765
+#: page-my-account.php:769
 msgid "Home Phone"
 msgstr ""
 
 #: page-my-account.php:741
-#: page-my-account.php:772
+#: page-my-account.php:776
 msgid "Cell Phone"
 msgstr ""
 
 #: page-my-account.php:745
-#: page-my-account.php:809
+#: page-my-account.php:783
+msgid "Work Phone"
+msgstr ""
+
+#: page-my-account.php:749
+#: page-my-account.php:820
 msgid "Website"
 msgstr ""
 
-#: page-my-account.php:760
+#: page-my-account.php:764
 msgid "This is used for logging in and receiving communications."
 msgstr ""
 
-#: page-my-account.php:768
-#: page-my-account.php:775
+#: page-my-account.php:772
+#: page-my-account.php:779
+#: page-my-account.php:786
 msgid "(210) 555-1234"
 msgstr ""
 
-#: page-my-account.php:788
+#: page-my-account.php:799
 msgid "Preferred Phone"
 msgstr ""
 
-#: page-my-account.php:793
+#: page-my-account.php:804
 msgid "Home"
 msgstr ""
 
-#: page-my-account.php:798
+#: page-my-account.php:809
 msgid "Cell"
 msgstr ""
 
-#: page-my-account.php:803
+#: page-my-account.php:814
 msgid "Work"
 msgstr ""
 
-#: page-my-account.php:815
+#: page-my-account.php:826
 msgid "Save Contact Information"
 msgstr ""
 
-#: page-my-account.php:826
+#: page-my-account.php:837
 msgid "Mailing Address"
 msgstr ""
 
-#: page-my-account.php:833
-#: page-my-account.php:930
+#: page-my-account.php:844
+#: page-my-account.php:941
 msgid "Street Address"
 msgstr ""
 
-#: page-my-account.php:839
+#: page-my-account.php:850
 msgid "Address Line 2"
 msgstr ""
 
-#: page-my-account.php:842
+#: page-my-account.php:853
 msgid "Apt, Suite, Unit, etc."
 msgstr ""
 
-#: page-my-account.php:847
-#: page-my-account.php:937
+#: page-my-account.php:858
+#: page-my-account.php:948
 msgid "City"
 msgstr ""
 
-#: page-my-account.php:852
-#: page-my-account.php:942
-#: page-my-account.php:1407
+#: page-my-account.php:863
+#: page-my-account.php:953
+#: page-my-account.php:1438
 msgid "State"
 msgstr ""
 
-#: page-my-account.php:858
-#: page-my-account.php:947
+#: page-my-account.php:869
+#: page-my-account.php:958
 msgid "Zip / Postal Code"
 msgstr ""
 
-#: page-my-account.php:866
-#: page-my-account.php:955
-#: page-my-account.php:1413
-#: page-my-account.php:1531
+#: page-my-account.php:877
+#: page-my-account.php:966
+#: page-my-account.php:1444
+#: page-my-account.php:1562
 msgid "Country"
 msgstr ""
 
-#: page-my-account.php:881
+#: page-my-account.php:892
 msgid "I have a seasonal / alternate address"
 msgstr ""
 
-#: page-my-account.php:894
+#: page-my-account.php:905
 msgid "Seasonal Address"
 msgstr ""
 
-#: page-my-account.php:898
+#: page-my-account.php:909
 msgid "From (Month)"
 msgstr ""
 
-#: page-my-account.php:903
+#: page-my-account.php:914
 msgid "January"
 msgstr ""
 
-#: page-my-account.php:903
+#: page-my-account.php:914
 msgid "February"
 msgstr ""
 
-#: page-my-account.php:903
+#: page-my-account.php:914
 msgid "March"
 msgstr ""
 
-#: page-my-account.php:904
+#: page-my-account.php:915
 msgid "April"
 msgstr ""
 
-#: page-my-account.php:904
+#: page-my-account.php:915
 msgid "May"
 msgstr ""
 
-#: page-my-account.php:904
+#: page-my-account.php:915
 msgid "June"
 msgstr ""
 
-#: page-my-account.php:905
+#: page-my-account.php:916
 msgid "July"
 msgstr ""
 
-#: page-my-account.php:905
+#: page-my-account.php:916
 msgid "August"
 msgstr ""
 
-#: page-my-account.php:905
+#: page-my-account.php:916
 msgid "September"
 msgstr ""
 
-#: page-my-account.php:906
+#: page-my-account.php:917
 msgid "October"
 msgstr ""
 
-#: page-my-account.php:906
+#: page-my-account.php:917
 msgid "November"
 msgstr ""
 
-#: page-my-account.php:906
+#: page-my-account.php:917
 msgid "December"
 msgstr ""
 
-#: page-my-account.php:916
+#: page-my-account.php:927
 msgid "To (Month)"
 msgstr ""
 
-#: page-my-account.php:965
+#: page-my-account.php:976
 msgid "Save Address"
 msgstr ""
 
-#: page-my-account.php:1002
+#: page-my-account.php:1013
 msgid "Joint Member"
 msgstr ""
 
-#: page-my-account.php:1004
+#: page-my-account.php:1015
 msgid "Your membership plan includes a second household member. Both names will appear in the directory and both people can attend events."
 msgstr ""
 
-#: page-my-account.php:1028
+#: page-my-account.php:1039
 msgid "Optional — if different from first name"
 msgstr ""
 
-#: page-my-account.php:1036
+#: page-my-account.php:1047
 msgid "Email"
 msgstr ""
 
-#: page-my-account.php:1039
-#: page-my-account.php:1045
+#: page-my-account.php:1050
+#: page-my-account.php:1056
 msgid "Optional"
 msgstr ""
 
-#: page-my-account.php:1042
+#: page-my-account.php:1053
 msgid "Phone"
 msgstr ""
 
-#: page-my-account.php:1049
+#: page-my-account.php:1060
 msgid "Save Joint Member"
 msgstr ""
 
-#: page-my-account.php:1065
+#: page-my-account.php:1076
 msgid "Communication Preferences"
 msgstr ""
 
-#: page-my-account.php:1068
+#: page-my-account.php:1079
 msgid "Your email preferences are managed by your society. Please contact an administrator to change them."
 msgstr ""
 
-#: page-my-account.php:1078
-msgid "Receive print newsletter by mail"
+#: page-my-account.php:1097
+msgid "Do not send me any email"
 msgstr ""
 
-#: page-my-account.php:1084
+#: page-my-account.php:1100
+msgid "You will still receive anything you have asked for by mail."
+msgstr ""
+
+#: page-my-account.php:1110
 msgid "Email me general notices and announcements"
 msgstr ""
 
-#: page-my-account.php:1090
+#: page-my-account.php:1117
 msgid "Email me about upcoming events"
 msgstr ""
 
-#: page-my-account.php:1096
+#: page-my-account.php:1124
 msgid "Email me when new newsletters are published"
 msgstr ""
 
-#: page-my-account.php:1102
+#: page-my-account.php:1131
 msgid "Email me when someone is researching one of my surnames"
 msgstr ""
 
-#: page-my-account.php:1108
-msgid "Opt out of mass/blast emails"
+#: page-my-account.php:1139
+msgid "Receive our publications by mail"
 msgstr ""
 
-#: page-my-account.php:1112
+#: page-my-account.php:1143
 msgid "Save Preferences"
 msgstr ""
 
-#: page-my-account.php:1129
+#: page-my-account.php:1160
 msgid "Directory Privacy"
 msgstr ""
 
-#: page-my-account.php:1131
+#: page-my-account.php:1162
 msgid "Choose which of your details are visible to other members in the membership directory. Unchecked items will be hidden."
 msgstr ""
 
-#: page-my-account.php:1142
+#: page-my-account.php:1173
 msgid "Show my name"
 msgstr ""
 
-#: page-my-account.php:1148
+#: page-my-account.php:1179
 msgid "Show my address"
 msgstr ""
 
-#: page-my-account.php:1154
+#: page-my-account.php:1185
 msgid "Show my phone number"
 msgstr ""
 
-#: page-my-account.php:1160
+#: page-my-account.php:1191
 msgid "Show my email address"
 msgstr ""
 
-#: page-my-account.php:1166
+#: page-my-account.php:1197
 msgid "Show my website"
 msgstr ""
 
-#: page-my-account.php:1172
+#: page-my-account.php:1203
 msgid "Show my photo"
 msgstr ""
 
-#: page-my-account.php:1176
+#: page-my-account.php:1207
 msgid "Save Privacy Settings"
 msgstr ""
 
-#: page-my-account.php:1193
+#: page-my-account.php:1224
 msgid "Interests & Skills"
 msgstr ""
 
-#: page-my-account.php:1200
+#: page-my-account.php:1231
 msgid "Interests"
 msgstr ""
 
-#: page-my-account.php:1203
+#: page-my-account.php:1234
 msgid "e.g., Texas Rangers, Civil War records, DNA research, cemetery preservation"
 msgstr ""
 
-#: page-my-account.php:1205
+#: page-my-account.php:1236
 msgid "Genealogical topics, time periods, or geographic areas you're interested in."
 msgstr ""
 
-#: page-my-account.php:1209
+#: page-my-account.php:1240
 msgid "Skills"
 msgstr ""
 
-#: page-my-account.php:1212
+#: page-my-account.php:1243
 msgid "e.g., German translation, courthouse research, photo restoration, web design"
 msgstr ""
 
-#: page-my-account.php:1214
+#: page-my-account.php:1245
 msgid "Skills or expertise you'd be willing to share with other members."
 msgstr ""
 
-#: page-my-account.php:1217
+#: page-my-account.php:1248
 msgid "Save Interests & Skills"
 msgstr ""
 
-#: page-my-account.php:1242
+#: page-my-account.php:1273
 msgid "Genealogy Service Profiles"
 msgstr ""
 
-#: page-my-account.php:1244
+#: page-my-account.php:1275
 msgid "Link your profiles on genealogy research platforms so other members can find and connect with you. Leave a field blank to keep it off your profile."
 msgstr ""
 
-#: page-my-account.php:1265
+#: page-my-account.php:1296
 msgid "Save Genealogy Profiles"
 msgstr ""
 
-#: page-my-account.php:1280
+#: page-my-account.php:1311
 msgid "Research Surnames"
 msgstr ""
 
-#: page-my-account.php:1282
+#: page-my-account.php:1313
 msgid "Add the surnames you're researching so other members can find and contact you."
 msgstr ""
 
 #. translators: %d: number of other members researching similar surnames
-#: page-my-account.php:1359
+#: page-my-account.php:1390
 #, php-format
 msgid "%d other member is researching a similar surname"
 msgid_plural "%d other members are researching similar surnames"
 msgstr[0] ""
 msgstr[1] ""
 
-#: page-my-account.php:1371
+#: page-my-account.php:1402
 msgid "Remove this surname?"
 msgstr ""
 
-#: page-my-account.php:1375
+#: page-my-account.php:1406
 msgid "Remove surname"
 msgstr ""
 
-#: page-my-account.php:1381
+#: page-my-account.php:1412
 msgid "No research surnames added yet."
 msgstr ""
 
-#: page-my-account.php:1387
+#: page-my-account.php:1418
 msgid "Your research surnames are managed by your society. Please contact an administrator to add or change them."
 msgstr ""
 
-#: page-my-account.php:1394
+#: page-my-account.php:1425
 msgid "Surname"
 msgstr ""
 
-#: page-my-account.php:1396
+#: page-my-account.php:1427
 msgid "e.g., STRICKLIN"
 msgstr ""
 
-#: page-my-account.php:1401
-#: page-my-account.php:1529
+#: page-my-account.php:1432
+#: page-my-account.php:1560
 msgid "County"
 msgstr ""
 
-#: page-my-account.php:1403
+#: page-my-account.php:1434
 msgid "e.g., Sample"
 msgstr ""
 
-#: page-my-account.php:1409
+#: page-my-account.php:1440
 msgid "e.g., TX"
 msgstr ""
 
-#: page-my-account.php:1415
+#: page-my-account.php:1446
 msgid "e.g., US"
 msgstr ""
 
-#: page-my-account.php:1419
-#: page-my-account.php:1538
+#: page-my-account.php:1450
+#: page-my-account.php:1569
 msgid "From"
 msgstr ""
 
-#: page-my-account.php:1421
-#: page-my-account.php:1540
+#: page-my-account.php:1452
+#: page-my-account.php:1571
 msgid "1830"
 msgstr ""
 
-#: page-my-account.php:1426
-#: page-my-account.php:1545
+#: page-my-account.php:1457
+#: page-my-account.php:1576
 msgid "To"
 msgstr ""
 
-#: page-my-account.php:1428
-#: page-my-account.php:1547
+#: page-my-account.php:1459
+#: page-my-account.php:1578
 msgid "1890"
 msgstr ""
 
-#: page-my-account.php:1433
+#: page-my-account.php:1464
 msgid "Alternate Spellings"
 msgstr ""
 
-#: page-my-account.php:1435
+#: page-my-account.php:1466
 msgid "Comma-separated, e.g., Strickland, Stricklen"
 msgstr ""
 
-#: page-my-account.php:1439
+#: page-my-account.php:1470
 msgid "Research Notes"
 msgstr ""
 
-#: page-my-account.php:1441
+#: page-my-account.php:1472
 msgid "e.g., German immigrants, arrived 1850s via Galveston"
 msgstr ""
 
-#: page-my-account.php:1444
+#: page-my-account.php:1475
 msgid "Add Surname"
 msgstr ""
 
-#: page-my-account.php:1461
+#: page-my-account.php:1492
 msgid "Research Areas"
 msgstr ""
 
-#: page-my-account.php:1463
+#: page-my-account.php:1494
 msgid "Add the geographic areas you're researching — counties, states, regions, or countries."
 msgstr ""
 
-#: page-my-account.php:1501
+#: page-my-account.php:1532
 msgid "Remove this research area?"
 msgstr ""
 
-#: page-my-account.php:1505
+#: page-my-account.php:1536
 msgid "Remove research area"
 msgstr ""
 
-#: page-my-account.php:1510
+#: page-my-account.php:1541
 msgid "No research areas added yet."
 msgstr ""
 
-#: page-my-account.php:1520
+#: page-my-account.php:1551
 msgid "Area"
 msgstr ""
 
-#: page-my-account.php:1522
+#: page-my-account.php:1553
 msgid "e.g., Sample County"
 msgstr ""
 
-#: page-my-account.php:1526
+#: page-my-account.php:1557
 msgid "Type"
 msgstr ""
 
-#: page-my-account.php:1528
+#: page-my-account.php:1559
 msgid "(optional)"
 msgstr ""
 
-#: page-my-account.php:1530
+#: page-my-account.php:1561
 msgid "State/Province"
 msgstr ""
 
-#: page-my-account.php:1532
+#: page-my-account.php:1563
 msgid "Region"
 msgstr ""
 
-#: page-my-account.php:1533
+#: page-my-account.php:1564
 msgid "City/Town"
 msgstr ""
 
-#: page-my-account.php:1552
+#: page-my-account.php:1583
 msgid "Notes"
 msgstr ""
 
-#: page-my-account.php:1554
+#: page-my-account.php:1585
 msgid "e.g., German settlements along the Guadalupe River"
 msgstr ""
 
-#: page-my-account.php:1557
+#: page-my-account.php:1588
 msgid "Add Research Area"
 msgstr ""
 
-#: page-my-account.php:1573
+#: page-my-account.php:1604
 msgid "Family Connections"
 msgstr ""
 
-#: page-my-account.php:1575
+#: page-my-account.php:1606
 msgid "Family relationships linked to your account. Contact your society administrator to update these."
 msgstr ""
 
-#: page-my-account.php:1602
+#: page-my-account.php:1633
 msgid "My Events"
 msgstr ""
 
-#: page-my-account.php:1637
+#: page-my-account.php:1668
 msgid "Upcoming"
 msgstr ""
 
 #. translators: precedes a time, e.g. "at 2:00 PM"
-#: page-my-account.php:1647
+#: page-my-account.php:1678
 #, php-format
 msgid "at %s"
 msgstr ""
 
-#: page-my-account.php:1655
+#: page-my-account.php:1686
 msgid "Waitlisted"
 msgstr ""
 
-#: page-my-account.php:1661
+#: page-my-account.php:1692
 msgid "Download .ics file"
 msgstr ""
 
-#: page-my-account.php:1662
+#: page-my-account.php:1693
 msgid "Add to Calendar"
 msgstr ""
 
-#: page-my-account.php:1664
+#: page-my-account.php:1695
 msgid "Cancel your registration for this event?"
 msgstr ""
 
-#: page-my-account.php:1668
+#: page-my-account.php:1699
 msgid "Cancel"
 msgstr ""
 
-#: page-my-account.php:1674
+#: page-my-account.php:1705
 msgid "You're not registered for any upcoming events."
 msgstr ""
 
-#: page-my-account.php:1678
+#: page-my-account.php:1709
 msgid "Past Events (6 months)"
 msgstr ""
 
-#: page-my-account.php:1682
+#: page-my-account.php:1713
 msgid "Event"
 msgstr ""
 
-#: page-my-account.php:1683
+#: page-my-account.php:1714
 msgid "Date"
 msgstr ""
 
-#: page-my-account.php:1684
+#: page-my-account.php:1715
 msgid "Status"
 msgstr ""
 
-#: page-my-account.php:1695
+#: page-my-account.php:1726
 msgid "Cancelled"
 msgstr ""
 
-#: page-my-account.php:1697
+#: page-my-account.php:1728
 msgid "Attended"
 msgstr ""
 
-#: page-my-account.php:1699
+#: page-my-account.php:1730
 msgid "No-show"
 msgstr ""
 
-#: page-my-account.php:1701
+#: page-my-account.php:1732
 msgid "Registered"
 msgstr ""
 
-#: page-my-account.php:1723
-#: page-my-account.php:1763
+#: page-my-account.php:1754
+#: page-my-account.php:1794
 msgid "Change Password"
 msgstr ""
 
-#: page-my-account.php:1726
+#: page-my-account.php:1757
 msgid "Passwords are managed by your society. Please contact an administrator to reset yours."
 msgstr ""
 
-#: page-my-account.php:1733
+#: page-my-account.php:1764
 msgid "Current Password"
 msgstr ""
 
-#: page-my-account.php:1742
+#: page-my-account.php:1773
 msgid "New Password"
 msgstr ""
 
-#: page-my-account.php:1750
+#: page-my-account.php:1781
 msgid "At least 8 characters."
 msgstr ""
 
-#: page-my-account.php:1754
+#: page-my-account.php:1785
 msgid "Confirm New Password"
 msgstr ""
 
-#: page-my-account.php:1845
+#: page-my-account.php:1894
 msgid "Saving…"
 msgstr ""
 
-#: page-my-account.php:1942
+#: page-my-account.php:1991
 msgid "This doesn't look like a valid email address."
 msgstr ""
 

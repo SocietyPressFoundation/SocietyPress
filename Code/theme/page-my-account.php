@@ -741,6 +741,10 @@ $sp_section_locked = function ( $section ) {
                             <dt><?php esc_html_e( 'Cell Phone', 'societypress' ); ?></dt>
                             <dd><?php echo esc_html( sp_m( $member, 'cell' ) ); ?></dd>
                         <?php endif; ?>
+                        <?php if ( sp_m( $member, 'work_phone' ) ) : ?>
+                            <dt><?php esc_html_e( 'Work Phone', 'societypress' ); ?></dt>
+                            <dd><?php echo esc_html( sp_m( $member, 'work_phone' ) ); ?></dd>
+                        <?php endif; ?>
                         <?php if ( sp_m( $member, 'website' ) ) : ?>
                             <dt><?php esc_html_e( 'Website', 'societypress' ); ?></dt>
                             <dd><?php echo esc_html( sp_m( $member, 'website' ) ); ?></dd>
@@ -760,7 +764,7 @@ $sp_section_locked = function ( $section ) {
                         <p class="sp-field-hint" id="sp-email-hint"><?php esc_html_e( 'This is used for logging in and receiving communications.', 'societypress' ); ?></p>
                     </div>
 
-                    <div class="sp-form-row sp-form-row--half">
+                    <div class="sp-form-row sp-form-row--thirds">
                         <div class="sp-form-field">
                             <label for="sp-phone"><?php esc_html_e( 'Home Phone', 'societypress' ); ?></label>
                             <input type="tel" id="sp-phone" name="phone"
@@ -772,6 +776,13 @@ $sp_section_locked = function ( $section ) {
                             <label for="sp-cell"><?php esc_html_e( 'Cell Phone', 'societypress' ); ?></label>
                             <input type="tel" id="sp-cell" name="cell"
                                    value="<?php echo esc_attr( sp_m( $member, 'cell' ) ); ?>"
+                                   placeholder="<?php esc_attr_e( '(210) 555-1234', 'societypress' ); ?>"
+                                   class="sp-phone-input" />
+                        </div>
+                        <div class="sp-form-field">
+                            <label for="sp-work-phone"><?php esc_html_e( 'Work Phone', 'societypress' ); ?></label>
+                            <input type="tel" id="sp-work-phone" name="work_phone"
+                                   value="<?php echo esc_attr( sp_m( $member, 'work_phone' ) ); ?>"
                                    placeholder="<?php esc_attr_e( '(210) 555-1234', 'societypress' ); ?>"
                                    class="sp-phone-input" />
                         </div>
@@ -1071,41 +1082,61 @@ $sp_section_locked = function ( $section ) {
                     <?php wp_nonce_field( 'sp_update_preferences', 'sp_preferences_nonce' ); ?>
                     <input type="hidden" name="sp_action" value="update_preferences" />
 
+                    <?php
+                    // The master switch leads the section. WHY: it overrides the four
+                    // category choices below it, and a control that overrides other
+                    // controls has to be read before them, not discovered underneath.
+                    $sp_email_muted = (string) sp_m( $member, 'blast_email_opt_out' ) === '1';
+                    ?>
                     <div class="sp-checkbox-group">
                         <label class="sp-checkbox-label">
-                            <input type="checkbox" name="receive_print" value="1"
-                                   <?php checked( sp_m( $member, 'receive_print' ), '1' ); ?> />
-                            <?php esc_html_e( 'Receive print newsletter by mail', 'societypress' ); ?>
+                            <input type="checkbox" name="blast_email_opt_out" value="1"
+                                   id="sp-email-mute"
+                                   aria-controls="sp-email-categories"
+                                   <?php checked( $sp_email_muted ); ?> />
+                            <?php esc_html_e( 'Do not send me any email', 'societypress' ); ?>
                         </label>
+                        <p class="sp-field-hint" id="sp-email-mute-hint">
+                            <?php esc_html_e( 'You will still receive anything you have asked for by mail.', 'societypress' ); ?>
+                        </p>
+                    </div>
 
+                    <div class="sp-checkbox-group sp-checkbox-group--dependent<?php echo $sp_email_muted ? ' is-disabled' : ''; ?>"
+                         id="sp-email-categories">
                         <label class="sp-checkbox-label">
                             <input type="checkbox" name="pref_email_notices" value="1"
-                                   <?php checked( sp_m( $member, 'pref_email_notices' ), '1' ); ?> />
+                                   <?php checked( sp_m( $member, 'pref_email_notices' ), '1' ); ?>
+                                   <?php disabled( $sp_email_muted ); ?> />
                             <?php esc_html_e( 'Email me general notices and announcements', 'societypress' ); ?>
                         </label>
 
                         <label class="sp-checkbox-label">
                             <input type="checkbox" name="pref_email_events" value="1"
-                                   <?php checked( sp_m( $member, 'pref_email_events' ), '1' ); ?> />
+                                   <?php checked( sp_m( $member, 'pref_email_events' ), '1' ); ?>
+                                   <?php disabled( $sp_email_muted ); ?> />
                             <?php esc_html_e( 'Email me about upcoming events', 'societypress' ); ?>
                         </label>
 
                         <label class="sp-checkbox-label">
                             <input type="checkbox" name="pref_email_newsletters" value="1"
-                                   <?php checked( sp_m( $member, 'pref_email_newsletters' ), '1' ); ?> />
+                                   <?php checked( sp_m( $member, 'pref_email_newsletters' ), '1' ); ?>
+                                   <?php disabled( $sp_email_muted ); ?> />
                             <?php esc_html_e( 'Email me when new newsletters are published', 'societypress' ); ?>
                         </label>
 
                         <label class="sp-checkbox-label">
                             <input type="checkbox" name="pref_email_surnames" value="1"
-                                   <?php checked( sp_m( $member, 'pref_email_surnames' ), '1' ); ?> />
+                                   <?php checked( sp_m( $member, 'pref_email_surnames' ), '1' ); ?>
+                                   <?php disabled( $sp_email_muted ); ?> />
                             <?php esc_html_e( 'Email me when someone is researching one of my surnames', 'societypress' ); ?>
                         </label>
+                    </div>
 
+                    <div class="sp-checkbox-group">
                         <label class="sp-checkbox-label">
-                            <input type="checkbox" name="blast_email_opt_out" value="1"
-                                   <?php checked( sp_m( $member, 'blast_email_opt_out' ), '1' ); ?> />
-                            <?php esc_html_e( 'Opt out of mass/blast emails', 'societypress' ); ?>
+                            <input type="checkbox" name="receive_print" value="1"
+                                   <?php checked( sp_m( $member, 'receive_print' ), '1' ); ?> />
+                            <?php esc_html_e( 'Receive our publications by mail', 'societypress' ); ?>
                         </label>
                     </div>
 
@@ -1809,6 +1840,24 @@ $sp_section_locked = function ( $section ) {
 
     var phoneFields = document.querySelectorAll('input[type="tel"]');
     phoneFields.forEach(formatPhone);
+
+    // "Do not send me any email" switches off the four category checkboxes.
+    // WHY: They'd have no effect while it's ticked, and a live control that
+    // does nothing is worse than one that's visibly unavailable. Their ticks
+    // are left as they are — the save handler skips those columns while the
+    // switch is on, so un-ticking it restores what the member had before.
+    var emailMute = document.getElementById('sp-email-mute');
+    var emailCategories = document.getElementById('sp-email-categories');
+    if (emailMute && emailCategories) {
+        var categoryBoxes = emailCategories.querySelectorAll('input[type="checkbox"]');
+        emailMute.addEventListener('change', function() {
+            var muted = this.checked;
+            emailCategories.classList.toggle('is-disabled', muted);
+            categoryBoxes.forEach(function(box) {
+                box.disabled = muted;
+            });
+        });
+    }
 
     // =========================================================================
     // AJAX SAVE — Intercept form submissions for text-based sections

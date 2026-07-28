@@ -4271,6 +4271,68 @@ function sp_pref_email_defaults(): array {
 }
 
 /**
+ * Whether a member should receive email in a given category.
+ *
+ * WHY: "Do not send me any email" on My Account greys out the four category
+ *      checkboxes, so it has to be a real master switch — every send path has
+ *      to check it or the screen would be promising something the software
+ *      doesn't do. Routing all of them through one function means a new email
+ *      type can't quietly forget the opt-out the way a copy-pasted inline
+ *      `if` eventually would.
+ *
+ * @param object|array|null $row         Member row carrying blast_email_opt_out
+ *                                       and the category column. A row with
+ *                                       neither (a guest registration, say) is
+ *                                       treated as wanting the email — guests
+ *                                       have no preferences to honor.
+ * @param string            $pref_field  Category column, e.g. 'pref_email_events'.
+ */
+/**
+ * Build the sp_members update array for the My Account preferences form.
+ *
+ * WHY: When "Do not send me any email" is ticked, the four category checkboxes
+ *      are disabled, and a disabled checkbox posts nothing. Writing them from
+ *      $_POST anyway would zero out choices the member never touched, so
+ *      un-ticking the master switch later would come back to a blank slate
+ *      instead of what they had before. When the switch is on we leave those
+ *      four columns alone — the master switch already suppresses the sends.
+ *
+ * Shared by the no-JS POST handler and the AJAX handler so the two can't drift.
+ */
+function sp_preferences_post_data(): array {
+    $muted = ! empty( $_POST['blast_email_opt_out'] );
+
+    $data = [
+        'receive_print'       => ! empty( $_POST['receive_print'] ) ? 1 : 0,
+        'blast_email_opt_out' => $muted ? 1 : 0,
+        'updated_at'          => current_time( 'mysql' ),
+    ];
+
+    if ( ! $muted ) {
+        $data['pref_email_notices']     = ! empty( $_POST['pref_email_notices'] ) ? 1 : 0;
+        $data['pref_email_events']      = ! empty( $_POST['pref_email_events'] ) ? 1 : 0;
+        $data['pref_email_newsletters'] = ! empty( $_POST['pref_email_newsletters'] ) ? 1 : 0;
+        $data['pref_email_surnames']    = ! empty( $_POST['pref_email_surnames'] ) ? 1 : 0;
+    }
+
+    return $data;
+}
+
+function sp_member_wants_email( $row, string $pref_field ): bool {
+    if ( is_array( $row ) ) {
+        $row = (object) $row;
+    }
+    if ( ! is_object( $row ) ) {
+        return true;
+    }
+    // Master switch wins over every category.
+    if ( ! empty( $row->blast_email_opt_out ) ) {
+        return false;
+    }
+    return ! ( isset( $row->$pref_field ) && (int) $row->$pref_field === 0 );
+}
+
+/**
  * Format a stored wall-clock date/time for display, without timezone math.
  *
  * WHY: Event times, slot times, volunteer shifts, and ballot windows are stored
@@ -8247,6 +8309,7 @@ function sp_handle_account_forms() {
         $email          = sanitize_email( wp_unslash( $_POST['user_email'] ?? '' ) );
         $phone          = sanitize_text_field( wp_unslash( $_POST['phone'] ?? '' ) );
         $cell           = sanitize_text_field( wp_unslash( $_POST['cell'] ?? '' ) );
+        $work_phone     = sanitize_text_field( wp_unslash( $_POST['work_phone'] ?? '' ) );
         $website        = esc_url_raw( wp_unslash( $_POST['website'] ?? '' ) );
         $preferred_phone = sanitize_text_field( wp_unslash( $_POST['preferred_phone'] ?? 'cell' ) );
         if ( ! in_array( $preferred_phone, [ 'phone', 'cell', 'work_phone' ], true ) ) {
@@ -8256,7 +8319,7 @@ function sp_handle_account_forms() {
         $existing = email_exists( $email );
         if ( $existing && $existing !== $user->ID ) { wp_redirect( add_query_arg( 'sp-error', 'email-taken', $account_url . '#contact' ) ); exit; }
 
-        $new_data = [ 'user_email' => $email, 'phone' => $phone, 'cell' => $cell, 'website' => $website, 'preferred_phone' => $preferred_phone ];
+        $new_data = [ 'user_email' => $email, 'phone' => $phone, 'cell' => $cell, 'work_phone' => $work_phone, 'website' => $website, 'preferred_phone' => $preferred_phone ];
 
         if ( $require_approval && sp_user_has_member_record( $user->ID ) ) {
             sp_queue_profile_change( $user->ID, 'contact', $new_data );
@@ -8266,10 +8329,10 @@ function sp_handle_account_forms() {
         wp_update_user([ 'ID' => $user->ID, 'user_email' => $email ]);
         if ( sp_user_has_member_record( $user->ID ) ) {
             $contact_data = [
-                'phone' => $phone, 'cell' => $cell, 'website' => $website,
+                'phone' => $phone, 'cell' => $cell, 'work_phone' => $work_phone, 'website' => $website,
                 'preferred_phone' => $preferred_phone, 'updated_at' => current_time( 'mysql' ),
             ];
-            // Encrypt sensitive contact fields (cell) before writing to DB
+            // Encrypt sensitive contact fields (cell, work_phone) before writing to DB
             sp_member_encrypt_fields( $contact_data );
             $wpdb->update( $table, $contact_data, [ 'user_id' => $user->ID ] );
         }
@@ -8331,15 +8394,7 @@ function sp_handle_account_forms() {
     if ( $action === 'update_preferences' ) {
         if ( ! wp_verify_nonce( $_POST['sp_preferences_nonce'] ?? '', 'sp_update_preferences' ) ) { wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
         if ( ! sp_user_has_member_record( $user->ID ) ) { wp_redirect( add_query_arg( 'sp-error', 'no-member', $account_url ) ); exit; }
-        $wpdb->update( $table, [
-            'receive_print' => ! empty( $_POST['receive_print'] ) ? 1 : 0,
-            'pref_email_notices' => ! empty( $_POST['pref_email_notices'] ) ? 1 : 0,
-            'pref_email_events' => ! empty( $_POST['pref_email_events'] ) ? 1 : 0,
-            'pref_email_newsletters' => ! empty( $_POST['pref_email_newsletters'] ) ? 1 : 0,
-            'pref_email_surnames' => ! empty( $_POST['pref_email_surnames'] ) ? 1 : 0,
-            'blast_email_opt_out' => ! empty( $_POST['blast_email_opt_out'] ) ? 1 : 0,
-            'updated_at' => current_time( 'mysql' ),
-        ], [ 'user_id' => $user->ID ] );
+        $wpdb->update( $table, sp_preferences_post_data(), [ 'user_id' => $user->ID ] );
         wp_redirect( add_query_arg( 'sp-updated', 'preferences', $account_url . '#preferences' ) ); exit;
     }
 
@@ -8776,9 +8831,15 @@ function sp_apply_profile_change( object $change ): void {
             wp_update_user( [ 'ID' => $user_id, 'user_email' => $data['user_email'] ] );
         }
         $member_data = [];
-        if ( isset( $data['phone'] ) )   $member_data['phone']   = $data['phone'];
-        if ( isset( $data['cell'] ) )    $member_data['cell']    = $data['cell'];
-        if ( isset( $data['website'] ) ) $member_data['website'] = $data['website'];
+        if ( isset( $data['phone'] ) )      $member_data['phone']      = $data['phone'];
+        if ( isset( $data['cell'] ) )       $member_data['cell']       = $data['cell'];
+        if ( isset( $data['work_phone'] ) ) $member_data['work_phone'] = $data['work_phone'];
+        if ( isset( $data['website'] ) )    $member_data['website']    = $data['website'];
+        // Preferred phone is validated at submit time, but re-check on apply so a
+        // tampered queue row can't write an arbitrary value into the column.
+        if ( isset( $data['preferred_phone'] ) && in_array( $data['preferred_phone'], [ 'phone', 'cell', 'work_phone' ], true ) ) {
+            $member_data['preferred_phone'] = $data['preferred_phone'];
+        }
         if ( $member_data ) {
             $member_data['updated_at'] = current_time( 'mysql' );
             // Encrypt sensitive contact fields before writing to DB
@@ -9014,6 +9075,7 @@ function sp_render_pending_changes_page(): void {
             'user_email'        => __( 'Email', 'societypress' ),
             'phone'             => __( 'Phone', 'societypress' ),
             'cell'              => __( 'Cell Phone', 'societypress' ),
+            'work_phone'        => __( 'Work Phone', 'societypress' ),
             'preferred_phone'   => __( 'Preferred Phone', 'societypress' ),
             'website'           => __( 'Website', 'societypress' ),
             'address_1'         => __( 'Address', 'societypress' ),
@@ -9235,6 +9297,7 @@ add_action( 'wp_ajax_sp_save_account', function() {
         $email          = sanitize_email( wp_unslash( $_POST['user_email'] ?? '' ) );
         $phone          = sanitize_text_field( wp_unslash( $_POST['phone'] ?? '' ) );
         $cell           = sanitize_text_field( wp_unslash( $_POST['cell'] ?? '' ) );
+        $work_phone     = sanitize_text_field( wp_unslash( $_POST['work_phone'] ?? '' ) );
         $website        = esc_url_raw( wp_unslash( $_POST['website'] ?? '' ) );
         $preferred_phone = sanitize_text_field( wp_unslash( $_POST['preferred_phone'] ?? 'cell' ) );
         // Validate preferred_phone against allowed values
@@ -9253,6 +9316,7 @@ add_action( 'wp_ajax_sp_save_account', function() {
             'user_email'      => $email,
             'phone'           => $phone,
             'cell'            => $cell,
+            'work_phone'      => $work_phone,
             'website'         => $website,
             'preferred_phone' => $preferred_phone,
         ];
@@ -9266,10 +9330,10 @@ add_action( 'wp_ajax_sp_save_account', function() {
         wp_update_user( [ 'ID' => $user->ID, 'user_email' => $email ] );
         if ( sp_user_has_member_record( $user->ID ) ) {
             $ajax_contact_data = [
-                'phone' => $phone, 'cell' => $cell, 'website' => $website,
+                'phone' => $phone, 'cell' => $cell, 'work_phone' => $work_phone, 'website' => $website,
                 'preferred_phone' => $preferred_phone, 'updated_at' => current_time( 'mysql' ),
             ];
-            // Encrypt sensitive contact fields (cell) before writing to DB
+            // Encrypt sensitive contact fields (cell, work_phone) before writing to DB
             sp_member_encrypt_fields( $ajax_contact_data );
             $wpdb->update( $table, $ajax_contact_data, [ 'user_id' => $user->ID ] );
         }
@@ -9319,15 +9383,7 @@ add_action( 'wp_ajax_sp_save_account', function() {
         if ( ! sp_user_has_member_record( $user->ID ) ) {
             wp_send_json_error( [ 'message' => __( 'Member record not found.', 'societypress' ) ] );
         }
-        $wpdb->update( $table, [
-            'receive_print'          => ! empty( $_POST['receive_print'] ) ? 1 : 0,
-            'pref_email_notices'     => ! empty( $_POST['pref_email_notices'] ) ? 1 : 0,
-            'pref_email_events'      => ! empty( $_POST['pref_email_events'] ) ? 1 : 0,
-            'pref_email_newsletters' => ! empty( $_POST['pref_email_newsletters'] ) ? 1 : 0,
-            'pref_email_surnames'    => ! empty( $_POST['pref_email_surnames'] ) ? 1 : 0,
-            'blast_email_opt_out'    => ! empty( $_POST['blast_email_opt_out'] ) ? 1 : 0,
-            'updated_at'             => current_time( 'mysql' ),
-        ], [ 'user_id' => $user->ID ] );
+        $wpdb->update( $table, sp_preferences_post_data(), [ 'user_id' => $user->ID ] );
         wp_send_json_success( [ 'message' => __( 'Preferences saved.', 'societypress' ) ] );
     }
 
@@ -16582,6 +16638,7 @@ add_action( 'admin_init', function () {
     $joint_phone         = sanitize_text_field( wp_unslash( $_POST['joint_phone'] ?? '' ) );
     $phone          = sanitize_text_field( wp_unslash( $_POST['phone'] ?? '' ) );
     $cell           = sanitize_text_field( wp_unslash( $_POST['cell'] ?? '' ) );
+    $work_phone     = sanitize_text_field( wp_unslash( $_POST['work_phone'] ?? '' ) );
     $preferred_phone = sanitize_text_field( wp_unslash( $_POST['preferred_phone'] ?? 'cell' ) );
     if ( ! in_array( $preferred_phone, [ 'phone', 'cell', 'work_phone' ], true ) ) {
         $preferred_phone = 'cell';
@@ -16685,6 +16742,7 @@ add_action( 'admin_init', function () {
         'country'               => $country ?: null,
         'phone'                 => $phone ?: null,
         'cell'                  => $cell ?: null,
+        'work_phone'            => $work_phone ?: null,
         'preferred_phone'       => $preferred_phone ?: null,
         'website'               => $website ?: null,
         'seasonal'              => $seasonal,
@@ -18193,6 +18251,13 @@ function sp_render_member_edit_page(): void {
                         </div>
 
                         <div class="sp-field">
+                            <label for="sp-work-phone"><?php esc_html_e( 'Work Phone', 'societypress' ); ?></label>
+                            <input type="tel" name="work_phone" id="sp-work-phone"
+                                   value="<?php echo esc_attr( $member->work_phone ?? '' ); ?>"
+                                   placeholder="<?php esc_attr_e( '(555) 123-4567', 'societypress' ); ?>">
+                        </div>
+
+                        <div class="sp-field">
                             <label for="sp-preferred-phone"><?php echo esc_html__( 'Preferred Phone', 'societypress' ); ?></label>
                             <?php $pref = $member->preferred_phone ?? 'cell'; ?>
                             <select name="preferred_phone" id="sp-preferred-phone">
@@ -18821,15 +18886,15 @@ function sp_render_member_edit_page(): void {
                         </div>
 
                         <div class="sp-field">
-                            <label class="sp-member-edit-group-label"><?php esc_html_e( 'Blast Email', 'societypress' ); ?></label>
+                            <label class="sp-member-edit-group-label"><?php esc_html_e( 'All Email', 'societypress' ); ?></label>
                             <div class="sp-checkboxes">
                                 <label>
                                     <input type="checkbox" name="blast_email_opt_out" value="1"
                                         <?php checked( $member->blast_email_opt_out ?? 0, 1 ); ?>>
-                                    <?php esc_html_e( 'Opted out of blast emails', 'societypress' ); ?>
+                                    <?php esc_html_e( 'Do not send this member any email', 'societypress' ); ?>
                                 </label>
                             </div>
-                            <p class="description"><?php esc_html_e( 'When checked, this member will not receive blast emails.', 'societypress' ); ?></p>
+                            <p class="description"><?php esc_html_e( 'This overrides the four email notification boxes above. The member sets this themselves on their My Account page; mail sent by post is not affected.', 'societypress' ); ?></p>
                         </div>
 
                         <div class="sp-field">
@@ -18877,7 +18942,7 @@ function sp_render_member_edit_page(): void {
                                 <label>
                                     <input type="checkbox" name="receive_print" value="1"
                                         <?php checked( $member->receive_print ?? 0, 1 ); ?>>
-                                    <?php esc_html_e( 'Receives print newsletter by mail', 'societypress' ); ?>
+                                    <?php esc_html_e( 'Receives our publications by mail', 'societypress' ); ?>
                                 </label>
                             </div>
                         </div>
@@ -54819,7 +54884,7 @@ function sp_send_event_cancellation_emails( int $event_id, string $event_title )
 
     // Get all active registrants (confirmed + waitlisted) with email preference
     $registrations = $wpdb->get_results( $wpdb->prepare(
-        "SELECT r.*, u.user_email AS wp_email, m.pref_email_events
+        "SELECT r.*, u.user_email AS wp_email, m.pref_email_events, m.blast_email_opt_out
          FROM {$reg_table} r
          LEFT JOIN {$wpdb->users} u ON r.user_id = u.ID
          LEFT JOIN {$wpdb->prefix}sp_members m ON r.user_id = m.user_id
@@ -54860,7 +54925,7 @@ function sp_send_event_cancellation_emails( int $event_id, string $event_title )
         // NOTE: Cancellation is arguably important enough to override preferences,
         //       but we respect the member's choice. If they unchecked event emails,
         //       they'll still see the cancellation reflected on their My Account page.
-        if ( $reg->user_id && isset( $reg->pref_email_events ) && (int) $reg->pref_email_events === 0 ) {
+        if ( $reg->user_id && ! sp_member_wants_email( $reg, 'pref_email_events' ) ) {
             continue;
         }
         $email = $reg->user_id ? ( $reg->wp_email ?? '' ) : ( $reg->guest_email ?? '' );
@@ -54891,7 +54956,7 @@ function sp_send_event_update_emails( object $event, array $changed_fields ): vo
     // WHY: Members who opted out of event emails shouldn't receive update
     //      notices. Guests always get them (no preference mechanism for guests).
     $registrations = $wpdb->get_results( $wpdb->prepare(
-        "SELECT r.*, u.user_email AS wp_email, m.pref_email_events
+        "SELECT r.*, u.user_email AS wp_email, m.pref_email_events, m.blast_email_opt_out
          FROM {$reg_table} r
          LEFT JOIN {$wpdb->users} u ON r.user_id = u.ID
          LEFT JOIN {$wpdb->prefix}sp_members m ON r.user_id = m.user_id
@@ -54934,7 +54999,7 @@ function sp_send_event_update_emails( object $event, array $changed_fields ): vo
 
     foreach ( $registrations as $reg ) {
         // Respect event email preference for members
-        if ( $reg->user_id && isset( $reg->pref_email_events ) && (int) $reg->pref_email_events === 0 ) {
+        if ( $reg->user_id && ! sp_member_wants_email( $reg, 'pref_email_events' ) ) {
             continue;
         }
         $email = $reg->user_id ? ( $reg->wp_email ?? '' ) : ( $reg->guest_email ?? '' );
@@ -55081,7 +55146,8 @@ function sp_send_event_reminders(): void {
         $regs_by_event = [];
         foreach ( (array) $wpdb->get_results(
             "SELECT r.event_id, r.id AS reg_id, r.user_id, r.guest_email,
-                    u.user_email AS wp_email, m.pref_email_events
+                    u.user_email AS wp_email, m.pref_email_events,
+                    m.blast_email_opt_out
              FROM {$reg_table} r
              LEFT JOIN {$wpdb->users} u ON r.user_id = u.ID
              LEFT JOIN {$wpdb->prefix}sp_members m ON r.user_id = m.user_id
@@ -55100,7 +55166,7 @@ function sp_send_event_reminders(): void {
                 // Respect event email preference for members
                 // WHY: If a member unchecked "Event emails" in their profile,
                 //      they don't want reminder emails. Guests always get them.
-                if ( $reg->user_id && isset( $reg->pref_email_events ) && (int) $reg->pref_email_events === 0 ) {
+                if ( $reg->user_id && ! sp_member_wants_email( $reg, 'pref_email_events' ) ) {
                     continue;
                 }
 
@@ -69641,7 +69707,7 @@ function sp_process_renewal_reminders(): void {
         //      via user_id, and the WP user record holds the email.
         $members = $wpdb->get_results( $wpdb->prepare(
             "SELECT m.user_id, m.first_name, m.last_name, m.expiration_date,
-                    m.pref_email_notices, u.user_email
+                    m.pref_email_notices, m.blast_email_opt_out, u.user_email
              FROM {$prefix}members m
              INNER JOIN {$wpdb->users} u ON m.user_id = u.ID
              LEFT JOIN {$prefix}renewal_reminders rr
@@ -69658,7 +69724,7 @@ function sp_process_renewal_reminders(): void {
             if ( ! is_email( $member->user_email ) ) continue;
 
             // Respect communication preferences — if member opted out of notices, skip
-            if ( isset( $member->pref_email_notices ) && (int) $member->pref_email_notices === 0 ) {
+            if ( ! sp_member_wants_email( $member, 'pref_email_notices' ) ) {
                 continue;
             }
 
@@ -69759,7 +69825,7 @@ function sp_process_expired_notices(): void {
 
     $members = $wpdb->get_results( $wpdb->prepare(
         "SELECT m.user_id, m.first_name, m.last_name, m.expiration_date,
-                m.pref_email_notices, u.user_email
+                m.pref_email_notices, m.blast_email_opt_out, u.user_email
          FROM {$prefix}members m
          INNER JOIN {$wpdb->users} u ON m.user_id = u.ID
          LEFT JOIN {$prefix}renewal_reminders rr
@@ -69774,7 +69840,7 @@ function sp_process_expired_notices(): void {
 
     foreach ( $members as $member ) {
         if ( ! is_email( $member->user_email ) ) continue;
-        if ( isset( $member->pref_email_notices ) && (int) $member->pref_email_notices === 0 ) continue;
+        if ( ! sp_member_wants_email( $member, 'pref_email_notices' ) ) continue;
 
         $template_body = $settings['email_template_expired']
                          ?? sp_get_default_email_template( 'expired' );
@@ -69853,7 +69919,7 @@ function sp_send_welcome_email( int $user_id ): void {
     }
 
     // Respect communication preference
-    if ( isset( $member->pref_email_notices ) && (int) $member->pref_email_notices === 0 ) {
+    if ( ! sp_member_wants_email( $member, 'pref_email_notices' ) ) {
         return;
     }
 
@@ -74508,6 +74574,7 @@ function sp_privacy_export_member_data( string $email_address, int $page = 1 ): 
         ] ) ) ?: $none_label ],
         [ 'name' => __( 'Phone', 'societypress' ),            'value' => $member->phone ?: $none_label ],
         [ 'name' => __( 'Cell', 'societypress' ),             'value' => $member->cell ?: $none_label ],
+        [ 'name' => __( 'Work Phone', 'societypress' ),       'value' => $member->work_phone ?: $none_label ],
         [ 'name' => __( 'Website', 'societypress' ),          'value' => $member->website ?: $none_label ],
     ];
 
@@ -74528,13 +74595,20 @@ function sp_privacy_export_member_data( string $email_address, int $page = 1 ): 
         ];
     }
 
-    // Communication preferences
-    $prefs = [];
-    if ( $member->pref_email_notices )      $prefs[] = __( 'General Notices', 'societypress' );
-    if ( $member->pref_email_events )       $prefs[] = __( 'Events', 'societypress' );
-    if ( $member->pref_email_newsletters )  $prefs[] = __( 'Newsletters', 'societypress' );
-    if ( $member->pref_email_surnames )     $prefs[] = __( 'Surname Alerts', 'societypress' );
-    $data[] = [ 'name' => __( 'Email Preferences', 'societypress' ), 'value' => $prefs ? implode( ', ', $prefs ) : __( '(all disabled)', 'societypress' ) ];
+    // Communication preferences. The master switch is reported on its own line
+    // rather than folded into the list — a member reading their own export
+    // should see the reason no categories are active, not just an empty list.
+    if ( $member->blast_email_opt_out ) {
+        $pref_value = __( 'None — "Do not send me any email" is switched on', 'societypress' );
+    } else {
+        $prefs = [];
+        if ( $member->pref_email_notices )      $prefs[] = __( 'General Notices', 'societypress' );
+        if ( $member->pref_email_events )       $prefs[] = __( 'Events', 'societypress' );
+        if ( $member->pref_email_newsletters )  $prefs[] = __( 'Newsletters', 'societypress' );
+        if ( $member->pref_email_surnames )     $prefs[] = __( 'Surname Alerts', 'societypress' );
+        $pref_value = $prefs ? implode( ', ', $prefs ) : __( '(all disabled)', 'societypress' );
+    }
+    $data[] = [ 'name' => __( 'Email Preferences', 'societypress' ), 'value' => $pref_value ];
 
     // Directory visibility settings
     $dir = [];

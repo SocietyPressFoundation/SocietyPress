@@ -5,7 +5,7 @@ Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
 Description: A clean, readable theme for genealogical and historical societies.
              Designed for ease of use with large fonts, high contrast, and simple navigation.
-Version: 1.0.5
+Version: 1.0.6
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.0
@@ -2062,6 +2062,25 @@ input[type="date"]:focus {
     flex-shrink: 0;
     cursor: pointer;
     accent-color: var(--sp-color-primary, #1e3a5f);
+}
+
+/* Checkboxes governed by a master switch above them. Indented and ruled so
+   the dependency is visible before it's tested, greyed while the switch is on.
+   Colours stay above the 4.5:1 contrast floor even in the disabled state —
+   these still have to be readable by the members most likely to tick it. */
+.sp-checkbox-group--dependent {
+    border-left: 3px solid var(--sp-color-border, #e5e7eb);
+    padding-left: 16px;
+    margin-left: 6px;
+}
+
+.sp-checkbox-group--dependent.is-disabled .sp-checkbox-label {
+    color: #767676;
+    cursor: default;
+}
+
+.sp-checkbox-group--dependent.is-disabled .sp-checkbox-label input[type="checkbox"] {
+    cursor: default;
 }
 
 /* Seasonal address subsection heading */

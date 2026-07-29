@@ -40248,54 +40248,30 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
             echo '<th class="sp-surname-th-center">' . esc_html__( 'Contact', 'societypress' ) . '</th>';
             echo '</tr></thead><tbody>';
 
-            // Batch-load the surname-contact opt-out for every researcher in
-            // the result set in one query. WHY: reads the pref_email_surnames
-            // column on sp_members — the same column the member's My Account
-            // preferences form writes. (This previously read a member_meta key
-            // that nothing ever wrote, so the opt-out never took effect.)
-            //      Default to allowed unless the column is explicitly 0.
-            $researcher_ids        = array_values( array_unique( array_map( static fn( $r ) => (int) $r->user_id, $results ) ) );
-            $contact_allowed_cache = [];
-            if ( ! empty( $researcher_ids ) ) {
-                $in_rids = implode( ',', $researcher_ids );
-                $optouts = [];
-                foreach ( (array) $wpdb->get_results(
-                    "SELECT user_id, pref_email_surnames FROM {$prefix}members
-                     WHERE user_id IN ({$in_rids})"
-                ) as $mr ) {
-                    $optouts[ (int) $mr->user_id ] = $mr->pref_email_surnames;
-                }
-                foreach ( $researcher_ids as $rid ) {
-                    $contact_allowed_cache[ $rid ] = ! ( isset( $optouts[ $rid ] ) && (int) $optouts[ $rid ] === 0 );
-                }
-            }
-
             foreach ( $results as $row ) {
                 $loc = implode( ', ', array_filter( [ $row->county, $row->state, $row->country ] ) ) ?: '—';
                 $period = ( $row->year_from && $row->year_to ) ? "{$row->year_from}–{$row->year_to}"
                     : ( $row->year_from ? "{$row->year_from}–" : ( $row->year_to ? "–{$row->year_to}" : '—' ) );
 
-                // Surname-contact opt-out was batch-loaded above.
                 echo '<tr>';
                 echo '<td class="sp-surname-td"><strong>' . esc_html( $row->surname ) . '</strong></td>';
                 echo '<td class="sp-surname-td">' . esc_html( $loc ) . '</td>';
                 echo '<td class="sp-surname-td">' . esc_html( $period ) . '</td>';
                 echo '<td class="sp-surname-td">' . esc_html( $row->first_name . ' ' . $row->last_name ) . '</td>';
 
-                // Contact button — shown if the researcher allows contact AND
-                // either the viewer is logged in or the society allows public
-                // (non-member) contact on its registry.
+                // Contact button — shown when the viewer is logged in, or when
+                // the society allows public (non-member) contact on its
+                // registry. A member who lists surnames is contactable through
+                // the registry; listing the surnames is the opt-in.
                 $sp_public_contact = ! empty( sp_settings()['surname_public_contact'] );
                 echo '<td class="sp-surname-td-center">';
-                if ( $contact_allowed_cache[ $row->user_id ] && ( is_user_logged_in() || $sp_public_contact ) ) {
+                if ( is_user_logged_in() || $sp_public_contact ) {
                     echo '<button type="button" class="sp-btn sp-btn-outline sp-surname-contact-btn sp-surname-contact-btn-sm" '
                        . 'data-researcher-id="' . esc_attr( $row->user_id ) . '" '
                        . 'data-researcher-name="' . esc_attr( $row->first_name . ' ' . $row->last_name ) . '" '
                        . 'data-surname="' . esc_attr( $row->surname ) . '">' . esc_html__( 'Contact', 'societypress' ) . '</button>';
-                } elseif ( ! is_user_logged_in() && ! $sp_public_contact ) {
-                    echo '<span class="sp-surname-no-contact">' . esc_html__( 'Log in to contact', 'societypress' ) . '</span>';
                 } else {
-                    echo '<span class="sp-surname-no-contact">—</span>';
+                    echo '<span class="sp-surname-no-contact">' . esc_html__( 'Log in to contact', 'societypress' ) . '</span>';
                 }
                 echo '</td>';
 
@@ -60883,18 +60859,6 @@ function sp_handle_surname_contact(): void {
 
     if ( ! $researcher_email || ! is_email( $researcher_email ) ) {
         wp_send_json_error( __( 'Unable to contact this researcher at this time.', 'societypress' ) );
-    }
-
-    // Check opt-out preference — the member's surname-research email choice
-    // is the pref_email_surnames column on sp_members (written by the My
-    // Account preferences form). Column is NOT NULL DEFAULT 1, so a null here
-    // means "not a member row" and we don't block.
-    $opted_out = $wpdb->get_var( $wpdb->prepare(
-        "SELECT pref_email_surnames FROM {$prefix}members WHERE user_id = %d",
-        $researcher_id
-    ) );
-    if ( $opted_out !== null && (int) $opted_out === 0 ) {
-        wp_send_json_error( __( 'This researcher has opted out of contact messages.', 'societypress' ) );
     }
 
     // Build and send the email

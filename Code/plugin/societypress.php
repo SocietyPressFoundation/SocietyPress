@@ -832,6 +832,121 @@ function sp_create_tables(): void {
     ) {$charset_collate};" );
 
     // ========================================================================
+    // sp_people — One row per human being
+    //
+    // WHY: sp_members is keyed by user_id, which forces every member to own a
+    //      WordPress account. Measured against a real 418-member export, 39
+    //      people had no email address and 26 shared 13 addresses — roughly 52
+    //      who could never have had a login, because WordPress permits one
+    //      account per address. A person here has an id of their own and a
+    //      NULLABLE user_id, so a login becomes optional rather than required.
+    //
+    //      This table is written but not yet read. sp_members remains the
+    //      source of truth until the read path moves over.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}people (
+        id                  BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        user_id             BIGINT(20) UNSIGNED NULL,
+        prefix              VARCHAR(20)         NULL,
+        first_name          VARCHAR(100)        NOT NULL,
+        preferred_name      VARCHAR(100)        NULL,
+        middle_name         VARCHAR(100)        NULL,
+        last_name           VARCHAR(100)        NOT NULL,
+        maiden_name         VARCHAR(100)        NULL,
+        suffix              VARCHAR(20)         NULL,
+        use_maiden          VARCHAR(20)         NOT NULL DEFAULT 'Not Used',
+        date_of_birth       DATE                NULL,
+        gender              VARCHAR(10)         NULL,
+        deceased            TINYINT(1)          NOT NULL DEFAULT 0,
+        deceased_date       DATE                NULL,
+        email               VARCHAR(255)        NULL,
+        alt_email           VARCHAR(255)        NULL,
+        phone               VARCHAR(30)         NULL,
+        cell                VARCHAR(200)        NULL,
+        work_phone          VARCHAR(200)        NULL,
+        preferred_phone     VARCHAR(20)         NULL,
+        address_1           VARCHAR(512)        NULL,
+        address_2           VARCHAR(512)        NULL,
+        city                VARCHAR(100)        NULL,
+        state               VARCHAR(100)        NULL,
+        postal_code         VARCHAR(20)         NULL,
+        country             VARCHAR(100)        NULL,
+        photo_url           VARCHAR(500)        NULL,
+        can_vote            TINYINT(1)          NULL,
+        receive_journal     TINYINT(1)          NOT NULL DEFAULT 1,
+        dir_show_name       TINYINT(1)          NOT NULL DEFAULT 1,
+        dir_show_address    TINYINT(1)          NOT NULL DEFAULT 1,
+        dir_show_phone      TINYINT(1)          NOT NULL DEFAULT 1,
+        dir_show_email      TINYINT(1)          NOT NULL DEFAULT 1,
+        dir_show_photo      TINYINT(1)          NOT NULL DEFAULT 0,
+        migrated_from       BIGINT(20) UNSIGNED NULL,
+        migrated_role       VARCHAR(20)         NULL,
+        created_at          DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at          DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY user_id (user_id),
+        KEY last_name (last_name),
+        KEY deceased (deceased),
+        KEY migrated (migrated_from, migrated_role)
+    ) {$charset_collate};" );
+
+    // ========================================================================
+    // sp_memberships — One row per thing that gets paid for
+    //
+    // WHY: A membership is held by one or two people, or by an organization.
+    //      Separating it from the person means divorce, death, and rejoining
+    //      each become a single detach or attach instead of surgery on a row.
+    //
+    //      join_date lives here and never changes. Tenure is counted from it
+    //      including gaps, so a forty-year member who lapsed once does not come
+    //      back looking like a first-year member.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}memberships (
+        id                  BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        member_number       VARCHAR(50)         NULL,
+        status              VARCHAR(20)         NOT NULL DEFAULT 'active',
+        status_reason       VARCHAR(30)         NULL,
+        tier_id             BIGINT(20) UNSIGNED NULL,
+        membership_type     VARCHAR(50)         NULL,
+        is_organization     TINYINT(1)          NOT NULL DEFAULT 0,
+        organization_name   VARCHAR(255)        NULL,
+        join_date           DATE                NOT NULL,
+        expiration_date     DATE                NULL,
+        lifetime            TINYINT(1)          NOT NULL DEFAULT 0,
+        migrated_from       BIGINT(20) UNSIGNED NULL,
+        created_at          DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at          DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY status (status),
+        KEY tier_id (tier_id),
+        KEY join_date (join_date),
+        KEY expiration_date (expiration_date),
+        KEY migrated_from (migrated_from)
+    ) {$charset_collate};" );
+
+    // ========================================================================
+    // sp_membership_people — The dated link between a person and a membership
+    //
+    // WHY: The dates are the whole reason this table exists. detached_on stays
+    //      NULL while the link is current, so a spouse who leaves is detached
+    //      rather than deleted and the society keeps a truthful history of who
+    //      was covered by which membership and when.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}membership_people (
+        id                  BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        membership_id       BIGINT(20) UNSIGNED NOT NULL,
+        person_id           BIGINT(20) UNSIGNED NOT NULL,
+        person_role         VARCHAR(20)         NOT NULL DEFAULT 'primary',
+        attached_on         DATE                NOT NULL,
+        detached_on         DATE                NULL,
+        created_at          DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY membership_id (membership_id),
+        KEY person_id (person_id),
+        KEY current_link (membership_id, detached_on)
+    ) {$charset_collate};" );
+
+    // ========================================================================
     // sp_member_surnames — Surnames being researched (many per member)
     //
     // WHY: This is the genealogy-specific feature that no competitor has.
@@ -107152,4 +107267,439 @@ function sp_privacy_erase_form_data( string $email_address, int $page = 1 ): arr
         'messages'       => [],
         'done'           => true,
     ];
+}
+
+// ============================================================================
+// PERSON / MEMBERSHIP MIGRATION
+//
+// WHY: sp_members is keyed by user_id, so today a member cannot exist without a
+//      WordPress account, and a joint spouse is not a record at all — they are
+//      columns on the primary member's row. Design rules 2 through 9 require a
+//      person and a membership to be separate records, and a login to be
+//      optional.
+//
+// HOW: This fills sp_people, sp_memberships, and sp_membership_people from
+//      sp_members without touching sp_members itself. Nothing reads the new
+//      tables yet. The migration is re-runnable: rows carry migrated_from, so a
+//      second run updates rather than duplicates.
+// ============================================================================
+
+/**
+ * Migrate every sp_members row into a person, a membership, and a dated link.
+ *
+ * A row with joint_member = 1 produces a second person from the joint_* columns.
+ * That person gets a user_id only when joint_email matches an existing account,
+ * because a login is optional and most joint spouses never had one.
+ *
+ * @return array Counts: members_read, people_written, memberships_written, links_written, skipped.
+ */
+function sp_migrate_members_to_people(): array {
+    global $wpdb;
+
+    $prefix   = $wpdb->prefix . 'sp_';
+    $members  = $prefix . 'members';
+    $people   = $prefix . 'people';
+    $ships    = $prefix . 'memberships';
+    $links    = $prefix . 'membership_people';
+
+    $counts = [
+        'members_read'        => 0,
+        'people_written'      => 0,
+        'memberships_written' => 0,
+        'links_written'       => 0,
+        'skipped'             => 0,
+    ];
+
+    foreach ( [ $members, $people, $ships, $links ] as $needed ) {
+        if ( ! sp_table_exists( $needed ) ) {
+            return $counts;
+        }
+    }
+
+    $rows = $wpdb->get_results( "SELECT * FROM {$members}", ARRAY_A );
+
+    foreach ( $rows as $row ) {
+        $counts['members_read']++;
+
+        $row     = sp_member_decrypt_row( $row );
+        $user_id = (int) $row['user_id'];
+
+        // A join date is required on the membership. A row without one cannot be
+        // migrated truthfully, and inventing a date would corrupt tenure.
+        if ( empty( $row['join_date'] ) || '0000-00-00' === $row['join_date'] ) {
+            $counts['skipped']++;
+            continue;
+        }
+
+        // ---- The membership -------------------------------------------------
+        $is_org = ( 'organization' === ( $row['member_type'] ?? '' ) )
+            || ! empty( $row['organization_name'] );
+
+        $ship_data = [
+            'member_number'     => $row['member_number'],
+            'status'            => $row['status'],
+            'tier_id'           => $row['tier_id'] ? (int) $row['tier_id'] : null,
+            'membership_type'   => $row['membership_type'],
+            'is_organization'   => $is_org ? 1 : 0,
+            'organization_name' => $is_org ? $row['organization_name'] : null,
+            'join_date'         => $row['join_date'],
+            'expiration_date'   => $row['expiration_date'] ?: null,
+            'lifetime'          => (int) $row['lifetime'],
+            'migrated_from'     => $user_id,
+        ];
+
+        $ship_id = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT id FROM {$ships} WHERE migrated_from = %d",
+            $user_id
+        ) );
+
+        if ( $ship_id ) {
+            $wpdb->update( $ships, $ship_data, [ 'id' => $ship_id ] );
+        } else {
+            $wpdb->insert( $ships, $ship_data );
+            $ship_id = (int) $wpdb->insert_id;
+            $counts['memberships_written']++;
+        }
+
+        if ( ! $ship_id ) {
+            $counts['skipped']++;
+            continue;
+        }
+
+        // ---- The primary person ---------------------------------------------
+        $primary = [
+            'user_id'          => $user_id ?: null,
+            'prefix'           => $row['prefix'],
+            'first_name'       => $row['first_name'],
+            'preferred_name'   => $row['preferred_name'],
+            'middle_name'      => $row['middle_name'],
+            'last_name'        => $row['last_name'],
+            'maiden_name'      => $row['maiden_name'],
+            'suffix'           => $row['suffix'],
+            'use_maiden'       => $row['use_maiden'] ?: 'Not Used',
+            'date_of_birth'    => $row['date_of_birth'] ?: null,
+            'gender'           => $row['gender'],
+            'deceased'         => (int) $row['deceased'],
+            'email'            => sp_migration_user_email( $user_id ),
+            'alt_email'        => $row['alt_email'],
+            'phone'            => $row['phone'],
+            'cell'             => $row['cell'],
+            'work_phone'       => $row['work_phone'],
+            'preferred_phone'  => $row['preferred_phone'],
+            'address_1'        => $row['address_1'],
+            'address_2'        => $row['address_2'],
+            'city'             => $row['city'],
+            'state'            => $row['state'],
+            'postal_code'      => $row['postal_code'],
+            'country'          => $row['country'],
+            'photo_url'        => $row['photo_url'],
+            'receive_journal'  => (int) ( $row['receive_print'] ?? 1 ),
+            'dir_show_name'    => (int) $row['dir_show_name'],
+            'dir_show_address' => (int) $row['dir_show_address'],
+            'dir_show_phone'   => (int) $row['dir_show_phone'],
+            'dir_show_email'   => (int) $row['dir_show_email'],
+            'dir_show_photo'   => (int) $row['dir_show_photo'],
+            'migrated_from'    => $user_id,
+            'migrated_role'    => 'primary',
+        ];
+
+        if ( sp_migration_upsert_person( $primary ) ) {
+            $counts['people_written']++;
+        }
+
+        $primary_id = sp_migration_person_id( $user_id, 'primary' );
+        if ( $primary_id && sp_migration_link( $ship_id, $primary_id, 'primary', $row['join_date'] ) ) {
+            $counts['links_written']++;
+        }
+
+        // ---- The joint spouse, promoted to a person of their own -------------
+        if ( empty( $row['joint_member'] ) || '' === trim( (string) $row['joint_first_name'] ) ) {
+            continue;
+        }
+
+        $joint_email   = $row['joint_email'] ?: null;
+        $joint_user_id = null;
+
+        if ( $joint_email ) {
+            $existing = get_user_by( 'email', $joint_email );
+            if ( $existing ) {
+                $joint_user_id = (int) $existing->ID;
+            }
+        }
+
+        $spouse = [
+            'user_id'          => $joint_user_id,
+            'first_name'       => $row['joint_first_name'],
+            'preferred_name'   => $row['joint_preferred_name'],
+            // A joint spouse with no surname of their own shares the primary's.
+            'last_name'        => $row['joint_last_name'] ?: $row['last_name'],
+            'use_maiden'       => 'Not Used',
+            'deceased'         => 0,
+            'email'            => $joint_email,
+            'phone'            => $row['joint_phone'],
+            // The shared household details belong to both people.
+            'address_1'        => $row['address_1'],
+            'address_2'        => $row['address_2'],
+            'city'             => $row['city'],
+            'state'            => $row['state'],
+            'postal_code'      => $row['postal_code'],
+            'country'          => $row['country'],
+            'receive_journal'  => (int) ( $row['receive_print'] ?? 1 ),
+            'dir_show_name'    => (int) $row['dir_show_name'],
+            'dir_show_address' => (int) $row['dir_show_address'],
+            'dir_show_phone'   => (int) $row['dir_show_phone'],
+            'dir_show_email'   => (int) $row['dir_show_email'],
+            'dir_show_photo'   => (int) $row['dir_show_photo'],
+            'migrated_from'    => $user_id,
+            'migrated_role'    => 'joint',
+        ];
+
+        if ( sp_migration_upsert_person( $spouse ) ) {
+            $counts['people_written']++;
+        }
+
+        $spouse_id = sp_migration_person_id( $user_id, 'joint' );
+        if ( $spouse_id && sp_migration_link( $ship_id, $spouse_id, 'joint', $row['join_date'] ) ) {
+            $counts['links_written']++;
+        }
+    }
+
+    return $counts;
+}
+
+/**
+ * The WordPress account email for a member, or null when there is no account.
+ *
+ * WHY: sp_members deliberately does not store email — it lives on wp_users. A
+ *      person may have no account at all, which is the entire point of the split.
+ */
+function sp_migration_user_email( int $user_id ): ?string {
+    if ( ! $user_id ) {
+        return null;
+    }
+    $user = get_userdata( $user_id );
+    return $user ? $user->user_email : null;
+}
+
+/**
+ * Insert or update one person, keyed on where they came from.
+ *
+ * @return bool True when a row was inserted, false when an existing row was updated.
+ */
+function sp_migration_upsert_person( array $data ): bool {
+    global $wpdb;
+
+    $people = $wpdb->prefix . 'sp_people';
+
+    $existing = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT id FROM {$people} WHERE migrated_from = %d AND migrated_role = %s",
+        $data['migrated_from'],
+        $data['migrated_role']
+    ) );
+
+    // The same encryption the rest of the plugin applies to these columns.
+    sp_member_encrypt_fields( $data );
+
+    if ( $existing ) {
+        $wpdb->update( $people, $data, [ 'id' => $existing ] );
+        return false;
+    }
+
+    $wpdb->insert( $people, $data );
+    return true;
+}
+
+/**
+ * The id of a migrated person, found by the member row and role they came from.
+ */
+function sp_migration_person_id( int $migrated_from, string $role ): int {
+    global $wpdb;
+
+    return (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT id FROM {$wpdb->prefix}sp_people WHERE migrated_from = %d AND migrated_role = %s",
+        $migrated_from,
+        $role
+    ) );
+}
+
+/**
+ * Attach a person to a membership, dated, without creating a duplicate link.
+ *
+ * @return bool True when a link was created.
+ */
+function sp_migration_link( int $membership_id, int $person_id, string $role, string $attached_on ): bool {
+    global $wpdb;
+
+    $links = $wpdb->prefix . 'sp_membership_people';
+
+    $existing = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT id FROM {$links} WHERE membership_id = %d AND person_id = %d",
+        $membership_id,
+        $person_id
+    ) );
+
+    if ( $existing ) {
+        return false;
+    }
+
+    $wpdb->insert( $links, [
+        'membership_id' => $membership_id,
+        'person_id'     => $person_id,
+        'person_role'   => $role,
+        'attached_on'   => $attached_on,
+        'detached_on'   => null,
+    ] );
+
+    return true;
+}
+
+/**
+ * Prove the migration is correct against real data.
+ *
+ * WHY: A migration that reports success is worth nothing. This compares the old
+ *      tables against the new ones and returns the numbers, so the claim can be
+ *      checked instead of trusted.
+ *
+ * @return array Each check with its numbers and a pass/fail.
+ */
+function sp_verify_person_migration(): array {
+    global $wpdb;
+
+    $prefix  = $wpdb->prefix . 'sp_';
+    $members = $prefix . 'members';
+    $people  = $prefix . 'people';
+    $ships   = $prefix . 'memberships';
+    $links   = $prefix . 'membership_people';
+
+    $checks = [];
+
+    $member_rows = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$members}" );
+    $datable     = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$members} WHERE join_date IS NOT NULL AND join_date <> '0000-00-00'"
+    );
+    $joint_rows  = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$members}
+         WHERE joint_member = 1 AND TRIM(COALESCE(joint_first_name,'')) <> ''
+           AND join_date IS NOT NULL AND join_date <> '0000-00-00'"
+    );
+
+    $ship_rows   = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$ships}" );
+    $people_rows = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$people}" );
+    $link_rows   = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$links}" );
+
+    $checks[] = [
+        'check'    => 'Memberships created for every member row with a join date',
+        'expected' => $datable,
+        'actual'   => $ship_rows,
+        'pass'     => $datable === $ship_rows,
+    ];
+
+    $checks[] = [
+        'check'    => 'People created for every member plus every joint spouse',
+        'expected' => $datable + $joint_rows,
+        'actual'   => $people_rows,
+        'pass'     => ( $datable + $joint_rows ) === $people_rows,
+    ];
+
+    $checks[] = [
+        'check'    => 'One link per person',
+        'expected' => $people_rows,
+        'actual'   => $link_rows,
+        'pass'     => $people_rows === $link_rows,
+    ];
+
+    $orphan_ships = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$ships} s
+         LEFT JOIN {$links} l ON l.membership_id = s.id AND l.detached_on IS NULL
+         WHERE l.id IS NULL"
+    );
+
+    $checks[] = [
+        'check'    => 'Memberships with no current person attached',
+        'expected' => 0,
+        'actual'   => $orphan_ships,
+        'pass'     => 0 === $orphan_ships,
+    ];
+
+    $bad_users = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$people} p
+         LEFT JOIN {$wpdb->users} u ON u.ID = p.user_id
+         WHERE p.user_id IS NOT NULL AND u.ID IS NULL"
+    );
+
+    $checks[] = [
+        'check'    => 'People pointing at a WordPress account that does not exist',
+        'expected' => 0,
+        'actual'   => $bad_users,
+        'pass'     => 0 === $bad_users,
+    ];
+
+    $date_drift = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$ships} s
+         JOIN {$members} m ON m.user_id = s.migrated_from
+         WHERE s.join_date <> m.join_date"
+    );
+
+    $checks[] = [
+        'check'    => 'Join dates that changed during migration',
+        'expected' => 0,
+        'actual'   => $date_drift,
+        'pass'     => 0 === $date_drift,
+    ];
+
+    $no_login = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$people} WHERE user_id IS NULL" );
+
+    $checks[] = [
+        'check'    => 'People with no login (informational — rule 7 permits this)',
+        'expected' => null,
+        'actual'   => $no_login,
+        'pass'     => true,
+    ];
+
+    $checks[] = [
+        'check'    => 'Member rows skipped for having no usable join date',
+        'expected' => null,
+        'actual'   => $member_rows - $datable,
+        'pass'     => true,
+    ];
+
+    return $checks;
+}
+
+if ( defined( 'WP_CLI' ) && WP_CLI ) {
+    /**
+     * wp sp people migrate
+     * wp sp people verify
+     */
+    WP_CLI::add_command( 'sp people', function ( $args ) {
+        $sub = $args[0] ?? '';
+
+        if ( 'migrate' === $sub ) {
+            $counts = sp_migrate_members_to_people();
+            foreach ( $counts as $label => $n ) {
+                WP_CLI::line( str_pad( $label, 24 ) . $n );
+            }
+            WP_CLI::success( 'Migration run complete. Run "wp sp people verify" to check it.' );
+            return;
+        }
+
+        if ( 'verify' === $sub ) {
+            $failed = 0;
+            foreach ( sp_verify_person_migration() as $c ) {
+                $mark = $c['pass'] ? 'ok  ' : 'FAIL';
+                $want = null === $c['expected'] ? '' : ' (expected ' . $c['expected'] . ')';
+                WP_CLI::line( $mark . '  ' . $c['check'] . ': ' . $c['actual'] . $want );
+                if ( ! $c['pass'] ) {
+                    $failed++;
+                }
+            }
+            if ( $failed ) {
+                WP_CLI::error( $failed . ' check(s) failed.' );
+            }
+            WP_CLI::success( 'All checks passed.' );
+            return;
+        }
+
+        WP_CLI::error( 'Usage: wp sp people <migrate|verify>' );
+    } );
 }

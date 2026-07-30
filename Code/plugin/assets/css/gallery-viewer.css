@@ -1,0 +1,594 @@
+/*
+ * SocietyPress — Photo Viewer
+ *
+ * WHY this is a stylesheet and not inlined: the viewer is ~350 lines of
+ * static CSS that every gallery page needs. Inlining it would re-send the
+ * same bytes on each page load and defeat browser caching. The only rules
+ * that stay in PHP are the ones computed from admin settings (column
+ * widths), which cannot be expressed as static CSS.
+ *
+ * WHY a dark, self-contained surface rather than theme colors: a photo
+ * viewer's job is to disappear so the photograph reads. Neutral dark
+ * chrome keeps a society's palette from tinting a hundred-year-old
+ * portrait. The one exception is the accent used for focus rings and the
+ * active thumbnail, which pulls from the theme so the viewer still feels
+ * like part of the site.
+ */
+
+.sp-pv {
+	--sp-pv-accent: var( --sp-color-accent, #c9973a );
+	--sp-pv-chrome: rgba( 12, 12, 14, 0.92 );
+	--sp-pv-text: #ffffff;
+
+	/* Passes 4.5:1 against the near-black stage. Anything lighter-grey
+	   than this fails contrast on the caption and view-count text. */
+	--sp-pv-text-dim: #cfcfd2;
+
+	position: fixed;
+	inset: 0;
+	z-index: 100000;
+	display: flex;
+	background: #0b0b0d;
+	font-family: var( --sp-font-body, inherit );
+}
+
+/* [hidden] alone loses to display:flex above, so the closed state needs
+   the same specificity as the open state. */
+.sp-pv[hidden] {
+	display: none;
+}
+
+.sp-pv-backdrop {
+	position: absolute;
+	inset: 0;
+	border: 0;
+	padding: 0;
+	background: transparent;
+	cursor: default;
+}
+
+.sp-pv-shell {
+	position: relative;
+	z-index: 1;
+	display: grid;
+	/* Bar and footer size to content; the stage absorbs everything left. */
+	grid-template-rows: auto minmax( 0, 1fr ) auto;
+	width: 100%;
+	height: 100%;
+}
+
+/* ---------------------------------------------------------------- top bar */
+
+.sp-pv-bar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 10px 14px;
+	background: var( --sp-pv-chrome );
+	color: var( --sp-pv-text );
+}
+
+.sp-pv-counter {
+	margin: 0;
+	font-size: 0.875rem;
+	font-variant-numeric: tabular-nums;
+	color: var( --sp-pv-text-dim );
+}
+
+.sp-pv-bar-actions {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.sp-pv-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	min-width: 40px;
+	min-height: 40px;
+	padding: 0 10px;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	color: var( --sp-pv-text );
+	font: inherit;
+	font-size: 0.875rem;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.sp-pv-btn:hover {
+	background: rgba( 255, 255, 255, 0.14 );
+}
+
+.sp-pv-btn:focus-visible {
+	outline: 2px solid var( --sp-pv-accent );
+	outline-offset: 2px;
+}
+
+.sp-pv-btn[aria-pressed="true"] {
+	background: rgba( 255, 255, 255, 0.2 );
+}
+
+.sp-pv-btn[disabled] {
+	opacity: 0.35;
+	cursor: default;
+}
+
+.sp-pv-icon {
+	width: 20px;
+	height: 20px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.8;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	flex: 0 0 auto;
+}
+
+/* ------------------------------------------------------------------ stage */
+
+.sp-pv-stage {
+	position: relative;
+	overflow: hidden;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	/* Vertical panning must stay with the viewer instead of scrolling the
+	   page underneath, and we handle horizontal swipe ourselves. */
+	touch-action: none;
+}
+
+.sp-pv-image {
+	max-width: 100%;
+	max-height: 100%;
+	object-fit: contain;
+	/* transform-origin center keeps pinch and double-tap zoom anchored to
+	   the middle of the frame, which is where the subject almost always is
+	   in a scanned photograph. */
+	transform-origin: center center;
+	will-change: transform;
+	user-select: none;
+	-webkit-user-drag: none;
+}
+
+.sp-pv-stage[data-zoomed="true"] {
+	cursor: grab;
+}
+
+.sp-pv-stage[data-panning="true"] {
+	cursor: grabbing;
+}
+
+/* Transitions are opt-in per state change so a swipe-drag stays glued to
+   the finger. The JS adds this class only for discrete jumps. */
+.sp-pv-image.is-animated {
+	transition: transform 0.22s ease;
+}
+
+.sp-pv-spinner {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 34px;
+	height: 34px;
+	margin: -17px 0 0 -17px;
+	border: 3px solid rgba( 255, 255, 255, 0.25 );
+	border-top-color: #ffffff;
+	border-radius: 50%;
+	animation: sp-pv-spin 0.8s linear infinite;
+}
+
+.sp-pv-spinner[hidden] {
+	display: none;
+}
+
+@keyframes sp-pv-spin {
+	to {
+		transform: rotate( 360deg );
+	}
+}
+
+/* --------------------------------------------------------------- prev/next */
+
+.sp-pv-nav {
+	position: absolute;
+	top: 50%;
+	z-index: 2;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 48px;
+	height: 64px;
+	margin-top: -32px;
+	border: 0;
+	border-radius: 6px;
+	background: rgba( 12, 12, 14, 0.55 );
+	color: #ffffff;
+	cursor: pointer;
+}
+
+.sp-pv-nav:hover {
+	background: rgba( 12, 12, 14, 0.85 );
+}
+
+.sp-pv-nav:focus-visible {
+	outline: 2px solid var( --sp-pv-accent );
+	outline-offset: 2px;
+}
+
+.sp-pv-nav[hidden] {
+	display: none;
+}
+
+.sp-pv-prev {
+	left: 12px;
+}
+
+.sp-pv-next {
+	right: 12px;
+}
+
+.sp-pv-nav .sp-pv-icon {
+	width: 26px;
+	height: 26px;
+}
+
+/* ----------------------------------------------------------------- footer */
+
+.sp-pv-foot {
+	background: var( --sp-pv-chrome );
+	color: var( --sp-pv-text );
+}
+
+.sp-pv-caption {
+	margin: 0;
+	padding: 12px 16px 0;
+	font-size: 0.9375rem;
+	line-height: 1.45;
+	text-align: center;
+}
+
+.sp-pv-caption:empty {
+	display: none;
+}
+
+.sp-pv-meta {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-wrap: wrap;
+	gap: 6px 14px;
+	padding: 10px 16px;
+}
+
+.sp-pv-stat {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 0.875rem;
+	font-variant-numeric: tabular-nums;
+	color: var( --sp-pv-text-dim );
+}
+
+.sp-pv-stat .sp-pv-icon {
+	width: 17px;
+	height: 17px;
+}
+
+.sp-pv-like[aria-pressed="true"] {
+	color: #ff6b81;
+	background: transparent;
+}
+
+.sp-pv-like[aria-pressed="true"] .sp-pv-icon {
+	fill: #ff6b81;
+	stroke: #ff6b81;
+}
+
+.sp-pv-like.is-busy {
+	opacity: 0.5;
+	pointer-events: none;
+}
+
+.sp-pv-share {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	padding-left: 6px;
+	border-left: 1px solid rgba( 255, 255, 255, 0.2 );
+}
+
+/* The share sheet only exists on browsers with navigator.share, and Copy
+   Link is the desktop stand-in. JS unhides exactly one of the two. */
+.sp-pv-share-native[hidden],
+.sp-pv-copy[hidden] {
+	display: none;
+}
+
+.sp-pv-toast {
+	position: absolute;
+	bottom: 100%;
+	left: 50%;
+	transform: translateX( -50% );
+	margin-bottom: 8px;
+	padding: 6px 12px;
+	border-radius: 4px;
+	background: #ffffff;
+	color: #1a1a1a;
+	font-size: 0.8125rem;
+	white-space: nowrap;
+	pointer-events: none;
+}
+
+.sp-pv-toast[hidden] {
+	display: none;
+}
+
+/* -------------------------------------------------------------- filmstrip */
+
+.sp-pv-film {
+	display: flex;
+	gap: 6px;
+	overflow-x: auto;
+	scrollbar-width: thin;
+	padding: 0 16px 12px;
+	/* Scroll-snap makes the strip land on a thumbnail rather than halfway
+	   between two when flicked on a touchscreen. */
+	scroll-snap-type: x proximity;
+}
+
+.sp-pv-film:empty {
+	display: none;
+}
+
+.sp-pv-film-btn {
+	flex: 0 0 auto;
+	width: 62px;
+	height: 46px;
+	padding: 0;
+	border: 2px solid transparent;
+	border-radius: 4px;
+	background: rgba( 255, 255, 255, 0.08 );
+	overflow: hidden;
+	cursor: pointer;
+	opacity: 0.55;
+	scroll-snap-align: center;
+}
+
+.sp-pv-film-btn img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+.sp-pv-film-btn:hover {
+	opacity: 0.85;
+}
+
+.sp-pv-film-btn:focus-visible {
+	outline: 2px solid var( --sp-pv-accent );
+	outline-offset: 1px;
+}
+
+.sp-pv-film-btn[aria-current="true"] {
+	border-color: var( --sp-pv-accent );
+	opacity: 1;
+}
+
+/* --------------------------------------------------------------- comments */
+
+.sp-pv-comments {
+	position: absolute;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 3;
+	display: flex;
+	flex-direction: column;
+	width: min( 380px, 100% );
+	background: #17171a;
+	color: var( --sp-pv-text );
+	border-left: 1px solid rgba( 255, 255, 255, 0.14 );
+}
+
+.sp-pv-comments[hidden] {
+	display: none;
+}
+
+.sp-pv-comments-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 12px 14px;
+	border-bottom: 1px solid rgba( 255, 255, 255, 0.14 );
+}
+
+.sp-pv-comments-title {
+	margin: 0;
+	font-size: 1rem;
+}
+
+.sp-pv-comments-list {
+	flex: 1 1 auto;
+	overflow-y: auto;
+	margin: 0;
+	padding: 12px 14px;
+	list-style: none;
+}
+
+.sp-pv-comment {
+	padding: 10px 0;
+	border-bottom: 1px solid rgba( 255, 255, 255, 0.09 );
+}
+
+.sp-pv-comment:last-child {
+	border-bottom: 0;
+}
+
+.sp-pv-comment-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 10px;
+	margin-bottom: 3px;
+}
+
+.sp-pv-comment-author {
+	font-weight: 600;
+	font-size: 0.875rem;
+}
+
+.sp-pv-comment-date {
+	font-size: 0.75rem;
+	color: var( --sp-pv-text-dim );
+}
+
+.sp-pv-comment-body {
+	margin: 0;
+	font-size: 0.875rem;
+	line-height: 1.5;
+	/* Comments are user text: a pasted URL or a long surname must wrap
+	   instead of widening the drawer. */
+	overflow-wrap: anywhere;
+}
+
+.sp-pv-comment-delete {
+	margin-top: 6px;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: #ff9aa5;
+	font: inherit;
+	font-size: 0.75rem;
+	text-decoration: underline;
+	cursor: pointer;
+}
+
+.sp-pv-comments-empty,
+.sp-pv-comments-locked {
+	margin: 0;
+	padding: 12px 14px;
+	font-size: 0.875rem;
+	color: var( --sp-pv-text-dim );
+}
+
+.sp-pv-comments-locked a {
+	color: var( --sp-pv-accent );
+}
+
+.sp-pv-comment-form {
+	padding: 12px 14px;
+	border-top: 1px solid rgba( 255, 255, 255, 0.14 );
+}
+
+.sp-pv-comment-input {
+	width: 100%;
+	min-height: 68px;
+	padding: 8px 10px;
+	border: 1px solid rgba( 255, 255, 255, 0.28 );
+	border-radius: 5px;
+	background: #0f0f11;
+	color: #ffffff;
+	font: inherit;
+	font-size: 0.875rem;
+	resize: vertical;
+}
+
+.sp-pv-comment-input:focus-visible {
+	outline: 2px solid var( --sp-pv-accent );
+	outline-offset: 1px;
+}
+
+.sp-pv-comment-submit {
+	margin-top: 8px;
+	padding: 8px 16px;
+	border: 0;
+	border-radius: 5px;
+	background: var( --sp-pv-accent );
+	color: #1a1a1a;
+	font: inherit;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.sp-pv-comment-submit:focus-visible {
+	outline: 2px solid #ffffff;
+	outline-offset: 2px;
+}
+
+.sp-pv-comment-submit[disabled] {
+	opacity: 0.5;
+	cursor: default;
+}
+
+.sp-pv-comment-error {
+	margin: 8px 0 0;
+	font-size: 0.8125rem;
+	color: #ff9aa5;
+}
+
+.sp-pv-comment-error:empty {
+	display: none;
+}
+
+/* ------------------------------------------------------------------ phone */
+
+@media ( max-width: 640px ) {
+	/* Edge arrows compete with swipe for thumb space on a phone, and swipe
+	   is the gesture people already expect there. */
+	.sp-pv-nav {
+		display: none;
+	}
+
+	.sp-pv-film-btn {
+		width: 50px;
+		height: 38px;
+	}
+
+	.sp-pv-caption {
+		font-size: 0.875rem;
+	}
+
+	/* Full-height side drawer has nowhere to go on a narrow screen, so the
+	   comments become a bottom sheet. */
+	.sp-pv-comments {
+		top: auto;
+		left: 0;
+		height: 72%;
+		width: 100%;
+		border-left: 0;
+		border-top: 1px solid rgba( 255, 255, 255, 0.14 );
+	}
+}
+
+/* Anyone who has asked the OS to reduce motion gets instant state changes
+   instead of eased transforms; the spinner stops spinning too. */
+@media ( prefers-reduced-motion: reduce ) {
+	.sp-pv-image.is-animated {
+		transition: none;
+	}
+
+	.sp-pv-spinner {
+		animation-duration: 0s;
+	}
+}
+
+/* Forced-colors mode strips our background fills, so the chrome needs real
+   borders to stay legible against the system canvas. */
+@media ( forced-colors: active ) {
+	.sp-pv-bar,
+	.sp-pv-foot,
+	.sp-pv-comments {
+		border: 1px solid CanvasText;
+	}
+
+	.sp-pv-film-btn[aria-current="true"] {
+		border-color: Highlight;
+	}
+}
